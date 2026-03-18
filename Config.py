@@ -1,0 +1,2 @@
+class Config:
+    SECRET_KEY = "F10X_CHAVE_INICIAL_001"

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples</title>
+
+<style>
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.card {
+    width: 520px;
+    background: white;
+    border-radius: 18px;
+    padding: 32px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
+
+/* LOGO */
+.logo {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+}
+
+.logo span {
+    font-weight: normal;
+    color: #64748b;
+}
+
+/* TÍTULO */
+h1 {
+    margin: 0;
+    text-align: center;
+    color: #1e3a8a;
+}
+
+/* TEXTO */
+.subtitulo {
+    text-align: center;
+    font-size: 14px;
+    color: #444;
+    margin-top: 10px;
+    white-space: nowrap;
+}
+
+.subinfo {
+    text-align: center;
+    font-size: 13px;
+    color: #777;
+    margin-bottom: 20px;
+}
+
+/* FORM */
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+input {
+    height: 42px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    padding: 0 12px;
+    font-size: 14px;
+}
+
+input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+}
+
+/* BOTÕES */
+.btn {
+    height: 44px;
+    border-radius: 10px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.btn-principal {
+    background: #2563eb;
+    color: white;
+}
+
+.btn-sec {
+    background: #e5e7eb;
+}
+
+/* ÁREA DO CÓDIGO */
+.area-codigo {
+    margin-top: 20px;
+    padding: 16px;
+    background: #f1f5ff;
+    border-radius: 12px;
+    display: none;
+}
+
+/* MENSAGENS */
+.msg {
+    text-align: center;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+/* RODAPÉ */
+.rodape {
+    text-align: center;
+    font-size: 11px;
+    color: #999;
+    margin-top: 18px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="card">
+
+<div class="logo">
+    Folha10 <span>Simples</span>
+</div>
+
+<h1>Criar seu acesso</h1>
+
+<div class="subtitulo">
+Informe seus dados para receber seu código de confirmação
+</div>
+
+<div class="subinfo">
+O código será enviado para o celular ou e-mail informado
+</div>
+
+<div id="msg" class="msg"></div>
+
+<div class="form">
+
+<input type="text" id="cpf" placeholder="CPF ou CNPJ">
+<input type="text" id="nome" placeholder="Nome completo">
+<input type="text" id="celular" placeholder="Celular (DDD + número)">
+<input type="text" id="email" placeholder="E-mail">
+
+<button class="btn btn-principal" onclick="enviarCodigo()">
+Enviar Código
+</button>
+
+<button class="btn btn-sec" onclick="limpar()">
+Limpar
+</button>
+
+</div>
+
+<div id="codigoArea" class="area-codigo">
+
+<input type="text" id="codigo" placeholder="Digite o código recebido">
+
+<button class="btn btn-principal" onclick="confirmar()">
+Confirmar Cadastro
+</button>
+
+</div>
+
+<div class="rodape">
+Seus dados estão protegidos. Não compartilhamos suas informações.
+</div>
+
+</div>
+
+<script>
+
+function validar() {
+    let cpf = document.getElementById("cpf").value.trim();
+    let nome = document.getElementById("nome").value.trim();
+    let celular = document.getElementById("celular").value.trim();
+    let email = document.getElementById("email").value.trim();
+
+    if (cpf.length < 11) return "Informe um CPF ou CNPJ válido";
+    if (nome.length < 10) return "Informe o nome completo";
+    if (celular.length < 10) return "Informe um celular válido";
+    if (!email.includes("@")) return "Informe um e-mail válido";
+
+    return "";
+}
+
+function enviarCodigo() {
+
+    let erro = validar();
+
+    if (erro != "") {
+        document.getElementById("msg").innerText = erro;
+        return;
+    }
+
+    document.getElementById("codigoArea").style.display = "block";
+
+    document.getElementById("msg").innerText =
+        "Código enviado. Verifique seu celular ou e-mail.";
+
+}
+
+function confirmar() {
+
+    let codigo = document.getElementById("codigo").value;
+
+    if (codigo.length < 4) {
+        document.getElementById("msg").innerText = "Digite o código recebido";
+        return;
+    }
+
+    document.getElementById("msg").innerText =
+        "Cadastro concluído com sucesso!";
+}
+
+function limpar() {
+    document.getElementById("codigoArea").style.display = "none";
+    document.getElementById("msg").innerText = "";
+}
+
+</script>
+
+</body>
+</html>

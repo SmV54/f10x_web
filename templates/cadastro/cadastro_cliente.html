@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F10x_web - Cadastro de Cliente</title>
+
+<style>
+*{
+   box-sizing:border-box;
+   font-family:Arial, Helvetica, sans-serif;
+}
+
+body{
+   margin:0;
+   background:#eef1f7;
+   color:#3f4f74;
+}
+
+.topo{
+   background:#0d3f8f;
+   color:white;
+   text-align:center;
+   padding:22px 10px 18px 10px;
+}
+
+.logo{
+   font-size:64px;
+   font-weight:800;
+   line-height:1;
+}
+
+.logo span{
+   color:#7db7ff;
+}
+
+.sublogo{
+   font-size:22px;
+   margin-top:8px;
+}
+
+.container{
+   max-width:920px;
+   margin:24px auto;
+   padding:0 16px 40px 16px;
+}
+
+.card{
+   background:#f7f8fc;
+   border-radius:22px;
+   padding:34px 36px 30px 36px;
+   box-shadow:0 2px 10px rgba(0,0,0,0.08);
+}
+
+h1{
+   margin:0;
+   text-align:center;
+   color:#214d8f;
+   font-size:34px;
+}
+
+.subtitulo{
+   text-align:center;
+   font-size:18px;
+   margin:12px 0 28px 0;
+   color:#5f6f92;
+}
+
+.bloco{
+   background:white;
+   border:1px solid #d9e1ef;
+   border-radius:16px;
+   padding:22px 24px 20px 24px;
+   margin-bottom:18px;
+}
+
+.titulo-bloco{
+   color:#1560c9;
+   font-size:18px;
+   font-weight:700;
+   margin-bottom:18px;
+   text-transform:uppercase;
+}
+
+.linha{
+   display:flex;
+   gap:24px;
+   margin-bottom:18px;
+}
+
+.campo{
+   flex:1;
+}
+
+label{
+   display:block;
+   margin-bottom:8px;
+   font-size:17px;
+   color:#445273;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"]{
+   width:100%;
+   height:54px;
+   border:1px solid #c6d1e5;
+   border-radius:10px;
+   padding:0 14px;
+   font-size:18px;
+   color:#33415c;
+   background:#fff;
+}
+
+input.erro{
+   border:2px solid #d80000 !important;
+   background:#fff7f7;
+}
+
+.mensagem-erro-campo{
+   color:#d80000;
+   font-size:14px;
+   margin-top:6px;
+   min-height:18px;
+}
+
+.radios{
+   display:flex;
+   gap:34px;
+   margin:8px 0 20px 0;
+   font-size:18px;
+}
+
+.radios label{
+   display:flex;
+   align-items:center;
+   gap:8px;
+   margin:0;
+}
+
+.btn{
+   border:0;
+   border-radius:10px;
+   height:56px;
+   font-size:18px;
+   font-weight:700;
+   cursor:pointer;
+}
+
+.btn-azul{
+   width:100%;
+   background:linear-gradient(180deg,#2b78e8,#1560c9);
+   color:white;
+}
+
+.btn-claro{
+   width:100%;
+   background:#f4f7fc;
+   color:#1560c9;
+   border:1px solid #b9c7e4;
+}
+
+.linha-codigo{
+   display:flex;
+   gap:16px;
+   align-items:end;
+}
+
+.btn-codigo{
+   min-width:250px;
+}
+
+.status{
+   display:flex;
+   justify-content:space-between;
+   gap:14px;
+   margin-top:18px;
+   padding:14px 16px;
+   background:#f7f9fd;
+   border-radius:12px;
+   color:#4a597b;
+   font-size:16px;
+}
+
+.rodape-info{
+   text-align:center;
+   margin:22px 0 18px 0;
+   color:#5f6f92;
+   font-size:17px;
+}
+
+.login-link{
+   text-align:center;
+   margin-top:18px;
+   font-size:18px;
+}
+
+.login-link a{
+   color:#1560c9;
+   text-decoration:none;
+   font-weight:700;
+}
+
+.mensagem{
+   text-align:center;
+   margin:15px 0;
+   font-weight:bold;
+   color:#d80000;
+}
+
+@media (max-width:760px){
+   .linha,
+   .linha-codigo,
+   .status{
+      flex-direction:column;
+   }
+
+   .logo{
+      font-size:46px;
+   }
+
+   .sublogo{
+      font-size:20px;
+   }
+
+   .card{
+      padding:22px 16px 24px 16px;
+   }
+}
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+   <div class="logo">F10<span>x_web</span></div>
+   <div class="sublogo">Sistema de Folha de Pagamento</div>
+</div>
+
+<div class="container">
+   <div class="card">
+      <h1>Cadastro de Cliente</h1>
+
+      <div class="subtitulo">
+         Informe seus dados para criar seu cadastro.
+      </div>
+
+      {% if mensagem %}
+      <div class="mensagem">
+         {{ mensagem }}
+      </div>
+      {% endif %}
+
+      <form method="POST" action="/cadastro-cliente" id="frmCadastroCliente">
+
+         <div class="bloco">
+            <div class="titulo-bloco">Dados do Cliente</div>
+
+            <div class="linha">
+               <div class="campo">
+                  <label for="cpf_cnpj">CNPJ ou CPF</label>
+                  <input type="text" id="cpf_cnpj" name="cpf_cnpj" placeholder="Digite seu CNPJ ou CPF" maxlength="18">
+                  <div class="mensagem-erro-campo" id="erro_cpf_cnpj"></div>
+               </div>
+            </div>
+
+            <div class="linha">
+               <div class="campo">
+                  <label for="nome">Nome</label>
+                  <input type="text" id="nome" name="nome" placeholder="Digite o nome ou razão social">
+                  <div class="mensagem-erro-campo" id="erro_nome"></div>
+               </div>
+            </div>
+
+            <div class="linha">
+               <div class="campo">
+                  <label for="celular">Celular (WhatsApp)</label>
+                  <input type="text" id="celular" name="celular" placeholder="(81) 99999-9999" maxlength="16">
+                  <div class="mensagem-erro-campo" id="erro_celular"></div>
+               </div>
+
+               <div class="campo">
+                  <label for="email">Email</label>
+                  <input type="email" id="email" name="email" placeholder="exemplo@empresa.com">
+                  <div class="mensagem-erro-campo" id="erro_email"></div>
+               </div>
+            </div>
+
+            <div class="linha">
+               <div class="campo">
+                  <label for="qtd_empresas">Quantidade de empresas</label>
+                  <input type="number" id="qtd_empresas" name="qtd_empresas" min="1" value="1">
+                  <div class="mensagem-erro-campo" id="erro_qtd_empresas"></div>
+               </div>
+
+               <div class="campo">
+                  <label for="qtd_funcionarios">Quantidade de funcionários</label>
+                  <input type="number" id="qtd_funcionarios" name="qtd_funcionarios" min="1" value="10">
+                  <div class="mensagem-erro-campo" id="erro_qtd_funcionarios"></div>
+               </div>
+            </div>
+         </div>
+
+         <div class="bloco">
+            <div class="titulo-bloco">Confirmação de Contato</div>
+
+            <label>
+               Escolha onde deseja receber o código de verificação:
+            </label>
+
+            <div class="radios">
+               <label>
+                  <input type="radio" name="canal" value="celular" checked>
+                  Celular (WhatsApp)
+               </label>
+
+               <label>
+                  <input type="radio" name="canal" value="email">
+                  Email
+               </label>
+            </div>
+
+            <div class="mensagem-erro-campo" id="erro_canal"></div>
+
+            <button type="button" class="btn btn-azul" id="btnEnviarCodigo">
+               ENVIAR CÓDIGO
+            </button>
+
+            <div style="height:18px;"></div>
+
+            <div class="linha-codigo">
+               <div class="campo">
+                  <label for="codigo">Código de verificação</label>
+                  <input type="text" id="codigo" name="codigo" placeholder="Digite o código recebido">
+                  <div class="mensagem-erro-campo" id="erro_codigo"></div>
+               </div>
+
+               <div class="btn-codigo">
+                  <button type="button" class="btn btn-claro" id="btnValidarCodigo">
+                     VALIDAR CÓDIGO
+                  </button>
+               </div>
+            </div>
+
+            <div class="status">
+               <div id="statusCodigo">
+                  Nenhum código enviado ainda
+               </div>
+
+               <div>
+                  Validade do código: <strong>10 minutos</strong>
+               </div>
+            </div>
+         </div>
+
+         <div class="rodape-info">
+            Seu acesso inicial ficará liberado até o final de {{ mes_atual }} de {{ ano_atual }}.
+         </div>
+
+         <button type="submit" class="btn btn-azul">
+            CRIAR CADASTRO
+         </button>
+      </form>
+
+      <div class="login-link">
+         Já possui cadastro?
+         <a href="#">Entrar no sistema</a>
+      </div>
+   </div>
+</div>
+
+<script>
+function soNumeros(valor) {
+   return (valor || "").replace(/\D/g, "");
+}
+
+function limparEspacos(valor) {
+   return (valor || "").replace(/\s+/g, " ").trim();
+}
+
+function marcarErro(idCampo, mensagem) {
+   const campo = document.getElementById(idCampo);
+   const erro = document.getElementById("erro_" + idCampo);
+
+   if (campo) campo.classList.add("erro");
+   if (erro) erro.textContent = mensagem || "";
+}
+
+function limparErro(idCampo) {
+   const campo = document.getElementById(idCampo);
+   const erro = document.getElementById("erro_" + idCampo);
+
+   if (campo) campo.classList.remove("erro");
+   if (erro) erro.textContent = "";
+}
+
+function validarCPF(cpf) {
+   cpf = soNumeros(cpf);
+
+   if (cpf.length !== 11) return false;
+   if (/^(\d)\1{10}$/.test(cpf)) return false;
+
+   let soma = 0;
+   for (let i = 0; i < 9; i++) {
+      soma += parseInt(cpf.charAt(i)) * (10 - i);
+   }
+
+   let resto = (soma * 10) % 11;
+   if (resto === 10) resto = 0;
+   if (resto !== parseInt(cpf.charAt(9))) return false;
+
+   soma = 0;
+   for (let i = 0; i < 10; i++) {
+      soma += parseInt(cpf.charAt(i)) * (11 - i);
+   }
+
+   resto = (soma * 10) % 11;
+   if (resto === 10) resto = 0;
+   if (resto !== parseInt(cpf.charAt(10))) return false;
+
+   return true;
+}
+
+function validarCNPJ(cnpj) {
+   cnpj = soNumeros(cnpj);
+
+   if (cnpj.length !== 14) return false;
+   if (/^(\d)\1{13}$/.test(cnpj)) return false;
+
+   let tamanho = cnpj.length - 2;
+   let numeros = cnpj.substring(0, tamanho);
+   let digitos = cnpj.substring(tamanho);
+   let soma = 0;
+   let pos = tamanho - 7;
+
+   for (let i = tamanho; i >= 1; i--) {
+      soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+      if (pos < 2) pos = 9;
+   }
+
+   let resultado = soma % 11 < 2 ? 0 : 11 - soma % 11;
+   if (resultado !== parseInt(digitos.charAt(0))) return false;
+
+   tamanho = tamanho + 1;
+   numeros = cnpj.substring(0, tamanho);
+   soma = 0;
+   pos = tamanho - 7;
+
+   for (let i = tamanho; i >= 1; i--) {
+      soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+      if (pos < 2) pos = 9;
+   }
+
+   resultado = soma % 11 < 2 ? 0 : 11 - soma % 11;
+   if (resultado !== parseInt(digitos.charAt(1))) return false;
+
+   return true;
+}
+
+function validarCpfCnpj() {
+   const campo = document.getElementById("cpf_cnpj");
+   const valor = soNumeros(campo.value);
+   campo.value = valor;
+
+   limparErro("cpf_cnpj");
+
+   if (!valor) {
+      marcarErro("cpf_cnpj", "Informe um CPF ou CNPJ");
+      return false;
+   }
+
+   if (valor.length === 11) {
+      if (!validarCPF(valor)) {
+         marcarErro("cpf_cnpj", "CPF inválido");
+         return false;
+      }
+      return true;
+   }
+
+   if (valor.length === 14) {
+      if (!validarCNPJ(valor)) {
+         marcarErro("cpf_cnpj", "CNPJ inválido");
+         return false;
+      }
+      return true;
+   }
+
+   marcarErro("cpf_cnpj", "CPF/CNPJ deve ter 11 ou 14 dígitos");
+   return false;
+}
+
+function validarNome() {
+   const campo = document.getElementById("nome");
+   const valor = limparEspacos(campo.value);
+   campo.value = valor;
+
+   limparErro("nome");
+
+   if (!valor) {
+      marcarErro("nome", "Informe o nome");
+      return false;
+   }
+
+   if (valor.length < 10) {
+      marcarErro("nome", "Nome deve ter no mínimo 10 caracteres");
+      return false;
+   }
+
+   const regex = /^[A-Za-zÀ-ÿ'´`\- ]+$/;
+   if (!regex.test(valor)) {
+      marcarErro("nome", "Nome deve conter apenas letras e espaços");
+      return false;
+   }
+
+   return true;
+}
+
+function validarCelular() {
+   const campo = document.getElementById("celular");
+   const valor = soNumeros(campo.value);
+   campo.value = valor;
+
+   limparErro("celular");
+
+   if (!valor) {
+      marcarErro("celular", "Informe o celular");
+      return false;
+   }
+
+   if (!(valor.length === 10 || valor.length === 11)) {
+      marcarErro("celular", "Celular inválido");
+      return false;
+   }
+
+   const ddd = parseInt(valor.substring(0, 2), 10);
+   if (isNaN(ddd) || ddd < 11 || ddd > 99) {
+      marcarErro("celular", "Celular deve conter DDD válido");
+      return false;
+   }
+
+   return true;
+}
+
+function validarEmail() {
+   const campo = document.getElementById("email");
+   const valor = campo.value.trim();
+   campo.value = valor;
+
+   limparErro("email");
+
+   if (!valor) {
+      return true;
+   }
+
+   const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+   if (!regex.test(valor)) {
+      marcarErro("email", "E-mail inválido");
+      return false;
+   }
+
+   return true;
+}
+
+function validarQtdEmpresas() {
+   const campo = document.getElementById("qtd_empresas");
+   const valor = parseInt(campo.value, 10);
+
+   limparErro("qtd_empresas");
+
+   if (isNaN(valor) || valor < 1) {
+      marcarErro("qtd_empresas", "Quantidade de empresas deve ser maior que zero");
+      return false;
+   }
+
+   return true;
+}
+
+function validarQtdFuncionarios() {
+   const campo = document.getElementById("qtd_funcionarios");
+   const valor = parseInt(campo.value, 10);
+
+   limparErro("qtd_funcionarios");
+
+   if (isNaN(valor) || valor < 1) {
+      marcarErro("qtd_funcionarios", "Quantidade de funcionários deve ser maior que zero");
+      return false;
+   }
+
+   return true;
+}
+
+function validarCanal() {
+   const canal = document.querySelector('input[name="canal"]:checked');
+   const erro = document.getElementById("erro_canal");
+   erro.textContent = "";
+
+   if (!canal) {
+      erro.textContent = "Escolha como deseja receber o código";
+      return false;
+   }
+
+   if (canal.value === "email") {
+      const email = document.getElementById("email").value.trim();
+      if (!email) {
+         marcarErro("email", "Informe o e-mail");
+         erro.textContent = "Escolha válida depende de e-mail preenchido";
+         return false;
+      }
+      if (!validarEmail()) {
+         erro.textContent = "Corrija o e-mail para receber o código";
+         return false;
+      }
+   }
+
+   if (canal.value === "celular") {
+      if (!validarCelular()) {
+         erro.textContent = "Corrija o celular para receber o código";
+         return false;
+      }
+   }
+
+   return true;
+}
+
+function validarFormularioCompleto() {
+   let valido = true;
+   let primeiroInvalido = null;
+
+   const validacoes = [
+      { id: "cpf_cnpj", fn: validarCpfCnpj },
+      { id: "nome", fn: validarNome },
+      { id: "celular", fn: validarCelular },
+      { id: "email", fn: validarEmail },
+      { id: "qtd_empresas", fn: validarQtdEmpresas },
+      { id: "qtd_funcionarios", fn: validarQtdFuncionarios }
+   ];
+
+   for (const item of validacoes) {
+      if (!item.fn()) {
+         valido = false;
+         if (!primeiroInvalido) {
+            primeiroInvalido = document.getElementById(item.id);
+         }
+      }
+   }
+
+   if (!validarCanal()) {
+      valido = false;
+      if (!primeiroInvalido) {
+         primeiroInvalido = document.getElementById("email");
+      }
+   }
+
+   if (primeiroInvalido) {
+      primeiroInvalido.focus();
+   }
+
+   return valido;
+}
+
+document.getElementById("cpf_cnpj").addEventListener("blur", validarCpfCnpj);
+document.getElementById("nome").addEventListener("blur", validarNome);
+document.getElementById("celular").addEventListener("blur", validarCelular);
+document.getElementById("email").addEventListener("blur", validarEmail);
+document.getElementById("qtd_empresas").addEventListener("blur", validarQtdEmpresas);
+document.getElementById("qtd_funcionarios").addEventListener("blur", validarQtdFuncionarios);
+
+document.getElementById("btnEnviarCodigo").addEventListener("click", function() {
+   if (!validarFormularioCompleto()) {
+      document.getElementById("statusCodigo").textContent = "Corrija os campos destacados antes de enviar o código";
+      return;
+   }
+
+   const canal = document.querySelector('input[name="canal"]:checked').value;
+   if (canal === "email") {
+      document.getElementById("statusCodigo").textContent = "Campos válidos. Pronto para enviar código por e-mail.";
+   } else {
+      document.getElementById("statusCodigo").textContent = "Campos válidos. Pronto para enviar código por WhatsApp.";
+   }
+
+   alert("Validações OK. Agora falta ligar este botão à rota Python que realmente enviará o código.");
+});
+
+document.getElementById("btnValidarCodigo").addEventListener("click", function() {
+   const codigo = document.getElementById("codigo").value.trim();
+   const erroCodigo = document.getElementById("erro_codigo");
+   erroCodigo.textContent = "";
+
+   if (!codigo) {
+      erroCodigo.textContent = "Informe o código recebido";
+      document.getElementById("codigo").focus();
+      return;
+   }
+
+   alert("Agora falta ligar este botão à rota Python que validará o código enviado.");
+});
+
+document.getElementById("frmCadastroCliente").addEventListener("submit", function(e) {
+   if (!validarFormularioCompleto()) {
+      e.preventDefault();
+      document.getElementById("statusCodigo").textContent = "Não é possível criar o cadastro com campos inválidos";
+   }
+});
+</script>
+
+</body>
+</html>
