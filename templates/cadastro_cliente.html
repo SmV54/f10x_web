@@ -6,12 +6,11 @@
 <title>Folha10 Simples</title>
 
 <style>
-
 * { box-sizing: border-box; }
 
 body {
     margin: 0;
-    font-family: "Segoe UI", Arial;
+    font-family: "Segoe UI", Arial, sans-serif;
     background: linear-gradient(135deg, #0f172a, #1e3a8a);
     display: flex;
     justify-content: center;
@@ -27,7 +26,6 @@ body {
     box-shadow: 0 18px 50px rgba(0,0,0,0.25);
 }
 
-/* LOGO */
 .logo {
     text-align: center;
     font-size: 18px;
@@ -42,14 +40,12 @@ body {
     color: #64748b;
 }
 
-/* TÍTULO */
 h1 {
     margin: 0;
     text-align: center;
     color: #1e3a8a;
 }
 
-/* TEXTO */
 .subtitulo {
     text-align: center;
     font-size: 14px;
@@ -65,7 +61,6 @@ h1 {
     margin-bottom: 20px;
 }
 
-/* FORM */
 .form {
     display: flex;
     flex-direction: column;
@@ -78,6 +73,7 @@ input {
     border: 1px solid #ccc;
     padding: 0 12px;
     font-size: 14px;
+    outline: none;
 }
 
 input:focus {
@@ -85,13 +81,18 @@ input:focus {
     box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
 }
 
-/* BOTÕES */
+.input-erro {
+    border-color: #dc2626 !important;
+    background: #fef2f2;
+}
+
 .btn {
     height: 44px;
     border-radius: 10px;
     border: none;
     font-weight: bold;
     cursor: pointer;
+    font-size: 14px;
 }
 
 .btn-principal {
@@ -99,11 +100,19 @@ input:focus {
     color: white;
 }
 
-.btn-sec {
-    background: #e5e7eb;
+.btn-principal:hover {
+    background: #1d4ed8;
 }
 
-/* ÁREA DO CÓDIGO */
+.btn-sec {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.btn-sec:hover {
+    background: #d1d5db;
+}
+
 .area-codigo {
     margin-top: 20px;
     padding: 16px;
@@ -112,21 +121,27 @@ input:focus {
     display: none;
 }
 
-/* MENSAGENS */
 .msg {
     text-align: center;
     font-weight: bold;
     margin-top: 10px;
+    min-height: 20px;
 }
 
-/* RODAPÉ */
+.msg-erro {
+    color: #b91c1c;
+}
+
+.msg-ok {
+    color: #166534;
+}
+
 .rodape {
     text-align: center;
     font-size: 11px;
     color: #999;
     margin-top: 18px;
 }
-
 </style>
 </head>
 
@@ -134,105 +149,247 @@ input:focus {
 
 <div class="card">
 
-<div class="logo">
-    Folha10 <span>Simples</span>
-</div>
+    <div class="logo">
+        Folha10 <span>Simples</span>
+    </div>
 
-<h1>Criar seu acesso</h1>
+    <h1>Criar seu acesso</h1>
 
-<div class="subtitulo">
-Informe seus dados para receber seu código de confirmação
-</div>
+    <div class="subtitulo">
+        Informe seus dados para receber seu código de confirmação
+    </div>
 
-<div class="subinfo">
-O código será enviado para o celular ou e-mail informado
-</div>
+    <div class="subinfo">
+        O código será enviado para o celular ou e-mail informado
+    </div>
 
-<div id="msg" class="msg"></div>
+    <div id="msg" class="msg"></div>
 
-<div class="form">
+    <div class="form">
+        <input type="text" id="cpf" placeholder="CPF ou CNPJ" maxlength="18">
+        <input type="text" id="nome" placeholder="Nome completo" maxlength="100">
+        <input type="text" id="celular" placeholder="Celular (DDD + número)" maxlength="15">
+        <input type="text" id="email" placeholder="E-mail" maxlength="100">
 
-<input type="text" id="cpf" placeholder="CPF ou CNPJ">
-<input type="text" id="nome" placeholder="Nome completo">
-<input type="text" id="celular" placeholder="Celular (DDD + número)">
-<input type="text" id="email" placeholder="E-mail">
+        <button type="button" class="btn btn-principal" onclick="enviarCodigo()">
+            Enviar Código
+        </button>
 
-<button class="btn btn-principal" onclick="enviarCodigo()">
-Enviar Código
-</button>
+        <button type="button" class="btn btn-sec" onclick="limpar()">
+            Limpar
+        </button>
+    </div>
 
-<button class="btn btn-sec" onclick="limpar()">
-Limpar
-</button>
+    <div id="codigoArea" class="area-codigo">
+        <input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6">
 
-</div>
+        <button type="button" class="btn btn-principal" onclick="confirmar()">
+            Confirmar Cadastro
+        </button>
+    </div>
 
-<div id="codigoArea" class="area-codigo">
-
-<input type="text" id="codigo" placeholder="Digite o código recebido">
-
-<button class="btn btn-principal" onclick="confirmar()">
-Confirmar Cadastro
-</button>
-
-</div>
-
-<div class="rodape">
-Seus dados estão protegidos. Não compartilhamos suas informações.
-</div>
+    <div class="rodape">
+        Seus dados estão protegidos. Não compartilhamos suas informações.
+    </div>
 
 </div>
 
 <script>
+function soNumeros(texto) {
+    return texto.replace(/\D/g, "");
+}
+
+function limparErrosCampos() {
+    document.getElementById("cpf").classList.remove("input-erro");
+    document.getElementById("nome").classList.remove("input-erro");
+    document.getElementById("celular").classList.remove("input-erro");
+    document.getElementById("email").classList.remove("input-erro");
+    document.getElementById("codigo").classList.remove("input-erro");
+}
+
+function mostrarMensagem(texto, tipo) {
+    const msg = document.getElementById("msg");
+    msg.innerText = texto;
+    msg.className = "msg " + (tipo === "ok" ? "msg-ok" : "msg-erro");
+}
+
+function validarCPF(cpf) {
+    cpf = soNumeros(cpf);
+
+    if (cpf.length !== 11) return false;
+    if (/^(\d)\1+$/.test(cpf)) return false;
+
+    let soma = 0;
+    for (let i = 0; i < 9; i++) {
+        soma += parseInt(cpf.charAt(i)) * (10 - i);
+    }
+
+    let resto = (soma * 10) % 11;
+    if (resto === 10) resto = 0;
+    if (resto !== parseInt(cpf.charAt(9))) return false;
+
+    soma = 0;
+    for (let i = 0; i < 10; i++) {
+        soma += parseInt(cpf.charAt(i)) * (11 - i);
+    }
+
+    resto = (soma * 10) % 11;
+    if (resto === 10) resto = 0;
+    if (resto !== parseInt(cpf.charAt(10))) return false;
+
+    return true;
+}
+
+function validarCNPJ(cnpj) {
+    cnpj = soNumeros(cnpj);
+
+    if (cnpj.length !== 14) return false;
+    if (/^(\d)\1+$/.test(cnpj)) return false;
+
+    let tamanho = cnpj.length - 2;
+    let numeros = cnpj.substring(0, tamanho);
+    let digitos = cnpj.substring(tamanho);
+    let soma = 0;
+    let pos = tamanho - 7;
+
+    for (let i = tamanho; i >= 1; i--) {
+        soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+        if (pos < 2) pos = 9;
+    }
+
+    let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+    if (resultado !== parseInt(digitos.charAt(0))) return false;
+
+    tamanho = tamanho + 1;
+    numeros = cnpj.substring(0, tamanho);
+    soma = 0;
+    pos = tamanho - 7;
+
+    for (let i = tamanho; i >= 1; i--) {
+        soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+        if (pos < 2) pos = 9;
+    }
+
+    resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
+    if (resultado !== parseInt(digitos.charAt(1))) return false;
+
+    return true;
+}
+
+function validarDocumento(valor) {
+    const doc = soNumeros(valor);
+
+    if (doc.length === 11) {
+        return validarCPF(doc);
+    }
+
+    if (doc.length === 14) {
+        return validarCNPJ(doc);
+    }
+
+    return false;
+}
+
+function validarNome(nome) {
+    nome = nome.trim();
+
+    if (nome.length < 10) return false;
+
+    // letras, acentos e espaços
+    return /^[A-Za-zÀ-ÿ\s]+$/.test(nome);
+}
+
+function validarCelular(celular) {
+    celular = soNumeros(celular);
+
+    // aceita 10 dígitos (fixo/antigo) ou 11 dígitos (com 9)
+    if (celular.length !== 10 && celular.length !== 11) return false;
+
+    const ddd = celular.substring(0, 2);
+    if (parseInt(ddd) < 11 || parseInt(ddd) > 99) return false;
+
+    // se tiver 11 dígitos, o terceiro deve ser 9
+    if (celular.length === 11 && celular.charAt(2) !== "9") return false;
+
+    return true;
+}
+
+function validarEmail(email) {
+    email = email.trim();
+
+    if (email === "") return false;
+
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 function validar() {
+    limparErrosCampos();
+
     let cpf = document.getElementById("cpf").value.trim();
     let nome = document.getElementById("nome").value.trim();
     let celular = document.getElementById("celular").value.trim();
     let email = document.getElementById("email").value.trim();
 
-    if (cpf.length < 11) return "Informe um CPF ou CNPJ válido";
-    if (nome.length < 10) return "Informe o nome completo";
-    if (celular.length < 10) return "Informe um celular válido";
-    if (!email.includes("@")) return "Informe um e-mail válido";
+    if (!validarDocumento(cpf)) {
+        document.getElementById("cpf").classList.add("input-erro");
+        return "Informe um CPF ou CNPJ válido";
+    }
+
+    if (!validarNome(nome)) {
+        document.getElementById("nome").classList.add("input-erro");
+        return "Informe o nome completo com no mínimo 10 letras";
+    }
+
+    if (!validarCelular(celular)) {
+        document.getElementById("celular").classList.add("input-erro");
+        return "Informe um celular válido com DDD";
+    }
+
+    if (!validarEmail(email)) {
+        document.getElementById("email").classList.add("input-erro");
+        return "Informe um e-mail válido";
+    }
 
     return "";
 }
 
 function enviarCodigo() {
-
     let erro = validar();
 
-    if (erro != "") {
-        document.getElementById("msg").innerText = erro;
+    if (erro !== "") {
+        mostrarMensagem(erro, "erro");
         return;
     }
 
     document.getElementById("codigoArea").style.display = "block";
-
-    document.getElementById("msg").innerText =
-        "Código enviado. Verifique seu celular ou e-mail.";
-
+    mostrarMensagem("Código enviado. Verifique seu celular ou e-mail.", "ok");
 }
 
 function confirmar() {
+    let codigo = document.getElementById("codigo").value.trim();
 
-    let codigo = document.getElementById("codigo").value;
+    document.getElementById("codigo").classList.remove("input-erro");
 
     if (codigo.length < 4) {
-        document.getElementById("msg").innerText = "Digite o código recebido";
+        document.getElementById("codigo").classList.add("input-erro");
+        mostrarMensagem("Digite o código recebido", "erro");
         return;
     }
 
-    document.getElementById("msg").innerText =
-        "Cadastro concluído com sucesso!";
+    mostrarMensagem("Cadastro concluído com sucesso!", "ok");
 }
 
 function limpar() {
+    document.getElementById("cpf").value = "";
+    document.getElementById("nome").value = "";
+    document.getElementById("celular").value = "";
+    document.getElementById("email").value = "";
+    document.getElementById("codigo").value = "";
     document.getElementById("codigoArea").style.display = "none";
+    limparErrosCampos();
     document.getElementById("msg").innerText = "";
+    document.getElementById("msg").className = "msg";
 }
-
 </script>
 
 </body>
