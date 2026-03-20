@@ -221,21 +221,21 @@ function validarCPF(cpf) {
 
     let soma = 0;
     for (let i = 0; i < 9; i++) {
-        soma += parseInt(cpf.charAt(i)) * (10 - i);
+        soma += parseInt(cpf.charAt(i), 10) * (10 - i);
     }
 
     let resto = (soma * 10) % 11;
     if (resto === 10) resto = 0;
-    if (resto !== parseInt(cpf.charAt(9))) return false;
+    if (resto !== parseInt(cpf.charAt(9), 10)) return false;
 
     soma = 0;
     for (let i = 0; i < 10; i++) {
-        soma += parseInt(cpf.charAt(i)) * (11 - i);
+        soma += parseInt(cpf.charAt(i), 10) * (11 - i);
     }
 
     resto = (soma * 10) % 11;
     if (resto === 10) resto = 0;
-    if (resto !== parseInt(cpf.charAt(10))) return false;
+    if (resto !== parseInt(cpf.charAt(10), 10)) return false;
 
     return true;
 }
@@ -253,12 +253,12 @@ function validarCNPJ(cnpj) {
     let pos = tamanho - 7;
 
     for (let i = tamanho; i >= 1; i--) {
-        soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+        soma += parseInt(numeros.charAt(tamanho - i), 10) * pos--;
         if (pos < 2) pos = 9;
     }
 
     let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-    if (resultado !== parseInt(digitos.charAt(0))) return false;
+    if (resultado !== parseInt(digitos.charAt(0), 10)) return false;
 
     tamanho = tamanho + 1;
     numeros = cnpj.substring(0, tamanho);
@@ -266,12 +266,12 @@ function validarCNPJ(cnpj) {
     pos = tamanho - 7;
 
     for (let i = tamanho; i >= 1; i--) {
-        soma += parseInt(numeros.charAt(tamanho - i)) * pos--;
+        soma += parseInt(numeros.charAt(tamanho - i), 10) * pos--;
         if (pos < 2) pos = 9;
     }
 
     resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-    if (resultado !== parseInt(digitos.charAt(1))) return false;
+    if (resultado !== parseInt(digitos.charAt(1), 10)) return false;
 
     return true;
 }
@@ -279,36 +279,28 @@ function validarCNPJ(cnpj) {
 function validarDocumento(valor) {
     const doc = soNumeros(valor);
 
-    if (doc.length === 11) {
-        return validarCPF(doc);
-    }
-
-    if (doc.length === 14) {
-        return validarCNPJ(doc);
-    }
+    if (doc.length === 11) return validarCPF(doc);
+    if (doc.length === 14) return validarCNPJ(doc);
 
     return false;
 }
 
 function validarNome(nome) {
-    nome = nome.trim();
+    nome = nome.trim().toLowerCase();
 
     if (nome.length < 10) return false;
 
-    // letras, acentos e espaços
-    return /^[A-Za-zÀ-ÿ\s]+$/.test(nome);
+    return /^[a-zà-ÿ\s]+$/.test(nome);
 }
 
 function validarCelular(celular) {
     celular = soNumeros(celular);
 
-    // aceita 10 dígitos (fixo/antigo) ou 11 dígitos (com 9)
     if (celular.length !== 10 && celular.length !== 11) return false;
 
-    const ddd = celular.substring(0, 2);
-    if (parseInt(ddd) < 11 || parseInt(ddd) > 99) return false;
+    const ddd = parseInt(celular.substring(0, 2), 10);
+    if (isNaN(ddd) || ddd < 11 || ddd > 99) return false;
 
-    // se tiver 11 dígitos, o terceiro deve ser 9
     if (celular.length === 11 && celular.charAt(2) !== "9") return false;
 
     return true;
@@ -329,6 +321,8 @@ function validar() {
     let nome = document.getElementById("nome").value.trim();
     let celular = document.getElementById("celular").value.trim();
     let email = document.getElementById("email").value.trim();
+
+    document.getElementById("nome").value = nome.toLowerCase();
 
     if (!validarDocumento(cpf)) {
         document.getElementById("cpf").classList.add("input-erro");
