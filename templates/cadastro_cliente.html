@@ -8,57 +8,107 @@
 <style>
 * { box-sizing: border-box; }
 
+:root {
+    --azul-1: #0f172a;
+    --azul-2: #1d4ed8;
+    --azul-3: #2563eb;
+    --cinza-1: #111827;
+    --cinza-2: #4b5563;
+    --cinza-3: #6b7280;
+    --cinza-4: #9ca3af;
+    --verde: #166534;
+    --vermelho: #b91c1c;
+    --branco: #ffffff;
+}
+
 body {
     margin: 0;
+    min-height: 100vh;
+    padding: 16px;
     font-family: "Segoe UI", Arial, sans-serif;
-    background: linear-gradient(135deg, #0f172a, #1e3a8a);
+    background:
+        radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 30%),
+        linear-gradient(160deg, var(--azul-1), var(--azul-2));
     display: flex;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
 }
 
 .card {
-    width: 520px;
-    background: white;
-    border-radius: 18px;
-    padding: 32px;
-    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+    width: 100%;
+    max-width: 430px;
+    background: rgba(255,255,255,0.96);
+    backdrop-filter: blur(8px);
+    border-radius: 24px;
+    padding: 26px 22px 62px 22px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+    position: relative;
 }
 
-.logo {
-    text-align: center;
-    font-size: 18px;
-    font-weight: bold;
-    color: #1e3a8a;
-    margin-bottom: 10px;
-    letter-spacing: 1px;
+.topo-app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 18px;
 }
 
-.logo span {
-    font-weight: normal;
-    color: #64748b;
+.logo-badge {
+    background: linear-gradient(135deg, var(--azul-2), var(--azul-3));
+    color: var(--branco);
+    border-radius: 16px;
+    padding: 10px 16px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    box-shadow: 0 10px 25px rgba(37,99,235,0.28);
+    margin-bottom: 14px;
+}
+
+.logo-badge span {
+    font-weight: 400;
+    opacity: 0.92;
 }
 
 h1 {
     margin: 0;
     text-align: center;
-    color: #1e3a8a;
+    color: var(--cinza-1);
+    font-size: 28px;
+    line-height: 1.15;
 }
 
 .subtitulo {
     text-align: center;
     font-size: 14px;
-    color: #444;
+    color: var(--cinza-2);
     margin-top: 10px;
-    white-space: nowrap;
+    line-height: 1.45;
 }
 
 .subinfo {
     text-align: center;
     font-size: 13px;
-    color: #777;
+    color: var(--cinza-3);
+    margin-top: 6px;
     margin-bottom: 20px;
+    line-height: 1.45;
+}
+
+.msg {
+    text-align: center;
+    font-weight: 600;
+    font-size: 14px;
+    min-height: 22px;
+    margin-bottom: 10px;
+    line-height: 1.4;
+}
+
+.msg-erro {
+    color: var(--vermelho);
+}
+
+.msg-ok {
+    color: var(--verde);
 }
 
 .form {
@@ -68,79 +118,149 @@ h1 {
 }
 
 input {
-    height: 42px;
-    border-radius: 10px;
-    border: 1px solid #ccc;
-    padding: 0 12px;
-    font-size: 14px;
+    width: 100%;
+    height: 52px;
+    border-radius: 16px;
+    border: 1px solid #d1d5db;
+    background: var(--branco);
+    padding: 0 16px;
+    font-size: 15px;
+    color: var(--cinza-1);
     outline: none;
+    transition: all 0.18s ease;
+}
+
+input::placeholder {
+    color: var(--cinza-4);
 }
 
 input:focus {
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    border-color: var(--azul-3);
+    box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+    transform: translateY(-1px);
 }
 
 .input-erro {
-    border-color: #dc2626 !important;
-    background: #fef2f2;
+    border-color: #ef4444 !important;
+    background: #fff5f5;
+}
+
+.botoes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 6px;
 }
 
 .btn {
-    height: 44px;
-    border-radius: 10px;
+    width: 100%;
+    height: 50px;
+    border-radius: 16px;
     border: none;
-    font-weight: bold;
+    font-weight: 700;
+    font-size: 15px;
     cursor: pointer;
-    font-size: 14px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.btn:active {
+    transform: scale(0.99);
 }
 
 .btn-principal {
-    background: #2563eb;
-    color: white;
+    background: linear-gradient(135deg, var(--azul-2), var(--azul-3));
+    color: var(--branco);
+    box-shadow: 0 10px 22px rgba(37,99,235,0.22);
 }
 
 .btn-principal:hover {
-    background: #1d4ed8;
+    opacity: 0.96;
 }
 
 .btn-sec {
-    background: #e5e7eb;
-    color: #111827;
-}
-
-.btn-sec:hover {
-    background: #d1d5db;
+    background: #eef2f7;
+    color: var(--cinza-1);
 }
 
 .area-codigo {
-    margin-top: 20px;
+    margin-top: 18px;
     padding: 16px;
-    background: #f1f5ff;
-    border-radius: 12px;
+    background: linear-gradient(180deg, #eff6ff, #f8fbff);
+    border: 1px solid #dbeafe;
+    border-radius: 18px;
     display: none;
 }
 
-.msg {
+.area-codigo-titulo {
+    font-size: 13px;
+    color: var(--cinza-2);
     text-align: center;
-    font-weight: bold;
-    margin-top: 10px;
-    min-height: 20px;
-}
-
-.msg-erro {
-    color: #b91c1c;
-}
-
-.msg-ok {
-    color: #166534;
+    margin-bottom: 12px;
+    font-weight: 600;
 }
 
 .rodape {
+    margin-top: 18px;
     text-align: center;
     font-size: 11px;
-    color: #999;
-    margin-top: 18px;
+    color: var(--cinza-3);
+    line-height: 1.3;
+    white-space: nowrap;
+}
+
+.versao {
+    position: absolute;
+    bottom: 12px;
+    right: 18px;
+    font-size: 11px;
+    color: #7c8594;
+}
+
+@media (max-width: 480px) {
+    body {
+        padding: 10px;
+        align-items: flex-start;
+    }
+
+    .card {
+        max-width: 100%;
+        border-radius: 22px;
+        padding: 22px 16px 60px 16px;
+        margin-top: 10px;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+
+    .subtitulo {
+        font-size: 13px;
+    }
+
+    .subinfo {
+        font-size: 12px;
+    }
+
+    input {
+        height: 50px;
+        font-size: 16px;
+    }
+
+    .btn {
+        height: 48px;
+        font-size: 15px;
+    }
+
+    .rodape {
+        font-size: 10px;
+        white-space: nowrap;
+    }
+
+    .versao {
+        right: 14px;
+        bottom: 10px;
+        font-size: 10px;
+    }
 }
 </style>
 </head>
@@ -149,47 +269,61 @@ input:focus {
 
 <div class="card">
 
-    <div class="logo">
-        Folha10 <span>Simples</span>
-    </div>
+    <div class="topo-app">
+        <div class="logo-badge">
+            Folha10 <span>Simples</span>
+        </div>
 
-    <h1>Criar seu acesso</h1>
+        <h1>Criar seu acesso</h1>
 
-    <div class="subtitulo">
-        Informe seus dados para receber seu código de confirmação
-    </div>
+        <div class="subtitulo">
+            Informe seus dados para receber seu código de confirmação
+        </div>
 
-    <div class="subinfo">
-        O código será enviado para o celular ou e-mail informado
+        <div class="subinfo">
+            O código será enviado para o celular ou e-mail informado
+        </div>
     </div>
 
     <div id="msg" class="msg"></div>
 
     <div class="form">
-        <input type="text" id="cpf" placeholder="CPF ou CNPJ" maxlength="18">
-        <input type="text" id="nome" placeholder="Nome completo" maxlength="100">
-        <input type="text" id="celular" placeholder="Celular (DDD + número)" maxlength="15">
-        <input type="text" id="email" placeholder="E-mail" maxlength="100">
+        <input type="text" id="cpf" placeholder="CPF ou CNPJ">
+        <input type="text" id="nome" placeholder="Nome completo">
+        <input type="text" id="celular" placeholder="Celular (DDD + número)">
+        <input type="text" id="email" placeholder="E-mail">
 
-        <button type="button" class="btn btn-principal" onclick="enviarCodigo()">
-            Enviar Código
-        </button>
+        <div class="botoes">
+            <button type="button" class="btn btn-principal" onclick="enviarCodigo()">
+                Enviar Código
+            </button>
 
-        <button type="button" class="btn btn-sec" onclick="limpar()">
-            Limpar
-        </button>
+            <button type="button" class="btn btn-sec" onclick="limpar()">
+                Limpar
+            </button>
+        </div>
     </div>
 
     <div id="codigoArea" class="area-codigo">
-        <input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6">
+        <div class="area-codigo-titulo">
+            Digite abaixo o código recebido
+        </div>
 
-        <button type="button" class="btn btn-principal" onclick="confirmar()">
-            Confirmar Cadastro
-        </button>
+        <input type="text" id="codigo" placeholder="Código de confirmação">
+
+        <div class="botoes" style="margin-top: 12px;">
+            <button type="button" class="btn btn-principal" onclick="confirmar()">
+                Confirmar Cadastro
+            </button>
+        </div>
     </div>
 
     <div class="rodape">
         Seus dados estão protegidos. Não compartilhamos suas informações.
+    </div>
+
+    <div class="versao">
+        Versão 260320-1625
     </div>
 
 </div>
@@ -217,29 +351,27 @@ function validarCPF(cpf) {
     cpf = soNumeros(cpf);
 
     if (cpf.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(cpf)) return false;
+    if (/^(\d)\1+$/.test(cpf)) return false;
 
     let soma = 0;
     for (let i = 0; i < 9; i++) {
-        soma += parseInt(cpf[i], 10) * (10 - i);
+        soma += parseInt(cpf.charAt(i), 10) * (10 - i);
     }
 
-    let resto = soma % 11;
-    let dig1 = resto < 2 ? 0 : 11 - resto;
+    let resto = 11 - (soma % 11);
+    let dig1 = resto >= 10 ? 0 : resto;
 
-    if (dig1 !== parseInt(cpf[9], 10)) return false;
+    if (dig1 !== parseInt(cpf.charAt(9), 10)) return false;
 
     soma = 0;
     for (let i = 0; i < 10; i++) {
-        soma += parseInt(cpf[i], 10) * (11 - i);
+        soma += parseInt(cpf.charAt(i), 10) * (11 - i);
     }
 
-    resto = soma % 11;
-    let dig2 = resto < 2 ? 0 : 11 - resto;
+    resto = 11 - (soma % 11);
+    let dig2 = resto >= 10 ? 0 : resto;
 
-    if (dig2 !== parseInt(cpf[10], 10)) return false;
-
-    return true;
+    return dig2 === parseInt(cpf.charAt(10), 10);
 }
 
 function validarCNPJ(cnpj) {
@@ -328,22 +460,22 @@ function validar() {
 
     if (!validarDocumento(cpf)) {
         document.getElementById("cpf").classList.add("input-erro");
-        return "Informe um CPF ou CNPJ válido";
+        return "CPF / CNPJ inválido";
     }
 
     if (!validarNome(nome)) {
         document.getElementById("nome").classList.add("input-erro");
-        return "Informe o nome completo com no mínimo 10 letras";
+        return "Nome deve ter pelo menos 10 caracteres";
     }
 
     if (!validarCelular(celular)) {
         document.getElementById("celular").classList.add("input-erro");
-        return "Informe um celular válido com DDD";
+        return "Celular inválido (use apenas números)";
     }
 
     if (!validarEmail(email)) {
         document.getElementById("email").classList.add("input-erro");
-        return "Informe um e-mail válido";
+        return "E-mail inválido";
     }
 
     return "";
