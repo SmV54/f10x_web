@@ -8,258 +8,194 @@
 <style>
 * { box-sizing: border-box; }
 
-:root {
-    --azul-1: #0f172a;
-    --azul-2: #1d4ed8;
-    --azul-3: #2563eb;
-    --cinza-1: #111827;
-    --cinza-2: #4b5563;
-    --cinza-3: #6b7280;
-    --cinza-4: #9ca3af;
-    --verde: #166534;
-    --vermelho: #b91c1c;
-    --branco: #ffffff;
-}
-
 body {
     margin: 0;
-    min-height: 100vh;
-    padding: 16px;
-    font-family: "Segoe UI", Arial, sans-serif;
-    background:
-        radial-gradient(circle at top, rgba(255,255,255,0.08), transparent 30%),
-        linear-gradient(160deg, var(--azul-1), var(--azul-2));
+    font-family: Arial;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a);
     display: flex;
     justify-content: center;
     align-items: center;
+    min-height: 100vh;
 }
 
 .card {
-    width: 100%;
-    max-width: 430px;
-    background: rgba(255,255,255,0.96);
-    backdrop-filter: blur(8px);
-    border-radius: 24px;
-    padding: 26px 22px 62px 22px;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.22);
-    position: relative;
+    width: 420px;
+    background: white;
+    border-radius: 18px;
+    padding: 30px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
 }
 
-.topo-app {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin-bottom: 18px;
-}
-
-.logo-badge {
-    background: linear-gradient(135deg, var(--azul-2), var(--azul-3));
-    color: var(--branco);
-    border-radius: 16px;
-    padding: 10px 16px;
-    font-size: 15px;
-    font-weight: 700;
-    letter-spacing: 0.4px;
-    box-shadow: 0 10px 25px rgba(37,99,235,0.28);
-    margin-bottom: 14px;
-}
-
-.logo-badge span {
-    font-weight: 400;
-    opacity: 0.92;
+.logo {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 10px;
 }
 
 h1 {
+    text-align: center;
+    color: #1e3a8a;
     margin: 0;
-    text-align: center;
-    color: var(--cinza-1);
-    font-size: 28px;
-    line-height: 1.15;
 }
 
-.subtitulo {
-    text-align: center;
-    font-size: 14px;
-    color: var(--cinza-2);
-    margin-top: 10px;
-    line-height: 1.45;
-}
-
-.subinfo {
+.sub {
     text-align: center;
     font-size: 13px;
-    color: var(--cinza-3);
-    margin-top: 6px;
     margin-bottom: 20px;
-    line-height: 1.45;
 }
 
-.msg {
-    text-align: center;
-    font-weight: 600;
-    font-size: 14px;
-    min-height: 22px;
+.opcao-envio {
+    background: #f1f5ff;
+    border: 1px solid #dbeafe;
+    border-radius: 10px;
+    padding: 10px;
     margin-bottom: 10px;
-    line-height: 1.4;
 }
 
-.msg-erro {
-    color: var(--vermelho);
+.opcao-envio label {
+    font-size: 13px;
+    color: #1e3a8a;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 5px;
 }
 
-.msg-ok {
-    color: var(--verde);
+.opcoes {
+    display: flex;
+    gap: 20px;
+}
+
+.opcoes label {
+    font-size: 14px;
+    color: #333;
 }
 
 .form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
 }
 
 input {
-    width: 100%;
-    height: 52px;
-    border-radius: 16px;
-    border: 1px solid #d1d5db;
-    background: var(--branco);
-    padding: 0 16px;
-    font-size: 15px;
-    color: var(--cinza-1);
-    outline: none;
-    transition: all 0.18s ease;
-}
-
-input::placeholder {
-    color: var(--cinza-4);
+    height: 42px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    padding: 10px;
 }
 
 input:focus {
-    border-color: var(--azul-3);
-    box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
-    transform: translateY(-1px);
+    border-color: #2563eb;
+    outline: none;
 }
 
 .input-erro {
-    border-color: #ef4444 !important;
-    background: #fff5f5;
-}
-
-.botoes {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-top: 6px;
+    border-color: red !important;
 }
 
 .btn {
-    width: 100%;
-    height: 50px;
-    border-radius: 16px;
+    height: 44px;
+    border-radius: 10px;
     border: none;
-    font-weight: 700;
-    font-size: 15px;
+    font-weight: bold;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
-.btn:active {
-    transform: scale(0.99);
+.btn1 {
+    background: #2563eb;
+    color: white;
 }
 
-.btn-principal {
-    background: linear-gradient(135deg, var(--azul-2), var(--azul-3));
-    color: var(--branco);
-    box-shadow: 0 10px 22px rgba(37,99,235,0.22);
+.btn2 {
+    background: #e5e7eb;
 }
 
-.btn-principal:hover {
-    opacity: 0.96;
+.btn3 {
+    background: #dbeafe;
+    color: #1e3a8a;
 }
 
-.btn-sec {
-    background: #eef2f7;
-    color: var(--cinza-1);
+.msg {
+    text-align: center;
+    margin-bottom: 10px;
+    font-weight: bold;
+    min-height: 22px;
+    line-height: 1.4;
 }
+
+.msg-erro { color: red; }
+.msg-ok { color: green; }
 
 .area-codigo {
-    margin-top: 18px;
-    padding: 16px;
-    background: linear-gradient(180deg, #eff6ff, #f8fbff);
-    border: 1px solid #dbeafe;
-    border-radius: 18px;
+    margin-top: 20px;
     display: none;
 }
 
-.area-codigo-titulo {
-    font-size: 13px;
-    color: var(--cinza-2);
+.timer-box {
+    margin-top: 8px;
+    margin-bottom: 10px;
     text-align: center;
-    margin-bottom: 12px;
-    font-weight: 600;
+    font-size: 12px;
+    color: #555;
+}
+
+.timer-box strong {
+    color: #1e3a8a;
 }
 
 .rodape {
-    margin-top: 18px;
-    text-align: center;
     font-size: 11px;
-    color: var(--cinza-3);
-    line-height: 1.3;
-    white-space: nowrap;
+    text-align: center;
+    margin-top: 15px;
+    color: #555;
 }
 
 .versao {
-    position: absolute;
-    bottom: 12px;
-    right: 18px;
-    font-size: 11px;
-    color: #7c8594;
+    font-size: 10px;
+    text-align: right;
+    margin-top: 10px;
+}
+
+/* MODAL */
+.modal-fundo {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-caixa {
+    width: 360px;
+    max-width: 92%;
+    background: white;
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+    text-align: center;
+}
+
+.modal-titulo {
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 10px;
+}
+
+.modal-texto {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+    margin-bottom: 18px;
 }
 
 @media (max-width: 480px) {
-    body {
-        padding: 10px;
-        align-items: flex-start;
-    }
-
     .card {
-        max-width: 100%;
-        border-radius: 22px;
-        padding: 22px 16px 60px 16px;
-        margin-top: 10px;
-    }
-
-    h1 {
-        font-size: 24px;
-    }
-
-    .subtitulo {
-        font-size: 13px;
-    }
-
-    .subinfo {
-        font-size: 12px;
-    }
-
-    input {
-        height: 50px;
-        font-size: 16px;
-    }
-
-    .btn {
-        height: 48px;
-        font-size: 15px;
-    }
-
-    .rodape {
-        font-size: 10px;
-        white-space: nowrap;
-    }
-
-    .versao {
-        right: 14px;
-        bottom: 10px;
-        font-size: 10px;
+        width: 95%;
+        padding: 22px;
     }
 }
 </style>
@@ -269,242 +205,233 @@ input:focus {
 
 <div class="card">
 
-    <div class="topo-app">
-        <div class="logo-badge">
-            Folha10 <span>Simples</span>
-        </div>
+<div class="logo">Folha10 Simples</div>
 
-        <h1>Criar seu acesso versao 9999</h1>
+<h1>Criar acesso</h1>
 
-        <div class="subtitulo">
-            Informe seus dados para receber seu código de confirmação
-        </div>
+<div class="sub">
+Informe seus dados para receber o código
+</div>
 
-        <div class="subinfo">
-            O código será enviado para o celular ou e-mail informado
-        </div>
+<div id="msg" class="msg"></div>
+
+<div class="form">
+
+<input type="text" id="cpf" placeholder="CPF ou CNPJ">
+<input type="text" id="nome" placeholder="Nome completo">
+<input type="text" id="celular" placeholder="Celular">
+<input type="text" id="email" placeholder="E-mail">
+
+<div class="opcao-envio">
+    <label>Receber código por:</label>
+
+    <div class="opcoes">
+        <label>
+            <input type="radio" name="canal" value="email" checked>
+            E-mail
+        </label>
+
+        <label>
+            <input type="radio" name="canal" value="whatsapp">
+            WhatsApp
+        </label>
     </div>
+</div>
 
-    <div id="msg" class="msg"></div>
-
-    <div class="form">
-        <input type="text" id="cpf" placeholder="CPF ou CNPJ">
-        <input type="text" id="nome" placeholder="Nome completo">
-        <input type="text" id="celular" placeholder="Celular (DDD + número)">
-        <input type="text" id="email" placeholder="E-mail">
-
-        <div class="botoes">
-            <button type="button" class="btn btn-principal" onclick="enviarCodigo()">
-                Enviar Código
-            </button>
-
-            <button type="button" class="btn btn-sec" onclick="limpar()">
-                Limpar
-            </button>
-        </div>
-    </div>
-
-    <div id="codigoArea" class="area-codigo">
-        <div class="area-codigo-titulo">
-            Digite abaixo o código recebido
-        </div>
-
-        <input type="text" id="codigo" placeholder="Código de confirmação">
-
-        <div class="botoes" style="margin-top: 12px;">
-            <button type="button" class="btn btn-principal" onclick="confirmar()">
-                Confirmar Cadastro
-            </button>
-        </div>
-    </div>
-
-    <div class="rodape">
-        Seus dados estão protegidos. Não compartilhamos suas informações.
-    </div>
-
-    <div class="versao">
-        Versão 260320-1625
-    </div>
+<button class="btn btn1" onclick="enviarCodigo()">Enviar Código</button>
+<button class="btn btn2" onclick="limpar()">Limpar</button>
 
 </div>
 
+<div id="codigoArea" class="area-codigo">
+
+<input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6">
+
+<div id="timerBox" class="timer-box" style="display:none;">
+    Código expira em <strong id="contador">05:00</strong>
+</div>
+
+<button class="btn btn1" onclick="confirmar()">Confirmar</button>
+<button class="btn btn3" onclick="reenviarCodigo()">Reenviar código</button>
+
+</div>
+
+<div class="rodape">
+Seus dados estão protegidos. Não compartilhamos suas informações.
+</div>
+
+<div class="versao">
+Versão 260323-0935
+</div>
+
+</div>
+
+<!-- MODAL -->
+<div id="modalFundo" class="modal-fundo">
+    <div class="modal-caixa">
+        <div class="modal-titulo" id="modalTitulo">Aviso</div>
+        <div class="modal-texto" id="modalTexto">Texto</div>
+        <button class="btn btn1" onclick="fecharModal()">OK</button>
+    </div>
+</div>
+
 <script>
-function soNumeros(texto) {
-    return texto.replace(/\D/g, "");
+let timerInterval = null;
+let segundosRestantes = 0;
+
+function limparErros() {
+    ["cpf","nome","celular","email","codigo"].forEach(id=>{
+        document.getElementById(id).classList.remove("input-erro");
+    });
 }
 
-function limparErrosCampos() {
-    document.getElementById("cpf").classList.remove("input-erro");
-    document.getElementById("nome").classList.remove("input-erro");
-    document.getElementById("celular").classList.remove("input-erro");
-    document.getElementById("email").classList.remove("input-erro");
-    document.getElementById("codigo").classList.remove("input-erro");
+function msg(texto, tipo) {
+    let m = document.getElementById("msg");
+    m.innerHTML = texto;
+    m.className = "msg " + (tipo === "ok" ? "msg-ok" : "msg-erro");
 }
 
-function mostrarMensagem(texto, tipo) {
-    const msg = document.getElementById("msg");
-    msg.innerText = texto;
-    msg.className = "msg " + (tipo === "ok" ? "msg-ok" : "msg-erro");
+function erroCampo(id) {
+    document.getElementById(id).classList.add("input-erro");
 }
 
-function validarCPF(cpf) {
-    cpf = soNumeros(cpf);
+function canalSelecionado() {
+    return document.querySelector('input[name="canal"]:checked').value;
+}
 
-    if (cpf.length !== 11) return false;
-    if (/^(\d)\1+$/.test(cpf)) return false;
+function mostrarModal(titulo, texto) {
+    document.getElementById("modalTitulo").innerText = titulo;
+    document.getElementById("modalTexto").innerText = texto;
+    document.getElementById("modalFundo").style.display = "flex";
+}
 
-    let soma = 0;
-    for (let i = 0; i < 9; i++) {
-        soma += parseInt(cpf.charAt(i), 10) * (10 - i);
+function fecharModal() {
+    document.getElementById("modalFundo").style.display = "none";
+}
+
+function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, "0");
+    const seg = String(segundos % 60).padStart(2, "0");
+    return min + ":" + seg;
+}
+
+function iniciarContador() {
+    pararContador();
+    segundosRestantes = 300;
+    document.getElementById("timerBox").style.display = "block";
+    document.getElementById("contador").innerText = formatarTempo(segundosRestantes);
+
+    timerInterval = setInterval(() => {
+        segundosRestantes--;
+        document.getElementById("contador").innerText = formatarTempo(segundosRestantes);
+
+        if (segundosRestantes <= 0) {
+            pararContador();
+            document.getElementById("codigoArea").style.display = "none";
+            document.getElementById("codigo").value = "";
+            msg("Código expirado. Solicite um novo código.", "erro");
+            mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
+        }
+    }, 1000);
+}
+
+function pararContador() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
     }
-
-    let resto = 11 - (soma % 11);
-    let dig1 = resto >= 10 ? 0 : resto;
-
-    if (dig1 !== parseInt(cpf.charAt(9), 10)) return false;
-
-    soma = 0;
-    for (let i = 0; i < 10; i++) {
-        soma += parseInt(cpf.charAt(i), 10) * (11 - i);
-    }
-
-    resto = 11 - (soma % 11);
-    let dig2 = resto >= 10 ? 0 : resto;
-
-    return dig2 === parseInt(cpf.charAt(10), 10);
 }
 
-function validarCNPJ(cnpj) {
-    cnpj = soNumeros(cnpj);
+async function enviarCodigo() {
+    limparErros();
+    msg("", "erro");
 
-    if (cnpj.length !== 14) return false;
-    if (/^(\d)\1+$/.test(cnpj)) return false;
+    let cpf = document.getElementById("cpf").value;
+    let nome = document.getElementById("nome").value.toLowerCase();
+    let celular = document.getElementById("celular").value;
+    let email = document.getElementById("email").value;
+    let canal = canalSelecionado();
 
-    let tamanho = cnpj.length - 2;
-    let numeros = cnpj.substring(0, tamanho);
-    let digitos = cnpj.substring(tamanho);
-    let soma = 0;
-    let pos = tamanho - 7;
+    document.getElementById("nome").value = nome;
 
-    for (let i = tamanho; i >= 1; i--) {
-        soma += parseInt(numeros.charAt(tamanho - i), 10) * pos--;
-        if (pos < 2) pos = 9;
-    }
+    let resp = await fetch("/validar", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            cpf: cpf,
+            nome: nome,
+            celular: celular,
+            email: email,
+            canal: canal
+        })
+    });
 
-    let resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-    if (resultado !== parseInt(digitos.charAt(0), 10)) return false;
+    let data = await resp.json();
 
-    tamanho = tamanho + 1;
-    numeros = cnpj.substring(0, tamanho);
-    soma = 0;
-    pos = tamanho - 7;
-
-    for (let i = tamanho; i >= 1; i--) {
-        soma += parseInt(numeros.charAt(tamanho - i), 10) * pos--;
-        if (pos < 2) pos = 9;
-    }
-
-    resultado = soma % 11 < 2 ? 0 : 11 - (soma % 11);
-    if (resultado !== parseInt(digitos.charAt(1), 10)) return false;
-
-    return true;
-}
-
-function validarDocumento(valor) {
-    const doc = soNumeros(valor);
-
-    if (doc.length === 11) return validarCPF(doc);
-    if (doc.length === 14) return validarCNPJ(doc);
-
-    return false;
-}
-
-function validarNome(nome) {
-    nome = nome.trim().toLowerCase();
-
-    if (nome.length < 10) return false;
-
-    return /^[a-zà-ÿ\s]+$/.test(nome);
-}
-
-function validarCelular(celular) {
-    celular = soNumeros(celular);
-
-    if (celular.length !== 10 && celular.length !== 11) return false;
-
-    const ddd = parseInt(celular.substring(0, 2), 10);
-    if (isNaN(ddd) || ddd < 11 || ddd > 99) return false;
-
-    if (celular.length === 11 && celular.charAt(2) !== "9") return false;
-
-    return true;
-}
-
-function validarEmail(email) {
-    email = email.trim();
-
-    if (email === "") return false;
-
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-function validar() {
-    limparErrosCampos();
-
-    let cpf = document.getElementById("cpf").value.trim();
-    let nome = document.getElementById("nome").value.trim();
-    let celular = document.getElementById("celular").value.trim();
-    let email = document.getElementById("email").value.trim();
-
-    document.getElementById("nome").value = nome.toLowerCase();
-
-    if (!validarDocumento(cpf)) {
-        document.getElementById("cpf").classList.add("input-erro");
-        return "CPF / CNPJ inválido";
-    }
-
-    if (!validarNome(nome)) {
-        document.getElementById("nome").classList.add("input-erro");
-        return "Nome deve ter pelo menos 10 caracteres";
-    }
-
-    if (!validarCelular(celular)) {
-        document.getElementById("celular").classList.add("input-erro");
-        return "Celular inválido (use apenas números)";
-    }
-
-    if (!validarEmail(email)) {
-        document.getElementById("email").classList.add("input-erro");
-        return "E-mail inválido";
-    }
-
-    return "";
-}
-
-function enviarCodigo() {
-    let erro = validar();
-
-    if (erro !== "") {
-        mostrarMensagem(erro, "erro");
+    if (!data.ok) {
+        if (data.campo) erroCampo(data.campo);
+        msg(data.msg, "erro");
         return;
     }
 
     document.getElementById("codigoArea").style.display = "block";
-    mostrarMensagem("Código enviado. Verifique seu celular ou e-mail.", "ok");
+    iniciarContador();
+
+    if (canal === "email") {
+        msg(
+            data.msg + "<br><span style='font-size:11px;color:#555;'>Caso não receba, verifique a caixa de spam.</span>",
+            "ok"
+        );
+    } else {
+        msg(
+            data.msg + "<br><span style='font-size:11px;color:#555;'>Confira se o WhatsApp está ativo.</span>",
+            "ok"
+        );
+    }
 }
 
-function confirmar() {
-    let codigo = document.getElementById("codigo").value.trim();
+async function reenviarCodigo() {
+    document.getElementById("codigo").value = "";
+    await enviarCodigo();
+}
 
+async function confirmar() {
     document.getElementById("codigo").classList.remove("input-erro");
 
-    if (codigo.length < 4) {
-        document.getElementById("codigo").classList.add("input-erro");
-        mostrarMensagem("Digite o código recebido", "erro");
+    let cpf = document.getElementById("cpf").value;
+    let codigo = document.getElementById("codigo").value;
+
+    let resp = await fetch("/confirmar", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            cpf: cpf,
+            codigo: codigo
+        })
+    });
+
+    let data = await resp.json();
+
+    if (!data.ok) {
+        if (data.campo) erroCampo(data.campo);
+
+        msg(data.msg, "erro");
+
+        if (data.msg && data.msg.toLowerCase().includes("expirado")) {
+            mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
+            document.getElementById("codigoArea").style.display = "none";
+            document.getElementById("codigo").value = "";
+            pararContador();
+            document.getElementById("timerBox").style.display = "none";
+        }
+
         return;
     }
 
-    mostrarMensagem("Cadastro concluído com sucesso!", "ok");
+    pararContador();
+    document.getElementById("timerBox").style.display = "none";
+    msg(data.msg, "ok");
+    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso.");
 }
 
 function limpar() {
@@ -514,9 +441,10 @@ function limpar() {
     document.getElementById("email").value = "";
     document.getElementById("codigo").value = "";
     document.getElementById("codigoArea").style.display = "none";
-    limparErrosCampos();
-    document.getElementById("msg").innerText = "";
-    document.getElementById("msg").className = "msg";
+    document.getElementById("timerBox").style.display = "none";
+    pararContador();
+    limparErros();
+    msg("", "");
 }
 </script>
 
