@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import re
+import os
 import random
 import smtplib
 import requests
@@ -262,5 +263,8 @@ def confirmar():
     return jsonify({"ok": True, "msg": "Cadastro realizado com sucesso"})
 
 
+import os
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    porta = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=porta, debug=True)
