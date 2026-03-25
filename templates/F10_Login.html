@@ -1,191 +1,203 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Folha10 Simples - Login</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples - Login</title>
 
-    <style>
-        * { box-sizing: border-box; }
+<style>
+* { box-sizing: border-box; }
 
-        body {
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background: linear-gradient(135deg, #0f172a, #1e3a8a);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
 
-        .card {
-            width: 420px;
-            background: white;
-            border-radius: 18px;
-            padding: 30px;
-            box-shadow: 0 18px 50px rgba(0,0,0,0.25);
-        }
+.card {
+    width: 420px;
+    background: white;
+    border-radius: 18px;
+    padding: 30px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
 
-        .logo {
-            text-align: center;
-            font-size: 18px;
-            font-weight: bold;
-            color: #1e3a8a;
-            margin-bottom: 10px;
-        }
+.logo {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 10px;
+}
 
-        h1 {
-            text-align: center;
-            color: #1e3a8a;
-            margin: 0;
-        }
+h1 {
+    text-align: center;
+    color: #1e3a8a;
+    margin: 0;
+}
 
-        .sub {
-            text-align: center;
-            font-size: 13px;
-            margin-bottom: 20px;
-            color: #444;
-        }
+.sub {
+    text-align: center;
+    font-size: 13px;
+    margin-bottom: 20px;
+    color: #444;
+}
 
-        .form {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
 
-        input[type="text"],
-        input[type="password"] {
-            height: 42px;
-            border-radius: 8px;
-            border: 1px solid #ccc;
-            padding: 10px;
-            font-size: 14px;
-        }
+input[type="text"],
+input[type="password"] {
+    height: 42px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    font-size: 14px;
+}
 
-        input[type="text"]:focus,
-        input[type="password"]:focus {
-            border-color: #2563eb;
-            outline: none;
-        }
+input:focus {
+    border-color: #2563eb;
+    outline: none;
+}
 
-        .input-erro {
-            border-color: red !important;
-        }
+.input-erro {
+    border-color: red !important;
+}
 
-        .linha-erro {
-            min-height: 14px;
-            font-size: 11px;
-            color: red;
-            margin-top: -6px;
-            margin-bottom: 2px;
-            padding-left: 2px;
-        }
+.linha-erro {
+    min-height: 14px;
+    font-size: 11px;
+    color: red;
+    margin-top: -6px;
+}
 
-        .linha-check {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 14px;
-            color: #333;
-            margin-top: 4px;
-            margin-bottom: 6px;
-        }
+.linha-check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
 
-        .linha-check input {
-            width: auto;
-            margin: 0;
-        }
+.btn {
+    height: 44px;
+    width: 100%;
+    border-radius: 10px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
 
-        .btn {
-            height: 44px;
-            border-radius: 10px;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.2s;
-        }
+.btn1 {
+    background: #2563eb;
+    color: white;
+}
 
-        .btn1 {
-            background: #2563eb;
-            color: white;
-        }
+.btn1:hover:not(:disabled) {
+    background: #1d4ed8;
+}
 
-        .btn1:hover:not(:disabled) {
-            background: #1d4ed8;
-        }
+.btn1:disabled {
+    background: #93c5fd;
+    color: #eff6ff;
+    cursor: not-allowed;
+}
 
-        .btn1:disabled {
-            background: #93c5fd;
-            color: #eff6ff;
-            cursor: not-allowed;
-        }
+.btn2 {
+    background: #e5e7eb;
+    color: #111827;
+}
 
-        .btn2 {
-            background: #e5e7eb;
-            color: #111827;
-        }
+.btn2:hover {
+    background: #d1d5db;
+}
 
-        .msg {
-            text-align: center;
-            margin-bottom: 10px;
-            font-weight: bold;
-            min-height: 22px;
-            line-height: 1.4;
-        }
+.btnNovo {
+    background: #16a34a;
+    color: white;
+    margin-top: 0;
+}
 
-        .msg-erro { color: red; }
-        .msg-ok { color: green; }
+.btnNovo:hover {
+    background: #15803d;
+}
 
-        .links {
-            text-align: center;
-            margin-top: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+.msg {
+    text-align: center;
+    margin-bottom: 10px;
+    font-weight: bold;
+    min-height: 22px;
+    line-height: 1.4;
+}
 
-        .links a {
-            color: #1d4ed8;
-            text-decoration: none;
-            font-size: 14px;
-            font-weight: bold;
-        }
+.msg-erro { color: red; }
+.msg-ok { color: green; }
 
-        .links a:hover {
-            text-decoration: underline;
-        }
+#timerBloqueio {
+    display: none;
+    text-align: center;
+    margin-top: -6px;
+    margin-bottom: 10px;
+    font-weight: bold;
+    color: red;
+    min-height: 20px;
+}
 
-        .rodape {
-            font-size: 11px;
-            text-align: center;
-            margin-top: 15px;
-            color: #555;
-        }
+.links {
+    text-align: center;
+    margin-top: 12px;
+}
 
-        .versao {
-            font-size: 10px;
-            text-align: right;
-            margin-top: 10px;
-            color: #777;
-        }
+.links a {
+    color: #1d4ed8;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: bold;
+}
 
-        @media (max-width: 480px) {
-            .card {
-                width: 95%;
-                padding: 22px;
-            }
-        }
-    </style>
+.links a:hover {
+    text-decoration: underline;
+}
+
+.divisor {
+    text-align: center;
+    margin: 18px 0;
+    font-size: 12px;
+    color: #666;
+}
+
+.rodape {
+    font-size: 11px;
+    text-align: center;
+    margin-top: 12px;
+    color: #555;
+}
+
+.versao {
+    font-size: 10px;
+    text-align: right;
+    margin-top: 10px;
+    color: #777;
+}
+</style>
 </head>
+
 <body>
 
 <div class="card">
     <div class="logo">Folha10 Simples</div>
-
     <h1>Login</h1>
     <div class="sub">Informe seu CPF e sua senha de 6 dígitos</div>
 
     <div id="msg" class="msg"></div>
+    <div id="timerBloqueio"></div>
 
     <div class="form">
         <input type="text" id="cpf" placeholder="CPF" autocomplete="off">
@@ -196,109 +208,96 @@
 
         <label class="linha-check">
             <input type="checkbox" id="manter">
-            Manter conectado neste dispositivo
+            Manter conectado
         </label>
 
-        <button id="btnEntrar" class="btn btn1" onclick="fazerLogin()" disabled>Entrar</button>
-        <button class="btn btn2" onclick="limpar()">Limpar</button>
+        <button id="btnEntrar" class="btn btn1" onclick="fazerLogin()" disabled>
+            Entrar
+        </button>
+
+        <button class="btn btn2" onclick="limpar()">
+            Limpar
+        </button>
     </div>
 
     <div class="links">
-        <a href="/cadastro">Criar conta</a>
         <a href="#">Esqueci minha senha</a>
     </div>
 
+    <div class="divisor">ou</div>
+
+    <button class="btn btnNovo" onclick="window.location.href='/cadastro'">
+        Ainda não sou cliente → Fazer cadastro
+    </button>
+
     <div class="rodape">
-        A senha inicial é o código de 6 dígitos confirmado no cadastro.
+        A senha inicial é o código confirmado no cadastro.
     </div>
 
     <div class="versao">
-        Versão 260325-1505
+        Versão 260325-1755
     </div>
 </div>
 
 <script>
 let loginValido = false;
+let timerBloqueioInterval = null;
+let segundosBloqueio = 0;
 
 function el(id) {
     return document.getElementById(id);
 }
 
-function soNumeros(valor) {
-    return (valor || "").replace(/\D/g, "");
+function soNumeros(v) {
+    return (v || "").replace(/\D/g, "");
 }
 
 function msg(texto, tipo) {
     let m = el("msg");
     m.innerHTML = texto || "";
+    m.className = "msg";
 
-    if (tipo === "ok") {
-        m.className = "msg msg-ok";
-    } else if (tipo === "erro") {
-        m.className = "msg msg-erro";
-    } else {
-        m.className = "msg";
-    }
+    if (tipo === "ok") m.classList.add("msg-ok");
+    if (tipo === "erro") m.classList.add("msg-erro");
+}
+
+function erroCampo(id, txt) {
+    el(id).classList.add("input-erro");
+    el("erro_" + id).innerText = txt || "";
 }
 
 function limparErros() {
     ["cpf", "senha"].forEach(id => {
         el(id).classList.remove("input-erro");
+        el("erro_" + id).innerText = "";
     });
-
-    el("erro_cpf").innerText = "";
-    el("erro_senha").innerText = "";
-}
-
-function erroCampo(id, texto) {
-    el(id).classList.add("input-erro");
-    let alvo = el("erro_" + id);
-    if (alvo) alvo.innerText = texto || "";
-}
-
-function limparErroCampo(id) {
-    el(id).classList.remove("input-erro");
-    let alvo = el("erro_" + id);
-    if (alvo) alvo.innerText = "";
 }
 
 function validarCPF(cpf) {
     cpf = soNumeros(cpf);
 
-    if (cpf.length !== 11) return false;
-    if (/^(\d)\1{10}$/.test(cpf)) return false;
+    if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
 
     let soma = 0;
-    let resto = 0;
-
-    for (let i = 0; i < 9; i++) {
-        soma += parseInt(cpf.charAt(i)) * (10 - i);
-    }
-
-    resto = (soma * 10) % 11;
-    if (resto === 10) resto = 0;
-    if (resto !== parseInt(cpf.charAt(9))) return false;
+    for (let i = 0; i < 9; i++) soma += Number(cpf[i]) * (10 - i);
+    let r = (soma * 10) % 11;
+    if (r === 10) r = 0;
+    if (r !== Number(cpf[9])) return false;
 
     soma = 0;
-    for (let i = 0; i < 10; i++) {
-        soma += parseInt(cpf.charAt(i)) * (11 - i);
-    }
+    for (let i = 0; i < 10; i++) soma += Number(cpf[i]) * (11 - i);
+    r = (soma * 10) % 11;
+    if (r === 10) r = 0;
 
-    resto = (soma * 10) % 11;
-    if (resto === 10) resto = 0;
-    if (resto !== parseInt(cpf.charAt(10))) return false;
-
-    return true;
+    return r === Number(cpf[10]);
 }
 
-function validarSenha(senha) {
-    return /^\d{6}$/.test((senha || "").trim());
+function validarSenha(s) {
+    return /^\d{6}$/.test((s || "").trim());
 }
 
 function formatarCPF() {
-    let v = soNumeros(el("cpf").value);
-
-    if (v.length > 11) v = v.substring(0, 11);
+    let v = soNumeros(el("cpf").value).slice(0, 11);
 
     v = v
         .replace(/^(\d{3})(\d)/, "$1.$2")
@@ -309,69 +308,107 @@ function formatarCPF() {
 }
 
 function formatarSenha() {
-    let v = soNumeros(el("senha").value);
-    if (v.length > 6) v = v.substring(0, 6);
-    el("senha").value = v;
+    el("senha").value = soNumeros(el("senha").value).slice(0, 6);
+}
+
+function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, "0");
+    const seg = String(segundos % 60).padStart(2, "0");
+    return min + ":" + seg;
+}
+
+function pararContadorBloqueio() {
+    if (timerBloqueioInterval) {
+        clearInterval(timerBloqueioInterval);
+        timerBloqueioInterval = null;
+    }
+
+    el("timerBloqueio").style.display = "none";
+    el("timerBloqueio").innerText = "";
+}
+
+function iniciarContadorBloqueio(segundos) {
+    pararContadorBloqueio();
+
+    segundosBloqueio = segundos;
+    el("btnEntrar").disabled = true;
+    el("timerBloqueio").style.display = "block";
+    el("timerBloqueio").innerText = "Login bloqueado. Tente novamente em " + formatarTempo(segundosBloqueio);
+
+    timerBloqueioInterval = setInterval(() => {
+        segundosBloqueio--;
+
+        if (segundosBloqueio <= 0) {
+            pararContadorBloqueio();
+            msg("", "");
+            validarCampos();
+            return;
+        }
+
+        el("timerBloqueio").innerText = "Login bloqueado. Tente novamente em " + formatarTempo(segundosBloqueio);
+    }, 1000);
 }
 
 function validarCampos() {
-    limparErroCampo("cpf");
-    limparErroCampo("senha");
+    limparErros();
 
     let cpf = el("cpf").value;
     let senha = el("senha").value;
 
-    let cpfOk = validarCPF(cpf);
-    let senhaOk = validarSenha(senha);
+    let okCpf = validarCPF(cpf);
+    let okSenha = validarSenha(senha);
 
-    if (cpf.length > 0 && !cpfOk) {
-        erroCampo("cpf", "CPF inválido");
+    if (cpf && !okCpf) erroCampo("cpf", "CPF inválido");
+    if (senha && !okSenha) erroCampo("senha", "Senha deve ter 6 dígitos");
+
+    loginValido = okCpf && okSenha;
+
+    if (!timerBloqueioInterval) {
+        el("btnEntrar").disabled = !loginValido;
     }
-
-    if (senha.length > 0 && !senhaOk) {
-        erroCampo("senha", "Senha deve ter 6 dígitos");
-    }
-
-    loginValido = cpfOk && senhaOk;
-    el("btnEntrar").disabled = !loginValido;
 }
 
 async function fazerLogin() {
     limparErros();
     msg("", "");
 
-    validarCampos();
-
-    if (!loginValido) {
-        msg("Preencha corretamente CPF e senha.", "erro");
+    if (timerBloqueioInterval) {
         return;
     }
 
-    const dados = {
-        cpf: el("cpf").value,
-        senha: el("senha").value,
-        manter: el("manter").checked
-    };
+    if (!loginValido) {
+        msg("Preencha corretamente os dados.", "erro");
+        return;
+    }
 
     try {
         const resp = await fetch("/fazer_login", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(dados)
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                cpf: el("cpf").value,
+                senha: el("senha").value,
+                manter: el("manter").checked
+            })
         });
 
         const data = await resp.json();
 
         if (!data.ok) {
-            msg(data.msg || "Dados inválidos", "erro");
+            if (data.bloqueado && data.segundos_restantes) {
+                msg(data.msg || "Login bloqueado temporariamente.", "erro");
+                iniciarContadorBloqueio(data.segundos_restantes);
+                return;
+            }
+
+            msg(data.msg || "Dados inválidos.", "erro");
             erroCampo("cpf", "");
             erroCampo("senha", "");
             return;
         }
 
-        msg(data.msg || "Login realizado com sucesso", "ok");
+        pararContadorBloqueio();
+        msg("Login realizado com sucesso.", "ok");
 
         if (data.redirect) {
             window.location.href = data.redirect;
@@ -388,6 +425,7 @@ function limpar() {
     el("manter").checked = false;
     limparErros();
     msg("", "");
+    pararContadorBloqueio();
     loginValido = false;
     el("btnEntrar").disabled = true;
 }

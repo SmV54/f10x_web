@@ -14,18 +14,20 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "folha10_simples_chave_local
 app.permanent_session_lifetime = timedelta(days=30)
 
 # =========================
-# CONFIG LOGIN
-# =========================
-TEMPO_BLOQUEIO_MINUTOS = 3
-MAX_TENTATIVAS_LOGIN = 3
-
-# =========================
 # BANCO
 # =========================
 def conectar():
     conn = sqlite3.connect("clientes.db")
     conn.row_factory = sqlite3.Row
     return conn
+
+def coluna_existe(nome_coluna):
+    conn = conectar()
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(clientes)")
+    colunas = [row["name"] for row in cur.fetchall()]
+    conn.close()
+    return nome_coluna in colunas
 
 def criar_tabela():
     conn = conectar()
@@ -70,7 +72,7 @@ criar_tabela()
 ajustar_tabela_clientes()
 
 # =========================
-# CONFIG GERAL
+# CONFIG
 # =========================
 codigos_gerados = {}
 
@@ -109,6 +111,9 @@ def cliente_ja_cadastrado(documento):
 def codigo_expirado(datahora_geracao):
     return datetime.now() > datahora_geracao + timedelta(minutes=5)
 
+def agora_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 def parse_datahora(texto):
     if not texto:
         return None
@@ -143,7 +148,6 @@ def validar_cpf(cpf):
     soma = 0
     for i in range(9):
         soma += int(cpf[i]) * (10 - i)
-
     resto = (soma * 10) % 11
     if resto == 10:
         resto = 0
@@ -153,7 +157,6 @@ def validar_cpf(cpf):
     soma = 0
     for i in range(10):
         soma += int(cpf[i]) * (11 - i)
-
     resto = (soma * 10) % 11
     if resto == 10:
         resto = 0
@@ -404,43 +407,26 @@ def cliente_por_cpf(cpf):
     conn.close()
     return row
 
-def limpar_bloqueio_login(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE clientes
-        SET tentativas_login = 0, bloqueado_ate = NULL
-        WHERE cpf = ?
-    """, (cpf,))
-    conn.commit()
-    conn.close()
-
-def segundos_restantes_bloqueio(row_cliente):
+def cliente_bloqueado(row_cliente):
     if row_cliente is None:
-        return 0
+        return False, None
 
     bloqueado_ate = parse_datahora(row_cliente["bloqueado_ate"])
     if bloqueado_ate is None:
-        return 0
+        return False, None
 
-    delta = int((bloqueado_ate - datetime.now()).total_seconds())
-
-    if delta <= 0:
+    if datetime.now() >= bloqueado_ate:
         limpar_bloqueio_login(row_cliente["cpf"])
-        return 0
+        return False, None
 
-    return delta
-
-def cliente_bloqueado(row_cliente):
-    segundos = segundos_restantes_bloqueio(row_cliente)
-    return segundos > 0, segundos
+    return True, bloqueado_ate
 
 def registrar_tentativa_login_invalida(cpf):
     conn = conectar()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT tentativas_login
+        SELECT tentativas_login, bloqueado_ate
         FROM clientes
         WHERE cpf = ?
     """, (cpf,))
@@ -454,8 +440,8 @@ def registrar_tentativa_login_invalida(cpf):
     tentativas += 1
 
     bloqueado_ate = None
-    if tentativas >= MAX_TENTATIVAS_LOGIN:
-        bloqueado_ate = (datetime.now() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).strftime("%Y-%m-%d %H:%M:%S")
+    if tentativas >= 3:
+        bloqueado_ate = (datetime.now() + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
 
     cur.execute("""
         UPDATE clientes
@@ -463,6 +449,17 @@ def registrar_tentativa_login_invalida(cpf):
         WHERE cpf = ?
     """, (tentativas, bloqueado_ate, cpf))
 
+    conn.commit()
+    conn.close()
+
+def limpar_bloqueio_login(cpf):
+    conn = conectar()
+    cur = conn.cursor()
+    cur.execute("""
+        UPDATE clientes
+        SET tentativas_login = 0, bloqueado_ate = NULL
+        WHERE cpf = ?
+    """, (cpf,))
     conn.commit()
     conn.close()
 
@@ -474,7 +471,7 @@ def efetuar_login(cpf, nome, manter):
     session.permanent = bool(manter)
 
 # =========================
-# ROTAS DE TELA
+# ROTAS
 # =========================
 @app.route("/")
 @app.route("/cadastro")
@@ -491,7 +488,6 @@ def painel():
         return redirect(url_for("login"))
 
     nome = session.get("nome", "")
-
     return f"""
     <html>
     <head>
@@ -535,9 +531,6 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-# =========================
-# ROTAS CADASTRO
-# =========================
 @app.route("/prevalidar", methods=["POST"])
 def prevalidar():
     data = request.get_json() or {}
@@ -653,6 +646,8 @@ def confirmar():
     if registro["codigo"] != codigo:
         return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
 
+    # Senha inicial criada no cadastro:
+    # para não quebrar a tela já existente, a senha passa a ser o próprio código confirmado.
     senha_inicial = codigo
 
     conn = conectar()
@@ -682,9 +677,6 @@ def confirmar():
         "redirect_login": "/login"
     })
 
-# =========================
-# ROTAS LOGIN
-# =========================
 @app.route("/fazer_login", methods=["POST"])
 def fazer_login():
     data = request.get_json() or {}
@@ -705,13 +697,11 @@ def fazer_login():
     if row is None:
         return jsonify({"ok": False, "msg": "Dados inválidos"})
 
-    bloqueado, segundos = cliente_bloqueado(row)
+    bloqueado, bloqueado_ate = cliente_bloqueado(row)
     if bloqueado:
         return jsonify({
             "ok": False,
-            "bloqueado": True,
-            "segundos_restantes": segundos,
-            "msg": "Login bloqueado temporariamente."
+            "msg": "Login temporariamente bloqueado. Tente novamente em alguns minutos."
         })
 
     senha_banco = (row["senha"] or "").strip()
@@ -720,14 +710,12 @@ def fazer_login():
         registrar_tentativa_login_invalida(cpf)
 
         row_atualizado = cliente_por_cpf(cpf)
-        bloqueado_agora, segundos = cliente_bloqueado(row_atualizado)
+        bloqueado_agora, _ = cliente_bloqueado(row_atualizado)
 
         if bloqueado_agora:
             return jsonify({
                 "ok": False,
-                "bloqueado": True,
-                "segundos_restantes": segundos,
-                "msg": "Login bloqueado temporariamente."
+                "msg": "Login temporariamente bloqueado. Tente novamente em alguns minutos."
             })
 
         return jsonify({"ok": False, "msg": "Dados inválidos"})
@@ -741,11 +729,9 @@ def fazer_login():
         "redirect": "/painel"
     })
 
-# =========================
-# ROTA AUXILIAR
-# =========================
 @app.route("/dados_cliente/<cpf>")
 def dados_cliente(cpf):
+    # rota auxiliar opcional, útil para depuração básica
     documento = so_numeros(cpf)
     row = cliente_por_cpf(documento)
 

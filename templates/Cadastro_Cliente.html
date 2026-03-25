@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Folha10 Simples</title>
+<title>Folha10 Simples - Cadastro</title>
 
 <style>
 * { box-sizing: border-box; }
@@ -38,12 +38,16 @@ h1 {
     text-align: center;
     color: #1e3a8a;
     margin: 0;
+    font-size: 28px;
 }
 
 .sub {
     text-align: center;
     font-size: 13px;
+    margin-top: 8px;
     margin-bottom: 20px;
+    color: #444;
+    line-height: 1.4;
 }
 
 .opcao-envio {
@@ -70,6 +74,7 @@ h1 {
 .opcoes label {
     font-size: 14px;
     color: #333;
+    font-weight: normal;
 }
 
 .form {
@@ -83,6 +88,7 @@ input[type="text"] {
     border-radius: 8px;
     border: 1px solid #ccc;
     padding: 10px;
+    font-size: 14px;
 }
 
 input[type="text"]:focus {
@@ -129,6 +135,11 @@ input[type="text"]:focus {
 
 .btn2 {
     background: #e5e7eb;
+    color: #111827;
+}
+
+.btn2:hover {
+    background: #d1d5db;
 }
 
 .btn3 {
@@ -175,9 +186,9 @@ input[type="text"]:focus {
     font-size: 10px;
     text-align: right;
     margin-top: 10px;
+    color: #777;
 }
 
-/* MODAL */
 .modal-fundo {
     display: none;
     position: fixed;
@@ -217,6 +228,10 @@ input[type="text"]:focus {
         width: 95%;
         padding: 22px;
     }
+
+    h1 {
+        font-size: 24px;
+    }
 }
 </style>
 </head>
@@ -225,72 +240,76 @@ input[type="text"]:focus {
 
 <div class="card">
 
-<div class="logo">Folha10 Simples</div>
+    <div class="logo">Folha10 Simples</div>
 
-<h1>Criar acesso</h1>
+    <h1>Cadastro</h1>
 
-<div class="sub">
-Informe seus dados para receber o código
-</div>
-
-<div id="msg" class="msg"></div>
-
-<div class="form">
-
-<input type="text" id="cpf" placeholder="CPF ou CNPJ" autocomplete="off">
-<div id="erro_cpf" class="linha-erro"></div>
-
-<input type="text" id="nome" placeholder="Nome completo" autocomplete="off">
-<div id="erro_nome" class="linha-erro"></div>
-
-<input type="text" id="celular" placeholder="Celular com DDD" autocomplete="off">
-<div id="erro_celular" class="linha-erro"></div>
-
-<input type="text" id="email" placeholder="E-mail" autocomplete="off">
-<div id="erro_email" class="linha-erro"></div>
-
-<div class="opcao-envio">
-    <label>Receber código por:</label>
-
-    <div class="opcoes">
-        <label>
-            <input type="radio" name="canal" value="email" checked>
-            E-mail
-        </label>
-
-        <label>
-            <input type="radio" name="canal" value="whatsapp">
-            WhatsApp
-        </label>
+    <div class="sub">
+        Cadastro de um Novo Cliente no Folha10-Simples
     </div>
-</div>
 
-<button id="btnEnviar" class="btn btn1" onclick="enviarCodigo()" disabled>Enviar Código</button>
-<button class="btn btn2" onclick="limpar()">Limpar</button>
+    <div id="msg" class="msg"></div>
 
-</div>
+    <div class="form">
 
-<div id="codigoArea" class="area-codigo">
+        <input type="text" id="cpf" placeholder="CPF ou CNPJ" autocomplete="off">
+        <div id="erro_cpf" class="linha-erro"></div>
 
-<input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6" autocomplete="off">
-<div id="erro_codigo" class="linha-erro"></div>
+        <input type="text" id="nome" placeholder="Nome completo" autocomplete="off">
+        <div id="erro_nome" class="linha-erro"></div>
 
-<div id="timerBox" class="timer-box" style="display:none;">
-    Código expira em <strong id="contador">05:00</strong>
-</div>
+        <input type="text" id="celular" placeholder="Celular com DDD" autocomplete="off">
+        <div id="erro_celular" class="linha-erro"></div>
 
-<button class="btn btn1" onclick="confirmar()">Confirmar</button>
-<button class="btn btn3" onclick="reenviarCodigo()">Reenviar código</button>
+        <input type="text" id="email" placeholder="E-mail" autocomplete="off">
+        <div id="erro_email" class="linha-erro"></div>
 
-</div>
+        <div class="opcao-envio">
+            <label>Receber código por:</label>
 
-<div class="rodape">
-Seus dados estão protegidos. Não compartilhamos suas informações.
-</div>
+            <div class="opcoes">
+                <label>
+                    <input type="radio" name="canal" value="email" checked>
+                    E-mail
+                </label>
 
-<div class="versao">
-Versão 260325-1135
-</div>
+                <label>
+                    <input type="radio" name="canal" value="whatsapp">
+                    WhatsApp
+                </label>
+            </div>
+        </div>
+
+        <button id="btnEnviar" class="btn btn1" onclick="enviarCodigo()" disabled>
+            Cadastrar Conta
+        </button>
+
+        <button class="btn btn2" onclick="limpar()">
+            Limpar
+        </button>
+    </div>
+
+    <div id="codigoArea" class="area-codigo">
+
+        <input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6" autocomplete="off">
+        <div id="erro_codigo" class="linha-erro"></div>
+
+        <div id="timerBox" class="timer-box" style="display:none;">
+            Código expira em <strong id="contador">05:00</strong>
+        </div>
+
+        <button class="btn btn1" onclick="confirmar()">Confirmar</button>
+        <button class="btn btn3" onclick="reenviarCodigo()">Reenviar código</button>
+
+    </div>
+
+    <div class="rodape">
+        Seus dados estão protegidos. Não compartilhamos suas informações.
+    </div>
+
+    <div class="versao">
+        Versão 260325-1835
+    </div>
 
 </div>
 
@@ -519,7 +538,7 @@ async function enviarCodigo() {
     const resultadoPre = await prevalidarSilencioso();
 
     if (!resultadoPre.ok) {
-        msg("Preencha corretamente todos os campos antes de enviar o código.", "erro");
+        msg("Preencha corretamente todos os campos antes de cadastrar a conta.", "erro");
         return;
     }
 
@@ -608,8 +627,8 @@ async function confirmar() {
 
     pararContador();
     el("timerBox").style.display = "none";
-    msg(data.msg, "ok");
-    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso.");
+    msg("Cadastro realizado com sucesso. Sua senha inicial é o código confirmado.", "ok");
+    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso. Sua senha inicial é o código confirmado.");
 }
 
 function limpar() {
