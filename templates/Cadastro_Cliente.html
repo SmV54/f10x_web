@@ -10,7 +10,7 @@
 
 body {
     margin: 0;
-    font-family: Arial;
+    font-family: Arial, sans-serif;
     background: linear-gradient(135deg, #0f172a, #1e3a8a);
     display: flex;
     justify-content: center;
@@ -78,14 +78,14 @@ h1 {
     gap: 10px;
 }
 
-input {
+input[type="text"] {
     height: 42px;
     border-radius: 8px;
     border: 1px solid #ccc;
     padding: 10px;
 }
 
-input:focus {
+input[type="text"]:focus {
     border-color: #2563eb;
     outline: none;
 }
@@ -94,17 +94,37 @@ input:focus {
     border-color: red !important;
 }
 
+.linha-erro {
+    min-height: 14px;
+    font-size: 11px;
+    color: red;
+    margin-top: -6px;
+    margin-bottom: 2px;
+    padding-left: 2px;
+}
+
 .btn {
     height: 44px;
     border-radius: 10px;
     border: none;
     font-weight: bold;
     cursor: pointer;
+    transition: 0.2s;
 }
 
 .btn1 {
     background: #2563eb;
     color: white;
+}
+
+.btn1:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.btn1:disabled {
+    background: #93c5fd;
+    color: #eff6ff;
+    cursor: not-allowed;
 }
 
 .btn2 {
@@ -217,10 +237,17 @@ Informe seus dados para receber o código
 
 <div class="form">
 
-<input type="text" id="cpf" placeholder="CPF ou CNPJ">
-<input type="text" id="nome" placeholder="Nome completo">
-<input type="text" id="celular" placeholder="Celular">
-<input type="text" id="email" placeholder="E-mail">
+<input type="text" id="cpf" placeholder="CPF ou CNPJ" autocomplete="off">
+<div id="erro_cpf" class="linha-erro"></div>
+
+<input type="text" id="nome" placeholder="Nome completo" autocomplete="off">
+<div id="erro_nome" class="linha-erro"></div>
+
+<input type="text" id="celular" placeholder="Celular com DDD" autocomplete="off">
+<div id="erro_celular" class="linha-erro"></div>
+
+<input type="text" id="email" placeholder="E-mail" autocomplete="off">
+<div id="erro_email" class="linha-erro"></div>
 
 <div class="opcao-envio">
     <label>Receber código por:</label>
@@ -238,14 +265,15 @@ Informe seus dados para receber o código
     </div>
 </div>
 
-<button class="btn btn1" onclick="enviarCodigo()">Enviar Código</button>
+<button id="btnEnviar" class="btn btn1" onclick="enviarCodigo()" disabled>Enviar Código</button>
 <button class="btn btn2" onclick="limpar()">Limpar</button>
 
 </div>
 
 <div id="codigoArea" class="area-codigo">
 
-<input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6">
+<input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6" autocomplete="off">
+<div id="erro_codigo" class="linha-erro"></div>
 
 <div id="timerBox" class="timer-box" style="display:none;">
     Código expira em <strong id="contador">05:00</strong>
@@ -261,12 +289,11 @@ Seus dados estão protegidos. Não compartilhamos suas informações.
 </div>
 
 <div class="versao">
-Versão 260323-1017
+Versão 260325-1135
 </div>
 
 </div>
 
-<!-- MODAL -->
 <div id="modalFundo" class="modal-fundo">
     <div class="modal-caixa">
         <div class="modal-titulo" id="modalTitulo">Aviso</div>
@@ -278,21 +305,45 @@ Versão 260323-1017
 <script>
 let timerInterval = null;
 let segundosRestantes = 0;
+let timeoutPrevalidacao = null;
+let formularioValido = false;
+
+function el(id) {
+    return document.getElementById(id);
+}
 
 function limparErros() {
-    ["cpf","nome","celular","email","codigo"].forEach(id=>{
-        document.getElementById(id).classList.remove("input-erro");
+    ["cpf", "nome", "celular", "email", "codigo"].forEach(id => {
+        el(id).classList.remove("input-erro");
+    });
+
+    ["erro_cpf", "erro_nome", "erro_celular", "erro_email", "erro_codigo"].forEach(id => {
+        el(id).innerText = "";
     });
 }
 
 function msg(texto, tipo) {
-    let m = document.getElementById("msg");
-    m.innerHTML = texto;
-    m.className = "msg " + (tipo === "ok" ? "msg-ok" : "msg-erro");
+    let m = el("msg");
+    m.innerHTML = texto || "";
+    if (tipo === "ok") {
+        m.className = "msg msg-ok";
+    } else if (tipo === "erro") {
+        m.className = "msg msg-erro";
+    } else {
+        m.className = "msg";
+    }
 }
 
-function erroCampo(id) {
-    document.getElementById(id).classList.add("input-erro");
+function erroCampo(id, texto = "") {
+    el(id).classList.add("input-erro");
+    const alvo = el("erro_" + id);
+    if (alvo) alvo.innerText = texto;
+}
+
+function limparErroCampo(id) {
+    el(id).classList.remove("input-erro");
+    const alvo = el("erro_" + id);
+    if (alvo) alvo.innerText = "";
 }
 
 function canalSelecionado() {
@@ -300,13 +351,13 @@ function canalSelecionado() {
 }
 
 function mostrarModal(titulo, texto) {
-    document.getElementById("modalTitulo").innerText = titulo;
-    document.getElementById("modalTexto").innerText = texto;
-    document.getElementById("modalFundo").style.display = "flex";
+    el("modalTitulo").innerText = titulo;
+    el("modalTexto").innerText = texto;
+    el("modalFundo").style.display = "flex";
 }
 
 function fecharModal() {
-    document.getElementById("modalFundo").style.display = "none";
+    el("modalFundo").style.display = "none";
 }
 
 function formatarTempo(segundos) {
@@ -318,17 +369,18 @@ function formatarTempo(segundos) {
 function iniciarContador() {
     pararContador();
     segundosRestantes = 300;
-    document.getElementById("timerBox").style.display = "block";
-    document.getElementById("contador").innerText = formatarTempo(segundosRestantes);
+    el("timerBox").style.display = "block";
+    el("contador").innerText = formatarTempo(segundosRestantes);
 
     timerInterval = setInterval(() => {
         segundosRestantes--;
-        document.getElementById("contador").innerText = formatarTempo(segundosRestantes);
+        el("contador").innerText = formatarTempo(segundosRestantes);
 
         if (segundosRestantes <= 0) {
             pararContador();
-            document.getElementById("codigoArea").style.display = "none";
-            document.getElementById("codigo").value = "";
+            el("codigoArea").style.display = "none";
+            el("codigo").value = "";
+            el("erro_codigo").innerText = "";
             msg("Código expirado. Solicite um novo código.", "erro");
             mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
         }
@@ -342,42 +394,165 @@ function pararContador() {
     }
 }
 
+function atualizarBotaoEnviar(habilitar) {
+    formularioValido = !!habilitar;
+    el("btnEnviar").disabled = !formularioValido;
+}
+
+function soNumeros(valor) {
+    return (valor || "").replace(/\D/g, "");
+}
+
+function formatarDocumento() {
+    let v = soNumeros(el("cpf").value);
+
+    if (v.length <= 11) {
+        v = v
+            .replace(/^(\d{3})(\d)/, "$1.$2")
+            .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+            .replace(/\.(\d{3})(\d)/, ".$1-$2");
+    } else {
+        v = v
+            .replace(/^(\d{2})(\d)/, "$1.$2")
+            .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
+            .replace(/\.(\d{3})(\d)/, ".$1/$2")
+            .replace(/(\d{4})(\d)/, "$1-$2");
+    }
+
+    el("cpf").value = v;
+}
+
+function formatarCelular() {
+    let v = soNumeros(el("celular").value);
+
+    if (v.startsWith("55") && v.length > 11) {
+        v = v.substring(2);
+    }
+
+    if (v.length > 11) v = v.substring(0, 11);
+
+    if (v.length <= 2) {
+        el("celular").value = v;
+        return;
+    }
+
+    if (v.length <= 7) {
+        el("celular").value = "(" + v.substring(0, 2) + ") " + v.substring(2);
+        return;
+    }
+
+    el("celular").value = "(" + v.substring(0, 2) + ") " + v.substring(2, 7) + "-" + v.substring(7);
+}
+
+function normalizarNome() {
+    let v = el("nome").value || "";
+    v = v.replace(/\s+/g, " ");
+    el("nome").value = v;
+}
+
+function dadosFormulario() {
+    return {
+        cpf: el("cpf").value,
+        nome: (el("nome").value || "").trim().toLowerCase(),
+        celular: el("celular").value,
+        email: (el("email").value || "").trim(),
+        canal: canalSelecionado()
+    };
+}
+
+function aplicarErrosPrevalidacao(erros) {
+    limparErroCampo("cpf");
+    limparErroCampo("nome");
+    limparErroCampo("celular");
+    limparErroCampo("email");
+
+    if (erros.cpf) erroCampo("cpf", erros.cpf);
+    if (erros.nome) erroCampo("nome", erros.nome);
+    if (erros.celular) erroCampo("celular", erros.celular);
+    if (erros.email) erroCampo("email", erros.email);
+}
+
+async function prevalidarSilencioso() {
+    const dados = dadosFormulario();
+
+    try {
+        const resp = await fetch("/prevalidar", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(dados)
+        });
+
+        const data = await resp.json();
+
+        aplicarErrosPrevalidacao(data.erros || {});
+        atualizarBotaoEnviar(!!data.habilita_enviar_codigo);
+
+        if (!data.habilita_enviar_codigo) {
+            el("codigoArea").style.display = "none";
+        }
+
+        return data;
+    } catch (e) {
+        atualizarBotaoEnviar(false);
+        return {
+            ok: false,
+            erros: {},
+            habilita_enviar_codigo: false
+        };
+    }
+}
+
+function agendarPrevalidacao() {
+    if (timeoutPrevalidacao) {
+        clearTimeout(timeoutPrevalidacao);
+    }
+
+    timeoutPrevalidacao = setTimeout(() => {
+        prevalidarSilencioso();
+    }, 250);
+}
+
 async function enviarCodigo() {
     limparErros();
-    msg("", "erro");
+    msg("", "");
 
-    let cpf = document.getElementById("cpf").value;
-    let nome = document.getElementById("nome").value.toLowerCase();
-    let celular = document.getElementById("celular").value;
-    let email = document.getElementById("email").value;
-    let canal = canalSelecionado();
+    const resultadoPre = await prevalidarSilencioso();
 
-    document.getElementById("nome").value = nome;
+    if (!resultadoPre.ok) {
+        msg("Preencha corretamente todos os campos antes de enviar o código.", "erro");
+        return;
+    }
+
+    let dados = dadosFormulario();
+    el("nome").value = dados.nome;
 
     let resp = await fetch("/validar", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-            cpf: cpf,
-            nome: nome,
-            celular: celular,
-            email: email,
-            canal: canal
-        })
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(dados)
     });
 
     let data = await resp.json();
 
     if (!data.ok) {
-        if (data.campo) erroCampo(data.campo);
-        msg(data.msg, "erro");
+        if (data.erros) {
+            aplicarErrosPrevalidacao(data.erros);
+        }
+
+        if (data.campo) {
+            erroCampo(data.campo, data.msg || "");
+        }
+
+        msg(data.msg || "Existem campos inválidos.", "erro");
+        atualizarBotaoEnviar(false);
         return;
     }
 
-    document.getElementById("codigoArea").style.display = "block";
+    el("codigoArea").style.display = "block";
+    el("erro_codigo").innerText = "";
     iniciarContador();
 
-    if (canal === "email") {
+    if (dados.canal === "email") {
         msg(
             data.msg + "<br><span style='font-size:11px;color:#555;'>Caso não receba, verifique a caixa de spam.</span>",
             "ok"
@@ -391,19 +566,20 @@ async function enviarCodigo() {
 }
 
 async function reenviarCodigo() {
-    document.getElementById("codigo").value = "";
+    el("codigo").value = "";
+    el("erro_codigo").innerText = "";
     await enviarCodigo();
 }
 
 async function confirmar() {
-    document.getElementById("codigo").classList.remove("input-erro");
+    limparErroCampo("codigo");
 
-    let cpf = document.getElementById("cpf").value;
-    let codigo = document.getElementById("codigo").value;
+    let cpf = el("cpf").value;
+    let codigo = el("codigo").value.trim();
 
     let resp = await fetch("/confirmar", {
         method: "POST",
-        headers: {"Content-Type":"application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             cpf: cpf,
             codigo: codigo
@@ -413,39 +589,78 @@ async function confirmar() {
     let data = await resp.json();
 
     if (!data.ok) {
-        if (data.campo) erroCampo(data.campo);
+        if (data.campo) {
+            erroCampo(data.campo, data.msg || "");
+        }
 
         msg(data.msg, "erro");
 
         if (data.msg && data.msg.toLowerCase().includes("expirado")) {
             mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
-            document.getElementById("codigoArea").style.display = "none";
-            document.getElementById("codigo").value = "";
+            el("codigoArea").style.display = "none";
+            el("codigo").value = "";
             pararContador();
-            document.getElementById("timerBox").style.display = "none";
+            el("timerBox").style.display = "none";
         }
 
         return;
     }
 
     pararContador();
-    document.getElementById("timerBox").style.display = "none";
+    el("timerBox").style.display = "none";
     msg(data.msg, "ok");
     mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso.");
 }
 
 function limpar() {
-    document.getElementById("cpf").value = "";
-    document.getElementById("nome").value = "";
-    document.getElementById("celular").value = "";
-    document.getElementById("email").value = "";
-    document.getElementById("codigo").value = "";
-    document.getElementById("codigoArea").style.display = "none";
-    document.getElementById("timerBox").style.display = "none";
+    el("cpf").value = "";
+    el("nome").value = "";
+    el("celular").value = "";
+    el("email").value = "";
+    el("codigo").value = "";
+    el("codigoArea").style.display = "none";
+    el("timerBox").style.display = "none";
     pararContador();
     limparErros();
     msg("", "");
+    atualizarBotaoEnviar(false);
 }
+
+function registrarEventos() {
+    el("cpf").addEventListener("input", () => {
+        formatarDocumento();
+        agendarPrevalidacao();
+    });
+
+    el("nome").addEventListener("input", () => {
+        normalizarNome();
+        agendarPrevalidacao();
+    });
+
+    el("celular").addEventListener("input", () => {
+        formatarCelular();
+        agendarPrevalidacao();
+    });
+
+    el("email").addEventListener("input", () => {
+        agendarPrevalidacao();
+    });
+
+    document.querySelectorAll('input[name="canal"]').forEach(r => {
+        r.addEventListener("change", () => {
+            agendarPrevalidacao();
+        });
+    });
+
+    ["cpf", "nome", "celular", "email"].forEach(id => {
+        el(id).addEventListener("blur", () => {
+            prevalidarSilencioso();
+        });
+    });
+}
+
+registrarEventos();
+atualizarBotaoEnviar(false);
 </script>
 
 </body>
