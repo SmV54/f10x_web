@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from flask import Flask, render_template, request, jsonify
 import re
 import os
 import random
@@ -10,24 +10,12 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "folha10_simples_chave_local_2026")
-app.permanent_session_lifetime = timedelta(days=30)
 
 # =========================
 # BANCO
 # =========================
 def conectar():
-    conn = sqlite3.connect("clientes.db")
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def coluna_existe(nome_coluna):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("PRAGMA table_info(clientes)")
-    colunas = [row["name"] for row in cur.fetchall()]
-    conn.close()
-    return nome_coluna in colunas
+    return sqlite3.connect("clientes.db")
 
 def criar_tabela():
     conn = conectar()
@@ -39,9 +27,6 @@ def criar_tabela():
         nome TEXT,
         celular TEXT,
         email TEXT,
-        senha TEXT,
-        tentativas_login INTEGER DEFAULT 0,
-        bloqueado_ate TEXT,
         datahora TEXT
     )
     """)
@@ -49,42 +34,22 @@ def criar_tabela():
     conn.commit()
     conn.close()
 
-def ajustar_tabela_clientes():
-    conn = conectar()
-    cur = conn.cursor()
-
-    cur.execute("PRAGMA table_info(clientes)")
-    colunas = [row["name"] for row in cur.fetchall()]
-
-    if "senha" not in colunas:
-        cur.execute("ALTER TABLE clientes ADD COLUMN senha TEXT")
-
-    if "tentativas_login" not in colunas:
-        cur.execute("ALTER TABLE clientes ADD COLUMN tentativas_login INTEGER DEFAULT 0")
-
-    if "bloqueado_ate" not in colunas:
-        cur.execute("ALTER TABLE clientes ADD COLUMN bloqueado_ate TEXT")
-
-    conn.commit()
-    conn.close()
-
 criar_tabela()
-ajustar_tabela_clientes()
 
 # =========================
 # CONFIG
 # =========================
 codigos_gerados = {}
 
-EMAIL_REMETENTE = os.environ.get("EMAIL_REMETENTE", "SEU_EMAIL@gmail.com")
-EMAIL_SENHA_APP = os.environ.get("EMAIL_SENHA_APP", "SUA_SENHA_APP")
+EMAIL_REMETENTE = "SEU_EMAIL@gmail.com"
+EMAIL_SENHA_APP = "SUA_SENHA_APP"
 
-SMTP_SERVIDOR = os.environ.get("SMTP_SERVIDOR", "smtp.gmail.com")
-SMTP_PORTA = int(os.environ.get("SMTP_PORTA", "587"))
+SMTP_SERVIDOR = "smtp.gmail.com"
+SMTP_PORTA = 587
 
-ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE", "3E0DA0C0399BB0821E57266509411D32")
-ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "32B4B3104968DD6C13F5D8F0")
-ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "Fb4455edcf75a45eaa7b58b1c7becb5a2S")
+ZAPI_INSTANCE = "3E0DA0C0399BB0821E57266509411D32"
+ZAPI_TOKEN = "32B4B3104968DD6C13F5D8F0"
+ZAPI_CLIENT_TOKEN = "Fb4455edcf75a45eaa7b58b1c7becb5a2S"
 
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
 
@@ -103,35 +68,15 @@ def normalizar_telefone(t):
 def cliente_ja_cadastrado(documento):
     conn = conectar()
     cur = conn.cursor()
+
     cur.execute("SELECT cpf FROM clientes WHERE cpf = ?", (documento,))
     row = cur.fetchone()
+
     conn.close()
     return row is not None
 
 def codigo_expirado(datahora_geracao):
     return datetime.now() > datahora_geracao + timedelta(minutes=5)
-
-def agora_str():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-def parse_datahora(texto):
-    if not texto:
-        return None
-
-    formatos = [
-        "%Y-%m-%d %H:%M:%S",
-        "%Y-%m-%d %H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f"
-    ]
-
-    for fmt in formatos:
-        try:
-            return datetime.strptime(texto, fmt)
-        except:
-            pass
-
-    return None
 
 # =========================
 # VALIDAÇÕES
@@ -235,6 +180,9 @@ def validar_celular(celular):
     if numero == "":
         return False, "Celular não informado"
 
+    # Aceita:
+    # 11 dígitos = DDD + 9 dígitos
+    # 13 dígitos = 55 + DDD + 9 dígitos
     if len(numero) == 13 and numero.startswith("55"):
         numero = numero[2:]
 
@@ -252,7 +200,7 @@ def validar_celular(celular):
         return False, "DDD inválido"
 
     if nono != "9":
-        return False, "Celular deve iniciar com 9 após o DDD"
+        return False, "Celular deve ter 9 dígitos após o DDD, iniciando com 9"
 
     if not restante.isdigit():
         return False, "Celular inválido"
@@ -275,12 +223,6 @@ def validar_canal(canal):
     canal = (canal or "").strip().lower()
     if canal not in ("email", "whatsapp"):
         return False, "Canal inválido"
-    return True, ""
-
-def validar_senha_6_digitos(senha):
-    senha = (senha or "").strip()
-    if not re.fullmatch(r"\d{6}", senha):
-        return False, "Senha deve ter exatamente 6 dígitos"
     return True, ""
 
 def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=True):
@@ -307,7 +249,6 @@ def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=T
         erros["canal"] = msg_canal
 
     documento_limpo = so_numeros(documento)
-
     if verificar_duplicidade and ok_doc:
         if cliente_ja_cadastrado(documento_limpo):
             erros["cpf"] = "Este cliente já está cadastrado"
@@ -393,143 +334,12 @@ def enviar_whatsapp(destinatario, codigo, nome):
         return False, str(e)
 
 # =========================
-# LOGIN
-# =========================
-def cliente_por_cpf(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT cpf, nome, celular, email, senha, tentativas_login, bloqueado_ate, datahora
-        FROM clientes
-        WHERE cpf = ?
-    """, (cpf,))
-    row = cur.fetchone()
-    conn.close()
-    return row
-
-def cliente_bloqueado(row_cliente):
-    if row_cliente is None:
-        return False, None
-
-    bloqueado_ate = parse_datahora(row_cliente["bloqueado_ate"])
-    if bloqueado_ate is None:
-        return False, None
-
-    if datetime.now() >= bloqueado_ate:
-        limpar_bloqueio_login(row_cliente["cpf"])
-        return False, None
-
-    return True, bloqueado_ate
-
-def registrar_tentativa_login_invalida(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT tentativas_login, bloqueado_ate
-        FROM clientes
-        WHERE cpf = ?
-    """, (cpf,))
-    row = cur.fetchone()
-
-    if row is None:
-        conn.close()
-        return
-
-    tentativas = row["tentativas_login"] or 0
-    tentativas += 1
-
-    bloqueado_ate = None
-    if tentativas >= 3:
-        bloqueado_ate = (datetime.now() + timedelta(minutes=5)).strftime("%Y-%m-%d %H:%M:%S")
-
-    cur.execute("""
-        UPDATE clientes
-        SET tentativas_login = ?, bloqueado_ate = ?
-        WHERE cpf = ?
-    """, (tentativas, bloqueado_ate, cpf))
-
-    conn.commit()
-    conn.close()
-
-def limpar_bloqueio_login(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE clientes
-        SET tentativas_login = 0, bloqueado_ate = NULL
-        WHERE cpf = ?
-    """, (cpf,))
-    conn.commit()
-    conn.close()
-
-def efetuar_login(cpf, nome, manter):
-    session.clear()
-    session["cpf"] = cpf
-    session["nome"] = nome
-    session["logado"] = True
-    session.permanent = bool(manter)
-
-# =========================
 # ROTAS
 # =========================
 @app.route("/")
 @app.route("/cadastro")
 def cadastro():
     return render_template("Cadastro_Cliente.html")
-
-@app.route("/login")
-def login():
-    return render_template("F10_Login.html")
-
-@app.route("/painel")
-def painel():
-    if not session.get("logado"):
-        return redirect(url_for("login"))
-
-    nome = session.get("nome", "")
-    return f"""
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <title>Folha10 Simples - Painel</title>
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background:#f4f6f8;
-                margin:0;
-                padding:40px;
-            }}
-            .box {{
-                max-width:700px;
-                margin:auto;
-                background:#fff;
-                padding:30px;
-                border-radius:14px;
-                box-shadow:0 10px 30px rgba(0,0,0,0.08);
-            }}
-            a {{
-                color:#1d4ed8;
-                text-decoration:none;
-                font-weight:bold;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>Folha10 Simples</h2>
-            <p>Login realizado com sucesso.</p>
-            <p>Bem-vindo: <strong>{nome}</strong></p>
-            <p><a href="/logout">Sair</a></p>
-        </div>
-    </body>
-    </html>
-    """
-
-@app.route("/logout")
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
 
 @app.route("/prevalidar", methods=["POST"])
 def prevalidar():
@@ -562,7 +372,7 @@ def validar():
     data = request.get_json() or {}
 
     documento = data.get("cpf")
-    nome = (data.get("nome") or "").strip().lower()
+    nome = (data.get("nome") or "").strip()
     celular = (data.get("celular") or "").strip()
     email = (data.get("email") or "").strip()
     canal = (data.get("canal") or "").strip().lower()
@@ -646,23 +456,18 @@ def confirmar():
     if registro["codigo"] != codigo:
         return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
 
-    # Senha inicial criada no cadastro:
-    # para não quebrar a tela já existente, a senha passa a ser o próprio código confirmado.
-    senha_inicial = codigo
-
     conn = conectar()
     cur = conn.cursor()
 
     cur.execute("""
     INSERT OR REPLACE INTO clientes
-    (cpf, nome, celular, email, senha, tentativas_login, bloqueado_ate, datahora)
-    VALUES (?, ?, ?, ?, ?, 0, NULL, datetime('now'))
+    (cpf, nome, celular, email, datahora)
+    VALUES (?, ?, ?, ?, datetime('now'))
     """, (
         documento,
         registro["nome"],
         registro["celular"],
-        registro["email"],
-        senha_inicial
+        registro["email"]
     ))
 
     conn.commit()
@@ -670,82 +475,7 @@ def confirmar():
 
     del codigos_gerados[documento]
 
-    return jsonify({
-        "ok": True,
-        "msg": "Cadastro realizado com sucesso",
-        "senha_inicial": senha_inicial,
-        "redirect_login": "/login"
-    })
-
-@app.route("/fazer_login", methods=["POST"])
-def fazer_login():
-    data = request.get_json() or {}
-
-    cpf = so_numeros(data.get("cpf"))
-    senha = (data.get("senha") or "").strip()
-    manter = bool(data.get("manter"))
-
-    if not validar_cpf(cpf):
-        return jsonify({"ok": False, "msg": "Dados inválidos"})
-
-    ok_senha, _ = validar_senha_6_digitos(senha)
-    if not ok_senha:
-        return jsonify({"ok": False, "msg": "Dados inválidos"})
-
-    row = cliente_por_cpf(cpf)
-
-    if row is None:
-        return jsonify({"ok": False, "msg": "Dados inválidos"})
-
-    bloqueado, bloqueado_ate = cliente_bloqueado(row)
-    if bloqueado:
-        return jsonify({
-            "ok": False,
-            "msg": "Login temporariamente bloqueado. Tente novamente em alguns minutos."
-        })
-
-    senha_banco = (row["senha"] or "").strip()
-
-    if senha_banco != senha:
-        registrar_tentativa_login_invalida(cpf)
-
-        row_atualizado = cliente_por_cpf(cpf)
-        bloqueado_agora, _ = cliente_bloqueado(row_atualizado)
-
-        if bloqueado_agora:
-            return jsonify({
-                "ok": False,
-                "msg": "Login temporariamente bloqueado. Tente novamente em alguns minutos."
-            })
-
-        return jsonify({"ok": False, "msg": "Dados inválidos"})
-
-    limpar_bloqueio_login(cpf)
-    efetuar_login(cpf, row["nome"], manter)
-
-    return jsonify({
-        "ok": True,
-        "msg": "Login realizado com sucesso",
-        "redirect": "/painel"
-    })
-
-@app.route("/dados_cliente/<cpf>")
-def dados_cliente(cpf):
-    # rota auxiliar opcional, útil para depuração básica
-    documento = so_numeros(cpf)
-    row = cliente_por_cpf(documento)
-
-    if row is None:
-        return jsonify({"ok": False, "msg": "Cliente não encontrado"})
-
-    return jsonify({
-        "ok": True,
-        "cpf": row["cpf"],
-        "nome": row["nome"],
-        "celular": row["celular"],
-        "email": row["email"],
-        "datahora": row["datahora"]
-    })
+    return jsonify({"ok": True, "msg": "Cadastro realizado com sucesso"})
 
 if __name__ == "__main__":
     porta = int(os.environ.get("PORT", 10000))
