@@ -162,19 +162,53 @@ def validar_cpf(cpf):
 
     return True
 
+def validar_cnpj(cnpj):
+    cnpj = so_numeros(cnpj)
+
+    if len(cnpj) != 14:
+        return False
+
+    if cnpj == cnpj[0] * 14:
+        return False
+
+    pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+
+    soma = 0
+    for i in range(12):
+        soma += int(cnpj[i]) * pesos1[i]
+    resto = soma % 11
+    dig1 = 0 if resto < 2 else 11 - resto
+    if dig1 != int(cnpj[12]):
+        return False
+
+    soma = 0
+    for i in range(13):
+        soma += int(cnpj[i]) * pesos2[i]
+    resto = soma % 11
+    dig2 = 0 if resto < 2 else 11 - resto
+    if dig2 != int(cnpj[13]):
+        return False
+
+    return True
+
 def validar_cpf_cnpj(documento):
     documento = so_numeros(documento)
 
     if documento == "":
-        return False, "CPF não informado", ""
+        return False, "CPF / CNPJ não informado", ""
 
-    if len(documento) != 11:
-        return False, "CPF deve ter 11 dígitos", ""
+    if len(documento) == 11:
+        if not validar_cpf(documento):
+            return False, "CPF inválido", ""
+        return True, "", "CPF"
 
-    if not validar_cpf(documento):
-        return False, "CPF inválido", ""
+    if len(documento) == 14:
+        if not validar_cnpj(documento):
+            return False, "CNPJ inválido", ""
+        return True, "", "CNPJ"
 
-    return True, "", "CPF"
+    return False, "CPF deve ter 11 dígitos ou CNPJ 14 dígitos", ""
 
 def validar_nome(nome):
     nome_original = (nome or "").strip()
@@ -598,7 +632,7 @@ def confirmar():
     codigo = (data.get("codigo") or "").strip()
 
     if documento == "":
-        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF não informado"})
+        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF / CNPJ não informado"})
 
     if codigo == "":
         return jsonify({"ok": False, "campo": "codigo", "msg": "Código não informado"})
