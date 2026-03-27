@@ -105,21 +105,47 @@ def parse_datahora(texto):
 # =========================
 def cliente_ja_cadastrado(cpf):
     try:
+        cpf = so_numeros(cpf)
+
+        print("======================================")
+        print("DEBUG cliente_ja_cadastrado")
+        print("SUPABASE_URL usada:", SUPABASE_URL)
+        print("CPF consultado:", cpf)
+
+        r_todos = (
+            supabase
+            .table("tab_cliente")
+            .select("cpf")
+            .limit(50)
+            .execute()
+        )
+
+        lista_cpfs = [str(x.get("cpf", "")) for x in (r_todos.data or [])]
+        print("DEBUG TODOS CPFs (até 50):", lista_cpfs)
+
         r = (
             supabase
             .table("tab_cliente")
             .select("cpf")
             .eq("cpf", cpf)
-            .limit(1)
+            .limit(5)
             .execute()
         )
+
+        print("Retorno bruto do Supabase:", r.data)
+        print("Quantidade encontrada:", len(r.data or []))
+        print("======================================")
+
         return len(r.data or []) > 0
+
     except Exception as e:
         print("Erro em cliente_ja_cadastrado:", str(e))
         return False
 
 def cliente_por_cpf(cpf):
     try:
+        cpf = so_numeros(cpf)
+
         r = (
             supabase
             .table("tab_cliente")
@@ -137,6 +163,9 @@ def cliente_por_cpf(cpf):
         return None
 
 def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
+    cpf = so_numeros(cpf)
+    celular = so_numeros(celular)
+
     payload = {
         "cpf": cpf,
         "nome": nome,
@@ -151,6 +180,7 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
     }
 
     print("Gravando cliente no Supabase:", cpf, nome, email)
+    print("Payload:", payload)
 
     return (
         supabase
@@ -161,6 +191,8 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
 
 def limpar_bloqueio_login(cpf):
     try:
+        cpf = so_numeros(cpf)
+
         (
             supabase
             .table("tab_cliente")
@@ -176,6 +208,8 @@ def limpar_bloqueio_login(cpf):
 
 def atualizar_datahora_ultimo_login(cpf):
     try:
+        cpf = so_numeros(cpf)
+
         (
             supabase
             .table("tab_cliente")
@@ -191,6 +225,8 @@ def atualizar_datahora_ultimo_login(cpf):
         print("Erro em atualizar_datahora_ultimo_login:", str(e))
 
 def registrar_tentativa_login_invalida(cpf):
+    cpf = so_numeros(cpf)
+
     row = cliente_por_cpf(cpf)
     if row is None:
         return
@@ -374,8 +410,16 @@ def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=T
 
     documento_limpo = so_numeros(documento)
 
+    print("DEBUG validar_tudo - documento original:", documento)
+    print("DEBUG validar_tudo - documento_limpo:", documento_limpo)
+    print("DEBUG validar_tudo - ok_doc:", ok_doc)
+    print("DEBUG validar_tudo - verificar_duplicidade:", verificar_duplicidade)
+
     if verificar_duplicidade and ok_doc:
-        if cliente_ja_cadastrado(documento_limpo):
+        ja_cadastrado = cliente_ja_cadastrado(documento_limpo)
+        print("DEBUG validar_tudo - ja_cadastrado:", ja_cadastrado)
+
+        if ja_cadastrado:
             erros["cpf"] = "Este cliente já está cadastrado"
 
     return {
