@@ -83,7 +83,8 @@ h1 {
     gap: 10px;
 }
 
-input[type="text"] {
+input[type="text"],
+input[type="password"] {
     height: 42px;
     border-radius: 8px;
     border: 1px solid #ccc;
@@ -91,7 +92,8 @@ input[type="text"] {
     font-size: 14px;
 }
 
-input[type="text"]:focus {
+input[type="text"]:focus,
+input[type="password"]:focus {
     border-color: #2563eb;
     outline: none;
 }
@@ -298,8 +300,18 @@ input[type="text"]:focus {
             Código expira em <strong id="contador">05:00</strong>
         </div>
 
-        <button class="btn btn1" onclick="confirmar()">Confirmar</button>
+        <button id="btnValidarCodigo" class="btn btn1" onclick="validarCodigoCadastro()">Validar código</button>
         <button class="btn btn3" onclick="reenviarCodigo()">Reenviar código</button>
+
+        <div id="senhaArea" style="display:none; margin-top:12px;">
+            <input type="password" id="senha" placeholder="Crie uma senha numérica de 6 dígitos" maxlength="6" autocomplete="off">
+            <div id="erro_senha" class="linha-erro"></div>
+
+            <input type="password" id="senha2" placeholder="Confirme a senha" maxlength="6" autocomplete="off">
+            <div id="erro_senha2" class="linha-erro"></div>
+
+            <button class="btn btn1" onclick="finalizarCadastro()">Concluir cadastro</button>
+        </div>
 
     </div>
 
@@ -308,7 +320,7 @@ input[type="text"]:focus {
     </div>
 
     <div class="versao">
-        Versão 260326-0905
+        Versão 260326-01
     </div>
 
 </div>
@@ -332,12 +344,14 @@ function el(id) {
 }
 
 function limparErros() {
-    ["cpf", "nome", "celular", "email", "codigo"].forEach(id => {
-        el(id).classList.remove("input-erro");
+    ["cpf", "nome", "celular", "email", "codigo", "senha", "senha2"].forEach(id => {
+        const campo = el(id);
+        if (campo) campo.classList.remove("input-erro");
     });
 
-    ["erro_cpf", "erro_nome", "erro_celular", "erro_email", "erro_codigo"].forEach(id => {
-        el(id).innerText = "";
+    ["erro_cpf", "erro_nome", "erro_celular", "erro_email", "erro_codigo", "erro_senha", "erro_senha2"].forEach(id => {
+        const campo = el(id);
+        if (campo) campo.innerText = "";
     });
 }
 
@@ -360,7 +374,8 @@ function erroCampo(id, texto = "") {
 }
 
 function limparErroCampo(id) {
-    el(id).classList.remove("input-erro");
+    const campo = el(id);
+    if (campo) campo.classList.remove("input-erro");
     const alvo = el("erro_" + id);
     if (alvo) alvo.innerText = "";
 }
@@ -398,7 +413,10 @@ function iniciarContador() {
         if (segundosRestantes <= 0) {
             pararContador();
             el("codigoArea").style.display = "none";
+            el("senhaArea").style.display = "none";
             el("codigo").value = "";
+            el("senha").value = "";
+            el("senha2").value = "";
             el("erro_codigo").innerText = "";
             msg("Código expirado. Solicite um novo código.", "erro");
             mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
@@ -502,6 +520,7 @@ async function prevalidarSilencioso() {
 
         if (!data.habilita_enviar_codigo) {
             el("codigoArea").style.display = "none";
+            el("senhaArea").style.display = "none";
         }
 
         return data;
@@ -562,6 +581,10 @@ async function enviarCodigo() {
     }
 
     el("codigoArea").style.display = "block";
+    el("senhaArea").style.display = "none";
+    el("codigo").value = "";
+    el("senha").value = "";
+    el("senha2").value = "";
     el("erro_codigo").innerText = "";
     iniciarContador();
 
@@ -580,17 +603,24 @@ async function enviarCodigo() {
 
 async function reenviarCodigo() {
     el("codigo").value = "";
+    el("senha").value = "";
+    el("senha2").value = "";
+    el("senhaArea").style.display = "none";
     el("erro_codigo").innerText = "";
+    el("erro_senha").innerText = "";
+    el("erro_senha2").innerText = "";
     await enviarCodigo();
 }
 
-async function confirmar() {
+async function validarCodigoCadastro() {
     limparErroCampo("codigo");
+    limparErroCampo("senha");
+    limparErroCampo("senha2");
 
     let cpf = el("cpf").value;
     let codigo = el("codigo").value.trim();
 
-    let resp = await fetch("/confirmar", {
+    let resp = await fetch("/validar_codigo_cadastro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -611,7 +641,10 @@ async function confirmar() {
         if (data.msg && data.msg.toLowerCase().includes("expirado")) {
             mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
             el("codigoArea").style.display = "none";
+            el("senhaArea").style.display = "none";
             el("codigo").value = "";
+            el("senha").value = "";
+            el("senha2").value = "";
             pararContador();
             el("timerBox").style.display = "none";
         }
@@ -619,10 +652,50 @@ async function confirmar() {
         return;
     }
 
+    el("senhaArea").style.display = "block";
+    msg("Código validado. Agora crie sua senha numérica de 6 dígitos.", "ok");
+}
+
+async function finalizarCadastro() {
+    limparErroCampo("senha");
+    limparErroCampo("senha2");
+
+    let cpf = el("cpf").value;
+    let codigo = el("codigo").value.trim();
+    let senha = el("senha").value.trim();
+    let senha2 = el("senha2").value.trim();
+
+    let resp = await fetch("/confirmar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            cpf: cpf,
+            codigo: codigo,
+            senha: senha,
+            senha2: senha2
+        })
+    });
+
+    let data = await resp.json();
+
+    if (!data.ok) {
+        if (data.erros) {
+            if (data.erros.senha) erroCampo("senha", data.erros.senha);
+            if (data.erros.senha2) erroCampo("senha2", data.erros.senha2);
+        }
+
+        if (data.campo) {
+            erroCampo(data.campo, data.msg || "");
+        }
+
+        msg(data.msg, "erro");
+        return;
+    }
+
     pararContador();
     el("timerBox").style.display = "none";
-    msg("Cadastro realizado com sucesso. Sua senha inicial é o código confirmado.", "ok");
-    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso. Sua senha inicial é o código confirmado.");
+    msg("Cadastro realizado com sucesso.                  Sua senha já foi definida.", "ok");
+    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso.");
 }
 
 function limpar() {
@@ -631,7 +704,10 @@ function limpar() {
     el("celular").value = "";
     el("email").value = "";
     el("codigo").value = "";
+    el("senha").value = "";
+    el("senha2").value = "";
     el("codigoArea").style.display = "none";
+    el("senhaArea").style.display = "none";
     el("timerBox").style.display = "none";
     pararContador();
     limparErros();

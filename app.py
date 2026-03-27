@@ -4,10 +4,21 @@ import os
 import random
 import smtplib
 import requests
-import sqlite3
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+from supabase import create_client, Client
+
+# =========================
+# CARREGAR .ENV
+# =========================
+load_dotenv()
+
+print("SUPABASE_URL =", os.environ.get("SUPABASE_URL"))
+print("SUPABASE_KEY carregada =", "SIM" if os.environ.get("SUPABASE_KEY") else "NAO")
+print("EMAIL_REMETENTE =", os.environ.get("EMAIL_REMETENTE"))
+print("ZAPI_INSTANCE =", os.environ.get("ZAPI_INSTANCE"))
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "folha10_simples_chave_local_2026")
@@ -20,69 +31,33 @@ TEMPO_BLOQUEIO_MINUTOS = 3
 MAX_TENTATIVAS_LOGIN = 3
 
 # =========================
-# BANCO
+# SUPABASE
 # =========================
-def conectar():
-    conn = sqlite3.connect("clientes.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip()
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "").strip()
 
-def criar_tabela():
-    conn = conectar()
-    cur = conn.cursor()
+if not SUPABASE_URL:
+    raise Exception("SUPABASE_URL não foi encontrada. Verifique o arquivo .env")
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS clientes (
-        cpf TEXT PRIMARY KEY,
-        nome TEXT,
-        celular TEXT,
-        email TEXT,
-        senha TEXT,
-        tentativas_login INTEGER DEFAULT 0,
-        bloqueado_ate TEXT,
-        datahora TEXT
-    )
-    """)
+if not SUPABASE_KEY:
+    raise Exception("SUPABASE_KEY não foi encontrada. Verifique o arquivo .env")
 
-    conn.commit()
-    conn.close()
-
-def ajustar_tabela_clientes():
-    conn = conectar()
-    cur = conn.cursor()
-
-    cur.execute("PRAGMA table_info(clientes)")
-    colunas = [row["name"] for row in cur.fetchall()]
-
-    if "senha" not in colunas:
-        cur.execute("ALTER TABLE clientes ADD COLUMN senha TEXT")
-
-    if "tentativas_login" not in colunas:
-        cur.execute("ALTER TABLE clientes ADD COLUMN tentativas_login INTEGER DEFAULT 0")
-
-    if "bloqueado_ate" not in colunas:
-        cur.execute("ALTER TABLE clientes ADD COLUMN bloqueado_ate TEXT")
-
-    conn.commit()
-    conn.close()
-
-criar_tabela()
-ajustar_tabela_clientes()
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # =========================
 # CONFIG GERAL
 # =========================
 codigos_gerados = {}
 
-EMAIL_REMETENTE = os.environ.get("EMAIL_REMETENTE", "SEU_EMAIL@gmail.com")
-EMAIL_SENHA_APP = os.environ.get("EMAIL_SENHA_APP", "SUA_SENHA_APP")
+EMAIL_REMETENTE = os.environ.get("EMAIL_REMETENTE", "").strip()
+EMAIL_SENHA_APP = os.environ.get("EMAIL_SENHA_APP", "").strip()
 
-SMTP_SERVIDOR = os.environ.get("SMTP_SERVIDOR", "smtp.gmail.com")
+SMTP_SERVIDOR = os.environ.get("SMTP_SERVIDOR", "smtp.gmail.com").strip()
 SMTP_PORTA = int(os.environ.get("SMTP_PORTA", "587"))
 
-ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE", "3E0DA0C0399BB0821E57266509411D32")
-ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "32B4B3104968DD6C13F5D8F0")
-ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "Fb4455edcf75a45eaa7b58b1c7becb5a2S")
+ZAPI_INSTANCE = os.environ.get("ZAPI_INSTANCE", "").strip()
+ZAPI_TOKEN = os.environ.get("ZAPI_TOKEN", "").strip()
+ZAPI_CLIENT_TOKEN = os.environ.get("ZAPI_CLIENT_TOKEN", "").strip()
 
 ZAPI_URL = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
 
@@ -98,14 +73,6 @@ def normalizar_telefone(t):
         t = "55" + t
     return t
 
-def cliente_ja_cadastrado(documento):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("SELECT cpf FROM clientes WHERE cpf = ?", (documento,))
-    row = cur.fetchone()
-    conn.close()
-    return row is not None
-
 def codigo_expirado(datahora_geracao):
     return datetime.now() > datahora_geracao + timedelta(minutes=5)
 
@@ -117,16 +84,137 @@ def parse_datahora(texto):
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M:%S.%f",
         "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%dT%H:%M:%S.%f"
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%d %H:%M:%S%z"
     ]
 
     for fmt in formatos:
         try:
-            return datetime.strptime(texto, fmt)
+            return datetime.strptime(texto, fmt).replace(tzinfo=None)
         except:
             pass
 
-    return None
+    try:
+        return datetime.fromisoformat(texto.replace("Z", "+00:00")).replace(tzinfo=None)
+    except:
+        return None
+
+# =========================
+# SUPABASE - ACESSO DADOS
+# =========================
+def cliente_ja_cadastrado(cpf):
+    try:
+        r = (
+            supabase
+            .table("tab_cliente")
+            .select("cpf")
+            .eq("cpf", cpf)
+            .limit(1)
+            .execute()
+        )
+        return len(r.data or []) > 0
+    except Exception as e:
+        print("Erro em cliente_ja_cadastrado:", str(e))
+        return False
+
+def cliente_por_cpf(cpf):
+    try:
+        r = (
+            supabase
+            .table("tab_cliente")
+            .select("*")
+            .eq("cpf", cpf)
+            .limit(1)
+            .execute()
+        )
+        dados = r.data or []
+        if not dados:
+            return None
+        return dados[0]
+    except Exception as e:
+        print("Erro em cliente_por_cpf:", str(e))
+        return None
+
+def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
+    payload = {
+        "cpf": cpf,
+        "nome": nome,
+        "celular": celular,
+        "email": email,
+        "senha": senha,
+        "qtd_empresas": 1,
+        "qtd_funcionarios": 10,
+        "data_limite": datetime.now().strftime("%Y-%m"),
+        "tentativas_login": 0,
+        "bloqueado_ate": None
+    }
+
+    print("Gravando cliente no Supabase:", cpf, nome, email)
+
+    return (
+        supabase
+        .table("tab_cliente")
+        .upsert(payload)
+        .execute()
+    )
+
+def limpar_bloqueio_login(cpf):
+    try:
+        (
+            supabase
+            .table("tab_cliente")
+            .update({
+                "tentativas_login": 0,
+                "bloqueado_ate": None
+            })
+            .eq("cpf", cpf)
+            .execute()
+        )
+    except Exception as e:
+        print("Erro em limpar_bloqueio_login:", str(e))
+
+def atualizar_datahora_ultimo_login(cpf):
+    try:
+        (
+            supabase
+            .table("tab_cliente")
+            .update({
+                "datahora_ultimo_login": datetime.now().isoformat(),
+                "tentativas_login": 0,
+                "bloqueado_ate": None
+            })
+            .eq("cpf", cpf)
+            .execute()
+        )
+    except Exception as e:
+        print("Erro em atualizar_datahora_ultimo_login:", str(e))
+
+def registrar_tentativa_login_invalida(cpf):
+    row = cliente_por_cpf(cpf)
+    if row is None:
+        return
+
+    tentativas = row.get("tentativas_login") or 0
+    tentativas += 1
+
+    bloqueado_ate = None
+    if tentativas >= MAX_TENTATIVAS_LOGIN:
+        bloqueado_ate = (datetime.now() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).isoformat()
+
+    try:
+        (
+            supabase
+            .table("tab_cliente")
+            .update({
+                "tentativas_login": tentativas,
+                "bloqueado_ate": bloqueado_ate
+            })
+            .eq("cpf", cpf)
+            .execute()
+        )
+    except Exception as e:
+        print("Erro em registrar_tentativa_login_invalida:", str(e))
 
 # =========================
 # VALIDAÇÕES
@@ -162,7 +250,7 @@ def validar_cpf(cpf):
 
     return True
 
-def validar_cpf_cnpj(documento):
+def validar_documento(documento):
     documento = so_numeros(documento)
 
     if documento == "":
@@ -246,10 +334,25 @@ def validar_senha_6_digitos(senha):
         return False, "Senha deve ter exatamente 6 dígitos"
     return True, ""
 
+def validar_senha_confirmacao(senha, senha2):
+    erros = {}
+
+    ok_senha, msg_senha = validar_senha_6_digitos(senha)
+    if not ok_senha:
+        erros["senha"] = msg_senha
+
+    if (senha or "").strip() != (senha2 or "").strip():
+        erros["senha2"] = "Confirmação da senha não confere"
+
+    return {
+        "ok": len(erros) == 0,
+        "erros": erros
+    }
+
 def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=True):
     erros = {}
 
-    ok_doc, msg_doc, tipo_doc = validar_cpf_cnpj(documento)
+    ok_doc, msg_doc, tipo_doc = validar_documento(documento)
     if not ok_doc:
         erros["cpf"] = msg_doc
 
@@ -287,6 +390,9 @@ def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=T
 # =========================
 def enviar_email(destinatario, codigo, nome):
     try:
+        if not EMAIL_REMETENTE or not EMAIL_SENHA_APP:
+            return False, "EMAIL_REMETENTE ou EMAIL_SENHA_APP não configurados"
+
         msg = MIMEMultipart()
         msg["From"] = EMAIL_REMETENTE
         msg["To"] = destinatario
@@ -317,6 +423,7 @@ Equipe do Folha10 Simples
         return True, ""
 
     except Exception as e:
+        print("Erro ao enviar e-mail:", str(e))
         return False, str(e)
 
 # =========================
@@ -324,6 +431,9 @@ Equipe do Folha10 Simples
 # =========================
 def enviar_whatsapp(destinatario, codigo, nome):
     try:
+        if not ZAPI_INSTANCE or not ZAPI_TOKEN or not ZAPI_CLIENT_TOKEN:
+            return False, "Z-API não configurada"
+
         telefone = normalizar_telefone(destinatario)
 
         mensagem = (
@@ -348,51 +458,30 @@ def enviar_whatsapp(destinatario, codigo, nome):
         r = requests.post(ZAPI_URL, headers=headers, json=payload, timeout=30)
 
         if r.status_code not in (200, 201):
+            print("Erro Z-API:", r.text)
             return False, r.text
 
         return True, ""
 
     except Exception as e:
+        print("Erro ao enviar WhatsApp:", str(e))
         return False, str(e)
 
 # =========================
 # LOGIN
 # =========================
-def cliente_por_cpf(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT cpf, nome, celular, email, senha, tentativas_login, bloqueado_ate, datahora
-        FROM clientes
-        WHERE cpf = ?
-    """, (cpf,))
-    row = cur.fetchone()
-    conn.close()
-    return row
-
-def limpar_bloqueio_login(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-    cur.execute("""
-        UPDATE clientes
-        SET tentativas_login = 0, bloqueado_ate = NULL
-        WHERE cpf = ?
-    """, (cpf,))
-    conn.commit()
-    conn.close()
-
 def segundos_restantes_bloqueio(row_cliente):
     if row_cliente is None:
         return 0
 
-    bloqueado_ate = parse_datahora(row_cliente["bloqueado_ate"])
+    bloqueado_ate = parse_datahora(row_cliente.get("bloqueado_ate"))
     if bloqueado_ate is None:
         return 0
 
     delta = int((bloqueado_ate - datetime.now()).total_seconds())
 
     if delta <= 0:
-        limpar_bloqueio_login(row_cliente["cpf"])
+        limpar_bloqueio_login(row_cliente.get("cpf"))
         return 0
 
     return delta
@@ -400,37 +489,6 @@ def segundos_restantes_bloqueio(row_cliente):
 def cliente_bloqueado(row_cliente):
     segundos = segundos_restantes_bloqueio(row_cliente)
     return segundos > 0, segundos
-
-def registrar_tentativa_login_invalida(cpf):
-    conn = conectar()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT tentativas_login
-        FROM clientes
-        WHERE cpf = ?
-    """, (cpf,))
-    row = cur.fetchone()
-
-    if row is None:
-        conn.close()
-        return
-
-    tentativas = row["tentativas_login"] or 0
-    tentativas += 1
-
-    bloqueado_ate = None
-    if tentativas >= MAX_TENTATIVAS_LOGIN:
-        bloqueado_ate = (datetime.now() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).strftime("%Y-%m-%d %H:%M:%S")
-
-    cur.execute("""
-        UPDATE clientes
-        SET tentativas_login = ?, bloqueado_ate = ?
-        WHERE cpf = ?
-    """, (tentativas, bloqueado_ate, cpf))
-
-    conn.commit()
-    conn.close()
 
 def efetuar_login(cpf, nome, manter):
     session.clear()
@@ -448,13 +506,13 @@ def cadastro():
     return render_template("Cadastro_Cliente.html")
 
 @app.route("/login")
-def login():
+def tela_login():
     return render_template("F10_Login.html")
 
 @app.route("/painel")
 def painel():
     if not session.get("logado"):
-        return redirect(url_for("login"))
+        return redirect(url_for("tela_login"))
 
     nome = session.get("nome", "")
 
@@ -499,7 +557,7 @@ def painel():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    return redirect(url_for("tela_login"))
 
 # =========================
 # ROTAS CADASTRO
@@ -535,7 +593,7 @@ def validar():
     data = request.get_json() or {}
 
     documento = data.get("cpf")
-    nome = (data.get("nome") or "").strip().lower()
+    nome = (data.get("nome") or "").strip()
     celular = (data.get("celular") or "").strip()
     email = (data.get("email") or "").strip()
     canal = (data.get("canal") or "").strip().lower()
@@ -568,6 +626,8 @@ def validar():
         "canal": canal
     }
 
+    print("Código gerado para", documento_limpo, "=", codigo)
+
     if canal == "email":
         ok, erro = enviar_email(email, codigo, nome)
         if not ok:
@@ -590,8 +650,8 @@ def validar():
 
     return jsonify({"ok": False, "msg": "Canal inválido"})
 
-@app.route("/confirmar", methods=["POST"])
-def confirmar():
+@app.route("/validar_codigo_cadastro", methods=["POST"])
+def validar_codigo_cadastro():
     data = request.get_json() or {}
 
     documento = so_numeros(data.get("cpf"))
@@ -619,32 +679,70 @@ def confirmar():
     if registro["codigo"] != codigo:
         return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
 
-    senha_inicial = codigo
+    return jsonify({
+        "ok": True,
+        "msg": "Código validado com sucesso"
+    })
 
-    conn = conectar()
-    cur = conn.cursor()
+@app.route("/confirmar", methods=["POST"])
+def confirmar():
+    data = request.get_json() or {}
 
-    cur.execute("""
-    INSERT OR REPLACE INTO clientes
-    (cpf, nome, celular, email, senha, tentativas_login, bloqueado_ate, datahora)
-    VALUES (?, ?, ?, ?, ?, 0, NULL, datetime('now'))
-    """, (
-        documento,
-        registro["nome"],
-        registro["celular"],
-        registro["email"],
-        senha_inicial
-    ))
+    documento = so_numeros(data.get("cpf"))
+    codigo = (data.get("codigo") or "").strip()
+    senha = (data.get("senha") or "").strip()
+    senha2 = (data.get("senha2") or "").strip()
 
-    conn.commit()
-    conn.close()
+    if documento == "":
+        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF não informado"})
+
+    if codigo == "":
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não informado"})
+
+    registro = codigos_gerados.get(documento)
+
+    if not registro:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não encontrado"})
+
+    if codigo_expirado(registro["gerado_em"]):
+        del codigos_gerados[documento]
+        return jsonify({
+            "ok": False,
+            "campo": "codigo",
+            "msg": "Código expirado. Solicite um novo código"
+        })
+
+    if registro["codigo"] != codigo:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
+
+    resultado_senha = validar_senha_confirmacao(senha, senha2)
+    if not resultado_senha["ok"]:
+        return jsonify({
+            "ok": False,
+            "msg": "Senha inválida",
+            "erros": resultado_senha["erros"]
+        })
+
+    try:
+        inserir_ou_atualizar_cliente(
+            documento,
+            registro["nome"],
+            registro["celular"],
+            registro["email"],
+            senha
+        )
+    except Exception as e:
+        print("Erro ao gravar cliente:", str(e))
+        return jsonify({
+            "ok": False,
+            "msg": f"Erro ao gravar no Supabase: {str(e)}"
+        })
 
     del codigos_gerados[documento]
 
     return jsonify({
         "ok": True,
         "msg": "Cadastro realizado com sucesso",
-        "senha_inicial": senha_inicial,
         "redirect_login": "/login"
     })
 
@@ -680,7 +778,7 @@ def fazer_login():
             "msg": "Login bloqueado temporariamente."
         })
 
-    senha_banco = (row["senha"] or "").strip()
+    senha_banco = (row.get("senha") or "").strip()
 
     if senha_banco != senha:
         registrar_tentativa_login_invalida(cpf)
@@ -698,8 +796,8 @@ def fazer_login():
 
         return jsonify({"ok": False, "msg": "Dados inválidos"})
 
-    limpar_bloqueio_login(cpf)
-    efetuar_login(cpf, row["nome"], manter)
+    atualizar_datahora_ultimo_login(cpf)
+    efetuar_login(cpf, row.get("nome"), manter)
 
     return jsonify({
         "ok": True,
@@ -720,13 +818,18 @@ def dados_cliente(cpf):
 
     return jsonify({
         "ok": True,
-        "cpf": row["cpf"],
-        "nome": row["nome"],
-        "celular": row["celular"],
-        "email": row["email"],
-        "datahora": row["datahora"]
+        "cpf": row.get("cpf"),
+        "nome": row.get("nome"),
+        "celular": row.get("celular"),
+        "email": row.get("email"),
+        "qtd_empresas": row.get("qtd_empresas"),
+        "qtd_funcionarios": row.get("qtd_funcionarios"),
+        "data_limite": row.get("data_limite"),
+        "datahora_cadastro": row.get("datahora_cadastro"),
+        "datahora_ultimo_login": row.get("datahora_ultimo_login")
     })
 
 if __name__ == "__main__":
     porta = int(os.environ.get("PORT", 10000))
+    print("Iniciando Flask na porta", porta)
     app.run(host="0.0.0.0", port=porta, debug=True)

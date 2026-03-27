@@ -162,53 +162,19 @@ def validar_cpf(cpf):
 
     return True
 
-def validar_cnpj(cnpj):
-    cnpj = so_numeros(cnpj)
-
-    if len(cnpj) != 14:
-        return False
-
-    if cnpj == cnpj[0] * 14:
-        return False
-
-    pesos1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-    pesos2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
-
-    soma = 0
-    for i in range(12):
-        soma += int(cnpj[i]) * pesos1[i]
-    resto = soma % 11
-    dig1 = 0 if resto < 2 else 11 - resto
-    if dig1 != int(cnpj[12]):
-        return False
-
-    soma = 0
-    for i in range(13):
-        soma += int(cnpj[i]) * pesos2[i]
-    resto = soma % 11
-    dig2 = 0 if resto < 2 else 11 - resto
-    if dig2 != int(cnpj[13]):
-        return False
-
-    return True
-
 def validar_cpf_cnpj(documento):
     documento = so_numeros(documento)
 
     if documento == "":
-        return False, "CPF / CNPJ não informado", ""
+        return False, "CPF não informado", ""
 
-    if len(documento) == 11:
-        if not validar_cpf(documento):
-            return False, "CPF inválido", ""
-        return True, "", "CPF"
+    if len(documento) != 11:
+        return False, "CPF deve ter 11 dígitos", ""
 
-    if len(documento) == 14:
-        if not validar_cnpj(documento):
-            return False, "CNPJ inválido", ""
-        return True, "", "CNPJ"
+    if not validar_cpf(documento):
+        return False, "CPF inválido", ""
 
-    return False, "CPF deve ter 11 dígitos ou CNPJ 14 dígitos", ""
+    return True, "", "CPF"
 
 def validar_nome(nome):
     nome_original = (nome or "").strip()
@@ -279,6 +245,21 @@ def validar_senha_6_digitos(senha):
     if not re.fullmatch(r"\d{6}", senha):
         return False, "Senha deve ter exatamente 6 dígitos"
     return True, ""
+
+def validar_senha_confirmacao(senha, senha2):
+    erros = {}
+
+    ok_senha, msg_senha = validar_senha_6_digitos(senha)
+    if not ok_senha:
+        erros["senha"] = msg_senha
+
+    if (senha or "").strip() != (senha2 or "").strip():
+        erros["senha2"] = "Confirmação da senha não confere"
+
+    return {
+        "ok": len(erros) == 0,
+        "erros": erros
+    }
 
 def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=True):
     erros = {}
@@ -624,15 +605,15 @@ def validar():
 
     return jsonify({"ok": False, "msg": "Canal inválido"})
 
-@app.route("/confirmar", methods=["POST"])
-def confirmar():
+@app.route("/validar_codigo_cadastro", methods=["POST"])
+def validar_codigo_cadastro():
     data = request.get_json() or {}
 
     documento = so_numeros(data.get("cpf"))
     codigo = (data.get("codigo") or "").strip()
 
     if documento == "":
-        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF / CNPJ não informado"})
+        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF não informado"})
 
     if codigo == "":
         return jsonify({"ok": False, "campo": "codigo", "msg": "Código não informado"})
@@ -653,7 +634,49 @@ def confirmar():
     if registro["codigo"] != codigo:
         return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
 
-    senha_inicial = codigo
+    return jsonify({
+        "ok": True,
+        "msg": "Código validado com sucesso"
+    })
+
+@app.route("/confirmar", methods=["POST"])
+def confirmar():
+    data = request.get_json() or {}
+
+    documento = so_numeros(data.get("cpf"))
+    codigo = (data.get("codigo") or "").strip()
+    senha = (data.get("senha") or "").strip()
+    senha2 = (data.get("senha2") or "").strip()
+
+    if documento == "":
+        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF não informado"})
+
+    if codigo == "":
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não informado"})
+
+    registro = codigos_gerados.get(documento)
+
+    if not registro:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não encontrado"})
+
+    if codigo_expirado(registro["gerado_em"]):
+        del codigos_gerados[documento]
+        return jsonify({
+            "ok": False,
+            "campo": "codigo",
+            "msg": "Código expirado. Solicite um novo código"
+        })
+
+    if registro["codigo"] != codigo:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
+
+    resultado_senha = validar_senha_confirmacao(senha, senha2)
+    if not resultado_senha["ok"]:
+        return jsonify({
+            "ok": False,
+            "msg": "Senha inválida",
+            "erros": resultado_senha["erros"]
+        })
 
     conn = conectar()
     cur = conn.cursor()
@@ -667,7 +690,7 @@ def confirmar():
         registro["nome"],
         registro["celular"],
         registro["email"],
-        senha_inicial
+        senha
     ))
 
     conn.commit()
@@ -678,7 +701,6 @@ def confirmar():
     return jsonify({
         "ok": True,
         "msg": "Cadastro realizado com sucesso",
-        "senha_inicial": senha_inicial,
         "redirect_login": "/login"
     })
 
