@@ -24,11 +24,9 @@ print("ZAPI_INSTANCE =", os.environ.get("ZAPI_INSTANCE"))
 # LER VERSÃO
 # =========================
 def ler_versao():
-    try:
-        with open("versao.txt", "r", encoding="utf-8") as f:
-            return f.read().strip()
-    except:
-        return "000000-0000"
+    return os.environ.get("APP_VERSAO", "000000-0000")
+
+print("VERSAO =", ler_versao())
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "folha10_simples_chave_local_2026")
