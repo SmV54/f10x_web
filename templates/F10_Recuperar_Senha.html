@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples - Recuperar Senha</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+}
+
+.card {
+    width: 420px;
+    background: white;
+    border-radius: 18px;
+    padding: 30px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
+
+.logo {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 10px;
+}
+
+h1 {
+    text-align: center;
+    color: #1e3a8a;
+    margin: 0;
+    font-size: 28px;
+}
+
+.sub {
+    text-align: center;
+    font-size: 13px;
+    margin-top: 8px;
+    margin-bottom: 20px;
+    color: #444;
+    line-height: 1.4;
+}
+
+.form {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+input[type="text"],
+input[type="password"] {
+    height: 42px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    font-size: 14px;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus {
+    border-color: #2563eb;
+    outline: none;
+}
+
+input[readonly] {
+    background: #f3f4f6;
+}
+
+.input-erro {
+    border-color: red !important;
+}
+
+.linha-erro {
+    min-height: 14px;
+    font-size: 11px;
+    color: red;
+    margin-top: -6px;
+    margin-bottom: 2px;
+    padding-left: 2px;
+}
+
+.opcao-envio {
+    background: #f1f5ff;
+    border: 1px solid #dbeafe;
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+}
+
+.opcao-envio label {
+    font-size: 13px;
+    color: #1e3a8a;
+    font-weight: bold;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.opcoes {
+    display: flex;
+    gap: 20px;
+}
+
+.opcoes label {
+    font-size: 14px;
+    color: #333;
+    font-weight: normal;
+}
+
+.btn {
+    height: 44px;
+    border-radius: 10px;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.btn1 {
+    background: #2563eb;
+    color: white;
+}
+
+.btn1:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.btn1:disabled {
+    background: #93c5fd;
+    color: #eff6ff;
+    cursor: not-allowed;
+}
+
+.btn2 {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.btn2:hover {
+    background: #d1d5db;
+}
+
+.btn3 {
+    background: #dbeafe;
+    color: #1e3a8a;
+}
+
+.btn3:hover {
+    background: #bfdbfe;
+}
+
+.msg {
+    text-align: center;
+    margin-bottom: 10px;
+    font-weight: bold;
+    min-height: 22px;
+    line-height: 1.4;
+}
+
+.msg-erro { color: red; }
+.msg-ok { color: green; }
+
+.area-canal,
+.area-codigo,
+.area-final {
+    display: none;
+    margin-top: 16px;
+}
+
+.timer-box {
+    margin-top: 8px;
+    margin-bottom: 10px;
+    text-align: center;
+    font-size: 12px;
+    color: #555;
+}
+
+.timer-box strong {
+    color: #1e3a8a;
+}
+
+.rodape {
+    font-size: 11px;
+    text-align: center;
+    margin-top: 15px;
+    color: #555;
+}
+
+.versao {
+    font-size: 10px;
+    text-align: right;
+    margin-top: 10px;
+    color: #777;
+}
+
+.modal-fundo {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+}
+
+.modal-caixa {
+    width: 360px;
+    max-width: 92%;
+    background: white;
+    border-radius: 16px;
+    padding: 22px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+    text-align: center;
+}
+
+.modal-titulo {
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 10px;
+}
+
+.modal-texto {
+    font-size: 14px;
+    color: #333;
+    line-height: 1.5;
+    margin-bottom: 18px;
+}
+
+@media (max-width: 480px) {
+    .card {
+        width: 95%;
+        padding: 22px;
+    }
+
+    h1 {
+        font-size: 24px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+
+    <div class="logo">Folha10 Simples</div>
+
+    <h1>Recuperar Senha</h1>
+
+    <div class="sub">
+        Informe seu CPF. Se ele já estiver cadastrado, você poderá receber um código de recuperação e, após validá-lo, atualizar seus dados e definir uma nova senha.
+    </div>
+
+    <div id="msg" class="msg"></div>
+
+    <div class="form">
+
+        <input type="text" id="cpf" placeholder="CPF" autocomplete="off" maxlength="14">
+        <div id="erro_cpf" class="linha-erro"></div>
+
+        <button id="btnBuscarCPF" class="btn btn1" onclick="buscarCPF()">
+            Buscar CPF
+        </button>
+
+        <button class="btn btn2" onclick="limparTudo()">
+            Limpar
+        </button>
+    </div>
+
+    <div id="canalArea" class="area-canal">
+
+        <div class="opcao-envio">
+            <label>Receber código por:</label>
+
+            <div class="opcoes">
+                <label>
+                    <input type="radio" name="canal" value="email" checked>
+                    E-mail
+                </label>
+
+                <label>
+                    <input type="radio" name="canal" value="whatsapp">
+                    WhatsApp
+                </label>
+            </div>
+        </div>
+
+        <button class="btn btn1" onclick="enviarCodigoRecuperacao()">
+            Enviar código de recuperação
+        </button>
+    </div>
+
+    <div id="codigoArea" class="area-codigo">
+
+        <input type="text" id="codigo" placeholder="Digite o código recebido" maxlength="6" autocomplete="off">
+        <div id="erro_codigo" class="linha-erro"></div>
+
+        <div id="timerBox" class="timer-box" style="display:none;">
+            Código expira em <strong id="contador">05:00</strong>
+        </div>
+
+        <button class="btn btn1" onclick="validarCodigoRecuperacao()">
+            Validar código
+        </button>
+
+        <button class="btn btn3" onclick="reenviarCodigoRecuperacao()">
+            Reenviar código
+        </button>
+    </div>
+
+    <div id="finalArea" class="area-final">
+
+        <input type="text" id="nome" placeholder="Nome completo" autocomplete="off">
+        <div id="erro_nome" class="linha-erro"></div>
+
+        <input type="text" id="celular" placeholder="Celular com DDD" autocomplete="off">
+        <div id="erro_celular" class="linha-erro"></div>
+
+        <input type="text" id="email" placeholder="E-mail" autocomplete="off">
+        <div id="erro_email" class="linha-erro"></div>
+
+        <input type="password" id="senha" placeholder="Nova senha numérica de 6 dígitos" maxlength="6" autocomplete="off">
+        <div id="erro_senha" class="linha-erro"></div>
+
+        <input type="password" id="senha2" placeholder="Confirme a nova senha" maxlength="6" autocomplete="off">
+        <div id="erro_senha2" class="linha-erro"></div>
+
+        <button class="btn btn1" onclick="concluirRecuperacao()">
+            Concluir recuperação
+        </button>
+    </div>
+
+    <div class="rodape">
+        Seus dados estão protegidos. Não compartilhamos suas informações.
+    </div>
+
+    <div class="versao">
+        Versão {{ versao }}
+    </div>
+
+</div>
+
+<div id="modalFundo" class="modal-fundo">
+    <div class="modal-caixa">
+        <div class="modal-titulo" id="modalTitulo">Aviso</div>
+        <div class="modal-texto" id="modalTexto">Texto</div>
+        <button class="btn btn1" onclick="fecharModal()">OK</button>
+    </div>
+</div>
+
+<script>
+let timerInterval = null;
+let segundosRestantes = 0;
+let dadosCliente = null;
+
+function el(id) {
+    return document.getElementById(id);
+}
+
+function soNumeros(valor) {
+    return (valor || "").replace(/\D/g, "");
+}
+
+function canalSelecionado() {
+    return document.querySelector('input[name="canal"]:checked').value;
+}
+
+function msg(texto, tipo) {
+    let m = el("msg");
+    m.innerHTML = texto || "";
+    m.className = "msg";
+
+    if (tipo === "ok") m.classList.add("msg-ok");
+    if (tipo === "erro") m.classList.add("msg-erro");
+}
+
+function erroCampo(id, texto = "") {
+    el(id).classList.add("input-erro");
+    const alvo = el("erro_" + id);
+    if (alvo) alvo.innerText = texto;
+}
+
+function limparErroCampo(id) {
+    const campo = el(id);
+    if (campo) campo.classList.remove("input-erro");
+    const alvo = el("erro_" + id);
+    if (alvo) alvo.innerText = "";
+}
+
+function limparErros() {
+    ["cpf", "codigo", "nome", "celular", "email", "senha", "senha2"].forEach(id => {
+        const campo = el(id);
+        if (campo) campo.classList.remove("input-erro");
+    });
+
+    ["erro_cpf", "erro_codigo", "erro_nome", "erro_celular", "erro_email", "erro_senha", "erro_senha2"].forEach(id => {
+        const campo = el(id);
+        if (campo) campo.innerText = "";
+    });
+}
+
+function formatarCPF() {
+    let v = soNumeros(el("cpf").value).slice(0, 11);
+
+    v = v
+        .replace(/^(\d{3})(\d)/, "$1.$2")
+        .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+        .replace(/\.(\d{3})(\d)/, ".$1-$2");
+
+    el("cpf").value = v;
+}
+
+function formatarCelular() {
+    let v = soNumeros(el("celular").value);
+
+    if (v.startsWith("55") && v.length > 11) {
+        v = v.substring(2);
+    }
+
+    if (v.length > 11) v = v.substring(0, 11);
+
+    if (v.length <= 2) {
+        el("celular").value = v;
+        return;
+    }
+
+    if (v.length <= 7) {
+        el("celular").value = "(" + v.substring(0, 2) + ") " + v.substring(2);
+        return;
+    }
+
+    el("celular").value = "(" + v.substring(0, 2) + ") " + v.substring(2, 7) + "-" + v.substring(7);
+}
+
+function formatarTempo(segundos) {
+    const min = String(Math.floor(segundos / 60)).padStart(2, "0");
+    const seg = String(segundos % 60).padStart(2, "0");
+    return min + ":" + seg;
+}
+
+function iniciarContador() {
+    pararContador();
+    segundosRestantes = 300;
+    el("timerBox").style.display = "block";
+    el("contador").innerText = formatarTempo(segundosRestantes);
+
+    timerInterval = setInterval(() => {
+        segundosRestantes--;
+        el("contador").innerText = formatarTempo(segundosRestantes);
+
+        if (segundosRestantes <= 0) {
+            pararContador();
+            el("codigoArea").style.display = "none";
+            el("finalArea").style.display = "none";
+            el("codigo").value = "";
+            el("senha").value = "";
+            el("senha2").value = "";
+            msg("Código expirado. Solicite um novo código.", "erro");
+            mostrarModal("Código expirado", "O código expirou após 5 minutos. Solicite um novo código.");
+        }
+    }, 1000);
+}
+
+function pararContador() {
+    if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+    }
+
+    el("timerBox").style.display = "none";
+}
+
+function mostrarModal(titulo, texto) {
+    el("modalTitulo").innerText = titulo;
+    el("modalTexto").innerText = texto;
+    el("modalFundo").style.display = "flex";
+}
+
+function fecharModal() {
+    el("modalFundo").style.display = "none";
+}
+
+async function buscarCPF() {
+    limparErros();
+    msg("", "");
+
+    const cpf = el("cpf").value;
+
+    const resp = await fetch("/buscar_cliente_recuperacao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cpf: cpf })
+    });
+
+    const data = await resp.json();
+
+    if (!data.ok) {
+        erroCampo("cpf", data.msg || "CPF inválido");
+        return;
+    }
+
+    dadosCliente = data;
+
+    el("canalArea").style.display = "block";
+    msg("Escolha como receber: email ou Whatsapp?", "ok");
+}
+
+async function enviarCodigoRecuperacao() {
+    limparErros();
+    msg("", "");
+
+    if (!dadosCliente) {
+        msg("Localize primeiro o CPF.", "erro");
+        return;
+    }
+
+    const resp = await fetch("/enviar_codigo_recuperacao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            cpf: el("cpf").value,
+            nome: dadosCliente.nome,
+            celular: dadosCliente.celular,
+            email: dadosCliente.email,
+            canal: canalSelecionado()
+        })
+    });
+
+    const data = await resp.json();
+
+    if (!data.ok) {
+        if (data.erros) {
+            if (data.erros.cpf) erroCampo("cpf", data.erros.cpf);
+        }
+        msg(data.msg || "Erro ao enviar código.", "erro");
+        return;
+    }
+
+    el("codigoArea").style.display = "block";
+    iniciarContador();
+    msg(data.msg || "Código enviado com sucesso.", "ok");
+}
+
+async function validarCodigoRecuperacao() {
+    limparErroCampo("codigo");
+    msg("", "");
+
+    const resp = await fetch("/validar_codigo_recuperacao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            cpf: el("cpf").value,
+            codigo: el("codigo").value
+        })
+    });
+
+    const data = await resp.json();
+
+    if (!data.ok) {
+        erroCampo("codigo", data.msg || "Código inválido");
+        return;
+    }
+
+    // só agora libera os dados
+    el("nome").value = dadosCliente.nome || "";
+    el("celular").value = dadosCliente.celular || "";
+    el("email").value = dadosCliente.email || "";
+
+    el("finalArea").style.display = "block";
+    msg("Código validado. Agora você pode atualizar seus dados e definir a nova senha.", "ok");
+}
+
+async function reenviarCodigoRecuperacao() {
+    el("codigo").value = "";
+    el("senha").value = "";
+    el("senha2").value = "";
+    el("finalArea").style.display = "none";
+    await enviarCodigoRecuperacao();
+}
+
+async function concluirRecuperacao() {
+    limparErros();
+    msg("", "");
+
+    const resp = await fetch("/confirmar_recuperacao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            cpf: el("cpf").value,
+            codigo: el("codigo").value,
+            nome: el("nome").value,
+            celular: el("celular").value,
+            email: el("email").value,
+            senha: el("senha").value,
+            senha2: el("senha2").value,
+            canal: canalSelecionado()
+        })
+    });
+
+    const data = await resp.json();
+
+    if (!data.ok) {
+        if (data.campo) {
+            erroCampo(data.campo, data.msg || "");
+        }
+
+        if (data.erros) {
+            if (data.erros.cpf) erroCampo("cpf", data.erros.cpf);
+            if (data.erros.nome) erroCampo("nome", data.erros.nome);
+            if (data.erros.celular) erroCampo("celular", data.erros.celular);
+            if (data.erros.email) erroCampo("email", data.erros.email);
+            if (data.erros.senha) erroCampo("senha", data.erros.senha);
+            if (data.erros.senha2) erroCampo("senha2", data.erros.senha2);
+        }
+
+        msg(data.msg || "Erro ao concluir recuperação.", "erro");
+        return;
+    }
+
+    pararContador();
+    msg("Senha redefinida com sucesso.", "ok");
+    mostrarModal("Recuperação concluída", "Senha redefinida com sucesso.");
+
+    if (data.redirect_login) {
+        setTimeout(() => {
+            window.location.href = data.redirect_login;
+        }, 1000);
+    }
+}
+
+function limparTudo() {
+    el("cpf").value = "";
+    el("codigo").value = "";
+    el("nome").value = "";
+    el("celular").value = "";
+    el("email").value = "";
+    el("senha").value = "";
+    el("senha2").value = "";
+
+    el("canalArea").style.display = "none";
+    el("codigoArea").style.display = "none";
+    el("finalArea").style.display = "none";
+
+    limparErros();
+    pararContador();
+    msg("", "");
+
+    dadosCliente = null;
+}
+
+el("cpf").addEventListener("input", formatarCPF);
+el("celular").addEventListener("input", formatarCelular);
+</script>
+
+</body>
+</html>

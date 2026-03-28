@@ -320,7 +320,7 @@ input[type="password"]:focus {
     </div>
 
     <div class="versao">
-        Versão 260326-01
+        Versão {{ versao }}
     </div>
 
 </div>
@@ -484,7 +484,7 @@ function normalizarNome() {
 function dadosFormulario() {
     return {
         cpf: el("cpf").value,
-        nome: (el("nome").value || "").trim().toLowerCase(),
+        nome: (el("nome").value || "").trim(),
         celular: el("celular").value,
         email: (el("email").value || "").trim(),
         canal: canalSelecionado()
@@ -556,7 +556,6 @@ async function enviarCodigo() {
     }
 
     let dados = dadosFormulario();
-    el("nome").value = dados.nome;
 
     let resp = await fetch("/validar", {
         method: "POST",
@@ -694,8 +693,8 @@ async function finalizarCadastro() {
 
     pararContador();
     el("timerBox").style.display = "none";
-    msg("Cadastro realizado com sucesso.                  Sua senha já foi definida.", "ok");
-    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso.");
+    msg("Cadastro realizado com sucesso. Senha OK", "ok");
+    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso. Sua senha já foi definida.");
 }
 
 function limpar() {

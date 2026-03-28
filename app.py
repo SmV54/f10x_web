@@ -20,6 +20,16 @@ print("SUPABASE_KEY carregada =", "SIM" if os.environ.get("SUPABASE_KEY") else "
 print("EMAIL_REMETENTE =", os.environ.get("EMAIL_REMETENTE"))
 print("ZAPI_INSTANCE =", os.environ.get("ZAPI_INSTANCE"))
 
+# =========================
+# LER VERSÃO
+# =========================
+def ler_versao():
+    try:
+        with open("versao.txt", "r", encoding="utf-8") as f:
+            return f.read().strip()
+    except:
+        return "000000-0000"
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "folha10_simples_chave_local_2026")
 app.permanent_session_lifetime = timedelta(days=30)
@@ -48,6 +58,7 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 # CONFIG GERAL
 # =========================
 codigos_gerados = {}
+codigos_recuperacao = {}
 
 EMAIL_REMETENTE = os.environ.get("EMAIL_REMETENTE", "").strip()
 EMAIL_SENHA_APP = os.environ.get("EMAIL_SENHA_APP", "").strip()
@@ -112,23 +123,12 @@ def cliente_ja_cadastrado(cpf):
         print("SUPABASE_URL usada:", SUPABASE_URL)
         print("CPF consultado:", cpf)
 
-        r_todos = (
-            supabase
-            .table("tab_cliente")
-            .select("cpf")
-            .limit(50)
-            .execute()
-        )
-
-        lista_cpfs = [str(x.get("cpf", "")) for x in (r_todos.data or [])]
-        print("DEBUG TODOS CPFs (até 50):", lista_cpfs)
-
         r = (
             supabase
             .table("tab_cliente")
             .select("cpf")
             .eq("cpf", cpf)
-            .limit(5)
+            .limit(1)
             .execute()
         )
 
@@ -186,6 +186,28 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
         supabase
         .table("tab_cliente")
         .upsert(payload)
+        .execute()
+    )
+
+def atualizar_dados_e_senha_cliente(cpf, nome, celular, email, senha):
+    cpf = so_numeros(cpf)
+    celular = so_numeros(celular)
+
+    payload = {
+        "nome": nome,
+        "celular": celular,
+        "email": email,
+        "senha": senha
+    }
+
+    print("Atualizando cliente no Supabase:", cpf)
+    print("Payload atualização:", payload)
+
+    return (
+        supabase
+        .table("tab_cliente")
+        .update(payload)
+        .eq("cpf", cpf)
         .execute()
     )
 
@@ -429,6 +451,47 @@ def validar_tudo(documento, nome, celular, email, canal, verificar_duplicidade=T
         "documento_limpo": documento_limpo
     }
 
+def validar_tudo_recuperacao(documento, nome, celular, email, canal):
+    erros = {}
+
+    ok_doc, msg_doc, tipo_doc = validar_documento(documento)
+    if not ok_doc:
+        erros["cpf"] = msg_doc
+        return {
+            "ok": False,
+            "erros": erros,
+            "tipo_documento": "",
+            "documento_limpo": ""
+        }
+
+    documento_limpo = so_numeros(documento)
+
+    if not cliente_ja_cadastrado(documento_limpo):
+        erros["cpf"] = "CPF não cadastrado"
+
+    ok_nome, msg_nome = validar_nome(nome)
+    if not ok_nome:
+        erros["nome"] = msg_nome
+
+    ok_cel, msg_cel = validar_celular(celular)
+    if not ok_cel:
+        erros["celular"] = msg_cel
+
+    ok_email, msg_email = validar_email(email)
+    if not ok_email:
+        erros["email"] = msg_email
+
+    ok_canal, msg_canal = validar_canal(canal)
+    if not ok_canal:
+        erros["canal"] = msg_canal
+
+    return {
+        "ok": len(erros) == 0,
+        "erros": erros,
+        "tipo_documento": tipo_doc,
+        "documento_limpo": documento_limpo
+    }
+
 # =========================
 # EMAIL
 # =========================
@@ -445,9 +508,9 @@ def enviar_email(destinatario, codigo, nome):
         corpo = f"""
 Olá {nome},
 
-Recebemos uma solicitação de cadastro no Folha10 Simples.
+Recebemos uma solicitação no Folha10 Simples.
 
-Para continuar, utilize o código de confirmação abaixo:
+Para continuar, utilize o código abaixo:
 
 {codigo}
 
@@ -482,8 +545,8 @@ def enviar_whatsapp(destinatario, codigo, nome):
 
         mensagem = (
             f"Olá {nome},\n\n"
-            f"Recebemos uma solicitação de cadastro no Folha10 Simples.\n\n"
-            f"Para continuar, utilize o código de confirmação abaixo:\n\n"
+            f"Recebemos uma solicitação no Folha10 Simples.\n\n"
+            f"Para continuar, utilize o código abaixo:\n\n"
             f"{codigo}\n\n"
             f"Se você não solicitou este código, ignore esta mensagem.\n\n"
             f"Equipe do Folha10 Simples"
@@ -547,11 +610,18 @@ def efetuar_login(cpf, nome, manter):
 @app.route("/")
 @app.route("/cadastro")
 def cadastro():
-    return render_template("Cadastro_Cliente.html")
+    versao = ler_versao()
+    return render_template("Cadastro_Cliente.html", versao=versao)
 
 @app.route("/login")
 def tela_login():
-    return render_template("F10_Login.html")
+    versao = ler_versao()
+    return render_template("F10_Login.html", versao=versao)
+
+@app.route("/recuperar_senha")
+def recuperar_senha():
+    versao = ler_versao()
+    return render_template("F10_Recuperar_Senha.html", versao=versao)
 
 @app.route("/painel")
 def painel():
@@ -559,6 +629,7 @@ def painel():
         return redirect(url_for("tela_login"))
 
     nome = session.get("nome", "")
+    versao = ler_versao()
 
     return f"""
     <html>
@@ -585,6 +656,11 @@ def painel():
                 text-decoration:none;
                 font-weight:bold;
             }}
+            .versao {{
+                margin-top: 20px;
+                color:#666;
+                font-size:12px;
+            }}
         </style>
     </head>
     <body>
@@ -593,6 +669,7 @@ def painel():
             <p>Login realizado com sucesso.</p>
             <p>Bem-vindo: <strong>{nome}</strong></p>
             <p><a href="/logout">Sair</a></p>
+            <div class="versao">Versão {versao}</div>
         </div>
     </body>
     </html>
@@ -787,6 +864,212 @@ def confirmar():
     return jsonify({
         "ok": True,
         "msg": "Cadastro realizado com sucesso",
+        "redirect_login": "/login"
+    })
+
+# =========================
+# ROTAS RECUPERAÇÃO DE SENHA
+# =========================
+@app.route("/buscar_cliente_recuperacao", methods=["POST"])
+def buscar_cliente_recuperacao():
+    data = request.get_json() or {}
+
+    documento = so_numeros(data.get("cpf"))
+
+    ok_doc, msg_doc, _ = validar_documento(documento)
+    if not ok_doc:
+        return jsonify({
+            "ok": False,
+            "campo": "cpf",
+            "msg": msg_doc
+        })
+
+    row = cliente_por_cpf(documento)
+    if row is None:
+        return jsonify({
+            "ok": False,
+            "campo": "cpf",
+            "msg": "CPF não cadastrado"
+        })
+
+    return jsonify({
+        "ok": True,
+        "cpf": row.get("cpf"),
+        "nome": row.get("nome"),
+        "celular": row.get("celular"),
+        "email": row.get("email")
+    })
+
+@app.route("/enviar_codigo_recuperacao", methods=["POST"])
+def enviar_codigo_recuperacao():
+    data = request.get_json() or {}
+
+    documento = data.get("cpf")
+    nome = (data.get("nome") or "").strip()
+    celular = (data.get("celular") or "").strip()
+    email = (data.get("email") or "").strip()
+    canal = (data.get("canal") or "").strip().lower()
+
+    resultado = validar_tudo_recuperacao(
+        documento=documento,
+        nome=nome,
+        celular=celular,
+        email=email,
+        canal=canal
+    )
+
+    if not resultado["ok"]:
+        return jsonify({
+            "ok": False,
+            "msg": "Existem campos inválidos",
+            "erros": resultado["erros"]
+        })
+
+    documento_limpo = resultado["documento_limpo"]
+    codigo = str(random.randint(100000, 999999))
+
+    codigos_recuperacao[documento_limpo] = {
+        "codigo": codigo,
+        "nome": nome,
+        "celular": celular,
+        "email": email,
+        "gerado_em": datetime.now(),
+        "canal": canal
+    }
+
+    print("Código de recuperação gerado para", documento_limpo, "=", codigo)
+
+    if canal == "email":
+        ok, erro = enviar_email(email, codigo, nome)
+        if not ok:
+            return jsonify({"ok": False, "msg": f"Erro ao enviar e-mail: {erro}"})
+
+        return jsonify({
+            "ok": True,
+            "msg": "Código de recuperação enviado por e-mail"
+        })
+
+    if canal == "whatsapp":
+        ok, erro = enviar_whatsapp(celular, codigo, nome)
+        if not ok:
+            return jsonify({"ok": False, "msg": f"Erro ao enviar WhatsApp: {erro}"})
+
+        return jsonify({
+            "ok": True,
+            "msg": "Código de recuperação enviado por WhatsApp"
+        })
+
+    return jsonify({"ok": False, "msg": "Canal inválido"})
+
+@app.route("/validar_codigo_recuperacao", methods=["POST"])
+def validar_codigo_recuperacao():
+    data = request.get_json() or {}
+
+    documento = so_numeros(data.get("cpf"))
+    codigo = (data.get("codigo") or "").strip()
+
+    if documento == "":
+        return jsonify({"ok": False, "campo": "cpf", "msg": "CPF não informado"})
+
+    if codigo == "":
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não informado"})
+
+    registro = codigos_recuperacao.get(documento)
+
+    if not registro:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não encontrado"})
+
+    if codigo_expirado(registro["gerado_em"]):
+        del codigos_recuperacao[documento]
+        return jsonify({
+            "ok": False,
+            "campo": "codigo",
+            "msg": "Código expirado. Solicite um novo código"
+        })
+
+    if registro["codigo"] != codigo:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
+
+    return jsonify({
+        "ok": True,
+        "msg": "Código validado com sucesso"
+    })
+
+@app.route("/confirmar_recuperacao", methods=["POST"])
+def confirmar_recuperacao():
+    data = request.get_json() or {}
+
+    documento = so_numeros(data.get("cpf"))
+    codigo = (data.get("codigo") or "").strip()
+    nome = (data.get("nome") or "").strip()
+    celular = (data.get("celular") or "").strip()
+    email = (data.get("email") or "").strip()
+    senha = (data.get("senha") or "").strip()
+    senha2 = (data.get("senha2") or "").strip()
+    canal = (data.get("canal") or "").strip().lower()
+
+    resultado = validar_tudo_recuperacao(
+        documento=documento,
+        nome=nome,
+        celular=celular,
+        email=email,
+        canal=canal
+    )
+
+    if not resultado["ok"]:
+        return jsonify({
+            "ok": False,
+            "msg": "Existem campos inválidos",
+            "erros": resultado["erros"]
+        })
+
+    if codigo == "":
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não informado"})
+
+    registro = codigos_recuperacao.get(documento)
+
+    if not registro:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código não encontrado"})
+
+    if codigo_expirado(registro["gerado_em"]):
+        del codigos_recuperacao[documento]
+        return jsonify({
+            "ok": False,
+            "campo": "codigo",
+            "msg": "Código expirado. Solicite um novo código"
+        })
+
+    if registro["codigo"] != codigo:
+        return jsonify({"ok": False, "campo": "codigo", "msg": "Código incorreto"})
+
+    resultado_senha = validar_senha_confirmacao(senha, senha2)
+    if not resultado_senha["ok"]:
+        return jsonify({
+            "ok": False,
+            "msg": "Senha inválida",
+            "erros": resultado_senha["erros"]
+        })
+
+    try:
+        atualizar_dados_e_senha_cliente(
+            documento,
+            nome,
+            celular,
+            email,
+            senha
+        )
+    except Exception as e:
+        print("Erro ao atualizar cliente:", str(e))
+        return jsonify({
+            "ok": False,
+            "msg": f"Erro ao gravar no Supabase: {str(e)}"
+        })
+
+    del codigos_recuperacao[documento]
+
+    return jsonify({
+        "ok": True,
+        "msg": "Senha redefinida com sucesso",
         "redirect_login": "/login"
     })
 
