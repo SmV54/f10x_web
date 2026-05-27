@@ -35,6 +35,18 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise Exception("Erro: SUPABASE_URL ou SUPABASE_KEY não definidos no .env")
 
+def ler_versao():
+    """Lê versão do arquivo versaoxxx.txt; cai para APP_VERSAO do .env."""
+    try:
+        caminho = os.path.join(os.path.dirname(__file__), "versaoxxx.txt")
+        with open(caminho, "r", encoding="utf-8") as f:
+            v = f.read().strip()
+            if v:
+                return v
+    except Exception:
+        pass
+    return os.getenv("APP_VERSAO", "")
+
 # =========================================================
 # FLASK
 # =========================================================
@@ -296,7 +308,7 @@ def _listar_empresas(id_cliente):
 @app.route("/")
 @app.route("/login")
 def login():
-    versao = os.getenv("APP_VERSAO", "")
+    versao = ler_versao()
     return render_template("F10_Login.html", versao=versao)
 
 # =========================================================
@@ -398,7 +410,7 @@ def selecionar_empresa():
         return redirect("/menu")
     return render_template(
         "F10_Selecionar_Empresa.html",
-        versao   = os.getenv("APP_VERSAO", ""),
+        versao   = ler_versao(),
         nome     = session.get("nome", ""),
         empresas = [{**e, "cnpj_fmt": _fmt_cnpj(e["cnpj"])} for e in empresas],
     )
@@ -461,7 +473,7 @@ def menu():
         return redirect("/selecionar_empresa")
     return render_template(
         "F10_Menu.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         folha_situacao=str(session.get("anomes_situacao") or ""),
@@ -473,22 +485,22 @@ def menu():
 @app.route("/menu_demo1")
 def menu_demo1():
     if not session.get("logado"): return redirect("/")
-    return render_template("F10_Menu_Demo1.html", versao=os.getenv("APP_VERSAO",""), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
+    return render_template("F10_Menu_Demo1.html", versao=ler_versao(), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
 
 @app.route("/menu_demo2")
 def menu_demo2():
     if not session.get("logado"): return redirect("/")
-    return render_template("F10_Menu_Demo2.html", versao=os.getenv("APP_VERSAO",""), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
+    return render_template("F10_Menu_Demo2.html", versao=ler_versao(), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
 
 @app.route("/menu_demo3")
 def menu_demo3():
     if not session.get("logado"): return redirect("/")
-    return render_template("F10_Menu_Demo3.html", versao=os.getenv("APP_VERSAO",""), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
+    return render_template("F10_Menu_Demo3.html", versao=ler_versao(), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
 
 @app.route("/menu_demo4")
 def menu_demo4():
     if not session.get("logado"): return redirect("/")
-    return render_template("F10_Menu_Demo4.html", versao=os.getenv("APP_VERSAO",""), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
+    return render_template("F10_Menu_Demo4.html", versao=ler_versao(), nome=session.get("nome",""), empresa=session.get("empresa_info",""))
 
 # =========================================================
 # FORMATAÇÃO
@@ -509,7 +521,7 @@ def _fmt_cnpj(cnpj_raw):
 def _ctx_relatorio():
     """Contexto comum para todas as páginas de relatório."""
     return dict(
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", ""))
@@ -775,7 +787,7 @@ def relatorios_config():
 
     return render_template(
         "F10_Relatorios_Config.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         titulo_relatorio=titulos.get(rel, "Relatório"),
@@ -881,7 +893,7 @@ def rel_sal_aumento():
 
     return render_template(
         "F10_Rel_Sal_Aumento.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -971,7 +983,7 @@ def cad_aviso_previo():
 
     return render_template(
         "F10_Cad_AvisoPrevio.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         funcionario=funcionario,
@@ -1127,7 +1139,7 @@ def cad_aviso_previo2():
 
     return render_template(
         "F10_Cad_AvisoPrevio2.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         funcionario=funcionario,
@@ -1170,7 +1182,7 @@ def cad_aviso_previo2_ok():
 
     return render_template(
         "F10_Cad_AvisoPrevio2_OK.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_raw,
@@ -1392,7 +1404,7 @@ def cad_rescisao():
     erro = request.args.get("erro", "")
     return render_template(
         "F10_Rescisao_Gravar.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         funcionario=funcionario,
@@ -1440,7 +1452,7 @@ def cad_rescisao_ok():
 
     return render_template(
         "F10_Cad_Rescisao_OK.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_raw,
@@ -1609,7 +1621,7 @@ def _enviar_whatsapp(destinatario, codigo, nome):
 # =========================================================
 @app.route("/cadastro")
 def cadastro():
-    versao = os.getenv("APP_VERSAO", "")
+    versao = ler_versao()
     return render_template("Cadastro_Cliente.html", versao=versao)
 
 # =========================================================
@@ -1765,7 +1777,7 @@ def empresa():
         titulo_tela="Cadastrar uma Nova Empresa",
         cliente_info=session.get("cliente_info", ""),
         empresa_info=session.get("empresa_info", ""),
-        versao=os.getenv("APP_VERSAO", "")
+        versao=ler_versao()
     )
 
 # =========================================================
@@ -1848,7 +1860,7 @@ def cad_funcao():
 
     return render_template(
         "F10_Cad_Funcao.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         cpf_cliente=cpf_cliente,
         nome_cliente=nome_cliente,
         empresa_info=empresa_info,
@@ -2003,7 +2015,7 @@ def alterar_empresa():
         titulo_tela="Alterar Empresa",
         cliente_info=session.get("cliente_info", ""),
         empresa_info=session.get("empresa_info", ""),
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         modo="alterar",
         empresa_dados=emp,
     )
@@ -2120,7 +2132,7 @@ def cad_feriado():
 
     return render_template(
         "F10_Cad_Feriado.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
         feriados=feriados
@@ -2288,7 +2300,7 @@ def cad_vt():
 
     return render_template(
         "F10_Cad_VT.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
         vts=vts
@@ -2419,7 +2431,7 @@ def cad_horario():
 
     return render_template(
         "F10_Cad_Horario.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
         horarios=r.data or [],
@@ -2576,7 +2588,7 @@ def cad_sindicato():
 
     return render_template(
         "F10_Cad_Sindicato.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
         sindicatos=r.data or [],
@@ -2777,7 +2789,7 @@ def cad_verba():
 
     return render_template(
         "F10_Cad_Verba.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
         verbas=r.data or [],
@@ -3133,7 +3145,7 @@ def cad_anomes():
 
     return render_template(
         "F10_Cad_AnoMes.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome_cliente=session.get("nome", ""),
         empresa_info=session.get("empresa_info", ""),
         anomes_list=anomes_list,
@@ -4104,7 +4116,7 @@ def ficha_registro():
 
     return render_template(
         "F10_Ficha_Registro.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa_nome=session.get("empresa_info", ""),
         cnpj_empresa=_fmt_cnpj(session.get("cnpj_empresa", "")),
         cliente_nome=session.get("nome", ""),
@@ -4192,7 +4204,7 @@ def rel_log():
 
     return render_template(
         "F10_Rel_Log.html",
-        versao       = os.getenv("APP_VERSAO", ""),
+        versao       = ler_versao(),
         empresa_nome = session.get("empresa_info", ""),
         cliente_nome = session.get("nome", ""),
         registros    = registros,
@@ -4315,7 +4327,7 @@ def rel_esocial_remessas():
 
     return render_template(
         "F10_Rel_Remessas_ESocial.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa_nome=session.get("empresa_info", ""),
         cliente_nome=session.get("nome", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -4446,7 +4458,7 @@ def cad_funcionario():
 
     return render_template(
         "F10_Cad_Funcionario.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa_nome=session.get("empresa_info", ""),
         cliente_nome=session.get("nome", ""),
         empresa_lt_tpInsc=lt_tpInsc,
@@ -4492,7 +4504,7 @@ def select_funcionario():
         pass
     return render_template(
         "F10_Select_Funcionario.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         contexto=request.args.get("contexto", ""),
@@ -4512,7 +4524,7 @@ def cad_ferias():
     mats_raw = request.args.get("mats", "").strip()
     return render_template(
         "F10_Cad_Ferias.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=str(session.get("anomes_atual") or ""),
@@ -4558,7 +4570,7 @@ def cad_dep():
         pass
     return render_template(
         "F10_Cad_Dep.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         matricula=matricula,
@@ -4933,7 +4945,7 @@ def ficha_acidente():
 
     return render_template(
         "F10_Ficha_Acidente.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -5383,7 +5395,7 @@ def cad_afastamento():
         pass
     return render_template(
         "F10_Cad_Afastamento.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mats_raw=mats_raw,
@@ -5546,7 +5558,7 @@ def cad_acidente():
 
     return render_template(
         "F10_Cad_Acidente.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -5600,7 +5612,7 @@ def cad_exame_med():
 
     return render_template(
         "F10_Cad_ExameMed.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -5622,7 +5634,7 @@ def alt_exame_med():
     mat_str = mat_raw.split(",")[0].strip()
     return render_template(
         "F10_Alt_ExameMed.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -6036,7 +6048,7 @@ def rel_config_exame_med():
     anomes = str(session.get("anomes_atual") or "")
     return render_template(
         "F10_Config_ExameMed.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=anomes,
@@ -6137,7 +6149,7 @@ def rel_exame_med():
             pass
 
     ctx = dict(
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -6275,7 +6287,7 @@ def cad_mov():
 
     return render_template(
         "F10_Cad_Mov.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=anomes,
@@ -6784,7 +6796,7 @@ def alt_acidente():
     mat_str = mat_raw.split(",")[0].strip()
     return render_template(
         "F10_Alt_Acidente.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -7117,7 +7129,7 @@ def cad_falta():
 
     return render_template(
         "F10_Cad_Falta.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -7476,7 +7488,7 @@ def rel_config_faltas():
     anomes = str(session.get("anomes_atual") or "")
     return render_template(
         "F10_Config_Faltas.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=anomes,
@@ -7535,7 +7547,7 @@ def rel_faltas():
             periodo_label = f"Competência: {anomes[4:6]}/{anomes[:4]} (folha ativa)"
 
     ctx = dict(
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -7679,7 +7691,7 @@ def excluir_falta():
     anomes = str(session.get("anomes_atual") or "")
     return render_template(
         "F10_Excluir_Falta.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         mat=mat_str,
@@ -7864,7 +7876,7 @@ def cad_aumento():
 
     return render_template(
         "F10_Cad_Aumento.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         vigencia_default=vigencia_default,
@@ -8079,7 +8091,7 @@ def rel_aumento():
 
     return render_template(
         "F10_Rel_Aumento.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -8165,7 +8177,7 @@ def cad_insalub_pericu():
 
     return render_template(
         "F10_Cad_InsalubPericu.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         nome=session.get("nome", ""),
         mats_raw=mats_raw,
@@ -8311,7 +8323,7 @@ def cad_fap():
     ano_atual = str(datetime.now().year)
     return render_template(
         "F10_Cad_FAP.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         nome=session.get("nome", ""),
         faps=faps,
@@ -9809,7 +9821,7 @@ def esocial_s2200():
 
     return render_template(
         "F10_eSocial_S2200.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -10490,7 +10502,7 @@ def esocial_s3000():
 
     return render_template(
         "F10_eSocial_S3000.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
         layouts_disponiveis=layouts_disponiveis,
@@ -10793,7 +10805,7 @@ def config_certificado():
 
     return render_template(
         "F10_Config_Certificado.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(cnpj_emp),
@@ -12453,7 +12465,7 @@ def calcular_folha():
         return redirect("/")
     return render_template(
         "F10_Calc_Folha.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=str(session.get("anomes_atual") or ""),
@@ -12583,7 +12595,7 @@ def reabrir_folha():
     sit_label, sit_class = sit_map.get(situacao, ("",""))
     return render_template(
         "F10_Reabrir_Folha.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         nome=session.get("nome", ""),
         folha_fmt=folha_fmt,
@@ -12635,7 +12647,7 @@ def fechar_folha():
     sit_label, sit_class = sit_map.get(situacao, ("",""))
     return render_template(
         "F10_Fechar_Folha.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         nome=session.get("nome", ""),
         folha_fmt=folha_fmt,
@@ -12690,7 +12702,7 @@ def config_rel_verbas():
         pass
     return render_template(
         "F10_Config_RelVerbas.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         nome=session.get("nome", ""),
         verbas=verbas,
@@ -12967,7 +12979,7 @@ def rel_nverbas():
 
     return render_template(
         "F10_Rel_NVerbas.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         nome=session.get("nome", ""),
         folha_fmt=folha_fmt,
@@ -13025,7 +13037,7 @@ def visualizar_calculo():
     sit_label, sit_class = sit_map.get(sit_st, ("", ""))
     return render_template(
         "F10_Visualizar_Calculo.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=str(session.get("anomes_atual") or ""),
@@ -13401,7 +13413,7 @@ def relatorio_folha():
     d = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente)
     return render_template(
         "F10_Rel_Folha_Preview.html",
-        versao  = os.getenv("APP_VERSAO", ""),
+        versao  = ler_versao(),
         nome    = session.get("nome", ""),
         empresa = empresa_nm,
         **d,
@@ -13905,7 +13917,7 @@ def memoria_calculo():
 
     return render_template(
         "F10_Memoria_Calculo.html",
-        versao=os.getenv("APP_VERSAO", ""),
+        versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         anomes_atual=anomes,
@@ -13951,7 +13963,7 @@ def calcular_folha_etapa1_pdf():
     id_cliente = session.get("id_cliente") or 0
     empresa_nm = session.get("empresa_info", "")
     usuario    = session.get("nome", "")
-    versao     = os.getenv("APP_VERSAO", "")
+    versao     = ler_versao()
 
     if len(anomes) != 6:
         return jsonify({"ok": False, "msg": "Folha ativa não definida."})
@@ -14652,7 +14664,7 @@ def resumo_folha():
     d = _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo)
     return render_template(
         "F10_Resumo_Folha.html",
-        versao   = os.getenv("APP_VERSAO", ""),
+        versao   = ler_versao(),
         nome     = session.get("nome", ""),
         empresa  = empresa_nm,
         **d,

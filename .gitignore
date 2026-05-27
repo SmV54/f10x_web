@@ -19,6 +19,7 @@ eSocial_XML/
 *.pdf
 Nada.txt
 *.txt
+!versaoxxx.txt
 
 # Ferramentas
 .claude/
