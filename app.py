@@ -3078,6 +3078,32 @@ def _get_id_empresa():
     return 0
 
 
+def _refresh_situacao_folha():
+    """Busca situação atual da folha no banco e atualiza a sessão. Retorna a situação."""
+    try:
+        id_empresa  = _get_id_empresa()
+        id_cliente  = session.get("id_cliente")
+        anomes      = str(session.get("anomes_atual") or "")
+        anomes_tipo = str(session.get("anomes_tipo") or "N")
+        if not anomes or not id_empresa:
+            return str(session.get("anomes_situacao") or "A")
+        r = (supabase.table("tab_anomes")
+             .select("situacao")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("ano_mes", int(anomes))
+             .eq("tipo", anomes_tipo)
+             .limit(1)
+             .execute())
+        if r.data:
+            sit = str(r.data[0].get("situacao") or "A")
+            session["anomes_situacao"] = sit
+            return sit
+    except Exception:
+        pass
+    return str(session.get("anomes_situacao") or "A")
+
+
 # =========================================================
 # ANO/MÊS — TELA
 # =========================================================
@@ -12527,7 +12553,7 @@ def calcular_folha_stream():
     if not session.get("logado"):
         return Response("data: {}\n\n", mimetype="text/event-stream")
 
-    sit = str(session.get("anomes_situacao") or "A")
+    sit = _refresh_situacao_folha()
     if sit not in ("A", "X"):
         msg = "Folha Fechada — reabra antes de calcular." if sit == "F" else "Folha Calculada: Reabrir antes de Calcular Novamente."
         bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg}, ensure_ascii=False)
@@ -12636,7 +12662,7 @@ def reabrir_folha():
         return redirect("/")
     anomes     = str(session.get("anomes_atual") or "")
     anomes_tipo = str(session.get("anomes_tipo") or "N")
-    situacao   = str(session.get("anomes_situacao") or "A")
+    situacao   = _refresh_situacao_folha()
     folha_fmt  = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else "—"
     tipo_label = {"N": "Normal", "1": "13º Mês", "A": "Adiant. 13º"}.get(anomes_tipo, anomes_tipo)
     sit_map    = {"A": ("Aberta","sit-aberta"), "X": ("Aberta","sit-aberta"),
@@ -12688,7 +12714,7 @@ def fechar_folha():
         return redirect("/")
     anomes      = str(session.get("anomes_atual") or "")
     anomes_tipo = str(session.get("anomes_tipo") or "N")
-    situacao    = str(session.get("anomes_situacao") or "A")
+    situacao    = _refresh_situacao_folha()
     folha_fmt   = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else "—"
     tipo_label  = {"N": "Normal", "1": "13º Mês", "A": "Adiant. 13º"}.get(anomes_tipo, anomes_tipo)
     sit_map     = {"A": ("Aberta","sit-aberta"), "X": ("Aberta","sit-aberta"),
