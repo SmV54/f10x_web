@@ -237,7 +237,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
     <div id="resultado"></div>
     <div class="rodape">
-        <a class="btn-cancelar" href="/menu">Cancelar</a>
+        <a class="btn-cancelar" id="btnCancelar" href="/menu">Cancelar</a>
         <button class="btn-reabrir" id="btnReabrir" onclick="clicarReabrir()">🔓 Reabrir Folha</button>
     </div>
     {% else %}
@@ -312,6 +312,8 @@ async function reabrir() {
                 bs.textContent = j.sit_label;
             }
             btn.style.display = 'none';
+            const bc = document.getElementById('btnCancelar');
+            if (bc) { bc.textContent = 'Voltar ao Menu'; }
         } else {
             painel.innerHTML = `<div class="resultado-err"><strong>Erro:</strong> ${j.msg}</div>`;
             btn.disabled = false;
