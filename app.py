@@ -803,6 +803,37 @@ def relatorios_config():
 # =========================================================
 # RELATÓRIO DE SALÁRIOS — AUMENTOS
 # =========================================================
+@app.route("/rel_lista_funcionarios")
+def rel_lista_funcionarios():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa     = _get_id_empresa()
+    classificacao  = request.args.get("classificacao", "A").strip()  # A=Alfabética N=Numérica
+    situacao_filtro = request.args.get("situacao", "A").strip()       # A=Ativos D=Desligados T=Todos
+
+    order_col = "nome" if classificacao == "A" else "matricula"
+
+    try:
+        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao") \
+            .eq("id_empresa", id_empresa).order(order_col)
+        if situacao_filtro != "T":
+            q = q.eq("situacao", situacao_filtro)
+        funcs = q.execute().data or []
+    except Exception:
+        funcs = []
+
+    for f in funcs:
+        f["nome_fmt"] = (f.get("nomer") or f.get("nome") or "").strip()
+
+    return render_template(
+        "F10_Rel_Lista_Funcionarios.html",
+        **_ctx_relatorio(),
+        funcs=funcs,
+        classificacao=classificacao,
+        situacao_filtro=situacao_filtro,
+    )
+
+
 @app.route("/rel_sal_aumento")
 def rel_sal_aumento():
     if not session.get("logado"):
