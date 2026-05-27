@@ -688,6 +688,34 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharPanel(
 document.addEventListener('click',   e => {
     if (!e.target.closest('.modulos-grid') && !e.target.closest('#navPanel')) fecharPanel();
 });
+
+// ── Polling de status da folha (60s, pausa quando aba está em segundo plano) ──
+(function() {
+    const SIT_CSS = { A:'sit-aberta', X:'sit-aberta', P:'sit-calculada', C:'sit-calculada', F:'sit-fechada' };
+    const SIT_LBL = { A:'Aberta', X:'Aberta', P:'Calculando...', C:'Calculada', F:'Fechada' };
+
+    function atualizarBadge(sit, label, css) {
+        document.querySelectorAll('.topo-folha-ativa').forEach(el => {
+            el.className = 'topo-folha-ativa ' + css;
+            el.innerHTML = el.innerHTML.replace(/Aberta|Calculando\.\.\.|Calculada|Fechada/, label);
+        });
+    }
+
+    async function checarStatus() {
+        try {
+            const r = await fetch('/api/folha/status');
+            if (!r.ok) return;
+            const d = await r.json();
+            if (d.ok && d.sit) atualizarBadge(d.sit, d.label, d.css);
+        } catch (_) {}
+    }
+
+    let timer = setInterval(checarStatus, 60000);
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) { clearInterval(timer); }
+        else { checarStatus(); timer = setInterval(checarStatus, 60000); }
+    });
+})();
 </script>
 
 </body>

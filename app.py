@@ -12555,7 +12555,12 @@ def calcular_folha_stream():
 
     sit = _refresh_situacao_folha()
     if sit not in ("A", "X"):
-        msg = "Folha Fechada — reabra antes de calcular." if sit == "F" else "Folha Calculada: Reabrir antes de Calcular Novamente."
+        if sit == "P":
+            msg = "Folha em cálculo por outro usuário. Aguarde."
+        elif sit == "F":
+            msg = "Folha Fechada — reabra antes de calcular."
+        else:
+            msg = "Folha Calculada: Reabrir antes de Calcular Novamente."
         bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg}, ensure_ascii=False)
         return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
 
@@ -12566,6 +12571,18 @@ def calcular_folha_stream():
     cpf_usuario = session.get("cpf")
     empresa_nm  = session.get("empresa_info", "")
     cnpj_fmt    = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    # Marca como "P" (Processando) para bloquear cálculo simultâneo
+    try:
+        supabase.table("tab_anomes").update({"situacao": "P"}) \
+            .eq("id_cliente", id_cliente) \
+            .eq("id_empresa", id_empresa) \
+            .eq("ano_mes", anomes) \
+            .eq("tipo", anomes_tipo) \
+            .execute()
+        session["anomes_situacao"] = "P"
+    except Exception:
+        pass
 
     q = queue.Queue()
 
@@ -12646,6 +12663,22 @@ def calcular_folha_stream():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/folha/status")
+def api_folha_status():
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    sit = _refresh_situacao_folha()
+    sit_map = {
+        "A": ("Aberta",    "sit-aberta"),
+        "X": ("Aberta",    "sit-aberta"),
+        "P": ("Calculando","sit-calculada"),
+        "C": ("Calculada", "sit-calculada"),
+        "F": ("Fechada",   "sit-fechada"),
+    }
+    label, css = sit_map.get(sit, ("", ""))
+    return jsonify({"ok": True, "sit": sit, "label": label, "css": css})
 
 
 @app.route("/api/folha/marcar_calculada", methods=["POST"])
