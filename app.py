@@ -601,7 +601,9 @@ def rel_dependentes():
                   .in_("matricula", mats)
                   .execute())
             for f in (r2.data or []):
-                nomes_func[f["matricula"]] = (f.get("nomer") or f.get("nome") or "").strip()
+                nome = (f.get("nomer") or f.get("nome") or "").strip()
+                nomes_func[int(f["matricula"])] = nome
+                nomes_func[str(f["matricula"])] = nome
     except Exception:
         pass
 
@@ -4551,10 +4553,10 @@ def cad_dep():
              .select("nome, nomer")
              .eq("id_empresa", id_empresa)
              .eq("matricula", matricula)
-             .single()
+             .limit(1)
              .execute())
         if r.data:
-            func_nome = (r.data.get("nomer") or r.data.get("nome") or "").strip()
+            func_nome = (r.data[0].get("nomer") or r.data[0].get("nome") or "").strip()
     except Exception:
         pass
     tipos_dep = []
