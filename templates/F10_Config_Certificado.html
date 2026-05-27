@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — Certificado Digital</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 700px; margin: 40px auto; padding: 0 24px 80px; }
+
+/* ── CARD GENÉRICO ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px 28px; margin-bottom: 20px;
+}
+.card-titulo {
+    font-size: 14px; font-weight: 700; color: #1e293b;
+    margin-bottom: 18px; display: flex; align-items: center; gap: 8px;
+    padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;
+}
+
+/* ── CERTIFICADO ATUAL ── */
+.cert-grid {
+    display: grid; grid-template-columns: 140px 1fr; gap: 8px 0;
+    font-size: 13px;
+}
+.cert-label { color: #64748b; font-weight: 500; padding: 4px 0; }
+.cert-value { color: #1e293b; font-weight: 600; padding: 4px 0; font-family: var(--mono); font-size: 12px; }
+.cert-value.nome { font-family: var(--sans); font-size: 14px; }
+
+.badge-validade {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.val-ok      { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.val-alerta  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.val-vencido { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+.btn-remover {
+    margin-top: 16px; background: none; border: 1px solid #fca5a5;
+    color: #991b1b; font-size: 12px; font-weight: 600; font-family: var(--sans);
+    padding: 6px 14px; border-radius: 7px; cursor: pointer; transition: .13s;
+}
+.btn-remover:hover { background: #fee2e2; }
+
+/* ── UPLOAD ── */
+.drop-area {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 28px 20px; text-align: center; cursor: pointer;
+    transition: .15s; background: #f8fafc; position: relative;
+}
+.drop-area:hover, .drop-area.dragover { border-color: var(--accent); background: #eaf2fd; }
+.drop-area input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.drop-icone   { font-size: 32px; margin-bottom: 8px; }
+.drop-txt     { font-size: 13px; font-weight: 600; color: #475569; }
+.drop-subtxt  { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.drop-arquivo { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 6px;
+                display: none; font-family: var(--mono); }
+
+/* ── CAMPO SENHA ── */
+.campo-grupo { margin-top: 16px; }
+.campo-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; display: block; }
+.campo-senha-wrap { position: relative; }
+.campo-senha-wrap input {
+    width: 100%; padding: 9px 40px 9px 12px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-family: var(--mono);
+    color: #1e293b; outline: none; transition: .13s;
+}
+.campo-senha-wrap input:focus { border-color: var(--accent); }
+.toggle-senha {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: #94a3b8;
+    font-size: 15px; padding: 4px; line-height: 1;
+}
+
+/* ── BOTÃO PRINCIPAL ── */
+.btn-salvar {
+    margin-top: 20px; width: 100%; padding: 11px;
+    background: var(--accent); border: none; color: #fff;
+    font-size: 14px; font-weight: 700; font-family: var(--sans);
+    border-radius: 9px; cursor: pointer; transition: .13s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-salvar:hover   { background: #1a6cd4; }
+.btn-salvar:disabled{ background: #94a3b8; cursor: default; }
+
+/* ── RESULTADO ── */
+.resultado {
+    display: none; margin-top: 16px; border-radius: 10px; padding: 14px 16px;
+    font-size: 13px; font-weight: 500;
+}
+.resultado.ok    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.resultado.erro  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.resultado-detalhe { font-size: 12px; margin-top: 6px; font-family: var(--mono); color: inherit; opacity: .85; }
+
+/* ── INFO BOX ── */
+.info-box {
+    background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px;
+    padding: 14px 18px; font-size: 12px; color: #1d4ed8; line-height: 1.8;
+}
+.info-box strong { font-weight: 700; }
+.info-box ul { padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">🔑 Certificado Digital</div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- ── Certificado atual ── -->
+  {% if cert_atual %}
+  <div class="card">
+    <div class="card-titulo">
+      ✅ Certificado instalado
+    </div>
+    <div class="cert-grid">
+      <span class="cert-label">Titular</span>
+      <span class="cert-value nome">{{ cert_atual.titular }}</span>
+
+      <span class="cert-label">CNPJ</span>
+      <span class="cert-value">{{ cert_atual.cnpj_fmt }}</span>
+
+      <span class="cert-label">Validade</span>
+      <span class="cert-value">
+        {{ cert_atual.validade_fmt }}
+        &nbsp;
+        {% if cert_atual.vencido %}
+          <span class="badge-validade val-vencido">⚠ VENCIDO</span>
+        {% elif cert_atual.alerta %}
+          <span class="badge-validade val-alerta">⚡ Vence em {{ cert_atual.dias_restantes }} dias</span>
+        {% else %}
+          <span class="badge-validade val-ok">✓ Válido — {{ cert_atual.dias_restantes }} dias</span>
+        {% endif %}
+      </span>
+    </div>
+    <button class="btn-remover" onclick="removerCert()">🗑 Remover certificado</button>
+  </div>
+  {% endif %}
+
+  <!-- ── Upload novo certificado ── -->
+  <div class="card">
+    <div class="card-titulo">
+      {% if cert_atual %}🔄 Atualizar certificado{% else %}📤 Instalar certificado{% endif %}
+    </div>
+
+    <div class="drop-area" id="dropArea">
+      <input type="file" id="pfxFile" accept=".pfx,.p12" onchange="arquivoSelecionado(this)">
+      <div class="drop-icone">📁</div>
+      <div class="drop-txt">Clique ou arraste o arquivo .pfx aqui</div>
+      <div class="drop-subtxt">Certificado A1 — formato .pfx ou .p12</div>
+      <div class="drop-arquivo" id="dropArquivo"></div>
+    </div>
+
+    <div class="campo-grupo">
+      <label class="campo-label" for="pfxSenha">Senha do certificado</label>
+      <div class="campo-senha-wrap">
+        <input type="password" id="pfxSenha" placeholder="Digite a senha do .pfx"
+               autocomplete="current-password">
+        <button type="button" class="toggle-senha" onclick="toggleSenha()" title="Mostrar/ocultar">👁</button>
+      </div>
+    </div>
+
+    <button class="btn-salvar" id="btnSalvar" onclick="salvarCert()" disabled>
+      <span id="btnTxt">🔑 Validar e Salvar</span>
+    </button>
+
+    <div class="resultado" id="resultado">
+      <div id="resultadoMsg"></div>
+      <div class="resultado-detalhe" id="resultadoDetalhe"></div>
+    </div>
+  </div>
+
+  <!-- ── Informações ── -->
+  <div class="info-box">
+    <strong>Sobre o certificado digital eSocial</strong>
+    <ul style="margin-top:6px;">
+      <li>Use o certificado <strong>A1</strong> (arquivo .pfx) da empresa — o mesmo utilizado para assinar NF-e, eSocial etc.</li>
+      <li>O certificado deve ser emitido para o <strong>CNPJ da empresa</strong> cadastrada.</li>
+      <li>O arquivo é armazenado criptografado; a senha não fica visível nem em logs.</li>
+      <li>Certificados A3 (token USB/smart card) <strong>não são suportados</strong> nesta versão.</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+// Arquivo selecionado — guardado em variável própria (funciona tanto
+// para clique no input quanto para drag-and-drop)
+let _arquivoSelecionado = null;
+
+const dropArea = document.getElementById('dropArea');
+
+dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('dragover'); });
+dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+dropArea.addEventListener('drop', e => {
+    e.preventDefault();
+    dropArea.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) registrarArquivo(file);
+});
+
+function arquivoSelecionado(input) {
+    if (input.files[0]) registrarArquivo(input.files[0]);
+}
+
+function registrarArquivo(file) {
+    _arquivoSelecionado = file;
+    const el = document.getElementById('dropArquivo');
+    el.textContent = '📎 ' + file.name;
+    el.style.display = 'block';
+    document.querySelector('#dropArea .drop-txt').textContent = 'Arquivo selecionado:';
+    atualizarBotao();
+}
+
+function atualizarBotao() {
+    const temArq = _arquivoSelecionado !== null;
+    const temSen = document.getElementById('pfxSenha').value.trim().length > 0;
+    const btn    = document.getElementById('btnSalvar');
+    btn.disabled = !(temArq && temSen);
+    btn.style.opacity = btn.disabled ? '0.5' : '1';
+}
+
+// Dispara em digitação E em preenchimento automático do browser
+const inpSenha = document.getElementById('pfxSenha');
+inpSenha.addEventListener('input',  atualizarBotao);
+inpSenha.addEventListener('change', atualizarBotao);
+
+function toggleSenha() {
+    const inp = document.getElementById('pfxSenha');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function mostrarResultado(ok, msg, detalhe) {
+    const resDiv = document.getElementById('resultado');
+    const resMsg = document.getElementById('resultadoMsg');
+    const resDet = document.getElementById('resultadoDetalhe');
+    resDiv.className = 'resultado ' + (ok ? 'ok' : 'erro');
+    resDiv.style.display = 'block';
+    resMsg.textContent = (ok ? '✅ ' : '❌ ') + msg;
+    resDet.textContent = detalhe || '';
+    resDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function salvarCert() {
+    const btn   = document.getElementById('btnSalvar');
+    const senha = document.getElementById('pfxSenha').value.trim();
+
+    if (!_arquivoSelecionado) {
+        mostrarResultado(false, 'Selecione o arquivo .pfx antes de continuar.', '');
+        return;
+    }
+    if (!senha) {
+        mostrarResultado(false, 'Informe a senha do certificado.', '');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    document.getElementById('btnTxt').textContent = '⏳ Validando…';
+    document.getElementById('resultado').style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('pfx_file', _arquivoSelecionado);
+    fd.append('pfx_senha', senha);
+
+    try {
+        const r    = await fetch('/api/certificado_salvar', { method: 'POST', body: fd });
+        let data;
+        try {
+            data = await r.json();
+        } catch (_) {
+            mostrarResultado(false, `Erro inesperado do servidor (HTTP ${r.status}).`,
+                             'Verifique se as colunas de certificado foram criadas no Supabase.');
+            document.getElementById('btnTxt').textContent = '🔑 Validar e Salvar';
+            btn.disabled = false; atualizarBotao();
+            return;
+        }
+
+        if (data.ok) {
+            mostrarResultado(true, 'Certificado salvo com sucesso!',
+                             `Titular: ${data.titular}  |  CNPJ: ${data.cnpj_fmt}  |  Válido até: ${data.validade}`);
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            mostrarResultado(false, data.msg || 'Erro desconhecido.', '');
+        }
+    } catch(e) {
+        mostrarResultado(false, 'Não foi possível conectar ao servidor.', String(e));
+    }
+
+    document.getElementById('btnTxt').textContent = '🔑 Validar e Salvar';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    atualizarBotao();
+}
+
+async function removerCert() {
+    if (!confirm('Remover o certificado digital? Você precisará instalar novamente para transmitir ao eSocial.')) return;
+    const r    = await fetch('/api/certificado_remover', { method: 'POST' });
+    const data = await r.json();
+    if (data.ok) location.reload();
+    else alert('Erro: ' + data.msg);
+}
+</script>
+
+</body>
+</html>

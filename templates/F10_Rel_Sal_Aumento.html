@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Relatório de Salários</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1100px; margin: 32px auto; padding: 0 24px 60px; }
+
+/* ── STATUS BAR ── */
+.status-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 18px;
+}
+.status-bar-left { display: flex; align-items: center; gap: 10px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── PARAMS ── */
+.params-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 18px; margin-bottom: 18px;
+    display: flex; flex-wrap: wrap; gap: 6px 22px;
+}
+.param-item { display: flex; flex-direction: column; }
+.param-label { font-size: 10px; font-weight: 600; text-transform: uppercase;
+               letter-spacing: 0.07em; color: #94a3b8; }
+.param-valor { font-size: 13px; font-weight: 500; color: #1e293b; margin-top: 1px; }
+
+/* ── TABELA ── */
+.tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+    color: #64748b; padding: 9px 12px; text-align: left;
+    background: #f8fafc; border-bottom: 2px solid var(--border);
+}
+thead th.r { text-align: right; }
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tbody td { padding: 8px 12px; font-size: 13px; vertical-align: middle; }
+tbody td.mono { font-family: var(--mono); font-size: 12px; }
+tbody td.r    { text-align: right; }
+tbody td.nome { font-weight: 500; color: #1e293b; }
+.diff-pos { color: #15803d; font-weight: 600; font-family: var(--mono); font-size: 12px; }
+.tag-mot {
+    display: inline-block; background: #eff6ff; color: #1d4ed8;
+    font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 7px;
+}
+.vazio { text-align: center; padding: 48px 24px; font-size: 14px; color: #94a3b8; }
+.resumo-row {
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    padding: 10px 18px; background: #f8fafc; border-top: 1px solid var(--border);
+    font-size: 12px; color: #475569;
+}
+.resumo-row strong { color: #1e293b; font-family: var(--mono); }
+
+/* ── PRINT ── */
+@page { size: A4 landscape; margin: 1.2cm 1.5cm; }
+
+.cab-print-block { display: none; }
+.cab-header-grid {
+    display: grid; grid-template-columns: 1fr auto;
+    width: 100%; align-items: baseline; column-gap: 14pt; padding: 5pt 0 0 0;
+}
+.cab-empresa  { font-size: 7.5pt; color: #64748b; padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db; }
+.cab-datahora { font-size: 7.5pt; color: #475569; text-align: right; padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db; }
+.cab-titulo-txt {
+    grid-column: 1 / -1; font-size: 12pt; font-weight: 700; color: #0f172a;
+    text-align: center; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3pt 0 5pt 0; border-bottom: 0.5pt solid #94a3b8;
+}
+
+@media print {
+    .topo, .status-bar, .btn-voltar, .btn-voltar-topo { display: none !important; }
+    body { background: white; }
+    .conteudo { margin: 0; padding: 0; max-width: 100%; }
+    .tbl-wrap { border: none; border-radius: 0; box-shadow: none; }
+    .params-card { border: 1pt solid #ccc; margin-bottom: 8pt; font-size: 8pt; }
+    .param-label, .param-valor { font-size: 8pt; }
+    .cab-print-block { display: block !important; border-top: 3pt solid #0f172a; margin-bottom: 8pt; padding: 0; }
+    table { font-size: 8pt; }
+    thead th { padding: 5pt 7pt; }
+    tbody td { padding: 4pt 7pt; }
+    .nome { white-space: nowrap; }
+    .tag-mot { padding: 1pt 4pt; font-size: 7.5pt; }
+    .resumo-row { font-size: 8pt; border-top: 0.5pt solid #ccc; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Relatório de Salários</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='{{ url_voltar }}'">&#8592; Voltar</button>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8962; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- Cabeçalho padrão de impressão -->
+    <div class="cab-print-block">
+        <div class="cab-header-grid">
+            <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+            <span class="cab-datahora"></span>
+            <span class="cab-titulo-txt">
+                RELATÓRIO DE SALÁRIOS{% if apenas_alterados %} — AUMENTOS{% if anomes_fmt %} — {{ anomes_fmt }}{% endif %}{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <!-- Status bar -->
+    <div class="status-bar">
+        <div class="status-bar-left">
+            <a class="btn-voltar" href="{{ url_voltar }}">&#8592; Voltar</a>
+            <a class="btn-voltar" href="/menu">&#8962; Menu</a>
+        </div>
+        <button onclick="window.print()" style="background:transparent;border:1px solid var(--border);color:#64748b;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans);">
+            &#128424; Imprimir
+        </button>
+    </div>
+
+    <!-- Parâmetros -->
+    <div class="params-card">
+        {% if anomes_fmt %}
+        <div class="param-item">
+            <span class="param-label">Competência</span>
+            <span class="param-valor">{{ anomes_fmt }}</span>
+        </div>
+        {% endif %}
+        <div class="param-item">
+            <span class="param-label">Exibindo</span>
+            <span class="param-valor">{{ "Apenas aumentos nesta folha" if apenas_alterados else "Todos os funcionários" }}</span>
+        </div>
+        {% if apenas_alterados %}
+        <div class="param-item">
+            <span class="param-label">Motivo</span>
+            <span class="param-valor">{{ motivo_label }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Tabela -->
+    <div class="tbl-wrap">
+        {% if registros %}
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:72px;">Matrícula</th>
+                    <th>Nome</th>
+                    <th style="width:90px;">Admissão</th>
+                    {% if apenas_alterados %}
+                    <th class="r" style="width:130px;">Sal. Anterior</th>
+                    <th class="r" style="width:130px;">Sal. Novo</th>
+                    <th class="r" style="width:110px;">Diferença</th>
+                    <th class="r" style="width:90px;">% Aplicado</th>
+                    <th style="width:110px;">Motivo</th>
+                    {% else %}
+                    <th class="r" style="width:140px;">Salário Atual</th>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td class="mono">{{ r.mat_fmt }}</td>
+                    <td class="nome">{{ r.nome }}</td>
+                    <td class="mono" style="font-size:12px;">{{ r.dtadm_fmt }}</td>
+                    {% if apenas_alterados %}
+                    <td class="r mono">{{ r.sal_ant_fmt }}</td>
+                    <td class="r mono" style="font-weight:600;">{{ r.sal_nov_fmt }}</td>
+                    <td class="diff-pos r">{{ r.diff_fmt }}</td>
+                    <td class="r mono">{{ r.perc_txt }}</td>
+                    <td><span class="tag-mot">{{ r.motivo }}</span></td>
+                    {% else %}
+                    <td class="r mono">{{ r.sal_atual_fmt }}</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="resumo-row">
+            <span>Total: <strong>{{ registros|length }}</strong> funcionário(s)</span>
+        </div>
+        {% else %}
+        <div class="vazio">Nenhum registro encontrado com os filtros selecionados.</div>
+        {% endif %}
+    </div>
+
+</div><!-- /conteudo -->
+
+<script>
+(function() {
+    var now = new Date();
+    var p = function(n) { return String(n).padStart(2,'0'); };
+    var dt = p(now.getDate())+'/'+p(now.getMonth()+1)+'/'+now.getFullYear()
+           +' '+p(now.getHours())+':'+p(now.getMinutes());
+    document.querySelectorAll('.cab-datahora').forEach(function(el) { el.textContent = dt; });
+})();
+</script>
+</body>
+</html>

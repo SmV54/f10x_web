@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Selecionar Empresa</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.card {
+    width: 100%;
+    max-width: 480px;
+    background: white;
+    border-radius: 18px;
+    padding: 32px 28px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
+
+.logo {
+    text-align: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #1e3a8a;
+    margin-bottom: 4px;
+}
+
+.versao {
+    text-align: center;
+    font-size: 11px;
+    color: #94a3b8;
+    margin-bottom: 20px;
+}
+
+.boas-vindas {
+    text-align: center;
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 6px;
+}
+
+.titulo {
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    color: #0f172a;
+    margin-bottom: 24px;
+}
+
+.lista-empresas {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.empresa-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border: 1px solid #dde3ec;
+    border-radius: 10px;
+    background: #f8fafc;
+    cursor: pointer;
+    transition: all 0.15s;
+    width: 100%;
+    text-align: left;
+    font-family: Arial, sans-serif;
+}
+
+.empresa-btn:hover {
+    background: #eff6ff;
+    border-color: #2a7de1;
+}
+
+.empresa-btn:active {
+    background: #dbeafe;
+}
+
+.empresa-info { flex: 1; }
+
+.empresa-nome {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+    margin-bottom: 3px;
+}
+
+.empresa-cnpj {
+    font-size: 11px;
+    color: #64748b;
+    font-family: 'Courier New', monospace;
+}
+
+.empresa-icone {
+    font-size: 18px;
+    color: #2a7de1;
+    margin-left: 12px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.empresa-btn:hover .empresa-icone { opacity: 1; }
+
+.rodape {
+    margin-top: 24px;
+    text-align: center;
+}
+
+.btn-sair {
+    font-size: 12px;
+    color: #94a3b8;
+    text-decoration: none;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+}
+
+.btn-sair:hover { color: #64748b; text-decoration: underline; }
+
+.msg-erro {
+    display: none;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    color: #dc2626;
+    font-size: 12px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    margin-top: 16px;
+    text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+    <div class="logo">Folha10 Simples</div>
+    <div class="versao">{{ versao }}</div>
+
+    <div class="boas-vindas">Bem-vindo, <strong>{{ nome }}</strong></div>
+    <div class="titulo">Selecione a Empresa</div>
+
+    <div class="lista-empresas">
+        {% for emp in empresas %}
+        <button class="empresa-btn" onclick="selecionar({{ emp.id_empresa }})">
+            <div class="empresa-info">
+                <div class="empresa-nome">{{ emp.nome }}</div>
+                <div class="empresa-cnpj">{{ emp.cnpj_fmt }}</div>
+            </div>
+            <span class="empresa-icone">&#8594;</span>
+        </button>
+        {% endfor %}
+    </div>
+
+    <div class="msg-erro" id="msgErro"></div>
+
+    <div class="rodape">
+        <a href="/logout" class="btn-sair">Sair</a>
+    </div>
+</div>
+
+<script>
+async function selecionar(id_empresa) {
+    try {
+        const r = await fetch('/api/selecionar_empresa', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_empresa })
+        });
+        const d = await r.json();
+        if (d.ok) {
+            window.location.href = d.redirect || '/menu';
+        } else {
+            const el = document.getElementById('msgErro');
+            el.textContent = d.msg || 'Erro ao selecionar empresa.';
+            el.style.display = 'block';
+        }
+    } catch {
+        const el = document.getElementById('msgErro');
+        el.textContent = 'Erro de conexão. Tente novamente.';
+        el.style.display = 'block';
+    }
+}
+</script>
+</body>
+</html>

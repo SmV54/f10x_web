@@ -160,10 +160,60 @@ input:focus {
     margin-top: 10px;
     color: #777;
 }
+
+/* MODAL */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 999;
+    justify-content: center;
+    align-items: center;
+}
+.modal-overlay.ativo {
+    display: flex;
+}
+.modal-box {
+    background: white;
+    border-radius: 14px;
+    padding: 28px 32px;
+    width: 320px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+    text-align: center;
+}
+.modal-box p {
+    font-size: 15px;
+    color: #1e3a8a;
+    font-weight: 600;
+    margin-bottom: 20px;
+    line-height: 1.5;
+}
+.modal-box button {
+    height: 40px;
+    width: 100px;
+    border-radius: 8px;
+    border: none;
+    background: #2563eb;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+}
+.modal-box button:hover {
+    background: #1d4ed8;
+}
 </style>
 </head>
 
 <body>
+
+<div class="modal-overlay" id="modalOverlay">
+    <div class="modal-box">
+        <p id="modalTexto"></p>
+        <button onclick="modalOk()">OK</button>
+    </div>
+</div>
 
 <div class="card">
 
@@ -177,10 +227,10 @@ input:focus {
 
     <div class="form">
 
-        <input type="text" id="cpf" placeholder="CPF" maxlength="14" autocomplete="off">
+        <input type="text" id="cpf" placeholder="CPF" maxlength="14" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')" value="153.139.214-87">
         <div id="erro_cpf" class="linha-erro"></div>
 
-        <input type="password" id="senha" placeholder="Senha (6 dígitos)" maxlength="6" autocomplete="off">
+        <input type="password" id="senha" placeholder="Senha (6 dígitos)" maxlength="6" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly')" value="545454">
         <div id="erro_senha" class="linha-erro"></div>
 
         <div class="linha-manter">
@@ -250,37 +300,41 @@ function msg(texto, tipo){
 async function fazerLogin(){
 
     limparErros();
-    msg("", "");
+    msg("Verificando...", "");
 
-    const resp = await fetch("/fazer_login", {
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-            cpf: el("cpf").value,
-            senha: el("senha").value,
-            manter: el("manter").checked
-        })
-    });
+    try {
+        const resp = await fetch("/fazer_login", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({
+                cpf: el("cpf").value,
+                senha: el("senha").value,
+                manter: el("manter").checked
+            })
+        });
 
-    const data = await resp.json();
-
-    if(!data.ok){
-
-        if(data.bloqueado){
-            msg("Login bloqueado. Aguarde alguns minutos.", "erro");
+        if (!resp.ok) {
+            msg("Erro no servidor (HTTP " + resp.status + ")", "erro");
             return;
         }
 
-        msg(data.msg || "Erro no login", "erro");
-        el("senha").classList.add("input-erro");
-        return;
+        const data = await resp.json();
+
+        if(!data.ok){
+            if(data.bloqueado){
+                msg("Login bloqueado. Aguarde alguns minutos.", "erro");
+                return;
+            }
+            msg(data.msg || "Erro no login", "erro");
+            el("senha").classList.add("input-erro");
+            return;
+        }
+
+        abrirModal(data.msg || "Login realizado com sucesso", data.redirect);
+
+    } catch(e) {
+        msg("Erro de conexão: " + e.message, "erro");
     }
-
-    msg("Login realizado com sucesso", "ok");
-
-    setTimeout(()=>{
-        window.location.href = data.redirect;
-    }, 500);
 }
 
 function limpar(){
@@ -292,6 +346,19 @@ function limpar(){
 }
 
 el("cpf").addEventListener("input", formatarCPF);
+
+let _modalRedirect = "";
+
+function abrirModal(texto, redirect){
+    _modalRedirect = redirect;
+    el("modalTexto").innerText = texto;
+    el("modalOverlay").classList.add("ativo");
+}
+
+function modalOk(){
+    el("modalOverlay").classList.remove("ativo");
+    window.location.href = _modalRedirect;
+}
 
 </script>
 

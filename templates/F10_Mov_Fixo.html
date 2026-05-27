@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Movimento Fixo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* TOPO */
+.topo { background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10; }
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo { margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* CONTEÚDO */
+.conteudo { max-width: 1020px; margin: 24px auto; padding: 0 20px 60px; }
+
+/* CARD */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; margin-bottom: 24px; overflow: hidden; }
+.card-titulo { background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.btn-refresh { background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569;
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; }
+.btn-refresh:hover { background: #e2e8f0; }
+
+/* FORM */
+.form-body { padding: 20px; display: flex; flex-direction: column; gap: 0; }
+.sec-div { display: flex; align-items: center; gap: 10px; margin: 18px 0 12px; }
+.sec-div:first-child { margin-top: 0; }
+.sec-div-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; white-space: nowrap; }
+.sec-div-line  { flex: 1; height: 1px; background: var(--border); }
+
+.field-row { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.field-row + .field-row { margin-top: 10px; }
+
+.fg { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 110px; }
+.fg.sm { flex: 0 0 130px; min-width: 0; }
+.fg.md { flex: 0 0 180px; min-width: 0; }
+.fg.lg { flex: 2; }
+.fg label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; }
+.fg input, .fg select {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px;
+    font-family: var(--sans); font-size: 13px; outline: none; transition: border-color 0.15s;
+    background: #fff; color: var(--label);
+}
+.fg input:focus, .fg select:focus { border-color: var(--accent); }
+.fg input[type="number"] { -moz-appearance: textfield; }
+.fg input[type="number"]::-webkit-outer-spin-button,
+.fg input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+.inp-valor { font-family: var(--mono); font-weight: 600; font-size: 15px; text-align: right; }
+
+/* VERBA COMBO */
+.combo-wrap { position: relative; }
+.combo-wrap input { width: 100%; }
+.combo-drop { position: absolute; top: 100%; left: 0; right: 0; z-index: 100;
+    background: #fff; border: 1px solid var(--border); border-top: none;
+    border-radius: 0 0 8px 8px; max-height: 220px; overflow-y: auto;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1); }
+.combo-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    cursor: pointer; border-bottom: 1px solid #f1f5f9; font-size: 12px; }
+.combo-item:last-child { border-bottom: none; }
+.combo-item:hover { background: #eff6ff; }
+.c-cod  { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 30px; flex-shrink: 0; }
+.c-nome { flex: 1; color: #1e293b; }
+.c-tp   { font-size: 9px; font-weight: 700; padding: 1px 5px; border-radius: 4px; flex-shrink: 0; }
+.tp-1   { background:#f0fdf4; color:#166534; border:1px solid #86efac; }
+.tp-2   { background:#fff1f2; color:#be123c; border:1px solid #fecdd3; }
+.tp-3   { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.tp-4   { background:#faf5ff; color:#6b21a8; border:1px solid #d8b4fe; }
+.combo-empty { padding: 12px; text-align: center; font-size: 12px; color: #94a3b8; }
+.verba-info { font-size: 11px; color: #1e40af; background: #f0f7ff; border: 1px solid #bfdbfe;
+    border-radius: 6px; padding: 4px 10px; margin-top: 4px; display: none; }
+.verba-info.show { display: block; }
+
+/* RADIO */
+.radio-group { display: flex; gap: 20px; align-items: center; }
+.radio-label { display: flex; align-items: center; gap: 6px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--label); }
+.radio-label input[type="radio"] { accent-color: var(--accent); }
+
+/* CHECKBOX INDETERMINADO */
+.chk-label { display: flex; align-items: center; gap: 6px; margin-top: 6px;
+    font-size: 11px; color: #64748b; cursor: pointer;
+    font-weight: 400; text-transform: none; letter-spacing: 0; }
+.chk-label input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+.inp-desabilitado { background: #f8fafc !important; color: #94a3b8 !important;
+    border-color: #e2e8f0 !important; cursor: not-allowed !important; }
+
+/* VIGÊNCIA — dois quadros lado a lado */
+.vig-boxes { display: flex; gap: 14px; margin-top: 12px; }
+.vig-box { flex: 1; border: 2px solid var(--border); border-radius: 10px;
+    padding: 14px; transition: border-color 0.15s, background 0.15s, opacity 0.15s;
+    cursor: pointer; }
+.vig-box.ativo  { border-color: var(--accent); background: #f0f7ff; }
+.vig-box.inativo { opacity: 0.45; }
+.vig-box-titulo { font-size: 13px; font-weight: 600; color: #374151;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+@media (max-width: 600px) { .vig-boxes { flex-direction: column; } }
+
+/* LISTA FUNCIONÁRIOS */
+.busca-inp { width:100%; padding:6px 10px; border:1px solid var(--border);
+    border-radius:7px; font-family:var(--sans); font-size:12px; outline:none; transition:border-color 0.15s; }
+.busca-inp:focus { border-color:var(--accent); }
+.lista-scroll { max-height:200px; overflow-y:auto; border:1px solid var(--border);
+    border-radius:8px; background:#fafbfc; margin-top:6px; }
+.func-item { display:flex; align-items:center; gap:7px; padding:5px 9px;
+    border-bottom:1px solid #f1f5f9; cursor:pointer; transition:background 0.1s; }
+.func-item:last-child { border-bottom:none; }
+.func-item:hover { background:#eff6ff; }
+.func-item input[type="checkbox"] { accent-color:var(--accent); cursor:pointer; flex-shrink:0; }
+.func-mat  { font-family:var(--mono); font-size:10px; color:#94a3b8; flex-shrink:0; }
+.func-nome { font-size:12px; font-weight:500; color:#1e293b; line-height:1.2; }
+.lista-vazio { padding:14px; font-size:12px; color:#94a3b8; text-align:center; }
+.col-acoes { display:flex; align-items:center; gap:6px; margin-top:6px; }
+.btn-mini { background:#f1f5f9; border:1px solid #e2e8f0; color:#475569;
+    font-size:11px; padding:3px 9px; border-radius:5px; cursor:pointer; font-family:var(--sans); white-space:nowrap; }
+.btn-mini:hover { background:#e2e8f0; }
+.sel-count { font-size:11px; color:#64748b; margin-left:auto; white-space:nowrap; }
+
+/* FILTROS AVANÇADOS */
+.filt-adv { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.filt-adv summary { padding: 8px 12px; font-size: 11px; font-weight: 600; color: #64748b;
+    cursor: pointer; background: #f8fafc; user-select: none; list-style: none; }
+.filt-adv summary::before { content: '▶ '; font-size: 9px; }
+.filt-adv[open] summary::before { content: '▼ '; }
+.filt-adv summary:hover { background: #f1f5f9; }
+.filt-adv-body { padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    border-top: 1px solid var(--border); }
+
+/* GRUPOS DE FILTRO (título + De/Até) */
+.fg-group { flex: 1; min-width: 160px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: #fafbfc; }
+.fg-group-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #64748b; margin-bottom: 8px; }
+.fg-group-fields { display: flex; gap: 8px; }
+.fg-group-fields .fg { flex: 1; min-width: 0; }
+
+/* EDIT BANNER */
+.edit-banner { background: #fefce8; border: 1px solid #fcd34d; border-radius: 8px;
+    padding: 7px 12px; font-size: 11px; color: #92400e;
+    display: none; align-items: center; gap: 6px; margin-bottom: 12px; }
+.edit-banner.show { display: flex; }
+
+/* BUTTONS */
+.btn-row { display: flex; gap: 8px; margin-top: 20px; }
+.btn-incluir { flex: 1; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 10px 18px; font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: 0.15s; }
+.btn-incluir:hover { background: #1a5fb8; }
+.btn-incluir:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-cancelar { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 10px 14px; font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; }
+.btn-cancelar:hover { background: #e2e8f0; }
+.msg-form { font-size: 12px; padding: 7px 12px; border-radius: 6px; display: none; margin-top: 8px; }
+.msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; display: block; }
+.msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; display: block; }
+
+/* TABELA */
+.tabela-wrap { overflow-x: auto; }
+.tabela-wrap table { width: 100%; border-collapse: collapse; }
+.tabela-wrap thead th { background: #f1f5f9; padding: 8px 12px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tabela-wrap tbody tr { border-bottom: 1px solid #f1f5f9; }
+.tabela-wrap tbody tr:last-child { border-bottom: none; }
+.tabela-wrap tbody tr:hover { background: #f8fafc; }
+.tabela-wrap tbody td { padding: 7px 12px; font-size: 12px; color: #1e293b; vertical-align: middle; }
+.tabela-wrap tbody tr.inativo { opacity: 0.45; }
+.td-num { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 28px; text-align: right; }
+.td-cod { font-family: var(--mono); font-size: 11px; }
+.td-val { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
+.sit-badge { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.sit-A { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.sit-D { background: #f8f8f8; color: #94a3b8; border: 1px solid #e2e8f0; }
+.btn-acao { background: none; border: none; cursor: pointer; font-size: 13px; padding: 3px 5px; border-radius: 4px; transition: background 0.1s; }
+.btn-acao:hover { background: #f1f5f9; }
+.tabela-rodape { padding: 8px 14px; background: #f8fafc; border-top: 1px solid var(--border); font-size: 11px; color: #64748b; }
+.vazio { padding: 36px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Manutenção — Movimento Fixo</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- CARD: FORMULÁRIO -->
+    <div class="card">
+        <div class="card-titulo">
+            <span id="form-titulo">📌 Novo Movimento Fixo</span>
+        </div>
+        <div class="form-body">
+
+            <div id="edit-banner" class="edit-banner">
+                ✏️ Editando registro <strong>#<span id="edit-id"></span></strong>
+            </div>
+
+            <!-- VERBA E VALOR -->
+            <div class="sec-div"><span class="sec-div-label">Rubrica e Valor</span><div class="sec-div-line"></div></div>
+            <div class="field-row">
+                <div class="fg lg">
+                    <label>Rubrica (Verba) *</label>
+                    <div class="combo-wrap">
+                        <input type="text" id="verba-display" placeholder="Buscar código ou nome…"
+                               autocomplete="off"
+                               onfocus="abrirCombo()"
+                               oninput="filtrarCombo(this.value)"
+                               onblur="fecharComboDelay()">
+                        <div class="combo-drop" id="combo-drop" style="display:none"></div>
+                    </div>
+                    <input type="hidden" id="cod_verba">
+                    <div class="verba-info" id="verba-info"></div>
+                </div>
+                <div class="fg md">
+                    <label>Valor (R$) *</label>
+                    <input type="text" id="inp-valor" class="inp-valor" placeholder="0,00"
+                           oninput="mascaraValor(this)">
+                </div>
+            </div>
+
+            <!-- PARA QUEM -->
+            <div class="sec-div"><span class="sec-div-label">Para Quem?</span><div class="sec-div-line"></div></div>
+            <div class="radio-group">
+                <label class="radio-label">
+                    <input type="radio" name="modo_alvo" value="especifico" checked onchange="setModoAlvo('especifico')">
+                    Funcionários específicos
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="modo_alvo" value="grupo" onchange="setModoAlvo('grupo')">
+                    Filtrar
+                </label>
+            </div>
+
+            <div id="div-especifico" style="margin-top:10px;">
+                <input type="text" id="busca-func" class="busca-inp"
+                       placeholder="Buscar funcionário…" oninput="filtrarFuncionarios()">
+                <div class="lista-scroll" id="func-lista"></div>
+                <div class="col-acoes">
+                    <button type="button" class="btn-mini" onclick="selecionarTodos()">Todos</button>
+                    <button type="button" class="btn-mini" onclick="limparSelecao()">Limpar</button>
+                    <span id="sel-count" class="sel-count">0 selecionado(s)</span>
+                </div>
+            </div>
+
+            <div id="div-grupo" style="display:none;margin-top:10px;">
+                <div class="field-row">
+                    <div class="fg">
+                        <label>Sindicato</label>
+                        <select id="sel-sindicato">
+                            <option value="">Todos</option>
+                        </select>
+                    </div>
+                    <div class="fg">
+                        <label>Função</label>
+                        <select id="sel-funcao">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                    <div class="fg">
+                        <label>Categoria (eSocial Tab. 01)</label>
+                        <select id="sel-categoria">
+                            <option value="">Todas</option>
+                        </select>
+                    </div>
+                </div>
+
+                <details class="filt-adv" id="filt-adv-details">
+                    <summary>Filtros avançados (faixas de data / salário / idade / tempo de serviço)</summary>
+                    <div class="filt-adv-body">
+                        <div class="field-row">
+                            <div class="fg-group">
+                                <div class="fg-group-label">Data de Nascimento</div>
+                                <div class="fg-group-fields">
+                                    <div class="fg"><label>De</label><input type="date" id="inp-nasc1"></div>
+                                    <div class="fg"><label>Até</label><input type="date" id="inp-nasc2"></div>
+                                </div>
+                            </div>
+                            <div class="fg-group">
+                                <div class="fg-group-label">Data de Admissão</div>
+                                <div class="fg-group-fields">
+                                    <div class="fg"><label>De</label><input type="date" id="inp-adm1"></div>
+                                    <div class="fg"><label>Até</label><input type="date" id="inp-adm2"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="field-row">
+                            <div class="fg-group">
+                                <div class="fg-group-label">Salário Base (R$)</div>
+                                <div class="fg-group-fields">
+                                    <div class="fg"><label>De</label><input type="text" id="inp-sal1" placeholder="0,00" oninput="mascaraValor(this)"></div>
+                                    <div class="fg"><label>Até</label><input type="text" id="inp-sal2" placeholder="0,00" oninput="mascaraValor(this)"></div>
+                                </div>
+                            </div>
+                            <div class="fg-group">
+                                <div class="fg-group-label">Idade (anos)</div>
+                                <div class="fg-group-fields">
+                                    <div class="fg"><label>De</label><input type="number" id="inp-idade1" min="0" max="120" placeholder="0"></div>
+                                    <div class="fg"><label>Até</label><input type="number" id="inp-idade2" min="0" max="120" placeholder="0"></div>
+                                </div>
+                            </div>
+                            <div class="fg-group">
+                                <div class="fg-group-label">Tempo de Serviço (meses)</div>
+                                <div class="fg-group-fields">
+                                    <div class="fg"><label>De</label><input type="number" id="inp-ts1" min="0" placeholder="0"></div>
+                                    <div class="fg"><label>Até</label><input type="number" id="inp-ts2" min="0" placeholder="0"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </details>
+            </div>
+
+            <!-- VIGÊNCIA -->
+            <div class="sec-div"><span class="sec-div-label">Opções de Vigência deste Movimento Fixo</span><div class="sec-div-line"></div></div>
+
+            <div class="vig-boxes">
+
+                <!-- BOX 1: PARCELAS -->
+                <div class="vig-box ativo" id="box-parcelas" onclick="selecionarVig('parcelas')">
+                    <div class="vig-box-titulo">
+                        <label class="radio-label" onclick="event.stopPropagation()">
+                            <input type="radio" name="modo_vig" value="parcelas" checked
+                                   onchange="setModoVig('parcelas')">
+                            Quantidade de Parcelas
+                        </label>
+                    </div>
+                    <div class="field-row">
+                        <div class="fg sm">
+                            <label>Qtd de Parcelas *</label>
+                            <input type="number" id="inp-parc" min="1" max="99" placeholder="00">
+                        </div>
+                        <div class="fg sm">
+                            <label>Já Descontadas</label>
+                            <input type="number" id="inp-parc-before" min="0" max="99" placeholder="0" value="0">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- BOX 2: PERÍODO -->
+                <div class="vig-box inativo" id="box-periodo" onclick="selecionarVig('periodo')">
+                    <div class="vig-box-titulo">
+                        <label class="radio-label" onclick="event.stopPropagation()">
+                            <input type="radio" name="modo_vig" value="periodo"
+                                   onchange="setModoVig('periodo')">
+                            Periodo
+                        </label>
+                    </div>
+                    <div class="field-row" style="align-items:flex-end;">
+                        <div class="fg sm">
+                            <label>Folha Inicial</label>
+                            <input type="text" id="inp-folha-ini" maxlength="7" readonly
+                                   value="{{ folha_ini_default }}"
+                                   class="inp-desabilitado" style="cursor:default;">
+                        </div>
+                        <div class="fg sm">
+                            <label class="chk-label" style="margin:0 0 5px 0;white-space:nowrap;">
+                                <input type="checkbox" id="chk-indeterminado"
+                                       onchange="toggleIndeterminado(this.checked)">
+                                Por tempo indeterminado
+                            </label>
+                            <label>Folha Final</label>
+                            <input type="text" id="inp-folha-fim" placeholder="MM/AAAA" maxlength="7"
+                                   oninput="mascaraFolha(this)">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- REGRAS -->
+            <div class="sec-div"><span class="sec-div-label">Regras de Processamento</span><div class="sec-div-line"></div></div>
+            <div class="field-row">
+                <div class="fg">
+                    <label>Nas Férias</label>
+                    <select id="sel-nas-ferias">
+                        <option value="">— Selecione —</option>
+                        <option value="0">0 — Não processar mesmo que seja 1 dia de férias</option>
+                        <option value="1">1 — Processar integral sem proporcionalidade</option>
+                        <option value="2">2 — Processar tudo nas férias (desde que as férias comecem nessa Folha)</option>
+                        <option value="3">3 — Proporcional aos dias trabalhados e aos dias gozados nas férias</option>
+                        <option value="4">4 — Proporcional aos dias trabalhados e zero nas férias</option>
+                    </select>
+                </div>
+                <div class="fg">
+                    <label>Se Afastado</label>
+                    <select id="sel-se-afastado">
+                        <option value="1">1 — Continuar normalmente</option>
+                        <option value="2">2 — Interromper</option>
+                        <option value="3">3 — Proporcional aos dias trab.</option>
+                    </select>
+                </div>
+                <div class="fg sm">
+                    <label>Mês Admissão</label>
+                    <select id="sel-mes-adm">
+                        <option value="P">P — Proporcional</option>
+                        <option value="T">T — Total</option>
+                    </select>
+                </div>
+                <div class="fg sm">
+                    <label>Mês Rescisão</label>
+                    <select id="sel-mes-resc">
+                        <option value="P">P — Proporcional</option>
+                        <option value="T">T — Total</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- BOTÕES -->
+            <div class="btn-row">
+                <button class="btn-incluir" id="btn-principal" onclick="gravar()">✓ Incluir</button>
+                <button class="btn-cancelar" id="btn-cancelar" onclick="cancelarEdicao()" style="display:none">✕ Cancelar</button>
+            </div>
+            <div id="msg-form" class="msg-form"></div>
+
+        </div>
+    </div>
+
+    <!-- CARD: LISTA -->
+    <div class="card">
+        <div class="card-titulo">
+            <span>Movimentos Fixos Cadastrados</span>
+            <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
+        </div>
+        <div id="lista-container"><div class="vazio">Carregando…</div></div>
+    </div>
+
+</div>
+
+<script>
+const FOLHA_INI_DEFAULT = '{{ folha_ini_default }}';
+const FUNCIONARIOS = {{ funcionarios | tojson | safe }};
+const VERBAS       = {{ verbas       | tojson | safe }};
+const SINDICATOS   = {{ sindicatos   | tojson | safe }};
+const FUNCOES      = {{ funcoes      | tojson | safe }};
+const CATEGORIAS   = {{ categorias   | tojson | safe }};
+
+const TP_LABEL = {'1':'Provento','2':'Desconto','3':'Informativa','4':'Info.Ded.'};
+const TP_CLS   = {'1':'tp-1','2':'tp-2','3':'tp-3','4':'tp-4'};
+
+// ── INIT SELECTS ──
+(function() {
+    renderFuncionarios(FUNCIONARIOS);
+    const ss = document.getElementById('sel-sindicato');
+    SINDICATOS.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.id; o.textContent = s.nome; ss.appendChild(o);
+    });
+    const sf = document.getElementById('sel-funcao');
+    FUNCOES.forEach(f => {
+        const o = document.createElement('option');
+        o.value = f.id; o.textContent = f.nome; sf.appendChild(o);
+    });
+
+    const sc = document.getElementById('sel-categoria');
+    CATEGORIAS.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.codigo;
+        o.textContent = `${c.codigo} — ${c.texto}`;
+        sc.appendChild(o);
+    });
+})();
+
+// ── LISTA FUNCIONÁRIOS ──
+function renderFuncionarios(lista) {
+    const el = document.getElementById('func-lista');
+    if (!lista.length) { el.innerHTML = '<div class="lista-vazio">Nenhum funcionário.</div>'; return; }
+    el.innerHTML = lista.map(f => `
+        <label class="func-item">
+            <input type="checkbox" class="func-chk" value="${f.matricula}" onchange="atualizarContador()">
+            <span class="func-mat">${String(f.matricula).padStart(6,'0')}</span>
+            <span class="func-nome">${f.nome || '—'}</span>
+        </label>`).join('');
+}
+function filtrarFuncionarios() {
+    const b = document.getElementById('busca-func').value.toLowerCase().trim();
+    renderFuncionarios(b
+        ? FUNCIONARIOS.filter(f => f.nome.toLowerCase().includes(b) || String(f.matricula).padStart(6,'0').includes(b))
+        : FUNCIONARIOS);
+    atualizarContador();
+}
+function selecionarTodos() { document.querySelectorAll('.func-chk').forEach(c => c.checked = true);  atualizarContador(); }
+function limparSelecao()   { document.querySelectorAll('.func-chk').forEach(c => c.checked = false); atualizarContador(); }
+function atualizarContador() {
+    document.getElementById('sel-count').textContent =
+        `${document.querySelectorAll('.func-chk:checked').length} selecionado(s)`;
+}
+function getMatsSelecionadas() {
+    return [...document.querySelectorAll('.func-chk:checked')].map(c => parseInt(c.value));
+}
+
+// ── VERBA COMBO ──
+let verbaSel = null;
+
+function abrirCombo() { filtrarCombo(document.getElementById('verba-display').value); }
+function fecharComboDelay() { setTimeout(() => { document.getElementById('combo-drop').style.display = 'none'; }, 200); }
+
+function filtrarCombo(q) {
+    const drop = document.getElementById('combo-drop');
+    const b    = q.toLowerCase().trim();
+    const lista = b
+        ? VERBAS.filter(v => v.dsc_rubr.toLowerCase().includes(b) || String(v.cod_rubr).padStart(4,'0').startsWith(b))
+        : VERBAS;
+    drop.innerHTML = lista.length
+        ? lista.map(v => `<div class="combo-item" onmousedown="selecionarVerba(${v.cod_rubr})">
+              <span class="c-cod">${String(v.cod_rubr).padStart(4,'0')}</span>
+              <span class="c-nome">${v.dsc_rubr}</span>
+              <span class="c-tp ${TP_CLS[v.tp_rubr]||'tp-3'}">${TP_LABEL[v.tp_rubr]||v.tp_rubr}</span>
+          </div>`).join('')
+        : '<div class="combo-empty">Nenhuma verba encontrada.</div>';
+    drop.style.display = 'block';
+}
+
+function selecionarVerba(cod) {
+    const v = VERBAS.find(x => x.cod_rubr === cod);
+    if (!v) return;
+    verbaSel = v;
+    document.getElementById('verba-display').value = `${String(v.cod_rubr).padStart(4,'0')} — ${v.dsc_rubr}`;
+    document.getElementById('cod_verba').value     = v.cod_rubr;
+    document.getElementById('combo-drop').style.display = 'none';
+    const info = document.getElementById('verba-info');
+    info.textContent = `${TP_LABEL[v.tp_rubr]||v.tp_rubr} · Unidade: ${v.unid_verba === 'V' ? 'Valor (R$)' : v.unid_verba === 'H' ? 'Hora' : 'Diária'}`;
+    info.classList.add('show');
+}
+
+// ── MODOS ──
+function setModoAlvo(modo) {
+    document.getElementById('div-especifico').style.display = modo === 'especifico' ? '' : 'none';
+    document.getElementById('div-grupo').style.display      = modo === 'grupo'      ? '' : 'none';
+    if (modo === 'grupo') document.getElementById('filt-adv-details').open = true;
+}
+function toggleIndeterminado(checked) {
+    const inp = document.getElementById('inp-folha-fim');
+    if (checked) {
+        inp.value    = '12/9999';
+        inp.disabled = true;
+        inp.classList.add('inp-desabilitado');
+    } else {
+        inp.value    = '';
+        inp.disabled = false;
+        inp.placeholder = 'MM/AAAA';
+        inp.classList.remove('inp-desabilitado');
+    }
+}
+
+function setModoVig(modo) {
+    document.getElementById('box-parcelas').className = 'vig-box ' + (modo === 'parcelas' ? 'ativo' : 'inativo');
+    document.getElementById('box-periodo').className  = 'vig-box ' + (modo === 'periodo'  ? 'ativo' : 'inativo');
+}
+function selecionarVig(modo) {
+    document.querySelector(`input[name="modo_vig"][value="${modo}"]`).checked = true;
+    setModoVig(modo);
+}
+
+// ── MÁSCARAS ──
+function mascaraValor(el) {
+    const d = el.value.replace(/\D/g, '');
+    el.value = d ? formatValor(parseInt(d, 10)) : '';
+}
+function mascaraFolha(el) {
+    let v = el.value.replace(/\D/g, '');
+    if (v.length > 6) v = v.slice(0, 6);
+    if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
+    el.value = v;
+}
+function formatValor(c) {
+    return (c / 100).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function parseValor(s) {
+    const v = parseInt((s||'').replace(/\./g,'').replace(',','') || '0', 10);
+    return v > 0 ? v : null;
+}
+function parseFolha(s) {
+    const m = s.trim().match(/^(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const mm = parseInt(m[1]), yyyy = parseInt(m[2]);
+    if (mm < 1 || mm > 12 || yyyy < 1900 || yyyy > 9999) return null;
+    return yyyy * 100 + mm;
+}
+function formatFolha(n) {
+    if (!n) return '—';
+    return `${String(n % 100).padStart(2,'0')}/${Math.floor(n / 100)}`;
+}
+function dateToYMD(s) { return s ? s.replace(/-/g,'') : null; }
+function ymdToDate(s) { return (s && s.length === 8) ? `${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}` : ''; }
+
+// ── MENSAGEM ──
+function mostrarMsg(msg, tipo) {
+    const el = document.getElementById('msg-form');
+    el.textContent = msg;
+    el.className = 'msg-form ' + (tipo === 'ok' ? 'msg-ok' : 'msg-err');
+    setTimeout(() => { el.className = 'msg-form'; }, 5000);
+}
+
+// ── COLETA DE DADOS DO FORM ──
+function coletarDados() {
+    const modoAlvo = document.querySelector('input[name="modo_alvo"]:checked').value;
+    const modoVig  = document.querySelector('input[name="modo_vig"]:checked').value;
+
+    const codVerba = parseInt(document.getElementById('cod_verba').value || '0');
+    if (!codVerba) return {ok:false, msg:'Selecione uma verba.'};
+
+    const valor = parseValor(document.getElementById('inp-valor').value);
+    if (!valor) return {ok:false, msg:'Informe o valor (maior que zero).'};
+
+    let matriculas = null;
+    if (modoAlvo === 'especifico') {
+        matriculas = getMatsSelecionadas();
+        if (!matriculas.length) return {ok:false, msg:'Selecione ao menos um funcionário.'};
+    }
+
+    let qtdParcelas = null, qtdBefore = 0, folhaIni = null, folhaFim = null;
+    if (modoVig === 'parcelas') {
+        qtdParcelas = parseInt(document.getElementById('inp-parc').value || '0');
+        if (!qtdParcelas || qtdParcelas < 1) return {ok:false, msg:'Informe a qtd de parcelas (mínimo 1).'};
+        qtdBefore = parseInt(document.getElementById('inp-parc-before').value || '0');
+        if (qtdBefore >= qtdParcelas) return {ok:false, msg:'Parcelas já descontadas deve ser menor que o total.'};
+    } else {
+        const si = document.getElementById('inp-folha-ini').value.trim();
+        const sf = document.getElementById('inp-folha-fim').value.trim();
+        if (si) {
+            folhaIni = parseFolha(si);
+            if (!folhaIni) return {ok:false, msg:'Folha inicial inválida (MM/AAAA).'};
+        }
+        if (sf) {
+            folhaFim = parseFolha(sf);
+            if (!folhaFim) return {ok:false, msg:'Folha final inválida (MM/AAAA).'};
+        }
+        if (folhaIni && folhaFim && folhaFim !== 999912 && folhaFim < folhaIni)
+            return {ok:false, msg:'Folha final deve ser maior ou igual à folha inicial.'};
+    }
+
+    const nasFerias = document.getElementById('sel-nas-ferias').value;
+    if (nasFerias === '') return {ok:false, msg:'Selecione a opção "Nas Férias".'};
+
+    return {
+        ok: true,
+        payload: {
+            cod_verba:           codVerba,
+            valor:               valor,
+            matriculas:          matriculas,
+            id_sindicato:        parseInt(document.getElementById('sel-sindicato').value || '0') || null,
+            id_funcao:           parseInt(document.getElementById('sel-funcao').value    || '0') || null,
+            categoria:           document.getElementById('sel-categoria').value || null,
+            datanascimento1:     dateToYMD(document.getElementById('inp-nasc1').value),
+            datanascimento2:     dateToYMD(document.getElementById('inp-nasc2').value),
+            dataadmissao1:       dateToYMD(document.getElementById('inp-adm1').value),
+            dataadmissao2:       dateToYMD(document.getElementById('inp-adm2').value),
+            salariobase1:        parseValor(document.getElementById('inp-sal1').value),
+            salariobase2:        parseValor(document.getElementById('inp-sal2').value),
+            idade1:              parseInt(document.getElementById('inp-idade1').value||'0') || null,
+            idade2:              parseInt(document.getElementById('inp-idade2').value||'0') || null,
+            tempo_servico1:      parseInt(document.getElementById('inp-ts1').value||'0') || null,
+            tempo_servico2:      parseInt(document.getElementById('inp-ts2').value||'0') || null,
+            qtd_parcelas:        qtdParcelas,
+            qtd_parcelas_before: qtdBefore,
+            folha_inicial:       folhaIni,
+            folha_final:         folhaFim,
+            nas_ferias:          nasFerias,
+            se_afastado:         document.getElementById('sel-se-afastado').value,
+            mes_admissao:        document.getElementById('sel-mes-adm').value,
+            mes_rescisao:        document.getElementById('sel-mes-resc').value,
+        }
+    };
+}
+
+// ── GRAVAR ──
+let modoEdicao = false;
+let idEdicao   = null;
+
+async function gravar() {
+    const r = coletarDados();
+    if (!r.ok) { mostrarMsg(r.msg, 'err'); return; }
+
+    const btn = document.getElementById('btn-principal');
+    btn.disabled = true;
+
+    const url  = modoEdicao ? '/api/mov_fixo_alterar' : '/api/mov_fixo_gravar';
+    const body = modoEdicao ? {...r.payload, id: idEdicao} : r.payload;
+
+    try {
+        const res = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+        const d   = await res.json();
+        if (d.ok) { mostrarMsg(d.msg, 'ok'); cancelarEdicao(); carregarLista(); }
+        else       mostrarMsg(d.msg || 'Erro ao gravar.', 'err');
+    } catch { mostrarMsg('Erro de comunicação.', 'err'); }
+    finally  { btn.disabled = false; }
+}
+
+// ── RESETAR FORM ──
+function resetarForm() {
+    document.getElementById('verba-display').value = '';
+    document.getElementById('cod_verba').value     = '';
+    document.getElementById('inp-valor').value     = '';
+    document.getElementById('verba-info').classList.remove('show');
+    verbaSel = null;
+
+    document.querySelector('input[name="modo_alvo"][value="especifico"]').checked = true;
+    setModoAlvo('especifico');
+    document.getElementById('busca-func').value = '';
+    filtrarFuncionarios();
+    document.getElementById('sel-sindicato').value  = '';
+    document.getElementById('sel-funcao').value     = '';
+    document.getElementById('sel-categoria').value  = '';
+    ['inp-nasc1','inp-nasc2','inp-adm1','inp-adm2'].forEach(id => document.getElementById(id).value = '');
+    ['inp-sal1','inp-sal2'].forEach(id => document.getElementById(id).value = '');
+    ['inp-idade1','inp-idade2','inp-ts1','inp-ts2'].forEach(id => document.getElementById(id).value = '');
+
+    selecionarVig('parcelas');
+    document.getElementById('inp-parc').value        = '';
+    document.getElementById('inp-parc-before').value = '0';
+    document.getElementById('inp-folha-ini').value      = FOLHA_INI_DEFAULT;
+    document.getElementById('chk-indeterminado').checked = false;
+    toggleIndeterminado(false);
+    document.getElementById('inp-folha-fim').value       = '';
+
+    document.getElementById('sel-nas-ferias').value  = '';
+    document.getElementById('sel-se-afastado').value = '1';
+    document.getElementById('sel-mes-adm').value     = 'P';
+    document.getElementById('sel-mes-resc').value    = 'P';
+}
+
+function cancelarEdicao() {
+    modoEdicao = false; idEdicao = null;
+    document.getElementById('form-titulo').textContent     = '📌 Novo Movimento Fixo';
+    document.getElementById('edit-banner').classList.remove('show');
+    document.getElementById('btn-principal').textContent   = '✓ Incluir';
+    document.getElementById('btn-cancelar').style.display  = 'none';
+    resetarForm();
+}
+
+// ── EDITAR ──
+let LISTA_MAP = {};
+
+function editarRegistro(id) {
+    const r = LISTA_MAP[id];
+    if (!r) return;
+    modoEdicao = true; idEdicao = id;
+
+    document.getElementById('form-titulo').textContent    = '✏️ Alterar Movimento Fixo';
+    document.getElementById('edit-id').textContent        = id;
+    document.getElementById('edit-banner').classList.add('show');
+    document.getElementById('btn-principal').textContent  = '✓ Salvar Alteração';
+    document.getElementById('btn-cancelar').style.display = 'inline-flex';
+
+    selecionarVerba(r.cod_verba);
+    document.getElementById('inp-valor').value = formatValor(r.valor);
+
+    if (r.matricula) {
+        document.querySelector('input[name="modo_alvo"][value="especifico"]').checked = true;
+        setModoAlvo('especifico');
+        limparSelecao();
+        const chk = document.querySelector(`.func-chk[value="${r.matricula}"]`);
+        if (chk) { chk.checked = true; chk.closest('.func-item')?.scrollIntoView({block:'nearest'}); }
+        atualizarContador();
+    } else {
+        document.querySelector('input[name="modo_alvo"][value="grupo"]').checked = true;
+        setModoAlvo('grupo');
+        document.getElementById('sel-sindicato').value = r.id_sindicato || '';
+        document.getElementById('sel-funcao').value    = r.id_funcao    || '';
+        document.getElementById('sel-categoria').value = r.categoria    || '';
+        document.getElementById('inp-nasc1').value = ymdToDate(r.datanascimento1);
+        document.getElementById('inp-nasc2').value = ymdToDate(r.datanascimento2);
+        document.getElementById('inp-adm1').value  = ymdToDate(r.dataadmissao1);
+        document.getElementById('inp-adm2').value  = ymdToDate(r.dataadmissao2);
+        if (r.salariobase1) document.getElementById('inp-sal1').value = formatValor(r.salariobase1);
+        if (r.salariobase2) document.getElementById('inp-sal2').value = formatValor(r.salariobase2);
+        document.getElementById('inp-idade1').value = r.idade1 || '';
+        document.getElementById('inp-idade2').value = r.idade2 || '';
+        document.getElementById('inp-ts1').value    = r.tempo_servico1 || '';
+        document.getElementById('inp-ts2').value    = r.tempo_servico2 || '';
+    }
+
+    if (r.qtd_parcelas) {
+        selecionarVig('parcelas');
+        document.getElementById('inp-parc').value        = r.qtd_parcelas;
+        document.getElementById('inp-parc-before').value = r.qtd_parcelas_before || 0;
+    } else {
+        selecionarVig('periodo');
+        document.getElementById('inp-folha-ini').value = FOLHA_INI_DEFAULT;
+        const indeterminado = !r.folha_final || r.folha_final === 999912;
+        document.getElementById('chk-indeterminado').checked = indeterminado;
+        toggleIndeterminado(indeterminado);
+        if (!indeterminado) document.getElementById('inp-folha-fim').value = formatFolha(r.folha_final);
+    }
+
+    document.getElementById('sel-nas-ferias').value  = r.nas_ferias   || '0';
+    document.getElementById('sel-se-afastado').value = r.se_afastado  || '1';
+    document.getElementById('sel-mes-adm').value     = r.mes_admissao || 'T';
+    document.getElementById('sel-mes-resc').value    = r.mes_rescisao || 'T';
+
+    window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+// ── EXCLUIR (inativar) ──
+async function excluirRegistro(id) {
+    const r    = LISTA_MAP[id];
+    const desc = r ? `Verba ${String(r.cod_verba).padStart(4,'0')} — R$ ${formatValor(r.valor)}` : `ID ${id}`;
+    if (!confirm(`Inativar este movimento fixo?\n\n${desc}`)) return;
+    try {
+        const res = await fetch('/api/mov_fixo_excluir', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}),
+        });
+        const d = await res.json();
+        if (d.ok) carregarLista();
+        else alert(d.msg || 'Erro ao inativar.');
+    } catch { alert('Erro de comunicação.'); }
+}
+
+// ── LISTA ──
+function nomeFunc(mat) { const f = FUNCIONARIOS.find(x => x.matricula === mat); return f ? f.nome : '—'; }
+function nomeVerba(cod) { const v = VERBAS.find(x => x.cod_rubr === cod); return v ? v.dsc_rubr : '—'; }
+function nomeSind(id) { const s = SINDICATOS.find(x => x.id === id); return s ? s.nome : `Sind.#${id}`; }
+function nomeFunc2(id) { const f = FUNCOES.find(x => x.id === id); return f ? f.nome : `Func.#${id}`; }
+
+function renderAlvo(r) {
+    if (r.matricula) {
+        return `<span class="td-cod">${String(r.matricula).padStart(6,'0')}</span>
+                <br><span style="font-size:11px;color:#64748b;">${nomeFunc(r.matricula)}</span>`;
+    }
+    const p = [];
+    if (r.id_sindicato) p.push(`Sind.: ${nomeSind(r.id_sindicato)}`);
+    if (r.id_funcao)    p.push(`Func.: ${nomeFunc2(r.id_funcao)}`);
+    if (r.categoria)    p.push(`Cat.: ${r.categoria}`);
+    return `<em style="color:#64748b;font-size:11px;">${p.length ? p.join(' · ') : 'Todos'}</em>`;
+}
+
+function renderVigencia(r) {
+    if (r.qtd_parcelas) {
+        const rest = r.qtd_parcelas - (r.qtd_parcelas_before || 0);
+        return `<span style="font-size:11px;">${r.qtd_parcelas_before||0}/${r.qtd_parcelas} parcelas</span>
+                <br><span style="font-size:10px;color:#64748b;">${rest} restante(s)</span>`;
+    }
+    const ini = r.folha_inicial ? formatFolha(r.folha_inicial) : '—';
+    const fim = r.folha_final && r.folha_final !== 999912 ? formatFolha(r.folha_final) : null;
+    return `<span style="font-size:11px;">${ini} →${fim ? ' ' + fim : ''}</span>`
+         + (!fim ? `<br><span style="font-size:10px;color:#64748b;">Por tempo indeterminado</span>` : '');
+}
+
+function renderLista(regs) {
+    const el = document.getElementById('lista-container');
+    LISTA_MAP = {};
+    regs.forEach(r => { LISTA_MAP[r.id] = r; });
+
+    if (!regs.length) {
+        el.innerHTML = '<div class="vazio">Nenhum movimento fixo cadastrado.</div>';
+        return;
+    }
+
+    const rows = regs.map((r, i) => `
+        <tr class="${r.situacao === 'D' ? 'inativo' : ''}">
+            <td class="td-num">${i+1}</td>
+            <td>${renderAlvo(r)}</td>
+            <td><span class="td-cod">${String(r.cod_verba).padStart(4,'0')}</span>
+                <br><span style="font-size:11px;color:#475569;">${nomeVerba(r.cod_verba)}</span></td>
+            <td class="td-val">R$ ${formatValor(r.valor)}</td>
+            <td>${renderVigencia(r)}</td>
+            <td style="font-size:10px;color:#64748b;white-space:nowrap;line-height:1.7;">
+                Férias: ${r.nas_ferias}<br>Afas.: ${r.se_afastado} · Adm: ${r.mes_admissao} · Resc: ${r.mes_rescisao}
+            </td>
+            <td><span class="sit-badge sit-${r.situacao}">${r.situacao === 'A' ? 'Ativo' : 'Inativo'}</span></td>
+            <td style="white-space:nowrap;">
+                ${r.situacao === 'A'
+                    ? `<button class="btn-acao" title="Editar" onclick="editarRegistro(${r.id})">✏️</button>
+                       <button class="btn-acao" title="Inativar" onclick="excluirRegistro(${r.id})">🗑️</button>`
+                    : ''}
+            </td>
+        </tr>`).join('');
+
+    el.innerHTML = `<div class="tabela-wrap"><table>
+        <thead><tr>
+            <th class="td-num">#</th><th>Alvo</th><th>Verba</th>
+            <th style="text-align:right;">Valor</th><th>Vigência</th>
+            <th>Regras</th><th>Sit.</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>
+    <div class="tabela-rodape">${regs.length} registro(s)</div></div>`;
+}
+
+async function carregarLista() {
+    const el = document.getElementById('lista-container');
+    el.innerHTML = '<div class="vazio">Carregando…</div>';
+    try {
+        const res = await fetch('/api/mov_fixo_listar');
+        const d   = await res.json();
+        if (!d.ok) { el.innerHTML = `<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
+        renderLista(d.registros || []);
+    } catch { el.innerHTML = '<div class="vazio" style="color:#be123c;">Erro ao carregar.</div>'; }
+}
+
+carregarLista();
+</script>
+</body>
+</html>

@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-2200</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --green:     #00a651;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1000px; margin: 32px auto; padding: 0 24px 80px; }
+
+/* ── FILTROS ── */
+.filtros-bar {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 16px; margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.filtros-label { font-size: 12px; font-weight: 600; color: #64748b; margin-right: 4px; }
+.btn-filtro {
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid var(--border); background: var(--bg); color: #64748b;
+    cursor: pointer; transition: .13s; font-family: var(--sans); text-decoration: none;
+    display: inline-block;
+}
+.btn-filtro:hover  { border-color: var(--accent); color: var(--accent); }
+.btn-filtro.ativo  { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* ── CONTADORES ── */
+.contadores {
+    display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
+}
+.contador-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 18px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-width: 100px;
+}
+.contador-num  { font-size: 22px; font-weight: 700; font-family: var(--mono); color: #1e293b; }
+.contador-txt  { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
+
+/* ── TABELA ── */
+.tabela-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 9px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; text-align: left; white-space: nowrap;
+}
+td {
+    padding: 11px 14px; border-bottom: 1px solid #f1f5f9;
+    font-size: 13px; color: var(--label); vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+
+.mat-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+.nome-cell { font-weight: 500; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+
+/* ── BADGES SITUAÇÃO ── */
+.sit-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    white-space: nowrap;
+}
+.sit-pendente   { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.sit-gerado     { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-aguardando { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.sit-excluido   { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+
+/* ── BOTÕES AÇÃO ── */
+.btn-enviar {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 13px; border-radius: 7px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid #00a651; background: #e8f5ee; color: #166534;
+    cursor: pointer; transition: .13s; font-family: var(--sans); white-space: nowrap;
+}
+.btn-enviar:hover:not(:disabled) { background: #00a651; color: #fff; }
+.btn-enviar:disabled { opacity: .5; cursor: default; }
+.btn-enviar.reenviar    { border-color: #64748b; background: #f8fafc; color: #475569; }
+.btn-enviar.reenviar:hover:not(:disabled) { background: #475569; color: #fff; border-color: #475569; }
+.btn-enviar.reconsutar  { border-color: #f97316; background: #fff7ed; color: #9a3412; }
+.btn-enviar.reconsutar:hover:not(:disabled) { background: #f97316; color: #fff; border-color: #f97316; }
+
+/* ── BOTÃO EXCLUIR (S-3000) ── */
+.btn-excluir {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    border: 1.5px solid #e2e8f0; background: #f8fafc; color: #94a3b8;
+    cursor: pointer; transition: .13s; font-family: var(--sans); white-space: nowrap;
+    margin-top: 3px;
+}
+.btn-excluir:hover:not(:disabled) { border-color: #ef4444; background: #fef2f2; color: #dc2626; }
+.btn-excluir:disabled { opacity: .4; cursor: default; }
+
+/* ── BOTÃO ENVIAR TODOS ── */
+.btn-enviar-todos {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid #00a651; background: #00a651; color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-todos:hover:not(:disabled) { background: #007a3d; border-color: #007a3d; }
+.btn-enviar-todos:disabled { opacity: .5; cursor: default; }
+
+/* ── BANNER PROGRESSO EM LOTE ── */
+.lote-banner {
+    display: none;
+    background: #0f172a; border: 1px solid #1e3d5c; border-radius: 10px;
+    padding: 12px 18px; margin-bottom: 16px;
+    align-items: center; gap: 16px;
+}
+.lote-banner.ativo { display: flex; }
+.lote-info  { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.lote-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
+.lote-detalhe { font-size: 11px; color: #8baac8; font-family: var(--mono); }
+.lote-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
+.lote-bar { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
+.lote-pct  { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
+
+/* ── PROGRESS ROW ── */
+.prog-row { display: none; }
+.prog-cell {
+    padding: 6px 14px 10px !important;
+}
+.prog-bar-wrap {
+    background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px;
+}
+.prog-bar {
+    height: 6px; border-radius: 20px; background: var(--accent);
+    width: 0%; transition: width .4s ease;
+}
+.prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
+
+/* ── RESULTADO INLINE ── */
+.res-ok   { color: #166534; font-size: 12px; font-weight: 600; font-family: var(--mono); }
+.res-erro { color: #991b1b; font-size: 12px; font-weight: 600; }
+
+/* ── VAZIO ── */
+.vazio {
+    text-align: center; padding: 48px 20px;
+    color: #94a3b8; font-size: 14px;
+}
+.vazio-icone { font-size: 32px; margin-bottom: 12px; }
+
+/* ── ÍCONE ESOCIAL ── */
+.esocial-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #e8f5ee; border: 1px solid #a7e0bc;
+    border-radius: 8px; padding: 3px 10px 3px 6px;
+    font-size: 12px; font-weight: 700; color: #166534;
+}
+
+/* ── MODAL RELATÓRIO ── */
+.modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,.55);
+    align-items: flex-start; justify-content: center;
+    padding: 32px 16px 48px; overflow-y: auto;
+}
+.modal-overlay.aberto { display: flex; }
+.modal-painel {
+    background: #fff; border-radius: 14px;
+    width: 100%; max-width: 900px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35); overflow: hidden;
+}
+.modal-topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 22px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 20px; min-height: 54px;
+}
+.modal-topo-titulo {
+    font-size: 13px; font-weight: 600; color: var(--text-head);
+    display: flex; align-items: center; gap: 8px; justify-content: center;
+}
+.modal-corpo { padding: 20px 22px 4px; }
+.modal-footer {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 22px 18px; border-top: 1px solid #f1f5f9; margin-top: 8px;
+}
+.modal-footer-left  { display: flex; gap: 8px; }
+.modal-footer-right { display: flex; gap: 8px; }
+.btn-imprimir {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    border: 1.5px solid var(--accent); background: var(--accent); color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+}
+.btn-imprimir:hover { background: #1a6fd4; border-color: #1a6fd4; }
+.btn-limpar {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    border: 1.5px solid #fca5a5; background: #fff; color: #991b1b;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+}
+.btn-limpar:hover { background: #fef2f2; }
+.btn-fechar-modal {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    border: 1.5px solid var(--border); background: #fff; color: #64748b;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+}
+.btn-fechar-modal:hover { border-color: #94a3b8; color: #374151; }
+
+/* tabela de resultados */
+.rel-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rel-table th {
+    background: #f8fafc; border-bottom: 2px solid var(--border);
+    padding: 7px 10px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; color: #64748b; text-align: left;
+}
+.rel-table td { padding: 9px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.rel-table tr:last-child td { border-bottom: none; }
+.rel-table tr.rel-row-ok   td { background: #f8fffe; }
+.rel-table tr.rel-row-erro td { background: #fffafa; }
+.rel-sub-info { font-size: 10px; color: #94a3b8; font-family: var(--mono); margin-top: 2px; }
+.rel-rec-ok   { color: #166534; font-family: var(--mono); font-weight: 600; word-break: break-all; }
+.rel-rec-erro { color: #991b1b; font-size: 11px; word-break: break-all; }
+.rel-vazio    { text-align: center; color: #94a3b8; padding: 32px 0 !important; font-size: 13px; }
+
+/* cabeçalho visível só na impressão */
+.cab-print { display: none; }
+.cab-header-grid {
+    display: grid; grid-template-columns: 1fr auto;
+    width: 100%; align-items: baseline; column-gap: 14pt; row-gap: 0;
+    padding: 5pt 0 0 0; border-top: 3pt solid #0f172a;
+}
+.cab-empresa  { font-size: 7.5pt; color: #64748b; padding-bottom: 3pt; border-bottom: .5pt solid #d1d5db; }
+.cab-datahora { font-size: 7.5pt; color: #475569; text-align: right; padding-bottom: 3pt; border-bottom: .5pt solid #d1d5db; }
+.cab-titulo-txt {
+    grid-column: 1 / -1; font-size: 12pt; font-weight: 700; color: #0f172a;
+    text-align: center; text-transform: uppercase; letter-spacing: .06em;
+    padding: 3pt 0 5pt 0; border-bottom: .5pt solid #94a3b8;
+}
+
+@media print {
+    @page { margin: 1.2cm 1.5cm; }
+    body > .topo { display: none !important; }
+    .conteudo    { display: none !important; }
+    .modal-overlay {
+        position: static !important; background: none !important;
+        padding: 0 !important; display: block !important;
+    }
+    .modal-painel  { box-shadow: none !important; border-radius: 0 !important; max-width: 100% !important; }
+    .modal-topo    { display: none !important; }
+    .modal-footer  { display: none !important; }
+    .modal-corpo   { padding: 0 !important; }
+    .cab-print     { display: block !important; margin-bottom: 8pt; }
+    .rel-table tr.rel-row-ok td, .rel-table tr.rel-row-erro td {
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="25" viewBox="0 0 30 34">
+      <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#ffffff" stroke="#00a651" stroke-width="1.5"/>
+      <path d="M20 2 L20 10 L28 10 Z" fill="#00a651"/>
+      <line x1="7" y1="16" x2="23" y2="16" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="7" y1="21" x2="23" y2="21" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="7" y1="26" x2="16" y2="26" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    eSocial S-2200 — Admissão
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- Filtros por situação -->
+  <div class="filtros-bar">
+    <span class="filtros-label">Situação:</span>
+    <a href="/esocial_s2200"       class="btn-filtro {% if not f_sit %}ativo{% endif %}">Todos</a>
+    <a href="/esocial_s2200?sit=P" class="btn-filtro {% if f_sit=='P' %}ativo{% endif %}">Pendente</a>
+    <a href="/esocial_s2200?sit=G" class="btn-filtro {% if f_sit=='G' %}ativo{% endif %}">Gerado</a>
+    <a href="/esocial_s2200?sit=E" class="btn-filtro {% if f_sit=='E' %}ativo{% endif %}">Enviado</a>
+    <a href="/esocial_s2200?sit=W" class="btn-filtro {% if f_sit=='W' %}ativo{% endif %}" style="{% if contagens.W %}color:#9a3412;border-color:#fdba74;{% endif %}">Aguardando{% if contagens.W %} ({{ contagens.W }}){% endif %}</a>
+    <a href="/esocial_s2200?sit=X" class="btn-filtro {% if f_sit=='X' %}ativo{% endif %}">Com Erro</a>
+    {% set total_enviar = contagens.P + contagens.X %}
+    {% if total_enviar > 0 %}
+    <div style="margin-left:auto;">
+      <button class="btn-enviar-todos" id="btnEnviarTodos"
+              onclick="enviarTodos(this)">
+        &#9654;&#9654; Enviar Pendentes ({{ total_enviar }})
+      </button>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Banner de progresso do lote -->
+  <div class="lote-banner" id="loteBanner">
+    <div class="lote-info">
+      <span class="lote-titulo" id="loteTitulo">Enviando lote…</span>
+      <span class="lote-detalhe" id="loteDetalhe"></span>
+    </div>
+    <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
+    <span class="lote-pct" id="lotePct">0%</span>
+  </div>
+
+  <!-- Contadores (visíveis quando sem filtro) -->
+  {% if not f_sit %}
+  <div class="contadores">
+    <div class="contador-card">
+      <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
+      <span class="contador-txt">Pendente</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#1d4ed8;">{{ contagens.G }}</span>
+      <span class="contador-txt">Gerado</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#166534;">{{ contagens.E }}</span>
+      <span class="contador-txt">Enviado</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#991b1b;">{{ contagens.X }}</span>
+      <span class="contador-txt">Com Erro</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Tabela -->
+  <div class="tabela-wrap">
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Matrícula</th>
+          <th>Nome</th>
+          <th>Dt. Admissão</th>
+          <th>Registrado em</th>
+          <th>Gerado em</th>
+          <th>Situação</th>
+          <th>Ação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr id="row-{{ r.id_esocial }}">
+          <td class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</td>
+          <td class="nome-cell">{{ r._nome }}</td>
+          <td class="data-cell">{{ r._dtadm or "—" }}</td>
+          <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
+          <td class="data-cell">{{ r._datagrava_fmt or "—" }}</td>
+          <td><span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span></td>
+          <td id="acao-{{ r.id_esocial }}">
+            {% if r._sit in ('P', 'G', 'X') %}
+            <button class="btn-enviar {% if r._sit != 'P' %}reenviar{% endif %}"
+                    onclick="enviar({{ r.id_esocial }}, this)">
+              &#9654; {% if r._sit == 'P' %}Enviar ao eSocial{% else %}Reenviar{% endif %}
+            </button>
+            {% elif r._sit == 'W' %}
+            <button class="btn-enviar reconsutar"
+                    onclick="reconsutar({{ r.id_esocial }}, this)">
+              &#8635; Re-consultar
+            </button>
+            {% elif r._sit == 'E' %}
+            <div style="display:flex;flex-direction:column;align-items:flex-start;gap:2px;">
+              <span class="res-ok" title="{{ r.recibo }}">✓ {{ (r.recibo or '')[:25] }}</span>
+              {% if r.ano_mes and r.ano_mes|string == anomes_atual %}
+              <button class="btn-excluir" onclick="confirmarExcluir({{ r.id_esocial }}, this)">
+                &#10005; Excluir via S-3000
+              </button>
+              {% endif %}
+            </div>
+            {% elif r._sit == 'D' %}
+            <span style="color:#94a3b8;font-size:12px;font-style:italic;">Evento excluído (S-3000)</span>
+            {% endif %}
+          </td>
+        </tr>
+        <!-- linha de progresso expandível -->
+        <tr class="prog-row" id="prog-{{ r.id_esocial }}">
+          <td colspan="7" class="prog-cell">
+            <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
+            <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">
+      <div class="vazio-icone">📄</div>
+      {% if f_sit %}
+        Nenhum registro S-2200 com esta situação.
+      {% else %}
+        Nenhum registro S-2200 encontrado.<br>
+        <small style="font-size:12px;color:#b0bec5;margin-top:6px;display:block;">
+          Os registros aparecem automaticamente ao incluir funcionários.
+        </small>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <div style="margin-top:10px;font-size:12px;color:#94a3b8;text-align:right;">
+    {{ total }} registro{{ 's' if total != 1 else '' }}
+  </div>
+  {% endif %}
+
+  <!-- Info -->
+  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+    <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-2200 — Admissão / Ingresso</div>
+    <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
+      <li>Clique em <strong>Enviar ao eSocial</strong>: o sistema gera, assina e transmite automaticamente.</li>
+      <li>O processo leva cerca de <strong>30 segundos</strong> (envio + consulta do resultado).</li>
+      <li>O recibo retornado pelo eSocial é gravado na coluna <em>Situação</em>.</li>
+      <li>Para homologação, altere <code>tpAmb</code> para <code>2</code> na chamada da API.</li>
+    </ul>
+  </div>
+
+</div>
+
+<!-- ── MODAL: Resultado de Envio eSocial ── -->
+<div class="modal-overlay" id="modalRelatorio" onclick="if(event.target===this)fecharRelatorio()">
+  <div class="modal-painel">
+
+    <!-- Topo do modal (3 colunas, padrão) -->
+    <div class="modal-topo">
+      <div>
+        <div class="topo-empresa">{{ empresa }}</div>
+        <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+      </div>
+      <div class="modal-topo-titulo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="20" viewBox="0 0 30 34">
+          <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#fff" stroke="#00a651" stroke-width="1.5"/>
+          <path d="M20 2 L20 10 L28 10 Z" fill="#00a651"/>
+          <line x1="7" y1="16" x2="23" y2="16" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="7" y1="21" x2="23" y2="21" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+          <line x1="7" y1="26" x2="16" y2="26" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Resultado de Envio — S-2200
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div>
+          <div class="topo-logo">Folha10·Simples</div>
+          <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="fecharRelatorio()">&#10005; Fechar</button>
+      </div>
+    </div>
+
+    <!-- Corpo -->
+    <div class="modal-corpo">
+
+      <!-- Cabeçalho só para impressão -->
+      <div class="cab-print">
+        <div class="cab-header-grid">
+          <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+          <span class="cab-datahora" id="cabDH"></span>
+          <span class="cab-titulo-txt">Resultado de Envio eSocial — S-2200 Admissão</span>
+        </div>
+      </div>
+
+      <!-- Tabela acumulada de remessas -->
+      <div style="overflow-x:auto;">
+        <table class="rel-table">
+          <thead>
+            <tr>
+              <th>Mat.</th>
+              <th>Funcionário</th>
+              <th>Resultado</th>
+              <th>Recibo / Erro</th>
+              <th>Processado em</th>
+            </tr>
+          </thead>
+          <tbody id="relTbody">
+            <tr id="relVazio">
+              <td colspan="5" class="rel-vazio">Nenhum envio ainda nesta sessão.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div><!-- /modal-corpo -->
+
+    <!-- Rodapé -->
+    <div class="modal-footer">
+      <div class="modal-footer-left">
+        <button class="btn-limpar" onclick="carregarRelatorio()">&#8635; Atualizar</button>
+      </div>
+      <div class="modal-footer-right">
+        <button class="btn-fechar-modal" onclick="fecharRelatorio()">Fechar</button>
+        <button class="btn-imprimir" onclick="imprimirRelatorio()">&#128438; Imprimir / PDF</button>
+      </div>
+    </div>
+
+  </div><!-- /modal-painel -->
+</div><!-- /modal-overlay -->
+
+<script>
+const ETAPAS = [
+  [10, '⚙️  Gerando XML…'],
+  [25, '🔑 Assinando evento…'],
+  [40, '📦 Montando lote…'],
+  [55, '📡 Transmitindo ao eSocial…'],
+  [70, '⏳ Aguardando processamento (1/3)…'],
+  [82, '⏳ Aguardando processamento (2/3)…'],
+  [92, '⏳ Aguardando processamento (3/3)…'],
+  [98, '🔍 Consultando resultado…'],
+];
+
+async function enviar(id, btn, suppressReport = false) {
+  const progRow = document.getElementById('prog-' + id);
+  const bar     = document.getElementById('bar-' + id);
+  const lbl     = document.getElementById('lbl-' + id);
+  const sit     = document.getElementById('sit-' + id);
+  const acaoTd  = document.getElementById('acao-' + id);
+
+  btn.disabled = true;
+  progRow.style.display = 'table-row';
+
+  // Anima as etapas enquanto aguarda a resposta
+  let etapaIdx = 0;
+  const animTimer = setInterval(() => {
+    if (etapaIdx < ETAPAS.length) {
+      bar.style.width = ETAPAS[etapaIdx][0] + '%';
+      lbl.textContent  = ETAPAS[etapaIdx][1];
+      etapaIdx++;
+    }
+  }, 4000);
+
+  // Etapa inicial imediata
+  bar.style.width = '5%';
+  lbl.textContent  = '⚙️  Iniciando…';
+
+  try {
+    const r = await fetch('/api/esocial_s2200_enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
+    });
+    const data = await r.json();
+
+    clearInterval(animTimer);
+    bar.style.width  = '100%';
+    bar.style.background = data.ok ? '#00a651' : '#ef4444';
+
+    if (data.ok) {
+      lbl.textContent = '✅ Enviado — Recibo: ' + (data.nr_rec || '');
+      sit.className   = 'sit-badge sit-enviado';
+      sit.textContent = 'Enviado';
+      acaoTd.innerHTML = `<span class="res-ok" title="${data.nr_rec}">✓ ${(data.nr_rec||'').slice(0,30)}</span>`;
+    } else if (data.aguardando) {
+      lbl.textContent = '⏳ ' + data.msg;
+      sit.className   = 'sit-badge sit-aguardando';
+      sit.textContent = 'Aguardando';
+      acaoTd.innerHTML = `<button class="btn-enviar reconsutar" onclick="reconsutar(${id}, this)">&#8635; Re-consultar</button>`;
+    } else {
+      lbl.textContent = '❌ ' + (data.msg || 'Erro desconhecido');
+      if (data.detalhe) {
+        const det = document.createElement('div');
+        det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
+        det.textContent = data.detalhe;
+        progRow.appendChild(det);
+      }
+      sit.className   = 'sit-badge sit-erro';
+      sit.textContent = 'Com Erro';
+      btn.disabled    = false;
+      btn.textContent = '↻ Reenviar';
+    }
+    if (!suppressReport) abrirRelatorio(data);
+  } catch(e) {
+    clearInterval(animTimer);
+    bar.style.width     = '100%';
+    bar.style.background = '#ef4444';
+    lbl.textContent     = '❌ Falha de comunicação: ' + e;
+    btn.disabled        = false;
+    if (!suppressReport) abrirRelatorio({ ok: false, msg: 'Falha de comunicação: ' + e });
+  }
+}
+
+async function enviarTodos(btnTodos) {
+  // Coleta IDs de todos os botões de envio visíveis na tabela (sit P, G ou X)
+  const btns = Array.from(document.querySelectorAll('button.btn-enviar:not(.reconsutar)'));
+  if (!btns.length) return;
+
+  // Bloqueia tudo
+  btnTodos.disabled = true;
+  btns.forEach(b => b.disabled = true);
+
+  const total  = btns.length;
+  const banner = document.getElementById('loteBanner');
+  const barEl  = document.getElementById('loteBar');
+  const pctEl  = document.getElementById('lotePct');
+  const titEl  = document.getElementById('loteTitulo');
+  const detEl  = document.getElementById('loteDetalhe');
+
+  banner.classList.add('ativo');
+
+  let ok = 0, erro = 0, aguard = 0;
+
+  for (let i = 0; i < btns.length; i++) {
+    const btn = btns[i];
+    // extrai id_esocial do onclick="enviar(NNNN, this)"
+    const m = (btn.getAttribute('onclick') || '').match(/enviar\((\d+)/);
+    if (!m) continue;
+    const id = parseInt(m[1]);
+
+    const nomeTd = document.querySelector(`#row-${id} .nome-cell`);
+    const nome   = nomeTd ? nomeTd.textContent.trim() : `ID ${id}`;
+
+    const pct = Math.round((i / total) * 100);
+    barEl.style.width = pct + '%';
+    pctEl.textContent = pct + '%';
+    titEl.textContent = `Enviando ${i + 1} de ${total}`;
+    detEl.textContent = nome;
+
+    // reutiliza enviar() que já atualiza o badge e a prog-row da linha
+    try {
+      await enviar(id, btn, true);  // suppressReport durante o lote
+      // lê o badge atualizado para contabilizar
+      const sitEl = document.getElementById('sit-' + id);
+      const sit   = sitEl ? sitEl.textContent.trim() : '';
+      if (sit === 'Enviado')    ok++;
+      else if (sit === 'Aguardando') aguard++;
+      else                      erro++;
+    } catch(e) {
+      erro++;
+    }
+  }
+
+  // Finaliza banner
+  barEl.style.width = '100%';
+  pctEl.textContent = '100%';
+  titEl.textContent = `Lote concluído — ${total} registros`;
+  detEl.textContent = `✅ ${ok} enviados  ${aguard ? '⏳ ' + aguard + ' aguardando  ' : ''}${erro ? '❌ ' + erro + ' com erro' : ''}`.trim();
+  barEl.style.background = erro ? '#f97316' : '#00a651';
+
+  // Abre o relatório com os resultados
+  abrirRelatorio({});
+}
+
+async function reconsutar(id, btn) {
+  const sit    = document.getElementById('sit-'  + id);
+  const acaoTd = document.getElementById('acao-' + id);
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Consultando…';
+
+  try {
+    const r = await fetch('/api/esocial_s2200_reconsutar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      sit.className   = 'sit-badge sit-enviado';
+      sit.textContent = 'Enviado';
+      acaoTd.innerHTML = `<span class="res-ok" title="${data.nr_rec}">✓ ${(data.nr_rec||'').slice(0,30)}</span>`;
+    } else if (data.aguardando) {
+      sit.className   = 'sit-badge sit-aguardando';
+      sit.textContent = 'Aguardando';
+      btn.disabled    = false;
+      btn.textContent = '↻ Re-consultar';
+    } else {
+      sit.className   = 'sit-badge sit-erro';
+      sit.textContent = 'Com Erro';
+      acaoTd.innerHTML = `<button class="btn-enviar reenviar" onclick="enviar(${id}, this)">↻ Reenviar</button>`;
+    }
+    abrirRelatorio(data);
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = '↻ Re-consultar';
+    abrirRelatorio({ ok: false, msg: 'Falha de comunicação: ' + e });
+  }
+}
+
+const SIT_CSS = {
+  E: 'sit-enviado', W: 'sit-aguardando', X: 'sit-erro',
+  G: 'sit-gerado',  P: 'sit-pendente',   D: 'sit-excluido'
+};
+
+async function confirmarExcluir(id, btn) {
+  const nomeTd = document.querySelector(`#row-${id} .nome-cell`);
+  const nome   = nomeTd ? nomeTd.textContent.trim() : `ID ${id}`;
+  if (!confirm(`Confirma o envio do S-3000 para EXCLUIR o evento de admissão de:\n\n${nome}\n\nEsta operação não pode ser desfeita.`)) return;
+
+  const sit    = document.getElementById('sit-'  + id);
+  const acaoTd = document.getElementById('acao-' + id);
+
+  btn.disabled    = true;
+  btn.textContent = '⏳ Enviando S-3000…';
+
+  try {
+    const r = await fetch('/api/esocial_s3000_enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      sit.className   = 'sit-badge sit-excluido';
+      sit.textContent = 'Excluído';
+      acaoTd.innerHTML = `<span style="color:#94a3b8;font-size:12px;font-style:italic;">Evento excluído (S-3000)</span>`;
+      alert('✅ ' + data.msg);
+    } else {
+      alert('❌ ' + (data.msg || 'Erro ao enviar S-3000'));
+      btn.disabled    = false;
+      btn.textContent = '✕ Excluir via S-3000';
+    }
+  } catch(e) {
+    alert('❌ Falha de comunicação: ' + e);
+    btn.disabled    = false;
+    btn.textContent = '✕ Excluir via S-3000';
+  }
+}
+
+function abrirRelatorio(_d) {
+  // sempre carrega da tab_esocial — sem duplicatas
+  carregarRelatorio();
+  document.getElementById('modalRelatorio').classList.add('aberto');
+}
+
+async function carregarRelatorio() {
+  const tbody = document.getElementById('relTbody');
+  tbody.innerHTML = '<tr><td colspan="5" class="rel-vazio">Carregando…</td></tr>';
+  try {
+    const r    = await fetch('/api/esocial_s2200_relatorio');
+    const data = await r.json();
+    if (!data.ok || !data.rows.length) {
+      tbody.innerHTML = '<tr id="relVazio"><td colspan="5" class="rel-vazio">Nenhuma remessa encontrada.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.rows.map(row => {
+      const sitCss  = SIT_CSS[row.sit] || 'sit-pendente';
+      const recCell = row.sit === 'E'
+        ? `<span class="rel-rec-ok">${escHtml(row.recibo)}</span>`
+        : row.sit === 'D'
+          ? `<span style="color:#64748b;font-size:11px;">Excluído via S-3000 — ${escHtml(row.recibo)}</span>`
+          : row.sit === 'X'
+            ? `<span class="rel-rec-erro">${escHtml(row.erro)}</span>`
+            : row.sit === 'W'
+              ? `<span style="color:#9a3412;font-size:12px;">Aguardando retorno do eSocial</span>`
+              : `<span style="color:#94a3b8;font-size:11px;">—</span>`;
+      return `<tr class="${row.sit==='E'?'rel-row-ok':row.sit==='X'?'rel-row-erro':''}">` +
+        `<td class="mat-cell">${escHtml(row.matricula)}</td>` +
+        `<td class="nome-cell">${escHtml(row.nome)}</td>` +
+        `<td><span class="sit-badge ${sitCss}">${escHtml(row.sit_label)}</span></td>` +
+        `<td>${recCell}</td>` +
+        `<td class="data-cell">${escHtml(row.dh_grava||'—')}</td>` +
+        `</tr>`;
+    }).join('');
+  } catch(e) {
+    tbody.innerHTML = `<tr><td colspan="5" class="rel-vazio" style="color:#ef4444;">Erro: ${escHtml(String(e))}</td></tr>`;
+  }
+}
+
+function fecharRelatorio() {
+  document.getElementById('modalRelatorio').classList.remove('aberto');
+}
+
+function limparRelatorio() {
+  carregarRelatorio();  // "limpar" = atualizar da base
+}
+
+function imprimirRelatorio() {
+  var now = new Date();
+  var p = function(n) { return String(n).padStart(2,'0'); };
+  document.getElementById('cabDH').textContent =
+    p(now.getDate())+'/'+p(now.getMonth()+1)+'/'+now.getFullYear()+
+    ' '+p(now.getHours())+':'+p(now.getMinutes());
+  window.print();
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+
+</body>
+</html>

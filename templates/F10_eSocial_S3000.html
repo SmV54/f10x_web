@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-3000</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --red:       #ef4444;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj    { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 960px; margin: 32px auto; padding: 0 24px 80px; }
+
+/* ── ALERTA ── */
+.alerta {
+    background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;
+    padding: 12px 18px; margin-bottom: 20px;
+    font-size: 13px; color: #9a3412; line-height: 1.6;
+}
+.alerta strong { font-weight: 700; }
+
+/* ── FOLHA BADGE ── */
+.folha-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+    padding: 4px 12px; font-size: 12px; font-weight: 600; color: #166534;
+    font-family: var(--mono); margin-bottom: 24px;
+}
+
+/* ── PASSO ── */
+.passo-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 20px 22px; margin-bottom: 20px;
+}
+.passo-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: #64748b; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+}
+.passo-num {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-size: 11px; font-weight: 700; display: flex;
+    align-items: center; justify-content: center; flex-shrink: 0;
+}
+.passo-num.inativo { background: #cbd5e1; }
+
+/* ── CARDS DE LAYOUT ── */
+.layouts-grid {
+    display: flex; flex-wrap: wrap; gap: 10px;
+}
+.layout-card {
+    border: 2px solid var(--border); border-radius: 10px; padding: 12px 18px;
+    cursor: pointer; transition: .15s; background: var(--bg);
+    display: flex; flex-direction: column; gap: 2px; min-width: 170px;
+}
+.layout-card:hover  { border-color: var(--accent); background: #eef4fd; }
+.layout-card.ativo  { border-color: var(--accent); background: #eef4fd;
+                       box-shadow: 0 0 0 3px #bfdbfe; }
+.layout-card-codigo { font-family: var(--mono); font-size: 13px; font-weight: 700; color: #1e293b; }
+.layout-card-nome   { font-size: 11px; color: #64748b; }
+.layout-card-count  { font-size: 11px; font-weight: 600; color: var(--accent); margin-top: 4px; }
+
+.sem-layout { color: #94a3b8; font-size: 13px; padding: 8px 0; }
+
+/* ── PASSO 2 desativado ── */
+.passo-wrap.desativado { opacity: .45; pointer-events: none; }
+
+/* ── TABELA DE FUNCIONÁRIOS ── */
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 9px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; text-align: left; white-space: nowrap;
+}
+td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+.mat-cell  { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+.nome-cell { font-weight: 500; }
+.rec-cell  { font-family: var(--mono); font-size: 11px; color: #475569; word-break: break-all; max-width: 200px; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+
+input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+
+.vazio-func { color: #94a3b8; font-size: 13px; text-align: center; padding: 24px 0; }
+
+/* ── BARRA DE AÇÃO ── */
+.barra-acao {
+    display: flex; align-items: center; gap: 12px;
+    padding-top: 14px; border-top: 1px solid #f1f5f9; margin-top: 4px;
+    flex-wrap: wrap;
+}
+.btn-enviar-sel {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid var(--red); background: var(--red); color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-sel:hover:not(:disabled) { background: #dc2626; border-color: #dc2626; }
+.btn-enviar-sel:disabled { opacity: .4; cursor: default; }
+.sel-info { font-size: 12px; color: #64748b; font-family: var(--mono); }
+
+/* ── PROGRESSO INLINE ── */
+.prog-row  { display: none; }
+.prog-cell { padding: 6px 12px 10px !important; }
+.prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 5px; overflow: hidden; margin-bottom: 4px; }
+.prog-bar  { height: 5px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
+
+/* ── BADGES ── */
+.sit-badge { display: inline-block; padding: 3px 10px; border-radius: 20px;
+             font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-aguardando { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* ── SEÇÃO S-3000 ENVIADOS ── */
+.secao-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: #64748b; margin: 28px 0 10px;
+    display: flex; align-items: center; gap: 8px;
+}
+.secao-titulo::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="25" viewBox="0 0 30 34">
+      <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#ffffff" stroke="#ef4444" stroke-width="1.5"/>
+      <path d="M20 2 L20 10 L28 10 Z" fill="#ef4444"/>
+      <line x1="9" y1="16" x2="21" y2="16" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+      <line x1="9" y1="22" x2="21" y2="22" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+    </svg>
+    eSocial S-3000 — Exclusão de Eventos
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <div class="alerta">
+    <strong>Atenção:</strong> Só é possível excluir eventos da <strong>folha ativa</strong>. A operação não pode ser desfeita.
+  </div>
+
+  {% if folha_ativa %}
+  <div class="folha-badge">&#128197; Folha ativa: {{ folha_ativa }}</div>
+  {% endif %}
+
+  <!-- PASSO 1 — Layout -->
+  <div class="passo-wrap">
+    <div class="passo-titulo">
+      <span class="passo-num" id="numPasso1">1</span>
+      Selecione o Layout do Evento a Excluir
+    </div>
+    <div class="layouts-grid" id="layoutsGrid">
+      {% if layouts_disponiveis %}
+        {% for lyt in layouts_disponiveis %}
+        <div class="layout-card" id="card-{{ lyt.codigo }}"
+             onclick="selecionarLayout('{{ lyt.codigo }}', '{{ lyt.nome }}')">
+          <span class="layout-card-codigo">S-{{ lyt.codigo }}</span>
+          <span class="layout-card-nome">{{ lyt.nome.split('—')[1].strip() if '—' in lyt.nome else lyt.nome }}</span>
+          <span class="layout-card-count">{{ lyt.count }} Registro{{ 's' if lyt.count != 1 else '' }} com Recibo</span>
+        </div>
+        {% endfor %}
+      {% else %}
+        <span class="sem-layout">Nenhum evento com recibo na folha ativa{{ ' (' + folha_ativa + ')' if folha_ativa else '' }}.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- PASSO 2 — Funcionários -->
+  <div class="passo-wrap desativado" id="passo2">
+    <div class="passo-titulo">
+      <span class="passo-num inativo" id="numPasso2">2</span>
+      <span id="tituloPasso2">Selecione o(s) Funcionário(s)</span>
+    </div>
+
+    <div style="overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:36px;"><input type="checkbox" id="chkTodos" onclick="toggleTodos(this)" title="Selecionar todos"></th>
+            <th>Matrícula</th>
+            <th>Nome</th>
+            <th>Recibo</th>
+            <th>Enviado em</th>
+          </tr>
+        </thead>
+        <tbody id="funcTbody">
+          <tr><td colspan="5" class="vazio-func">Selecione um layout acima.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="barra-acao">
+      <button class="btn-enviar-sel" id="btnEnviar" disabled onclick="enviarSelecionados()">
+        &#10005; Enviar S-3000 para Selecionados
+      </button>
+      <span class="sel-info" id="selInfo">Nenhum selecionado</span>
+    </div>
+  </div>
+
+  <!-- S-3000 já enviados -->
+  <div class="secao-titulo">Exclusões já Enviadas — S-3000</div>
+  <div class="tabela-wrap">
+    {% if s3000_rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Matrícula</th>
+          <th>Nome</th>
+          <th>Recibo S-3000</th>
+          <th>Enviado em</th>
+          <th>Situação</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in s3000_rows %}
+        <tr>
+          <td class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</td>
+          <td class="nome-cell">{{ r._nome }}</td>
+          <td class="rec-cell">{{ r.recibo or (r.observacao_erro or "—") }}</td>
+          <td class="data-cell">{{ r._datagrava or "—" }}</td>
+          <td><span class="sit-badge {{ r._sit_class }}">{{ r._sit_label }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div style="text-align:center;padding:28px;color:#94a3b8;font-size:13px;">Nenhum S-3000 enviado.</div>
+    {% endif %}
+  </div>
+
+</div><!-- /conteudo -->
+
+<script>
+// Dados injetados pelo servidor
+const POR_LAYOUT = {{ por_layout | tojson }};
+
+const ETAPAS = [
+  [10, '⚙️  Gerando XML S-3000…'],
+  [25, '🔑 Assinando evento…'],
+  [40, '📦 Montando lote…'],
+  [55, '📡 Transmitindo ao eSocial…'],
+  [70, '⏳ Aguardando processamento (1/3)…'],
+  [82, '⏳ Aguardando processamento (2/3)…'],
+  [92, '⏳ Aguardando processamento (3/3)…'],
+  [98, '🔍 Consultando resultado…'],
+];
+
+let layoutAtual = null;
+
+function selecionarLayout(codigo, nome) {
+  // Destaca card
+  document.querySelectorAll('.layout-card').forEach(c => c.classList.remove('ativo'));
+  document.getElementById('card-' + codigo).classList.add('ativo');
+
+  layoutAtual = codigo;
+
+  // Ativa passo 2
+  const passo2 = document.getElementById('passo2');
+  passo2.classList.remove('desativado');
+  document.getElementById('numPasso2').classList.remove('inativo');
+  document.getElementById('tituloPasso2').textContent =
+    'Selecione o(s) Funcionário(s) — ' + nome;
+
+  renderFuncionarios(codigo);
+}
+
+function renderFuncionarios(layout) {
+  const tbody  = document.getElementById('funcTbody');
+  const rows   = POR_LAYOUT[layout] || [];
+
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="vazio-func">Nenhum registro elegível para este layout.</td></tr>';
+    atualizarSelInfo();
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const mat    = String(r.matricula || 0).padStart(6, '0');
+    const rec    = (r.recibo || '').substring(0, 30);
+    const dg     = r._datagrava || '—';
+    return `<tr id="frow-${r.id_esocial}">` +
+      `<td><input type="checkbox" class="chk-func" value="${r.id_esocial}" onchange="atualizarSelInfo()"></td>` +
+      `<td class="mat-cell">${mat}</td>` +
+      `<td class="nome-cell">${escHtml(r._nome)}</td>` +
+      `<td class="rec-cell">${escHtml(rec)}</td>` +
+      `<td class="data-cell">${escHtml(dg)}</td>` +
+      `</tr>` +
+      `<tr class="prog-row" id="prog-${r.id_esocial}">` +
+      `<td colspan="5" class="prog-cell">` +
+      `<div class="prog-bar-wrap"><div class="prog-bar" id="bar-${r.id_esocial}"></div></div>` +
+      `<span class="prog-label" id="lbl-${r.id_esocial}"></span>` +
+      `</td></tr>`;
+  }).join('');
+
+  atualizarSelInfo();
+}
+
+function toggleTodos(chkTodos) {
+  document.querySelectorAll('.chk-func').forEach(c => { c.checked = chkTodos.checked; });
+  atualizarSelInfo();
+}
+
+function atualizarSelInfo() {
+  const selecionados = document.querySelectorAll('.chk-func:checked').length;
+  const total        = document.querySelectorAll('.chk-func').length;
+  const btn          = document.getElementById('btnEnviar');
+  const info         = document.getElementById('selInfo');
+  btn.disabled       = selecionados === 0;
+  info.textContent   = selecionados === 0
+    ? 'Nenhum selecionado'
+    : `${selecionados} de ${total} selecionado${selecionados > 1 ? 's' : ''}`;
+}
+
+async function enviarSelecionados() {
+  const checks = Array.from(document.querySelectorAll('.chk-func:checked'));
+  if (!checks.length) return;
+
+  const nomes = checks.map(c => {
+    const row = document.getElementById('frow-' + c.value);
+    return row ? row.querySelector('.nome-cell').textContent.trim() : c.value;
+  });
+
+  if (!confirm(
+    `Confirma o envio do S-3000 para EXCLUIR ${checks.length} evento(s):\n\n` +
+    nomes.join('\n') +
+    `\n\nEsta operação não pode ser desfeita.`
+  )) return;
+
+  const btn = document.getElementById('btnEnviar');
+  btn.disabled = true;
+  document.getElementById('chkTodos').disabled = true;
+  document.querySelectorAll('.chk-func').forEach(c => c.disabled = true);
+
+  let ok = 0, erro = 0;
+
+  for (const chk of checks) {
+    const id      = parseInt(chk.value);
+    const progRow = document.getElementById('prog-' + id);
+    const bar     = document.getElementById('bar-'  + id);
+    const lbl     = document.getElementById('lbl-'  + id);
+
+    progRow.style.display = 'table-row';
+    bar.style.width = '5%';
+    lbl.textContent = '⚙️  Iniciando…';
+
+    let etIdx = 0;
+    const timer = setInterval(() => {
+      if (etIdx < ETAPAS.length) {
+        bar.style.width = ETAPAS[etIdx][0] + '%';
+        lbl.textContent  = ETAPAS[etIdx][1];
+        etIdx++;
+      }
+    }, 4000);
+
+    try {
+      const r    = await fetch('/api/esocial_s3000_enviar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_esocial: id, layout: layoutAtual, tpAmb: '1' }),
+      });
+      const data = await r.json();
+      clearInterval(timer);
+      bar.style.width      = '100%';
+      bar.style.background = data.ok ? '#00a651' : '#ef4444';
+
+      if (data.ok) {
+        lbl.textContent = '✅ Excluído — Recibo: ' + (data.nr_rec || '');
+        // Remove checkbox e marca linha
+        const frow = document.getElementById('frow-' + id);
+        if (frow) {
+          frow.querySelector('td:first-child').innerHTML = '✓';
+          frow.style.opacity = '.4';
+        }
+        ok++;
+      } else {
+        lbl.textContent = '❌ ' + (data.msg || 'Erro');
+        erro++;
+      }
+    } catch(e) {
+      clearInterval(timer);
+      bar.style.width      = '100%';
+      bar.style.background = '#ef4444';
+      lbl.textContent = '❌ Falha: ' + e;
+      erro++;
+    }
+  }
+
+  // Resumo final
+  const resumo = `Concluído: ${ok} excluído(s)${erro ? ', ' + erro + ' com erro' : ''}.`;
+  alert((erro ? '⚠️ ' : '✅ ') + resumo +
+    (ok > 0 ? '\n\nRecarregue a página para ver os S-3000 na lista abaixo.' : ''));
+
+  if (ok > 0) {
+    document.getElementById('chkTodos').disabled  = false;
+    document.querySelectorAll('.chk-func').forEach(c => c.disabled = false);
+    atualizarSelInfo();
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+
+</body>
+</html>

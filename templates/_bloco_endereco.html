@@ -1,0 +1,381 @@
+{#
+  ─────────────────────────────────────────────────────────────
+  BLOCO REUTILIZÁVEL DE ENDEREÇO
+  ─────────────────────────────────────────────────────────────
+  USO:
+    1. No template destino:
+         {% include '_bloco_endereco.html' %}
+
+    2. Para carregar um endereço existente (modo edição):
+         Endereco.setData({ cep, logradouro, numero, complemento,
+                            bairro, cidade_nome, uf, cod_ibge });
+
+    3. Para ler os dados antes de gravar:
+         const end = Endereco.getData();
+
+    4. Para validar:
+         if (!Endereco.isValid()) return;
+
+    5. Para limpar:
+         Endereco.clear();
+  ─────────────────────────────────────────────────────────────
+#}
+
+<style>
+  .end-bloco {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: 12px; padding: 16px 18px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .end-titulo {
+    font-size: 12px; font-weight: 700; color: #334155;
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;
+  }
+  .end-label {
+    display: block; font-size: 12px; color: #475569;
+    font-weight: 700; margin-bottom: 3px;
+  }
+  .end-input {
+    width: 100%; height: 36px; padding: 6px 10px;
+    border: 1px solid #cbd5e1; border-radius: 8px;
+    font-size: 13px; outline: none; background: white;
+    box-sizing: border-box;
+  }
+  .end-input:focus   { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+  .end-input.preenchido { background: #f0fdf4; border-color: #86efac; }
+  .end-input.erro       { border-color: #ef4444; background: #fff1f2; }
+
+  /* Linha CEP: input fixo + botão + status */
+  .end-cep-linha {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .end-cep-linha .end-input {
+    flex: 0 0 130px; width: 130px;
+  }
+  .end-btn-cep {
+    flex: none; height: 36px; padding: 0 14px; border: none; border-radius: 8px;
+    background: linear-gradient(180deg,#3b82f6,#2563eb); color: white;
+    font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .end-btn-cep:hover    { filter: brightness(1.08); }
+  .end-btn-cep:disabled { opacity: 0.6; cursor: not-allowed; }
+  .end-btn-limpar {
+    flex: none; height: 36px; padding: 0 12px; border: 1px solid #cbd5e1;
+    border-radius: 8px; background: #f1f5f9; color: #475569;
+    font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  }
+  .end-btn-limpar:hover { background: #e2e8f0; }
+  .end-cep-status {
+    font-size: 11px; font-weight: 600; display: none; white-space: nowrap;
+  }
+  .end-cep-ok  { color: #16a34a; }
+  .end-cep-err { color: #dc2626; }
+
+  /* Grid campos */
+  .end-grid-3 {
+    display: grid;
+    grid-template-columns: 2fr 100px 140px;
+    gap: 10px;
+  }
+  /* Cidade + UF lado a lado */
+  .end-cidade-uf {
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .end-cidade-uf .end-cidade-wrap { flex: 1; }
+  .end-cidade-uf .end-uf-col      { flex: 0 0 70px; }
+
+  /* Autocomplete cidade */
+  .end-cidade-wrap { position: relative; }
+  .end-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+    background: white; border: 1px solid #cbd5e1; border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    max-height: 180px; overflow-y: auto; display: none;
+  }
+  .end-dropdown-item {
+    padding: 8px 12px; font-size: 12px; cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .end-dropdown-item:last-child { border-bottom: none; }
+  .end-dropdown-item:hover { background: #eff6ff; }
+  .end-dd-uf { color: #64748b; font-size: 11px; margin-left: 6px; }
+  .end-nenhum { padding: 8px 12px; font-size: 12px; color: #94a3b8; font-style: italic; }
+
+  @media (max-width: 600px) {
+    .end-grid-3 { grid-template-columns: 1fr 80px; }
+    .end-grid-3 > :last-child { grid-column: 1 / -1; }
+  }
+</style>
+
+<div class="end-bloco">
+  <div class="end-titulo">📍 Endereço</div>
+
+  <!-- CEP -->
+  <div>
+    <label class="end-label">CEP</label>
+    <div class="end-cep-linha">
+      <input class="end-input" type="text" id="end_cep" maxlength="9"
+        placeholder="00000-000"
+        oninput="Endereco._mascaraCep(this)"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();Endereco.buscarCep();}">
+      <button class="end-btn-cep" id="end_btn_cep" type="button" onclick="Endereco.buscarCep()">
+        🔍 Buscar CEP
+      </button>
+      <button class="end-btn-limpar" type="button" onclick="Endereco.clear()">
+        🗑 Limpar
+      </button>
+      <span class="end-cep-status" id="end_cep_status"></span>
+    </div>
+  </div>
+
+  <!-- Logradouro + Número + Complemento -->
+  <div class="end-grid-3">
+    <div>
+      <label class="end-label">Logradouro</label>
+      <input class="end-input" type="text" id="end_logradouro" maxlength="60" placeholder="Rua, Av., Alameda...">
+    </div>
+    <div>
+      <label class="end-label">Número</label>
+      <input class="end-input" type="text" id="end_numero" maxlength="10" placeholder="Nº / S/N">
+    </div>
+    <div>
+      <label class="end-label">Complemento <span style="font-weight:400;color:#94a3b8;">(opc.)</span></label>
+      <input class="end-input" type="text" id="end_complemento" maxlength="30" placeholder="Apto, Sala...">
+    </div>
+  </div>
+
+  <!-- Bairro -->
+  <div>
+    <label class="end-label">Bairro</label>
+    <input class="end-input" type="text" id="end_bairro" maxlength="30" placeholder="Bairro">
+  </div>
+
+  <!-- Cidade + UF na mesma linha -->
+  <div class="end-cidade-uf">
+    <div class="end-cidade-wrap">
+      <label class="end-label">Cidade</label>
+      <input class="end-input" type="text" id="end_cidade_nome" maxlength="60"
+        placeholder="Digite para pesquisar..."
+        oninput="Endereco._onCidadeInput(this)"
+        onblur="Endereco._fecharDropdown(300)"
+        autocomplete="off">
+      <input type="hidden" id="end_cod_ibge">
+      <div class="end-dropdown" id="end_dropdown"></div>
+    </div>
+    <div class="end-uf-col">
+      <label class="end-label">UF</label>
+      <input class="end-input" type="text" id="end_uf" maxlength="2"
+        placeholder="SP" style="text-transform:uppercase;"
+        oninput="this.value=this.value.toUpperCase()">
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  if (window.Endereco) return;
+
+  let _cidadeTimer = null;
+
+  window.Endereco = {
+
+    // ── Remove acentos e cedilha ─────────────────────────────
+    _semAcento(str) {
+      return (str || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, ''); // remove diacríticos (inclui cedilha)
+    },
+
+    // ── Máscara CEP ─────────────────────────────────────────
+    _mascaraCep(el) {
+      let v = el.value.replace(/\D/g, '').substring(0, 8);
+      if (v.length > 5) v = v.replace(/^(\d{5})(\d{0,3})/, '$1-$2');
+      el.value = v;
+      document.getElementById('end_cep_status').style.display = 'none';
+      ['end_logradouro','end_bairro','end_cidade_nome','end_uf']
+        .forEach(id => document.getElementById(id)?.classList.remove('preenchido'));
+    },
+
+    // ── Buscar CEP (ViaCEP) ──────────────────────────────────
+    async buscarCep() {
+      const cep = document.getElementById('end_cep').value.replace(/\D/g, '');
+      const btn = document.getElementById('end_btn_cep');
+
+      if (cep.length !== 8) { this._status('CEP deve ter 8 dígitos.', false); return; }
+
+      btn.disabled = true; btn.textContent = '⏳';
+
+      try {
+        const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const d = await r.json();
+
+        if (d.erro) { this._status('CEP não encontrado.', false); return; }
+
+        this._setField('end_logradouro', this._semAcento(d.logradouro || ''));
+        this._setField('end_bairro',     this._semAcento(d.bairro     || ''));
+        this._setField('end_uf',         d.uf || '');
+
+        // Cidade — cod_ibge vem direto do ViaCEP (campo "ibge")
+        document.getElementById('end_cidade_nome').value = this._semAcento(d.localidade || '');
+        document.getElementById('end_cod_ibge').value    = d.ibge || '';
+
+        if (d.localidade && d.uf) {
+          await this._buscarCodIbge(d.localidade, d.uf);  // refina nome; mantém ibge se falhar
+        }
+
+        // Marca cidade como preenchida
+        const elCidade = document.getElementById('end_cidade_nome');
+        if (elCidade.value) elCidade.classList.add('preenchido');
+
+        this._status('Endereco preenchido!', true);
+        setTimeout(() => document.getElementById('end_numero').focus(), 100);
+
+      } catch(e) {
+        this._status('Erro ao consultar CEP.', false);
+      } finally {
+        btn.disabled = false; btn.textContent = '🔍 Buscar CEP';
+      }
+    },
+
+    // ── Busca cod_ibge na tab_cidades ────────────────────────
+    async _buscarCodIbge(nome, uf) {
+      try {
+        const r = await fetch(`/api/cidades?q=${encodeURIComponent(nome)}&uf=${uf}`);
+        const d = await r.json();
+        if (d.ok && d.lista.length > 0) {
+          const semAcento = s => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+          const exata = d.lista.find(c => semAcento(c.nome) === semAcento(nome));
+          const cidade = exata || d.lista[0];
+          // s\u00f3 sobrescreve cod_ibge se o banco retornou um valor v\u00e1lido
+          if (cidade.cod_ibge) {
+            document.getElementById('end_cod_ibge').value    = cidade.cod_ibge;
+            document.getElementById('end_cidade_nome').value = this._semAcento(cidade.nome);
+          }
+        }
+      } catch(e) { /* silencioso */ }
+    },
+
+    // ── Autocomplete de cidade ───────────────────────────────
+    _onCidadeInput(el) {
+      document.getElementById('end_cod_ibge').value = '';
+      el.classList.remove('preenchido');
+      clearTimeout(_cidadeTimer);
+      const q = el.value.trim();
+      if (q.length < 3) { this._fecharDropdown(0); return; }
+      _cidadeTimer = setTimeout(() => this._pesquisarCidade(q), 300);
+    },
+
+    async _pesquisarCidade(q) {
+      const uf  = document.getElementById('end_uf').value.trim();
+      const url = `/api/cidades?q=${encodeURIComponent(q)}${uf ? '&uf=' + uf : ''}`;
+      try {
+        const r = await fetch(url);
+        const d = await r.json();
+        this._renderDropdown(d.ok ? d.lista : []);
+      } catch(e) { this._fecharDropdown(0); }
+    },
+
+    _renderDropdown(lista) {
+      const dd = document.getElementById('end_dropdown');
+      if (!lista.length) {
+        dd.innerHTML = '<div class="end-nenhum">Nenhuma cidade encontrada</div>';
+        dd.style.display = 'block'; return;
+      }
+      dd.innerHTML = lista.map(c =>
+        `<div class="end-dropdown-item"
+          onmousedown="Endereco._selecionarCidade(${c.cod_ibge},'${c.nome.replace(/'/g,"\\'")}','${c.uf}')">
+          ${this._semAcento(c.nome)} <span class="end-dd-uf">${c.uf}</span>
+        </div>`
+      ).join('');
+      dd.style.display = 'block';
+    },
+
+    _selecionarCidade(cod_ibge, nome, uf) {
+      const el = document.getElementById('end_cidade_nome');
+      el.value = this._semAcento(nome);
+      el.classList.add('preenchido');
+      document.getElementById('end_cod_ibge').value = cod_ibge;
+      document.getElementById('end_uf').value       = uf;
+      this._fecharDropdown(0);
+    },
+
+    _fecharDropdown(delay) {
+      setTimeout(() => {
+        const dd = document.getElementById('end_dropdown');
+        if (dd) dd.style.display = 'none';
+      }, delay);
+    },
+
+    _status(msg, ok) {
+      const st = document.getElementById('end_cep_status');
+      st.textContent = (ok ? '✔ ' : '✖ ') + msg;
+      st.className   = 'end-cep-status ' + (ok ? 'end-cep-ok' : 'end-cep-err');
+      st.style.display = 'block';
+    },
+
+    _setField(id, val) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.value = val;
+      el.classList.toggle('preenchido', !!val);
+    },
+
+    // ── API PÚBLICA ──────────────────────────────────────────
+
+    getData() {
+      return {
+        cep:         document.getElementById('end_cep').value.replace(/\D/g, ''),
+        logradouro:  document.getElementById('end_logradouro').value.trim(),
+        numero:      document.getElementById('end_numero').value.trim(),
+        complemento: document.getElementById('end_complemento').value.trim() || null,
+        bairro:      document.getElementById('end_bairro').value.trim(),
+        cidade_nome: document.getElementById('end_cidade_nome').value.trim(),
+        uf:          document.getElementById('end_uf').value.trim().toUpperCase(),
+        cod_ibge:    document.getElementById('end_cod_ibge').value || null,
+      };
+    },
+
+    setData(d) {
+      if (!d) return;
+      const cep    = (d.cep || '').replace(/\D/g, '');
+      const cepFmt = cep.length === 8 ? cep.replace(/^(\d{5})(\d{3})/, '$1-$2') : cep;
+      document.getElementById('end_cep').value         = cepFmt;
+      document.getElementById('end_logradouro').value  = d.logradouro  || '';
+      document.getElementById('end_numero').value      = d.numero      || '';
+      document.getElementById('end_complemento').value = d.complemento || '';
+      document.getElementById('end_bairro').value      = d.bairro      || '';
+      document.getElementById('end_cidade_nome').value = d.cidade_nome || '';
+      document.getElementById('end_uf').value          = d.uf          || '';
+      document.getElementById('end_cod_ibge').value    = d.cod_ibge    || '';
+    },
+
+    clear() {
+      ['end_cep','end_logradouro','end_numero','end_complemento',
+       'end_bairro','end_cidade_nome','end_uf','end_cod_ibge'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) { el.value = ''; el.classList.remove('preenchido','erro'); }
+      });
+      document.getElementById('end_cep_status').style.display = 'none';
+    },
+
+    isValid() {
+      const campos = {
+        end_logradouro:  'Logradouro',
+        end_numero:      'Numero',
+        end_bairro:      'Bairro',
+        end_cidade_nome: 'Cidade',
+        end_uf:          'UF',
+      };
+      let ok = true;
+      Object.entries(campos).forEach(([id]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const vazio = !el.value.trim();
+        el.classList.toggle('erro', vazio);
+        if (vazio) ok = false;
+      });
+      return ok;
+    },
+  };
+})();
+</script>

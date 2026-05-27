@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10-Simples — Cadastro de Empresa</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:       #0b1f3a;
+    --navy-mid:   #122947;
+    --navy-line:  #1e3d5c;
+    --accent:     #2a7de1;
+    --accent-dim: #1a5fb8;
+    --green:      #18795b;
+    --green-hover:#126048;
+    --text-head:  #e8edf4;
+    --text-sub:   #8baac8;
+    --bg:         #f0f2f6;
+    --surface:    #ffffff;
+    --border:     #dde3ec;
+    --label:      #374151;
+    --placeholder:#94a3b8;
+    --input-bg:   #f8fafc;
+    --read-bg:    #eef2f8;
+    --read-text:  #4b6080;
+    --tag-bg:     #e6f0fb;
+    --tag-text:   #1a5fb8;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--label);
+    min-height: 100vh;
+}
+
+/* ── TOPO ────────────────────────────────────────────── */
+.topo {
+    background: var(--navy);
+    border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0 32px;
+    min-height: 64px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; letter-spacing: 0.01em; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa { display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTAINER ───────────────────────────────────────── */
+.container {
+    max-width: 1380px;
+    margin: 10px auto;
+    padding: 0 20px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ── SEÇÃO ───────────────────────────────────────────── */
+.secao {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.secao-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 18px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+
+.secao-icone {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+}
+
+.secao-titulo {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #4b5e7a;
+}
+
+.secao-corpo {
+    padding: 10px 18px;
+}
+
+/* ── GRID DE CAMPOS ──────────────────────────────────── */
+.grid-id {
+    display: grid;
+    grid-template-columns: 190px 1fr 1fr 150px 120px;
+    gap: 12px 14px;
+}
+
+.grid-fpas {
+    display: grid;
+    grid-template-columns: 360px minmax(100px, 1fr) 115px 115px 150px;
+    gap: 8px 14px;
+    margin-bottom: 8px;
+}
+
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 14px; }
+.grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px 14px; }
+.grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 14px; }
+
+.grid-encargos-area {
+    display: grid;
+    grid-template-columns: 1fr 240px;
+    gap: 16px;
+    align-items: start;
+}
+
+.grid-encargos {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 6px 12px;
+}
+
+/* ── CAMPO ───────────────────────────────────────────── */
+.campo {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.campo label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #6b7fa0;
+}
+
+.campo input,
+.campo select {
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 13.5px;
+    font-family: var(--sans);
+    color: var(--label);
+    background: var(--input-bg);
+    transition: border-color .15s, box-shadow .15s;
+    width: 100%;
+}
+
+.campo input::placeholder { color: var(--placeholder); font-size: 13px; }
+
+.campo input:focus,
+.campo select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(42,125,225,.12);
+    background: #fff;
+}
+
+/* readonly */
+.campo input[readonly] {
+    background: var(--read-bg);
+    color: var(--read-text);
+    border-color: #dde6f0;
+    cursor: default;
+}
+
+/* encargo pequeno — centralizado com mono */
+.campo-enc input {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* tag de alíquota */
+.tag-aliq {
+    display: inline-flex;
+    align-items: center;
+    height: 38px;
+    padding: 0 12px;
+    background: var(--tag-bg);
+    border: 1px solid #c2d9f7;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--tag-text);
+    letter-spacing: 0.03em;
+}
+
+/* ── QUADRO CONTRIBUIÇÕES TERCEIROS ─────────────────── */
+.quadro-terceiros {
+    border: 1px solid #c2d9f7;
+    border-radius: 10px;
+    overflow: hidden;
+    background: #f4f8fd;
+}
+
+.quadro-terceiros-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 14px;
+    background: #ddeaf8;
+    border-bottom: 1px solid #c2d9f7;
+}
+
+.quadro-terceiros-titulo {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: #1a4a7a;
+}
+
+.quadro-terceiros-aviso {
+    font-size: 10.5px;
+    color: #4a6f9a;
+    font-style: italic;
+}
+
+.quadro-terceiros-corpo {
+    padding: 8px 14px 10px;
+}
+
+/* ── BLOCO BOTÃO TERCEIROS ───────────────────────────── */
+.bloco-btn-terceiros {
+    padding-top: 22px;
+}
+
+.btn-terceiros {
+    padding: 6px 12px;
+    background: #eef4fb;
+    border: 1px dashed #9bbcd8;
+    border-radius: 6px;
+    font-family: var(--sans);
+    font-size: 11.5px;
+    font-weight: 500;
+    color: #2a5a8c;
+    cursor: pointer;
+    line-height: 1.4;
+    text-align: center;
+    transition: background .15s, border-color .15s;
+    white-space: nowrap;
+}
+
+.btn-terceiros:hover {
+    background: #dceaf8;
+    border-color: #6fa4cc;
+}
+
+.btn-terceiros.ativo {
+    background: #fff8e6;
+    border-color: #d4a020;
+    color: #7a4f00;
+}
+
+/* ── HINT ORIENTAÇÃO ─────────────────────────────────── */
+.msg-orientacao {
+    position: fixed;
+    z-index: 100;
+    max-width: 420px;
+    font-size: 11.5px;
+    color: #4b6080;
+    background: #eef4fb;
+    border: 1px solid #c2d9f7;
+    border-radius: 8px;
+    padding: 10px 14px;
+    line-height: 1.6;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12);
+    display: none;
+}
+
+.msg-orientacao::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 20px;
+    border: 7px solid transparent;
+    border-top-color: #c2d9f7;
+}
+
+.msg-orientacao::before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 21px;
+    border: 6px solid transparent;
+    border-top-color: #eef4fb;
+    z-index: 1;
+}
+
+/* ── SEPARADOR ───────────────────────────────────────── */
+.sep {
+    height: 1px;
+    background: var(--border);
+    margin: 8px 0;
+}
+
+/* ── RODAPÉ DE AÇÕES ─────────────────────────────────── */
+.acoes {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 18px;
+    border: none;
+    border-radius: 7px;
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s, transform .1s;
+    letter-spacing: 0.01em;
+}
+
+.btn:active { transform: translateY(1px); }
+
+.btn-salvar {
+    background: var(--green);
+    color: #fff;
+}
+.btn-salvar:hover { background: var(--green-hover); }
+
+.btn-limpar {
+    background: #e8ecf2;
+    color: #4b5e7a;
+    border: 1px solid #d2d9e6;
+}
+.btn-limpar:hover { background: #dde3ee; }
+
+/* ── PAINEL RESULTADO VALIDAÇÃO ──────────────────────── */
+.resultado-ok {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #f0fdf4;
+    border: 1px solid #86efac;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #15803d;
+}
+
+.resultado-erro {
+    padding: 10px 16px;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    font-size: 12.5px;
+    color: #991b1b;
+    line-height: 1.6;
+}
+
+.resultado-erro ul {
+    margin: 4px 0 0 16px;
+    padding: 0;
+}
+
+/* ── ÍCONES SVG inline ───────────────────────────────── */
+.ico { display: block; width: 15px; height: 15px; flex-shrink: 0; }
+
+/* ── SEÇÃO CNAB — COLAPSÁVEL ─────────────────────────── */
+.secao-cnab-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 18px;
+    background: #f0f6ff;
+    border-bottom: 1px solid #c8ddf7;
+    cursor: pointer;
+    user-select: none;
+}
+.secao-cnab-toggle:hover { background: #e4eefb; }
+
+.cnab-toggle-esq {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.secao-icone-cnab {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #2a7de1;
+    flex-shrink: 0;
+}
+.secao-titulo-cnab {
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #1a4a7a;
+}
+.cnab-badge-opcional {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #2a7de1;
+    background: #ddeefb;
+    border: 1px solid #b3d4f5;
+    border-radius: 4px;
+    padding: 1px 7px;
+}
+.cnab-seta {
+    font-size: 13px;
+    color: #4a6f9a;
+    transition: transform .2s;
+}
+.cnab-seta.aberto { transform: rotate(180deg); }
+
+.cnab-corpo {
+    display: none;
+    padding: 14px 18px 10px;
+    border-top: 1px solid #dde8f5;
+    background: #fafcff;
+}
+.cnab-corpo.aberto { display: block; }
+
+.grid-cnab-1 {
+    display: grid;
+    grid-template-columns: 220px 100px 60px 180px 60px;
+    gap: 10px 14px;
+    margin-bottom: 12px;
+}
+.campo-mono input, .campo-mono select {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: .04em;
+}
+
+/* ── QUADRO PERGUNTE AO BANCO ────────────────────────── */
+.quadro-banco {
+    border: 1px solid #f0b429;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #fffdf0;
+}
+.quadro-banco-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    background: #fef3c7;
+    border-bottom: 1px solid #f0b429;
+}
+.quadro-banco-icone {
+    font-size: 14px;
+}
+.quadro-banco-titulo {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #78350f;
+}
+.quadro-banco-sub {
+    font-size: 10.5px;
+    color: #92400e;
+    font-style: italic;
+}
+.quadro-banco-corpo {
+    padding: 10px 14px 12px;
+}
+.grid-cnab-banco {
+    display: grid;
+    grid-template-columns: 200px 1fr 1fr 1fr 1fr 1fr;
+    gap: 10px 14px;
+}
+
+/* ── RESPONSIVE ──────────────────────────────────────── */
+@media (max-width: 1100px) {
+    .grid-id,
+    .grid-fpas    { grid-template-columns: repeat(2, 1fr); }
+    .grid-4,
+    .grid-5,
+    .grid-6       { grid-template-columns: repeat(3, 1fr); }
+    .grid-encargos      { grid-template-columns: repeat(4, 1fr); }
+    .grid-encargos-area { grid-template-columns: 1fr; }
+    .bloco-btn-terceiros { padding-top: 0; }
+}
+
+@media (max-width: 700px) {
+    .topo { grid-template-columns: 1fr; padding: 12px 16px; gap: 6px; }
+    .topo-titulo { text-align: left; }
+    .topo-contexto { align-items: flex-start; }
+    .grid-id,
+    .grid-fpas,
+    .grid-4,
+    .grid-5,
+    .grid-6 { grid-template-columns: 1fr; }
+    .grid-encargos { grid-template-columns: repeat(2, 1fr); }
+    .container { padding: 0 12px 32px; gap: 10px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPO -->
+<header class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa_info }}</span>
+        <span class="topo-nome">{{ cliente_info }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>{{ titulo_tela }}</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+</header>
+
+<div id="msgOrientacao" class="msg-orientacao"></div>
+<div class="container">
+
+    <!-- ── IDENTIFICAÇÃO ──────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone"></div>
+            <span class="secao-titulo">Identificação da Empresa</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-id">
+                <div class="campo">
+                    <label>CNPJ</label>
+                    {% if modo|default('novo') == 'alterar' %}
+                    <input type="text" id="cnpj" maxlength="18" readonly style="background:var(--read-bg);color:var(--read-text);border-color:#dde6f0;">
+                    {% else %}
+                    <input type="text" id="cnpj" maxlength="18" placeholder="00.000.000/0000-00" oninput="mascaraCNPJ(this)" onblur="validarCNPJ(this)">
+                    {% endif %}
+                </div>
+                <div class="campo">
+                    <label>Razão Social</label>
+                    <input type="text" id="razaosocial" maxlength="60" placeholder="Nome empresarial completo" oninput="semAcentos(this)">
+                </div>
+                <div class="campo">
+                    <label>Nome Fantasia</label>
+                    <input type="text" id="nome_fantasia" maxlength="20" placeholder="Nome comercial">
+                </div>
+                <div class="campo">
+                    <label>Mês Dissídio</label>
+                    <select id="mes_dissidio">
+                        <option value=""></option>
+                        <option value="01">01 — Janeiro</option>
+                        <option value="02">02 — Fevereiro</option>
+                        <option value="03">03 — Março</option>
+                        <option value="04">04 — Abril</option>
+                        <option value="05">05 — Maio</option>
+                        <option value="06">06 — Junho</option>
+                        <option value="07">07 — Julho</option>
+                        <option value="08">08 — Agosto</option>
+                        <option value="09">09 — Setembro</option>
+                        <option value="10">10 — Outubro</option>
+                        <option value="11">11 — Novembro</option>
+                        <option value="12">12 — Dezembro</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>CNAE</label>
+                    <input type="text" id="cnae" maxlength="9" placeholder="00.000-00" oninput="mascaraCNAE(this)" onfocus="showHint(this,'CNAE — Classificação Nacional de Atividades Econômicas.\nFormato: XX.XXX-XX (7 dígitos).\nConfira no Cartão do CNPJ.')" onblur="clearHint()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── INSS / ENCARGOS ────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#18795b"></div>
+            <span class="secao-titulo">INSS / Encargos Previdenciários</span>
+        </div>
+        <div class="secao-corpo">
+
+            <!-- linha FPAS -->
+            <div class="grid-fpas">
+                <div class="campo">
+                    <label>FPAS</label>
+                    <select id="fpas" onchange="carregarFPAS()">
+                        <option value="">Selecione…</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Descrição FPAS</label>
+                    <input type="text" id="fpas_descricao" readonly placeholder="—">
+                </div>
+                <div class="campo">
+                    <label>Cód. Terceiros</label>
+                    <input type="text" id="cod_terceiros" readonly placeholder="—">
+                </div>
+                <div class="campo">
+                    <label>Alíquota Total</label>
+                    <input type="text" id="aliq_total" readonly placeholder="—">
+                </div>
+                <div class="campo">
+                    <label>Risco</label>
+                    <select id="risco" onfocus="showHint(this,'Risco — Grau de risco ambiental do trabalho (RAT).\nValores válidos: 1 – Mínimo | 2 – Médio | 3 – Grave.\nQuando Classificação Tributária = 01 (Simples Nacional substituído), o valor é automaticamente definido como 0.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="1">1 — Mínimo</option>
+                        <option value="2">2 — Médio</option>
+                        <option value="3">3 — Grave</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="sep"></div>
+
+            <!-- encargos + botão -->
+            <div class="quadro-terceiros">
+                <div class="quadro-terceiros-header">
+                    <span class="quadro-terceiros-titulo">Contribuições Destinadas a Terceiros</span>
+                    <span class="quadro-terceiros-aviso">Percentuais pré-definidos pelo código FPAS</span>
+                    <button type="button" id="btnTerceiros" class="btn-terceiros" onclick="toggleEncargosManual()">
+                        ✎&nbsp; Alterar percentuais de terceiros manualmente
+                    </button>
+                </div>
+                <div class="quadro-terceiros-corpo">
+                    <div class="grid-encargos">
+                        <div class="campo campo-enc"><label>Sal. Educação</label><input type="text" id="sal_educ" readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>INCRA</label>       <input type="text" id="incra"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAI</label>       <input type="text" id="senai"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SESI</label>        <input type="text" id="sesi"     readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAC</label>       <input type="text" id="senac"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SESC</label>        <input type="text" id="sesc"     readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SEBRAE</label>      <input type="text" id="sebrae"   readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>DPC</label>         <input type="text" id="dpc"      readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAR</label>       <input type="text" id="senar"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SEST</label>        <input type="text" id="sest"     readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAT</label>       <input type="text" id="senat"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SESCOOP</label>     <input type="text" id="sescoop"  readonly placeholder="—"></div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── TRIBUTAÇÃO ─────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#b45309"></div>
+            <span class="secao-titulo">Tributação / Gerais</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-6">
+                <div class="campo">
+                    <label>Natureza Jurídica</label>
+                    <select id="nat_juridica" onfocus="showHint(this,'natJurídica — Natureza jurídica da empresa conforme classificação do IBGE/RFB.\nUtilizada no eSocial para validar regras específicas de tributação e obrigações acessórias.\nConfira no Cartão do CNPJ.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="201-1">201-1 — Empresa Pública</option>
+                        <option value="203-8">203-8 — Sociedade de Economia Mista</option>
+                        <option value="204-6">204-6 — Sociedade Anônima Aberta</option>
+                        <option value="205-4">205-4 — Sociedade Anônima Fechada</option>
+                        <option value="206-2">206-2 — Sociedade Empresária Limitada</option>
+                        <option value="207-0">207-0 — Sociedade Empresária em Nome Coletivo</option>
+                        <option value="208-9">208-9 — Sociedade Empresária em Comandita Simples</option>
+                        <option value="209-7">209-7 — Sociedade Empresária em Comandita por Ações</option>
+                        <option value="212-7">212-7 — Sociedade em Conta de Participação</option>
+                        <option value="214-3">214-3 — Cooperativa</option>
+                        <option value="215-1">215-1 — Consórcio de Sociedades</option>
+                        <option value="216-0">216-0 — Grupo de Sociedades</option>
+                        <option value="223-2">223-2 — Sociedade Simples Pura</option>
+                        <option value="224-0">224-0 — Sociedade Simples Limitada</option>
+                        <option value="225-9">225-9 — Sociedade Simples em Nome Coletivo</option>
+                        <option value="226-7">226-7 — Sociedade Simples em Comandita Simples</option>
+                        <option value="229-1">229-1 — Consórcio Simples</option>
+                        <option value="230-5">230-5 — Empresa Individual de Responsabilidade Limitada (de Natureza Empresária)</option>
+                        <option value="231-3">231-3 — Empresa Individual de Responsabilidade Limitada (de Natureza Simples)</option>
+                        <option value="306-9">306-9 — Fundação Privada</option>
+                        <option value="308-5">308-5 — Condomínio Edifício</option>
+                        <option value="322-0">322-0 — Organização Religiosa</option>
+                        <option value="330-1">330-1 — Organização Social (OS)</option>
+                        <option value="399-9">399-9 — Associação Privada</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Classificação Tributária</label>
+                    <select id="class_trib" onchange="ajustarRisco()" onfocus="showHint(this,'classTrib — Classificação tributária da empresa para fins do eSocial.\nUtilizada para validar diversas regras do leiaute do eSocial (S-1000).\nSelecione o código correspondente ao enquadramento tributário da empresa.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="01">01 — Simples Nacional com tributação previdenciária substituída</option>
+                        <option value="02">02 — Simples Nacional com tributação previdenciária não substituída</option>
+                        <option value="03">03 — Simples Nacional com tributação previdenciária substituída e não substituída</option>
+                        <option value="04">04 — Microempreendedor Individual - MEI</option>
+                        <option value="06">06 — Agroindústria</option>
+                        <option value="10">10 — Entidade sindical a que se refere a Lei 12.023/2009</option>
+                        <option value="14">14 — Sindicatos em geral, exceto aquele classificado no código [10]</option>
+                        <option value="80">80 — Entidade beneficente de assistência social isenta de contribuições sociais</option>
+                        <option value="99">99 — Pessoas Jurídicas em geral</option>
+                    </select>
+                </div>
+                <div class="campo"><label>ISS (%)</label>               <input type="text" id="iss" placeholder="0,00" onfocus="showHint(this,'ISS — Imposto Sobre Serviços de Qualquer Natureza.\nInformar a alíquota do ISS aplicável à empresa conforme legislação municipal.\nValores de 0,00 a 5,00%. Obrigatório para empresas prestadoras de serviços.')" onblur="clearHint()"></div>
+                <div class="campo"><label>PIS (%)</label>               <input type="text" id="pis" placeholder="0,65" onfocus="showHint(this,'PIS — Programa de Integração Social.\nAlíquota padrão: 0,65% (regime cumulativo) ou 1,65% (regime não cumulativo).\nEmpresas do Simples Nacional estão dispensadas do recolhimento em separado.')" onblur="clearHint()"></div>
+                <div class="campo">
+                    <label>Simples Nacional</label>
+                    <select id="ind_simples" onfocus="showHint(this,'Simples Nacional — Regime tributário diferenciado instituído pela LC 123/2006.\nAplica-se a ME e EPP com receita bruta anual de até R$ 4,8 milhões.\nO enquadramento unifica o recolhimento de vários tributos em uma única guia (DAS).')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="S">Sim</option>
+                        <option value="N">Não</option>
+                    </select>
+                </div>
+                <div class="campo"><label>% Simples</label>             <input type="text" id="perc_simples" placeholder="—" onfocus="showHint(this,'% Simples — Alíquota efetiva do Simples Nacional.\nCalculada conforme o anexo e faixa de receita bruta acumulada dos últimos 12 meses.\nPreencher apenas para empresas optantes pelo Simples Nacional.')" onblur="clearHint()"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── eSocial ────────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#7c3aed"></div>
+            <span class="secao-titulo">Indicadores do eSocial</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-6">
+                <div class="campo">
+                    <label>Ind. Cooperativa</label>
+                    <select id="ind_coop" onfocus="showHint(this,'indCoop — Indicativo de cooperativa de trabalho.\nValores válidos: 0 – A empresa não é cooperativa | 1 – Cooperativa de trabalho | 2 – Cooperativa de produção | 3 – Outras cooperativas.\nValidação: Preencher apenas para empresas com natureza jurídica de cooperativa.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="0">0 — Não</option>
+                        <option value="1">1 — Trabalho</option>
+                        <option value="2">2 — Produção</option>
+                        <option value="3">3 — Outras</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Ind. Construtora</label>
+                    <select id="ind_constr" onfocus="showHint(this,'indConstr — Indicativo de construtora.\nValores válidos: 0 – Não é construtora | 1 – Empresa construtora.\nValidação: O preenchimento do campo é exclusivo e obrigatório para PJ.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="0">0 — Não</option>
+                        <option value="1">1 — Sim</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Desoneração</label>
+                    <select id="ind_des_folha" onfocus="showHint(this,'indDesFolha — Indicativo de opção/enquadramento de desoneração da folha.\nValores válidos: 0 – Não aplicável | 1 – Empresa enquadrada nos critérios da legislação vigente | 2 – Município enquadrado nos critérios da legislação vigente.\nValidação: Pode ser igual a [1] apenas se classTrib = {02, 03, 99}. Pode ser igual a [2] apenas para naturezas jurídicas iguais a {103-1, 106-6, 124-4, 133-3}. Nos demais casos, deve ser igual a [0].')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="0">0 — Não</option>
+                        <option value="1">1 — Empresa</option>
+                        <option value="2">2 — Município</option>
+                    </select>
+                </div>
+<div class="campo">
+                    <label>Microempresa</label>
+                    <select id="ind_porte" onfocus="showHint(this,'indPorte — Indicativo de porte da empresa.\nValores válidos: S – Microempresa ou Empresa de Pequeno Porte conforme LC 123/2006.\nValidação: Preencher apenas para empresas optantes pelo Simples Nacional ou enquadradas como ME/EPP.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="S">S — Sim</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Ponto Eletrônico</label>
+                    <select id="ind_ponto" onfocus="showHint(this,'indOptRegEletron — Indicativo de opção pelo Registro Eletrônico de Empregados.\nValores válidos: 0 – Não optante | 1 – Optante pelo registro eletrônico de ponto.\nValidação: Obrigatório para empregadores com mais de 10 empregados conforme Portaria MTE 1510/2009.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="0">Não</option>
+                        <option value="1">Sim</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>PIS/PASEP</label>
+                    <select id="pis_pasep" onfocus="showHint(this,'PIS/PASEP — Indicativo de contribuição ao PIS/PASEP.\nValores válidos: S – Contribuinte do PIS/PASEP.\nValidação: Informar apenas para empresas obrigadas ao recolhimento da contribuição conforme legislação vigente.')" onblur="clearHint()">
+                        <option value=""></option>
+                        <option value="S">S — Sim</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CNAB 240 — CONTA PAGADORA DE SALÁRIO ────── -->
+    <div class="secao">
+        <div class="secao-cnab-toggle" onclick="toggleCNAB()">
+            <div class="cnab-toggle-esq">
+                <div class="secao-icone-cnab"></div>
+                <span class="secao-titulo-cnab">CNAB 240 — Conta Pagadora de Salário</span>
+                <span class="cnab-badge-opcional">Opcional</span>
+            </div>
+            <span class="cnab-seta" id="cnabSeta">▼</span>
+        </div>
+
+        <div class="cnab-corpo" id="cnabCorpo">
+
+            <!-- Linha 1: dados bancários básicos -->
+            <div class="grid-cnab-1">
+                <div class="campo campo-mono">
+                    <label>Banco</label>
+                    <select id="cnab_banco" onchange="cnabBancoChange()">
+                        <option value="">Selecione…</option>
+                        <option value="001">001 — Banco do Brasil</option>
+                        <option value="033">033 — Santander</option>
+                        <option value="041">041 — Banrisul</option>
+                        <option value="077">077 — Inter</option>
+                        <option value="104">104 — Caixa Econômica Federal</option>
+                        <option value="237">237 — Bradesco</option>
+                        <option value="341">341 — Itaú</option>
+                        <option value="422">422 — Safra</option>
+                        <option value="748">748 — Sicredi</option>
+                        <option value="756">756 — Sicoob</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>Agência</label>
+                    <input type="text" id="cnab_agencia" maxlength="5" placeholder="00000"
+                           oninput="apenasNumeros(this,5)">
+                </div>
+                <div class="campo campo-mono">
+                    <label>DV Ag.</label>
+                    <input type="text" id="cnab_dv_agencia" maxlength="1" placeholder="0"
+                           onfocus="showHint(this,'DV da Agência.\nSantander e Itaú: deixar em branco.\nBB: pode ser X maiúsculo.')" onblur="clearHint()">
+                </div>
+                <div class="campo campo-mono">
+                    <label>Conta (12 dígitos)</label>
+                    <input type="text" id="cnab_conta" maxlength="12" placeholder="000000000000"
+                           oninput="apenasNumeros(this,12)">
+                </div>
+                <div class="campo campo-mono">
+                    <label>DV Conta</label>
+                    <input type="text" id="cnab_dv_conta" maxlength="1" placeholder="0"
+                           onfocus="showHint(this,'DV da Conta Corrente.\nBB: pode ser X maiúsculo.\nSantander: deixar em branco.')" onblur="clearHint()">
+                </div>
+            </div>
+
+            <!-- Quadro: Pergunte ao seu Banco -->
+            <div class="quadro-banco">
+                <div class="quadro-banco-header">
+                    <span class="quadro-banco-icone">🏦</span>
+                    <span class="quadro-banco-titulo">Pergunte ao seu Banco</span>
+                    <span class="quadro-banco-sub">— informações fornecidas pelo gerente ao contratar o serviço</span>
+                    <span id="cnab_banco_info" style="margin-left:auto;font-size:11px;color:#92400e;font-style:italic;"></span>
+                </div>
+                <div class="quadro-banco-corpo">
+                    <div class="grid-cnab-banco">
+                        <div class="campo campo-mono">
+                            <label>Nº do Convênio (20 pos.)</label>
+                            <input type="text" id="cnab_convenio" maxlength="20" placeholder="Código fornecido pelo banco"
+                                   onfocus="showHint(this,'Código do Convênio no Banco.\nFornecido pelo banco ao contratar o serviço de pagamento de salários.\nBB: campo composto — 9 dígitos do convênio + carteira + variação.\nCaixa: apenas 6 dígitos numéricos.\nItaú: deixar em branco.')" onblur="clearHint()">
+                        </div>
+                        <div class="campo campo-mono">
+                            <label>Layout Arquivo</label>
+                            <input type="text" id="cnab_layout_arquivo" maxlength="3" placeholder="080"
+                                   oninput="apenasNumeros(this,3)"
+                                   onfocus="showHint(this,'Versão do Layout do Arquivo (Header — pos 164-166).\nBB: 083 ou 084  |  Bradesco: 080  |  Santander: 060\nItaú: 080  |  Caixa: varia\nConsulte o manual do banco.')" onblur="clearHint()">
+                        </div>
+                        <div class="campo campo-mono">
+                            <label>Layout Lote</label>
+                            <input type="text" id="cnab_layout_lote" maxlength="3" placeholder="040"
+                                   oninput="apenasNumeros(this,3)"
+                                   onfocus="showHint(this,'Versão do Layout do Lote (Header Lote — pos 14-16).\nBB: 042  |  Bradesco: 040  |  Santander: 031\nItaú: 040  |  Caixa: 030\nDeve ser compatível com o Layout do Arquivo.')" onblur="clearHint()">
+                        </div>
+                        <div class="campo campo-mono">
+                            <label>Câmara Compensação</label>
+                            <input type="text" id="cnab_camara" maxlength="3" placeholder="000"
+                                   oninput="apenasNumeros(this,3)"
+                                   onfocus="showHint(this,'Câmara de Compensação — Segmento A (pos 18-20).\n000 = Crédito em conta corrente / poupança\n700 = DOC  |  018 = TED CIP  |  810 = TED STR\nCaixa: sempre 700.\nSe em branco, o sistema calcula automaticamente.')" onblur="clearHint()">
+                        </div>
+                        <div class="campo campo-mono">
+                            <label>Segmento B Obrigatório?</label>
+                            <select id="cnab_segb_obrig"
+                                    onfocus="showHint(this,'Segmento B — registro complementar com endereço do favorecido.\nSim: gera Segmento B para todos os funcionários.\nNão: omite o Segmento B (somente Segmento A).\nAlguns bancos exigem mesmo sem endereço.')" onblur="clearHint()">
+                                <option value="N">Não</option>
+                                <option value="S">Sim</option>
+                            </select>
+                        </div>
+                        <div class="campo campo-mono">
+                            <label>Posição do DV no Arquivo</label>
+                            <select id="cnab_dv_posicao"
+                                    onfocus="showHint(this,'Posição do DV da conta no arquivo CNAB.\nNormal: padrão FEBRABAN (pos 71).\nEspaço antes: DV com espaço à esquerda.\nEspaço depois: DV com espaço à direita.\nConsulte o manual do banco.')" onblur="clearHint()">
+                                <option value="N">Normal</option>
+                                <option value="A">Espaço antes</option>
+                                <option value="D">Espaço depois</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- ── AÇÕES ──────────────────────────────────── -->
+    <div class="acoes">
+        <button class="btn btn-salvar" onclick="salvarEmpresa()">
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2H4L2 4v10h12V4l-1-2z"/><rect x="5" y="9" width="6" height="5"/><rect x="5" y="2" width="5" height="3"/>
+            </svg>
+            {% if modo|default('novo') == 'alterar' %}Atualizar Empresa{% else %}Salvar Empresa{% endif %}
+        </button>
+        {% if modo|default('novo') != 'alterar' %}
+        <button class="btn btn-limpar" onclick="limparFormulario()">
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 4h12M6 4V2h4v2M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4"/>
+            </svg>
+            Limpar
+        </button>
+        {% endif %}
+    </div>
+    <div id="resultadoValidacao"></div>
+
+</div>
+
+<script>
+/* ── MÁSCARA CNPJ ──────────────────────────────────────── */
+function mascaraCNPJ(campo) {
+    let v = campo.value.replace(/\D/g, '').substring(0, 14);
+    if (v.length > 12)      v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, '$1.$2.$3/$4-$5');
+    else if (v.length > 8)  v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4}).*/, '$1.$2.$3/$4');
+    else if (v.length > 5)  v = v.replace(/^(\d{2})(\d{3})(\d{0,3}).*/, '$1.$2.$3');
+    else if (v.length > 2)  v = v.replace(/^(\d{2})(\d{0,3}).*/, '$1.$2');
+    campo.value = v;
+}
+
+/* ── VALIDAÇÃO CNPJ ────────────────────────────────────── */
+function validarCNPJ(campo) {
+    const v = campo.value.replace(/\D/g, '');
+    if (!v) { campo.style.borderColor = ''; campo.style.boxShadow = ''; return; }
+    if (v.length !== 14 || /^(\d)\1+$/.test(v)) { _cnpjInvalido(campo); return; }
+    const calcDigito = (digits) => {
+        let sum = 0, pos = digits.length - 7;
+        for (let i = digits.length; i >= 1; i--) {
+            sum += parseInt(digits[digits.length - i]) * pos--;
+            if (pos < 2) pos = 9;
+        }
+        return sum % 11 < 2 ? 0 : 11 - (sum % 11);
+    };
+    if (calcDigito(v.substring(0,12)) !== parseInt(v[12]) ||
+        calcDigito(v.substring(0,13)) !== parseInt(v[13])) {
+        _cnpjInvalido(campo); return;
+    }
+    campo.style.borderColor = '#18795b';
+    campo.style.boxShadow   = '0 0 0 3px rgba(24,121,91,.12)';
+}
+function _cnpjInvalido(campo) {
+    campo.style.borderColor = '#dc2626';
+    campo.style.boxShadow   = '0 0 0 3px rgba(220,38,38,.12)';
+    showHint(campo, 'CNPJ inválido — verifique o número digitado.');
+}
+
+/* ── RAZÃO SOCIAL SEM ACENTOS ──────────────────────────── */
+function semAcentos(campo) {
+    campo.value = campo.value
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[çÇ]/g, c => c === 'ç' ? 'c' : 'C');
+}
+
+/* ── MÁSCARA CNAE ──────────────────────────────────────── */
+function mascaraCNAE(campo) {
+    let v = campo.value.replace(/\D/g, '').substring(0, 7);
+    if (v.length > 5)      v = v.replace(/^(\d{2})(\d{3})(\d{0,2}).*/, '$1.$2-$3');
+    else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3}).*/, '$1.$2');
+    campo.value = v;
+}
+
+/* ── TOGGLE ENCARGOS MANUAIS ───────────────────────────── */
+function toggleEncargosManual() {
+    const campos = document.querySelectorAll('.campo-enc input');
+    const btn    = document.getElementById('btnTerceiros');
+    const liberar = campos[0].hasAttribute('readonly');
+
+    if (liberar) {
+        const confirma = confirm(
+            'Atenção!\n\n' +
+            'Os percentuais de Contribuições Destinadas a Terceiros são pré-definidos ' +
+            'automaticamente de acordo com o código FPAS selecionado.\n\n' +
+            'Deseja realmente alterar esses percentuais manualmente?'
+        );
+        if (!confirma) return;
+    }
+
+    campos.forEach(c => {
+        if (liberar) {
+            c.removeAttribute('readonly');
+            c.style.background = '#fffbeb';
+            c.style.color      = '#78350f';
+            c.style.borderColor= '#fbbf24';
+        } else {
+            c.setAttribute('readonly', '');
+            c.style.background = '';
+            c.style.color      = '';
+            c.style.borderColor= '';
+        }
+    });
+
+    btn.classList.toggle('ativo', liberar);
+    btn.textContent = liberar
+        ? '✓  Percentuais em modo edição'
+        : '✎  Alterar percentuais de terceiros manualmente';
+}
+
+/* ── CNAB 240 — TOGGLE ─────────────────────────────────── */
+function toggleCNAB() {
+    const corpo = document.getElementById('cnabCorpo');
+    const seta  = document.getElementById('cnabSeta');
+    const aberto = corpo.classList.toggle('aberto');
+    seta.classList.toggle('aberto', aberto);
+}
+
+/* ── CNAB 240 — DEFAULTS POR BANCO ─────────────────────── */
+const cnabDefaults = {
+    '001': { layout_arq:'083', layout_lote:'042', camara:'',    segb:'N', dv_posicao:'N', info:'BB: convênio composto (9+0014+carteira+variação). DV pode ser X.' },
+    '033': { layout_arq:'060', layout_lote:'031', camara:'000', segb:'N', dv_posicao:'D', info:'Santander: sem DV de agência. Código histórico: 2007 (salário).' },
+    '041': { layout_arq:'080', layout_lote:'040', camara:'000', segb:'N', dv_posicao:'N', info:'' },
+    '077': { layout_arq:'080', layout_lote:'040', camara:'000', segb:'N', dv_posicao:'N', info:'' },
+    '104': { layout_arq:'080', layout_lote:'030', camara:'700', segb:'S', dv_posicao:'N', info:'Caixa: convênio com 6 dígitos. Campos exclusivos de compromisso.' },
+    '237': { layout_arq:'080', layout_lote:'040', camara:'000', segb:'N', dv_posicao:'N', info:'Bradesco: mais próximo do padrão FEBRABAN.' },
+    '341': { layout_arq:'080', layout_lote:'040', camara:'',    segb:'N', dv_posicao:'N', info:'Itaú: sem convênio. Agência+conta combinados no Seg A. CPF no Seg A.' },
+    '422': { layout_arq:'080', layout_lote:'040', camara:'000', segb:'N', dv_posicao:'N', info:'' },
+    '748': { layout_arq:'080', layout_lote:'040', camara:'000', segb:'N', dv_posicao:'N', info:'' },
+    '756': { layout_arq:'080', layout_lote:'040', camara:'000', segb:'N', dv_posicao:'N', info:'' },
+};
+
+function cnabBancoChange() {
+    const banco = document.getElementById('cnab_banco').value;
+    const def   = cnabDefaults[banco];
+    if (!def) {
+        document.getElementById('cnab_banco_info').textContent = '';
+        return;
+    }
+    document.getElementById('cnab_layout_arquivo').value = def.layout_arq;
+    document.getElementById('cnab_layout_lote').value    = def.layout_lote;
+    document.getElementById('cnab_camara').value         = def.camara;
+    document.getElementById('cnab_segb_obrig').value     = def.segb;
+    document.getElementById('cnab_dv_posicao').value     = def.dv_posicao;
+    document.getElementById('cnab_banco_info').textContent = def.info;
+}
+
+/* ── APENAS NÚMEROS ─────────────────────────────────────── */
+function apenasNumeros(campo, max) {
+    campo.value = campo.value.replace(/\D/g, '').substring(0, max);
+}
+
+/* ── API FPAS ──────────────────────────────────────────── */
+async function carregarListaFPAS() {
+    try {
+        const r = await fetch('/api/fpas');
+        const j = await r.json();
+        if (!j.ok) return;
+        const combo = document.getElementById('fpas');
+        combo.innerHTML = '<option value="">Selecione…</option>';
+        (j.dados || []).forEach(item => {
+            const op = document.createElement('option');
+            op.value = String(item.cod_fpas).trim();
+            op.textContent = String(item.cod_fpas).trim() + ' — ' + (item.descricao || '').trim();
+            combo.appendChild(op);
+        });
+    } catch (e) { console.error('FPAS list:', e); }
+}
+
+async function carregarFPAS() {
+    const cod = document.getElementById('fpas').value.trim();
+    if (!cod) { limparCamposFPAS(); return; }
+    try {
+        const r = await fetch('/api/fpas/' + cod);
+        const j = await r.json();
+        if (!j.ok) { limparCamposFPAS(); return; }
+        const d = j.dados || {};
+        document.getElementById('fpas_descricao').value = d.descricao      ?? '';
+        document.getElementById('cod_terceiros').value  = d.cod_terceiros   ?? '';
+        document.getElementById('aliq_total').value     = fmt(d.aliq_total);
+        document.getElementById('sal_educ').value  = fmt(d.sal_educ);
+        document.getElementById('incra').value     = fmt(d.incra);
+        document.getElementById('senai').value     = fmt(d.senai);
+        document.getElementById('sesi').value      = fmt(d.sesi);
+        document.getElementById('senac').value     = fmt(d.senac);
+        document.getElementById('sesc').value      = fmt(d.sesc);
+        document.getElementById('sebrae').value    = fmt(d.sebrae);
+        document.getElementById('dpc').value       = fmt(d.dpc);
+        document.getElementById('senar').value     = fmt(d.senar);
+        document.getElementById('sest').value      = fmt(d.sest);
+        document.getElementById('senat').value     = fmt(d.senat);
+        document.getElementById('sescoop').value   = fmt(d.sescoop);
+    } catch (e) { console.error('FPAS detail:', e); limparCamposFPAS(); }
+}
+
+function limparCamposFPAS() {
+    ['fpas_descricao','cod_terceiros','aliq_total',
+     'sal_educ','incra','senai','sesi','senac','sesc',
+     'sebrae','dpc','senar','sest','senat','sescoop'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+}
+
+function fmt(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    return isNaN(n) ? String(v) : n.toFixed(2);
+}
+
+/* ── AÇÕES BOTÕES ──────────────────────────────────────── */
+async function salvarEmpresa() {
+    const erros = [];
+
+    // CNPJ — obrigatório e válido (pula no modo alterar pois é readonly)
+    const cnpjEl = document.getElementById('cnpj');
+    if (!window._modoAlterar) {
+        const cnpjV = cnpjEl.value.replace(/\D/g, '');
+        if (!cnpjV) {
+            erros.push('CNPJ é obrigatório.');
+            _marcarErro(cnpjEl);
+        } else {
+            validarCNPJ(cnpjEl);
+            if (cnpjEl.style.borderColor === 'rgb(220, 38, 38)') {
+                erros.push('CNPJ inválido — verifique o número digitado.');
+            }
+        }
+    }
+
+    // Razão Social — obrigatória
+    const rzEl = document.getElementById('razaosocial');
+    if (!rzEl.value.trim()) {
+        erros.push('Razão Social é obrigatória.');
+        _marcarErro(rzEl);
+    } else {
+        _marcarOk(rzEl);
+    }
+
+    // Mês Dissídio — obrigatório
+    const dissidioEl = document.getElementById('mes_dissidio');
+    if (!dissidioEl.value) {
+        erros.push('Mês Dissídio é obrigatório.');
+        _marcarErro(dissidioEl);
+    } else {
+        _marcarOk(dissidioEl);
+    }
+
+    // CNAE — obrigatório e completo (7 dígitos)
+    const cnaeEl = document.querySelector('input[placeholder="00.000-00"]');
+    if (!cnaeEl.value.trim()) {
+        erros.push('CNAE é obrigatório.');
+        _marcarErro(cnaeEl);
+    } else if (cnaeEl.value.replace(/\D/g,'').length < 7) {
+        erros.push('CNAE incompleto — informe os 7 dígitos.');
+        _marcarErro(cnaeEl);
+    } else {
+        _marcarOk(cnaeEl);
+    }
+
+    // FPAS — obrigatório
+    const fpasEl = document.getElementById('fpas');
+    if (!fpasEl.value) {
+        erros.push('FPAS é obrigatório.');
+        _marcarErro(fpasEl);
+    } else {
+        _marcarOk(fpasEl);
+    }
+
+    // Natureza Jurídica — obrigatória
+    const natEl = document.querySelector('select[onfocus*="natJurídica"]');
+    if (natEl && !natEl.value) {
+        erros.push('Natureza Jurídica é obrigatória.');
+        _marcarErro(natEl);
+    } else if (natEl) {
+        _marcarOk(natEl);
+    }
+
+    // Risco — obrigatório exceto classTrib = 01
+    const riscoEl    = document.getElementById('risco');
+    const classTrib  = document.getElementById('class_trib')?.value;
+    if (classTrib !== '01') {
+        if (!riscoEl.value) { erros.push('Risco é obrigatório.'); _marcarErro(riscoEl); }
+        else _marcarOk(riscoEl);
+    }
+
+    // Indicadores eSocial — obrigatórios
+    const esocialObrig = [
+        { id: 'ind_coop',      label: 'Ind. Cooperativa' },
+        { id: 'ind_constr',    label: 'Ind. Construtora' },
+        { id: 'ind_des_folha', label: 'Desoneração' },
+        { id: 'ind_ponto',     label: 'Ponto Eletrônico' },
+    ];
+    esocialObrig.forEach(({ id, label }) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (!el.value) { erros.push(`${label} é obrigatório.`); _marcarErro(el); }
+        else _marcarOk(el);
+    });
+
+    // Classificação Tributária — obrigatória
+    const classTribEl = document.querySelector('select[onfocus*="classTrib"]');
+    if (classTribEl && !classTribEl.value) {
+        erros.push('Classificação Tributária é obrigatória.');
+        _marcarErro(classTribEl);
+    } else if (classTribEl) {
+        _marcarOk(classTribEl);
+    }
+
+    // Exibe resultado
+    const painel = document.getElementById('resultadoValidacao');
+    if (erros.length === 0) {
+        painel.innerHTML = `
+            <div class="resultado-ok">
+                <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/>
+                </svg>
+                Gravando…
+            </div>`;
+        await gravarEmpresa(painel);
+    } else {
+        painel.innerHTML = `
+            <div class="resultado-erro">
+                <strong>Corrija os seguintes campos antes de gravar:</strong>
+                <ul>${erros.map(e => `<li>${e}</li>`).join('')}</ul>
+            </div>`;
+    }
+    painel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function gravarEmpresa(painel) {
+    const v = (id) => (document.getElementById(id)?.value || '').trim();
+    const n = (id) => { const x = v(id).replace(',','.'); return x === '' ? null : parseFloat(x); };
+
+    const dados = {
+        cnpj:                   v('cnpj').replace(/\D/g,''),
+        razaosocial:            document.getElementById('razaosocial')?.value.trim() || null,
+        nome_fantasia:          v('nome_fantasia') || null,
+        mes_dissidio:           parseInt(v('mes_dissidio')) || null,
+        cnae:                   v('cnae').replace(/\D/g,'') || null,
+        nat_juridica:           v('nat_juridica') || null,
+        es08_classtributaria:   v('class_trib').substring(0,2) || null,
+        iss:                    n('iss'),
+        pis:                    n('pis'),
+        ind_simples:            v('ind_simples') || null,
+        perc_simples:           n('perc_simples'),
+        gps_fpas:               v('fpas') || null,
+        gps_fpas_perc:          n('aliq_total'),
+        gps_cod_pagto:          parseInt(v('cod_terceiros')) || null,
+        gps_saleduc:            n('sal_educ'),
+        gps_incra:              n('incra'),
+        gps_senai:              n('senai'),
+        gps_sesi:               n('sesi'),
+        gps_senac:              n('senac'),
+        gps_sesc:               n('sesc'),
+        gps_sebrae:             n('sebrae'),
+        gps_dpc:                n('dpc'),
+        gps_senar:              n('senar'),
+        gps_sest:               n('sest'),
+        gps_senat:              n('senat'),
+        gps_sesco:              n('sescoop'),
+        risco:                  v('risco') || null,
+        es_ind_coop:            v('ind_coop') || null,
+        es_ind_constr:          v('ind_constr') || null,
+        es_ind_des_folha:       v('ind_des_folha') || null,
+        es_ind_porte:           v('ind_porte') || null,
+        es_ind_ponto:           v('ind_ponto') || null,
+        es_pis_pasep:           v('pis_pasep') || null,
+        // Conta bancária
+        banco_codigo:           v('cnab_banco')      || null,
+        banco_agencia:          v('cnab_agencia')    || null,
+        banco_dv_agencia:       v('cnab_dv_agencia') || null,
+        banco_conta:            v('cnab_conta')      || null,
+        banco_dv_conta:         v('cnab_dv_conta')   || null,
+        // CNAB 240
+        cnab_convenio:          v('cnab_convenio')        || null,
+        cnab_layout_arquivo:    v('cnab_layout_arquivo')  || null,
+        cnab_layout_lote:       v('cnab_layout_lote')     || null,
+        cnab_camara_compensacao:v('cnab_camara')          || null,
+        cnab_segb_obrigatorio:  v('cnab_segb_obrig')      || null,
+        cnab_dv_posicao:        v('cnab_dv_posicao')      || null,
+    };
+    const url = window._modoAlterar ? '/api/alterar_empresa' : '/api/gravar_empresa';
+    try {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dados)
+        });
+        const j = await r.json();
+        if (j.ok) {
+            if (window._modoAlterar) {
+                window.location.href = '/menu';
+                return;
+            }
+            painel.innerHTML = `
+                <div class="resultado-ok">
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/>
+                    </svg>
+                    Empresa gravada com sucesso! (id: ${j.id_empresa})
+                </div>`;
+        } else {
+            painel.innerHTML = `<div class="resultado-erro"><strong>Erro ao gravar:</strong> ${j.msg}</div>`;
+        }
+    } catch (e) {
+        painel.innerHTML = `<div class="resultado-erro"><strong>Erro de comunicação:</strong> ${e.message}</div>`;
+    }
+}
+
+function _marcarErro(el) {
+    el.style.borderColor = '#dc2626';
+    el.style.boxShadow   = '0 0 0 3px rgba(220,38,38,.12)';
+}
+function _marcarOk(el) {
+    el.style.borderColor = '#18795b';
+    el.style.boxShadow   = '0 0 0 3px rgba(24,121,91,.12)';
+}
+
+function limparFormulario() {
+    document.querySelectorAll('input[type=text]').forEach(i => {
+        i.value = '';
+        i.style.borderColor = '';
+        i.style.boxShadow   = '';
+    });
+    document.querySelectorAll('select').forEach(s => {
+        s.selectedIndex = 0;
+        s.style.borderColor = '';
+        s.style.boxShadow   = '';
+    });
+    document.getElementById('resultadoValidacao').innerHTML = '';
+    limparCamposFPAS();
+    // restaurar encargos readonly se estiverem em edição
+    const campos = document.querySelectorAll('.campo-enc input');
+    if (campos.length && !campos[0].hasAttribute('readonly')) {
+        toggleEncargosManual();
+    }
+}
+
+/* ── RISCO AUTOMÁTICO POR CLASSIFICAÇÃO TRIBUTÁRIA ─────── */
+function ajustarRisco() {
+    const classTrib = document.getElementById('class_trib').value;
+    const riscoEl   = document.getElementById('risco');
+    if (classTrib === '01') {
+        // Adiciona opção 0 se não existir e seleciona
+        if (!riscoEl.querySelector('option[value="0"]')) {
+            const op = document.createElement('option');
+            op.value = '0'; op.textContent = '0 — Não se aplica';
+            riscoEl.insertBefore(op, riscoEl.querySelector('option[value="1"]'));
+        }
+        riscoEl.value = '0';
+        riscoEl.setAttribute('readonly', '');
+        riscoEl.style.background  = 'var(--read-bg)';
+        riscoEl.style.color       = 'var(--read-text)';
+        riscoEl.style.borderColor = '#dde6f0';
+        riscoEl.disabled = true;
+    } else {
+        riscoEl.disabled = false;
+        riscoEl.removeAttribute('readonly');
+        riscoEl.style.background  = '';
+        riscoEl.style.color       = '';
+        riscoEl.style.borderColor = '';
+        // Remove opção 0 se existir
+        const op0 = riscoEl.querySelector('option[value="0"]');
+        if (op0) op0.remove();
+        if (riscoEl.value === '0') riscoEl.value = '';
+    }
+}
+
+/* ── ORIENTAÇÃO DE CAMPOS ──────────────────────────────── */
+function showHint(el, msg) {
+    const box  = document.getElementById('msgOrientacao');
+    box.innerHTML = msg.replace(/\n/g, '<br>');
+    box.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    box.style.left = r.left + 'px';
+    box.style.top  = (r.top - box.offsetHeight - 14) + 'px';
+}
+function clearHint() {
+    const box = document.getElementById('msgOrientacao');
+    box.style.display = 'none';
+    box.innerHTML = '';
+}
+
+/* ── MODO ALTERAR — pré-preenchimento ──────────────────── */
+window._modoAlterar = {{ 'true' if modo|default('novo') == 'alterar' else 'false' }};
+
+function preencherFormulario(d) {
+    const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    const flt = (v) => v != null ? String(v).replace('.', ',') : '';
+
+    // CNPJ (readonly — só exibe)
+    set('cnpj', d.cnpj_fmt || d.cnpj || '');
+    // Identificação
+    set('razaosocial',  d.razaosocial   || '');
+    set('nome_fantasia', d.nome_fantasia || '');
+    set('mes_dissidio', d.mes_dissidio != null ? String(d.mes_dissidio).padStart(2,'0') : '');
+    // CNAE — aplica máscara
+    const cnaeEl = document.getElementById('cnae');
+    if (cnaeEl && d.cnae) { cnaeEl.value = d.cnae; mascaraCNAE(cnaeEl); }
+    // FPAS + terceiros individuais (sem chamar a API para não sobrescrever valores salvos)
+    const fpasEl = document.getElementById('fpas');
+    if (fpasEl && d.gps_fpas) {
+        fpasEl.value = String(d.gps_fpas).trim();
+        // Descrição e alíquota total vêm do banco diretamente
+        set('aliq_total', flt(d.gps_fpas_perc));
+    }
+    // Campos de terceiros
+    set('sal_educ', flt(d.gps_saleduc));
+    set('incra',    flt(d.gps_incra));
+    set('senai',    flt(d.gps_senai));
+    set('sesi',     flt(d.gps_sesi));
+    set('senac',    flt(d.gps_senac));
+    set('sesc',     flt(d.gps_sesc));
+    set('sebrae',   flt(d.gps_sebrae));
+    set('dpc',      flt(d.gps_dpc));
+    set('senar',    flt(d.gps_senar));
+    set('sest',     flt(d.gps_sest));
+    set('senat',    flt(d.gps_senat));
+    set('sescoop',  flt(d.gps_sesco));
+    set('risco',    d.risco || '');
+    // Tributação
+    set('nat_juridica', d.nat_juridica || '');
+    set('class_trib',   d.es08_classtributaria || '');
+    ajustarRisco();
+    set('iss',         flt(d.iss));
+    set('pis',         flt(d.pis));
+    set('ind_simples', d.ind_simples || '');
+    set('perc_simples', flt(d.perc_simples));
+    // eSocial
+    set('ind_coop',      d.es_ind_coop      || '');
+    set('ind_constr',    d.es_ind_constr     || '');
+    set('ind_des_folha', d.es_ind_des_folha  || '');
+    set('ind_porte',     d.es_ind_porte      || '');
+    set('ind_ponto',     d.es_ind_ponto      || '');
+    set('pis_pasep',     d.es_pis_pasep      || '');
+    // CNAB
+    if (d.banco_codigo) {
+        set('cnab_banco',       d.banco_codigo);
+        set('cnab_agencia',     d.banco_agencia     || '');
+        set('cnab_dv_agencia',  d.banco_dv_agencia  || '');
+        set('cnab_conta',       d.banco_conta       || '');
+        set('cnab_dv_conta',    d.banco_dv_conta    || '');
+        set('cnab_convenio',    d.cnab_convenio     || '');
+        set('cnab_layout_arquivo', d.cnab_layout_arquivo || '');
+        set('cnab_layout_lote',    d.cnab_layout_lote    || '');
+        set('cnab_camara',         d.cnab_camara_compensacao || '');
+        set('cnab_segb_obrig',     d.cnab_segb_obrigatorio   || 'N');
+        set('cnab_dv_posicao',     d.cnab_dv_posicao         || 'N');
+        // abre seção CNAB
+        const corpo = document.getElementById('cnabCorpo');
+        const seta  = document.getElementById('cnabSeta');
+        if (corpo && !corpo.classList.contains('aberto')) {
+            corpo.classList.add('aberto');
+            seta && seta.classList.add('aberto');
+        }
+    }
+    // Busca descrição do FPAS após preencher (só para exibição)
+    if (d.gps_fpas) {
+        fetch('/api/fpas/' + String(d.gps_fpas).trim())
+            .then(r => r.json())
+            .then(j => {
+                if (j.ok) {
+                    set('fpas_descricao', j.dados.descricao   || '');
+                    set('cod_terceiros',  j.dados.cod_terceiros|| '');
+                }
+            }).catch(() => {});
+    }
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    await carregarListaFPAS();
+    {% if modo|default('novo') == 'alterar' and empresa_dados %}
+    preencherFormulario({{ empresa_dados | tojson }});
+    {% endif %}
+});
+</script>
+</body>
+</html>

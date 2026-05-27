@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Menu Demo 4</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy: #0b1f3a; --navy-line: #1e3d5c; --accent: #2a7de1;
+    --text-head: #e8edf4; --text-sub: #8baac8;
+    --bg: #f0f2f6; --surface: #ffffff; --border: #dde3ec; --label: #374151;
+    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 200;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.topo-folha-ativa { display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+                    font-size: 12px; font-weight: 700; white-space: nowrap; }
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+.btn-sair {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s;
+}
+.btn-sair:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── BANNER DEMO ── */
+.banner-demo {
+    background: #e0f2fe; border-bottom: 1px solid #bae6fd;
+    color: #0369a1; padding: 9px 28px; font-size: 13px;
+    display: flex; align-items: center; gap: 12px;
+}
+.banner-demo a { color: #0369a1; font-weight: 600; text-decoration: underline; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1000px; margin: 40px auto; padding: 0 24px 80px; position: relative; }
+
+/* ── GRID DOS 9 CARDS ── */
+.modulos-grid {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 14px;
+    position: relative;
+}
+@media (max-width: 900px) { .modulos-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 480px) { .modulos-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.modulo-card {
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 14px; padding: 18px 8px 14px;
+    display: flex; flex-direction: column; align-items: center; gap: 9px;
+    cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s, background 0.15s;
+    user-select: none; text-align: center; position: relative;
+}
+.modulo-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(42,125,225,0.13); transform: translateY(-2px); }
+.modulo-card.ativo { border-color: var(--accent); background: #eaf2fd; box-shadow: 0 4px 20px rgba(42,125,225,0.18); transform: translateY(-2px); }
+
+.modulo-icone {
+    width: 46px; height: 46px; border-radius: 12px; background: #e6f0fb;
+    display: flex; align-items: center; justify-content: center; font-size: 23px;
+}
+.modulo-card.ativo .modulo-icone { background: #cce0f8; }
+.modulo-nome { font-size: 10px; font-weight: 600; color: #1e293b; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1.3; }
+.modulo-card.ativo .modulo-nome { color: var(--accent); }
+
+/* ── DROPDOWN ── */
+.dropdown {
+    position: absolute;
+    top: 0; left: 0;
+    width: 300px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.07);
+    z-index: 150;
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    overflow: hidden;
+}
+.dropdown.visivel {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: all;
+}
+
+/* Setinha apontando pro card */
+.dropdown-arrow {
+    position: absolute;
+    top: -8px;
+    width: 16px; height: 16px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    transform: rotate(45deg);
+    left: 50%;
+    margin-left: -8px;
+}
+
+.dropdown-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 16px 11px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+.dropdown-titulo {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 13px; font-weight: 600; color: #1e293b;
+}
+.dropdown-titulo-icone { font-size: 18px; }
+.btn-fechar-dd {
+    background: none; border: none; cursor: pointer; font-size: 15px;
+    color: #94a3b8; padding: 3px 7px; border-radius: 6px; transition: 0.12s; line-height: 1;
+}
+.btn-fechar-dd:hover { background: #f1f5f9; color: #475569; }
+
+.dropdown-body { padding: 8px 0 8px; max-height: 420px; overflow-y: auto; }
+
+/* ── SEÇÃO HEADER (destaque) ── */
+.dd-secao-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px 6px;
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--accent);
+    border-top: 1px solid #f1f5f9;
+    margin-top: 4px;
+}
+.dd-secao-header:first-child { border-top: none; margin-top: 0; padding-top: 4px; }
+.dd-secao-header::before {
+    content: '';
+    display: inline-block;
+    width: 3px; height: 14px;
+    background: var(--accent);
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+/* ── ITEM DA LISTA ── */
+.dd-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 20px;
+    cursor: pointer;
+    text-decoration: none;
+    color: #1e293b;
+    transition: background 0.1s;
+    border-radius: 0;
+}
+.dd-item:hover { background: #f0f7ff; }
+.dd-item-icone { font-size: 17px; flex-shrink: 0; width: 24px; text-align: center; }
+.dd-item-nome  { font-size: 13px; font-weight: 500; line-height: 1.35; }
+
+/* Backdrop invisível para fechar ao clicar fora */
+.backdrop {
+    display: none;
+    position: fixed; inset: 0; z-index: 100;
+}
+.backdrop.visivel { display: block; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Menu Principal</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-sair" onclick="window.location.href='/logout'">Sair</button>
+    </div>
+</div>
+
+<div class="banner-demo">
+    ℹ️ <strong>Demo 4 · Dropdown abaixo do card</strong> — clique num módulo para abrir o menu abaixo dele.
+    &nbsp;·&nbsp; <a href="/menu">← Voltar ao Menu Real</a>
+</div>
+
+<div class="conteudo">
+
+    <div class="modulos-grid" id="modulosGrid">
+        <!-- cards inseridos pelo JS -->
+    </div>
+
+    <!-- Dropdown (único, reposicionado pelo JS) -->
+    <div class="dropdown" id="dropdown">
+        <div class="dropdown-arrow" id="ddArrow"></div>
+        <div class="dropdown-header">
+            <div class="dropdown-titulo">
+                <span class="dropdown-titulo-icone" id="ddIcone"></span>
+                <span id="ddTitulo"></span>
+            </div>
+            <button class="btn-fechar-dd" onclick="fechar()">✕</button>
+        </div>
+        <div class="dropdown-body" id="ddBody"></div>
+    </div>
+
+</div>
+
+<!-- Backdrop para fechar ao clicar fora -->
+<div class="backdrop" id="backdrop" onclick="fechar()"></div>
+
+<script>
+const modulos = {
+    cadastros: { titulo:'Cadastros', icone:'🗄️', secoes:[
+        { nome:'Principal', itens:[
+            {icone:'🏢',nome:'Empresa'}, {icone:'👤',nome:'Incluir Funcionário'},
+            {icone:'✏️',nome:'Alterar Funcionário'}, {icone:'📄',nome:'Ficha de Registro'},
+            {icone:'👨‍👩‍👧',nome:'Dependentes'}, {icone:'💹',nome:'Aumento de Salário'}
+        ]},
+        { nome:'Tabelas Auxiliares', itens:[
+            {icone:'💼',nome:'Funções / Cargos'}, {icone:'🕐',nome:'Horários de Trabalho'},
+            {icone:'🤝',nome:'Sindicatos'}, {icone:'🚌',nome:'Vale Transporte'},
+            {icone:'📑',nome:'Rubricas (Verbas)'}, {icone:'📅',nome:'Feriados'}, {icone:'🏙️',nome:'Cidades'}
+        ]}
+    ]},
+    novafolha: { titulo:'Nova Folha', icone:'📅', secoes:[], href:'#' },
+    eventuais: { titulo:'Eventuais', icone:'🗓️', secoes:[
+        { nome:'Férias', itens:[{icone:'🏖️',nome:'Lançar Férias'},{icone:'📆',nome:'Programação de Férias'},{icone:'⏰',nome:'Férias Vencidas'}]},
+        { nome:'Salários', itens:[{icone:'💹',nome:'Aumento de Salário'},{icone:'📊',nome:'Relatório de Salários'}]},
+        { nome:'Rescisão', itens:[{icone:'📢',nome:'Aviso Prévio'},{icone:'✍️',nome:'Registrar Rescisão'},{icone:'📋',nome:'TRCT'}]},
+        { nome:'Afastamentos', itens:[{icone:'🏥',nome:'Lançar Afastamento'},{icone:'🚨',nome:'Acidente — CAT'},{icone:'🤱',nome:'Lic. Maternidade'}]},
+        { nome:'Faltas', itens:[{icone:'📉',nome:'Incluir Faltas'},{icone:'🗑️',nome:'Excluir Faltas'},{icone:'📋',nome:'Listagem das Faltas'}]}
+    ]},
+    movimento: { titulo:'Movimento', icone:'🔄', secoes:[
+        { nome:'Lançamentos', itens:[{icone:'✏️',nome:'Lançar Eventos'},{icone:'⏱️',nome:'Importar Ponto'},{icone:'📈',nome:'Horas Extras'}]},
+        { nome:'Pagamentos Antecipados', itens:[{icone:'💵',nome:'Adiantamento Salarial'},{icone:'🍽️',nome:'Vale Refeição / Alimentação'}]}
+    ]},
+    calculo: { titulo:'Cálculo', icone:'🖩', secoes:[
+        { nome:'Folha Mensal', itens:[{icone:'▶️',nome:'Calcular Folha'},{icone:'🔁',nome:'Recalcular Funcionário'},{icone:'⚠️',nome:'Verificar Inconsistências'}]},
+        { nome:'Outros Cálculos', itens:[{icone:'🎁',nome:'13º Salário'},{icone:'🏖️',nome:'Férias'},{icone:'✍️',nome:'Rescisão'}]}
+    ]},
+    relatorios: { titulo:'Relatórios', icone:'🖨️', secoes:[
+        { nome:'', itens:[
+            {icone:'📋',nome:'Todos os Relatórios'},{icone:'🗄️',nome:'Cadastros'},
+            {icone:'🗓️',nome:'Eventos'},{icone:'💰',nome:'Folha de Pagamento'},
+            {icone:'📌',nome:'Eventuais'},{icone:'📋',nome:'Log de Operações'}
+        ]}
+    ]},
+    conexoes: { titulo:'Conexões', icone:'🏦', secoes:[
+        { nome:'Pagamento Bancário', itens:[{icone:'💳',nome:'CNAB 240 — Crédito em Conta'},{icone:'📲',nome:'CNAB 240 — PIX'}]},
+        { nome:'Integração', itens:[{icone:'📂',nome:'SEFIP / GFIP'},{icone:'📊',nome:'Exportar p/ Contabilidade'}]}
+    ]},
+    esocial: { titulo:'eSocial', icone:'📃', secoes:[
+        { nome:'Tabelas', itens:[{icone:'🏢',nome:'S-1000 Empregador'},{icone:'🏭',nome:'S-1005 Estabelecimentos'},{icone:'💼',nome:'S-1020 Lotações'},{icone:'📑',nome:'S-1010 Rubricas'}]},
+        { nome:'Eventos Não Periódicos', itens:[{icone:'✅',nome:'S-2200 Admissão'},{icone:'✏️',nome:'S-2205 Alt. Cadastrais'},{icone:'🏥',nome:'S-2230 Afastamento'},{icone:'🚪',nome:'S-2299 Desligamento'}]},
+        { nome:'Eventos Periódicos', itens:[{icone:'💰',nome:'S-1200 Remuneração'},{icone:'💳',nome:'S-1210 Pagamentos'},{icone:'📃',nome:'REINF'}]},
+        { nome:'Consultas', itens:[{icone:'📄',nome:'Listagem de Remessas'},{icone:'⚠️',nome:'Pendências e Erros'}]}
+    ]},
+    diversos: { titulo:'Diversos', icone:'🧩', secoes:[
+        { nome:'Sistema', itens:[{icone:'⚙️',nome:'Configurações'},{icone:'🔑',nome:'Usuários e Permissões'},{icone:'📋',nome:'Log de Auditoria'}]},
+        { nome:'Dados', itens:[{icone:'💾',nome:'Backup'},{icone:'📤',nome:'Exportar Dados'}]}
+    ]}
+};
+const ordem = ['cadastros','novafolha','eventuais','movimento','calculo','relatorios','conexoes','esocial','diversos'];
+
+// ── Renderiza os 9 cards ──
+const grid = document.getElementById('modulosGrid');
+for (const id of ordem) {
+    const m = modulos[id];
+    const card = document.createElement('div');
+    card.className = 'modulo-card';
+    card.dataset.modulo = id;
+    card.innerHTML = `<div class="modulo-icone">${m.icone}</div><div class="modulo-nome">${m.titulo}</div>`;
+    if (m.secoes && m.secoes.length > 0) {
+        card.addEventListener('click', (e) => { e.stopPropagation(); abrirDropdown(card, id); });
+    } else {
+        card.addEventListener('click', () => { window.location.href = m.href || '#'; });
+    }
+    grid.appendChild(card);
+}
+
+let moduloAtivo = null;
+const dd       = document.getElementById('dropdown');
+const ddArrow  = document.getElementById('ddArrow');
+const ddIcone  = document.getElementById('ddIcone');
+const ddTitulo = document.getElementById('ddTitulo');
+const ddBody   = document.getElementById('ddBody');
+const backdrop = document.getElementById('backdrop');
+
+function abrirDropdown(cardEl, id) {
+    if (moduloAtivo === id) { fechar(); return; }
+
+    // Marca card ativo
+    document.querySelectorAll('.modulo-card').forEach(c => c.classList.remove('ativo'));
+    cardEl.classList.add('ativo');
+    moduloAtivo = id;
+
+    const m = modulos[id];
+
+    // Preenche conteúdo
+    ddIcone.textContent  = m.icone;
+    ddTitulo.textContent = m.titulo;
+
+    let html = '';
+    for (const [i, sec] of m.secoes.entries()) {
+        if (sec.nome) html += `<div class="dd-secao-header">${sec.nome}</div>`;
+        for (const item of sec.itens) {
+            html += `<a class="dd-item" href="#">
+                        <span class="dd-item-icone">${item.icone}</span>
+                        <span class="dd-item-nome">${item.nome}</span>
+                     </a>`;
+        }
+    }
+    ddBody.innerHTML = html;
+
+    // Posiciona o dropdown abaixo do card
+    posicionar(cardEl);
+
+    dd.classList.add('visivel');
+    backdrop.classList.add('visivel');
+}
+
+function posicionar(cardEl) {
+    const cardRect  = cardEl.getBoundingClientRect();
+    const contRect  = document.querySelector('.conteudo').getBoundingClientRect();
+    const ddW       = 300;
+    const gap       = 10; // espaço entre card e dropdown
+
+    // Top: imediatamente abaixo do card, relativo ao .conteudo
+    const top = cardRect.bottom - contRect.top + gap;
+
+    // Left: centralizado no card, mas não sair da tela
+    let left = cardRect.left - contRect.left + cardRect.width / 2 - ddW / 2;
+    const maxLeft = contRect.width - ddW - 4;
+    left = Math.max(4, Math.min(left, maxLeft));
+
+    // Seta aponta para o centro do card
+    const arrowLeft = (cardRect.left - contRect.left + cardRect.width / 2) - left;
+
+    dd.style.top    = top + 'px';
+    dd.style.left   = left + 'px';
+    dd.style.width  = ddW + 'px';
+    ddArrow.style.left = Math.max(16, Math.min(arrowLeft, ddW - 24)) + 'px';
+    ddArrow.style.marginLeft = '0';
+}
+
+function fechar() {
+    dd.classList.remove('visivel');
+    backdrop.classList.remove('visivel');
+    document.querySelectorAll('.modulo-card').forEach(c => c.classList.remove('ativo'));
+    moduloAtivo = null;
+}
+
+// Fecha com Esc
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fechar(); });
+</script>
+
+</body>
+</html>

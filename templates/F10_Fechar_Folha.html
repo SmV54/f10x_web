@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Fechar Folha</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+.conteudo { max-width: 520px; margin: 48px auto; padding: 0 24px 60px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+}
+.card-titulo {
+    padding: 10px 20px 9px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #4b5e7a;
+}
+.card-body { padding: 20px; }
+
+.folha-info { display: flex; flex-direction: column; gap: 10px; }
+.info-row { display: flex; align-items: center; gap: 12px; font-size: 14px; color: #374151; }
+.info-label { font-size: 11px; font-weight: 600; color: #64748b;
+              text-transform: uppercase; letter-spacing: 0.04em; width: 80px; flex-shrink: 0; }
+.info-val   { font-family: var(--mono); font-weight: 600; color: #1e293b; font-size: 15px; }
+.badge-sit  {
+    display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: 700;
+}
+
+.aviso-fechada {
+    padding: 14px 18px; background: #fef2f2; border: 1px solid #fca5a5;
+    border-radius: 8px; font-size: 13px; color: #991b1b; font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+}
+
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac;
+                 border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d;
+                 display: flex; align-items: center; gap: 8px; }
+.resultado-err { padding: 12px 18px; background: #fef2f2; border: 1px solid #fca5a5;
+                 border-radius: 8px; font-size: 13px; color: #991b1b; }
+#resultado { margin-bottom: 14px; }
+
+.rodape { display: flex; justify-content: flex-end; }
+.btn-fechar {
+    background: #991b1b; border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 32px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+}
+.btn-fechar:hover    { background: #7f1d1d; }
+.btn-fechar:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Fechar Folha</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/menu">&#8592; Menu</a>
+        <div>
+            <div class="rel-titulo">Fechar Folha</div>
+            <div class="rel-subtitulo">Encerra o período — folha não poderá ser alterada sem reabrir</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-titulo">Folha Ativa</div>
+        <div class="card-body">
+            <div class="folha-info">
+                <div class="info-row">
+                    <span class="info-label">Período</span>
+                    <span class="info-val">{{ folha_fmt }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Tipo</span>
+                    <span class="info-val">{{ tipo_label }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="badge-sit {{ sit_class }}" id="badgeSit">{{ sit_label }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if situacao == 'C' %}
+    <div id="resultado"></div>
+    <div class="rodape">
+        <button class="btn-fechar" id="btnFechar" onclick="fechar()">🔒 Fechar Folha</button>
+    </div>
+    {% else %}
+    <div class="aviso-fechada">&#10007; Apenas folhas com status <strong>&nbsp;Calculada&nbsp;</strong> podem ser fechadas.</div>
+    {% endif %}
+
+</div>
+
+<script>
+async function fechar() {
+    const btn    = document.getElementById('btnFechar');
+    const painel = document.getElementById('resultado');
+    btn.disabled = true;
+    painel.innerHTML = '<div class="resultado-ok">Fechando…</div>';
+
+    try {
+        const res = await fetch('/api/folha/fechar', { method: 'POST' });
+        const j   = await res.json();
+        if (j.ok) {
+            painel.innerHTML = `<div class="resultado-ok">&#10003; ${j.msg}</div>`;
+            const badge = document.querySelector('.topo-folha-ativa');
+            if (badge) {
+                badge.className = badge.className.replace(/\bsit-\w+\b/, j.sit_class);
+                badge.innerHTML = badge.innerHTML.replace(/Aberta|Calculada|Fechada/, j.sit_label);
+            }
+            const bs = document.getElementById('badgeSit');
+            if (bs) {
+                bs.className = 'badge-sit ' + j.sit_class;
+                bs.textContent = j.sit_label;
+            }
+            btn.style.display = 'none';
+        } else {
+            painel.innerHTML = `<div class="resultado-err"><strong>Erro:</strong> ${j.msg}</div>`;
+            btn.disabled = false;
+        }
+    } catch (e) {
+        painel.innerHTML = `<div class="resultado-err"><strong>Erro de comunicação:</strong> ${e.message}</div>`;
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>

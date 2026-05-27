@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Visualizar Cálculo — Folha10 Simples</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:    #0b1f3a;
+    --navy-ln: #1e3d5c;
+    --accent:  #2a7de1;
+    --bg:      #f0f2f6;
+    --surface: #ffffff;
+    --border:  #dde3ec;
+    --label:   #374151;
+    --sub:     #6b7280;
+    --green:   #166534;
+    --green-bg:#dcfce7;
+    --red:     #991b1b;
+    --red-bg:  #fee2e2;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-ln);
+    padding: 0 24px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 16px; min-height: 58px;
+    position: sticky; top: 0; z-index: 200;
+}
+.topo-esq  { display: flex; flex-direction: column; }
+.topo-ctr  { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.topo-dir  { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: #8baac8; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: #e8edf4; white-space: nowrap; }
+.badge-folha  {
+    font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 5px;
+    background: #fff; color: #6b7280; border: 1.5px solid #dde3ec; white-space: nowrap;
+}
+.sit-aberta    { color: #166534; border-color: #86efac; }
+.sit-calculada { color: #854d0e; border-color: #fde047; }
+.sit-fechada   { color: #991b1b; border-color: #fca5a5; }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
+.btn-voltar-topo {
+    background: transparent; border: 1px solid var(--navy-ln); color: #8baac8;
+    font-size: 12px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+
+/* ── LAYOUT ── */
+.layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    flex: 1;
+    height: calc(100vh - 58px);
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+    background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow: hidden;
+}
+.sidebar-header {
+    padding: 14px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+.sidebar-titulo { font-size: 12px; font-weight: 600; color: var(--label); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px; }
+.busca-input {
+    width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; font-family: var(--sans); color: var(--label); background: #fff; outline: none;
+    margin-bottom: 8px;
+}
+.busca-input:focus { border-color: var(--accent); }
+.sel-todos {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 12px; font-weight: 500; color: var(--sub); cursor: pointer; user-select: none;
+}
+.sel-todos input { cursor: pointer; accent-color: var(--accent); }
+
+.func-lista {
+    flex: 1; overflow-y: auto; padding: 6px 0;
+}
+.func-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; cursor: pointer; transition: background 0.1s;
+}
+.func-item:hover { background: #f0f4fa; }
+.func-item input { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.func-item label { cursor: pointer; font-size: 12.5px; line-height: 1.3; color: var(--label); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.func-mat { font-family: var(--mono); }
+
+.btn-visualizar {
+    width: 100%; padding: 9px; border-radius: 8px;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    cursor: pointer; transition: 0.15s;
+}
+.btn-visualizar:hover { background: #1a6fd4; }
+.btn-visualizar:disabled { background: #93b8e8; cursor: not-allowed; }
+
+/* ── ÁREA PRINCIPAL ── */
+.main {
+    overflow-y: auto; padding: 24px;
+    display: flex; flex-direction: column; gap: 20px;
+}
+
+.placeholder {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    color: var(--sub); gap: 10px;
+}
+.placeholder-icone { font-size: 48px; opacity: 0.4; }
+.placeholder-txt   { font-size: 14px; }
+
+/* ── CARD FUNCIONÁRIO ── */
+.func-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+}
+.func-card-header {
+    background: var(--navy); padding: 10px 16px;
+    display: flex; align-items: center; gap: 12px;
+}
+.func-card-mat    { font-family: var(--mono); font-size: 14px; font-weight: 600; color: #e8edf4; }
+.func-card-nome   { font-size: 14px; font-weight: 600; color: #e8edf4; }
+.func-card-detalhe { font-size: 11px; color: #8baac8; margin-top: 2px; }
+
+.verbas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.verbas-table th {
+    background: #f8fafc; padding: 7px 12px; text-align: left;
+    font-size: 11px; font-weight: 600; color: var(--sub);
+    text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+.verbas-table th.num { text-align: right; }
+.verbas-table td { padding: 7px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.verbas-table tr:last-child td { border-bottom: none; }
+.verbas-table tr:hover td { background: #f8fafc; }
+.td-cod  { font-family: var(--mono); font-size: 12px; color: var(--sub); white-space: nowrap; }
+.td-dsc  { font-weight: 500; }
+.td-qtd  { text-align: right; font-family: var(--mono); font-size: 12px; color: var(--sub); white-space: nowrap; }
+.td-prov { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--green); }
+.td-desc { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--red); }
+.td-vazio { text-align: right; color: #d1d5db; font-size: 12px; }
+
+/* ── TOTAIS (linha de rodapé da tabela) ── */
+.verbas-table tfoot td {
+    padding: 8px 12px; border-top: 2px solid var(--border);
+    font-family: var(--mono); font-size: 13px; font-weight: 700;
+}
+.tf-label { font-family: var(--sans); font-size: 11px; font-weight: 700; color: var(--sub); text-transform: uppercase; letter-spacing: 0.04em; }
+.tf-liq   { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent); }
+.tf-prov  { text-align: right; color: var(--green); }
+.tf-desc  { text-align: right; color: var(--red); }
+
+/* ── LÍQUIDO no header do card ── */
+.func-card-liq { margin-left: auto; font-family: var(--mono); font-size: 13px; font-weight: 700; color: #7dd3fc; white-space: nowrap; }
+
+.sem-verbas  { padding: 20px 16px; color: var(--sub); font-size: 13px; font-style: italic; }
+
+/* ── CABEÇALHO FOLHA ── */
+.cabec-folha {
+    font-size: 12px; color: #8baac8; margin-top: 2px;
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-ctr">
+        <span class="topo-titulo">Visualizar Cálculo</span>
+        {% if anomes_atual %}
+        <span class="badge-folha {{ folha_sit_class }}">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_sit_label %} &nbsp;·&nbsp; {{ folha_sit_label }}{% endif %}</span>
+        {% endif %}
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">← Voltar</button>
+    </div>
+</div>
+
+<div class="layout">
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-titulo">Funcionários</div>
+            <button class="btn-visualizar" id="btnVisualizar" onclick="visualizar()">👁 Visualizar</button>
+            <input type="text" class="busca-input" id="busca" placeholder="Buscar nome ou matrícula…" oninput="filtrarLista()" style="margin-top:8px;">
+            <label class="sel-todos">
+                <input type="checkbox" id="chkTodos" onchange="selecionarTodos(this.checked)">
+                Selecionar todos
+            </label>
+        </div>
+        <div class="func-lista" id="funcLista">
+            {% for f in funcionarios %}
+            <div class="func-item" data-nome="{{ f.nome|lower }}" data-mat="{{ '%06d' % f.matricula }}">
+                <input type="checkbox" id="chk{{ f.matricula }}" value="{{ f.matricula }}" onchange="atualizarTodos()">
+                <label for="chk{{ f.matricula }}"><span class="func-mat">{{ '%06d' % f.matricula }}</span> — {{ f.nome }}</label>
+            </div>
+            {% else %}
+            <div style="padding:16px;font-size:13px;color:var(--sub);">Nenhum funcionário ativo.</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- ÁREA PRINCIPAL -->
+    <div class="main" id="mainArea">
+        <div class="placeholder" id="placeholder">
+            <div class="placeholder-icone">🧮</div>
+            <div class="placeholder-txt">Selecione um ou mais funcionários e clique em Visualizar.</div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function filtrarLista() {
+    const q = document.getElementById('busca').value.toLowerCase();
+    document.querySelectorAll('.func-item').forEach(el => {
+        const nome = el.dataset.nome || '';
+        const mat  = el.dataset.mat  || '';
+        el.style.display = (!q || nome.includes(q) || mat.includes(q)) ? '' : 'none';
+    });
+}
+
+function selecionarTodos(checked) {
+    document.querySelectorAll('.func-lista input[type=checkbox]').forEach(c => {
+        if (c.closest('.func-item').style.display !== 'none') c.checked = checked;
+    });
+}
+
+function atualizarTodos() {
+    const todos = [...document.querySelectorAll('.func-lista input[type=checkbox]')];
+    document.getElementById('chkTodos').checked = todos.length > 0 && todos.every(c => c.checked);
+}
+
+function fmtBRL(centavos) {
+    return (centavos / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtQtd(qtd, unid) {
+    if (!qtd) return '—';
+    if (unid === 'D') return qtd + ' d';
+    if (unid === 'H') return qtd + ' h';
+    return String(qtd);
+}
+
+async function visualizar() {
+    const mats = [...document.querySelectorAll('.func-lista input[type=checkbox]:checked')]
+                     .map(c => c.value);
+    if (!mats.length) { alert('Selecione ao menos um funcionário.'); return; }
+
+    const btn = document.getElementById('btnVisualizar');
+    btn.disabled = true;
+    btn.textContent = 'Carregando…';
+
+    try {
+        const resp = await fetch(`/api/visualizar_calculo_dados?matriculas=${mats.join(',')}`);
+        const data = await resp.json();
+        if (data.erro) { alert(data.erro); return; }
+        if (data.erro_query) { alert('Erro na consulta: ' + data.erro_query); return; }
+        renderResultados(data);
+    } catch(e) {
+        alert('Erro ao carregar dados.');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '👁 Visualizar';
+    }
+}
+
+function renderResultados(data) {
+    const main = document.getElementById('mainArea');
+    main.innerHTML = '';
+
+    if (!data.funcionarios || !data.funcionarios.length) {
+        main.innerHTML = '<div class="placeholder"><div class="placeholder-icone">📭</div><div class="placeholder-txt">Nenhum dado encontrado para a folha ativa.</div></div>';
+        return;
+    }
+
+    for (const func of data.funcionarios) {
+        const card = document.createElement('div');
+        card.className = 'func-card';
+
+        // header
+        const detalhe = [func.dtadm ? `Admissão: ${func.dtadm}` : '', func.info_extra || '']
+                         .filter(Boolean).join(' · ');
+        card.innerHTML = `
+            <div class="func-card-header" style="flex-direction:column;align-items:flex-start;gap:3px;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <span class="func-card-mat">${String(func.matricula).padStart(6,'0')}</span>
+                    <span class="func-card-nome">${func.nome}</span>
+                </div>
+                ${detalhe ? `<div class="func-card-detalhe">${detalhe}</div>` : ''}
+            </div>`;
+
+        if (!func.verbas || !func.verbas.length) {
+            const sv = document.createElement('div');
+            sv.className = 'sem-verbas';
+            sv.textContent = 'Sem verbas calculadas para esta folha.';
+            card.appendChild(sv);
+            main.appendChild(card);
+            continue;
+        }
+
+        // tabela
+        const tbl = document.createElement('table');
+        tbl.className = 'verbas-table';
+        tbl.innerHTML = `<thead><tr>
+            <th style="width:64px">Cód</th>
+            <th>Descrição</th>
+            <th class="num" style="width:90px">Qtd</th>
+            <th class="num" style="width:130px">Provento</th>
+            <th class="num" style="width:130px">Desconto</th>
+        </tr></thead>`;
+        const tbody = document.createElement('tbody');
+
+        for (const v of func.verbas) {
+            const prov = v.tp === '1';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="td-cod">${String(v.cod).padStart(4,'0')}</td>
+                <td class="td-dsc">${v.dsc}</td>
+                <td class="td-qtd">${fmtQtd(v.qtd, v.unid)}</td>
+                <td class="${prov ? 'td-prov' : 'td-vazio'}">${prov ? fmtBRL(v.valor) : ''}</td>
+                <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>`;
+            tbody.appendChild(tr);
+        }
+        // rodapé: Líquido | espaço | Total | Proventos | Descontos
+        const tfoot = document.createElement('tfoot');
+        tfoot.innerHTML = `<tr>
+            <td class="tf-liq" colspan="2">Líquido &nbsp; ${fmtBRL(func.liquido)}</td>
+            <td class="tf-label" style="text-align:right">Total</td>
+            <td class="tf-prov">${fmtBRL(func.total_prov)}</td>
+            <td class="tf-desc">${fmtBRL(func.total_desc)}</td>
+        </tr>`;
+        tbl.appendChild(tbody);
+        tbl.appendChild(tfoot);
+        card.appendChild(tbl);
+
+        main.appendChild(card);
+    }
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Enter') visualizar(); });
+</script>
+</body>
+</html>

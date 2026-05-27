@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — CAT / Acidente de Trabalho</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 780px; margin: 36px auto; padding: 0 24px 80px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+}
+.pref-secao-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 12px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+}
+.func-resumo-wrap   { padding: 10px 20px 12px; }
+.func-resumo-item {
+    display: flex; align-items: center; gap: 10px; padding: 4px 10px;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 7px; font-size: 12px;
+}
+.func-resumo-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; flex-shrink: 0; }
+.func-resumo-nome { font-weight: 500; color: #1e293b; }
+
+.badge-vinculo {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+    padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+    font-family: var(--mono);
+}
+.badge-vinculo.standalone {
+    background: #f0fdf4; color: #166534; border-color: #bbf7d0;
+}
+
+.opcao-linha {
+    display: grid; grid-template-columns: 28px 1fr auto;
+    align-items: start; gap: 0 14px; padding: 10px 20px;
+    border-bottom: 1px solid #f1f5f9; transition: background 0.1s;
+}
+.opcao-linha:last-child { border-bottom: none; }
+.opcao-linha:hover { background: #fafbfc; }
+.opcao-label {
+    font-size: 13px; font-weight: 500; color: #334155;
+    display: flex; align-items: center; gap: 6px; padding-top: 6px;
+}
+.opcao-label .opcional { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.opcao-valor { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+.input-data {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; width: 130px; outline: none;
+    letter-spacing: 0.05em; transition: border-color 0.15s;
+}
+.input-data:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-data.erro  { border-color: #ef4444; background: #fff5f5; }
+.input-data::placeholder { color: #b0b8c8; letter-spacing: 0; font-size: 12px; }
+
+.input-text {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; outline: none;
+    letter-spacing: 0.02em; transition: border-color 0.15s;
+}
+.input-text:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-text.erro  { border-color: #ef4444; background: #fff5f5; }
+.input-text::placeholder { color: #b0b8c8; font-size: 12px; letter-spacing: 0; }
+
+.select-field {
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; outline: none;
+    transition: border-color 0.15s; cursor: pointer;
+}
+.select-field:focus { border-color: var(--accent); background: #f0f7ff; }
+.select-field.erro  { border-color: #ef4444; background: #fff5f5; }
+
+.radio-group { display: flex; gap: 18px; align-items: center; padding-top: 4px; }
+.radio-group label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 500; color: #334155; cursor: pointer;
+}
+.radio-group input[type="radio"] { accent-color: var(--accent); cursor: pointer; width: 15px; height: 15px; }
+
+.input-obs {
+    font-family: var(--sans); font-size: 13px; color: #1e293b;
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px;
+    padding: 8px 10px; width: 340px; outline: none;
+    resize: vertical; transition: border-color 0.15s; line-height: 1.5;
+}
+.input-obs:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-obs.erro  { border-color: #ef4444; background: #fff5f5; }
+
+.bloco-end-wrap { padding: 10px 20px 16px; }
+
+.hint      { font-size: 11px; color: #94a3b8; }
+.hint.ok   { color: #16a34a; }
+.hint.erro { color: #ef4444; }
+
+.rodape { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
+.btn-cancelar {
+    background: var(--surface); border: 1px solid var(--border); color: #64748b;
+    font-size: 13px; font-family: var(--sans); font-weight: 500;
+    padding: 10px 22px; border-radius: 8px; cursor: pointer;
+    transition: 0.15s; text-decoration: none;
+}
+.btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+.btn-gravar-cat {
+    background: #dc2626; border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-gravar-cat:hover    { background: #b91c1c; }
+.btn-gravar-cat:disabled { background: #fca5a5; cursor: not-allowed; }
+
+#toast {
+    display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 12px 24px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 480px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">CAT — Acidente de Trabalho (S-2210)</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <button class="btn-voltar" onclick="window.history.back()">&#8592; Voltar</button>
+        <div>
+            <div class="rel-titulo">{% if id_acidente %}Alterar CAT — Acidente de Trabalho{% else %}Comunicação de Acidente de Trabalho{% endif %}</div>
+            <div class="rel-subtitulo">{% if id_acidente %}eSocial S-2210 — altere os dados e clique em Atualizar{% else %}eSocial S-2210 — preencha todos os campos obrigatórios{% endif %}</div>
+        </div>
+    </div>
+
+    <!-- Card 1: Funcionário -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Funcionário</div>
+        <div class="func-resumo-wrap">
+            <div id="func-resumo" style="font-size:12px;color:#94a3b8;">Carregando…</div>
+            <div id="badge-vinculo" style="margin-top:6px;"></div>
+        </div>
+    </div>
+
+    <!-- Card 2: Identificação da CAT -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Identificação da CAT</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Tipo de Acidente</div>
+            <div class="opcao-valor">
+                <select id="tpAcid" class="select-field" style="width:260px;">
+                    <option value="">— Selecione —</option>
+                    <option value="1">1 — Acidente Típico</option>
+                    <option value="2">2 — Doença Ocupacional</option>
+                    <option value="3">3 — Acidente de Trajeto</option>
+                </select>
+                <span class="hint erro" id="hint-tpAcid"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 3: Dados do Acidente -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Dados do Acidente</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Data do Acidente</div>
+            <div class="opcao-valor">
+                <input type="text" id="dtAcid" class="input-data" placeholder="dd/mm/aaaa" maxlength="10"
+                    oninput="mascaraData(this); validarDtAcid()" onblur="validarDtAcid()">
+                <span class="hint" id="hint-dtAcid"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Hora do Acidente &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="hrAcid" class="input-data" placeholder="HH:MM" maxlength="5"
+                    style="width:90px;" oninput="mascaraHora(this)">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Horas Trabalhadas Antes &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="number" id="hrsTrab" class="input-text" placeholder="0–12"
+                    min="0" max="12" step="1" style="width:100px;"
+                    oninput="this.value=this.value.replace(/[^0-9]/g,''); if(parseInt(this.value)>12) this.value='12';">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Comunicado à Polícia?</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="indComunPolicia" value="S" onchange="atualizarCondicionals()"> Sim</label>
+                    <label><input type="radio" name="indComunPolicia" value="N" checked onchange="atualizarCondicionals()"> Não</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Tipo de CAT</div>
+            <div class="opcao-valor">
+                <select id="tpCat" class="select-field" style="width:260px;" onchange="atualizarCondicionals()">
+                    <option value="1" selected>1 — Inicial</option>
+                    <option value="2">2 — Reabertura</option>
+                    <option value="3">3 — Comunicação de Óbito</option>
+                </select>
+                <span class="hint erro" id="hint-tpCat"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Houve Óbito?</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="indCatObito" value="S" onchange="atualizarCondicionals()"> Sim</label>
+                    <label><input type="radio" name="indCatObito" value="N" checked onchange="atualizarCondicionals()"> Não</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha" id="linha-dtObito" style="display:none;">
+            <div></div>
+            <div class="opcao-label">Data do Óbito</div>
+            <div class="opcao-valor">
+                <input type="text" id="dtObito" class="input-data" placeholder="dd/mm/aaaa" maxlength="10" oninput="mascaraData(this)">
+                <span class="hint erro" id="hint-dtObito"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 4: Atendimento Médico -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Atendimento Médico</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Data do Atendimento &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="dtAtendimento" class="input-data" placeholder="dd/mm/aaaa" maxlength="10" oninput="mascaraData(this)">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Hora do Atendimento &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="hrAtendimento" class="input-data" placeholder="HH:MM" maxlength="5"
+                    style="width:90px;" oninput="mascaraHora(this)">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Houve Internação?</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="indInternacao" value="S"> Sim</label>
+                    <label><input type="radio" name="indInternacao" value="N" checked> Não</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Duração do Tratamento (dias) &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="number" id="durTrat" class="input-text" placeholder="dias" min="0" style="width:90px;">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Gerou Afastamento?</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="indAfast" value="S"> Sim</label>
+                    <label><input type="radio" name="indAfast" value="N" checked> Não</label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 5: Lesão e Diagnóstico -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Lesão e Diagnóstico</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Tipo de Lesão &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <select id="dscLesao" class="select-field" style="width:340px;">
+                    <option value="">— Selecione —</option>
+                    {% for t in tab17 %}
+                    <option value="{{ t.codigo }}">{{ t.codigo }} — {{ t.texto }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Complemento da Lesão &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="dscCompLesao" class="input-text" maxlength="255"
+                    placeholder="Descrição complementar…" style="width:340px;">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Diagnóstico (CID-10) &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="diagProvavel" class="input-text" maxlength="10"
+                    placeholder="ex: S60.0" style="width:120px;"
+                    oninput="this.value=this.value.toUpperCase()">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Descrição do Acidente</div>
+            <div class="opcao-valor">
+                <textarea id="dscAcid" class="input-obs" rows="3"
+                    placeholder="Descreva como ocorreu o acidente…"></textarea>
+                <span class="hint erro" id="hint-dscAcid"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 6: Local do Acidente -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Local do Acidente</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Tipo de Local</div>
+            <div class="opcao-valor">
+                <select id="tpLocal" class="select-field" style="width:300px;" onchange="atualizarCondicionals()">
+                    <option value="">— Selecione —</option>
+                    <option value="1">1 — Estabelecimento do empregador</option>
+                    <option value="2">2 — Estabelecimento no exterior</option>
+                    <option value="3">3 — Via pública / Trânsito</option>
+                    <option value="4">4 — Área rural</option>
+                    <option value="5">5 — Em embarcação</option>
+                    <option value="6">6 — Outros</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Descrição do Local &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="dscLocal" class="input-text" maxlength="255"
+                    placeholder="Ex: Galpão de produção, portão 3" style="width:340px;">
+            </div>
+        </div>
+
+        <!-- Endereço Brasil -->
+        <div id="bloco-end-brasil" class="bloco-end-wrap">
+            <div class="pref-secao-titulo" style="margin-bottom:12px;">Endereço do Acidente</div>
+            {% include '_bloco_endereco.html' %}
+        </div>
+
+        <!-- Endereço Exterior (tpLocal=2) -->
+        <div id="bloco-end-exterior" style="display:none; padding:10px 20px 16px;">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:10px;">Endereço no Exterior</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+                <input type="text" id="paisAcid" class="input-text" maxlength="3" placeholder="Cód. país" style="width:100px;">
+                <input type="text" id="dscLograd" class="input-text" maxlength="100" placeholder="Logradouro" style="width:340px;">
+                <input type="text" id="codPostal" class="input-text" maxlength="12" placeholder="Código Postal" style="width:160px;">
+                <input type="text" id="nmCid" class="input-text" maxlength="50" placeholder="Cidade" style="width:240px;">
+                <input type="text" id="codProv" class="input-text" maxlength="50" placeholder="Província / Estado" style="width:240px;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 7: Parte Atingida -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Parte do Corpo Atingida</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Parte Atingida</div>
+            <div class="opcao-valor">
+                <select id="codParteAting" class="select-field" style="width:340px;">
+                    <option value="">— Selecione —</option>
+                    {% for t in tab15 %}
+                    <option value="{{ t.codigo }}">{{ t.codigo }} — {{ t.texto }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Lateralidade &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <select id="latlongr" class="select-field" style="width:200px;">
+                    <option value="0">0 — Não se aplica</option>
+                    <option value="1">1 — Esquerda</option>
+                    <option value="2">2 — Direita</option>
+                    <option value="3">3 — Ambas</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Complemento &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="dscCompParteAting" class="input-text" maxlength="255"
+                    placeholder="Ex: dedo médio da mão direita" style="width:340px;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 8: Agente Causador -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Agente Causador &nbsp;<span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;color:#94a3b8;">(opcional)</span></div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Agente Causador</div>
+            <div class="opcao-valor">
+                <select id="codAgntCausador" class="select-field" style="width:340px;">
+                    <option value="">— Selecione —</option>
+                    {% for t in tab16 %}
+                    <option value="{{ t.codigo }}">{{ t.codigo }} — {{ t.texto }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Complemento &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <input type="text" id="dscCompAgntCausador" class="input-text" maxlength="255"
+                    placeholder="Ex: prensa hidráulica 20t" style="width:340px;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Card 9: Atestado Médico + Emitente -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Atestado Médico</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Data do Atestado</div>
+            <div class="opcao-valor">
+                <input type="text" id="dtAtestado" class="input-data" placeholder="dd/mm/aaaa" maxlength="10" oninput="mascaraData(this)">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Tipo de Atestado</div>
+            <div class="opcao-valor">
+                <select id="tpAtestado" class="select-field" style="width:200px;">
+                    <option value="">— Selecione —</option>
+                    <option value="1">1 — Médico</option>
+                    <option value="2">2 — Odontológico</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Dias de Tratamento (atestado)</div>
+            <div class="opcao-valor">
+                <input type="number" id="durTratAtestado" class="input-text" placeholder="dias" min="0" style="width:90px;">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Acidente de Trânsito?</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="indAcidTransito" value="S"> Sim</label>
+                    <label><input type="radio" name="indAcidTransito" value="N" checked> Não</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">CID-10 (atestado)</div>
+            <div class="opcao-valor">
+                <input type="text" id="diagProvAtestado" class="input-text" maxlength="10"
+                    placeholder="ex: S60.0" style="width:120px;"
+                    oninput="this.value=this.value.toUpperCase()">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Complemento do Diagnóstico</div>
+            <div class="opcao-valor">
+                <input type="text" id="dscCompDiagAtestado" class="input-text" maxlength="255"
+                    placeholder="Descrição complementar…" style="width:340px;">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Observações</div>
+            <div class="opcao-valor">
+                <textarea id="observacao" class="input-obs" rows="2"
+                    maxlength="255" placeholder="Observações do atestado…"></textarea>
+            </div>
+        </div>
+
+        <div class="pref-secao-titulo" style="margin-top:0;">Emitente do Atestado</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Nome do Médico / Dentista</div>
+            <div class="opcao-valor">
+                <input type="text" id="nmEmit" class="input-text" maxlength="100"
+                    placeholder="Nome completo" style="width:280px;">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Órgão de Classe</div>
+            <div class="opcao-valor">
+                <select id="ideOC" class="select-field" style="width:130px;">
+                    <option value="">—</option>
+                    <option value="1">1 — CRM</option>
+                    <option value="2">2 — CRO</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Nº no Órgão de Classe</div>
+            <div class="opcao-valor">
+                <input type="text" id="nrOC" class="input-text" maxlength="20"
+                    placeholder="Nº CRM / CRO" style="width:160px;">
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">UF do Órgão de Classe</div>
+            <div class="opcao-valor">
+                <select id="ufOC" class="select-field" style="width:100px;">
+                    <option value="">—</option>
+                    {% for uf in ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'] %}
+                    <option value="{{ uf }}">{{ uf }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Data de Emissão</div>
+            <div class="opcao-valor">
+                <input type="text" id="dtEmissao" class="input-data" placeholder="dd/mm/aaaa" maxlength="10" oninput="mascaraData(this)">
+            </div>
+        </div>
+    </div>
+
+    <div id="erro-box" style="display:none; margin-bottom:12px; padding:12px 16px;
+        background:#fff1f2; border:1px solid #fca5a5; border-radius:10px;
+        font-size:13px; color:#991b1b; font-weight:500; line-height:1.5; word-break:break-word;">
+    </div>
+
+    <div class="rodape">
+        <button class="btn-cancelar" onclick="window.history.back()">Voltar</button>
+        <button class="btn-gravar-cat" id="btn-gravar" onclick="gravar()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            {% if id_acidente %}Atualizar CAT{% else %}Registrar CAT (S-2210){% endif %}
+        </button>
+    </div>
+
+</div><!-- /conteudo -->
+<div id="toast"></div>
+
+<script>
+const MAT         = '{{ mat }}';
+const ID_EVENTO   = {{ id_evento }};
+const ID_ACIDENTE = {{ id_acidente }};
+const DTACID      = '{{ dtacid }}';   // YYYYMMDD pré-preenchido
+const TPACID      = '{{ tpacid }}';   // '1' ou '3' pré-preenchido
+const ANOMES      = '{{ anomes_atual }}';
+
+// ── Carregar nome do funcionário ─────────────────────────────────────
+async function carregarFuncionario() {
+    const wrap = document.getElementById('func-resumo');
+    if (!MAT) {
+        wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Nenhum funcionário informado. <a href="javascript:window.history.back()">Voltar</a></span>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/funcionarios_lista?mats=' + MAT);
+        const d = await r.json();
+        if (d.ok && d.funcionarios?.length) {
+            const f = d.funcionarios[0];
+            wrap.innerHTML = `<div class="func-resumo-item">
+                <span class="func-resumo-mat">${String(f.matricula).padStart(6,'0')}</span>
+                <span class="func-resumo-nome">${f.nome || '—'}</span>
+            </div>`;
+        } else {
+            wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Funcionário não encontrado.</span>';
+        }
+    } catch(e) {
+        wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Erro ao carregar funcionário.</span>';
+    }
+
+    const badge = document.getElementById('badge-vinculo');
+    if (ID_EVENTO > 0) {
+        badge.innerHTML = `<span class="badge-vinculo" id="badge-vinculo-span">Vinculado ao Afastamento #${ID_EVENTO}</span>`;
+        carregarEventoInfo();
+    } else {
+        badge.innerHTML = `<span class="badge-vinculo standalone">Acidente sem Afastamento</span>`;
+    }
+}
+
+// ── Pré-preencher campos vindos do afastamento ───────────────────────
+function prePreencher() {
+    if (DTACID && DTACID.length === 8) {
+        const d = DTACID.slice(6,8) + '/' + DTACID.slice(4,6) + '/' + DTACID.slice(0,4);
+        document.getElementById('dtAcid').value = d;
+    }
+    if (TPACID) {
+        const sel = document.getElementById('tpAcid');
+        if ([...sel.options].some(o => o.value === TPACID)) sel.value = TPACID;
+    }
+    if (ID_EVENTO > 0) {
+        // Vindo de afastamento → indAfast = S
+        const radioS = document.querySelector('input[name="indAfast"][value="S"]');
+        if (radioS) radioS.checked = true;
+    }
+}
+
+// ── Validação data do acidente vs folha ativa ───────────────────────
+function validarDtAcid() {
+    const el   = document.getElementById('dtAcid');
+    const hint = document.getElementById('hint-dtAcid');
+    const raw  = el.value.replace(/\D/g, '');
+
+    if (raw.length < 8) { hint.textContent = ''; hint.className = 'hint'; el.classList.remove('erro'); return; }
+
+    // dd/mm/aaaa → AAAAMM para comparar com ANOMES
+    const anomes_dig = raw.slice(4, 8) + raw.slice(2, 4);
+
+    if (ANOMES && anomes_dig !== ANOMES) {
+        const mes = ANOMES.slice(4, 6);
+        const ano = ANOMES.slice(0, 4);
+        hint.textContent = `Fora da folha ativa (${mes}/${ano})`;
+        hint.className   = 'hint erro';
+        el.classList.add('erro');
+    } else {
+        hint.textContent = '';
+        hint.className   = 'hint';
+        el.classList.remove('erro');
+    }
+}
+
+// ── Campos condicionais ─────────────────────────────────────────────
+function atualizarCondicionals() {
+    const comObito = document.querySelector('input[name="indCatObito"]:checked')?.value === 'S';
+    const tpLocal  = document.getElementById('tpLocal').value;
+
+    document.getElementById('linha-dtObito').style.display      = comObito ? '' : 'none';
+    document.getElementById('bloco-end-brasil').style.display   = tpLocal !== '2' ? '' : 'none';
+    document.getElementById('bloco-end-exterior').style.display = tpLocal === '2' ? '' : 'none';
+    if (tpLocal === '1') preencherEnderecoEmpresa();
+    else Endereco.clear();
+}
+
+// ── Máscaras ────────────────────────────────────────────────────────
+function mascaraData(el) {
+    let v = el.value.replace(/\D/g,'');
+    if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+    if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5);
+    if (v.length > 10) v = v.slice(0,10);
+    el.value = v;
+}
+function mascaraHora(el) {
+    let v = el.value.replace(/\D/g,'');
+    if (v.length > 2) v = v.slice(0,2) + ':' + v.slice(2,4);
+    el.value = v;
+}
+function parseData(val) {
+    const raw = val.replace(/\D/g,'');
+    if (raw.length !== 8) return null;
+    const d = +raw.slice(0,2), m = +raw.slice(2,4), y = +raw.slice(4,8);
+    const dt = new Date(y, m-1, d);
+    if (dt.getDate() !== d || dt.getMonth()+1 !== m || dt.getFullYear() !== y) return null;
+    return raw.slice(4) + raw.slice(2,4) + raw.slice(0,2); // YYYYMMDD
+}
+function parseHora(val) {
+    const raw = val.replace(/\D/g,'');
+    if (raw.length < 3) return null;
+    return raw.slice(0,4).padEnd(4,'0');  // HHMM
+}
+
+// ── Toast ────────────────────────────────────────────────────────────
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+// ── Gravar ────────────────────────────────────────────────────────────
+async function gravar() {
+    document.getElementById('erro-box').style.display = 'none';
+
+    // Obrigatórios
+    const tpCat  = document.getElementById('tpCat').value;
+    const tpAcid = document.getElementById('tpAcid').value;
+    if (!tpCat)  { document.getElementById('hint-tpCat').textContent  = 'Obrigatório'; showToast('Selecione o Tipo de CAT.', 'erro'); return; }
+    if (!tpAcid) { document.getElementById('hint-tpAcid').textContent = 'Obrigatório'; showToast('Selecione o Tipo de Acidente.', 'erro'); return; }
+    document.getElementById('hint-tpCat').textContent  = '';
+    document.getElementById('hint-tpAcid').textContent = '';
+
+    const dtAcidEl = document.getElementById('dtAcid');
+    const dtAcid   = parseData(dtAcidEl.value);
+    if (!dtAcid) {
+        dtAcidEl.classList.add('erro');
+        document.getElementById('hint-dtAcid').textContent = 'Data inválida';
+        showToast('Informe a Data do Acidente.', 'erro'); return;
+    }
+    dtAcidEl.classList.remove('erro');
+    document.getElementById('hint-dtAcid').textContent = '';
+
+    const dscAcid = document.getElementById('dscAcid').value.trim();
+    if (!dscAcid) {
+        document.getElementById('dscAcid').classList.add('erro');
+        document.getElementById('hint-dscAcid').textContent = 'Descrição obrigatória';
+        showToast('Informe a Descrição do Acidente.', 'erro'); return;
+    }
+    document.getElementById('dscAcid').classList.remove('erro');
+    document.getElementById('hint-dscAcid').textContent = '';
+
+    // Óbito
+    const indCatObito = document.querySelector('input[name="indCatObito"]:checked')?.value || 'N';
+    let dtObito = null;
+    if (indCatObito === 'S') {
+        dtObito = parseData(document.getElementById('dtObito').value);
+        if (!dtObito) {
+            document.getElementById('dtObito').classList.add('erro');
+            document.getElementById('hint-dtObito').textContent = 'Data inválida';
+            showToast('Informe a Data do Óbito.', 'erro'); return;
+        }
+    }
+
+    // Coletar endereço
+    const tpLocal = document.getElementById('tpLocal').value;
+    let endDados = {};
+    if (tpLocal !== '2') {
+        const e = Endereco.getData();
+        endDados = {
+            cep:        e.cep || null,
+            logradouro: e.logradouro || null,
+            nrLogr:     e.numero || null,
+            complemento:e.complemento || null,
+            bairro:     e.bairro || null,
+            codMunic:   e.cod_ibge || null,
+            uf:         e.uf || null,
+        };
+    } else {
+        endDados = {
+            paisAcid: document.getElementById('paisAcid').value.trim() || null,
+            dscLograd:document.getElementById('dscLograd').value.trim() || null,
+            codPostal:document.getElementById('codPostal').value.trim() || null,
+            nmCid:    document.getElementById('nmCid').value.trim() || null,
+            codProv:  document.getElementById('codProv').value.trim() || null,
+        };
+    }
+
+    const payload = {
+        matricula:     MAT,
+        id_tab_evento: ID_EVENTO,
+        id_acidente:   ID_ACIDENTE,
+        tpCat, tpAcid,
+        dtAcid,
+        hrAcid:      parseHora(document.getElementById('hrAcid').value) || null,
+        hrsTrab:     (() => { const v = parseInt(document.getElementById('hrsTrab').value, 10); return (!isNaN(v) && v >= 0 && v <= 12) ? v : null; })(),
+        indComunPolicia: document.querySelector('input[name="indComunPolicia"]:checked')?.value || 'N',
+        indCatObito,
+        dtObito,
+        dtAtendimento: parseData(document.getElementById('dtAtendimento').value) || null,
+        hrAtendimento: parseHora(document.getElementById('hrAtendimento').value) || null,
+        indInternacao: document.querySelector('input[name="indInternacao"]:checked')?.value || 'N',
+        durTrat:       document.getElementById('durTrat').value || null,
+        indAfast:      document.querySelector('input[name="indAfast"]:checked')?.value || 'N',
+        dscLesao:      document.getElementById('dscLesao').value || null,
+        dscCompLesao:  document.getElementById('dscCompLesao').value.trim() || null,
+        diagProvavel:  document.getElementById('diagProvavel').value.trim() || null,
+        dscAcid,
+        tpLocal:       tpLocal || null,
+        dscLocal:      document.getElementById('dscLocal').value.trim() || null,
+        ...endDados,
+        codParteAting:     document.getElementById('codParteAting').value || null,
+        latlongr:          document.getElementById('latlongr').value || null,
+        dscCompParteAting: document.getElementById('dscCompParteAting').value.trim() || null,
+        codAgntCausador:    document.getElementById('codAgntCausador').value || null,
+        dscCompAgntCausador:document.getElementById('dscCompAgntCausador').value.trim() || null,
+        dtAtestado:         parseData(document.getElementById('dtAtestado').value) || null,
+        tpAtestado:         document.getElementById('tpAtestado').value || null,
+        durTratAtestado:    document.getElementById('durTratAtestado').value || null,
+        indAcidTransito:    document.querySelector('input[name="indAcidTransito"]:checked')?.value || 'N',
+        diagProvAtestado:   document.getElementById('diagProvAtestado').value.trim() || null,
+        dscCompDiagAtestado:document.getElementById('dscCompDiagAtestado').value.trim() || null,
+        observacao:         document.getElementById('observacao').value.trim() || null,
+        nmEmit:    document.getElementById('nmEmit').value.trim() || null,
+        ideOC:     document.getElementById('ideOC').value || null,
+        nrOC:      document.getElementById('nrOC').value.trim() || null,
+        ufOC:      document.getElementById('ufOC').value || null,
+        dtEmissao: parseData(document.getElementById('dtEmissao').value) || null,
+    };
+
+    const btn = document.getElementById('btn-gravar');
+    const modoEdicao = ID_ACIDENTE > 0;
+    btn.disabled = true; btn.textContent = modoEdicao ? 'Atualizando…' : 'Registrando…';
+
+    const endpoint = modoEdicao ? '/api/acidente_alterar' : '/api/acidente_gravar';
+    try {
+        const resp = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const d = await resp.json();
+        if (d.ok) {
+            if (modoEdicao) {
+                showToast('CAT atualizada com sucesso! Voltando…', 'ok');
+                setTimeout(() => { window.location.href = `/alt_acidente?mats=${MAT}`; }, 2000);
+            } else {
+                const msg = d.aviso_es ? `CAT registrada. Aviso eSocial: ${d.aviso_es}` : 'CAT registrada com sucesso! Voltando…';
+                showToast(msg, 'ok');
+                setTimeout(() => { window.location.href = '/select_funcionario?contexto=acidente'; }, d.aviso_es ? 4000 : 2200);
+            }
+        } else {
+            const msg = d.msg || (modoEdicao ? 'Erro ao atualizar.' : 'Erro ao registrar.');
+            showToast(msg, 'erro');
+            const box = document.getElementById('erro-box');
+            box.textContent = '⚠ ' + msg;
+            box.style.display = 'block';
+        }
+    } catch(e) {
+        showToast('Erro de comunicação com o servidor.', 'erro');
+    } finally {
+        btn.disabled = false;
+        const label = modoEdicao ? 'Atualizar CAT' : 'Registrar CAT (S-2210)';
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> ${label}`;
+    }
+}
+
+// ── Data/hora do afastamento vinculado ──────────────────────────────
+async function carregarEventoInfo() {
+    try {
+        const r = await fetch(`/api/evento_info?id=${ID_EVENTO}`);
+        const d = await r.json();
+        if (d.ok && d.data) {
+            const el = document.getElementById('badge-vinculo-span');
+            if (el) {
+                let txt = `Vinculado ao Afastamento #${ID_EVENTO} · digitado em ${d.data}`;
+                if (d.hora) txt += ` às ${d.hora}`;
+                el.textContent = txt;
+            }
+        }
+    } catch(e) { /* silencioso */ }
+}
+
+// ── Preencher endereço com o da empresa (tpLocal=1) ─────────────────
+async function preencherEnderecoEmpresa() {
+    try {
+        const r = await fetch('/api/empresa_endereco');
+        const d = await r.json();
+        if (d.ok && (d.logradouro || d.cep)) {
+            Endereco.setData(d);
+        }
+    } catch(e) { /* silencioso */ }
+}
+
+// ── Pré-preencher formulário com dados existentes (modo edição) ──────
+async function carregarParaEdicao() {
+    const btn = document.getElementById('btn-gravar');
+    btn.disabled = true; btn.textContent = 'Carregando…';
+    try {
+        const r = await fetch(`/api/acidente_get?id=${ID_ACIDENTE}`);
+        const d = await r.json();
+        if (!d.ok) {
+            showToast(d.msg || 'Erro ao carregar acidente.', 'erro');
+            const box = document.getElementById('erro-box');
+            box.textContent = '⚠ ' + (d.msg || 'Erro ao carregar acidente.');
+            box.style.display = 'block';
+            return;
+        }
+        const a = d.acidente;
+
+        // Tipo acidente e tipo CAT
+        setSelect('tpAcid', a.tpacid);
+        setSelect('tpCat', a.tpcat);
+
+        // Datas e horas
+        setData('dtAcid', a.dtacid);
+        setHora('hrAcid', a.hracid);
+        if (a.hrstrab) {
+            // hrstrab armazenado como HHMM → extrair horas (ex: "0400" → 4)
+            const hh = parseInt((a.hrstrab || '').slice(0, 2), 10);
+            if (!isNaN(hh)) document.getElementById('hrsTrab').value = hh;
+        }
+        setRadio('indComunPolicia', a.indcomunpolicia || 'N');
+        setRadio('indCatObito', a.indcatobito || 'N');
+        setData('dtObito', a.dtobito);
+
+        // Atendimento médico
+        setData('dtAtendimento', a.dtatendimento);
+        setHora('hrAtendimento', a.hratendimento);
+        setRadio('indInternacao', a.indinternacao || 'N');
+        if (a.durtrat) document.getElementById('durTrat').value = a.durtrat;
+        setRadio('indAfast', a.indafast || 'N');
+
+        // Lesão e diagnóstico
+        setSelect('dscLesao', a.dsclesao);
+        setInput('dscCompLesao', a.dsccomplesao);
+        setInput('diagProvavel', a.diagprovavel);
+        setTextarea('dscAcid', a.dscacid);
+
+        // Local
+        setSelect('tpLocal', a.tplocal);
+        setInput('dscLocal', a.dsclocal);
+
+        if (a.tplocal === '2') {
+            // Exterior
+            setInput('paisAcid', a.paisacid);
+            setInput('dscLograd', a.dsclograd);
+            setInput('codPostal', a.codpostal);
+            setInput('nmCid', a.nmcid);
+            setInput('codProv', a.codprov);
+        } else if (a.tplocal) {
+            // Brasil
+            Endereco.setData({
+                cep:         a.cep || '',
+                logradouro:  a.logradouro || '',
+                numero:      a.nrlogr || '',
+                complemento: a.complemento || '',
+                bairro:      a.bairro || '',
+                cidade_nome: a.cidade_nome || '',
+                uf:          a.uf || '',
+                cod_ibge:    a.codmunic ? String(a.codmunic) : '',
+            });
+        }
+
+        // Parte atingida e agente causador
+        setSelect('codParteAting', a.codparteating);
+        setSelect('latlongr', a.latlongr);
+        setInput('dscCompParteAting', a.dsccompparteating);
+        setSelect('codAgntCausador', a.codagntcausador);
+        setInput('dscCompAgntCausador', a.dsccompagntcausador);
+
+        // Atestado
+        setData('dtAtestado', a.dtatestado);
+        setSelect('tpAtestado', a.tpatestado);
+        if (a.durtratatestado) document.getElementById('durTratAtestado').value = a.durtratatestado;
+        setRadio('indAcidTransito', a.indacidtransito || 'N');
+        setInput('diagProvAtestado', a.diagprovatestado);
+        setInput('dscCompDiagAtestado', a.dsccompdigatestado || '');
+        setTextarea('observacao', a.observacao);
+
+        // Emitente
+        setInput('nmEmit', a.nmemit);
+        setSelect('ideOC', a.ideoc);
+        setInput('nrOC', a.nroc);
+        setSelect('ufOC', a.ufoc);
+        setData('dtEmissao', a.dtemissao);
+
+        atualizarCondicionals();
+    } catch(e) {
+        showToast('Erro ao carregar dados do acidente.', 'erro');
+    } finally {
+        const btn = document.getElementById('btn-gravar');
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Atualizar CAT`;
+    }
+}
+
+function setSelect(id, val)   { const el = document.getElementById(id); if (el && val != null) el.value = String(val); }
+function setInput(id, val)    { const el = document.getElementById(id); if (el && val != null) el.value = String(val); }
+function setTextarea(id, val) { const el = document.getElementById(id); if (el && val != null) el.value = String(val); }
+function setData(id, val) {
+    if (!val || String(val).length < 8) return;
+    const s = String(val).replace(/\D/g,'').slice(0,8);
+    if (s.length === 8) {
+        const el = document.getElementById(id);
+        if (el) el.value = `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`;
+    }
+}
+function setHora(id, val) {
+    if (!val || String(val).length < 4) return;
+    const s = String(val).replace(/\D/g,'').slice(0,4);
+    if (s.length >= 3) {
+        const el = document.getElementById(id);
+        if (el) el.value = `${s.slice(0,2)}:${s.slice(2,4)}`;
+    }
+}
+function setRadio(name, val) {
+    const el = document.querySelector(`input[name="${name}"][value="${val}"]`);
+    if (el) el.checked = true;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    carregarFuncionario();
+    if (ID_ACIDENTE > 0) {
+        carregarParaEdicao();
+    } else {
+        prePreencher();
+    }
+    atualizarCondicionals();
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teste — Bloco Endereço</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #e8edf4; min-height: 100vh;
+           display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; }
+    .card { background: white; border: 1px solid #dde3ec; border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08); padding: 28px 28px 24px;
+            width: 100%; max-width: 580px; display: flex; flex-direction: column; gap: 18px; }
+    .card-titulo { font-size: 16px; font-weight: 700; color: #0f172a;
+                   border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; }
+    .btn-voltar { height: 38px; border: 1px solid #c7d2de; border-radius: 10px;
+                  padding: 0 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+                  background: linear-gradient(180deg,#eef2f7,#dce4ee); color: #0f172a; }
+    .btn-voltar:hover { filter: brightness(0.97); }
+  </style>
+</head>
+<body>
+<div class="card">
+
+  <div class="card-titulo">Informações do Endereço</div>
+
+  {% include '_bloco_endereco.html' %}
+
+  <div>
+    <button class="btn-voltar"
+      onclick="window.location.href='{{ voltar_url | default('/menu') }}'">
+      ↩ {{ voltar_label | default('Voltar ao Menu') }}
+    </button>
+  </div>
+
+</div>
+</body>
+</html>

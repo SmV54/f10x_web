@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Exame Médico Ocupacional</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+.conteudo { max-width: 780px; margin: 36px auto; padding: 0 24px 80px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+}
+.pref-secao-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 12px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+}
+.func-resumo-wrap { padding: 10px 20px 12px; }
+.func-resumo-item {
+    display: flex; align-items: center; gap: 10px; padding: 4px 10px;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 7px; font-size: 12px;
+}
+.func-resumo-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; flex-shrink: 0; }
+.func-resumo-nome { font-weight: 500; color: #1e293b; }
+
+.opcao-linha {
+    display: grid; grid-template-columns: 28px 1fr auto;
+    align-items: start; gap: 0 14px; padding: 10px 20px;
+    border-bottom: 1px solid #f1f5f9; transition: background 0.1s;
+}
+.opcao-linha:last-child { border-bottom: none; }
+.opcao-linha:hover { background: #fafbfc; }
+.opcao-label {
+    font-size: 13px; font-weight: 500; color: #334155;
+    display: flex; align-items: center; gap: 6px; padding-top: 6px;
+}
+
+.input-data {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; width: 130px; outline: none;
+    letter-spacing: 0.05em; transition: border-color 0.15s;
+}
+.input-data:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-data.erro  { border-color: #ef4444; background: #fff5f5; }
+.input-data::placeholder { color: #b0b8c8; letter-spacing: 0; font-size: 12px; }
+
+.select-field {
+    font-family: var(--sans); font-size: 12px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; outline: none;
+    transition: border-color 0.15s; cursor: pointer;
+}
+.select-field:focus { border-color: var(--accent); background: #f0f7ff; }
+.select-field.erro  { border-color: #ef4444; background: #fff5f5; }
+
+.radio-group { display: flex; gap: 18px; align-items: center; padding-top: 4px; }
+.radio-group label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 500; color: #334155; cursor: pointer;
+}
+.radio-group input[type="radio"] { accent-color: var(--accent); cursor: pointer; width: 15px; height: 15px; }
+
+.input-obs {
+    font-family: var(--sans); font-size: 13px; color: #1e293b;
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px;
+    padding: 8px 10px; width: 380px; outline: none;
+    resize: vertical; transition: border-color 0.15s; line-height: 1.5;
+}
+.input-obs:focus { border-color: var(--accent); background: #f0f7ff; }
+
+.input-text {
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; width: 380px; outline: none;
+    transition: border-color 0.15s;
+}
+.input-text:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-text.erro  { border-color: #ef4444; background: #fff5f5; }
+.input-text::placeholder { color: #b0b8c8; font-size: 12px; }
+
+.input-crm {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; width: 110px; outline: none;
+    letter-spacing: 0.05em; transition: border-color 0.15s; text-align: center;
+}
+.input-crm:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-crm.erro  { border-color: #ef4444; background: #fff5f5; }
+
+.hint      { font-size: 11px; color: #94a3b8; }
+.hint.ok   { color: #16a34a; }
+.hint.erro { color: #ef4444; }
+
+.opcao-valor { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+.rodape { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
+.btn-cancelar {
+    background: var(--surface); border: 1px solid var(--border); color: #64748b;
+    font-size: 13px; font-family: var(--sans); font-weight: 500;
+    padding: 10px 22px; border-radius: 8px; cursor: pointer;
+    transition: 0.15s; text-decoration: none;
+}
+.btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+.btn-gravar {
+    background: #0b6d3a; border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-gravar:hover    { background: #065f31; }
+.btn-gravar:disabled { background: #86efac; cursor: not-allowed; }
+
+#toast {
+    display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 12px 24px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 480px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Exame Médico Ocupacional</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <button class="btn-voltar" onclick="window.history.back()">&#8592; Voltar</button>
+        <div>
+            <div class="rel-titulo">Exame Médico Ocupacional</div>
+            <div class="rel-subtitulo">Preencha os dados do exame e clique em Gravar</div>
+        </div>
+    </div>
+
+    <!-- Card 1: Funcionário -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Funcionário</div>
+        <div class="func-resumo-wrap">
+            <div id="func-resumo" style="font-size:12px;color:#94a3b8;">Carregando…</div>
+        </div>
+    </div>
+
+    <!-- Card 2: Dados do Exame -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Dados do Exame</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Data do Exame</div>
+            <div class="opcao-valor">
+                <input type="text" id="dtExame" class="input-data" placeholder="dd/mm/aaaa" maxlength="10"
+                    oninput="mascaraData(this); validarDtExame()" onblur="validarDtExame()">
+                <span class="hint" id="hint-dtExame"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Resultado do Exame</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="resultado" value="1" checked> 1 — Apto</label>
+                    <label><input type="radio" name="resultado" value="2"> 2 — Inapto</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Indicador de Resultado</div>
+            <div class="opcao-valor">
+                <div class="radio-group" style="flex-wrap:wrap;">
+                    <label><input type="radio" name="ind_resultado" value="1" checked> 1 — Normal</label>
+                    <label><input type="radio" name="ind_resultado" value="2"> 2 — Alterado</label>
+                    <label><input type="radio" name="ind_resultado" value="3"> 3 — Estável</label>
+                    <label><input type="radio" name="ind_resultado" value="4"> 4 — Agravamento</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Ordem do Exame</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="ordem" value="1"> 1 — Inicial</label>
+                    <label><input type="radio" name="ordem" value="2" checked> 2 — Sequencial</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Procedimento</div>
+            <div class="opcao-valor">
+                <select id="codProcedimento" class="select-field" style="width:380px;" onchange="atualizarObs()">
+                    <option value="">— Selecione —</option>
+                    {% for t in tab27 %}
+                    <option value="{{ t.codigo }}">{{ t.codigo }} — {{ t.texto }}</option>
+                    {% endfor %}
+                </select>
+                <span class="hint erro" id="hint-procedimento"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha" id="linha-observacao" style="display:none;">
+            <div></div>
+            <div class="opcao-label">Observações <span style="font-size:10px;font-weight:600;color:#ef4444;text-transform:uppercase;letter-spacing:.05em;">obrigatório</span></div>
+            <div class="opcao-valor">
+                <textarea id="observacao" class="input-obs" rows="3"
+                    maxlength="500" placeholder="Descreva o procedimento…"></textarea>
+                <span class="hint erro" id="hint-observacao"></span>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Card 3: Médico Responsável -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Médico Responsável</div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Nome do Médico</div>
+            <div class="opcao-valor">
+                <input type="text" id="nomeMedico" class="input-text"
+                    placeholder="Nome sem acentos ou cedilha" maxlength="50"
+                    oninput="sanitizarNome(this)">
+                <span class="hint" id="hint-nomeMedico"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">CRM</div>
+            <div class="opcao-valor">
+                <input type="text" id="crm" class="input-crm"
+                    placeholder="0000000" maxlength="7"
+                    oninput="sanitizarCRM(this)">
+                <span class="hint erro" id="hint-crm"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">UF do CRM</div>
+            <div class="opcao-valor">
+                <select id="ufCRM" class="select-field" onchange="this.classList.remove('erro'); document.getElementById('hint-ufCRM').textContent=''">
+                    <option value="">— Selecione —</option>
+                    <option value="AC">AC — Acre</option>
+                    <option value="AL">AL — Alagoas</option>
+                    <option value="AM">AM — Amazonas</option>
+                    <option value="AP">AP — Amapá</option>
+                    <option value="BA">BA — Bahia</option>
+                    <option value="CE">CE — Ceará</option>
+                    <option value="DF">DF — Distrito Federal</option>
+                    <option value="ES">ES — Espírito Santo</option>
+                    <option value="GO">GO — Goiás</option>
+                    <option value="MA">MA — Maranhão</option>
+                    <option value="MG">MG — Minas Gerais</option>
+                    <option value="MS">MS — Mato Grosso do Sul</option>
+                    <option value="MT">MT — Mato Grosso</option>
+                    <option value="PA">PA — Pará</option>
+                    <option value="PB">PB — Paraíba</option>
+                    <option value="PE">PE — Pernambuco</option>
+                    <option value="PI">PI — Piauí</option>
+                    <option value="PR">PR — Paraná</option>
+                    <option value="RJ">RJ — Rio de Janeiro</option>
+                    <option value="RN">RN — Rio Grande do Norte</option>
+                    <option value="RO">RO — Rondônia</option>
+                    <option value="RR">RR — Roraima</option>
+                    <option value="RS">RS — Rio Grande do Sul</option>
+                    <option value="SC">SC — Santa Catarina</option>
+                    <option value="SE">SE — Sergipe</option>
+                    <option value="SP">SP — São Paulo</option>
+                    <option value="TO">TO — Tocantins</option>
+                </select>
+                <span class="hint erro" id="hint-ufCRM"></span>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="erro-box" style="display:none; margin-bottom:12px; padding:12px 16px;
+        background:#fff1f2; border:1px solid #fca5a5; border-radius:10px;
+        font-size:13px; color:#991b1b; font-weight:500; line-height:1.5; word-break:break-word;">
+    </div>
+
+    <div class="rodape">
+        <button class="btn-cancelar" onclick="window.history.back()">Voltar</button>
+        <button class="btn-gravar" id="btn-gravar" onclick="gravar()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Gravar Exame Médico
+        </button>
+    </div>
+
+</div><!-- /conteudo -->
+<div id="toast"></div>
+
+<script>
+const MAT         = '{{ mat }}';
+const ANOMES      = '{{ anomes_atual }}';
+const UF_EMPRESA  = '{{ uf_empresa }}';
+const ID_EVENTO   = '{{ id_evento }}';
+
+// ── Carregar nome do funcionário ─────────────────────────────────────
+async function carregarFuncionario() {
+    const wrap = document.getElementById('func-resumo');
+    if (!MAT) {
+        wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Nenhum funcionário informado. <a href="javascript:window.history.back()">Voltar</a></span>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/funcionarios_lista?mats=' + MAT);
+        const d = await r.json();
+        if (d.ok && d.funcionarios?.length) {
+            const f = d.funcionarios[0];
+            wrap.innerHTML = `<div class="func-resumo-item">
+                <span class="func-resumo-mat">${String(f.matricula).padStart(6,'0')}</span>
+                <span class="func-resumo-nome">${f.nome || '—'}</span>
+            </div>`;
+            // Marcar Inicial apenas se admitido na folha ativa
+            const admAnomes = (f.dtadm || '').slice(0, 6);
+            const ordemVal  = (ANOMES && admAnomes === ANOMES) ? '1' : '2';
+            document.querySelector(`input[name="ordem"][value="${ordemVal}"]`).checked = true;
+        } else {
+            wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Funcionário não encontrado.</span>';
+        }
+    } catch(e) {
+        wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Erro ao carregar funcionário.</span>';
+    }
+}
+
+// ── Procedimentos que exigem Observações ────────────────────────────
+const PROCS_OBS = new Set(['0583','0998','0999','1128','1230','1992','1993','1994','1995','1996','1997','1998','1999','9999']);
+
+function atualizarObs() {
+    const cod   = document.getElementById('codProcedimento').value;
+    const linha = document.getElementById('linha-observacao');
+    const obs   = document.getElementById('observacao');
+    const hint  = document.getElementById('hint-observacao');
+    if (PROCS_OBS.has(cod)) {
+        linha.style.display = '';
+    } else {
+        linha.style.display = 'none';
+        obs.value = '';
+        hint.textContent = '';
+        obs.classList.remove('erro');
+    }
+}
+
+// ── Validação data do exame vs folha ativa ───────────────────────────
+function validarDtExame() {
+    const el   = document.getElementById('dtExame');
+    const hint = document.getElementById('hint-dtExame');
+    const raw  = el.value.replace(/\D/g, '');
+
+    if (raw.length < 8) { hint.textContent = ''; hint.className = 'hint'; el.classList.remove('erro'); return; }
+
+    const anomes_dig = raw.slice(4, 8) + raw.slice(2, 4);
+
+    if (ANOMES && anomes_dig !== ANOMES) {
+        const mes = ANOMES.slice(4, 6);
+        const ano = ANOMES.slice(0, 4);
+        hint.textContent = `Fora da folha ativa (${mes}/${ano})`;
+        hint.className   = 'hint erro';
+        el.classList.add('erro');
+    } else {
+        hint.textContent = ANOMES ? 'Dentro da folha ativa' : '';
+        hint.className   = ANOMES ? 'hint ok' : 'hint';
+        el.classList.remove('erro');
+    }
+}
+
+// ── Máscara de data ─────────────────────────────────────────────────
+function mascaraData(el) {
+    let v = el.value.replace(/\D/g,'');
+    if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+    if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5);
+    if (v.length > 10) v = v.slice(0,10);
+    el.value = v;
+}
+
+function parseData(val) {
+    const raw = val.replace(/\D/g,'');
+    if (raw.length !== 8) return null;
+    const d = +raw.slice(0,2), m = +raw.slice(2,4), y = +raw.slice(4,8);
+    const dt = new Date(y, m-1, d);
+    if (dt.getDate() !== d || dt.getMonth()+1 !== m || dt.getFullYear() !== y) return null;
+    return raw.slice(4) + raw.slice(2,4) + raw.slice(0,2); // YYYYMMDD
+}
+
+// ── Sanitização: Nome do Médico (sem acento/cedilha) ────────────────
+function sanitizarNome(el) {
+    let v = el.value
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/[^A-Za-z0-9 \-\.]/g, '')
+        .slice(0, 50);
+    el.value = v;
+    el.classList.remove('erro');
+    const restante = 50 - v.length;
+    const hint = document.getElementById('hint-nomeMedico');
+    if (restante <= 10) {
+        hint.textContent = `${restante} caracteres restantes`;
+        hint.className = restante <= 5 ? 'hint erro' : 'hint';
+    } else {
+        hint.textContent = '';
+    }
+}
+
+// ── Sanitização: CRM (apenas dígitos) ───────────────────────────────
+function sanitizarCRM(el) {
+    el.value = el.value.replace(/\D/g, '').slice(0, 7);
+    el.classList.remove('erro');
+    document.getElementById('hint-crm').textContent = '';
+}
+
+// ── Toast ────────────────────────────────────────────────────────────
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+function showToastFixo(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg + ' (clique para fechar)';
+    t.className = tipo; t.style.display = 'block'; t.style.cursor = 'pointer';
+    t.onclick = () => { t.style.display = 'none'; t.onclick = null; };
+}
+
+// ── Gravar ────────────────────────────────────────────────────────────
+async function gravar() {
+    document.getElementById('erro-box').style.display = 'none';
+    document.getElementById('hint-procedimento').textContent = '';
+
+    // Validar data
+    const dtExameEl = document.getElementById('dtExame');
+    const dtExame   = parseData(dtExameEl.value);
+    if (!dtExame) {
+        dtExameEl.classList.add('erro');
+        document.getElementById('hint-dtExame').textContent = 'Data inválida';
+        document.getElementById('hint-dtExame').className = 'hint erro';
+        showToast('Informe a Data do Exame.', 'erro');
+        return;
+    }
+
+    // Validar procedimento
+    const codProc = document.getElementById('codProcedimento').value;
+    if (!codProc) {
+        document.getElementById('codProcedimento').classList.add('erro');
+        document.getElementById('hint-procedimento').textContent = 'Obrigatório';
+        showToast('Selecione o Procedimento.', 'erro');
+        return;
+    }
+    document.getElementById('codProcedimento').classList.remove('erro');
+
+    // Validar observação (obrigatória para procedimentos específicos)
+    const obsEl = document.getElementById('observacao');
+    const obs   = obsEl.value.trim();
+    if (PROCS_OBS.has(codProc) && !obs) {
+        obsEl.classList.add('erro');
+        document.getElementById('hint-observacao').textContent = 'Obrigatório para este procedimento';
+        showToast('Informe as Observações para este procedimento.', 'erro');
+        return;
+    }
+    obsEl.classList.remove('erro');
+    document.getElementById('hint-observacao').textContent = '';
+
+    // Validar médico responsável
+    const nomeMedicoEl = document.getElementById('nomeMedico');
+    const nomeMedico   = nomeMedicoEl.value.trim();
+    if (!nomeMedico) {
+        nomeMedicoEl.classList.add('erro');
+        document.getElementById('hint-nomeMedico').textContent = 'Obrigatório';
+        document.getElementById('hint-nomeMedico').className = 'hint erro';
+        showToast('Informe o Nome do Médico.', 'erro');
+        return;
+    }
+
+    const crmEl = document.getElementById('crm');
+    const crm   = crmEl.value.trim();
+    if (!crm) {
+        crmEl.classList.add('erro');
+        document.getElementById('hint-crm').textContent = 'Obrigatório';
+        showToast('Informe o CRM do Médico.', 'erro');
+        return;
+    }
+
+    const ufCRMEl = document.getElementById('ufCRM');
+    const ufCRM   = ufCRMEl.value;
+    if (!ufCRM) {
+        ufCRMEl.classList.add('erro');
+        document.getElementById('hint-ufCRM').textContent = 'Obrigatório';
+        showToast('Selecione a UF do CRM.', 'erro');
+        return;
+    }
+
+    const resultado     = document.querySelector('input[name="resultado"]:checked')?.value || '1';
+    const ind_resultado = document.querySelector('input[name="ind_resultado"]:checked')?.value || '1';
+    const ordem         = document.querySelector('input[name="ordem"]:checked')?.value || '1';
+
+    const payload = {
+        matricula:        MAT,
+        dt_exame:         dtExame,
+        resultado:        resultado,
+        ind_resultado:    ind_resultado,
+        ordem:            ordem,
+        cod_procedimento: codProc,
+        observacao:       obs || null,
+        nome_medico:      nomeMedico,
+        crm:              crm,
+        uf_crm:           ufCRM,
+        ...(ID_EVENTO ? { id_evento: parseInt(ID_EVENTO) } : {}),
+    };
+
+    const apiUrl = ID_EVENTO ? '/api/exame_med_alterar' : '/api/exame_med_gravar';
+
+    const btn = document.getElementById('btn-gravar');
+    btn.disabled = true; btn.textContent = ID_EVENTO ? 'Salvando…' : 'Gravando…';
+
+    try {
+        const resp = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const d = await resp.json();
+        if (d.ok) {
+            const msg = ID_EVENTO ? 'Exame médico alterado com sucesso! Voltando…' : 'Exame médico gravado com sucesso! Voltando…';
+            showToast(msg, 'ok');
+            if (d.log_aviso) {
+                const tipo = d.log_aviso.startsWith('LOG OK') ? 'ok' : 'erro';
+                console.warn('log_aviso:', d.log_aviso);
+                showToastFixo('Log: ' + d.log_aviso, tipo);
+            }
+            if (ID_EVENTO) {
+                setTimeout(() => { window.location.href = `/alt_exame_med?mats=${MAT}`; }, 2200);
+            } else {
+                setTimeout(() => { window.location.href = `/select_funcionario?contexto=exame_med`; }, 2200);
+            }
+        } else {
+            const msg = d.msg || 'Erro ao gravar.';
+            showToast(msg, 'erro');
+            const box = document.getElementById('erro-box');
+            box.textContent = '⚠ ' + msg;
+            box.style.display = 'block';
+        }
+    } catch(e) {
+        showToast('Erro de comunicação com o servidor.', 'erro');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Gravar Exame Médico`;
+    }
+}
+
+// ── Modo edição: pré-preencher campos ───────────────────────
+async function carregarParaEdicao() {
+    try {
+        const r = await fetch(`/api/exame_med_listar?matricula=${MAT}`);
+        if (!r.ok) { showToast('Erro ao carregar dados do exame.', 'erro'); return; }
+        const d = await r.json();
+        if (!d.ok) { showToast(d.msg || 'Erro ao carregar exame.', 'erro'); return; }
+
+        const ex = d.exames.find(e => String(e.id) === String(ID_EVENTO));
+        if (!ex) { showToast('Exame não encontrado. Verifique se foi gravado corretamente.', 'erro'); return; }
+
+        // Data
+        const dt = ex.data_raw || '';
+        if (dt.length === 8) {
+            document.getElementById('dtExame').value = `${dt.slice(6,8)}/${dt.slice(4,6)}/${dt.slice(0,4)}`;
+            validarDtExame();
+        }
+
+        // Resultado
+        const resEl = document.querySelector(`input[name="resultado"][value="${ex.resultado || '1'}"]`);
+        if (resEl) resEl.checked = true;
+
+        // Indicador de Resultado
+        const indResEl = document.querySelector(`input[name="ind_resultado"][value="${ex.ind_resultado || '1'}"]`);
+        if (indResEl) indResEl.checked = true;
+
+        // Ordem
+        const ordEl = document.querySelector(`input[name="ordem"][value="${ex.ordem || '1'}"]`);
+        if (ordEl) ordEl.checked = true;
+
+        // Procedimento
+        document.getElementById('codProcedimento').value = ex.proc || '';
+        atualizarObs();
+
+        // Médico
+        document.getElementById('nomeMedico').value = ex.nome_medico || '';
+        document.getElementById('crm').value        = ex.crm         || '';
+        document.getElementById('ufCRM').value       = ex.uf_crm      || '';
+
+    } catch(e) {
+        showToast('Erro inesperado ao carregar dados: ' + e.message, 'erro');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    carregarFuncionario();
+    if (ID_EVENTO) {
+        carregarParaEdicao();
+        document.querySelector('.rel-subtitulo').textContent = 'Altere os dados do exame e clique em Salvar';
+        const btn = document.getElementById('btn-gravar');
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Salvar Alterações`;
+    } else if (UF_EMPRESA) {
+        document.getElementById('ufCRM').value = UF_EMPRESA;
+    }
+});
+</script>
+
+</body>
+</html>

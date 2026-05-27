@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Folha de Pagamento</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:    #0b1f3a;
+  --navy-ln: #1e3d5c;
+  --accent:  #2a7de1;
+  --bg:      #f0f2f6;
+  --surface: #ffffff;
+  --border:  #dde3ec;
+  --prov:    #166534;
+  --desc:    #991b1b;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+  background: var(--navy); border-bottom: 1px solid var(--navy-ln);
+  padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 0 32px; min-height: 64px;
+  position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center;
+               display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: #8baac8; margin-top: 2px; }
+.badge {
+  display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+  font-size: 12px; font-weight: 700; background: #fff; border: 2px solid #dde3ec; color: #6b7280;
+}
+.btn-voltar-topo {
+  margin-left: 16px; background: transparent; border: 1px solid var(--navy-ln);
+  color: #8baac8; font-size: 12px; padding: 5px 12px; border-radius: 6px;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+  text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 900px; margin: 32px auto; padding: 0 20px 60px; display: flex; flex-direction: column; gap: 24px; }
+
+/* ── BARRA DE AÇÕES ── */
+.barra-acoes { display: flex; align-items: center; justify-content: space-between; }
+.btn-voltar {
+  background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155;
+  font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 6px;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s;
+  white-space: nowrap; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-voltar:hover { background: #e2e8f0; border-color: #94a3b8; color: #0f172a; }
+.btn-pdf {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent); border: none; color: white;
+  font-size: 13px; font-family: var(--sans); font-weight: 600;
+  padding: 9px 20px; border-radius: 8px;
+  cursor: pointer; transition: 0.15s; text-decoration: none;
+}
+.btn-pdf:hover { background: #1a5fb8; }
+
+/* ── TÍTULOS ── */
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+.rel-subtitulo { font-size: 12px; color: #64748b; }
+
+/* ── CC HEADER ── */
+.cc-header {
+  background: var(--navy); color: #e8edf4;
+  padding: 8px 16px; border-radius: 10px;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.04em;
+}
+
+/* ── HOLERITE ── */
+.holerite {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Cabeçalho do funcionário — faixa azul escura */
+.func-header {
+  background: var(--navy); padding: 8px 14px;
+  display: flex; align-items: baseline; gap: 10px;
+  border-bottom: 2px solid var(--accent);
+}
+.func-mat  { font-family: var(--mono); font-size: 11px; color: #8baac8; white-space: nowrap; }
+.func-nome { font-size: 14px; font-weight: 700; color: #e8edf4; }
+
+/* Sub-cabeçalho — detalhes em cinza claro */
+.func-det {
+  background: #f8fafc; padding: 5px 14px;
+  font-size: 11px; color: #64748b;
+  border-bottom: 1px solid var(--border);
+}
+.func-det span { margin-right: 18px; }
+.func-det span::before { content: ''; }
+
+/* Tabela de verbas */
+table.tbl-verbas { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.tbl-verbas thead tr { background: #f3f4f6; }
+table.tbl-verbas th {
+  padding: 6px 10px; font-size: 11px; font-weight: 600; color: #374151;
+  border-bottom: 1px solid var(--border);
+}
+table.tbl-verbas th:first-child { text-align: center; width: 52px; }
+table.tbl-verbas th.r { text-align: right; }
+table.tbl-verbas th.qtd { text-align: center; width: 60px; }
+
+table.tbl-verbas td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+table.tbl-verbas tbody tr:nth-child(even) { background: #f9fafb; }
+table.tbl-verbas tbody tr:hover { background: #f0f4ff; }
+table.tbl-verbas tbody tr:last-child td { border-bottom: 1px solid var(--border); }
+
+td.cod  { font-family: var(--mono); font-size: 11px; color: #94a3b8; text-align: center; }
+td.dsc  { color: #1e293b; }
+td.qtd  { font-family: var(--mono); font-size: 11px; color: #6b7280; text-align: center; }
+td.val  { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; }
+td.prov { color: var(--prov); }
+td.desc { color: var(--desc); }
+td.zero { color: #d1d5db; }
+
+/* Linha TOTAL */
+tr.tr-total td {
+  padding: 7px 10px; background: #f3f4f6;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+}
+tr.tr-total .lbl { text-align: right; font-size: 11px; font-weight: 700; color: #374151; }
+
+/* Linha LÍQUIDO */
+tr.tr-liq td {
+  padding: 8px 10px; border-bottom: none;
+}
+tr.tr-liq .lbl { text-align: right; font-size: 12px; font-weight: 700; color: #111827; }
+.liq-ok  { color: var(--prov); font-weight: 700; }
+.liq-neg { color: var(--desc); font-weight: 700; }
+tr.tr-liq td { border-top: 2px solid #374151; }
+
+/* Linha de bases */
+.func-bases {
+  background: #eff6ff; padding: 6px 14px;
+  font-size: 11px; color: #1e3a5f;
+  border-top: 1px solid var(--border);
+}
+.func-bases .bases-label { font-weight: 700; margin-right: 8px; }
+.func-bases .bases-item  { margin-right: 20px; color: #374151; }
+.func-bases .bases-val   { font-family: var(--mono); font-weight: 600; }
+
+/* ── SEPARADOR CC ── */
+.cc-sep { display: flex; flex-direction: column; gap: 16px; }
+
+/* ── TOTAL GERAL ── */
+.total-geral {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 18px 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px;
+}
+.total-bloco { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.total-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
+.total-valor { font-family: var(--mono); font-size: 18px; font-weight: 600; color: #1e293b; }
+.total-valor.prov { color: var(--prov); }
+.total-valor.desc { color: var(--desc); }
+.total-valor.liq  { color: var(--accent); }
+.total-sep { width: 1px; height: 36px; background: var(--border); }
+
+/* ── VAZIO ── */
+.vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px;
+         background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-nome">{{ nome }}</div>
+  </div>
+  <div class="topo-titulo">
+    Folha de Pagamento
+    <span class="badge">{{ anomes_fmt }} — {{ tipo_lbl }}</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10</div>
+      <div class="topo-versao">{{ versao }}</div>
+    </div>
+    <a href="/menu" class="btn-voltar-topo">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <div class="barra-acoes">
+    <a class="btn-voltar" href="/relatorios">&#8592; Voltar</a>
+    <a class="btn-pdf" href="/relatorio_folha_pdf" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+      </svg>
+      Gerar PDF
+    </a>
+  </div>
+
+  {% if cc_list %}
+
+  {% for cc in cc_list %}
+
+  {% if multi_cc %}
+  <div class="cc-header">Centro de Custo: {{ cc.cc }} &nbsp;·&nbsp; {{ cc.n_funcs }} funcionário(s)</div>
+  {% endif %}
+
+  <div class="cc-sep">
+  {% for f in cc.funcs %}
+  <div class="holerite">
+
+    <!-- Cabeçalho: matrícula + nome -->
+    <div class="func-header">
+      <span class="func-mat">{{ f.mat }}</span>
+      <span class="func-nome">{{ f.nome }}</span>
+    </div>
+
+    <!-- Sub-cabeçalho: detalhes -->
+    <div class="func-det">
+      <span>Admissão: <strong>{{ f.dtadm_fmt }}</strong></span>
+      <span>Função: <strong>{{ f.funcao }}</strong></span>
+      <span>Salário: <strong>{{ f.sal_fmt }}</strong></span>
+      <span>Filial: <strong>{{ f.filial }}</strong></span>
+    </div>
+
+    <!-- Verbas -->
+    <table class="tbl-verbas">
+      <thead>
+        <tr>
+          <th>Cód</th>
+          <th>Descrição</th>
+          <th class="qtd">Qtd</th>
+          <th class="r">Proventos</th>
+          <th class="r">Descontos</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in f.verbas %}
+        <tr>
+          <td class="cod">{{ v.cod }}</td>
+          <td class="dsc">{{ v.dsc }}</td>
+          <td class="qtd">{{ v.qtd_fmt }}</td>
+          <td class="val {% if v.is_prov %}prov{% else %}zero{% endif %}">{{ v.prov_fmt }}</td>
+          <td class="val {% if not v.is_prov %}desc{% else %}zero{% endif %}">{{ v.desc_fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr class="tr-total">
+          <td colspan="3" class="lbl">TOTAL</td>
+          <td class="val prov">{{ f.prov_fmt }}</td>
+          <td class="val desc">{{ f.desc_fmt }}</td>
+        </tr>
+        <tr class="tr-liq">
+          <td colspan="3" class="lbl">LÍQUIDO</td>
+          <td class="val {% if f.liq_ok %}liq-ok{% else %}liq-neg{% endif %}" colspan="2">{{ f.liq_fmt }}</td>
+        </tr>
+      </tfoot>
+    </table>
+
+    <!-- Bases -->
+    <div class="func-bases">
+      <span class="bases-label">BASES</span>
+      <span class="bases-item">Salário: <span class="bases-val">{{ f.sal_fmt }}</span></span>
+      <span class="bases-item">INSS: <span class="bases-val">{{ f.b_inss_fmt }}</span></span>
+      <span class="bases-item">IRRF: <span class="bases-val">{{ f.b_irrf_fmt }}</span></span>
+      <span class="bases-item">FGTS Base: <span class="bases-val">{{ f.b_fgts_fmt }}</span> / Valor: <span class="bases-val">{{ f.fgts_fmt }}</span></span>
+    </div>
+
+  </div>
+  {% endfor %}
+  </div>
+
+  {% endfor %}
+
+  <!-- Total Geral -->
+  <div class="total-geral">
+    <div class="total-bloco">
+      <div class="total-label">Funcionários</div>
+      <div class="total-valor">{{ n_func }}</div>
+    </div>
+    <div class="total-sep"></div>
+    <div class="total-bloco">
+      <div class="total-label">Total Proventos</div>
+      <div class="total-valor prov">{{ grand_prov }}</div>
+    </div>
+    <div class="total-sep"></div>
+    <div class="total-bloco">
+      <div class="total-label">Total Descontos</div>
+      <div class="total-valor desc">{{ grand_desc }}</div>
+    </div>
+    <div class="total-sep"></div>
+    <div class="total-bloco">
+      <div class="total-label">Líquido Total</div>
+      <div class="total-valor liq">{{ grand_liq }}</div>
+    </div>
+  </div>
+
+  {% else %}
+  <div class="vazio">Nenhum lançamento encontrado para esta competência.</div>
+  {% endif %}
+
+</div>
+</body>
+</html>

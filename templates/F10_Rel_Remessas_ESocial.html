@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — Remessas eSocial</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:    #0b1f3a;
+    --navy-ln: #1e3d5c;
+    --accent:  #2a7de1;
+    --green:   #18795b;
+    --bg:      #f0f2f6;
+    --surface: #ffffff;
+    --border:  #dde3ec;
+    --label:   #374151;
+    --sub:     #6b7280;
+    --th-bg:   #eaf1fb;
+    --mono:    'IBM Plex Mono', monospace;
+    --sans:    'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); font-size: 13px; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-ln);
+    padding: 0 28px; display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center; display: flex; align-items: center; justify-content: center; gap: 10px; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome   { font-size: 11px; color: #8baac8; margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-ln); color: #8baac8;
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+
+/* ── CONTAINER ── */
+.container { max-width: 1400px; margin: 20px auto 60px; padding: 0 20px; }
+
+/* ── FILTROS ── */
+.filtros {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+.filtros-titulo {
+    font-size: 11px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: #2d4a6e;
+    margin-bottom: 12px;
+}
+.filtros-grade {
+    display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end;
+}
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo label { font-size: 10px; font-weight: 600; color: var(--sub); letter-spacing: .06em; text-transform: uppercase; }
+.campo input, .campo select {
+    height: 34px; padding: 0 10px;
+    border: 1px solid var(--border); border-radius: 7px;
+    font-family: var(--sans); font-size: 12px;
+    background: #f8fafc; outline: none; transition: .15s;
+}
+.campo input:focus, .campo select:focus {
+    border-color: var(--accent); background: #fff;
+    box-shadow: 0 0 0 3px rgba(42,125,225,.1);
+}
+.campo-sit { display: flex; flex-direction: column; gap: 4px; }
+.campo-sit label.titulo { font-size: 10px; font-weight: 600; color: var(--sub); letter-spacing: .06em; text-transform: uppercase; }
+.campo-sit .checks { display: flex; gap: 12px; align-items: center; height: 34px; }
+.campo-sit .chk-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: #334155; cursor: pointer; white-space: nowrap; }
+.campo-sit input[type="checkbox"] { accent-color: var(--accent); transform: scale(0.9); margin: 0; }
+
+.btns-filtro { display: flex; gap: 8px; align-items: flex-end; }
+.btn { display: inline-flex; align-items: center; gap: 6px;
+       height: 34px; padding: 0 16px; border: none; border-radius: 7px;
+       font-family: var(--sans); font-size: 12px; font-weight: 600;
+       cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-buscar { background: var(--accent); color: #fff; }
+.btn-buscar:hover { background: #1a5fb8; }
+.btn-limpar { background: #f1f5f9; color: #334155; border: 1px solid var(--border); }
+.btn-limpar:hover { background: #e2e8f0; }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 14px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface);
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    color: #334155; cursor: pointer; transition: .15s; white-space: nowrap;
+}
+.btn-pdf:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── BARRA RESULTADO ── */
+.barra-resultado {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; padding: 0 2px;
+}
+.badge-total {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe;
+    border-radius: 20px; padding: 3px 12px; font-size: 11px; font-weight: 700;
+}
+.badge-total.vazio { background: #f3f4f6; color: #6b7280; border-color: #e5e7eb; }
+
+/* ── ERRO ── */
+.alerta-erro {
+    background: #fef2f2; border: 1px solid #fecaca;
+    border-radius: 8px; padding: 12px 16px;
+    color: #991b1b; font-size: 13px; font-weight: 500; margin-bottom: 14px;
+}
+
+/* ── TABELA ── */
+.tabela-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: clip;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+table { width: 100%; border-collapse: collapse; }
+thead { background: var(--th-bg); }
+thead th {
+    position: sticky; top: 64px; background: var(--th-bg); z-index: 2;
+    text-align: left; padding: 8px 12px;
+    font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: #334155;
+    border-bottom: 2px solid var(--border); white-space: nowrap;
+}
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
+
+.col-dt     { width: 95px;  font-family: var(--mono); font-size: 11px; color: var(--sub); white-space: nowrap; }
+.col-mat    { width: 75px;  font-family: var(--mono); text-align: center; }
+.col-layout { width: 180px; }
+.col-folha  { width: 70px;  font-family: var(--mono); text-align: center; }
+.col-tipo   { width: 75px;  text-align: center; }
+.col-sit    { width: 100px; text-align: center; }
+.col-rem    { width: 95px;  font-family: var(--mono); font-size: 11px; color: var(--sub); white-space: nowrap; }
+.col-recibo { width: 140px; font-family: var(--mono); font-size: 11px; }
+.col-obs    { }
+
+/* ── BADGES SITUAÇÃO ── */
+.badge-sit {
+    display: inline-block; padding: 2px 9px; border-radius: 5px;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; white-space: nowrap;
+}
+.sit-pendente { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+.sit-ok       { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-erro     { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+/* ── BADGE TIPO ── */
+.badge-tipo {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 10px; font-weight: 700;
+}
+.tipo-normal { background: #f0f4ff; color: #3730a3; }
+.tipo-13     { background: #fdf4ff; color: #7e22ce; }
+
+/* ── VAZIO ── */
+.estado-vazio {
+    text-align: center; padding: 50px 20px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.estado-vazio-icone  { font-size: 42px; margin-bottom: 12px; }
+.estado-vazio-titulo { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.estado-vazio-texto  { font-size: 12px; color: var(--sub); }
+
+/* ── PRINT ── */
+.cab-print-row { display: none; }
+
+@media print {
+    .no-print { display: none !important; }
+
+    body { background: white; }
+    .container { margin: 0; padding: 0; max-width: 100%; }
+    .tabela-wrap { border: none; border-radius: 0; box-shadow: none; }
+    tbody tr:hover { background: none; }
+
+    @page {
+        margin: 1.2cm 1.5cm;
+        @bottom-right {
+            content: "Página " counter(page);
+            font-size: 7.5pt; color: #475569;
+        }
+    }
+
+    .cab-print-row { display: table-row !important; }
+    .cab-print-row th {
+        padding: 0 !important; text-transform: none !important;
+        letter-spacing: normal !important; background: white !important;
+        border: none !important;
+        border-top: 3pt solid #0f172a !important;
+    }
+
+    .cab-header-grid {
+        display: grid; grid-template-columns: 1fr auto;
+        width: 100%; align-items: baseline;
+        column-gap: 14pt; row-gap: 0; padding: 5pt 0 0 0;
+    }
+    .cab-empresa {
+        font-size: 7.5pt; font-weight: 400; color: #64748b; letter-spacing: 0.04em;
+        padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db;
+    }
+    .cab-datahora {
+        font-size: 7.5pt; font-weight: 400; color: #475569; text-align: right;
+        padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db;
+    }
+    .cab-titulo-txt {
+        grid-column: 1 / -1;
+        font-size: 12pt; font-weight: 700; color: #0f172a;
+        text-align: center; text-transform: uppercase; letter-spacing: 0.06em;
+        padding: 3pt 0 5pt 0; border-bottom: 0.5pt solid #94a3b8;
+    }
+
+    thead tr.col-headers th {
+        border-top: none !important;
+        border-bottom: 3px double #0f172a !important;
+        padding: 4pt 0 4pt 0 !important;
+        font-size: 8pt !important; color: #334155 !important;
+        background: white !important; position: static !important;
+    }
+
+    .badge-sit  { background: transparent !important; border: 1px solid currentColor; }
+    .badge-tipo { background: transparent !important; border: 1px solid currentColor; }
+    tbody td { padding: 4px 8px; font-size: 9px; }
+}
+</style>
+</head>
+<body>
+
+<!-- TOPO -->
+<header class="topo no-print">
+    <div>
+        <div class="topo-empresa">{{ empresa_nome }}</div>
+        <div class="topo-nome">{{ cliente_nome }}</div>
+    </div>
+    <div class="topo-titulo">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="23" viewBox="0 0 30 34">
+            <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#ffffff" stroke="#00a651" stroke-width="1.5"/>
+            <path d="M20 2 L20 10 L28 10 Z" fill="#00a651"/>
+            <line x1="7" y1="16" x2="23" y2="16" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="7" y1="21" x2="23" y2="21" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="7" y1="26" x2="16" y2="26" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+        </svg>
+        Remessas eSocial
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div>
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="history.back()">&#8592; Voltar</button>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- FILTROS -->
+    <div class="filtros no-print">
+        <div class="filtros-titulo">🔍 Filtros de Consulta</div>
+        <form method="get" action="/rel_esocial_remessas" id="formFiltro" onsubmit="prepararFiltros()">
+            <input type="hidden" name="buscar" value="1">
+            <div class="filtros-grade">
+
+                <div class="campo">
+                    <label>Matrícula</label>
+                    <input type="text" name="matricula" maxlength="6" placeholder="000000"
+                           value="{{ f_matricula }}" style="width:100px;"
+                           oninput="this.value=this.value.replace(/\D/g,'')">
+                </div>
+
+                <div class="campo">
+                    <label>Mês / Ano (Folha)</label>
+                    <input type="month" name="ano_mes_input" id="inp_anomes"
+                           value="{{ f_ano_mes_input }}" style="width:150px;">
+                </div>
+
+                <div class="campo">
+                    <label>Layout</label>
+                    <select name="layout" style="width:200px;">
+                        <option value="">— Todos —</option>
+                        {% for cod, desc in layouts.items() %}
+                        <option value="{{ cod }}" {% if f_layout == cod %}selected{% endif %}>{{ desc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="campo-sit">
+                    <label class="titulo">Situação</label>
+                    <div class="checks">
+                        <label class="chk-label">
+                            <input type="checkbox" id="chk1" value="1" {% if not buscar or f_sit_1 %}checked{% endif %}>
+                            <span>Pendente</span>
+                        </label>
+                        <label class="chk-label">
+                            <input type="checkbox" id="chk2" value="2" {% if not buscar or f_sit_2 %}checked{% endif %}>
+                            <span>Remetido</span>
+                        </label>
+                        <label class="chk-label">
+                            <input type="checkbox" id="chk3" value="3" {% if not buscar or f_sit_3 %}checked{% endif %}>
+                            <span>Com Erro</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="campo">
+                    <label>Dt. Cadastro — De</label>
+                    <input type="date" name="dt_cad_de" value="{{ f_dt_cad_de }}" style="width:145px;">
+                </div>
+
+                <div class="campo">
+                    <label>Dt. Cadastro — Até</label>
+                    <input type="date" name="dt_cad_ate" value="{{ f_dt_cad_ate }}" style="width:145px;">
+                </div>
+
+                <div class="campo">
+                    <label>Dt. Remessa — De</label>
+                    <input type="date" name="remessa_de" value="{{ f_remessa_de }}" style="width:145px;">
+                </div>
+
+                <div class="campo">
+                    <label>Dt. Remessa — Até</label>
+                    <input type="date" name="remessa_ate" value="{{ f_remessa_ate }}" style="width:145px;">
+                </div>
+
+                <div class="btns-filtro">
+                    <button type="submit" class="btn btn-buscar">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                        Buscar
+                    </button>
+                    <button type="button" class="btn btn-limpar" onclick="limparFiltros()">Limpar</button>
+                </div>
+
+            </div>
+        </form>
+    </div>
+
+    {% if erro %}
+    <div class="alerta-erro">⚠️ Erro ao consultar: {{ erro }}</div>
+    {% endif %}
+
+    {% if buscar %}
+    <!-- BARRA RESULTADO -->
+    <div class="barra-resultado no-print">
+        <span class="badge-total {% if total == 0 %}vazio{% endif %}">
+            {{ total }} remessa{{ 's' if total != 1 else '' }} encontrada{{ 's' if total != 1 else '' }}
+        </span>
+        {% if total > 0 %}
+        <button class="btn-pdf" onclick="window.print()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Imprimir / PDF
+        </button>
+        {% endif %}
+    </div>
+
+    {% if total == 0 %}
+    <div class="estado-vazio">
+        <div class="estado-vazio-icone">📭</div>
+        <div class="estado-vazio-titulo">Nenhuma remessa encontrada</div>
+        <div class="estado-vazio-texto">Ajuste os filtros e tente novamente.</div>
+    </div>
+    {% else %}
+    <div class="tabela-wrap">
+        <table>
+            <thead>
+                <tr class="cab-print-row">
+                    <th colspan="9">
+                        <div class="cab-header-grid">
+                            <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa_nome }}</span>
+                            <span class="cab-datahora" id="cabDH"></span>
+                            <span class="cab-titulo-txt">Listagem das Remessas eSocial</span>
+                        </div>
+                    </th>
+                </tr>
+                <tr class="col-headers">
+                    <th class="col-dt">Dt/Hr Cadastro</th>
+                    <th class="col-mat">Matríc.</th>
+                    <th class="col-layout">Layout</th>
+                    <th class="col-folha">Folha</th>
+                    <th class="col-tipo">Tipo</th>
+                    <th class="col-sit">Situação</th>
+                    <th class="col-rem">Dt. Remessa</th>
+                    <th class="col-recibo">Recibo</th>
+                    <th class="col-obs">Obs. Erro</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in rows %}
+            <tr>
+                <td class="col-dt">{{ r._data_cad_fmt }} {{ r._hora_cad_fmt }}</td>
+                <td class="col-mat">{{ r._matricula_fmt }}</td>
+                <td class="col-layout">{{ r._layout_fmt }}</td>
+                <td class="col-folha">{{ r._ano_mes_fmt }}</td>
+                <td class="col-tipo">
+                    <span class="badge-tipo {% if r.folha_tipo == '1' %}tipo-13{% else %}tipo-normal{% endif %}">
+                        {{ r._folha_tipo_fmt }}
+                    </span>
+                </td>
+                <td class="col-sit">
+                    <span class="badge-sit {{ r._sit_class }}">{{ r._sit_label }}</span>
+                </td>
+                <td class="col-rem">
+                    {% if r._data_grava_fmt %}
+                        {{ r._data_grava_fmt }}<br><span style="font-size:10px;">{{ r._hora_grava_fmt }}</span>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="col-recibo">
+                    <span title="{{ r.recibo or '' }}">{{ r._recibo_curto or '—' }}</span>
+                </td>
+                <td class="col-obs" style="font-size:11px;color:#64748b;">
+                    {{ r.observacao_erro or '' }}
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    {% endif %}
+
+</div>
+
+<script>
+(function() {
+    var now = new Date();
+    var p   = function(n) { return String(n).padStart(2,'0'); };
+    var dt  = p(now.getDate()) + '/' + p(now.getMonth()+1) + '/' + now.getFullYear()
+            + ' ' + p(now.getHours()) + ':' + p(now.getMinutes());
+    document.querySelectorAll('.cab-datahora').forEach(function(el) { el.textContent = dt; });
+})();
+
+function prepararFiltros() {
+    const form  = document.getElementById('formFiltro');
+    const anomes = document.getElementById('inp_anomes').value;
+    if (anomes) {
+        const h = document.createElement('input');
+        h.type = 'hidden'; h.name = 'ano_mes';
+        h.value = anomes.replace('-', '');
+        form.appendChild(h);
+    }
+    ['chk1','chk2','chk3'].forEach((id, i) => {
+        const cb = document.getElementById(id);
+        if (cb && cb.checked) {
+            const h = document.createElement('input');
+            h.type = 'hidden'; h.name = `sit_${i+1}`; h.value = `${i+1}`;
+            form.appendChild(h);
+        }
+    });
+}
+
+function limparFiltros() {
+    document.querySelectorAll('#formFiltro input[type="text"], #formFiltro input[type="date"], #formFiltro input[type="month"]').forEach(el => el.value = '');
+    document.querySelectorAll('#formFiltro select').forEach(el => el.selectedIndex = 0);
+    document.querySelectorAll('#formFiltro input[type="checkbox"]').forEach(cb => cb.checked = true);
+}
+</script>
+
+</body>
+</html>

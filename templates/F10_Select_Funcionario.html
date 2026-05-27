@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Selecionar Funcionário</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; letter-spacing: 0.01em; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1060px; margin: 36px auto; padding: 0 24px 60px; }
+
+/* ── CABEÇALHO ── */
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo       { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo    { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+/* ── LAYOUT DOIS PAINÉIS ── */
+.paineis {
+    display: flex; gap: 20px; align-items: flex-start;
+    margin: 0 -90px;
+}
+
+/* ── PAINEL FILTROS (esquerda) ── */
+.filtros-panel {
+    width: 420px; flex-shrink: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px;
+    position: sticky; top: 80px;
+}
+.filtros-titulo {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 10px 16px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.btn-limpar-filtros {
+    background: none; border: none; font-size: 10px; font-weight: 600;
+    font-family: var(--sans); color: var(--accent); cursor: pointer;
+    text-transform: none; letter-spacing: 0; padding: 0;
+    transition: color 0.15s;
+}
+.btn-limpar-filtros:hover { color: #1a5fb8; }
+.filtro-secao { border-bottom: 1px solid #f1f5f9; }
+.filtro-secao:last-child { border-bottom: none; }
+.filtro-secao-titulo {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 12px 6px; cursor: pointer;
+    font-size: 11px; font-weight: 600; color: #334155;
+    user-select: none; transition: background 0.1s;
+}
+.filtro-secao-titulo:hover { background: #f8fafc; }
+.filtro-seta { font-size: 9px; color: #94a3b8; transition: transform 0.2s; }
+.filtro-secao.fechado .filtro-seta { transform: rotate(-90deg); }
+.filtro-secao.fechado .filtro-secao-corpo { display: none; }
+.filtro-secao-corpo { padding: 2px 12px 8px; }
+.filtro-opcao {
+    display: flex; align-items: center; gap: 7px;
+    padding: 3px 0; cursor: pointer;
+    font-size: 11px; color: #475569;
+}
+.filtro-opcao input[type="radio"],
+.filtro-opcao input[type="checkbox"] {
+    accent-color: var(--accent); cursor: pointer; flex-shrink: 0;
+}
+.filtro-opcao:hover { color: #1e293b; }
+.filtro-opcao-cat span { line-height: 1.35; }
+.filtros-panel.expandido .filtro-opcao-cat span { white-space: nowrap; }
+.filtro-todas-inline {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 400; color: #475569; cursor: pointer;
+}
+.cat-acoes { padding: 6px 0 4px; display: none; }
+.filtros-panel.expandido .cat-acoes { display: block; }
+.btn-cat-ok {
+    background: var(--accent); color: #fff; border: none;
+    font-size: 11px; font-weight: 600; font-family: var(--sans);
+    padding: 5px 20px; border-radius: 6px; cursor: pointer; transition: background 0.15s;
+}
+.btn-cat-ok:hover { background: #1a5fb8; }
+.filtro-opcao-func span { line-height: 1.35; }
+.filtros-panel.expandido .filtro-opcao-func span { white-space: nowrap; }
+.func-acoes { padding: 6px 0 4px; display: none; }
+.filtros-panel.expandido .func-acoes { display: block; }
+
+/* ── PAINEL LISTA (direita) ── */
+.lista-panel { flex: 1; min-width: 0; }
+
+/* Toolbar */
+.lista-toolbar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+}
+.busca-input {
+    flex: 1; font-family: var(--sans); font-size: 12px; color: #334155;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 12px; outline: none; transition: border-color 0.15s;
+}
+.busca-input:focus { border-color: var(--accent); }
+.sel-todos-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500; color: #64748b;
+    cursor: pointer; white-space: nowrap;
+    padding: 6px 12px; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--surface); transition: 0.1s;
+}
+.sel-todos-label:hover { border-color: var(--accent); color: var(--accent); }
+.sel-todos-label input { accent-color: var(--accent); cursor: pointer; }
+.contagem-badge {
+    font-size: 12px; font-weight: 700; color: var(--accent);
+    white-space: nowrap; min-width: 100px; text-align: right;
+}
+
+/* Tabela */
+.lista-container {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+}
+.lista-header {
+    display: grid; grid-template-columns: 32px 72px 1fr 110px 90px;
+    gap: 0 8px; background: #f1f5f9;
+    border-bottom: 2px solid var(--border);
+    padding: 8px 14px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b;
+}
+.lista-body { max-height: 640px; overflow-y: auto; }
+.lista-body::-webkit-scrollbar { width: 6px; }
+.lista-body::-webkit-scrollbar-track { background: #f1f5f9; }
+.lista-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+.lista-row {
+    display: grid; grid-template-columns: 32px 72px 1fr 110px 90px;
+    gap: 0 8px; padding: 3px 14px;
+    border-bottom: 1px solid #f1f5f9;
+    cursor: pointer; transition: background 0.1s; align-items: center;
+    user-select: none;
+}
+.lista-row:last-child { border-bottom: none; }
+.lista-row:hover     { background: #f8fafc; }
+.lista-row.selecionado       { background: #eff6ff; }
+.lista-row.selecionado:hover { background: #dbeafe; }
+
+.lc-check { display: flex; align-items: center; justify-content: center; }
+.lc-check input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+.lc-mat  { font-family: var(--mono); font-size: 12px; color: #64748b; }
+.lc-nome { font-size: 13px; font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-adm  { font-size: 12px; color: #64748b; }
+.lc-sit  { }
+
+.badge-ativo    { display: inline-block; background: #f0fdf4; color: #166534; border: 1px solid #86efac; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
+.badge-demitido { display: inline-block; background: #fff1f2; color: #9f1239; border: 1px solid #fda4af; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
+
+.lista-loading, .lista-vazio {
+    padding: 28px; text-align: center; font-size: 12px; color: #94a3b8;
+}
+
+/* ── RODAPÉ ── */
+.rodape {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: 20px;
+}
+.btn-cancelar {
+    background: var(--surface); border: 1px solid var(--border); color: #64748b;
+    font-size: 13px; font-family: var(--sans); font-weight: 500;
+    padding: 10px 22px; border-radius: 8px; cursor: pointer;
+    transition: 0.15s; text-decoration: none;
+}
+.btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+.btn-continuar {
+    background: var(--accent); border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-continuar:hover { background: #1a5fb8; }
+.btn-continuar:disabled { background: #93c5fd; cursor: not-allowed; }
+
+.btn-sel-visiveis {
+    display: none; background: #0f766e; color: #fff; border: none;
+    font-size: 11px; font-weight: 600; font-family: var(--sans);
+    padding: 6px 12px; border-radius: 7px; cursor: pointer;
+    white-space: nowrap; transition: background 0.15s;
+}
+.btn-sel-visiveis:hover { background: #0d5f58; }
+.btn-desmarcar {
+    background: none; border: 1px solid #fca5a5; color: #dc2626;
+    font-size: 11px; font-weight: 600; font-family: var(--sans);
+    padding: 6px 12px; border-radius: 7px; cursor: pointer;
+    white-space: nowrap; transition: 0.15s;
+}
+.btn-desmarcar:hover { background: #fee2e2; }
+
+/* ── RESCISÃO INATIVA (quando Situação = Ativos) ── */
+.filtro-secao-inativo .filtro-adm-label    { color: #cbd5e1; }
+.filtro-secao-inativo .filtro-data-input   { color: #cbd5e1; border-color: #e2e8f0; cursor: not-allowed; }
+.filtro-secao-inativo .filtro-data-sep     { color: #e2e8f0; }
+.filtro-secao-inativo .btn-periodo-adm     { background: #e2e8f0; cursor: not-allowed; }
+.filtro-secao-inativo .btn-limpar-periodo  { color: #e2e8f0; border-color: #f1f5f9; cursor: not-allowed; }
+
+/* ── FILTROS INLINE (Classificação, Situação) ── */
+.filtro-inline-linha {
+    display: flex; align-items: center; gap: 10px;
+    justify-content: flex-start; cursor: default; flex-wrap: nowrap;
+}
+.filtro-inline-label {
+    font-size: 11px; font-weight: 600; color: #334155;
+    white-space: nowrap; flex-shrink: 0; min-width: 90px;
+}
+
+/* ── FILTRO DATA ADMISSÃO ── */
+.filtro-adm-linha {
+    display: flex; align-items: center; gap: 5px;
+    cursor: default; flex-wrap: nowrap;
+}
+.filtro-adm-label {
+    font-size: 11px; font-weight: 600; color: #334155;
+    white-space: nowrap; flex-shrink: 0; min-width: 82px;
+}
+.filtro-data-input {
+    width: 82px; font-size: 10px; font-family: var(--mono);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 3px 4px; color: #334155; background: #f8fafc;
+    outline: none; cursor: pointer; text-align: center;
+}
+.filtro-data-input:focus { border-color: var(--accent); background: #fff; }
+.filtro-data-sep { font-size: 11px; color: #94a3b8; white-space: nowrap; }
+.btn-periodo-adm {
+    flex-shrink: 0; padding: 3px 7px; font-size: 13px;
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 6px; cursor: pointer; transition: background 0.15s; line-height: 1;
+}
+.btn-periodo-adm:hover { background: #1a5fb8; }
+.btn-limpar-periodo {
+    flex-shrink: 0; padding: 3px 6px; font-size: 12px;
+    background: none; border: 1px solid #e2e8f0; color: #94a3b8;
+    border-radius: 6px; cursor: pointer; font-family: var(--sans); line-height: 1;
+    transition: color 0.15s, border-color 0.15s;
+}
+.btn-limpar-periodo:hover { color: #ef4444; border-color: #fca5a5; }
+
+/* ── TOAST ── */
+#toast {
+    display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 12px 24px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 420px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span id="topo-titulo-txt">Selecionar Funcionário</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; <span style="white-space:nowrap;">{{ folha_ativa_situacao }}</span>{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <div>
+            <div class="rel-titulo" id="titulo-pag">Selecionar Funcionário</div>
+            <div class="rel-subtitulo" id="subtitulo-pag">Selecione um ou mais funcionários para continuar</div>
+        </div>
+    </div>
+
+    <div class="paineis">
+
+        <!-- ── FILTROS ── -->
+        <div class="filtros-panel">
+            <div class="filtros-titulo">
+                Filtros
+                <button class="btn-limpar-filtros" onclick="limparFiltros()">Limpar Filtros</button>
+            </div>
+
+            <!-- Classificação -->
+            <div class="filtro-secao" id="fs-classif">
+                <div class="filtro-secao-titulo filtro-inline-linha">
+                    <span class="filtro-inline-label">Classificação:</span>
+                    <label class="filtro-opcao"><input type="radio" name="f_classif" value="num" onchange="aplicarFiltros()" checked> Numérica</label>
+                    <label class="filtro-opcao"><input type="radio" name="f_classif" value="alfa" onchange="aplicarFiltros()"> Alfabética</label>
+                </div>
+            </div>
+
+            <!-- Situação -->
+            <div class="filtro-secao" id="fs-situacao">
+                <div class="filtro-secao-titulo filtro-inline-linha">
+                    <span class="filtro-inline-label">Situação:</span>
+                    <label class="filtro-opcao"><input type="radio" name="f_situacao" value="all" onchange="aplicarFiltros()" checked> Todos</label>
+                    <label class="filtro-opcao"><input type="radio" name="f_situacao" value="A" onchange="aplicarFiltros()"> Ativos</label>
+                    <label class="filtro-opcao"><input type="radio" name="f_situacao" value="D" onchange="aplicarFiltros()"> Demitidos</label>
+                </div>
+            </div>
+
+            <!-- Categoria -->
+            <div class="filtro-secao" id="fs-categ">
+                <div class="filtro-secao-titulo filtro-inline-linha">
+                    <span class="filtro-inline-label">Categoria:</span>
+                    <label class="filtro-todas-inline" onclick="event.stopPropagation()">
+                        <input type="checkbox" name="f_categ" value="all" onchange="catTodosChange(this)" checked>
+                        Todas
+                    </label>
+                </div>
+                <div class="filtro-secao-corpo" id="fs-categ-corpo" style="display:none;">
+                    {% for cat in categorias %}
+                    <label class="filtro-opcao filtro-opcao-cat">
+                        <input type="checkbox" name="f_categ" value="{{ cat.codigo }}" onchange="catIndivChange(this)">
+                        <span>{{ cat.codigo }} – {{ cat.texto }}</span>
+                    </label>
+                    {% endfor %}
+                    <div class="cat-acoes">
+                        <button class="btn-cat-ok" onclick="catOk()">OK</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Função -->
+            <div class="filtro-secao" id="fs-func">
+                <div class="filtro-secao-titulo filtro-inline-linha">
+                    <span class="filtro-inline-label">Função:</span>
+                    <label class="filtro-todas-inline" onclick="event.stopPropagation()">
+                        <input type="checkbox" name="f_func" value="all" onchange="funcTodosChange(this)" checked>
+                        Todas
+                    </label>
+                </div>
+                <div class="filtro-secao-corpo" id="fs-func-corpo" style="display:none;">
+                    {% for func in funcoes %}
+                    <label class="filtro-opcao filtro-opcao-func">
+                        <input type="checkbox" name="f_func" value="{{ func.cbo }}" onchange="funcIndivChange(this)">
+                        <span>{{ func.cbo }} – {{ func.nome }}</span>
+                    </label>
+                    {% endfor %}
+                    <div class="func-acoes">
+                        <button class="btn-cat-ok" onclick="funcOk()">OK</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data de Admissão -->
+            <div class="filtro-secao" id="fs-admissao">
+                <div class="filtro-secao-titulo filtro-adm-linha">
+                    <span class="filtro-adm-label">Admissão:</span>
+                    <input type="text" id="f_adm_ini" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_adm_ini','f_adm_fim')">
+                    <span class="filtro-data-sep">até</span>
+                    <input type="text" id="f_adm_fim" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_adm_ini','f_adm_fim')">
+                    <button class="btn-periodo-adm" onclick="abrirModalPeriodo('f_adm_ini','f_adm_fim')" title="Selecionar Período">📅</button>
+                    <button class="btn-limpar-periodo" onclick="limparAdmissao()" title="Limpar datas">✕</button>
+                </div>
+            </div>
+
+            <!-- Rescisão -->
+            <div class="filtro-secao" id="fs-rescisao">
+                <div class="filtro-secao-titulo filtro-adm-linha">
+                    <span class="filtro-adm-label">Rescisão:</span>
+                    <input type="text" id="f_res_ini" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_res_ini','f_res_fim')">
+                    <span class="filtro-data-sep">até</span>
+                    <input type="text" id="f_res_fim" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_res_ini','f_res_fim')">
+                    <button class="btn-periodo-adm" onclick="abrirModalPeriodo('f_res_ini','f_res_fim')" title="Selecionar Período">📅</button>
+                    <button class="btn-limpar-periodo" onclick="limparRescisao()" title="Limpar datas">✕</button>
+                </div>
+            </div>
+
+            <!-- Afastamento -->
+            <div class="filtro-secao" id="fs-afastamento">
+                <div class="filtro-secao-titulo filtro-adm-linha">
+                    <span class="filtro-adm-label">Afastamento:</span>
+                    <input type="text" id="f_afa_ini" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_afa_ini','f_afa_fim')">
+                    <span class="filtro-data-sep">até</span>
+                    <input type="text" id="f_afa_fim" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_afa_ini','f_afa_fim')">
+                    <button class="btn-periodo-adm" onclick="abrirModalPeriodo('f_afa_ini','f_afa_fim')" title="Selecionar Período">📅</button>
+                    <button class="btn-limpar-periodo" onclick="limparAfastamento()" title="Limpar datas">✕</button>
+                </div>
+            </div>
+
+            <!-- Férias -->
+            <div class="filtro-secao" id="fs-ferias">
+                <div class="filtro-secao-titulo filtro-adm-linha">
+                    <span class="filtro-adm-label">Férias:</span>
+                    <input type="text" id="f_fer_ini" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_fer_ini','f_fer_fim')">
+                    <span class="filtro-data-sep">até</span>
+                    <input type="text" id="f_fer_fim" class="filtro-data-input" placeholder="DD/MM/AA" readonly
+                           onclick="abrirModalPeriodo('f_fer_ini','f_fer_fim')">
+                    <button class="btn-periodo-adm" onclick="abrirModalPeriodo('f_fer_ini','f_fer_fim')" title="Selecionar Período">📅</button>
+                    <button class="btn-limpar-periodo" onclick="limparFerias()" title="Limpar datas">✕</button>
+                </div>
+            </div>
+
+        </div><!-- /filtros-panel -->
+
+        <!-- ── LISTA ── -->
+        <div class="lista-panel">
+            <div class="lista-toolbar">
+                <input type="text" id="busca" class="busca-input"
+                    placeholder="Filtrar por matrícula ou nome…"
+                    oninput="aplicarFiltros()">
+                <label class="sel-todos-label">
+                    <input type="checkbox" id="chk-todos" onchange="selecionarTodos(this)">
+                    Todos
+                </label>
+                <button class="btn-sel-visiveis" id="btn-sel-visiveis" onclick="selecionarVisiveis()">
+                    ✓ Selecionar visíveis
+                </button>
+                <button class="btn-desmarcar" onclick="desmarcarTodos()">✕ Desmarcar todos</button>
+                <span class="contagem-badge" id="contagem">Nenhum selecionado</span>
+            </div>
+            <div class="lista-container">
+                <div class="lista-header">
+                    <div></div>
+                    <div>Matríc.</div>
+                    <div>Nome</div>
+                    <div>Admissão</div>
+                    <div>Situação</div>
+                </div>
+                <div class="lista-body" id="lista-body">
+                    <div class="lista-loading">Carregando funcionários…</div>
+                </div>
+            </div>
+        </div><!-- /lista-panel -->
+
+    </div><!-- /paineis -->
+
+    <div class="rodape" style="justify-content:flex-end;">
+        <button class="btn-continuar" id="btn-continuar" onclick="continuar()">
+            Seleção Pronta
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+            </svg>
+        </button>
+    </div>
+
+</div><!-- /conteudo -->
+
+<div id="toast"></div>
+
+{% include 'F10_2Datas.html' %}
+
+<script>
+/* ── Configuração por contexto ── */
+const CONTEXTO     = '{{ contexto }}';
+const ANOMES_ATUAL = '{{ anomes_atual }}';
+
+const CONTEXTOS = {
+    ferias: {
+        titulo:        'Registro de Férias — Selecionar Funcionários',
+        subtitulo:     'Selecione os funcionários que entrarão de férias',
+        tituloCurto:   'Selecionar — Férias',
+        proximo:       '/cad_ferias',
+        f_situacao:    'A',
+    },
+    afastamento: {
+        titulo:        'Afastamento — Selecionar Funcionários',
+        subtitulo:     'Selecione os funcionários a serem afastados',
+        tituloCurto:   'Selecionar — Afastamento',
+        proximo:       '/cad_afastamento',
+        f_situacao:    'A',
+    },
+    exame_med: {
+        titulo:        'Exame Médico Ocupacional — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para registrar o exame médico',
+        tituloCurto:   'Selecionar — Exame Médico',
+        proximo:       '/cad_exame_med',
+        f_situacao:    'A',
+        maxSel:        1,
+        msgMaxSel:     'Para registrar exame médico, selecione apenas 1 funcionário',
+    },
+    acidente: {
+        titulo:        'Acidente de Trabalho — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para registrar a CAT (S-2210)',
+        tituloCurto:   'Selecionar — CAT',
+        proximo:       '/cad_acidente',
+        f_situacao:    'A',
+        maxSel:        1,
+        msgMaxSel:     'Para registrar CAT, selecione apenas 1 funcionário',
+    },
+    ficha_acidente: {
+        titulo:        'Ficha do Acidente — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para ver a ficha completa dos acidentes',
+        tituloCurto:   'Selecionar — Ficha CAT',
+        proximo:       '/ficha_acidente',
+        apiUrl:        '/api/funcionarios_com_acidente_historico',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'Para ver a Ficha do Acidente, selecione apenas 1 funcionário',
+    },
+    alt_acidente: {
+        titulo:        'Alterar / Excluir CAT — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para ver os acidentes registrados na folha ativa',
+        tituloCurto:   'Selecionar — Alt. CAT',
+        proximo:       '/alt_acidente',
+        apiUrl:        '/api/funcionarios_com_acidente',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'Para alterar/excluir CAT, selecione apenas 1 funcionário',
+    },
+    alt_exame_med: {
+        titulo:        'Alterar / Excluir Exame Médico — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para ver os exames registrados',
+        tituloCurto:   'Selecionar — Alt. Exame Médico',
+        proximo:       '/alt_exame_med',
+        apiUrl:        '/api/funcionarios_com_exame_med',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'Para alterar/excluir exame, selecione apenas 1 funcionário',
+    },
+    dep: {
+        titulo:        'Dependentes — Selecionar Funcionário',
+        subtitulo:     'Selecione um funcionário para cadastrar os dependentes',
+        tituloCurto:   'Selecionar — Dependentes',
+        proximo:       '/cad_dep',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'Para Cadastrar DEPENDENTES, Selecione Apenas 1 Funcionário',
+    },
+    falta: {
+        titulo:        'Lançamento de Falta — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para registrar a falta',
+        tituloCurto:   'Selecionar — Falta',
+        proximo:       '/cad_falta',
+        f_situacao:    'A',
+        maxSel:        1,
+        msgMaxSel:     'Para registrar falta, selecione apenas 1 funcionário',
+    },
+    excluir_falta: {
+        titulo:        'Excluir Falta — Selecionar Funcionário',
+        subtitulo:     'Somente funcionários com faltas no mês ativo são exibidos',
+        tituloCurto:   'Selecionar — Excluir Falta',
+        proximo:       '/excluir_falta',
+        apiUrl:        '/api/funcionarios_com_falta',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'Para excluir falta, selecione apenas 1 funcionário',
+    },
+    aumento: {
+        titulo:        'Aumento de Salário — Selecionar Funcionários',
+        subtitulo:     'Selecione os funcionários que receberão o reajuste salarial',
+        tituloCurto:   'Selecionar — Aumento',
+        proximo:       '/cad_aumento',
+        f_situacao:    'A',
+    },
+    aviso_previo: {
+        titulo:        'Aviso Prévio — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para registrar o aviso prévio',
+        tituloCurto:   'Selecionar — Aviso Prévio',
+        proximo:       '/cad_aviso_previo',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'O aviso prévio deve ser registrado para um funcionário por vez',
+    },
+    rescisao: {
+        titulo:        'Rescisão — Selecionar Funcionário',
+        subtitulo:     'Somente funcionários com aviso prévio registrado são exibidos',
+        tituloCurto:   'Selecionar — Rescisão',
+        proximo:       '/cad_rescisao',
+        apiUrl:        '/api/funcionarios_com_aviso',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'A rescisão deve ser registrada para um funcionário por vez',
+    },
+    insalub_pericu: {
+        titulo:        'Insalubridade / Periculosidade — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para incluir ou cancelar insalubridade / periculosidade',
+        tituloCurto:   'Selecionar — Insalub./Pericu.',
+        proximo:       '/cad_insalub_pericu',
+        f_situacao:    'A',
+        maxSel:        1,
+        msgMaxSel:     'Selecione apenas 1 funcionário por vez',
+        filtrarAdmMax: true,
+    },
+};
+
+const ctx = CONTEXTOS[CONTEXTO] || {
+    titulo: 'Selecionar Funcionário', subtitulo: 'Selecione um ou mais funcionários',
+    tituloCurto: 'Selecionar Funcionário', proximo: '/menu', f_situacao: 'all',
+};
+
+/* ── Estado ── */
+let todosFunc = [];
+const selectedMats = new Set();
+
+/* ── Init ── */
+document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('titulo-pag').textContent     = ctx.titulo;
+    document.getElementById('subtitulo-pag').textContent  = ctx.subtitulo;
+    document.getElementById('topo-titulo-txt').textContent = ctx.tituloCurto || ctx.titulo;
+
+    // Aplica filtro padrão do contexto
+    const radio = document.querySelector(`input[name="f_situacao"][value="${ctx.f_situacao}"]`);
+    if (radio) radio.checked = true;
+
+    syncRescisaoDisponivel();
+    carregarFuncionarios();
+
+    // Dispara filtro quando o modal de período preencher os campos de admissão ou rescisão
+    ['f_adm_ini', 'f_adm_fim', 'f_res_ini', 'f_res_fim'].forEach(id => {
+        document.getElementById(id).addEventListener('change', aplicarFiltros);
+    });
+    // Férias / Afastamento: campos prontos, filtro ainda não implementado
+});
+
+/* ── Carregar ── */
+async function carregarFuncionarios() {
+    const body = document.getElementById('lista-body');
+    try {
+        const url = ctx.apiUrl || '/api/funcionarios_lista';
+        const r = await fetch(url);
+        const d = await r.json();
+        if (!d.ok) { body.innerHTML = `<div class="lista-vazio">Erro: ${d.msg}</div>`; return; }
+        todosFunc = d.funcionarios || [];
+        if (!todosFunc.length && ctx.apiUrl) {
+            body.innerHTML = '<div class="lista-vazio">Nenhum funcionário com acidente registrado na folha ativa sem recibo eSocial.</div>';
+            return;
+        }
+        aplicarFiltros();
+    } catch(e) {
+        body.innerHTML = '<div class="lista-vazio">Erro ao carregar funcionários.</div>';
+    }
+}
+
+/* ── Utilitário: DD/MM/AAAA → número YYYYMMDD para comparação ── */
+function _admParseBrz(s) {
+    if (!s || s.length !== 10) return null;
+    const [d, m, a] = s.split('/');
+    return parseInt(a + m + d, 10);
+}
+
+/* ── Filtros ── */
+function aplicarFiltros() {
+    syncRescisaoDisponivel();
+    const situacao   = document.querySelector('input[name="f_situacao"]:checked')?.value || 'all';
+    const busca      = (document.getElementById('busca').value || '').toLowerCase().trim();
+    const todasCateg = document.querySelector('input[name="f_categ"][value="all"]')?.checked;
+    const categSel   = new Set(
+        Array.from(document.querySelectorAll('input[name="f_categ"]:not([value="all"]):checked'))
+             .map(c => c.value)
+    );
+    const todasFuncoes = document.querySelector('input[name="f_func"][value="all"]')?.checked;
+    const funcSel      = new Set(
+        Array.from(document.querySelectorAll('input[name="f_func"]:not([value="all"]):checked'))
+             .map(c => c.value)
+    );
+    const admIni = _admParseBrz(document.getElementById('f_adm_ini').value);
+    const admFim = _admParseBrz(document.getElementById('f_adm_fim').value);
+
+    let lista = todosFunc;
+
+    if (situacao === 'A') lista = lista.filter(f => (f.situacao || '') === 'A');
+    else if (situacao === 'D') lista = lista.filter(f => (f.situacao || '') !== 'A');
+
+    if (ctx.filtrarAdmMax && ANOMES_ATUAL.length === 6)
+        lista = lista.filter(f => (String(f.dtadm || '').slice(0, 6) || '999999') <= ANOMES_ATUAL);
+
+    if (!todasCateg && categSel.size > 0)
+        lista = lista.filter(f => categSel.has(String(f.codcateg || '')));
+
+    if (!todasFuncoes && funcSel.size > 0)
+        lista = lista.filter(f => funcSel.has(String(f.cbofuncao || '')));
+
+    if (busca) lista = lista.filter(f =>
+        String(f.matricula || '').includes(busca) ||
+        (f.nome || '').toLowerCase().includes(busca)
+    );
+
+    if (admIni !== null && admFim !== null)
+        lista = lista.filter(f => {
+            const adm = parseInt(String(f.dtadm || '0').replace(/\D/g, ''), 10);
+            return adm >= admIni && adm <= admFim;
+        });
+
+    const resIni = _admParseBrz(document.getElementById('f_res_ini').value);
+    const resFim = _admParseBrz(document.getElementById('f_res_fim').value);
+    if (resIni !== null && resFim !== null)
+        lista = lista.filter(f => {
+            if ((f.situacao || '') !== 'D') return true;
+            const res = parseInt(String(f.dtterm || '0').replace(/\D/g, ''), 10);
+            return res >= resIni && res <= resFim;
+        });
+
+    const classif = document.querySelector('input[name="f_classif"]:checked')?.value || 'num';
+    if (classif === 'alfa')
+        lista = [...lista].sort((a, b) => (a.nome || '').localeCompare(b.nome || '', 'pt-BR'));
+    else
+        lista = [...lista].sort((a, b) => (a.matricula || 0) - (b.matricula || 0));
+
+    renderLista(lista);
+    document.getElementById('chk-todos').checked = false;
+}
+
+function _catFechar() {
+    document.getElementById('fs-categ-corpo').style.display = 'none';
+    document.querySelector('.filtros-panel').classList.remove('expandido');
+}
+function _catAbrir() {
+    document.querySelectorAll('#fs-categ-corpo .filtro-opcao-cat').forEach(l => l.style.display = '');
+    document.getElementById('fs-categ-corpo').style.display = '';
+    document.querySelector('.filtros-panel').classList.add('expandido');
+}
+
+function catTodosChange(chk) {
+    if (chk.checked) {
+        document.querySelectorAll('input[name="f_categ"]:not([value="all"])').forEach(c => c.checked = false);
+        _catFechar();
+    } else {
+        _catAbrir();
+    }
+    aplicarFiltros();
+}
+
+function catIndivChange(chk) {
+    const todos = document.querySelector('input[name="f_categ"][value="all"]');
+    if (chk.checked) {
+        if (todos) todos.checked = false;
+    } else {
+        const algum = document.querySelector('input[name="f_categ"]:not([value="all"]):checked');
+        if (!algum && todos) {
+            todos.checked = true;
+            _catFechar();
+        }
+    }
+    aplicarFiltros();
+}
+
+function catOk() {
+    const algum = document.querySelector('input[name="f_categ"]:not([value="all"]):checked');
+    if (!algum) {
+        const todos = document.querySelector('input[name="f_categ"][value="all"]');
+        if (todos) todos.checked = true;
+        _catFechar();
+        aplicarFiltros();
+        return;
+    }
+    document.querySelectorAll('#fs-categ-corpo .filtro-opcao-cat').forEach(label => {
+        label.style.display = label.querySelector('input').checked ? '' : 'none';
+    });
+    document.querySelector('.filtros-panel').classList.remove('expandido');
+    aplicarFiltros();
+}
+
+function _funcFechar() {
+    document.getElementById('fs-func-corpo').style.display = 'none';
+    document.querySelector('.filtros-panel').classList.remove('expandido');
+}
+function _funcAbrir() {
+    document.querySelectorAll('#fs-func-corpo .filtro-opcao-func').forEach(l => l.style.display = '');
+    document.getElementById('fs-func-corpo').style.display = '';
+    document.querySelector('.filtros-panel').classList.add('expandido');
+}
+
+function funcTodosChange(chk) {
+    if (chk.checked) {
+        document.querySelectorAll('input[name="f_func"]:not([value="all"])').forEach(c => c.checked = false);
+        _funcFechar();
+    } else {
+        _funcAbrir();
+    }
+    aplicarFiltros();
+}
+
+function funcIndivChange(chk) {
+    const todos = document.querySelector('input[name="f_func"][value="all"]');
+    if (chk.checked) {
+        if (todos) todos.checked = false;
+    } else {
+        const algum = document.querySelector('input[name="f_func"]:not([value="all"]):checked');
+        if (!algum && todos) {
+            todos.checked = true;
+            _funcFechar();
+        }
+    }
+    aplicarFiltros();
+}
+
+function funcOk() {
+    const algum = document.querySelector('input[name="f_func"]:not([value="all"]):checked');
+    if (!algum) {
+        const todos = document.querySelector('input[name="f_func"][value="all"]');
+        if (todos) todos.checked = true;
+        _funcFechar();
+        aplicarFiltros();
+        return;
+    }
+    document.querySelectorAll('#fs-func-corpo .filtro-opcao-func').forEach(label => {
+        label.style.display = label.querySelector('input').checked ? '' : 'none';
+    });
+    document.querySelector('.filtros-panel').classList.remove('expandido');
+    aplicarFiltros();
+}
+
+function limparFiltros() {
+    // Situação → padrão do contexto (PADRAO = Todos)
+    const radio = document.querySelector(`input[name="f_situacao"][value="${ctx.f_situacao}"]`);
+    if (radio) radio.checked = true;
+
+    // Categoria → Todas
+    const todos = document.querySelector('input[name="f_categ"][value="all"]');
+    if (todos) todos.checked = true;
+    document.querySelectorAll('input[name="f_categ"]:not([value="all"])').forEach(c => c.checked = false);
+    document.querySelectorAll('#fs-categ-corpo .filtro-opcao-cat').forEach(l => l.style.display = '');
+    _catFechar();
+
+    // Função → Todas
+    const todosFuncoes = document.querySelector('input[name="f_func"][value="all"]');
+    if (todosFuncoes) todosFuncoes.checked = true;
+    document.querySelectorAll('input[name="f_func"]:not([value="all"])').forEach(c => c.checked = false);
+    document.querySelectorAll('#fs-func-corpo .filtro-opcao-func').forEach(l => l.style.display = '');
+    _funcFechar();
+
+    // Busca
+    document.getElementById('busca').value = '';
+
+    // Admissão / Rescisão
+    limparAdmissao();
+    limparRescisao();
+}
+
+function limparAdmissao() {
+    document.getElementById('f_adm_ini').value = '';
+    document.getElementById('f_adm_fim').value = '';
+    aplicarFiltros();
+}
+
+function limparFerias() {
+    document.getElementById('f_fer_ini').value = '';
+    document.getElementById('f_fer_fim').value = '';
+}
+
+function limparRescisao() {
+    document.getElementById('f_res_ini').value = '';
+    document.getElementById('f_res_fim').value = '';
+    aplicarFiltros();
+}
+
+function syncRescisaoDisponivel() {
+    const situacao = document.querySelector('input[name="f_situacao"]:checked')?.value || 'all';
+    const inativo = situacao === 'A';
+    const secao = document.getElementById('fs-rescisao');
+    secao.classList.toggle('filtro-secao-inativo', inativo);
+    ['f_res_ini', 'f_res_fim'].forEach(id => {
+        const el = document.getElementById(id);
+        el.disabled = inativo;
+        if (inativo) el.value = '';
+    });
+    secao.querySelectorAll('button').forEach(b => b.disabled = inativo);
+}
+
+function limparAfastamento() {
+    document.getElementById('f_afa_ini').value = '';
+    document.getElementById('f_afa_fim').value = '';
+}
+
+function toggleFiltroSecao(id) {
+    document.getElementById(id).classList.toggle('fechado');
+}
+
+/* ── Renderizar lista ── */
+function fmtDataAdm(v) {
+    if (!v) return '—';
+    v = String(v).replace(/\D/g,'');
+    if (v.length === 8) return `${v.slice(6,8)}/${v.slice(4,6)}/${v.slice(0,4)}`;
+    return v;
+}
+
+function renderLista(lista) {
+    const body    = document.getElementById('lista-body');
+    const btnSel  = document.getElementById('btn-sel-visiveis');
+    const busca   = (document.getElementById('busca').value || '').trim();
+
+    if (!lista.length) {
+        body.innerHTML = '<div class="lista-vazio">Nenhum funcionário encontrado.</div>';
+        if (btnSel) btnSel.style.display = 'none';
+        return;
+    }
+
+    // Auto-selecionar quando sobra exatamente 1 resultado
+    if (lista.length === 1) selectedMats.add(lista[0].matricula);
+
+    body.innerHTML = lista.map(f => {
+        const sel = selectedMats.has(f.matricula);
+        const sit = (f.situacao === 'A')
+            ? '<span class="badge-ativo">Ativo</span>'
+            : '<span class="badge-demitido">Demitido</span>';
+        return `<div class="lista-row${sel?' selecionado':''}" data-mat="${f.matricula}" onclick="toggleRow(${f.matricula})">
+            <div class="lc-check"><input type="checkbox" class="func-chk" value="${f.matricula}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="chkChange(this,${f.matricula})"></div>
+            <div class="lc-mat">${String(f.matricula).padStart(6,'0')}</div>
+            <div class="lc-nome" title="${f.nome||''}">${f.nome||'—'}</div>
+            <div class="lc-adm">${fmtDataAdm(f.dtadm)}</div>
+            <div class="lc-sit">${sit}</div>
+        </div>`;
+    }).join('');
+
+    // Botão "Selecionar visíveis": aparece quando busca tem texto e há 2+ resultados
+    if (btnSel) btnSel.style.display = (busca && lista.length > 1) ? '' : 'none';
+
+    atualizarContagem();
+}
+
+function selecionarVisiveis() {
+    document.querySelectorAll('.func-chk').forEach(c => selectedMats.add(parseInt(c.value)));
+    aplicarFiltros();
+    setTimeout(() => { document.getElementById('chk-todos').checked = false; }, 0);
+}
+
+function desmarcarTodos() {
+    selectedMats.clear();
+    aplicarFiltros();
+    document.getElementById('chk-todos').checked = false;
+}
+
+/* ── Seleção ── */
+function applyRowState(mat) {
+    const sel = selectedMats.has(mat);
+    const row = document.querySelector(`.lista-row[data-mat="${mat}"]`);
+    const chk = document.querySelector(`.func-chk[value="${mat}"]`);
+    if (row) row.classList.toggle('selecionado', sel);
+    if (chk) chk.checked = sel;
+    atualizarContagem();
+}
+
+function toggleRow(mat) {
+    if (selectedMats.has(mat)) selectedMats.delete(mat);
+    else selectedMats.add(mat);
+    applyRowState(mat);
+}
+
+function chkChange(chk, mat) {
+    if (chk.checked) selectedMats.add(mat);
+    else selectedMats.delete(mat);
+    applyRowState(mat);
+}
+
+function selecionarTodos(chkTodos) {
+    document.querySelectorAll('.func-chk').forEach(c => {
+        const mat = parseInt(c.value);
+        if (chkTodos.checked) selectedMats.add(mat);
+        else selectedMats.delete(mat);
+    });
+    // re-renderiza mantendo filtro atual
+    aplicarFiltros();
+    // restaura estado do chk-todos (aplicarFiltros o reseta)
+    setTimeout(() => { document.getElementById('chk-todos').checked = chkTodos.checked; }, 0);
+}
+
+function atualizarContagem() {
+    const n = selectedMats.size;
+    document.getElementById('contagem').textContent =
+        n === 0 ? 'Nenhum selecionado' : `${n} selecionado${n !== 1 ? 's' : ''}`;
+}
+
+/* ── Continuar ── */
+function continuar() {
+    if (!selectedMats.size) { showToast('Selecione pelo menos um funcionário.', 'erro'); return; }
+    if (ctx.maxSel && selectedMats.size > ctx.maxSel) {
+        showToast(ctx.msgMaxSel || `Esta tela aceita no máximo ${ctx.maxSel} funcionário${ctx.maxSel !== 1 ? 's' : ''}.`, 'erro');
+        return;
+    }
+    const mats = Array.from(selectedMats).sort((a,b)=>a-b).join(',');
+    window.location.href = ctx.proximo + '?mats=' + mats;
+}
+
+/* ── Toast ── */
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+</script>
+
+</body>
+</html>

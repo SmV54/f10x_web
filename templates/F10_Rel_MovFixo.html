@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Rel. Movimento Fixo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo { background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10; }
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo { margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1080px; margin: 24px auto; padding: 0 20px 60px; }
+
+.card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 24px; overflow: hidden; }
+.card-titulo { background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* FILTROS */
+.filtro-body { padding: 16px 20px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.fg { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 160px; }
+.fg.sm { flex: 0 0 auto; min-width: 0; }
+.fg label { font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: #94a3b8; }
+.fg select, .fg input {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px;
+    font-family: var(--sans); font-size: 13px; outline: none;
+    background: #fff; color: var(--label); transition: border-color 0.15s; }
+.fg select:focus, .fg input:focus { border-color: var(--accent); }
+.chk-label { display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: #374151; cursor: pointer; padding-bottom: 8px; white-space: nowrap; }
+.chk-label input { accent-color: var(--accent); cursor: pointer; }
+.btn-gerar { background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 20px; font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: 0.15s; white-space: nowrap; }
+.btn-gerar:hover { background: #1a5fb8; }
+.btn-gerar:disabled { background: #94a3b8; cursor: not-allowed; }
+
+/* BANNER AVISO GRUPO */
+.banner-grupo { margin: 0 20px 16px;
+    background: #fefce8; border: 1px solid #fcd34d; border-radius: 8px;
+    padding: 9px 14px; font-size: 12px; color: #92400e;
+    display: none; align-items: center; gap: 8px; }
+.banner-grupo.show { display: flex; }
+
+/* BADGES */
+.badge-esp    { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:5px;
+    font-size:10px; font-weight:700;
+    background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.badge-ok     { background:#f0fdf4; color:#166534; border:1px solid #86efac; }
+.badge-warn   { background:#fefce8; color:#92400e; border:1px solid #fcd34d; }
+.badge-tp-1   { background:#f0fdf4; color:#166534; border:1px solid #86efac; }
+.badge-tp-2   { background:#fff1f2; color:#be123c; border:1px solid #fecdd3; }
+.badge-tp-3   { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.badge-tp-4   { background:#faf5ff; color:#6b21a8; border:1px solid #d8b4fe; }
+
+/* TABELA */
+.tabela-wrap { overflow-x: auto; }
+.tabela-wrap table { width: 100%; border-collapse: collapse; }
+.tabela-wrap thead th { background: #f1f5f9; padding: 8px 12px; font-size: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tabela-wrap tbody tr { border-bottom: 1px solid #f1f5f9; }
+.tabela-wrap tbody tr:last-child { border-bottom: none; }
+.tabela-wrap tbody tr:hover { background: #f8fafc; }
+.tabela-wrap tbody tr.row-grupo { background: #fffdf0; }
+.tabela-wrap tbody tr.row-grupo:hover { background: #fefce8; }
+.tabela-wrap tbody td { padding: 7px 12px; font-size: 12px; color: #1e293b; vertical-align: top; }
+.td-num  { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 28px; text-align: right; vertical-align: middle !important; }
+.td-cod  { font-family: var(--mono); font-size: 11px; }
+.td-val  { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
+.tabela-rodape { padding: 8px 14px; background: #f8fafc; border-top: 1px solid var(--border);
+    font-size: 11px; color: #64748b; }
+.vazio { padding: 40px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+/* DETALHE (filtros do grupo) */
+.detalhe-filtros { margin-top: 6px; font-size: 10px; color: #64748b; line-height: 1.8; }
+.detalhe-filtros span { display: inline-block; background: #f1f5f9; border: 1px solid #e2e8f0;
+    border-radius: 4px; padding: 1px 6px; margin: 1px 2px; font-family: var(--mono); }
+.detalhe-regras { margin-top: 4px; font-size: 10px; color: #64748b; }
+
+/* BOTÃO PDF */
+.btn-pdf { background: #fff; color: #374151; border: 1px solid var(--border);
+    border-radius: 8px; padding: 8px 16px; font-family: var(--sans); font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: 0.15s; white-space: nowrap; }
+.btn-pdf:hover { background: #f1f5f9; border-color: #94a3b8; }
+.btn-pdf:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* CABEÇALHO DE IMPRESSÃO — padrão */
+@page { size: A4 landscape; margin: 1.2cm 1.5cm; }
+
+.cab-print-block { display: none; }
+.cab-header-grid {
+    display: grid; grid-template-columns: 1fr auto;
+    width: 100%; align-items: baseline; column-gap: 14pt; padding: 5pt 0 0;
+}
+.cab-empresa  { font-size: 7.5pt; color: #64748b; padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db; }
+.cab-datahora { font-size: 7.5pt; color: #475569; text-align: right; padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db; }
+.cab-titulo-txt {
+    grid-column: 1 / -1; font-size: 12pt; font-weight: 700; color: #0f172a;
+    text-align: center; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3pt 0 5pt; border-bottom: 0.5pt solid #94a3b8;
+}
+.cab-filtros-txt { grid-column: 1 / -1; font-size: 8pt; color: #64748b; padding-top: 3pt; }
+
+@media print {
+    .topo, .card:first-child { display: none !important; }
+    .banner-grupo { border: 0.5pt solid #fcd34d !important; }
+
+    body { background: #fff; font-size: 10pt; }
+    .conteudo { max-width: 100%; margin: 0; padding: 0; }
+
+    .card { border: none; border-radius: 0; margin-bottom: 0; }
+    .card-titulo { background: none !important; border-bottom: 1.5pt solid #374151;
+        padding: 4pt 0 6pt; }
+    .btn-pdf, .btn-gerar, .btn-voltar-topo { display: none !important; }
+
+    .cab-print-block {
+        display: block !important;
+        border-top: 3pt solid #0f172a;
+        margin-bottom: 8pt; padding: 0;
+    }
+
+    .tabela-wrap table { font-size: 8pt; }
+    .tabela-wrap thead th { padding: 5pt 7pt; background: #f1f5f9 !important;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tabela-wrap tbody td { padding: 4pt 7pt; }
+    .tabela-wrap tbody tr { page-break-inside: avoid; }
+    .tabela-wrap tbody tr.row-grupo { background: #fffdf0 !important;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+    .badge-ok, .badge-warn, .badge-esp,
+    .badge-tp-1, .badge-tp-2, .badge-tp-3, .badge-tp-4 {
+        -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tabela-rodape { background: none; }
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Relatório — Movimentos Fixos</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- FILTROS -->
+    <div class="card">
+        <div class="card-titulo"><span>🔍 Filtros</span></div>
+        <div class="filtro-body">
+            <div class="fg">
+                <label>Funcionário</label>
+                <select id="sel-func">
+                    <option value="0">— Todos os funcionários —</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Verba</label>
+                <select id="sel-verba">
+                    <option value="0">— Todas as verbas —</option>
+                </select>
+            </div>
+            <label class="chk-label fg sm">
+                <input type="checkbox" id="chk-detalhe">
+                Com detalhe
+            </label>
+            <div class="fg sm">
+                <label>&nbsp;</label>
+                <button class="btn-gerar" onclick="gerar()">▶ Gerar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- RESULTADO -->
+    <div class="card">
+        <div class="card-titulo">
+            <span id="res-titulo">Resultado</span>
+            <button class="btn-pdf" id="btn-pdf" onclick="gerarPDF()" disabled>⬇ Salvar PDF</button>
+        </div>
+
+        <!-- Cabeçalho padrão de impressão -->
+        <div class="cab-print-block">
+            <div class="cab-header-grid">
+                <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+                <span class="cab-datahora" id="cab-datahora"></span>
+                <span class="cab-titulo-txt">Relatório de Movimentos Fixos</span>
+                <span class="cab-filtros-txt" id="cab-filtros-txt"></span>
+            </div>
+        </div>
+        <div id="banner-grupo" class="banner-grupo">
+            ⚠ <span id="banner-grupo-txt"></span>
+        </div>
+        <div id="resultado"><div class="vazio">Configure os filtros e clique em Gerar.</div></div>
+    </div>
+
+</div>
+
+<script>
+const FUNCIONARIOS = {{ funcionarios | tojson | safe }};
+const VERBAS       = {{ verbas       | tojson | safe }};
+
+const TP_LABEL = {'1':'Provento','2':'Desconto','3':'Informativa','4':'Info.Ded.'};
+const TP_CLS   = {'1':'badge-tp-1','2':'badge-tp-2','3':'badge-tp-3','4':'badge-tp-4'};
+
+// ── INIT SELECTS ──
+(function() {
+    const sf = document.getElementById('sel-func');
+    FUNCIONARIOS.forEach(f => {
+        const o = document.createElement('option');
+        o.value = f.matricula;
+        o.textContent = `${String(f.matricula).padStart(6,'0')} — ${f.nome}`;
+        sf.appendChild(o);
+    });
+    const sv = document.getElementById('sel-verba');
+    VERBAS.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.cod_rubr;
+        o.textContent = `${String(v.cod_rubr).padStart(4,'0')} — ${v.dsc_rubr}`;
+        sv.appendChild(o);
+    });
+})();
+
+// ── HELPERS ──
+function formatValor(c) {
+    return (c / 100).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function formatFolha(n) {
+    if (!n) return '—';
+    if (n === 999912) return 'Indef.';
+    return `${String(n % 100).padStart(2,'0')}/${Math.floor(n / 100)}`;
+}
+function nomeVerba(cod) {
+    const v = VERBAS.find(x => x.cod_rubr === cod);
+    return v ? v.dsc_rubr : '—';
+}
+function nomeFunc(mat) {
+    const f = FUNCIONARIOS.find(x => x.matricula === mat);
+    return f ? f.nome : '—';
+}
+
+function renderAlvo(r, comDetalhe) {
+    if (r._tipo === 'especifico' && r.matricula) {
+        return `<span class="td-cod">${String(r.matricula).padStart(6,'0')}</span>
+                <br><span style="font-size:11px;color:#475569;">${nomeFunc(r.matricula)}</span>`;
+    }
+    // Grupo
+    const partes = [];
+    if (r.id_sindicato) partes.push(`Sind. #${r.id_sindicato}`);
+    if (r.id_funcao)    partes.push(`Função #${r.id_funcao}`);
+    if (r.categoria)    partes.push(`Cat. ${r.categoria}`);
+    const desc = partes.length ? partes.join(' · ') : 'Todos os funcionários';
+
+    let aviso = '';
+    if (r._enquadra !== undefined) {
+        if (r._enquadra && !r._incerto)
+            aviso = `<br><span class="badge-esp badge-ok">✓ Enquadra nos critérios</span>`;
+        else if (r._enquadra && r._incerto)
+            aviso = `<br><span class="badge-esp badge-warn">⚠ Verificar sindicato/função</span>`;
+    }
+
+    let detalheFiltros = '';
+    if (comDetalhe) {
+        const tags = [];
+        if (r.datanascimento1 || r.datanascimento2) {
+            const de  = r.datanascimento1 ? `${r.datanascimento1.slice(6)}/${r.datanascimento1.slice(4,6)}/${r.datanascimento1.slice(0,4)}` : '?';
+            const ate = r.datanascimento2 ? `${r.datanascimento2.slice(6)}/${r.datanascimento2.slice(4,6)}/${r.datanascimento2.slice(0,4)}` : '?';
+            tags.push(`Nasc.: ${de} → ${ate}`);
+        }
+        if (r.dataadmissao1 || r.dataadmissao2) {
+            const de  = r.dataadmissao1 ? `${r.dataadmissao1.slice(6)}/${r.dataadmissao1.slice(4,6)}/${r.dataadmissao1.slice(0,4)}` : '?';
+            const ate = r.dataadmissao2 ? `${r.dataadmissao2.slice(6)}/${r.dataadmissao2.slice(4,6)}/${r.dataadmissao2.slice(0,4)}` : '?';
+            tags.push(`Admissão: ${de} → ${ate}`);
+        }
+        if (r.salariobase1 || r.salariobase2)
+            tags.push(`Sal.: R$${r.salariobase1 ? formatValor(r.salariobase1) : '?'} → R$${r.salariobase2 ? formatValor(r.salariobase2) : '?'}`);
+        if (r.idade1 || r.idade2)
+            tags.push(`Idade: ${r.idade1 ?? '?'} → ${r.idade2 ?? '?'} anos`);
+        if (r.tempo_servico1 || r.tempo_servico2)
+            tags.push(`Tempo serv.: ${r.tempo_servico1 ?? '?'} → ${r.tempo_servico2 ?? '?'} meses`);
+
+        if (tags.length)
+            detalheFiltros = `<div class="detalhe-filtros">${tags.map(t => `<span>${t}</span>`).join(' ')}</div>`;
+    }
+
+    return `<em style="color:#64748b;font-size:11px;">${desc}</em>${aviso}${detalheFiltros}`;
+}
+
+function renderVigencia(r) {
+    if (r.qtd_parcelas) {
+        const rest = r.qtd_parcelas - (r.qtd_parcelas_before || 0);
+        return `<span style="font-size:11px;">${r.qtd_parcelas_before||0}/${r.qtd_parcelas} parcelas</span>
+                <br><span style="font-size:10px;color:#64748b;">${rest} restante(s)</span>`;
+    }
+    const ini = formatFolha(r.folha_inicial);
+    const fim = formatFolha(r.folha_final);
+    return `<span style="font-size:11px;">${ini} → ${fim}</span>`;
+}
+
+function renderRegras(r, comDetalhe) {
+    const linha = `Férias: ${r.nas_ferias} · Afas.: ${r.se_afastado} · Adm: ${r.mes_admissao} · Resc: ${r.mes_rescisao}`;
+    if (!comDetalhe) return `<span style="font-size:10px;color:#64748b;">${linha}</span>`;
+    const desc = {
+        nas_ferias:  {'0':'Não processar','1':'Integral','2':'Tudo nas férias','3':'Proporcional dias','4':'Zero nas férias'},
+        se_afastado: {'1':'Continuar','2':'Interromper','3':'Proporcional'},
+        mes_admissao:{'T':'Total','P':'Proporcional'},
+        mes_rescisao:{'T':'Total','P':'Proporcional'},
+    };
+    return `<div class="detalhe-regras">
+        <div>Férias: ${desc.nas_ferias[r.nas_ferias] || r.nas_ferias}</div>
+        <div>Afastado: ${desc.se_afastado[r.se_afastado] || r.se_afastado}</div>
+        <div>Mês Adm.: ${desc.mes_admissao[r.mes_admissao] || r.mes_admissao} · Resc.: ${desc.mes_rescisao[r.mes_rescisao] || r.mes_rescisao}</div>
+    </div>`;
+}
+
+// ── PDF ──
+function gerarPDF() { window.print(); }
+
+// ── GERAR ──
+async function gerar() {
+    const mat   = document.getElementById('sel-func').value;
+    const verba = document.getElementById('sel-verba').value;
+    const detalhe = document.getElementById('chk-detalhe').checked;
+
+    const btn = document.querySelector('.btn-gerar');
+    btn.disabled = true;
+    document.getElementById('btn-pdf').disabled = true;
+
+    const el = document.getElementById('resultado');
+    el.innerHTML = '<div class="vazio">Carregando…</div>';
+    document.getElementById('banner-grupo').classList.remove('show');
+
+    try {
+        const url = `/api/rel_mov_fixo_listar?matricula=${mat}&cod_verba=${verba}`;
+        const res = await fetch(url);
+        const d   = await res.json();
+        if (!d.ok) { el.innerHTML = `<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
+
+        const regs = d.registros || [];
+        const matSel = parseInt(mat);
+
+        // Banner de aviso para registros de grupo quando funcionário selecionado
+        if (matSel) {
+            const grupos = regs.filter(r => r._tipo === 'grupo');
+            if (grupos.length) {
+                const nFunc = nomeFunc(matSel);
+                const certeiros = grupos.filter(r => r._enquadra && !r._incerto).length;
+                const incertos  = grupos.filter(r => r._incerto).length;
+                let txt = `${grupos.length} movimento(s) de grupo identificado(s) para ${nFunc}.`;
+                if (certeiros)  txt += ` ${certeiros} enquadra(m) nos critérios verificáveis.`;
+                if (incertos)   txt += ` ${incertos} requer(em) verificação de sindicato/função.`;
+                document.getElementById('banner-grupo-txt').textContent = txt;
+                document.getElementById('banner-grupo').classList.add('show');
+            }
+        }
+
+        // Título e cabeçalho de impressão
+        const matLabel   = matSel      ? ` — ${nomeFunc(matSel)}` : '';
+        const verbaLabel = parseInt(verba) ? ` — Verba ${String(verba).padStart(4,'0')}` : '';
+        document.getElementById('res-titulo').textContent = `${matLabel}${verbaLabel}`.replace(/^ — /, '');
+
+        const agora = new Date();
+        const dataHora = `${agora.toLocaleDateString('pt-BR')} ${agora.toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}`;
+        document.getElementById('cab-datahora').textContent = dataHora;
+        document.getElementById('cab-filtros-txt').textContent = [
+            matSel          ? `Funcionário: ${nomeFunc(matSel)}` : 'Todos os funcionários',
+            parseInt(verba) ? `Verba: ${String(verba).padStart(4,'0')} — ${nomeVerba(parseInt(verba))}` : 'Todas as verbas',
+        ].join(' · ');
+        document.getElementById('btn-pdf').disabled = false;
+
+        if (!regs.length) { el.innerHTML = '<div class="vazio">Nenhum movimento fixo encontrado.</div>'; return; }
+
+        const rows = regs.map((r, i) => {
+            const isGrupo = r._tipo === 'grupo';
+            const verbaV  = VERBAS.find(v => v.cod_rubr === r.cod_verba);
+            return `<tr class="${isGrupo ? 'row-grupo' : ''}">
+                <td class="td-num">${i+1}</td>
+                <td>${renderAlvo(r, detalhe)}</td>
+                <td>
+                    <span class="td-cod">${String(r.cod_verba).padStart(4,'0')}</span>
+                    ${verbaV ? `<span class="${TP_CLS[verbaV.tp_rubr]||'badge-tp-3'}" style="display:inline-block;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;margin-left:4px;">${TP_LABEL[verbaV.tp_rubr]||''}</span>` : ''}
+                    <br><span style="font-size:11px;color:#475569;">${nomeVerba(r.cod_verba)}</span>
+                </td>
+                <td class="td-val">R$ ${formatValor(r.valor)}</td>
+                <td>${renderVigencia(r)}</td>
+                <td>${renderRegras(r, detalhe)}</td>
+            </tr>`;
+        }).join('');
+
+        el.innerHTML = `<div class="tabela-wrap"><table>
+            <thead><tr>
+                <th class="td-num">#</th>
+                <th>Funcionário / Grupo</th>
+                <th>Verba</th>
+                <th style="text-align:right;">Valor</th>
+                <th>Vigência</th>
+                <th>Regras${detalhe ? ' (detalhe)' : ''}</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+        </table>
+        <div class="tabela-rodape">${regs.length} registro(s) — linhas em amarelo claro = movimentos de grupo</div>
+        </div>`;
+
+    } catch { el.innerHTML = '<div class="vazio" style="color:#be123c;">Erro de comunicação.</div>'; }
+    finally { btn.disabled = false; }
+}
+</script>
+</body>
+</html>

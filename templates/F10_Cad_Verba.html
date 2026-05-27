@@ -1,0 +1,1350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F10 — Verbas</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; background: #f4f6f9; color: #1f2937; min-height: 100vh; }
+    .pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── TOPO ── */
+    .topo {
+        background: #0b1f3a;
+        border-bottom: 1px solid #1e3d5c;
+        padding: 0 28px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 0 32px;
+        min-height: 64px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .topo-logo { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: #2a7de1; letter-spacing: 0.04em; white-space: nowrap; }
+    .topo-versao { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8baac8; letter-spacing: 0.03em; margin-top: 2px; }
+    .topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center; letter-spacing: 0.01em; }
+    .topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+    .topo-nome { font-size: 11px; color: #8baac8; margin-top: 2px; }
+    .btn-voltar-topo {
+        margin-left: 16px; background: transparent;
+        border: 1px solid #1e3d5c; color: #8baac8;
+        font-size: 12px; padding: 5px 12px; border-radius: 6px;
+        cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: 0.15s; white-space: nowrap;
+    }
+    .btn-voltar-topo:hover { border-color: #2a7de1; color: #e8edf4; }
+
+    /* CONTAINER */
+    .container {
+      max-width: 1380px; width: 100%;
+      margin: 6px auto 0; padding: 0 18px 12px;
+      flex: 1; display: flex; flex-direction: column;
+    }
+
+    /* INFO CARDS */
+    .painel-info { display: grid; grid-template-columns: 2fr 1.2fr 0.8fr; gap: 8px; margin-bottom: 8px; }
+    .card-info {
+      background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: 6px 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .card-info .rotulo { font-size: 10px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 1px; }
+    .card-info .valor  { font-size: 13px; font-weight: 700; color: #111827; }
+
+    /* LAYOUT */
+    .layout-principal { display: grid; grid-template-columns: 420px 1fr; gap: 20px; flex: 1; align-items: start; }
+
+    /* BLOCOS */
+    .bloco {
+      background: white; border: 1px solid #e5e7eb; border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column;
+    }
+    .bloco-lista { position: sticky; top: 14px; }
+    .bloco-header { padding: 8px 16px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; border-radius: 12px 12px 0 0; }
+    .bloco-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+    .bloco-header p  { margin: 1px 0 0; font-size: 11px; color: #64748b; }
+    .bloco-body { padding: 10px 14px; flex: 1; display: flex; flex-direction: column; gap: 8px; }
+
+    /* LISTA */
+    .filtro input {
+      width: 100%; height: 34px; padding: 5px 10px;
+      border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none;
+    }
+    .filtro input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+    .lista { border: 1px solid #dbe3ee; border-radius: 10px; overflow: auto; max-height: calc(100vh - 260px); }
+    .lista table { width: 100%; border-collapse: collapse; }
+    .lista thead { background: #eaf1fb; }
+    .lista thead th { position: sticky; top: 0; background: #eaf1fb; z-index: 2; }
+    .lista th, .lista td { text-align: left; padding: 6px 10px; font-size: 12px; border-bottom: 1px solid #eef2f7; white-space: nowrap; }
+    .lista td.col-acoes, .lista th.col-acoes { position: sticky; right: 0; background: white; z-index: 1; box-shadow: -2px 0 4px rgba(0,0,0,0.06); }
+    .lista thead th.col-acoes { background: #eaf1fb; }
+    .lista th { color: #334155; font-weight: 600; }
+    .lista tbody tr:hover { background: #f8fafc; }
+    .lista tbody tr.selecionada { background: #dbeafe !important; }
+
+    .badge-tp { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; }
+    .badge-tp-1 { background: #dcfce7; color: #166534; }
+    .badge-tp-2 { background: #fee2e2; color: #991b1b; }
+    .badge-tp-3 { background: #dbeafe; color: #1d4ed8; }
+    .badge-tp-4 { background: #fff7ed; color: #c2410c; }
+
+    .btn-acao { border: none; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700; padding: 3px 8px; height: 24px; display: inline-flex; align-items: center; gap: 3px; }
+    .btn-edit    { background: #dbeafe; color: #1d4ed8; }
+    .btn-edit:hover { background: #bfdbfe; }
+    .btn-desativ { background: #fee2e2; color: #991b1b; }
+    .btn-desativ:hover { background: #fecaca; }
+
+    /* FORM */
+    .form-label { display: block; font-size: 11px; color: #475569; font-weight: 700; margin-bottom: 2px; }
+    .form-input {
+      width: 100%; height: 32px; padding: 4px 10px;
+      border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: white;
+    }
+    .form-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .form-input[readonly] { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
+    .form-secao { display: flex; flex-direction: column; gap: 4px; }
+
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .form-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 8px; }
+
+    /* RADIO GRUPO */
+    .radio-grupo { display: flex; gap: 14px; align-items: center; padding: 6px 0; flex-wrap: wrap; }
+    .radio-grupo label { display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer; }
+    .radio-grupo input[type=radio] { accent-color: #2563eb; }
+
+    /* SEÇÃO INCIDÊNCIAS MENSAIS */
+    .secao-inc {
+      background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+      padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .secao-inc-titulo { font-size: 11px; font-weight: 700; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-label-inc { display: block; font-size: 11px; color: #78350f; font-weight: 700; margin-bottom: 2px; }
+    .form-input-inc {
+      width: 100%; height: 30px; padding: 3px 10px;
+      border: 1px solid #fcd34d; border-radius: 8px; font-size: 13px; outline: none; background: #fffff8;
+      font-family: 'Courier New', monospace; text-align: center; letter-spacing: 1px;
+    }
+    .form-input-inc:focus { border-color: #f59e0b; box-shadow: 0 0 0 3px rgba(245,158,11,0.1); }
+    .form-input-inc:disabled { opacity: 0.3; background: #f5f3e7; cursor: not-allowed; }
+    select.form-input-inc { text-align: left !important; text-align-last: left !important; letter-spacing: 0; }
+    select.form-input-inc option { text-align: left; }
+    .inc-hint { font-size: 9px; color: #b45309; margin-top: 1px; }
+
+    /* TABELA TIPO USO + INCIDÊNCIAS */
+    .inc-tabela { display: grid; grid-template-columns: 22px 120px 2fr 1fr 1fr 1fr; gap: 4px 8px; align-items: center; }
+    .inc-col-hdr { font-size: 10px; font-weight: 700; color: #92400e; text-align: center; border-bottom: 1px solid #fde68a; padding-bottom: 3px; }
+    .inc-tipo-label { font-size: 12px; font-weight: 600; color: #555; padding: 0 4px; }
+
+    /* SEÇÃO INCIDÊNCIAS EVENTOS */
+    .secao-evento {
+      background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 10px;
+      padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .secao-evento-titulo { font-size: 11px; font-weight: 700; color: #0c4a6e; text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-label-ev { display: block; font-size: 11px; color: #075985; font-weight: 700; margin-bottom: 2px; }
+    .form-input-ev {
+      width: 100%; height: 30px; padding: 3px 8px;
+      border: 1px solid #7dd3fc; border-radius: 8px; font-size: 12px; outline: none; background: #f0f9ff;
+    }
+    .form-input-ev:focus { border-color: #38bdf8; box-shadow: 0 0 0 3px rgba(56,189,248,0.15); }
+    .form-input-ev:disabled { opacity: 0.35; background: #e0f2fe; cursor: not-allowed; }
+
+    /* SEÇÃO CHECKBOXES RESCISÃO */
+    .secao-resc {
+      background: #fdf4ff; border: 1px solid #e9d5ff; border-radius: 10px;
+      padding: 12px 14px; display: flex; flex-direction: column; gap: 8px;
+    }
+    .secao-resc-titulo { font-size: 11px; font-weight: 700; color: #6b21a8; text-transform: uppercase; letter-spacing: 0.5px; }
+
+    /* SEÇÃO OUTRAS INFORMAÇÕES */
+    .secao-outras {
+      background: #f8fffe; border: 1.5px solid #86efac; border-radius: 10px;
+      padding: 10px 14px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .secao-outras-titulo {
+      font-size: 12px; font-weight: 700; color: #14532d;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      padding-bottom: 6px; border-bottom: 1px solid #bbf7d0; margin-bottom: 2px;
+    }
+
+    /* GRID CHECKBOXES */
+    .chk-grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: column; grid-template-rows: repeat(10, auto); gap: 3px 8px; }
+    .chk-item {
+      display: flex; align-items: center; gap: 5px; font-size: 11px; cursor: pointer;
+      padding: 3px 7px; border-radius: 6px; border: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .chk-item:hover { background: #f0fdf4; border-color: #bbf7d0; }
+    .chk-item:has(input:checked) {
+      background: #dcfce7; border-color: #86efac; font-weight: 700; color: #14532d;
+    }
+    .chk-item input[type=checkbox] { accent-color: #16a34a; width: 13px; height: 13px; flex-shrink: 0; }
+
+    /* MODO */
+    .form-modo { font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 8px; text-align: center; }
+    .form-modo-novo   { background: #dcfce7; color: #166534; }
+    .form-modo-editar { background: #fef9c3; color: #92400e; }
+
+    /* MENSAGENS */
+    .msg-ok   { display: none; background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; color: #166534; }
+    .msg-erro { display: none; background: #fee2e2; border: 1px solid #fecaca; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; color: #991b1b; }
+
+    /* BOTÕES */
+    .btn { height: 38px; border: none; border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-gravar   { background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%); color: white; border: 1px solid #2f9d4d; min-width: 160px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 5px rgba(0,0,0,0.1); }
+    .btn-gravar:hover { filter: brightness(1.04); }
+    .btn-cancelar { background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%); color: #0f172a; border: 1px solid #c7d2de; }
+    .btn-cancelar:hover { filter: brightness(1.02); }
+    .btn-relacao       { background: linear-gradient(180deg, #e0f2fe 0%, #bae6fd 100%); color: #0c4a6e; border: 1px solid #7dd3fc; }
+    .btn-relacao:hover { filter: brightness(1.04); }
+    .btn-relacao-comp       { background: linear-gradient(180deg, #f0fdf4 0%, #dcfce7 100%); color: #14532d; border: 1px solid #86efac; }
+    .btn-relacao-comp:hover { filter: brightness(1.04); }
+
+    /* MODAL SELEÇÃO LISTAGEM COMPLETA */
+    .modal-sel-corpo { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .sel-controles { display: flex; gap: 8px; align-items: center; }
+    .sel-lista { overflow-y: auto; max-height: 45vh; border: 1px solid #e2e8f0; border-radius: 8px; }
+    .sel-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+    .sel-item:last-child { border-bottom: none; }
+    .sel-item:hover { background: #f0f9ff; }
+    .sel-item input { accent-color: #2563eb; width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+    .sel-cod { font-family: monospace; font-weight: 700; color: #1d4ed8; min-width: 38px; }
+    .sel-footer { display: flex; justify-content: space-between; align-items: center; }
+    .sel-count { font-size: 11px; color: #64748b; }
+
+    /* MODAL RELAÇÃO */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.aberto { display: flex; }
+    .modal-caixa { background: white; border-radius: 14px; box-shadow: 0 8px 40px rgba(0,0,0,0.18); width: 92vw; max-width: 1100px; max-height: 88vh; display: flex; flex-direction: column; overflow: hidden; }
+    .modal-topo { background: #0f172a; color: white; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; border-radius: 14px 14px 0 0; }
+    .modal-topo h3 { margin: 0; font-size: 15px; }
+    .modal-controles { display: flex; gap: 8px; align-items: center; }
+    .btn-ord { height: 30px; border-radius: 7px; border: 1px solid #475569; background: #1e293b; color: #cbd5e1; font-size: 11px; font-weight: 600; padding: 0 10px; cursor: pointer; }
+    .btn-ord.ativo { background: #2563eb; border-color: #1d4ed8; color: white; }
+    .btn-ord:hover { filter: brightness(1.15); }
+    .btn-imprimir { height: 30px; border-radius: 7px; border: 1px solid #059669; background: #065f46; color: white; font-size: 11px; font-weight: 700; padding: 0 12px; cursor: pointer; }
+    .btn-imprimir:hover { filter: brightness(1.15); }
+    .btn-fechar-modal { height: 30px; width: 30px; border-radius: 7px; border: 1px solid #dc2626; background: #7f1d1d; color: white; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .btn-fechar-modal:hover { filter: brightness(1.15); }
+    .modal-corpo { overflow: auto; flex: 1; padding: 12px 16px; }
+    .rel-info { font-size: 11px; color: #64748b; margin-bottom: 8px; }
+    .rel-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .rel-tabela thead th { background: #1e3a5f; color: white; padding: 6px 10px; text-align: left; position: sticky; top: 0; z-index: 1; font-size: 11px; }
+    .rel-tabela tbody td { padding: 5px 10px; border-bottom: 1px solid #eef2f7; vertical-align: top; }
+    .rel-tabela tbody tr:nth-child(even) td { background: #f8fafc; }
+    .rel-tabela tbody tr:hover td { background: #dbeafe; }
+    .rel-cod { font-family: 'Courier New', monospace; font-weight: 700; color: #1d4ed8; }
+    .rel-badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; }
+    .rel-badge-1 { background: #dcfce7; color: #166534; }
+    .rel-badge-2 { background: #fee2e2; color: #991b1b; }
+    .rel-badge-3 { background: #dbeafe; color: #1d4ed8; }
+    .rel-badge-4 { background: #fff7ed; color: #c2410c; }
+    .btn-voltar   { background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%); color: #0f172a; border: 1px solid #c7d2de; min-width: 160px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 2px 5px rgba(0,0,0,0.06); }
+    .btn-voltar:hover { filter: brightness(1.02); }
+    .rodape-acoes { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; }
+    .rodape-acoes-dir { display: flex; gap: 8px; }
+
+    .separador { border: none; border-top: 1px solid #e5e7eb; margin: 1px 0; }
+    .vazio { padding: 20px; font-size: 13px; color: #64748b; text-align: center; border: 1px dashed #cbd5e1; border-radius: 10px; background: #fafafa; }
+
+    @media (max-width: 1024px) {
+      .layout-principal { grid-template-columns: 1fr; }
+      .bloco-lista { position: static; }
+    }
+    @media (max-width: 640px) {
+      .painel-info { grid-template-columns: 1fr; }
+      .form-grid-2, .form-grid-3, .form-grid-4 { grid-template-columns: 1fr; }
+      .chk-grid { grid-template-columns: 1fr; }
+    }
+  
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+  </style>
+</head>
+<body>
+<div class="pagina">
+
+  <div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa_info }}</span>
+        <span class="topo-nome">{{ nome_cliente }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Cadastro de Rubricas (Verbas)</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div class="painel-info">
+      <div class="card-info">
+        <div class="rotulo">Cliente</div>
+        <div class="valor">{{ nome_cliente }}</div>
+      </div>
+      <div class="card-info">
+        <div class="rotulo">Empresa</div>
+        <div class="valor">{{ empresa_info or '—' }}</div>
+      </div>
+      <div class="card-info">
+        <div class="rotulo">Verbas cadastradas</div>
+        <div class="valor">{{ verbas|length }}</div>
+      </div>
+    </div>
+
+    <div class="layout-principal">
+
+      <!-- ── LISTA ── -->
+      <div class="bloco bloco-lista">
+        <div class="bloco-header">
+          <h2>📋 Verbas Cadastradas</h2>
+          <p>Clique em ✏️ para editar</p>
+        </div>
+        <div class="bloco-body">
+          <div class="filtro">
+            <input type="text" id="txtFiltro" placeholder="Filtrar pelo nome..." oninput="filtrar()">
+          </div>
+          <div class="lista">
+            {% if verbas %}
+            <table>
+              <thead>
+                <tr>
+                  <th style="width:46px;">Cód.</th>
+                  <th>Nome</th>
+                  <th style="width:36px;">Tp</th>
+                  <th class="col-acoes" style="width:72px;"></th>
+                </tr>
+              </thead>
+              <tbody id="tbodyVerbas">
+                {% for v in verbas %}
+                <tr id="tr_{{ v.id }}" data-nome="{{ v.dsc_rubr|lower }}">
+                  <td style="font-family:'Courier New',monospace; font-weight:700; color:#1d4ed8;">
+                    {{ '%04d' % v.cod_rubr }}
+                  </td>
+                  <td>
+                    {{ v.dsc_rubr_resumido or v.dsc_rubr }}
+                    {% if v.id_cliente == 0 %}
+                    <span style="font-size:9px;color:#94a3b8;margin-left:4px;">SIS</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if v.tp_rubr == '1' %}<span class="badge-tp badge-tp-1">P</span>
+                    {% elif v.tp_rubr == '2' %}<span class="badge-tp badge-tp-2">D</span>
+                    {% elif v.tp_rubr == '3' %}<span class="badge-tp badge-tp-3">I</span>
+                    {% elif v.tp_rubr == '4' %}<span class="badge-tp badge-tp-4">ID</span>
+                    {% endif %}
+                  </td>
+                  <td class="col-acoes">
+                    <button class="btn-acao btn-edit" onclick="editarVerba({{ v.id }})">✏️</button>
+                    <button class="btn-acao btn-desativ" onclick="desativarVerba({{ v.id }}, '{{ v.dsc_rubr }}')">🚫</button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">Nenhuma verba cadastrada ainda.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FORM ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2 id="formTitulo">➕ Nova Verba</h2>
+          <p id="formSubtitulo">Preencha os dados da verba</p>
+        </div>
+        <div class="bloco-body">
+
+          <div id="msgModo" class="form-modo form-modo-novo">Modo: Inclusão</div>
+          <div id="msgOk"   class="msg-ok"></div>
+          <div id="msgErro" class="msg-erro"></div>
+          <input type="hidden" id="inpId">
+          <input type="hidden" id="inpIdCliente">
+
+          <!-- ── Identificação ── -->
+          <div class="form-grid-2">
+            <div class="form-secao">
+              <label class="form-label">Código <span style="color:#ef4444;">*</span></label>
+              <input class="form-input" type="number" id="inpCod"
+                min="1000" max="9999" placeholder="1000–9999"
+                style="font-family:'Courier New',monospace; font-weight:700;"
+                onblur="verificarCodigoExistente(this)">
+              <span id="hintCod" style="display:none; font-size:10px; color:#d97706; margin-top:2px;"></span>
+            </div>
+            <div class="form-secao">
+              <label class="form-label">Válido a partir de <span style="font-size:10px; color:#64748b; font-weight:400;">(para o eSocial)</span> <span style="color:#ef4444;">*</span></label>
+              <input class="form-input" type="month" id="inpIniValid">
+            </div>
+          </div>
+
+          <div class="form-secao">
+            <label class="form-label">Nome da Verba <span style="color:#ef4444;">*</span></label>
+            <input class="form-input" type="text" id="inpNome" maxlength="50"
+              placeholder="Descrição completa (até 50 caracteres)"
+              oninput="validarNomeVerba(this)">
+            <span id="hintNome" style="display:none; font-size:10px; color:#dc2626; margin-top:2px;">⚠ Nome da Verba não pode conter Ç nem acentos. Use o Nome Resumido para isso.</span>
+          </div>
+
+          <div class="form-secao">
+            <label class="form-label">Nome Resumido <span style="font-size:11px;color:#94a3b8;">(holerite)</span></label>
+            <input class="form-input" type="text" id="inpNomeRes" maxlength="20"
+              placeholder="Até 20 caracteres">
+          </div>
+
+          <hr class="separador">
+
+          <!-- ── Classificação ── -->
+          <div class="form-grid-3">
+            <div class="form-secao">
+              <label class="form-label">Tipo da Rubrica <span style="color:#ef4444;">*</span></label>
+              <select class="form-input" id="inpTipo">
+                <option value="">— Selecione —</option>
+                <option value="1">1 — Provento</option>
+                <option value="2">2 — Desconto</option>
+                <option value="3">3 — Informativa</option>
+                <option value="4">4 — Informativa Dedutora</option>
+              </select>
+            </div>
+            <div class="form-secao">
+              <label class="form-label">Unidade da Verba</label>
+              <select class="form-input" id="inpUnid">
+                <option value="V">Valor (R$)</option>
+                <option value="H">Hora</option>
+                <option value="D">Diária</option>
+              </select>
+            </div>
+            <div class="form-secao">
+              <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                Natureza da Rubrica (eSocial Tabela 03)
+                <button type="button" id="btnOrdemNat" onclick="alternarOrdemNat()"
+                  style="font-size:10px; font-weight:600; padding:1px 6px; border:1px solid #cbd5e1; border-radius:5px; background:#f1f5f9; cursor:pointer; color:#475569;">
+                  Listar pelo Nome
+                </button>
+              </label>
+              <select class="form-input" id="inpNatRubr">
+                <option value="">— Selecione —</option>
+                {% for n in nat_rubricas %}
+                <option value="{{ n.codigo }}" data-codigo="{{ n.codigo }}" data-texto="{{ n.texto }}">
+                  {{ n.codigo }} — {{ n.texto }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <hr class="separador">
+
+          <!-- ── Tipos de Folha / Incidências ── -->
+          <div class="secao-inc" style="padding:6px 10px; gap:4px;">
+            <div class="secao-inc-titulo">⚡ Tipos de Folha que esta verba pode ser Usada (Marque as incidencias de acordo com o eSocial)</div>
+            <div class="inc-tabela" style="gap:2px 6px;">
+              <!-- cabeçalho -->
+              <div></div><div></div>
+              <div class="inc-col-hdr">INSS</div>
+              <div class="inc-col-hdr">FGTS</div>
+              <div class="inc-col-hdr">IRRF</div>
+              <div class="inc-col-hdr">PIS</div>
+              <!-- N = Normal -->
+              <div><input type="checkbox" id="chkTipoN" onchange="atualizarLinhaTipo('N')" style="accent-color:#2563eb;width:13px;height:13px;"></div>
+              <div class="inc-tipo-label">N = Normal</div>
+              <div><select class="form-input-inc" id="inpN_cp"   disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpN_fgts" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpN_irrf" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpN_pis" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <!-- R = Rescisão -->
+              <div><input type="checkbox" id="chkTipoR" onchange="atualizarLinhaTipo('R')" style="accent-color:#2563eb;width:13px;height:13px;"></div>
+              <div class="inc-tipo-label">R = Rescisão</div>
+              <div><select class="form-input-inc" id="inpR_cp"   disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpR_fgts" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpR_irrf" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpR_pis" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <!-- F = Férias -->
+              <div><input type="checkbox" id="chkTipoF" onchange="atualizarLinhaTipo('F')" style="accent-color:#2563eb;width:13px;height:13px;"></div>
+              <div class="inc-tipo-label">F = Férias</div>
+              <div><select class="form-input-inc" id="inpF_cp"   disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpF_fgts" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpF_irrf" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inpF_pis" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <!-- 1 = 13° Salário -->
+              <div><input type="checkbox" id="chkTipo1" onchange="atualizarLinhaTipo('1')" style="accent-color:#2563eb;width:13px;height:13px;"></div>
+              <div class="inc-tipo-label">1 = 13° Salário</div>
+              <div><select class="form-input-inc" id="inp1_cp"   disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inp1_fgts" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inp1_irrf" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+              <div><select class="form-input-inc" id="inp1_pis" disabled style="height:26px;padding:2px 4px;">
+                <option value="">--</option>
+                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+              </select></div>
+            </div>
+          </div>
+
+          <!-- ── Incidências por Evento ── -->
+          <div class="secao-evento">
+            <div class="secao-evento-titulo">📅 Incidências por Evento</div>
+            <div class="form-grid-4">
+              <div class="form-secao">
+                <label class="form-label-ev">Férias <span style="font-size:9px;color:#94a3b8;">(tipo F)</span></label>
+                <select class="form-input-ev" id="inpIncFerias" disabled>
+                  <option value="NI">Não Incide</option>
+                  <option value="M12">Média 12 Meses</option>
+                  <option value="MAP">Média Período Aquis.</option>
+                  <option value="UL">Último Lançamento</option>
+                  <option value="CN">Cálculo Normal</option>
+                </select>
+              </div>
+              <div class="form-secao">
+                <label class="form-label-ev">Rescisão <span style="font-size:9px;color:#94a3b8;">(tipo R)</span></label>
+                <select class="form-input-ev" id="inpIncRescisao" disabled>
+                  <option value="NI">Não Incide</option>
+                  <option value="M12">Média 12 Meses</option>
+                  <option value="UL">Último Lançamento</option>
+                  <option value="CN">Cálculo Normal</option>
+                </select>
+              </div>
+              <div class="form-secao">
+                <label class="form-label-ev">13° Salário <span style="font-size:9px;color:#94a3b8;">(tipo 1)</span></label>
+                <select class="form-input-ev" id="inpInc13sal" disabled>
+                  <option value="NI">Não Incide</option>
+                  <option value="MAN">Média desde Ano</option>
+                  <option value="UL">Último Lançamento</option>
+                  <option value="CN">Cálculo Normal</option>
+                </select>
+              </div>
+              <div class="form-secao">
+                <label class="form-label-ev">Adto 13° <span style="font-size:9px;color:#94a3b8;">(tipo 1)</span></label>
+                <select class="form-input-ev" id="inpIncAdto13" disabled>
+                  <option value="NI">Não Incide</option>
+                  <option value="MAN">Média desde Ano</option>
+                  <option value="UL">Último Lançamento</option>
+                  <option value="CN">Cálculo Normal</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Outras Informações ── -->
+          <div class="secao-outras">
+            <div class="secao-outras-titulo">ℹ️ Outras Informações</div>
+            <div class="chk-grid">
+              <label class="chk-item"><input type="checkbox" id="chkNaoDigitar">    01 - Não permite digitar no movimento</label>
+              <label class="chk-item"><input type="checkbox" id="chkSalMat">        02 - É um Salário Maternidade</label>
+              <label class="chk-item"><input type="checkbox" id="chkAdto13">        03 - É um Adiantamento 13° Salário</label>
+              <label class="chk-item"><input type="checkbox" id="chkComissao">      04 - É uma Comissão</label>
+              <label class="chk-item"><input type="checkbox" id="chkGratif">        05 - É uma Gratificação</label>
+              <label class="chk-item"><input type="checkbox" id="chkInsal">         06 - É uma Insalubridade</label>
+              <label class="chk-item"><input type="checkbox" id="chkPeric">         07 - É uma Periculosidade</label>
+              <label class="chk-item"><input type="checkbox" id="chkGorjeta">       08 - É uma Gorjeta</label>
+              <label class="chk-item"><input type="checkbox" id="chkDsr">           09 - É um DSR (Desc. Semanal Remun.)</label>
+              <label class="chk-item"><input type="checkbox" id="chkSalFam">        10 - É um Salário Família</label>
+              <label class="chk-item"><input type="checkbox" id="chkAdNot">         11 - É Adicional Noturno</label>
+              <label class="chk-item"><input type="checkbox" id="chkRel13">         12 - É relativo ao 13° Salário</label>
+              <label class="chk-item"><input type="checkbox" id="chkVerbaFerias">   13 - É uma verba de Férias</label>
+              <label class="chk-item"><input type="checkbox" id="chkEmpConsig">     14 - É um Empréstimo Consignado</label>
+              <label class="chk-item"><input type="checkbox" id="chkPlanoSaude">    15 - É um Plano de Saúde</label>
+              <label class="chk-item"><input type="checkbox" id="chkEmpInterno">    16 - É um Empréstimo Interno</label>
+              <label class="chk-item"><input type="checkbox" id="chkPeriodo">       17 - É um Feriado</label>
+              <label class="chk-item"><input type="checkbox" id="chkSobreaviso">    18 - É Hora Sobreaviso</label>
+            </div>
+          </div>
+
+          <div class="rodape-acoes">
+            <button class="btn btn-voltar" onclick="window.location.href='/menu'">↩ &nbsp;Voltar ao Menu</button>
+            <div class="rodape-acoes-dir">
+              <button class="btn btn-relacao"      onclick="abrirRelacao()">📋 &nbsp;Listagem Simples</button>
+              <button class="btn btn-relacao-comp" onclick="abrirSelecaoCompleta()">📄 &nbsp;Listagem Completa</button>
+              <button class="btn btn-cancelar" id="btnCancelar" style="display:none;" onclick="modoNovo()">✖ Cancelar</button>
+              <button class="btn btn-gravar" onclick="gravarVerba()">💾 &nbsp;Gravar</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL SELEÇÃO LISTAGEM COMPLETA -->
+<div id="modalSelCompleta" class="modal-overlay">
+  <div class="modal-caixa" style="max-width:620px;">
+    <div class="modal-topo">
+      <h3>📄 Listagem Completa — Selecionar Verbas</h3>
+      <button class="btn-fechar-modal" onclick="fecharSelCompleta()">✕</button>
+    </div>
+    <div class="modal-sel-corpo">
+      <div class="sel-controles">
+        <input type="text" id="filtroSelComp" placeholder="Filtrar pelo nome ou código..."
+               oninput="filtrarSelCompleta()"
+               style="height:32px;padding:4px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:12px;outline:none;flex:1;">
+        <button class="btn-ord" onclick="marcarTodasComp(true)">✓ Todas</button>
+        <button class="btn-ord" onclick="marcarTodasComp(false)">✗ Nenhuma</button>
+      </div>
+      <div class="sel-lista" id="listaSelComp"></div>
+      <div class="sel-footer">
+        <span class="sel-count" id="contSelComp">0 selecionada(s)</span>
+        <button class="btn-imprimir" onclick="gerarListagemCompleta()">🖨️ Gerar PDF</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL RELAÇÃO DE VERBAS -->
+<div id="modalRelacao" class="modal-overlay">
+  <div class="modal-caixa">
+    <div class="modal-topo">
+      <h3>📋 Relação de Verbas — Modelo Simples</h3>
+      <div class="modal-controles">
+        <button class="btn-ord ativo" id="btnOrdCod"  onclick="abrirRelacao('cod')">Ordem Código</button>
+        <button class="btn-ord"       id="btnOrdNome" onclick="abrirRelacao('nome')">Ordem Alfabética</button>
+        <button class="btn-imprimir"  onclick="imprimirRelacao()">🖨️ Imprimir / PDF</button>
+        <button class="btn-fechar-modal" onclick="fecharRelacao()">✕</button>
+      </div>
+    </div>
+    <div class="modal-corpo">
+      <div id="relInfo" class="rel-info"></div>
+      <div id="relCorpo"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const VERBAS_DATA = {{ verbas_json | safe }};
+
+  function iniParaTela(val) {
+    if (!val) return '';
+    const s = String(val).trim();
+    // Formato "YYYY-MM" ou "YYYY-MM-DD" (DATE do Postgres)
+    if (s.length >= 7 && s[4] === '-') return s.substring(0, 7);
+    // Formato inteiro/string "YYYYMM"
+    const padded = s.replace(/\D/g, '').padStart(6, '0');
+    return padded.substring(0, 4) + '-' + padded.substring(4, 6);
+  }
+  function iniParaBanco(val) {
+    if (!val) return null;
+    return parseInt(val.replace('-', ''), 10);
+  }
+
+  const CHK_FIELDS = [
+    ['chkNaoDigitar',  'is_nao_digitar'],
+    ['chkSalMat',      'is_sal_maternidade'],
+    ['chkAdto13',      'is_adto_13sal'],
+    ['chkComissao',    'is_comissao'],
+    ['chkGratif',      'is_gratificacao'],
+    ['chkInsal',       'is_insalubridade'],
+    ['chkPeric',       'is_periculosidade'],
+    ['chkGorjeta',     'is_gorjeta'],
+    ['chkDsr',         'is_dsr'],
+    ['chkSalFam',      'is_sal_familia'],
+    ['chkAdNot',       'is_adic_noturno'],
+    ['chkRel13',       'is_relativo_13sal'],
+    ['chkVerbaFerias', 'is_verba_ferias'],
+    ['chkEmpConsig',   'is_emprestimo_consig'],
+    ['chkPlanoSaude',  'is_plano_saude'],
+    ['chkEmpInterno',  'is_emprestimo_interno'],
+    ['chkPeriodo',     'is_periodo'],
+    ['chkSobreaviso',  'is_hora_sobreaviso'],
+  ];
+
+  // Tipos de folha compatíveis com cada select de incidência por evento
+  const TIPO_EVENTO_MAP = {
+    'F': ['inpIncFerias'],
+    'R': ['inpIncRescisao'],
+    '1': ['inpInc13sal', 'inpIncAdto13'],
+  };
+
+  function mesAtual() {
+    const d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  }
+
+  function verificarCodigoExistente(el) {
+    // Só verifica no modo inclusão (inpCod não é readonly)
+    if (el.readOnly) return;
+    const hint = document.getElementById('hintCod');
+    const cod = parseInt(el.value, 10);
+    if (!cod) { hint.style.display = 'none'; return; }
+    const existente = VERBAS_DATA.find(v => v.cod_rubr === cod);
+    if (existente) {
+      const nome = existente.dsc_rubr_resumido || existente.dsc_rubr;
+      hint.textContent = `⚠ Código ${cod} já existe ("${nome}"). Para alterá-la, use o botão ✏️ ao lado na lista.`;
+      hint.style.display = 'block';
+      el.style.borderColor = '#d97706';
+      el.style.boxShadow   = '0 0 0 3px rgba(217,119,6,0.15)';
+    } else {
+      hint.style.display = 'none';
+      el.style.borderColor = '';
+      el.style.boxShadow   = '';
+    }
+  }
+
+  function validarNomeVerba(el) {
+    const temAcento = /[À-ÖØ-öø-ÿ]/i.test(el.value);
+    el.style.borderColor = temAcento ? '#dc2626' : '';
+    el.style.boxShadow   = temAcento ? '0 0 0 3px rgba(220,38,38,0.15)' : '';
+    document.getElementById('hintNome').style.display = temAcento ? 'block' : 'none';
+  }
+
+  function atualizarLinhaTipo(t) {
+    const on = document.getElementById(`chkTipo${t}`).checked;
+    // Habilitar/desabilitar campos INSS/FGTS/IRRF/PIS
+    ['cp','fgts','irrf','pis'].forEach(f => {
+      const el = document.getElementById(`inp${t}_${f}`);
+      if (el) { el.disabled = !on; if (!on) el.value = ''; }
+    });
+    // Habilitar/desabilitar selects de incidência por evento compatíveis
+    (TIPO_EVENTO_MAP[t] || []).forEach(selId => {
+      const sel = document.getElementById(selId);
+      if (sel) {
+        sel.disabled = !on;
+        if (!on) sel.value = 'NI';
+      }
+    });
+  }
+
+  function limparForm() {
+    ['inpCod','inpNome','inpNomeRes','inpNatRubr'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.value = ''; el.style.borderColor = ''; el.style.boxShadow = ''; }
+    });
+    document.getElementById('hintNome').style.display = 'none';
+    document.getElementById('hintCod').style.display  = 'none';
+    document.getElementById('inpIniValid').value    = mesAtual();
+    document.getElementById('inpTipo').value        = '';
+    document.getElementById('inpUnid').value        = 'V';
+    ['inpIncFerias','inpIncRescisao','inpInc13sal','inpIncAdto13'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.value = 'NI'; el.disabled = true; }
+    });
+    document.getElementById('inpCod').readOnly      = false;
+    document.getElementById('inpCod').style.background = '';
+    ['N','R','F','1'].forEach(t => {
+      document.getElementById(`chkTipo${t}`).checked = false;
+      atualizarLinhaTipo(t);
+    });
+    CHK_FIELDS.forEach(([id]) => {
+      const el = document.getElementById(id); if (el) el.checked = false;
+    });
+  }
+
+  function modoNovo() {
+    document.getElementById('inpId').value        = '';
+    document.getElementById('inpIdCliente').value = '';
+    limparForm();
+    document.getElementById('formTitulo').textContent    = '➕ Nova Verba';
+    document.getElementById('formSubtitulo').textContent = 'Preencha os dados da verba';
+    document.getElementById('msgModo').textContent       = 'Modo: Inclusão';
+    document.getElementById('msgModo').className         = 'form-modo form-modo-novo';
+    document.getElementById('btnCancelar').style.display = 'none';
+    document.getElementById('msgOk').style.display       = 'none';
+    document.getElementById('msgErro').style.display     = 'none';
+    document.querySelectorAll('#tbodyVerbas tr').forEach(tr => tr.classList.remove('selecionada'));
+  }
+
+  function editarVerba(id) {
+    const v = VERBAS_DATA.find(x => x.id === id);
+    if (!v) return;
+
+    document.getElementById('inpId').value        = id;
+    document.getElementById('inpIdCliente').value = v.id_cliente ?? '';
+    document.getElementById('inpCod').value      = v.cod_rubr || '';
+    document.getElementById('inpCod').readOnly   = true;
+    document.getElementById('inpCod').style.background = '#f1f5f9';
+    document.getElementById('inpIniValid').value = iniParaTela(v.ini_valid);
+    document.getElementById('inpNome').value     = v.dsc_rubr              || '';
+    document.getElementById('inpNomeRes').value  = v.dsc_rubr_resumido     || '';
+    document.getElementById('inpTipo').value     = v.tp_rubr               || '';
+    document.getElementById('inpUnid').value     = v.unid_verba            || 'V';
+    document.getElementById('inpNatRubr').value  = v.es03_nat_rubr || '';
+
+    // Uso da Verba / Incidências
+    const tipoUso = v.tipo_uso || '';
+    ['N','R','F','1'].forEach(t => {
+      const chk = document.getElementById(`chkTipo${t}`);
+      const tl  = t.toLowerCase();
+      // 1. Seta valores primeiro (para todos os tipos, inclusive desmarcados)
+      document.getElementById(`inp${t}_cp`  ).value = v[`tp${tl}_inc_cp`]   || '';
+      document.getElementById(`inp${t}_fgts`).value = v[`tp${tl}_inc_fgts`] || '';
+      document.getElementById(`inp${t}_irrf`).value = v[`tp${tl}_inc_irrf`] || '';
+      document.getElementById(`inp${t}_pis` ).value = v[`tp${tl}_inc_pis`]  || '';
+      // 2. Tipo ativo: usa tipo_uso se preenchido; senão detecta só pelo INSS (inc_cp) — mais conservador
+      const on = tipoUso ? tipoUso.includes(t) : !!v[`tp${tl}_inc_cp`];
+      chk.checked = on;
+      // 3. Ajusta disabled sem apagar (atualizarLinhaTipo apagaria ao desmarcar)
+      ['cp','fgts','irrf','pis'].forEach(f => {
+        const el = document.getElementById(`inp${t}_${f}`);
+        if (el) el.disabled = !on;
+      });
+      (TIPO_EVENTO_MAP[t] || []).forEach(selId => {
+        const sel = document.getElementById(selId);
+        if (sel) sel.disabled = !on;
+      });
+    });
+
+    document.getElementById('inpIncFerias').value   = v.inc_ferias   || 'NI';
+    document.getElementById('inpIncRescisao').value = v.inc_rescisao || 'NI';
+    document.getElementById('inpInc13sal').value    = v.inc_13sal    || 'NI';
+    document.getElementById('inpIncAdto13').value   = v.inc_adto13   || 'NI';
+
+    CHK_FIELDS.forEach(([elId, campo]) => {
+      const el = document.getElementById(elId);
+      if (el) el.checked = !!v[campo];
+    });
+
+    document.getElementById('formTitulo').textContent    = '✏️ Editando: ' + v.dsc_rubr;
+    document.getElementById('formSubtitulo').textContent = 'Altere os dados e salve';
+    document.getElementById('msgModo').textContent       = 'Modo: Edição';
+    document.getElementById('msgModo').className         = 'form-modo form-modo-editar';
+    document.getElementById('btnCancelar').style.display = '';
+    document.getElementById('msgOk').style.display       = 'none';
+    document.getElementById('msgErro').style.display     = 'none';
+
+    document.querySelectorAll('#tbodyVerbas tr').forEach(tr => tr.classList.remove('selecionada'));
+    const trSel = document.getElementById(`tr_${id}`);
+    if (trSel) { trSel.classList.add('selecionada'); trSel.scrollIntoView({block:'nearest'}); }
+
+    document.getElementById('inpNome').focus();
+  }
+
+  async function desativarVerba(id, nome) {
+    if (!confirm(`Desativar a verba "${nome}"?`)) return;
+    try {
+      const r = await fetch('/api/rubrica/desativar', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ id })
+      });
+      const d = await r.json();
+      if (d.ok) location.reload();
+      else mostrarErro(d.msg || 'Erro ao desativar.');
+    } catch(e) { mostrarErro('Erro de comunicação.'); }
+  }
+
+  let _ordemNatCodigo = true;
+  function alternarOrdemNat() {
+    _ordemNatCodigo = !_ordemNatCodigo;
+    document.getElementById('btnOrdemNat').textContent = _ordemNatCodigo ? 'Listar pelo Nome' : 'Listar por Código';
+    const sel = document.getElementById('inpNatRubr');
+    const valorAtual = sel.value;
+    const opcoes = Array.from(sel.options).slice(1); // pula o "— Selecione —"
+    opcoes.sort((a, b) => {
+      const va = _ordemNatCodigo ? a.dataset.codigo : a.dataset.texto;
+      const vb = _ordemNatCodigo ? b.dataset.codigo : b.dataset.texto;
+      return va.localeCompare(vb);
+    });
+    while (sel.options.length > 1) sel.remove(1);
+    opcoes.forEach(o => sel.appendChild(o));
+    sel.value = valorAtual;
+  }
+
+  function filtrar() {
+    const txt = document.getElementById('txtFiltro').value.toLowerCase();
+    document.querySelectorAll('#tbodyVerbas tr').forEach(tr => {
+      tr.style.display = !txt || (tr.dataset.nome || '').includes(txt) ? '' : 'none';
+    });
+  }
+
+  function mostrarOk(msg) {
+    const el = document.getElementById('msgOk');
+    el.textContent = '✔ ' + msg; el.style.display = 'block';
+    document.getElementById('msgErro').style.display = 'none';
+    setTimeout(() => { el.style.display = 'none'; }, 3000);
+  }
+  function mostrarErro(msg) {
+    const el = document.getElementById('msgErro');
+    el.textContent = '✖ ' + msg; el.style.display = 'block';
+    document.getElementById('msgOk').style.display = 'none';
+  }
+
+  async function gravarVerba() {
+    const id       = document.getElementById('inpId').value;
+    const cod      = document.getElementById('inpCod').value.trim();
+    const iniValid = document.getElementById('inpIniValid').value;
+    const nome     = document.getElementById('inpNome').value.trim();
+    const tipo     = document.getElementById('inpTipo').value;
+
+    if (!cod)      { mostrarErro('Informe o código da verba.'); return; }
+    if (!iniValid) { mostrarErro('Informe a data de início de validade.'); return; }
+    if (!nome)     { mostrarErro('Informe o nome da verba.'); return; }
+    if (/[À-ÖØ-öø-ÿ]/i.test(nome)) {
+      mostrarErro('O Nome da Verba não pode conter Ç nem acentos. Use o Nome Resumido para a versão acentuada.');
+      document.getElementById('inpNome').focus();
+      return;
+    }
+    if (!tipo)     { mostrarErro('Selecione o tipo da verba.'); return; }
+
+    const tiposUsados = ['N','R','F','1'].filter(t => document.getElementById(`chkTipo${t}`).checked);
+    if (tiposUsados.length === 0) {
+      mostrarErro('Selecione pelo menos um Tipo de Folha em que esta verba pode ser usada.');
+      return;
+    }
+
+    const codNum = parseInt(cod, 10);
+    if (!id && (codNum < 1000 || codNum > 9999)) {
+      mostrarErro('Código deve estar entre 1000 e 9999 para verbas do cliente.');
+      return;
+    }
+
+    const strOuNull = elId => {
+      const v = document.getElementById(elId)?.value.trim();
+      return v || null;
+    };
+
+    const idClienteVerba = document.getElementById('inpIdCliente').value;
+    const payload = {
+      id,
+      id_cliente_verba: idClienteVerba !== '' ? Number(idClienteVerba) : null,
+      cod_rubr:           codNum,
+      ini_valid:          iniParaBanco(iniValid),
+      dsc_rubr:           nome,
+      dsc_rubr_resumido:  strOuNull('inpNomeRes'),
+      tp_rubr:            tipo,
+      unid_verba:         document.getElementById('inpUnid').value,
+      es03_nat_rubr:  strOuNull('inpNatRubr'),
+      tipo_uso:       ['N','R','F','1'].filter(t => document.getElementById(`chkTipo${t}`).checked).join('') || null,
+      // Incidências: só grava para tipos com checkbox marcado; tipos desmarcados → null explícito
+      // (selects desabilitados ainda têm .value preenchido do carregamento — não pode confiar no strOuNull)
+      ...(() => {
+        const ck = {
+          N: document.getElementById('chkTipoN').checked,
+          R: document.getElementById('chkTipoR').checked,
+          F: document.getElementById('chkTipoF').checked,
+          '1': document.getElementById('chkTipo1').checked,
+        };
+        const inc = {};
+        [['N','n'],['R','r'],['F','f'],['1','1']].forEach(([T, tl]) => {
+          const on = ck[T];
+          inc[`tp${tl}_inc_cp`]   = on ? strOuNull(`inp${T}_cp`)   : null;
+          inc[`tp${tl}_inc_fgts`] = on ? strOuNull(`inp${T}_fgts`) : null;
+          inc[`tp${tl}_inc_irrf`] = on ? strOuNull(`inp${T}_irrf`) : null;
+          inc[`tp${tl}_inc_pis`]  = on ? strOuNull(`inp${T}_pis`)  : null;
+        });
+        return inc;
+      })(),
+      inc_ferias:     document.getElementById('inpIncFerias').value,
+      inc_rescisao:       document.getElementById('inpIncRescisao').value,
+      inc_13sal:          document.getElementById('inpInc13sal').value,
+      inc_adto13:         document.getElementById('inpIncAdto13').value,
+    };
+
+    CHK_FIELDS.forEach(([elId, campo]) => {
+      payload[campo] = document.getElementById(elId)?.checked || false;
+    });
+
+    const editando = !!id;
+    try {
+      const r = await fetch(editando ? '/api/rubrica/editar' : '/api/rubrica/incluir', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      if (d.ok) {
+        mostrarOk(editando ? `"${nome}" atualizada!` : `"${nome}" incluída!`);
+        setTimeout(() => location.reload(), 1500);
+      } else { mostrarErro(d.msg || 'Erro ao gravar.'); }
+    } catch(e) { mostrarErro('Erro de comunicação.'); }
+  }
+
+  // Ao carregar a página já preenche o mês atual
+  document.getElementById('inpIniValid').value = mesAtual();
+
+  // ── RELAÇÃO DE VERBAS ──────────────────────────────────
+  const NAT_MAP = Object.fromEntries(
+    {{ nat_rubricas | tojson | safe }}.map(n => [n.codigo, n.texto])
+  );
+  const TP_LABEL   = { '1':'Provento', '2':'Desconto', '3':'Informativa', '4':'Info. Dedutora' };
+  const TP_BADGE   = { '1':'rel-badge-1', '2':'rel-badge-2', '3':'rel-badge-3', '4':'rel-badge-4' };
+  const UNID_LABEL = { 'V':'Valor (R$)', 'H':'Hora', 'D':'Diária' };
+  let _ordemRel = 'cod';
+
+  function abrirRelacao(ordem) {
+    _ordemRel = ordem || _ordemRel;
+    const dados = [...VERBAS_DATA].sort((a, b) =>
+      _ordemRel === 'nome'
+        ? (a.dsc_rubr || '').localeCompare(b.dsc_rubr || '', 'pt-BR')
+        : (a.cod_rubr || 0) - (b.cod_rubr || 0)
+    );
+
+    document.getElementById('btnOrdCod' ).className = 'btn-ord' + (_ordemRel === 'cod'  ? ' ativo' : '');
+    document.getElementById('btnOrdNome').className = 'btn-ord' + (_ordemRel === 'nome' ? ' ativo' : '');
+    document.getElementById('relInfo').textContent  = `${dados.length} verba(s) cadastrada(s)`;
+
+    let rows = '';
+    dados.forEach(v => {
+      const cod  = String(v.cod_rubr || '').padStart(4, '0');
+      const nat  = v.es03_nat_rubr
+        ? `<span style="color:#64748b;font-size:10px;">${v.es03_nat_rubr}</span> ${NAT_MAP[v.es03_nat_rubr] || ''}`
+        : '—';
+      const badge = `<span class="rel-badge ${TP_BADGE[v.tp_rubr] || ''}">${TP_LABEL[v.tp_rubr] || v.tp_rubr || '—'}</span>`;
+      rows += `<tr>
+        <td class="rel-cod">${cod}</td>
+        <td>${v.dsc_rubr || ''}${v.id_cliente===0 ? ' <span style="font-size:9px;color:#94a3b8;">SIS</span>' : ''}</td>
+        <td>${badge}</td>
+        <td>${UNID_LABEL[v.unid_verba] || v.unid_verba || '—'}</td>
+        <td style="font-size:11px;">${nat}</td>
+      </tr>`;
+    });
+
+    document.getElementById('relCorpo').innerHTML =
+      `<table class="rel-tabela">
+        <thead><tr>
+          <th style="width:60px">Código</th>
+          <th>Nome</th>
+          <th style="width:130px">Tipo</th>
+          <th style="width:90px">Unidade</th>
+          <th>Natureza eSocial</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+
+    document.getElementById('modalRelacao').classList.add('aberto');
+  }
+
+  function fecharRelacao() {
+    document.getElementById('modalRelacao').classList.remove('aberto');
+  }
+
+  // ── PADRÃO DE CABEÇALHO / RODAPÉ PARA TODOS OS PDFs ──
+  const EMPRESA_INFO = {{ empresa_info | tojson | safe }};
+  const APP_VERSAO   = {{ versao | tojson | safe }};
+
+  const CSS_PDF_BASE = `
+    body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:0;}
+    .cab1{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:2px;}
+    .cab-emp{font-size:12px;font-weight:700;color:#0f172a;}
+    .cab-dt{font-size:10px;color:#64748b;}
+    .cab2{height:8px;}
+    .cab3{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px;}
+    .cab-titulo{font-weight:700;color:#dc2626;}
+    .cab-versao{font-size:9px;color:#94a3b8;font-weight:400;white-space:nowrap;margin-left:12px;}
+    .cab-sep{border:none;border-top:2px dashed #475569;margin-bottom:14px;}
+    .rod-sep{border:none;border-top:1px solid #cbd5e1;margin-top:16px;padding-top:6px;}
+    .rod-info{font-size:10px;color:#64748b;}
+    @page{margin:15mm;} @media print{body{margin:0;}}`;
+
+  function cabecalhoPDF(titulo) {
+    const agora  = new Date();
+    const dtHora = agora.toLocaleDateString('pt-BR') + ' às ' +
+                   agora.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+    const fsize  = titulo.length > 60 ? '11px' : titulo.length > 40 ? '13px' : '15px';
+    return `<div class="cab1">
+              <span class="cab-emp">${EMPRESA_INFO||'—'}</span>
+              <span class="cab-dt">${dtHora}</span>
+            </div>
+            <div class="cab2"></div>
+            <div class="cab3">
+              <span style="font-size:${fsize};font-weight:700;color:#dc2626;">${titulo}</span>
+              <span class="cab-versao">Versão ${APP_VERSAO||'—'}</span>
+            </div>
+            <hr class="cab-sep">`;
+  }
+
+  function rodapePDF(info) {
+    return `<hr class="rod-sep"><div class="rod-info">${info}</div>`;
+  }
+
+  function imprimirRelacao() {
+    const dados = [...VERBAS_DATA].sort((a, b) =>
+      _ordemRel === 'nome'
+        ? (a.dsc_rubr || '').localeCompare(b.dsc_rubr || '', 'pt-BR')
+        : (a.cod_rubr || 0) - (b.cod_rubr || 0)
+    );
+    const titulo = _ordemRel === 'nome' ? 'Ordem Alfabética' : 'Ordem por Código';
+
+    let rows = '';
+    dados.forEach(v => {
+      const cod  = String(v.cod_rubr || '').padStart(4, '0');
+      const nat  = v.es03_nat_rubr ? `${v.es03_nat_rubr} — ${NAT_MAP[v.es03_nat_rubr] || ''}` : '—';
+      const tp   = TP_LABEL[v.tp_rubr] || v.tp_rubr || '—';
+      const unid = UNID_LABEL[v.unid_verba] || v.unid_verba || '—';
+      rows += `<tr><td class="cod">${cod}</td><td>${v.dsc_rubr || ''}</td><td>${tp}</td><td>${unid}</td><td>${nat}</td></tr>`;
+    });
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>Relação de Verbas</title>
+      <style>
+        ${CSS_PDF_BASE}
+        table{width:100%;border-collapse:collapse;}
+        th{background:#1e3a5f;color:white;padding:5px 8px;text-align:left;font-size:10px;}
+        td{padding:4px 8px;border-bottom:1px solid #e5e7eb;}
+        tr:nth-child(even) td{background:#f8fafc;}
+        .cod{font-family:monospace;font-weight:700;color:#1d4ed8;width:55px;}
+      </style>
+    </head><body>
+      ${cabecalhoPDF('Relação de Verbas — ' + titulo)}
+      <table>
+        <thead><tr>
+          <th style="width:55px">Código</th><th>Nome</th>
+          <th style="width:120px">Tipo</th><th style="width:85px">Unidade</th>
+          <th>Natureza eSocial</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${rodapePDF('Total: ' + dados.length + ' verba(s)')}
+    </body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 400);
+  }
+
+  // Fechar modal clicando fora
+  document.getElementById('modalRelacao').addEventListener('click', function(e) {
+    if (e.target === this) fecharRelacao();
+  });
+
+  // ── LISTAGEM COMPLETA ──────────────────────────────────
+  const INC_CP_MAP   = Object.fromEntries({{ inc_cp | tojson | safe }}.map(n => [n.codigo, n.texto]));
+  // FGTS/IRRF/PIS usam os mesmos códigos do INSS (inc_cp)
+  const INC_FGTS_MAP = INC_CP_MAP;
+  const INC_IRRF_MAP = INC_CP_MAP;
+  const INC_PIS_MAP  = INC_CP_MAP;
+
+  const INC_EV_LABEL = {
+    'NI':'Não Incide','M12':'Média 12 Meses','MAP':'Média Período Aquisitivo',
+    'UL':'Último Lançamento','CN':'Cálculo Normal','MAN':'Média desde o Ano'
+  };
+  const TIPO_NOME = { 'N':'Normal','R':'Rescisão','F':'Férias','1':'13° Salário' };
+  const IS_LABELS = [
+    ['is_nao_digitar',       '01 — Não permite digitar no movimento'],
+    ['is_sal_maternidade',   '02 — Salário Maternidade'],
+    ['is_adto_13sal',        '03 — Adiantamento 13° Salário'],
+    ['is_comissao',          '04 — Comissão'],
+    ['is_gratificacao',      '05 — Gratificação'],
+    ['is_insalubridade',     '06 — Insalubridade'],
+    ['is_periculosidade',    '07 — Periculosidade'],
+    ['is_gorjeta',           '08 — Gorjeta'],
+    ['is_dsr',               '09 — DSR (Desc. Semanal Remunerado)'],
+    ['is_sal_familia',       '10 — Salário Família'],
+    ['is_adic_noturno',      '11 — Adicional Noturno'],
+    ['is_relativo_13sal',    '12 — Relativo ao 13° Salário'],
+    ['is_verba_ferias',      '13 — Verba de Férias'],
+    ['is_emprestimo_consig', '14 — Empréstimo Consignado'],
+    ['is_plano_saude',       '15 — Plano de Saúde'],
+    ['is_emprestimo_interno','16 — Empréstimo Interno'],
+    ['is_periodo',           '17 — Feriado'],
+    ['is_hora_sobreaviso',   '18 — Hora Sobreaviso'],
+  ];
+
+  function abrirSelecaoCompleta() {
+    const dados = [...VERBAS_DATA].sort((a,b) => (a.cod_rubr||0)-(b.cod_rubr||0));
+    let html = '';
+    dados.forEach(v => {
+      const cod = String(v.cod_rubr||'').padStart(4,'0');
+      const sis = v.id_cliente===0 ? ' <span style="font-size:9px;color:#94a3b8;margin-left:4px;">SIS</span>' : '';
+      html += `<label class="sel-item">
+        <input type="checkbox" class="chk-sel-comp" data-id="${v.id}" checked>
+        <span class="sel-cod">${cod}</span>
+        <span>${v.dsc_rubr||''}${sis}</span>
+      </label>`;
+    });
+    document.getElementById('listaSelComp').innerHTML = html;
+    document.querySelectorAll('.chk-sel-comp').forEach(c => c.addEventListener('change', atualizarContSelComp));
+    document.getElementById('filtroSelComp').value = '';
+    atualizarContSelComp();
+    document.getElementById('modalSelCompleta').classList.add('aberto');
+  }
+
+  function fecharSelCompleta() {
+    document.getElementById('modalSelCompleta').classList.remove('aberto');
+  }
+
+  function filtrarSelCompleta() {
+    const txt = document.getElementById('filtroSelComp').value.toLowerCase();
+    document.querySelectorAll('#listaSelComp .sel-item').forEach(item => {
+      item.style.display = !txt || item.textContent.toLowerCase().includes(txt) ? '' : 'none';
+    });
+  }
+
+  function marcarTodasComp(val) {
+    document.querySelectorAll('#listaSelComp .sel-item').forEach(item => {
+      if (item.style.display !== 'none') item.querySelector('input').checked = val;
+    });
+    atualizarContSelComp();
+  }
+
+  function atualizarContSelComp() {
+    const n = document.querySelectorAll('.chk-sel-comp:checked').length;
+    document.getElementById('contSelComp').textContent = `${n} verba(s) selecionada(s)`;
+  }
+
+  function gerarListagemCompleta() {
+    const ids = new Set([...document.querySelectorAll('.chk-sel-comp:checked')].map(c => parseInt(c.dataset.id)));
+    if (ids.size === 0) { alert('Selecione pelo menos uma verba.'); return; }
+
+    const dados = VERBAS_DATA.filter(v => ids.has(v.id)).sort((a,b) => (a.cod_rubr||0)-(b.cod_rubr||0));
+    const incLbl = (map, cod) => cod ? `${cod} — ${map[cod]||''}` : '—';
+    const evLbl  = val => INC_EV_LABEL[val] || val || 'Não Incide';
+
+    let pages = '';
+    dados.forEach((v, idx) => {
+      const cod  = String(v.cod_rubr||'').padStart(4,'0');
+      const nat  = v.es03_nat_rubr ? `${v.es03_nat_rubr} — ${NAT_MAP[v.es03_nat_rubr]||''}` : '—';
+      const ini  = iniParaTela(v.ini_valid) || '—';
+      const pb   = idx < dados.length-1 ? 'page-break-after:always;' : '';
+
+      // Tipos de folha
+      const tipoUso = v.tipo_uso || '';
+      let tipoRows = '';
+      ['N','R','F','1'].forEach(t => {
+        if (!tipoUso.includes(t)) return;
+        const tl = t.toLowerCase();
+        tipoRows += `<tr>
+          <td class="tl">${t} — ${TIPO_NOME[t]}</td>
+          <td>${incLbl(INC_CP_MAP,   v[`tp${tl}_inc_cp`])}</td>
+          <td>${incLbl(INC_FGTS_MAP, v[`tp${tl}_inc_fgts`])}</td>
+          <td>${incLbl(INC_IRRF_MAP, v[`tp${tl}_inc_irrf`])}</td>
+          <td>${incLbl(INC_PIS_MAP,  v[`tp${tl}_inc_pis`])}</td>
+        </tr>`;
+      });
+      if (!tipoRows) tipoRows = '<tr><td colspan="5" class="vazio">Nenhum tipo de folha marcado</td></tr>';
+
+      // Outras informações marcadas
+      const marcadas = IS_LABELS.filter(([campo]) => v[campo]);
+      const outrasHtml = marcadas.length
+        ? marcadas.map(([,lbl]) => `<span class="is-b">✓ ${lbl}</span>`).join('')
+        : '<span class="vazio">Nenhuma</span>';
+
+      pages += `<div style="${pb}margin-bottom:8px;">
+        <div class="ptitulo">Informações sobre Rubrica ${cod} — ${v.dsc_rubr||''}</div>
+        <div class="vh">
+          <div><span class="vcod">${cod}</span><span class="vnome">${v.dsc_rubr||''}</span>${v.id_cliente===0?'<span class="sis">SISTEMA</span>':''}</div>
+          <div class="vtags"><span class="vtag">${TP_LABEL[v.tp_rubr]||'—'}</span><span class="vtag vtag2">${UNID_LABEL[v.unid_verba]||'—'}</span></div>
+        </div>
+        <table class="ib">
+          <tr>
+            <td><b>Válido a partir de:</b> ${ini}</td>
+            <td><b>Nome Resumido:</b> ${v.dsc_rubr_resumido||'—'}</td>
+            <td><b>Natureza eSocial:</b> ${nat}</td>
+          </tr>
+        </table>
+        <div class="st">Tipos de Folha e Incidências (INSS / FGTS / IRRF / PIS)</div>
+        <table class="it">
+          <thead><tr><th style="width:120px">Tipo</th><th>INSS</th><th>FGTS</th><th>IRRF</th><th>PIS</th></tr></thead>
+          <tbody>${tipoRows}</tbody>
+        </table>
+        <div class="st">Incidências por Evento</div>
+        <table class="et">
+          <tr>
+            <td><b>Férias:</b> ${evLbl(v.inc_ferias)}</td>
+            <td><b>Rescisão:</b> ${evLbl(v.inc_rescisao)}</td>
+            <td><b>13° Salário:</b> ${evLbl(v.inc_13sal)}</td>
+            <td><b>Adto 13°:</b> ${evLbl(v.inc_adto13)}</td>
+          </tr>
+        </table>
+        <div class="st">Outras Informações</div>
+        <div class="od">${outrasHtml}</div>
+      </div>`;
+    });
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+      <title>Listagem Completa de Verbas</title>
+      <style>
+        ${CSS_PDF_BASE}
+        .ptitulo{font-size:12px;font-weight:700;color:#0f172a;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #cbd5e1;}
+        .vh{background:#1e3a5f;color:white;padding:7px 12px;display:flex;justify-content:space-between;align-items:center;border-radius:6px 6px 0 0;}
+        .vcod{font-family:monospace;font-size:15px;font-weight:700;margin-right:10px;}
+        .vnome{font-size:13px;font-weight:700;}
+        .sis{font-size:9px;background:#475569;padding:1px 5px;border-radius:4px;margin-left:8px;}
+        .vtags{display:flex;gap:5px;}
+        .vtag{background:#2563eb;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;}
+        .vtag2{background:#0891b2;}
+        .ib{width:100%;border:1px solid #e2e8f0;border-top:none;font-size:11px;border-collapse:collapse;}
+        .ib td{padding:4px 10px;border-right:1px solid #e2e8f0;}
+        .st{background:#f1f5f9;border:1px solid #e2e8f0;border-top:none;padding:3px 10px;font-size:10px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.5px;}
+        .it{width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-top:none;font-size:10px;}
+        .it th{background:#e2e8f0;padding:3px 8px;text-align:left;}
+        .it td{padding:3px 8px;border-bottom:1px solid #f1f5f9;}
+        .tl{font-weight:700;color:#1e3a5f;}
+        .et{width:100%;border:1px solid #e2e8f0;border-top:none;border-collapse:collapse;font-size:11px;}
+        .et td{padding:4px 10px;border-right:1px solid #e2e8f0;width:25%;}
+        .od{border:1px solid #e2e8f0;border-top:none;padding:6px 10px;display:flex;flex-wrap:wrap;gap:4px;min-height:28px;}
+        .is-b{background:#dcfce7;color:#166534;font-size:10px;padding:2px 6px;border-radius:4px;border:1px solid #bbf7d0;}
+        .vazio{color:#94a3b8;font-style:italic;}
+      </style>
+    </head><body>
+      ${cabecalhoPDF('Listagem Completa de Verbas')}
+      ${pages}
+      ${rodapePDF('Total: ' + dados.length + ' verba(s) impressa(s)')}
+    </body></html>`;
+
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 500);
+  }
+
+  document.getElementById('modalSelCompleta').addEventListener('click', function(e) {
+    if (e.target === this) fecharSelCompleta();
+  });
+</script>
+</body>
+</html>

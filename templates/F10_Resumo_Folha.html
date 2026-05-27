@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Resumo da Folha</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:    #0b1f3a;
+  --navy-ln: #1e3d5c;
+  --accent:  #2a7de1;
+  --bg:      #f0f2f6;
+  --surface: #ffffff;
+  --border:  #dde3ec;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+  background: var(--navy); border-bottom: 1px solid var(--navy-ln);
+  padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+  align-items: center; gap: 0 32px; min-height: 64px;
+  position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center;
+               display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: #8baac8; margin-top: 2px; }
+.btn-voltar-topo {
+  margin-left: 16px; background: transparent; border: 1px solid var(--navy-ln);
+  color: #8baac8; font-size: 12px; padding: 5px 12px; border-radius: 6px;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+  text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+.badge {
+  display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+  font-size: 12px; font-weight: 700; background: #fff; border: 2px solid #dde3ec; color: #6b7280;
+}
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 860px; margin: 32px auto; padding: 0 20px 60px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ── SEÇÃO ── */
+.secao { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+.secao-topo {
+  padding: 11px 20px; display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+}
+.secao-titulo { font-size: 13px; font-weight: 600; color: #1e293b; }
+.secao-titulo-prov { border-left: 4px solid #22c55e; padding-left: 10px; }
+.secao-titulo-desc { border-left: 4px solid #ef4444; padding-left: 10px; }
+.secao-titulo-tot  { border-left: 4px solid #2a7de1; padding-left: 10px; }
+.secao-titulo-inss { border-left: 4px solid #8b5cf6; padding-left: 10px; }
+.secao-titulo-irrf { border-left: 4px solid #f59e0b; padding-left: 10px; }
+.secao-titulo-fgts { border-left: 4px solid #06b6d4; padding-left: 10px; }
+
+/* ── TABELA VERBAS ── */
+.tbl-verbas { width: 100%; border-collapse: collapse; font-size: 13px; }
+.tbl-verbas thead th {
+  background: #f8fafc; color: #64748b; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 8px 16px; border-bottom: 1px solid var(--border); text-align: left;
+}
+.tbl-verbas thead th.num { text-align: right; }
+.tbl-verbas tbody tr:hover { background: #f8fafc; }
+.tbl-verbas tbody td { padding: 8px 16px; border-bottom: 1px solid #f1f5f9; }
+.tbl-verbas tbody td.cod { font-family: var(--mono); font-size: 12px; color: #64748b; width: 60px; }
+.tbl-verbas tbody td.dsc { color: #1e293b; }
+.tbl-verbas tbody td.n   { text-align: right; color: #64748b; font-size: 12px; width: 80px; }
+.tbl-verbas tbody td.val { text-align: right; font-family: var(--mono); font-size: 13px; width: 140px; }
+.tbl-verbas tbody td.val.prov { color: #166534; }
+.tbl-verbas tbody td.val.desc { color: #991b1b; }
+.tbl-verbas tfoot td { padding: 9px 16px; border-top: 2px solid var(--border); font-weight: 600; font-size: 13px; }
+.tbl-verbas tfoot td.val { text-align: right; font-family: var(--mono); }
+.tbl-verbas tfoot td.val.prov { color: #166534; }
+.tbl-verbas tfoot td.val.desc { color: #991b1b; }
+
+/* ── TOTALIZAÇÕES ── */
+.tot-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 0; }
+.tot-item { padding: 18px 20px; border-right: 1px solid var(--border); }
+.tot-item:last-child { border-right: none; }
+.tot-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; margin-bottom: 6px; }
+.tot-valor { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+.tot-valor.prov { color: #166534; }
+.tot-valor.desc { color: #991b1b; }
+.tot-valor.liq  { color: #0b1f3a; }
+.tot-valor.neg  { color: #dc2626; }
+.tot-sub  { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+
+/* ── RESUMO TRIBUTOS ── */
+.trib-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; }
+.trib-item { padding: 16px 20px; border-right: 1px solid var(--border); }
+.trib-item:last-child { border-right: none; }
+.trib-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; margin-bottom: 5px; }
+.trib-valor { font-family: var(--mono); font-size: 15px; font-weight: 600; color: #1e293b; }
+.trib-aliq  { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+.trib-aliq span { font-family: var(--mono); color: #64748b; font-weight: 600; }
+
+/* ── BARRA DE AÇÕES ── */
+.barra-acoes { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.btn-voltar {
+  background: #f1f5f9; border: 1px solid #cbd5e1; color: #334155;
+  font-size: 12px; font-weight: 600; padding: 6px 14px; border-radius: 6px;
+  cursor: pointer; font-family: var(--sans); transition: 0.15s;
+  white-space: nowrap; text-decoration: none;
+  display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-voltar:hover { background: #e2e8f0; border-color: #94a3b8; color: #0f172a; }
+.btn-pdf {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: var(--accent); border: none; color: white;
+  font-size: 13px; font-family: var(--sans); font-weight: 600;
+  padding: 9px 20px; border-radius: 8px;
+  cursor: pointer; transition: 0.15s; text-decoration: none;
+}
+.btn-pdf:hover { background: #1a5fb8; }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-nome">{{ nome }}</div>
+  </div>
+  <div class="topo-titulo">
+    Resumo da Folha
+    <span class="badge">{{ anomes_fmt }} — {{ tipo_desc }}</span>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10</div>
+      <div class="topo-versao">{{ versao }}</div>
+    </div>
+    <a href="/menu" class="btn-voltar-topo">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <div class="rel-titulo">Resumo da Folha de Pagamento</div>
+  <div class="rel-subtitulo">Competência {{ anomes_fmt }} — {{ tipo_desc }} &nbsp;·&nbsp; {{ n_funcionarios }} funcionário(s)</div>
+
+  <div class="barra-acoes">
+    <a class="btn-voltar" href="/relatorios">&#8592; Voltar</a>
+    <a class="btn-pdf" href="/resumo_folha_pdf" target="_blank">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+        <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/>
+      </svg>
+      Gerar PDF
+    </a>
+  </div>
+
+  <!-- ── PROVENTOS ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-prov">Proventos</div>
+      <div style="font-size:11px;color:#64748b">{{ proventos|length }} verba(s)</div>
+    </div>
+    <table class="tbl-verbas">
+      <thead>
+        <tr>
+          <th>Cód</th>
+          <th>Descrição</th>
+          <th class="num">Func.</th>
+          <th class="num">Valor Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in proventos %}
+        <tr>
+          <td class="cod">{{ v.cod }}</td>
+          <td class="dsc">{{ v.dsc }}</td>
+          <td class="n">{{ v.n_funcs }}</td>
+          <td class="val prov">{{ v.valor_fmt }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;font-size:12px">Nenhum provento encontrado</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3" style="color:#166534;font-size:12px">Total Proventos</td>
+          <td class="val prov">{{ total_prov }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- ── DESCONTOS ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-desc">Descontos</div>
+      <div style="font-size:11px;color:#64748b">{{ descontos|length }} verba(s)</div>
+    </div>
+    <table class="tbl-verbas">
+      <thead>
+        <tr>
+          <th>Cód</th>
+          <th>Descrição</th>
+          <th class="num">Func.</th>
+          <th class="num">Valor Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in descontos %}
+        <tr>
+          <td class="cod">{{ v.cod }}</td>
+          <td class="dsc">{{ v.dsc }}</td>
+          <td class="n">{{ v.n_funcs }}</td>
+          <td class="val desc">{{ v.valor_fmt }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" style="padding:16px;text-align:center;color:#94a3b8;font-size:12px">Nenhum desconto encontrado</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="3" style="color:#991b1b;font-size:12px">Total Descontos</td>
+          <td class="val desc">{{ total_desc }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- ── TOTALIZAÇÕES ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-tot">Totalizações</div>
+    </div>
+    <div class="tot-grid">
+      <div class="tot-item">
+        <div class="tot-label">Funcionários</div>
+        <div class="tot-valor liq" style="font-size:22px">{{ n_funcionarios }}</div>
+        <div class="tot-sub">com movimento</div>
+      </div>
+      <div class="tot-item">
+        <div class="tot-label">Total Proventos</div>
+        <div class="tot-valor prov">{{ total_prov }}</div>
+      </div>
+      <div class="tot-item">
+        <div class="tot-label">Total Descontos</div>
+        <div class="tot-valor desc">{{ total_desc }}</div>
+      </div>
+      <div class="tot-item">
+        <div class="tot-label">Líquido</div>
+        <div class="tot-valor {% if liquido_neg %}neg{% else %}liq{% endif %}">{{ liquido }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── INSS ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-inss">Resumo INSS — Empregado</div>
+    </div>
+    <div class="trib-grid">
+      <div class="trib-item">
+        <div class="trib-label">Base de Cálculo</div>
+        <div class="trib-valor">{{ base_inss }}</div>
+        <div class="trib-aliq">verbas com incidência CP</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">INSS Retido (rubrica 0101)</div>
+        <div class="trib-valor">{{ inss_val }}</div>
+        <div class="trib-aliq">cálculo progressivo por faixa</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">Alíquota Efetiva Média</div>
+        <div class="trib-valor">{{ inss_aliq }}%</div>
+        <div class="trib-aliq">INSS ÷ base × 100</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── INSS EMPRESA ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-inss">Resumo INSS — Empresa (GPS)</div>
+      <div style="font-size:11px;color:#64748b">FPAS {{ gps_fpas }}{% if ind_simples == 'S' %} · Simples Nacional — contribuição patronal substituída{% endif %}</div>
+    </div>
+
+    <div style="padding:4px 20px 0">
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">Base de cálculo: <strong style="color:#1e293b;font-family:'IBM Plex Mono',monospace">{{ base_inss_emp }}</strong></div>
+    </div>
+
+    <table class="tbl-verbas">
+      <thead>
+        <tr>
+          <th>Componente</th>
+          <th class="num">Alíquota</th>
+          <th class="num">Valor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for l in inss_emp_linhas %}
+        <tr>
+          <td class="dsc">{{ l.label }}</td>
+          <td class="n" style="font-family:'IBM Plex Mono',monospace">{{ l.pct }}</td>
+          <td class="val prov">{{ l.val }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" style="padding:16px;text-align:center;color:#94a3b8;font-size:12px">Sem dados de encargos cadastrados na empresa</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" style="color:#166534;font-size:12px">Total INSS Empresa &nbsp;<span style="color:#94a3b8;font-weight:400">(Alíquota Efetiva {{ inss_emp_aliq }}%)</span></td>
+          <td class="val prov">{{ inss_emp_total }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <!-- ── IRRF ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-irrf">Resumo IRRF</div>
+    </div>
+    <div class="trib-grid">
+      <div class="trib-item">
+        <div class="trib-label">Base Bruta (verbas inc. IRRF)</div>
+        <div class="trib-valor">{{ base_irrf }}</div>
+        <div class="trib-aliq">antes de deduções (INSS, dependentes)</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">IRRF Retido (rubrica 0120)</div>
+        <div class="trib-valor">{{ irrf_val }}</div>
+        <div class="trib-aliq">cálculo progressivo por faixa</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">Alíquota Efetiva Média</div>
+        <div class="trib-valor">{{ irrf_aliq }}%</div>
+        <div class="trib-aliq">IRRF ÷ base bruta × 100</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FGTS ── -->
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-fgts">Resumo FGTS</div>
+    </div>
+    <div class="trib-grid">
+      <!-- 8% -->
+      <div class="trib-item">
+        <div class="trib-label">Base de Cálculo (8%)</div>
+        <div class="trib-valor">{{ base_fgts_8 }}</div>
+        <div class="trib-aliq">verbas com incidência FGTS</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">FGTS a Recolher 8%</div>
+        <div class="trib-valor">{{ fgts8_calc }}</div>
+        <div class="trib-aliq">
+          Base × 8% (truncado)
+          {% if fgts8_ok %}
+            <span style="color:#166534;font-weight:600">&#10003; confere</span>
+          {% else %}
+            <span style="color:#dc2626;font-weight:600">&#9888; dif. {{ fgts8_dif_fmt }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <!-- 2% — Menor Aprendiz (exibe somente se houver) -->
+      {% if tem_aprendiz %}
+      <div class="trib-item">
+        <div class="trib-label">Base de Cálculo (2%)</div>
+        <div class="trib-valor">{{ base_fgts_2 }}</div>
+        <div class="trib-aliq">Menor Aprendiz — categoria 103</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">FGTS a Recolher 2%</div>
+        <div class="trib-valor">{{ fgts2_calc }}</div>
+        <div class="trib-aliq">
+          Base × 2% (truncado)
+          {% if fgts2_ok %}
+            <span style="color:#166534;font-weight:600">&#10003; confere</span>
+          {% else %}
+            <span style="color:#dc2626;font-weight:600">&#9888; dif. {{ fgts2_dif_fmt }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      <!-- Total -->
+      <div class="trib-item" {% if not tem_aprendiz %}style="grid-column: 1 / -1"{% endif %}>
+        <div class="trib-label" style="font-weight:700">Total FGTS a Recolher</div>
+        <div class="trib-valor" style="font-weight:700;color:#0369a1">{{ fgts_total_calc }}</div>
+        <div class="trib-aliq">{% if tem_aprendiz %}soma 8% + 2%{% else %}alíquota 8%{% endif %}</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

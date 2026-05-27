@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Lançamento de Falta</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 620px; margin: 36px auto; padding: 0 24px 80px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+}
+.pref-secao-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 12px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+}
+.func-resumo-wrap { padding: 10px 20px 14px; }
+.func-resumo-item {
+    display: flex; align-items: center; gap: 10px; padding: 6px 10px;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 7px; font-size: 12px;
+}
+.func-resumo-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; flex-shrink: 0; }
+.func-resumo-nome { font-weight: 500; color: #1e293b; }
+.badge-horario {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+    padding: 3px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+    font-family: var(--mono);
+}
+
+.opcao-linha {
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: start; gap: 0 16px; padding: 12px 20px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.opcao-linha:last-child { border-bottom: none; }
+.opcao-label {
+    font-size: 13px; font-weight: 500; color: #334155;
+    display: flex; align-items: center; gap: 6px; padding-top: 5px;
+}
+.opcao-label .opcional { font-size: 10px; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; }
+.opcao-valor { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+.input-dia {
+    font-family: var(--mono); font-size: 22px; font-weight: 600;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 8px; padding: 6px 0; width: 72px; outline: none;
+    text-align: center; transition: border-color 0.15s;
+    -moz-appearance: textfield;
+}
+.input-dia::-webkit-inner-spin-button,
+.input-dia::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.input-dia:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-dia.erro  { border-color: #ef4444; background: #fff5f5; }
+.anomes-label {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #64748b; padding-top: 2px;
+}
+
+.input-motivo {
+    font-family: var(--sans); font-size: 13px; color: #1e293b;
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px;
+    padding: 7px 10px; width: 280px; outline: none;
+    resize: vertical; transition: border-color 0.15s; line-height: 1.5;
+}
+.input-motivo:focus { border-color: var(--accent); background: #f0f7ff; }
+
+.radio-group { display: flex; gap: 20px; align-items: center; padding-top: 4px; }
+.radio-group label {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 500; color: #334155; cursor: pointer;
+}
+.radio-group input[type="radio"] { accent-color: var(--accent); cursor: pointer; width: 15px; height: 15px; }
+
+.hint      { font-size: 11px; color: #94a3b8; }
+.hint.ok   { color: #16a34a; font-weight: 500; }
+.hint.erro { color: #ef4444; font-weight: 500; }
+.hint.warn { color: #d97706; font-weight: 500; }
+
+/* Preview intervalo */
+.prev-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 6px 16px; border-bottom: 1px solid #f1f5f9; font-size: 12px;
+}
+.prev-item:last-child { border-bottom: none; }
+.prev-data   { font-family: var(--mono); font-weight: 600; color: #1e293b; min-width: 52px; }
+.prev-diasem { color: #64748b; flex: 1; }
+.badge-prev  {
+    display: inline-block; padding: 2px 9px; border-radius: 5px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; white-space: nowrap;
+}
+.badge-prev.util { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.badge-prev.skip { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+.badge-prev.dup  { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.prev-resumo {
+    padding: 10px 16px; background: #f8fafc;
+    border-top: 1px solid var(--border); font-size: 12px; color: #475569;
+}
+
+/* Feedback box do dia */
+#dia-info {
+    display: none;
+    margin: 0 20px 14px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: var(--mono);
+}
+#dia-info.ok   { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+#dia-info.erro { background: #fff1f2; border: 1px solid #fca5a5; color: #991b1b; }
+
+.rodape { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
+.btn-cancelar {
+    background: var(--surface); border: 1px solid var(--border); color: #64748b;
+    font-size: 13px; font-family: var(--sans); font-weight: 500;
+    padding: 10px 22px; border-radius: 8px; cursor: pointer;
+    transition: 0.15s; text-decoration: none;
+}
+.btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+.btn-gravar {
+    background: #dc2626; border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-gravar:hover    { background: #b91c1c; }
+.btn-gravar:disabled { background: #fca5a5; cursor: not-allowed; }
+
+#toast {
+    display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 12px 24px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 480px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Lançamento de Falta</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <button class="btn-voltar" onclick="window.history.back()">&#8592; Voltar</button>
+        <div>
+            <div class="rel-titulo">Registrar Falta</div>
+            <div class="rel-subtitulo">Folha ativa: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }} — informe o dia e o tipo de falta</div>
+        </div>
+    </div>
+
+    <!-- Card 1: Funcionário -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Funcionário</div>
+        <div class="func-resumo-wrap">
+            <div class="func-resumo-item">
+                <span class="func-resumo-mat">{{ '%06d' % mat|int }}</span>
+                <span class="func-resumo-nome">{{ func_nome }}</span>
+            </div>
+            {% if horario_nome %}
+            <div>
+                <span class="badge-horario">&#128336; {{ horario_nome }}</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Card 2: Lançamento -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Dados da Falta</div>
+
+        <div class="opcao-linha">
+            <div class="opcao-label">Dia da Falta</div>
+            <div class="opcao-valor">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <input type="number" id="diaFalta" class="input-dia"
+                        min="1" max="31" placeholder="—" autocomplete="off"
+                        oninput="onDiaChange()" onblur="onDiaChange()">
+                    <span class="anomes-label">/ {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+                    <span style="font-size:12px;color:#64748b;padding-left:8px;">até o dia:</span>
+                    <input type="number" id="diaAte" class="input-dia"
+                        min="1" max="31" placeholder="—" autocomplete="off"
+                        oninput="onAteChange()">
+                    <span class="anomes-label" style="font-size:10px;color:#94a3b8;">opcional</span>
+                </div>
+                <span class="hint" id="hint-dtFalta"></span>
+            </div>
+        </div>
+
+        <div id="dia-info"></div>
+
+        <div class="opcao-linha">
+            <div class="opcao-label">Tipo de Falta</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="tipoFalta" value="I" checked> Injustificada</label>
+                    <label><input type="radio" name="tipoFalta" value="J"> Justificada</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div class="opcao-label">Motivo &nbsp;<span class="opcional">opcional</span></div>
+            <div class="opcao-valor">
+                <textarea id="motivo" class="input-motivo" rows="2"
+                    maxlength="255" placeholder="Descreva o motivo…"></textarea>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview intervalo (oculto até clicar Verificar) -->
+    <div id="preview-card" class="pref-card" style="display:none;">
+        <div class="pref-secao-titulo">Dias a Registrar</div>
+        <div id="preview-lista"></div>
+        <div class="prev-resumo" id="preview-resumo"></div>
+    </div>
+
+    <div class="rodape">
+        <button class="btn-cancelar" onclick="window.history.back()">Voltar</button>
+        <button class="btn-gravar" id="btn-gravar" onclick="acaoPrincipal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            <span id="btn-label">Registrar Falta</span>
+        </button>
+    </div>
+
+</div><!-- /conteudo -->
+<div id="toast"></div>
+
+<script>
+const MAT    = '{{ mat }}';
+const ANOMES = '{{ anomes_atual }}';  // YYYYMM
+
+// 'single' | 'verificar' | 'gravar-lote'
+let _modo       = 'single';
+let _diasUteis  = [];   // lista de YYYYMMDD após verificação
+
+function parseDia(val) {
+    const dia = parseInt(val, 10);
+    if (!dia || dia < 1 || dia > 31) return null;
+    const ano = parseInt(ANOMES.slice(0, 4), 10);
+    const mes = parseInt(ANOMES.slice(4, 6), 10);
+    const dt  = new Date(ano, mes - 1, dia);
+    if (dt.getFullYear() !== ano || dt.getMonth() + 1 !== mes || dt.getDate() !== dia) return null;
+    return ANOMES + String(dia).padStart(2, '0');
+}
+
+// ── Ao mudar "Dia De" ─────────────────────────────────────────────────
+let _checarTimer = null;
+function onDiaChange() {
+    _resetPreview();
+    clearTimeout(_checarTimer);
+    if (!document.getElementById('diaAte').value) {
+        _modo = 'single';
+        _atualizarBotao();
+        _checarTimer = setTimeout(_checarDiaNow, 400);
+    } else {
+        _modo = 'verificar';
+        _atualizarBotao();
+    }
+}
+
+// ── Ao mudar "Até" ────────────────────────────────────────────────────
+function onAteChange() {
+    _resetPreview();
+    const ate = document.getElementById('diaAte').value;
+    if (ate) {
+        _modo = 'verificar';
+        document.getElementById('dia-info').style.display = 'none';
+    } else {
+        _modo = 'single';
+        _checarTimer = setTimeout(_checarDiaNow, 400);
+    }
+    _atualizarBotao();
+}
+
+// ── Verificar dia único ───────────────────────────────────────────────
+async function _checarDiaNow() {
+    const el   = document.getElementById('diaFalta');
+    const hint = document.getElementById('hint-dtFalta');
+    const box  = document.getElementById('dia-info');
+    const data = parseDia(el.value);
+
+    if (!el.value) {
+        hint.textContent = ''; hint.className = 'hint';
+        el.classList.remove('erro'); box.style.display = 'none'; return;
+    }
+    if (!data) {
+        el.classList.add('erro');
+        hint.textContent = 'Dia inválido para este mês'; hint.className = 'hint erro';
+        box.style.display = 'none'; return;
+    }
+    el.classList.remove('erro'); hint.textContent = ''; hint.className = 'hint';
+    try {
+        const r = await fetch(`/api/falta_checar_data?mat=${MAT}&data=${data}`);
+        const d = await r.json();
+        box.style.display = '';
+        box.className   = d.ok ? 'ok' : 'erro';
+        box.textContent = d.ok ? `${d.dia} — ${d.horas}h (${d.horario})` : (d.msg || 'Não é dia de trabalho.');
+    } catch(e) { box.style.display = 'none'; }
+}
+
+// ── Verificar intervalo ───────────────────────────────────────────────
+async function _verificarIntervalo() {
+    const de  = document.getElementById('diaFalta').value;
+    const ate = document.getElementById('diaAte').value;
+    if (!de || !ate) { showToast('Informe os dois dias do intervalo.', 'erro'); return; }
+
+    const deDe = parseInt(de, 10);
+    const ateI = parseInt(ate, 10);
+    if (!deDe || !ateI || deDe > ateI) {
+        showToast('O dia inicial deve ser menor ou igual ao dia final.', 'erro'); return;
+    }
+
+    const btn = document.getElementById('btn-gravar');
+    btn.disabled = true;
+    document.getElementById('btn-label').textContent = 'Verificando…';
+
+    try {
+        const r = await fetch(`/api/falta_checar_intervalo?mat=${MAT}&dia_de=${deDe}&dia_ate=${ateI}`);
+        let d;
+        try { d = await r.json(); }
+        catch(_) { throw new Error(`HTTP ${r.status} — resposta inválida do servidor`); }
+        if (!d.ok) { showToast(d.msg || 'Erro ao verificar dias.', 'erro'); return; }
+        if (!r.ok)  { showToast(d.msg || `Erro HTTP ${r.status}`, 'erro'); return; }
+
+        _diasUteis = d.dias.filter(x => x.status === 'util').map(x => x.data);
+        _renderPreview(d.dias);
+
+        if (_diasUteis.length > 0) {
+            _modo = 'gravar-lote';
+        } else {
+            _modo = 'verificar';
+            showToast('Nenhum dia útil disponível no intervalo.', 'erro');
+        }
+    } catch(e) {
+        showToast('Erro: ' + e.message, 'erro');
+    } finally {
+        btn.disabled = false;
+        _atualizarBotao();
+    }
+}
+
+function _renderPreview(dias) {
+    const lista   = document.getElementById('preview-lista');
+    const resumo  = document.getElementById('preview-resumo');
+    const card    = document.getElementById('preview-card');
+
+    const labelMap = { util: 'Dia útil', sem_trabalho: 'Sem trabalho', duplicado: 'Já registrado' };
+    const classMap = { util: 'util',      sem_trabalho: 'skip',          duplicado: 'dup' };
+
+    lista.innerHTML = dias.map(d =>
+        `<div class="prev-item">
+            <span class="prev-data">${d.data_fmt}</span>
+            <span class="prev-diasem">${d.dia_semana}</span>
+            <span class="badge-prev ${classMap[d.status]}">${labelMap[d.status]}</span>
+        </div>`
+    ).join('');
+
+    const qtUtil = dias.filter(x => x.status === 'util').length;
+    const qtSkip = dias.filter(x => x.status !== 'util').length;
+    resumo.textContent = `${qtUtil} dia(s) serão registrados · ${qtSkip} ignorado(s)`;
+    card.style.display = '';
+}
+
+function _resetPreview() {
+    document.getElementById('preview-card').style.display = 'none';
+    document.getElementById('preview-lista').innerHTML = '';
+    _diasUteis = [];
+}
+
+function _atualizarBotao() {
+    const lbl = document.getElementById('btn-label');
+    if (_modo === 'single')      lbl.textContent = 'Registrar Falta';
+    else if (_modo === 'verificar')   lbl.textContent = 'Verificar Dias';
+    else if (_modo === 'gravar-lote') lbl.textContent = `Gravar ${_diasUteis.length} Falta(s)`;
+}
+
+// ── Dispatcher do botão principal ─────────────────────────────────────
+function acaoPrincipal() {
+    if (_modo === 'single')      _gravarUnico();
+    else if (_modo === 'verificar')   _verificarIntervalo();
+    else if (_modo === 'gravar-lote') _gravarLote();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+// ── Gravar falta única ────────────────────────────────────────────────
+async function _gravarUnico() {
+    const el   = document.getElementById('diaFalta');
+    const hint = document.getElementById('hint-dtFalta');
+    const data = parseDia(el.value);
+
+    if (!data) {
+        el.classList.add('erro');
+        hint.textContent = el.value ? 'Dia inválido para este mês' : 'Informe o dia';
+        hint.className = 'hint erro';
+        showToast('Informe um dia válido para a falta.', 'erro');
+        el.focus(); return;
+    }
+
+    const tipo   = document.querySelector('input[name="tipoFalta"]:checked')?.value || 'I';
+    const motivo = document.getElementById('motivo').value.trim();
+    const btn    = document.getElementById('btn-gravar');
+    btn.disabled = true;
+    document.getElementById('btn-label').textContent = 'Registrando…';
+
+    try {
+        const resp = await fetch('/api/falta_gravar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matricula: MAT, data_falta: data, tipo_falta: tipo, motivo })
+        });
+        let d;
+        try { d = await resp.json(); }
+        catch(_) { throw new Error(`HTTP ${resp.status} — resposta inválida do servidor`); }
+        if (d.ok) {
+            showToast(d.msg || 'Falta registrada com sucesso!', 'ok');
+            setTimeout(() => { window.location.href = '/select_funcionario?contexto=falta'; }, 2200);
+        } else {
+            showToast(d.msg || 'Erro ao registrar falta.', 'erro');
+        }
+    } catch(e) {
+        showToast('Erro: ' + e.message, 'erro');
+    } finally {
+        btn.disabled = false;
+        _atualizarBotao();
+    }
+}
+
+// ── Gravar lote ───────────────────────────────────────────────────────
+async function _gravarLote() {
+    if (!_diasUteis.length) { showToast('Nenhuma data para registrar.', 'erro'); return; }
+
+    const tipo   = document.querySelector('input[name="tipoFalta"]:checked')?.value || 'I';
+    const motivo = document.getElementById('motivo').value.trim();
+    const btn    = document.getElementById('btn-gravar');
+    btn.disabled = true;
+    document.getElementById('btn-label').textContent = 'Gravando…';
+
+    try {
+        const resp = await fetch('/api/falta_gravar_lote', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matricula: MAT, datas: _diasUteis, tipo_falta: tipo, motivo })
+        });
+        let d;
+        try { d = await resp.json(); }
+        catch(_) { throw new Error(`HTTP ${resp.status} — resposta inválida do servidor`); }
+        if (d.ok) {
+            showToast(d.msg || `${d.gravados} falta(s) registrada(s)!`, 'ok');
+            setTimeout(() => { window.location.href = '/select_funcionario?contexto=falta'; }, 2200);
+        } else {
+            showToast(d.msg || 'Erro ao registrar faltas.', 'erro');
+        }
+    } catch(e) {
+        showToast('Erro: ' + e.message, 'erro');
+    } finally {
+        btn.disabled = false;
+        _atualizarBotao();
+    }
+}
+</script>
+
+</body>
+</html>

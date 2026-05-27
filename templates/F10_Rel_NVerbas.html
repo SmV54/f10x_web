@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Relação de N Verbas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+.conteudo { max-width: 1100px; margin: 32px auto; padding: 0 24px 60px; }
+
+.rel-header { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 20px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+.rel-info      { font-family: var(--mono); font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+    background: #991b1b; color: white; border: none;
+    font-size: 12px; font-family: var(--sans); font-weight: 600;
+    padding: 7px 16px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-pdf:hover { background: #7f1d1d; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+}
+
+/* ── TABELA ── */
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+thead tr { background: #f8fafc; }
+thead th {
+    padding: 10px 14px; font-size: 11px; font-weight: 600; color: #4b5e7a;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 2px solid var(--border); white-space: nowrap;
+    text-align: left;
+}
+thead th.th-val { text-align: right; }
+thead th.th-qtd { text-align: right; color: #64748b; }
+
+/* sub-header de verbas */
+.th-verba-grupo {
+    border-bottom: 1px solid var(--border);
+    background: #f1f5f9;
+}
+.th-verba-grupo th {
+    text-align: right; font-size: 12px; font-weight: 700;
+    color: #1e293b; padding: 8px 14px; border-bottom: 1px solid var(--border);
+    letter-spacing: 0;
+}
+.th-verba-grupo th.prov { color: #166534; background: #f0fdf4; border-bottom-color: #86efac; }
+.th-verba-grupo th.desc { color: #991b1b; background: #fef2f2; border-bottom-color: #fca5a5; }
+
+tbody tr { border-bottom: 1px solid #f1f5f9; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover td { background: #f8fafc; }
+
+td { padding: 9px 14px; color: #374151; white-space: nowrap; }
+td.td-matr { font-family: var(--mono); font-weight: 600; color: #1e293b; font-size: 12px; }
+td.td-nome { color: #1e293b; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+td.td-val  { text-align: right; font-family: var(--mono); font-size: 12px; }
+td.td-val.zero { color: #cbd5e1; }
+td.td-qtd  { text-align: right; font-family: var(--mono); font-size: 11px; color: #64748b; }
+
+/* linha de total */
+.tr-total td {
+    background: #0b1f3a; color: #e8edf4;
+    font-weight: 700; border-top: 2px solid #1e3d5c;
+}
+.tr-total td.td-matr { color: #8baac8; font-size: 11px; letter-spacing: 0.04em; }
+.tr-total td.td-nome { color: #8baac8; }
+.tr-total td.td-val  { color: #f5c842; }
+.tr-total td.td-qtd  { color: #8baac8; }
+.tr-total td.td-val.zero { color: #4b5e7a; }
+
+.sem-dados {
+    padding: 40px; text-align: center; color: #94a3b8; font-size: 14px;
+}
+
+@media print {
+    .topo, .rel-header { display: none; }
+    .conteudo { margin: 0; padding: 0; max-width: 100%; }
+    .card { border: none; border-radius: 0; }
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Relação de N Verbas</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <div style="flex:1;">
+            <div class="rel-titulo">Relação de N Verbas</div>
+            <div class="rel-subtitulo">{{ verbas|length }} verba(s) &nbsp;·&nbsp; Classificação: {{ 'Nome' if ordem == 'nome' else 'Matrícula' }}</div>
+            <div class="rel-info">Folha {{ folha_fmt }} &nbsp;·&nbsp; {{ tipo_label }}</div>
+        </div>
+        <a class="btn-pdf" href="{{ pdf_url }}" target="_blank">&#128438; PDF</a>
+    </div>
+
+    <div class="card">
+        {% if rows %}
+        <div class="tabela-wrap">
+        <table>
+            <!-- linha de grupo das verbas -->
+            <thead>
+            <tr class="th-verba-grupo">
+                <th colspan="2" style="background:#f8fafc;"></th>
+                {% for v in verbas %}
+                <th colspan="{{ 2 if v.tem_qtd else 1 }}"
+                    class="{{ 'prov' if v.tp == '1' else 'desc' }}">
+                    {{ '%04d'|format(v.cod) }} — {{ v.dsc }}
+                </th>
+                {% endfor %}
+            </tr>
+            <!-- sub-cabeçalhos -->
+            <tr>
+                <th>Matr.</th>
+                <th>Nome</th>
+                {% for v in verbas %}
+                    {% if v.tem_qtd %}
+                    <th class="th-qtd">Qtd</th>
+                    {% endif %}
+                    <th class="th-val">Valor</th>
+                {% endfor %}
+            </tr>
+            </thead>
+
+            <tbody>
+            {% for row in rows %}
+            <tr>
+                <td class="td-matr">{{ '%06d'|format(row.matricula) }}</td>
+                <td class="td-nome">{{ row.nome }}</td>
+                {% for v in verbas %}
+                    {% set vd = row.verbas[v.cod] %}
+                    {% if v.tem_qtd %}
+                    <td class="td-qtd">{{ vd.qtd if vd.qtd else '—' }}</td>
+                    {% endif %}
+                    <td class="td-val {{ 'zero' if not vd.valor }}">{{ vd.val_fmt }}</td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            </tbody>
+
+            <!-- linha de total -->
+            <tfoot>
+            <tr class="tr-total">
+                <td class="td-matr">TOTAL</td>
+                <td class="td-nome">{{ rows|length }} funcionário(s)</td>
+                {% for v in verbas %}
+                    {% if v.tem_qtd %}
+                    <td class="td-qtd">{{ totais[v.cod].qtd }}</td>
+                    {% endif %}
+                    <td class="td-val {{ 'zero' if not totais[v.cod].valor }}">
+                        {{ totais[v.cod].val_fmt }}
+                    </td>
+                {% endfor %}
+            </tr>
+            </tfoot>
+        </table>
+        </div>
+        {% else %}
+        <div class="sem-dados">
+            Nenhum funcionário com lançamento para as verbas selecionadas na folha ativa.
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+</body>
+</html>

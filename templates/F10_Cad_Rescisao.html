@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Rescisão</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 820px; margin: 20px auto; padding: 0 20px 32px; }
+
+.rel-header { display: flex; align-items: center; gap: 11px; margin-bottom: 16px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 11px; font-family: var(--sans);
+    padding: 5px 11px; border-radius: 7px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 15px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+/* ── CARDS ── */
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; margin-bottom: 12px;
+}
+.pref-secao-titulo {
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 7px 16px 6px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+}
+
+/* ── FICHA FUNCIONÁRIO ── */
+.func-ficha-header {
+    font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #94a3b8;
+    background: #f8fafc; padding: 3px 16px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 60px 1fr 90px 108px; gap: 0 8px;
+}
+.func-ficha {
+    display: grid; grid-template-columns: 60px 1fr 90px 108px;
+    gap: 0 8px; padding: 8px 16px; align-items: center;
+}
+.f-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.f-nome { font-size: 12px; font-weight: 600; color: #1e293b; }
+.f-adm  { font-family: var(--mono); font-size: 10px; color: #64748b; }
+.f-sal  { font-family: var(--mono); font-size: 11px; color: #1e293b; text-align: right; font-weight: 500; }
+
+/* ── ALERTA SEM AVISO ── */
+.alerta-sem-aviso {
+    background: #fef2f2; border: 1px solid #fca5a5;
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 12px;
+    color: #991b1b; font-size: 13px; line-height: 1.5;
+}
+.alerta-sem-aviso strong { font-weight: 700; }
+.alerta-sem-aviso a { color: #991b1b; text-decoration: underline; }
+.alerta-sem-aviso a:hover { color: #7f1d1d; }
+
+/* ── RESUMO AVISO ── */
+.resumo-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+    padding: 0;
+}
+.resumo-item {
+    padding: 8px 16px; border-bottom: 1px solid #f1f5f9;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.resumo-item:nth-child(odd) { border-right: 1px solid #f1f5f9; }
+.resumo-item:last-child:nth-child(odd) { border-right: none; grid-column: span 2; }
+.resumo-lbl { font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; }
+.resumo-val { font-size: 12px; font-weight: 600; color: #1e293b; font-family: var(--mono); }
+.resumo-val.txt { font-family: var(--sans); }
+
+/* ── DATA INPUT ── */
+.data-body { padding: 12px 16px; display: flex; align-items: center; gap: 16px; }
+.data-input {
+    font-family: var(--mono); font-size: 14px; color: #1e293b;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; background: var(--surface);
+    transition: border-color 0.15s;
+}
+.data-input:focus { outline: none; border-color: var(--accent); }
+.data-hint { font-size: 11px; color: #94a3b8; }
+
+/* ── RODAPÉ ── */
+.rodape { display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding-top: 4px; }
+.btn-processar {
+    background: #dc2626; border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 9px 26px; border-radius: 7px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-processar:hover { background: #b91c1c; }
+.btn-cancelar {
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 9px 16px; border-radius: 7px; cursor: pointer; transition: 0.15s;
+    text-decoration: none;
+}
+.btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Rescisão</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/select_funcionario?contexto=rescisao">&#8592; Voltar</a>
+        <div>
+            <div class="rel-titulo">Rescisão</div>
+            <div class="rel-subtitulo">Registrar demissão do funcionário</div>
+        </div>
+    </div>
+
+    {% if not funcionario %}
+    <div style="background:#fff;border-radius:14px;padding:32px;text-align:center;color:#94a3b8;font-size:14px;">
+        Funcionário não encontrado. <a href="/menu" style="color:var(--accent);">Voltar ao menu</a>
+    </div>
+    {% else %}
+
+    {# ── FUNCIONÁRIO ── #}
+    <div class="pref-card">
+        <div class="pref-secao-titulo"><span>Funcionário</span></div>
+        <div class="func-ficha-header">
+            <span>Matrícula</span><span>Nome</span><span>Admissão</span><span style="text-align:right;">Salário</span>
+        </div>
+        <div class="func-ficha">
+            <span class="f-mat">{{ funcionario.mat_fmt }}</span>
+            <span class="f-nome">{{ funcionario.nome }}</span>
+            <span class="f-adm">{{ funcionario.dtadm_fmt }}</span>
+            <span class="f-sal">{{ funcionario.sal_fmt }}</span>
+        </div>
+    </div>
+
+    {% if sem_aviso %}
+    {# ── BLOQUEIO: SEM AVISO PRÉVIO ── #}
+    <div class="alerta-sem-aviso">
+        <strong>Funcionário sem Aviso Prévio registrado</strong> — registre o aviso prévio antes de processar a rescisão.
+        <br><br>
+        <a href="/select_funcionario?contexto=aviso_previo">&#8594; Ir para Aviso Prévio</a>
+    </div>
+    {% else %}
+
+    {# ── CARD AVISO PRÉVIO ── #}
+    <div class="pref-card">
+        <div class="pref-secao-titulo"><span>Aviso Prévio Registrado</span></div>
+        <div class="resumo-grid">
+            <div class="resumo-item">
+                <span class="resumo-lbl">Data do Aviso</span>
+                <span class="resumo-val">{{ aviso.data1i_fmt }}</span>
+            </div>
+            <div class="resumo-item">
+                <span class="resumo-lbl">Tipo</span>
+                <span class="resumo-val txt">{{ aviso.campotxt1 }}</span>
+            </div>
+            <div class="resumo-item">
+                <span class="resumo-lbl">Quem deu o Aviso</span>
+                <span class="resumo-val txt">{{ aviso.campotxt2 }}</span>
+            </div>
+            <div class="resumo-item">
+                <span class="resumo-lbl">1º AP — Lei Normal</span>
+                <span class="resumo-val">{{ aviso.ref1 }} dias</span>
+            </div>
+            <div class="resumo-item">
+                <span class="resumo-lbl">2º AP — Lei 12.506</span>
+                <span class="resumo-val">{{ aviso.ref2 }} dias</span>
+            </div>
+        </div>
+    </div>
+
+    {# ── DATA DA DEMISSÃO ── #}
+    <div class="pref-card">
+        <div class="pref-secao-titulo"><span>Data da Demissão</span></div>
+        <form method="POST" action="/cad_rescisao?mat={{ mat }}" id="frm-rescisao">
+            <div class="data-body">
+                <input class="data-input" type="date" name="data_demissao"
+                       value="{{ data_demissao_sugerida }}" required>
+                <span class="data-hint">Data sugerida pelo aviso prévio (pode ser ajustada)</span>
+            </div>
+            <div class="rodape" style="padding: 8px 16px 12px;">
+                <a class="btn-cancelar" href="/menu">Cancelar</a>
+                <button type="submit" class="btn-processar">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/>
+                        <polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                    Gravar Rescisão
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {% endif %}
+    {% endif %}
+
+</div><!-- /conteudo -->
+
+</body>
+</html>

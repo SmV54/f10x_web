@@ -1,0 +1,1694 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10-Simples — Cadastro de Funcionário</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:       #0b1f3a;
+    --navy-mid:   #122947;
+    --navy-line:  #1e3d5c;
+    --accent:     #2a7de1;
+    --accent-dim: #1a5fb8;
+    --green:      #18795b;
+    --green-hover:#126048;
+    --text-head:  #e8edf4;
+    --text-sub:   #8baac8;
+    --bg:         #f0f2f6;
+    --surface:    #ffffff;
+    --border:     #dde3ec;
+    --label:      #374151;
+    --placeholder:#94a3b8;
+    --input-bg:   #f8fafc;
+    --read-bg:    #eef2f8;
+    --read-text:  #4b6080;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ─────────────────────────────────────────────── */
+.topo {
+    background: var(--navy);
+    border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0 32px;
+    min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; letter-spacing: 0.01em; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa { display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTAINER ────────────────────────────────────────── */
+.container { max-width: 1380px; margin: 10px auto; padding: 0 20px 32px; display: flex; flex-direction: column; gap: 8px; }
+
+/* ── SEÇÃO ────────────────────────────────────────────── */
+.secao { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.secao-header { display: flex; align-items: center; gap: 10px; padding: 7px 18px; border-bottom: 1px solid var(--border); background: #f8fafc; }
+.secao-icone { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.secao-titulo { font-size: 12px; font-weight: 600; letter-spacing: .04em; color: #4b5e7a; }
+.secao-corpo { padding: 12px 18px; display: flex; flex-direction: column; gap: 10px; }
+
+/* ── SEÇÃO COLAPSÁVEL ─────────────────────────────────── */
+.secao-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 18px; background: #f4f7fc; border-bottom: 1px solid var(--border); cursor: pointer; user-select: none; }
+.secao-toggle:hover { background: #eaeff8; }
+.toggle-esq { display: flex; align-items: center; gap: 10px; }
+.toggle-seta { font-size: 12px; color: #4a6f9a; transition: transform .2s; }
+.toggle-seta.aberto { transform: rotate(180deg); }
+.toggle-corpo { display: none; padding: 12px 18px; }
+.toggle-corpo.aberto { display: block; }
+
+/* ── GRIDS ────────────────────────────────────────────── */
+.grid-2  { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; }
+.grid-3  { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px 14px; }
+.grid-4  { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 14px; }
+.grid-6  { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px 14px; }
+.grid-7  { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px 14px; }
+
+.grid-ident {
+    display: grid;
+    grid-template-columns: 110px 200px 140px 120px 1fr;
+    gap: 8px 14px;
+}
+.grid-nome {
+    display: grid;
+    grid-template-columns: 1fr 240px 1fr;
+    gap: 8px 14px;
+}
+.grid-contrato-top {
+    display: grid;
+    grid-template-columns: 150px 130px 190px 1fr 140px 140px;
+    gap: 8px 14px;
+}
+.grid-contrato-top-alt {
+    display: grid;
+    grid-template-columns: 150px 130px 190px 1fr;
+    gap: 8px 14px;
+}
+.grid-contrato-prazo {
+    display: grid;
+    grid-template-columns: 130px 1fr 1fr;
+    gap: 8px 14px;
+}
+.grid-admissao1 {
+    display: grid;
+    grid-template-columns: 110px 0.5fr 0.5fr 110px 300px 1fr;
+    gap: 8px 14px;
+}
+.grid-admissao2 {
+    display: grid;
+    grid-template-columns: 110px 160px 120px 1fr;
+    gap: 8px 14px;
+}
+.grid-local-jornada {
+    display: grid;
+    grid-template-columns: 110px 100px 145px 75px 75px 1fr 0.5fr 80px 1fr;
+    gap: 8px 14px;
+}
+.grid-banco {
+    display: grid;
+    grid-template-columns: 1fr 90px 70px 130px 70px;
+    gap: 8px 14px;
+}
+.grid-end1 {
+    display: grid;
+    grid-template-columns: 100px 1fr 90px 200px;
+    gap: 8px 14px;
+}
+.grid-end2 {
+    display: grid;
+    grid-template-columns: 1fr 200px 60px;
+    gap: 8px 14px;
+}
+.grid-def {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 8px 14px;
+}
+.grid-aprend {
+    display: grid;
+    grid-template-columns: 130px 200px 110px 200px;
+    gap: 8px 14px;
+}
+
+/* ── INSALUBRIDADE / PERICULOSIDADE ──────────────────── */
+.check-pct-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    height: 36px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.check-pct-row input[type="checkbox"] {
+    width: 15px; height: 15px;
+    cursor: pointer; accent-color: var(--accent); flex-shrink: 0;
+}
+.check-pct-row .check-label {
+    font-size: 12px; color: var(--placeholder); flex-shrink: 0;
+}
+.check-pct-row .pct-num {
+    width: 52px; border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent; outline: none;
+    font-family: var(--mono); font-size: 13px;
+    text-align: right; padding: 2px 0; color: var(--label);
+}
+.check-pct-row .pct-sym {
+    font-size: 12px; color: var(--label); flex-shrink: 0;
+}
+
+/* ── QUADRO TOMADOR ───────────────────────────────────── */
+.quadro-tomador {
+    border: 1px solid #c2d9f7;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #f4f8fd;
+}
+.quadro-tomador-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    background: #ddeaf8;
+    border-bottom: 1px solid #c2d9f7;
+}
+.quadro-tomador-titulo {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: #1a4a7a;
+}
+.quadro-tomador-sub {
+    font-size: 10.5px;
+    color: #4a6f9a;
+    font-style: italic;
+}
+.quadro-tomador-corpo {
+    padding: 10px 14px 12px;
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 8px 14px;
+}
+
+/* ── CAMPO ────────────────────────────────────────────── */
+.campo { display: flex; flex-direction: column; gap: 3px; }
+.campo label { font-size: 11px; font-weight: 600; letter-spacing: .03em; color: #6b7fa0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.campo input,
+.campo select {
+    height: 32px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0 10px;
+    font-size: 13.5px;
+    font-family: var(--sans);
+    color: var(--label);
+    background: var(--input-bg);
+    transition: border-color .15s, box-shadow .15s;
+    width: 100%;
+}
+.campo input::placeholder { color: var(--placeholder); font-size: 13px; }
+.campo input:focus, .campo select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(42,125,225,.12);
+    background: #fff;
+}
+.campo input[readonly] { background: var(--read-bg); color: var(--read-text); border-color: #dde6f0; cursor: default; }
+.campo-mono input, .campo-mono select { font-family: var(--mono); font-size: 13px; letter-spacing: .04em; }
+.campo-centro input { text-align: center; }
+
+/* ── SEPARADOR ────────────────────────────────────────── */
+.sep { height: 1px; background: var(--border); margin: 4px 0; }
+
+/* ── HINT ─────────────────────────────────────────────── */
+.msg-orientacao {
+    position: fixed; z-index: 100; max-width: 400px;
+    font-size: 11.5px; color: #4b6080;
+    background: #eef4fb; border: 1px solid #c2d9f7;
+    border-radius: 8px; padding: 10px 14px; line-height: 1.6;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none;
+}
+.msg-orientacao::after  { content:''; position:absolute; top:100%; left:20px; border:7px solid transparent; border-top-color:#c2d9f7; }
+.msg-orientacao::before { content:''; position:absolute; top:100%; left:21px; border:6px solid transparent; border-top-color:#eef4fb; z-index:1; }
+
+/* ── BADGE OPCIONAL ───────────────────────────────────── */
+.badge-opcional { font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #2a7de1; background: #ddeefb; border: 1px solid #b3d4f5; border-radius: 4px; padding: 1px 7px; }
+
+/* ── BOTÕES ───────────────────────────────────────────── */
+.acoes { display: flex; align-items: center; gap: 10px; }
+.btn { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 18px; border: none; border-radius: 7px; font-family: var(--sans); font-size: 13.5px; font-weight: 600; cursor: pointer; transition: background .15s, transform .1s; }
+.btn:active { transform: translateY(1px); }
+.btn-salvar { background: var(--green); color: #fff; }
+.btn-salvar:hover { background: var(--green-hover); }
+.btn-limpar { background: #e8ecf2; color: #4b5e7a; border: 1px solid #d2d9e6; }
+.btn-limpar:hover { background: #dde3ee; }
+.btn-voltar { background: #e8ecf2; color: #4b5e7a; border: 1px solid #d2d9e6; }
+.btn-voltar:hover { background: #dde3ee; }
+.btn-buscar { background: var(--accent); color: #fff; }
+.btn-buscar:hover { background: var(--accent-dim); }
+
+/* ── RESULTADO ────────────────────────────────────────── */
+.resultado-ok { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d; }
+.resultado-erro { padding: 10px 16px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; font-size: 12.5px; color: #991b1b; line-height: 1.6; }
+.resultado-erro ul { margin: 4px 0 0 16px; }
+.ico { display: block; width: 15px; height: 15px; flex-shrink: 0; }
+
+/* ── RESPONSIVE ───────────────────────────────────────── */
+@media (max-width: 1100px) {
+    .grid-ident, .grid-admissao1 { grid-template-columns: repeat(3, 1fr); }
+    .grid-nome { grid-template-columns: 1fr 1fr; }
+    .grid-jornada { grid-template-columns: repeat(4, 1fr); }
+    .grid-7 { grid-template-columns: repeat(4, 1fr); }
+    .grid-banco { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 700px) {
+    .topo { grid-template-columns: 1fr; padding: 12px 16px; gap: 6px; }
+    .topo-titulo { text-align: left; }
+    .grid-ident, .grid-nome, .grid-contrato-top, .grid-contrato-prazo,
+    .grid-jornada, .grid-admissao1, .grid-admissao2, .grid-local,
+    .grid-banco, .grid-end1, .grid-end2, .grid-def, .grid-aprend,
+    .grid-2, .grid-3, .grid-4, .grid-6, .grid-7,
+    .quadro-tomador-corpo { grid-template-columns: 1fr; }
+    .container { padding: 0 12px 32px; }
+}
+</style>
+</head>
+<body
+    data-lt-tpinsc="{{ empresa_lt_tpInsc }}"
+    data-lt-nrinsc="{{ empresa_lt_nrInsc }}">
+
+<!-- TOPO -->
+<header class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa_nome }}</span>
+        <span class="topo-nome">{{ cliente_nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Cadastro de Funcionário — {{ 'Alteração' if modo == 'alteracao' else 'Inclusão' }}</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+</header>
+
+<div id="msgOrientacao" class="msg-orientacao"></div>
+
+<div class="container">
+
+    {% if modo == 'alteracao' %}
+    <!-- ── BUSCA (só alteração) ─────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone"></div>
+            <span class="secao-titulo">LOCALIZAR FUNCIONÁRIO</span>
+        </div>
+        <div class="secao-corpo">
+            <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="campo campo-mono" style="width:170px">
+                    <label>CPF</label>
+                    <input type="text" id="busca_cpf" maxlength="14" placeholder="000.000.000-00"
+                           oninput="mascaraCPF(this)"
+                           onkeydown="if(event.key==='Enter') buscarFuncionario()">
+                </div>
+                <div class="campo campo-mono" style="width:110px">
+                    <label>ou Matrícula</label>
+                    <input type="text" id="busca_matricula" maxlength="6" placeholder="000001"
+                           oninput="apenasNumeros(this,6)"
+                           onkeydown="if(event.key==='Enter') buscarFuncionario()">
+                </div>
+                <button class="btn btn-buscar" onclick="buscarFuncionario()">&#128269; Buscar</button>
+            </div>
+            <div id="busca_msg" style="font-size:12px;margin-top:4px;min-height:16px;"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── IDENTIFICAÇÃO ──────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone"></div>
+            <span class="secao-titulo">Identificação</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-ident">
+                <div class="campo campo-mono">
+                    <label>Matrícula</label>
+                    <input type="text" id="matricula" maxlength="6" placeholder="000001"
+                           oninput="apenasNumeros(this,6); sincMatriculaES(this);"
+                           onblur="formatarMatricula(this); checkMatricula(this);"
+                           {% if modo == 'alteracao' %}readonly style="background:var(--read-bg);color:var(--read-text);"{% endif %}>
+                </div>
+                <div class="campo">
+                    <label>Matrícula eSocial</label>
+                    <input type="text" id="matricula_eS" maxlength="30" placeholder="Preenchida automaticamente"
+                           onfocus="showHint(this,'Preenchida igual à Matrícula na inclusão.\nPode ser alterada se necessário.')" onblur="clearHint()">
+                </div>
+                <div class="campo campo-mono">
+                    <label>CPF</label>
+                    <input type="text" id="cpf" maxlength="14" placeholder="000.000.000-00"
+                           oninput="mascaraCPF(this)" onblur="validarCPF(this); checkCPF(this);">
+                </div>
+                <div class="campo campo-mono">
+                    <label>Filial</label>
+                    <input type="text" id="filial" maxlength="6" value="{{ filial }}" readonly>
+                </div>
+                <div class="campo">
+                    <label>Categoria eSocial</label>
+                    <select id="codCateg"
+                            onfocus="showHint(this,'codCateg — Código da categoria conforme Tabela 01 do eSocial.\nExemplos: 101 – Empregado geral | 103 – Aprendiz | 104 – Doméstico')" onblur="clearHint()">
+                        <option value="">Selecione…</option>
+                        {% for cat in categorias %}
+                        <option value="{{ cat.codigo }}">{{ cat.codigo }} — {{ cat.texto }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="grid-nome">
+                <div class="campo">
+                    <label>Nome Completo</label>
+                    <input type="text" id="nome" maxlength="70" placeholder="Nome completo do funcionário"
+                           style="text-transform:uppercase"
+                           oninput="this.value=this.value.toUpperCase()"
+                           onblur="preencherNomeR()">
+                </div>
+                <div class="campo">
+                    <label>Nome nos Relatórios</label>
+                    <input type="text" id="nomeR" maxlength="30" placeholder="Nome abreviado (30 car.)"
+                           style="text-transform:uppercase"
+                           oninput="this.value=this.value.toUpperCase()"
+                           onfocus="showHint(this,'Nome curto usado nos relatórios e contracheques.\nMáximo 30 caracteres.')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>Nome da Mãe</label>
+                    <input type="text" id="nomeMae" maxlength="70" placeholder="Nome completo da mãe"
+                           style="text-transform:uppercase"
+                           oninput="this.value=this.value.toUpperCase()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── DADOS PESSOAIS ──────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#7c3aed"></div>
+            <span class="secao-titulo">Dados Pessoais</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-7">
+                <div class="campo">
+                    <label>Sexo</label>
+                    <select id="sexo">
+                        <option value="">—</option>
+                        <option value="M">M — Masculino</option>
+                        <option value="F">F — Feminino</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Raça / Cor</label>
+                    <select id="racaCor">
+                        <option value="">—</option>
+                        <option value="1">1 — Branca</option>
+                        <option value="2">2 — Preta</option>
+                        <option value="3">3 — Parda</option>
+                        <option value="4">4 — Amarela</option>
+                        <option value="5">5 — Indígena</option>
+                        <option value="6">6 — Não Informada</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Estado Civil</label>
+                    <select id="estCiv">
+                        <option value="">—</option>
+                        <option value="1">1 — Solteiro</option>
+                        <option value="2">2 — Casado</option>
+                        <option value="3">3 — Divorciado</option>
+                        <option value="4">4 — Separado</option>
+                        <option value="5">5 — Viúvo</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Grau de Instrução</label>
+                    <select id="grauInstr">
+                        <option value="">—</option>
+                        <option value="01">01 — Analfabeto</option>
+                        <option value="02">02 — Até 5º ano incompleto</option>
+                        <option value="03">03 — 5º ano completo</option>
+                        <option value="04">04 — 6º ao 9º ano incompleto</option>
+                        <option value="05">05 — Fund. completo</option>
+                        <option value="06">06 — Médio incompleto</option>
+                        <option value="07">07 — Médio completo</option>
+                        <option value="08">08 — Superior incompleto</option>
+                        <option value="09">09 — Superior completo</option>
+                        <option value="10">10 — Pós-graduação</option>
+                        <option value="11">11 — Mestrado</option>
+                        <option value="12">12 — Doutorado</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>Dt. Nascimento</label>
+                    <input type="text" id="dtNascto" maxlength="10" placeholder="DD/MM/AAAA"
+                           oninput="mascaraData(this)" onblur="validarData(this)">
+                </div>
+                <div class="campo">
+                    <label>País Nascimento</label>
+                    <input type="text" id="paisNascto" maxlength="3" placeholder="105"
+                           onfocus="showHint(this,'Código do país conforme Tabela 06 do eSocial.\nBrasil = 105')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>País Nacionalidade</label>
+                    <input type="text" id="paisNac" maxlength="3" placeholder="105"
+                           onfocus="showHint(this,'Código do país conforme Tabela 06 do eSocial.\nBrasil = 105')" onblur="clearHint()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SALÁRIO / CONTRATO ───────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#18795b"></div>
+            <span class="secao-titulo">Salário / Contrato</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="{% if modo == 'alteracao' %}grid-contrato-top-alt{% else %}grid-contrato-top{% endif %}">
+                <div class="campo campo-mono">
+                    <label>Salário (R$)</label>
+                    <input type="text" id="vrSalFx" placeholder="0,00"
+                           oninput="apenasNumeros(this,10)"
+                           onfocus="limparSalario(this); showHint(this,'Digite apenas os dígitos. Ex: 150000 = R$ 1.500,00')"
+                           onblur="formatarSalario(this); clearHint()"
+                           {% if modo == 'alteracao' %}readonly style="background:var(--read-bg);color:var(--read-text);"{% endif %}>
+                </div>
+                <div class="campo">
+                    <label>Unidade</label>
+                    <select id="UndSalFixo"
+                            onfocus="showHint(this,'M = Mensal | H = Por hora | D = Por dia')" onblur="clearHint()">
+                        <option value="M">M — Mensal</option>
+                        <option value="H">H — Hora</option>
+                        <option value="D">D — Dia</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Tipo de Contrato</label>
+                    <select id="tpContr" onchange="ajustarContrato()">
+                        <option value="">—</option>
+                        <option value="1">1 — Prazo indeterminado</option>
+                        <option value="2">2 — Prazo determinado (dias)</option>
+                        <option value="3">3 — Prazo determinado (fato)</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Função</label>
+                    <select id="CBOFuncao">
+                        <option value="">Selecione…</option>
+                        {% for f in funcoes %}
+                        <option value="{{ f.cbo }}">{{ f.cbo }} — {{ f.nome }}</option>
+                        {% endfor %}
+                        {% if not funcoes %}
+                        <option value="" disabled>Nenhuma função cadastrada</option>
+                        {% endif %}
+                    </select>
+                </div>
+                {% if modo != 'alteracao' %}
+                <div class="campo">
+                    <label>Insalubridade</label>
+                    <div class="check-pct-row">
+                        <input type="checkbox" id="hasInsalubridade" onchange="toggleInsalub(this)">
+                        <span class="check-label" id="labelInsalub">Não</span>
+                        <input type="number" id="perInsalubridade" class="pct-num" min="0" max="100" step="0.01" placeholder="%" style="display:none" title="Percentual de insalubridade">
+                        <span class="pct-sym" id="symInsalub" style="display:none">%</span>
+                    </div>
+                </div>
+                <div class="campo">
+                    <label>Periculosidade</label>
+                    <div class="check-pct-row">
+                        <input type="checkbox" id="hasPericulosidade" onchange="togglePericu(this)">
+                        <span class="check-label" id="labelPericu">Não</span>
+                        <input type="number" id="perPericulosidade" class="pct-num" min="0" max="100" step="0.01" placeholder="%" style="display:none" title="Percentual de periculosidade">
+                        <span class="pct-sym" id="symPericu" style="display:none">%</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Bloco prazo determinado — só aparece se tpContr = 2 -->
+            <div class="grid-contrato-prazo" id="bloco-prazo" style="display:none">
+                <div class="campo campo-mono">
+                    <label>Término do Contrato</label>
+                    <input type="text" id="dtTerm" maxlength="10" placeholder="DD/MM/AAAA"
+                           oninput="mascaraData(this)"
+                           onfocus="showHint(this,'Data de término do contrato por prazo determinado.\nObrigatório se Tipo de Contrato = 2.')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>Cláusula Assecuratória do Contrato</label>
+                    <select id="ClauAssec"
+                            onfocus="showHint(this,'Indica se o contrato contém cláusula assecuratória de rescisão recíproca antes do término.\nObrigatório se tpContr = 2.')" onblur="clearHint()">
+                        <option value="">—</option>
+                        <option value="S">S — Sim</option>
+                        <option value="N">N — Não</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Objeto Determinante</label>
+                    <input type="text" id="objDet" maxlength="120" placeholder="Obra, serviço, safra… (obrigatório se tipo 3)"
+                           onfocus="showHint(this,'Objeto do contrato por prazo determinado.\nObrigatório e exclusivo se tpContr = 3.')" onblur="clearHint()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── ADMISSÃO ────────────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#b45309"></div>
+            <span class="secao-titulo">Admissão</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-admissao1">
+                <div class="campo campo-mono">
+                    <label>Dt. Admissão</label>
+                    <input type="text" id="dtAdm" maxlength="10" placeholder="DD/MM/AAAA"
+                           oninput="mascaraData(this); if(this.value.length===10) validarDtAdm(this);"
+                           onblur="validarDtAdm(this)">
+                </div>
+                <div class="campo">
+                    <label>Tipo de Admissão</label>
+                    <select id="tpAdmissao" onchange="ajustarAdmissao()">
+                        <option value="">—</option>
+                        <option value="1" selected>1 — Admissão</option>
+                        <option value="2">2 — Transf. mesmo grupo econômico</option>
+                        <option value="3">3 — Transf. empresa consorciada</option>
+                        <option value="4">4 — Transf. por sucessão / fusão</option>
+                        <option value="6">6 — Mudança de CPF</option>
+                        <option value="7">7 — Transf. empresa inapta</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Indicador de Admissão</label>
+                    <select id="indAdmissao">
+                        <option value="1">1 — Normal</option>
+                        <option value="2">2 — Decorrente de ação fiscal</option>
+                        <option value="3">3 — Decisão judicial</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Nat. Atividade</label>
+                    <select id="natAtividade" disabled
+                            onfocus="showHint(this,'Fixado em 1 – Trabalho urbano para todos os casos gerais.\n2 – Trabalho rural apenas se codCateg = 104.')" onblur="clearHint()">
+                        <option value="1">1 — Trabalho urbano</option>
+                        <option value="2">2 — Trabalho rural</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Regime de Jornada</label>
+                    <select id="tpRegJor">
+                        <option value="">—</option>
+                        <option value="1" selected>1 — Submetido a horário (CLT)</option>
+                        <option value="2">2 — Atividade externa (art. 62 I)</option>
+                        <option value="3">3 — Função (art. 62 II)</option>
+                        <option value="4">4 — Teletrabalho (art. 62 III)</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Sindicato</label>
+                    <select id="cnpjSindCategProf">
+                        {% if sindicatos|length != 1 %}
+                        <option value="">Selecione…</option>
+                        {% endif %}
+                        {% for s in sindicatos %}
+                        <option value="{{ s.cnpj }}" {% if sindicatos|length == 1 %}selected{% endif %}>{{ s.cnpj }} — {{ s.nome }}</option>
+                        {% endfor %}
+                        {% if not sindicatos %}
+                        <option value="" disabled>Nenhum sindicato cadastrado</option>
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Transferência -->
+            <div class="grid-admissao2" id="bloco-transf" style="display:none">
+                <div class="campo campo-mono">
+                    <label>Dt. Transferência</label>
+                    <input type="text" id="dtTransf" maxlength="10" placeholder="DD/MM/AAAA"
+                           oninput="mascaraData(this)">
+                </div>
+                <div class="campo campo-mono">
+                    <label>CNPJ Empresa Anterior</label>
+                    <input type="text" id="cnpjTransf" maxlength="14" placeholder="00000000000000"
+                           oninput="apenasNumeros(this,14)">
+                </div>
+                <div class="campo campo-mono">
+                    <label>Matrícula Anterior</label>
+                    <input type="text" id="matriculaTransf" maxlength="6" placeholder="000001"
+                           oninput="apenasNumeros(this,6)">
+                </div>
+                <div class="campo">
+                    <label>Nº Processo Trabalhista</label>
+                    <input type="text" id="nrProcTrab" maxlength="20" placeholder="Apenas se decisão judicial">
+                </div>
+            </div>
+
+            <!-- Tomador -->
+            <div class="quadro-tomador">
+                <div class="quadro-tomador-header">
+                    <span class="quadro-tomador-titulo">Tomador de Serviços</span>
+                    <span class="quadro-tomador-sub">— preencher apenas quando aplicável</span>
+                </div>
+                <div class="quadro-tomador-corpo">
+                    <div class="campo">
+                        <label>Tipo de Inscrição</label>
+                        <select id="tomador_tpInsc"
+                                onfocus="showHint(this,'Tipo de inscrição do tomador de serviços.\n1 = CNPJ | 3 = CAEPF | 4 = CNO')" onblur="clearHint()">
+                            <option value="">—</option>
+                            <option value="1">1 — CNPJ</option>
+                            <option value="3">3 — CAEPF</option>
+                            <option value="4">4 — CNO</option>
+                        </select>
+                    </div>
+                    <div class="campo campo-mono">
+                        <label>Número de Inscrição</label>
+                        <input type="text" id="tomador_nrInsc" maxlength="14" placeholder="Número de inscrição do tomador"
+                               oninput="apenasNumeros(this,14)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── LOCAL DE TRABALHO + JORNADA (lado a lado) ────── -->
+    <div style="display:flex; gap:8px; align-items:stretch;">
+
+        <!-- Local de Trabalho -->
+        <div class="secao" style="flex:0 0 auto;">
+            <div class="secao-header">
+                <div class="secao-icone" style="background:#0891b2"></div>
+                <span class="secao-titulo">Local de Trabalho</span>
+            </div>
+            <div class="secao-corpo">
+                <div style="display:grid; grid-template-columns:110px 100px 145px; gap:8px 14px;">
+                    <div class="campo">
+                        <label>Centro de Custo</label>
+                        <input type="text" id="centrocusto" maxlength="8" placeholder="(uso futuro)" readonly>
+                    </div>
+                    <div class="campo">
+                        <label>Tipo de Inscrição</label>
+                        <select id="lt_tpInsc">
+                            <option value="">—</option>
+                            <option value="1" {% if empresa_lt_tpInsc == "1" %}selected{% endif %}>1 — CNPJ</option>
+                            <option value="3" {% if empresa_lt_tpInsc == "3" %}selected{% endif %}>3 — CAEPF</option>
+                            <option value="4" {% if empresa_lt_tpInsc == "4" %}selected{% endif %}>4 — CNO</option>
+                        </select>
+                    </div>
+                    <div class="campo campo-mono">
+                        <label>Número de Inscrição</label>
+                        <input type="text" id="lt_nrInsc" maxlength="14"
+                               value="{{ empresa_lt_nrInsc }}"
+                               placeholder="CNPJ da empresa">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Jornada de Trabalho -->
+        <div class="secao" style="flex:1;">
+            <div class="secao-header">
+                <div class="secao-icone" style="background:#6d28d9"></div>
+                <span class="secao-titulo">Jornada de Trabalho</span>
+            </div>
+            <div class="secao-corpo">
+                <div style="display:grid; grid-template-columns:75px 75px 1fr 0.5fr 80px 1fr; gap:8px 14px;">
+                    <div class="campo campo-mono campo-centro">
+                        <label>Hs. Semana</label>
+                        <input type="text" id="qtdHrsSem" maxlength="2" value="44"
+                               oninput="apenasNumeros(this,2)">
+                    </div>
+                    <div class="campo campo-mono campo-centro">
+                        <label>Hs. Mensais</label>
+                        <input type="text" id="qtdHrsMes" maxlength="3" value="220"
+                               oninput="apenasNumeros(this,3)"
+                               onfocus="showHint(this,'Quantidade de horas mensais. Máximo: 220')" onblur="clearHint()">
+                    </div>
+                    <div class="campo">
+                        <label>Tipo de Jornada</label>
+                        <select id="tpJornada">
+                            <option value="">—</option>
+                            <option value="2">2 — 12x36</option>
+                            <option value="3">3 — Fixo / folga variável</option>
+                            <option value="4">4 — Fixo / folga domingo</option>
+                            <option value="5">5 — Fixo / folga exceto domingo</option>
+                            <option value="6">6 — Fixo / folga outro dia + domingo periódico</option>
+                            <option value="7">7 — Turno ininterrupto de revezamento</option>
+                            <option value="9" selected>9 — Demais tipos</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label>Tempo Parcial</label>
+                        <select id="tmpParc"
+                                onfocus="showHint(this,'0 – Não é tempo parcial\n1 – Até 25h semanais (apenas codCateg 104)\n2 – Até 30h semanais\n3 – Até 26h semanais')" onblur="clearHint()">
+                            <option value="0">0 — Não</option>
+                            <option value="1">1 — Até 25h/sem</option>
+                            <option value="2">2 — Até 30h/sem</option>
+                            <option value="3">3 — Até 26h/sem</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label>Hor. Noturno</label>
+                        <select id="horNoturno">
+                            <option value="">—</option>
+                            <option value="S">S — Sim</option>
+                            <option value="N" selected>N — Não</option>
+                        </select>
+                    </div>
+                    <div class="campo">
+                        <label>Horário</label>
+                        <select id="id_tab_Horario">
+                            <option value="">Selecione…</option>
+                            {% for h in horarios %}
+                            <option value="{{ h.id }}">{{ h.id_fmt }} — {{ h.nome }}</option>
+                            {% endfor %}
+                            {% if not horarios %}
+                            <option value="" disabled>Nenhum horário cadastrado</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── ENDEREÇO ────────────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#0f766e"></div>
+            <span class="secao-titulo">Endereço do Funcionário</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-end1">
+                <div class="campo campo-mono">
+                    <label>CEP</label>
+                    <input type="text" id="ender_cep" maxlength="9" placeholder="00000-000"
+                           oninput="mascaraCEP(this)" onblur="buscarCEP(this)">
+                </div>
+                <div class="campo">
+                    <label>Logradouro</label>
+                    <input type="text" id="ender_dscLograd" maxlength="100" placeholder="Rua, Av., Travessa…">
+                </div>
+                <div class="campo">
+                    <label>Número</label>
+                    <input type="text" id="ender_nrLograd" maxlength="10" placeholder="S/N">
+                </div>
+                <div class="campo">
+                    <label>Complemento</label>
+                    <input type="text" id="ender_complemento" maxlength="30" placeholder="Apto, Bloco…">
+                </div>
+            </div>
+            <div class="grid-end2">
+                <div class="campo">
+                    <label>Bairro</label>
+                    <input type="text" id="ender_bairro" maxlength="90" placeholder="Bairro">
+                </div>
+                <div class="campo campo-mono">
+                    <label>Cód. IBGE Município</label>
+                    <input type="text" id="ender_codMunic" maxlength="7" placeholder="0000000"
+                           oninput="apenasNumeros(this,7)">
+                </div>
+                <div class="campo">
+                    <label>UF</label>
+                    <select id="ender_uf">
+                        <option value="">—</option>
+                        <option>AC</option><option>AL</option><option>AM</option><option>AP</option>
+                        <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
+                        <option>GO</option><option>MA</option><option>MG</option><option>MS</option>
+                        <option>MT</option><option>PA</option><option>PB</option><option>PE</option>
+                        <option>PI</option><option>PR</option><option>RJ</option><option>RN</option>
+                        <option>RO</option><option>RR</option><option>RS</option><option>SC</option>
+                        <option>SE</option><option>SP</option><option>TO</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── DADOS BANCÁRIOS ─────────────────────────────── -->
+    <div class="secao">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#1d4ed8"></div>
+            <span class="secao-titulo">Dados Bancários</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-banco">
+                <div class="campo">
+                    <label>Banco</label>
+                    <select id="banco_Numero">
+                        <option value="000">000 — Pagamento em Caixa</option>
+                        <option value="001">001 — Banco do Brasil</option>
+                        <option value="033">033 — Santander</option>
+                        <option value="041">041 — Banrisul</option>
+                        <option value="077">077 — Inter</option>
+                        <option value="104">104 — Caixa Econômica Federal</option>
+                        <option value="237">237 — Bradesco</option>
+                        <option value="341">341 — Itaú</option>
+                        <option value="422">422 — Safra</option>
+                        <option value="748">748 — Sicredi</option>
+                        <option value="756">756 — Sicoob</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>Agência</label>
+                    <input type="text" id="banco_Agencia" maxlength="4" placeholder="0000"
+                           oninput="apenasNumeros(this,4)">
+                </div>
+                <div class="campo campo-mono">
+                    <label>DV Agência</label>
+                    <input type="text" id="banco_AgenciaDV" maxlength="1" placeholder="0">
+                </div>
+                <div class="campo campo-mono">
+                    <label>Conta (12 dígitos)</label>
+                    <input type="text" id="banco_Conta" maxlength="12" placeholder="000000000000"
+                           oninput="apenasNumeros(this,12)">
+                </div>
+                <div class="campo campo-mono">
+                    <label>DV Conta</label>
+                    <input type="text" id="banco_ContaDV" maxlength="1" placeholder="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── IMIGRANTE (colapsável) ──────────────────────── -->
+    <div class="secao">
+        <div class="secao-toggle" onclick="toggleSecao('imigrante')">
+            <div class="toggle-esq">
+                <div class="secao-icone" style="background:#0891b2"></div>
+                <span class="secao-titulo" style="color:#1a4a7a;">Trabalhador Estrangeiro</span>
+                <span class="badge-opcional">Opcional</span>
+            </div>
+            <span class="toggle-seta" id="seta-imigrante">▼</span>
+        </div>
+        <div class="toggle-corpo" id="corpo-imigrante">
+            <div class="grid-3">
+                <div class="campo">
+                    <label>É Estrangeiro?</label>
+                    <select id="ind_Imigrante" onchange="ajustarImigrante()">
+                        <option value="N">N — Não</option>
+                        <option value="S">S — Sim</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Tempo de Residência</label>
+                    <select id="imigrante_tmpResid" disabled>
+                        <option value="">—</option>
+                        <option value="1">1 — Prazo Indeterminado</option>
+                        <option value="2">2 — Prazo Determinado</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Condição de Ingresso</label>
+                    <select id="condIng" disabled>
+                        <option value="">—</option>
+                        <option value="1">1 — Refugiado</option>
+                        <option value="2">2 — Solicitante de refúgio</option>
+                        <option value="3">3 — Reunião familiar</option>
+                        <option value="4">4 — Acordo Mercosul</option>
+                        <option value="5">5 — Dependente de diplomático</option>
+                        <option value="6">6 — Tratado Brasil–Portugal</option>
+                        <option value="7">7 — Outra condição</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── DEFICIÊNCIA (colapsável) ───────────────────── -->
+    <div class="secao">
+        <div class="secao-toggle" onclick="toggleSecao('deficiencia')">
+            <div class="toggle-esq">
+                <div class="secao-icone" style="background:#9333ea"></div>
+                <span class="secao-titulo" style="color:#1a4a7a;">Deficiência / Reabilitação</span>
+                <span class="badge-opcional">Opcional</span>
+            </div>
+            <span class="toggle-seta" id="seta-deficiencia">▼</span>
+        </div>
+        <div class="toggle-corpo" id="corpo-deficiencia">
+            <div class="grid-def">
+                <div class="campo"><label>Def. Física</label>
+                    <select id="defFisica"><option value="N">N — Não</option><option value="S">S — Sim</option></select>
+                </div>
+                <div class="campo"><label>Def. Visual</label>
+                    <select id="defVisual"><option value="N">N — Não</option><option value="S">S — Sim</option></select>
+                </div>
+                <div class="campo"><label>Def. Auditiva</label>
+                    <select id="defAuditiva"><option value="N">N — Não</option><option value="S">S — Sim</option></select>
+                </div>
+                <div class="campo"><label>Def. Mental</label>
+                    <select id="defMental"><option value="N">N — Não</option><option value="S">S — Sim</option></select>
+                </div>
+                <div class="campo"><label>Def. Intelectual</label>
+                    <select id="defIntelectual"><option value="N">N — Não</option><option value="S">S — Sim</option></select>
+                </div>
+                <div class="campo"><label>Reab. / Readap.</label>
+                    <select id="reabReadap"><option value="N">N — Não</option><option value="S">S — Sim</option></select>
+                </div>
+                <div class="campo">
+                    <label>Conta na Cota?</label>
+                    <select id="infoCota"
+                            onfocus="showHint(this,'Indica se deve ser contabilizado na cota de PcD.\nPreencher apenas se houver pelo menos uma deficiência marcada.')" onblur="clearHint()">
+                        <option value="">—</option>
+                        <option value="S">S — Sim</option>
+                        <option value="N">N — Não</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── MENOR APRENDIZ (colapsável) ────────────────── -->
+    <div class="secao">
+        <div class="secao-toggle" onclick="toggleSecao('aprendiz')">
+            <div class="toggle-esq">
+                <div class="secao-icone" style="background:#d97706"></div>
+                <span class="secao-titulo" style="color:#1a4a7a;">Menor Aprendiz</span>
+                <span class="badge-opcional">Opcional</span>
+            </div>
+            <span class="toggle-seta" id="seta-aprendiz">▼</span>
+        </div>
+        <div class="toggle-corpo" id="corpo-aprendiz">
+            <div class="grid-aprend">
+                <div class="campo">
+                    <label>Tipo Aprendiz</label>
+                    <select id="indAprend" onchange="ajustarAprendiz()">
+                        <option value="0">0 — Não é aprendiz</option>
+                        <option value="1">1 — Contratação direta</option>
+                        <option value="2">2 — Contratação indireta</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>CNPJ Entidade Qualificadora</label>
+                    <input type="text" id="cnpjEntQual" maxlength="14" placeholder="00000000000000"
+                           oninput="apenasNumeros(this,14)" disabled
+                           onfocus="showHint(this,'CNPJ da entidade qualificadora.\nObrigatório se indAprend = 1.')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>Tp. Insc. Estabelecimento</label>
+                    <select id="Aprend_tpInsc" disabled>
+                        <option value="">—</option>
+                        <option value="1">1 — CNPJ</option>
+                        <option value="2">2 — CPF</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>CNPJ Prática</label>
+                    <input type="text" id="Aprend_cnpjPrat" maxlength="14" placeholder="00000000000000"
+                           oninput="apenasNumeros(this,14)" disabled
+                           onfocus="showHint(this,'CNPJ do estabelecimento onde são realizadas as atividades práticas.')" onblur="clearHint()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── AÇÕES ───────────────────────────────────────── -->
+    <div class="acoes">
+        <button class="btn btn-salvar" onclick="salvarFuncionario()">
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2H4L2 4v10h12V4l-1-2z"/><rect x="5" y="9" width="6" height="5"/><rect x="5" y="2" width="5" height="3"/>
+            </svg>
+            Salvar Funcionário
+        </button>
+        <button class="btn btn-limpar" onclick="limparFormulario()">
+            <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 4h12M6 4V2h4v2M5 4v8a1 1 0 001 1h4a1 1 0 001-1V4"/>
+            </svg>
+            Limpar
+        </button>
+        <button class="btn btn-voltar" onclick="history.back()">← Voltar</button>
+    </div>
+    <div id="resultadoValidacao"></div>
+
+</div>
+
+<script>
+const MODO           = '{{ modo }}';
+const FOLHA_SITUACAO = '{{ folha_situacao }}';
+const ANOMES_ATUAL   = '{{ anomes_atual }}';   // ex.: "202604"
+let funcionarioId = null;
+
+/* ── HINT ───────────────────────────────────────────────── */
+function showHint(el, msg) {
+    const box = document.getElementById('msgOrientacao');
+    box.innerHTML = msg.replace(/\n/g, '<br>');
+    box.style.display = 'block';
+    const r = el.getBoundingClientRect();
+    box.style.left = r.left + 'px';
+    box.style.top  = (r.top - box.offsetHeight - 14 + window.scrollY) + 'px';
+}
+function clearHint() {
+    const box = document.getElementById('msgOrientacao');
+    box.style.display = 'none';
+    box.innerHTML = '';
+}
+
+/* ── TOGGLE SEÇÕES ──────────────────────────────────────── */
+function toggleSecao(id) {
+    const corpo = document.getElementById('corpo-' + id);
+    const seta  = document.getElementById('seta-' + id);
+    const aberto = corpo.classList.toggle('aberto');
+    seta.classList.toggle('aberto', aberto);
+}
+
+/* ── MÁSCARAS ───────────────────────────────────────────── */
+function apenasNumeros(campo, max) {
+    campo.value = campo.value.replace(/\D/g, '').substring(0, max);
+}
+
+function sincMatriculaES(campo) {
+    const es = document.getElementById('matricula_eS');
+    if (es) es.value = campo.value;
+}
+
+function formatarMatricula(campo) {
+    if (!campo.value) return;
+    campo.value = campo.value.padStart(6, '0');
+    sincMatriculaES(campo);
+}
+
+/* ── ABREVIAÇÃO NOME RELATÓRIOS ─────────────────────────── */
+function abreviarNome(nomeCompleto) {
+    const prep = new Set(['DE','DA','DO','DOS','DAS','E']);
+    const partes = nomeCompleto.trim().toUpperCase().split(/\s+/);
+    if (partes.length <= 1) return nomeCompleto.substring(0, 30);
+    const primeiro = partes[0];
+    const ultimo   = partes[partes.length - 1];
+    const iniciais = partes.slice(1, -1)
+        .filter(p => !prep.has(p))
+        .map(p => p[0] + '.')
+        .join('');
+    const resultado = iniciais
+        ? `${primeiro} ${iniciais} ${ultimo}`
+        : `${primeiro} ${ultimo}`;
+    return resultado.substring(0, 30);
+}
+
+function preencherNomeR() {
+    const nome  = document.getElementById('nome').value.trim();
+    const nomeR = document.getElementById('nomeR');
+    nomeR.value = nome.length <= 30 ? nome : abreviarNome(nome);
+}
+
+/* ── FORMATAÇÃO SALÁRIO ─────────────────────────────────── */
+function formatarSalario(campo) {
+    let v = campo.value.replace(/\D/g, '');
+    if (!v) return;
+    const centavos = parseInt(v, 10);
+    const reais = centavos / 100;
+    campo.value = reais.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function limparSalario(campo) {
+    campo.value = campo.value.replace(/\./g, '').replace(',', '');
+}
+
+function mascaraCPF(campo) {
+    let v = campo.value.replace(/\D/g, '').substring(0, 11);
+    if (v.length > 9)      v = v.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2})/, '$1.$2.$3-$4');
+    else if (v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{0,3})/, '$1.$2.$3');
+    else if (v.length > 3) v = v.replace(/^(\d{3})(\d{0,3})/, '$1.$2');
+    campo.value = v;
+}
+
+function validarCPF(campo) {
+    const v = campo.value.replace(/\D/g, '');
+    if (!v) { campo.style.borderColor = ''; campo.style.boxShadow = ''; return; }
+    if (v.length !== 11 || /^(\d)\1+$/.test(v)) { _marcarErro(campo); return; }
+    let s = 0;
+    for (let i = 0; i < 9; i++) s += parseInt(v[i]) * (10 - i);
+    let r = (s * 10) % 11; if (r >= 10) r = 0;
+    if (r !== parseInt(v[9])) { _marcarErro(campo); return; }
+    s = 0;
+    for (let i = 0; i < 10; i++) s += parseInt(v[i]) * (11 - i);
+    r = (s * 10) % 11; if (r >= 10) r = 0;
+    if (r !== parseInt(v[10])) { _marcarErro(campo); return; }
+    _marcarOk(campo);
+}
+
+function mascaraData(campo) {
+    let v = campo.value.replace(/\D/g, '').substring(0, 8);
+    if (v.length > 4) v = v.replace(/^(\d{2})(\d{2})(\d{0,4})/, '$1/$2/$3');
+    else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,2})/, '$1/$2');
+    campo.value = v;
+}
+
+function validarData(campo) {
+    const v = campo.value;
+    if (!v) return;
+    const p = v.split('/');
+    if (p.length !== 3 || p[2].length !== 4) { _marcarErro(campo); return; }
+    _marcarOk(campo);
+}
+
+function validarDtAdm(campo) {
+    const v = campo.value;
+
+    let el = document.getElementById('_adv_dtAdm');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_adv_dtAdm';
+        el.style.cssText = 'font-size:12px;margin-top:5px;padding:8px 12px;border-radius:7px;font-weight:500;line-height:1.5;display:none;';
+        campo.parentNode.appendChild(el);
+    }
+
+    // Sem data completa ou sem folha ativa — limpa tudo
+    if (!v || v.length < 10 || !ANOMES_ATUAL) {
+        el.style.display = 'none';
+        campo.style.borderColor = '';
+        campo.style.boxShadow   = '';
+        return;
+    }
+
+    const p = v.split('/');
+    if (p.length !== 3 || p[2].length !== 4) { el.style.display = 'none'; return; }
+
+    const admAM    = p[2] + p[1];   // YYYYMM da data digitada
+    const folhaFmt = ANOMES_ATUAL.slice(4,6) + '/' + ANOMES_ATUAL.slice(0,4);
+
+    if (admAM < ANOMES_ATUAL) {
+        // Anterior → aviso forte (laranja), mas permite
+        campo.style.borderColor = '#f97316';
+        campo.style.boxShadow   = '0 0 0 3px rgba(249,115,22,.18)';
+        el.style.cssText += ';display:block;background:#fff7ed;border:1.5px solid #f97316;color:#9a3412;';
+        el.innerHTML = '⚠️ <strong>Data anterior à folha ativa (' + folhaFmt + ').</strong><br>'
+                     + 'Permitido <u>somente</u> para implantação do sistema. Confirme se é este o caso antes de gravar.';
+
+    } else if (admAM > ANOMES_ATUAL) {
+        // Posterior → erro, bloqueia o salvar
+        campo.style.borderColor = '#dc2626';
+        campo.style.boxShadow   = '0 0 0 3px rgba(220,38,38,.15)';
+        el.style.cssText += ';display:block;background:#fef2f2;border:1.5px solid #dc2626;color:#991b1b;';
+        el.innerHTML = '🚫 <strong>Data posterior à folha ativa (' + folhaFmt + ').</strong><br>'
+                     + 'Não é permitido admitir um funcionário em mês/ano futuro.';
+
+    } else {
+        // Dentro da folha → OK
+        el.style.display = 'none';
+        campo.style.borderColor = '#18795b';
+        campo.style.boxShadow   = '0 0 0 3px rgba(24,121,91,.12)';
+    }
+}
+
+function mascaraCEP(campo) {
+    let v = campo.value.replace(/\D/g, '').substring(0, 8);
+    if (v.length > 5) v = v.replace(/^(\d{5})(\d{0,3})/, '$1-$2');
+    campo.value = v;
+}
+
+function normalizarTexto(str) {
+    return (str || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+async function buscarCEP(campo) {
+    const cep = campo.value.replace(/\D/g, '');
+    if (cep.length !== 8) return;
+    try {
+        const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+        const d = await r.json();
+        if (d.erro) return;
+        document.getElementById('ender_dscLograd').value = normalizarTexto(d.logradouro || '');
+        document.getElementById('ender_bairro').value    = normalizarTexto(d.bairro     || '');
+        document.getElementById('ender_codMunic').value  = d.ibge || '';
+        document.getElementById('ender_uf').value        = d.uf   || '';
+    } catch(e) {}
+}
+
+/* ── LÓGICAS DE NEGÓCIO ──────────────────────────────────── */
+function toggleInsalub(cb) {
+    const inp = document.getElementById('perInsalubridade');
+    const sym = document.getElementById('symInsalub');
+    const lbl = document.getElementById('labelInsalub');
+    if (cb.checked) {
+        inp.style.display = ''; sym.style.display = ''; lbl.textContent = '';
+        inp.focus();
+    } else {
+        inp.style.display = 'none'; sym.style.display = 'none';
+        lbl.textContent = 'Não'; inp.value = '';
+        inp.style.borderColor = ''; inp.style.boxShadow = '';
+    }
+}
+function togglePericu(cb) {
+    const inp = document.getElementById('perPericulosidade');
+    const sym = document.getElementById('symPericu');
+    const lbl = document.getElementById('labelPericu');
+    if (cb.checked) {
+        inp.style.display = ''; sym.style.display = ''; lbl.textContent = '';
+        inp.value = '30'; inp.focus();
+    } else {
+        inp.style.display = 'none'; sym.style.display = 'none';
+        lbl.textContent = 'Não'; inp.value = '';
+        inp.style.borderColor = ''; inp.style.boxShadow = '';
+    }
+}
+
+function ajustarContrato() {
+    const tp = document.getElementById('tpContr').value;
+    const bloco = document.getElementById('bloco-prazo');
+    bloco.style.display = (tp === '2') ? '' : 'none';
+}
+
+function ajustarAdmissao() {
+    const tp = document.getElementById('tpAdmissao').value;
+    document.getElementById('bloco-transf').style.display =
+        (['2','3','4','6','7'].includes(tp)) ? '' : 'none';
+}
+
+function ajustarAprendiz() {
+    const v = document.getElementById('indAprend').value;
+    ['cnpjEntQual','Aprend_tpInsc','Aprend_cnpjPrat'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = (v === '0');
+        el.style.background = (v === '0') ? 'var(--read-bg)' : '';
+    });
+}
+
+function ajustarImigrante() {
+    const v = document.getElementById('ind_Imigrante').value;
+    ['imigrante_tmpResid','condIng'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = (v === 'N');
+        el.style.background = (v === 'N') ? 'var(--read-bg)' : '';
+    });
+}
+
+/* ── BUSCA E PREENCHIMENTO (alteração) ──────────────────── */
+async function buscarFuncionario() {
+    const cpf = document.getElementById('busca_cpf').value.replace(/\D/g,'');
+    const mat = document.getElementById('busca_matricula').value.trim();
+    const msg = document.getElementById('busca_msg');
+    if (!cpf && !mat) { msg.style.color='#dc2626'; msg.textContent='Informe CPF ou Matrícula.'; return; }
+    msg.style.color='#4b6080'; msg.textContent='Buscando…';
+    try {
+        const qs  = cpf ? `cpf=${cpf}` : `matricula=${mat}`;
+        const r   = await fetch(`/api/funcionario/buscar?${qs}`);
+        const j   = await r.json();
+        if (!j.ok) { msg.style.color='#dc2626'; msg.textContent=j.msg; return; }
+        preencherFormulario(j.data);
+        msg.style.color='#18795b'; msg.textContent=`Funcionário encontrado: ${j.data.nome}`;
+    } catch(e) { msg.style.color='#dc2626'; msg.textContent='Erro de comunicação.'; }
+}
+
+function preencherFormulario(d) {
+    function sv(id, val) { const el=document.getElementById(id); if(el) el.value=val||''; }
+    function toDMY(ymd) {
+        if (!ymd || ymd.length!==8) return ymd||'';
+        return ymd.slice(6,8)+'/'+ymd.slice(4,6)+'/'+ymd.slice(0,4);
+    }
+    function fmtCPF(v) {
+        if (!v||v.length!==11) return v||'';
+        return v.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4');
+    }
+    function fmtSal(c) {
+        if (c===null||c===undefined) return '';
+        return (c/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    funcionarioId = d.id;
+    sv('cpf',           fmtCPF(d.cpf));
+    sv('nome',          d.nome);
+    sv('nomeR',         d.nomer);
+    sv('nomeMae',       d.nomemae);
+    sv('matricula',     String(d.matricula||'').padStart(6,'0'));
+    sv('matricula_eS',  d.matricula_es);
+    sv('vrSalFx',       fmtSal(d.vrsalfx));
+    sv('codCateg',      d.codcateg);
+    sv('sexo',          d.sexo);
+    sv('racaCor',       d.racacor);
+    sv('estCiv',        d.estciv);
+    sv('grauInstr',     d.grauinstr);
+    sv('dtNascto',      toDMY(d.dtnascto));
+    sv('paisNascto',    d.paisnascto);
+    sv('paisNac',       d.paisnac);
+    sv('dtAdm',         toDMY(d.dtadm));
+    sv('tpAdmissao',    d.tpadmissao);
+    sv('indAdmissao',   d.indadmissao);
+    sv('nrProcTrab',    d.nrproctrab);
+    sv('dtTransf',      toDMY(d.dttransf));
+    sv('cnpjTransf',    d.cnpjtransf);
+    sv('matriculaTransf', d.matriculatransf);
+    sv('tpContr',       d.tpcontr);
+    sv('dtTerm',        toDMY(d.dtterm));
+    sv('ClauAssec',     d.clausassec);
+    sv('objDet',        d.objdet);
+    sv('tpRegJor',      d.tpregjor);
+    sv('cnpjSindCategProf', d.cnpjsindcategprof);
+    sv('tomador_tpInsc', d.tomador_tpinsc);
+    sv('tomador_nrInsc', d.tomador_nrinsc);
+    sv('CBOFuncao',     d.cbofuncao);
+    sv('lt_tpInsc',     d.lt_tpinsc);
+    sv('lt_nrInsc',     d.lt_nrinsc);
+    sv('qtdHrsSem',     d.qtdhrssem);
+    sv('qtdHrsMes',     d.qtdhrsmes);
+    sv('tpJornada',     d.tpjornada);
+    sv('tmpParc',       d.tmpparc);
+    sv('horNoturno',    d.hornoturno);
+    sv('id_tab_Horario', d.id_tab_horario);
+    sv('ender_cep',     d.ender_cep ? d.ender_cep.replace(/^(\d{5})(\d{3})$/,'$1-$2') : '');
+    sv('ender_dscLograd', d.ender_dsclograd);
+    sv('ender_nrLograd',  d.ender_nrlograd);
+    sv('ender_complemento', d.ender_complemento);
+    sv('ender_bairro',   d.ender_bairro);
+    sv('ender_codMunic', d.ender_codmunic);
+    sv('ender_uf',       d.ender_uf);
+    sv('banco_Numero',   d.banco_numero);
+    sv('banco_Agencia',  d.banco_agencia);
+    sv('banco_AgenciaDV',d.banco_agenciadv);
+    sv('banco_Conta',    d.banco_conta);
+    sv('banco_ContaDV',  d.banco_contadv);
+    sv('ind_Imigrante',  d.ind_imigrante);
+    sv('imigrante_tmpResid', d.imigrante_tmpresid);
+    sv('condIng',        d.conding);
+    sv('defFisica',      d.deffisica);
+    sv('defVisual',      d.defvisual);
+    sv('defAuditiva',    d.defauditiva);
+    sv('defMental',      d.defmental);
+    sv('defIntelectual', d.defintelectual);
+    sv('infoCota',       d.infocota);
+    sv('indAprend',      d.indaprend);
+    sv('cnpjEntQual',    d.cnpjentqual);
+    sv('Aprend_tpInsc',  d.aprend_tpinsc);
+    sv('Aprend_cnpjPrat',d.aprend_cnpjprat);
+    ajustarContrato(); ajustarAdmissao(); ajustarAprendiz(); ajustarImigrante();
+}
+
+/* ── VERIFICAÇÃO ONLINE (onblur) ────────────────────────── */
+async function checkMatricula(campo) {
+    const v = campo.value.replace(/\D/g, '');
+    if (!v) return;
+    try {
+        const r = await fetch(`/api/funcionario/check_matricula?matricula=${v}`);
+        const j = await r.json();
+        if (!j.ok) { _marcarErro(campo); _showCheckMsg(campo, j.msg, 'erro'); }
+        else        { _marcarOk(campo);   _hideCheckMsg(campo); }
+    } catch(e) {}
+}
+
+async function checkCPF(campo) {
+    const v = campo.value.replace(/\D/g, '');
+    if (v.length !== 11) return;
+    try {
+        const r = await fetch(`/api/funcionario/check_cpf?cpf=${v}`);
+        const j = await r.json();
+        if (!j.ok) { _marcarErro(campo); _showCheckMsg(campo, j.msg, 'erro'); }
+        else        { _hideCheckMsg(campo); }
+    } catch(e) {}
+}
+
+function _showCheckMsg(campo, msg, tipo) {
+    let el = document.getElementById('_checkmsg_' + campo.id);
+    if (!el) {
+        el = document.createElement('div');
+        el.id = '_checkmsg_' + campo.id;
+        el.style.cssText = 'font-size:11px;margin-top:3px;';
+        campo.parentNode.appendChild(el);
+    }
+    el.style.color = tipo === 'erro' ? '#dc2626' : '#18795b';
+    el.textContent = msg;
+}
+function _hideCheckMsg(campo) {
+    const el = document.getElementById('_checkmsg_' + campo.id);
+    if (el) el.textContent = '';
+}
+
+/* ── VALIDAÇÃO / SALVAR ──────────────────────────────────── */
+function _marcarErro(el) { el.style.borderColor = '#dc2626'; el.style.boxShadow = '0 0 0 3px rgba(220,38,38,.12)'; }
+function _marcarOk(el)   { el.style.borderColor = '#18795b'; el.style.boxShadow = '0 0 0 3px rgba(24,121,91,.12)'; }
+
+async function salvarFuncionario() {
+    if (FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F') {
+        const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
+        const painel = document.getElementById('resultadoValidacao');
+        painel.innerHTML = `<div class="resultado-erro"><strong>Folha ${sit} — operação bloqueada.</strong><br>Inclusão e alteração de funcionários exigem folha Aberta.</div>`;
+        painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        return;
+    }
+
+    // Bloqueia se Data de Admissão for posterior à folha ativa
+    if (ANOMES_ATUAL) {
+        const dtAdmEl = document.getElementById('dtAdm');
+        const dtAdmV  = (dtAdmEl?.value || '').trim();
+        if (dtAdmV.length === 10) {
+            const p = dtAdmV.split('/');
+            if (p.length === 3 && p[2].length === 4 && (p[2] + p[1]) > ANOMES_ATUAL) {
+                const folhaFmt = ANOMES_ATUAL.slice(4,6) + '/' + ANOMES_ATUAL.slice(0,4);
+                const painel = document.getElementById('resultadoValidacao');
+                painel.innerHTML = `<div class="resultado-erro"><strong>Data de Admissão posterior à folha ativa (${folhaFmt}) — não é possível gravar.</strong></div>`;
+                painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+                return;
+            }
+        }
+    }
+
+    const erros = [];
+    const obrig = [
+        { id:'cpf',        label:'CPF' },
+        { id:'nome',       label:'Nome' },
+        { id:'codCateg',   label:'Categoria eSocial' },
+        { id:'sexo',       label:'Sexo' },
+        { id:'racaCor',    label:'Raça / Cor' },
+        { id:'dtNascto',   label:'Data de Nascimento' },
+        { id:'paisNascto', label:'País de Nascimento' },
+        { id:'paisNac',    label:'País de Nacionalidade' },
+        { id:'dtAdm',      label:'Data de Admissão' },
+        { id:'tpAdmissao', label:'Tipo de Admissão' },
+        { id:'tpContr',    label:'Tipo de Contrato' },
+        { id:'tpRegJor',   label:'Regime de Jornada' },
+        { id:'CBOFuncao',  label:'CBO da Função' },
+    ];
+    obrig.forEach(({ id, label }) => {
+        const el = document.getElementById(id);
+        if (!el || !el.value.trim()) { erros.push(`${label} é obrigatório.`); if (el) _marcarErro(el); }
+        else _marcarOk(el);
+    });
+    if (MODO !== 'alteracao') {
+        const hasI = document.getElementById('hasInsalubridade');
+        const perI = document.getElementById('perInsalubridade');
+        if (hasI?.checked && (!perI?.value || parseFloat(perI.value) <= 0)) {
+            erros.push('Informe o percentual de Insalubridade.');
+            if (perI) _marcarErro(perI);
+        }
+        const hasP = document.getElementById('hasPericulosidade');
+        const perP = document.getElementById('perPericulosidade');
+        if (hasP?.checked && (!perP?.value || parseFloat(perP.value) <= 0)) {
+            erros.push('Informe o percentual de Periculosidade.');
+            if (perP) _marcarErro(perP);
+        }
+    }
+    const painel = document.getElementById('resultadoValidacao');
+    if (erros.length > 0) {
+        painel.innerHTML = `<div class="resultado-erro"><strong>Corrija os seguintes campos antes de gravar:</strong><ul>${erros.map(e=>`<li>${e}</li>`).join('')}</ul></div>`;
+        painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        return;
+    }
+    if (MODO === 'alteracao' && !funcionarioId) {
+        painel.innerHTML = `<div class="resultado-erro"><strong>Busque o funcionário antes de salvar.</strong></div>`;
+        painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        return;
+    }
+
+    painel.innerHTML = `<div class="resultado-ok"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg>Gravando…</div>`;
+    painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+    function toYMD(dmy) {
+        if (!dmy) return '';
+        const p = dmy.split('/');
+        return (p.length === 3 && p[2].length === 4) ? p[2] + p[1] + p[0] : dmy;
+    }
+    function gv(id) {
+        const el = document.getElementById(id);
+        return el ? el.value.trim() : '';
+    }
+    function soNum(s) { return s.replace(/\D/g, ''); }
+
+    // vrSalFx: converte "1.000,00" → 100000
+    const salStr = gv('vrSalFx').replace(/\./g, '').replace(',', '');
+    const vrSalFx = salStr ? parseInt(salStr, 10) : null;
+
+    const payload = {
+        cpf:              soNum(gv('cpf')),
+        nome:             gv('nome'),
+        nomeR:            gv('nomeR'),
+        nomeMae:          gv('nomeMae'),
+        codCateg:         gv('codCateg'),
+        sexo:             gv('sexo'),
+        racaCor:          gv('racaCor'),
+        estCiv:           gv('estCiv'),
+        grauInstr:        gv('grauInstr'),
+        dtNascto:         toYMD(gv('dtNascto')),
+        paisNascto:       gv('paisNascto'),
+        paisNac:          gv('paisNac'),
+        matricula:        soNum(gv('matricula')),
+        matricula_eS:     gv('matricula_eS'),
+        filial:           gv('filial'),
+        vrSalFx:          vrSalFx,
+        UndSalFixo:       gv('UndSalFixo'),
+        tpContr:          gv('tpContr'),
+        dtTerm:           toYMD(gv('dtTerm')),
+        ClauAssec:        gv('ClauAssec'),
+        objDet:           gv('objDet'),
+        dtAdm:            toYMD(gv('dtAdm')),
+        tpAdmissao:       gv('tpAdmissao'),
+        indAdmissao:      gv('indAdmissao'),
+        nrProcTrab:       gv('nrProcTrab'),
+        dtTransf:         toYMD(gv('dtTransf')),
+        cnpjTransf:       soNum(gv('cnpjTransf')),
+        matriculaTransf:  soNum(gv('matriculaTransf')),
+        tpRegJor:         gv('tpRegJor'),
+        cnpjSindCategProf:soNum(gv('cnpjSindCategProf')),
+        tomador_tpInsc:   gv('tomador_tpInsc'),
+        tomador_nrInsc:   soNum(gv('tomador_nrInsc')),
+        lt_tpInsc:        gv('lt_tpInsc'),
+        lt_nrInsc:        soNum(gv('lt_nrInsc')),
+        qtdHrsSem:        gv('qtdHrsSem'),
+        qtdHrsMes:        gv('qtdHrsMes'),
+        tpJornada:        gv('tpJornada'),
+        tmpParc:          gv('tmpParc'),
+        horNoturno:       gv('horNoturno'),
+        id_tab_Horario:   gv('id_tab_Horario'),
+        CBOFuncao:        gv('CBOFuncao'),
+        ender_cep:        soNum(gv('ender_cep')),
+        ender_dscLograd:  gv('ender_dscLograd'),
+        ender_nrLograd:   gv('ender_nrLograd'),
+        ender_complemento:gv('ender_complemento'),
+        ender_bairro:     gv('ender_bairro'),
+        ender_codMunic:   gv('ender_codMunic'),
+        ender_uf:         gv('ender_uf'),
+        banco_Numero:     gv('banco_Numero'),
+        banco_Agencia:    gv('banco_Agencia'),
+        banco_AgenciaDV:  gv('banco_AgenciaDV'),
+        banco_Conta:      soNum(gv('banco_Conta')),
+        banco_ContaDV:    gv('banco_ContaDV'),
+        ind_Imigrante:    gv('ind_Imigrante'),
+        imigrante_tmpResid:gv('imigrante_tmpResid'),
+        condIng:          gv('condIng'),
+        defFisica:        gv('defFisica'),
+        defVisual:        gv('defVisual'),
+        defAuditiva:      gv('defAuditiva'),
+        defMental:        gv('defMental'),
+        defIntelectual:   gv('defIntelectual'),
+        reabReadap:       gv('reabReadap'),
+        infoCota:         gv('infoCota'),
+        indAprend:        gv('indAprend'),
+        cnpjEntQual:      soNum(gv('cnpjEntQual')),
+        Aprend_tpInsc:    gv('Aprend_tpInsc'),
+        Aprend_cnpjPrat:  soNum(gv('Aprend_cnpjPrat')),
+        hasInsalubridade:  MODO !== 'alteracao' ? (document.getElementById('hasInsalubridade')?.checked || false) : false,
+        perInsalubridade:  MODO !== 'alteracao' && document.getElementById('hasInsalubridade')?.checked
+                           ? parseFloat(document.getElementById('perInsalubridade')?.value || '0') || null : null,
+        hasPericulosidade: MODO !== 'alteracao' ? (document.getElementById('hasPericulosidade')?.checked || false) : false,
+        perPericulosidade: MODO !== 'alteracao' && document.getElementById('hasPericulosidade')?.checked
+                           ? parseFloat(document.getElementById('perPericulosidade')?.value || '0') || null : null,
+    };
+
+    if (MODO === 'alteracao') payload.id = funcionarioId;
+
+    const endpoint = MODO === 'alteracao' ? '/api/funcionario/alterar' : '/api/funcionario/incluir';
+    try {
+        const res  = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (json.ok) {
+            const acao = MODO === 'alteracao' ? 'alterado' : 'gravado';
+            painel.innerHTML = `<div class="resultado-ok"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg>Funcionário ${acao} com sucesso!</div>`;
+            limparFormulario();
+            funcionarioId = null;
+            if (MODO === 'inclusao') await carregarProximaMatricula();
+            else { const m=document.getElementById('busca_msg'); if(m) m.textContent=''; }
+        } else {
+            painel.innerHTML = `<div class="resultado-erro"><strong>Erro ao gravar:</strong> ${json.msg}</div>`;
+        }
+    } catch(e) {
+        painel.innerHTML = `<div class="resultado-erro"><strong>Erro de comunicação:</strong> ${e.message}</div>`;
+    }
+}
+
+function restaurarPadroes() {
+    const sel = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+    sel('qtdHrsSem',  '44');
+    sel('qtdHrsMes',  '220');
+    sel('tpAdmissao', '1');
+    sel('tpRegJor',   '1');
+    sel('tpJornada',  '9');
+    sel('horNoturno', 'N');
+}
+
+function limparFormulario() {
+    document.querySelectorAll('input[type=text]').forEach(i => {
+        if (i.readOnly) return;
+        i.value = ''; i.style.borderColor = ''; i.style.boxShadow = '';
+    });
+    document.querySelectorAll('select').forEach(s => { s.selectedIndex = 0; s.style.borderColor = ''; s.style.boxShadow = ''; });
+    document.querySelectorAll('[id^="_checkmsg_"]').forEach(el => el.textContent = '');
+    document.getElementById('resultadoValidacao').innerHTML = '';
+    document.getElementById('bloco-prazo').style.display  = 'none';
+    document.getElementById('bloco-transf').style.display = 'none';
+    ['hasInsalubridade','hasPericulosidade'].forEach(id => {
+        const cb = document.getElementById(id);
+        if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change')); }
+    });
+    restaurarPadroes();
+}
+
+async function carregarProximaMatricula() {
+    try {
+        const r = await fetch('/api/funcionario/proxima_matricula');
+        const j = await r.json();
+        if (j.ok) {
+            const mat = String(j.proxima).padStart(6, '0');
+            const el = document.getElementById('matricula');
+            el.value = mat;
+            sincMatriculaES(el);
+        }
+    } catch(e) {}
+}
+
+/* ── INIT ───────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', async () => {
+    ajustarAprendiz();
+    ajustarImigrante();
+    if (MODO === 'inclusao') await carregarProximaMatricula();
+});
+
+</script>
+</body>
+</html>

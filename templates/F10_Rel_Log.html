@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — Log de Operações</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:    #0b1f3a;
+    --navy-ln: #1e3d5c;
+    --accent:  #2a7de1;
+    --green:   #18795b;
+    --bg:      #f0f2f6;
+    --surface: #ffffff;
+    --border:  #dde3ec;
+    --label:   #374151;
+    --sub:     #6b7280;
+    --th-bg:   #eaf1fb;
+    --mono:    'IBM Plex Mono', monospace;
+    --sans:    'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); font-size: 13px; }
+
+/* ── TOPO ───────────────────────────────────────────────── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-ln);
+    padding: 0 28px; display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome   { font-size: 11px; color: #8baac8; margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-ln); color: #8baac8;
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+
+/* ── CONTAINER ──────────────────────────────────────────── */
+.container { max-width: 1300px; margin: 20px auto 60px; padding: 0 20px; }
+
+/* ── PAINEL DE FILTROS ──────────────────────────────────── */
+.filtros {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+.filtros-titulo {
+    font-size: 11px; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; color: #2d4a6e;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
+}
+.filtros-grade {
+    display: grid;
+    grid-template-columns: 110px 140px 160px 160px 1fr 140px;
+    gap: 10px 14px; align-items: end;
+}
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo label { font-size: 10px; font-weight: 600; color: var(--sub);
+               letter-spacing: .06em; text-transform: uppercase; }
+.campo input, .campo select {
+    height: 34px; padding: 0 10px;
+    border: 1px solid var(--border); border-radius: 7px;
+    font-family: var(--sans); font-size: 12px;
+    background: #f8fafc; outline: none; transition: .15s; width: 100%;
+}
+.campo input[type="month"],
+.campo input[type="date"] { padding: 0 8px; }
+.campo input:focus, .campo select:focus {
+    border-color: var(--accent); background: #fff;
+    box-shadow: 0 0 0 3px rgba(42,125,225,.1);
+}
+.campo input[type="month"]::-webkit-calendar-picker-indicator,
+.campo input[type="date"]::-webkit-calendar-picker-indicator { opacity: .5; }
+
+.btns-filtro { display: flex; gap: 8px; align-items: flex-end; }
+.btn { display: inline-flex; align-items: center; gap: 6px;
+       height: 34px; padding: 0 16px; border: none; border-radius: 7px;
+       font-family: var(--sans); font-size: 12px; font-weight: 600;
+       cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-buscar  { background: var(--accent); color: #fff; }
+.btn-buscar:hover { background: #1a5fb8; }
+.btn-limpar  { background: #f1f5f9; color: #334155; border: 1px solid var(--border); }
+.btn-limpar:hover { background: #e2e8f0; }
+
+/* ── BARRA DE RESULTADO ─────────────────────────────────── */
+.barra-resultado {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 10px; padding: 0 2px;
+}
+.badge-total {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #dbeafe; color: #1d4ed8; border: 1px solid #bfdbfe;
+    border-radius: 20px; padding: 3px 12px; font-size: 11px; font-weight: 700;
+}
+.badge-total.vazio { background: #f3f4f6; color: #6b7280; border-color: #e5e7eb; }
+.limite-aviso { font-size: 11px; color: #b45309; }
+
+/* ── ALERTA ERRO ────────────────────────────────────────── */
+.alerta-erro {
+    background: #fef2f2; border: 1px solid #fecaca;
+    border-radius: 8px; padding: 12px 16px;
+    color: #991b1b; font-size: 13px; font-weight: 500; margin-bottom: 14px;
+}
+
+/* ── TABELA ─────────────────────────────────────────────── */
+.tabela-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: clip;
+    box-shadow: 0 2px 8px rgba(0,0,0,.04);
+}
+table { width: 100%; border-collapse: collapse; }
+thead { background: var(--th-bg); }
+thead th {
+    position: sticky; top: 64px; background: var(--th-bg); z-index: 2;
+    text-align: left; padding: 8px 12px;
+    font-size: 10px; font-weight: 700; letter-spacing: .06em;
+    text-transform: uppercase; color: #334155;
+    border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background .1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
+
+.col-dt      { width: 130px; white-space: nowrap; font-family: var(--mono); font-size: 11px; color: var(--sub); }
+.col-menu    { width: 110px; }
+.col-mat     { width: 80px;  font-family: var(--mono); text-align: center; }
+.col-anomes  { width: 80px;  font-family: var(--mono); text-align: center; }
+.col-cpf     { width: 130px; font-family: var(--mono); font-size: 11px; }
+.col-obs     { max-width: 500px; }
+
+.obs-texto {
+    display: block; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; max-width: 480px; cursor: default;
+}
+.badge-menu {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+}
+.menu-funcionario { background: #dbeafe; color: #1d4ed8; }
+.menu-verba       { background: #dcfce7; color: #166534; }
+.menu-folha       { background: #fef9c3; color: #854d0e; }
+.menu-default     { background: #f3f4f6; color: #374151; }
+
+/* ── PRINT HEADER (só no PDF) ──────────────────────────── */
+.print-header { display: none; }
+
+/* ── BTN PDF ────────────────────────────────────────────── */
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 30px; padding: 0 14px; border: 1px solid var(--border);
+    border-radius: 6px; background: var(--surface);
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    color: #334155; cursor: pointer; transition: .15s; white-space: nowrap;
+}
+.btn-pdf:hover { border-color: var(--accent); color: var(--accent); }
+
+@media print {
+    @page { margin: 10mm 12mm; }
+
+    .no-print { display: none !important; }
+    body { background: #fff; font-size: 11px; }
+    .container { margin: 0; padding: 0; max-width: 100%; }
+
+    .print-header {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        gap: 0 16px;
+        border-bottom: 2px solid #0b1f3a;
+        padding-bottom: 8px;
+        margin-bottom: 14px;
+    }
+    .print-header .ph-empresa { font-size: 13px; font-weight: 700; color: #0b1f3a; }
+    .print-header .ph-nome    { font-size: 10px; color: #374151; margin-top: 2px; }
+    .print-header .ph-titulo  { font-size: 14px; font-weight: 700; color: #0b1f3a; text-align: center; }
+    .print-header .ph-logo    { font-size: 12px; font-weight: 600; color: #0b1f3a; text-align: right; }
+    .print-header .ph-versao  { font-size: 9px; color: #374151; text-align: right; }
+
+    .tabela-wrap { border: none; border-radius: 0; box-shadow: none; }
+    table { width: 100%; }
+    thead { background: #fff !important; }
+    thead th {
+        position: static;
+        background: #fff !important;
+        border-bottom: 2px solid #0b1f3a;
+        color: #0b1f3a;
+        font-size: 9px;
+        padding: 5px 8px;
+    }
+    tbody td { padding: 5px 8px; font-size: 10px; }
+    tbody tr { border-bottom: 1px solid #e2e8f0; }
+
+    .badge-menu {
+        background: transparent !important;
+        border: 1px solid currentColor;
+        padding: 1px 5px;
+    }
+    .menu-funcionario { color: #1d4ed8 !important; }
+    .menu-verba       { color: #166534 !important; }
+    .menu-folha       { color: #854d0e !important; }
+    .menu-default     { color: #374151 !important; }
+
+    .obs-texto { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+
+    .obs-extra { display: table-row !important; }
+    .obs-extra-td {
+        padding: 1px 8px 5px 12px !important;
+        font-size: 10px; color: #4b5563;
+        border-top: none !important;
+        border-bottom: 1px solid #e2e8f0 !important;
+        font-style: italic;
+    }
+}
+
+/* ── LINHA EXTRA OPERAÇÃO (só no PDF) ──────────────────── */
+.obs-extra { display: none; }
+
+/* ── ESTADO VAZIO ───────────────────────────────────────── */
+.estado-vazio {
+    text-align: center; padding: 50px 20px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+}
+.estado-vazio-icone  { font-size: 42px; margin-bottom: 12px; }
+.estado-vazio-titulo { font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+.estado-vazio-texto  { font-size: 12px; color: var(--sub); }
+</style>
+</head>
+<body>
+
+<!-- ── TOPO ─────────────────────────────────────────────── -->
+<header class="topo no-print">
+    <div>
+        <div class="topo-empresa">{{ empresa_nome }}</div>
+        <div class="topo-nome">{{ cliente_nome }}</div>
+    </div>
+    <div class="topo-titulo">Log de Operações</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div>
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="history.back()">&#8592; Voltar</button>
+    </div>
+</header>
+
+<div class="container">
+
+    <!-- ── PRINT HEADER ──────────────────────────────────── -->
+    <div class="print-header">
+        <div>
+            <div class="ph-empresa">{{ empresa_nome }}</div>
+            <div class="ph-nome">{{ cliente_nome }}</div>
+        </div>
+        <div class="ph-titulo">Log de Operações</div>
+        <div>
+            <div class="ph-logo">Folha10·Simples</div>
+            <div class="ph-versao">Versão: {{ versao }}</div>
+        </div>
+    </div>
+
+    <!-- ── FILTROS ──────────────────────────────────────── -->
+    <div class="filtros no-print">
+        <div class="filtros-titulo">🔍 Filtros de Consulta</div>
+        <form method="get" action="/rel_log" id="formFiltro">
+            <input type="hidden" name="buscar" value="1">
+            <div class="filtros-grade">
+
+                <div class="campo">
+                    <label>Matrícula</label>
+                    <input type="text" name="matricula" maxlength="6"
+                           placeholder="000000"
+                           value="{{ f_matricula }}"
+                           oninput="this.value=this.value.replace(/\D/g,'')">
+                </div>
+
+                <div class="campo">
+                    <label>Mês / Ano</label>
+                    <input type="month" name="ano_mes" value="{{ f_ano_mes }}">
+                </div>
+
+                <div class="campo">
+                    <label>De (data)</label>
+                    <input type="date" name="dt_inicio" value="{{ f_dt_inicio }}">
+                </div>
+
+                <div class="campo">
+                    <label>Até (data)</label>
+                    <input type="date" name="dt_fim" value="{{ f_dt_fim }}">
+                </div>
+
+                <div class="campo">
+                    <label>Usuário (CPF)</label>
+                    <input type="text" name="cpf_usuario" maxlength="14"
+                           placeholder="000.000.000-00"
+                           value="{{ f_cpf }}"
+                           oninput="mascaraCPF(this)">
+                </div>
+
+                <div class="campo">
+                    <label>Módulo</label>
+                    <select name="menu">
+                        <option value="">— Todos —</option>
+                        <option value="FUNCIONARIO" {% if f_menu == 'FUNCIONARIO' %}selected{% endif %}>Funcionário</option>
+                        <option value="VERBA"       {% if f_menu == 'VERBA'       %}selected{% endif %}>Verba</option>
+                        <option value="FOLHA"       {% if f_menu == 'FOLHA'       %}selected{% endif %}>Folha</option>
+                        <option value="EMPRESA"     {% if f_menu == 'EMPRESA'     %}selected{% endif %}>Empresa</option>
+                        <option value="LOGIN"       {% if f_menu == 'LOGIN'       %}selected{% endif %}>Login</option>
+                    </select>
+                </div>
+
+            </div>
+
+            <div class="btns-filtro" style="margin-top:14px;">
+                <button type="submit" class="btn btn-buscar">🔍 Buscar</button>
+                <button type="button" class="btn btn-limpar" onclick="limparFiltros()">✕ Limpar</button>
+            </div>
+        </form>
+    </div>
+
+    {% if erro %}
+    <div class="alerta-erro no-print">⚠ {{ erro }}</div>
+    {% endif %}
+
+    {% if buscou %}
+    <!-- ── BARRA DE RESULTADO ────────────────────────── -->
+    <div class="barra-resultado no-print">
+        <span class="badge-total {% if total == 0 %}vazio{% endif %}">
+            {% if total == 0 %}Nenhum registro encontrado
+            {% elif total == 500 %}500+ registros (limite atingido)
+            {% else %}{{ total }} registro{{ 's' if total != 1 }}
+            {% endif %}
+        </span>
+        {% if total == 500 %}
+        <span class="limite-aviso">⚠ Exibindo até 500 registros. Refine os filtros para resultados mais precisos.</span>
+        {% endif %}
+        {% if registros %}
+        <button class="btn-pdf" onclick="window.print()">&#128438; Salvar PDF</button>
+        {% endif %}
+    </div>
+
+    {% if registros %}
+    <!-- ── TABELA ────────────────────────────────────── -->
+    <div class="tabela-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-dt">Data / Hora</th>
+                    <th class="col-menu">Módulo</th>
+                    <th class="col-mat">Matrícula</th>
+                    <th class="col-anomes">Mês/Ano</th>
+                    <th class="col-cpf">Usuário</th>
+                    <th class="col-obs">Operação</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for r in registros %}
+            <tr>
+                <td class="col-dt">{{ r._dt }}</td>
+                <td class="col-menu">
+                    {% set m = (r.menu or '')|upper %}
+                    {% if   'FUNCIONARIO' in m %}<span class="badge-menu menu-funcionario">{{ r.menu }}</span>
+                    {% elif 'VERBA'       in m %}<span class="badge-menu menu-verba">{{ r.menu }}</span>
+                    {% elif 'FOLHA'       in m %}<span class="badge-menu menu-folha">{{ r.menu }}</span>
+                    {% else                    %}<span class="badge-menu menu-default">{{ r.menu or '—' }}</span>
+                    {% endif %}
+                </td>
+                <td class="col-mat">{{ r._mat }}</td>
+                <td class="col-anomes">{{ r._anomes }}</td>
+                <td class="col-cpf">{{ r._cpf }}</td>
+                <td class="col-obs">
+                    <span class="obs-texto" title="{{ r.observacao or '' }}">{{ r.observacao or '—' }}</span>
+                </td>
+            </tr>
+            {% if (r.observacao or '')|length > 22 %}
+            <tr class="obs-extra">
+                <td colspan="6" class="obs-extra-td">↳ {{ r.observacao }}</td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% else %}
+    <div class="estado-vazio">
+        <div class="estado-vazio-icone">📭</div>
+        <div class="estado-vazio-titulo">Nenhum registro encontrado</div>
+        <div class="estado-vazio-texto">Tente ajustar os filtros para ampliar a busca.</div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <!-- Estado inicial -->
+    <div class="estado-vazio">
+        <div class="estado-vazio-icone">📋</div>
+        <div class="estado-vazio-titulo">Log de Operações</div>
+        <div class="estado-vazio-texto">Use os filtros acima e clique em <strong>Buscar</strong> para consultar o histórico.</div>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+function mascaraCPF(c) {
+    let v = c.value.replace(/\D/g,'').substring(0,11);
+    if      (v.length>9) v=v.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2})/,'$1.$2.$3-$4');
+    else if (v.length>6) v=v.replace(/^(\d{3})(\d{3})(\d{0,3})/,'$1.$2.$3');
+    else if (v.length>3) v=v.replace(/^(\d{3})(\d{0,3})/,'$1.$2');
+    c.value = v;
+}
+function limparFiltros() {
+    ['input[name=matricula]','input[name=ano_mes]','input[name=dt_inicio]',
+     'input[name=dt_fim]','input[name=cpf_usuario]'].forEach(sel => {
+        const el = document.querySelector(sel);
+        if (el) el.value = '';
+    });
+    document.querySelector('select[name=menu]').value = '';
+}
+</script>
+</body>
+</html>

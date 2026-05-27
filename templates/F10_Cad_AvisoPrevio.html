@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Aviso Prévio</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 820px; margin: 36px auto; padding: 0 24px 60px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+/* ── BLOQUEIO FOLHA ── */
+.bloqueio-card {
+    background: #fff7ed; border: 2px solid #fed7aa;
+    border-radius: 14px; padding: 28px 28px;
+    display: flex; align-items: flex-start; gap: 16px;
+}
+.bloqueio-icon { font-size: 28px; flex-shrink: 0; }
+.bloqueio-titulo { font-size: 16px; font-weight: 700; color: #9a3412; margin-bottom: 6px; }
+.bloqueio-desc   { font-size: 13px; color: #7c2d12; line-height: 1.6; }
+
+/* ── CARDS ── */
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+}
+.pref-secao-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 11px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+}
+.btn-alterar { font-size: 11px; font-weight: 600; color: var(--accent);
+               background: none; border: none; cursor: pointer;
+               font-family: var(--sans); text-decoration: none; }
+
+/* ── FICHA FUNCIONÁRIO ── */
+.func-ficha-header {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #94a3b8;
+    background: #f8fafc; padding: 4px 20px; border-bottom: 1px solid var(--border);
+    display: grid; grid-template-columns: 72px 1fr 110px 130px; gap: 0 10px;
+}
+.func-ficha {
+    display: grid; grid-template-columns: 72px 1fr 110px 130px;
+    gap: 0 10px; padding: 10px 20px; align-items: center;
+}
+.f-mat  { font-family: var(--mono); font-size: 12px; color: #64748b; }
+.f-nome { font-size: 13px; font-weight: 600; color: #1e293b; }
+.f-adm  { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.f-sal  { font-family: var(--mono); font-size: 12px; color: #1e293b; text-align: right; font-weight: 500; }
+
+/* ── OPÇÕES ── */
+.opcao-linha {
+    display: grid; grid-template-columns: 48px 1fr;
+    align-items: center; gap: 0 8px; padding: 12px 20px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.opcao-linha:last-child { border-bottom: none; }
+.opcao-linha.top { align-items: start; }
+.opcao-num   { font-family: var(--mono); font-size: 10px; color: #94a3b8; padding-top: 2px; }
+.opcao-label { font-size: 13px; font-weight: 600; color: #334155; margin-bottom: 7px; }
+
+.input-std {
+    font-family: var(--sans); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 6px 11px; outline: none; transition: border-color 0.15s;
+}
+.input-std:focus  { border-color: var(--accent); background: #f0f7ff; }
+.input-std.erro   { border-color: #ef4444; background: #fef2f2; }
+.aviso-data-erro  {
+    font-size: 11px; color: #dc2626; margin-top: 5px;
+    display: none;
+}
+
+.grupo-radio-h { display: flex; flex-wrap: wrap; gap: 6px 24px; }
+.opcao-inline  { display: inline-flex; align-items: flex-start; gap: 7px; cursor: pointer; }
+.opcao-inline input[type="radio"] {
+    margin-top: 3px; accent-color: var(--accent); cursor: pointer;
+    width: 15px; height: 15px; flex-shrink: 0;
+}
+.chk-cond {
+    appearance: none; -webkit-appearance: none;
+    width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px;
+    border: 2px solid #94a3b8; border-radius: 50%;
+    cursor: pointer; position: relative; transition: 0.15s;
+}
+.chk-cond:checked {
+    background: var(--accent); border-color: var(--accent);
+}
+.chk-cond:checked::after {
+    content: ''; position: absolute;
+    width: 5px; height: 5px; background: #fff; border-radius: 50%;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+}
+.opcao-inline-label        { font-size: 13px; color: #334155; line-height: 1.4; }
+.opcao-inline-label strong  { font-weight: 700; color: #1e293b; }
+.opcao-inline-label small   { display: block; font-size: 11px; color: #94a3b8; margin-top: 1px; }
+
+/* ── RODAPÉ ── */
+.rodape { display: flex; align-items: center; justify-content: flex-end; padding-top: 4px; }
+.btn-processar {
+    background: var(--accent); border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 32px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 9px;
+}
+.btn-processar:hover { background: #1a5fb8; }
+
+.sem-func { padding: 40px 24px; text-align: center; font-size: 14px; color: #94a3b8; }
+
+/* ── INFO LEI ── */
+.lei-strip {
+    background: #f0f7ff; border: 1px solid #bfdbfe;
+    border-radius: 12px; padding: 12px 18px;
+    display: flex; align-items: flex-start; gap: 12px;
+    margin-bottom: 20px;
+}
+.lei-icone { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.lei-corpo { flex: 1; }
+.lei-titulo { font-size: 11px; font-weight: 700; color: #1d4ed8;
+              text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+.lei-linha  { display: flex; align-items: baseline; gap: 8px;
+              font-size: 12px; color: #1e3a5f; margin-bottom: 6px; }
+.lei-linha:last-child { margin-bottom: 0; }
+.lei-num    { font-family: var(--mono); font-size: 11px; font-weight: 700;
+              color: #94a3b8; min-width: 18px; }
+.lei-label  { color: #64748b; min-width: 140px; }
+.lei-valor  { font-family: var(--mono); font-weight: 700; color: #1e293b; font-size: 13px; }
+.lei-obs    { font-size: 11px; color: #64748b; font-style: italic; }
+.lei-destaque { background: #eff6ff; border-radius: 6px; padding: 4px 8px;
+                margin-left: -8px; border-left: 3px solid #2a7de1; }
+.lei-destaque .lei-label { color: #1d4ed8; }
+.lei-destaque .lei-valor { color: #1d4ed8; font-size: 14px; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Aviso Prévio</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/select_funcionario?contexto=aviso_previo">&#8592; Selecionar</a>
+        <div>
+            <div class="rel-titulo">Aviso Prévio</div>
+            <div class="rel-subtitulo">Registro do aviso prévio — folha ativa: {{ folha_fmt or '—' }}</div>
+        </div>
+    </div>
+
+    {# ── BLOQUEIO: folha não está aberta ── #}
+    {% if folha_ativa_sit_class != 'sit-aberta' %}
+    <div class="bloqueio-card">
+        <div class="bloqueio-icon">🔒</div>
+        <div>
+            <div class="bloqueio-titulo">Folha não está Aberta</div>
+            <div class="bloqueio-desc">
+                O registro de aviso prévio só pode ser feito com a folha ativa <strong>Aberta</strong>.<br>
+                Situação atual: <strong>{{ folha_ativa_situacao or '—' }}</strong>.
+                Reabra a folha na Apuração para continuar.
+            </div>
+        </div>
+    </div>
+
+    {% elif not funcionario %}
+    <div class="pref-card">
+        <div class="sem-func">
+            Nenhum funcionário selecionado.<br><br>
+            <a href="/select_funcionario?contexto=aviso_previo" style="color:var(--accent);">Selecionar funcionário</a>
+        </div>
+    </div>
+
+    {% else %}
+
+    {# ── FUNCIONÁRIO ── #}
+    <div class="pref-card">
+        <div class="pref-secao-titulo">
+            <span>Funcionário</span>
+            <a class="btn-alterar" href="/select_funcionario?contexto=aviso_previo">&#8592; Alterar</a>
+        </div>
+        <div class="func-ficha-header">
+            <span>Matrícula</span><span>Nome</span><span>Admissão</span><span style="text-align:right;">Salário</span>
+        </div>
+        <div class="func-ficha">
+            <span class="f-mat">{{ funcionario.mat_fmt }}</span>
+            <span class="f-nome">{{ funcionario.nome }}</span>
+            <span class="f-adm">{{ funcionario.dtadm_fmt }}</span>
+            <span class="f-sal">{{ funcionario.sal_fmt }}</span>
+        </div>
+    </div>
+
+    {# ── BLOQUEIO: já tem aviso prévio ── #}
+    {% if ja_tem_aviso %}
+    <div class="bloqueio-card" style="background:#fef2f2;border-color:#fca5a5;">
+        <div class="bloqueio-icon">🚫</div>
+        <div>
+            <div class="bloqueio-titulo" style="color:#991b1b;">Aviso Prévio já Registrado</div>
+            <div class="bloqueio-desc" style="color:#7f1d1d;">
+                <strong>{{ funcionario.nome }}</strong> já possui um aviso prévio registrado no sistema.<br>
+                Um funcionário não pode receber um segundo aviso prévio enquanto o primeiro estiver ativo.
+            </div>
+        </div>
+    </div>
+    {% else %}
+
+    {# ── INFO AVISOS PRÉVIO ── #}
+    {% set dias_lei = [funcionario.anos * 3, 60] | min %}
+    <div class="lei-strip">
+        <div class="lei-icone">⚖️</div>
+        <div class="lei-corpo">
+            <div class="lei-titulo">Aviso Prévio — Referência</div>
+            <div class="lei-linha">
+                <span class="lei-num">1º</span>
+                <span class="lei-label">Aviso Prévio normal:</span>
+                <span class="lei-valor" id="ap1-dias">30 dias</span>
+                <span class="lei-obs" id="ap1-obs">(máx. 30 dias — ou 15 dias se Acordo)</span>
+            </div>
+            <div class="lei-linha lei-destaque">
+                <span class="lei-num">2º</span>
+                <span class="lei-label">Lei 12.506/2011:</span>
+                <span class="lei-valor">{{ dias_lei }} dias</span>
+                <span style="font-size:11px;color:#1d4ed8;">
+                    (3 dias × {{ funcionario.anos }} ano{{ 's' if funcionario.anos != 1 else '' }}{% if funcionario.anos * 3 > 60 %}, limitado a 60{% endif %})
+                </span>
+                <span class="lei-obs">— convertido em dinheiro</span>
+            </div>
+        </div>
+    </div>
+
+    {# ── PARÂMETROS ── #}
+    <div class="pref-card">
+        <div class="pref-secao-titulo"><span>Parâmetros do Aviso Prévio</span></div>
+
+        {# 1 — Data do Aviso #}
+        <div class="opcao-linha">
+            <span class="opcao-num">1</span>
+            <div>
+                <div class="opcao-label">Data do Aviso Prévio</div>
+                <input type="date" id="data_aviso" class="input-std"
+                    value="{{ data_hoje }}"
+                    min="{{ folha_ym }}-01"
+                    max="{{ folha_ym }}-31"
+                    style="min-width:160px;"
+                    onchange="validarData()">
+                <div class="aviso-data-erro" id="erro-data">
+                    &#9888; A data deve estar dentro da folha ativa ({{ folha_fmt }})
+                </div>
+            </div>
+        </div>
+
+        {# 2 — Trabalhado ou Indenizado #}
+        <div class="opcao-linha top">
+            <span class="opcao-num">2</span>
+            <div>
+                <div class="opcao-label">Aviso Prévio</div>
+                <div class="grupo-radio-h">
+                    <label class="opcao-inline">
+                        <input type="radio" name="tipo_aviso" value="T" {% if p_tipo_aviso != 'I' %}checked{% endif %}>
+                        <span class="opcao-inline-label">
+                            <strong>Trabalhado</strong>
+                            <small>Funcionário trabalha o período</small>
+                        </span>
+                    </label>
+                    <label class="opcao-inline">
+                        <input type="radio" name="tipo_aviso" value="I" {% if p_tipo_aviso == 'I' %}checked{% endif %}>
+                        <span class="opcao-inline-label">
+                            <strong>Indenizado</strong>
+                            <small>Empresa paga sem exigir trabalho</small>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        {# 3 — Quem deu o aviso #}
+        <div class="opcao-linha top">
+            <span class="opcao-num">3</span>
+            <div>
+                <div class="opcao-label">Quem deu o Aviso Prévio</div>
+                <div class="grupo-radio-h">
+                    <label class="opcao-inline">
+                        <input type="radio" name="quem_aviso" value="E" {% if p_quem_aviso == 'E' %}checked{% endif %}>
+                        <span class="opcao-inline-label">
+                            <strong>Empresa</strong>
+                            <small>Demissão sem justa causa</small>
+                        </span>
+                    </label>
+                    <label class="opcao-inline">
+                        <input type="radio" name="quem_aviso" value="F" {% if p_quem_aviso == 'F' %}checked{% endif %}>
+                        <span class="opcao-inline-label">
+                            <strong>Funcionário</strong>
+                            <small>Pedido de demissão</small>
+                        </span>
+                    </label>
+                    <label class="opcao-inline">
+                        <input type="radio" name="quem_aviso" value="A" {% if p_quem_aviso == 'A' %}checked{% endif %}>
+                        <span class="opcao-inline-label">
+                            <strong>Acordo</strong>
+                            <small>Lei 13.467/2017</small>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        {# 4 — Condição especial #}
+        <div class="opcao-linha top">
+            <span class="opcao-num">4</span>
+            <div>
+                <div class="opcao-label">Marque se for Condição Especial</div>
+                <div class="grupo-radio-h">
+                    <label class="opcao-inline">
+                        <input type="checkbox" class="chk-cond" id="cond_J" value="J" {% if p_cond_especial == 'J' %}checked{% endif %} onchange="condChange(this)">
+                        <span class="opcao-inline-label">
+                            <strong>Justa Causa</strong>
+                            <small>Demissão por justa causa</small>
+                        </span>
+                    </label>
+                    <label class="opcao-inline">
+                        <input type="checkbox" class="chk-cond" id="cond_T" value="T" {% if p_cond_especial == 'T' %}checked{% endif %} onchange="condChange(this)">
+                        <span class="opcao-inline-label">
+                            <strong>Contrato Temporário</strong>
+                            <small>Final ou antecipação de contrato</small>
+                        </span>
+                    </label>
+                    <label class="opcao-inline">
+                        <input type="checkbox" class="chk-cond" id="cond_F" value="F" {% if p_cond_especial == 'F' %}checked{% endif %} onchange="condChange(this)">
+                        <span class="opcao-inline-label">
+                            <strong>Falecimento</strong>
+                            <small>Rescisão por falecimento</small>
+                        </span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /pref-card -->
+
+    <div class="rodape">
+        <button class="btn-processar" onclick="processar()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Continuar
+        </button>
+    </div>
+
+    {% endif %}{# /ja_tem_aviso #}
+
+    {% endif %}{# /funcionario #}
+
+</div><!-- /conteudo -->
+
+<script>
+const FOLHA_YM   = '{{ folha_ym }}';   // "YYYY-MM"
+const MAT        = '{{ funcionario.matricula if funcionario else "" }}';
+const DTADM      = '{{ funcionario.dtadm_fmt if funcionario else "" }}'; // DD/MM/AAAA
+const ANOS_SERV  = {{ funcionario.anos if funcionario else 0 }};
+
+function validarData() {
+    var el   = document.getElementById('data_aviso');
+    var erro = document.getElementById('erro-data');
+    if (!el || !FOLHA_YM) return true;
+    var val = el.value;  // "YYYY-MM-DD"
+    var ok  = val && val.slice(0, 7) === FOLHA_YM;
+    el.classList.toggle('erro', !ok);
+    erro.style.display = (!ok && val) ? 'block' : 'none';
+    return ok;
+}
+
+function processar() {
+    if (!validarData()) {
+        document.getElementById('data_aviso').focus();
+        return;
+    }
+    var dataAviso = document.getElementById('data_aviso').value;
+    if (!dataAviso) { alert('Informe a data do aviso prévio.'); return; }
+    var tipo     = document.querySelector('input[name="tipo_aviso"]:checked').value;
+    var quem     = document.querySelector('input[name="quem_aviso"]:checked').value;
+    var condChk  = document.querySelector('.chk-cond:checked');
+    var cond     = condChk ? condChk.value : 'N';
+    var p = new URLSearchParams();
+    p.set('mat',           MAT);
+    p.set('data_aviso',    dataAviso);
+    p.set('tipo_aviso',    tipo);
+    p.set('quem_aviso',    quem);
+    p.set('cond_especial', cond);
+    window.location.href = '/cad_aviso_previo2?' + p.toString();
+}
+
+function atualizarAP1() {
+    var quem  = document.querySelector('input[name="quem_aviso"]:checked');
+    var dias  = document.getElementById('ap1-dias');
+    var obs   = document.getElementById('ap1-obs');
+    if (!quem || !dias) return;
+    if (quem.value === 'A') {
+        dias.textContent = '15 dias';
+        obs.textContent  = '(Acordo — Lei 13.467/2017)';
+    } else {
+        dias.textContent = '30 dias';
+        obs.textContent  = '(máx. 30 dias — ou 15 dias se Acordo)';
+    }
+}
+
+function condChange(chk) {
+    if (chk.checked) {
+        document.querySelectorAll('.chk-cond').forEach(function(c) {
+            if (c !== chk) c.checked = false;
+        });
+    }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var el = document.getElementById('data_aviso');
+    if (el) el.addEventListener('change', validarData);
+    validarData();
+    atualizarAP1();
+    document.querySelectorAll('input[name="quem_aviso"]').forEach(function(r) {
+        r.addEventListener('change', atualizarAP1);
+    });
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F10 — Ano/Mês da Folha</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f9;
+      color: #1f2937;
+      min-height: 100vh;
+    }
+
+    .pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── TOPO ── */
+    .topo {
+        background: #0b1f3a;
+        border-bottom: 1px solid #1e3d5c;
+        padding: 0 28px;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        align-items: center;
+        gap: 0 32px;
+        min-height: 64px;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .topo-logo { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: #2a7de1; letter-spacing: 0.04em; white-space: nowrap; }
+    .topo-versao { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8baac8; letter-spacing: 0.03em; margin-top: 2px; }
+    .topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center; letter-spacing: 0.01em; }
+    .topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+    .topo-nome { font-size: 11px; color: #8baac8; margin-top: 2px; }
+    .btn-voltar-topo {
+        margin-left: 16px; background: transparent;
+        border: 1px solid #1e3d5c; color: #8baac8;
+        font-size: 12px; padding: 5px 12px; border-radius: 6px;
+        cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: 0.15s; white-space: nowrap;
+    }
+    .btn-voltar-topo:hover { border-color: #2a7de1; color: #e8edf4; }
+
+    /* ── CONTAINER ── */
+    .container {
+      max-width: 1300px;
+      width: 100%;
+      margin: 14px auto 0;
+      padding: 0 18px 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── INFO CARDS ── */
+    .painel-info {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .card-info {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 12px 15px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .card-info .rotulo {
+      font-size: 11px; color: #6b7280;
+      text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px;
+    }
+    .card-info .valor {
+      font-size: 15px; font-weight: 700; color: #111827;
+    }
+
+    /* ── LAYOUT ── */
+    .layout-principal {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 20px;
+      flex: 1;
+    }
+
+    /* ── BLOCOS ── */
+    .bloco {
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      display: flex;
+      flex-direction: column;
+    }
+    .bloco-header {
+      padding: 12px 16px 10px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e5e7eb;
+      border-radius: 12px 12px 0 0;
+    }
+    .bloco-header h2 { margin: 0; font-size: 15px; color: #0f172a; }
+    .bloco-header p  { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+    .bloco-body {
+      padding: 14px 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* ── LISTA ── */
+    .lista {
+      border: 1px solid #dbe3ee;
+      border-radius: 10px;
+      overflow: auto;
+      flex: 1;
+      min-height: 320px;
+    }
+    .lista table { width: 100%; border-collapse: collapse; }
+    .lista thead { background: #eaf1fb; }
+    .lista thead th { position: sticky; top: 0; background: #eaf1fb; z-index: 2; }
+    .lista th, .lista td {
+      text-align: left; padding: 6px 10px;
+      font-size: 12px; border-bottom: 1px solid #eef2f7; white-space: nowrap;
+    }
+    .lista th { color: #334155; font-weight: 600; }
+    .lista tbody tr { cursor: pointer; }
+    .lista tbody tr:hover { background: #f0f7ff; }
+    .lista tbody tr.selecionado { background: #dbeafe; }
+
+    /* badges situação */
+    .badge {
+      display: inline-block; padding: 2px 9px;
+      border-radius: 999px; font-size: 10px; font-weight: 700;
+    }
+    .badge-A { background: #dcfce7; color: #166534; }
+    .badge-X { background: #dcfce7; color: #166534; }
+    .badge-C { background: #fef3c7; color: #92400e; }
+    .badge-F { background: #fee2e2; color: #991b1b; }
+
+    /* badges tipo */
+    .tag-tipo {
+      display: inline-block; padding: 2px 8px;
+      border-radius: 6px; font-size: 10px; font-weight: 700;
+    }
+    .tag-N { background: #e0f2fe; color: #0369a1; }
+    .tag-1 { background: #f3e8ff; color: #7e22ce; }
+    .tag-A { background: #fff7ed; color: #c2410c; }
+
+    /* ── FORM ── */
+    .form-label {
+      display: block; font-size: 12px;
+      color: #475569; font-weight: 700; margin-bottom: 4px;
+    }
+    .form-input {
+      width: 100%; height: 36px; padding: 6px 10px;
+      border: 1px solid #cbd5e1; border-radius: 8px;
+      font-size: 13px; outline: none; background: white;
+    }
+    .form-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .form-input:disabled {
+      background: #f1f5f9; color: #94a3b8; cursor: not-allowed;
+    }
+    .form-select {
+      width: 100%; height: 36px; padding: 6px 10px;
+      border: 1px solid #cbd5e1; border-radius: 8px;
+      font-size: 13px; outline: none; background: white;
+    }
+    .form-select:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .form-select:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
+
+    .form-linha-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .form-secao   { display: flex; flex-direction: column; gap: 4px; }
+
+    .grupo-radios {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      padding: 8px 12px; border: 1px solid #e5e7eb;
+      border-radius: 10px; background: white;
+    }
+    .radio-item { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+    .radio-item input { accent-color: #2563eb; }
+    .radio-item span { font-size: 12px; font-weight: 600; color: #334155; }
+    .radio-item input:disabled + span { color: #94a3b8; cursor: not-allowed; }
+
+    .aviso-modo {
+      padding: 8px 12px; border-radius: 10px; font-size: 12px;
+      font-weight: 600; text-align: center;
+    }
+    .aviso-incluir { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+    .aviso-alterar { background: #eff6ff; border: 1px solid #93c5fd; color: #1d4ed8; }
+
+    .separador {
+      border: none; border-top: 1px dashed #e5e7eb; margin: 4px 0;
+    }
+
+    /* ── BOTÕES ── */
+    .btn {
+      height: 38px; border: none; border-radius: 10px;
+      padding: 0 18px; font-size: 13px; font-weight: 700;
+      cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    }
+    .btn-gravar {
+      background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%);
+      color: white; border: 1px solid #2f9d4d; flex: 1;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .btn-gravar:hover { filter: brightness(1.04); }
+    .btn-cancelar {
+      background: linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+      color: #475569; border: 1px solid #cbd5e1;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
+    }
+    .btn-cancelar:hover { filter: brightness(0.97); }
+
+    .rodape-acoes {
+      display: flex; gap: 8px; margin-top: 4px;
+    }
+
+    .vazio {
+      padding: 20px; font-size: 13px; color: #64748b;
+      text-align: center; border: 1px dashed #cbd5e1;
+      border-radius: 10px; background: #fafafa;
+    }
+
+    /* ── TABELAS LEGAIS (compacto, dentro do form) ── */
+    .tabelas-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .tbl-secao h3 {
+      font-size: 10px; font-weight: 700; color: #64748b;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin-bottom: 4px; padding-bottom: 3px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .tbl-secao table { border-collapse: collapse; width: 100%; }
+    .tbl-secao td {
+      font-size: 11px; padding: 2px 6px 2px 0;
+      color: #1f2937; white-space: nowrap;
+    }
+    .tbl-secao td.rot  { color: #6b7280; font-size: 10px; padding-right: 16px; }
+    .tbl-secao td.val  { font-weight: 700; text-align: right; padding-right: 8px; }
+    .tbl-secao td.perc { font-weight: 700; text-align: right; width: 48px; color: #1f2937; }
+    .tbl-secao td.base { font-weight: 700; color: #1f2937; padding-right: 16px; font-size: 11px; }
+    .tag-vigencia {
+      font-size: 10px; font-weight: 700; background: #dbeafe;
+      color: #1d4ed8; border-radius: 999px; padding: 2px 8px;
+    }
+    .sem-tabela {
+      font-size: 11px; color: #94a3b8; text-align: center; padding: 6px 0;
+    }
+
+    @media (max-width: 960px) {
+      .layout-principal { grid-template-columns: 1fr; }
+      .painel-info { grid-template-columns: 1fr; }
+    }
+
+    /* ── MODAL ALERTA ── */
+    .modal-fundo {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.45); z-index: 999;
+      justify-content: center; align-items: center;
+    }
+    .modal-caixa {
+      width: 380px; max-width: 92%;
+      background: white; border-radius: 16px;
+      padding: 0 0 20px;
+      box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+      overflow: hidden;
+      text-align: left;
+    }
+    .modal-cabecalho {
+      background: #0f172a;
+      padding: 10px 16px;
+      border-radius: 16px 16px 0 0;
+    }
+    .modal-marca {
+      font-size: 13px; font-weight: 800; letter-spacing: -0.2px;
+      color: #e2e8f0;
+    }
+    .modal-titulo {
+      font-size: 16px; font-weight: 800; color: #b45309;
+      margin: 16px 20px 8px;
+    }
+    .modal-texto {
+      font-size: 13px; color: #374151; line-height: 1.6;
+      margin: 0 20px 20px;
+    }
+    .modal-rodape {
+      padding: 0 20px; text-align: right;
+    }
+    .modal-btn-ok {
+      height: 38px; padding: 0 28px;
+      background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%);
+      color: white; border: 1px solid #b45309; border-radius: 10px;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+    .modal-btn-ok:hover { filter: brightness(1.05); }
+  
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+  </style>
+</head>
+<body>
+<div class="pagina">
+
+  <!-- TOPO -->
+  <div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa_info }}</span>
+        <span class="topo-nome">{{ nome_cliente }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>{% if modo == 'trocar' %}Trocar Mês/Ano da Folha{% else %}Cadastro — Ano/Mês da Folha{% endif %}</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- CARDS INFO -->
+    <div class="painel-info">
+      <div class="card-info">
+        <div class="rotulo">Cliente</div>
+        <div class="valor">{{ nome_cliente }}</div>
+      </div>
+      <div class="card-info">
+        <div class="rotulo">Empresa</div>
+        <div class="valor">{{ empresa_info or '—' }}</div>
+      </div>
+      <div class="card-info">
+        <div class="rotulo">Folhas Cadastradas</div>
+        <div class="valor" id="totRegistros">{{ anomes_list|length }}</div>
+      </div>
+      {% if limite_anomes and limite_anomes|length == 6 %}
+      <div class="card-info" style="border-color:#fde047;">
+        <div class="rotulo">Limite do Plano</div>
+        <div class="valor" style="color:#92400e;">{{ limite_anomes[4:6] }}/{{ limite_anomes[0:4] }}</div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="layout-principal" {% if modo == 'trocar' %}style="grid-template-columns:1fr;"{% endif %}>
+
+      <!-- ── LISTA ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2>{% if modo == 'trocar' %}Selecione o Mês/Ano desejado para ativar{% else %}Alterar para outro Mes/Ano - Escolha na Lista Abaixo{% endif %}</h2>
+        </div>
+        <div class="bloco-body">
+          <div class="lista">
+            {% if anomes_list %}
+            <table>
+              <thead>
+                <tr>
+                  <th>Ano/Mês</th>
+                  <th style="padding-left:18px;">Tipo</th>
+                  <th>Situação</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyLista">
+                {% for r in anomes_list %}
+                <tr onclick="selecionarLinha(this)"
+                    data-idcliente="{{ r.id_cliente }}"
+                    data-idempresa="{{ r.id_empresa }}"
+                    data-anomes="{{ r.ano_mes }}"
+                    data-tipo="{{ r.tipo }}"
+                    data-situacao="{{ r.situacao }}"
+                    data-falta1="{{ r.data_falta1 or '' }}"
+                    data-falta2="{{ r.data_falta2 or '' }}">
+                  <td><strong>{{ r.ano_mes[4:6] }}/{{ r.ano_mes[0:4] }}</strong></td>
+                  <td>
+                    <span class="tag-tipo tag-{{ r.tipo }}">
+                      {% if r.tipo == 'N' %}Normal
+                      {% elif r.tipo == '1' %}13º Mês
+                      {% else %}Adiant. 13{% endif %}
+                    </span>
+                  </td>
+                  <td>
+                    <span class="badge badge-{{ r.situacao }}">
+                      {% if r.situacao in ('A', 'X') %}Aberta
+                      {% elif r.situacao == 'C' %}Calculada
+                      {% else %}Fechada{% endif %}
+                    </span>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">Nenhuma folha cadastrada ainda.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      {% if modo != 'trocar' %}
+      <!-- ── FORMULÁRIO ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2 id="formTitulo">Incluir Novo Mes/Ano</h2>
+          <p id="formSubtitulo">Preencha os dados e grave</p>
+        </div>
+        <div class="bloco-body">
+
+          <!-- AVISO MODO -->
+          <div class="aviso-modo aviso-incluir" id="avisoModo">
+            Modo: Inclusão
+          </div>
+
+          <!-- ANO/MÊS -->
+          <div class="form-secao">
+            <label class="form-label">Ano / Mês</label>
+            <div class="form-linha-2">
+              <div>
+                <input class="form-input" type="text" id="inpAno"
+                  maxlength="4" placeholder="AAAA"
+                  style="text-align:center; letter-spacing:3px; font-weight:700;"
+                  oninput="preencherDatasDoMes()">
+              </div>
+              <div>
+                <select class="form-select" id="selMes" onchange="preencherDatasDoMes()">
+                  <option value="">— Mês —</option>
+                  <option value="01">01 — Janeiro</option>
+                  <option value="02">02 — Fevereiro</option>
+                  <option value="03">03 — Março</option>
+                  <option value="04">04 — Abril</option>
+                  <option value="05">05 — Maio</option>
+                  <option value="06">06 — Junho</option>
+                  <option value="07">07 — Julho</option>
+                  <option value="08">08 — Agosto</option>
+                  <option value="09">09 — Setembro</option>
+                  <option value="10">10 — Outubro</option>
+                  <option value="11">11 — Novembro</option>
+                  <option value="12">12 — Dezembro</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- TIPO -->
+          <div class="form-secao">
+            <label class="form-label">Tipo de Folha</label>
+            <div class="grupo-radios" id="grupoTipo">
+              <label class="radio-item">
+                <input type="radio" name="tipo" value="N" checked>
+                <span>Normal</span>
+              </label>
+              <label class="radio-item">
+                <input type="radio" name="tipo" value="1">
+                <span>13º Mês</span>
+              </label>
+              <label class="radio-item">
+                <input type="radio" name="tipo" value="A">
+                <span>Adiant. 13</span>
+              </label>
+            </div>
+          </div>
+
+          <hr class="separador">
+
+          <!-- DATAS DE FALTA — mesma linha -->
+          <div class="form-linha-2">
+            <div class="form-secao">
+              <label class="form-label">Falta Inicial</label>
+              <input class="form-input" type="date" id="inpFalta1">
+            </div>
+            <div class="form-secao">
+              <label class="form-label">Falta Final</label>
+              <input class="form-input" type="date" id="inpFalta2">
+            </div>
+          </div>
+
+          <div class="rodape-acoes">
+            <button class="btn btn-cancelar" id="btnCancelar"
+              onclick="modoIncluir()" style="display:none;">
+              Cancelar
+            </button>
+            <button class="btn btn-gravar" id="btnGravar" onclick="gravar()">
+              Gravar
+            </button>
+          </div>
+
+          <!-- ── TABELAS LEGAIS (dentro do form) ── -->
+          <div style="margin-top:8px; border-top:1px dashed #e5e7eb; padding-top:10px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+              <span style="font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:0.4px;">
+                Tabelas Legais — INSS / IRRF / SM
+              </span>
+              <span class="tag-vigencia" id="tblVigenciaTag">—</span>
+            </div>
+            <div id="tblConteudo">
+              <div class="sem-tabela">Selecione o Ano/Mês.</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+      {% endif %}
+
+    </div><!-- layout-principal -->
+
+  </div><!-- container -->
+</div><!-- pagina -->
+
+<!-- MODAL ALERTA -->
+<div id="modalFundo" class="modal-fundo">
+  <div class="modal-caixa">
+    <div class="modal-cabecalho">
+      <span class="modal-marca">Folha10·Simples</span>
+    </div>
+    <div class="modal-titulo" id="modalTitulo">Alerta</div>
+    <div class="modal-texto"  id="modalTexto"></div>
+    <div class="modal-rodape">
+      <button class="modal-btn-ok" onclick="fecharModal()">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Modal Alerta ──────────────────────────────────────────
+  let _modalRedirect = null;
+
+  function alerta(titulo, texto, redirectUrl) {
+    document.getElementById('modalTitulo').textContent = titulo;
+    document.getElementById('modalTexto').textContent  = texto;
+    document.getElementById('modalFundo').style.display = 'flex';
+    _modalRedirect = redirectUrl || null;
+  }
+  function fecharModal() {
+    document.getElementById('modalFundo').style.display = 'none';
+    if (_modalRedirect) {
+      const url = _modalRedirect;
+      _modalRedirect = null;
+      window.location.href = url;
+    }
+  }
+  // Fecha ao clicar no fundo
+  document.getElementById('modalFundo').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+  });
+
+  // ── Estado ────────────────────────────────────────────────
+  let modoAtual = 'incluir'; // 'incluir' | 'alterar'
+  let dadosSelecionados = null;
+
+  // Próximo ano/mês sugerido pelo backend
+  const PROXIMO_ANOMES = "{{ proximo_anomes }}";
+
+  // Limite máximo de folha permitido pelo plano (yyyymm)
+  const LIMITE_ANOMES = "{{ limite_anomes }}";
+
+  // ── Helpers ───────────────────────────────────────────────
+  // Converte yyyymmdd → yyyy-mm-dd para o input[type=date]
+  function strParaDate(s) {
+    if (!s || s.length < 8) return '';
+    return s.substring(0,4) + '-' + s.substring(4,6) + '-' + s.substring(6,8);
+  }
+  // Converte yyyy-mm-dd → yyyymmdd
+  function dateParaStr(d) {
+    return d ? d.replace(/-/g, '') : '';
+  }
+  // Preenche datas de falta com primeiro e último dia do mês
+  function preencherDatasDoMes() {
+    if (modoAtual !== 'incluir') return;
+    const ano = parseInt(document.getElementById('inpAno').value, 10);
+    const mes = parseInt(document.getElementById('selMes').value, 10);
+    if (!ano || ano < 2000 || ano > 2099 || !mes) return;
+
+    const primeiroDia = new Date(ano, mes - 1, 1);
+    const ultimoDia   = new Date(ano, mes, 0);       // dia 0 do mês seguinte = último do atual
+
+    const pad = n => String(n).padStart(2, '0');
+    const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+
+    document.getElementById('inpFalta1').value = fmt(primeiroDia);
+    document.getElementById('inpFalta2').value = fmt(ultimoDia);
+
+    // Busca tabela legal para o ano/mês
+    const anoMes = String(ano).padStart(4,'0') + String(mes).padStart(2,'0');
+    buscarTabelaLegal(anoMes);
+  }
+
+  // ── Tabelas Legais ────────────────────────────────────────
+  function moeda(v) {
+    // inteiro em centavos → R$ x.xxx,xx
+    if (!v && v !== 0) return '—';
+    return 'R$ ' + (v / 100).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+  }
+  function perc(v) {
+    if (!v && v !== 0) return '—';
+    return (v / 100).toFixed(2).replace('.', ',') + '%';
+  }
+  function fmtVig(s) {
+    if (!s || s.length < 6) return s;
+    return s.substring(4,6) + '/' + s.substring(0,4);
+  }
+
+  async function buscarTabelaLegal(anoMes) {
+    try {
+      const r = await fetch(`/api/tabela_legal?ano_mes=${anoMes}`);
+      const d = await r.json();
+      if (!d.ok) {
+        document.getElementById('tblVigenciaTag').textContent = '—';
+        document.getElementById('tblConteudo').innerHTML =
+          `<div class="sem-tabela">${d.msg}</div>`;
+        return;
+      }
+      renderizarTabela(d.tabela, d.proximo_inicio, anoMes);
+    } catch(e) {
+      document.getElementById('tblConteudo').innerHTML =
+        '<div class="sem-tabela">Erro ao carregar tabelas.</div>';
+    }
+  }
+
+  // Subtrai um mês de yyyymm, retorna yyyymm
+  function mesAnterior(yyyymm) {
+    let ano = parseInt(yyyymm.substring(0, 4));
+    let mes = parseInt(yyyymm.substring(4, 6)) - 1;
+    if (mes < 1) { mes = 12; ano--; }
+    return String(ano).padStart(4,'0') + String(mes).padStart(2,'0');
+  }
+
+  function renderizarTabela(t, proximoInicio, anoMesSelecionado) {
+    // Título com mês/ano selecionado
+    const tituloEl = document.querySelector('#tblConteudo').previousElementSibling.querySelector('span:first-child');
+    if (tituloEl) tituloEl.textContent = 'Tabelas Legais em ' + fmtVig(anoMesSelecionado);
+
+    // Vigência: início até fim (ou ATUAL)
+    const inicio = fmtVig(t.ano_mes_inicio);
+    let vigTexto;
+    if (proximoInicio) {
+      const fim = fmtVig(mesAnterior(proximoInicio));
+      vigTexto = inicio + ' até ' + fim;
+    } else {
+      vigTexto = 'ATUAL';
+    }
+    document.getElementById('tblVigenciaTag').textContent = 'Vigência: ' + vigTexto;
+
+    // Monta faixas INSS (só exibe as que têm limite > 0)
+    let htmlInss = '';
+    for (let i = 1; i <= 6; i++) {
+      const lim = t[`inss${i}_limite`];
+      const pc  = t[`inss${i}_perc`];
+      if (lim > 0) htmlInss += `<tr>
+        <td class="rot">Até</td>
+        <td class="val">${moeda(lim)}</td>
+        <td class="perc">${perc(pc)}</td>
+      </tr>`;
+    }
+
+    // Salário Família — mesma estrutura de colunas do INSS para alinhar
+    let htmlSF = '';
+    if (t.sf1_limite > 0)
+      htmlSF += `<tr><td class="rot">Até</td><td class="val">${moeda(t.sf1_limite)}</td><td class="perc">${moeda(t.sf1_valor)}</td></tr>`;
+    if (t.sf2_limite > 0)
+      htmlSF += `<tr><td class="rot">Até</td><td class="val">${moeda(t.sf2_limite)}</td><td class="perc">${moeda(t.sf2_valor)}</td></tr>`;
+    if (!htmlSF) htmlSF = '<tr><td colspan="3" style="color:#94a3b8;font-size:11px;">Não aplicável</td></tr>';
+
+    // Monta faixas IRRF
+    let htmlIrrf = '';
+    for (let i = 1; i <= 5; i++) {
+      const lim = t[`irrf${i}_limite`];
+      const ded = t[`irrf${i}_ded`];
+      const pc  = t[`irrf${i}_perc`];
+      const limFmt = lim >= 999999999 ? 'Acima' : moeda(lim);
+      htmlIrrf += `<tr>
+        <td class="base">${limFmt}</td>
+        <td class="perc">${perc(pc)}</td>
+        <td class="val">${moeda(ded)}</td>
+      </tr>`;
+    }
+
+    document.getElementById('tblConteudo').innerHTML = `
+      <div class="tabelas-grid">
+
+        <div class="tbl-secao">
+          <h3>INSS</h3>
+          <table>
+            <tr style="font-size:10px;color:#94a3b8;">
+              <td></td><td style="text-align:right;">Limite</td><td style="text-align:right;width:48px;">Alíq.</td>
+            </tr>
+            ${htmlInss}
+            <tr style="border-top:1px solid #e5e7eb;">
+              <td class="rot" style="padding-top:5px; font-weight:700; color:#0f172a;">Salário Mínimo</td>
+              <td class="val" colspan="2" style="padding-top:5px; font-size:12px; color:#0f172a;">${moeda(t.sm)}</td>
+            </tr>
+          </table>
+          <h3 style="margin-top:8px;">Salário Família</h3>
+          <table>
+            <tr style="font-size:10px;color:#94a3b8;">
+              <td></td><td style="text-align:right;">Até</td><td style="text-align:right;width:48px;">Valor</td>
+            </tr>
+            ${htmlSF}
+          </table>
+        </div>
+
+        <div class="tbl-secao">
+          <h3>IRRF — Faixas</h3>
+          <table>
+            <tr style="font-size:10px;color:#94a3b8;">
+              <td>Base</td><td style="text-align:right;width:48px;">%</td><td style="text-align:right;">Dedução</td>
+            </tr>
+            ${htmlIrrf}
+          </table>
+          <h3 style="margin-top:8px;">IRRF — Complementos</h3>
+          <table>
+            <tr><td class="rot">Desc. por Dependente</td><td class="val">${moeda(t.irrf_dependente)}</td></tr>
+            <tr><td class="rot">Desc. Fixo Opcional</td><td class="val">${moeda(t.irrf_opc_deducao)}</td></tr>
+          </table>
+        </div>
+
+      </div>`;
+  }
+
+  // ── Selecionar linha → ativar folha ──────────────────────
+  function selecionarLinha(tr) {
+    document.querySelectorAll('#tbodyLista tr').forEach(r => r.classList.remove('selecionado'));
+    tr.classList.add('selecionado');
+
+    const dados = {
+      id_cliente:  tr.dataset.idcliente,
+      id_empresa:  tr.dataset.idempresa,
+      ano_mes:     tr.dataset.anomes,
+      tipo:        tr.dataset.tipo,
+      situacao:    tr.dataset.situacao,
+      data_falta1: tr.dataset.falta1,
+      data_falta2: tr.dataset.falta2,
+    };
+
+    ativarFolha(dados);
+  }
+
+  async function ativarFolha(d) {
+    try {
+      const r = await fetch('/api/anomes/ativar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ano_mes: d.ano_mes, tipo: d.tipo })
+      });
+      const res = await r.json();
+      if (res.ok) {
+        const mm   = d.ano_mes.substring(4, 6);
+        const aaaa = d.ano_mes.substring(0, 4);
+        alerta('Folha Ativa Alterada',
+          'A Folha Ativa agora é ' + mm + '/' + aaaa + ' — ' + labelTipo(d.tipo) + '.',
+          '/menu');
+      } else {
+        alerta('Erro', res.msg || 'Não foi possível ativar a folha.');
+      }
+    } catch(e) {
+      alerta('Erro de Comunicação', 'Não foi possível contactar o servidor.');
+    }
+  }
+
+  // ── Modo Incluir ──────────────────────────────────────────
+  function modoIncluir() {
+    modoAtual = 'incluir';
+    dadosSelecionados = null;
+
+    document.getElementById('formTitulo').textContent    = 'Incluir Novo Mes/Ano';
+    document.getElementById('formSubtitulo').textContent = 'Preencha os dados e grave';
+
+    const aviso = document.getElementById('avisoModo');
+    aviso.textContent = 'Modo: Inclusão';
+    aviso.className   = 'aviso-modo aviso-incluir';
+
+    // Pré-preenche com próximo ano/mês sugerido
+    const anoSug = PROXIMO_ANOMES.substring(0, 4);
+    const mesSug = PROXIMO_ANOMES.substring(4, 6);
+    document.getElementById('inpAno').value = anoSug;
+    document.getElementById('selMes').value = mesSug;
+    document.querySelector('input[name="tipo"][value="N"]').checked = true;
+
+    // Habilita tudo
+    document.getElementById('inpAno').disabled  = false;
+    document.getElementById('selMes').disabled  = false;
+    document.querySelectorAll('input[name="tipo"]').forEach(r => r.disabled = false);
+
+    // Botões
+    document.getElementById('btnCancelar').style.display = 'none';
+    document.getElementById('btnGravar').textContent     = 'Gravar';
+
+    document.querySelectorAll('#tbodyLista tr').forEach(r => r.classList.remove('selecionado'));
+
+    // Preenche datas de falta com primeiro/último dia do mês sugerido
+    preencherDatasDoMes();
+  }
+
+  // ── Modo Alterar ──────────────────────────────────────────
+  function modoAlterar(d) {
+    modoAtual = 'alterar';
+
+    const mm   = d.ano_mes.substring(4,6);
+    const aaaa = d.ano_mes.substring(0,4);
+
+    document.getElementById('formTitulo').textContent    = 'Alterar Datas de Falta';
+    document.getElementById('formSubtitulo').textContent = mm + '/' + aaaa + ' — ' + labelTipo(d.tipo);
+
+    const aviso = document.getElementById('avisoModo');
+    aviso.textContent = 'Modo: Alteração (somente datas de falta)';
+    aviso.className   = 'aviso-modo aviso-alterar';
+
+    // Preenche campos
+    document.getElementById('inpAno').value    = aaaa;
+    document.getElementById('selMes').value    = mm;
+    document.getElementById('inpFalta1').value = strParaDate(d.data_falta1);
+    document.getElementById('inpFalta2').value = strParaDate(d.data_falta2);
+    document.querySelectorAll('input[name="tipo"]').forEach(r => {
+      r.checked = (r.value === d.tipo);
+    });
+
+    // Bloqueia Ano/Mês e Tipo
+    document.getElementById('inpAno').disabled  = true;
+    document.getElementById('selMes').disabled  = true;
+    document.querySelectorAll('input[name="tipo"]').forEach(r => r.disabled = true);
+
+    // Botões
+    document.getElementById('btnCancelar').style.display = '';
+    document.getElementById('btnGravar').textContent     = 'Salvar Alteração';
+
+    // Busca tabela legal para o ano/mês selecionado
+    buscarTabelaLegal(d.ano_mes);
+  }
+
+  function labelTipo(t) {
+    return t === 'N' ? 'Normal' : t === '1' ? '13º Mês' : 'Adiant. 13';
+  }
+
+  // ── Inicialização ─────────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', modoIncluir);
+
+  // ── Gravar ────────────────────────────────────────────────
+  async function gravar() {
+    const falta1 = dateParaStr(document.getElementById('inpFalta1').value);
+    const falta2 = dateParaStr(document.getElementById('inpFalta2').value);
+
+    if (falta1 && falta2 && falta1 > falta2) {
+      alerta('Datas inválidas', 'A Data Inicial de Faltas não pode ser maior que a Data Final.');
+      return;
+    }
+
+    let payload, url;
+
+    if (modoAtual === 'incluir') {
+      const ano  = document.getElementById('inpAno').value.trim();
+      const mes  = document.getElementById('selMes').value;
+      const tipo = document.querySelector('input[name="tipo"]:checked')?.value || 'N';
+
+      if (ano.length !== 4 || isNaN(parseInt(ano))) { alerta('Campo inválido', 'Informe um ano válido com 4 dígitos.'); return; }
+      if (!mes) { alerta('Campo inválido', 'Selecione o mês antes de gravar.'); return; }
+
+      // Verifica limite do plano
+      if (LIMITE_ANOMES) {
+        const anoMesSol = ano + mes;
+        if (anoMesSol > LIMITE_ANOMES) {
+          const lim = LIMITE_ANOMES.substring(4,6) + '/' + LIMITE_ANOMES.substring(0,4);
+          alerta('Limite do Plano', 'Sua data Limite Contratada é ' + lim + '.');
+          return;
+        }
+      }
+
+      payload = { ano_mes: ano + mes, tipo, data_falta1: falta1, data_falta2: falta2 };
+      url     = '/api/anomes/incluir';
+
+    } else {
+      payload = {
+        id_cliente:  dadosSelecionados.id_cliente,
+        id_empresa:  dadosSelecionados.id_empresa,
+        ano_mes:     dadosSelecionados.ano_mes,
+        tipo:        dadosSelecionados.tipo,
+        data_falta1: falta1,
+        data_falta2: falta2,
+      };
+      url = '/api/anomes/alterar';
+    }
+
+    try {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const d = await r.json();
+      if (d.ok) {
+        location.reload();
+      } else {
+        alerta('Erro ao Gravar', d.msg || 'Falha ao gravar. Tente novamente.');
+      }
+    } catch(e) {
+      alerta('Erro de Comunicação', 'Não foi possível contactar o servidor. Verifique sua conexão.');
+    }
+  }
+</script>
+</body>
+</html>

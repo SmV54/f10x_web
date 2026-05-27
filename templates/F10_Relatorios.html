@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Relatórios</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 960px; margin: 36px auto; padding: 0 24px 60px; }
+
+/* ── CABEÇALHO ── */
+.page-header {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 32px;
+}
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+
+.page-titulo { font-size: 20px; font-weight: 600; color: #1e293b; }
+.page-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+/* ── ABAS DE CATEGORIA ── */
+.abas {
+    display: flex; gap: 6px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.aba {
+    display: flex; align-items: center; gap: 7px;
+    padding: 8px 16px; border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    font-size: 12px; font-weight: 600;
+    color: #64748b; cursor: pointer;
+    transition: 0.15s; user-select: none;
+    text-transform: uppercase; letter-spacing: 0.05em;
+}
+.aba:hover { border-color: var(--accent); color: var(--accent); }
+.aba.ativa {
+    background: var(--accent); border-color: var(--accent);
+    color: white;
+}
+.aba-icone { font-size: 14px; }
+
+/* ── SEÇÃO DE GRUPO ── */
+.grupo { margin-bottom: 36px; }
+
+.grupo-titulo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 13px; font-weight: 600; color: #64748b;
+    text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 14px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+.grupo-icone { font-size: 16px; }
+
+/* ── GRID DE RELATÓRIOS ── */
+.rel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+}
+
+.rel-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    text-decoration: none;
+    color: var(--label);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+    position: relative;
+}
+.rel-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px rgba(42,125,225,0.12);
+    transform: translateY(-2px);
+}
+
+.rel-card-icone {
+    width: 36px; height: 36px; border-radius: 9px;
+    background: #e6f0fb;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+}
+.rel-card-nome {
+    font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.3;
+}
+.rel-card-desc {
+    font-size: 11px; color: #64748b; line-height: 1.5;
+}
+
+/* Em breve */
+.rel-card.em-breve {
+    display: none;
+}
+
+
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+  </style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Relatórios</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="page-header">
+        <a class="btn-voltar" href="/menu">&#8592; Menu</a>
+        <div>
+            <div class="page-titulo">🖨️ Relatórios</div>
+            <div class="page-subtitulo">Selecione o relatório para configurar e gerar</div>
+        </div>
+    </div>
+
+    <!-- ABAS DE FILTRO -->
+    <div class="abas">
+        <div class="aba ativa" onclick="filtrarGrupo('todos', this)">
+            <span class="aba-icone">📋</span> Todos
+        </div>
+        <div class="aba" onclick="filtrarGrupo('cadastros', this)">
+            <span class="aba-icone">🗄️</span> Cadastros
+        </div>
+        <div class="aba" onclick="filtrarGrupo('eventos', this)">
+            <span class="aba-icone">🗓️</span> Eventos
+        </div>
+        <div class="aba" onclick="filtrarGrupo('folha', this)">
+            <span class="aba-icone">💰</span> Folha
+        </div>
+        <div class="aba" onclick="filtrarGrupo('eventuais', this)">
+            <span class="aba-icone">📌</span> Eventuais
+        </div>
+    </div>
+
+    <!-- ── CADASTROS ── -->
+    <div class="grupo" data-grupo="cadastros">
+        <div class="grupo-titulo">
+            <span class="grupo-icone">🗄️</span> Cadastros
+        </div>
+        <div class="rel-grid">
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">👤</div>
+                <div class="rel-card-nome">Relação de Funcionários</div>
+                <div class="rel-card-desc">Lista geral com dados cadastrais dos colaboradores</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📋</div>
+                <div class="rel-card-nome">Ficha Cadastral</div>
+                <div class="rel-card-desc">Dados completos do funcionário para impressão</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🏦</div>
+                <div class="rel-card-nome">Dados Bancários</div>
+                <div class="rel-card-desc">Relação de contas bancárias dos funcionários</div>
+            </a>
+
+            <a class="rel-card" href="/relatorios_config?rel=funcoes&voltar=/relatorios">
+                <div class="rel-card-icone">💼</div>
+                <div class="rel-card-nome">Funções</div>
+                <div class="rel-card-desc">Lista de funções e cargos cadastrados</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🤝</div>
+                <div class="rel-card-nome">Sindicatos</div>
+                <div class="rel-card-desc">Relação de sindicatos e categorias</div>
+            </a>
+
+            <a class="rel-card" href="/relatorios_config?rel=verbas&voltar=/relatorios">
+                <div class="rel-card-icone">📑</div>
+                <div class="rel-card-nome">Rubricas (Verbas)</div>
+                <div class="rel-card-desc">Relação de verbas e suas incidências</div>
+            </a>
+
+            <a class="rel-card" href="/relatorios_config?rel=dependentes&voltar=/relatorios">
+                <div class="rel-card-icone">👨‍👩‍👧</div>
+                <div class="rel-card-nome">Dependentes</div>
+                <div class="rel-card-desc">Listagem de dependentes por funcionário</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🚌</div>
+                <div class="rel-card-nome">Vale Transporte</div>
+                <div class="rel-card-desc">Linhas e valores de VT por colaborador</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📅</div>
+                <div class="rel-card-nome">Feriados</div>
+                <div class="rel-card-desc">Calendário de feriados por competência</div>
+            </a>
+
+        </div>
+    </div>
+
+    <!-- ── EVENTOS ── -->
+    <div class="grupo" data-grupo="eventos">
+        <div class="grupo-titulo">
+            <span class="grupo-icone">🗓️</span> Eventos
+        </div>
+        <div class="rel-grid">
+
+            <a class="rel-card" href="/relatorios_config?rel=ferias_func&voltar=/relatorios">
+                <div class="rel-card-icone">🏖️</div>
+                <div class="rel-card-nome">Listagem de Férias</div>
+                <div class="rel-card-desc">Períodos de gozo e aquisitivo por funcionário</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📄</div>
+                <div class="rel-card-nome">Aviso de Férias</div>
+                <div class="rel-card-desc">Documento de aviso de férias por funcionário</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📄</div>
+                <div class="rel-card-nome">Recibo de Férias</div>
+                <div class="rel-card-desc">Recibo de pagamento de férias para assinatura</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">⏰</div>
+                <div class="rel-card-nome">Férias Vencidas</div>
+                <div class="rel-card-desc">Funcionários com período aquisitivo vencido ou a vencer</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📆</div>
+                <div class="rel-card-nome">Programação de Férias</div>
+                <div class="rel-card-desc">Mapa anual de férias programadas</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">✅</div>
+                <div class="rel-card-nome">Relação de Admissões</div>
+                <div class="rel-card-desc">Funcionários admitidos no período</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🚪</div>
+                <div class="rel-card-nome">Relação de Demissões</div>
+                <div class="rel-card-desc">Funcionários desligados no período</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🏥</div>
+                <div class="rel-card-nome">Afastamentos</div>
+                <div class="rel-card-desc">Histórico de atestados e afastamentos</div>
+            </a>
+
+        </div>
+    </div>
+
+    <!-- ── FOLHA DE PAGAMENTO ── -->
+    <div class="grupo" data-grupo="folha">
+        <div class="grupo-titulo">
+            <span class="grupo-icone">💰</span> Folha de Pagamento
+        </div>
+        <div class="rel-grid">
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🧾</div>
+                <div class="rel-card-nome">Holerite Individual</div>
+                <div class="rel-card-desc">Contracheque por funcionário e competência</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📦</div>
+                <div class="rel-card-nome">Holerites em Lote</div>
+                <div class="rel-card-desc">Todos os holerites da competência para impressão</div>
+            </a>
+
+            <a class="rel-card" href="/resumo_folha">
+                <div class="rel-card-icone">📊</div>
+                <div class="rel-card-nome">Resumo da Folha</div>
+                <div class="rel-card-desc">Totais de proventos, descontos e líquido</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">💰</div>
+                <div class="rel-card-nome">Folha Analítica</div>
+                <div class="rel-card-desc">Lançamentos individuais de proventos e descontos</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🏛️</div>
+                <div class="rel-card-nome">INSS (GPS)</div>
+                <div class="rel-card-desc">Base de cálculo e valores de INSS patronal e empregado</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📑</div>
+                <div class="rel-card-nome">FGTS</div>
+                <div class="rel-card-desc">Base de cálculo e depósitos mensais de FGTS</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📝</div>
+                <div class="rel-card-nome">IRRF</div>
+                <div class="rel-card-desc">Base de cálculo e retenção do imposto de renda</div>
+            </a>
+
+        </div>
+    </div>
+
+    <!-- ── EVENTUAIS ── -->
+    <div class="grupo" data-grupo="eventuais">
+        <div class="grupo-titulo">
+            <span class="grupo-icone">📌</span> Eventuais
+        </div>
+        <div class="rel-grid">
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">1️⃣</div>
+                <div class="rel-card-nome">Adiantamento de 13º</div>
+                <div class="rel-card-desc">Recibos e relação da 1ª parcela do 13º salário</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">🎁</div>
+                <div class="rel-card-nome">13º Salário Final</div>
+                <div class="rel-card-desc">Recibos e totais do pagamento final do 13º</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📊</div>
+                <div class="rel-card-nome">Resumo do 13º</div>
+                <div class="rel-card-desc">Totais de proventos, descontos e encargos do 13º</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">📋</div>
+                <div class="rel-card-nome">TRCT — Rescisão</div>
+                <div class="rel-card-desc">Termo de rescisão contratual para impressão</div>
+            </a>
+
+            <a class="rel-card em-breve" href="#">
+                <div class="rel-card-icone">💸</div>
+                <div class="rel-card-nome">Memória de Cálculo</div>
+                <div class="rel-card-desc">Detalhamento do cálculo das verbas rescisórias</div>
+            </a>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+function filtrarGrupo(grupo, abaEl) {
+    document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+    abaEl.classList.add('ativa');
+    document.querySelectorAll('.grupo').forEach(g => {
+        g.style.display = (grupo === 'todos' || g.dataset.grupo === grupo) ? '' : 'none';
+    });
+}
+
+</script>
+
+</body>
+</html>

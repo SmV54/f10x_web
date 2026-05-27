@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Rescisão Registrada</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 640px; margin: 60px auto; padding: 0 24px 60px; }
+
+.ok-card {
+    background: var(--surface); border: 2px solid #86efac;
+    border-radius: 20px; padding: 40px 36px;
+    text-align: center;
+}
+.ok-icon  { font-size: 52px; margin-bottom: 16px; color: #166534; }
+.ok-titulo { font-size: 22px; font-weight: 700; color: #166534; margin-bottom: 8px; }
+.ok-desc   { font-size: 14px; color: #374151; margin-bottom: 28px; line-height: 1.6; }
+
+.resumo-lista {
+    background: #f8fafc; border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 28px;
+    text-align: left; overflow: hidden;
+}
+.rl-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 18px; border-bottom: 1px solid #f1f5f9;
+}
+.rl-item:last-child { border-bottom: none; }
+.rl-lbl { font-size: 12px; color: #64748b; }
+.rl-val { font-family: var(--mono); font-size: 13px; font-weight: 600; color: #1e293b; }
+.rl-val.txt { font-family: var(--sans); }
+
+.btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.btn-menu {
+    background: var(--accent); border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-menu:hover { background: #1a5fb8; }
+.btn-novo {
+    background: var(--surface); border: 1px solid var(--border);
+    color: #374151; font-size: 13px; font-family: var(--sans);
+    padding: 11px 20px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+}
+.btn-novo:hover { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Rescisão Registrada</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+    <div class="ok-card">
+        <div class="ok-icon">&#10003;</div>
+        <div class="ok-titulo">Rescisão Registrada</div>
+        <div class="ok-desc"></div>
+
+        <div class="resumo-lista">
+            <div class="rl-item">
+                <span class="rl-lbl">Funcionário</span>
+                <span class="rl-val txt">{{ nome_func }}</span>
+            </div>
+            <div class="rl-item">
+                <span class="rl-lbl">Matrícula</span>
+                <span class="rl-val">{{ mat_fmt }}</span>
+            </div>
+            <div class="rl-item">
+                <span class="rl-lbl">Data da Demissão</span>
+                <span class="rl-val">{{ data_demissao_fmt }}</span>
+            </div>
+        </div>
+
+        <div class="btns">
+            <a class="btn-novo" href="/select_funcionario?contexto=rescisao">&#43; Nova Rescisão</a>
+            <a class="btn-menu" href="/menu">&#8592; Menu</a>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — Ficha do Acidente</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ─────────────────────────────────────────────── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ─────────────────────────────────────────── */
+.conteudo { max-width: 900px; margin: 32px auto; padding: 0 24px 80px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.btn-print {
+    background: var(--accent); border: none; color: white;
+    font-size: 12px; font-weight: 600; font-family: var(--sans);
+    padding: 7px 16px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 6px; margin-left: auto;
+}
+.btn-print:hover { background: #1a6cd4; }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 2px; }
+
+/* ── CARD FUNCIONÁRIO ─────────────────────────────────── */
+.func-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 22px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 18px;
+}
+.func-mat  { font-family: var(--mono); font-size: 13px; color: #64748b; flex-shrink: 0; }
+.func-nome { font-size: 15px; font-weight: 600; color: #1e293b; }
+.func-meta { font-size: 11px; color: #94a3b8; margin-top: 2px; font-family: var(--mono); }
+.badge-sit {
+    padding: 3px 10px; border-radius: 6px; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .05em; flex-shrink: 0;
+}
+.sit-A { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-D { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.sit-X { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+.sem-acidentes {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 40px; text-align: center;
+    color: #94a3b8; font-size: 14px; line-height: 1.6;
+}
+
+/* ── CARD DE ACIDENTE ─────────────────────────────────── */
+.acid-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 28px;
+}
+
+.acid-header {
+    background: #0b1f3a; color: #e8edf4;
+    padding: 14px 22px; display: flex; align-items: center; gap: 14px;
+    flex-wrap: wrap;
+}
+.acid-header-data { font-family: var(--mono); font-size: 15px; font-weight: 600; }
+.acid-badge {
+    padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .04em;
+}
+.badge-tipico   { background: #7f1d1d; color: #fecaca; }
+.badge-doenca   { background: #78350f; color: #fef3c7; }
+.badge-trajeto  { background: #1e3a5f; color: #bfdbfe; }
+.badge-cat      { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+.acid-id { margin-left: auto; font-size: 10px; color: #8baac8; font-family: var(--mono); }
+
+/* ── SEÇÕES ───────────────────────────────────────────── */
+.secao {
+    border-bottom: 1px solid #f1f5f9;
+}
+.secao:last-child { border-bottom: none; }
+.secao-titulo {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: #94a3b8; background: #f8fafc;
+    padding: 8px 22px; border-bottom: 1px solid #f1f5f9;
+}
+.secao-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr);
+    gap: 0;
+}
+.secao-grid.col3 { grid-template-columns: repeat(3, 1fr); }
+.secao-grid.col1 { grid-template-columns: 1fr; }
+
+.campo {
+    padding: 10px 22px; border-right: 1px solid #f8fafc;
+    border-bottom: 1px solid #f8fafc;
+}
+.campo:nth-child(even) { border-right: none; }
+.campo-label {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .05em; color: #94a3b8; margin-bottom: 3px;
+}
+.campo-valor {
+    font-size: 13px; font-weight: 500; color: #1e293b;
+    line-height: 1.4;
+}
+.campo-valor.mono { font-family: var(--mono); font-size: 12px; }
+.campo-valor.destaque { color: var(--accent); font-weight: 600; }
+.campo-valor.sim  { color: #166534; }
+.campo-valor.nao  { color: #6b7280; }
+.campo-valor.dsc  { white-space: pre-wrap; word-break: break-word; }
+.campo-valor.vazio { color: #cbd5e1; font-style: italic; font-size: 12px; }
+
+/* ── ESOCIAL STATUS ───────────────────────────────────── */
+.es-linha {
+    padding: 10px 22px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.es-badge {
+    padding: 4px 12px; border-radius: 6px; font-size: 11px; font-weight: 700;
+    font-family: var(--mono);
+}
+.es-ok    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.es-pend  { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.es-erro  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.es-recibo { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.es-data   { font-size: 11px; color: #94a3b8; }
+
+/* ── PRINT ────────────────────────────────────────────── */
+.print-header { display: none; }
+
+@media print {
+    .topo, .rel-header { display: none !important; }
+    .print-header {
+        display: flex; align-items: baseline; justify-content: space-between;
+        padding-bottom: 8px; border-bottom: 2px solid #1e293b; margin-bottom: 18px;
+    }
+    .print-header-empresa { font-size: 13px; font-weight: 700; color: #1e293b; }
+    .print-header-func    { font-size: 13px; font-weight: 600; color: #1d4ed8; }
+    .print-header-titulo  { font-size: 11px; color: #64748b; }
+
+    body { background: white; }
+    .conteudo { margin: 0; padding: 0 0 20px; max-width: 100%; }
+    .func-card { border: 1px solid #cbd5e1; border-radius: 8px; margin-bottom: 16px; }
+
+    .acid-card {
+        overflow: visible;          /* corrigia o sumiço das seções */
+        page-break-inside: auto;
+        break-inside: auto;
+        margin-bottom: 20px;
+        box-shadow: none;
+        border-radius: 8px;
+    }
+    .secao { page-break-inside: avoid; break-inside: avoid; }
+
+    .acid-header {
+        background: #1e293b !important;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .secao-titulo {
+        background: #f8fafc !important;
+        -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    .es-ok   { background: #dcfce7 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .es-pend { background: #fef9c3 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .es-erro { background: #fee2e2 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div style="text-align:center;">
+        <div class="topo-titulo">Ficha do Acidente de Trabalho</div>
+        <div style="font-size:12px;color:#f5c842;margin-top:2px;font-weight:600;">{{ func_nome }}</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<!-- Cabeçalho visível apenas na impressão -->
+<div class="print-header">
+    <div>
+        <div class="print-header-empresa">{{ empresa }}</div>
+        <div class="print-header-func">{{ mat.zfill(6) }} — {{ func_nome }}</div>
+    </div>
+    <div class="print-header-titulo">Ficha do Acidente de Trabalho · CAT S-2210</div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a href="javascript:window.history.back()" class="btn-voltar">&#8592; Voltar</a>
+        <div>
+            <div class="rel-titulo">{{ func_nome }}</div>
+            <div class="rel-subtitulo">Ficha do Acidente de Trabalho · CAT S-2210 — Histórico completo</div>
+        </div>
+        {% if acidentes %}
+        <button class="btn-print" onclick="window.print()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Imprimir
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Funcionário -->
+    <div class="func-card">
+        <span class="func-mat">{{ mat.zfill(6) }}</span>
+        <div style="flex:1;">
+            <div class="func-nome">{{ func_nome }}</div>
+            <div class="func-meta">Admissão: {{ func_dtadm }}</div>
+        </div>
+        {% set sit = func_situacao %}
+        <span class="badge-sit {{ 'sit-A' if sit == 'A' else 'sit-D' if sit == 'D' else 'sit-X' }}">
+            {{ 'Ativo' if sit == 'A' else 'Demitido' if sit == 'D' else sit }}
+        </span>
+        <div style="font-size:11px;color:#94a3b8;text-align:right;">
+            {{ acidentes|length }} acidente{{ 's' if acidentes|length != 1 else '' }} registrado{{ 's' if acidentes|length != 1 else '' }}
+        </div>
+    </div>
+
+    {% if not acidentes %}
+    <div class="sem-acidentes">
+        Nenhum acidente de trabalho registrado para este funcionário.
+    </div>
+    {% endif %}
+
+    {% for a in acidentes %}
+    {% set tpacid_cod = a.tpacid[0] if a.tpacid else '' %}
+    <div class="acid-card">
+
+        <!-- Cabeçalho do acidente -->
+        <div class="acid-header">
+            <span class="acid-header-data">{{ a.dtacid_fmt }}</span>
+            <span class="acid-badge {{ 'badge-tipico' if tpacid_cod == '1' else 'badge-doenca' if tpacid_cod == '2' else 'badge-trajeto' }}">
+                {{ a.tpacid }}
+            </span>
+            <span class="acid-badge badge-cat">CAT {{ a.tpcat }}</span>
+            <span class="acid-id">#{{ a.id }}</span>
+        </div>
+
+        <!-- 1. Identificação -->
+        <div class="secao">
+            <div class="secao-titulo">Identificação da CAT</div>
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">Tipo de Acidente</div>
+                    <div class="campo-valor destaque">{{ a.tpacid }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Tipo de CAT</div>
+                    <div class="campo-valor">{{ a.tpcat }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Comunicado à Polícia</div>
+                    <div class="campo-valor {{ 'sim' if a.indcomunpolicia == 'Sim' else 'nao' }}">{{ a.indcomunpolicia }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Data do Acidente</div>
+                    <div class="campo-valor mono">{{ a.dtacid_fmt }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Hora do Acidente</div>
+                    <div class="campo-valor mono">{{ a.hracid_fmt }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Horas Trabalhadas Antes</div>
+                    <div class="campo-valor mono">{{ a.hrstrab_fmt }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Houve Óbito</div>
+                    <div class="campo-valor {{ 'sim' if a.indcatobito == 'Sim' else 'nao' }}">{{ a.indcatobito }}</div>
+                </div>
+                {% if a.indcatobito == 'Sim' %}
+                <div class="campo">
+                    <div class="campo-label">Data do Óbito</div>
+                    <div class="campo-valor mono">{{ a.dtobito_fmt }}</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- 2. Descrição do Acidente -->
+        <div class="secao">
+            <div class="secao-titulo">Descrição do Acidente</div>
+            <div class="secao-grid col1">
+                <div class="campo">
+                    <div class="campo-label">Descrição</div>
+                    <div class="campo-valor dsc">{{ a.dscacid }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Atendimento Médico -->
+        <div class="secao">
+            <div class="secao-titulo">Atendimento Médico</div>
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">Data do Atendimento</div>
+                    <div class="campo-valor mono">{{ a.dtatend_fmt }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Hora do Atendimento</div>
+                    <div class="campo-valor mono">{{ a.hratend_fmt }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Houve Internação</div>
+                    <div class="campo-valor {{ 'sim' if a.indinternacao == 'Sim' else 'nao' }}">{{ a.indinternacao }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Duração do Tratamento (dias)</div>
+                    <div class="campo-valor mono">{{ a.durtrat }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Gerou Afastamento</div>
+                    <div class="campo-valor {{ 'sim' if a.indafast == 'Sim' else 'nao' }}">{{ a.indafast }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Lesão e Diagnóstico -->
+        <div class="secao">
+            <div class="secao-titulo">Lesão e Diagnóstico</div>
+            <div class="secao-grid">
+                <div class="campo">
+                    <div class="campo-label">Tipo de Lesão</div>
+                    <div class="campo-valor">{{ a.dsclesao }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Complemento da Lesão</div>
+                    <div class="campo-valor">{{ a.dsccomplesao }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Diagnóstico CID-10</div>
+                    <div class="campo-valor mono">{{ a.diagprovavel }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Local do Acidente -->
+        <div class="secao">
+            <div class="secao-titulo">Local do Acidente</div>
+            <div class="secao-grid">
+                <div class="campo">
+                    <div class="campo-label">Tipo de Local</div>
+                    <div class="campo-valor">{{ a.tplocal }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Descrição do Local</div>
+                    <div class="campo-valor">{{ a.dsclocal }}</div>
+                </div>
+            </div>
+            {% if a.is_exterior %}
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">País</div>
+                    <div class="campo-valor mono">{{ a.paisacid }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Logradouro</div>
+                    <div class="campo-valor">{{ a.dsclograd }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Código Postal</div>
+                    <div class="campo-valor mono">{{ a.codpostal }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Cidade</div>
+                    <div class="campo-valor">{{ a.nmcid }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Província / Estado</div>
+                    <div class="campo-valor">{{ a.codprov }}</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">CEP</div>
+                    <div class="campo-valor mono">{{ a.cep }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Logradouro</div>
+                    <div class="campo-valor">{{ a.logradouro }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Número</div>
+                    <div class="campo-valor mono">{{ a.nrlogr }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Complemento</div>
+                    <div class="campo-valor">{{ a.complemento }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Bairro</div>
+                    <div class="campo-valor">{{ a.bairro }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Cidade / UF</div>
+                    <div class="campo-valor">{{ a.cidade }}</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 6. Parte Atingida -->
+        <div class="secao">
+            <div class="secao-titulo">Parte do Corpo Atingida</div>
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">Parte Atingida</div>
+                    <div class="campo-valor">{{ a.codparteating }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Lateralidade</div>
+                    <div class="campo-valor">{{ a.latlongr }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Complemento</div>
+                    <div class="campo-valor">{{ a.dsccompparteating }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. Agente Causador -->
+        <div class="secao">
+            <div class="secao-titulo">Agente Causador</div>
+            <div class="secao-grid">
+                <div class="campo">
+                    <div class="campo-label">Agente Causador</div>
+                    <div class="campo-valor">{{ a.codagntcausador }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Complemento</div>
+                    <div class="campo-valor">{{ a.dsccompagntcausador }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 8. Atestado Médico -->
+        <div class="secao">
+            <div class="secao-titulo">Atestado Médico</div>
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">Data do Atestado</div>
+                    <div class="campo-valor mono">{{ a.dtatestado_fmt }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Tipo de Atestado</div>
+                    <div class="campo-valor">{{ a.tpatestado }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Dias (atestado)</div>
+                    <div class="campo-valor mono">{{ a.durtratatestado }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Acidente de Trânsito</div>
+                    <div class="campo-valor {{ 'sim' if a.indacidtransito == 'Sim' else 'nao' }}">{{ a.indacidtransito }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">CID-10 (atestado)</div>
+                    <div class="campo-valor mono">{{ a.diagprovatestado }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Compl. Diagnóstico</div>
+                    <div class="campo-valor">{{ a.dsccompdigatestado }}</div>
+                </div>
+            </div>
+            {% if a.observacao != '—' %}
+            <div class="secao-grid col1">
+                <div class="campo">
+                    <div class="campo-label">Observações</div>
+                    <div class="campo-valor">{{ a.observacao }}</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- 9. Emitente do Atestado -->
+        <div class="secao">
+            <div class="secao-titulo">Emitente do Atestado</div>
+            <div class="secao-grid col3">
+                <div class="campo">
+                    <div class="campo-label">Nome do Médico / Dentista</div>
+                    <div class="campo-valor">{{ a.nmemit }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Órgão de Classe</div>
+                    <div class="campo-valor mono">{{ a.ideoc }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Nº / UF</div>
+                    <div class="campo-valor mono">{{ a.nroc }} / {{ a.ufoc }}</div>
+                </div>
+                <div class="campo">
+                    <div class="campo-label">Data de Emissão</div>
+                    <div class="campo-valor mono">{{ a.dtemissao_fmt }}</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 10. eSocial -->
+        <div class="secao">
+            <div class="secao-titulo">eSocial S-2210</div>
+            <div class="es-linha">
+                {% if a.es_tem_recibo %}
+                    <span class="es-badge es-ok">Recibo Gravado</span>
+                    <span class="es-recibo">{{ a.es_recibo }}</span>
+                    <span class="es-data">Enviado em {{ a.es_data_grava }} {{ a.es_hora_grava }}</span>
+                {% elif a.es_erro %}
+                    <span class="es-badge es-erro">Erro</span>
+                    <span class="es-recibo" style="color:#991b1b;">{{ a.es_erro }}</span>
+                {% else %}
+                    <span class="es-badge es-pend">Pendente de Envio</span>
+                {% endif %}
+                {% if a.dt_gravacao %}
+                <span class="es-data" style="margin-left:auto;">
+                    Gravado em
+                    {% set dg = a.dt_gravacao %}
+                    {{ dg[6:8] }}/{{ dg[4:6] }}/{{ dg[0:4] }}
+                    {% if dg|length >= 13 %} {{ dg[9:11] }}:{{ dg[11:13] }}{% endif %}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+    </div><!-- /acid-card -->
+    {% endfor %}
+
+</div><!-- /conteudo -->
+
+</body>
+</html>

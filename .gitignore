@@ -1,0 +1,29 @@
+# Credenciais — nunca versionar
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Arquivos locais / temporários
+Copias/
+"000 - Anotacoes/"
+eSocial_XML/
+*.pdf
+Nada.txt
+*.txt
+
+# Ferramentas
+.claude/
+.vscode/
+.idea/
+
+# PDFs de memória de cálculo gerados em runtime
+Folha10-Simples_Memoria/

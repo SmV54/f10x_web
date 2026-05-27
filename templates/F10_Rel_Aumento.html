@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Resultado do Aumento de Salário</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+.conteudo { max-width: 1060px; margin: 36px auto; padding: 0 24px 60px; }
+
+/* ---- Status Badge ---- */
+.status-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+}
+.status-bar-left { display: flex; align-items: center; gap: 12px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+
+.badge-simulacao {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fffbeb; border: 2px solid #f59e0b; color: #92400e;
+    font-size: 13px; font-weight: 700; padding: 6px 16px; border-radius: 8px;
+    letter-spacing: 0.02em;
+}
+.badge-gravado {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #f0fdf4; border: 2px solid #22c55e; color: #166534;
+    font-size: 13px; font-weight: 700; padding: 6px 16px; border-radius: 8px;
+    letter-spacing: 0.02em;
+}
+
+/* ---- Parâmetros ---- */
+.params-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 20px; margin-bottom: 20px;
+    display: flex; flex-wrap: wrap; gap: 8px 24px;
+}
+.param-item { display: flex; flex-direction: column; }
+.param-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; }
+.param-valor { font-size: 14px; font-weight: 600; color: #1e293b; margin-top: 2px; }
+.param-valor.mono { font-family: var(--mono); }
+
+/* ---- Resumo ---- */
+.resumo-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;
+}
+.resumo-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 16px;
+}
+.resumo-card-label { font-size: 11px; color: #64748b; font-weight: 500; }
+.resumo-card-valor { font-size: 20px; font-weight: 700; color: #1e293b; margin-top: 4px; font-family: var(--mono); }
+.resumo-card-valor.verde  { color: #166534; }
+.resumo-card-valor.azul   { color: #1d4ed8; }
+.resumo-card-valor.laranja { color: #92400e; }
+
+/* ---- Tabela ---- */
+.tbl-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.tbl-titulo {
+    font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase;
+    letter-spacing: 0.06em; padding: 12px 18px 10px; border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em;
+    color: #64748b; padding: 9px 12px; text-align: left;
+    background: #f8fafc; border-bottom: 2px solid var(--border);
+}
+thead th.r { text-align: right; }
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tbody td { padding: 9px 12px; font-size: 13px; vertical-align: middle; }
+tbody td.mono { font-family: var(--mono); font-size: 12px; }
+tbody td.r { text-align: right; }
+tbody td.nome { font-weight: 500; color: #1e293b; }
+.tag-meses {
+    display: inline-block; background: #eff6ff; color: #1d4ed8;
+    font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 7px;
+    font-family: var(--mono);
+}
+.tag-prop {
+    display: inline-block; background: #f0fdf4; color: #166534;
+    font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 7px;
+    font-family: var(--mono);
+}
+.diff-pos { color: #15803d; font-weight: 600; }
+
+/* ---- Sem registros ---- */
+.vazio {
+    text-align: center; padding: 48px 24px;
+    font-size: 14px; color: #94a3b8;
+}
+
+/* ---- Ação pós-simulação ---- */
+.acao-card {
+    background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 12px; padding: 16px 20px; margin-top: 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+}
+.acao-msg { font-size: 13px; color: #92400e; line-height: 1.5; }
+.btn-gravar-now {
+    background: #16a34a; border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 9px 22px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    white-space: nowrap; text-decoration: none; display: inline-block;
+}
+.btn-gravar-now:hover { background: #166534; }
+
+/* ---- Print — cabeçalho padrão ---- */
+@page { size: A4 landscape; margin: 1.2cm 1.5cm; }
+
+.cab-print-block { display: none; }
+.cab-header-grid {
+    display: grid; grid-template-columns: 1fr auto;
+    width: 100%; align-items: baseline; column-gap: 14pt; padding: 5pt 0 0 0;
+}
+.cab-empresa  { font-size: 7.5pt; color: #64748b; padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db; }
+.cab-datahora { font-size: 7.5pt; color: #475569; text-align: right; padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db; }
+.cab-titulo-txt {
+    grid-column: 1 / -1; font-size: 12pt; font-weight: 700; color: #0f172a;
+    text-align: center; text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3pt 0 5pt 0; border-bottom: 0.5pt solid #94a3b8;
+}
+
+@media print {
+    .topo, .status-bar, .acao-card, .btn-voltar, .btn-voltar-topo,
+    .print-header, .resumo-grid, .tbl-titulo { display: none !important; }
+    body { background: white; }
+    .conteudo { margin: 0; padding: 0; max-width: 100%; }
+    .tbl-wrap { border: none; border-radius: 0; box-shadow: none; }
+    .params-card { border: 1pt solid #ccc; margin-bottom: 8pt; font-size: 8pt; }
+    .param-label, .param-valor { font-size: 8pt; }
+    .cab-print-block {
+        display: block !important;
+        border-top: 3pt solid #0f172a;
+        margin-bottom: 8pt;
+        padding: 0;
+    }
+    table { font-size: 8pt; }
+    thead th { padding: 5pt 7pt; }
+    tbody td { padding: 4pt 7pt; }
+    .nome { white-space: nowrap; }
+    .tag-meses, .tag-prop { padding: 1pt 4pt; font-size: 7.5pt; }
+}
+.print-header { display: none; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Resultado — Aumento de Salário</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='{{ url_voltar }}'">&#8592; Voltar</button>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8962; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- Cabeçalho padrão de impressão (oculto na tela, aparece antes de tudo no print) -->
+    <div class="cab-print-block">
+        <div class="cab-header-grid">
+            <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+            <span class="cab-datahora"></span>
+            <span class="cab-titulo-txt">AUMENTO DE SALÁRIO — {{ "SIMULAÇÃO" if not gravado else "GRAVADO" }}</span>
+        </div>
+    </div>
+
+    <!-- Status + botão voltar -->
+    <div class="status-bar">
+        <div class="status-bar-left">
+            <a class="btn-voltar" href="{{ url_voltar }}">&#8592; Voltar</a>
+            <a class="btn-voltar" href="/menu">&#8962; Menu</a>
+            {% if gravado %}
+                <span class="badge-gravado">&#9989; GRAVADO — Salários atualizados</span>
+            {% else %}
+                <span class="badge-simulacao">&#9888; SIMULAÇÃO — Nenhum dado foi alterado</span>
+            {% endif %}
+        </div>
+        <button onclick="window.print()" style="background:transparent;border:1px solid var(--border);color:#64748b;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans);">
+            &#128424; Imprimir
+        </button>
+    </div>
+
+    <!-- Parâmetros usados -->
+    <div class="params-card">
+        <div class="param-item">
+            <span class="param-label">Vigência</span>
+            <span class="param-valor">{{ vigencia_fmt }}</span>
+        </div>
+        <div class="param-item">
+            <span class="param-label">Reajuste</span>
+            <span class="param-valor mono">{{ percentual_fmt }}%</span>
+        </div>
+        <div class="param-item">
+            <span class="param-label">Tipo de Aumento (2.5)</span>
+            <span class="param-valor">{{ tipo_label }}</span>
+        </div>
+        <div class="param-item">
+            <span class="param-label">Motivo (2.7)</span>
+            <span class="param-valor">{{ motivo_label }}</span>
+        </div>
+        <div class="param-item">
+            <span class="param-label">Faixa Salarial (2.8)</span>
+            <span class="param-valor mono">{{ faixa_label }}</span>
+        </div>
+    </div>
+
+    <!-- Resumo numérico -->
+    {% if registros %}
+    <div class="resumo-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">
+        <div class="resumo-card">
+            <div class="resumo-card-label">Funcionários processados</div>
+            <div class="resumo-card-valor azul">{{ registros|length }}</div>
+        </div>
+        <div class="resumo-card">
+            <div class="resumo-card-label">Aumento total (R$)</div>
+            <div class="resumo-card-valor laranja">{{ total_diff_fmt }}</div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tabela de funcionários -->
+    <div class="tbl-wrap">
+        <div class="tbl-titulo">
+            Funcionários Afetados pelo Aumento
+            {% if not gravado %}&nbsp;·&nbsp; <span style="color:#f59e0b;">SIMULAÇÃO — dados não foram gravados</span>{% endif %}
+        </div>
+        {% if registros %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Matrícula</th>
+                    <th>Nome</th>
+                    <th>Admissão</th>
+                    <th class="r">Meses</th>
+                    <th class="r">Proporção</th>
+                    <th class="r">Salário Atual</th>
+                    <th class="r">% Aplicado</th>
+                    <th class="r">Novo Salário</th>
+                    <th class="r">Diferença</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in registros %}
+                <tr>
+                    <td class="mono">{{ "%06d"|format(r.matricula) }}</td>
+                    <td class="nome">{{ r.nome }}</td>
+                    <td class="mono" style="font-size:12px;">{{ r.dtadm_fmt }}</td>
+                    <td class="r"><span class="tag-meses">{{ r.meses }}/12</span></td>
+                    <td class="r"><span class="tag-prop">{{ r.prop_fmt }}%</span></td>
+                    <td class="r mono">{{ r.sal_atual_fmt }}</td>
+                    <td class="r mono">{{ r.perc_aplicado_fmt }}%</td>
+                    <td class="r mono" style="font-weight:600;">{{ r.sal_novo_fmt }}</td>
+                    <td class="r diff-pos">{{ r.diff_fmt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="vazio">
+            Nenhum funcionário ativo encontrado na faixa salarial informada.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Botão para gravar (só aparece na simulação com resultados) -->
+    {% if not gravado and registros %}
+    <div class="acao-card">
+        <div class="acao-msg">
+            <strong>Simulação concluída.</strong> Confira os valores acima. Quando estiver pronto,
+            clique em "Gravar Aumentos" para efetivar as alterações no cadastro dos funcionários.
+        </div>
+        <a class="btn-gravar-now" href="{{ url_gravar }}">&#9989; Gravar Aumentos</a>
+    </div>
+    {% endif %}
+
+    {% if gravado and registros %}
+    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:12px;padding:14px 20px;margin-top:20px;font-size:13px;color:#166534;">
+        <strong>&#9989; Concluído.</strong> Os salários de {{ registros|length }} funcionário(s) foram atualizados e o histórico foi registrado.
+    </div>
+    {% endif %}
+
+</div><!-- /conteudo -->
+
+<script>
+(function() {
+    var now = new Date();
+    var p = function(n) { return String(n).padStart(2,'0'); };
+    var dt = p(now.getDate())+'/'+p(now.getMonth()+1)+'/'+now.getFullYear()
+           +' '+p(now.getHours())+':'+p(now.getMinutes());
+    document.querySelectorAll('.cab-datahora').forEach(function(el) { el.textContent = dt; });
+})();
+</script>
+</body>
+</html>

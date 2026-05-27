@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Funções</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy);
+    border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0 32px;
+    min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; letter-spacing: 0.01em; }
+.topo-usuario { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome { font-size: 11px; font-weight: 400; color: var(--text-sub); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 860px; margin: 32px auto; padding: 0 24px 60px; }
+
+.rel-titulo { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+
+/* ── BARRA DE AÇÕES ── */
+.barra-acoes {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.btn-voltar {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    font-size: 12px; font-weight: 600;
+    padding: 6px 14px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s;
+    white-space: nowrap; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-voltar:hover { background: #e2e8f0; border-color: #94a3b8; color: #0f172a; }
+
+.btn-imprimir {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--accent); border: none;
+    color: white; font-size: 13px; font-family: var(--sans);
+    font-weight: 600; padding: 9px 20px; border-radius: 8px;
+    cursor: pointer; transition: 0.15s;
+}
+.btn-imprimir:hover { background: #1a5fb8; }
+
+/* ── TABELA ── */
+.tabela-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.tabela-card table { width: 100%; border-collapse: collapse; }
+
+.tabela-card thead th {
+    background: #f1f5f9;
+    padding: 10px 16px;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    color: #64748b;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+.tabela-card tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+.tabela-card tbody tr:last-child { border-bottom: none; }
+.tabela-card tbody tr:hover { background: #f8fafc; }
+.tabela-card tbody td { padding: 9px 16px; font-size: 13px; color: #1e293b; }
+
+.td-seq { font-family: var(--mono); font-size: 11px; color: #94a3b8; width: 48px; }
+.td-cbo { font-family: var(--mono); font-size: 12px; color: #64748b; width: 110px; }
+
+.tabela-rodape {
+    padding: 10px 16px;
+    background: #f8fafc;
+    border-top: 1px solid var(--border);
+    font-size: 12px; color: #64748b;
+}
+
+.vazio { padding: 48px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+/* ── CABEÇALHO DE IMPRESSÃO (oculto na tela) ── */
+.cab-print-row { display: none; }
+
+/* ── IMPRESSÃO ── */
+@media print {
+    .topo, .btn-voltar, .btn-imprimir,
+    .rel-titulo, .rel-subtitulo, .barra-acoes { display: none !important; }
+
+    body { background: white; }
+    .conteudo { margin: 0; padding: 0; max-width: 100%; }
+    .tabela-card { border: none; border-radius: 0; box-shadow: none; }
+    .tabela-card tbody tr:hover { background: none; }
+
+    @page {
+        margin: 1.2cm 1.5cm;
+        @bottom-right {
+            content: "Página " counter(page);
+            font-size: 7.5pt; color: #475569;
+        }
+    }
+
+    /* Mostra cabeçalho de impressão */
+    .cab-print-row { display: table-row !important; }
+    .cab-print-row th {
+        padding: 0 !important; text-transform: none !important;
+        letter-spacing: normal !important; background: white !important;
+        border: none !important;
+        border-top: 3pt solid #0f172a !important;
+    }
+
+    /* Grid: 1fr (esq) | auto (dir)
+       Linha 1: empresa | data/hora
+       Linha 2: título (largura total) */
+    .cab-header-grid {
+        display: grid; grid-template-columns: 1fr auto;
+        width: 100%; align-items: baseline;
+        column-gap: 14pt; row-gap: 0;
+        padding: 5pt 0 0 0;
+    }
+    .cab-empresa {
+        font-size: 7.5pt; font-weight: 400; color: #64748b;
+        letter-spacing: 0.04em;
+        padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db;
+    }
+    .cab-datahora {
+        font-size: 7.5pt; font-weight: 400; color: #475569;
+        text-align: right;
+        padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db;
+    }
+    .cab-titulo-txt {
+        grid-column: 1 / -1;
+        font-size: 12pt; font-weight: 700; color: #0f172a;
+        text-align: center; text-transform: uppercase; letter-spacing: 0.06em;
+        padding: 3pt 0 5pt 0; border-bottom: 0.5pt solid #94a3b8;
+    }
+
+    /* Cabeçalho das colunas com linha dupla embaixo */
+    thead tr.col-headers th {
+        border-top: none !important;
+        border-bottom: 3px double #0f172a !important;
+        padding: 4pt 0 4pt 0 !important;
+        font-size: 8pt !important; color: #334155 !important;
+        background: white !important;
+    }
+}
+
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+  </style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Relatório — Funções</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/relatorios'">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-titulo">Funções</div>
+    <div class="rel-subtitulo">{{ lista|length }} registro(s)</div>
+
+    <div class="barra-acoes">
+        <a class="btn-voltar" href="/relatorios_config?rel=funcoes">&#8592; Voltar</a>
+        <button class="btn-imprimir" onclick="window.print()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Imprimir
+        </button>
+    </div>
+
+    <div class="tabela-card">
+        {% if lista %}
+        <table>
+            <thead>
+                <!-- Cabeçalho de impressão: linhas 1 e 2 num único grid -->
+                <tr class="cab-print-row">
+                    <th colspan="3">
+                        <div class="cab-header-grid">
+                            <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+                            <span class="cab-datahora" id="cabDH"></span>
+                            <span class="cab-titulo-txt">Listagem das Funções</span>
+                        </div>
+                    </th>
+                </tr>
+                <!-- Linhas 3-4: Cabeçalho das colunas + linha tracejada -->
+                <tr class="col-headers">
+                    <th class="td-seq">#</th>
+                    <th class="td-cbo">CBO</th>
+                    <th>Nome Resumido</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in lista %}
+                <tr>
+                    <td class="td-seq">{{ loop.index }}</td>
+                    <td class="td-cbo">{{ f.cbo }}</td>
+                    <td>{{ f.nome_resumido }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="tabela-rodape">Total de Funções = {{ lista|length }}</div>
+        {% else %}
+        <div class="vazio">Nenhuma função cadastrada para esta empresa.</div>
+        {% endif %}
+    </div>
+
+</div>
+
+<script>
+(function() {
+    var now = new Date();
+    var p   = function(n) { return String(n).padStart(2,'0'); };
+    var dt  = p(now.getDate()) + '/' + p(now.getMonth()+1) + '/' + now.getFullYear()
+            + ' ' + p(now.getHours()) + ':' + p(now.getMinutes());
+    document.querySelectorAll('.cab-datahora').forEach(function(el) { el.textContent = dt; });
+})();
+</script>
+
+</body>
+</html>

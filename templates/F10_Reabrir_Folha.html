@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Reabrir Folha</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+.conteudo { max-width: 520px; margin: 48px auto; padding: 0 24px 60px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+}
+.card-titulo {
+    padding: 10px 20px 9px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #4b5e7a;
+}
+.card-body { padding: 20px; }
+
+.folha-info { display: flex; flex-direction: column; gap: 10px; }
+.info-row {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 14px; color: #374151;
+}
+.info-label { font-size: 11px; font-weight: 600; color: #64748b;
+              text-transform: uppercase; letter-spacing: 0.04em; width: 80px; flex-shrink: 0; }
+.info-val   { font-family: var(--mono); font-weight: 600; color: #1e293b; font-size: 15px; }
+.badge-sit  {
+    display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: 700;
+}
+
+.aviso-aberta {
+    padding: 14px 18px; background: #f0fdf4; border: 1px solid #86efac;
+    border-radius: 8px; font-size: 13px; color: #15803d; font-weight: 600;
+    display: flex; align-items: center; gap: 10px;
+}
+
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac;
+                 border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d;
+                 display: flex; align-items: center; gap: 8px; }
+.resultado-err { padding: 12px 18px; background: #fef2f2; border: 1px solid #fca5a5;
+                 border-radius: 8px; font-size: 13px; color: #991b1b; }
+#resultado { margin-bottom: 14px; }
+
+.rodape { display: flex; justify-content: flex-end; gap: 10px; }
+.btn-cancelar {
+    background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center;
+}
+.btn-cancelar:hover { background: #e2e8f0; border-color: #94a3b8; }
+.btn-reabrir {
+    background: #1d4ed8; border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 32px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+}
+.btn-reabrir:hover    { background: #1e40af; }
+.btn-reabrir:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.advertencia-fechada {
+    background: #fff7ed; border: 2px solid #f97316;
+    border-left: 6px solid #ea580c;
+    border-radius: 10px; padding: 18px 20px;
+    margin-bottom: 16px;
+}
+.advertencia-fechada-titulo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 700; color: #9a3412; margin-bottom: 10px;
+}
+.advertencia-fechada-icone {
+    font-size: 22px; line-height: 1; flex-shrink: 0;
+}
+.advertencia-fechada ul {
+    margin: 0 0 0 18px; padding: 0;
+    display: flex; flex-direction: column; gap: 5px;
+}
+.advertencia-fechada li {
+    font-size: 13px; color: #7c2d12; line-height: 1.5;
+}
+.advertencia-fechada li strong { color: #9a3412; }
+
+.modal-fundo {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45); z-index: 999;
+    justify-content: center; align-items: center;
+}
+.modal-caixa {
+    width: 420px; max-width: 92%; background: white;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
+.modal-cab {
+    background: #7c2d12; padding: 14px 20px;
+    font-size: 13px; font-weight: 700; color: #fef2f2; letter-spacing: 0.02em;
+}
+.modal-corpo { padding: 20px 22px; }
+.modal-titulo { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+.modal-texto  { font-size: 13px; color: #374151; line-height: 1.6; }
+.modal-rodape { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px; border-top: 1px solid #e5e7eb; }
+.btn-modal-cancel {
+    background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;
+    font-size: 13px; font-weight: 600; padding: 9px 22px;
+    border-radius: 8px; cursor: pointer; font-family: var(--sans); transition: 0.15s;
+}
+.btn-modal-cancel:hover { background: #e2e8f0; }
+.btn-modal-confirm {
+    background: #1d4ed8; border: none; color: white;
+    font-size: 13px; font-weight: 700; padding: 9px 22px;
+    border-radius: 8px; cursor: pointer; font-family: var(--sans); transition: 0.15s;
+}
+.btn-modal-confirm:hover { background: #1e40af; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Reabrir Folha</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/menu">&#8592; Menu</a>
+        <div>
+            <div class="rel-titulo">Reabrir Folha</div>
+            <div class="rel-subtitulo">Retorna a folha ativa para o status Aberta</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-titulo">Folha Ativa</div>
+        <div class="card-body">
+            <div class="folha-info">
+                <div class="info-row">
+                    <span class="info-label">Período</span>
+                    <span class="info-val">{{ folha_fmt }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Tipo</span>
+                    <span class="info-val">{{ tipo_label }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Status</span>
+                    <span class="badge-sit {{ sit_class }}" id="badgeSit">{{ sit_label }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if situacao in ('C', 'F') %}
+
+    {% if situacao == 'F' %}
+    <div class="advertencia-fechada">
+        <div class="advertencia-fechada-titulo">
+            <span class="advertencia-fechada-icone">⚠️</span>
+            ATENÇÃO — Esta folha está Fechada
+        </div>
+        <ul>
+            <li>Ao reabri-la, ela voltará ao status <strong>Aberta.</strong></li>
+            <li>Será necessário <strong>recalcular toda a folha.</strong></li>
+        </ul>
+    </div>
+    {% endif %}
+
+    <div id="resultado"></div>
+    <div class="rodape">
+        <a class="btn-cancelar" href="/menu">Cancelar</a>
+        <button class="btn-reabrir" id="btnReabrir" onclick="clicarReabrir()">🔓 Reabrir Folha</button>
+    </div>
+    {% else %}
+    <div class="aviso-aberta">&#10003; Esta folha já está Aberta.</div>
+    {% endif %}
+
+</div>
+
+<!-- Modal confirmação (apenas para folha Fechada) -->
+<div id="modalFundo" class="modal-fundo">
+    <div class="modal-caixa">
+        <div class="modal-cab">Folha10·Simples — Confirmação</div>
+        <div class="modal-corpo">
+            <div class="modal-titulo">⚠️ Reabrir Folha Fechada</div>
+            <div class="modal-texto">
+                Esta folha está <strong>Fechada</strong>. Ao reabri-la ela voltará ao status
+                <strong>Aberta</strong> e precisará ser <strong>recalculada</strong> e
+                fechada novamente antes de gerar guias e relatórios finais.<br><br>
+                Confirma a reabertura desta folha?
+            </div>
+        </div>
+        <div class="modal-rodape">
+            <button class="btn-modal-cancel" onclick="fecharModal()">Cancelar</button>
+            <button class="btn-modal-confirm" onclick="confirmarReabrir()">Confirmar Reabertura</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const SITUACAO = '{{ situacao }}';
+
+function clicarReabrir() {
+    if (SITUACAO === 'F') {
+        document.getElementById('modalFundo').style.display = 'flex';
+    } else {
+        reabrir();
+    }
+}
+
+function fecharModal() {
+    document.getElementById('modalFundo').style.display = 'none';
+}
+
+function confirmarReabrir() {
+    fecharModal();
+    reabrir();
+}
+
+document.getElementById('modalFundo').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+});
+
+async function reabrir() {
+    const btn    = document.getElementById('btnReabrir');
+    const painel = document.getElementById('resultado');
+    btn.disabled = true;
+    painel.innerHTML = '<div class="resultado-ok">Reabrindo…</div>';
+
+    try {
+        const res = await fetch('/api/folha/reabrir', { method: 'POST' });
+        const j   = await res.json();
+        if (j.ok) {
+            painel.innerHTML = `<div class="resultado-ok">&#10003; ${j.msg}</div>`;
+            const badge = document.querySelector('.topo-folha-ativa');
+            if (badge) {
+                badge.className = badge.className.replace(/\bsit-\w+\b/, j.sit_class);
+                badge.innerHTML = badge.innerHTML.replace(/Aberta|Calculada|Fechada/, j.sit_label);
+            }
+            const bs = document.getElementById('badgeSit');
+            if (bs) {
+                bs.className = 'badge-sit ' + j.sit_class;
+                bs.textContent = j.sit_label;
+            }
+            btn.style.display = 'none';
+        } else {
+            painel.innerHTML = `<div class="resultado-err"><strong>Erro:</strong> ${j.msg}</div>`;
+            btn.disabled = false;
+        }
+    } catch (e) {
+        painel.innerHTML = `<div class="resultado-err"><strong>Erro de comunicação:</strong> ${e.message}</div>`;
+        btn.disabled = false;
+    }
+}
+</script>
+</body>
+</html>

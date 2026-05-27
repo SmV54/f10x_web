@@ -1,0 +1,283 @@
+<!-- F10_2Datas.html ──────────────────────────────────────────────
+     Inclua com: include 'F10_2Datas.html'
+     Acione com: abrirModalPeriodo('id_campo_ini', 'id_campo_fim')
+     Preenche os campos de destino em DD/MM/AAAA
+─────────────────────────────────────────────────────────────────── -->
+
+<style>
+#mp-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(11, 31, 58, 0.72);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(2px);
+}
+#mp-overlay.mp-aberto { display: flex; }
+
+.mp-modal {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(11, 31, 58, 0.30);
+    width: 400px;
+    max-width: calc(100vw - 32px);
+    overflow: hidden;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    animation: mp-entrar 0.18s ease;
+}
+@keyframes mp-entrar {
+    from { opacity: 0; transform: translateY(-14px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.mp-header {
+    background: #0b1f3a;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.mp-header-titulo {
+    font-size: 14px;
+    font-weight: 600;
+    color: #e8edf4;
+    letter-spacing: 0.02em;
+}
+
+.mp-corpo {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.mp-datas {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+.mp-campo label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+}
+.mp-campo input[type="date"] {
+    width: 100%;
+    border: 1px solid #dde3ec;
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    color: #1e293b;
+    background: #f8fafc;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+}
+.mp-campo input[type="date"]:focus {
+    border-color: #2a7de1;
+    background: #ffffff;
+}
+
+.mp-atalhos {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+.mp-card {
+    border: 1px solid #dde3ec;
+    border-radius: 10px;
+    padding: 14px 6px;
+    text-align: center;
+    cursor: pointer;
+    background: #f8fafc;
+    transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    user-select: none;
+}
+.mp-card:hover {
+    border-color: #2a7de1;
+    background: #eff6ff;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(42,125,225,0.12);
+}
+.mp-card:active { transform: translateY(0); }
+.mp-card-icone { font-size: 20px; margin-bottom: 5px; }
+.mp-card-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.3;
+}
+
+.mp-erro {
+    display: none;
+    background: #fef2f2;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #991b1b;
+}
+.mp-erro.mp-visivel { display: block; }
+
+.mp-rodape {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 0 20px 20px;
+}
+.mp-btn {
+    padding: 11px 0;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    cursor: pointer;
+    border: none;
+    letter-spacing: 0.02em;
+    transition: background 0.15s;
+}
+.mp-btn-voltar {
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #dde3ec;
+}
+.mp-btn-voltar:hover { background: #e2e8f0; color: #374151; }
+.mp-btn-ok {
+    background: #2a7de1;
+    color: #ffffff;
+}
+.mp-btn-ok:hover { background: #1a5fb8; }
+</style>
+
+<div id="mp-overlay" onclick="if(event.target===this)_mpFechar()">
+    <div class="mp-modal">
+
+        <div class="mp-header">
+            <span style="font-size:18px;">📅</span>
+            <span class="mp-header-titulo">Selecionar Período</span>
+        </div>
+
+        <div class="mp-corpo">
+            <div class="mp-datas">
+                <div class="mp-campo">
+                    <label>De</label>
+                    <input type="date" id="mp-ini">
+                </div>
+                <div class="mp-campo">
+                    <label>Até</label>
+                    <input type="date" id="mp-fim">
+                </div>
+            </div>
+
+            <div class="mp-atalhos">
+                <div class="mp-card" onclick="_mpHoje()">
+                    <div class="mp-card-icone">☀️</div>
+                    <div class="mp-card-label">Hoje</div>
+                </div>
+                <div class="mp-card" onclick="_mpMesAtual()">
+                    <div class="mp-card-icone">📆</div>
+                    <div class="mp-card-label">Mês<br>Atual</div>
+                </div>
+                <div class="mp-card" onclick="_mpAnoAtual()">
+                    <div class="mp-card-icone">🗓️</div>
+                    <div class="mp-card-label">Ano<br>Atual</div>
+                </div>
+            </div>
+
+            <div class="mp-erro" id="mp-erro"></div>
+        </div>
+
+        <div class="mp-rodape">
+            <button class="mp-btn mp-btn-voltar" onclick="_mpFechar()">← Voltar sem Preencher</button>
+            <button class="mp-btn mp-btn-ok" onclick="_mpOk()">OK ✓</button>
+        </div>
+
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    let _iniId = null, _fimId = null;
+
+    function _iso(ano, mes, dia) {
+        return `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+    }
+    function _hoje() {
+        const d = new Date();
+        return _iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
+    function _ultimoDia(ano, mes) {
+        const d = new Date(ano, mes, 0);
+        return _iso(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    }
+    function _isoBrz(iso) {
+        const [a, m, d] = iso.split('-');
+        return `${d}/${m}/${a}`;
+    }
+    function _erro(msg) {
+        const el = document.getElementById('mp-erro');
+        el.textContent = msg;
+        el.classList.toggle('mp-visivel', !!msg);
+    }
+    function _set(id, iso) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.value = _isoBrz(iso);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input',  { bubbles: true }));
+    }
+
+    window._mpHoje = function () {
+        const h = _hoje();
+        document.getElementById('mp-ini').value = h;
+        document.getElementById('mp-fim').value = h;
+        _erro('');
+    };
+    window._mpMesAtual = function () {
+        const d = new Date(), ano = d.getFullYear(), mes = d.getMonth() + 1;
+        document.getElementById('mp-ini').value = _iso(ano, mes, 1);
+        document.getElementById('mp-fim').value = _ultimoDia(ano, mes);
+        _erro('');
+    };
+    window._mpAnoAtual = function () {
+        const ano = new Date().getFullYear();
+        document.getElementById('mp-ini').value = _iso(ano, 1, 1);
+        document.getElementById('mp-fim').value = _iso(ano, 12, 31);
+        _erro('');
+    };
+
+    window.abrirModalPeriodo = function (campoIni, campoFim) {
+        _iniId = campoIni;
+        _fimId = campoFim;
+        document.getElementById('mp-ini').value = '';
+        document.getElementById('mp-fim').value = '';
+        _erro('');
+        document.getElementById('mp-overlay').classList.add('mp-aberto');
+    };
+    window._mpFechar = function () {
+        document.getElementById('mp-overlay').classList.remove('mp-aberto');
+    };
+    window._mpOk = function () {
+        const ini = document.getElementById('mp-ini').value;
+        const fim = document.getElementById('mp-fim').value;
+        if (!ini || !fim) { _erro('Preencha as duas datas.'); return; }
+        if (ini > fim)    { _erro('A data inicial não pode ser maior que a data final.'); return; }
+        if (_iniId) _set(_iniId, ini);
+        if (_fimId) _set(_fimId, fim);
+        _mpFechar();
+    };
+
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') _mpFechar(); });
+    document.getElementById('mp-fim').addEventListener('keydown', function (e) { if (e.key === 'Enter') _mpOk(); });
+}());
+</script>

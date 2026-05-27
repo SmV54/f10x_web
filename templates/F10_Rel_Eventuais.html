@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Relatórios Eventuais</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:       #0b1f3a;
+    --navy-mid:   #122947;
+    --navy-line:  #1e3d5c;
+    --accent:     #2a7de1;
+    --accent-dim: #1a5fb8;
+    --text-head:  #e8edf4;
+    --text-sub:   #8baac8;
+    --bg:         #f0f2f6;
+    --surface:    #ffffff;
+    --border:     #dde3ec;
+    --label:      #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; letter-spacing: 0.01em; }
+.topo-usuario { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome { font-size: 11px; font-weight: 400; color: var(--text-sub); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.btn-voltar {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap; text-decoration: none;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 900px; margin: 40px auto; padding: 0 24px 48px; }
+
+.secao-titulo {
+    font-size: 13px; font-weight: 600; color: #64748b; text-transform: uppercase;
+    letter-spacing: 0.08em; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+
+.grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 40px; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px 20px; text-decoration: none; color: var(--label);
+    display: flex; flex-direction: column; gap: 10px;
+    transition: box-shadow 0.15s, border-color 0.15s, transform 0.1s; cursor: pointer;
+}
+.card:hover { border-color: var(--accent); box-shadow: 0 6px 20px rgba(42, 125, 225, 0.12); transform: translateY(-2px); }
+
+.card-icone { width: 42px; height: 42px; border-radius: 10px; background: #e6f0fb; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.card-nome { font-size: 14px; font-weight: 600; color: #1e293b; line-height: 1.3; }
+.card-desc { font-size: 12px; color: #64748b; line-height: 1.5; }
+
+.card-em-breve { opacity: 0.6; pointer-events: none; position: relative; }
+.card-em-breve::after {
+    content: 'em breve'; position: absolute; top: 10px; right: 12px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent); background: #e6f0fb; border-radius: 4px; padding: 2px 6px;
+}
+
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+  </style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Relatórios — Eventuais</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="secao-titulo">13º Salário</div>
+
+    <div class="grid-cards">
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">🎄</div>
+            <div class="card-nome">Adiantamento de 13º</div>
+            <div class="card-desc">Recibos e relação do 1º parcela do 13º salário</div>
+        </a>
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">🎁</div>
+            <div class="card-nome">13º Salário Final</div>
+            <div class="card-desc">Recibos e totais do pagamento final do 13º</div>
+        </a>
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">📊</div>
+            <div class="card-nome">Resumo do 13º</div>
+            <div class="card-desc">Totais de proventos, descontos e encargos do 13º</div>
+        </a>
+
+    </div>
+
+    <div class="secao-titulo">Rescisões</div>
+
+    <div class="grid-cards">
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">📋</div>
+            <div class="card-nome">TRCT — Rescisão</div>
+            <div class="card-desc">Termo de rescisão contratual para impressão</div>
+        </a>
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">💸</div>
+            <div class="card-nome">Memória de Cálculo</div>
+            <div class="card-desc">Detalhamento do cálculo das verbas rescisórias</div>
+        </a>
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">🏦</div>
+            <div class="card-nome">Guia FGTS Rescisório</div>
+            <div class="card-desc">Valores de FGTS e multa rescisória a recolher</div>
+        </a>
+
+    </div>
+
+    <div class="secao-titulo">CNAB e Arquivos</div>
+
+    <div class="grid-cards">
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">🏧</div>
+            <div class="card-nome">CNAB 240 — Crédito em Conta</div>
+            <div class="card-desc">Arquivo de remessa bancária para crédito dos salários</div>
+        </a>
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">📲</div>
+            <div class="card-nome">CNAB 240 — PIX</div>
+            <div class="card-desc">Arquivo de remessa para pagamento via PIX</div>
+        </a>
+
+        <a class="card card-em-breve" href="#">
+            <div class="card-icone">📁</div>
+            <div class="card-nome">eSocial — Exportação</div>
+            <div class="card-desc">Arquivo auxiliar para envio ao eSocial</div>
+        </a>
+
+    </div>
+
+</div>
+
+</body>
+</html>

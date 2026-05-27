@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Rubricas (Verbas)</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; letter-spacing: 0.01em; }
+.topo-usuario { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome { font-size: 11px; font-weight: 400; color: var(--text-sub); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.btn-voltar {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    color: #334155;
+    font-size: 12px; font-weight: 600;
+    padding: 6px 14px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s;
+    white-space: nowrap; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-voltar:hover { background: #e2e8f0; border-color: #94a3b8; color: #0f172a; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 980px; margin: 32px auto; padding: 0 24px 60px; }
+
+.rel-titulo { font-size: 18px; font-weight: 600; color: #1e293b; margin-bottom: 4px; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+
+.barra-acoes { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.info-tipo { font-size: 12px; color: #64748b; }
+.info-tipo strong { color: #1e293b; }
+.btn-imprimir {
+    display: flex; align-items: center; gap: 7px;
+    background: var(--accent); border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+}
+.btn-imprimir:hover { background: #1a5fb8; }
+
+/* ── TABELA SIMPLES ── */
+.tabela-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.tabela-card table { width: 100%; border-collapse: collapse; }
+.tabela-card thead th {
+    background: #f1f5f9; padding: 10px 14px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: #64748b; text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+.tabela-card tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+.tabela-card tbody tr:last-child { border-bottom: none; }
+.tabela-card tbody tr:hover { background: #f8fafc; }
+.tabela-card tbody td { padding: 8px 14px; font-size: 13px; color: #1e293b; }
+.td-seq { font-family: var(--mono); font-size: 11px; color: #94a3b8; width: 42px; }
+.td-cod { font-family: var(--mono); font-size: 12px; color: #64748b; width: 70px; }
+.tabela-rodape { padding: 10px 14px; background: #f8fafc; border-top: 1px solid var(--border); font-size: 12px; color: #64748b; }
+
+/* ── TAGS ── */
+.tag-tipo { display: inline-block; font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+.tag-1 { background: #dcfce7; color: #166534; }
+.tag-2 { background: #fee2e2; color: #991b1b; }
+.tag-3 { background: #dbeafe; color: #1d4ed8; }
+.tag-4 { background: #fff7ed; color: #c2410c; }
+
+/* ── CARDS COMPLETOS ── */
+.cards-table { width: 100%; border-collapse: collapse; }
+.cards-table .card-cell { padding: 0 0 16px 0; }
+.cards-table .cab-print-row td { padding: 0; }
+
+.verba-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+}
+.verba-card-topo {
+    display: grid; grid-template-columns: auto 1fr auto auto;
+    align-items: center; gap: 0 16px;
+    padding: 12px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fafbfc;
+}
+.verba-cod { font-family: var(--mono); font-size: 13px; font-weight: 600; color: #64748b; }
+.verba-nome { font-size: 14px; font-weight: 600; color: #1e293b; }
+.verba-nome-oficial { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.verba-unid { font-size: 11px; color: #64748b; background: #f1f5f9; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
+
+.verba-corpo { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+
+/* Incidências */
+.inc-bloco { display: flex; flex-direction: column; gap: 6px; }
+.inc-titulo { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; }
+.inc-grid {
+    display: grid;
+    grid-template-columns: 80px repeat(4, 1fr);
+    gap: 4px;
+}
+.inc-grid-header { font-size: 10px; font-weight: 600; color: #64748b; text-align: center; padding: 4px 0; }
+.inc-grid-label { font-size: 11px; color: #64748b; display: flex; align-items: center; }
+.inc-cell {
+    text-align: center; padding: 4px 2px;
+    background: #f8fafc; border-radius: 4px;
+    font-size: 11px;
+}
+.inc-sim { color: #16a34a; font-weight: 700; }
+.inc-nao { color: #cbd5e1; }
+.inc-cod { color: #2a7de1; font-weight: 600; font-size: 10px; }
+
+/* Outras Informações */
+.outras-bloco { display: flex; flex-direction: column; gap: 6px; }
+.outras-titulo { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; }
+.outras-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+.flag-tag {
+    font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 4px;
+    border: 1px solid #e2e8f0; color: #94a3b8; background: #f8fafc;
+}
+.flag-sim {
+    font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px;
+    background: #dcfce7; border: 1px solid #86efac; color: #14532d;
+}
+
+/* Nat eSocial / Uso */
+.meta-linha { display: flex; gap: 16px; flex-wrap: wrap; }
+.meta-item { font-size: 11px; color: #64748b; }
+.meta-item strong { color: #334155; }
+
+.vazio { padding: 48px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+/* ── CABEÇALHO DE IMPRESSÃO (oculto na tela) ── */
+.cab-print-row { display: none; }
+
+@media print {
+    .topo, .btn-voltar, .btn-imprimir,
+    .rel-titulo, .rel-subtitulo, .barra-acoes { display: none !important; }
+    body { background: white; }
+    .conteudo { margin: 0; padding: 0; max-width: 100%; }
+    .tabela-card { border: none; border-radius: 0; }
+    .verba-card { break-inside: avoid; }
+
+    @page {
+        margin: 1.2cm 1.5cm;
+        @bottom-right {
+            content: "Página " counter(page);
+            font-size: 7.5pt; color: #475569;
+        }
+    }
+
+    /* Mostra cabeçalho de impressão */
+    .cab-print-row { display: table-row !important; }
+    .cab-print-row th, .cab-print-row td {
+        padding: 0 !important; text-transform: none !important;
+        letter-spacing: normal !important; background: white !important;
+        border: none !important;
+        border-top: 3pt solid #0f172a !important;
+    }
+
+    /* Grid: 1fr (esq) | auto (dir)
+       Linha 1: empresa | data/hora
+       Linha 2: título (largura total) */
+    .cab-header-grid {
+        display: grid; grid-template-columns: 1fr auto;
+        width: 100%; align-items: baseline;
+        column-gap: 14pt; row-gap: 0;
+        padding: 5pt 0 0 0;
+    }
+    .cab-empresa {
+        font-size: 7.5pt; font-weight: 400; color: #64748b;
+        letter-spacing: 0.04em;
+        padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db;
+    }
+    .cab-datahora {
+        font-size: 7.5pt; font-weight: 400; color: #475569;
+        text-align: right;
+        padding-bottom: 3pt; border-bottom: 0.5pt solid #d1d5db;
+    }
+    .cab-titulo-txt {
+        grid-column: 1 / -1;
+        font-size: 12pt; font-weight: 700; color: #0f172a;
+        text-align: center; text-transform: uppercase; letter-spacing: 0.06em;
+        padding: 3pt 0 5pt 0; border-bottom: 0.5pt solid #94a3b8;
+    }
+
+    /* Listagem simples: linha dupla após cabeçalho de colunas */
+    thead tr.col-headers th {
+        border-top: none !important;
+        border-bottom: 3px double #0f172a !important;
+        padding: 4pt 6pt !important;
+        font-size: 8pt !important; color: #334155 !important;
+        background: white !important;
+    }
+    .tabela-card tbody td { padding: 4pt 6pt !important; }
+    .tag-tipo { padding-left: 0 !important; }
+    /* Listagem completa: linha fina após cabeçalho antes dos cards */
+    .cards-table thead tr.cab-print-row td {
+        border-top: 3pt solid #0f172a !important;
+        border-bottom: 0.5pt solid #94a3b8 !important;
+        padding-bottom: 4pt !important;
+    }
+}
+
+    /* ── FOLHA ATIVA BADGE ── */
+    .topo-folha-ativa {
+      display: inline-flex; align-items: center;
+      padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700;
+      white-space: nowrap; align-self: flex-start; margin-top: -2px;
+    }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+  </style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Relatório — Rubricas (Verbas)</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/relatorios'">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-titulo">{{ 'Listagem Completa das Rubricas (Verbas)' if tipo == 'completa' else 'Listagem das Rubricas (Verbas)' }}</div>
+    <div class="rel-subtitulo">{{ lista|length }} registro(s)</div>
+
+    <div class="barra-acoes">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <a class="btn-voltar" href="/relatorios_config?rel=verbas&tipo={{ tipo }}">&#8592; Voltar</a>
+            <span class="info-tipo">Tipo: <strong>{{ 'Completa' if tipo == 'completa' else 'Simples' }}</strong></span>
+        </div>
+        <button class="btn-imprimir" onclick="window.print()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/>
+            </svg>
+            Imprimir
+        </button>
+    </div>
+
+    {% if lista %}
+
+    {# ── LISTAGEM SIMPLES ── #}
+    {% if tipo != 'completa' %}
+    <div class="tabela-card">
+        <table>
+            <thead>
+                <tr class="cab-print-row">
+                    <th colspan="4">
+                        <div class="cab-header-grid">
+                            <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+                            <span class="cab-datahora" id="cabDH"></span>
+                            <span class="cab-titulo-txt">Listagem das Rubricas (Verbas)</span>
+                        </div>
+                    </th>
+                </tr>
+                <tr class="col-headers">
+                    <th class="td-seq">#</th>
+                    <th class="td-cod">Código</th>
+                    <th>Nome</th>
+                    <th style="width:90px;">Tipo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in lista %}
+                <tr>
+                    <td class="td-seq">{{ loop.index }}</td>
+                    <td class="td-cod">{{ v.cod_rubr }}</td>
+                    <td>{{ v.dsc_rubr_resumido or v.dsc_rubr }}</td>
+                    <td>
+                        {% if v.tp_rubr == '1' %}<span class="tag-tipo tag-1">Provento</span>
+                        {% elif v.tp_rubr == '2' %}<span class="tag-tipo tag-2">Desconto</span>
+                        {% elif v.tp_rubr == '4' %}<span class="tag-tipo tag-4">Info. Dedutora</span>
+                        {% else %}<span class="tag-tipo tag-3">Informativa</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="tabela-rodape">Total de Rubricas = {{ lista|length }}</div>
+    </div>
+
+    {# ── LISTAGEM COMPLETA ── #}
+    {% else %}
+    <table class="cards-table">
+        <thead>
+            <tr class="cab-print-row">
+                <td>
+                    <div class="cab-header-grid">
+                        <span class="cab-empresa">{{ cnpj_fmt }} — {{ empresa }}</span>
+                        <span class="cab-datahora"></span>
+                        <span class="cab-titulo-txt">Listagem Completa das Rubricas (Verbas)</span>
+                    </div>
+                </td>
+            </tr>
+        </thead>
+        <tbody>
+        {% for v in lista %}
+        <tr><td class="card-cell">
+        <div class="verba-card">
+
+            <div class="verba-card-topo">
+                <div class="verba-cod">{{ v.cod_rubr }}</div>
+                <div>
+                    <div class="verba-nome">{{ v.dsc_rubr_resumido or v.dsc_rubr }}</div>
+                    {% if v.dsc_rubr_resumido and v.dsc_rubr_resumido != v.dsc_rubr %}
+                    <div class="verba-nome-oficial">{{ v.dsc_rubr }}</div>
+                    {% endif %}
+                </div>
+                {% if v.tp_rubr == '1' %}<span class="tag-tipo tag-1">Provento</span>
+                {% elif v.tp_rubr == '2' %}<span class="tag-tipo tag-2">Desconto</span>
+                {% elif v.tp_rubr == '4' %}<span class="tag-tipo tag-4">Info. Dedutora</span>
+                {% else %}<span class="tag-tipo tag-3">Informativa</span>{% endif %}
+                <span class="verba-unid">{{ {'V':'Valor','H':'Horas','D':'Dias','P':'Percentual'}.get(v.unid_verba, v.unid_verba or '—') }}</span>
+            </div>
+
+            <div class="verba-corpo">
+
+                {# Metadados #}
+                {% set ev_label = {'NI':'Não Incide','M12':'Média 12 Meses','MAP':'Média Período Aquisitivo','UL':'Último Lançamento','CN':'Cálculo Normal','MAN':'Média desde o Ano'} %}
+                <div class="meta-linha">
+                    {% if v.es03_nat_rubr %}
+                    <span class="meta-item"><strong>Nat. eSocial:</strong> {{ v.es03_nat_rubr }}</span>
+                    {% endif %}
+                    {% if v.tipo_uso %}
+                    <span class="meta-item"><strong>Tipo(s) Folha(s):</strong>
+                        {% for c in v.tipo_uso %}{{ {'N':'Normal','R':'Rescisão','F':'Férias','1':'13º Salário'}.get(c, c) }}{% if not loop.last %}, {% endif %}{% endfor %}
+                    </span>
+                    {% endif %}
+                    {% if v.inc_ferias %}<span class="meta-item"><strong>Nas Férias:</strong> {{ ev_label.get(v.inc_ferias, v.inc_ferias) }}</span>{% endif %}
+                    {% if v.inc_rescisao %}<span class="meta-item"><strong>Na Rescisão:</strong> {{ ev_label.get(v.inc_rescisao, v.inc_rescisao) }}</span>{% endif %}
+                    {% if v.inc_13sal %}<span class="meta-item"><strong>No 13°.Sal:</strong> {{ ev_label.get(v.inc_13sal, v.inc_13sal) }}</span>{% endif %}
+                </div>
+
+                {# Incidências eSocial #}
+                {% set tipos_inc = [('n','N','Normal'),('r','R','Na Rescisão'),('f','F','Nas Férias'),('1','1','No 13°.Sal')] %}
+                {% set tributos  = [('cp','INSS'),('fgts','FGTS'),('irrf','IRRF'),('pis','PIS')] %}
+                {% set uso = v.tipo_uso or '' %}
+
+                <div class="inc-bloco">
+                    <div class="inc-titulo">Incidências eSocial</div>
+                    <div class="inc-grid">
+                        <div></div>
+                        {% for _, trib_label in tributos %}
+                        <div class="inc-grid-header">{{ trib_label }}</div>
+                        {% endfor %}
+
+                        {% for tp_key, tp_uso, tp_label in tipos_inc %}
+                        <div class="inc-grid-label">{{ tp_label }}</div>
+                        {% if tp_uso in uso %}
+                            {% for trib_key, _ in tributos %}
+                            {% set field = 'tp' ~ tp_key ~ '_inc_' ~ trib_key %}
+                            {% set val = v[field] %}
+                            <div class="inc-cell">
+                                {% if val and val != '' %}
+                                <span class="inc-cod">{{ val }}</span>
+                                {% else %}
+                                <span class="inc-nao">—</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="inc-cell inc-na" style="grid-column: span 4; text-align:left; color:#94a3b8; font-size:11px; font-style:italic;">
+                                Não se Aplica
+                            </div>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+                {# Outras Informações — todas as flags, SIM em verde, NÃO em cinza #}
+                {% set flags = [
+                    ('is_nao_digitar','01 - Não digitar no mov.'),('is_sal_maternidade','02 - Sal. Maternidade'),
+                    ('is_adto_13sal','03 - Adto 13°'),('is_comissao','04 - Comissão'),
+                    ('is_gratificacao','05 - Gratificação'),('is_insalubridade','06 - Insalubridade'),
+                    ('is_periculosidade','07 - Periculosidade'),('is_gorjeta','08 - Gorjeta'),
+                    ('is_dsr','09 - DSR'),('is_sal_familia','10 - Sal. Família'),
+                    ('is_adic_noturno','11 - Adic. Noturno'),('is_relativo_13sal','12 - Relativo 13°'),
+                    ('is_verba_ferias','13 - Verba Férias'),('is_emprestimo_consig','14 - Consignado'),
+                    ('is_plano_saude','15 - Plano Saúde'),('is_emprestimo_interno','16 - Emp. Interno'),
+                    ('is_periodo','17 - Feriado'),('is_hora_sobreaviso','18 - Sobreaviso')
+                ] %}
+                <div class="outras-bloco">
+                    <div class="outras-titulo">Outras Informações</div>
+                    <div class="outras-grid">
+                        {% for key, label in flags %}
+                        {% if v.get(key) %}
+                        <span class="flag-sim">✓ {{ label }}</span>
+                        {% else %}
+                        <span class="flag-tag">{{ label }}</span>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        </td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+
+    {% else %}
+    <div class="tabela-card"><div class="vazio">Nenhuma rubrica cadastrada.</div></div>
+    {% endif %}
+
+</div>
+<script>
+(function() {
+    var now = new Date();
+    var p = function(n) { return String(n).padStart(2,'0'); };
+    var dt = p(now.getDate())+'/'+p(now.getMonth()+1)+'/'+now.getFullYear()
+           +' '+p(now.getHours())+':'+p(now.getMinutes());
+    document.querySelectorAll('.cab-datahora').forEach(function(el) { el.textContent = dt; });
+})();
+</script>
+</body>
+</html>

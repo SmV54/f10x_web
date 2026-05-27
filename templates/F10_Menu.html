@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Menu Principal</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 200;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
+    border-radius: 6px; padding: 3px 11px; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+.btn-sair {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-sair:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1000px; margin: 48px auto; padding: 0 24px 80px; position: relative; }
+
+/* ── GRID DOS 9 CARDS ── */
+.modulos-grid {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    gap: 8px;
+}
+@media (max-width: 900px) { .modulos-grid { grid-template-columns: repeat(5, 1fr); } }
+@media (max-width: 480px) { .modulos-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.modulo-card {
+    background: var(--surface); border: 2px solid var(--border); border-radius: 12px;
+    padding: 14px 5px 11px; display: flex; flex-direction: column;
+    align-items: center; gap: 7px; cursor: pointer; text-align: center;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s, background 0.15s;
+    user-select: none;
+}
+.modulo-card:hover { border-color: var(--accent); box-shadow: 0 4px 16px rgba(42,125,225,0.13); transform: translateY(-2px); }
+.modulo-card.ativo { border-color: var(--accent); background: #eaf2fd; box-shadow: 0 4px 20px rgba(42,125,225,0.18); transform: translateY(-2px); }
+
+.modulo-icone {
+    width: 40px; height: 40px; border-radius: 10px; background: #e6f0fb;
+    display: flex; align-items: center; justify-content: center; font-size: 20px;
+    transition: background 0.15s;
+}
+.modulo-card.ativo .modulo-icone { background: #cce0f8; }
+.modulo-nome { font-size: 9px; font-weight: 600; color: #1e293b; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.3; white-space: normal; }
+.modulo-card.ativo .modulo-nome { color: var(--accent); }
+
+/* ── PAINEL DE NAVEGAÇÃO (3 etapas) ── */
+.nav-panel {
+    display: none;
+    margin-top: 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    overflow: hidden;
+    animation: slideDown 0.16s ease;
+}
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.nav-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 18px;
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+}
+.nav-header-titulo {
+    display: flex; align-items: center; gap: 9px;
+    font-size: 14px; font-weight: 600; color: var(--text-head);
+}
+.nav-fechar {
+    background: none; border: none; cursor: pointer;
+    color: var(--text-sub); font-size: 15px; padding: 2px 8px;
+    border-radius: 6px; line-height: 1; transition: 0.12s;
+}
+.nav-fechar:hover { background: rgba(255,255,255,0.12); color: var(--text-head); }
+
+.nav-body {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    min-height: 150px;
+}
+.nav-secoes {
+    border-right: 1px solid var(--border);
+    padding: 6px 0;
+    background: #f8fafc;
+}
+.nav-secao-btn {
+    display: block; width: 100%;
+    padding: 9px 14px;
+    text-align: left; background: none; border: none; border-left: 3px solid transparent;
+    font-size: 12.5px; font-weight: 500; color: var(--label);
+    cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: 0.12s;
+}
+.nav-secao-btn:hover { background: #edf1f7; }
+.nav-secao-btn.ativo { border-left-color: var(--accent); color: var(--accent); background: #eaf2fd; font-weight: 600; }
+
+.nav-itens {
+    padding: 14px 16px;
+    display: flex; flex-wrap: wrap; gap: 8px; align-content: flex-start;
+}
+.nav-item {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 13px; border-radius: 8px;
+    text-decoration: none; color: var(--label);
+    font-size: 13px; font-weight: 500;
+    background: var(--bg); border: 1px solid var(--border);
+    white-space: nowrap; cursor: pointer; transition: 0.13s;
+}
+.nav-item:hover { background: #eaf2fd; border-color: var(--accent); color: var(--accent); }
+.nav-item.em-breve { opacity: 0.42; pointer-events: none; }
+.nav-item.bloqueado:hover { background: #fff7ed; border-color: #f97316; color: #9a3412; }
+.nav-item.acao-reabrir {
+    background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; font-weight: 600;
+}
+.nav-item.acao-reabrir:hover { background: #dbeafe; border-color: #3b82f6; color: #1e40af; }
+.nav-item.acao-fechar {
+    background: #fff1f2; border-color: #fda4af; color: #be123c; font-weight: 600;
+}
+.nav-item.acao-fechar:hover { background: #ffe4e6; border-color: #fb7185; color: #9f1239; }
+.grupo-coluna { display: flex; flex-direction: column; gap: 8px; }
+
+/* ── OVERLAY LOADING ── */
+.loading-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(11,31,58,0.72); backdrop-filter: blur(3px);
+    flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+}
+.loading-overlay.ativo { display: flex; }
+.loading-spinner {
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 5px solid rgba(255,255,255,0.15);
+    border-top-color: #2a7de1;
+    animation: spin 0.85s linear infinite;
+}
+.loading-msg {
+    font-size: 15px; font-weight: 600; color: #e8edf4;
+    font-family: var(--sans); text-align: center; max-width: 280px; line-height: 1.5;
+}
+.loading-sub {
+    font-size: 12px; color: #8baac8; font-family: var(--sans); margin-top: -12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.nav-aviso-folha {
+    display: none; margin: 0 16px 12px; padding: 9px 13px;
+    background: #fff7ed; border: 1px solid #f97316; border-radius: 8px;
+    font-size: 12px; color: #9a3412; font-weight: 500; line-height: 1.5;
+    width: 100%;
+}
+.nav-vazio {
+    color: #94a3b8; font-size: 13px; font-style: italic;
+    padding: 24px 20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Menu Principal</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-sair" onclick="window.location.href='/logout'">Sair</button>
+    </div>
+</div>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-msg" id="loadingMsg">Gerando PDF...</div>
+    <div class="loading-sub">Aguarde, isso pode levar alguns segundos</div>
+</div>
+
+<div class="conteudo">
+
+    <div class="modulos-grid" id="modulosGrid"></div>
+
+    <div class="nav-panel" id="navPanel">
+        <div class="nav-header">
+            <div class="nav-header-titulo">
+                <span id="navIcone"></span>
+                <span id="navTitulo"></span>
+            </div>
+            <button class="nav-fechar" onclick="fecharPanel()">✕</button>
+        </div>
+        <div class="nav-body">
+            <div class="nav-secoes" id="navSecoes"></div>
+            <div class="nav-itens" id="navItens">
+                <div class="nav-aviso-folha" id="navAvisoFolha"></div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const FOLHA_SITUACAO      = '{{ folha_situacao }}';
+const FOLHA_PERIODO       = '{{ folha_ativa }}';
+const FOLHA_SIT_LABEL     = '{{ folha_ativa_situacao }}';
+
+const modulos = {
+
+    cadastros: {
+        titulo: 'Cadastros', icone: '🗄️',
+        secoes: [
+            { nome: 'Funcionário', itens: [
+                { icone: '👤', nome: 'Incluir Funcionário',  href: '/cad_funcionario',                ok: true, bloqueioFolha: true },
+                { icone: '✏️', nome: 'Alterar Funcionário',  href: '/cad_funcionario?modo=alteracao', ok: true, bloqueioFolha: true },
+                { icone: '📄', nome: 'Ficha de Registro',    href: '/ficha_registro',                 ok: true },
+                { icone: '👨‍👩‍👧', nome: 'Dependentes',        href: '/select_funcionario?contexto=dep',    ok: true },
+            ]},
+            { nome: 'Tabelas Auxiliares', itens: [
+                { icone: '💼', nome: 'Funções / Cargos',     href: '/cad_funcao',    ok: true },
+                { icone: '🕐', nome: 'Horários de Trabalho', href: '/cad_horario',   ok: true },
+                { icone: '🤝', nome: 'Sindicatos',            href: '/cad_sindicato', ok: true },
+                { icone: '🚌', nome: 'Vale Transporte',       href: '/cad_vt',        ok: true },
+                { icone: '📑', nome: 'Rubricas (Verbas)',     href: '/cad_verba',     ok: true },
+                { icone: '📅', nome: 'Feriados',              href: '/cad_feriado',   ok: true },
+                { icone: '🏙️', nome: 'Cidades',              href: '#' },
+            ]},
+            { nome: 'Empresa', itens: [
+                { icone: '🏢', nome: 'Nova Empresa',          href: '/f10_cad_empresa', ok: true },
+                { icone: '✏️', nome: 'Alterar Esta Empresa',  href: '/alterar_empresa', ok: true, navLoading: true },
+            ]}
+        ]
+    },
+
+    novafolha: {
+        titulo: 'Nova Folha', icone: '📅',
+        secoes: (() => {
+            const itens = [
+                { icone: '📅', nome: 'Novo Mês/Ano',  href: '/cad_anomes',             ok: true },
+                { icone: '🔄', nome: 'Outro Mês/Ano', href: '/cad_anomes?modo=trocar', ok: true },
+            ];
+            if (FOLHA_SITUACAO === 'C') {
+                itens.push({ icone: '🔓', nome: 'Reabrir esta Folha Calculada', href: '/reabrir_folha', ok: true, classe: 'acao-reabrir', coluna: 'acoes-folha' });
+                itens.push({ icone: '🔒', nome: 'Fechar esta Folha Calculada',  href: '/fechar_folha',  ok: true, classe: 'acao-fechar',  coluna: 'acoes-folha' });
+            } else if (FOLHA_SITUACAO === 'F') {
+                itens.push({ icone: '🔓', nome: 'Reabrir esta Folha Fechada',   href: '/reabrir_folha', ok: true, classe: 'acao-reabrir' });
+            }
+            return [{ nome: 'Folha', itens }];
+        })(),
+    },
+
+    eventuais: {
+        titulo: 'Eventuais', icone: '🗓️', bloqueioFolha: true,
+        secoes: [
+            { nome: 'Férias', itens: [
+                { icone: '🏖️', nome: 'Lançar Férias',        href: '/select_funcionario?contexto=ferias', ok: true, bloqueioFolha: true },
+                { icone: '📆', nome: 'Programação de Férias', href: '#' },
+                { icone: '⏰', nome: 'Férias Vencidas',       href: '#' },
+            ]},
+            { nome: 'Salários', itens: [
+                { icone: '💹', nome: 'Aumento de Salário',    href: '/select_funcionario?contexto=aumento',   ok: true },
+                { icone: '📊', nome: 'Relatório de Salários', href: '/relatorios_config?rel=sal_aumento',      ok: true },
+            ]},
+            { nome: 'Rescisão', itens: [
+                { icone: '📢', nome: 'Aviso Prévio',          href: '/select_funcionario?contexto=aviso_previo', ok: true },
+                { icone: '✍️', nome: 'Registrar Rescisão',    href: '/select_funcionario?contexto=rescisao',     ok: true },
+                { icone: '📋', nome: 'TRCT',                  href: '#' },
+            ]},
+            { nome: 'Afastamentos', itens: [
+                { icone: '🏥', nome: 'Lançar Afastamento',           href: '/select_funcionario?contexto=afastamento',    ok: true, bloqueioFolha: true },
+                { icone: '🚨', nome: 'Acidente — Informar CAT',      href: '/select_funcionario?contexto=acidente',        ok: true },
+                { icone: '✏️', nome: 'Acidente — Alterar/Excluir',   href: '/select_funcionario?contexto=alt_acidente',    ok: true },
+                { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true },
+                { icone: '🤱', nome: 'Lic. Maternidade/Paternidade', href: '#' },
+            ]},
+            { nome: 'Faltas', itens: [
+                { icone: '📉', nome: 'Incluir Faltas',    href: '/select_funcionario?contexto=falta',        ok: true, bloqueioFolha: true },
+                { icone: '🗑️', nome: 'Excluir Faltas',   href: '/select_funcionario?contexto=excluir_falta', ok: true },
+                { icone: '📋', nome: 'Listagem de Faltas', href: '/rel_config_faltas',                       ok: true },
+            ]},
+            { nome: 'Exame Médico', itens: [
+                { icone: '🩺', nome: 'Registrar Exame Médico',       href: '/select_funcionario?contexto=exame_med',     ok: true },
+                { icone: '✏️', nome: 'Alterar / Excluir Exame Médico', href: '/select_funcionario?contexto=alt_exame_med', ok: true },
+                { icone: '📋', nome: 'Listagem de Exames Médicos',    href: '/rel_config_exame_med',                     ok: true },
+            ]},
+            { nome: 'Insalubridade/Periculosidade', itens: [
+                { icone: '⚗️', nome: 'Insalubridade / Periculosidade', href: '/select_funcionario?contexto=insalub_pericu', ok: true },
+            ]},
+            { nome: 'FAP', itens: [
+                { icone: '🛡️', nome: 'FAP — Fator Acidentário de Prevenção', href: '/cad_fap', ok: true },
+            ]}
+        ]
+    },
+
+    movimento: {
+        titulo: 'Movimento', icone: '🔄',
+        secoes: [
+            { nome: 'Lançamentos', itens: [
+                { icone: '✏️', nome: 'Lançar Eventos',  href: '/cad_mov', ok: true },
+                { icone: '⏱️', nome: 'Importar Ponto',  href: '#' },
+                { icone: '📈', nome: 'Horas Extras',     href: '#' },
+                { icone: '📉', nome: 'Faltas e Atrasos', href: '/select_funcionario?contexto=falta' },
+            ]},
+            { nome: 'Listagens', itens: [
+                { icone: '📋', nome: 'Listagem de Movimento', href: '/rel_config_mov', ok: true },
+            ]},
+            { nome: 'Pagamentos Antecipados', itens: [
+                { icone: '💵', nome: 'Adiantamento Salarial',       href: '#' },
+                { icone: '🍽️', nome: 'Vale Refeição / Alimentação', href: '#' },
+            ]}
+        ]
+    },
+
+    movimentofixo: {
+        titulo: 'Movimento Fixo', icone: '📌',
+        secoes: [
+            { nome: 'Lançamentos', itens: [
+                { icone: '📌', nome: 'Movimentos Fixos', href: '/mov_fixo', ok: true },
+            ]},
+            { nome: 'Listagens', itens: [
+                { icone: '📋', nome: 'Listagem de Mov. Fixos', href: '/rel_mov_fixo', ok: true },
+            ]},
+        ]
+    },
+
+    calculo: {
+        titulo: 'Cálculo', icone: '🖩',
+        secoes: [
+            { nome: 'Folha Mensal', itens: [
+                { icone: '▶️', nome: 'Calcular Folha',           href: '/calcular_folha',    ok: true },
+                { icone: '👁️', nome: 'Visualizar Cálculo',       href: '/visualizar_calculo', ok: true },
+                { icone: '📄', nome: 'Memória de Cálculo',        href: '/memoria_calculo',     ok: true },
+                { icone: '🔁', nome: 'Recalcular Funcionário',    href: '#' },
+                { icone: '⚠️', nome: 'Verificar Inconsistências', href: '#' },
+            ]},
+            { nome: 'Outros Cálculos', itens: [
+                { icone: '🎁', nome: 'Calcular 13º Salário', href: '#' },
+                { icone: '🏖️', nome: 'Calcular Férias',      href: '#' },
+                { icone: '✍️', nome: 'Calcular Rescisão',    href: '#' },
+            ]}
+        ]
+    },
+
+    relatorios: {
+        titulo: 'Relatórios', icone: '🖨️',
+        secoes: (() => {
+            const secCadastros = { nome: 'Cadastros', itens: [
+                { icone: '💼', nome: 'Funções / Cargos',    href: '/relatorios_config?rel=funcoes',     ok: true },
+                { icone: '📑', nome: 'Rubricas (Verbas)',   href: '/relatorios_config?rel=verbas',      ok: true },
+                { icone: '👨‍👩‍👧', nome: 'Dependentes',       href: '/relatorios_config?rel=dependentes', ok: true },
+            ]};
+            const secEventos = { nome: 'Eventos', itens: [
+                { icone: '🏖️', nome: 'Listagem de Férias', href: '/relatorios_config?rel=ferias_func', ok: true },
+                { icone: '📉', nome: 'Listagem de Faltas', href: '/rel_config_faltas',                 ok: true },
+            ]};
+            const secEventuais = { nome: 'Eventuais', itens: [
+                { icone: '💹', nome: 'Salários / Aumento', href: '/relatorios_config?rel=sal_aumento', ok: true },
+            ]};
+            const secFolha = { nome: 'Folha de Pagamento', itens: [
+                { icone: '🖨️', nome: 'Folha de Pagamento',  href: '/relatorio_folha', ok: true, navLoading: true },
+                { icone: '📊', nome: 'Resumo da Folha',      href: '/resumo_folha',        ok: true, navLoading: true },
+                { icone: '📋', nome: 'Relação de N Verbas',  href: '/config_rel_verbas',   ok: true },
+            ]};
+            const secSistema = { nome: 'Sistema', itens: [
+                { icone: '📋', nome: 'Log de Operações',  href: '/relatorios_config?rel=log',              ok: true },
+                { icone: '📄', nome: 'Remessas eSocial',  href: '/relatorios_config?rel=esocial_remessas', ok: true },
+            ]};
+            const secTodos = { nome: '', itens: [
+                { icone: '🖨️', nome: 'Todos os Relatórios', href: '/relatorios', ok: true },
+            ]};
+            const folhaPrioridade = FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F';
+            return folhaPrioridade
+                ? [secFolha, secCadastros, secEventos, secEventuais, secSistema, secTodos]
+                : [secCadastros, secEventos, secEventuais, secFolha, secSistema, secTodos];
+        })(),
+    },
+
+    conexoes: {
+        titulo: 'Conexões', icone: '🏦',
+        secoes: [
+            { nome: 'Pagamento Bancário', itens: [
+                { icone: '💳', nome: 'CNAB 240 — Crédito em Conta', href: '#' },
+                { icone: '📲', nome: 'CNAB 240 — PIX',               href: '#' },
+            ]},
+            { nome: 'Integração', itens: [
+                { icone: '📂', nome: 'SEFIP / GFIP',                 href: '#' },
+                { icone: '📊', nome: 'Exportar para Contabilidade',   href: '#' },
+            ]}
+        ]
+    },
+
+    esocial: {
+        titulo: 'eSocial', icone: '📃',
+        secoes: [
+            { nome: 'Tabelas', itens: [
+                { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '#' },
+                { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '#' },
+                { icone: '💼', nome: 'S-1020 Lotações Tributárias', href: '#' },
+                { icone: '📑', nome: 'S-1010 Rubricas',             href: '#' },
+            ]},
+            { nome: 'Eventos Não Periódicos', itens: [
+                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true },
+                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '#' },
+                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '#' },
+                { icone: '🏥', nome: 'S-2230 Afastamento',            href: '#' },
+                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '#' },
+            ]},
+            { nome: 'Eventos Periódicos', itens: [
+                { icone: '💰', nome: 'S-1200 Remuneração', href: '#' },
+                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '#' },
+                { icone: '📃', nome: 'REINF',               href: '#' },
+            ]},
+            { nome: 'Exclusão de Eventos', itens: [
+                { icone: '🗑️', nome: 'S-3000 Exclusão',               href: '/esocial_s3000', ok: true },
+            ]},
+            { nome: 'Configuração', itens: [
+                { icone: '🔑', nome: 'Certificado Digital',   href: '/config_certificado', ok: true },
+            ]},
+            { nome: 'Consultas e Relatórios', itens: [
+                { icone: '📄', nome: 'Listagem das Remessas', href: '/relatorios_config?rel=esocial_remessas', ok: true },
+                { icone: '⚠️', nome: 'Pendências e Erros',    href: '#' },
+            ]}
+        ]
+    },
+
+    diversos: {
+        titulo: 'Diversos', icone: '🧩',
+        secoes: [
+            { nome: 'Sistema', itens: [
+                { icone: '⚙️', nome: 'Configurações',         href: '#' },
+                { icone: '🔑', nome: 'Usuários e Permissões', href: '#' },
+                { icone: '📋', nome: 'Log de Auditoria',      href: '/relatorios_config?rel=log', ok: true },
+            ]},
+            { nome: 'Dados', itens: [
+                { icone: '💾', nome: 'Backup',         href: '#' },
+                { icone: '📤', nome: 'Exportar Dados', href: '#' },
+            ]}
+        ]
+    }
+};
+
+const ordem = ['cadastros','novafolha','eventuais','movimento','movimentofixo','calculo','relatorios','conexoes','esocial','diversos'];
+
+// ── Renderiza os 10 cards ──
+const grid = document.getElementById('modulosGrid');
+for (const id of ordem) {
+    const m = modulos[id];
+    const card = document.createElement('div');
+    card.className = 'modulo-card';
+    card.dataset.modulo = id;
+    if (id === 'calculo') {
+        card.innerHTML = `
+            <div class="modulo-icone">
+                <svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2a7de1" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="2" width="16" height="20" rx="2"/>
+                    <rect x="7" y="5" width="10" height="4" rx="1" fill="#2a7de1" stroke="none"/>
+                    <circle cx="7.5"  cy="13" r="1" fill="#2a7de1" stroke="none"/>
+                    <circle cx="12"   cy="13" r="1" fill="#2a7de1" stroke="none"/>
+                    <circle cx="16.5" cy="13" r="1" fill="#2a7de1" stroke="none"/>
+                    <circle cx="7.5"  cy="17" r="1" fill="#2a7de1" stroke="none"/>
+                    <circle cx="12"   cy="17" r="1" fill="#2a7de1" stroke="none"/>
+                    <circle cx="16.5" cy="17" r="1" fill="#2a7de1" stroke="none"/>
+                </svg>
+            </div>
+            <div class="modulo-nome">Cálculo</div>`;
+    } else if (id === 'esocial') {
+        card.innerHTML = `
+            <div class="modulo-icone" style="background:#e8f5ee;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="30" height="34" viewBox="0 0 30 34">
+                    <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#ffffff" stroke="#00a651" stroke-width="1.5"/>
+                    <path d="M20 2 L20 10 L28 10 Z" fill="#00a651"/>
+                    <line x1="7" y1="16" x2="23" y2="16" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+                    <line x1="7" y1="21" x2="23" y2="21" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+                    <line x1="7" y1="26" x2="16" y2="26" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+                </svg>
+            </div>
+            <div class="modulo-nome">eSocial</div>`;
+    } else {
+        const nomeCard = (id === 'novafolha') ? 'Mês/Ano' : m.titulo;
+        card.innerHTML = `<div class="modulo-icone">${m.icone}</div><div class="modulo-nome">${nomeCard}</div>`;
+    }
+
+    if (m.href) {
+        card.addEventListener('click', () => { window.location.href = m.href; });
+    } else {
+        card.addEventListener('click', e => { e.stopPropagation(); selecionarModulo(card, id); });
+    }
+    grid.appendChild(card);
+}
+
+// ── Navegação em 3 etapas ──
+let moduloAtivo = null;
+let secaoAtiva  = null;
+
+const navPanel  = document.getElementById('navPanel');
+const navSecoes = document.getElementById('navSecoes');
+const navItens  = document.getElementById('navItens');
+const navIcone  = document.getElementById('navIcone');
+const navTitulo = document.getElementById('navTitulo');
+const navAviso  = document.getElementById('navAvisoFolha');
+
+function selecionarModulo(cardEl, id) {
+    if (moduloAtivo === id) { fecharPanel(); return; }
+
+    document.querySelectorAll('.modulo-card').forEach(c => c.classList.remove('ativo'));
+    cardEl.classList.add('ativo');
+    moduloAtivo = id;
+    secaoAtiva  = null;
+
+    const m = modulos[id];
+    const folhaBloqueada = FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F';
+
+    navIcone.textContent  = m.icone || '';
+    navTitulo.textContent = (id === 'novafolha' && FOLHA_PERIODO)
+        ? `Folha Atual = ${FOLHA_PERIODO}  —  ${FOLHA_SIT_LABEL}`
+        : m.titulo;
+    navAviso.style.display = 'none';
+
+    navSecoes.innerHTML = '';
+    navItens.innerHTML  = '';
+    navItens.appendChild(navAviso);
+
+    if (m.bloqueioFolha && folhaBloqueada) {
+        navPanel.style.display = 'block';
+        const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
+        navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — lançamento de eventuais não é permitido com a folha calculada ou fechada. Reabra a folha para fazer alterações.`;
+        navAviso.style.display = 'block';
+        return;
+    }
+
+    const secoes = m.secoes || [];
+    if (secoes.length === 0) {
+        const d = document.createElement('div');
+        d.className = 'nav-vazio';
+        d.textContent = 'Em construção…';
+        navItens.appendChild(d);
+    } else {
+        secoes.forEach((s, i) => {
+            const btn = document.createElement('button');
+            btn.className = 'nav-secao-btn';
+            btn.textContent = s.nome;
+            btn.onclick = () => selecionarSecao(i);
+            navSecoes.appendChild(btn);
+        });
+        selecionarSecao(0);
+    }
+
+    navPanel.style.display = 'block';
+}
+
+function selecionarSecao(idx) {
+    secaoAtiva = idx;
+    navAviso.style.display = 'none';
+    document.querySelectorAll('.nav-secao-btn').forEach((b, i) => b.classList.toggle('ativo', i === idx));
+
+    const secao = (modulos[moduloAtivo].secoes || [])[idx];
+    renderItens(secao ? secao.itens : []);
+}
+
+function renderItens(itens) {
+    // Remove itens antigos (preserva navAviso)
+    Array.from(navItens.children).forEach(el => { if (el !== navAviso) el.remove(); });
+
+    const folhaBloqueada  = FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F';
+    const colunaWrappers  = {};
+
+    (itens || []).forEach(item => {
+        const bloqueado = item.bloqueioFolha && folhaBloqueada;
+        const a = document.createElement('a');
+
+        if (bloqueado) {
+            a.className = 'nav-item bloqueado';
+            a.href = '#';
+            a.addEventListener('click', e => { e.preventDefault(); mostrarAvisoFolha(); });
+        } else if (item.ok && item.loading) {
+            a.className = 'nav-item';
+            a.href = '#';
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const overlay = document.getElementById('loadingOverlay');
+                const msg     = document.getElementById('loadingMsg');
+                if (msg) msg.textContent = `Gerando ${item.nome}...`;
+                overlay.classList.add('ativo');
+                fetch(item.href)
+                    .then(r => {
+                        if (!r.ok) throw new Error('Erro ' + r.status);
+                        return r.blob();
+                    })
+                    .then(blob => {
+                        const url = URL.createObjectURL(blob);
+                        window.open(url, '_blank');
+                        overlay.classList.remove('ativo');
+                    })
+                    .catch(err => {
+                        overlay.classList.remove('ativo');
+                        alert('Erro ao gerar o relatório: ' + err.message);
+                    });
+            });
+        } else if (item.ok && item.navLoading) {
+            a.className = 'nav-item';
+            a.href = item.href;
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                const overlay = document.getElementById('loadingOverlay');
+                const msg     = document.getElementById('loadingMsg');
+                if (msg) msg.textContent = `Carregando ${item.nome}...`;
+                overlay.classList.add('ativo');
+                window.location.href = item.href;
+            });
+        } else if (item.ok) {
+            a.className = 'nav-item';
+            a.href = item.href;
+        } else {
+            a.className = 'nav-item em-breve';
+            a.href = '#';
+        }
+        if (item.classe) a.classList.add(item.classe);
+        a.innerHTML = `<span>${item.icone}</span> ${item.nome}`;
+
+        if (item.coluna) {
+            if (!colunaWrappers[item.coluna]) {
+                const w = document.createElement('div');
+                w.className = 'grupo-coluna';
+                navItens.appendChild(w);
+                colunaWrappers[item.coluna] = w;
+            }
+            colunaWrappers[item.coluna].appendChild(a);
+        } else {
+            navItens.appendChild(a);
+        }
+    });
+}
+
+function mostrarAvisoFolha() {
+    const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
+    navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — inclusão e alteração de funcionários só são permitidas com a folha <strong>Aberta</strong>.`;
+    navAviso.style.display = 'block';
+}
+
+function fecharPanel() {
+    navPanel.style.display = 'none';
+    document.querySelectorAll('.modulo-card').forEach(c => c.classList.remove('ativo'));
+    moduloAtivo = null;
+    secaoAtiva  = null;
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharPanel(); });
+document.addEventListener('click',   e => {
+    if (!e.target.closest('.modulos-grid') && !e.target.closest('#navPanel')) fecharPanel();
+});
+</script>
+
+</body>
+</html>

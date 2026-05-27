@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Menu (Demo Módulos)</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* TOPO */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome { font-size: 11px; color: var(--text-sub); }
+.btn-sair {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s;
+}
+.btn-sair:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* CONTEÚDO */
+.conteudo { max-width: 960px; margin: 40px auto; padding: 0 24px 60px; }
+
+/* BADGE DEMO */
+.demo-badge {
+    background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px;
+    padding: 10px 16px; margin-bottom: 32px;
+    font-size: 12px; color: #92400e;
+}
+
+/* ── MÓDULOS PRINCIPAIS ── */
+.modulos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    margin-bottom: 0;
+}
+
+.modulo-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    padding: 20px 12px 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, transform 0.1s, background 0.15s;
+    user-select: none;
+    text-align: center;
+}
+
+.modulo-card:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 16px rgba(42,125,225,0.12);
+    transform: translateY(-2px);
+}
+
+.modulo-card.ativo {
+    border-color: var(--accent);
+    background: #eaf2fd;
+    box-shadow: 0 4px 20px rgba(42,125,225,0.18);
+}
+
+.modulo-icone {
+    width: 46px; height: 46px; border-radius: 12px;
+    background: #e6f0fb; display: flex; align-items: center;
+    justify-content: center; font-size: 22px;
+    transition: background 0.15s;
+}
+
+.modulo-card.ativo .modulo-icone { background: #cce0f8; }
+
+.modulo-nome {
+    font-size: 11px; font-weight: 600; color: #1e293b;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    line-height: 1.3;
+}
+
+.modulo-card.ativo .modulo-nome { color: var(--accent); }
+
+/* ── PAINEL DE SUB-CARDS ── */
+.painel-wrap {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.35s ease, opacity 0.25s ease, margin-top 0.25s ease;
+    opacity: 0;
+    margin-top: 0;
+}
+
+.painel-wrap.aberto {
+    max-height: 900px;
+    opacity: 1;
+    margin-top: 20px;
+}
+
+.painel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+}
+
+/* Seta apontando para o módulo ativo — posição via JS */
+.painel::before {
+    content: '';
+    position: absolute;
+    top: -9px;
+    left: var(--arrow-left, 50%);
+    transform: translateX(-50%);
+    width: 16px; height: 16px;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    transform: translateX(-50%) rotate(45deg);
+}
+
+.painel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.painel-titulo {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 15px; font-weight: 600; color: #1e293b;
+}
+
+.painel-titulo span { font-size: 20px; }
+
+.btn-fechar {
+    background: none; border: none; cursor: pointer;
+    font-size: 18px; color: #94a3b8; line-height: 1;
+    padding: 4px 6px; border-radius: 6px; transition: 0.15s;
+}
+.btn-fechar:hover { background: #f1f5f9; color: #475569; }
+
+/* Sub-seção dentro do painel */
+.sub-secao { margin-bottom: 20px; }
+.sub-secao:last-child { margin-bottom: 0; }
+
+.sub-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.sub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.sub-card {
+    background: #f8fafc;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 14px;
+    text-decoration: none;
+    color: var(--label);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.12s, border-color 0.12s, transform 0.1s;
+    cursor: pointer;
+}
+
+.sub-card:hover {
+    background: #eaf2fd;
+    border-color: var(--accent);
+    transform: translateY(-1px);
+}
+
+.sub-card-icone { font-size: 16px; flex-shrink: 0; }
+.sub-card-nome { font-size: 13px; font-weight: 500; color: #1e293b; line-height: 1.3; }
+
+.sub-card.em-breve {
+    opacity: 0.55;
+    pointer-events: none;
+    position: relative;
+}
+
+.sub-card.em-breve::after {
+    content: 'em breve';
+    position: absolute; top: 6px; right: 8px;
+    font-size: 9px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: var(--accent);
+    background: #e6f0fb; border-radius: 3px; padding: 1px 4px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div>
+        <div class="topo-logo">Folha10·Simples</div>
+        <div class="topo-versao">Versão: demo</div>
+    </div>
+    <div class="topo-titulo">Menu Principal</div>
+    <div style="display:flex; align-items:center;">
+        <div style="display:flex;flex-direction:column;gap:2px;">
+            <span class="topo-empresa">Empresa Demo</span>
+            <span class="topo-nome">Usuário Demo</span>
+        </div>
+        <button class="btn-sair">Sair</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="demo-badge">
+        <strong>Demo — Menu por Módulos.</strong>
+        Clique em um módulo para ver seus itens. Clique novamente para fechar.
+    </div>
+
+    <!-- MÓDULOS PRINCIPAIS -->
+    <div class="modulos-grid" id="modulosGrid">
+
+        <div class="modulo-card" data-modulo="cadastros" onclick="abrirModulo(this)">
+            <div class="modulo-icone">🗂️</div>
+            <div class="modulo-nome">Cadastros</div>
+        </div>
+
+        <div class="modulo-card" data-modulo="eventuais" onclick="abrirModulo(this)">
+            <div class="modulo-icone">📌</div>
+            <div class="modulo-nome">Eventuais</div>
+        </div>
+
+        <div class="modulo-card" data-modulo="movimento" onclick="abrirModulo(this)">
+            <div class="modulo-icone">📥</div>
+            <div class="modulo-nome">Movimento Mês</div>
+        </div>
+
+        <div class="modulo-card" data-modulo="calculo" onclick="abrirModulo(this)">
+            <div class="modulo-icone">⚙️</div>
+            <div class="modulo-nome">Cálculo</div>
+        </div>
+
+        <div class="modulo-card" data-modulo="relatorios" onclick="abrirModulo(this)">
+            <div class="modulo-icone">📊</div>
+            <div class="modulo-nome">Relatórios</div>
+        </div>
+
+        <div class="modulo-card" data-modulo="conexoes" onclick="abrirModulo(this)">
+            <div class="modulo-icone">🔗</div>
+            <div class="modulo-nome">Conexões</div>
+        </div>
+
+        <div class="modulo-card" data-modulo="diversos" onclick="abrirModulo(this)">
+            <div class="modulo-icone">🔧</div>
+            <div class="modulo-nome">Diversos</div>
+        </div>
+
+    </div>
+
+    <!-- PAINEL DE SUB-CARDS -->
+    <div class="painel-wrap" id="painelWrap">
+        <div class="painel" id="painelConteudo"></div>
+    </div>
+
+</div>
+
+<!-- DEFINIÇÃO DOS MÓDULOS -->
+<script>
+const modulos = {
+
+    cadastros: {
+        titulo: 'Cadastros',
+        icone: '🗂️',
+        secoes: [
+            {
+                nome: 'Principal',
+                itens: [
+                    { icone: '🏢', nome: 'Empresa', href: '/f10_cad_empresa', ok: true },
+                    { icone: '👤', nome: 'Funcionários', href: '#' },
+                ]
+            },
+            {
+                nome: 'Tabelas Auxiliares',
+                itens: [
+                    { icone: '💼', nome: 'Funções', href: '/cad_funcao', ok: true },
+                    { icone: '🕐', nome: 'Horários', href: '/cad_horario', ok: true },
+                    { icone: '🤝', nome: 'Sindicatos', href: '/cad_sindicato', ok: true },
+                    { icone: '🚌', nome: 'Vale Transporte', href: '/cad_vt', ok: true },
+                    { icone: '📋', nome: 'Rubricas (Verbas)', href: '/cad_verba', ok: true },
+                    { icone: '📅', nome: 'Feriados', href: '/cad_feriado', ok: true },
+                    { icone: '🏙️', nome: 'Cidades', href: '#' },
+                ]
+            }
+        ]
+    },
+
+    eventuais: {
+        titulo: 'Eventuais',
+        icone: '📌',
+        secoes: [
+            {
+                nome: 'Férias',
+                itens: [
+                    { icone: '🏖️', nome: 'Lançar Férias', href: '#' },
+                    { icone: '📅', nome: 'Programação de Férias', href: '#' },
+                ]
+            },
+            {
+                nome: '13º Salário',
+                itens: [
+                    { icone: '🎄', nome: 'Adiantamento de 13º', href: '#' },
+                    { icone: '🎁', nome: '13º Salário Final', href: '#' },
+                ]
+            },
+            {
+                nome: 'Rescisões',
+                itens: [
+                    { icone: '🚪', nome: 'Calcular Rescisão', href: '#' },
+                    { icone: '📋', nome: 'TRCT — Rescisão', href: '#' },
+                ]
+            },
+            {
+                nome: 'Afastamentos',
+                itens: [
+                    { icone: '🏥', nome: 'Lançar Afastamento', href: '#' },
+                    { icone: '🤱', nome: 'Lic. Maternidade / Paternidade', href: '#' },
+                ]
+            }
+        ]
+    },
+
+    movimento: {
+        titulo: 'Movimento do Mês',
+        icone: '📥',
+        secoes: [
+            {
+                nome: 'Lançamentos',
+                itens: [
+                    { icone: '✏️', nome: 'Lançar Eventos', href: '#' },
+                    { icone: '📂', nome: 'Importar Ponto', href: '#' },
+                    { icone: '⏱️', nome: 'Horas Extras', href: '#' },
+                    { icone: '❌', nome: 'Faltas e Atrasos', href: '#' },
+                ]
+            },
+            {
+                nome: 'Adiantamentos',
+                itens: [
+                    { icone: '💵', nome: 'Adiantamento Salarial', href: '#' },
+                    { icone: '💳', nome: 'Vale Refeição / Alimentação', href: '#' },
+                ]
+            }
+        ]
+    },
+
+    calculo: {
+        titulo: 'Cálculo',
+        icone: '⚙️',
+        secoes: [
+            {
+                nome: 'Folha Mensal',
+                itens: [
+                    { icone: '▶️', nome: 'Calcular Folha', href: '#' },
+                    { icone: '🔄', nome: 'Recalcular Funcionário', href: '#' },
+                    { icone: '⚠️', nome: 'Verificar Inconsistências', href: '#' },
+                ]
+            },
+            {
+                nome: 'Outros Cálculos',
+                itens: [
+                    { icone: '🎄', nome: 'Calcular 13º', href: '#' },
+                    { icone: '🏖️', nome: 'Calcular Férias', href: '#' },
+                    { icone: '🚪', nome: 'Calcular Rescisão', href: '#' },
+                ]
+            }
+        ]
+    },
+
+    relatorios: {
+        titulo: 'Relatórios',
+        icone: '📊',
+        secoes: [
+            {
+                nome: 'Grupos',
+                itens: [
+                    { icone: '🗂️', nome: 'Cadastros', href: '/rel_cadastros', ok: true },
+                    { icone: '📆', nome: 'Eventos', href: '/rel_eventos', ok: true },
+                    { icone: '💰', nome: 'Folha de Pagamento', href: '/rel_folha', ok: true },
+                    { icone: '📌', nome: 'Eventuais', href: '/rel_eventuais', ok: true },
+                ]
+            }
+        ]
+    },
+
+    conexoes: {
+        titulo: 'Conexões',
+        icone: '🔗',
+        secoes: [
+            {
+                nome: 'Bancos',
+                itens: [
+                    { icone: '🏧', nome: 'CNAB 240 — Crédito em Conta', href: '#' },
+                    { icone: '📲', nome: 'CNAB 240 — PIX', href: '#' },
+                ]
+            },
+            {
+                nome: 'Governo',
+                itens: [
+                    { icone: '📁', nome: 'eSocial', href: '#' },
+                    { icone: '📂', nome: 'SEFIP / GFIP', href: '#' },
+                    { icone: '🧾', nome: 'REINF', href: '#' },
+                ]
+            },
+            {
+                nome: 'Integração',
+                itens: [
+                    { icone: '📊', nome: 'Exportar para Contabilidade', href: '#' },
+                ]
+            }
+        ]
+    },
+
+    diversos: {
+        titulo: 'Diversos',
+        icone: '🔧',
+        secoes: [
+            {
+                nome: 'Sistema',
+                itens: [
+                    { icone: '⚙️', nome: 'Configurações', href: '#' },
+                    { icone: '👥', nome: 'Usuários e Permissões', href: '#' },
+                    { icone: '📋', nome: 'Log de Auditoria', href: '#' },
+                ]
+            },
+            {
+                nome: 'Dados',
+                itens: [
+                    { icone: '💾', nome: 'Backup', href: '#' },
+                    { icone: '📤', nome: 'Exportar Dados', href: '#' },
+                ]
+            }
+        ]
+    }
+};
+
+// ── ESTADO ──
+let moduloAtivo = null;
+
+function abrirModulo(cardEl) {
+    const id = cardEl.dataset.modulo;
+    const wrap = document.getElementById('painelWrap');
+    const painel = document.getElementById('painelConteudo');
+    const grid = document.getElementById('modulosGrid');
+
+    // Fecha se clicar no mesmo módulo
+    if (moduloAtivo === id) {
+        cardEl.classList.remove('ativo');
+        wrap.classList.remove('aberto');
+        moduloAtivo = null;
+        return;
+    }
+
+    // Atualiza estado visual dos cards
+    document.querySelectorAll('.modulo-card').forEach(c => c.classList.remove('ativo'));
+    cardEl.classList.add('ativo');
+    moduloAtivo = id;
+
+    // Posiciona a seta do painel sob o card clicado
+    const cardRect = cardEl.getBoundingClientRect();
+    const gridRect = grid.getBoundingClientRect();
+    const arrowLeft = cardRect.left - gridRect.left + cardRect.width / 2;
+    painel.style.setProperty('--arrow-left', arrowLeft + 'px');
+
+    // Renderiza conteúdo
+    const mod = modulos[id];
+    let html = `
+        <div class="painel-header">
+            <div class="painel-titulo">
+                <span>${mod.icone}</span> ${mod.titulo}
+            </div>
+            <button class="btn-fechar" onclick="fecharPainel()" title="Fechar">✕</button>
+        </div>
+    `;
+
+    for (const secao of mod.secoes) {
+        html += `<div class="sub-secao">`;
+        if (secao.nome) html += `<div class="sub-titulo">${secao.nome}</div>`;
+        html += `<div class="sub-grid">`;
+        for (const item of secao.itens) {
+            const emBreve = item.ok ? '' : ' em-breve';
+            const href = item.ok ? item.href : '#';
+            html += `
+                <a class="sub-card${emBreve}" href="${href}">
+                    <span class="sub-card-icone">${item.icone}</span>
+                    <span class="sub-card-nome">${item.nome}</span>
+                </a>
+            `;
+        }
+        html += `</div></div>`;
+    }
+
+    painel.innerHTML = html;
+
+    // Abre painel (se já estava aberto troca conteúdo sem animação de altura)
+    if (!wrap.classList.contains('aberto')) {
+        wrap.classList.add('aberto');
+    }
+
+    // Rola suavemente até o painel
+    setTimeout(() => {
+        wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 50);
+}
+
+function fecharPainel() {
+    document.querySelectorAll('.modulo-card').forEach(c => c.classList.remove('ativo'));
+    document.getElementById('painelWrap').classList.remove('aberto');
+    moduloAtivo = null;
+}
+</script>
+
+</body>
+</html>

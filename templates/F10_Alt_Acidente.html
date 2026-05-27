@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Alterar / Excluir CAT</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 780px; margin: 36px auto; padding: 0 24px 80px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 20px;
+}
+.pref-secao-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 12px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+}
+.func-resumo-wrap { padding: 10px 20px 14px; }
+.func-resumo-item {
+    display: flex; align-items: center; gap: 10px; padding: 4px 10px;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 7px; font-size: 12px;
+}
+.func-resumo-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; flex-shrink: 0; }
+.func-resumo-nome { font-weight: 500; color: #1e293b; }
+
+/* Lista de acidentes */
+.acid-item {
+    padding: 14px 20px; border-bottom: 1px solid #f1f5f9;
+    display: grid; grid-template-columns: 1fr auto;
+    align-items: start; gap: 12px;
+    transition: background 0.1s;
+}
+.acid-item:last-child { border-bottom: none; }
+.acid-item:hover { background: #fafbfc; }
+
+.acid-data {
+    font-family: var(--mono); font-size: 13px; font-weight: 600; color: #1e293b;
+    display: flex; align-items: center; gap: 8px;
+}
+.badge-tp {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; font-family: var(--sans);
+}
+.badge-tp-1 { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+.badge-tp-2 { background: #fefce8; color: #854d0e; border: 1px solid #fef08a; }
+.badge-tp-3 { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+.badge-cat {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 10px; font-weight: 600; background: #f1f5f9; color: #64748b;
+    border: 1px solid #e2e8f0; font-family: var(--sans);
+}
+.acid-dsc { font-size: 12px; color: #475569; margin-top: 4px; line-height: 1.4; }
+.acid-grav { font-size: 10px; color: #94a3b8; margin-top: 3px; font-family: var(--mono); }
+
+.acid-acoes { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+
+.btn-alterar {
+    background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8;
+    font-size: 12px; font-weight: 600; font-family: var(--sans);
+    padding: 6px 14px; border-radius: 7px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-alterar:hover { background: #dbeafe; border-color: #93c5fd; }
+
+.btn-excluir {
+    background: #fff1f2; border: 1px solid #fecdd3; color: #be123c;
+    font-size: 12px; font-weight: 600; font-family: var(--sans);
+    padding: 6px 14px; border-radius: 7px; cursor: pointer;
+    transition: 0.15s; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-excluir:hover { background: #ffe4e6; border-color: #fda4af; }
+
+.lista-vazia {
+    padding: 32px 20px; text-align: center;
+    font-size: 13px; color: #94a3b8; line-height: 1.6;
+}
+
+/* Modal de confirmação de exclusão */
+.modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    z-index: 100; align-items: center; justify-content: center;
+}
+.modal-overlay.ativo { display: flex; }
+.modal-box {
+    background: white; border-radius: 14px; padding: 28px 28px 22px;
+    max-width: 420px; width: 90%; box-shadow: 0 16px 48px rgba(0,0,0,0.2);
+}
+.modal-titulo { font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 10px; }
+.modal-sub    { font-size: 13px; color: #64748b; line-height: 1.5; margin-bottom: 20px; }
+.modal-info   {
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 20px; font-size: 12px;
+    font-family: var(--mono); color: #374151; line-height: 1.6;
+}
+.modal-acoes { display: flex; gap: 10px; justify-content: flex-end; }
+.btn-modal-cancelar {
+    background: white; border: 1px solid #e2e8f0; color: #64748b;
+    font-size: 13px; font-family: var(--sans); font-weight: 500;
+    padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+}
+.btn-modal-cancelar:hover { border-color: #94a3b8; }
+.btn-modal-confirmar {
+    background: #dc2626; border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+}
+.btn-modal-confirmar:hover    { background: #b91c1c; }
+.btn-modal-confirmar:disabled { background: #fca5a5; cursor: not-allowed; }
+
+#toast {
+    display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 12px 24px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 480px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Alterar / Excluir CAT (S-2210)</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <button class="btn-voltar" onclick="window.history.back()">&#8592; Voltar</button>
+        <div>
+            <div class="rel-titulo">Alterar / Excluir Acidente de Trabalho</div>
+            <div class="rel-subtitulo">Folha ativa · Somente registros sem recibo eSocial</div>
+        </div>
+    </div>
+
+    <!-- Funcionário -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Funcionário</div>
+        <div class="func-resumo-wrap">
+            <div id="func-resumo" style="font-size:12px;color:#94a3b8;">Carregando…</div>
+        </div>
+    </div>
+
+    <!-- Lista de acidentes -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Acidentes registrados na folha ativa (sem recibo)</div>
+        <div id="lista-acidentes">
+            <div class="lista-vazia">Carregando…</div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Modal de confirmação de exclusão -->
+<div class="modal-overlay" id="modal-excluir">
+    <div class="modal-box">
+        <div class="modal-titulo">Confirmar Exclusão</div>
+        <div class="modal-sub">Esta ação é irreversível. O registro da CAT e a remessa eSocial pendente serão removidos.</div>
+        <div class="modal-info" id="modal-info-ac"></div>
+        <div class="modal-acoes">
+            <button class="btn-modal-cancelar" onclick="fecharModal()">Cancelar</button>
+            <button class="btn-modal-confirmar" id="btn-confirmar-excluir" onclick="confirmarExclusao()">Excluir</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const MAT     = '{{ mat }}';
+const ANOMES  = '{{ anomes_atual }}';
+
+let acidPendente = null;
+
+const TP_ACID_BADGE = { '1': 'badge-tp-1', '2': 'badge-tp-2', '3': 'badge-tp-3' };
+
+// ── Carregar funcionário ────────────────────────────────────
+async function carregarFuncionario() {
+    const wrap = document.getElementById('func-resumo');
+    if (!MAT) {
+        wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Nenhum funcionário informado. <a href="javascript:window.history.back()">Voltar</a></span>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/funcionarios_lista?mats=' + MAT);
+        const d = await r.json();
+        if (d.ok && d.funcionarios?.length) {
+            const f = d.funcionarios[0];
+            wrap.innerHTML = `<div class="func-resumo-item">
+                <span class="func-resumo-mat">${String(f.matricula).padStart(6,'0')}</span>
+                <span class="func-resumo-nome">${f.nome || '—'}</span>
+            </div>`;
+        } else {
+            wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Funcionário não encontrado.</span>';
+        }
+    } catch(e) {
+        wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Erro ao carregar funcionário.</span>';
+    }
+}
+
+// ── Carregar acidentes ──────────────────────────────────────
+async function carregarAcidentes() {
+    const wrap = document.getElementById('lista-acidentes');
+    if (!MAT) { wrap.innerHTML = '<div class="lista-vazia">Matrícula não informada.</div>'; return; }
+    try {
+        const r = await fetch(`/api/acidente_lista?mat=${MAT}`);
+        const d = await r.json();
+        if (!d.ok) {
+            wrap.innerHTML = `<div class="lista-vazia">${d.msg || 'Erro ao carregar.'}</div>`;
+            return;
+        }
+        if (!d.acidentes || !d.acidentes.length) {
+            wrap.innerHTML = `<div class="lista-vazia">
+                Nenhum acidente registrado na folha ativa sem recibo eSocial.<br>
+                <span style="font-size:11px;">Apenas registros da folha ativa e sem recibo podem ser alterados ou excluídos.</span>
+            </div>`;
+            return;
+        }
+        wrap.innerHTML = d.acidentes.map(a => renderItem(a)).join('');
+    } catch(e) {
+        wrap.innerHTML = '<div class="lista-vazia">Erro de comunicação com o servidor.</div>';
+    }
+}
+
+function renderItem(a) {
+    const badgeClass = TP_ACID_BADGE[a.tpacid_cod] || 'badge-tp-1';
+    const dg = formatGravacao(a.dt_gravacao);
+    const editUrl = `/cad_acidente?mats=${MAT}&id_acidente=${a.id}`;
+    return `
+    <div class="acid-item" id="acid-${a.id}">
+        <div>
+            <div class="acid-data">
+                ${a.dtacid_fmt}
+                <span class="badge-tp ${badgeClass}">${a.tpacid}</span>
+                <span class="badge-cat">CAT ${a.tpcat}</span>
+            </div>
+            <div class="acid-dsc">${escHtml(a.dscacid)}</div>
+            ${dg ? `<div class="acid-grav">Gravado: ${dg}</div>` : ''}
+        </div>
+        <div class="acid-acoes">
+            <a href="${editUrl}" class="btn-alterar">✎ Alterar</a>
+            <button class="btn-excluir" onclick="pedirExclusao(${a.id}, '${escHtml(a.dtacid_fmt)}', '${escHtml(a.tpacid)}', '${escHtml(a.tpcat)}')">✕ Excluir</button>
+        </div>
+    </div>`;
+}
+
+function formatGravacao(dg) {
+    if (!dg || dg.length < 8) return '';
+    const data = dg.slice(6,8) + '/' + dg.slice(4,6) + '/' + dg.slice(0,4);
+    const hora = dg.length >= 13 ? dg.slice(9,11) + ':' + dg.slice(11,13) : '';
+    return hora ? `${data} ${hora}` : data;
+}
+
+function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Exclusão ────────────────────────────────────────────────
+function pedirExclusao(id, dtFmt, tpAcid, tpCat) {
+    acidPendente = id;
+    document.getElementById('modal-info-ac').innerHTML =
+        `Data: ${dtFmt}<br>Tipo: ${tpAcid}<br>CAT: ${tpCat}`;
+    document.getElementById('modal-excluir').classList.add('ativo');
+}
+
+function fecharModal() {
+    acidPendente = null;
+    document.getElementById('modal-excluir').classList.remove('ativo');
+}
+
+async function confirmarExclusao() {
+    if (!acidPendente) return;
+    const btn = document.getElementById('btn-confirmar-excluir');
+    btn.disabled = true; btn.textContent = 'Excluindo…';
+    try {
+        const resp = await fetch('/api/acidente_excluir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_acidente: acidPendente })
+        });
+        const d = await resp.json();
+        fecharModal();
+        if (d.ok) {
+            showToast('Acidente excluído com sucesso.', 'ok');
+            const el = document.getElementById(`acid-${acidPendente}`);
+            if (el) el.remove();
+            // Se lista ficou vazia, mostrar mensagem
+            const lista = document.getElementById('lista-acidentes');
+            if (lista && !lista.querySelector('.acid-item')) {
+                lista.innerHTML = `<div class="lista-vazia">
+                    Nenhum acidente registrado na folha ativa sem recibo eSocial.
+                </div>`;
+            }
+        } else {
+            showToast(d.msg || 'Erro ao excluir.', 'erro');
+        }
+    } catch(e) {
+        fecharModal();
+        showToast('Erro de comunicação com o servidor.', 'erro');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Excluir';
+    }
+}
+
+// ── Toast ───────────────────────────────────────────────────
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+// Fechar modal clicando fora
+document.getElementById('modal-excluir').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    carregarFuncionario();
+    carregarAcidentes();
+});
+</script>
+
+</body>
+</html>
