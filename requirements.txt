@@ -1,4 +1,9 @@
 Flask
-requests
 gunicorn
+requests
+python-dotenv
+supabase
 reportlab
+cryptography
+signxml
+lxml
