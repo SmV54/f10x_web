@@ -11449,7 +11449,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
             r_rub = (supabase.table("tab_rubrica")
-                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf")
+                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts")
                      .eq("id_cliente", cli_id)
                      .execute())
             for row in (r_rub.data or []):
@@ -11460,6 +11460,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         "dsc":      str(row.get("dsc_rubr")     or ""),
                         "inc_cp":   str(row.get("tpn_inc_cp")   or ""),
                         "inc_irrf": str(row.get("tpn_inc_irrf") or ""),
+                        "inc_fgts": str(row.get("tpn_inc_fgts") or ""),
                         "unid":     str(row.get("unid_verba")   or "V"),
                     }
     except Exception:
@@ -11547,6 +11548,16 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
          .eq("folha", int(anomes))
          .eq("folha_tipo", _folha_tipo_mov)
          .eq("origem", "C")
+         .execute())
+    except Exception:
+        pass
+
+    try:
+        (supabase.table("tab_total")
+         .delete()
+         .eq("id_empresa", id_empresa)
+         .eq("folha", int(anomes))
+         .eq("folha_tipo", anomes_tipo)
          .execute())
     except Exception:
         pass
@@ -12419,6 +12430,42 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     supabase.table("tab_mov").insert(recs_c).execute()
             except Exception as e_ins:
                 print(f"[tab_mov-C INSERT] mat={matr} erro: {e_ins}")
+
+            # Grava totais no tab_total
+            try:
+                base_fgts_func = sum(
+                    val for cod, val in mmVmm.items()
+                    if rubricas_info.get(cod, {}).get("inc_fgts") == "11" and val > 0
+                )
+                fgts_func = (int(base_fgts_func) * 8) // 100
+                base_inss_com = (min(int(base_inss), inss_teto)
+                                 if inss_teto and int(base_inss) > inss_teto
+                                 else int(base_inss))
+                supabase.table("tab_total").insert({
+                    "id_cliente":                id_cliente,
+                    "id_empresa":                id_empresa,
+                    "situacao":                  "A",
+                    "matricula":                 matr,
+                    "folha":                     int(anomes),
+                    "folha_tipo":                anomes_tipo,
+                    "valor_base_inss_semLimite": int(base_inss),
+                    "valor_base_inss_comLimite": base_inss_com,
+                    "valor_inss_retido":         inss_val,
+                    "valor_base_fgts":           int(base_fgts_func),
+                    "valor_fgts":                fgts_func,
+                    "valor_irrf_basetotal":      int(base_irrf_bruta),
+                    "valor_irrf_basetabela":     int(base_irrf),
+                    "valor_irrf_dependentes":    dep_irrf_total,
+                    "qtd_irrf_dependentes":      num_dep_irrf,
+                    "valor_salario":             int(l.get("sal_base") or 0),
+                    "valor_total_proventos":     int(total_prov),
+                    "valor_total_descontos":     int(total_desc),
+                    "valor_liquido":             int(total_prov - total_desc),
+                    "os":                        0,
+                    "controle":                  0,
+                }).execute()
+            except Exception as e_tot:
+                print(f"[tab_total INSERT] mat={matr} erro: {e_tot}")
 
             # Grava S-1200 e S-1210 no tab_esocial
             try:
