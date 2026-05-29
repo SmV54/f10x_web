@@ -82,7 +82,9 @@ thead th {
 }
 thead th.col-verba { text-align: left; min-width: 180px; }
 thead th.col-mes   { min-width: 72px; }
-thead th.col-total { min-width: 82px; background: #1e3d5c; }
+thead th.col-total  { min-width: 82px; background: #1e3d5c; }
+thead th.col-adiant { min-width: 82px; background: #1a3a2a; }
+thead th.col-decimo { min-width: 82px; background: #2a1a3a; }
 
 /* Linhas separadoras de seção */
 .sec-prov td {
@@ -233,6 +235,8 @@ tr.row-base-header td {
                     <th class="col-mes">{{ m }}</th>
                     {% endfor %}
                     <th class="col-total">Total Ano</th>
+                    <th class="col-adiant">Adiant. 13</th>
+                    <th class="col-decimo">13º Sal.</th>
                 </tr>
             </thead>
             <tbody>
@@ -249,6 +253,8 @@ tr.row-base-header td {
                 <td class="{{ 'val-zero' if val == '—' else 'val-num' }}">{{ val }}</td>
                 {% endfor %}
                 <td class="val-total">{{ v.total_fmt }}</td>
+                <td class="val-total">{{ v.adiant_fmt }}</td>
+                <td class="val-total">{{ v.decimo_fmt }}</td>
             </tr>
             {% endfor %}
             {% endif %}
@@ -262,6 +268,8 @@ tr.row-base-header td {
                 <td class="{{ 'val-zero' if val == '—' else 'val-num' }}">{{ val }}</td>
                 {% endfor %}
                 <td class="val-total">{{ v.total_fmt }}</td>
+                <td class="val-total">{{ v.adiant_fmt }}</td>
+                <td class="val-total">{{ v.decimo_fmt }}</td>
             </tr>
             {% endfor %}
             {% endif %}
@@ -273,39 +281,67 @@ tr.row-base-header td {
                 <td class="col-verba">Total Proventos</td>
                 {% for t in totais %}<td>{{ t.prov_fmt }}</td>{% endfor %}
                 <td>{{ tot_anual.prov_fmt }}</td>
+                <td>{{ tot_adiant.prov_fmt }}</td>
+                <td>{{ tot_decimo.prov_fmt }}</td>
             </tr>
             <tr class="row-total-desc">
                 <td class="col-verba">Total Descontos</td>
                 {% for t in totais %}<td>{{ t.desc_fmt }}</td>{% endfor %}
                 <td>{{ tot_anual.desc_fmt }}</td>
+                <td>{{ tot_adiant.desc_fmt }}</td>
+                <td>{{ tot_decimo.desc_fmt }}</td>
             </tr>
             <tr class="row-liquido">
                 <td class="col-verba">Líquido</td>
                 {% for t in totais %}<td>{{ t.liq_fmt }}</td>{% endfor %}
                 <td>{{ tot_anual.liq_fmt }}</td>
+                <td>{{ tot_adiant.liq_fmt }}</td>
+                <td>{{ tot_decimo.liq_fmt }}</td>
             </tr>
             <tr class="row-base-header">
-                <td colspan="14">BASES DE CÁLCULO</td>
+                <td colspan="16">BASES DE CÁLCULO</td>
             </tr>
             <tr class="row-base">
                 <td class="col-verba">Base INSS (sem limite)</td>
                 {% for t in totais %}<td>{{ t.inss_sem_fmt }}</td>{% endfor %}
                 <td>{{ tot_anual.inss_sem_fmt }}</td>
+                <td>{{ tot_adiant.inss_sem_fmt }}</td>
+                <td>{{ tot_decimo.inss_sem_fmt }}</td>
             </tr>
             <tr class="row-base">
                 <td class="col-verba">Base INSS (com limite)</td>
                 {% for t in totais %}<td>{{ t.inss_com_fmt }}</td>{% endfor %}
                 <td>{{ tot_anual.inss_com_fmt }}</td>
+                <td>{{ tot_adiant.inss_com_fmt }}</td>
+                <td>{{ tot_decimo.inss_com_fmt }}</td>
             </tr>
             <tr class="row-base">
-                <td class="col-verba">Base IRRF</td>
-                {% for t in totais %}<td>{{ t.irrf_base_fmt }}</td>{% endfor %}
-                <td>{{ tot_anual.irrf_base_fmt }}</td>
+                <td class="col-verba">Base IRRF (total)</td>
+                {% for t in totais %}<td>{{ t.irrf_total_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.irrf_total_fmt }}</td>
+                <td>{{ tot_adiant.irrf_total_fmt }}</td>
+                <td>{{ tot_decimo.irrf_total_fmt }}</td>
+            </tr>
+            <tr class="row-base">
+                <td class="col-verba">Base IRRF (tabela)</td>
+                {% for t in totais %}<td>{{ t.irrf_tabela_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.irrf_tabela_fmt }}</td>
+                <td>{{ tot_adiant.irrf_tabela_fmt }}</td>
+                <td>{{ tot_decimo.irrf_tabela_fmt }}</td>
             </tr>
             <tr class="row-base">
                 <td class="col-verba">Base FGTS</td>
                 {% for t in totais %}<td>{{ t.fgts_base_fmt }}</td>{% endfor %}
                 <td>{{ tot_anual.fgts_base_fmt }}</td>
+                <td>{{ tot_adiant.fgts_base_fmt }}</td>
+                <td>{{ tot_decimo.fgts_base_fmt }}</td>
+            </tr>
+            <tr class="row-base">
+                <td class="col-verba">FGTS a depositar</td>
+                {% for t in totais %}<td>{{ t.fgts_val_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.fgts_val_fmt }}</td>
+                <td>{{ tot_adiant.fgts_val_fmt }}</td>
+                <td>{{ tot_decimo.fgts_val_fmt }}</td>
             </tr>
             {% endif %}
 

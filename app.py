@@ -939,9 +939,15 @@ def rel_ficha_financeira():
     anos_disponiveis = list(range(ano_atual, ano_atual - 6, -1))
     func      = None
     verbas    = []
-    totais    = [{"prov_fmt":"—","desc_fmt":"—","liq_fmt":"—"} for _ in range(12)]
-    tot_anual = {"prov_fmt":"—","desc_fmt":"—","liq_fmt":"—"}
-    erro      = None
+    _z = {"prov_fmt":"—","desc_fmt":"—","liq_fmt":"—",
+          "inss_sem_fmt":"—","inss_com_fmt":"—",
+          "irrf_total_fmt":"—","irrf_tabela_fmt":"—",
+          "fgts_base_fmt":"—","fgts_val_fmt":"—"}
+    totais     = [dict(_z) for _ in range(12)]
+    tot_anual  = dict(_z)
+    tot_adiant = dict(_z)
+    tot_decimo = dict(_z)
+    erro       = None
 
     if mat_raw.isdigit():
         mat_int = int(mat_raw)
@@ -967,7 +973,7 @@ def rel_ficha_financeira():
 
             try:
                 q = supabase.table("tab_mov") \
-                    .select("cod_verba, valor, folha") \
+                    .select("cod_verba, valor, folha, folha_tipo") \
                     .eq("id_empresa", id_empresa) \
                     .eq("matricula", mat_int) \
                     .eq("situacao", "A") \
@@ -979,27 +985,37 @@ def rel_ficha_financeira():
             except Exception:
                 mov_data = []
 
-            # agregar mov por cod_verba + mes
-            agg = {}
+            # agregar mov separado por folha_tipo: N=mensal, A=adiantamento, 1=13º
+            agg_n = {}  # Normal: por cod_verba → [12 meses]
+            agg_a = {}  # Adiantamento 13º: por cod_verba → total
+            agg_1 = {}  # 13º Salário: por cod_verba → total
             for m in mov_data:
-                cod   = int(m.get("cod_verba") or 0)
-                folha = int(m.get("folha") or 0)
-                mes   = folha % 100
-                val   = int(m.get("valor") or 0)
-                if cod and 1 <= mes <= 12:
-                    if cod not in agg:
-                        agg[cod] = [0] * 12
-                    agg[cod][mes - 1] += val
+                cod = int(m.get("cod_verba") or 0)
+                if not cod:
+                    continue
+                ft  = str(m.get("folha_tipo") or "N")
+                val = int(m.get("valor") or 0)
+                if ft == "A":
+                    agg_a[cod] = agg_a.get(cod, 0) + val
+                elif ft == "1":
+                    agg_1[cod] = agg_1.get(cod, 0) + val
+                else:
+                    mes = int(m.get("folha") or 0) % 100
+                    if 1 <= mes <= 12:
+                        if cod not in agg_n:
+                            agg_n[cod] = [0] * 12
+                        agg_n[cod][mes - 1] += val
 
-            # descrições das verbas
+            # descrições das verbas (union dos três buckets)
+            all_cods = set(agg_n) | set(agg_a) | set(agg_1)
             rubrica_info = {}
-            if agg:
+            if all_cods:
                 try:
                     cli_ids = [0] + ([id_cliente] if id_cliente else [])
                     r_rub = supabase.table("tab_rubrica") \
                         .select("cod_rubr, dsc_rubr, tp_rubr, id_cliente") \
                         .in_("id_cliente", cli_ids) \
-                        .in_("cod_rubr", list(agg.keys())) \
+                        .in_("cod_rubr", list(all_cods)) \
                         .eq("situacao", "A") \
                         .execute()
                     for row in (r_rub.data or []):
@@ -1013,14 +1029,17 @@ def rel_ficha_financeira():
                     pass
 
             prov, desc = [], []
-            for cod, vals in sorted(agg.items()):
-                info  = rubrica_info.get(cod, {"dsc": f"Verba {cod}", "tp": "1"})
-                entry = {
-                    "cod":       cod,
-                    "dsc":       info["dsc"],
-                    "tp":        info["tp"],
-                    "vals_fmt":  [ff_fmt(v) for v in vals],
-                    "total_fmt": ff_fmt(sum(vals)),
+            for cod in sorted(all_cods):
+                info   = rubrica_info.get(cod, {"dsc": f"Verba {cod}", "tp": "1"})
+                vals_n = agg_n.get(cod, [0] * 12)
+                entry  = {
+                    "cod":        cod,
+                    "dsc":        info["dsc"],
+                    "tp":         info["tp"],
+                    "vals_fmt":   [ff_fmt(v) for v in vals_n],
+                    "total_fmt":  ff_fmt(sum(vals_n)),
+                    "adiant_fmt": ff_fmt(agg_a.get(cod, 0)),
+                    "decimo_fmt": ff_fmt(agg_1.get(cod, 0)),
                 }
                 (prov if info["tp"] == "1" else desc).append(entry)
             verbas = prov + desc
@@ -1028,9 +1047,11 @@ def rel_ficha_financeira():
             # totais do tab_total
             try:
                 q = supabase.table("tab_total") \
-                    .select("folha, valor_total_proventos, valor_total_descontos, valor_liquido,"
+                    .select("folha, folha_tipo,"
+                            " valor_total_proventos, valor_total_descontos, valor_liquido,"
                             " valor_base_inss_semlimite, valor_base_inss_comlimite,"
-                            " valor_irrf_basetabela, valor_base_fgts") \
+                            " valor_irrf_basetotal, valor_irrf_basetabela,"
+                            " valor_base_fgts, valor_fgts") \
                     .eq("id_empresa", id_empresa) \
                     .eq("matricula", mat_int) \
                     .gte("folha", anomes_ini) \
@@ -1041,42 +1062,55 @@ def rel_ficha_financeira():
             except Exception:
                 tot_data = []
 
-            tot_mes = {}
+            def _acc(d, t):
+                d["prov"]        += int(t.get("valor_total_proventos")     or 0)
+                d["desc"]        += int(t.get("valor_total_descontos")     or 0)
+                d["liq"]         += int(t.get("valor_liquido")             or 0)
+                d["inss_sem"]    += int(t.get("valor_base_inss_semlimite") or 0)
+                d["inss_com"]    += int(t.get("valor_base_inss_comlimite") or 0)
+                d["irrf_total"]  += int(t.get("valor_irrf_basetotal")      or 0)
+                d["irrf_tabela"] += int(t.get("valor_irrf_basetabela")     or 0)
+                d["fgts_base"]   += int(t.get("valor_base_fgts")           or 0)
+                d["fgts_val"]    += int(t.get("valor_fgts")                or 0)
+
+            def _new_acc():
+                return {"prov":0,"desc":0,"liq":0,"inss_sem":0,"inss_com":0,
+                        "irrf_total":0,"irrf_tabela":0,"fgts_base":0,"fgts_val":0}
+
+            def _fmt_acc(d):
+                return {
+                    "prov_fmt":        ff_fmt(d["prov"]),
+                    "desc_fmt":        ff_fmt(d["desc"]),
+                    "liq_fmt":         ff_fmt(d["liq"]),
+                    "inss_sem_fmt":    ff_fmt(d["inss_sem"]),
+                    "inss_com_fmt":    ff_fmt(d["inss_com"]),
+                    "irrf_total_fmt":  ff_fmt(d["irrf_total"]),
+                    "irrf_tabela_fmt": ff_fmt(d["irrf_tabela"]),
+                    "fgts_base_fmt":   ff_fmt(d["fgts_base"]),
+                    "fgts_val_fmt":    ff_fmt(d["fgts_val"]),
+                }
+
+            tot_mes  = {}
+            acc_a    = _new_acc()
+            acc_1    = _new_acc()
+            acc_anual = _new_acc()
             for t in tot_data:
-                ft  = int(t.get("folha") or 0)
-                mes = ft % 100
-                if 1 <= mes <= 12:
+                ft_tipo = str(t.get("folha_tipo") or "N")
+                mes     = int(t.get("folha") or 0) % 100
+                if ft_tipo == "A":
+                    _acc(acc_a, t)
+                elif ft_tipo == "1":
+                    _acc(acc_1, t)
+                elif 1 <= mes <= 12:
                     if mes not in tot_mes:
-                        tot_mes[mes] = {"prov": 0, "desc": 0, "liq": 0,
-                                        "inss_sem": 0, "inss_com": 0,
-                                        "irrf_base": 0, "fgts_base": 0}
-                    tot_mes[mes]["prov"]      += int(t.get("valor_total_proventos")    or 0)
-                    tot_mes[mes]["desc"]      += int(t.get("valor_total_descontos")    or 0)
-                    tot_mes[mes]["liq"]       += int(t.get("valor_liquido")            or 0)
-                    tot_mes[mes]["inss_sem"]  += int(t.get("valor_base_inss_semlimite") or 0)
-                    tot_mes[mes]["inss_com"]  += int(t.get("valor_base_inss_comlimite") or 0)
-                    tot_mes[mes]["irrf_base"] += int(t.get("valor_irrf_basetabela")    or 0)
-                    tot_mes[mes]["fgts_base"] += int(t.get("valor_base_fgts")          or 0)
+                        tot_mes[mes] = _new_acc()
+                    _acc(tot_mes[mes], t)
+                    _acc(acc_anual, t)
 
-            totais = [{
-                "prov_fmt":      ff_fmt(tot_mes.get(m, {}).get("prov",      0)),
-                "desc_fmt":      ff_fmt(tot_mes.get(m, {}).get("desc",      0)),
-                "liq_fmt":       ff_fmt(tot_mes.get(m, {}).get("liq",       0)),
-                "inss_sem_fmt":  ff_fmt(tot_mes.get(m, {}).get("inss_sem",  0)),
-                "inss_com_fmt":  ff_fmt(tot_mes.get(m, {}).get("inss_com",  0)),
-                "irrf_base_fmt": ff_fmt(tot_mes.get(m, {}).get("irrf_base", 0)),
-                "fgts_base_fmt": ff_fmt(tot_mes.get(m, {}).get("fgts_base", 0)),
-            } for m in range(1, 13)]
-
-            tot_anual = {
-                "prov_fmt":      ff_fmt(sum(tot_mes.get(m,{}).get("prov",      0) for m in range(1,13))),
-                "desc_fmt":      ff_fmt(sum(tot_mes.get(m,{}).get("desc",      0) for m in range(1,13))),
-                "liq_fmt":       ff_fmt(sum(tot_mes.get(m,{}).get("liq",       0) for m in range(1,13))),
-                "inss_sem_fmt":  ff_fmt(sum(tot_mes.get(m,{}).get("inss_sem",  0) for m in range(1,13))),
-                "inss_com_fmt":  ff_fmt(sum(tot_mes.get(m,{}).get("inss_com",  0) for m in range(1,13))),
-                "irrf_base_fmt": ff_fmt(sum(tot_mes.get(m,{}).get("irrf_base", 0) for m in range(1,13))),
-                "fgts_base_fmt": ff_fmt(sum(tot_mes.get(m,{}).get("fgts_base", 0) for m in range(1,13))),
-            }
+            totais     = [_fmt_acc(tot_mes.get(m, _new_acc())) for m in range(1, 13)]
+            tot_anual  = _fmt_acc(acc_anual)
+            tot_adiant = _fmt_acc(acc_a)
+            tot_decimo = _fmt_acc(acc_1)
 
     # lista de funcionários ativos para o select
     try:
@@ -1103,6 +1137,8 @@ def rel_ficha_financeira():
         verbas=verbas,
         totais=totais,
         tot_anual=tot_anual,
+        tot_adiant=tot_adiant,
+        tot_decimo=tot_decimo,
         erro=erro,
     )
 
@@ -1159,10 +1195,10 @@ def rel_ficha_financeira_pdf():
     anomes_ini = int(f"{ano}01")
     anomes_fim = int(f"{ano}12")
 
-    # ── tab_mov ──
+    # ── tab_mov: separado por folha_tipo ──
     try:
         q = supabase.table("tab_mov") \
-            .select("cod_verba, valor, folha") \
+            .select("cod_verba, valor, folha, folha_tipo") \
             .eq("id_empresa", id_empresa) \
             .eq("matricula", mat_int) \
             .eq("situacao", "A") \
@@ -1174,25 +1210,33 @@ def rel_ficha_financeira_pdf():
     except Exception:
         mov_data = []
 
-    agg = {}
+    agg_n, agg_a, agg_1 = {}, {}, {}
     for m in mov_data:
-        cod   = int(m.get("cod_verba") or 0)
-        folha = int(m.get("folha") or 0)
-        mes   = folha % 100
-        val   = int(m.get("valor") or 0)
-        if cod and 1 <= mes <= 12:
-            if cod not in agg:
-                agg[cod] = [0] * 12
-            agg[cod][mes - 1] += val
+        cod = int(m.get("cod_verba") or 0)
+        if not cod:
+            continue
+        ft  = str(m.get("folha_tipo") or "N")
+        val = int(m.get("valor") or 0)
+        if ft == "A":
+            agg_a[cod] = agg_a.get(cod, 0) + val
+        elif ft == "1":
+            agg_1[cod] = agg_1.get(cod, 0) + val
+        else:
+            mes = int(m.get("folha") or 0) % 100
+            if 1 <= mes <= 12:
+                if cod not in agg_n:
+                    agg_n[cod] = [0] * 12
+                agg_n[cod][mes - 1] += val
 
+    all_cods = set(agg_n) | set(agg_a) | set(agg_1)
     rubrica_info = {}
-    if agg:
+    if all_cods:
         try:
             cli_ids = [0] + ([id_cliente] if id_cliente else [])
             r_rub = supabase.table("tab_rubrica") \
                 .select("cod_rubr, dsc_rubr, tp_rubr, id_cliente") \
                 .in_("id_cliente", cli_ids) \
-                .in_("cod_rubr", list(agg.keys())) \
+                .in_("cod_rubr", list(all_cods)) \
                 .eq("situacao", "A") \
                 .execute()
             for row in (r_rub.data or []):
@@ -1206,16 +1250,24 @@ def rel_ficha_financeira_pdf():
             pass
 
     prov, desc = [], []
-    for cod, vals in sorted(agg.items()):
-        info  = rubrica_info.get(cod, {"dsc": f"Verba {cod}", "tp": "1"})
-        entry = {"dsc": info["dsc"], "tp": info["tp"], "vals": vals, "total": sum(vals)}
+    for cod in sorted(all_cods):
+        info   = rubrica_info.get(cod, {"dsc": f"Verba {cod}", "tp": "1"})
+        vals_n = agg_n.get(cod, [0] * 12)
+        entry  = {
+            "dsc":   info["dsc"], "tp": info["tp"],
+            "vals":  vals_n, "total": sum(vals_n),
+            "adiant": agg_a.get(cod, 0), "decimo": agg_1.get(cod, 0),
+        }
         (prov if info["tp"] == "1" else desc).append(entry)
-    verbas = prov + desc
 
-    # totais do tab_total
+    # ── tab_total: separado por folha_tipo ──
     try:
         q = supabase.table("tab_total") \
-            .select("folha, valor_total_proventos, valor_total_descontos, valor_liquido") \
+            .select("folha, folha_tipo,"
+                    " valor_total_proventos, valor_total_descontos, valor_liquido,"
+                    " valor_base_inss_semlimite, valor_base_inss_comlimite,"
+                    " valor_irrf_basetotal, valor_irrf_basetabela,"
+                    " valor_base_fgts, valor_fgts") \
             .eq("id_empresa", id_empresa) \
             .eq("matricula", mat_int) \
             .gte("folha", anomes_ini) \
@@ -1226,16 +1278,34 @@ def rel_ficha_financeira_pdf():
     except Exception:
         tot_data = []
 
-    tot_mes = {}
+    def _new_a():
+        return {"prov":0,"desc":0,"liq":0,"inss_sem":0,"inss_com":0,
+                "irrf_tot":0,"irrf_tab":0,"fgts_base":0,"fgts_val":0}
+
+    def _acc_t(d, t):
+        d["prov"]     += int(t.get("valor_total_proventos")     or 0)
+        d["desc"]     += int(t.get("valor_total_descontos")     or 0)
+        d["liq"]      += int(t.get("valor_liquido")             or 0)
+        d["inss_sem"] += int(t.get("valor_base_inss_semlimite") or 0)
+        d["inss_com"] += int(t.get("valor_base_inss_comlimite") or 0)
+        d["irrf_tot"] += int(t.get("valor_irrf_basetotal")      or 0)
+        d["irrf_tab"] += int(t.get("valor_irrf_basetabela")     or 0)
+        d["fgts_base"]+= int(t.get("valor_base_fgts")           or 0)
+        d["fgts_val"] += int(t.get("valor_fgts")                or 0)
+
+    tot_mes, acc_a, acc_1, acc_n = {}, _new_a(), _new_a(), _new_a()
     for t in tot_data:
-        ft  = int(t.get("folha") or 0)
-        mes = ft % 100
-        if 1 <= mes <= 12:
+        ft_tipo = str(t.get("folha_tipo") or "N")
+        mes     = int(t.get("folha") or 0) % 100
+        if ft_tipo == "A":
+            _acc_t(acc_a, t)
+        elif ft_tipo == "1":
+            _acc_t(acc_1, t)
+        elif 1 <= mes <= 12:
             if mes not in tot_mes:
-                tot_mes[mes] = {"prov": 0, "desc": 0, "liq": 0}
-            tot_mes[mes]["prov"] += int(t.get("valor_total_proventos") or 0)
-            tot_mes[mes]["desc"] += int(t.get("valor_total_descontos") or 0)
-            tot_mes[mes]["liq"]  += int(t.get("valor_liquido") or 0)
+                tot_mes[mes] = _new_a()
+            _acc_t(tot_mes[mes], t)
+            _acc_t(acc_n, t)
 
     # ── ReportLab ──
     empresa_nm = str(session.get("empresa_info") or "")
@@ -1244,103 +1314,168 @@ def rel_ficha_financeira_pdf():
 
     buf  = BytesIO()
     page = landscape(A4)
-    W    = page[0] - 3*cm   # largura útil (margens 1.5cm cada lado)
-    doc  = SimpleDocTemplate(buf, pagesize=page,
-                             leftMargin=1.5*cm, rightMargin=1.5*cm,
-                             topMargin=1.8*cm,  bottomMargin=1.5*cm)
+    # 16 colunas: nome + 12 meses + Total + Adiant.13 + 13ºSal.
+    # largura útil = 29.7cm - 3cm margens, com 6pt de buffer para evitar overflow
+    W       = page[0] - 3 * cm - 6
+    col_nm  = 3.8 * cm
+    col_ext = 1.65 * cm         # Total Ano, Adiant.13, 13ºSal.
+    col_m   = (W - col_nm - 3 * col_ext) / 12
+    col_ws  = [col_nm] + [col_m] * 12 + [col_ext, col_ext, col_ext]
+
+    doc = SimpleDocTemplate(buf, pagesize=page,
+                            leftMargin=1.5*cm, rightMargin=1.5*cm,
+                            topMargin=1.8*cm,  bottomMargin=1.5*cm)
 
     c_navy   = colors.HexColor("#0b1f3a")
+    c_adiant = colors.HexColor("#1a3a2a")
+    c_decimo = colors.HexColor("#2a1a3a")
     c_prov   = colors.HexColor("#166534")
     bg_prov  = colors.HexColor("#f0fdf4")
     c_desc   = colors.HexColor("#991b1b")
     bg_desc  = colors.HexColor("#fff7f7")
-    c_sec    = colors.HexColor("#f8fafc")
     c_border = colors.HexColor("#dde3ec")
-    c_gray   = colors.HexColor("#64748b")
     c_total  = colors.HexColor("#eaf1fb")
+    c_base   = colors.HexColor("#f8fafc")
+    c_base_h = colors.HexColor("#f1f5f9")
+    cW       = colors.white
 
-    def P(txt, fn="Helvetica", fs=7, col=colors.black, align=0):
+    def P(txt, fn="Helvetica", fs=6, col=colors.black, align=0):
         st = ParagraphStyle("x", fontName=fn, fontSize=fs, textColor=col,
-                            alignment=align, leading=fs + 1)
+                            alignment=align, leading=fs + 2)
         return Paragraph(str(txt), st)
 
-    # larguras: nome (5cm) + 12 meses + total (2.2cm)
-    col_nm = 5.0 * cm
-    col_tot = 2.2 * cm
-    col_m  = (W - col_nm - col_tot) / 12
-    col_ws = [col_nm] + [col_m] * 12 + [col_tot]
+    def Ph(txt, fn="Helvetica-Bold", fs=6, align=1):
+        """Parágrafo de cabeçalho — sempre branco."""
+        return P(txt, fn=fn, fs=fs, col=cW, align=align)
 
-    # linha de cabeçalho dos meses
-    hdr_row = [P("Verba", fn="Helvetica-Bold", fs=7)] \
-            + [P(m, fn="Helvetica-Bold", fs=7, align=2) for m in MESES_ABR] \
-            + [P("Total", fn="Helvetica-Bold", fs=7, align=2)]
+    N_EXTRA = 3   # colunas extras após os 12 meses
+
+    # cabeçalho — texto branco explícito
+    c_hdr_bg  = colors.HexColor("#e8edf4")   # fundo claro para cabeçalho de meses
+    c_hdr_txt = colors.HexColor("#0b1f3a")   # texto escuro navy
+
+    def Pm(txt):
+        """Parágrafo de cabeçalho de mês — navy escuro, centralizado."""
+        return P(txt, fn="Helvetica-Bold", fs=6, col=c_hdr_txt, align=1)
+
+    hdr_row = ([P("Verba", fn="Helvetica-Bold", fs=6, col=c_hdr_txt)]
+               + [Pm(m) for m in MESES_ABR]
+               + [P("Total Ano", fn="Helvetica-Bold", fs=6, col=c_hdr_txt, align=1),
+                  P("Adiant.13", fn="Helvetica-Bold", fs=6, col=c_hdr_txt, align=1),
+                  P("13º Sal.",  fn="Helvetica-Bold", fs=6, col=c_hdr_txt, align=1)])
 
     tbl_data   = [hdr_row]
     tbl_styles = [
-        ("BACKGROUND", (0, 0), (-1, 0), c_navy),
-        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
-        ("LINEBELOW",  (0, 0), (-1, 0), 0.5, c_border),
-        ("FONTSIZE",   (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BACKGROUND", (0, 0),  (-1, 0),  c_hdr_bg),
+        ("LINEBELOW",  (0, 0),  (-1, 0),  1.0, c_navy),
+        ("FONTSIZE",   (0, 0),  (-1, -1), 6),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
-        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+        ("VALIGN",     (0, 0),  (-1, -1), "MIDDLE"),
     ]
 
-    # separador PROVENTOS
+    def _verba_row(v):
+        vals_n = v["vals"]
+        return ([P(v["dsc"])]
+                + [P(ff_fmt(x), align=2) for x in vals_n]
+                + [P(ff_fmt(v["total"]),  fn="Helvetica-Bold", align=2),
+                   P(ff_fmt(v["adiant"]), fn="Helvetica-Bold", align=2),
+                   P(ff_fmt(v["decimo"]), fn="Helvetica-Bold", align=2)])
+
+    def _sec_row(label, col_txt):
+        return [P(label, fn="Helvetica-Bold", fs=5, col=col_txt)] + [""] * (12 + N_EXTRA)
+
+    def _tot_row(label, key, bold=True):
+        fn = "Helvetica-Bold" if bold else "Helvetica"
+        mes_vals = [tot_mes.get(m, _new_a()).get(key, 0) for m in range(1, 13)]
+        return ([P(label, fn=fn, fs=6)]
+                + [P(ff_fmt(v), fn=fn, align=2) for v in mes_vals]
+                + [P(ff_fmt(acc_n.get(key, 0)),  fn=fn, align=2),
+                   P(ff_fmt(acc_a.get(key, 0)),  fn=fn, align=2),
+                   P(ff_fmt(acc_1.get(key, 0)),  fn=fn, align=2)])
+
+    # PROVENTOS
     if prov:
         ri = len(tbl_data)
-        tbl_data.append([P("PROVENTOS", fn="Helvetica-Bold", fs=6, col=c_prov)] + [""] * 13)
-        tbl_styles += [
-            ("SPAN",       (0, ri), (-1, ri)),
-            ("BACKGROUND", (0, ri), (-1, ri), bg_prov),
-            ("LINEBELOW",  (0, ri), (-1, ri), 0.3, c_border),
-        ]
+        tbl_data.append(_sec_row("PROVENTOS", c_prov))
+        tbl_styles += [("SPAN", (0,ri),(-1,ri)),
+                       ("BACKGROUND",(0,ri),(-1,ri),bg_prov),
+                       ("LINEBELOW",(0,ri),(-1,ri),0.3,c_border)]
         for v in prov:
             ri = len(tbl_data)
-            row = [P(v["dsc"])] \
-                + [P(ff_fmt(x), align=2) for x in v["vals"]] \
-                + [P(ff_fmt(v["total"]), fn="Helvetica-Bold", align=2)]
-            tbl_data.append(row)
-            tbl_styles.append(("LINEBELOW", (0, ri), (-1, ri), 0.2, colors.HexColor("#e5e7eb")))
+            tbl_data.append(_verba_row(v))
+            tbl_styles.append(("LINEBELOW",(0,ri),(-1,ri),0.2,colors.HexColor("#e5e7eb")))
 
-    # separador DESCONTOS
+    # DESCONTOS
     if desc:
         ri = len(tbl_data)
-        tbl_data.append([P("DESCONTOS", fn="Helvetica-Bold", fs=6, col=c_desc)] + [""] * 13)
-        tbl_styles += [
-            ("SPAN",       (0, ri), (-1, ri)),
-            ("BACKGROUND", (0, ri), (-1, ri), bg_desc),
-            ("LINEBELOW",  (0, ri), (-1, ri), 0.3, c_border),
-        ]
+        tbl_data.append(_sec_row("DESCONTOS", c_desc))
+        tbl_styles += [("SPAN",(0,ri),(-1,ri)),
+                       ("BACKGROUND",(0,ri),(-1,ri),bg_desc),
+                       ("LINEBELOW",(0,ri),(-1,ri),0.3,c_border)]
         for v in desc:
             ri = len(tbl_data)
-            row = [P(v["dsc"])] \
-                + [P(ff_fmt(x), align=2) for x in v["vals"]] \
-                + [P(ff_fmt(v["total"]), fn="Helvetica-Bold", align=2)]
-            tbl_data.append(row)
-            tbl_styles.append(("LINEBELOW", (0, ri), (-1, ri), 0.2, colors.HexColor("#e5e7eb")))
+            tbl_data.append(_verba_row(v))
+            tbl_styles.append(("LINEBELOW",(0,ri),(-1,ri),0.2,colors.HexColor("#e5e7eb")))
 
-    # linhas de totais do tab_total
-    for label, key in [("Total Proventos","prov"),("Total Descontos","desc"),("Líquido","liq")]:
+    # TOTAIS
+    for label, key in [("Total Proventos","prov"),
+                        ("Total Descontos","desc"),
+                        ("Líquido",        "liq")]:
         ri = len(tbl_data)
-        row = [P(label, fn="Helvetica-Bold", fs=7)] \
-            + [P(ff_fmt(tot_mes.get(m,{}).get(key,0)), fn="Helvetica-Bold", align=2)
-               for m in range(1,13)] \
-            + [P(ff_fmt(sum(tot_mes.get(m,{}).get(key,0) for m in range(1,13))),
-                 fn="Helvetica-Bold", align=2)]
-        tbl_data.append(row)
-        tbl_styles += [
-            ("BACKGROUND", (0, ri), (-1, ri), c_total),
-            ("LINEABOVE",  (0, ri), (-1, ri), 0.5, c_border),
-        ]
+        tbl_data.append(_tot_row(label, key))
+        tbl_styles += [("BACKGROUND",(0,ri),(-1,ri),c_total),
+                       ("LINEABOVE",(0,ri),(-1,ri),0.5,c_border)]
+
+    # BASES DE CÁLCULO
+    ri = len(tbl_data)
+    tbl_data.append([P("BASES DE CÁLCULO", fn="Helvetica-Bold", fs=5,
+                        col=colors.HexColor("#475569"))] + [""] * (12 + N_EXTRA))
+    tbl_styles += [("SPAN",(0,ri),(-1,ri)),
+                   ("BACKGROUND",(0,ri),(-1,ri),c_base_h),
+                   ("LINEABOVE",(0,ri),(-1,ri),0.5,c_border),
+                   ("LINEBELOW",(0,ri),(-1,ri),0.3,c_border)]
+
+    for label, key in [("Base INSS (sem limite)", "inss_sem"),
+                        ("Base INSS (com limite)", "inss_com"),
+                        ("Base IRRF (total)",      "irrf_tot"),
+                        ("Base IRRF (tabela)",     "irrf_tab"),
+                        ("Base FGTS",              "fgts_base"),
+                        ("FGTS a depositar",       "fgts_val")]:
+        ri = len(tbl_data)
+        tbl_data.append(_tot_row(label, key, bold=False))
+        tbl_styles += [("BACKGROUND",(0,ri),(-1,ri),c_base),
+                       ("LINEBELOW",(0,ri),(-1,ri),0.2,c_border)]
 
     tbl = Table(tbl_data, colWidths=col_ws, repeatRows=1)
     tbl.setStyle(TableStyle(tbl_styles))
 
-    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, f"Exercício {ano}"),
-             Spacer(1, 6), tbl]
+    # cabeçalho landscape: largura proporcional ao A4 deitado (26.7cm útil)
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+    W_hdr = page[0] - 3 * cm
+    col_hdr = [W_hdr * 0.45, W_hdr * 0.10, W_hdr * 0.45]
+    agora_hdr = datetime.now().strftime("%d/%m/%Y %H:%M")
+    st_hL = ParagraphStyle("hL", fontName="Helvetica",      fontSize=8, leading=10)
+    st_hR = ParagraphStyle("hR", fontName="Helvetica",      fontSize=8, leading=10, alignment=TA_RIGHT)
+    st_hT = ParagraphStyle("hT", fontName="Helvetica-Bold", fontSize=9, leading=11, alignment=TA_CENTER)
+    hdr_tbl = Table(
+        [[Paragraph(f"{cnpj_fmt} — {empresa_nm}", st_hL), "", Paragraph(agora_hdr, st_hR)],
+         [Paragraph(titulo, st_hT), "", ""]],
+        colWidths=col_hdr)
+    hdr_tbl.setStyle(TableStyle([
+        ("SPAN",          (0, 1), (-1, 1)),
+        ("SPAN",          (0, 0), (1, 0)),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 2),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 5),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("LINEBELOW",     (0, 1), (-1, 1), 0.5, colors.HexColor("#374151")),
+    ]))
+    story = [hdr_tbl, Spacer(1, 6), tbl]
     doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
     buf.seek(0)
 
@@ -11936,25 +12071,30 @@ def _calc_ferias_futuras(id_empresa, anomes):
         return 0
 
 
-def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt=""):
-    """Cabeçalho padrão 2 linhas: linha 1 = CNPJ/empresa (esq) + competência (centro) + data (dir); linha 2 = título centralizado. Separador abaixo."""
+def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm):
+    """Cabeçalho padrão: CNPJ/empresa (esq) | competência (centro) | data (dir) + título abaixo.
+    page_width: largura útil da página (sem margens). Padrão 17cm = A4 retrato c/ margens 2cm."""
     def xe(s):
         return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
     agora = datetime.now().strftime("%d/%m/%Y %H:%M")
-    st_L  = ParagraphStyle("hc_l", fontName="Helvetica",      fontSize=8,  leading=10)
-    st_C  = ParagraphStyle("hc_c", fontName="Helvetica-Bold", fontSize=8,  leading=10, alignment=TA_CENTER)
-    st_R  = ParagraphStyle("hc_r", fontName="Helvetica",      fontSize=8,  leading=10, alignment=TA_RIGHT)
-    st_T  = ParagraphStyle("hc_t", fontName="Helvetica-Bold", fontSize=7, leading=10, alignment=TA_CENTER)
+    st_L  = ParagraphStyle("hc_l", fontName="Helvetica",      fontSize=8, leading=10)
+    st_C  = ParagraphStyle("hc_c", fontName="Helvetica-Bold", fontSize=8, leading=10, alignment=TA_CENTER)
+    st_R  = ParagraphStyle("hc_r", fontName="Helvetica",      fontSize=8, leading=10, alignment=TA_RIGHT)
+    st_T  = ParagraphStyle("hc_t", fontName="Helvetica-Bold", fontSize=8, leading=10, alignment=TA_CENTER)
+
+    # Distribui: 58% empresa, 17% competência, 25% data
+    col_e = page_width * 0.58
+    col_c = page_width * 0.17
+    col_d = page_width * 0.25
 
     cel_comp = Paragraph(f"Competência: {xe(anomes_fmt)}", st_C) if anomes_fmt else ""
-    cols = [6*cm, 5*cm, 6*cm]  # total 17 cm = A4(21cm) - margens(2+2cm)
     hdr = Table(
         [
             [Paragraph(f"{xe(cnpj_fmt)} — {xe(empresa_nm)}", st_L), cel_comp, Paragraph(agora, st_R)],
             [Paragraph(xe(titulo), st_T), "", ""],
         ],
-        colWidths=cols)
+        colWidths=[col_e, col_c, col_d])
     hdr.setStyle(TableStyle([
         ("SPAN",          (0, 1), (-1, 1)),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
