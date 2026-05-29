@@ -196,6 +196,10 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
         <!-- Resumo (visível após conclusão) -->
         <div id="sec-resumo" class="resumo-wrap" style="display:none"></div>
+
+        <!-- Avisos de erro (erros não fatais durante o cálculo) -->
+        <div id="avisos-calc" style="display:none; margin-top:12px; padding:10px 14px;
+             background:#fff7ed; border:1px solid #f97316; border-radius:8px;"></div>
     </div>
 </div>
 
@@ -235,6 +239,15 @@ src.onmessage = function(e) {
         src.close();
         document.getElementById('progFunc').innerHTML =
             '<span style="color:#dc2626">Erro: ' + (d.msg || 'desconhecido') + '</span>';
+    } else if (d.tipo === 'aviso') {
+        const div = document.getElementById('avisos-calc');
+        if (div) {
+            const p = document.createElement('p');
+            p.style.cssText = 'margin:2px 0; color:#b45309; font-size:12px;';
+            p.textContent = d.msg;
+            div.appendChild(p);
+            div.style.display = 'block';
+        }
     }
 };
 

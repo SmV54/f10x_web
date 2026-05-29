@@ -834,6 +834,523 @@ def rel_lista_funcionarios():
     )
 
 
+@app.route("/rel_lista_funcionarios_pdf")
+def rel_lista_funcionarios_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    id_empresa      = _get_id_empresa()
+    classificacao   = request.args.get("classificacao", "A").strip()
+    situacao_filtro = request.args.get("situacao", "A").strip()
+
+    order_col = "nome" if classificacao == "A" else "matricula"
+    try:
+        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao") \
+            .eq("id_empresa", id_empresa).order(order_col)
+        if situacao_filtro != "T":
+            q = q.eq("situacao", situacao_filtro)
+        funcs = q.execute().data or []
+    except Exception:
+        funcs = []
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+    sit_label  = {"A": "Ativos", "D": "Desligados", "T": "Todos"}.get(situacao_filtro, "")
+    ord_label  = "Ordem Alfabética" if classificacao == "A" else "Ordem Numérica"
+    titulo     = f"Lista de Funcionários — {sit_label} · {ord_label}"
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    tbl_data = [[P("Matrícula", fn="Helvetica-Bold"), P("Nome", fn="Helvetica-Bold")]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    for f in funcs:
+        mat  = f"{int(f.get('matricula') or 0):06d}"
+        nome = (f.get("nomer") or f.get("nome") or "").strip()
+        tbl_data.append([P(mat, fn="Courier"), P(nome)])
+
+    tbl = Table(tbl_data, colWidths=[3*cm, 14*cm], repeatRows=1)
+    row_bg = []
+    for i in range(1, len(tbl_data)):
+        bg = lt_gray if i % 2 == 0 else colors.white
+        row_bg.append(("BACKGROUND", (0, i), (-1, i), bg))
+
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    total_linha = P(f"Total: {len(funcs)} funcionário(s)", fn="Helvetica", fs=8,
+                    col=colors.HexColor("#64748b"), align=2)
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm), Spacer(1, 8), tbl,
+             Spacer(1, 6), total_linha]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="ListaFuncionarios.pdf"'
+    return resp
+
+
+@app.route("/rel_ficha_financeira")
+def rel_ficha_financeira():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    ano_atual  = datetime.now().year
+    MESES      = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+
+    def ff_fmt(centavos):
+        if not centavos:
+            return "—"
+        v = centavos / 100
+        return f"{v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+    mat_raw = request.args.get("mat", "").strip()
+    try:
+        ano = int(request.args.get("ano", ano_atual))
+    except ValueError:
+        ano = ano_atual
+
+    anos_disponiveis = list(range(ano_atual, ano_atual - 6, -1))
+    func      = None
+    verbas    = []
+    totais    = [{"prov_fmt":"—","desc_fmt":"—","liq_fmt":"—"} for _ in range(12)]
+    tot_anual = {"prov_fmt":"—","desc_fmt":"—","liq_fmt":"—"}
+    erro      = None
+
+    if mat_raw.isdigit():
+        mat_int = int(mat_raw)
+
+        try:
+            r = supabase.table("tab_cad") \
+                .select("matricula, nome, nomer, situacao, dtadm") \
+                .eq("id_empresa", id_empresa) \
+                .eq("matricula", mat_int) \
+                .limit(1).execute()
+            if r.data:
+                row = r.data[0]
+                row["nome_fmt"] = (row.get("nomer") or row.get("nome") or "").strip()
+                func = row
+            else:
+                erro = "Funcionário não encontrado."
+        except Exception:
+            erro = "Erro ao buscar funcionário."
+
+        if func:
+            anomes_ini = int(f"{ano}01")
+            anomes_fim = int(f"{ano}12")
+
+            try:
+                q = supabase.table("tab_mov") \
+                    .select("cod_verba, valor, folha") \
+                    .eq("id_empresa", id_empresa) \
+                    .eq("matricula", mat_int) \
+                    .eq("situacao", "A") \
+                    .gte("folha", anomes_ini) \
+                    .lte("folha", anomes_fim)
+                if id_cliente:
+                    q = q.eq("id_cliente", id_cliente)
+                mov_data = q.execute().data or []
+            except Exception:
+                mov_data = []
+
+            # agregar mov por cod_verba + mes
+            agg = {}
+            for m in mov_data:
+                cod   = int(m.get("cod_verba") or 0)
+                folha = int(m.get("folha") or 0)
+                mes   = folha % 100
+                val   = int(m.get("valor") or 0)
+                if cod and 1 <= mes <= 12:
+                    if cod not in agg:
+                        agg[cod] = [0] * 12
+                    agg[cod][mes - 1] += val
+
+            # descrições das verbas
+            rubrica_info = {}
+            if agg:
+                try:
+                    cli_ids = [0] + ([id_cliente] if id_cliente else [])
+                    r_rub = supabase.table("tab_rubrica") \
+                        .select("cod_rubr, dsc_rubr, tp_rubr, id_cliente") \
+                        .in_("id_cliente", cli_ids) \
+                        .in_("cod_rubr", list(agg.keys())) \
+                        .eq("situacao", "A") \
+                        .execute()
+                    for row in (r_rub.data or []):
+                        cod = int(row.get("cod_rubr") or 0)
+                        if cod not in rubrica_info or int(row.get("id_cliente") or 0) != 0:
+                            rubrica_info[cod] = {
+                                "dsc": row.get("dsc_rubr") or f"Verba {cod}",
+                                "tp":  str(row.get("tp_rubr") or "1"),
+                            }
+                except Exception:
+                    pass
+
+            prov, desc = [], []
+            for cod, vals in sorted(agg.items()):
+                info  = rubrica_info.get(cod, {"dsc": f"Verba {cod}", "tp": "1"})
+                entry = {
+                    "cod":       cod,
+                    "dsc":       info["dsc"],
+                    "tp":        info["tp"],
+                    "vals_fmt":  [ff_fmt(v) for v in vals],
+                    "total_fmt": ff_fmt(sum(vals)),
+                }
+                (prov if info["tp"] == "1" else desc).append(entry)
+            verbas = prov + desc
+
+            # totais do tab_total
+            try:
+                q = supabase.table("tab_total") \
+                    .select("folha, valor_total_proventos, valor_total_descontos, valor_liquido,"
+                            " valor_base_inss_semlimite, valor_base_inss_comlimite,"
+                            " valor_irrf_basetabela, valor_base_fgts") \
+                    .eq("id_empresa", id_empresa) \
+                    .eq("matricula", mat_int) \
+                    .gte("folha", anomes_ini) \
+                    .lte("folha", anomes_fim)
+                if id_cliente:
+                    q = q.eq("id_cliente", id_cliente)
+                tot_data = q.execute().data or []
+            except Exception:
+                tot_data = []
+
+            tot_mes = {}
+            for t in tot_data:
+                ft  = int(t.get("folha") or 0)
+                mes = ft % 100
+                if 1 <= mes <= 12:
+                    if mes not in tot_mes:
+                        tot_mes[mes] = {"prov": 0, "desc": 0, "liq": 0,
+                                        "inss_sem": 0, "inss_com": 0,
+                                        "irrf_base": 0, "fgts_base": 0}
+                    tot_mes[mes]["prov"]      += int(t.get("valor_total_proventos")    or 0)
+                    tot_mes[mes]["desc"]      += int(t.get("valor_total_descontos")    or 0)
+                    tot_mes[mes]["liq"]       += int(t.get("valor_liquido")            or 0)
+                    tot_mes[mes]["inss_sem"]  += int(t.get("valor_base_inss_semlimite") or 0)
+                    tot_mes[mes]["inss_com"]  += int(t.get("valor_base_inss_comlimite") or 0)
+                    tot_mes[mes]["irrf_base"] += int(t.get("valor_irrf_basetabela")    or 0)
+                    tot_mes[mes]["fgts_base"] += int(t.get("valor_base_fgts")          or 0)
+
+            totais = [{
+                "prov_fmt":      ff_fmt(tot_mes.get(m, {}).get("prov",      0)),
+                "desc_fmt":      ff_fmt(tot_mes.get(m, {}).get("desc",      0)),
+                "liq_fmt":       ff_fmt(tot_mes.get(m, {}).get("liq",       0)),
+                "inss_sem_fmt":  ff_fmt(tot_mes.get(m, {}).get("inss_sem",  0)),
+                "inss_com_fmt":  ff_fmt(tot_mes.get(m, {}).get("inss_com",  0)),
+                "irrf_base_fmt": ff_fmt(tot_mes.get(m, {}).get("irrf_base", 0)),
+                "fgts_base_fmt": ff_fmt(tot_mes.get(m, {}).get("fgts_base", 0)),
+            } for m in range(1, 13)]
+
+            tot_anual = {
+                "prov_fmt":      ff_fmt(sum(tot_mes.get(m,{}).get("prov",      0) for m in range(1,13))),
+                "desc_fmt":      ff_fmt(sum(tot_mes.get(m,{}).get("desc",      0) for m in range(1,13))),
+                "liq_fmt":       ff_fmt(sum(tot_mes.get(m,{}).get("liq",       0) for m in range(1,13))),
+                "inss_sem_fmt":  ff_fmt(sum(tot_mes.get(m,{}).get("inss_sem",  0) for m in range(1,13))),
+                "inss_com_fmt":  ff_fmt(sum(tot_mes.get(m,{}).get("inss_com",  0) for m in range(1,13))),
+                "irrf_base_fmt": ff_fmt(sum(tot_mes.get(m,{}).get("irrf_base", 0) for m in range(1,13))),
+                "fgts_base_fmt": ff_fmt(sum(tot_mes.get(m,{}).get("fgts_base", 0) for m in range(1,13))),
+            }
+
+    # lista de funcionários ativos para o select
+    try:
+        all_funcs = supabase.table("tab_cad") \
+            .select("matricula, nome, nomer") \
+            .eq("id_empresa", id_empresa) \
+            .eq("situacao", "A") \
+            .order("nome") \
+            .execute().data or []
+    except Exception:
+        all_funcs = []
+    for f in all_funcs:
+        f["nome_fmt"] = (f.get("nomer") or f.get("nome") or "").strip()
+
+    return render_template(
+        "F10_Rel_Ficha_Financeira.html",
+        **_ctx_relatorio(),
+        mat=mat_raw,
+        ano=ano,
+        anos_disponiveis=anos_disponiveis,
+        MESES=MESES,
+        func=func,
+        all_funcs=all_funcs,
+        verbas=verbas,
+        totais=totais,
+        tot_anual=tot_anual,
+        erro=erro,
+    )
+
+
+@app.route("/rel_ficha_financeira_pdf")
+def rel_ficha_financeira_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    ano_atual  = datetime.now().year
+    MESES_ABR  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
+
+    def ff_fmt(centavos):
+        if not centavos:
+            return "—"
+        v = centavos / 100
+        return f"{v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+    mat_raw = request.args.get("mat", "").strip()
+    try:
+        ano = int(request.args.get("ano", ano_atual))
+    except ValueError:
+        ano = ano_atual
+
+    if not mat_raw.isdigit():
+        return redirect("/rel_ficha_financeira")
+    mat_int = int(mat_raw)
+
+    # ── dados funcionário ──
+    try:
+        r = supabase.table("tab_cad") \
+            .select("matricula, nome, nomer") \
+            .eq("id_empresa", id_empresa) \
+            .eq("matricula", mat_int) \
+            .limit(1).execute()
+        func = r.data[0] if r.data else None
+    except Exception:
+        func = None
+    if not func:
+        return redirect("/rel_ficha_financeira")
+
+    nome_func = (func.get("nomer") or func.get("nome") or "").strip()
+    mat_fmt   = f"{mat_int:06d}"
+
+    anomes_ini = int(f"{ano}01")
+    anomes_fim = int(f"{ano}12")
+
+    # ── tab_mov ──
+    try:
+        q = supabase.table("tab_mov") \
+            .select("cod_verba, valor, folha") \
+            .eq("id_empresa", id_empresa) \
+            .eq("matricula", mat_int) \
+            .eq("situacao", "A") \
+            .gte("folha", anomes_ini) \
+            .lte("folha", anomes_fim)
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        mov_data = q.execute().data or []
+    except Exception:
+        mov_data = []
+
+    agg = {}
+    for m in mov_data:
+        cod   = int(m.get("cod_verba") or 0)
+        folha = int(m.get("folha") or 0)
+        mes   = folha % 100
+        val   = int(m.get("valor") or 0)
+        if cod and 1 <= mes <= 12:
+            if cod not in agg:
+                agg[cod] = [0] * 12
+            agg[cod][mes - 1] += val
+
+    rubrica_info = {}
+    if agg:
+        try:
+            cli_ids = [0] + ([id_cliente] if id_cliente else [])
+            r_rub = supabase.table("tab_rubrica") \
+                .select("cod_rubr, dsc_rubr, tp_rubr, id_cliente") \
+                .in_("id_cliente", cli_ids) \
+                .in_("cod_rubr", list(agg.keys())) \
+                .eq("situacao", "A") \
+                .execute()
+            for row in (r_rub.data or []):
+                cod = int(row.get("cod_rubr") or 0)
+                if cod not in rubrica_info or int(row.get("id_cliente") or 0) != 0:
+                    rubrica_info[cod] = {
+                        "dsc": row.get("dsc_rubr") or f"Verba {cod}",
+                        "tp":  str(row.get("tp_rubr") or "1"),
+                    }
+        except Exception:
+            pass
+
+    prov, desc = [], []
+    for cod, vals in sorted(agg.items()):
+        info  = rubrica_info.get(cod, {"dsc": f"Verba {cod}", "tp": "1"})
+        entry = {"dsc": info["dsc"], "tp": info["tp"], "vals": vals, "total": sum(vals)}
+        (prov if info["tp"] == "1" else desc).append(entry)
+    verbas = prov + desc
+
+    # totais do tab_total
+    try:
+        q = supabase.table("tab_total") \
+            .select("folha, valor_total_proventos, valor_total_descontos, valor_liquido") \
+            .eq("id_empresa", id_empresa) \
+            .eq("matricula", mat_int) \
+            .gte("folha", anomes_ini) \
+            .lte("folha", anomes_fim)
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        tot_data = q.execute().data or []
+    except Exception:
+        tot_data = []
+
+    tot_mes = {}
+    for t in tot_data:
+        ft  = int(t.get("folha") or 0)
+        mes = ft % 100
+        if 1 <= mes <= 12:
+            if mes not in tot_mes:
+                tot_mes[mes] = {"prov": 0, "desc": 0, "liq": 0}
+            tot_mes[mes]["prov"] += int(t.get("valor_total_proventos") or 0)
+            tot_mes[mes]["desc"] += int(t.get("valor_total_descontos") or 0)
+            tot_mes[mes]["liq"]  += int(t.get("valor_liquido") or 0)
+
+    # ── ReportLab ──
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+    titulo     = f"Ficha Financeira — {mat_fmt}  {nome_func}  —  Exercício {ano}"
+
+    buf  = BytesIO()
+    page = landscape(A4)
+    W    = page[0] - 3*cm   # largura útil (margens 1.5cm cada lado)
+    doc  = SimpleDocTemplate(buf, pagesize=page,
+                             leftMargin=1.5*cm, rightMargin=1.5*cm,
+                             topMargin=1.8*cm,  bottomMargin=1.5*cm)
+
+    c_navy   = colors.HexColor("#0b1f3a")
+    c_prov   = colors.HexColor("#166534")
+    bg_prov  = colors.HexColor("#f0fdf4")
+    c_desc   = colors.HexColor("#991b1b")
+    bg_desc  = colors.HexColor("#fff7f7")
+    c_sec    = colors.HexColor("#f8fafc")
+    c_border = colors.HexColor("#dde3ec")
+    c_gray   = colors.HexColor("#64748b")
+    c_total  = colors.HexColor("#eaf1fb")
+
+    def P(txt, fn="Helvetica", fs=7, col=colors.black, align=0):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, textColor=col,
+                            alignment=align, leading=fs + 1)
+        return Paragraph(str(txt), st)
+
+    # larguras: nome (5cm) + 12 meses + total (2.2cm)
+    col_nm = 5.0 * cm
+    col_tot = 2.2 * cm
+    col_m  = (W - col_nm - col_tot) / 12
+    col_ws = [col_nm] + [col_m] * 12 + [col_tot]
+
+    # linha de cabeçalho dos meses
+    hdr_row = [P("Verba", fn="Helvetica-Bold", fs=7)] \
+            + [P(m, fn="Helvetica-Bold", fs=7, align=2) for m in MESES_ABR] \
+            + [P("Total", fn="Helvetica-Bold", fs=7, align=2)]
+
+    tbl_data   = [hdr_row]
+    tbl_styles = [
+        ("BACKGROUND", (0, 0), (-1, 0), c_navy),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+        ("LINEBELOW",  (0, 0), (-1, 0), 0.5, c_border),
+        ("FONTSIZE",   (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+    ]
+
+    # separador PROVENTOS
+    if prov:
+        ri = len(tbl_data)
+        tbl_data.append([P("PROVENTOS", fn="Helvetica-Bold", fs=6, col=c_prov)] + [""] * 13)
+        tbl_styles += [
+            ("SPAN",       (0, ri), (-1, ri)),
+            ("BACKGROUND", (0, ri), (-1, ri), bg_prov),
+            ("LINEBELOW",  (0, ri), (-1, ri), 0.3, c_border),
+        ]
+        for v in prov:
+            ri = len(tbl_data)
+            row = [P(v["dsc"])] \
+                + [P(ff_fmt(x), align=2) for x in v["vals"]] \
+                + [P(ff_fmt(v["total"]), fn="Helvetica-Bold", align=2)]
+            tbl_data.append(row)
+            tbl_styles.append(("LINEBELOW", (0, ri), (-1, ri), 0.2, colors.HexColor("#e5e7eb")))
+
+    # separador DESCONTOS
+    if desc:
+        ri = len(tbl_data)
+        tbl_data.append([P("DESCONTOS", fn="Helvetica-Bold", fs=6, col=c_desc)] + [""] * 13)
+        tbl_styles += [
+            ("SPAN",       (0, ri), (-1, ri)),
+            ("BACKGROUND", (0, ri), (-1, ri), bg_desc),
+            ("LINEBELOW",  (0, ri), (-1, ri), 0.3, c_border),
+        ]
+        for v in desc:
+            ri = len(tbl_data)
+            row = [P(v["dsc"])] \
+                + [P(ff_fmt(x), align=2) for x in v["vals"]] \
+                + [P(ff_fmt(v["total"]), fn="Helvetica-Bold", align=2)]
+            tbl_data.append(row)
+            tbl_styles.append(("LINEBELOW", (0, ri), (-1, ri), 0.2, colors.HexColor("#e5e7eb")))
+
+    # linhas de totais do tab_total
+    for label, key in [("Total Proventos","prov"),("Total Descontos","desc"),("Líquido","liq")]:
+        ri = len(tbl_data)
+        row = [P(label, fn="Helvetica-Bold", fs=7)] \
+            + [P(ff_fmt(tot_mes.get(m,{}).get(key,0)), fn="Helvetica-Bold", align=2)
+               for m in range(1,13)] \
+            + [P(ff_fmt(sum(tot_mes.get(m,{}).get(key,0) for m in range(1,13))),
+                 fn="Helvetica-Bold", align=2)]
+        tbl_data.append(row)
+        tbl_styles += [
+            ("BACKGROUND", (0, ri), (-1, ri), c_total),
+            ("LINEABOVE",  (0, ri), (-1, ri), 0.5, c_border),
+        ]
+
+    tbl = Table(tbl_data, colWidths=col_ws, repeatRows=1)
+    tbl.setStyle(TableStyle(tbl_styles))
+
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, f"Exercício {ano}"),
+             Spacer(1, 6), tbl]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="FichaFinanceira_{mat_fmt}_{ano}.pdf"'
+    return resp
+
+
 @app.route("/rel_sal_aumento")
 def rel_sal_aumento():
     if not session.get("logado"):
@@ -11462,9 +11979,14 @@ def _pdf_num_pagina(canvas, doc):
     canvas.restoreState()
 
 
-def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id_cliente=None, on_func=None, anomes_tipo="N"):
+def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id_cliente=None, on_func=None, anomes_tipo="N", on_aviso=None):
     """Grava um PDF individual por funcionário em C:\\Folha10-Simples_Memoria. Silencioso.
-    on_func(i, total, matricula, nome) é chamado antes de processar cada funcionário."""
+    on_func(i, total, matricula, nome) é chamado antes de processar cada funcionário.
+    on_aviso(msg) é chamado para erros não fatais (ex: falha no tab_total)."""
+    def _aviso(msg):
+        print(msg)
+        if on_aviso:
+            on_aviso(msg)
     if not linhas or len(anomes) != 6:
         return
 
@@ -11601,6 +12123,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         (supabase.table("tab_mov")
          .delete()
+         .eq("id_cliente", id_cliente)
          .eq("id_empresa", id_empresa)
          .eq("folha", int(anomes))
          .eq("folha_tipo", _folha_tipo_mov)
@@ -11612,6 +12135,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         (supabase.table("tab_total")
          .delete()
+         .eq("id_cliente", id_cliente)
          .eq("id_empresa", id_empresa)
          .eq("folha", int(anomes))
          .eq("folha_tipo", anomes_tipo)
@@ -11623,6 +12147,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         (supabase.table("tab_esocial")
          .delete()
+         .eq("id_cliente", id_cliente)
          .eq("id_empresa", id_empresa)
          .eq("ano_mes", int(anomes))
          .eq("folha_tipo", anomes_tipo)
@@ -12498,15 +13023,15 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 base_inss_com = (min(int(base_inss), inss_teto)
                                  if inss_teto and int(base_inss) > inss_teto
                                  else int(base_inss))
-                supabase.table("tab_total").insert({
+                rec_total = {
                     "id_cliente":                id_cliente,
                     "id_empresa":                id_empresa,
                     "situacao":                  "A",
                     "matricula":                 matr,
                     "folha":                     int(anomes),
                     "folha_tipo":                anomes_tipo,
-                    "valor_base_inss_semLimite": int(base_inss),
-                    "valor_base_inss_comLimite": base_inss_com,
+                    "valor_base_inss_semlimite": int(base_inss),
+                    "valor_base_inss_comlimite": base_inss_com,
                     "valor_inss_retido":         inss_val,
                     "valor_base_fgts":           int(base_fgts_func),
                     "valor_fgts":                fgts_func,
@@ -12520,9 +13045,18 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     "valor_liquido":             int(total_prov - total_desc),
                     "os":                        0,
                     "controle":                  0,
-                }).execute()
+                }
+                try:
+                    supabase.table("tab_total").insert(rec_total).execute()
+                except Exception as e1:
+                    # tenta sem a coluna situacao (pode não existir na tabela)
+                    rec_sem_sit = {k: v for k, v in rec_total.items() if k != "situacao"}
+                    try:
+                        supabase.table("tab_total").insert(rec_sem_sit).execute()
+                    except Exception as e2:
+                        _aviso(f"[tab_total INSERT] mat={matr} erro={e2} | erro original={e1}")
             except Exception as e_tot:
-                print(f"[tab_total INSERT] mat={matr} erro: {e_tot}")
+                _aviso(f"[tab_total INSERT] mat={matr} erro preparação: {e_tot}")
 
             # Grava S-1200 e S-1210 no tab_esocial
             try:
@@ -12561,8 +13095,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                       onLaterPages=_pdf_num_pagina)
             with open(caminho, "wb") as fh:
                 fh.write(buf.getvalue())
-        except Exception:
-            pass
+        except Exception as e_loop:
+            _aviso(f"[CALCULO ERRO] mat={matr} erro={e_loop}")
 
 
 @app.route("/calcular_folha")
@@ -12638,7 +13172,8 @@ def calcular_folha_stream():
 
             _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm,
                                     linhas, id_cliente=id_cliente, on_func=progress_cb,
-                                    anomes_tipo=anomes_tipo)
+                                    anomes_tipo=anomes_tipo,
+                                    on_aviso=lambda msg: q.put(json.dumps({"tipo":"aviso","msg":msg}, ensure_ascii=False)))
 
             try:
                 tipo_desc = {"N": "Normal", "F": "Ferias", "R": "Rescisao"}.get(anomes_tipo, anomes_tipo)

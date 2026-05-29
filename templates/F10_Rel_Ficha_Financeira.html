@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Ficha Financeira</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+
+.topo {
+    background: #0b1f3a; border-bottom: 1px solid #1e3d5c;
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 24px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-esq  { display: flex; flex-direction: column; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: #8baac8; margin-top: 2px; }
+.topo-centro  { text-align: center; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: #e8edf4; }
+.topo-badge   { display: inline-block; margin-top: 4px; font-size: 11px;
+                background: #1e3d5c; color: #8baac8; border-radius: 10px; padding: 2px 10px; }
+.topo-dir  { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topo-logo { font-family: 'IBM Plex Mono', monospace; font-size: 14px; font-weight: 500; color: #2a7de1; }
+.topo-versao { font-size: 10px; color: #8baac8; }
+.btn-voltar-topo {
+    background: transparent; border: 1px solid #1e3d5c; color: #8baac8;
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #e8edf4; }
+
+.container { max-width: 1200px; margin: 24px auto; padding: 0 18px 40px; }
+
+/* Filtros */
+.filtros {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    padding: 16px 20px; margin-bottom: 16px;
+    display: flex; align-items: flex-end; gap: 20px; flex-wrap: wrap;
+}
+.filtro-campo { display: flex; flex-direction: column; gap: 5px; }
+.filtro-label { font-size: 11px; font-weight: 600; color: #475569; }
+.filtro-select {
+    height: 36px; padding: 0 10px; border-radius: 8px;
+    border: 1px solid #cbd5e1; font-size: 13px; color: #1f2937;
+    background: white; outline: none; cursor: pointer; max-width: 360px;
+}
+.btn-gerar {
+    height: 36px; padding: 0 22px; border-radius: 8px;
+    background: #2563eb; color: white; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; transition: 0.15s;
+}
+.btn-gerar:hover { background: #1d4ed8; }
+
+/* Info funcionário */
+.func-info {
+    background: white; border-radius: 10px; border: 1px solid #e5e7eb;
+    padding: 10px 20px; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 16px;
+}
+.func-mat  { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #64748b; }
+.func-nome { font-size: 15px; font-weight: 600; color: #0f172a; }
+.func-sit  { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+.sit-A { background: #dcfce7; color: #166534; }
+.sit-D { background: #fee2e2; color: #991b1b; }
+
+/* Tabela */
+.card {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden;
+}
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; min-width: 900px; }
+
+thead th {
+    background: #0b1f3a; color: #e8edf4;
+    padding: 8px 10px; font-size: 11px; font-weight: 600;
+    white-space: nowrap; border-bottom: 2px solid #1e3d5c;
+    text-align: right;
+}
+thead th.col-verba { text-align: left; min-width: 180px; }
+thead th.col-mes   { min-width: 72px; }
+thead th.col-total { min-width: 82px; background: #1e3d5c; }
+
+/* Linhas separadoras de seção */
+.sec-prov td {
+    background: #f0fdf4; color: #166534; font-size: 10px; font-weight: 700;
+    padding: 4px 10px; letter-spacing: 0.5px;
+    border-top: 1px solid #bbf7d0; border-bottom: 1px solid #bbf7d0;
+}
+.sec-desc td {
+    background: #fff7f7; color: #991b1b; font-size: 10px; font-weight: 700;
+    padding: 4px 10px; letter-spacing: 0.5px;
+    border-top: 1px solid #fecaca; border-bottom: 1px solid #fecaca;
+}
+
+/* Linhas de verbas */
+tbody tr.row-verba td {
+    padding: 5px 10px; font-size: 12px;
+    border-bottom: 1px solid #f1f5f9;
+    text-align: right;
+}
+tbody tr.row-verba td.col-verba { text-align: left; color: #334155; }
+tbody tr.row-verba:hover td { background: #f8fafc; }
+.val-zero { color: #cbd5e1; }
+.val-num  { font-family: 'IBM Plex Mono', monospace; font-size: 11px; }
+.val-total { font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+             font-weight: 700; background: #f8fafc; }
+
+/* Linhas de totais */
+tr.row-total-prov td, tr.row-total-desc td, tr.row-liquido td {
+    padding: 6px 10px; font-size: 12px; font-weight: 700;
+    text-align: right; font-family: 'IBM Plex Mono', monospace;
+    border-top: 1px solid #dde3ec;
+}
+tr.row-total-prov td { background: #f0fdf4; color: #166534; }
+tr.row-total-prov td.col-verba { text-align: left; font-family: 'IBM Plex Sans', sans-serif; }
+tr.row-total-desc td { background: #fff7f7; color: #991b1b; }
+tr.row-total-desc td.col-verba { text-align: left; font-family: 'IBM Plex Sans', sans-serif; }
+tr.row-liquido td { background: #eaf1fb; color: #1d4ed8; border-top: 2px solid #2a7de1; }
+tr.row-liquido td.col-verba { text-align: left; font-family: 'IBM Plex Sans', sans-serif; }
+
+/* Linhas de bases de cálculo */
+tr.row-base td {
+    padding: 5px 10px; font-size: 11px;
+    text-align: right; font-family: 'IBM Plex Mono', monospace;
+    border-bottom: 1px solid #f1f5f9; color: #475569;
+    background: #f8fafc;
+}
+tr.row-base td.col-verba {
+    text-align: left; font-family: 'IBM Plex Sans', sans-serif;
+    color: #64748b; font-size: 11px; padding-left: 18px;
+}
+tr.row-base-header td {
+    padding: 4px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+    background: #f1f5f9; color: #475569;
+    border-top: 1px solid #dde3ec; border-bottom: 1px solid #dde3ec;
+}
+
+/* Vazio / erro */
+.msg-centro { padding: 48px; text-align: center; font-size: 13px; color: #94a3b8; }
+.msg-erro { padding: 16px 20px; background: #fee2e2; color: #991b1b;
+            border-radius: 8px; font-size: 13px; margin-bottom: 14px; }
+
+/* Rodapé */
+.rodape { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #991b1b; color: white; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+}
+.btn-pdf:hover { background: #7f1d1d; }
+.btn-menu {
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; transition: 0.15s; text-decoration: none;
+    display: inline-flex; align-items: center;
+}
+.btn-menu:hover { background: #d1d5db; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-centro">
+        <div class="topo-titulo">Ficha Financeira</div>
+        <span class="topo-badge">Movimentação Anual</span>
+    </div>
+    <div class="topo-dir">
+        <span class="topo-logo">Folha10·Simples</span>
+        <span class="topo-versao">Versão: {{ versao }}</span>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="container">
+
+    <form method="get" action="/rel_ficha_financeira">
+        <div class="filtros">
+            <div class="filtro-campo">
+                <span class="filtro-label">Funcionário</span>
+                <select class="filtro-select" name="mat" style="width:320px">
+                    <option value="">— Selecione —</option>
+                    {% for f in all_funcs %}
+                    <option value="{{ f.matricula }}"
+                        {% if f.matricula|string == mat %}selected{% endif %}>
+                        {{ "%06d"|format(f.matricula) }} — {{ f.nome_fmt }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="filtro-campo">
+                <span class="filtro-label">Ano</span>
+                <select class="filtro-select" name="ano">
+                    {% for a in anos_disponiveis %}
+                    <option value="{{ a }}" {% if a == ano %}selected{% endif %}>{{ a }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn-gerar">Gerar</button>
+        </div>
+    </form>
+
+    {% if erro %}
+    <div class="msg-erro">{{ erro }}</div>
+    {% endif %}
+
+    {% if func %}
+    <div class="func-info">
+        <span class="func-mat">{{ "%06d"|format(func.matricula) }}</span>
+        <span class="func-nome">{{ func.nome_fmt }}</span>
+        <span class="func-sit {{ 'sit-A' if func.situacao == 'A' else 'sit-D' }}">
+            {{ 'Ativo' if func.situacao == 'A' else 'Desligado' }}
+        </span>
+    </div>
+    {% endif %}
+
+    {% if func %}
+    <div class="card">
+        <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th class="col-verba">Verba</th>
+                    {% for m in MESES %}
+                    <th class="col-mes">{{ m }}</th>
+                    {% endfor %}
+                    <th class="col-total">Total Ano</th>
+                </tr>
+            </thead>
+            <tbody>
+
+            {% set prov_verbas = verbas | selectattr("tp","eq","1") | list %}
+            {% set desc_verbas = verbas | selectattr("tp","ne","1") | list %}
+
+            {% if prov_verbas %}
+            <tr class="sec-prov"><td colspan="14">PROVENTOS</td></tr>
+            {% for v in prov_verbas %}
+            <tr class="row-verba">
+                <td class="col-verba">{{ v.dsc }}</td>
+                {% for val in v.vals_fmt %}
+                <td class="{{ 'val-zero' if val == '—' else 'val-num' }}">{{ val }}</td>
+                {% endfor %}
+                <td class="val-total">{{ v.total_fmt }}</td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+
+            {% if desc_verbas %}
+            <tr class="sec-desc"><td colspan="14">DESCONTOS</td></tr>
+            {% for v in desc_verbas %}
+            <tr class="row-verba">
+                <td class="col-verba">{{ v.dsc }}</td>
+                {% for val in v.vals_fmt %}
+                <td class="{{ 'val-zero' if val == '—' else 'val-num' }}">{{ val }}</td>
+                {% endfor %}
+                <td class="val-total">{{ v.total_fmt }}</td>
+            </tr>
+            {% endfor %}
+            {% endif %}
+
+            {% if not verbas %}
+            <tr><td colspan="14" class="msg-centro">Nenhum movimento encontrado para este período.</td></tr>
+            {% else %}
+            <tr class="row-total-prov">
+                <td class="col-verba">Total Proventos</td>
+                {% for t in totais %}<td>{{ t.prov_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.prov_fmt }}</td>
+            </tr>
+            <tr class="row-total-desc">
+                <td class="col-verba">Total Descontos</td>
+                {% for t in totais %}<td>{{ t.desc_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.desc_fmt }}</td>
+            </tr>
+            <tr class="row-liquido">
+                <td class="col-verba">Líquido</td>
+                {% for t in totais %}<td>{{ t.liq_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.liq_fmt }}</td>
+            </tr>
+            <tr class="row-base-header">
+                <td colspan="14">BASES DE CÁLCULO</td>
+            </tr>
+            <tr class="row-base">
+                <td class="col-verba">Base INSS (sem limite)</td>
+                {% for t in totais %}<td>{{ t.inss_sem_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.inss_sem_fmt }}</td>
+            </tr>
+            <tr class="row-base">
+                <td class="col-verba">Base INSS (com limite)</td>
+                {% for t in totais %}<td>{{ t.inss_com_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.inss_com_fmt }}</td>
+            </tr>
+            <tr class="row-base">
+                <td class="col-verba">Base IRRF</td>
+                {% for t in totais %}<td>{{ t.irrf_base_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.irrf_base_fmt }}</td>
+            </tr>
+            <tr class="row-base">
+                <td class="col-verba">Base FGTS</td>
+                {% for t in totais %}<td>{{ t.fgts_base_fmt }}</td>{% endfor %}
+                <td>{{ tot_anual.fgts_base_fmt }}</td>
+            </tr>
+            {% endif %}
+
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <div class="rodape">
+        <a class="btn-pdf"
+           href="/rel_ficha_financeira_pdf?mat={{ mat }}&ano={{ ano }}"
+           target="_blank">&#128438; PDF</a>
+        <a class="btn-menu" href="/menu">Voltar ao Menu</a>
+    </div>
+
+    {% else %}
+    <div class="msg-centro">
+        {% if not mat %}
+        Informe a matrícula e o ano para gerar a ficha financeira.
+        {% endif %}
+    </div>
+    <div class="rodape" style="justify-content: flex-end;">
+        <a class="btn-menu" href="/menu">Voltar ao Menu</a>
+    </div>
+    {% endif %}
+
+</div>
+</body>
+</html>
