@@ -355,7 +355,7 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
             {{ total }} remessa{{ 's' if total != 1 else '' }} encontrada{{ 's' if total != 1 else '' }}
         </span>
         {% if total > 0 %}
-        <button class="btn-pdf" onclick="window.print()">&#128438; Imprimir em PDF</button>
+        <button class="btn-pdf" onclick="window.open('/rel_esocial_remessas_pdf' + window.location.search, '_blank')">&#128438; Imprimir em PDF</button>
         {% endif %}
     </div>
 

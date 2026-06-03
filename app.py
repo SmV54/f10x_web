@@ -914,6 +914,1058 @@ def rel_lista_funcionarios_pdf():
     return resp
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF helper — generic table PDF (retorna Flask response inline)
+# ─────────────────────────────────────────────────────────────────────────────
+def _pdf_tabela(titulo, headers, col_widths_cm, data_rows, empresa_nm, cnpj_fmt,
+                subtitulo="", landscape=False, filename="relatorio.pdf"):
+    from io import BytesIO
+    from flask import make_response
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4, landscape as rl_landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    def P(txt, fn="Helvetica", fs=7, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    pagesize = rl_landscape(A4) if landscape else A4
+    page_w   = pagesize[0] - 4*cm
+    buf      = BytesIO()
+    doc      = SimpleDocTemplate(buf, pagesize=pagesize,
+                                 leftMargin=2*cm, rightMargin=2*cm,
+                                 topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    tbl_data = [[P(h, fn="Helvetica-Bold") for h in headers]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    for row in data_rows:
+        tbl_data.append([P(str(c) if c is not None else "—") for c in row])
+
+    tbl    = Table(tbl_data, colWidths=[w*cm for w in col_widths_cm], repeatRows=1)
+    row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
+              for i in range(1, len(tbl_data))]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    rodape = P(f"Total: {len(data_rows)} registro(s)", fn="Helvetica", fs=7,
+               col=colors.HexColor("#64748b"), align=2)
+    story  = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, page_width=page_w)]
+    if subtitulo:
+        story += [Spacer(1, 4), P(subtitulo, fn="Helvetica", fs=8, col=colors.HexColor("#64748b"))]
+    story += [Spacer(1, 8), tbl, Spacer(1, 6), rodape]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="{filename}"'
+    return resp
+
+
+@app.route("/rel_funcoes_pdf")
+def rel_funcoes_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    cpf_cliente        = session.get("cpf", "")
+    cnpj_empresa_atual = so_numeros(session.get("cnpj_empresa", ""))
+    funcoes_cli        = listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa_atual)
+    funcoes_total      = listar_funcoes_total()
+    mapa               = {str(f["id"]): f for f in funcoes_total}
+
+    lista = sorted([{
+        "cbo":           mapa.get(str(f.get("idfuncao_total")), {}).get("cbo", ""),
+        "nome_resumido": f.get("nome_resumido", ""),
+    } for f in funcoes_cli], key=lambda x: x["nome_resumido"].upper())
+
+    rows = [[f["cbo"], f["nome_resumido"]] for f in lista]
+    return _pdf_tabela("Listagem de Funções",
+                       ["CBO", "Função"], [2.5, 14.5], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       filename="Funcoes.pdf")
+
+
+@app.route("/rel_verbas_pdf")
+def rel_verbas_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_cliente = session.get("id_cliente")
+    r = supabase.table("tab_rubrica").select("cod_rubr,dsc_rubr,tp_rubr") \
+        .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").order("cod_rubr").execute()
+    lista = r.data or []
+
+    TP_LABEL = {"1": "Provento", "2": "Desconto", "3": "Informativo", "4": "Inf. Dedutível"}
+    rows = [[f"{int(v.get('cod_rubr') or 0):04d}",
+             v.get("dsc_rubr") or "",
+             TP_LABEL.get(str(v.get("tp_rubr") or ""), str(v.get("tp_rubr") or ""))]
+            for v in lista]
+    return _pdf_tabela("Listagem de Rubricas (Verbas)",
+                       ["Código", "Descrição", "Tipo"], [2.0, 11.0, 4.0], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       filename="Verbas.pdf")
+
+
+@app.route("/rel_dependentes_pdf")
+def rel_dependentes_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa    = _get_id_empresa()
+    matricula     = request.args.get("matricula", "").strip()
+    classificacao = request.args.get("classificacao", "N")
+    depirrf       = request.args.get("depirrf", "")
+
+    tipos_dep = {}
+    try:
+        r = supabase.table("tab_tabela_total").select("codigo,texto").eq("num_tabela", 7).execute()
+        for t in (r.data or []):
+            tipos_dep[str(t["codigo"]).zfill(2)] = t["texto"]
+    except Exception:
+        pass
+
+    try:
+        q = supabase.table("tab_dependentes").select("*").eq("id_empresa", id_empresa)
+        if matricula:
+            q = q.eq("matricula", int(matricula))
+        if depirrf:
+            q = q.eq("depirrf", depirrf)
+        dependentes = q.execute().data or []
+    except Exception:
+        dependentes = []
+
+    nomes_func = {}
+    try:
+        mats = list({d["matricula"] for d in dependentes if d.get("matricula")})
+        if mats:
+            r2 = supabase.table("tab_cad").select("matricula,nomer,nome") \
+                .eq("id_empresa", id_empresa).in_("matricula", mats).execute()
+            for f in (r2.data or []):
+                nomes_func[int(f["matricula"])] = (f.get("nomer") or f.get("nome") or "").strip()
+    except Exception:
+        pass
+
+    if classificacao == "A":
+        dependentes.sort(key=lambda d: (d.get("nome") or "").upper())
+    else:
+        dependentes.sort(key=lambda d: (d.get("matricula") or 0, (d.get("nome") or "").upper()))
+
+    def _d8(v):
+        s = str(v or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if len(s) == 8 else "—"
+
+    def _cpf(v):
+        d = str(v or "")
+        return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}" if len(d) == 11 else (d or "—")
+
+    rows = []
+    for d in dependentes:
+        mat = d.get("matricula") or 0
+        tp2 = str(d.get("tpdep") or "").zfill(2)
+        rows.append([
+            f"{int(mat):06d}",
+            nomes_func.get(int(mat), "—"),
+            d.get("nome") or "—",
+            tipos_dep.get(tp2, tp2) if tp2 != "00" else "—",
+            _d8(d.get("dtnascto")),
+            _cpf(d.get("cpfdep")),
+            d.get("depirrf") or "N",
+            d.get("depsf")   or "N",
+        ])
+
+    sub = []
+    if matricula:
+        sub.append(f"Matrícula: {int(matricula):06d}")
+    if depirrf:
+        sub.append(f"IRRF: {depirrf}")
+    return _pdf_tabela("Listagem de Dependentes",
+                       ["Mat.", "Funcionário", "Dependente", "Tipo", "Nascimento", "CPF", "IRRF", "SF"],
+                       [2.0, 5.5, 6.0, 3.7, 2.5, 3.5, 1.25, 1.25], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=" · ".join(sub), landscape=True, filename="Dependentes.pdf")
+
+
+@app.route("/rel_ferias_func_pdf")
+def rel_ferias_func_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa    = _get_id_empresa()
+    matricula     = request.args.get("matricula",   "").strip()
+    classificacao = request.args.get("classificacao", "N")
+    data_de       = request.args.get("data_de",    "").strip()
+    data_ate      = request.args.get("data_ate",   "").strip()
+    competencia   = request.args.get("competencia","").strip()
+
+    data_de_8     = data_de.replace("-", "")   if data_de   else ""
+    data_ate_8    = data_ate.replace("-", "")  if data_ate  else ""
+    anomes_filtro = competencia.replace("-", "") if competencia else ""
+
+    try:
+        q = supabase.table("tab_eventos") \
+            .select("matricula, data1i, data1f, data2i, data2f, ref1") \
+            .eq("id_empresa", id_empresa).eq("op1", 3) \
+            .order("matricula").order("data1i")
+        if matricula:
+            q = q.eq("matricula", int(matricula))
+        if data_de_8:
+            q = q.gte("data1i", data_de_8)
+        if data_ate_8:
+            q = q.lte("data1i", data_ate_8)
+        if anomes_filtro:
+            q = q.eq("folha", int(anomes_filtro))
+        registros = q.execute().data or []
+    except Exception:
+        registros = []
+
+    nomes_func = {}
+    try:
+        mats = list({ev["matricula"] for ev in registros if ev.get("matricula")})
+        if mats:
+            r2 = supabase.table("tab_cad").select("matricula, nomer, nome") \
+                .eq("id_empresa", id_empresa).in_("matricula", mats).execute()
+            for f in (r2.data or []):
+                nomes_func[f["matricula"]] = (f.get("nomer") or f.get("nome") or "").strip()
+    except Exception:
+        pass
+
+    if classificacao == "A":
+        registros.sort(key=lambda e: (nomes_func.get(e.get("matricula"), "").upper(),
+                                      str(e.get("data1i") or "")))
+    else:
+        registros.sort(key=lambda e: (e.get("matricula") or 0, str(e.get("data1i") or "")))
+
+    def _d8(v):
+        s = str(v or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if len(s) == 8 else "—"
+
+    rows = []
+    for ev in registros:
+        mat = ev.get("matricula") or 0
+        rows.append([f"{int(mat):06d}", nomes_func.get(mat, "—"),
+                     _d8(ev.get("data1i")), _d8(ev.get("data1f")),
+                     str(ev.get("ref1") or "—"),
+                     _d8(ev.get("data2i")), _d8(ev.get("data2f"))])
+
+    sub = []
+    if matricula:
+        sub.append(f"Matrícula: {int(matricula):06d}")
+    if data_de:
+        sub.append(f"De: {data_de}")
+    if data_ate:
+        sub.append(f"Até: {data_ate}")
+    if competencia:
+        sub.append(f"Folha: {competencia}")
+    return _pdf_tabela("Listagem de Férias por Funcionário",
+                       ["Mat.", "Funcionário", "Início Gozo", "Fim Gozo", "Dias",
+                        "Início Aquis.", "Fim Aquis."],
+                       [2.0, 8.0, 2.5, 2.5, 1.7, 4.5, 4.5], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=" · ".join(sub), landscape=True,
+                       filename="Ferias_Funcionarios.pdf")
+
+
+@app.route("/rel_faltas_pdf")
+def rel_faltas_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa    = _get_id_empresa()
+    anomes        = str(session.get("anomes_atual") or "")
+    classificacao = request.args.get("classificacao", "A").upper()
+    tipo_falta    = request.args.get("tipo_falta",   "").upper()
+    mats_raw      = request.args.get("mats",         "").strip()
+    data_de_raw   = request.args.get("data_de",      "").strip()
+    data_ate_raw  = request.args.get("data_ate",     "").strip()
+    competencia   = request.args.get("competencia",  "").strip()
+
+    mats_filtro = []
+    if mats_raw:
+        for s in mats_raw.split(","):
+            try: mats_filtro.append(int(s.strip()))
+            except ValueError: pass
+
+    periodo_modo  = "default"
+    folha_filtro  = None
+    data_de_int   = None
+    data_ate_int  = None
+    periodo_label = ""
+
+    if data_de_raw or data_ate_raw:
+        periodo_modo = "intervalo"
+        de_fmt  = (data_de_raw  or "1900-01-01").replace("-", "")
+        ate_fmt = (data_ate_raw or "2099-12-31").replace("-", "")
+        data_de_int  = int(de_fmt)
+        data_ate_int = int(ate_fmt)
+        periodo_label = (f"De {de_fmt[6:8]}/{de_fmt[4:6]}/{de_fmt[:4]}"
+                         f" a {ate_fmt[6:8]}/{ate_fmt[4:6]}/{ate_fmt[:4]}")
+    elif competencia:
+        periodo_modo  = "competencia"
+        folha_filtro  = int(competencia.replace("-", ""))
+        periodo_label = f"Competência: {competencia[5:7]}/{competencia[:4]}"
+    elif anomes:
+        folha_filtro  = int(anomes)
+        periodo_label = f"Competência: {anomes[4:6]}/{anomes[:4]} (folha ativa)"
+
+    eventos = []
+    try:
+        q = supabase.table("tab_eventos") \
+            .select("matricula, op2, data1i, campotxt4") \
+            .eq("id_empresa", id_empresa).eq("op1", 21).order("data1i")
+        if periodo_modo == "intervalo":
+            q = q.gte("data1i", data_de_int).lte("data1i", data_ate_int)
+        elif folha_filtro:
+            q = q.eq("folha", folha_filtro)
+        if tipo_falta == "I":
+            q = q.eq("op2", 1)
+        elif tipo_falta == "J":
+            q = q.eq("op2", 2)
+        if mats_filtro:
+            q = q.in_("matricula", mats_filtro)
+        eventos = q.execute().data or []
+    except Exception:
+        pass
+
+    nomes_map = {}
+    if eventos:
+        mats = list({ev["matricula"] for ev in eventos if ev.get("matricula")})
+        try:
+            r_cad = supabase.table("tab_cad").select("matricula, nome, nomer") \
+                .eq("id_empresa", id_empresa).in_("matricula", mats).execute()
+            for f in (r_cad.data or []):
+                nomes_map[f["matricula"]] = (f.get("nomer") or f.get("nome") or "").strip()
+        except Exception:
+            pass
+
+    registros = []
+    for ev in eventos:
+        d   = str(ev.get("data1i") or "")
+        mat = ev.get("matricula")
+        registros.append({
+            "matricula": mat,
+            "nome":      nomes_map.get(mat, "—"),
+            "data":      f"{d[6:8]}/{d[4:6]}/{d[:4]}" if len(d) == 8 else d,
+            "tipo":      "Justificada" if str(ev.get("op2")) == "2" else "Não Justificada",
+            "motivo":    ev.get("campotxt4") or "",
+        })
+
+    if classificacao == "N":
+        registros.sort(key=lambda x: (x["matricula"] or 0, x["data"]))
+    else:
+        registros.sort(key=lambda x: (x["nome"].upper(), x["data"]))
+
+    rows = [[f"{int(r['matricula'] or 0):06d}", r["nome"], r["data"], r["tipo"], r["motivo"]]
+            for r in registros]
+
+    sub = [periodo_label] if periodo_label else []
+    tipo_label = {"I": "NÃO Justificadas", "J": "Justificadas"}.get(tipo_falta, "")
+    if tipo_label:
+        sub.append(tipo_label)
+    return _pdf_tabela("Listagem de Faltas",
+                       ["Mat.", "Funcionário", "Data", "Tipo", "Motivo"],
+                       [2.0, 6.0, 2.5, 3.0, 3.5], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=" · ".join(sub), filename="Faltas.pdf")
+
+
+@app.route("/rel_exame_med_pdf")
+def rel_exame_med_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa   = _get_id_empresa()
+    anomes       = str(session.get("anomes_atual") or "")
+    mats_raw     = request.args.get("mats", "").strip()
+    mat_filtro   = None
+    if mats_raw:
+        try:
+            mat_filtro = int(mats_raw.split(",")[0].strip())
+        except ValueError:
+            pass
+
+    data_de_raw  = request.args.get("data_de",    "").strip()
+    data_ate_raw = request.args.get("data_ate",   "").strip()
+    competencia  = request.args.get("competencia","").strip()
+
+    periodo_modo  = "default"
+    folha_filtro  = None
+    data_de_int   = None
+    data_ate_int  = None
+    periodo_label = ""
+
+    if data_de_raw or data_ate_raw:
+        periodo_modo = "intervalo"
+        de_fmt  = (data_de_raw  or "1900-01-01").replace("-", "")
+        ate_fmt = (data_ate_raw or "2099-12-31").replace("-", "")
+        data_de_int  = int(de_fmt)
+        data_ate_int = int(ate_fmt)
+        periodo_label = (f"De {de_fmt[6:8]}/{de_fmt[4:6]}/{de_fmt[:4]}"
+                         f" a {ate_fmt[6:8]}/{ate_fmt[4:6]}/{ate_fmt[:4]}")
+    elif competencia:
+        periodo_modo  = "competencia"
+        folha_filtro  = int(competencia.replace("-", ""))
+        periodo_label = f"Competência: {competencia[5:7]}/{competencia[:4]}"
+    elif anomes:
+        folha_filtro  = int(anomes)
+        periodo_label = f"Competência: {anomes[4:6]}/{anomes[:4]} (folha ativa)"
+
+    eventos = []
+    try:
+        q = supabase.table("tab_eventos") \
+            .select("matricula, data1i, campotxt1, campotxt2, campotxt3, campotxt4") \
+            .eq("id_empresa", id_empresa).eq("op1", 106).order("data1i", desc=True)
+        if periodo_modo == "intervalo":
+            q = q.gte("data1i", data_de_int).lte("data1i", data_ate_int)
+        elif folha_filtro:
+            q = q.eq("folha", folha_filtro)
+        if mat_filtro:
+            q = q.eq("matricula", mat_filtro)
+        eventos = q.execute().data or []
+    except Exception:
+        pass
+
+    nomes_map = {}
+    if eventos:
+        mats = list({ev["matricula"] for ev in eventos if ev.get("matricula")})
+        try:
+            r_cad = supabase.table("tab_cad").select("matricula, nome, nomer") \
+                .eq("id_empresa", id_empresa).in_("matricula", mats).execute()
+            for f in (r_cad.data or []):
+                nomes_map[f["matricula"]] = (f.get("nomer") or f.get("nome") or "").strip()
+        except Exception:
+            pass
+
+    rows = []
+    for ev in eventos:
+        d    = str(ev.get("data1i") or "")
+        mat  = ev.get("matricula")
+        txt2 = str(ev.get("campotxt2") or "")
+        txt4 = str(ev.get("campotxt4") or "")
+        if txt2.startswith("resAso="):
+            _p  = dict(x.split("=", 1) for x in txt2.split("/") if "=" in x)
+            res = _p.get("resAso", "")
+        else:
+            res = txt2.replace("RESULTADO=", "")
+        rows.append([
+            f"{int(mat or 0):06d}",
+            nomes_map.get(mat, "—"),
+            f"{d[6:8]}/{d[4:6]}/{d[:4]}" if len(d) == 8 else d,
+            str(ev.get("campotxt1") or ""),
+            res[:30],
+            txt4[:30].strip(),
+            txt4[50:60].strip(),
+        ])
+
+    sub = [periodo_label] if periodo_label else []
+    if mat_filtro:
+        sub.append(f"Matrícula: {mat_filtro:06d}")
+    return _pdf_tabela("Exames Médicos",
+                       ["Mat.", "Funcionário", "Data", "Procedimento", "Resultado",
+                        "Médico", "CRM"],
+                       [2.0, 7.0, 2.5, 4.0, 3.5, 4.5, 2.2], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=" · ".join(sub), landscape=True,
+                       filename="ExamesMedicos.pdf")
+
+
+@app.route("/rel_mov_pdf")
+def rel_mov_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes_sess = str(session.get("anomes_atual") or "")
+    mats_str    = request.args.get("mats",        "").strip()
+    competencia = request.args.get("competencia", "").strip()
+    cod_verba_s = request.args.get("cod_verba",   "").strip()
+
+    if competencia and len(competencia) == 7:
+        folha_int     = int(competencia.replace("-", ""))
+        periodo_label = f"{competencia[5:7]}/{competencia[:4]}"
+    elif anomes_sess:
+        folha_int     = int(anomes_sess)
+        periodo_label = f"{anomes_sess[4:6]}/{anomes_sess[:4]}"
+    else:
+        folha_int     = 0
+        periodo_label = ""
+
+    mats_filtro      = [int(m) for m in mats_str.split(",") if m.strip().isdigit()] if mats_str else []
+    cod_verba_filtro = int(cod_verba_s) if cod_verba_s.isdigit() else None
+
+    if not folha_int:
+        from flask import make_response as _mr
+        r = _mr("Nenhuma competência definida."); r.headers["Content-Type"] = "text/plain"
+        return r, 400
+
+    try:
+        q = supabase.table("tab_mov") \
+            .select("matricula, cod_verba, qtd, valor, folha_tipo, folha") \
+            .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente) \
+            .eq("situacao", "A").eq("folha", folha_int)
+        if mats_filtro:
+            q = q.in_("matricula", mats_filtro)
+        if cod_verba_filtro:
+            q = q.eq("cod_verba", cod_verba_filtro)
+        registros_raw = q.order("matricula").order("cod_verba").execute().data or []
+    except Exception:
+        registros_raw = []
+
+    nomes_map  = {}
+    verbas_map = {}
+    try:
+        all_mats = list({r["matricula"] for r in registros_raw if r.get("matricula")})
+        if all_mats:
+            r_cad = supabase.table("tab_cad").select("matricula, nome, nomer") \
+                .eq("id_empresa", id_empresa).in_("matricula", all_mats).execute()
+            for f in (r_cad.data or []):
+                nomes_map[f["matricula"]] = (f.get("nomer") or f.get("nome") or "").strip()
+    except Exception:
+        pass
+    try:
+        all_cods = list({r["cod_verba"] for r in registros_raw if r.get("cod_verba") is not None})
+        if all_cods:
+            r_v = supabase.table("tab_rubrica") \
+                .select("cod_rubr, dsc_rubr, unid_verba, tp_rubr, id_cliente") \
+                .in_("id_cliente", [0, id_cliente]).in_("cod_rubr", all_cods).execute()
+            for v in (r_v.data or []):
+                cod = v.get("cod_rubr")
+                if cod not in verbas_map or v.get("id_cliente") != 0:
+                    verbas_map[cod] = {"dsc_rubr":   v.get("dsc_rubr")   or "",
+                                       "unid_verba": v.get("unid_verba") or "V",
+                                       "tp_rubr":    v.get("tp_rubr")    or "1"}
+    except Exception:
+        pass
+
+    def fmt_brl(c):
+        return f"{c / 100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    TIPO_LABEL = {"N": "Normal", "F": "Férias", "R": "Rescisão"}
+    rows = []
+    for reg in registros_raw:
+        mat  = reg.get("matricula")
+        cod  = reg.get("cod_verba")
+        vi   = verbas_map.get(cod, {"dsc_rubr": "", "unid_verba": "V", "tp_rubr": "1"})
+        unid = vi["unid_verba"]
+        qtd_raw   = reg.get("qtd")   or 0
+        valor_raw = reg.get("valor") or 0
+        ft        = reg.get("folha_tipo", "N")
+        fraw      = str(reg.get("folha") or folha_int)
+        folha_fmt = f"{fraw[4:6]}/{fraw[:4]}" if len(fraw) == 6 else fraw
+        if unid == "H":
+            h, m = qtd_raw // 60, qtd_raw % 60
+            entrada = f"{h:02d}:{m:02d}"
+        elif unid == "D":
+            entrada = str(qtd_raw)
+        else:
+            entrada = fmt_brl(valor_raw)
+        rows.append([f"{int(mat or 0):06d}", nomes_map.get(mat, "—"),
+                     f"{int(cod or 0):04d}", vi["dsc_rubr"], unid,
+                     TIPO_LABEL.get(ft, ft), entrada, folha_fmt])
+
+    return _pdf_tabela("Movimento Mensal",
+                       ["Mat.", "Funcionário", "Cód.", "Descrição", "Unid.",
+                        "Tipo", "Valor/Qtd.", "Folha"],
+                       [2.0, 6.0, 1.5, 7.0, 1.5, 2.0, 2.5, 3.2], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=periodo_label, landscape=True, filename="Movimento.pdf")
+
+
+@app.route("/rel_log_pdf")
+def rel_log_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from datetime import datetime as _dtt
+
+    id_cliente  = session.get("id_cliente")
+    f_matricula = request.args.get("matricula",   "").strip()
+    f_ano_mes   = request.args.get("ano_mes",     "").strip()
+    f_dt_inicio = request.args.get("dt_inicio",   "").strip()
+    f_dt_fim    = request.args.get("dt_fim",      "").strip()
+    f_cpf       = request.args.get("cpf_usuario", "").strip()
+    f_menu      = request.args.get("menu",        "").strip()
+
+    registros = []
+    try:
+        q = supabase.table("tab_log").select("*").eq("id_cliente", id_cliente)
+        if f_matricula:
+            q = q.eq("matricula", int(f_matricula))
+        if f_ano_mes:
+            q = q.eq("ano_mes", int(f_ano_mes.replace("-", "")))
+        if f_cpf:
+            q = q.eq("cpf_usuario", so_numeros(f_cpf))
+        if f_menu:
+            q = q.ilike("menu", f"%{f_menu}%")
+        if f_dt_inicio:
+            q = q.gte("data_hora_grava", f_dt_inicio.replace("-", "") + " 0000")
+        if f_dt_fim:
+            q = q.lte("data_hora_grava", f_dt_fim.replace("-", "") + " 2359")
+        registros = q.order("data_hora_grava", desc=True).limit(500).execute().data or []
+    except Exception:
+        pass
+
+    def _fdt(v):
+        if not v:
+            return "—"
+        try:
+            return _dtt.strptime(str(v).replace(" ", ""), "%Y%m%d%H%M").strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            return str(v)
+
+    def _fam(v):
+        s = str(v or "").replace("-", "")
+        return f"{s[4:6]}/{s[0:4]}" if len(s) == 6 else (s or "—")
+
+    def _fcpf(v):
+        d = so_numeros(str(v or ""))
+        return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}" if len(d) == 11 else (v or "—")
+
+    rows = []
+    for reg in registros:
+        mat = str(reg.get("matricula") or "").zfill(6) if reg.get("matricula") else "—"
+        rows.append([_fdt(reg.get("data_hora_grava")), reg.get("menu") or "—",
+                     mat, _fam(reg.get("ano_mes")), _fcpf(reg.get("cpf_usuario")),
+                     (reg.get("observacao") or "")[:80]])
+
+    return _pdf_tabela("Log de Operações",
+                       ["Data/Hora", "Módulo", "Mat.", "Mês/Ano", "CPF", "Operação"],
+                       [3.5, 3.5, 2.0, 1.8, 3.2, 11.7], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       landscape=True, filename="Log.pdf")
+
+
+@app.route("/rel_esocial_remessas_pdf")
+def rel_esocial_remessas_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa    = _get_id_empresa()
+    f_ano_mes     = request.args.get("ano_mes",     "").strip()
+    f_matricula   = request.args.get("matricula",   "").strip()
+    f_layout      = request.args.get("layout",      "").strip()
+    f_dt_cad_de   = request.args.get("dt_cad_de",  "").strip()
+    f_dt_cad_ate  = request.args.get("dt_cad_ate", "").strip()
+    f_remessa_de  = request.args.get("remessa_de",  "").strip()
+    f_remessa_ate = request.args.get("remessa_ate", "").strip()
+    f_sit_1       = request.args.get("sit_1", "")
+    f_sit_2       = request.args.get("sit_2", "")
+    f_sit_3       = request.args.get("sit_3", "")
+
+    _LAYOUTS = {
+        "2200": "S-2200 Admissão",   "2205": "S-2205 Alt.Cad.",
+        "2206": "S-2206 Alt.Cont.",  "2230": "S-2230 Afastam.",
+        "2299": "S-2299 Desligam.",  "1200": "S-1200 Remun.",
+        "1210": "S-1210 Pagam.",
+    }
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+    data = []
+    try:
+        q = supabase.table("tab_esocial").select("*").eq("id_empresa", id_empresa)
+        if f_ano_mes:
+            try:    q = q.eq("ano_mes", int(f_ano_mes))
+            except ValueError: pass
+        if f_matricula:
+            try:    q = q.eq("matricula", int(f_matricula))
+            except ValueError: pass
+        if f_layout:
+            q = q.eq("layout", f_layout)
+        if f_dt_cad_de:
+            q = q.gte("data_cad", f_dt_cad_de.replace("-", ""))
+        if f_dt_cad_ate:
+            q = q.lte("data_cad", f_dt_cad_ate.replace("-", ""))
+        if f_remessa_de:
+            q = q.gte("data_grava", f_remessa_de.replace("-", ""))
+        if f_remessa_ate:
+            q = q.lte("data_grava", f_remessa_ate.replace("-", ""))
+        raw = q.order("data_cad", desc=True).order("hora_cad", desc=True).execute().data or []
+        for r in raw:
+            recibo = (r.get("recibo")          or "").strip()
+            obs    = (r.get("observacao_erro") or "").strip()
+            dgrava = (r.get("data_grava")      or "").strip()
+            r["_sit"] = "1" if (not dgrava and not recibo) else ("3" if obs else "2")
+        sits = {s for s, f in [("1", f_sit_1), ("2", f_sit_2), ("3", f_sit_3)] if f}
+        data = [r for r in raw if not sits or r["_sit"] in sits]
+    except Exception:
+        pass
+
+    SIT_LABEL = {"1": "Pendente", "2": "Remetido", "3": "Com Erro"}
+    rows = []
+    for r in data:
+        am     = str(r.get("ano_mes")    or "")
+        lay    = str(r.get("layout")     or "").strip()
+        tp     = str(r.get("folha_tipo") or "").strip()
+        mat    = r.get("matricula")
+        recibo = (r.get("recibo") or "").strip()
+        rows.append([
+            _d8(r.get("data_cad")),
+            str(mat or "").zfill(6) if mat else "—",
+            _LAYOUTS.get(lay, f"S-{lay}" if lay else "—"),
+            "13° Sal." if tp == "1" else "Normal",
+            SIT_LABEL.get(r["_sit"], r["_sit"]),
+            _d8(r.get("data_grava")),
+            (recibo[:25] + "…") if len(recibo) > 25 else (recibo or "—"),
+        ])
+
+    return _pdf_tabela("Remessas eSocial",
+                       ["Dt. Cad.", "Mat.", "Layout", "Folha", "Situação",
+                        "Dt. Remessa", "Recibo"],
+                       [2.5, 2.0, 4.5, 2.0, 2.5, 2.5, 9.7], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       landscape=True, filename="RemessaseSocial.pdf")
+
+
+@app.route("/rel_sal_aumento_pdf")
+def rel_sal_aumento_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa       = _get_id_empresa()
+    classificacao    = request.args.get("classificacao", "A").strip()
+    apenas_alterados = request.args.get("apenas_alterados", "").upper() == "S"
+    motivo_filtro    = request.args.get("motivo", "").strip()
+    anomes_rel       = str(session.get("anomes_atual") or "")
+
+    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "9": "Salário Mínimo"}
+
+    def _fsal(c):
+        if c is None:
+            return "—"
+        return "R$ " + f"{c/100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _fdata(v):
+        s = str(v or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+    eventos = {}
+    mats_com_aumento = None
+    if apenas_alterados and len(anomes_rel) == 6:
+        try:
+            ev_q = supabase.table("tab_eventos") \
+                .select("matricula, ref1, ref2, campotxt1, campotxt2") \
+                .eq("id_empresa", id_empresa).eq("op1", 5).eq("folha", int(anomes_rel))
+            if motivo_filtro:
+                ev_q = ev_q.eq("campotxt2", motivo_filtro)
+            for ev in (ev_q.execute().data or []):
+                eventos[ev["matricula"]] = ev
+            mats_com_aumento = list(eventos.keys())
+        except Exception:
+            mats_com_aumento = []
+
+    order_map = {"N": "matricula", "D": "dtadm", "A": "nome", "S": "nome"}
+    order_col  = order_map.get(classificacao, "nome")
+
+    registros = []
+    try:
+        q = supabase.table("tab_cad").select("matricula, nome, dtadm, vrsalfx") \
+            .eq("id_empresa", id_empresa).eq("situacao", "A").order(order_col)
+        if mats_com_aumento is not None:
+            funcs = (q.in_("matricula", mats_com_aumento).execute().data or []) \
+                    if mats_com_aumento else []
+        else:
+            funcs = q.execute().data or []
+
+        for f in funcs:
+            mat   = f.get("matricula")
+            sal_at = f.get("vrsalfx") or 0
+            ev    = eventos.get(mat)
+            sal_ant = ev.get("ref1") if ev else None
+            sal_nov = ev.get("ref2") if ev else None
+            perc_txt = ev.get("campotxt1", "") if ev else ""
+            mot_txt  = MOTIVO_LABEL.get(ev.get("campotxt2", ""), "") if ev else ""
+            registros.append({
+                "mat_fmt":       str(mat).zfill(6),
+                "nome":          f.get("nome", ""),
+                "dtadm_fmt":     _fdata(f.get("dtadm")),
+                "sal_atual_fmt": _fsal(sal_at),
+                "sal_ant_fmt":   _fsal(sal_ant) if sal_ant is not None else "—",
+                "sal_nov_fmt":   _fsal(sal_nov)  if sal_nov  is not None else "—",
+                "diff_fmt":      _fsal(sal_nov - sal_ant)
+                                 if (sal_ant is not None and sal_nov is not None) else "—",
+                "perc_txt":      perc_txt,
+                "motivo":        mot_txt,
+            })
+    except Exception:
+        pass
+
+    rows = [[r["mat_fmt"], r["nome"], r["dtadm_fmt"], r["sal_ant_fmt"],
+             r["sal_nov_fmt"], r["diff_fmt"], r["perc_txt"], r["motivo"]]
+            for r in registros]
+
+    anomes_fmt   = f"{anomes_rel[4:6]}/{anomes_rel[:4]}" if len(anomes_rel) == 6 else ""
+    motivo_label = MOTIVO_LABEL.get(motivo_filtro, "") if motivo_filtro else ""
+    sub_parts    = [s for s in [anomes_fmt, motivo_label] if s]
+    if apenas_alterados:
+        sub_parts.append("Apenas com aumento")
+
+    return _pdf_tabela("Relatório de Salários — Aumentos",
+                       ["Mat.", "Funcionário", "Dt. Adm.", "Sal. Anterior",
+                        "Sal. Novo", "Diferença", "%", "Motivo"],
+                       [2.0, 6.5, 2.5, 3.0, 3.0, 3.0, 2.0, 3.2], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=" · ".join(sub_parts),
+                       landscape=True, filename="Salarios_Aumentos.pdf")
+
+
+@app.route("/rel_aumento_pdf")
+def rel_aumento_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    import calendar as _cal
+
+    id_empresa   = _get_id_empresa()
+    vigencia_raw = request.args.get("vigencia", "").strip()
+    percentual   = float(request.args.get("percentual", "0") or 0)
+    tipo         = int(request.args.get("tipo", "1") or 1)
+    motivo_raw   = request.args.get("motivo", "1").strip()
+    vr_inf       = int(request.args.get("vr_inferior", "0") or 0)
+    vr_sup       = int(request.args.get("vr_superior", "9999999999") or 9999999999)
+    mats_raw     = request.args.get("mats", "").strip()
+    mats_lista   = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()] if mats_raw else []
+
+    if len(vigencia_raw) != 6 or not vigencia_raw.isdigit():
+        vigencia_raw = str(session.get("anomes_atual") or "")
+    if len(vigencia_raw) != 6:
+        from flask import make_response as _mr
+        r = _mr("Vigência inválida."); r.headers["Content-Type"] = "text/plain"
+        return r, 400
+
+    vig_year  = int(vigencia_raw[:4])
+    vig_month = int(vigencia_raw[4:6])
+
+    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "9": "Salário Mínimo"}
+
+    def _fsal(c):
+        if c is None:
+            return "—"
+        return f"{c/100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _fdata(v):
+        s = str(v or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+    def _calcular(vrsalfx, dtadm_int):
+        if tipo == 1:
+            prop  = 1.0
+            meses = 12
+        else:
+            try:
+                s         = str(dtadm_int).zfill(8)
+                adm_year  = int(s[0:4])
+                adm_month = int(s[4:6])
+                adm_day   = int(s[6:8])
+            except Exception:
+                return vrsalfx + round(vrsalfx * percentual / 100), 1.0, 12, percentual
+            diff = (vig_year - adm_year) * 12 + (vig_month - adm_month)
+            if diff >= 12:
+                prop  = 1.0
+                meses = 12
+            else:
+                days_in_adm = _cal.monthrange(adm_year, adm_month)[1]
+                days_rem    = days_in_adm - adm_day + 1
+                if tipo == 4:
+                    count_adm = 0
+                elif tipo == 2:
+                    count_adm = 1
+                else:
+                    count_adm = 1 if days_rem > 15 else 0
+                meses = max(0, min(12, diff + count_adm))
+                prop  = meses / 12
+        perc_ap = percentual * prop
+        novo    = vrsalfx + round(vrsalfx * perc_ap / 100)
+        return novo, prop, meses, perc_ap
+
+    registros = []
+    try:
+        q = supabase.table("tab_cad").select("matricula, nome, dtadm, vrsalfx") \
+            .eq("id_empresa", id_empresa).eq("situacao", "A").order("nome")
+        if mats_lista:
+            q = q.in_("matricula", mats_lista)
+        funcs = [f for f in (q.execute().data or [])
+                 if vr_inf <= (f.get("vrsalfx") or 0) <= vr_sup]
+    except Exception:
+        funcs = []
+
+    for f in funcs:
+        mat   = f.get("matricula")
+        sal_at = f.get("vrsalfx") or 0
+        sal_novo, prop, meses, perc_ap = _calcular(sal_at, f.get("dtadm"))
+        registros.append({
+            "mat":          mat,
+            "nome":         f.get("nome", ""),
+            "dtadm_fmt":    _fdata(f.get("dtadm")),
+            "meses":        meses,
+            "prop_fmt":     f"{prop*100:.0f}",
+            "sal_atual_fmt":_fsal(sal_at),
+            "perc_ap_fmt":  f"{perc_ap:.2f}".replace(".", ","),
+            "sal_novo_fmt": _fsal(sal_novo),
+            "diff_fmt":     _fsal(sal_novo - sal_at),
+        })
+
+    rows = [[f"{int(r['mat'] or 0):06d}", r["nome"], r["dtadm_fmt"],
+             r["meses"], r["prop_fmt"] + "%", r["sal_atual_fmt"],
+             r["perc_ap_fmt"] + "%", r["sal_novo_fmt"], r["diff_fmt"]]
+            for r in registros]
+
+    vig_fmt = f"{vigencia_raw[4:6]}/{vigencia_raw[:4]}"
+    sub     = (f"Vigência: {vig_fmt} · {percentual:.2f}% · "
+               f"{MOTIVO_LABEL.get(motivo_raw, motivo_raw)}")
+    return _pdf_tabela("Simulação/Aumento de Salário",
+                       ["Mat.", "Funcionário", "Dt.Adm.", "Meses", "Prop.",
+                        "Sal.Atual", "% Apl.", "Sal.Novo", "Diferença"],
+                       [2.0, 5.5, 2.5, 1.5, 1.5, 3.0, 1.7, 3.0, 3.0], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=sub, landscape=True, filename="Aumento_Salario.pdf")
+
+
+@app.route("/rel_mov_fixo_pdf")
+def rel_mov_fixo_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    try:
+        mat_filtro   = int(request.args.get("matricula",  "0") or 0)
+        verba_filtro = int(request.args.get("cod_verba",  "0") or 0)
+    except (ValueError, TypeError):
+        mat_filtro = verba_filtro = 0
+
+    # Nomes de funcionários
+    nomes_map = {}
+    try:
+        r_cad = supabase.table("tab_cad").select("matricula, nome, nomer, codcateg, dtnascto, dtadm, vrsalfx") \
+            .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute()
+        for f in (r_cad.data or []):
+            nomes_map[f["matricula"]] = {
+                "nome": (f.get("nomer") or f.get("nome") or "").strip(),
+                "raw":  f,
+            }
+    except Exception:
+        pass
+
+    # Nomes de verbas
+    verbas_map = {}
+    try:
+        r_v = supabase.table("tab_rubrica") \
+            .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, id_cliente, is_nao_digitar") \
+            .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").execute()
+        vm = {}
+        for v in (r_v.data or []):
+            if v.get("is_nao_digitar"):
+                continue
+            cod = v.get("cod_rubr")
+            if cod not in vm or v.get("id_cliente") != 0:
+                vm[cod] = v.get("dsc_rubr") or ""
+        verbas_map = vm
+    except Exception:
+        pass
+
+    regs = []
+    try:
+        q = supabase.table("tab_mov_fixo").select("*") \
+            .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente) \
+            .eq("situacao", "A").order("id")
+        if verba_filtro:
+            q = q.eq("cod_verba", verba_filtro)
+        regs = q.execute().data or []
+
+        if mat_filtro:
+            func_data = nomes_map.get(mat_filtro, {}).get("raw")
+            resultado = []
+            for reg in regs:
+                if reg.get("matricula") == mat_filtro:
+                    resultado.append(reg)
+                elif reg.get("matricula") is None:
+                    enquadra, incerto = _avaliar_enquadramento(func_data, reg) \
+                        if func_data else (False, True)
+                    if enquadra or incerto:
+                        resultado.append(reg)
+            regs = resultado
+    except Exception:
+        pass
+
+    def _vig(r):
+        if r.get("qtd_parcelas"):
+            restam = (r.get("qtd_parcelas") or 0) - (r.get("qtd_parcelas_before") or 0)
+            return f"{restam}/{r['qtd_parcelas']} parc."
+        fi = r.get("folha_inicial") or 0
+        ff = r.get("folha_final")   or 0
+        def _fmt(v):
+            if not v:
+                return "?"
+            if v == 999912:
+                return "Indef."
+            return f"{v % 100:02d}/{v // 100}"
+        return f"{_fmt(fi)} → {_fmt(ff)}"
+
+    def _fval(c):
+        return f"{c / 100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") if c else "—"
+
+    rows = []
+    for r in regs:
+        mat = r.get("matricula")
+        if mat:
+            alvo = f"{int(mat):06d} {nomes_map.get(mat, {}).get('nome', '')}"
+        else:
+            partes = []
+            if r.get("id_sindicato"): partes.append(f"Sind.{r['id_sindicato']}")
+            if r.get("id_funcao"):    partes.append(f"Func.{r['id_funcao']}")
+            if r.get("categoria"):    partes.append(f"Cat.{r['categoria']}")
+            alvo = "Grupo" + (": " + " · ".join(partes) if partes else "")
+        regras = (f"Fér:{r.get('nas_ferias','?')} Afs:{r.get('se_afastado','?')} "
+                  f"Adm:{r.get('mes_admissao','?')} Rsc:{r.get('mes_rescisao','?')}")
+        rows.append([
+            alvo,
+            f"{int(r.get('cod_verba') or 0):04d} {verbas_map.get(r.get('cod_verba'), '')}",
+            _fval(r.get("valor")),
+            _vig(r),
+            regras,
+        ])
+
+    sub_parts = []
+    if mat_filtro:
+        sub_parts.append(f"Funcionário: {int(mat_filtro):06d} {nomes_map.get(mat_filtro, {}).get('nome', '')}")
+    if verba_filtro:
+        sub_parts.append(f"Verba: {int(verba_filtro):04d}")
+
+    return _pdf_tabela("Relatório de Movimentos Fixos",
+                       ["Funcionário / Grupo", "Verba", "Valor", "Vigência", "Regras"],
+                       [7.0, 7.0, 2.5, 4.5, 4.7], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=" · ".join(sub_parts),
+                       landscape=True, filename="MovimentosFixos.pdf")
+
+
 @app.route("/rel_ficha_financeira")
 def rel_ficha_financeira():
     if not session.get("logado"):

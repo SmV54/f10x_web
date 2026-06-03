@@ -356,7 +356,11 @@ function renderRegras(r, comDetalhe) {
 }
 
 // ── PDF ──
-function gerarPDF() { window.print(); }
+function gerarPDF() {
+    const mat   = document.getElementById('sel-func').value;
+    const verba = document.getElementById('sel-verba').value;
+    window.open(`/rel_mov_fixo_pdf?matricula=${mat}&cod_verba=${verba}`, '_blank');
+}
 
 // ── GERAR ──
 async function gerar() {

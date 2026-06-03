@@ -176,7 +176,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
     <div class="barra-acoes">
         <a class="btn-voltar" href="/relatorios_config?rel=dependentes">&#8592; Configurar</a>
-        <button class="btn-pdf" onclick="window.print()">&#128438; Imprimir em PDF</button>
+        <button class="btn-pdf" onclick="window.open('/rel_dependentes_pdf' + window.location.search, '_blank')">&#128438; Imprimir em PDF</button>
     </div>
 
     <div class="tabela-card">

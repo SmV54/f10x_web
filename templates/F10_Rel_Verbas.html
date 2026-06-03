@@ -274,7 +274,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <a class="btn-voltar" href="/relatorios_config?rel=verbas&tipo={{ tipo }}">&#8592; Voltar</a>
             <span class="info-tipo">Tipo: <strong>{{ 'Completa' if tipo == 'completa' else 'Simples' }}</strong></span>
         </div>
-        <button class="btn-pdf" onclick="window.print()">&#128438; Imprimir em PDF</button>
+        <button class="btn-pdf" onclick="window.open('/rel_verbas_pdf' + window.location.search, '_blank')">&#128438; Imprimir em PDF</button>
     </div>
 
     {% if lista %}
