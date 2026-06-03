@@ -13093,9 +13093,15 @@ def rel_esocial_fila_pdf():
     lay_desc    = _LAY.get(f_layout, (f"S-{f_layout}", ""))[0] if f_layout else "Todos os layouts"
     titulo      = f"Fila de Remessas eSocial — {periodo_fmt}  ·  {lay_desc}"
 
-    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+    # landscape A4 usable width: 29.7 - 4cm margins = 25.7cm
+    from reportlab.lib.pagesizes import A4, landscape
+    page    = landscape(A4)
+    _FS     = 7   # fonte dados
+    _FS_HDR = 7   # fonte cabeçalho
+
+    def P(txt, fn="Helvetica", fs=_FS, align=0, col=colors.HexColor("#1f2937")):
         st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
-                            textColor=col, leading=fs + 3)
+                            textColor=col, leading=fs + 1)
         return Paragraph(str(txt or ""), st)
 
     C_HDR = colors.HexColor("#e8f5ee")
@@ -13103,12 +13109,12 @@ def rel_esocial_fila_pdf():
     C_SUB = colors.HexColor("#64748b")
 
     hdr = [
-        P("Layout", fn="Helvetica-Bold", fs=7),
-        P("Matrícula · Funcionário / Período", fn="Helvetica-Bold", fs=7),
-        P("Situação", fn="Helvetica-Bold", fs=7),
-        P("Cadastro", fn="Helvetica-Bold", fs=7),
-        P("Envio", fn="Helvetica-Bold", fs=7),
-        P("Recibo / Erro", fn="Helvetica-Bold", fs=7),
+        P("Layout", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Matrícula · Funcionário / Período", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Situação", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Cadastro", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Envio", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Recibo / Erro", fn="Helvetica-Bold", fs=_FS_HDR),
     ]
     tbl_data = [hdr]
 
@@ -13117,19 +13123,16 @@ def rel_esocial_fila_pdf():
         func = f"{mat}  {r['_nome']}" if mat and r["_nome"] else (mat or r.get("_periodo_fmt", ""))
         lay_txt = f"{r['_lay_codigo']}  {r['_lay_desc']}"
         tbl_data.append([
-            P(lay_txt, fs=8),
-            P(func, fn="Helvetica-Bold", fs=8),
-            P(r["_sit_label"], fs=8, col=C_SUB),
-            P(r["_datacad"], fs=8, col=C_SUB),
-            P(r["_envio"], fs=8, col=C_SUB),
-            P(r["_recibo_curto"], fs=7, col=C_SUB),
+            P(lay_txt),
+            P(func, fn="Helvetica-Bold"),
+            P(r["_sit_label"], col=C_SUB),
+            P(r["_datacad"], col=C_SUB),
+            P(r["_envio"], col=C_SUB),
+            P(r["_recibo_curto"][:22], col=C_SUB),
         ])
 
-    col_w = [2.5*cm, 5.5*cm, 2.2*cm, 2.0*cm, 2.8*cm, 3.0*cm]  # ~18cm total (A4 landscape-ish)
-    # If too wide, use landscape
-    from reportlab.lib.pagesizes import A4, landscape
-    page = landscape(A4)
-    usable = page[0] - 4*cm  # 4cm margins total
+    # colunas somam 25.7cm (largura útil em landscape)
+    col_w = [3.2*cm, 10.0*cm, 2.3*cm, 1.9*cm, 2.8*cm, 5.5*cm]
 
     tbl = Table(tbl_data, colWidths=col_w, repeatRows=1)
     row_bg = []
@@ -13139,10 +13142,10 @@ def rel_esocial_fila_pdf():
         ("BACKGROUND",    (0, 0), (-1, 0), C_HDR),
         ("LINEBELOW",     (0, 0), (-1, 0), 0.6, colors.HexColor("#86efac")),
         ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
-        ("TOPPADDING",    (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("TOPPADDING",    (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
     ] + row_bg))
 
