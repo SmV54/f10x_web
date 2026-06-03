@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-2205</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #7c3aed;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --purple:    #7c3aed;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1000px; margin: 32px auto; padding: 0 24px 80px; }
+
+.form-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px 24px; margin-bottom: 28px;
+}
+.form-panel-titulo {
+    font-size: 14px; font-weight: 700; color: #1e293b;
+    padding-bottom: 14px; border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 18px;
+}
+.secao-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--purple); margin: 18px 0 10px;
+    padding-bottom: 4px; border-bottom: 1px solid #ede9fe;
+}
+.form-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px;
+}
+.form-grid-wide { grid-column: 1 / -1; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: .04em; }
+.form-input, .form-select {
+    height: 36px; border: 1px solid #d1d5db; border-radius: 7px;
+    padding: 0 10px; font-size: 13px; font-family: var(--sans);
+    background: #f9fafb; color: var(--label); transition: .13s;
+}
+.form-input:focus, .form-select:focus { outline: none; border-color: var(--purple); background: #fff; }
+.form-input:read-only { background: #f1f5f9; color: #64748b; cursor: default; }
+
+.btn-enviar {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 28px; border-radius: 9px; font-size: 14px; font-weight: 700;
+    background: var(--purple); color: #fff; border: none; cursor: pointer; transition: .15s;
+}
+.btn-enviar:hover:not(:disabled) { background: #6d28d9; }
+.btn-enviar:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ── LOTE BANNER ── */
+.lote-banner {
+    display: none; margin-top: 16px; background: #1e1b4b;
+    border-radius: 10px; padding: 14px 18px; align-items: center; gap: 14px;
+}
+.lote-banner.ativo { display: flex; }
+.lote-info { flex: 1; min-width: 0; }
+.lote-titulo  { font-size: 13px; font-weight: 600; color: #e0e7ff; display: block; }
+.lote-detalhe { font-size: 11px; color: #a5b4fc; display: block; margin-top: 2px; word-break: break-all; }
+.lote-bar-wrap { width: 120px; height: 6px; background: #3730a3; border-radius: 3px; flex-shrink: 0; }
+.lote-bar { height: 100%; width: 5%; background: var(--purple); border-radius: 3px; transition: width .5s; }
+.lote-pct { font-family: var(--mono); font-size: 12px; color: #a5b4fc; flex-shrink: 0; width: 38px; text-align: right; }
+
+/* ── TABELA HISTÓRICO ── */
+.tabela-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8fafc; padding: 10px 12px; text-align: left;
+     font-size: 11px; font-weight: 700; color: #475569;
+     text-transform: uppercase; letter-spacing: .04em;
+     border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #fafafa; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+
+.sit-badge {
+    display: inline-block; padding: 2px 9px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+.sit-aguardando { background: #fff7ed; color: #92400e; border: 1px solid #fed7aa; }
+.sit-gerado     { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+.sit-pendente   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+.res-ok   { font-family: var(--mono); font-size: 11px; color: #166534; }
+.res-erro { font-size: 11px; color: #991b1b; }
+
+.btn-reconsultar {
+    font-size: 11px; padding: 3px 10px; border-radius: 6px; cursor: pointer;
+    background: #fff7ed; color: #92400e; border: 1px solid #fed7aa; font-family: var(--sans);
+    transition: .12s;
+}
+.btn-reconsultar:hover { background: #fef3c7; }
+.btn-reconsultar:disabled { opacity: .5; cursor: not-allowed; }
+
+.vazio { padding: 32px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+/* ── SELETOR FUNCIONÁRIO ── */
+.func-sel-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.func-nome-display {
+    flex: 1; min-width: 200px; font-size: 14px; font-weight: 600; color: #1e293b;
+    padding: 8px 12px; background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 7px; display: none;
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="#7c3aed" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+      <circle cx="12" cy="7" r="4"/>
+      <line x1="16" y1="11" x2="21" y2="11"/>
+      <line x1="18.5" y1="8.5" x2="18.5" y2="13.5"/>
+    </svg>
+    eSocial S-2205 — Alteração Cadastral
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- ── FORMULÁRIO ── -->
+  <div class="form-panel">
+    <div class="form-panel-titulo" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <span>&#9997;&#xFE0F; Enviar Alteração de Dados Cadastrais</span>
+    </div>
+
+    <!-- Seleção de funcionário -->
+    <div class="secao-titulo">Funcionário</div>
+    <div class="func-sel-wrap">
+      <div class="form-group" style="min-width:260px;">
+        <label>Selecionar Funcionário</label>
+        <select class="form-select" id="selFuncionario" onchange="carregarFuncionario()">
+          <option value="">— Selecione —</option>
+          {% for f in funcionarios %}
+          <option value="{{ f.matricula }}">{{ '%06d' % f.matricula }} — {{ f.nome }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="form-group" style="min-width:180px;">
+        <label>Data da Alteração</label>
+        <input type="date" class="form-input" id="dtAlteracao"
+               value="{{ '' }}" style="width:160px;">
+      </div>
+    </div>
+
+    <!-- Campos do funcionário (ocultos até seleção) -->
+    <div id="divFormFunc" style="display:none;">
+
+      <div class="secao-titulo">Dados Pessoais</div>
+      <div class="form-grid">
+        <div class="form-group form-grid-wide">
+          <label>Nome Completo *</label>
+          <input type="text" class="form-input" id="fNome" maxlength="70">
+        </div>
+        <div class="form-group form-grid-wide">
+          <label>Nome Social</label>
+          <input type="text" class="form-input" id="fNmSoc" maxlength="70" placeholder="Opcional">
+        </div>
+        <div class="form-group">
+          <label>Sexo *</label>
+          <select class="form-select" id="fSexo">
+            <option value="M">Masculino</option>
+            <option value="F">Feminino</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Raça / Cor *</label>
+          <select class="form-select" id="fRacaCor">
+            <option value="1">Branca</option>
+            <option value="2">Preta</option>
+            <option value="3">Parda</option>
+            <option value="4">Amarela</option>
+            <option value="5">Indígena</option>
+            <option value="6">Não informado</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Estado Civil</label>
+          <select class="form-select" id="fEstCiv">
+            <option value="">— Não informar —</option>
+            <option value="1">Solteiro</option>
+            <option value="2">Casado</option>
+            <option value="3">Divorciado</option>
+            <option value="4">Separado</option>
+            <option value="5">Viúvo</option>
+            <option value="9">Outro</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Grau de Instrução *</label>
+          <select class="form-select" id="fGrauInstr">
+            <option value="01">Analfabeto</option>
+            <option value="02">Até 5ª Série Incompleta</option>
+            <option value="03">5ª Série Completa</option>
+            <option value="04">6ª a 9ª Série</option>
+            <option value="05">Fundamental Completo</option>
+            <option value="06">Médio Incompleto</option>
+            <option value="07">Médio Completo</option>
+            <option value="08">Superior Incompleto</option>
+            <option value="09">Superior Completo</option>
+            <option value="10">Especialização</option>
+            <option value="11">Mestrado</option>
+            <option value="12">Doutorado</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="secao-titulo">Nascimento</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Data de Nascimento *</label>
+          <input type="date" class="form-input" id="fDtNascto">
+        </div>
+        <div class="form-group">
+          <label>País Nascimento</label>
+          <input type="text" class="form-input" id="fPaisNascto" value="105" maxlength="4" placeholder="105=Brasil">
+        </div>
+        <div class="form-group">
+          <label>País Nacionalidade</label>
+          <input type="text" class="form-input" id="fPaisNac" value="105" maxlength="4" placeholder="105=Brasil">
+        </div>
+      </div>
+
+      <div class="secao-titulo">Endereço</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>CEP</label>
+          <input type="text" class="form-input" id="fCep" maxlength="9" placeholder="00000-000">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label>Logradouro</label>
+          <input type="text" class="form-input" id="fDscLograd" maxlength="100">
+        </div>
+        <div class="form-group">
+          <label>Número</label>
+          <input type="text" class="form-input" id="fNrLograd" maxlength="10" placeholder="S/N">
+        </div>
+        <div class="form-group">
+          <label>Complemento</label>
+          <input type="text" class="form-input" id="fComplemento" maxlength="30">
+        </div>
+        <div class="form-group">
+          <label>Bairro</label>
+          <input type="text" class="form-input" id="fBairro" maxlength="60">
+        </div>
+        <div class="form-group">
+          <label>Cód. Município</label>
+          <input type="text" class="form-input" id="fCodMunic" maxlength="7" placeholder="IBGE 7 dígitos">
+        </div>
+        <div class="form-group">
+          <label>UF</label>
+          <select class="form-select" id="fUf">
+            <option value="">—</option>
+            {% for uf in ['AC','AL','AM','AP','BA','CE','DF','ES','GO','MA','MG','MS','MT','PA','PB','PE','PI','PR','RJ','RN','RO','RR','RS','SC','SE','SP','TO'] %}
+            <option value="{{ uf }}">{{ uf }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <div class="secao-titulo">Contato</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Telefone Principal</label>
+          <input type="text" class="form-input" id="fFone" maxlength="15" placeholder="DDD + número">
+        </div>
+        <div class="form-group" style="grid-column:span 2;">
+          <label>E-mail Principal</label>
+          <input type="email" class="form-input" id="fEmail" maxlength="60">
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:20px;">
+        <button class="btn-enviar" id="btnEnviar" onclick="enviarS2205(this)">
+          &#9654; Enviar S-2205
+        </button>
+        <span style="font-size:12px;color:#94a3b8;">O evento será gerado, assinado e transmitido imediatamente.</span>
+      </div>
+
+      <!-- Progresso -->
+      <div class="lote-banner" id="divProgresso">
+        <div class="lote-info">
+          <span class="lote-titulo" id="loteTitulo">Enviando…</span>
+          <span class="lote-detalhe" id="loteDetalhe"></span>
+        </div>
+        <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
+        <span class="lote-pct" id="lotePct">0%</span>
+      </div>
+
+    </div><!-- /divFormFunc -->
+  </div>
+
+  <!-- ── HISTÓRICO ── -->
+  <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px;">
+    Histórico de Alterações Enviadas
+    {% if total %}<span style="font-weight:400;color:#64748b;font-size:12px;margin-left:8px;">({{ total }} registro{{ 's' if total != 1 else '' }})</span>{% endif %}
+  </div>
+
+  <div class="tabela-wrap">
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Matrícula / Nome</th>
+          <th>Situação</th>
+          <th>Cadastro</th>
+          <th>Envio</th>
+          <th>Recibo / Erro</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr id="row-{{ r.id_esocial }}">
+          <td>
+            <div style="font-weight:600;font-size:13px;">{{ r._nome }}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:#64748b;">{{ '%06d' % (r.matricula or 0) }}</div>
+          </td>
+          <td>
+            <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
+          </td>
+          <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
+          <td class="data-cell">{{ r._envio_fmt or "—" }}</td>
+          <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
+            {% if r.recibo %}
+              <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>
+            {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
+              <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
+            {% else %}
+              <span style="color:#94a3b8;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+          <td id="acao-{{ r.id_esocial }}">
+            {% if r._sit == 'W' %}
+            <button class="btn-reconsultar" onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
+            {% elif r._sit == 'E' %}
+            <span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>
+            {% elif r._sit == 'X' %}
+            <span style="color:#991b1b;font-size:11px;">Verificar erro</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">Nenhuma alteração cadastral enviada ainda.</div>
+    {% endif %}
+  </div>
+
+  <!-- Info -->
+  <div style="margin-top:28px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:14px 18px;">
+    <div style="font-size:13px;font-weight:600;color:#5b21b6;margin-bottom:6px;">eSocial S-2205 — Alteração de Dados Cadastrais do Trabalhador</div>
+    <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
+      <li>Utilizado para informar alterações nos dados pessoais do trabalhador (nome, endereço, nascimento, etc.).</li>
+      <li>Não inclui alterações contratuais (salário, cargo, jornada) — essas devem ser enviadas via S-2206.</li>
+      <li>Ao enviar, os dados são atualizados automaticamente no cadastro local (tab_cad).</li>
+      <li>O evento é transmitido em lote Grupo 2 (Eventos Não Periódicos).</li>
+    </ul>
+  </div>
+
+</div><!-- /conteudo -->
+
+<script>
+const ETAPAS = [
+  [10, 'Gerando XML…'],
+  [25, 'Assinando evento…'],
+  [40, 'Montando lote…'],
+  [55, 'Transmitindo ao eSocial…'],
+  [70, 'Aguardando processamento (1/3)…'],
+  [82, 'Aguardando processamento (2/3)…'],
+  [92, 'Aguardando processamento (3/3)…'],
+  [98, 'Consultando resultado…'],
+];
+
+// Pré-configura data de hoje
+(function() {
+  const hoje = new Date();
+  const yy = hoje.getFullYear();
+  const mm = String(hoje.getMonth()+1).padStart(2,'0');
+  const dd = String(hoje.getDate()).padStart(2,'0');
+  document.getElementById('dtAlteracao').value = `${yy}-${mm}-${dd}`;
+})();
+
+async function carregarFuncionario() {
+  const mat = document.getElementById('selFuncionario').value;
+  const div = document.getElementById('divFormFunc');
+  if (!mat) { div.style.display = 'none'; return; }
+
+  try {
+    const r = await fetch(`/api/esocial_s2205_buscar_func?matricula=${mat}`);
+    const d = await r.json();
+    if (!d.ok) { alert(d.msg); return; }
+    const f = d.func;
+
+    // Preenche campos
+    document.getElementById('fNome').value       = f.nome || '';
+    document.getElementById('fNmSoc').value      = f.nmsoc || '';
+    document.getElementById('fSexo').value       = f.sexo || 'M';
+    document.getElementById('fRacaCor').value    = String(f.racacor || '6');
+    document.getElementById('fEstCiv').value     = String(f.estciv || '');
+    document.getElementById('fGrauInstr').value  = String(f.grauinstr || '01').padStart(2,'0');
+
+    // Nascimento: converte yyyymmdd → yyyy-mm-dd
+    const dn = String(f.dtnascto || '');
+    if (dn.length === 8) {
+      document.getElementById('fDtNascto').value = `${dn.slice(0,4)}-${dn.slice(4,6)}-${dn.slice(6,8)}`;
+    } else {
+      document.getElementById('fDtNascto').value = '';
+    }
+    document.getElementById('fPaisNascto').value = String(f.paisnascto || '105');
+    document.getElementById('fPaisNac').value    = String(f.paisnac    || '105');
+
+    // Endereço
+    document.getElementById('fCep').value        = f.ender_cep       || '';
+    document.getElementById('fDscLograd').value  = f.ender_dsclograd || '';
+    document.getElementById('fNrLograd').value   = f.ender_nrlograd  || '';
+    document.getElementById('fComplemento').value= f.ender_complemento || '';
+    document.getElementById('fBairro').value     = f.ender_bairro    || '';
+    document.getElementById('fCodMunic').value   = f.ender_codmunic  || '';
+    document.getElementById('fUf').value         = f.ender_uf        || '';
+
+    // Contato
+    document.getElementById('fFone').value       = f.fone_princ  || '';
+    document.getElementById('fEmail').value      = f.email_princ || '';
+
+    div.style.display = 'block';
+  } catch(e) {
+    alert('Erro ao carregar funcionário: ' + e);
+  }
+}
+
+async function enviarS2205(btn) {
+  const mat = document.getElementById('selFuncionario').value;
+  if (!mat) { alert('Selecione um funcionário.'); return; }
+
+  const dtAlt = document.getElementById('dtAlteracao').value;
+  if (!dtAlt) { alert('Informe a data da alteração.'); return; }
+
+  const nome = document.getElementById('fNome').value.trim();
+  if (!nome) { alert('Nome é obrigatório.'); return; }
+
+  const tpAmb = '1';
+
+  btn.disabled = true;
+
+  const divProg = document.getElementById('divProgresso');
+  const bar     = document.getElementById('loteBar');
+  const pct     = document.getElementById('lotePct');
+  const titulo  = document.getElementById('loteTitulo');
+  const detalhe = document.getElementById('loteDetalhe');
+
+  divProg.classList.add('ativo');
+  bar.style.width      = '5%';
+  bar.style.background = '#7c3aed';
+  pct.textContent      = '5%';
+  titulo.textContent   = 'Iniciando…';
+  detalhe.textContent  = '';
+
+  let etapaIdx = 0;
+  const animTimer = setInterval(() => {
+    if (etapaIdx < ETAPAS.length) {
+      bar.style.width    = ETAPAS[etapaIdx][0] + '%';
+      pct.textContent    = ETAPAS[etapaIdx][0] + '%';
+      titulo.textContent = ETAPAS[etapaIdx][1];
+      etapaIdx++;
+    }
+  }, 4000);
+
+  const funcData = {
+    nome:              document.getElementById('fNome').value.trim(),
+    nmsoc:             document.getElementById('fNmSoc').value.trim(),
+    sexo:              document.getElementById('fSexo').value,
+    racacor:           document.getElementById('fRacaCor').value,
+    estciv:            document.getElementById('fEstCiv').value,
+    grauinstr:         document.getElementById('fGrauInstr').value,
+    dtnascto:          document.getElementById('fDtNascto').value.replace(/-/g,''),
+    paisnascto:        document.getElementById('fPaisNascto').value,
+    paisnacionalidade: document.getElementById('fPaisNac').value,
+    ender_cep:         document.getElementById('fCep').value.replace(/\D/g,''),
+    ender_dsclograd:   document.getElementById('fDscLograd').value.trim(),
+    ender_nrlograd:    document.getElementById('fNrLograd').value.trim(),
+    ender_complemento: document.getElementById('fComplemento').value.trim(),
+    ender_bairro:      document.getElementById('fBairro').value.trim(),
+    ender_codmunic:    document.getElementById('fCodMunic').value.trim(),
+    ender_uf:          document.getElementById('fUf').value,
+    fone_princ:        document.getElementById('fFone').value.replace(/\D/g,''),
+    email_princ:       document.getElementById('fEmail').value.trim(),
+  };
+
+  try {
+    const r = await fetch('/api/esocial_s2205_enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ matricula: mat, dt_alteracao: dtAlt, func: funcData, tpAmb }),
+    });
+    const data = await r.json();
+    clearInterval(animTimer);
+
+    bar.style.width      = '100%';
+    pct.textContent      = '100%';
+    bar.style.background = data.ok ? '#7c3aed' : (data.aguardando ? '#f97316' : '#ef4444');
+
+    if (data.ok) {
+      titulo.textContent  = 'Enviado com sucesso!';
+      detalhe.textContent = 'Recibo: ' + (data.nr_rec || '');
+      _adicionarHistorico(data.id_esocial, mat, document.getElementById('selFuncionario').options[document.getElementById('selFuncionario').selectedIndex].text, 'E', data.nr_rec || '');
+    } else if (data.aguardando) {
+      titulo.textContent  = 'Aguardando processamento…';
+      detalhe.textContent = data.msg;
+      _adicionarHistorico(data.id_esocial, mat, document.getElementById('selFuncionario').options[document.getElementById('selFuncionario').selectedIndex].text, 'W', '');
+    } else {
+      titulo.textContent  = 'Erro no envio';
+      detalhe.textContent = data.msg || 'Erro desconhecido';
+      if (data.detalhe) {
+        const det = document.createElement('div');
+        det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
+        det.textContent   = data.detalhe;
+        detalhe.parentNode.appendChild(det);
+      }
+    }
+    btn.disabled = false;
+  } catch(e) {
+    clearInterval(animTimer);
+    bar.style.background = '#ef4444';
+    bar.style.width      = '100%';
+    titulo.textContent   = 'Falha de comunicação';
+    detalhe.textContent  = String(e);
+    btn.disabled = false;
+  }
+}
+
+function _adicionarHistorico(idEs, mat, nomeOpcao, sit, recibo) {
+  if (!idEs) return;
+  let tbody = document.querySelector('table tbody');
+  if (!tbody) {
+    const wrap = document.querySelector('.tabela-wrap');
+    wrap.innerHTML = `<table><thead><tr>
+      <th>Matrícula / Nome</th><th>Situação</th>
+      <th>Cadastro</th><th>Envio</th><th>Recibo / Erro</th><th>Ações</th>
+    </tr></thead><tbody></tbody></table>`;
+    tbody = wrap.querySelector('tbody');
+  }
+  const sitMap = { E: ['sit-enviado','Enviado'], W: ['sit-aguardando','Aguardando'], X: ['sit-erro','Com Erro'] };
+  const [cls, lbl] = sitMap[sit] || ['sit-pendente','Pendente'];
+  const agora = new Date();
+  const hh = String(agora.getHours()).padStart(2,'0');
+  const mm = String(agora.getMinutes()).padStart(2,'0');
+  const dd = String(agora.getDate()).padStart(2,'0');
+  const mo = String(agora.getMonth()+1).padStart(2,'0');
+  const yy = String(agora.getFullYear()).slice(2);
+  const envioFmt = `${dd}/${mo}/${yy} ${hh}:${mm}`;
+  // extrai nome do texto "000001 — Nome"
+  const nomeParts = nomeOpcao.split(' — ');
+  const nomeFunc  = nomeParts.length > 1 ? nomeParts.slice(1).join(' — ') : nomeOpcao;
+  const acaoHtml = sit === 'W'
+    ? `<button class="btn-reconsultar" onclick="_reconsultar(${idEs}, this)">&#8635; Re-consultar</button>`
+    : sit === 'E' ? `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>` : '';
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + idEs;
+  tr.innerHTML = `
+    <td><div style="font-weight:600;font-size:13px;">${nomeFunc}</div>
+        <div style="font-family:var(--mono);font-size:11px;color:#64748b;">${String(mat).padStart(6,'0')}</div></td>
+    <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
+    <td class="data-cell">${dd}/${mo}/${yy}</td>
+    <td class="data-cell">${envioFmt}</td>
+    <td id="rec-${idEs}">${recibo ? `<span class="res-ok">${recibo.slice(0,30)}</span>` : '<span style="color:#94a3b8;font-size:12px;">—</span>'}</td>
+    <td id="acao-${idEs}">${acaoHtml}</td>`;
+  tbody.insertBefore(tr, tbody.firstChild);
+}
+
+async function _reconsultar(id, btn) {
+  btn.disabled    = true;
+  btn.textContent = 'Consultando…';
+  try {
+    const r = await fetch('/api/esocial_s2205_reconsultar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
+    });
+    const data = await r.json();
+    const sit  = document.getElementById('sit-' + id);
+    const rec  = document.getElementById('rec-' + id);
+    const acao = document.getElementById('acao-' + id);
+    if (data.ok) {
+      sit.className    = 'sit-badge sit-enviado';
+      sit.textContent  = 'Enviado';
+      rec.innerHTML    = `<span class="res-ok">${(data.nr_rec||'').slice(0,30)}</span>`;
+      acao.innerHTML   = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>`;
+    } else if (data.aguardando) {
+      btn.disabled    = false;
+      btn.textContent = '↻ Re-consultar';
+    } else {
+      sit.className    = 'sit-badge sit-erro';
+      sit.textContent  = 'Com Erro';
+      rec.innerHTML    = `<span class="res-erro" title="${data.msg}">${data.msg.slice(0,60)}</span>`;
+      acao.innerHTML   = `<span style="color:#991b1b;font-size:11px;">Verificar erro</span>`;
+    }
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = '↻ Re-consultar';
+    alert('Erro: ' + e);
+  }
+}
+</script>
+</body>
+</html>
