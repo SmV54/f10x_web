@@ -441,10 +441,6 @@ const modulos = {
     esocial: {
         titulo: 'eSocial', icone: '📃',
         secoes: [
-            { nome: 'Remessas', itens: [
-                { icone: '➕', nome: 'Gerador Manual de Remessa', href: '/esocial_gerador', ok: true, classe: 'acao-gerador' },
-                { icone: '📤', nome: 'Fila de Remessas',          href: '/esocial_fila',    ok: true },
-            ]},
             { nome: 'Tabelas', itens: [
                 { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '#' },
                 { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '#' },
@@ -471,9 +467,11 @@ const modulos = {
             { nome: 'Certificado Digital', itens: [
                 { icone: '🔑', nome: 'Certificado Digital',   href: '/config_certificado', ok: true },
             ]},
-            { nome: 'Consultas e Relatórios', itens: [
-                { icone: '📄', nome: 'Listagem das Remessas', href: '/relatorios_config?rel=esocial_remessas', ok: true },
-                { icone: '⚠️', nome: 'Pendências e Erros',    href: '#' },
+            { nome: 'Remessas', itens: [
+                { icone: '➕', nome: 'Gerador Manual de Remessa', href: '/esocial_gerador',                        ok: true, classe: 'acao-gerador' },
+                { icone: '📤', nome: 'Fila de Remessas',          href: '/esocial_fila',                          ok: true },
+                { icone: '📄', nome: 'Listagem das Remessas',     href: '/relatorios_config?rel=esocial_remessas', ok: true },
+                { icone: '⚠️', nome: 'Pendências e Erros',        href: '#' },
             ]}
         ]
     },
