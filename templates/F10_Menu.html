@@ -156,6 +156,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     background: #fff1f2; border-color: #fda4af; color: #be123c; font-weight: 600;
 }
 .nav-item.acao-fechar:hover { background: #ffe4e6; border-color: #fb7185; color: #9f1239; }
+.nav-item.acao-gerador {
+    background: #f0fdfa; border-color: #5eead4; color: #0f766e; font-weight: 700;
+}
+.nav-item.acao-gerador:hover { background: #ccfbf1; border-color: #2dd4bf; color: #0d6b61; }
 .grupo-coluna { display: flex; flex-direction: column; gap: 8px; }
 
 /* ── OVERLAY LOADING ── */
@@ -437,6 +441,10 @@ const modulos = {
     esocial: {
         titulo: 'eSocial', icone: '📃',
         secoes: [
+            { nome: 'Remessas', itens: [
+                { icone: '➕', nome: 'Gerador Manual de Remessa', href: '/esocial_gerador', ok: true, classe: 'acao-gerador' },
+                { icone: '📤', nome: 'Fila de Remessas',          href: '/esocial_fila',    ok: true },
+            ]},
             { nome: 'Tabelas', itens: [
                 { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '#' },
                 { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '#' },
@@ -464,8 +472,6 @@ const modulos = {
                 { icone: '🔑', nome: 'Certificado Digital',   href: '/config_certificado', ok: true },
             ]},
             { nome: 'Consultas e Relatórios', itens: [
-                { icone: '➕', nome: 'Gerador de Remessa',    href: '/esocial_gerador',                        ok: true },
-                { icone: '📤', nome: 'Fila de Remessas',      href: '/esocial_fila',                          ok: true },
                 { icone: '📄', nome: 'Listagem das Remessas', href: '/relatorios_config?rel=esocial_remessas', ok: true },
                 { icone: '⚠️', nome: 'Pendências e Erros',    href: '#' },
             ]}
