@@ -13367,14 +13367,15 @@ def esocial_s1299():
 
     rows = []
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("*")
-                .eq("id_empresa", id_empresa)
-                .eq("layout", "1299")
-                .order("ano_mes", desc=True)
-                .order("data_cad", desc=True)
-                .order("hora_cad", desc=True)
-                .execute().data or [])
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1299")
+             .order("data_cad", desc=True)
+             .order("hora_cad", desc=True))
+        if anomes_atual:
+            q = q.eq("ano_mes", int(anomes_atual))
+        rows = q.execute().data or []
     except Exception:
         rows = []
 
