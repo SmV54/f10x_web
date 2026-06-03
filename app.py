@@ -13152,14 +13152,41 @@ def rel_esocial_fila_pdf():
     total_p = P(f"Total: {len(rows)} remessa(s)", fn="Helvetica", fs=8,
                 col=C_SUB, align=2)
 
+    # Cabeçalho via canvas — aparece em TODAS as páginas
+    _lm       = 2*cm
+    _rm       = 2*cm
+    _ph       = page[1]          # altura da página (landscape)
+    _pw       = page[0]
+    _agora    = datetime.now().strftime("%d/%m/%Y %H:%M")
+    _titulo_h = titulo
+    _emp_h    = f"{cnpj_fmt} — {empresa_nm}"
+
+    def _header_todas(canvas, doc):
+        _pdf_num_pagina(canvas, doc)
+        canvas.saveState()
+        # linha 1 — empresa (esq) e data (dir)
+        y1 = _ph - 1.0*cm
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#374151"))
+        canvas.drawString(_lm, y1, _emp_h)
+        canvas.drawRightString(_pw - _rm, y1, _agora)
+        # linha 2 — título centralizado
+        y2 = y1 - 11
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.drawCentredString(_pw / 2, y2, _titulo_h)
+        # linha separadora
+        canvas.setStrokeColor(colors.HexColor("#374151"))
+        canvas.setLineWidth(0.5)
+        canvas.line(_lm, y2 - 4, _pw - _rm, y2 - 4)
+        canvas.restoreState()
+
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=page,
-                            leftMargin=2*cm, rightMargin=2*cm,
-                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+                            leftMargin=_lm, rightMargin=_rm,
+                            topMargin=2.0*cm, bottomMargin=1.5*cm)
     doc.build(
-        [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, page_width=page[0]-4*cm),
-         Spacer(1, 8), tbl, Spacer(1, 6), total_p],
-        onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina,
+        [Spacer(1, 4), tbl, Spacer(1, 6), total_p],
+        onFirstPage=_header_todas, onLaterPages=_header_todas,
     )
     buf.seek(0)
 
