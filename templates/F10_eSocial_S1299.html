@@ -170,28 +170,23 @@ tr:hover td { background: #f8fafc; }
 
   <!-- ── FORMULÁRIO ── -->
   <div class="form-panel">
-    <div class="form-panel-titulo">
-      &#128274; Novo Fechamento de Período
+    <div class="form-panel-titulo" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:space-between;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        &#128274; Novo Fechamento de Período
+        {% if anomes_atual|length == 6 %}
+        <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:#2a7de1;">
+          {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
+        </span>
+        {% endif %}
+      </div>
+      <label class="check-semmov" style="font-weight:500;">
+        <input type="checkbox" id="chkSemMov">
+        Empresa Sem Movimento
+      </label>
     </div>
 
     <input type="hidden" id="inputAnomes"
            value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
-
-    <div style="display:flex;align-items:center;gap:28px;flex-wrap:wrap;margin-bottom:20px;">
-      <div class="form-field">
-        <span class="form-label">Período</span>
-        <span style="font-family:var(--mono);font-size:15px;font-weight:700;color:#1e293b;padding:2px 0;">
-          {{ anomes_atual[4:6] + '/' + anomes_atual[:4] if anomes_atual|length == 6 else '—' }}
-        </span>
-      </div>
-
-      <div>
-        <label class="check-semmov">
-          <input type="checkbox" id="chkSemMov">
-          Empresa Sem Movimento
-        </label>
-      </div>
-    </div>
 
     <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
       <button class="btn-fechar" id="btnFechar" onclick="fecharFolha(this)">
