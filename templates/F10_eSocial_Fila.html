@@ -252,8 +252,9 @@ tr:hover td { background: #f8fafc; }
             <span class="lay-badge lay-{{ r.layout }}">{{ r._lay_codigo }}</span>
             <span style="font-size:11px;color:#64748b;margin-left:4px;">{{ r._lay_desc }}</span>
             {% if r.matricula %}
-            <span style="font-size:11px;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 6px;">{{ '%06d' % (r.matricula or 0) }}</span>
-            <span style="font-weight:600;font-size:13px;margin-left:6px;">{{ r._nome }}</span>
+            <span style="font-weight:600;font-size:13px;">{{ '%06d' % (r.matricula or 0) }}</span>
+            <span style="color:#94a3b8;margin:0 4px;">·</span>
+            <span style="font-weight:600;font-size:13px;">{{ r._nome }}</span>
             {% elif r._periodo_fmt %}
             <span style="margin:0 5px;color:#cbd5e1;">·</span>
             <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:#1e293b;">{{ r._periodo_fmt }}</span>
