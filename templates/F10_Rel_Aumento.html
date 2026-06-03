@@ -65,6 +65,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     text-decoration: none; transition: 0.15s; white-space: nowrap;
 }
 .btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+    font-family: var(--sans); white-space: nowrap;
+}
+.btn-pdf:hover { background: #b91c1c; }
 
 .badge-simulacao {
     display: inline-flex; align-items: center; gap: 6px;
@@ -241,9 +249,7 @@ tbody td.nome { font-weight: 500; color: #1e293b; }
                 <span class="badge-simulacao">&#9888; SIMULAÇÃO — Nenhum dado foi alterado</span>
             {% endif %}
         </div>
-        <button onclick="window.print()" style="background:transparent;border:1px solid var(--border);color:#64748b;font-size:12px;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:var(--sans);">
-            &#128424; Imprimir
-        </button>
+        <button class="btn-pdf" onclick="window.print()">&#128438; Imprimir / PDF</button>
     </div>
 
     <!-- Parâmetros usados -->

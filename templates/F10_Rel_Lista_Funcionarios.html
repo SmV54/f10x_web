@@ -69,21 +69,22 @@ thead th {
     font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee;
     white-space: nowrap; font-weight: 600; letter-spacing: 0.3px;
 }
-thead th.num { text-align: right; }
-tbody td { padding: 8px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+tbody td { padding: 4px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; }
-tbody td.seq { text-align: right; color: #94a3b8; font-size: 11px; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
+.card-total { padding: 8px 16px; font-size: 12px; color: #64748b; text-align: right; border-top: 1px solid #f1f5f9; }
 
 .rodape { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; }
-.btn-imprimir {
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
     height: 36px; padding: 0 20px; border-radius: 8px;
-    background: #f1f5f9; color: #334155; font-weight: 700; font-size: 13px;
-    border: 1px solid #cbd5e1; cursor: pointer; transition: 0.15s;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+    font-family: var(--sans); white-space: nowrap;
 }
-.btn-imprimir:hover { background: #e2e8f0; }
+.btn-pdf:hover { background: #b91c1c; }
 .btn-menu {
     height: 36px; padding: 0 20px; border-radius: 8px;
     background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px;
@@ -150,14 +151,12 @@ tbody tr:hover { background: #f8fafc; }
     <div class="card">
         <div class="card-header">
             <h2>Funcionários</h2>
-            <span class="total-badge">{{ funcs|length }} registro(s)</span>
         </div>
 
         {% if funcs %}
         <table>
             <thead>
                 <tr>
-                    <th class="num">Seq</th>
                     <th>Matrícula</th>
                     <th>Nome</th>
                 </tr>
@@ -165,20 +164,20 @@ tbody tr:hover { background: #f8fafc; }
             <tbody>
                 {% for f in funcs %}
                 <tr>
-                    <td class="seq">{{ loop.index }}</td>
                     <td class="mat">{{ "%06d"|format(f.matricula) }}</td>
                     <td>{{ f.nome_fmt }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
+        <div class="card-total">Total: {{ funcs|length }} funcionário(s)</div>
         {% else %}
         <div class="vazio">Nenhum funcionário encontrado.</div>
         {% endif %}
     </div>
 
     <div class="rodape">
-        <button class="btn-imprimir" onclick="window.print()">Imprimir</button>
+        <a class="btn-pdf" href="/rel_lista_funcionarios_pdf?situacao={{ situacao_filtro }}&classificacao={{ classificacao }}" target="_blank">&#128438; PDF</a>
         <a class="btn-menu" href="/menu">Voltar ao Menu</a>
     </div>
 

@@ -54,13 +54,14 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     display: inline-flex; align-items: center; gap: 5px;
 }
 .btn-voltar:hover { background: #e2e8f0; }
-.btn-imprimir {
-    display: flex; align-items: center; gap: 7px;
-    background: var(--accent); border: none; color: white;
-    font-size: 13px; font-family: var(--sans); font-weight: 600;
-    padding: 9px 20px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+    font-family: var(--sans); white-space: nowrap;
 }
-.btn-imprimir:hover { background: #1a5fb8; }
+.btn-pdf:hover { background: #b91c1c; }
 
 .tabela-card {
     background: var(--surface); border: 1px solid var(--border);
@@ -115,7 +116,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .cab-print-row { display: none; }
 
 @media print {
-    .topo, .btn-voltar, .btn-imprimir, .rel-titulo, .rel-subtitulo, .barra-acoes { display: none !important; }
+    .topo, .btn-voltar, .btn-pdf, .rel-titulo, .rel-subtitulo, .barra-acoes { display: none !important; }
     body { background: white; }
     .conteudo { margin: 0; padding: 0; max-width: 100%; }
     .tabela-card { border: none; border-radius: 0; }
@@ -184,7 +185,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
     <div class="barra-acoes">
         <a class="btn-voltar" href="/rel_config_mov">&#8592; Configurar</a>
-        <button class="btn-imprimir" onclick="window.print()">
+        <button class="btn-pdf" onclick="window.print()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 6 2 18 2 18 9"/>
                 <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>

@@ -108,10 +108,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .detalhe-regras { margin-top: 4px; font-size: 10px; color: #64748b; }
 
 /* BOTÃO PDF */
-.btn-pdf { background: #fff; color: #374151; border: 1px solid var(--border);
-    border-radius: 8px; padding: 8px 16px; font-family: var(--sans); font-size: 13px;
-    font-weight: 600; cursor: pointer; transition: 0.15s; white-space: nowrap; }
-.btn-pdf:hover { background: #f1f5f9; border-color: #94a3b8; }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+    font-family: var(--sans); white-space: nowrap;
+}
+.btn-pdf:hover { background: #b91c1c; }
 .btn-pdf:disabled { opacity: 0.4; cursor: not-allowed; }
 
 /* CABEÇALHO DE IMPRESSÃO — padrão */

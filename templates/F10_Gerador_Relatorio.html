@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Gerador de Relatório</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1100px; margin: 36px auto; padding: 0 24px 60px; }
+
+/* ── FILTROS ── */
+.filtros-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 28px;
+}
+.filtros-header {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 12px 20px; font-size: 13px; font-weight: 600; color: #1e293b;
+    display: flex; align-items: center; gap: 8px;
+}
+.filtros-body {
+    padding: 20px 20px 18px;
+}
+.filtros-row {
+    display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end; margin-bottom: 16px;
+}
+.filtros-row:last-child { margin-bottom: 0; }
+
+.campo-label { font-size: 11px; font-weight: 600; color: #475569; margin-bottom: 5px; letter-spacing: 0.03em; }
+.campo-select, .campo-input {
+    font-family: var(--sans); font-size: 13px; color: #1e293b;
+    border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px;
+    background: #fff; outline: none; transition: border-color 0.15s;
+}
+.campo-select:focus, .campo-input:focus { border-color: var(--accent); }
+.campo-func { flex: 1; min-width: 240px; }
+.campo-func select { width: 100%; }
+.campo-sm select, .campo-sm input { width: 100%; }
+.campo-sm { width: 120px; }
+.campo-xs { width: 90px; }
+
+/* ── CHECKBOXES SEÇÕES ── */
+.secoes-wrap {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start;
+}
+.sec-check {
+    display: flex; align-items: center; gap: 6px;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer; transition: 0.13s; user-select: none;
+    font-size: 13px; color: #374151;
+}
+.sec-check:hover { border-color: var(--accent); background: #eaf2fd; color: var(--accent); }
+.sec-check input[type=checkbox] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+.sec-check.checked { border-color: var(--accent); background: #eaf2fd; color: var(--accent); font-weight: 600; }
+
+/* ── PAINEL DE CAMPOS DO CADASTRO ── */
+.sec-cad-wrap { display: flex; flex-direction: column; gap: 6px; }
+.cad-fields-panel {
+    background: #f0f5fb; border: 1px solid #c5d8f0; border-radius: 10px;
+    padding: 12px 14px;
+}
+.cad-fields-titulo {
+    font-size: 10.5px; font-weight: 700; color: #475569; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: 10px;
+}
+.cad-fields-grid {
+    display: flex; flex-wrap: wrap; gap: 5px;
+}
+.cad-field-label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; color: #374151; cursor: pointer;
+    background: #fff; border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; transition: 0.12s; user-select: none;
+}
+.cad-field-label:hover { border-color: var(--accent); color: var(--accent); }
+.cad-field-label input[type=checkbox] { accent-color: var(--accent); cursor: pointer; }
+.cad-field-label.checked { border-color: var(--accent); background: #eaf2fd; color: var(--accent); font-weight: 600; }
+/* drag-and-drop */
+#cad-fields-grid .cad-field-label { cursor: grab; }
+#cad-fields-grid .cad-field-label.dragging { opacity: 0.35; border-style: dashed; cursor: grabbing; }
+#cad-fields-grid .cad-field-label.drag-over { border-color: var(--accent); background: #dbeafe; outline: 2px dashed var(--accent); }
+.drag-handle { color: #cbd5e1; font-size: 13px; line-height: 1; flex-shrink: 0; pointer-events: none; }
+.cad-sel-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.cad-sel-btn {
+    font-size: 11px; color: var(--accent); background: none; border: none;
+    cursor: pointer; padding: 0; text-decoration: underline;
+}
+
+/* ── BOTÃO PDF ── */
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+    font-family: var(--sans); white-space: nowrap;
+}
+.btn-pdf:hover { background: #b91c1c; }
+
+/* ── BOTÃO GERAR ── */
+.btn-gerar {
+    background: var(--accent); color: #fff; border: none;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    padding: 9px 28px; border-radius: 8px; cursor: pointer; transition: background 0.15s;
+    white-space: nowrap;
+}
+.btn-gerar:hover { background: #1e6acf; }
+
+/* ── ERRO ── */
+.erro-box {
+    background: #fff7ed; border: 1px solid #f97316; border-radius: 10px;
+    padding: 14px 18px; color: #9a3412; font-size: 13px; font-weight: 500;
+    margin-bottom: 20px;
+}
+
+/* ── CARDS DE FUNCIONÁRIO ── */
+.func-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 20px;
+}
+.func-header {
+    background: var(--navy); padding: 12px 20px;
+    display: flex; align-items: center; gap: 14px;
+}
+.func-matr {
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    color: var(--text-sub); white-space: nowrap;
+}
+.func-nome {
+    font-size: 15px; font-weight: 600; color: var(--text-head);
+}
+.func-sit {
+    margin-left: auto; font-size: 11px; font-weight: 700; padding: 2px 10px;
+    border-radius: 20px; white-space: nowrap;
+}
+.sit-A { background: #dcfce7; color: #166534; }
+.sit-D { background: #fee2e2; color: #991b1b; }
+
+/* ── SEÇÃO INTERNA ── */
+.sec-bloco { padding: 18px 20px; border-bottom: 1px solid var(--border); }
+.sec-bloco:last-child { border-bottom: none; }
+.sec-titulo {
+    font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: 12px;
+    display: flex; align-items: center; gap: 8px;
+}
+.sec-titulo::after {
+    content: ""; flex: 1; height: 1px; background: var(--border);
+}
+
+/* ── TABELA GENÉRICA ── */
+.rel-table {
+    width: 100%; border-collapse: collapse; font-size: 12.5px;
+}
+.rel-table th {
+    background: #f1f5f9; color: #475569; font-size: 10.5px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 5px 10px; border-bottom: 1px solid var(--border);
+    text-align: left; white-space: nowrap;
+}
+.rel-table td {
+    padding: 4px 10px; border-bottom: 1px solid #f1f5f9; color: #374151; vertical-align: middle;
+}
+.rel-table tr:last-child td { border-bottom: none; }
+.rel-table tr:hover td { background: #f8fafc; }
+
+.td-num { font-family: var(--mono); text-align: right; }
+.td-matr { font-family: var(--mono); font-weight: 600; color: #1e293b; }
+.td-desc { color: #64748b; font-style: italic; }
+
+/* ── CADASTRO FICHA ── */
+.cad-grid {
+    display: flex; flex-wrap: wrap; gap: 8px;
+}
+.cad-item { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; flex: 0 0 auto; }
+.cad-item-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.cad-item-valor { font-size: 13px; color: #1e293b; font-weight: 500; white-space: nowrap; }
+
+/* ── BADGE TIPO FOLHA ── */
+.badge-tipo {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 1px 7px; border-radius: 10px; white-space: nowrap;
+    background: #e0f2fe; color: #0369a1;
+}
+.badge-R { background: #fee2e2; color: #991b1b; }
+.badge-F { background: #fef9c3; color: #854d0e; }
+.badge-1 { background: #f0fdf4; color: #166534; }
+.badge-A { background: #faf5ff; color: #7e22ce; }
+
+/* ── VAZIO ── */
+.vazio { color: #94a3b8; font-size: 13px; font-style: italic; padding: 8px 0; }
+
+/* ── LOADING OVERLAY ── */
+#loading-overlay {
+    display: none; position: fixed; inset: 0; z-index: 999;
+    background: rgba(11, 31, 58, 0.72); backdrop-filter: blur(3px);
+    align-items: center; justify-content: center; flex-direction: column; gap: 18px;
+}
+#loading-overlay.ativo { display: flex; }
+.spinner-ring {
+    width: 52px; height: 52px; border-radius: 50%;
+    border: 5px solid rgba(255,255,255,0.15);
+    border-top-color: #2a7de1;
+    animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-txt {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #e8edf4; letter-spacing: 0.06em;
+}
+
+/* ── MODAL ABERTURA ── */
+#modal-abertura {
+    display: none; position: fixed; inset: 0; z-index: 900;
+    background: rgba(11,31,58,0.65); backdrop-filter: blur(3px);
+    align-items: center; justify-content: center;
+}
+#modal-abertura.ativo { display: flex; }
+.modal-box {
+    background: #fff; border-radius: 16px; padding: 32px 28px;
+    width: 520px; max-width: calc(100vw - 32px);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+}
+.modal-titulo {
+    font-size: 17px; font-weight: 700; color: #1e293b;
+    margin-bottom: 6px;
+}
+.modal-sub {
+    font-size: 12px; color: #64748b; margin-bottom: 24px;
+}
+.modal-btn-novo {
+    width: 100%; padding: 14px; border-radius: 10px;
+    background: var(--accent); color: #fff; border: none;
+    font-family: var(--sans); font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: background 0.15s; margin-bottom: 20px;
+}
+.modal-btn-novo:hover { background: #1e6acf; }
+.modal-sep {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+}
+.modal-sep::before, .modal-sep::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+}
+.modal-sep span { font-size: 11px; font-weight: 600; color: #94a3b8; white-space: nowrap; }
+.modal-salvos-lista {
+    display: flex; flex-direction: column; gap: 6px;
+    max-height: 260px; overflow-y: auto;
+}
+.modal-salvo-btn {
+    width: 100%; text-align: left; padding: 10px 14px; border-radius: 8px;
+    background: #f8fafc; border: 1px solid var(--border);
+    font-family: var(--sans); font-size: 13px; font-weight: 500; color: #1e293b;
+    cursor: pointer; transition: 0.13s;
+}
+.modal-salvo-btn:hover { border-color: var(--accent); background: #eaf2fd; color: var(--accent); }
+
+/* ── SUMÁRIO GERAL ── */
+.sumario-bar {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 18px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.sumario-num { font-size: 22px; font-weight: 700; color: #1e293b; line-height: 1; }
+.sumario-label { font-size: 10px; color: #64748b; font-weight: 600; text-transform: uppercase; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <div class="spinner-ring"></div>
+    <div class="loading-txt">Gerando relatório…</div>
+</div>
+
+<!-- ── Modal de abertura ── -->
+<div id="modal-abertura">
+    <div class="modal-box">
+        <div class="modal-titulo">Gerador de Relatório</div>
+        <div class="modal-sub">O que deseja fazer?</div>
+        <button class="modal-btn-novo" onclick="_modalNovo()">
+            ＋ &nbsp;Novo Relatório
+        </button>
+        <div id="modal-salvos-wrap" style="display:none;">
+            <div class="modal-sep"><span>ou carregar um relatório salvo</span></div>
+            <div class="modal-salvos-lista" id="modal-salvos-lista"></div>
+        </div>
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:14px;text-align:center;">
+            <a href="/menu"
+               style="font-size:12px;color:#64748b;text-decoration:none;font-weight:500;">
+                ← Voltar ao Menu
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Gerador de Relatório</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <a href="/menu" class="btn-voltar-topo">← Menu</a>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- ── RELATÓRIOS SALVOS — sempre visível ── -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;
+                padding:12px 16px;margin-bottom:16px;
+                display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:12px;font-weight:700;color:#475569;white-space:nowrap;">📂 Relatório salvo:</span>
+        <select id="cfg-select" class="campo-select" style="flex:1;min-width:220px;"
+                onchange="_cfgCarregar()">
+            <option value="">— selecione para carregar —</option>
+        </select>
+        <button type="button" id="btn-cfg-excluir"
+                style="display:none;background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;
+                       border-radius:7px;padding:5px 12px;font-size:12px;font-weight:600;
+                       cursor:pointer;white-space:nowrap;font-family:var(--sans);"
+                onclick="_cfgExcluir()">🗑 Excluir</button>
+        <span id="cfg-loading"
+              style="display:none;font-size:11px;color:#64748b;font-style:italic;">Carregando…</span>
+    </div>
+
+    <!-- ── FILTROS ── -->
+    <div class="filtros-card" id="filtros-card">
+        <div class="filtros-header">🔍 Filtros e Seções</div>
+        <div class="filtros-body">
+
+            <form method="get" action="/gerador_relatorio" autocomplete="off">
+
+                <div class="filtros-row">
+                    <!-- Funcionário -->
+                    <div class="campo-func">
+                        <div class="campo-label">Funcionário</div>
+                        <select name="mat" class="campo-select" style="width:100%">
+                            <option value="">— Todos —</option>
+                            {% for f in all_funcs %}
+                            <option value="{{ f.matricula }}" {% if mat == f.matricula|string %}selected{% endif %}>
+                                {{ "%06d"|format(f.matricula) }} — {{ f.nome_fmt }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Situação -->
+                    <div class="campo-sm">
+                        <div class="campo-label">Situação</div>
+                        <select name="sit" class="campo-select" style="width:100%">
+                            <option value="T" {% if sit == 'T' %}selected{% endif %}>Todos</option>
+                            <option value="A" {% if sit == 'A' or not sit %}selected{% endif %}>Ativos</option>
+                            <option value="D" {% if sit == 'D' %}selected{% endif %}>Desligados</option>
+                        </select>
+                    </div>
+
+                    <!-- Ano -->
+                    <div class="campo-xs">
+                        <div class="campo-label">Ano</div>
+                        <select name="ano" class="campo-select" style="width:100%">
+                            {% for a in anos_disp %}
+                            <option value="{{ a }}" {% if a == ano %}selected{% endif %}>{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Mês Início -->
+                    <div class="campo-sm">
+                        <div class="campo-label">Mês Início</div>
+                        <select name="mes_ini" class="campo-select" style="width:100%">
+                            {% for v, l in MESES_LABEL %}
+                            <option value="{{ v }}" {% if v|int == mes_ini %}selected{% endif %}>{{ l }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Mês Fim -->
+                    <div class="campo-sm">
+                        <div class="campo-label">Mês Fim</div>
+                        <select name="mes_fim" class="campo-select" style="width:100%">
+                            {% for v, l in MESES_LABEL %}
+                            <option value="{{ v }}" {% if v|int == mes_fim %}selected{% endif %}>{{ l }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Classificação + Nome do Relatório + Gerar -->
+                <div class="filtros-row" style="align-items:flex-end;">
+                    <div style="width:180px;flex-shrink:0;">
+                        <div class="campo-label">Classificação</div>
+                        <select name="classificacao" class="campo-select" style="width:100%">
+                            <option value="A" {% if classificacao == 'A' or not classificacao %}selected{% endif %}>Alfabética (Nome)</option>
+                            <option value="N" {% if classificacao == 'N' %}selected{% endif %}>Numérica (Matrícula)</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;min-width:200px;">
+                        <div class="campo-label" style="color:#b45309;font-weight:700;">Nome do Relatório <span style="color:#dc2626;">*</span></div>
+                        <input type="text" name="titulo_rel" class="campo-input" style="width:100%;
+                               background:#fefce8;border-color:#fbbf24;"
+                               placeholder="ex.: Relação nº 3 — Lista de Funcionários"
+                               value="{{ titulo_rel }}" required>
+                    </div>
+                    <div style="flex-shrink:0;">
+                        <button type="submit" class="btn-gerar">▶ Gerar Relatório</button>
+                    </div>
+                </div>
+
+                <!-- Seções -->
+                <div class="filtros-row">
+                    <div style="flex:1">
+                        <div class="campo-label" style="margin-bottom:8px;">Seções do Relatório</div>
+                        <div class="secoes-wrap">
+                            <!-- Cadastro: expansível com picker de campos -->
+                            <div class="sec-cad-wrap">
+                                <label class="sec-check {% if sec_cad %}checked{% endif %}" id="lbl-cad">
+                                    <input type="checkbox" name="sec_cad" value="1" {% if sec_cad %}checked{% endif %}
+                                           id="chk-cad" onchange="toggleCad(this)">
+                                    🗄️ Cadastro
+                                </label>
+                                <div id="cad-fields-panel" class="cad-fields-panel"
+                                     style="display:{% if sec_cad %}block{% else %}none{% endif %}">
+                                    <div class="cad-fields-titulo">
+                                        Selecione os campos
+                                        <span style="font-weight:700;color:#2a7de1;font-size:10px;margin-left:6px;text-transform:none;letter-spacing:0;">— arraste <span style="font-size:12px;">⠿</span> para nova localização dos campos abaixo</span>
+                                    </div>
+                                    <div class="cad-sel-actions">
+                                        <button type="button" class="cad-sel-btn" onclick="cadSelAll(true)">Marcar todos</button>
+                                        <span style="color:#cbd5e1">|</span>
+                                        <button type="button" class="cad-sel-btn" onclick="cadSelAll(false)">Desmarcar todos</button>
+                                    </div>
+                                    <div class="cad-fields-grid" id="cad-fields-grid">
+                                        {% for key, lbl, col, tp in CAD_CAMPOS %}
+                                        <label class="cad-field-label {% if key in cad_fields %}checked{% endif %}" draggable="true">
+                                            <span class="drag-handle" title="Arraste para reordenar">⠿</span>
+                                            <input type="checkbox" name="cad_f" value="{{ key }}"
+                                                   {% if key in cad_fields %}checked{% endif %}
+                                                   onchange="this.closest('.cad-field-label').classList.toggle('checked', this.checked)">
+                                            {{ lbl }}
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Grupo fixo na mesma linha: Totais + Movimento + Eventos + Dependentes -->
+                            <div style="display:flex;flex-wrap:nowrap;gap:8px;align-items:flex-start;">
+                            <!-- Totais: expansível com picker de bases -->
+                            <div class="sec-cad-wrap">
+                                <label class="sec-check {% if sec_totais %}checked{% endif %}" id="lbl-totais">
+                                    <input type="checkbox" name="sec_totais" value="1" {% if sec_totais %}checked{% endif %}
+                                           id="chk-totais" onchange="toggleTotais(this)">
+                                    📊 Totais da Folha
+                                </label>
+                                <div id="tot-fields-panel" class="cad-fields-panel"
+                                     style="display:{% if sec_totais %}block{% else %}none{% endif %}">
+                                    <div class="cad-fields-titulo">
+                                        Bases como colunas (opcional)
+                                        <span style="font-weight:700;color:#2a7de1;font-size:10px;margin-left:6px;text-transform:none;letter-spacing:0;">— arraste <span style="font-size:12px;">⠿</span> para nova localização dos campos abaixo</span>
+                                    </div>
+                                    <div class="cad-fields-grid" id="tot-fields-grid"
+                                         style="flex-direction:column;flex-wrap:nowrap;gap:3px;">
+                                        {% for key, lbl, col, tp in TOT_BASES %}
+                                        <label class="cad-field-label {% if key in tot_fields %}checked{% endif %}"
+                                               style="width:100%;border-radius:4px;" draggable="true">
+                                            <span class="drag-handle" title="Arraste para reordenar">⠿</span>
+                                            <input type="checkbox" name="tot_f" value="{{ key }}"
+                                                   {% if key in tot_fields %}checked{% endif %}
+                                                   onchange="this.closest('.cad-field-label').classList.toggle('checked', this.checked)">
+                                            {{ lbl }}
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Movimento: expansível com picker de verbas -->
+                            <div class="sec-cad-wrap">
+                                <label class="sec-check {% if sec_mov %}checked{% endif %}" id="lbl-mov">
+                                    <input type="checkbox" name="sec_mov" value="1" {% if sec_mov %}checked{% endif %}
+                                           id="chk-mov" onchange="toggleMov(this)">
+                                    🔄 Movimento
+                                </label>
+                                <div id="mov-fields-panel" class="cad-fields-panel"
+                                     style="display:{% if sec_mov %}block{% else %}none{% endif %}">
+                                    <div class="cad-fields-titulo">Selecione as verbas (colunas)</div>
+                                    <!-- radios: filtro de verbas -->
+                                    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;cursor:pointer;">
+                                            <input type="radio" name="mov_filtro_ui" value="periodo"
+                                                   id="mov-radio-periodo"
+                                                   {% if mov_verbas_filtrado %}checked{% endif %}
+                                                   onchange="_movRadioChange(this)"
+                                                   style="accent-color:var(--accent);">
+                                            Apenas Verbas de <span id="mov-periodo-label" style="font-weight:600;">{{ "%02d"|format(mes_ini) }}/{{ ano }}{% if mes_fim != mes_ini %} – {{ "%02d"|format(mes_fim) }}/{{ ano }}{% endif %}</span>
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;cursor:pointer;">
+                                            <input type="radio" name="mov_filtro_ui" value="todas"
+                                                   id="mov-radio-todas"
+                                                   {% if not mov_verbas_filtrado %}checked{% endif %}
+                                                   onchange="_movRadioChange(this)"
+                                                   style="accent-color:var(--accent);">
+                                            Mostrar Todas
+                                        </label>
+                                    </div>
+                                    <div class="cad-fields-grid" id="mov-fields-grid"
+                                         style="flex-direction:column;flex-wrap:nowrap;gap:3px;max-height:260px;overflow-y:auto;">
+                                        {% for v in all_verbas %}
+                                        <label class="cad-field-label {% if v.cod_rubr in mov_fields %}checked{% endif %}"
+                                               style="width:100%;border-radius:4px;">
+                                            <input type="checkbox" name="mov_f" value="{{ v.cod_rubr }}"
+                                                   {% if v.cod_rubr in mov_fields %}checked{% endif %}
+                                                   onchange="this.closest('.cad-field-label').classList.toggle('checked', this.checked)">
+                                            <span style="font-family:var(--mono);font-size:11px;color:#64748b;flex-shrink:0;">{{ "%04d"|format(v.cod_rubr) }}</span>
+                                            <span>{{ v.dsc_rubr or ('V.' ~ v.cod_rubr) }}</span>
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <input type="hidden" id="mov-filtrado-state"
+                                       value="{{ 'true' if mov_verbas_filtrado else 'false' }}">
+                            </div>
+                            <!-- Eventos: expansível com tipo e período -->
+                            <div class="sec-cad-wrap">
+                                <label class="sec-check {% if sec_eventos %}checked{% endif %}" id="lbl-eventos">
+                                    <input type="checkbox" name="sec_eventos" value="1" {% if sec_eventos %}checked{% endif %}
+                                           id="chk-eventos" onchange="toggleEventos(this)">
+                                    🗓️ Eventos
+                                </label>
+                                <div id="ev-fields-panel" class="cad-fields-panel"
+                                     style="display:{% if sec_eventos %}block{% else %}none{% endif %}">
+                                    <div class="cad-fields-titulo">Tipo</div>
+                                    <div class="cad-fields-grid" style="flex-direction:column;gap:3px;margin-bottom:10px;">
+                                        <label class="cad-field-label {% if '3' in ev_tipos %}checked{% endif %}" style="width:100%;border-radius:4px;">
+                                            <input type="checkbox" name="ev_tipo" value="3"
+                                                   {% if '3' in ev_tipos %}checked{% endif %}
+                                                   onchange="this.closest('.cad-field-label').classList.toggle('checked', this.checked)">
+                                            🏖️ Férias
+                                        </label>
+                                        <label class="cad-field-label {% if '6' in ev_tipos %}checked{% endif %}" style="width:100%;border-radius:4px;">
+                                            <input type="checkbox" name="ev_tipo" value="6"
+                                                   {% if '6' in ev_tipos %}checked{% endif %}
+                                                   onchange="this.closest('.cad-field-label').classList.toggle('checked', this.checked)">
+                                            🏥 Afastamento
+                                        </label>
+                                    </div>
+                                    <div class="cad-fields-titulo">Período</div>
+                                    <div style="display:flex;flex-direction:column;gap:5px;margin-top:2px;">
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;cursor:pointer;">
+                                            <input type="radio" name="ev_periodo" value="mes"
+                                                   {% if ev_periodo == 'mes' %}checked{% endif %}
+                                                   style="accent-color:var(--accent);">
+                                            Início na competência (mês inicial do relatório)
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;cursor:pointer;">
+                                            <input type="radio" name="ev_periodo" value="todos"
+                                                   {% if ev_periodo != 'mes' %}checked{% endif %}
+                                                   style="accent-color:var(--accent);">
+                                            Todos (sem filtro de data)
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Dependentes: expansível com filtros -->
+                            <div class="sec-cad-wrap">
+                                <label class="sec-check {% if sec_dep %}checked{% endif %}" id="lbl-dep">
+                                    <input type="checkbox" name="sec_dep" value="1" {% if sec_dep %}checked{% endif %}
+                                           id="chk-dep" onchange="toggleDep(this)">
+                                    👨‍👩‍👧 Dependentes
+                                </label>
+                                <div id="dep-fields-panel" class="cad-fields-panel"
+                                     style="display:{% if sec_dep %}block{% else %}none{% endif %}">
+                                    <div style="margin-bottom:8px;">
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#374151;cursor:pointer;">
+                                            <input type="checkbox" name="dep_somente" value="1"
+                                                   {% if dep_somente %}checked{% endif %}
+                                                   style="accent-color:var(--accent);">
+                                            Apenas funcionários com dependentes
+                                        </label>
+                                    </div>
+                                    <div class="cad-fields-titulo" style="margin-top:6px;">Tipos de vínculo</div>
+                                    <div class="cad-fields-grid" style="flex-direction:column;gap:3px;margin-top:4px;">
+                                        {% for t in tipos_dep_list %}
+                                        {% set tcod = t.cod|string %}
+                                        <label class="cad-field-label {% if not dep_tipos or tcod in dep_tipos %}checked{% endif %}"
+                                               style="width:100%;border-radius:4px;">
+                                            <input type="checkbox" name="dep_tipo" value="{{ tcod }}"
+                                                   {% if not dep_tipos or tcod in dep_tipos %}checked{% endif %}
+                                                   onchange="this.closest('.cad-field-label').classList.toggle('checked', this.checked)">
+                                            {{ t.texto }}
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            </div><!-- /grupo nowrap -->
+                        </div>
+                    </div>
+                </div>
+
+            </form>
+        </div>
+    </div>
+
+    <!-- ── ERRO + RESULTADO ── -->
+    <div id="resultado">
+
+    {% if erro %}
+    <div class="erro-box">⚠️ {{ erro }}</div>
+    {% endif %}
+
+    <!-- ── RESULTADO ── -->
+    {% if gerando and relatorio %}
+
+    {% if titulo_rel %}
+    <div style="font-size:17px;font-weight:700;color:#1e293b;margin-bottom:10px;">{{ titulo_rel }}</div>
+    {% endif %}
+
+    {% if n_cols_total > COL_LIMIT %}
+    <div class="erro-box" style="background:#fefce8;border-color:#fbbf24;color:#92400e;margin-bottom:14px;">
+        ⚠️ Este relatório tem <strong>{{ n_cols_total }} colunas</strong> — para ver todas, role na horizontal.
+        O PDF já é gerado em modo <strong>paisagem</strong> e ajusta as larguras automaticamente ao conteúdo.
+    </div>
+    {% endif %}
+
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <a id="btn-pdf" class="btn-pdf" href="#" target="_blank">&#128438; PDF</a>
+        <button type="button" onclick="_cfgSalvar()"
+            style="background:#166534;color:#fff;border:none;border-radius:8px;
+                   padding:6px 18px;font-size:13px;font-weight:700;
+                   cursor:pointer;font-family:var(--sans);transition:background 0.15s;
+                   box-shadow:0 2px 8px rgba(22,101,52,0.30);">
+            💾 Salvar este Relatório
+        </button>
+        <div style="flex:1;"></div>
+        <button type="button" onclick="toggleFiltros()" id="btn-filtros"
+            style="background:var(--accent);border:none;border-radius:8px;
+                   padding:6px 16px;font-size:12px;font-weight:700;color:#fff;
+                   cursor:pointer;font-family:var(--sans);transition:background 0.15s;
+                   box-shadow:0 2px 8px rgba(42,125,225,0.25);">
+            ⚙ Voltar para os Filtros
+        </button>
+    </div>
+
+    {% if sec_mov and not mov_col_labels %}
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:11px 16px;
+                color:#0c4a6e;font-size:13px;margin-bottom:16px;">
+        ℹ️ Selecione ao menos uma verba em <strong>Movimento</strong> (nos filtros) para incluí-la como coluna no relatório.
+    </div>
+    {% endif %}
+
+    <!-- TABELA FLAT — Cadastro, Verbas e/ou Bases, uma linha por funcionário -->
+    {% if (sec_cad or mov_col_labels or tot_col_labels or (sec_eventos and ev_tipos)) and relatorio %}
+    <div class="func-card" style="margin-bottom:20px;overflow-x:auto;">
+        <table class="rel-table" style="min-width:100%;">
+            <thead>
+                <tr>
+                    <th>Matrícula / Nome</th>
+                    {% if relatorio[0].cad is defined %}
+                    {% for k, item in relatorio[0].cad.items() %}
+                    <th>{{ item.label }}</th>
+                    {% endfor %}
+                    {% endif %}
+                    {% for mc in mov_col_labels %}
+                    <th style="text-align:right;white-space:nowrap;">{{ mc.label }}</th>
+                    {% endfor %}
+                    {% for tc in tot_col_labels %}
+                    <th style="text-align:right;white-space:nowrap;">{{ tc.label }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            {% set _ncad = (relatorio[0].cad|length) if (relatorio and relatorio[0].cad is defined) else 0 %}
+            {% set ncols = 1 + _ncad + mov_col_labels|length + tot_col_labels|length %}
+            <tbody>
+                {% for bloco in relatorio %}
+                <tr>
+                    <td style="white-space:nowrap;">
+                        <span class="td-matr" style="font-family:var(--mono);font-weight:600;color:#1e293b;">{{ bloco.mat }}</span>
+                        <span style="color:#94a3b8;margin:0 4px;">·</span>
+                        <span style="font-weight:500;">{{ bloco.nome }}</span>
+                    </td>
+                    {% if bloco.cad is defined %}
+                    {% for k, item in bloco.cad.items() %}
+                    <td style="white-space:nowrap;">{{ item.valor }}</td>
+                    {% endfor %}
+                    {% endif %}
+                    {% for mc in mov_col_labels %}
+                    <td class="td-num">{{ bloco.mov_pivot[mc.cod] if bloco.mov_pivot is defined and mc.cod in bloco.mov_pivot else '—' }}</td>
+                    {% endfor %}
+                    {% for tc in tot_col_labels %}
+                    <td class="td-num">{{ bloco.tot_pivot[tc.key] if bloco.tot_pivot is defined and tc.key in bloco.tot_pivot else '—' }}</td>
+                    {% endfor %}
+                </tr>
+                {% if sec_dep and bloco.deps is defined %}
+                <tr style="background:#f8fafc;">
+                    <td colspan="{{ ncols }}" style="padding:0 10px 8px 28px;border-bottom:1px solid #e2e8f0;">
+                        {% if bloco.deps %}
+                        <table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:3px;">
+                            <tr>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Nome</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Parentesco</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Nascimento</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">IRRF</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 0;white-space:nowrap;">Saúde</td>
+                            </tr>
+                            {% for dep in bloco.deps %}
+                            <tr>
+                                <td style="padding:1px 14px 1px 0;">{{ dep.nome }}</td>
+                                <td style="padding:1px 14px 1px 0;">{{ dep.tipo }}</td>
+                                <td style="padding:1px 14px 1px 0;font-family:var(--mono);">{{ dep.dtnasc }}</td>
+                                <td style="padding:1px 14px 1px 0;">{{ dep.irrf }}</td>
+                                <td style="padding:1px 0;">{{ dep.sf }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                        {% else %}
+                        <span style="color:#94a3b8;font-size:11px;font-style:italic;line-height:2.2;">Sem dependentes</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endif %}
+                {% if sec_eventos and ev_tipos and bloco.eventos is defined and bloco.eventos %}
+                <tr style="background:#f0fdf4;">
+                    <td colspan="{{ ncols }}" style="padding:0 10px 8px 28px;border-bottom:1px solid #e2e8f0;">
+                        <table style="width:auto;border-collapse:collapse;font-size:11px;margin-top:3px;">
+                            <tr>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Tipo</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Início</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Fim</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 14px 2px 0;white-space:nowrap;">Dias</td>
+                                <td style="color:#64748b;font-weight:700;padding:2px 0;white-space:nowrap;">Obs.</td>
+                            </tr>
+                            {% for ev in bloco.eventos %}
+                            <tr>
+                                <td style="padding:1px 14px 1px 0;font-weight:600;">{{ ev.tipo }}</td>
+                                <td style="padding:1px 14px 1px 0;font-family:var(--mono);">{{ ev.data1i }}</td>
+                                <td style="padding:1px 14px 1px 0;font-family:var(--mono);">{{ ev.data1f }}</td>
+                                <td style="padding:1px 14px 1px 0;font-family:var(--mono);">{{ ev.ref1 }}</td>
+                                <td style="padding:1px 0;color:#64748b;font-style:italic;">{{ ev.obs }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="background:#f8fafc;">
+                    <td style="padding:8px 10px;border-top:2px solid var(--border);
+                               font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;">
+                        Total: {{ relatorio|length }} funcionário{{ 's' if relatorio|length != 1 else '' }}
+                    </td>
+                    {% if relatorio[0].cad is defined %}
+                    {% for k, item in relatorio[0].cad.items() %}
+                    <td style="border-top:2px solid var(--border);"></td>
+                    {% endfor %}
+                    {% endif %}
+                    {% for mc in mov_col_labels %}
+                    <td class="td-num" style="padding:8px 10px;border-top:2px solid var(--border);
+                               font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;">
+                        {{ mov_col_sums[mc.cod] if mc.cod in mov_col_sums else '' }}
+                    </td>
+                    {% endfor %}
+                    {% for tc in tot_col_labels %}
+                    <td class="td-num" style="padding:8px 10px;border-top:2px solid var(--border);
+                               font-size:12px;font-weight:700;color:#1e293b;white-space:nowrap;">
+                        {{ tot_col_sums[tc.key] if tc.key in tot_col_sums else '' }}
+                    </td>
+                    {% endfor %}
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+    {% endif %}
+
+    {% if sec_eventos and not ev_tipos %}
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:11px 16px;
+                color:#0c4a6e;font-size:13px;margin-bottom:16px;">
+        ℹ️ Selecione ao menos um tipo de evento em <strong>Eventos</strong> (Férias ou Afastamento).
+    </div>
+    {% endif %}
+
+    {% if sec_eventos and ev_tipos and ev_total == 0 and ev_periodo == 'mes' %}
+    <div style="background:#fff7ed;border:1px solid #fb923c;border-radius:10px;padding:11px 16px;
+                color:#9a3412;font-size:13px;margin-bottom:16px;">
+        ⚠️ Nenhum evento encontrado com o filtro <strong>Início na competência</strong> para o período
+        <strong>{{ mes_ini|int }}/{{ ano }}</strong> a <strong>{{ mes_fim|int }}/{{ ano }}</strong>.
+        Para ver todos os eventos, selecione <strong>Todos (sem filtro de data)</strong> nos Filtros e gere novamente.
+    </div>
+    {% endif %}
+
+    <!-- OUTRAS SEÇÕES — card por funcionário -->
+    {% set has_other = sec_dep and not sec_cad %}
+    {% if has_other %}
+    {% for bloco in relatorio %}
+    <div class="func-card">
+        <div class="func-header">
+            <span class="func-matr">{{ bloco.mat }}</span>
+            <span class="func-nome">{{ bloco.nome }}</span>
+            <span class="func-sit sit-{{ bloco.sit }}">{{ 'Ativo' if bloco.sit == 'A' else 'Desligado' }}</span>
+        </div>
+
+        <!-- TOTAIS -->
+        {% if sec_totais and bloco.totais is defined %}
+        <div class="sec-bloco">
+            <div class="sec-titulo">Totais da Folha</div>
+            {% if bloco.totais %}
+            <table class="rel-table">
+                <thead>
+                    <tr>
+                        <th>Competência</th>
+                        <th>Tipo</th>
+                        <th style="text-align:right">Proventos</th>
+                        <th style="text-align:right">Descontos</th>
+                        <th style="text-align:right">Líquido</th>
+                        <th style="text-align:right">INSS</th>
+                        <th style="text-align:right">FGTS</th>
+                        <th style="text-align:right">Base IRRF</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in bloco.totais %}
+                    <tr>
+                        <td class="td-matr">{{ r.folha }}</td>
+                        <td><span class="badge-tipo badge-{{ r.tipo[0] if r.tipo else 'N' }}">{{ r.tipo }}</span></td>
+                        <td class="td-num">{{ r.prov }}</td>
+                        <td class="td-num">{{ r.desc }}</td>
+                        <td class="td-num" style="font-weight:600;">{{ r.liq }}</td>
+                        <td class="td-num td-desc">{{ r.inss }}</td>
+                        <td class="td-num td-desc">{{ r.fgts }}</td>
+                        <td class="td-num td-desc">{{ r.irrf }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">Nenhum registro no período.</div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- EVENTOS -->
+        {% if sec_eventos and bloco.eventos is defined %}
+        <div class="sec-bloco">
+            <div class="sec-titulo">Eventos</div>
+            {% if bloco.eventos %}
+            <table class="rel-table">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Início</th>
+                        <th>Fim</th>
+                        <th>Referência</th>
+                        <th>Obs.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in bloco.eventos %}
+                    <tr>
+                        <td style="font-weight:600;">{{ r.tipo }}</td>
+                        <td class="td-matr">{{ r.data1i }}</td>
+                        <td class="td-matr">{{ r.data1f }}</td>
+                        <td>{{ r.ref1 }}</td>
+                        <td class="td-desc">{{ r.obs }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">Nenhum evento no período.</div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- DEPENDENTES (cards: só quando não há tabela de cadastro) -->
+        {% if sec_dep and not sec_cad and bloco.deps is defined %}
+        <div class="sec-bloco">
+            <div class="sec-titulo">Dependentes</div>
+            {% if bloco.deps %}
+            <table class="rel-table">
+                <thead>
+                    <tr>
+                        <th>Nome</th>
+                        <th>Parentesco</th>
+                        <th>Nascimento</th>
+                        <th>IRRF</th>
+                        <th>Saúde</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in bloco.deps %}
+                    <tr>
+                        <td style="font-weight:500;">{{ r.nome }}</td>
+                        <td>{{ r.tipo }}</td>
+                        <td class="td-matr">{{ r.dtnasc }}</td>
+                        <td>{{ r.irrf }}</td>
+                        <td>{{ r.sf }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">Nenhum dependente cadastrado.</div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% elif gerando and not relatorio and not erro %}
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;">
+        <div class="erro-box" style="margin-bottom:0;flex:1;">Nenhum funcionário encontrado com os filtros informados.</div>
+        <button type="button" onclick="abrirFiltros()"
+            style="background:var(--accent);border:none;border-radius:8px;
+                   padding:6px 16px;font-size:12px;font-weight:700;color:#fff;
+                   cursor:pointer;font-family:var(--sans);transition:background 0.15s;
+                   white-space:nowrap;box-shadow:0 2px 8px rgba(42,125,225,0.25);">
+            ⚙ Voltar para os Filtros
+        </button>
+    </div>
+    {% endif %}
+
+    </div><!-- /#resultado -->
+
+</div>
+
+<script>
+{% if gerando %}
+(function() {
+    var el = document.getElementById('filtros-card');
+    if (el) el.style.display = 'none';
+    var pdf = document.getElementById('btn-pdf');
+    if (pdf) pdf.href = '/gerador_relatorio_pdf' + window.location.search;
+})();
+{% endif %}
+
+document.querySelector('form').addEventListener('submit', function() {
+    document.getElementById('loading-overlay').classList.add('ativo');
+});
+
+function abrirFiltros() {
+    var filtros = document.getElementById('filtros-card');
+    var resultado = document.getElementById('resultado');
+    if (filtros) filtros.style.display = 'block';
+    if (resultado) resultado.style.display = 'none';
+}
+
+function toggleFiltros() {
+    var filtros   = document.getElementById('filtros-card');
+    var resultado = document.getElementById('resultado');
+    var btn       = document.getElementById('btn-filtros');
+    var abrindo   = filtros.style.display === 'none';
+    filtros.style.display   = abrindo ? 'block' : 'none';
+    if (resultado) resultado.style.display = abrindo ? 'none' : 'block';
+    btn.textContent = abrindo ? '✕ Fechar Filtros' : '⚙ Voltar para os Filtros';
+}
+
+function toggleCad(chk) {
+    document.getElementById('lbl-cad').classList.toggle('checked', chk.checked);
+    document.getElementById('cad-fields-panel').style.display = chk.checked ? 'block' : 'none';
+}
+
+function cadSelAll(mark) {
+    document.querySelectorAll('#cad-fields-grid input[type=checkbox]').forEach(function(cb) {
+        cb.checked = mark;
+        cb.closest('.cad-field-label').classList.toggle('checked', mark);
+    });
+}
+
+function _initCadDrag() {
+    var grid = document.getElementById('cad-fields-grid');
+    if (!grid) return;
+    var _dragged = null;
+    grid.addEventListener('dragstart', function(e) {
+        _dragged = e.target.closest('.cad-field-label');
+        if (!_dragged) return;
+        setTimeout(function() { if (_dragged) _dragged.classList.add('dragging'); }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    grid.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        var over = e.target.closest('.cad-field-label');
+        if (!over || over === _dragged) return;
+        grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+        over.classList.add('drag-over');
+    });
+    grid.addEventListener('dragleave', function(e) {
+        if (!e.relatedTarget || !grid.contains(e.relatedTarget))
+            grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+    });
+    grid.addEventListener('drop', function(e) {
+        e.preventDefault();
+        var over = e.target.closest('.cad-field-label');
+        grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+        if (!over || !_dragged || over === _dragged) return;
+        var items = Array.from(grid.querySelectorAll('.cad-field-label'));
+        if (items.indexOf(_dragged) < items.indexOf(over))
+            grid.insertBefore(_dragged, over.nextSibling);
+        else
+            grid.insertBefore(_dragged, over);
+    });
+    grid.addEventListener('dragend', function() {
+        if (_dragged) _dragged.classList.remove('dragging');
+        grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+        _dragged = null;
+    });
+}
+_initCadDrag();
+
+function _initTotDrag() {
+    var grid = document.getElementById('tot-fields-grid');
+    if (!grid) return;
+    var _dragged = null;
+    grid.addEventListener('dragstart', function(e) {
+        _dragged = e.target.closest('.cad-field-label');
+        if (!_dragged) return;
+        setTimeout(function() { if (_dragged) _dragged.classList.add('dragging'); }, 0);
+        e.dataTransfer.effectAllowed = 'move';
+    });
+    grid.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        var over = e.target.closest('.cad-field-label');
+        if (!over || over === _dragged) return;
+        grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+        over.classList.add('drag-over');
+    });
+    grid.addEventListener('dragleave', function(e) {
+        if (!e.relatedTarget || !grid.contains(e.relatedTarget))
+            grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+    });
+    grid.addEventListener('drop', function(e) {
+        e.preventDefault();
+        var over = e.target.closest('.cad-field-label');
+        grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+        if (!over || !_dragged || over === _dragged) return;
+        var items = Array.from(grid.querySelectorAll('.cad-field-label'));
+        if (items.indexOf(_dragged) < items.indexOf(over))
+            grid.insertBefore(_dragged, over.nextSibling);
+        else
+            grid.insertBefore(_dragged, over);
+    });
+    grid.addEventListener('dragend', function() {
+        if (_dragged) _dragged.classList.remove('dragging');
+        grid.querySelectorAll('.cad-field-label').forEach(function(el) { el.classList.remove('drag-over'); });
+        _dragged = null;
+    });
+}
+_initTotDrag();
+
+function toggleEventos(chk) {
+    document.getElementById('lbl-eventos').classList.toggle('checked', chk.checked);
+    document.getElementById('ev-fields-panel').style.display = chk.checked ? 'block' : 'none';
+}
+
+function toggleDep(chk) {
+    document.getElementById('lbl-dep').classList.toggle('checked', chk.checked);
+    document.getElementById('dep-fields-panel').style.display = chk.checked ? 'block' : 'none';
+}
+
+function toggleTotais(chk) {
+    document.getElementById('lbl-totais').classList.toggle('checked', chk.checked);
+    document.getElementById('tot-fields-panel').style.display = chk.checked ? 'block' : 'none';
+}
+
+function toggleMov(chk) {
+    document.getElementById('lbl-mov').classList.toggle('checked', chk.checked);
+    document.getElementById('mov-fields-panel').style.display = chk.checked ? 'block' : 'none';
+}
+
+function movSelAll(mark) {
+    document.querySelectorAll('#mov-fields-grid input[type=checkbox]').forEach(function(cb) {
+        cb.checked = mark;
+        cb.closest('.cad-field-label').classList.toggle('checked', mark);
+    });
+}
+
+// ── Verbas dinâmicas ────────────────────────────────────────────────────────
+var _movFiltrado = (document.getElementById('mov-filtrado-state') || {}).value === 'true';
+
+function _movRadioChange(radio) {
+    _movFiltrado = radio.value === 'periodo';
+    _movRecarregar();
+}
+
+function _movRecarregar() {
+    var ano    = document.querySelector('[name="ano"]').value;
+    var mesIni = document.querySelector('[name="mes_ini"]').value;
+    var mesFim = document.querySelector('[name="mes_fim"]').value;
+    var grid   = document.getElementById('mov-fields-grid');
+
+    // Atualiza rótulo do período no radio imediatamente
+    var mIni = String(mesIni).padStart(2, '0');
+    var mFim = String(mesFim).padStart(2, '0');
+    var periodTxt = mIni + '/' + ano;
+    if (String(mesIni) !== String(mesFim)) periodTxt += ' – ' + mFim + '/' + ano;
+    var periodoLabel = document.getElementById('mov-periodo-label');
+    if (periodoLabel) periodoLabel.textContent = periodTxt;
+
+    // Preserva selecionadas
+    var sel = new Set([].slice.call(
+        document.querySelectorAll('#mov-fields-grid input[type=checkbox]:checked')
+    ).map(function(cb){ return cb.value; }));
+
+    grid.innerHTML = '<span style="color:#94a3b8;font-size:11px;padding:4px 0;">Carregando…</span>';
+
+    fetch('/api/gerador_verbas_usadas?ano=' + ano +
+          '&mes_ini=' + mesIni + '&mes_fim=' + mesFim +
+          '&todas=' + (_movFiltrado ? '0' : '1'))
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            if (!data.ok) {
+                grid.innerHTML = '<span style="color:#e11d48;font-size:11px;">Erro ao carregar verbas.</span>';
+                return;
+            }
+            _movFiltrado = data.filtrado;
+            document.getElementById('mov-filtrado-state').value = _movFiltrado ? 'true' : 'false';
+
+            // Sincroniza radios com estado real retornado pela API
+            var radioPeriodo = document.getElementById('mov-radio-periodo');
+            var radioTodas   = document.getElementById('mov-radio-todas');
+            if (radioPeriodo) radioPeriodo.checked = _movFiltrado;
+            if (radioTodas)   radioTodas.checked   = !_movFiltrado;
+
+            grid.innerHTML = '';
+            if (!data.verbas.length) {
+                grid.innerHTML = '<span style="color:#94a3b8;font-size:11px;font-style:italic;padding:4px 0;">Nenhuma verba encontrada no período.</span>';
+                return;
+            }
+            data.verbas.forEach(function(v) {
+                var cod    = String(v.cod_rubr);
+                var codFmt = cod.padStart(4, '0');
+                var dsc    = v.dsc_rubr || ('V.' + cod);
+                var chk    = sel.has(cod);
+                var lbl    = document.createElement('label');
+                lbl.className = 'cad-field-label' + (chk ? ' checked' : '');
+                lbl.style.cssText = 'width:100%;border-radius:4px;';
+                lbl.innerHTML =
+                    '<input type="checkbox" name="mov_f" value="' + cod + '"' + (chk ? ' checked' : '') +
+                    ' onchange="this.closest(\'.cad-field-label\').classList.toggle(\'checked\',this.checked)">' +
+                    '<span style="font-family:var(--mono);font-size:11px;color:#64748b;flex-shrink:0;">' + codFmt + '</span>' +
+                    '<span>' + dsc + '</span>';
+                grid.appendChild(lbl);
+            });
+        })
+        .catch(function() {
+            grid.innerHTML = '<span style="color:#e11d48;font-size:11px;">Erro ao carregar verbas.</span>';
+        });
+}
+
+// Auto-recarrega quando muda período (só se Movimento estiver aberto)
+['ano','mes_ini','mes_fim'].forEach(function(nm) {
+    var el = document.querySelector('[name="' + nm + '"]');
+    if (el) el.addEventListener('change', function() {
+        var chkMov = document.getElementById('chk-mov');
+        if (chkMov && chkMov.checked) _movRecarregar();
+    });
+});
+
+// ── Configurações salvas ──────────────────────────────────────────────────────
+var _cfgAtualId   = null;   // id da config carregada atualmente
+var _cfgAtualNome = '';
+
+function _cfgColetarParametros() {
+    var f = document.querySelector('form');
+    var p = {};
+    ['mat','sit','ano','mes_ini','mes_fim','classificacao','titulo_rel'].forEach(function(n) {
+        var el = f.querySelector('[name="' + n + '"]');
+        if (el) p[n] = el.value;
+    });
+    p.sec_cad     = !!f.querySelector('[name="sec_cad"]:checked');
+    p.sec_totais  = !!f.querySelector('[name="sec_totais"]:checked');
+    p.sec_mov     = !!f.querySelector('[name="sec_mov"]:checked');
+    p.sec_eventos = !!f.querySelector('[name="sec_eventos"]:checked');
+    p.sec_dep     = !!f.querySelector('[name="sec_dep"]:checked');
+    p.cad_fields       = [].map.call(f.querySelectorAll('[name="cad_f"]:checked'), function(cb){ return cb.value; });
+    p.cad_fields_order = [].map.call(f.querySelectorAll('[name="cad_f"]'),         function(cb){ return cb.value; });
+    p.tot_fields       = [].map.call(f.querySelectorAll('[name="tot_f"]:checked'), function(cb){ return cb.value; });
+    p.tot_fields_order = [].map.call(f.querySelectorAll('[name="tot_f"]'),         function(cb){ return cb.value; });
+    p.mov_fields  = [].map.call(f.querySelectorAll('[name="mov_f"]:checked'),   function(cb){ return cb.value; });
+    p.ev_tipos    = [].map.call(f.querySelectorAll('[name="ev_tipo"]:checked'), function(cb){ return cb.value; });
+    var evPer = f.querySelector('[name="ev_periodo"]:checked');
+    p.ev_periodo  = evPer ? evPer.value : 'mes';
+    var movRad = f.querySelector('[name="mov_filtro_ui"]:checked');
+    p.mov_filtro_ui = movRad ? movRad.value : 'periodo';
+    p.dep_somente = !!f.querySelector('[name="dep_somente"]:checked');
+    p.dep_tipos   = [].map.call(f.querySelectorAll('[name="dep_tipo"]:checked'), function(cb){ return cb.value; });
+    return p;
+}
+
+function _cfgAplicarParametros(p) {
+    var f = document.querySelector('form');
+    ['mat','sit','ano','mes_ini','mes_fim','classificacao','titulo_rel'].forEach(function(n) {
+        var el = f.querySelector('[name="' + n + '"]');
+        if (el && p[n] !== undefined) el.value = p[n];
+    });
+    function _setChk(name, val) {
+        var el = f.querySelector('[name="' + name + '"]');
+        if (el) { el.checked = !!val; el.dispatchEvent(new Event('change')); }
+    }
+    _setChk('sec_cad',     p.sec_cad);
+    _setChk('sec_totais',  p.sec_totais);
+    _setChk('sec_mov',     p.sec_mov);
+    _setChk('sec_eventos', p.sec_eventos);
+    _setChk('sec_dep',     p.sec_dep);
+    var depSomenteEl = f.querySelector('[name="dep_somente"]');
+    if (depSomenteEl && p.dep_somente !== undefined) depSomenteEl.checked = !!p.dep_somente;
+    if (p.dep_tipos !== undefined) {
+        f.querySelectorAll('[name="dep_tipo"]').forEach(function(cb) {
+            cb.checked = p.dep_tipos.length === 0 || p.dep_tipos.indexOf(cb.value) >= 0;
+            cb.closest('.cad-field-label').classList.toggle('checked', cb.checked);
+        });
+    }
+    if (p.cad_fields) {
+        var _grid = document.getElementById('cad-fields-grid');
+        if (_grid) {
+            // Restaura ordem: selecionados primeiro na ordem salva, depois o restante
+            var _map = {};
+            _grid.querySelectorAll('[name="cad_f"]').forEach(function(cb) { _map[cb.value] = cb.closest('.cad-field-label'); });
+            var _order = p.cad_fields_order && p.cad_fields_order.length ? p.cad_fields_order : p.cad_fields;
+            var _rest  = Object.keys(_map).filter(function(k) { return _order.indexOf(k) < 0; });
+            _order.concat(_rest).forEach(function(k) { if (_map[k]) _grid.appendChild(_map[k]); });
+        }
+        f.querySelectorAll('[name="cad_f"]').forEach(function(cb) {
+            cb.checked = p.cad_fields.indexOf(cb.value) >= 0;
+            cb.closest('.cad-field-label').classList.toggle('checked', cb.checked);
+        });
+    }
+    if (p.tot_fields) {
+        var _tgrid = document.getElementById('tot-fields-grid');
+        if (_tgrid) {
+            var _tmap = {};
+            _tgrid.querySelectorAll('[name="tot_f"]').forEach(function(cb) { _tmap[cb.value] = cb.closest('.cad-field-label'); });
+            var _torder = p.tot_fields_order && p.tot_fields_order.length ? p.tot_fields_order : p.tot_fields;
+            var _trest  = Object.keys(_tmap).filter(function(k) { return _torder.indexOf(k) < 0; });
+            _torder.concat(_trest).forEach(function(k) { if (_tmap[k]) _tgrid.appendChild(_tmap[k]); });
+        }
+        f.querySelectorAll('[name="tot_f"]').forEach(function(cb) {
+            cb.checked = p.tot_fields.indexOf(cb.value) >= 0;
+            cb.closest('.cad-field-label').classList.toggle('checked', cb.checked);
+        });
+    }
+    if (p.ev_tipos) {
+        f.querySelectorAll('[name="ev_tipo"]').forEach(function(cb) {
+            cb.checked = p.ev_tipos.indexOf(cb.value) >= 0;
+            cb.closest('.cad-field-label').classList.toggle('checked', cb.checked);
+        });
+    }
+    if (p.ev_periodo) {
+        f.querySelectorAll('[name="ev_periodo"]').forEach(function(r) {
+            r.checked = r.value === p.ev_periodo;
+        });
+    }
+    // mov_fields: recarrega lista via API com os valores salvos
+    if (p.mov_filtro_ui) {
+        _movFiltrado = p.mov_filtro_ui === 'periodo';
+        var rp = document.getElementById('mov-radio-periodo');
+        var rt = document.getElementById('mov-radio-todas');
+        if (rp) rp.checked = _movFiltrado;
+        if (rt) rt.checked = !_movFiltrado;
+    }
+    if (p.sec_mov && p.mov_fields && p.mov_fields.length) {
+        // aguarda lista recarregada e marca as verbas salvas
+        var _tentativas = 0;
+        function _marcarMovFields() {
+            var grid = document.getElementById('mov-fields-grid');
+            var cbs  = grid ? grid.querySelectorAll('[name="mov_f"]') : [];
+            if (cbs.length === 0 && _tentativas < 20) {
+                _tentativas++;
+                setTimeout(_marcarMovFields, 200);
+                return;
+            }
+            cbs.forEach(function(cb) {
+                cb.checked = p.mov_fields.indexOf(cb.value) >= 0;
+                cb.closest('.cad-field-label').classList.toggle('checked', cb.checked);
+            });
+        }
+        if (document.getElementById('chk-mov') && document.getElementById('chk-mov').checked) {
+            _movRecarregar();
+            setTimeout(_marcarMovFields, 600);
+        }
+    }
+}
+
+function _cfgCarregarLista(abrirModal) {
+    var sel = document.getElementById('cfg-select');
+    if (!sel) return;
+    fetch('/api/rel_configs')
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            if (!data.ok) return;
+            var prev = sel.value;
+            sel.innerHTML = '<option value="">— selecione para carregar —</option>';
+            var lista = data.configs || [];
+            lista.forEach(function(c) {
+                var opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.nome;
+                opt.dataset.parametros = JSON.stringify(c.parametros);
+                opt.dataset.nome = c.nome;
+                sel.appendChild(opt);
+            });
+            if (prev) sel.value = prev;
+
+            // Alimenta e (se necessário) abre o modal de abertura
+            var wrap  = document.getElementById('modal-salvos-wrap');
+            var mLista = document.getElementById('modal-salvos-lista');
+            if (wrap && mLista) {
+                mLista.innerHTML = '';
+                if (lista.length) {
+                    wrap.style.display = '';
+                    lista.forEach(function(c) {
+                        var btn = document.createElement('button');
+                        btn.className = 'modal-salvo-btn';
+                        btn.textContent = c.nome;
+                        btn.onclick = function() {
+                            _modalFechar();
+                            // aplica via select
+                            var s = document.getElementById('cfg-select');
+                            if (s) { s.value = c.id; _cfgCarregar(); }
+                        };
+                        mLista.appendChild(btn);
+                    });
+                } else {
+                    wrap.style.display = 'none';
+                }
+            }
+            if (abrirModal && lista.length) {
+                document.getElementById('modal-abertura').classList.add('ativo');
+            }
+        });
+}
+
+function _modalNovo() {
+    document.getElementById('modal-abertura').classList.remove('ativo');
+}
+
+function _modalFechar() {
+    document.getElementById('modal-abertura').classList.remove('ativo');
+}
+
+function _cfgCarregar() {
+    var sel = document.getElementById('cfg-select');
+    var opt = sel ? sel.options[sel.selectedIndex] : null;
+    var excBtn = document.getElementById('btn-cfg-excluir');
+    if (!opt || !opt.value) {
+        _cfgAtualId = null; _cfgAtualNome = '';
+        if (excBtn) excBtn.style.display = 'none';
+        return;
+    }
+    _cfgAtualId   = opt.value;
+    _cfgAtualNome = opt.dataset.nome || '';
+    if (excBtn) excBtn.style.display = '';
+    try {
+        var p = JSON.parse(opt.dataset.parametros || '{}');
+        _cfgAplicarParametros(p);
+    } catch(e) {}
+}
+
+function _cfgSalvar() {
+    var p          = _cfgColetarParametros();
+    var tituloRel  = (document.querySelector('[name="titulo_rel"]') || {}).value || '';
+
+    if (_cfgAtualId) {
+        // ── Relatório carregado: confirma gravação por cima ──
+        if (!confirm('Salvar alterações em "' + _cfgAtualNome + '"?')) return;
+        _doSave('PUT', _cfgAtualId, _cfgAtualNome, p);
+    } else {
+        // ── Novo: pede nome (sugerindo título do relatório) ──
+        var nome = prompt('Nome para este relatório:', tituloRel);
+        if (nome === null) return;
+        nome = nome.trim();
+        if (!nome) { alert('Nome obrigatório.'); return; }
+
+        // Verifica duplicata na lista já carregada
+        var sel    = document.getElementById('cfg-select');
+        var dupOpt = null;
+        if (sel) {
+            for (var i = 0; i < sel.options.length; i++) {
+                var o = sel.options[i];
+                if (o.value && o.textContent.trim().toLowerCase() === nome.toLowerCase()) {
+                    dupOpt = o; break;
+                }
+            }
+        }
+        if (dupOpt) {
+            if (!confirm('Já existe um relatório com o nome "' + nome + '".\nDeseja substituí-lo?')) return;
+            _cfgAtualId   = dupOpt.value;
+            _cfgAtualNome = nome;
+            _doSave('PUT', dupOpt.value, nome, p);
+        } else {
+            _doSave('POST', null, nome, p);
+        }
+    }
+}
+
+function _doSave(method, id, nome, p) {
+    var loading = document.getElementById('cfg-loading');
+    if (loading) loading.style.display = '';
+    var url = '/api/rel_configs' + (id ? '/' + id : '');
+    fetch(url, {
+        method: method,
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({nome: nome, parametros: p})
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(data) {
+        if (loading) loading.style.display = 'none';
+        if (data.ok) {
+            if (method === 'POST') {
+                _cfgAtualId   = data.id;
+                _cfgAtualNome = nome;
+                var excBtn = document.getElementById('btn-cfg-excluir');
+                if (excBtn) excBtn.style.display = '';
+            } else {
+                _cfgAtualNome = nome;
+            }
+            _cfgCarregarLista(false);
+            setTimeout(function(){
+                var s = document.getElementById('cfg-select');
+                if (s) s.value = _cfgAtualId;
+            }, 300);
+            alert('Relatório salvo!');
+        } else if (data.msg === 'duplicate') {
+            // Servidor rejeitou: nome duplicado (raro — lista local já verifica)
+            alert('Já existe um relatório com o nome "' + nome + '".\nEscolha outro nome.');
+        } else {
+            alert('Erro ao salvar: ' + (data.msg || ''));
+        }
+    })
+    .catch(function(){
+        if (loading) loading.style.display = 'none';
+        alert('Erro ao salvar.');
+    });
+}
+
+function _cfgExcluir() {
+    if (!_cfgAtualId) return;
+    if (!confirm('Excluir a configuração "' + _cfgAtualNome + '"?')) return;
+    fetch('/api/rel_configs/' + _cfgAtualId, {method: 'DELETE'})
+        .then(function(r){ return r.json(); })
+        .then(function(data) {
+            if (data.ok) {
+                _cfgAtualId = null; _cfgAtualNome = '';
+                var excBtn = document.getElementById('btn-cfg-excluir');
+                if (excBtn) excBtn.style.display = 'none';
+                _cfgCarregarLista();
+                alert('Configuração excluída.');
+            } else { alert('Erro: ' + (data.msg || '')); }
+        });
+}
+
+// Carrega lista — abre modal de abertura só quando não há resultados na tela
+_cfgCarregarLista({{ 'false' if gerando else 'true' }});
+</script>
+</body>
+</html>
