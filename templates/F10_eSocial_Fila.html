@@ -253,7 +253,7 @@ tr:hover td { background: #f8fafc; }
             <span style="font-size:11px;color:#64748b;margin-left:4px;">{{ r._lay_desc }}</span>
             {% if r.matricula %}
             <span style="margin:0 5px;color:#cbd5e1;">·</span>
-            <span style="font-family:var(--mono);font-size:11px;color:#94a3b8;">{{ '%06d' % (r.matricula or 0) }}</span>
+            <span style="font-size:11px;color:#94a3b8;">{{ '%06d' % (r.matricula or 0) }}</span>
             <span style="margin:0 5px;color:#cbd5e1;">·</span>
             <span style="font-weight:600;font-size:13px;">{{ r._nome }}</span>
             {% elif r._periodo_fmt %}
