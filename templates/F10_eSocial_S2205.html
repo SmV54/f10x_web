@@ -424,13 +424,19 @@ const ETAPAS = [
   [98, 'Consultando resultado…'],
 ];
 
-// Pré-configura data de hoje
+// Pré-configura data de hoje e auto-seleciona funcionário via ?mat=
 (function() {
   const hoje = new Date();
   const yy = hoje.getFullYear();
   const mm = String(hoje.getMonth()+1).padStart(2,'0');
   const dd = String(hoje.getDate()).padStart(2,'0');
   document.getElementById('dtAlteracao').value = `${yy}-${mm}-${dd}`;
+
+  const mat = new URLSearchParams(window.location.search).get('mat');
+  if (mat) {
+    const sel = document.getElementById('selFuncionario');
+    if (sel) { sel.value = mat; if (sel.value) carregarFuncionario(); }
+  }
 })();
 
 async function carregarFuncionario() {

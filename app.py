@@ -13091,6 +13091,96 @@ def api_esocial_reconsultar_generico():
 
 
 # =========================================================
+# eSocial — Gerador de Remessa
+# =========================================================
+@app.route("/esocial_gerador")
+def esocial_gerador():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+
+    funcionarios = []
+    try:
+        funcionarios = (supabase.table("tab_cad")
+                        .select("matricula, nome, situacao")
+                        .eq("id_empresa", id_empresa)
+                        .order("nome")
+                        .execute().data or [])
+        funcionarios = [f for f in funcionarios if str(f.get("situacao") or "A") == "A"]
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_eSocial_Gerador.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        funcionarios=funcionarios,
+        anomes_atual=anomes_atual,
+    )
+
+
+@app.route("/api/esocial_gerador_criar", methods=["POST"])
+def api_esocial_gerador_criar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa   = _get_id_empresa()
+    id_cliente   = session.get("id_cliente")
+    anomes_atual = str(session.get("anomes_atual") or "")
+    data         = request.get_json(force=True) or {}
+
+    layout    = str(data.get("layout", "")).strip()
+    matricula = data.get("matricula")
+
+    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2230", "2299"}
+    _LAYOUTS_VALIDOS = {"2200", "2205", "2206", "2230", "2299", "1200", "1210", "1298", "1299", "3000"}
+
+    if layout not in _LAYOUTS_VALIDOS:
+        return jsonify({"ok": False, "msg": f"Layout inválido: {layout}"})
+
+    if layout in _LAYOUTS_FUNC and not matricula:
+        return jsonify({"ok": False, "msg": "Funcionário é obrigatório para este layout."})
+
+    agora = datetime.now()
+    try:
+        ano_mes_val = int(anomes_atual) if anomes_atual and len(anomes_atual) == 6 else None
+        ins = {
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "data_cad":   agora.strftime("%Y%m%d"),
+            "hora_cad":   agora.strftime("%H%M"),
+            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
+            "folha_tipo": "N",
+            "layout":     layout,
+            "codigo2":    0,
+        }
+        if ano_mes_val:
+            ins["ano_mes"] = ano_mes_val
+        if matricula:
+            ins["matricula"] = int(matricula)
+        res = supabase.table("tab_esocial").insert(ins).execute()
+        id_reg = res.data[0]["id_esocial"]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao criar remessa: {e}"})
+
+    gravar_log("ESOCIAL",
+               f"Remessa S-{layout} criada pelo Gerador: id={id_reg} mat={matricula}",
+               matricula=int(matricula) if matricula else None)
+
+    return jsonify({
+        "ok":         True,
+        "id_esocial": id_reg,
+        "layout":     layout,
+        "matricula":  matricula,
+        "msg":        f"Remessa S-{layout} criada com sucesso.",
+    })
+
+
+# =========================================================
 # eSocial S-1200 — TELA DE LISTAGEM
 # =========================================================
 @app.route("/esocial_s1200")
