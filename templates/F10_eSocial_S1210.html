@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-1210</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --green:     #00a651;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1200px; margin: 32px auto; padding: 0 24px 80px; }
+
+/* ── FILTROS ── */
+.filtros-bar {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 16px; margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.filtros-label { font-size: 12px; font-weight: 600; color: #64748b; margin-right: 4px; white-space: nowrap; }
+.btn-filtro {
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid var(--border); background: var(--bg); color: #64748b;
+    cursor: pointer; transition: .13s; font-family: var(--sans);
+}
+.btn-filtro:hover  { border-color: var(--accent); color: var(--accent); }
+.btn-filtro.ativo  { background: var(--accent); border-color: var(--accent); color: #fff; }
+.filtros-select {
+    padding: 5px 10px; border-radius: 8px; font-size: 12px; font-weight: 500;
+    border: 1.5px solid var(--border); background: var(--bg); color: #374151;
+    font-family: var(--sans); cursor: pointer;
+}
+.filtros-sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
+
+/* ── DATA PAGAMENTO BAR ── */
+.dtpgto-bar {
+    display: flex; align-items: center; gap: 10px;
+    background: #f0f7ff; border: 1px solid #bfdbfe;
+    border-radius: 10px; padding: 10px 16px; margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.dtpgto-label { font-size: 12px; font-weight: 600; color: #1d4ed8; white-space: nowrap; }
+.dtpgto-input {
+    padding: 5px 10px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    border: 1.5px solid #93c5fd; background: #fff; color: #1e293b;
+    font-family: var(--mono); cursor: pointer;
+}
+.dtpgto-nota { font-size: 11px; color: #475569; }
+
+/* ── CONTADORES ── */
+.contadores { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
+.contador-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 18px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    min-width: 100px;
+}
+.contador-num  { font-size: 22px; font-weight: 700; font-family: var(--mono); color: #1e293b; }
+.contador-txt  { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
+
+/* ── TABELA ── */
+.tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 9px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; text-align: left; white-space: nowrap;
+}
+td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: var(--label); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+
+.mat-cell  { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+.nome-cell { font-weight: 500; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+
+/* ── BADGES ── */
+.sit-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+}
+.sit-pendente   { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.sit-gerado     { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-aguardando { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.sit-excluido   { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+.sit-ag-s1200   { background: #f5f3ff; color: #5b21b6; border: 1px solid #c4b5fd; }
+
+/* ── BOTÕES ── */
+.btn-enviar {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 13px; border-radius: 7px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid #00a651; background: #e8f5ee; color: #166534;
+    cursor: pointer; transition: .13s; font-family: var(--sans); white-space: nowrap;
+}
+.btn-enviar:hover:not(:disabled) { background: #00a651; color: #fff; }
+.btn-enviar:disabled { opacity: .5; cursor: default; }
+.btn-enviar.reenviar { border-color: #64748b; background: #f8fafc; color: #475569; }
+.btn-enviar.reenviar:hover:not(:disabled) { background: #475569; color: #fff; border-color: #475569; }
+.btn-enviar.reconsutar { border-color: #f97316; background: #fff7ed; color: #9a3412; }
+.btn-enviar.reconsutar:hover:not(:disabled) { background: #f97316; color: #fff; border-color: #f97316; }
+
+.btn-enviar-todos {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid #00a651; background: #00a651; color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-todos:hover:not(:disabled) { background: #007a3d; border-color: #007a3d; }
+.btn-enviar-todos:disabled { opacity: .5; cursor: default; }
+
+/* ── BANNER LOTE ── */
+.lote-banner {
+    display: none;
+    background: #0f172a; border: 1px solid #1e3d5c; border-radius: 10px;
+    padding: 12px 18px; margin-bottom: 16px;
+    align-items: center; gap: 16px;
+}
+.lote-banner.ativo { display: flex; }
+.lote-info   { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.lote-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
+.lote-detalhe{ font-size: 11px; color: #8baac8; font-family: var(--mono); }
+.lote-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
+.lote-bar  { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
+.lote-pct  { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
+.btn-lote-cancelar {
+    background: transparent; border: 1px solid #ef4444; color: #ef4444;
+    font-size: 11px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); white-space: nowrap; flex-shrink: 0;
+}
+.btn-lote-cancelar:hover { background: #ef4444; color: #fff; }
+
+/* ── PROGRESS ROW ── */
+.prog-row { display: none; }
+.prog-cell { padding: 6px 14px 10px !important; }
+.prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
+.prog-bar { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
+
+.res-ok   { color: #166534; font-size: 12px; font-weight: 600; font-family: var(--mono); word-break: break-all; }
+.res-erro { color: #991b1b; font-size: 12px; font-weight: 600; word-break: break-all; }
+
+.vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
+.vazio-icone { font-size: 32px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="25" viewBox="0 0 30 34">
+      <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#ffffff" stroke="#00a651" stroke-width="1.5"/>
+      <path d="M20 2 L20 10 L28 10 Z" fill="#00a651"/>
+      <line x1="7" y1="16" x2="23" y2="16" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="7" y1="21" x2="23" y2="21" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="7" y1="26" x2="16" y2="26" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    eSocial S-1210 — Pagamentos
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- Filtros -->
+  <div class="filtros-bar">
+    <span class="filtros-label">Situação:</span>
+    <button class="btn-filtro {% if not f_sit %}ativo{% endif %}" onclick="filtrarSit('')">Todos</button>
+    <button class="btn-filtro {% if f_sit=='P' %}ativo{% endif %}" onclick="filtrarSit('P')">Pendente</button>
+    <button class="btn-filtro {% if f_sit=='E' %}ativo{% endif %}" onclick="filtrarSit('E')">Enviado</button>
+    <button class="btn-filtro {% if f_sit=='W' %}ativo{% endif %}" onclick="filtrarSit('W')">Aguardando</button>
+    <button class="btn-filtro {% if f_sit=='X' %}ativo{% endif %}" onclick="filtrarSit('X')">Com Erro</button>
+    <div class="filtros-sep"></div>
+    <span class="filtros-label">Período:</span>
+    <select class="filtros-select" id="selAnomes" onchange="aplicarFiltros()">
+      <option value="">Todos</option>
+      {% for p in periodos_disp %}
+      <option value="{{ p.valor }}" {% if f_anomes == p.valor %}selected{% endif %}>{{ p.label }}</option>
+      {% endfor %}
+    </select>
+    <div class="filtros-sep"></div>
+    <span class="filtros-label">Tipo:</span>
+    <select class="filtros-select" id="selTipo" onchange="aplicarFiltros()">
+      <option value="">Todos</option>
+      {% for k, v in TP_FOLHA.items() %}
+      <option value="{{ k }}" {% if f_tipo == k %}selected{% endif %}>{{ v }}</option>
+      {% endfor %}
+    </select>
+    <div class="filtros-sep"></div>
+    <span class="filtros-label">Ambiente:</span>
+    <select class="filtros-select" id="selAmbiente">
+      <option value="1">Produção</option>
+      <option value="2">Homologação</option>
+    </select>
+  </div>
+
+  <!-- Data de Pagamento -->
+  <div class="dtpgto-bar">
+    <span class="dtpgto-label">&#128197; Data de Pagamento:</span>
+    <input type="date" class="dtpgto-input" id="inputDtPgto" value="{{ dtpgto_default }}">
+    <span class="dtpgto-nota">Informe a data em que o salário foi / será creditado ao funcionário (dtPgto do S-1210).</span>
+  </div>
+
+  {% set total_pendentes = contagens.P + contagens.X %}
+  {% if total_pendentes > 0 %}
+  <div style="margin-bottom:12px;">
+    <button class="btn-enviar-todos" id="btnEnviarTodos" onclick="enviarTodos(this)">
+      &#9654;&#9654; Enviar todas as pendentes ({{ total_pendentes }})
+    </button>
+  </div>
+  {% endif %}
+
+  <!-- Banner lote -->
+  <div class="lote-banner" id="loteBanner">
+    <div class="lote-info">
+      <span class="lote-titulo" id="loteTitulo">Enviando lote…</span>
+      <span class="lote-detalhe" id="loteDetalhe"></span>
+    </div>
+    <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
+    <span class="lote-pct" id="lotePct">0%</span>
+    <button class="btn-lote-cancelar" id="btnCancelarLote" onclick="cancelarLote(this)">Cancelar</button>
+  </div>
+
+  <!-- Contadores -->
+  {% if not f_sit %}
+  <div class="contadores">
+    <div class="contador-card">
+      <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
+      <span class="contador-txt">Pendente</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#166534;">{{ contagens.E }}</span>
+      <span class="contador-txt">Enviado</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#9a3412;">{{ contagens.W }}</span>
+      <span class="contador-txt">Aguardando</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#991b1b;">{{ contagens.X }}</span>
+      <span class="contador-txt">Com Erro</span>
+    </div>
+    <div class="contador-card" style="margin-left:auto;">
+      <span class="contador-num" style="color:#1e293b;">{{ total }}</span>
+      <span class="contador-txt">Total</span>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if f_anomes_fmt %}
+  <div style="margin:12px 0 4px;font-size:13px;color:#475569;">
+    Período: <strong style="color:#1d4ed8;">{{ f_anomes_fmt }}</strong>
+  </div>
+  {% endif %}
+
+  <div id="avisoAbortado" style="display:none;margin:10px 0;padding:14px 18px;background:#fff3cd;border:2px solid #f97316;border-radius:10px;font-size:13px;font-weight:600;color:#92400e;">
+    ⚠ Processo interrompido — os registros já transmitidos ao eSocial <u>não podem ser desfeitos</u>. Verifique a situação de cada um antes de reenviar.
+  </div>
+
+  <!-- Tabela -->
+  <div class="tabela-wrap">
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Matrícula / Nome</th>
+          <th>Período</th>
+          <th>Tipo</th>
+          <th>S-1200</th>
+          <th>Situação S-1210</th>
+          <th>Envio</th>
+          <th>Recibo / Erro</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr id="row-{{ r.id_esocial }}">
+          <td>
+            <div class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</div>
+            <div class="nome-cell" style="font-size:12px;margin-top:2px;">{{ r._nome }}</div>
+          </td>
+          <td class="data-cell">{{ r._periodo }}</td>
+          <td style="font-size:12px;white-space:nowrap;">{{ r._tipo_label }}</td>
+          <td>
+            {% if r._s1200_enviado %}
+              <span class="sit-badge sit-enviado" title="{{ r._s1200_recibo }}">&#10003; Enviado</span>
+            {% else %}
+              <span class="sit-badge sit-ag-s1200">Ag. Envio</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
+          </td>
+          <td class="data-cell">{{ r._datagrava_fmt or "—" }}</td>
+          <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
+            {% if r.recibo %}
+              <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>
+            {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
+              <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
+            {% else %}
+              <span style="color:#94a3b8;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+          <td id="acao-{{ r.id_esocial }}">
+            {% if r._sit in ('P', 'G', 'X') %}
+              {% if r._s1200_enviado %}
+              <button class="btn-enviar {% if r._sit != 'P' %}reenviar{% endif %}"
+                      onclick="_enviar({{ r.id_esocial }}, this)">
+                &#9654; {% if r._sit == 'P' %}Enviar{% else %}Reenviar{% endif %}
+              </button>
+              {% else %}
+              <span style="color:#94a3b8;font-size:11px;font-style:italic;">Aguarda S-1200</span>
+              {% endif %}
+            {% elif r._sit == 'W' %}
+            <button class="btn-enviar reconsutar"
+                    onclick="_reconsultar({{ r.id_esocial }}, this)">
+              &#8635; Re-consultar
+            </button>
+            {% elif r._sit == 'E' %}
+            <span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>
+            {% elif r._sit == 'D' %}
+            <span style="color:#94a3b8;font-size:11px;font-style:italic;">Excluído</span>
+            {% endif %}
+          </td>
+        </tr>
+        <tr class="prog-row" id="prog-{{ r.id_esocial }}">
+          <td colspan="8" class="prog-cell">
+            <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
+            <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">
+      <div class="vazio-icone">💳</div>
+      {% if f_sit or f_anomes or f_tipo %}
+        Nenhum registro S-1210 com os filtros selecionados.
+      {% else %}
+        Nenhum registro S-1210 encontrado.<br>
+        <small style="font-size:12px;color:#b0bec5;margin-top:6px;display:block;">
+          Os registros são gerados automaticamente ao calcular a folha.
+        </small>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <div style="margin-top:10px;font-size:12px;color:#94a3b8;text-align:right;">
+    {{ total }} registro{{ 's' if total != 1 else '' }}
+  </div>
+  {% endif %}
+
+  <!-- Info -->
+  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+    <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-1210 — Pagamentos de Rendimentos do Trabalho</div>
+    <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
+      <li>O S-1210 deve ser enviado <strong>após</strong> o S-1200 correspondente estar com recibo (coluna S-1200 = Enviado).</li>
+      <li>Informe a <strong>Data de Pagamento</strong> (dtPgto) antes de enviar — é a data do crédito em conta.</li>
+      <li>O sistema usa o valor líquido e as bases de INSS/IRRF do cálculo da folha.</li>
+      <li>Registros em estado <strong>Aguardando</strong> foram enviados mas não processados — use <em>Re-consultar</em>.</li>
+      <li>Para homologação, selecione <strong>Homologação</strong> no seletor de Ambiente antes de enviar.</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+const ETAPAS = [
+  [10,  'Gerando XML…'],
+  [25,  'Assinando evento…'],
+  [40,  'Montando lote…'],
+  [55,  'Transmitindo ao eSocial…'],
+  [70,  'Aguardando processamento (1/3)…'],
+  [82,  'Aguardando processamento (2/3)…'],
+  [92,  'Aguardando processamento (3/3)…'],
+  [98,  'Consultando resultado…'],
+];
+
+function _getTpAmb() {
+  const sel = document.getElementById('selAmbiente');
+  return sel ? sel.value : '1';
+}
+
+function _getDtPgto() {
+  const inp = document.getElementById('inputDtPgto');
+  return inp ? inp.value : '';
+}
+
+async function _enviar(id, btn, suppressBanner) {
+  const dtPgto = _getDtPgto();
+  if (!dtPgto) {
+    alert('Informe a Data de Pagamento antes de enviar.');
+    return;
+  }
+
+  const progRow = document.getElementById('prog-' + id);
+  const bar     = document.getElementById('bar-'  + id);
+  const lbl     = document.getElementById('lbl-'  + id);
+  const sit     = document.getElementById('sit-'  + id);
+  const acaoTd  = document.getElementById('acao-' + id);
+  const recTd   = document.getElementById('rec-'  + id);
+  const tpAmb   = _getTpAmb();
+
+  btn.disabled = true;
+  progRow.style.display = 'table-row';
+  bar.style.width = '5%';
+  lbl.textContent = 'Iniciando…';
+
+  let etapaIdx = 0;
+  const animTimer = setInterval(() => {
+    if (etapaIdx < ETAPAS.length) {
+      bar.style.width  = ETAPAS[etapaIdx][0] + '%';
+      lbl.textContent  = ETAPAS[etapaIdx][1];
+      etapaIdx++;
+    }
+  }, 4000);
+
+  try {
+    const r = await fetch('/api/esocial_s1210_enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, dtPgto: dtPgto }),
+    });
+    const data = await r.json();
+
+    clearInterval(animTimer);
+    bar.style.width      = '100%';
+    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
+
+    if (data.ok) {
+      lbl.textContent  = 'Enviado — Recibo: ' + (data.nr_rec || '');
+      sit.className    = 'sit-badge sit-enviado';
+      sit.textContent  = 'Enviado';
+      acaoTd.innerHTML = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>`;
+      recTd.innerHTML  = `<span class="res-ok" title="${data.nr_rec}">${(data.nr_rec||'').slice(0,30)}</span>`;
+    } else if (data.aguardando) {
+      lbl.textContent  = data.msg;
+      sit.className    = 'sit-badge sit-aguardando';
+      sit.textContent  = 'Aguardando';
+      acaoTd.innerHTML = `<button class="btn-enviar reconsutar" onclick="_reconsultar(${id}, this)">&#8635; Re-consultar</button>`;
+      recTd.innerHTML  = `<span style="color:#94a3b8;font-size:12px;">Aguardando…</span>`;
+    } else {
+      lbl.textContent  = (data.msg || 'Erro desconhecido');
+      if (data.detalhe) {
+        const det = document.createElement('div');
+        det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
+        det.textContent   = data.detalhe;
+        lbl.parentNode.appendChild(det);
+      }
+      sit.className   = 'sit-badge sit-erro';
+      sit.textContent = 'Com Erro';
+      btn.disabled    = false;
+      btn.className   = 'btn-enviar reenviar';
+      btn.textContent = 'Reenviar';
+      recTd.innerHTML = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
+    }
+  } catch(e) {
+    clearInterval(animTimer);
+    bar.style.width      = '100%';
+    bar.style.background = '#ef4444';
+    lbl.textContent      = 'Falha de comunicação: ' + e;
+    btn.disabled         = false;
+  }
+}
+
+async function _reconsultar(id, btn) {
+  const sit    = document.getElementById('sit-'  + id);
+  const acaoTd = document.getElementById('acao-' + id);
+  const recTd  = document.getElementById('rec-'  + id);
+  const tpAmb  = _getTpAmb();
+
+  btn.disabled    = true;
+  btn.textContent = 'Consultando…';
+
+  try {
+    const r = await fetch('/api/esocial_s1210_reconsultar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      sit.className    = 'sit-badge sit-enviado';
+      sit.textContent  = 'Enviado';
+      acaoTd.innerHTML = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>`;
+      recTd.innerHTML  = `<span class="res-ok" title="${data.nr_rec}">${(data.nr_rec||'').slice(0,30)}</span>`;
+    } else if (data.aguardando) {
+      sit.className   = 'sit-badge sit-aguardando';
+      sit.textContent = 'Aguardando';
+      btn.disabled    = false;
+      btn.textContent = 'Re-consultar';
+    } else {
+      sit.className    = 'sit-badge sit-erro';
+      sit.textContent  = 'Com Erro';
+      acaoTd.innerHTML = `<button class="btn-enviar reenviar" onclick="_enviar(${id}, this)">Reenviar</button>`;
+      recTd.innerHTML  = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
+    }
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = 'Re-consultar';
+    alert('Falha de comunicação: ' + e);
+  }
+}
+
+let _loteAbortado = false;
+
+function cancelarLote(btn) {
+  _loteAbortado = true;
+  btn.disabled    = true;
+  btn.textContent = 'Cancelando…';
+  const detEl = document.getElementById('loteDetalhe');
+  if (detEl) detEl.textContent = 'Aguardando fim do envio atual…';
+  document.getElementById('avisoAbortado').style.display = 'block';
+}
+
+async function enviarTodos(btnTodos) {
+  const dtPgto = _getDtPgto();
+  if (!dtPgto) {
+    alert('Informe a Data de Pagamento antes de enviar.');
+    return;
+  }
+
+  const btns = Array.from(document.querySelectorAll('button.btn-enviar:not(.reconsutar)'));
+  if (!btns.length) return;
+
+  _loteAbortado = false;
+  btnTodos.disabled = true;
+  btns.forEach(b => b.disabled = true);
+
+  const total     = btns.length;
+  const banner    = document.getElementById('loteBanner');
+  const barEl     = document.getElementById('loteBar');
+  const pctEl     = document.getElementById('lotePct');
+  const titEl     = document.getElementById('loteTitulo');
+  const detEl     = document.getElementById('loteDetalhe');
+  const btnCancel = document.getElementById('btnCancelarLote');
+
+  banner.classList.add('ativo');
+  btnCancel.disabled    = false;
+  btnCancel.textContent = 'Cancelar';
+
+  let ok = 0, erro = 0, aguard = 0, enviados = 0;
+
+  for (let i = 0; i < btns.length; i++) {
+    if (_loteAbortado) break;
+
+    const btn = btns[i];
+    const m   = (btn.getAttribute('onclick') || '').match(/_enviar\((\d+)/);
+    if (!m) continue;
+    const id = parseInt(m[1]);
+
+    const rowEl = document.getElementById('row-' + id);
+    let nome = id;
+    if (rowEl) {
+      const matEl = rowEl.querySelector('.mat-cell');
+      nome = matEl ? matEl.textContent.trim() : id;
+    }
+
+    const pct = Math.round((i / total) * 100);
+    barEl.style.width = pct + '%';
+    pctEl.textContent = pct + '%';
+    titEl.textContent = `Enviando ${i + 1} de ${total}`;
+    detEl.textContent = String(nome);
+    enviados++;
+
+    try {
+      await _enviar(id, btn, true);
+      const sitEl = document.getElementById('sit-' + id);
+      const sitTxt = sitEl ? sitEl.textContent.trim() : '';
+      if      (sitTxt === 'Enviado')    ok++;
+      else if (sitTxt === 'Aguardando') aguard++;
+      else                              erro++;
+    } catch(e) {
+      erro++;
+    }
+  }
+
+  btnCancel.disabled = true;
+
+  if (_loteAbortado) {
+    barEl.style.background = '#f97316';
+    titEl.textContent      = `Processo cancelado — ${enviados} de ${total} processados`;
+    const resumo = [ok ? `${ok} enviados` : '', aguard ? `${aguard} aguardando` : '', erro ? `${erro} com erro` : ''].filter(Boolean).join('  ·  ');
+    detEl.textContent      = `${resumo}  —  os ${total - enviados} restantes não foram transmitidos.`;
+    pctEl.textContent      = Math.round((enviados / total) * 100) + '%';
+    btns.forEach(b => {
+      const m2 = (b.getAttribute('onclick') || '').match(/_enviar\((\d+)/);
+      if (!m2) return;
+      const sitEl = document.getElementById('sit-' + m2[1]);
+      if (sitEl && sitEl.textContent.trim() === 'Pendente') b.disabled = false;
+    });
+  } else {
+    barEl.style.width      = '100%';
+    pctEl.textContent      = '100%';
+    titEl.textContent      = `Lote concluído — ${total} registros`;
+    detEl.textContent      = `${ok} enviados  ${aguard ? aguard + ' aguardando  ' : ''}${erro ? erro + ' com erro' : ''}`.trim();
+    barEl.style.background = erro ? '#f97316' : '#00a651';
+  }
+}
+
+function filtrarSit(sit) {
+  const anomes = (document.getElementById('selAnomes') || {}).value || '';
+  const tipo   = (document.getElementById('selTipo')   || {}).value || '';
+  let url = '/esocial_s1210?';
+  if (sit)    url += 'sit='    + encodeURIComponent(sit)    + '&';
+  if (anomes) url += 'anomes=' + encodeURIComponent(anomes) + '&';
+  if (tipo)   url += 'tipo='   + encodeURIComponent(tipo)   + '&';
+  window.location.href = url.replace(/[?&]$/, '');
+}
+
+function aplicarFiltros() {
+  const sit    = '{{ f_sit }}';
+  const anomes = (document.getElementById('selAnomes') || {}).value || '';
+  const tipo   = (document.getElementById('selTipo')   || {}).value || '';
+  let url = '/esocial_s1210?';
+  if (sit)    url += 'sit='    + encodeURIComponent(sit)    + '&';
+  if (anomes) url += 'anomes=' + encodeURIComponent(anomes) + '&';
+  if (tipo)   url += 'tipo='   + encodeURIComponent(tipo)   + '&';
+  window.location.href = url.replace(/[?&]$/, '');
+}
+</script>
+</body>
+</html>

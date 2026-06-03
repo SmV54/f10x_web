@@ -1486,6 +1486,996 @@ def rel_ficha_financeira_pdf():
     return resp
 
 
+@app.route("/gerador_relatorio")
+def gerador_relatorio():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    ano_atual   = datetime.now().year
+    _anomes     = str(session.get("anomes_atual") or "")
+    _ano_folha  = int(_anomes[:4]) if len(_anomes) >= 4 else ano_atual
+    _mes_folha  = int(_anomes[4:6]) if len(_anomes) >= 6 else datetime.now().month
+
+    CAD_CAMPOS = [
+        # (key, label, db_col, tipo)  — tipo: txt | data | val
+        ("cpf",         "CPF",             "cpf",         "txt"),
+        ("dtadm",       "Admissão",        "dtadm",       "data"),
+        ("funcao_cbo",  "Função CBO",      "cbofuncao",   "txt"),
+        ("funcao_nome", "Função Nome",     "",            "lookup_funcao"),
+        ("vrsalfx",     "Salário Fixo",    "vrsalfx",     "val"),
+        ("dtnascto",    "Nascimento",      "dtnascto",    "data"),
+        ("sexo",        "Sexo",            "sexo",        "txt"),
+        ("estadocivil", "Estado Civil",    "estadocivil", "txt"),
+        ("email",       "E-mail",          "email",       "txt"),
+        ("telefone",    "Telefone",        "telefone",    "txt"),
+        ("endereco",    "Endereço",        "endereco",    "txt"),
+        ("cidade",      "Cidade",          "cidade",      "txt"),
+        ("uf",          "UF",              "uf",          "txt"),
+        ("cep",         "CEP",             "cep",         "txt"),
+        ("banco",       "Banco",           "banco",       "txt"),
+        ("agencia",     "Agência",         "agencia",     "txt"),
+        ("conta",       "Conta",           "conta",       "txt"),
+    ]
+    CAD_CAMPOS_MAP  = {k: (lbl, col, tp) for k, lbl, col, tp in CAD_CAMPOS}
+    CAD_DEFAULTS    = []
+
+    mat_raw        = request.args.get("mat",            "").strip()
+    sit            = request.args.get("sit",            "A")
+    ano            = int(request.args.get("ano",     _ano_folha) or _ano_folha)
+    mes_ini        = int(request.args.get("mes_ini", _mes_folha) or _mes_folha)
+    mes_fim        = int(request.args.get("mes_fim", _mes_folha) or _mes_folha)
+    classificacao  = request.args.get("classificacao", "A").strip() or "A"
+    titulo_rel     = request.args.get("titulo_rel",    "").strip()
+
+    TOT_BASES = [
+        # (key, label, db_col, tp)  tp: val=centavos→R$  int=inteiro puro
+        ("prov",         "Total Proventos",   "valor_total_proventos",     "val"),
+        ("desc",         "Total Descontos",   "valor_total_descontos",     "val"),
+        ("liq",          "Líquido",           "valor_liquido",             "val"),
+        ("base_inss_sl", "Base INSS s/teto",  "valor_base_inss_semlimite", "val"),
+        ("base_inss_cl", "Base INSS c/teto",  "valor_base_inss_comlimite", "val"),
+        ("inss",         "INSS Retido",       "valor_inss_retido",         "val"),
+        ("base_fgts",    "Base FGTS",         "valor_base_fgts",           "val"),
+        ("fgts",         "FGTS",              "valor_fgts",                "val"),
+        ("base_irrf_bt", "Base IRRF bruta",   "valor_irrf_basetotal",      "val"),
+        ("base_irrf_bk", "Base IRRF tabela",  "valor_irrf_basetabela",     "val"),
+        ("ded_dep_irrf", "Ded. Dep. IRRF",    "valor_irrf_dependentes",    "val"),
+        ("qtd_dep_irrf", "Qtd. Dep. IRRF",    "qtd_irrf_dependentes",      "int"),
+        ("salario",      "Salário nesta Folha", "valor_salario",           "val"),
+    ]
+    TOT_BASES_MAP = {k: (lbl, col, tp) for k, lbl, col, tp in TOT_BASES}
+
+    sec_cad     = request.args.get("sec_cad")     == "1"
+    sec_totais  = request.args.get("sec_totais")  == "1"
+    sec_mov     = request.args.get("sec_mov")     == "1"
+    sec_eventos = request.args.get("sec_eventos") == "1"
+    sec_dep     = request.args.get("sec_dep")     == "1"
+    dep_somente = request.args.get("dep_somente") == "1"
+    dep_tipos   = [t for t in request.args.getlist("dep_tipo") if str(t).isdigit() and 0 < int(t) < 200]
+
+    tipos_dep_list = []
+    try:
+        _tdep = supabase.table("tab_tabela_total").select("codigo,texto") \
+            .eq("num_tabela", 7).neq("codigo", "DOC").order("codigo").execute()
+        tipos_dep_list = [
+            {"cod": int(t["codigo"]), "texto": t["texto"]}
+            for t in (_tdep.data or [])
+            if str(t.get("codigo", "")).strip().isdigit()
+        ]
+    except Exception:
+        pass
+    mov_fields  = [int(x) for x in request.args.getlist("mov_f") if str(x).isdigit()]
+    tot_fields  = [k for k in request.args.getlist("tot_f") if k in TOT_BASES_MAP]
+    ev_tipos    = [t for t in request.args.getlist("ev_tipo") if t in ("3", "6")]
+    ev_periodo  = request.args.get("ev_periodo", "mes")
+    gerando     = any([sec_cad, sec_totais, sec_mov, sec_eventos, sec_dep])
+
+    cad_fields    = request.args.getlist("cad_f")
+    order_col     = "nome" if classificacao == "A" else "matricula"
+
+    # lista de funcionários para o select
+    try:
+        all_funcs = supabase.table("tab_cad") \
+            .select("matricula, nome, nomer, situacao") \
+            .eq("id_empresa", id_empresa).order("nome").execute().data or []
+    except Exception:
+        all_funcs = []
+    for f in all_funcs:
+        f["nome_fmt"] = (f.get("nomer") or f.get("nome") or "").strip()
+
+    todas_verbas = request.args.get("todas_verbas") == "1"
+
+    try:
+        _cli_rubr = [0] + ([id_cliente] if id_cliente else [])
+        all_verbas = (supabase.table("tab_rubrica")
+                     .select("cod_rubr, dsc_rubr, tp_rubr")
+                     .in_("id_cliente", _cli_rubr)
+                     .eq("situacao","A").order("cod_rubr")
+                     .execute().data or [])
+        for _v in all_verbas:
+            _v["cod_rubr"] = int(_v.get("cod_rubr") or 0)
+    except Exception:
+        all_verbas = []
+
+    # Filtra verbas pelo período selecionado (a menos que todas_verbas=1)
+    mov_verbas_filtrado = False
+    if not todas_verbas and all_verbas:
+        try:
+            _anomes_ini_ui = int(f"{ano}{mes_ini:02d}")
+            _anomes_fim_ui = int(f"{ano}{mes_fim:02d}")
+            _qmov = (supabase.table("tab_mov")
+                     .select("cod_verba")
+                     .eq("id_empresa", id_empresa)
+                     .eq("situacao", "A").eq("folha_tipo", "N")
+                     .gte("folha", _anomes_ini_ui).lte("folha", _anomes_fim_ui))
+            if id_cliente:
+                _qmov = _qmov.eq("id_cliente", id_cliente)
+            _cod_usados = {int(r["cod_verba"])
+                           for r in (_qmov.execute().data or []) if r.get("cod_verba")}
+            if _cod_usados:
+                all_verbas = [v for v in all_verbas if v["cod_rubr"] in _cod_usados]
+                mov_verbas_filtrado = True
+        except Exception:
+            pass  # mantém lista completa em caso de erro
+
+    _rub_dsc_map = {v["cod_rubr"]: v.get("dsc_rubr") or f"V.{v['cod_rubr']}" for v in all_verbas}
+    mov_col_labels = [{"cod": c, "label": f"{c:04d} — {_rub_dsc_map.get(c, f'Verba {c}')}"}
+                      for c in mov_fields] if (sec_mov and mov_fields) else []
+
+    MESES_LABEL = [("1","Janeiro"),("2","Fevereiro"),("3","Março"),("4","Abril"),
+                   ("5","Maio"),("6","Junho"),("7","Julho"),("8","Agosto"),
+                   ("9","Setembro"),("10","Outubro"),("11","Novembro"),("12","Dezembro")]
+    anos_disp   = list(range(ano_atual, ano_atual - 6, -1))
+
+    relatorio, erro = [], None
+    ev_total = 0
+
+    if gerando:
+        anomes_ini = int(f"{ano}{mes_ini:02d}")
+        anomes_fim = int(f"{ano}{mes_fim:02d}")
+
+        def _fval(c):
+            if not c:
+                return "—"
+            return f"R$ {c/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+        def _fnum(c):
+            if not c: return "—"
+            return f"{c/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+        def _fdata(d):
+            s = str(d or "")
+            return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else (s or "—")
+
+        def _dias_ev(ref1, d1i, d1f):
+            if ref1:
+                return str(ref1)
+            try:
+                s1 = str(d1i or "").replace("-", "")
+                s2 = str(d1f or "").replace("-", "")
+                if len(s1) == 8 and len(s2) == 8:
+                    dt1 = date(int(s1[:4]), int(s1[4:6]), int(s1[6:]))
+                    dt2 = date(int(s2[:4]), int(s2[4:6]), int(s2[6:]))
+                    return str((dt2 - dt1).days + 1)
+            except Exception:
+                pass
+            return "—"
+
+        # funcionários do filtro
+        try:
+            _always = ["matricula", "nome", "nomer", "situacao"]
+            _extra  = [CAD_CAMPOS_MAP[k][1] for k in cad_fields
+                       if k in CAD_CAMPOS_MAP and CAD_CAMPOS_MAP[k][1]]
+            if "funcao_nome" in cad_fields and "cbofuncao" not in _extra:
+                _extra.append("cbofuncao")
+            _sel    = ", ".join(dict.fromkeys(_always + _extra))
+            q = supabase.table("tab_cad") \
+                .select(_sel) \
+                .eq("id_empresa", id_empresa).order(order_col)
+            if sit != "T":
+                q = q.eq("situacao", sit)
+            if mat_raw.isdigit():
+                q = q.eq("matricula", int(mat_raw))
+            funcs = q.execute().data or []
+        except Exception as e:
+            funcs = []; erro = f"Erro ao buscar funcionários: {e}"
+
+        if funcs:
+            mats = [int(f["matricula"]) for f in funcs]
+
+            mov_por_mat, tot_por_mat, tot_agg_por_mat, ev_por_mat, dep_por_mat = {}, {}, {}, {}, {}
+            ev_total = 0
+
+            if sec_mov and mov_fields:
+                try:
+                    q = supabase.table("tab_mov") \
+                        .select("matricula, cod_verba, valor") \
+                        .eq("id_empresa", id_empresa).eq("situacao","A") \
+                        .eq("folha_tipo","N").in_("matricula", mats) \
+                        .in_("cod_verba", mov_fields) \
+                        .gte("folha", anomes_ini).lte("folha", anomes_fim)
+                    if id_cliente:
+                        q = q.eq("id_cliente", id_cliente)
+                    for row in (q.execute().data or []):
+                        m = int(row.get("matricula") or 0)
+                        mov_por_mat.setdefault(m, []).append(row)
+                except Exception:
+                    pass
+
+            if sec_totais:
+                _card_cols  = ["matricula", "folha", "folha_tipo",
+                               "valor_total_proventos", "valor_total_descontos",
+                               "valor_liquido", "valor_inss_retido",
+                               "valor_fgts", "valor_irrf_basetabela"]
+                _pivot_cols = [TOT_BASES_MAP[k][1] for k in tot_fields if k in TOT_BASES_MAP]
+                _tot_sel    = ", ".join(dict.fromkeys(_card_cols + _pivot_cols))
+                try:
+                    q = supabase.table("tab_total") \
+                        .select(_tot_sel) \
+                        .eq("id_empresa", id_empresa).in_("matricula", mats) \
+                        .gte("folha", anomes_ini).lte("folha", anomes_fim)
+                    if id_cliente:
+                        q = q.eq("id_cliente", id_cliente)
+                    for row in (q.execute().data or []):
+                        m = int(row.get("matricula") or 0)
+                        tot_por_mat.setdefault(m, []).append(row)
+                        if tot_fields:
+                            tot_agg_por_mat.setdefault(m, {})
+                            for k in tot_fields:
+                                col = TOT_BASES_MAP[k][1]
+                                tot_agg_por_mat[m][k] = (
+                                    tot_agg_por_mat[m].get(k, 0) + int(row.get(col) or 0)
+                                )
+                except Exception:
+                    pass
+
+            if sec_eventos and ev_tipos:
+                try:
+                    _ev_op1 = [int(t) for t in ev_tipos]
+                    q = supabase.table("tab_eventos") \
+                        .select("matricula, op1, data1i, data1f, ref1, campotxt1") \
+                        .eq("id_empresa", id_empresa) \
+                        .in_("op1", _ev_op1)
+                    if ev_periodo == "mes":
+                        _d_ini = f"{ano}{mes_ini:02d}01"
+                        _d_fim = f"{ano}{mes_fim:02d}31"
+                        q = q.gte("data1i", _d_ini).lte("data1i", _d_fim)
+                    if id_cliente:
+                        q = q.eq("id_cliente", id_cliente)
+                    for row in (q.execute().data or []):
+                        m = int(row.get("matricula") or 0)
+                        if m in mats:
+                            ev_por_mat.setdefault(m, []).append(row)
+                except Exception as e:
+                    erro = f"Erro ao buscar eventos: {e}"
+
+            ev_total = sum(len(v) for v in ev_por_mat.values())
+
+            if sec_dep:
+                try:
+                    q = supabase.table("tab_dependentes") \
+                        .select("matricula, nome, tpdep, dtnascto, depirrf, depsf") \
+                        .eq("id_empresa", id_empresa).in_("matricula", mats)
+                    if id_cliente:
+                        q = q.eq("id_cliente", id_cliente)
+                    if dep_tipos:
+                        q = q.in_("tpdep", [int(t) for t in dep_tipos])
+                    for row in (q.execute().data or []):
+                        m = int(row.get("matricula") or 0)
+                        dep_por_mat.setdefault(m, []).append(row)
+                except Exception:
+                    pass
+
+            mapa_funcao = {}
+            if "funcao_nome" in cad_fields:
+                try:
+                    cbos = list({str(f.get("cbofuncao") or "").strip() for f in funcs if f.get("cbofuncao")})
+                    if cbos:
+                        rc = supabase.table("tab_aux_funcao_total") \
+                            .select("cbo_codigo, cbo_nome").in_("cbo_codigo", cbos).execute()
+                        mapa_funcao = {str(r.get("cbo_codigo") or ""): str(r.get("cbo_nome") or "—")
+                                       for r in (rc.data or [])}
+                except Exception:
+                    pass
+
+            OP1_LABEL = {3:"Férias", 5:"Aumento Salarial", 6:"Afastamento",
+                         9:"Aviso Prévio / Rescisão"}
+            TPDEP     = ({t["cod"]: t["texto"] for t in tipos_dep_list}
+                         if tipos_dep_list else {1:"Cônjuge", 3:"Filho(a)/Enteado(a)", 9:"Pais"})
+            TP_FOLHA  = {"N":"Normal","A":"Adiant. 13º","1":"13º Salário",
+                         "F":"Férias","R":"Rescisão"}
+
+            mov_col_sums = {c: 0 for c in mov_fields}
+            tot_col_sums = {k: 0 for k in tot_fields}
+
+            for f in funcs:
+                mat  = int(f.get("matricula") or 0)
+                nome = (f.get("nomer") or f.get("nome") or "").strip()
+                bloco = {"mat": f"{mat:06d}", "nome": nome, "sit": f.get("situacao","A")}
+
+                if sec_cad:
+                    cad_row = {}
+                    for k in cad_fields:
+                        if k not in CAD_CAMPOS_MAP:
+                            continue
+                        lbl, col, tp = CAD_CAMPOS_MAP[k]
+                        raw = f.get(col)
+                        if tp == "val":
+                            disp = _fval(raw)
+                        elif tp == "data":
+                            disp = _fdata(raw)
+                        elif tp == "lookup_funcao":
+                            cbo = str(f.get("cbofuncao") or "").strip()
+                            disp = mapa_funcao.get(cbo, "—")
+                        else:
+                            disp = str(raw or "—")
+                        cad_row[k] = {"label": lbl, "valor": disp}
+                    bloco["cad"] = cad_row
+
+                if sec_totais:
+                    rows = sorted(tot_por_mat.get(mat, []),
+                                  key=lambda x: (x.get("folha") or 0))
+                    bloco["totais"] = [{
+                        "folha": (lambda s: f"{s[4:6]}/{s[:4]}" if len(s)==6 else s)(str(r.get("folha") or "")),
+                        "tipo":  TP_FOLHA.get(str(r.get("folha_tipo") or "N"), "Normal"),
+                        "prov":  _fval(r.get("valor_total_proventos")),
+                        "desc":  _fval(r.get("valor_total_descontos")),
+                        "liq":   _fval(r.get("valor_liquido")),
+                        "inss":  _fval(r.get("valor_inss_retido")),
+                        "fgts":  _fval(r.get("valor_fgts")),
+                        "irrf":  _fval(r.get("valor_irrf_basetabela")),
+                    } for r in rows]
+
+                if sec_mov and mov_fields:
+                    _agg = {}
+                    for r in mov_por_mat.get(mat, []):
+                        cod = int(r.get("cod_verba") or 0)
+                        _agg[cod] = _agg.get(cod, 0) + int(r.get("valor") or 0)
+                    bloco["mov_pivot"] = {c: _fnum(_agg.get(c)) for c in mov_fields}
+                    for c in mov_fields:
+                        mov_col_sums[c] += _agg.get(c, 0)
+
+                if sec_totais and tot_fields:
+                    _tagg = tot_agg_por_mat.get(mat, {})
+                    bloco["tot_pivot"] = {
+                        k: (str(_tagg.get(k, 0))
+                            if TOT_BASES_MAP[k][2] == "int"
+                            else _fnum(_tagg.get(k)))
+                        for k in tot_fields if k in TOT_BASES_MAP
+                    }
+                    for k in tot_fields:
+                        tot_col_sums[k] += _tagg.get(k, 0)
+
+                if sec_eventos:
+                    bloco["eventos"] = [{
+                        "tipo":   OP1_LABEL.get(int(r.get("op1") or 0), f"Evento {r.get('op1')}"),
+                        "data1i": _fdata(r.get("data1i")),
+                        "data1f": _fdata(r.get("data1f")),
+                        "ref1":   _dias_ev(r.get("ref1"), r.get("data1i"), r.get("data1f")),
+                        "obs":    r.get("campotxt1") or "—",
+                    } for r in sorted(ev_por_mat.get(mat, []),
+                                      key=lambda x: (x.get("data1i") or ""))]
+
+                if sec_dep:
+                    bloco["deps"] = [{
+                        "nome":   r.get("nome") or "—",
+                        "tipo":   TPDEP.get(int(r.get("tpdep") or 0), "Outro"),
+                        "dtnasc": _fdata(r.get("dtnascto")),
+                        "irrf":   "Sim" if r.get("depirrf") else "Não",
+                        "sf":     "Sim" if r.get("depsf") else "Não",
+                    } for r in dep_por_mat.get(mat, [])]
+                    if dep_somente and not bloco["deps"]:
+                        continue
+
+                relatorio.append(bloco)
+        elif not erro:
+            erro = "Nenhum funcionário encontrado com os filtros informados."
+
+    tot_col_labels = [{"key": k, "label": TOT_BASES_MAP[k][0]}
+                      for k in tot_fields if k in TOT_BASES_MAP] if (sec_totais and tot_fields) else []
+
+    def _fmt_sum(v, tp="val"):
+        return str(v) if tp == "int" else (_fval_outer(v) if v else "—")
+
+    def _fval_outer(c):
+        if not c: return "—"
+        return f"{c/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+    mov_col_sums_fmt = (
+        {c: _fval_outer(v) for c, v in mov_col_sums.items()}
+        if gerando and mov_fields else {}
+    )
+    tot_col_sums_fmt = (
+        {k: (str(v) if TOT_BASES_MAP.get(k, ("","","val"))[2] == "int" else _fval_outer(v))
+         for k, v in tot_col_sums.items()}
+        if gerando and tot_fields else {}
+    )
+
+    n_cols_total = (1 + len(cad_fields)
+                   + (len(mov_fields) if sec_mov else 0)
+                   + (len(tot_fields) if sec_totais else 0))
+    COL_LIMIT    = 8
+
+    return render_template(
+        "F10_Gerador_Relatorio.html",
+        **_ctx_relatorio(),
+        all_funcs=all_funcs,
+        anos_disp=anos_disp,
+        MESES_LABEL=MESES_LABEL,
+        mat=mat_raw, sit=sit, ano=ano, mes_ini=mes_ini, mes_fim=mes_fim,
+        classificacao=classificacao, titulo_rel=titulo_rel,
+        sec_cad=sec_cad, sec_totais=sec_totais, sec_mov=sec_mov,
+        sec_eventos=sec_eventos, sec_dep=sec_dep,
+        dep_somente=dep_somente, dep_tipos=dep_tipos,
+        tipos_dep_list=tipos_dep_list,
+        ev_tipos=ev_tipos, ev_periodo=ev_periodo,
+        CAD_CAMPOS=CAD_CAMPOS, cad_fields=cad_fields,
+        all_verbas=all_verbas, mov_verbas_filtrado=mov_verbas_filtrado,
+        mov_fields=mov_fields, mov_col_labels=mov_col_labels,
+        TOT_BASES=TOT_BASES, tot_fields=tot_fields, tot_col_labels=tot_col_labels,
+        mov_col_sums=mov_col_sums_fmt, tot_col_sums=tot_col_sums_fmt,
+        n_cols_total=n_cols_total, COL_LIMIT=COL_LIMIT,
+        gerando=gerando, relatorio=relatorio, erro=erro,
+        ev_total=ev_total,
+    )
+
+
+@app.route("/gerador_relatorio_pdf")
+def gerador_relatorio_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    import io
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    CAD_CAMPOS = [
+        ("cpf",         "CPF",             "cpf",         "txt"),
+        ("dtadm",       "Admissão",        "dtadm",       "data"),
+        ("funcao_cbo",  "Função CBO",      "cbofuncao",   "txt"),
+        ("funcao_nome", "Função Nome",     "",            "lookup_funcao"),
+        ("vrsalfx",     "Salário Fixo",    "vrsalfx",     "val"),
+        ("dtnascto",    "Nascimento",      "dtnascto",    "data"),
+        ("sexo",        "Sexo",            "sexo",        "txt"),
+        ("estadocivil", "Estado Civil",    "estadocivil", "txt"),
+        ("email",       "E-mail",          "email",       "txt"),
+        ("telefone",    "Telefone",        "telefone",    "txt"),
+        ("endereco",    "Endereço",        "endereco",    "txt"),
+        ("cidade",      "Cidade",          "cidade",      "txt"),
+        ("uf",          "UF",              "uf",          "txt"),
+        ("cep",         "CEP",             "cep",         "txt"),
+        ("banco",       "Banco",           "banco",       "txt"),
+        ("agencia",     "Agência",         "agencia",     "txt"),
+        ("conta",       "Conta",           "conta",       "txt"),
+    ]
+    CAD_CAMPOS_MAP = {k: (lbl, col, tp) for k, lbl, col, tp in CAD_CAMPOS}
+
+    mat_raw       = request.args.get("mat",           "").strip()
+    sit           = request.args.get("sit",           "A")
+    ano           = int(request.args.get("ano", datetime.now().year) or datetime.now().year)
+    mes_ini       = int(request.args.get("mes_ini", 1)  or 1)
+    mes_fim       = int(request.args.get("mes_fim", 12) or 12)
+    anomes_ini    = int(f"{ano}{mes_ini:02d}")
+    anomes_fim    = int(f"{ano}{mes_fim:02d}")
+    classificacao = request.args.get("classificacao", "A").strip() or "A"
+    titulo_rel    = request.args.get("titulo_rel",   "").strip()
+    cad_fields    = request.args.getlist("cad_f")
+    sec_mov       = request.args.get("sec_mov")    == "1"
+    sec_totais    = request.args.get("sec_totais") == "1"
+    mov_fields    = [int(x) for x in request.args.getlist("mov_f") if str(x).isdigit()]
+    order_col     = "nome" if classificacao == "A" else "matricula"
+
+    TOT_BASES_PDF = [
+        ("prov",         "Proventos",         "valor_total_proventos",     "val"),
+        ("desc",         "Descontos",         "valor_total_descontos",     "val"),
+        ("liq",          "Líquido",           "valor_liquido",             "val"),
+        ("base_inss_sl", "B.INSS s/teto",     "valor_base_inss_semlimite", "val"),
+        ("base_inss_cl", "B.INSS c/teto",     "valor_base_inss_comlimite", "val"),
+        ("inss",         "INSS Ret.",         "valor_inss_retido",         "val"),
+        ("base_fgts",    "Base FGTS",         "valor_base_fgts",           "val"),
+        ("fgts",         "FGTS",              "valor_fgts",                "val"),
+        ("base_irrf_bt", "B.IRRF bruta",      "valor_irrf_basetotal",      "val"),
+        ("base_irrf_bk", "B.IRRF tabela",     "valor_irrf_basetabela",     "val"),
+        ("ded_dep_irrf", "Ded.Dep.IRRF",      "valor_irrf_dependentes",    "val"),
+        ("qtd_dep_irrf", "Qtd.Dep.",          "qtd_irrf_dependentes",      "int"),
+        ("salario",      "Sal.nesta Folha",   "valor_salario",             "val"),
+    ]
+    TOT_BASES_MAP_PDF = {k: (lbl, col, tp) for k, lbl, col, tp in TOT_BASES_PDF}
+    tot_fields = [k for k in request.args.getlist("tot_f") if k in TOT_BASES_MAP_PDF]
+
+    def _fval(c):
+        if not c: return "—"
+        return f"R$ {c/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+    def _fnum(c):
+        if not c: return "—"
+        return f"{c/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+    def _fdata(d):
+        s = str(d or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else (s or "—")
+
+    def _dias_ev(ref1, d1i, d1f):
+        if ref1:
+            return str(ref1)
+        try:
+            s1 = str(d1i or "").replace("-", "")
+            s2 = str(d1f or "").replace("-", "")
+            if len(s1) == 8 and len(s2) == 8:
+                dt1 = date(int(s1[:4]), int(s1[4:6]), int(s1[6:]))
+                dt2 = date(int(s2[:4]), int(s2[4:6]), int(s2[6:]))
+                return str((dt2 - dt1).days + 1)
+        except Exception:
+            pass
+        return "—"
+
+    try:
+        _always = ["matricula", "nome", "nomer", "situacao"]
+        _extra  = [CAD_CAMPOS_MAP[k][1] for k in cad_fields
+                   if k in CAD_CAMPOS_MAP and CAD_CAMPOS_MAP[k][1]]
+        if "funcao_nome" in cad_fields and "cbofuncao" not in _extra:
+            _extra.append("cbofuncao")
+        _sel = ", ".join(dict.fromkeys(_always + _extra))
+        q = supabase.table("tab_cad").select(_sel).eq("id_empresa", id_empresa).order(order_col)
+        if sit != "T":
+            q = q.eq("situacao", sit)
+        if mat_raw.isdigit():
+            q = q.eq("matricula", int(mat_raw))
+        funcs = q.execute().data or []
+    except Exception:
+        funcs = []
+
+    mapa_funcao = {}
+    if "funcao_nome" in cad_fields and funcs:
+        try:
+            cbos = list({str(f.get("cbofuncao") or "").strip() for f in funcs if f.get("cbofuncao")})
+            if cbos:
+                rc = supabase.table("tab_aux_funcao_total") \
+                    .select("cbo_codigo, cbo_nome").in_("cbo_codigo", cbos).execute()
+                mapa_funcao = {str(r.get("cbo_codigo") or ""): str(r.get("cbo_nome") or "—")
+                               for r in (rc.data or [])}
+        except Exception:
+            pass
+
+    sec_dep      = request.args.get("sec_dep")      == "1"
+    dep_somente  = request.args.get("dep_somente")  == "1"
+    dep_tipos    = [t for t in request.args.getlist("dep_tipo") if str(t).isdigit() and 0 < int(t) < 200]
+    sec_eventos  = request.args.get("sec_eventos")  == "1"
+    ev_tipos     = [t for t in request.args.getlist("ev_tipo") if t in ("3", "6")]
+    ev_periodo   = request.args.get("ev_periodo", "todos")
+
+    OP1_LABEL_PDF = {3: "Férias", 6: "Afastamento"}
+    ev_por_mat_pdf = {}
+    if sec_eventos and ev_tipos and funcs:
+        try:
+            _mats_ev = [int(f.get("matricula") or 0) for f in funcs]
+            _ev_op1  = [int(t) for t in ev_tipos]
+            qe = (supabase.table("tab_eventos")
+                  .select("matricula, op1, data1i, data1f, ref1, campotxt1")
+                  .eq("id_empresa", id_empresa)
+                  .in_("op1", _ev_op1))
+            if ev_periodo == "mes":
+                _d_ini = f"{ano}{mes_ini:02d}01"
+                _d_fim = f"{ano}{mes_fim:02d}31"
+                qe = qe.gte("data1i", _d_ini).lte("data1i", _d_fim)
+            if id_cliente:
+                qe = qe.eq("id_cliente", id_cliente)
+            for row in (qe.execute().data or []):
+                m = int(row.get("matricula") or 0)
+                if m in _mats_ev:
+                    ev_por_mat_pdf.setdefault(m, []).append(row)
+        except Exception:
+            pass
+
+    _tdep_pdf = []
+    try:
+        _r = supabase.table("tab_tabela_total").select("codigo,texto") \
+            .eq("num_tabela", 7).neq("codigo", "DOC").order("codigo").execute()
+        _tdep_pdf = [{"cod": int(t["codigo"]), "texto": t["texto"]}
+                     for t in (_r.data or []) if str(t.get("codigo","")).strip().isdigit()]
+    except Exception:
+        pass
+    TPDEP = ({t["cod"]: t["texto"] for t in _tdep_pdf}
+             if _tdep_pdf else {1:"Cônjuge", 3:"Filho(a)/Enteado(a)", 9:"Pais"})
+    dep_por_mat = {}
+    if sec_dep and funcs:
+        try:
+            mats_dep = [int(f.get("matricula") or 0) for f in funcs]
+            qd = (supabase.table("tab_dependentes")
+                  .select("matricula, nome, tpdep, dtnascto, depirrf, depsf")
+                  .eq("id_empresa", id_empresa).in_("matricula", mats_dep))
+            if id_cliente:
+                qd = qd.eq("id_cliente", id_cliente)
+            if dep_tipos:
+                qd = qd.in_("tpdep", [int(t) for t in dep_tipos])
+            for row in (qd.execute().data or []):
+                m = int(row.get("matricula") or 0)
+                dep_por_mat.setdefault(m, []).append(row)
+        except Exception:
+            pass
+
+    mov_col_labels_pdf = []
+    mov_pivot_por_mat  = {}
+    if sec_mov and mov_fields and funcs:
+        try:
+            _cli_rubr = [0] + ([id_cliente] if id_cliente else [])
+            _rub_dsc  = {}
+            for _rv in (supabase.table("tab_rubrica")
+                        .select("cod_rubr, dsc_rubr")
+                        .in_("id_cliente", _cli_rubr).eq("situacao","A")
+                        .execute().data or []):
+                _rub_dsc[int(_rv.get("cod_rubr") or 0)] = _rv.get("dsc_rubr") or ""
+            mov_col_labels_pdf = [f"{c:04d}\n{_rub_dsc.get(c, f'V.{c}')}" for c in mov_fields]
+        except Exception:
+            mov_col_labels_pdf = [f"V.{c}" for c in mov_fields]
+        try:
+            _mats_m = [int(f.get("matricula") or 0) for f in funcs]
+            _qm = (supabase.table("tab_mov")
+                   .select("matricula, cod_verba, valor")
+                   .eq("id_empresa", id_empresa).eq("situacao","A")
+                   .eq("folha_tipo","N").in_("matricula", _mats_m)
+                   .in_("cod_verba", mov_fields)
+                   .gte("folha", anomes_ini).lte("folha", anomes_fim))
+            if id_cliente:
+                _qm = _qm.eq("id_cliente", id_cliente)
+            for _mr in (_qm.execute().data or []):
+                _m = int(_mr.get("matricula") or 0)
+                _c = int(_mr.get("cod_verba") or 0)
+                mov_pivot_por_mat.setdefault(_m, {})
+                mov_pivot_por_mat[_m][_c] = mov_pivot_por_mat[_m].get(_c, 0) + int(_mr.get("valor") or 0)
+        except Exception:
+            pass
+
+    tot_col_labels_pdf = []
+    tot_pivot_por_mat  = {}
+    if sec_totais and tot_fields and funcs:
+        tot_col_labels_pdf = [TOT_BASES_MAP_PDF[k][0] for k in tot_fields]
+        try:
+            _mats_t   = [int(f.get("matricula") or 0) for f in funcs]
+            _tot_cols = ", ".join(dict.fromkeys(
+                ["matricula"] + [TOT_BASES_MAP_PDF[k][1] for k in tot_fields]
+            ))
+            _qt = (supabase.table("tab_total")
+                   .select(_tot_cols)
+                   .eq("id_empresa", id_empresa).in_("matricula", _mats_t)
+                   .gte("folha", anomes_ini).lte("folha", anomes_fim))
+            if id_cliente:
+                _qt = _qt.eq("id_cliente", id_cliente)
+            for _tr in (_qt.execute().data or []):
+                _m = int(_tr.get("matricula") or 0)
+                tot_pivot_por_mat.setdefault(_m, {})
+                for k in tot_fields:
+                    _col = TOT_BASES_MAP_PDF[k][1]
+                    tot_pivot_por_mat[_m][k] = (
+                        tot_pivot_por_mat[_m].get(k, 0) + int(_tr.get(_col) or 0)
+                    )
+        except Exception:
+            pass
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    col_labels = (["Matr. / Nome"]
+                  + [CAD_CAMPOS_MAP[k][0] for k in cad_fields if k in CAD_CAMPOS_MAP]
+                  + mov_col_labels_pdf
+                  + tot_col_labels_pdf)
+
+    # ── Larguras inteligentes por conteúdo ──────────────────────────────────
+    _W_CAD = {
+        "cpf": 2.3, "dtadm": 1.8, "funcao_cbo": 1.8, "funcao_nome": 3.8,
+        "vrsalfx": 2.3, "dtnascto": 1.8, "sexo": 0.9, "estadocivil": 2.0,
+        "email": 4.0, "telefone": 2.5, "endereco": 5.0, "cidade": 3.0,
+        "uf": 0.8, "cep": 1.9, "banco": 1.5, "agencia": 1.5, "conta": 2.0,
+    }
+    _raw_w = [5.5]                                           # Matr./Nome (cm)
+    for k in cad_fields:
+        if k in CAD_CAMPOS_MAP:
+            _raw_w.append(_W_CAD.get(k, 2.5))
+    for _ in mov_fields:
+        _raw_w.append(2.3)                                   # verba monetária
+    for k in tot_fields:
+        _raw_w.append(1.3 if TOT_BASES_MAP_PDF.get(k, ("","","val"))[2] == "int" else 2.3)
+
+    page       = landscape(A4)
+    page_w     = page[0] - 3*cm
+    _pw_cm     = page_w / cm
+    _total_raw = sum(_raw_w)
+    if _total_raw > _pw_cm:
+        _scale = _pw_cm / _total_raw
+        col_widths = [w * _scale * cm for w in _raw_w]
+    else:
+        col_widths = [w * cm for w in _raw_w]
+    n_cols = len(col_labels)
+
+    navy = colors.HexColor("#0b1f3a")
+    gray = colors.HexColor("#f8fafc")
+    bdr  = colors.HexColor("#dde3ec")
+    dep_bg = colors.HexColor("#f1f5f9")
+
+    st_hdr      = ParagraphStyle("hdr", fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#1e293b"),       leading=9)
+    st_cel      = ParagraphStyle("cel", fontName="Helvetica",      fontSize=7, textColor=colors.HexColor("#1e293b"),       leading=9)
+    st_tot      = ParagraphStyle("tot", fontName="Helvetica-Bold", fontSize=7, textColor=colors.HexColor("#1e293b"),       leading=9)
+    st_dep_hdr  = ParagraphStyle("dh",  fontName="Helvetica-Bold", fontSize=6, textColor=colors.HexColor("#475569"),       leading=8)
+    st_dep_cel  = ParagraphStyle("dc",  fontName="Helvetica",      fontSize=6, textColor=colors.HexColor("#374151"),       leading=8)
+    st_dep_none = ParagraphStyle("dn",  fontName="Helvetica-Oblique", fontSize=6, textColor=colors.HexColor("#94a3b8"),    leading=8)
+    st_ev_hdr   = ParagraphStyle("eh",  fontName="Helvetica-Bold", fontSize=6, textColor=colors.HexColor("#166534"),       leading=8)
+    st_ev_cel   = ParagraphStyle("ec",  fontName="Helvetica",      fontSize=6, textColor=colors.HexColor("#374151"),       leading=8)
+
+    tbl_data  = [[Paragraph(h, st_hdr) for h in col_labels]]
+    row_types = ["header"]
+    emp_alt   = 0
+
+    for f in funcs:
+        mat  = int(f.get("matricula") or 0)
+        if dep_somente and sec_dep and not dep_por_mat.get(mat):
+            continue
+        nome = (f.get("nomer") or f.get("nome") or "").strip()
+        row  = [f"{mat:06d}  {nome}"]
+        for k in cad_fields:
+            if k not in CAD_CAMPOS_MAP:
+                continue
+            lbl, col, tp = CAD_CAMPOS_MAP[k]
+            raw = f.get(col)
+            if tp == "val":
+                disp = _fval(raw)
+            elif tp == "data":
+                disp = _fdata(raw)
+            elif tp == "lookup_funcao":
+                cbo  = str(f.get("cbofuncao") or "").strip()
+                disp = mapa_funcao.get(cbo, "—")
+            else:
+                disp = str(raw or "—")
+            row.append(disp)
+        _pivot = mov_pivot_por_mat.get(mat, {})
+        for _mc in mov_fields:
+            row.append(_fnum(_pivot.get(_mc)))
+        _tpivot = tot_pivot_por_mat.get(mat, {})
+        for k in tot_fields:
+            _, _, _tp = TOT_BASES_MAP_PDF[k]
+            _v = _tpivot.get(k, 0)
+            row.append(str(_v) if _tp == "int" else _fnum(_v))
+        tbl_data.append([Paragraph(str(v), st_cel) for v in row])
+        row_types.append(("emp", emp_alt % 2))
+        emp_alt += 1
+
+        if sec_dep:
+            deps = dep_por_mat.get(mat, [])
+            if deps:
+                dep_col_ws = [col_nome * 1.2, 1.8*cm, 1.6*cm, 1.0*cm, 1.0*cm]
+                nd = [[Paragraph(h, st_dep_hdr) for h in ["Nome", "Parentesco", "Nasc.", "IRRF", "Saúde"]]]
+                for d in deps:
+                    nd.append([
+                        Paragraph(str(d.get("nome") or "—"), st_dep_cel),
+                        Paragraph(TPDEP.get(int(d.get("tpdep") or 0), "Outro"), st_dep_cel),
+                        Paragraph(_fdata(d.get("dtnascto")), st_dep_cel),
+                        Paragraph("Sim" if d.get("depirrf") else "Não", st_dep_cel),
+                        Paragraph("Sim" if d.get("depsf")   else "Não", st_dep_cel),
+                    ])
+                nested = Table(nd, colWidths=dep_col_ws)
+                nested.setStyle(TableStyle([
+                    ("LINEBELOW",     (0,0), (-1,0), 0.3, colors.HexColor("#e2e8f0")),
+                    ("TOPPADDING",    (0,0), (-1,-1), 2),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                    ("LEFTPADDING",   (0,0), (-1,-1), 0),
+                    ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+                ]))
+                tbl_data.append([nested] + [""] * (n_cols - 1))
+            else:
+                tbl_data.append([Paragraph("sem dependentes", st_dep_none)] + [""] * (n_cols - 1))
+            row_types.append("dep")
+
+        if sec_eventos and ev_tipos:
+            evs = sorted(ev_por_mat_pdf.get(mat, []), key=lambda x: (x.get("data1i") or ""))
+            if evs:
+                ev_col_ws = [2.0*cm, 2.0*cm, 2.0*cm, 1.2*cm, 4.0*cm]
+                nd_ev = [[Paragraph(h, st_ev_hdr) for h in ["Tipo", "Início", "Fim", "Dias", "Obs."]]]
+                for ev in evs:
+                    nd_ev.append([
+                        Paragraph(OP1_LABEL_PDF.get(int(ev.get("op1") or 0), "Evento"), st_ev_cel),
+                        Paragraph(_fdata(ev.get("data1i")), st_ev_cel),
+                        Paragraph(_fdata(ev.get("data1f")), st_ev_cel),
+                        Paragraph(_dias_ev(ev.get("ref1"), ev.get("data1i"), ev.get("data1f")), st_ev_cel),
+                        Paragraph(str(ev.get("campotxt1") or "—"), st_ev_cel),
+                    ])
+                nested_ev = Table(nd_ev, colWidths=ev_col_ws)
+                nested_ev.setStyle(TableStyle([
+                    ("LINEBELOW",     (0,0), (-1,0), 0.3, colors.HexColor("#bbf7d0")),
+                    ("TOPPADDING",    (0,0), (-1,-1), 2),
+                    ("BOTTOMPADDING", (0,0), (-1,-1), 2),
+                    ("LEFTPADDING",   (0,0), (-1,-1), 0),
+                    ("RIGHTPADDING",  (0,0), (-1,-1), 6),
+                ]))
+                tbl_data.append([nested_ev] + [""] * (n_cols - 1))
+                row_types.append("ev")
+
+    total_txt = f"Total: {len(funcs)} funcionário{'s' if len(funcs) != 1 else ''}"
+    tbl_data.append([Paragraph(total_txt, st_tot)] + [""] * (n_cols - 1))
+    row_types.append("total")
+    last = len(tbl_data) - 1
+
+    style_cmds = [
+        ("BACKGROUND", (0, 0),    (-1, 0),    colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",  (0, 0),    (-1, 0),    0.5, bdr),
+        ("SPAN",       (0, last), (-1, last)),
+        ("BACKGROUND", (0, last), (-1, last), gray),
+        ("LINEABOVE",  (0, last), (-1, last), 1, bdr),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+    ]
+    for i, rt in enumerate(row_types):
+        if isinstance(rt, tuple) and rt[0] == "emp":
+            bg = colors.white if rt[1] == 0 else gray
+            style_cmds += [("BACKGROUND", (0,i), (-1,i), bg),
+                           ("GRID",       (0,i), (-1,i), 0.4, bdr)]
+        elif rt == "dep":
+            style_cmds += [("SPAN",          (0,i), (-1,i)),
+                           ("LEFTPADDING",   (0,i), (-1,i), 18),
+                           ("TOPPADDING",    (0,i), (-1,i), 2),
+                           ("BOTTOMPADDING", (0,i), (-1,i), 4)]
+        elif rt == "ev":
+            style_cmds += [("SPAN",          (0,i), (-1,i)),
+                           ("BACKGROUND",    (0,i), (-1,i), colors.HexColor("#f0fdf4")),
+                           ("LEFTPADDING",   (0,i), (-1,i), 18),
+                           ("TOPPADDING",    (0,i), (-1,i), 2),
+                           ("BOTTOMPADDING", (0,i), (-1,i), 4)]
+
+    t = Table(tbl_data, colWidths=col_widths, repeatRows=1)
+    t.setStyle(TableStyle(style_cmds))
+
+    # linha de cabeçalho do doc (empresa + título + data)
+    titulo_pdf = titulo_rel if titulo_rel else "Gerador de Relatório — Cadastro"
+    cabecalho  = _pdf_cabecalho(titulo_pdf, cnpj_fmt, empresa_nm, page_width=page_w)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=page,
+                            leftMargin=1.5*cm, rightMargin=1.5*cm,
+                            topMargin=1.2*cm, bottomMargin=1.2*cm)
+    doc.build([cabecalho, Spacer(1, 0.4*cm), t])
+
+    from flask import make_response
+    buf.seek(0)
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="GeradorRelatorio.pdf"'
+    return resp
+
+
+@app.route("/api/gerador_verbas_usadas")
+def api_gerador_verbas_usadas():
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    ano     = int(request.args.get("ano",     datetime.now().year)  or datetime.now().year)
+    mes_ini = int(request.args.get("mes_ini", 1)  or 1)
+    mes_fim = int(request.args.get("mes_fim", 12) or 12)
+    todas   = request.args.get("todas", "0") == "1"
+
+    _cli_rubr = [0] + ([id_cliente] if id_cliente else [])
+    try:
+        _q_rubr = (supabase.table("tab_rubrica")
+                   .select("cod_rubr, dsc_rubr")
+                   .in_("id_cliente", _cli_rubr)
+                   .eq("situacao", "A").order("cod_rubr"))
+
+        filtrado = False
+        if not todas:
+            _anomes_ini = int(f"{ano}{mes_ini:02d}")
+            _anomes_fim = int(f"{ano}{mes_fim:02d}")
+            _qm = (supabase.table("tab_mov")
+                   .select("cod_verba")
+                   .eq("id_empresa", id_empresa)
+                   .eq("situacao", "A").eq("folha_tipo", "N")
+                   .gte("folha", _anomes_ini).lte("folha", _anomes_fim))
+            if id_cliente:
+                _qm = _qm.eq("id_cliente", id_cliente)
+            _cod_usados = {int(r["cod_verba"])
+                           for r in (_qm.execute().data or []) if r.get("cod_verba")}
+            if _cod_usados:
+                _q_rubr = _q_rubr.in_("cod_rubr", list(_cod_usados))
+                filtrado = True
+
+        verbas = _q_rubr.execute().data or []
+        for v in verbas:
+            v["cod_rubr"] = int(v.get("cod_rubr") or 0)
+        return jsonify({"ok": True, "verbas": verbas, "filtrado": filtrado})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# ── Configurações salvas do Gerador de Relatório ─────────────────────────────
+
+@app.route("/api/rel_configs")
+def api_rel_configs_list():
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    id_cliente = session.get("id_cliente")
+    if not id_cliente:
+        return jsonify({"ok": True, "configs": []})
+    try:
+        rows = (supabase.table("tab_rel_gerador")
+                .select("id, nome, parametros, updated_at")
+                .eq("id_cliente", id_cliente)
+                .order("nome")
+                .execute().data or [])
+        return jsonify({"ok": True, "configs": rows})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+@app.route("/api/rel_configs", methods=["POST"])
+def api_rel_configs_save():
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    id_cliente = session.get("id_cliente")
+    if not id_cliente:
+        return jsonify({"ok": False, "msg": "Sem cliente na sessão"})
+    body = request.get_json(silent=True) or {}
+    nome       = (body.get("nome") or "").strip()
+    parametros = body.get("parametros") or {}
+    if not nome:
+        return jsonify({"ok": False, "msg": "Nome obrigatório"})
+    try:
+        dup = (supabase.table("tab_rel_gerador")
+               .select("id").eq("id_cliente", id_cliente).eq("nome", nome)
+               .execute().data or [])
+        if dup:
+            return jsonify({"ok": False, "msg": "duplicate", "id": dup[0]["id"]})
+        row = (supabase.table("tab_rel_gerador")
+               .insert({"id_cliente": id_cliente, "nome": nome, "parametros": parametros})
+               .execute().data or [{}])[0]
+        return jsonify({"ok": True, "id": row.get("id"), "nome": nome})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+@app.route("/api/rel_configs/<cfg_id>", methods=["PUT"])
+def api_rel_configs_update(cfg_id):
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    id_cliente = session.get("id_cliente")
+    body = request.get_json(silent=True) or {}
+    nome       = (body.get("nome") or "").strip()
+    parametros = body.get("parametros") or {}
+    if not nome:
+        return jsonify({"ok": False, "msg": "Nome obrigatório"})
+    try:
+        dup = (supabase.table("tab_rel_gerador")
+               .select("id").eq("id_cliente", id_cliente).eq("nome", nome)
+               .neq("id", cfg_id).execute().data or [])
+        if dup:
+            return jsonify({"ok": False, "msg": "duplicate"})
+        supabase.table("tab_rel_gerador").update({
+            "nome": nome, "parametros": parametros,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", cfg_id).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+@app.route("/api/rel_configs/<cfg_id>", methods=["DELETE"])
+def api_rel_configs_delete(cfg_id):
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    id_cliente = session.get("id_cliente")
+    try:
+        supabase.table("tab_rel_gerador").delete()\
+            .eq("id", cfg_id).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
 @app.route("/rel_sal_aumento")
 def rel_sal_aumento():
     if not session.get("logado"):
@@ -9965,10 +10955,11 @@ def _assinar_xml(xml_str, pfx_bytes, senha_str):
     return etree.tostring(signed_root, encoding="unicode", xml_declaration=False)
 
 
-def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str):
+def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2"):
     """Monta o lote eSocial com um único evento.
     xml_evento_assinado é o eSocial completo já assinado (evtAdmissao + Signature dentro de eSocial).
     O lote NÃO é assinado — autenticação via mTLS.
+    grupo: "1"=Tabelas, "2"=Não-periódicos, "3"=Periódicos
     """
     from lxml import etree
 
@@ -9986,7 +10977,7 @@ def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str):
 
     NS_LOTE = "http://www.esocial.gov.br/schema/lote/eventos/envio/v1_1_1"
     lote = etree.Element(f"{{{NS_LOTE}}}eSocial", nsmap={None: NS_LOTE})
-    env  = etree.SubElement(lote, f"{{{NS_LOTE}}}envioLoteEventos", grupo="2")
+    env  = etree.SubElement(lote, f"{{{NS_LOTE}}}envioLoteEventos", grupo=grupo)
 
     ide_emp = etree.SubElement(env, f"{{{NS_LOTE}}}ideEmpregador")
     etree.SubElement(ide_emp, f"{{{NS_LOTE}}}tpInsc").text = "1"
@@ -10398,6 +11389,184 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
       </infoContrato>
     </vinculo>
   </evtAdmissao>
+</eSocial>"""
+
+
+# =========================================================
+# eSocial S-1200 — GERADOR DE XML
+# =========================================================
+def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
+    """Gera string XML do S-1200 (Remuneração do Trabalhador - RGPS)."""
+    import re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):
+        return re.sub(r'\D', '', str(v or ''))
+
+    def x(v):
+        return _esc(str(v or ''))
+
+    def fmt_brl(centavos):
+        try:
+            return f"{int(centavos) / 100:.2f}"
+        except Exception:
+            return "0.00"
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    cpf      = dg(func.get('cpf', '')).zfill(11)
+    mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    codcateg = str(func.get('codcateg') or '101')
+
+    _am     = str(int(ano_mes)).zfill(6)
+    per_apur = f"{_am[:4]}-{_am[4:6]}"
+    ind_apur = "2" if folha_tipo in ('1', 'A') else "1"
+
+    itens_xml = ""
+    for item in mov_items:
+        cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
+        val = int(item.get('valor') or 0)
+        if cod and val != 0:
+            itens_xml += f"""
+            <itensRemun>
+              <codRubr>{x(cod)}</codRubr>
+              <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+              <vrRubr>{fmt_brl(val)}</vrRubr>
+            </itensRemun>"""
+
+    if not itens_xml.strip():
+        itens_xml = f"""
+            <itensRemun>
+              <codRubr>0001</codRubr>
+              <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+              <vrRubr>0.00</vrRubr>
+            </itensRemun>"""
+
+    nis_trab = dg(func.get('nis') or func.get('pis') or '')
+    nis_xml  = f"\n      <nisTrab>{x(nis_trab)}</nisTrab>" if nis_trab else ""
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtRemun/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtRemun/v_S_01_03_00 evtRemun_v_S_01_03_00.xsd">
+  <evtRemun Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <indApuracao>{ind_apur}</indApuracao>
+      <perApur>{per_apur}</perApur>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>Folha10-Simples</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <ideTrabalhador>
+      <cpfTrab>{x(cpf)}</cpfTrab>{nis_xml}
+    </ideTrabalhador>
+    <dmDev>
+      <ideDmDev>{per_apur}</ideDmDev>
+      <codCateg>{x(codcateg)}</codCateg>
+      <infoPerApur>
+        <ideEstabLot>
+          <tpInsc>1</tpInsc>
+          <nrInsc>{x(cnpj_emp)}</nrInsc>
+          <codLotacao>1</codLotacao>
+          <remunPerApur>
+            <matricula>{x(mat_es)}</matricula>{itens_xml}
+          </remunPerApur>
+        </ideEstabLot>
+      </infoPerApur>
+    </dmDev>
+  </evtRemun>
+</eSocial>"""
+
+
+# =========================================================
+# eSocial S-1210 — GERADOR DE XML
+# =========================================================
+def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto, recibo_s1200, totais):
+    """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho)."""
+    import re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):
+        return re.sub(r'\D', '', str(v or ''))
+
+    def x(v):
+        return _esc(str(v or ''))
+
+    def fmt_brl(centavos):
+        try:
+            return f"{int(centavos) / 100:.2f}"
+        except Exception:
+            return "0.00"
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    cpf      = dg(func.get('cpf', '')).zfill(11)
+    codcateg = str(func.get('codcateg') or '101')
+
+    _am      = str(int(ano_mes)).zfill(6)
+    per_apur = f"{_am[:4]}-{_am[4:6]}"
+
+    _TP_PGTO = {'N': '1', '1': '2', 'A': '2', 'F': '4', 'R': '3'}
+    tp_pgto  = _TP_PGTO.get(str(folha_tipo), '1')
+
+    vr_total    = fmt_brl(totais.get('valor_liquido', 0))
+    vr_base_ins = fmt_brl(totais.get('valor_base_inss_comlimite', 0))
+    vr_base_irr = fmt_brl(totais.get('valor_irrf_basetabela', 0))
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtPgtos/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtPgtos/v_S_01_03_00 evtPgtos_v_S_01_03_00.xsd">
+  <evtPgtos Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <perApur>{per_apur}</perApur>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>Folha10-Simples</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <ideBenef>
+      <cpfBenef>{x(cpf)}</cpfBenef>
+      <infoPgto>
+        <dtPgto>{x(dtPgto)}</dtPgto>
+        <tpPgto>{x(tp_pgto)}</tpPgto>
+        <nrRecArqBase>{x(recibo_s1200)}</nrRecArqBase>
+        <ideDmDev>
+          <ideDmDev>{per_apur}</ideDmDev>
+          <codCateg>{x(codcateg)}</codCateg>
+          <infoPerApur>
+            <ideEstabLot>
+              <tpInsc>1</tpInsc>
+              <nrInsc>{x(cnpj_emp)}</nrInsc>
+              <codLotacao>1</codLotacao>
+              <pgtoFonte>
+                <vrTotal>{vr_total}</vrTotal>
+                <vrBaseInss>{vr_base_ins}</vrBaseInss>
+                <vrBaseIrrf>{vr_base_irr}</vrBaseIrrf>
+              </pgtoFonte>
+            </ideEstabLot>
+          </infoPerApur>
+        </ideDmDev>
+      </infoPgto>
+    </ideBenef>
+  </evtPgtos>
 </eSocial>"""
 
 
@@ -11112,6 +12281,1040 @@ def api_esocial_s2200_reconsutar():
         "func_mat":   str(matricula).zfill(6),
         "emp_nome":   empresa.get("razaosocial") or empresa.get("nome_fantasia", ""),
         "emp_cnpj":   _fmt_cnpj(so_numeros(empresa.get("cnpj", ""))),
+    })
+
+
+# =========================================================
+# eSocial S-1200 — TELA DE LISTAGEM
+# =========================================================
+@app.route("/esocial_s1200")
+def esocial_s1200():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    f_sit      = request.args.get("sit", "")
+    f_anomes   = request.args.get("anomes", "")
+    f_tipo     = request.args.get("tipo", "")
+
+    rows = []
+    try:
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1200")
+             .order("ano_mes", desc=True)
+             .order("data_cad", desc=True)
+             .order("hora_cad", desc=True))
+        if f_anomes:
+            q = q.eq("ano_mes", int(f_anomes))
+        if f_tipo:
+            q = q.eq("folha_tipo", f_tipo)
+        rows = q.execute().data or []
+    except Exception:
+        rows = []
+
+    mats = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad")
+                      .select("matricula, nome")
+                      .eq("id_empresa", id_empresa)
+                      .in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    def _fmt_anomes(v):
+        s = str(int(v)).zfill(6) if v else ""
+        return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else str(v or "")
+
+    _TP_FOLHA = {"N": "Normal", "1": "13º Sal.", "A": "Adiant. 13º", "F": "Férias", "R": "Rescisão"}
+    _SIT = {
+        "E": ("Enviado",    "sit-enviado"),
+        "D": ("Excluído",   "sit-excluido"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+
+    for r in rows:
+        r["_nome"]          = nomes.get(r.get("matricula"), "—")
+        r["_datacad_fmt"]   = _d8(r.get("data_cad"))
+        r["_datagrava_fmt"] = _d8(r.get("data_grava"))
+        r["_periodo"]       = _fmt_anomes(r.get("ano_mes"))
+        r["_tipo_label"]    = _TP_FOLHA.get(str(r.get("folha_tipo") or "N"), str(r.get("folha_tipo") or ""))
+
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+
+        if recibo and obs == "EXCLUIDO":
+            s = "D"
+        elif recibo:
+            s = "E"
+        elif obs.startswith("AGUARDANDO:"):
+            s = "W"
+            r["_protocolo"] = obs[len("AGUARDANDO:"):]
+        elif obs:
+            s = "X"
+        elif dgrava:
+            s = "G"
+        else:
+            s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT[s][0]
+        r["_sit_class"] = _SIT[s][1]
+
+    if f_sit:
+        rows = [r for r in rows if r.get("_sit") == f_sit]
+
+    contagens = {k: sum(1 for r in rows if r["_sit"] == k) for k in "PGEXWD"}
+
+    periodos_disp = []
+    try:
+        _prows = (supabase.table("tab_esocial")
+                  .select("ano_mes")
+                  .eq("id_empresa", id_empresa)
+                  .eq("layout", "1200")
+                  .order("ano_mes", desc=True)
+                  .execute().data or [])
+        _seen = set()
+        for _p in _prows:
+            _v = _p.get("ano_mes")
+            if _v and _v not in _seen:
+                _seen.add(_v)
+                periodos_disp.append({"valor": str(_v), "label": _fmt_anomes(_v)})
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_eSocial_S1200.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        rows=rows,
+        f_sit=f_sit, f_anomes=f_anomes, f_anomes_fmt=_fmt_anomes(f_anomes) if f_anomes else "", f_tipo=f_tipo,
+        contagens=contagens,
+        total=len(rows),
+        periodos_disp=periodos_disp,
+        TP_FOLHA=_TP_FOLHA,
+    )
+
+
+# =========================================================
+# eSocial S-1200 — API: gerar + assinar + enviar + consultar
+# =========================================================
+@app.route("/api/esocial_s1200_enviar", methods=["POST"])
+def api_esocial_s1200_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    # 1. Registro na tab_esocial
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1200")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-1200 não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    matricula  = es.get("matricula")
+    ano_mes    = es.get("ano_mes")
+    folha_tipo = str(es.get("folha_tipo") or "N")
+
+    # 2. Dados do funcionário
+    try:
+        r_func = (supabase.table("tab_cad")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
+        func = r_func.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
+
+    # 3. Itens de movimento (remuneração do período)
+    mov_items = []
+    try:
+        _qm = (supabase.table("tab_mov")
+               .select("cod_verba, valor")
+               .eq("id_empresa", id_empresa)
+               .eq("matricula", matricula)
+               .eq("folha", int(ano_mes))
+               .eq("folha_tipo", folha_tipo)
+               .eq("situacao", "A"))
+        _id_cliente = session.get("id_cliente")
+        if _id_cliente:
+            _qm = _qm.eq("id_cliente", _id_cliente)
+        _rows_mov = _qm.execute().data or []
+        # Agrega por cod_verba
+        _agg = {}
+        for _r in _rows_mov:
+            _c = str(_r.get("cod_verba") or "")
+            _v = int(_r.get("valor") or 0)
+            _agg[_c] = _agg.get(_c, 0) + _v
+        mov_items = [{"cod_verba": k, "valor": v} for k, v in _agg.items() if v != 0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar movimento: {e}"})
+
+    # 4. Empresa + certificado
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("*")
+                 .eq("cnpj", cnpj_emp)
+                 .limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    # 5. Gerar XML
+    try:
+        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    # Diretório de diagnóstico
+    import os as _os2
+    _now2    = datetime.now()
+    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
+                               "eSocial_XML", _now2.strftime("%Y"),
+                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
+    _os2.makedirs(_dir_xml, exist_ok=True)
+    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
+    _pref = _os2.path.join(_dir_xml, f"S1200_{matricula}_{_ts}")
+
+    try:
+        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_str)
+    except Exception:
+        pass
+
+    # 6. Assinar
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    try:
+        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_assinado)
+    except Exception:
+        pass
+
+    # 7. Montar lote  (S-1200 = Grupo 3 — Periódicos)
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    try:
+        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
+            _f.write(lote_xml)
+    except Exception:
+        pass
+
+    # 8. Enviar
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+
+    try:
+        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
+            _f.write(soap_env)
+    except Exception:
+        pass
+
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        try:
+            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
+                _f.write(detalhe)
+        except Exception:
+            pass
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
+
+    try:
+        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
+            _f.write(resp_envio)
+    except Exception:
+        pass
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+
+    if not protocolo_envio:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava":      agora.strftime("%Y%m%d"),
+            "hora_grava":      agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    agora = datetime.now()
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    # 9. Consultar resultado (até 3×)
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+    dh_proc      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+
+        try:
+            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
+                _f.write(resp_cons)
+        except Exception:
+            pass
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        dh_proc = resultado.get("dhProcessamento", "") or dh_proc
+
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            dh_proc = ev0.get("dh", "") or dh_proc
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-1200 enviado: mat={matricula} anomes={ano_mes} nrRec={recibo_final} cd={cd_resp}",
+               matricula=matricula)
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+                else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
+# eSocial S-1200 — API: re-consultar lote aguardando
+# =========================================================
+@app.route("/api/esocial_s1200_reconsultar", methods=["POST"])
+def api_esocial_s1200_reconsultar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1200")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    obs = (es.get("observacao_erro") or "").strip()
+    if not obs.startswith("AGUARDANDO:"):
+        return jsonify({"ok": False, "msg": "Registro não está em estado Aguardando."})
+    protocolo = obs[len("AGUARDANDO:"):]
+
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("cert_pfx_b64, cert_senha_enc")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        emp = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    pfx_bytes = base64.b64decode(emp.get("cert_pfx_b64") or "")
+    senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
+    _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+    dh_proc      = ""
+
+    for tentativa in range(3):
+        if tentativa:
+            time.sleep(10)
+        soap_cons = _soap_consultar(protocolo)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        dh_proc = resultado.get("dhProcessamento", "") or dh_proc
+
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            dh_proc = ev0.get("dh", "") or dh_proc
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-1200 reconsulta: mat={es.get('matricula')} nrRec={recibo_final} cd={cd_resp}",
+               matricula=es.get("matricula"))
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "msg": ("Ainda processando." if aguardando
+                else obs_erro or f"Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
+# eSocial S-1210 — TELA DE LISTAGEM
+# =========================================================
+@app.route("/esocial_s1210")
+def esocial_s1210():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    f_sit      = request.args.get("sit", "")
+    f_anomes   = request.args.get("anomes", "")
+    f_tipo     = request.args.get("tipo", "")
+
+    rows = []
+    try:
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1210")
+             .order("ano_mes", desc=True)
+             .order("data_cad", desc=True)
+             .order("hora_cad", desc=True))
+        if f_anomes:
+            q = q.eq("ano_mes", int(f_anomes))
+        if f_tipo:
+            q = q.eq("folha_tipo", f_tipo)
+        rows = q.execute().data or []
+    except Exception:
+        rows = []
+
+    mats = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad")
+                      .select("matricula, nome")
+                      .eq("id_empresa", id_empresa)
+                      .in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    # Busca S-1200 correspondentes para exibir status
+    s1200_map = {}
+    try:
+        _anomes_list = list({r.get("ano_mes") for r in rows if r.get("ano_mes")})
+        if mats and _anomes_list:
+            _s12_rows = (supabase.table("tab_esocial")
+                         .select("matricula, ano_mes, folha_tipo, recibo, observacao_erro")
+                         .eq("id_empresa", id_empresa)
+                         .eq("layout", "1200")
+                         .in_("matricula", mats)
+                         .in_("ano_mes", _anomes_list)
+                         .execute().data or [])
+            for s in _s12_rows:
+                _k = (s.get("matricula"), s.get("ano_mes"), str(s.get("folha_tipo") or "N"))
+                s1200_map[_k] = s
+    except Exception:
+        pass
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    def _fmt_anomes(v):
+        s = str(int(v)).zfill(6) if v else ""
+        return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else str(v or "")
+
+    _TP_FOLHA = {"N": "Normal", "1": "13º Sal.", "A": "Adiant. 13º", "F": "Férias", "R": "Rescisão"}
+    _SIT = {
+        "E": ("Enviado",    "sit-enviado"),
+        "D": ("Excluído",   "sit-excluido"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+
+    for r in rows:
+        r["_nome"]          = nomes.get(r.get("matricula"), "—")
+        r["_datacad_fmt"]   = _d8(r.get("data_cad"))
+        r["_datagrava_fmt"] = _d8(r.get("data_grava"))
+        r["_periodo"]       = _fmt_anomes(r.get("ano_mes"))
+        r["_tipo_label"]    = _TP_FOLHA.get(str(r.get("folha_tipo") or "N"), str(r.get("folha_tipo") or ""))
+
+        _k = (r.get("matricula"), r.get("ano_mes"), str(r.get("folha_tipo") or "N"))
+        s12 = s1200_map.get(_k, {})
+        r["_s1200_recibo"]  = (s12.get("recibo") or "").strip()
+        r["_s1200_enviado"] = bool(r["_s1200_recibo"])
+
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+
+        if recibo and obs == "EXCLUIDO":
+            s = "D"
+        elif recibo:
+            s = "E"
+        elif obs.startswith("AGUARDANDO:"):
+            s = "W"
+            r["_protocolo"] = obs[len("AGUARDANDO:"):]
+        elif obs:
+            s = "X"
+        elif dgrava:
+            s = "G"
+        else:
+            s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT[s][0]
+        r["_sit_class"] = _SIT[s][1]
+
+    if f_sit:
+        rows = [r for r in rows if r.get("_sit") == f_sit]
+
+    contagens = {k: sum(1 for r in rows if r["_sit"] == k) for k in "PGEXWD"}
+
+    periodos_disp = []
+    try:
+        _prows = (supabase.table("tab_esocial")
+                  .select("ano_mes")
+                  .eq("id_empresa", id_empresa)
+                  .eq("layout", "1210")
+                  .order("ano_mes", desc=True)
+                  .execute().data or [])
+        _seen = set()
+        for _p in _prows:
+            _v = _p.get("ano_mes")
+            if _v and _v not in _seen:
+                _seen.add(_v)
+                periodos_disp.append({"valor": str(_v), "label": _fmt_anomes(_v)})
+    except Exception:
+        pass
+
+    dtpgto_default = ""
+    try:
+        _ref = f_anomes or (periodos_disp[0]["valor"] if periodos_disp else "")
+        if _ref:
+            _am2 = str(int(_ref)).zfill(6)
+            _yr, _mo = int(_am2[:4]), int(_am2[4:6])
+            _mo += 1
+            if _mo > 12:
+                _mo, _yr = 1, _yr + 1
+            dtpgto_default = f"{_yr:04d}-{_mo:02d}-05"
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_eSocial_S1210.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        rows=rows,
+        f_sit=f_sit, f_anomes=f_anomes,
+        f_anomes_fmt=_fmt_anomes(f_anomes) if f_anomes else "",
+        f_tipo=f_tipo,
+        contagens=contagens,
+        total=len(rows),
+        periodos_disp=periodos_disp,
+        TP_FOLHA=_TP_FOLHA,
+        dtpgto_default=dtpgto_default,
+    )
+
+
+# =========================================================
+# eSocial S-1210 — API: gerar + assinar + enviar + consultar
+# =========================================================
+@app.route("/api/esocial_s1210_enviar", methods=["POST"])
+def api_esocial_s1210_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+    dtPgto     = str(data.get("dtPgto", "")).strip()
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+    if not dtPgto:
+        return jsonify({"ok": False, "msg": "Data de pagamento não informada."})
+
+    # 1. Registro S-1210
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1210")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-1210 não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    matricula  = es.get("matricula")
+    ano_mes    = es.get("ano_mes")
+    folha_tipo = str(es.get("folha_tipo") or "N")
+
+    # 2. Recibo do S-1200 correspondente
+    try:
+        r_s1200 = (supabase.table("tab_esocial")
+                   .select("recibo")
+                   .eq("id_empresa", id_empresa)
+                   .eq("layout", "1200")
+                   .eq("matricula", matricula)
+                   .eq("ano_mes", int(ano_mes))
+                   .eq("folha_tipo", folha_tipo)
+                   .not_.is_("recibo", "null")
+                   .neq("recibo", "")
+                   .limit(1).execute())
+        if not r_s1200.data:
+            return jsonify({"ok": False,
+                            "msg": "S-1200 ainda não enviado. Envie o S-1200 primeiro."})
+        recibo_s1200 = r_s1200.data[0]["recibo"].strip()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar S-1200: {e}"})
+
+    # 3. Funcionário
+    try:
+        r_func = (supabase.table("tab_cad")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
+        func = r_func.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
+
+    # 4. Totais do período
+    totais = {}
+    try:
+        _qt = (supabase.table("tab_total")
+               .select("valor_liquido, valor_base_inss_comlimite, valor_irrf_basetabela")
+               .eq("id_empresa", id_empresa)
+               .eq("matricula", matricula)
+               .eq("folha", int(ano_mes))
+               .eq("folha_tipo", folha_tipo)
+               .limit(1).execute())
+        if _qt.data:
+            totais = _qt.data[0]
+    except Exception:
+        pass
+
+    # 5. Empresa + certificado
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("*")
+                 .eq("cnpj", cnpj_emp)
+                 .limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    # 6. Gerar XML
+    try:
+        xml_str = _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb,
+                                   dtPgto, recibo_s1200, totais)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    import os as _os2
+    _now2    = datetime.now()
+    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
+                               "eSocial_XML", _now2.strftime("%Y"),
+                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
+    _os2.makedirs(_dir_xml, exist_ok=True)
+    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
+    _pref = _os2.path.join(_dir_xml, f"S1210_{matricula}_{_ts}")
+
+    try:
+        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_str)
+    except Exception:
+        pass
+
+    # 7. Assinar
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    try:
+        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_assinado)
+    except Exception:
+        pass
+
+    # 8. Montar lote (Grupo 3 — Periódicos)
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    try:
+        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
+            _f.write(lote_xml)
+    except Exception:
+        pass
+
+    # 9. Enviar
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+
+    try:
+        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
+            _f.write(soap_env)
+    except Exception:
+        pass
+
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        try:
+            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
+                _f.write(detalhe)
+        except Exception:
+            pass
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
+
+    try:
+        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
+            _f.write(resp_envio)
+    except Exception:
+        pass
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+
+    if not protocolo_envio:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava":      agora.strftime("%Y%m%d"),
+            "hora_grava":      agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    agora = datetime.now()
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    # 10. Consultar resultado (até 3×)
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+
+        try:
+            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
+                _f.write(resp_cons)
+        except Exception:
+            pass
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-1210 enviado: mat={matricula} anomes={ano_mes} nrRec={recibo_final} cd={cd_resp}",
+               matricula=matricula)
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+                else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
+# eSocial S-1210 — API: re-consultar lote aguardando
+# =========================================================
+@app.route("/api/esocial_s1210_reconsultar", methods=["POST"])
+def api_esocial_s1210_reconsultar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1210")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    obs = (es.get("observacao_erro") or "").strip()
+    if not obs.startswith("AGUARDANDO:"):
+        return jsonify({"ok": False, "msg": "Registro não está em estado Aguardando."})
+    protocolo = obs[len("AGUARDANDO:"):]
+
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("cert_pfx_b64, cert_senha_enc")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        emp = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    pfx_bytes = base64.b64decode(emp.get("cert_pfx_b64") or "")
+    senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
+    _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        if tentativa:
+            time.sleep(10)
+        soap_cons = _soap_consultar(protocolo)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-1210 reconsulta: mat={es.get('matricula')} nrRec={recibo_final} cd={cd_resp}",
+               matricula=es.get("matricula"))
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "msg": ("Ainda processando." if aguardando
+                else obs_erro or f"Recibo: {recibo_final}"),
     })
 
 

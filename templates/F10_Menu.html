@@ -401,6 +401,10 @@ const modulos = {
                 { icone: '🖨️', nome: 'Folha de Pagamento',  href: '/relatorio_folha', ok: true, navLoading: true },
                 { icone: '📊', nome: 'Resumo da Folha',      href: '/resumo_folha',        ok: true, navLoading: true },
                 { icone: '📋', nome: 'Relação de N Verbas',  href: '/config_rel_verbas',   ok: true },
+                { icone: '📅', nome: 'Ficha Financeira',     href: '/rel_ficha_financeira', ok: true },
+            ]};
+            const secGerador = { nome: 'Gerador de Relatório', itens: [
+                { icone: '🗂️', nome: 'Gerador de Relatório', href: '/gerador_relatorio', ok: true },
             ]};
             const secSistema = { nome: 'Sistema', itens: [
                 { icone: '📋', nome: 'Log de Operações',  href: '/relatorios_config?rel=log',              ok: true },
@@ -411,8 +415,8 @@ const modulos = {
             ]};
             const folhaPrioridade = FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F';
             return folhaPrioridade
-                ? [secFolha, secCadastros, secEventos, secEventuais, secSistema, secTodos]
-                : [secCadastros, secEventos, secEventuais, secFolha, secSistema, secTodos];
+                ? [secFolha, secGerador, secCadastros, secEventos, secEventuais, secSistema, secTodos]
+                : [secCadastros, secEventos, secEventuais, secFolha, secGerador, secSistema, secTodos];
         })(),
     },
 
@@ -447,8 +451,8 @@ const modulos = {
                 { icone: '🚪', nome: 'S-2299 Desligamento',           href: '#' },
             ]},
             { nome: 'Eventos Periódicos', itens: [
-                { icone: '💰', nome: 'S-1200 Remuneração', href: '#' },
-                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '#' },
+                { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true },
+                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '/esocial_s1210', ok: true },
                 { icone: '📃', nome: 'REINF',               href: '#' },
             ]},
             { nome: 'Exclusão de Eventos', itens: [
