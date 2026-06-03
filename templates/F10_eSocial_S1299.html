@@ -54,10 +54,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 18px;
     display: flex; align-items: center; gap: 8px;
 }
-.form-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;
-    margin-bottom: 20px;
-}
 .form-field { display: flex; flex-direction: column; gap: 5px; }
 .form-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
 .form-input, .form-select {
@@ -67,25 +63,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 }
 .form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); background: #fff; }
 
-/* ── RADIO GRUPO ── */
-.radio-grupo { display: flex; gap: 10px; flex-wrap: wrap; }
-.radio-card {
-    display: flex; align-items: center; gap: 7px;
-    padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--border);
-    background: var(--bg); cursor: pointer; transition: .13s;
-    font-size: 13px; font-weight: 500; color: #374151;
+/* ── CHECKBOX SEM MOV ── */
+.check-semmov {
+    display: flex; align-items: center; gap: 9px;
+    cursor: pointer; font-size: 13px; font-weight: 500; color: #374151;
+    user-select: none;
 }
-.radio-card:hover { border-color: var(--accent); }
-.radio-card.selected { border-color: var(--accent); background: #eff6ff; color: #1d4ed8; }
-.radio-card.selected-green { border-color: #00a651; background: #e8f5ee; color: #166534; }
-.radio-card input[type=radio] { display: none; }
-
-/* ── ALERTA SEM MOV ── */
-.alerta-semmov {
-    display: none;
-    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
-    padding: 12px 16px; margin-top: 12px; font-size: 12px; color: #78350f;
-}
+.check-semmov input[type=checkbox] { width: 16px; height: 16px; accent-color: #f97316; cursor: pointer; }
 
 /* ── BTN FECHAR ── */
 .btn-fechar {
@@ -185,7 +169,7 @@ tr:hover td { background: #f8fafc; }
       &#128274; Novo Fechamento de Período
     </div>
 
-    <div class="form-grid">
+    <div style="display:flex;align-items:flex-end;gap:28px;flex-wrap:wrap;margin-bottom:20px;">
       <div class="form-field">
         <label class="form-label">Período (ano/mês)</label>
         <input type="month" class="form-input" id="inputAnomes"
@@ -193,25 +177,12 @@ tr:hover td { background: #f8fafc; }
                style="font-family:var(--mono);">
       </div>
 
-      <div class="form-field">
-        <label class="form-label">Modalidade</label>
-        <div class="radio-grupo" id="grupoModalidade">
-          <label class="radio-card selected-green" data-val="S" onclick="selecionarModalidade(this)">
-            <input type="radio" name="modalidade" value="S" checked>
-            Normal
-          </label>
-          <label class="radio-card" data-val="N" onclick="selecionarModalidade(this)">
-            <input type="radio" name="modalidade" value="N">
-            Sem Movimento
-          </label>
-        </div>
+      <div style="padding-bottom:8px;">
+        <label class="check-semmov">
+          <input type="checkbox" id="chkSemMov">
+          Empresa Sem Movimento
+        </label>
       </div>
-    </div>
-
-    <!-- Bloco Sem Movimento -->
-    <div class="alerta-semmov" id="blocoSemMov">
-      <div style="font-weight:700;margin-bottom:6px;">&#128683; Declaração de Empresa Sem Movimento</div>
-      <p>Use esta opção quando a empresa não teve <strong>nenhum trabalhador</strong> vinculado durante o período. Todos os indicadores de eventos serão informados como <strong>N</strong>.</p>
     </div>
 
     <div style="margin-top:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
@@ -331,15 +302,8 @@ const ETAPAS = [
   [98,  'Consultando resultado…'],
 ];
 
-let _modalidade = 'S';
-
-function selecionarModalidade(el) {
-  document.querySelectorAll('#grupoModalidade .radio-card').forEach(c => {
-    c.classList.remove('selected', 'selected-green');
-  });
-  el.classList.add(el.dataset.val === 'S' ? 'selected-green' : 'selected');
-  _modalidade = el.dataset.val;
-  document.getElementById('blocoSemMov').style.display = (_modalidade === 'N') ? 'block' : 'none';
+function _getSemMov() {
+  return document.getElementById('chkSemMov').checked ? 'N' : 'S';
 }
 
 async function fecharFolha(btn) {
@@ -381,7 +345,7 @@ async function fecharFolha(btn) {
       body: JSON.stringify({
         ano_mes:        anoMes,
         ind_apuracao:   '1',
-        ind_exist_info: _modalidade,
+        ind_exist_info: _getSemMov(),
         tpAmb:          tpAmb,
       }),
     });
@@ -438,7 +402,7 @@ function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
   tr.innerHTML = `
     <td class="data-cell">${periodo}</td>
     <td style="font-size:12px;">Mensal</td>
-    <td><span style="font-size:12px;color:#475569;">${_modalidade === 'N' ? '<span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>' : 'Normal'}</span></td>
+    <td><span style="font-size:12px;color:#475569;">${_getSemMov() === 'N' ? '<span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>' : 'Normal'}</span></td>
     <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
     <td class="data-cell">${hoje}</td>
     <td class="data-cell">${hoje}</td>
