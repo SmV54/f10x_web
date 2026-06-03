@@ -71,6 +71,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 }
 .check-semmov input[type=checkbox] { width: 16px; height: 16px; accent-color: #f97316; cursor: pointer; }
 
+/* ── BLOCO EVENTOS ── */
+.bloco-eventos {
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 10px 16px; margin-top: 12px;
+}
+.bloco-eventos-label {
+    font-size: 12px; font-weight: 600; color: #475569; text-transform: uppercase;
+    letter-spacing: .04em; white-space: nowrap;
+}
+.check-evento {
+    display: flex; align-items: center; gap: 7px;
+    cursor: pointer; font-size: 13px; color: #374151; user-select: none;
+}
+.check-evento input[type=checkbox] { width: 15px; height: 15px; accent-color: #00a651; cursor: pointer; }
+.check-evento input[type=checkbox]:disabled { opacity: .4; cursor: not-allowed; }
+.check-evento.desativado { opacity: .45; }
+
 /* ── BTN FECHAR ── */
 .btn-fechar {
     display: inline-flex; align-items: center; gap: 8px;
@@ -180,7 +198,7 @@ tr:hover td { background: #f8fafc; }
         {% endif %}
       </div>
       <label class="check-semmov" style="font-weight:500;">
-        <input type="checkbox" id="chkSemMov">
+        <input type="checkbox" id="chkSemMov" onchange="atualizarEventos()">
         Empresa Sem Movimento
       </label>
     </div>
@@ -188,7 +206,20 @@ tr:hover td { background: #f8fafc; }
     <input type="hidden" id="inputAnomes"
            value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
 
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+    <!-- Eventos do período -->
+    <div class="bloco-eventos" id="divEventos">
+      <span class="bloco-eventos-label">Eventos no período:</span>
+      <label class="check-evento" id="lblS1200">
+        <input type="checkbox" id="chkS1200" {% if has_s1200 %}checked{% endif %}>
+        S-1200 Remuneração
+      </label>
+      <label class="check-evento" id="lblS1210">
+        <input type="checkbox" id="chkS1210" {% if has_s1210 %}checked{% endif %}>
+        S-1210 Pagamentos
+      </label>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:14px;">
       <button class="btn-fechar" id="btnFechar" onclick="fecharFolha(this)">
         &#9654; Enviar S-1299
       </button>
@@ -305,6 +336,20 @@ const ETAPAS = [
   [98,  'Consultando resultado…'],
 ];
 
+function atualizarEventos() {
+  const semMov = document.getElementById('chkSemMov').checked;
+  const div = document.getElementById('divEventos');
+  div.style.opacity = semMov ? '0.4' : '1';
+  ['chkS1200', 'chkS1210'].forEach(id => {
+    const el = document.getElementById(id);
+    el.disabled = semMov;
+    if (semMov) el.checked = false;
+  });
+  ['lblS1200', 'lblS1210'].forEach(id => {
+    document.getElementById(id).classList.toggle('desativado', semMov);
+  });
+}
+
 function _getSemMov() {
   return document.getElementById('chkSemMov').checked ? 'N' : 'S';
 }
@@ -314,7 +359,10 @@ async function fecharFolha(btn) {
   if (!anoMesRaw) { alert('Informe o período.'); return; }
   const anoMes = anoMesRaw.replace('-', '');  // YYYYMM
 
-  const tpAmb = '1';
+  const tpAmb    = '1';
+  const semMov   = document.getElementById('chkSemMov').checked;
+  const evtRemun = (!semMov && document.getElementById('chkS1200').checked) ? 'S' : 'N';
+  const evtPgtos = (!semMov && document.getElementById('chkS1210').checked) ? 'S' : 'N';
 
   btn.disabled = true;
 
@@ -349,6 +397,8 @@ async function fecharFolha(btn) {
         ano_mes:        anoMes,
         ind_apuracao:   '1',
         ind_exist_info: _getSemMov(),
+        evt_remun:      evtRemun,
+        evt_pgtos:      evtPgtos,
         tpAmb:          tpAmb,
       }),
     });

@@ -13426,6 +13426,26 @@ def esocial_s1299():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
 
+    # Auto-detect presença de S-1200/S-1210 no período (por existência, não recibo)
+    has_s1200 = False
+    has_s1210 = False
+    if id_empresa and anomes_atual:
+        try:
+            has_s1200 = bool((supabase.table("tab_esocial")
+                              .select("id_esocial")
+                              .eq("id_empresa", id_empresa)
+                              .eq("layout", "1200")
+                              .eq("ano_mes", int(anomes_atual))
+                              .limit(1).execute()).data)
+            has_s1210 = bool((supabase.table("tab_esocial")
+                              .select("id_esocial")
+                              .eq("id_empresa", id_empresa)
+                              .eq("layout", "1210")
+                              .eq("ano_mes", int(anomes_atual))
+                              .limit(1).execute()).data)
+        except Exception:
+            pass
+
     return render_template(
         "F10_eSocial_S1299.html",
         versao=ler_versao(),
@@ -13435,6 +13455,8 @@ def esocial_s1299():
         rows=rows,
         total=len(rows),
         anomes_atual=anomes_atual,
+        has_s1200=has_s1200,
+        has_s1210=has_s1210,
     )
 
 
@@ -13455,6 +13477,8 @@ def api_esocial_s1299_enviar():
     ano_mes        = str(data.get("ano_mes", "")).strip()
     ind_apuracao   = str(data.get("ind_apuracao", "1")).strip()
     ind_exist_info = str(data.get("ind_exist_info", "S")).strip()
+    evt_remun_raw  = str(data.get("evt_remun", "S")).strip().upper()
+    evt_pgtos_raw  = str(data.get("evt_pgtos", "S")).strip().upper()
     tpAmb          = str(data.get("tpAmb", "1")).strip()
 
     if not ano_mes:
@@ -13522,24 +13546,14 @@ def api_esocial_s1299_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao criar/atualizar registro: {e}"})
 
-    # Auto-detectar flags de eventos do período
+    # Flags de eventos: sem movimento → ambos N; senão usa o que veio do formulário
     sem_mov = (ind_exist_info == "N")
     if sem_mov:
         evt_remun = "N"
         evt_pgtos = "N"
     else:
-        try:
-            _r1200 = (supabase.table("tab_esocial").select("recibo")
-                      .eq("id_empresa", id_empresa).eq("layout", "1200")
-                      .eq("ano_mes", int(ano_mes)).execute())
-            evt_remun = "S" if any(r.get("recibo") for r in (_r1200.data or [])) else "N"
-            _r1210 = (supabase.table("tab_esocial").select("recibo")
-                      .eq("id_empresa", id_empresa).eq("layout", "1210")
-                      .eq("ano_mes", int(ano_mes)).execute())
-            evt_pgtos = "S" if any(r.get("recibo") for r in (_r1210.data or [])) else "N"
-        except Exception:
-            evt_remun = "N"
-            evt_pgtos = "N"
+        evt_remun = "S" if evt_remun_raw == "S" else "N"
+        evt_pgtos = "S" if evt_pgtos_raw == "S" else "N"
 
     # Gerar XML
     try:
