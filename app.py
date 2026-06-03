@@ -12862,6 +12862,235 @@ def api_esocial_s2205_reconsultar():
 
 
 # =========================================================
+# eSocial — Fila Central de Remessas
+# =========================================================
+@app.route("/esocial_fila")
+def esocial_fila():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+
+    periodo  = request.args.get("periodo", anomes_atual).replace("-", "")[:6]
+    f_layout = request.args.get("layout", "").strip()
+
+    rows = []
+    if periodo and len(periodo) == 6:
+        try:
+            q = (supabase.table("tab_esocial")
+                 .select("*")
+                 .eq("id_empresa", id_empresa)
+                 .gte("data_cad", periodo + "01")
+                 .lte("data_cad", periodo + "31")
+                 .order("data_cad", desc=True)
+                 .order("hora_cad", desc=True))
+            if f_layout:
+                q = q.eq("layout", f_layout)
+            rows = q.execute().data or []
+        except Exception:
+            pass
+
+    mats = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad")
+                      .select("matricula, nome")
+                      .eq("id_empresa", id_empresa)
+                      .in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    _LAY = {
+        "1200": ("S-1200", "Remuneração",   "/esocial_s1200", False),
+        "1210": ("S-1210", "Pagamentos",    "/esocial_s1210", False),
+        "1298": ("S-1298", "Reabertura",    "/esocial_s1298", False),
+        "1299": ("S-1299", "Fechamento",    "/esocial_s1299", False),
+        "2200": ("S-2200", "Admissão",      "/esocial_s2200", True),
+        "2205": ("S-2205", "Alt.Cadastral", "/esocial_s2205", True),
+        "2206": ("S-2206", "Alt.Contrato",  "#",              True),
+        "2230": ("S-2230", "Afastamento",   "#",              True),
+        "2299": ("S-2299", "Desligamento",  "#",              True),
+        "3000": ("S-3000", "Exclusão",      "/esocial_s3000", False),
+    }
+    _SIT = {
+        "E": ("Enviado",    "sit-enviado"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+
+    def _d8_fila(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    for r in rows:
+        lay  = str(r.get("layout") or "")
+        info = _LAY.get(lay, (f"S-{lay}", "", "#", False))
+        r["_lay_codigo"]  = info[0]
+        r["_lay_desc"]    = info[1]
+        r["_lay_href"]    = info[2]
+        r["_lay_func"]    = info[3]
+        r["_nome"]        = nomes.get(r.get("matricula"), "—") if r.get("matricula") else "—"
+        r["_datacad_fmt"] = _d8_fila(r.get("data_cad"))
+
+        _hg = str(r.get("hora_grava") or "").strip()
+        _dg = str(r.get("data_grava") or "").strip()
+        if len(_dg) == 8 and len(_hg) >= 4:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]} {_hg[0:2]}:{_hg[2:4]}"
+        elif len(_dg) == 8:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]}"
+        else:
+            r["_envio_fmt"] = ""
+
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+
+        if recibo:
+            s = "E"
+        elif obs.startswith("AGUARDANDO:"):
+            s = "W"
+        elif obs:
+            s = "X"
+        elif dgrava:
+            s = "G"
+        else:
+            s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT[s][0]
+        r["_sit_class"] = _SIT[s][1]
+
+        am = r.get("ano_mes")
+        if am:
+            am_s = str(am)
+            r["_periodo_fmt"] = f"{am_s[4:6]}/{am_s[0:4]}" if len(am_s) == 6 else str(am)
+        else:
+            r["_periodo_fmt"] = ""
+
+    return render_template(
+        "F10_eSocial_Fila.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        rows=rows,
+        total=len(rows),
+        anomes_atual=anomes_atual,
+        periodo=periodo,
+        f_layout=f_layout,
+    )
+
+
+# =========================================================
+# eSocial — Re-consultar lote (genérico, qualquer layout)
+# =========================================================
+@app.route("/api/esocial_reconsultar_generico", methods=["POST"])
+def api_esocial_reconsultar_generico():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("observacao_erro, matricula, layout")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        obs = (r_es.data[0].get("observacao_erro") or "")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    if not obs.startswith("AGUARDANDO:"):
+        return jsonify({"ok": False, "msg": "Registro não está aguardando."})
+
+    protocolo_envio = obs[len("AGUARDANDO:"):]
+
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar: {e}"
+            break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"[{cd_resp}] {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    ok = bool(recibo_final) and not obs_erro
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "msg": ("Ainda processando." if aguardando
+                else obs_erro or f"Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
 # eSocial S-1200 — TELA DE LISTAGEM
 # =========================================================
 @app.route("/esocial_s1200")

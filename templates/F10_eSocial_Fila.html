@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial Fila de Remessas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #0d9488;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1200px; margin: 28px auto; padding: 0 24px 80px; }
+
+/* ── FILTRO BAR ── */
+.filtro-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px; margin-bottom: 20px;
+    display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
+}
+.filtro-group { display: flex; flex-direction: column; gap: 4px; }
+.filtro-group label { font-size: 11px; font-weight: 600; color: #475569;
+                      text-transform: uppercase; letter-spacing: .04em; }
+.filtro-input, .filtro-select {
+    height: 36px; border: 1px solid #d1d5db; border-radius: 7px;
+    padding: 0 10px; font-size: 13px; font-family: var(--sans);
+    background: #f9fafb; color: var(--label); transition: .13s;
+}
+.filtro-input:focus, .filtro-select:focus { outline: none; border-color: var(--accent); background: #fff; }
+.btn-filtrar {
+    height: 36px; padding: 0 18px; border-radius: 7px; font-size: 13px;
+    font-weight: 600; background: var(--accent); color: #fff;
+    border: none; cursor: pointer; transition: .15s; white-space: nowrap;
+}
+.btn-filtrar:hover { background: #0f766e; }
+.btn-limpar {
+    height: 36px; padding: 0 14px; border-radius: 7px; font-size: 12px;
+    font-weight: 500; background: transparent; color: #64748b;
+    border: 1px solid #d1d5db; cursor: pointer; transition: .15s; text-decoration: none;
+    display: inline-flex; align-items: center;
+}
+.btn-limpar:hover { border-color: #94a3b8; color: var(--label); }
+
+/* ── COUNTERS ── */
+.counters {
+    display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
+}
+.counter-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    border: 1px solid; cursor: pointer; transition: .12s;
+}
+.counter-badge:hover { transform: translateY(-1px); }
+.counter-total   { background: #f8fafc; color: #475569; border-color: #cbd5e1; }
+.counter-enviado { background: #dcfce7; color: #166534; border-color: #86efac; }
+.counter-aguard  { background: #fff7ed; color: #92400e; border-color: #fed7aa; }
+.counter-erro    { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.counter-outros  { background: #f0f9ff; color: #0369a1; border-color: #bae6fd; }
+
+/* ── TABELA ── */
+.tabela-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border);
+               background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { background: #f8fafc; padding: 10px 12px; text-align: left;
+     font-size: 11px; font-weight: 700; color: #475569;
+     text-transform: uppercase; letter-spacing: .04em;
+     border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+
+/* ── LAYOUT BADGES ── */
+.lay-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+    font-family: var(--mono);
+}
+.lay-1200 { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+.lay-1210 { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
+.lay-1298 { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
+.lay-1299 { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+.lay-2200 { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.lay-2205 { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+.lay-2206 { background: #fdf4ff; color: #86198f; border: 1px solid #f0abfc; }
+.lay-2230 { background: #fefce8; color: #854d0e; border: 1px solid #fde68a; }
+.lay-2299 { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; }
+.lay-3000 { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; }
+
+/* ── SITUAÇÃO BADGES ── */
+.sit-badge {
+    display: inline-block; padding: 2px 9px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+.sit-aguardando { background: #fff7ed; color: #92400e; border: 1px solid #fed7aa; }
+.sit-gerado     { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
+.sit-pendente   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+
+.res-ok   { font-family: var(--mono); font-size: 11px; color: #166534; }
+.res-erro { font-size: 11px; color: #991b1b; }
+
+.btn-reconsultar {
+    font-size: 11px; padding: 3px 10px; border-radius: 6px; cursor: pointer;
+    background: #fff7ed; color: #92400e; border: 1px solid #fed7aa;
+    font-family: var(--sans); transition: .12s;
+}
+.btn-reconsultar:hover { background: #fef3c7; }
+.btn-reconsultar:disabled { opacity: .5; cursor: not-allowed; }
+
+.btn-ir {
+    font-size: 11px; padding: 3px 10px; border-radius: 6px;
+    background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd;
+    text-decoration: none; font-weight: 600; transition: .12s;
+    display: inline-block;
+}
+.btn-ir:hover { background: #e0f2fe; border-color: #7dd3fc; }
+
+.vazio { padding: 40px; text-align: center; color: #94a3b8; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+         stroke="#0d9488" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+      <polyline points="14 2 14 8 20 8"/>
+      <line x1="9" y1="13" x2="15" y2="13"/>
+      <line x1="9" y1="17" x2="12" y2="17"/>
+    </svg>
+    eSocial — Fila de Remessas
+    {% if periodo and periodo|length == 6 %}
+    <span style="font-size:13px;font-weight:400;color:#5eead4;">
+      {{ periodo[4:6] }}/{{ periodo[0:4] }}
+    </span>
+    {% endif %}
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- ── FILTROS ── -->
+  <form method="GET" action="/esocial_fila" class="filtro-bar">
+    <div class="filtro-group">
+      <label>Período</label>
+      <input type="month" name="periodo" class="filtro-input" style="width:150px;"
+             value="{{ periodo[:4] + '-' + periodo[4:6] if periodo|length == 6 else '' }}">
+    </div>
+    <div class="filtro-group">
+      <label>Layout</label>
+      <select name="layout" class="filtro-select" style="width:200px;">
+        <option value="" {% if not f_layout %}selected{% endif %}>— Todos —</option>
+        <option value="2200" {% if f_layout=='2200' %}selected{% endif %}>S-2200 Admissão</option>
+        <option value="2205" {% if f_layout=='2205' %}selected{% endif %}>S-2205 Alt. Cadastral</option>
+        <option value="2206" {% if f_layout=='2206' %}selected{% endif %}>S-2206 Alt. Contrato</option>
+        <option value="2230" {% if f_layout=='2230' %}selected{% endif %}>S-2230 Afastamento</option>
+        <option value="2299" {% if f_layout=='2299' %}selected{% endif %}>S-2299 Desligamento</option>
+        <option value="1200" {% if f_layout=='1200' %}selected{% endif %}>S-1200 Remuneração</option>
+        <option value="1210" {% if f_layout=='1210' %}selected{% endif %}>S-1210 Pagamentos</option>
+        <option value="1298" {% if f_layout=='1298' %}selected{% endif %}>S-1298 Reabertura</option>
+        <option value="1299" {% if f_layout=='1299' %}selected{% endif %}>S-1299 Fechamento</option>
+        <option value="3000" {% if f_layout=='3000' %}selected{% endif %}>S-3000 Exclusão</option>
+      </select>
+    </div>
+    <button type="submit" class="btn-filtrar">&#128269; Filtrar</button>
+    <a class="btn-limpar"
+       href="/esocial_fila?periodo={{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length==6 else '' }}">
+      &#10006; Limpar
+    </a>
+  </form>
+
+  <!-- ── COUNTERS ── -->
+  {% if rows %}
+  {% set cnt_e = rows | selectattr('_sit','equalto','E') | list | length %}
+  {% set cnt_w = rows | selectattr('_sit','equalto','W') | list | length %}
+  {% set cnt_x = rows | selectattr('_sit','equalto','X') | list | length %}
+  {% set cnt_o = total - cnt_e - cnt_w - cnt_x %}
+  <div class="counters">
+    <span class="counter-badge counter-total">Total: {{ total }}</span>
+    {% if cnt_e %}<span class="counter-badge counter-enviado">&#10003; Enviados: {{ cnt_e }}</span>{% endif %}
+    {% if cnt_w %}<span class="counter-badge counter-aguard">&#8987; Aguardando: {{ cnt_w }}</span>{% endif %}
+    {% if cnt_x %}<span class="counter-badge counter-erro">&#9888; Com Erro: {{ cnt_x }}</span>{% endif %}
+    {% if cnt_o %}<span class="counter-badge counter-outros">Outros: {{ cnt_o }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  <!-- ── TABELA ── -->
+  <div class="tabela-wrap">
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Layout</th>
+          <th>Funcionário / Período</th>
+          <th>Situação</th>
+          <th>Cadastro</th>
+          <th>Envio</th>
+          <th>Recibo / Erro</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr id="row-{{ r.id_esocial }}">
+
+          <td>
+            <span class="lay-badge lay-{{ r.layout }}">{{ r._lay_codigo }}</span>
+            <div style="font-size:10px;color:#64748b;margin-top:2px;">{{ r._lay_desc }}</div>
+          </td>
+
+          <td>
+            {% if r.matricula %}
+            <div style="font-weight:600;font-size:13px;">{{ r._nome }}</div>
+            <div style="font-family:var(--mono);font-size:11px;color:#64748b;">{{ '%06d' % (r.matricula or 0) }}</div>
+            {% elif r._periodo_fmt %}
+            <div style="font-family:var(--mono);font-size:13px;font-weight:600;color:#1e293b;">{{ r._periodo_fmt }}</div>
+            {% else %}
+            <span style="color:#94a3b8;">—</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
+          </td>
+
+          <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
+          <td class="data-cell">{{ r._envio_fmt or "—" }}</td>
+
+          <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
+            {% if r.recibo %}
+              <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:32] }}</span>
+            {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
+              <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
+            {% else %}
+              <span style="color:#94a3b8;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+
+          <td id="acao-{{ r.id_esocial }}">
+            {% if r._sit == 'W' %}
+            <button class="btn-reconsultar"
+                    onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
+            {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
+            <a class="btn-ir" href="{{ r._lay_href }}">&#8599; Ir para {{ r._lay_codigo }}</a>
+            {% elif r._sit == 'E' %}
+            <span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>
+            {% endif %}
+          </td>
+
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">
+      Nenhuma remessa encontrada para o período selecionado.
+      {% if f_layout %} Layout: {{ f_layout }}.{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+async function _reconsultar(id, btn) {
+  btn.disabled    = true;
+  btn.textContent = 'Consultando…';
+  try {
+    const r = await fetch('/api/esocial_reconsultar_generico', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id_esocial: id, tpAmb: '1' }),
+    });
+    const data = await r.json();
+    const sit  = document.getElementById('sit-' + id);
+    const rec  = document.getElementById('rec-' + id);
+    const acao = document.getElementById('acao-' + id);
+    if (data.ok) {
+      sit.className   = 'sit-badge sit-enviado';
+      sit.textContent = 'Enviado';
+      rec.innerHTML   = `<span class="res-ok">${(data.nr_rec||'').slice(0,32)}</span>`;
+      acao.innerHTML  = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>`;
+    } else if (data.aguardando) {
+      btn.disabled    = false;
+      btn.textContent = '↻ Re-consultar';
+    } else {
+      sit.className   = 'sit-badge sit-erro';
+      sit.textContent = 'Com Erro';
+      rec.innerHTML   = `<span class="res-erro" title="${data.msg}">${data.msg.slice(0,60)}</span>`;
+      acao.innerHTML  = `<span style="color:#991b1b;font-size:11px;">Verificar erro</span>`;
+    }
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = '↻ Re-consultar';
+    alert('Erro: ' + e);
+  }
+}
+</script>
+</body>
+</html>
