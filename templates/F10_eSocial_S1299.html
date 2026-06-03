@@ -97,28 +97,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .btn-fechar:hover:not(:disabled) { background: #007a3d; border-color: #007a3d; }
 .btn-fechar:disabled { opacity: .5; cursor: default; }
 
-/* ── PROGRESS ── */
-.progresso {
-    display: none; margin-top: 16px;
+/* ── BANNER PROGRESSO ── */
+.lote-banner {
+    display: none;
     background: #0f172a; border: 1px solid #1e3d5c; border-radius: 10px;
-    padding: 12px 18px; align-items: center; gap: 16px;
+    padding: 12px 18px; margin-top: 16px;
+    align-items: center; gap: 16px;
 }
-.progresso.ativo { display: flex; }
-.prog-info   { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.prog-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
-.prog-sub    { font-size: 11px; color: #8baac8; font-family: var(--mono); }
-.prog-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
-.prog-bar    { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
-.prog-pct    { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
-
-/* ── RESULTADO ── */
-.resultado {
-    display: none; margin-top: 14px; padding: 14px 18px; border-radius: 10px;
-    font-size: 13px; font-weight: 600;
-}
-.resultado.ok    { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
-.resultado.erro  { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
-.resultado.aguard{ background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; }
+.lote-banner.ativo { display: flex; }
+.lote-info   { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.lote-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
+.lote-detalhe{ font-size: 11px; color: #8baac8; font-family: var(--mono); }
+.lote-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
+.lote-bar  { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
+.lote-pct  { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
 
 /* ── TABELA HISTÓRICO ── */
 .tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
@@ -202,28 +194,6 @@ tr:hover td { background: #f8fafc; }
       </div>
 
       <div class="form-field">
-        <label class="form-label">Ambiente</label>
-        <select class="form-select" id="selAmbiente">
-          <option value="1">Produção</option>
-          <option value="2">Homologação</option>
-        </select>
-      </div>
-
-      <div class="form-field">
-        <label class="form-label">Tipo de Apuração</label>
-        <div class="radio-grupo" id="grupoApuracao">
-          <label class="radio-card selected" data-val="1" onclick="selecionarApuracao(this)">
-            <input type="radio" name="apuracao" value="1" checked>
-            Mensal
-          </label>
-          <label class="radio-card" data-val="2" onclick="selecionarApuracao(this)">
-            <input type="radio" name="apuracao" value="2">
-            Anual / 13º Salário
-          </label>
-        </div>
-      </div>
-
-      <div class="form-field">
         <label class="form-label">Modalidade</label>
         <div class="radio-grupo" id="grupoModalidade">
           <label class="radio-card selected-green" data-val="S" onclick="selecionarModalidade(this)">
@@ -241,32 +211,25 @@ tr:hover td { background: #f8fafc; }
     <!-- Bloco Sem Movimento -->
     <div class="alerta-semmov" id="blocoSemMov">
       <div style="font-weight:700;margin-bottom:6px;">&#128683; Declaração de Empresa Sem Movimento</div>
-      <p style="margin-bottom:10px;">Use esta opção quando a empresa não teve <strong>nenhum trabalhador</strong> vinculado durante o período. Informe a data a partir da qual não há movimentação.</p>
-      <div class="form-field" style="max-width:220px;">
-        <label class="form-label">Data de início sem movimento</label>
-        <input type="date" class="form-input" id="inputDtIni" value="{{ dtini_default }}" style="font-family:var(--mono);">
-      </div>
+      <p>Use esta opção quando a empresa não teve <strong>nenhum trabalhador</strong> vinculado durante o período. Todos os indicadores de eventos serão informados como <strong>N</strong>.</p>
     </div>
 
     <div style="margin-top:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
       <button class="btn-fechar" id="btnFechar" onclick="fecharFolha(this)">
-        &#128274; Fechar e Enviar
+        &#9654; Enviar S-1299
       </button>
       <span style="font-size:12px;color:#94a3b8;">O evento será gerado, assinado e transmitido imediatamente.</span>
     </div>
 
-    <!-- Progresso -->
-    <div class="progresso" id="divProgresso">
-      <div class="prog-info">
-        <span class="prog-titulo" id="progTitulo">Enviando…</span>
-        <span class="prog-sub"    id="progSub"></span>
+    <!-- Progresso / Resultado -->
+    <div class="lote-banner" id="divProgresso">
+      <div class="lote-info">
+        <span class="lote-titulo" id="loteTitulo">Enviando…</span>
+        <span class="lote-detalhe" id="loteDetalhe"></span>
       </div>
-      <div class="prog-bar-wrap"><div class="prog-bar" id="progBar"></div></div>
-      <span class="prog-pct" id="progPct">0%</span>
+      <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
+      <span class="lote-pct" id="lotePct">0%</span>
     </div>
-
-    <!-- Resultado -->
-    <div class="resultado" id="divResultado"></div>
   </div>
 
   <!-- ── HISTÓRICO ── -->
@@ -348,10 +311,9 @@ tr:hover td { background: #f8fafc; }
   <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-1299 — Fechamento dos Eventos Periódicos</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
-      <li>Deve ser enviado <strong>após</strong> todos os S-1200 e S-1210 do período estarem transmitidos.</li>
-      <li>Use <strong>Mensal</strong> para fechamento da folha normal e <strong>Anual / 13º</strong> para o fechamento do 13º salário.</li>
-      <li><strong>Sem Movimento</strong>: para empresas que não possuem trabalhadores vinculados. Enviar apenas em janeiro do ano, informando a data de início sem movimento.</li>
-      <li>Após enviado, não é possível transmitir novos eventos para o período sem antes enviar um S-1298 (reabertura).</li>
+      <li>Deve ser enviado <strong>após</strong> todos os S-1200 e S-1210 do período estarem transmitidos. Os indicadores de eventos são detectados automaticamente.</li>
+      <li><strong>Sem Movimento</strong>: para empresas sem trabalhadores vinculados no período. Todos os indicadores serão informados como N.</li>
+      <li>Após enviado este S-1299, não é possível transmitir novos eventos para o período sem antes enviar um S-1298 (reabertura).</li>
     </ul>
   </div>
 
@@ -363,20 +325,13 @@ const ETAPAS = [
   [25,  'Assinando evento…'],
   [40,  'Montando lote…'],
   [55,  'Transmitindo ao eSocial…'],
-  [72,  'Aguardando processamento (1/3)…'],
-  [85,  'Aguardando processamento (2/3)…'],
-  [95,  'Aguardando processamento (3/3)…'],
-  [99,  'Consultando resultado…'],
+  [70,  'Aguardando processamento (1/3)…'],
+  [82,  'Aguardando processamento (2/3)…'],
+  [92,  'Aguardando processamento (3/3)…'],
+  [98,  'Consultando resultado…'],
 ];
 
-let _apuracao  = '1';
 let _modalidade = 'S';
-
-function selecionarApuracao(el) {
-  document.querySelectorAll('#grupoApuracao .radio-card').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-  _apuracao = el.dataset.val;
-}
 
 function selecionarModalidade(el) {
   document.querySelectorAll('#grupoModalidade .radio-card').forEach(c => {
@@ -392,33 +347,28 @@ async function fecharFolha(btn) {
   if (!anoMesRaw) { alert('Informe o período.'); return; }
   const anoMes = anoMesRaw.replace('-', '');  // YYYYMM
 
-  const dtIni  = _modalidade === 'N' ? document.getElementById('inputDtIni').value : '';
-  if (_modalidade === 'N' && !dtIni) { alert('Informe a data de início sem movimento.'); return; }
-
-  const tpAmb = document.getElementById('selAmbiente').value;
+  const tpAmb = '1';
 
   btn.disabled = true;
 
   const divProg = document.getElementById('divProgresso');
-  const bar     = document.getElementById('progBar');
-  const pct     = document.getElementById('progPct');
-  const titulo  = document.getElementById('progTitulo');
-  const sub     = document.getElementById('progSub');
-  const divRes  = document.getElementById('divResultado');
+  const bar     = document.getElementById('loteBar');
+  const pct     = document.getElementById('lotePct');
+  const titulo  = document.getElementById('loteTitulo');
+  const detalhe = document.getElementById('loteDetalhe');
 
   divProg.classList.add('ativo');
-  divRes.style.display = 'none';
-  bar.style.width = '5%';
+  bar.style.width      = '5%';
   bar.style.background = '#00a651';
-  pct.textContent = '5%';
-  titulo.textContent  = 'Iniciando…';
-  sub.textContent     = '';
+  pct.textContent      = '5%';
+  titulo.textContent   = 'Iniciando…';
+  detalhe.textContent  = '';
 
   let etapaIdx = 0;
   const animTimer = setInterval(() => {
     if (etapaIdx < ETAPAS.length) {
-      bar.style.width  = ETAPAS[etapaIdx][0] + '%';
-      pct.textContent  = ETAPAS[etapaIdx][0] + '%';
+      bar.style.width = ETAPAS[etapaIdx][0] + '%';
+      pct.textContent = ETAPAS[etapaIdx][0] + '%';
       titulo.textContent = ETAPAS[etapaIdx][1];
       etapaIdx++;
     }
@@ -430,41 +380,37 @@ async function fecharFolha(btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ano_mes:        anoMes,
-        ind_apuracao:   _apuracao,
+        ind_apuracao:   '1',
         ind_exist_info: _modalidade,
-        dt_ini_sem_mov: dtIni,
         tpAmb:          tpAmb,
       }),
     });
     const data = await r.json();
     clearInterval(animTimer);
 
-    bar.style.width    = '100%';
-    pct.textContent    = '100%';
+    bar.style.width      = '100%';
+    pct.textContent      = '100%';
     bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
 
-    divRes.style.display = 'block';
-
     if (data.ok) {
-      titulo.textContent = 'Enviado com sucesso!';
-      sub.textContent    = 'Recibo: ' + (data.nr_rec || '');
-      divRes.className   = 'resultado ok';
-      divRes.innerHTML   = `&#10003; Fechamento enviado com sucesso.<br><span style="font-family:var(--mono);font-size:12px;">${data.nr_rec || ''}</span>`;
+      titulo.textContent  = 'Enviado com sucesso!';
+      detalhe.textContent = 'Recibo: ' + (data.nr_rec || '');
       _adicionarHistorico(data.id_esocial, anoMesRaw, 'E', data.nr_rec || '');
       btn.disabled = false;
     } else if (data.aguardando) {
-      titulo.textContent = 'Aguardando processamento…';
-      sub.textContent    = data.msg;
-      divRes.className   = 'resultado aguard';
-      divRes.innerHTML   = `&#8987; ${data.msg}`;
+      titulo.textContent  = 'Aguardando processamento…';
+      detalhe.textContent = data.msg;
       _adicionarHistorico(data.id_esocial, anoMesRaw, 'W', '');
       btn.disabled = false;
     } else {
-      titulo.textContent = 'Erro no envio';
-      sub.textContent    = data.msg || '';
-      divRes.className   = 'resultado erro';
-      divRes.innerHTML   = `&#10005; ${data.msg || 'Erro desconhecido'}` +
-                           (data.detalhe ? `<br><span style="font-size:11px;font-weight:400;">${data.detalhe}</span>` : '');
+      titulo.textContent  = 'Erro no envio';
+      detalhe.textContent = data.msg || 'Erro desconhecido';
+      if (data.detalhe) {
+        const det = document.createElement('div');
+        det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
+        det.textContent   = data.detalhe;
+        detalhe.parentNode.appendChild(det);
+      }
       btn.disabled = false;
     }
   } catch(e) {
@@ -472,10 +418,7 @@ async function fecharFolha(btn) {
     bar.style.background = '#ef4444';
     bar.style.width      = '100%';
     titulo.textContent   = 'Falha de comunicação';
-    sub.textContent      = String(e);
-    divRes.style.display = 'block';
-    divRes.className     = 'resultado erro';
-    divRes.innerHTML     = '&#10005; Falha de comunicação: ' + e;
+    detalhe.textContent  = String(e);
     btn.disabled = false;
   }
 }
@@ -494,7 +437,7 @@ function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
   tr.id = 'row-' + idEs;
   tr.innerHTML = `
     <td class="data-cell">${periodo}</td>
-    <td style="font-size:12px;">${_apuracao === '2' ? 'Anual / 13º' : 'Mensal'}</td>
+    <td style="font-size:12px;">Mensal</td>
     <td><span style="font-size:12px;color:#475569;">${_modalidade === 'N' ? '<span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>' : 'Normal'}</span></td>
     <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
     <td class="data-cell">${hoje}</td>
@@ -517,7 +460,7 @@ async function _reconsultar(id, btn) {
   const sit    = document.getElementById('sit-'  + id);
   const acaoTd = document.getElementById('acao-' + id);
   const recTd  = document.getElementById('rec-'  + id);
-  const tpAmb  = document.getElementById('selAmbiente').value;
+  const tpAmb = '1';
 
   btn.disabled    = true;
   btn.textContent = 'Consultando…';

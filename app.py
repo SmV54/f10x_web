@@ -13307,8 +13307,8 @@ def api_esocial_s1210_reconsultar():
 # =========================================================
 # eSocial S-1299 — GERADOR DE XML
 # =========================================================
-def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, ind_exist_info, dt_ini_sem_mov, tpAmb="1"):
-    """Gera string XML do S-1299 (Fechamento dos Eventos Periódicos)."""
+def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, evt_remun, evt_pgtos, tpAmb="1"):
+    """Gera string XML do S-1299 (Fechamento dos Eventos Periódicos) - schema evtFechaEvPer/v_S_01_03_00."""
     import re
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
@@ -13327,17 +13327,12 @@ def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, ind_exist_info, dt_ini_sem_
     _am      = str(int(ano_mes)).zfill(6)
     per_apur = f"{_am[:4]}-{_am[4:6]}"
 
-    dt_sem_xml = ""
-    if ind_exist_info == "N" and dt_ini_sem_mov:
-        dt_sem_xml = f"\n        <dtIniSemMovimento>{x(dt_ini_sem_mov)}</dtIniSemMovimento>"
-
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtFechamento/v_S_01_03_00"
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtFechaEvPer/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtFechamento/v_S_01_03_00 evtFechamento_v_S_01_03_00.xsd">
-  <evtFechamento Id="{evt_id}">
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtFechaEvPer/v_S_01_03_00 evtFechaEvPer_v_S_01_03_00.xsd">
+  <evtFechaEvPer Id="{evt_id}">
     <ideEvento>
-      <indRetif>1</indRetif>
       <indApuracao>{x(ind_apuracao)}</indApuracao>
       <perApur>{per_apur}</perApur>
       <tpAmb>{x(tpAmb)}</tpAmb>
@@ -13348,13 +13343,14 @@ def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, ind_exist_info, dt_ini_sem_
       <tpInsc>1</tpInsc>
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
-    <infoFechamento>
-      <situFech>
-        <indApuracao>{x(ind_apuracao)}</indApuracao>
-        <indExistInfo>{x(ind_exist_info)}</indExistInfo>{dt_sem_xml}
-      </situFech>
-    </infoFechamento>
-  </evtFechamento>
+    <infoFech>
+      <evtRemun>{x(evt_remun)}</evtRemun>
+      <evtPgtos>{x(evt_pgtos)}</evtPgtos>
+      <evtComProd>N</evtComProd>
+      <evtContratAvNP>N</evtContratAvNP>
+      <evtInfoComplPer>N</evtInfoComplPer>
+    </infoFech>
+  </evtFechaEvPer>
 </eSocial>"""
 
 
@@ -13429,15 +13425,6 @@ def esocial_s1299():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
 
-    # Valor padrão para dtIniSemMovimento: 1º de janeiro do ano do período ativo
-    dtini_default = ""
-    if anomes_atual:
-        try:
-            _yr = str(int(anomes_atual)).zfill(6)[:4]
-            dtini_default = f"{_yr}-01-01"
-        except Exception:
-            pass
-
     return render_template(
         "F10_eSocial_S1299.html",
         versao=ler_versao(),
@@ -13447,7 +13434,6 @@ def esocial_s1299():
         rows=rows,
         total=len(rows),
         anomes_atual=anomes_atual,
-        dtini_default=dtini_default,
     )
 
 
@@ -13465,16 +13451,13 @@ def api_esocial_s1299_enviar():
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
     data       = request.get_json(force=True) or {}
 
-    ano_mes         = str(data.get("ano_mes", "")).strip()
-    ind_apuracao    = str(data.get("ind_apuracao", "1")).strip()
-    ind_exist_info  = str(data.get("ind_exist_info", "S")).strip()
-    dt_ini_sem_mov  = str(data.get("dt_ini_sem_mov", "")).strip()
-    tpAmb           = str(data.get("tpAmb", "1")).strip()
+    ano_mes        = str(data.get("ano_mes", "")).strip()
+    ind_apuracao   = str(data.get("ind_apuracao", "1")).strip()
+    ind_exist_info = str(data.get("ind_exist_info", "S")).strip()
+    tpAmb          = str(data.get("tpAmb", "1")).strip()
 
     if not ano_mes:
         return jsonify({"ok": False, "msg": "Período não informado."})
-    if ind_exist_info == "N" and not dt_ini_sem_mov:
-        return jsonify({"ok": False, "msg": "Data de início sem movimento não informada."})
 
     # Empresa + certificado
     try:
@@ -13496,33 +13479,71 @@ def api_esocial_s1299_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # Cria registro no tab_esocial
+    # Reutiliza registro existente ou cria novo
     agora = datetime.now()
     sem_mov_flag = 1 if ind_exist_info == "N" else 0
     folha_tp     = "1" if ind_apuracao == "2" else "N"
     id_cliente   = session.get("id_cliente")
     try:
-        ins = {
-            "id_cliente": id_cliente,
-            "id_empresa": id_empresa,
-            "data_cad":   agora.strftime("%Y%m%d"),
-            "hora_cad":   agora.strftime("%H%M"),
-            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
-            "ano_mes":    int(ano_mes),
-            "folha_tipo": folha_tp,
-            "layout":     "1299",
-            "matricula":  0,
-            "codigo2":    sem_mov_flag,
-        }
-        res_ins = supabase.table("tab_esocial").insert(ins).execute()
-        id_reg  = res_ins.data[0]["id_esocial"]
+        _exist = (supabase.table("tab_esocial")
+                  .select("id_esocial")
+                  .eq("id_empresa", id_empresa)
+                  .eq("layout", "1299")
+                  .eq("ano_mes", int(ano_mes))
+                  .eq("folha_tipo", folha_tp)
+                  .eq("codigo2", sem_mov_flag)
+                  .order("data_cad", desc=True)
+                  .limit(1).execute())
+        if _exist.data:
+            id_reg = _exist.data[0]["id_esocial"]
+            supabase.table("tab_esocial").update({
+                "recibo":          "",
+                "observacao_erro": "",
+                "data_grava":      "",
+                "hora_grava":      "",
+                "id_remessa":      agora.strftime("%Y%m%d%H%M%S"),
+            }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        else:
+            ins = {
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "data_cad":   agora.strftime("%Y%m%d"),
+                "hora_cad":   agora.strftime("%H%M"),
+                "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
+                "ano_mes":    int(ano_mes),
+                "folha_tipo": folha_tp,
+                "layout":     "1299",
+                "matricula":  0,
+                "codigo2":    sem_mov_flag,
+            }
+            res_ins = supabase.table("tab_esocial").insert(ins).execute()
+            id_reg  = res_ins.data[0]["id_esocial"]
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao criar registro: {e}"})
+        return jsonify({"ok": False, "msg": f"Erro ao criar/atualizar registro: {e}"})
+
+    # Auto-detectar flags de eventos do período
+    sem_mov = (ind_exist_info == "N")
+    if sem_mov:
+        evt_remun = "N"
+        evt_pgtos = "N"
+    else:
+        try:
+            _r1200 = (supabase.table("tab_esocial").select("recibo")
+                      .eq("id_empresa", id_empresa).eq("layout", "1200")
+                      .eq("ano_mes", int(ano_mes)).execute())
+            evt_remun = "S" if any(r.get("recibo") for r in (_r1200.data or [])) else "N"
+            _r1210 = (supabase.table("tab_esocial").select("recibo")
+                      .eq("id_empresa", id_empresa).eq("layout", "1210")
+                      .eq("ano_mes", int(ano_mes)).execute())
+            evt_pgtos = "S" if any(r.get("recibo") for r in (_r1210.data or [])) else "N"
+        except Exception:
+            evt_remun = "N"
+            evt_pgtos = "N"
 
     # Gerar XML
     try:
         xml_str = _gerar_xml_s1299(empresa, ano_mes, ind_apuracao,
-                                   ind_exist_info, dt_ini_sem_mov, tpAmb)
+                                   evt_remun, evt_pgtos, tpAmb)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
