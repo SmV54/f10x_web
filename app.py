@@ -12435,9 +12435,11 @@ def esocial_s2205():
                 .select("*")
                 .eq("id_empresa", id_empresa)
                 .eq("layout", "2205")
+                .gte("data_cad", anomes_atual + "01")
+                .lte("data_cad", anomes_atual + "31")
                 .order("data_cad", desc=True)
                 .order("hora_cad", desc=True)
-                .limit(60).execute().data or [])
+                .execute().data or [])
     except Exception:
         pass
 
