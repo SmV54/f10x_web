@@ -72,6 +72,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     display: inline-flex; align-items: center;
 }
 .btn-limpar:hover { border-color: #94a3b8; color: var(--label); }
+.btn-pdf {
+    height: 36px; padding: 0 16px; border-radius: 7px; font-size: 13px;
+    font-weight: 600; background: #fff7ed; color: #c2410c;
+    border: 1px solid #fed7aa; cursor: pointer; transition: .15s; text-decoration: none;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-pdf:hover { background: #ffedd5; border-color: #fb923c; color: #9a3412; }
 
 /* ── COUNTERS ── */
 .counters {
@@ -213,6 +220,7 @@ tr:hover td { background: #f8fafc; }
        href="/esocial_fila?periodo={{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length==6 else '' }}">
       &#10006; Limpar
     </a>
+    <a class="btn-pdf" id="btnPdf" href="#" target="_blank" onclick="abrirPdf(event)">&#128438; PDF</a>
   </form>
 
   <!-- ── COUNTERS ── -->
@@ -304,6 +312,15 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
+function abrirPdf(e) {
+  e.preventDefault();
+  const periodo = document.querySelector('[name="periodo"]').value.replace('-','');
+  const layout  = document.querySelector('[name="layout"]').value;
+  let url = `/rel_esocial_fila_pdf?periodo=${periodo}`;
+  if (layout) url += `&layout=${layout}`;
+  window.open(url, '_blank');
+}
+
 async function _reconsultar(id, btn) {
   btn.disabled    = true;
   btn.textContent = 'Consultando…';

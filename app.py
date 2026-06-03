@@ -12987,6 +12987,187 @@ def esocial_fila():
 
 
 # =========================================================
+# eSocial — Fila de Remessas — PDF
+# =========================================================
+@app.route("/rel_esocial_fila_pdf")
+def rel_esocial_fila_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+    empresa_nm   = str(session.get("empresa_info") or "")
+    cnpj_fmt     = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    periodo  = request.args.get("periodo", anomes_atual).replace("-", "")[:6]
+    f_layout = request.args.get("layout", "").strip()
+
+    rows = []
+    if periodo and len(periodo) == 6:
+        try:
+            q = (supabase.table("tab_esocial")
+                 .select("*")
+                 .eq("id_empresa", id_empresa)
+                 .gte("data_cad", periodo + "01")
+                 .lte("data_cad", periodo + "31")
+                 .order("data_cad", desc=True)
+                 .order("hora_cad", desc=True))
+            if f_layout:
+                q = q.eq("layout", f_layout)
+            rows = q.execute().data or []
+        except Exception:
+            pass
+
+    mats = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad")
+                      .select("matricula, nome")
+                      .eq("id_empresa", id_empresa)
+                      .in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    _LAY = {
+        "1200": ("S-1200", "Remuneração"),
+        "1210": ("S-1210", "Pagamentos"),
+        "1298": ("S-1298", "Reabertura"),
+        "1299": ("S-1299", "Fechamento"),
+        "2200": ("S-2200", "Admissão"),
+        "2205": ("S-2205", "Alt.Cadastral"),
+        "2206": ("S-2206", "Alt.Contrato"),
+        "2230": ("S-2230", "Afastamento"),
+        "2299": ("S-2299", "Desligamento"),
+        "3000": ("S-3000", "Exclusão"),
+    }
+    _SIT_LBL = {"E": "Enviado", "X": "Com Erro", "W": "Aguardando", "G": "Gerado", "P": "Pendente"}
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    for r in rows:
+        lay  = str(r.get("layout") or "")
+        info = _LAY.get(lay, (f"S-{lay}", ""))
+        r["_lay_codigo"] = info[0]
+        r["_lay_desc"]   = info[1]
+        r["_nome"]       = nomes.get(r.get("matricula"), "") if r.get("matricula") else ""
+        r["_datacad"]    = _d8(r.get("data_cad"))
+        _hg = str(r.get("hora_grava") or "").strip()
+        _dg = str(r.get("data_grava") or "").strip()
+        if len(_dg) == 8 and len(_hg) >= 4:
+            r["_envio"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]} {_hg[0:2]}:{_hg[2:4]}"
+        elif len(_dg) == 8:
+            r["_envio"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]}"
+        else:
+            r["_envio"] = ""
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+        if recibo:
+            s = "E"
+        elif obs.startswith("AGUARDANDO:"):
+            s = "W"
+        elif obs:
+            s = "X"
+        elif dgrava:
+            s = "G"
+        else:
+            s = "P"
+        r["_sit_label"] = _SIT_LBL.get(s, s)
+        r["_recibo_curto"] = recibo[:28] if recibo else (obs[:40] if obs and not obs.startswith("AGUARDANDO:") else "")
+
+        am = r.get("ano_mes")
+        if am:
+            am_s = str(am)
+            r["_periodo_fmt"] = f"{am_s[4:6]}/{am_s[0:4]}" if len(am_s) == 6 else str(am)
+        else:
+            r["_periodo_fmt"] = ""
+
+    periodo_fmt = f"{periodo[4:6]}/{periodo[0:4]}" if len(periodo) == 6 else periodo
+    lay_desc    = _LAY.get(f_layout, (f"S-{f_layout}", ""))[0] if f_layout else "Todos os layouts"
+    titulo      = f"Fila de Remessas eSocial — {periodo_fmt}  ·  {lay_desc}"
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 3)
+        return Paragraph(str(txt or ""), st)
+
+    C_HDR = colors.HexColor("#e8f5ee")
+    C_LIN = colors.HexColor("#f8fafc")
+    C_SUB = colors.HexColor("#64748b")
+
+    hdr = [
+        P("Layout", fn="Helvetica-Bold", fs=7),
+        P("Matrícula · Funcionário / Período", fn="Helvetica-Bold", fs=7),
+        P("Situação", fn="Helvetica-Bold", fs=7),
+        P("Cadastro", fn="Helvetica-Bold", fs=7),
+        P("Envio", fn="Helvetica-Bold", fs=7),
+        P("Recibo / Erro", fn="Helvetica-Bold", fs=7),
+    ]
+    tbl_data = [hdr]
+
+    for r in rows:
+        mat  = f"{int(r.get('matricula') or 0):06d}" if r.get("matricula") else ""
+        func = f"{mat}  {r['_nome']}" if mat and r["_nome"] else (mat or r.get("_periodo_fmt", ""))
+        lay_txt = f"{r['_lay_codigo']}  {r['_lay_desc']}"
+        tbl_data.append([
+            P(lay_txt, fs=8),
+            P(func, fn="Helvetica-Bold", fs=8),
+            P(r["_sit_label"], fs=8, col=C_SUB),
+            P(r["_datacad"], fs=8, col=C_SUB),
+            P(r["_envio"], fs=8, col=C_SUB),
+            P(r["_recibo_curto"], fs=7, col=C_SUB),
+        ])
+
+    col_w = [2.5*cm, 5.5*cm, 2.2*cm, 2.0*cm, 2.8*cm, 3.0*cm]  # ~18cm total (A4 landscape-ish)
+    # If too wide, use landscape
+    from reportlab.lib.pagesizes import A4, landscape
+    page = landscape(A4)
+    usable = page[0] - 4*cm  # 4cm margins total
+
+    tbl = Table(tbl_data, colWidths=col_w, repeatRows=1)
+    row_bg = []
+    for i in range(1, len(tbl_data)):
+        row_bg.append(("BACKGROUND", (0, i), (-1, i), colors.white if i % 2 else C_LIN))
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), C_HDR),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.6, colors.HexColor("#86efac")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 5),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    total_p = P(f"Total: {len(rows)} remessa(s)", fn="Helvetica", fs=8,
+                col=C_SUB, align=2)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=page,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc.build(
+        [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, page_width=page[0]-4*cm),
+         Spacer(1, 8), tbl, Spacer(1, 6), total_p],
+        onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina,
+    )
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="FilaRemessas_{periodo}.pdf"'
+    return resp
+
+
+# =========================================================
 # eSocial — Re-consultar lote (genérico, qualquer layout)
 # =========================================================
 @app.route("/api/esocial_reconsultar_generico", methods=["POST"])
