@@ -12849,6 +12849,14 @@ def esocial_s1210():
         r["_nome"]          = nomes.get(r.get("matricula"), "—")
         r["_datacad_fmt"]   = _d8(r.get("data_cad"))
         r["_datagrava_fmt"] = _d8(r.get("data_grava"))
+        _hg = str(r.get("hora_grava") or "").strip()
+        _dg = str(r.get("data_grava") or "").strip()
+        if len(_dg) == 8 and len(_hg) >= 4:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]} {_hg[0:2]}:{_hg[2:4]}"
+        elif len(_dg) == 8:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]}"
+        else:
+            r["_envio_fmt"] = ""
         r["_periodo"]       = _fmt_anomes(r.get("ano_mes"))
         r["_tipo_label"]    = _TP_FOLHA.get(str(r.get("folha_tipo") or "N"), str(r.get("folha_tipo") or ""))
 
@@ -13396,14 +13404,20 @@ def esocial_s1299():
         "P": ("Pendente",   "sit-pendente"),
     }
     _TIPO_LABEL = {"N": "Mensal",  "1": "Anual / 13º"}
-    _MOD_LABEL  = {0: "Normal", 1: "Sem Movimento"}
 
     for r in rows:
         r["_periodo"]      = _fmt_anomes(r.get("ano_mes"))
         r["_datacad_fmt"]  = _d8(r.get("data_cad"))
         r["_datagrava_fmt"]= _d8(r.get("data_grava"))
+        _hg = str(r.get("hora_grava") or "").strip()
+        _dg = str(r.get("data_grava") or "").strip()
+        if len(_dg) == 8 and len(_hg) >= 4:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]} {_hg[0:2]}:{_hg[2:4]}"
+        elif len(_dg) == 8:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]}"
+        else:
+            r["_envio_fmt"] = ""
         r["_tipo_label"]   = _TIPO_LABEL.get(str(r.get("folha_tipo") or "N"), "Mensal")
-        r["_mod_label"]    = _MOD_LABEL.get(int(r.get("codigo2") or 0), "Normal")
 
         recibo = (r.get("recibo") or "").strip()
         obs    = (r.get("observacao_erro") or "").strip()

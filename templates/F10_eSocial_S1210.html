@@ -338,7 +338,7 @@ tr:hover td { background: #f8fafc; }
           <td>
             <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
           </td>
-          <td class="data-cell">{{ r._datagrava_fmt or "—" }}</td>
+          <td class="data-cell">{{ r._envio_fmt or "—" }}</td>
           <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
             {% if r.recibo %}
               <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>

@@ -231,7 +231,6 @@ tr:hover td { background: #f8fafc; }
         <tr>
           <th>Período</th>
           <th>Tipo</th>
-          <th>Modalidade</th>
           <th>Situação</th>
           <th>Cadastro</th>
           <th>Envio</th>
@@ -245,17 +244,10 @@ tr:hover td { background: #f8fafc; }
           <td class="data-cell">{{ r._periodo }}</td>
           <td style="font-size:12px;">{{ r._tipo_label }}</td>
           <td>
-            {% if r._mod_label == 'Sem Movimento' %}
-              <span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>
-            {% else %}
-              <span style="font-size:12px;color:#475569;">Normal</span>
-            {% endif %}
-          </td>
-          <td>
             <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
           </td>
           <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
-          <td class="data-cell">{{ r._datagrava_fmt or "—" }}</td>
+          <td class="data-cell">{{ r._envio_fmt or "—" }}</td>
           <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
             {% if r.recibo %}
               <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>
@@ -429,14 +421,20 @@ function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
     ? `<button class="btn-reconsultar" onclick="_reconsultar(${idEs}, this)">&#8635; Re-consultar</button>`
     : sit === 'E' ? `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>` : '';
   const tr = document.createElement('tr');
+  const agora = new Date();
+  const hh = String(agora.getHours()).padStart(2,'0');
+  const mm = String(agora.getMinutes()).padStart(2,'0');
+  const dd = String(agora.getDate()).padStart(2,'0');
+  const mo = String(agora.getMonth()+1).padStart(2,'0');
+  const yy = String(agora.getFullYear()).slice(2);
+  const envioFmt = `${dd}/${mo}/${yy} ${hh}:${mm}`;
   tr.id = 'row-' + idEs;
   tr.innerHTML = `
     <td class="data-cell">${periodo}</td>
     <td style="font-size:12px;">Mensal</td>
-    <td><span style="font-size:12px;color:#475569;">${_getSemMov() === 'N' ? '<span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>' : 'Normal'}</span></td>
     <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
-    <td class="data-cell">${hoje}</td>
-    <td class="data-cell">${hoje}</td>
+    <td class="data-cell">${dd}/${mo}/${yy}</td>
+    <td class="data-cell">${envioFmt}</td>
     <td id="rec-${idEs}">${recibo ? `<span class="res-ok">${recibo.slice(0,30)}</span>` : '<span style="color:#94a3b8;font-size:12px;">—</span>'}</td>
     <td id="acao-${idEs}">${acaoHtml}</td>`;
   tbody.insertBefore(tr, tbody.firstChild);
@@ -445,7 +443,7 @@ function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
 function _criarTabela() {
   const wrap = document.querySelector('.tabela-wrap');
   wrap.innerHTML = `<table><thead><tr>
-    <th>Período</th><th>Tipo</th><th>Modalidade</th><th>Situação</th>
+    <th>Período</th><th>Tipo</th><th>Situação</th>
     <th>Cadastro</th><th>Envio</th><th>Recibo / Erro</th><th>Ações</th>
   </tr></thead><tbody></tbody></table>`;
   return wrap.querySelector('tbody');
