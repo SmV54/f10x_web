@@ -236,7 +236,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
            oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter') buscar()">
     <button class="btn btn-buscar" onclick="buscar()">&#128269; Buscar</button>
     {% if funcionario %}
-    <button class="btn btn-imprimir" onclick="window.print()">&#128438; Imprimir</button>
+    <button class="btn btn-imprimir" onclick="window.print()">&#128438; Imprimir em PDF</button>
     {% endif %}
     <span class="msg-busca" id="msg_busca">{% if erro %}{{ erro }}{% endif %}</span>
 </div>
