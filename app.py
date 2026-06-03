@@ -13426,26 +13426,6 @@ def esocial_s1299():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
 
-    # Auto-detect presença de S-1200/S-1210 no período (por existência, não recibo)
-    has_s1200 = False
-    has_s1210 = False
-    if id_empresa and anomes_atual:
-        try:
-            has_s1200 = bool((supabase.table("tab_esocial")
-                              .select("id_esocial")
-                              .eq("id_empresa", id_empresa)
-                              .eq("layout", "1200")
-                              .eq("ano_mes", int(anomes_atual))
-                              .limit(1).execute()).data)
-            has_s1210 = bool((supabase.table("tab_esocial")
-                              .select("id_esocial")
-                              .eq("id_empresa", id_empresa)
-                              .eq("layout", "1210")
-                              .eq("ano_mes", int(anomes_atual))
-                              .limit(1).execute()).data)
-        except Exception:
-            pass
-
     return render_template(
         "F10_eSocial_S1299.html",
         versao=ler_versao(),
@@ -13455,8 +13435,6 @@ def esocial_s1299():
         rows=rows,
         total=len(rows),
         anomes_atual=anomes_atual,
-        has_s1200=has_s1200,
-        has_s1210=has_s1210,
     )
 
 
