@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-1299</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+    --green:     #00a651;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1000px; margin: 32px auto; padding: 0 24px 80px; }
+
+/* ── PAINEL FORMULÁRIO ── */
+.form-panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px 28px; margin-bottom: 24px;
+}
+.form-panel-titulo {
+    font-size: 14px; font-weight: 700; color: #1e293b; margin-bottom: 18px;
+    display: flex; align-items: center; gap: 8px;
+}
+.form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;
+    margin-bottom: 20px;
+}
+.form-field { display: flex; flex-direction: column; gap: 5px; }
+.form-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: .04em; }
+.form-input, .form-select {
+    padding: 8px 12px; border-radius: 8px; font-size: 13px; font-weight: 500;
+    border: 1.5px solid var(--border); background: var(--bg); color: #1e293b;
+    font-family: var(--sans); transition: .13s;
+}
+.form-input:focus, .form-select:focus { outline: none; border-color: var(--accent); background: #fff; }
+
+/* ── RADIO GRUPO ── */
+.radio-grupo { display: flex; gap: 10px; flex-wrap: wrap; }
+.radio-card {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 14px; border-radius: 8px; border: 1.5px solid var(--border);
+    background: var(--bg); cursor: pointer; transition: .13s;
+    font-size: 13px; font-weight: 500; color: #374151;
+}
+.radio-card:hover { border-color: var(--accent); }
+.radio-card.selected { border-color: var(--accent); background: #eff6ff; color: #1d4ed8; }
+.radio-card.selected-green { border-color: #00a651; background: #e8f5ee; color: #166534; }
+.radio-card input[type=radio] { display: none; }
+
+/* ── ALERTA SEM MOV ── */
+.alerta-semmov {
+    display: none;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px;
+    padding: 12px 16px; margin-top: 12px; font-size: 12px; color: #78350f;
+}
+
+/* ── BTN FECHAR ── */
+.btn-fechar {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 24px; border-radius: 9px; font-size: 14px; font-weight: 700;
+    border: 2px solid #00a651; background: #00a651; color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-fechar:hover:not(:disabled) { background: #007a3d; border-color: #007a3d; }
+.btn-fechar:disabled { opacity: .5; cursor: default; }
+
+/* ── PROGRESS ── */
+.progresso {
+    display: none; margin-top: 16px;
+    background: #0f172a; border: 1px solid #1e3d5c; border-radius: 10px;
+    padding: 12px 18px; align-items: center; gap: 16px;
+}
+.progresso.ativo { display: flex; }
+.prog-info   { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.prog-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
+.prog-sub    { font-size: 11px; color: #8baac8; font-family: var(--mono); }
+.prog-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
+.prog-bar    { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
+.prog-pct    { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
+
+/* ── RESULTADO ── */
+.resultado {
+    display: none; margin-top: 14px; padding: 14px 18px; border-radius: 10px;
+    font-size: 13px; font-weight: 600;
+}
+.resultado.ok    { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
+.resultado.erro  { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
+.resultado.aguard{ background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; }
+
+/* ── TABELA HISTÓRICO ── */
+.tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 9px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; text-align: left; white-space: nowrap;
+}
+td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px; color: var(--label); vertical-align: middle; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+
+.sit-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+}
+.sit-pendente   { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.sit-gerado     { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-aguardando { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.sit-excluido   { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+
+.btn-reconsultar {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 13px; border-radius: 7px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid #f97316; background: #fff7ed; color: #9a3412;
+    cursor: pointer; transition: .13s; font-family: var(--sans); white-space: nowrap;
+}
+.btn-reconsultar:hover:not(:disabled) { background: #f97316; color: #fff; }
+.btn-reconsultar:disabled { opacity: .5; cursor: default; }
+
+.res-ok   { color: #166534; font-size: 12px; font-weight: 600; font-family: var(--mono); word-break: break-all; }
+.res-erro { color: #991b1b; font-size: 12px; font-weight: 600; word-break: break-all; }
+
+.vazio { text-align: center; padding: 36px 20px; color: #94a3b8; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="25" viewBox="0 0 30 34">
+      <path d="M2 2 H20 L28 10 V32 Q28 33 27 33 H3 Q2 33 2 32 Z" fill="#ffffff" stroke="#00a651" stroke-width="1.5"/>
+      <path d="M20 2 L20 10 L28 10 Z" fill="#00a651"/>
+      <line x1="7" y1="16" x2="23" y2="16" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="7" y1="21" x2="23" y2="21" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="7" y1="26" x2="16" y2="26" stroke="#00a651" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+    eSocial S-1299 — Fechamento
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- ── FORMULÁRIO ── -->
+  <div class="form-panel">
+    <div class="form-panel-titulo">
+      &#128274; Novo Fechamento de Período
+    </div>
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label class="form-label">Período (ano/mês)</label>
+        <input type="month" class="form-input" id="inputAnomes"
+               value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}"
+               style="font-family:var(--mono);">
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Ambiente</label>
+        <select class="form-select" id="selAmbiente">
+          <option value="1">Produção</option>
+          <option value="2">Homologação</option>
+        </select>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Tipo de Apuração</label>
+        <div class="radio-grupo" id="grupoApuracao">
+          <label class="radio-card selected" data-val="1" onclick="selecionarApuracao(this)">
+            <input type="radio" name="apuracao" value="1" checked>
+            Mensal
+          </label>
+          <label class="radio-card" data-val="2" onclick="selecionarApuracao(this)">
+            <input type="radio" name="apuracao" value="2">
+            Anual / 13º Salário
+          </label>
+        </div>
+      </div>
+
+      <div class="form-field">
+        <label class="form-label">Modalidade</label>
+        <div class="radio-grupo" id="grupoModalidade">
+          <label class="radio-card selected-green" data-val="S" onclick="selecionarModalidade(this)">
+            <input type="radio" name="modalidade" value="S" checked>
+            Normal
+          </label>
+          <label class="radio-card" data-val="N" onclick="selecionarModalidade(this)">
+            <input type="radio" name="modalidade" value="N">
+            Sem Movimento
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bloco Sem Movimento -->
+    <div class="alerta-semmov" id="blocoSemMov">
+      <div style="font-weight:700;margin-bottom:6px;">&#128683; Declaração de Empresa Sem Movimento</div>
+      <p style="margin-bottom:10px;">Use esta opção quando a empresa não teve <strong>nenhum trabalhador</strong> vinculado durante o período. Informe a data a partir da qual não há movimentação.</p>
+      <div class="form-field" style="max-width:220px;">
+        <label class="form-label">Data de início sem movimento</label>
+        <input type="date" class="form-input" id="inputDtIni" value="{{ dtini_default }}" style="font-family:var(--mono);">
+      </div>
+    </div>
+
+    <div style="margin-top:20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <button class="btn-fechar" id="btnFechar" onclick="fecharFolha(this)">
+        &#128274; Fechar e Enviar
+      </button>
+      <span style="font-size:12px;color:#94a3b8;">O evento será gerado, assinado e transmitido imediatamente.</span>
+    </div>
+
+    <!-- Progresso -->
+    <div class="progresso" id="divProgresso">
+      <div class="prog-info">
+        <span class="prog-titulo" id="progTitulo">Enviando…</span>
+        <span class="prog-sub"    id="progSub"></span>
+      </div>
+      <div class="prog-bar-wrap"><div class="prog-bar" id="progBar"></div></div>
+      <span class="prog-pct" id="progPct">0%</span>
+    </div>
+
+    <!-- Resultado -->
+    <div class="resultado" id="divResultado"></div>
+  </div>
+
+  <!-- ── HISTÓRICO ── -->
+  <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px;">
+    Histórico de Fechamentos
+  </div>
+
+  <div class="tabela-wrap">
+    {% if rows %}
+    <table>
+      <thead>
+        <tr>
+          <th>Período</th>
+          <th>Tipo</th>
+          <th>Modalidade</th>
+          <th>Situação</th>
+          <th>Cadastro</th>
+          <th>Envio</th>
+          <th>Recibo / Erro</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr id="row-{{ r.id_esocial }}">
+          <td class="data-cell">{{ r._periodo }}</td>
+          <td style="font-size:12px;">{{ r._tipo_label }}</td>
+          <td>
+            {% if r._mod_label == 'Sem Movimento' %}
+              <span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>
+            {% else %}
+              <span style="font-size:12px;color:#475569;">Normal</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
+          </td>
+          <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
+          <td class="data-cell">{{ r._datagrava_fmt or "—" }}</td>
+          <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
+            {% if r.recibo %}
+              <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>
+            {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
+              <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
+            {% else %}
+              <span style="color:#94a3b8;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+          <td id="acao-{{ r.id_esocial }}">
+            {% if r._sit == 'W' %}
+            <button class="btn-reconsultar"
+                    onclick="_reconsultar({{ r.id_esocial }}, this)">
+              &#8635; Re-consultar
+            </button>
+            {% elif r._sit == 'E' %}
+            <span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>
+            {% elif r._sit == 'X' %}
+            <span style="color:#991b1b;font-size:11px;">Verificar erro</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">
+      Nenhum fechamento enviado ainda.
+    </div>
+    {% endif %}
+  </div>
+
+  {% if rows %}
+  <div style="margin-top:8px;font-size:12px;color:#94a3b8;text-align:right;">
+    {{ total }} registro{{ 's' if total != 1 else '' }}
+  </div>
+  {% endif %}
+
+  <!-- Info -->
+  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+    <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-1299 — Fechamento dos Eventos Periódicos</div>
+    <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
+      <li>Deve ser enviado <strong>após</strong> todos os S-1200 e S-1210 do período estarem transmitidos.</li>
+      <li>Use <strong>Mensal</strong> para fechamento da folha normal e <strong>Anual / 13º</strong> para o fechamento do 13º salário.</li>
+      <li><strong>Sem Movimento</strong>: para empresas que não possuem trabalhadores vinculados. Enviar apenas em janeiro do ano, informando a data de início sem movimento.</li>
+      <li>Após enviado, não é possível transmitir novos eventos para o período sem antes enviar um S-1298 (reabertura).</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+const ETAPAS = [
+  [10,  'Gerando XML…'],
+  [25,  'Assinando evento…'],
+  [40,  'Montando lote…'],
+  [55,  'Transmitindo ao eSocial…'],
+  [72,  'Aguardando processamento (1/3)…'],
+  [85,  'Aguardando processamento (2/3)…'],
+  [95,  'Aguardando processamento (3/3)…'],
+  [99,  'Consultando resultado…'],
+];
+
+let _apuracao  = '1';
+let _modalidade = 'S';
+
+function selecionarApuracao(el) {
+  document.querySelectorAll('#grupoApuracao .radio-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  _apuracao = el.dataset.val;
+}
+
+function selecionarModalidade(el) {
+  document.querySelectorAll('#grupoModalidade .radio-card').forEach(c => {
+    c.classList.remove('selected', 'selected-green');
+  });
+  el.classList.add(el.dataset.val === 'S' ? 'selected-green' : 'selected');
+  _modalidade = el.dataset.val;
+  document.getElementById('blocoSemMov').style.display = (_modalidade === 'N') ? 'block' : 'none';
+}
+
+async function fecharFolha(btn) {
+  const anoMesRaw = document.getElementById('inputAnomes').value; // YYYY-MM
+  if (!anoMesRaw) { alert('Informe o período.'); return; }
+  const anoMes = anoMesRaw.replace('-', '');  // YYYYMM
+
+  const dtIni  = _modalidade === 'N' ? document.getElementById('inputDtIni').value : '';
+  if (_modalidade === 'N' && !dtIni) { alert('Informe a data de início sem movimento.'); return; }
+
+  const tpAmb = document.getElementById('selAmbiente').value;
+
+  btn.disabled = true;
+
+  const divProg = document.getElementById('divProgresso');
+  const bar     = document.getElementById('progBar');
+  const pct     = document.getElementById('progPct');
+  const titulo  = document.getElementById('progTitulo');
+  const sub     = document.getElementById('progSub');
+  const divRes  = document.getElementById('divResultado');
+
+  divProg.classList.add('ativo');
+  divRes.style.display = 'none';
+  bar.style.width = '5%';
+  bar.style.background = '#00a651';
+  pct.textContent = '5%';
+  titulo.textContent  = 'Iniciando…';
+  sub.textContent     = '';
+
+  let etapaIdx = 0;
+  const animTimer = setInterval(() => {
+    if (etapaIdx < ETAPAS.length) {
+      bar.style.width  = ETAPAS[etapaIdx][0] + '%';
+      pct.textContent  = ETAPAS[etapaIdx][0] + '%';
+      titulo.textContent = ETAPAS[etapaIdx][1];
+      etapaIdx++;
+    }
+  }, 4000);
+
+  try {
+    const r = await fetch('/api/esocial_s1299_enviar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ano_mes:        anoMes,
+        ind_apuracao:   _apuracao,
+        ind_exist_info: _modalidade,
+        dt_ini_sem_mov: dtIni,
+        tpAmb:          tpAmb,
+      }),
+    });
+    const data = await r.json();
+    clearInterval(animTimer);
+
+    bar.style.width    = '100%';
+    pct.textContent    = '100%';
+    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
+
+    divRes.style.display = 'block';
+
+    if (data.ok) {
+      titulo.textContent = 'Enviado com sucesso!';
+      sub.textContent    = 'Recibo: ' + (data.nr_rec || '');
+      divRes.className   = 'resultado ok';
+      divRes.innerHTML   = `&#10003; Fechamento enviado com sucesso.<br><span style="font-family:var(--mono);font-size:12px;">${data.nr_rec || ''}</span>`;
+      _adicionarHistorico(data.id_esocial, anoMesRaw, 'E', data.nr_rec || '');
+      btn.disabled = false;
+    } else if (data.aguardando) {
+      titulo.textContent = 'Aguardando processamento…';
+      sub.textContent    = data.msg;
+      divRes.className   = 'resultado aguard';
+      divRes.innerHTML   = `&#8987; ${data.msg}`;
+      _adicionarHistorico(data.id_esocial, anoMesRaw, 'W', '');
+      btn.disabled = false;
+    } else {
+      titulo.textContent = 'Erro no envio';
+      sub.textContent    = data.msg || '';
+      divRes.className   = 'resultado erro';
+      divRes.innerHTML   = `&#10005; ${data.msg || 'Erro desconhecido'}` +
+                           (data.detalhe ? `<br><span style="font-size:11px;font-weight:400;">${data.detalhe}</span>` : '');
+      btn.disabled = false;
+    }
+  } catch(e) {
+    clearInterval(animTimer);
+    bar.style.background = '#ef4444';
+    bar.style.width      = '100%';
+    titulo.textContent   = 'Falha de comunicação';
+    sub.textContent      = String(e);
+    divRes.style.display = 'block';
+    divRes.className     = 'resultado erro';
+    divRes.innerHTML     = '&#10005; Falha de comunicação: ' + e;
+    btn.disabled = false;
+  }
+}
+
+function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
+  if (!idEs) return;
+  const tbody = document.querySelector('table tbody') || _criarTabela();
+  const sitMap = { E: ['sit-enviado','Enviado'], W: ['sit-aguardando','Aguardando'], X: ['sit-erro','Com Erro'] };
+  const [cls, lbl] = sitMap[sit] || ['sit-pendente','Pendente'];
+  const periodo = anoMesRaw ? anoMesRaw.slice(5,7) + '/' + anoMesRaw.slice(0,4) : '—';
+  const hoje = (new Date()).toLocaleDateString('pt-BR');
+  const acaoHtml = sit === 'W'
+    ? `<button class="btn-reconsultar" onclick="_reconsultar(${idEs}, this)">&#8635; Re-consultar</button>`
+    : sit === 'E' ? `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>` : '';
+  const tr = document.createElement('tr');
+  tr.id = 'row-' + idEs;
+  tr.innerHTML = `
+    <td class="data-cell">${periodo}</td>
+    <td style="font-size:12px;">${_apuracao === '2' ? 'Anual / 13º' : 'Mensal'}</td>
+    <td><span style="font-size:12px;color:#475569;">${_modalidade === 'N' ? '<span class="sit-badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #c4b5fd;">Sem Movimento</span>' : 'Normal'}</span></td>
+    <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
+    <td class="data-cell">${hoje}</td>
+    <td class="data-cell">${hoje}</td>
+    <td id="rec-${idEs}">${recibo ? `<span class="res-ok">${recibo.slice(0,30)}</span>` : '<span style="color:#94a3b8;font-size:12px;">—</span>'}</td>
+    <td id="acao-${idEs}">${acaoHtml}</td>`;
+  tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function _criarTabela() {
+  const wrap = document.querySelector('.tabela-wrap');
+  wrap.innerHTML = `<table><thead><tr>
+    <th>Período</th><th>Tipo</th><th>Modalidade</th><th>Situação</th>
+    <th>Cadastro</th><th>Envio</th><th>Recibo / Erro</th><th>Ações</th>
+  </tr></thead><tbody></tbody></table>`;
+  return wrap.querySelector('tbody');
+}
+
+async function _reconsultar(id, btn) {
+  const sit    = document.getElementById('sit-'  + id);
+  const acaoTd = document.getElementById('acao-' + id);
+  const recTd  = document.getElementById('rec-'  + id);
+  const tpAmb  = document.getElementById('selAmbiente').value;
+
+  btn.disabled    = true;
+  btn.textContent = 'Consultando…';
+
+  try {
+    const r = await fetch('/api/esocial_s1299_reconsultar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      sit.className    = 'sit-badge sit-enviado';
+      sit.textContent  = 'Enviado';
+      acaoTd.innerHTML = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>`;
+      recTd.innerHTML  = `<span class="res-ok" title="${data.nr_rec}">${(data.nr_rec||'').slice(0,30)}</span>`;
+    } else if (data.aguardando) {
+      sit.className   = 'sit-badge sit-aguardando';
+      sit.textContent = 'Aguardando';
+      btn.disabled    = false;
+      btn.textContent = 'Re-consultar';
+    } else {
+      sit.className    = 'sit-badge sit-erro';
+      sit.textContent  = 'Com Erro';
+      acaoTd.innerHTML = `<span style="color:#991b1b;font-size:11px;">Verificar erro</span>`;
+      recTd.innerHTML  = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
+    }
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = 'Re-consultar';
+    alert('Falha de comunicação: ' + e);
+  }
+}
+</script>
+</body>
+</html>
