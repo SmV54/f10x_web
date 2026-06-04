@@ -14050,6 +14050,7 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     <altContratual>
       <dtAlteracao>{x(dt_alt_fmt)}</dtAlteracao>
       <vinculo>
+        <tpRegPrev>1</tpRegPrev>
         <infoRegimeTrab>
           <infoCeletista>
             <tpRegJor>{x(tpregjor)}</tpRegJor>
