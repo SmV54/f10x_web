@@ -13930,22 +13930,24 @@ def esocial_fila():
     rows = []
     if periodo and len(periodo) == 6:
         try:
-            # 1) registros cujo ano_mes bate com o período
+            # 1) registros cujo ano_mes bate com o período (exclui S-3000)
             q1 = (supabase.table("tab_esocial")
                   .select("*")
                   .eq("id_empresa", id_empresa)
                   .eq("ano_mes", int(periodo))
+                  .neq("layout", "3000")
                   .order("data_cad", desc=True)
                   .order("hora_cad", desc=True))
             if f_layout:
                 q1 = q1.eq("layout", f_layout)
             r1 = q1.execute().data or []
 
-            # 2) registros sem ano_mes criados no mês do período
+            # 2) registros sem ano_mes criados no mês do período (exclui S-3000)
             q2 = (supabase.table("tab_esocial")
                   .select("*")
                   .eq("id_empresa", id_empresa)
                   .is_("ano_mes", "null")
+                  .neq("layout", "3000")
                   .gte("data_cad", periodo + "01")
                   .lte("data_cad", periodo + "31")
                   .order("data_cad", desc=True)
@@ -13978,16 +13980,15 @@ def esocial_fila():
             pass
 
     _LAY = {
-        "1200": ("S-1200", "Remuneração",   "/esocial_s1200", False),
-        "1210": ("S-1210", "Pagamentos",    "/esocial_s1210", False),
-        "1298": ("S-1298", "Reabertura",    "/esocial_s1298", False),
-        "1299": ("S-1299", "Fechamento",    "/esocial_s1299", False),
-        "2200": ("S-2200", "Admissão",      "/esocial_s2200", True),
-        "2205": ("S-2205", "Alt.Cadastral", "/esocial_s2205", True),
-        "2206": ("S-2206", "Alt.Contrato",  "#",              True),
-        "2230": ("S-2230", "Afastamento",   "#",              True),
-        "2299": ("S-2299", "Desligamento",  "#",              True),
-        "3000": ("S-3000", "Exclusão",      "/esocial_s3000", False),
+        "1200": ("S-1200", "Remuneração",   "/esocial_s1200",    False),
+        "1210": ("S-1210", "Pagamentos",    "/esocial_s1210",    False),
+        "1298": ("S-1298", "Reabertura",    "/esocial_s1298",    False),
+        "1299": ("S-1299", "Fechamento",    "/esocial_s1299",    False),
+        "2200": ("S-2200", "Admissão",      "/esocial_s2200",    True),
+        "2205": ("S-2205", "Alt.Cadastral", "/esocial_s2205",    True),
+        "2206": ("S-2206", "Alt.Contrato",  "#",                 True),
+        "2230": ("S-2230", "Afastamento",   "/cad_afastamento",  True),
+        "2299": ("S-2299", "Desligamento",  "#",                 True),
     }
     _SIT = {
         "E": ("Enviado",    "sit-enviado"),
