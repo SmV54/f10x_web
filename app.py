@@ -4432,7 +4432,7 @@ def validar():
     if canal == "whatsapp":
         ok, erro = _enviar_whatsapp(celular, codigo, nome)
         if not ok:
-            return jsonify({"ok": False, "msg": "Erro na conexão com o WhatsApp. Entre em contato com o nosso suporte: (81) 9 8818-2000"})
+            return jsonify({"ok": False, "msg": f"Erro na conexão com o WhatsApp. Entre em contato com o nosso suporte: (81) 9 8818-2000. Detalhe: {erro}"})
         return jsonify({"ok": True, "msg": "Código enviado por WhatsApp"})
 
     return jsonify({"ok": False, "msg": "Canal inválido"})
