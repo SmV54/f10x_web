@@ -918,7 +918,7 @@ def rel_lista_funcionarios_pdf():
 # PDF helper — generic table PDF (retorna Flask response inline)
 # ─────────────────────────────────────────────────────────────────────────────
 def _pdf_tabela(titulo, headers, col_widths_cm, data_rows, empresa_nm, cnpj_fmt,
-                subtitulo="", landscape=False, filename="relatorio.pdf"):
+                subtitulo="", landscape=False, filename="relatorio.pdf", notas=""):
     from io import BytesIO
     from flask import make_response
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -964,6 +964,9 @@ def _pdf_tabela(titulo, headers, col_widths_cm, data_rows, empresa_nm, cnpj_fmt,
     if subtitulo:
         story += [Spacer(1, 4), P(subtitulo, fn="Helvetica", fs=8, col=colors.HexColor("#64748b"))]
     story += [Spacer(1, 8), tbl, Spacer(1, 6), rodape]
+    if notas:
+        story += [Spacer(1, 4), P(notas, fn="Helvetica", fs=7,
+                                  col=colors.HexColor("#64748b"))]
     doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
     buf.seek(0)
 
@@ -1630,13 +1633,35 @@ def rel_esocial_remessas_pdf():
             (recibo[:25] + "…") if len(recibo) > 25 else (recibo or "—"),
         ])
 
+    def _fmt_data(v):
+        s = str(v or "").replace("-", "")
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else v
+
+    partes = []
+    if f_matricula:
+        partes.append(f"Matrícula: {f_matricula.zfill(6)}")
+    if f_ano_mes:
+        am = f_ano_mes
+        partes.append(f"Folha: {am[4:6]}/{am[:4]}" if len(am) == 6 else f"Folha: {am}")
+    if f_layout:
+        partes.append(f"Layout: {_LAYOUTS.get(f_layout, 'S-' + f_layout)}")
+    sits_ativas = [n for n, f in [("Pendente", f_sit_1), ("Remetido", f_sit_2), ("Com Erro", f_sit_3)] if f]
+    if sits_ativas and len(sits_ativas) < 3:
+        partes.append("Situação: " + ", ".join(sits_ativas))
+    if f_dt_cad_de or f_dt_cad_ate:
+        partes.append(f"Dt. Cadastro: {_fmt_data(f_dt_cad_de) or '—'} a {_fmt_data(f_dt_cad_ate) or '—'}")
+    if f_remessa_de or f_remessa_ate:
+        partes.append(f"Dt. Remessa: {_fmt_data(f_remessa_de) or '—'} a {_fmt_data(f_remessa_ate) or '—'}")
+    notas_filtros = ("Filtros aplicados: " + "  |  ".join(partes)) if partes else ""
+
     return _pdf_tabela("Remessas eSocial",
                        ["Dt. Cad.", "Mat.", "Layout", "Folha", "Situação",
                         "Dt. Remessa", "Recibo"],
                        [2.5, 2.0, 4.5, 2.0, 2.5, 2.5, 9.7], rows,
                        str(session.get("empresa_info") or ""),
                        _fmt_cnpj(session.get("cnpj_empresa", "")),
-                       landscape=True, filename="RemessaseSocial.pdf")
+                       landscape=True, filename="RemessaseSocial.pdf",
+                       notas=notas_filtros)
 
 
 @app.route("/rel_sal_aumento_pdf")
