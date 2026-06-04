@@ -1640,19 +1640,16 @@ def rel_esocial_remessas_pdf():
     partes = []
     if f_matricula:
         partes.append(f"Matrícula: {f_matricula.zfill(6)}")
-    if f_ano_mes:
-        am = f_ano_mes
-        partes.append(f"Folha: {am[4:6]}/{am[:4]}" if len(am) == 6 else f"Folha: {am}")
-    if f_layout:
-        partes.append(f"Layout: {_LAYOUTS.get(f_layout, 'S-' + f_layout)}")
+    am_desc = f"{f_ano_mes[4:6]}/{f_ano_mes[:4]}" if len(f_ano_mes) == 6 else "Todos"
+    partes.append(f"Folha: {am_desc}")
+    partes.append(f"Layout: {_LAYOUTS.get(f_layout, 'S-' + f_layout) if f_layout else 'Todos'}")
     sits_ativas = [n for n, f in [("Pendente", f_sit_1), ("Remetido", f_sit_2), ("Com Erro", f_sit_3)] if f]
-    if sits_ativas and len(sits_ativas) < 3:
-        partes.append("Situação: " + ", ".join(sits_ativas))
+    partes.append("Situação: " + (", ".join(sits_ativas) if sits_ativas else "Todas"))
     if f_dt_cad_de or f_dt_cad_ate:
         partes.append(f"Dt. Cadastro: {_fmt_data(f_dt_cad_de) or '—'} a {_fmt_data(f_dt_cad_ate) or '—'}")
     if f_remessa_de or f_remessa_ate:
         partes.append(f"Dt. Remessa: {_fmt_data(f_remessa_de) or '—'} a {_fmt_data(f_remessa_ate) or '—'}")
-    notas_filtros = ("Filtros aplicados: " + "  |  ".join(partes)) if partes else ""
+    notas_filtros = "Filtros: " + "  |  ".join(partes)
 
     return _pdf_tabela("Remessas eSocial",
                        ["Dt. Cad.", "Mat.", "Layout", "Folha", "Situação",
@@ -14279,10 +14276,7 @@ def rel_esocial_fila_pdf():
         canvas.line(_lm, y2 - 4, _pw - _rm, y2 - 4)
         canvas.restoreState()
 
-    filtros_partes = [f"Período: {periodo_fmt}"]
-    if f_layout:
-        filtros_partes.append(f"Layout: {lay_desc}")
-    filtros_p = P("Filtros aplicados: " + "  |  ".join(filtros_partes),
+    filtros_p = P(f"Filtros: Período: {periodo_fmt}  |  Layout: {lay_desc}",
                   fn="Helvetica", fs=7, col=C_SUB)
 
     buf = BytesIO()
