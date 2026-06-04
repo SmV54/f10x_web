@@ -4358,7 +4358,11 @@ def _enviar_whatsapp(destinatario, codigo, nome):
             return False, "Z-API não configurada"
         telefone  = normalizar_telefone(destinatario)
         mensagem  = f"Olá {nome},\n\nSeu código de verificação é:\n\n{codigo}\n\nEquipe Folha10 Simples"
-        headers   = {"Client-Token": ZAPI_CLIENT_TOKEN, "Content-Type": "application/json"}
+        headers   = {
+            "Client-Token":  ZAPI_CLIENT_TOKEN,
+            "Content-Type":  "application/json",
+            "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        }
         print(f"[ZAPI] URL: {ZAPI_URL}")
         print(f"[ZAPI] Telefone: {telefone}")
         print(f"[ZAPI] Client-Token: {ZAPI_CLIENT_TOKEN[:8]}...")
