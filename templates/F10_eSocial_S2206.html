@@ -59,10 +59,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     letter-spacing: .06em; color: var(--purple); margin: 18px 0 10px;
     padding-bottom: 4px; border-bottom: 1px solid #fdf4ff;
 }
-.form-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px 16px;
-}
-.form-grid-wide { grid-column: 1 / -1; }
 .form-group { display: flex; flex-direction: column; gap: 4px; }
 .form-group label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: .04em; }
 .form-input, .form-select {
@@ -71,7 +67,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     background: #f9fafb; color: var(--label); transition: .13s;
 }
 .form-input:focus, .form-select:focus { outline: none; border-color: var(--purple); background: #fff; }
-.form-input:read-only { background: #f1f5f9; color: #64748b; cursor: default; }
 
 .btn-enviar {
     display: inline-flex; align-items: center; gap: 8px;
@@ -128,9 +123,6 @@ tr:hover td { background: #fafafa; }
 .btn-reconsultar:disabled { opacity: .5; cursor: not-allowed; }
 
 .vazio { padding: 32px; text-align: center; color: #94a3b8; font-size: 13px; }
-
-/* ── SELETOR FUNCIONÁRIO ── */
-.func-sel-wrap { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -172,164 +164,39 @@ tr:hover td { background: #fafafa; }
       &#9997;&#xFE0F; Enviar Alteração de Dados Contratuais
     </div>
 
-    <!-- Seleção de funcionário -->
     <div class="secao-titulo">Funcionário</div>
-    <div class="func-sel-wrap">
-      <div class="form-group" style="min-width:260px;">
+    <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;">
+      <div class="form-group" style="min-width:280px;">
         <label>Selecionar Funcionário</label>
-        <select class="form-select" id="selFuncionario" onchange="carregarFuncionario()">
+        <select class="form-select" id="selFuncionario">
           <option value="">— Selecione —</option>
           {% for f in funcionarios %}
           <option value="{{ f.matricula }}">{{ '%06d' % f.matricula }} — {{ f.nome }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="form-group" style="min-width:180px;">
+      <div class="form-group">
         <label>Data da Alteração</label>
         <input type="date" class="form-input" id="dtAlteracao" style="width:160px;">
       </div>
+      <button class="btn-enviar" id="btnEnviar" onclick="enviarS2206(this)">
+        &#9654; Enviar S-2206
+      </button>
     </div>
 
-    <!-- Campos contratuais (ocultos até seleção) -->
-    <div id="divFormFunc" style="display:none;">
+    <span style="font-size:12px;color:#94a3b8;display:block;margin-top:10px;">
+      Os dados contratuais atuais do cadastro serão transmitidos ao eSocial.
+    </span>
 
-      <div class="secao-titulo">Cargo e Categoria</div>
-      <div class="form-grid">
-        <div class="form-group" style="grid-column:span 2;">
-          <label>Nome do Cargo *</label>
-          <input type="text" class="form-input" id="fNmCargo" maxlength="60">
-        </div>
-        <div class="form-group">
-          <label>CBO *</label>
-          <input type="text" class="form-input" id="fCbo" maxlength="6" placeholder="6 dígitos">
-        </div>
-        <div class="form-group">
-          <label>Categoria *</label>
-          <select class="form-select" id="fCodCateg">
-            <option value="101">101 — Empregado Geral</option>
-            <option value="102">102 — Empregado Rural</option>
-            <option value="103">103 — Trabalhador Avulso</option>
-            <option value="104">104 — Trabalhador Avulso Rural</option>
-            <option value="105">105 — Aprendiz</option>
-            <option value="106">106 — Portador Deficiência</option>
-            <option value="107">107 — Empregado Doméstico</option>
-            <option value="111">111 — Empregado em Contrato Verde e Amarelo</option>
-            <option value="301">301 — Servidor Público Estatutário</option>
-            <option value="305">305 — Servidor Público Comissionado</option>
-            <option value="721">721 — Contribuinte Individual — Autônomo</option>
-            <option value="722">722 — Contribuinte Individual — Empresarial</option>
-            <option value="901">901 — Estagiário</option>
-          </select>
-        </div>
+    <!-- Progresso -->
+    <div class="lote-banner" id="divProgresso">
+      <div class="lote-info">
+        <span class="lote-titulo" id="loteTitulo">Enviando…</span>
+        <span class="lote-detalhe" id="loteDetalhe"></span>
       </div>
-
-      <div class="secao-titulo">Remuneração</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Salário (R$) *</label>
-          <input type="text" class="form-input" id="fVrSalFx" placeholder="0,00">
-        </div>
-        <div class="form-group">
-          <label>Unidade Salário *</label>
-          <select class="form-select" id="fUndSalFixo">
-            <option value="H">H — Hora</option>
-            <option value="D">D — Dia</option>
-            <option value="S">S — Semana</option>
-            <option value="Q">Q — Quinzena</option>
-            <option value="M" selected>M — Mês</option>
-            <option value="T">T — Tarefa</option>
-            <option value="N">N — Variável</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Tipo Contrato</label>
-          <select class="form-select" id="fTpContr" onchange="_toggleDtTerm()">
-            <option value="1" selected>1 — Prazo Indeterminado</option>
-            <option value="2">2 — Prazo Determinado</option>
-          </select>
-        </div>
-        <div class="form-group" id="grpDtTerm" style="display:none;">
-          <label>Término do Contrato</label>
-          <input type="date" class="form-input" id="fDtTerm">
-        </div>
-      </div>
-
-      <div class="secao-titulo">Regime de Trabalho</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Regime de Jornada *</label>
-          <select class="form-select" id="fTpRegJor">
-            <option value="1">1 — Submetido a horário</option>
-            <option value="2" selected>2 — Atividade externa</option>
-            <option value="3">3 — Teletrabalho</option>
-            <option value="4">4 — Jornada 12x36</option>
-            <option value="5">5 — Tempo parcial</option>
-            <option value="6">6 — Jornada especial</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Natureza Atividade *</label>
-          <select class="form-select" id="fNatAtividade">
-            <option value="1" selected>1 — Trabalho Urbano</option>
-            <option value="2">2 — Trabalho Rural</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="secao-titulo">Jornada Contratual</div>
-      <div class="form-grid">
-        <div class="form-group">
-          <label>Horas Semanais *</label>
-          <input type="number" class="form-input" id="fQtdHrsSem" min="1" max="44" step="0.5" placeholder="44">
-        </div>
-        <div class="form-group">
-          <label>Tipo de Jornada *</label>
-          <select class="form-select" id="fTpJornada">
-            <option value="2">2 — 12x36 (horas)</option>
-            <option value="3" selected>3 — Jornada 44h</option>
-            <option value="4">4 — Tempo parcial ≤ 25h</option>
-            <option value="5">5 — Tempo parcial ≤ 30h</option>
-            <option value="6">6 — Tempo parcial ≤ 26h</option>
-            <option value="7">7 — 24h semanais</option>
-            <option value="9">9 — Jornada especial</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Tempo Parcial</label>
-          <select class="form-select" id="fTmpParc">
-            <option value="0" selected>0 — Não é parcial</option>
-            <option value="1">1 — Limitado a 25h/sem</option>
-            <option value="2">2 — Limitado a 30h/sem</option>
-            <option value="3">3 — Limitado a 26h/sem</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Hora Noturna</label>
-          <select class="form-select" id="fHorNoturno">
-            <option value="N" selected>N — Não</option>
-            <option value="S">S — Sim</option>
-          </select>
-        </div>
-      </div>
-
-      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:20px;">
-        <button class="btn-enviar" id="btnEnviar" onclick="enviarS2206(this)">
-          &#9654; Enviar S-2206
-        </button>
-        <span style="font-size:12px;color:#94a3b8;">O evento será gerado, assinado e transmitido imediatamente.</span>
-      </div>
-
-      <!-- Progresso -->
-      <div class="lote-banner" id="divProgresso">
-        <div class="lote-info">
-          <span class="lote-titulo" id="loteTitulo">Enviando…</span>
-          <span class="lote-detalhe" id="loteDetalhe"></span>
-        </div>
-        <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
-        <span class="lote-pct" id="lotePct">0%</span>
-      </div>
-
-    </div><!-- /divFormFunc -->
+      <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
+      <span class="lote-pct" id="lotePct">0%</span>
+    </div>
   </div>
 
   <!-- ── HISTÓRICO ── -->
@@ -399,7 +266,7 @@ tr:hover td { background: #fafafa; }
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>Utilizado para informar alterações nos dados do contrato de trabalho (salário, cargo, jornada, categoria).</li>
       <li>Não inclui alterações cadastrais (nome, endereço, nascimento) — essas devem ser enviadas via S-2205.</li>
-      <li>Ao enviar, os dados contratuais são atualizados automaticamente no cadastro local (tab_cad).</li>
+      <li>Os dados contratuais atuais do cadastro são transmitidos automaticamente.</li>
       <li>O evento é transmitido em lote Grupo 2 (Eventos Não Periódicos).</li>
     </ul>
   </div>
@@ -420,65 +287,15 @@ const ETAPAS = [
 
 (function() {
   const hoje = new Date();
-  const yy = hoje.getFullYear();
-  const mm = String(hoje.getMonth()+1).padStart(2,'0');
-  const dd = String(hoje.getDate()).padStart(2,'0');
-  document.getElementById('dtAlteracao').value = `${yy}-${mm}-${dd}`;
+  document.getElementById('dtAlteracao').value =
+    `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
 
   const mat = new URLSearchParams(window.location.search).get('mat');
   if (mat) {
     const sel = document.getElementById('selFuncionario');
-    if (sel) { sel.value = mat; if (sel.value) carregarFuncionario(); }
+    if (sel) sel.value = mat;
   }
 })();
-
-function _toggleDtTerm() {
-  const tp = document.getElementById('fTpContr').value;
-  document.getElementById('grpDtTerm').style.display = tp === '2' ? '' : 'none';
-}
-
-// Converte centavos → R$ display (ex: 250000 → "2500,00")
-function _centavosParaDisplay(v) {
-  const n = parseInt(v || 0);
-  return (n / 100).toFixed(2).replace('.', ',');
-}
-
-// Converte display R$ → centavos (ex: "2.500,00" → 250000)
-function _displayParaCentavos(s) {
-  const clean = String(s || '').replace(/\./g,'').replace(',','.');
-  return Math.round(parseFloat(clean || 0) * 100);
-}
-
-async function carregarFuncionario() {
-  const mat = document.getElementById('selFuncionario').value;
-  const div = document.getElementById('divFormFunc');
-  if (!mat) { div.style.display = 'none'; return; }
-
-  try {
-    const r = await fetch(`/api/esocial_s2206_buscar_func?matricula=${mat}`);
-    const d = await r.json();
-    if (!d.ok) { alert(d.msg); return; }
-    const f = d.func;
-
-    document.getElementById('fNmCargo').value    = f.nmcargo    || '';
-    document.getElementById('fCbo').value        = f.cbofuncao  || '';
-    document.getElementById('fCodCateg').value   = String(f.codcateg  || '101');
-    document.getElementById('fVrSalFx').value    = _centavosParaDisplay(f.vrsalfx);
-    document.getElementById('fUndSalFixo').value = f.undsalfixo || 'M';
-    document.getElementById('fTpContr').value    = String(f.tpcontr   || '1');
-    document.getElementById('fTpRegJor').value   = String(f.tpregjor  || '2');
-    document.getElementById('fNatAtividade').value = String(f.natatividade || '1');
-    document.getElementById('fQtdHrsSem').value  = f.qtdhrssem  || '44';
-    document.getElementById('fTpJornada').value  = String(f.tpjornada || '3');
-    document.getElementById('fTmpParc').value    = String(f.tmpparc   || '0');
-    document.getElementById('fHorNoturno').value = f.hornoturno || 'N';
-
-    _toggleDtTerm();
-    div.style.display = 'block';
-  } catch(e) {
-    alert('Erro ao carregar funcionário: ' + e);
-  }
-}
 
 async function enviarS2206(btn) {
   const mat = document.getElementById('selFuncionario').value;
@@ -486,14 +303,6 @@ async function enviarS2206(btn) {
 
   const dtAlt = document.getElementById('dtAlteracao').value;
   if (!dtAlt) { alert('Informe a data da alteração.'); return; }
-
-  const nmcargo = document.getElementById('fNmCargo').value.trim();
-  if (!nmcargo) { alert('Nome do cargo é obrigatório.'); return; }
-
-  const cbo = document.getElementById('fCbo').value.trim();
-  if (!cbo) { alert('CBO é obrigatório.'); return; }
-
-  const tpAmb = '1';
 
   btn.disabled = true;
 
@@ -520,26 +329,11 @@ async function enviarS2206(btn) {
     }
   }, 4000);
 
-  const funcData = {
-    nmcargo:      document.getElementById('fNmCargo').value.trim(),
-    cbofuncao:    document.getElementById('fCbo').value.trim(),
-    codcateg:     document.getElementById('fCodCateg').value,
-    vrsalfx:      _displayParaCentavos(document.getElementById('fVrSalFx').value),
-    undsalfixo:   document.getElementById('fUndSalFixo').value,
-    tpcontr:      document.getElementById('fTpContr').value,
-    tpregjor:     document.getElementById('fTpRegJor').value,
-    natatividade: document.getElementById('fNatAtividade').value,
-    qtdhrssem:    document.getElementById('fQtdHrsSem').value,
-    tpjornada:    document.getElementById('fTpJornada').value,
-    tmpparc:      document.getElementById('fTmpParc').value,
-    hornoturno:   document.getElementById('fHorNoturno').value,
-  };
-
   try {
     const r = await fetch('/api/esocial_s2206_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matricula: mat, dt_alteracao: dtAlt, func: funcData, tpAmb }),
+      body: JSON.stringify({ matricula: mat, dt_alteracao: dtAlt, tpAmb: '1' }),
     });
     const data = await r.json();
     clearInterval(animTimer);
@@ -551,15 +345,13 @@ async function enviarS2206(btn) {
     if (data.ok) {
       titulo.textContent  = 'Enviado com sucesso!';
       detalhe.textContent = 'Recibo: ' + (data.nr_rec || '');
-      _adicionarHistorico(data.id_esocial, mat,
-        document.getElementById('selFuncionario').options[document.getElementById('selFuncionario').selectedIndex].text,
-        'E', data.nr_rec || '');
+      const sel = document.getElementById('selFuncionario');
+      _adicionarHistorico(data.id_esocial, mat, sel.options[sel.selectedIndex].text, 'E', data.nr_rec || '');
     } else if (data.aguardando) {
       titulo.textContent  = 'Aguardando processamento…';
       detalhe.textContent = data.msg;
-      _adicionarHistorico(data.id_esocial, mat,
-        document.getElementById('selFuncionario').options[document.getElementById('selFuncionario').selectedIndex].text,
-        'W', '');
+      const sel = document.getElementById('selFuncionario');
+      _adicionarHistorico(data.id_esocial, mat, sel.options[sel.selectedIndex].text, 'W', '');
     } else {
       titulo.textContent  = 'Erro no envio';
       detalhe.textContent = data.msg || 'Erro desconhecido';
@@ -600,7 +392,6 @@ function _adicionarHistorico(idEs, mat, nomeOpcao, sit, recibo) {
   const dd = String(agora.getDate()).padStart(2,'0');
   const mo = String(agora.getMonth()+1).padStart(2,'0');
   const yy = String(agora.getFullYear()).slice(2);
-  const envioFmt = `${dd}/${mo}/${yy} ${hh}:${mm}`;
   const nomeParts = nomeOpcao.split(' — ');
   const nomeFunc  = nomeParts.length > 1 ? nomeParts.slice(1).join(' — ') : nomeOpcao;
   const acaoHtml = sit === 'W'
@@ -613,7 +404,7 @@ function _adicionarHistorico(idEs, mat, nomeOpcao, sit, recibo) {
         <div style="font-family:var(--mono);font-size:11px;color:#64748b;">${String(mat).padStart(6,'0')}</div></td>
     <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
     <td class="data-cell">${dd}/${mo}/${yy}</td>
-    <td class="data-cell">${envioFmt}</td>
+    <td class="data-cell">${dd}/${mo}/${yy} ${hh}:${mm}</td>
     <td id="rec-${idEs}">${recibo ? `<span class="res-ok">${recibo.slice(0,30)}</span>` : '<span style="color:#94a3b8;font-size:12px;">—</span>'}</td>
     <td id="acao-${idEs}">${acaoHtml}</td>`;
   tbody.insertBefore(tr, tbody.firstChild);
