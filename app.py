@@ -6405,7 +6405,25 @@ def api_funcionario_alterar():
         "infocota":"InfoCota","indaprend":"Aprend",
         "tomador_tpinsc":"TomTp","tomador_nrinsc":"TomNr",
     }
+    # Campos que disparam S-2205 (dados pessoais)
+    _S2205 = {
+        "nome", "nomer", "sexo", "racacor", "estciv", "grauinstr",
+        "dtnascto", "paisnascto", "paisnac",
+        "ender_dsclograd", "ender_nrlograd", "ender_complemento",
+        "ender_bairro", "ender_cep", "ender_codmunic", "ender_uf",
+        "fone_princ", "email_princ",
+    }
+    # Campos que disparam S-2206 (dados contratuais)
+    _S2206 = {
+        "codcateg", "cbofuncao", "nmcargo", "vrsalfx", "undsalfixo",
+        "tpregjor", "natatividade", "qtdhrssem", "tpjornada",
+        "tmpparc", "hornoturno", "tpcontr", "datarescisao",
+        "lt_tpinsc", "lt_nrinsc",
+    }
+
     obs = f"ALT funcionario: {cpf}"
+    precisa_2205 = False
+    precisa_2206 = False
     try:
         atual = supabase.table("tab_cad").select("*").eq("id", func_id).execute()
         if atual.data:
@@ -6419,6 +6437,10 @@ def api_funcionario_alterar():
                 novo_s = str(novo).strip()
                 if novo_s != velho:
                     partes.append(f"{label}: '{velho}'→'{novo_s}'")
+                    if col in _S2205:
+                        precisa_2205 = True
+                    if col in _S2206:
+                        precisa_2206 = True
             if partes:
                 obs += " | " + " | ".join(partes)
     except Exception:
@@ -6429,6 +6451,30 @@ def api_funcionario_alterar():
         mat_raw = d.get("matricula")
         mat = int(mat_raw) if mat_raw else None
         gravar_log("FUNCIONARIO", obs, matricula=mat)
+
+        # Gera pendências eSocial se houve alteração relevante
+        if mat and (precisa_2205 or precisa_2206):
+            _agora   = datetime.now()
+            _anomes  = str(session.get("anomes_atual") or "")
+            _id_cli  = session.get("id_cliente")
+            _ts      = _agora.strftime("%Y%m%d%H%M%S")
+            for _lay in (["2205"] if precisa_2205 else []) + (["2206"] if precisa_2206 else []):
+                try:
+                    supabase.table("tab_esocial").insert({
+                        "id_cliente": _id_cli,
+                        "id_empresa": id_empresa,
+                        "data_cad":   _agora.strftime("%Y%m%d"),
+                        "hora_cad":   _agora.strftime("%H%M"),
+                        "id_remessa": f"{_ts}{_lay}",
+                        "ano_mes":    int(_anomes) if len(_anomes) == 6 else None,
+                        "folha_tipo": "N",
+                        "layout":     _lay,
+                        "matricula":  mat,
+                        "codigo2":    0,
+                    }).execute()
+                except Exception:
+                    pass
+
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
