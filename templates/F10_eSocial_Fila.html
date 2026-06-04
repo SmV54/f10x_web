@@ -153,9 +153,10 @@ tr:hover td { background: #f8fafc; }
     font-size: 11px; padding: 3px 10px; border-radius: 6px;
     background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd;
     text-decoration: none; font-weight: 600; transition: .12s;
-    display: inline-block;
+    display: inline-block; cursor: pointer; font-family: var(--sans);
 }
 .btn-ir:hover { background: #e0f2fe; border-color: #7dd3fc; }
+.btn-ir:disabled { opacity: .5; cursor: not-allowed; }
 
 .btn-excluir {
     font-size: 11px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
@@ -302,7 +303,17 @@ tr:hover td { background: #f8fafc; }
               <button class="btn-reconsultar"
                       onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-              <a class="btn-ir" href="{{ r._lay_href }}{% if r.matricula %}?mat={{ r.matricula }}{% endif %}">&#9654; Enviar para eSocial</a>
+              {% if r.layout in ('2200', '1200', '1298', '1299') %}
+              <button class="btn-ir"
+                      data-id="{{ r.id_esocial }}"
+                      data-layout="{{ r.layout }}"
+                      data-anomes="{{ r.ano_mes or '' }}"
+                      data-nome="{{ r._nome }}"
+                      data-laycod="{{ r._lay_codigo }}"
+                      onclick="_enviarFila(this)">&#9654; Enviar para eSocial</button>
+              {% else %}
+              <a class="btn-ir" href="{{ r._lay_href }}{% if r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Abrir formulário</a>
+              {% endif %}
               {% elif r._sit == 'E' %}
               <span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>
               {% endif %}
@@ -374,6 +385,71 @@ async function _excluir(btn) {
     alert('Falha de comunicação.');
     btn.disabled    = false;
     btn.textContent = '✕ Excluir';
+  }
+}
+
+async function _enviarFila(btn) {
+  const id     = btn.dataset.id;
+  const layout = btn.dataset.layout;
+  const anomes = btn.dataset.anomes;
+  const nome   = btn.dataset.nome   || '—';
+  const laycod = btn.dataset.laycod || layout;
+
+  btn.disabled    = true;
+  btn.textContent = 'Enviando…';
+
+  const APIS = {
+    '2200': '/api/esocial_s2200_enviar',
+    '1200': '/api/esocial_s1200_enviar',
+    '1298': '/api/esocial_s1298_enviar',
+    '1299': '/api/esocial_s1299_enviar',
+  };
+
+  let body;
+  if (layout === '1298') {
+    body = { ano_mes: anomes, ind_apuracao: '1', tpAmb: '1' };
+  } else if (layout === '1299') {
+    body = { ano_mes: anomes, ind_apuracao: '1', ind_exist_info: 'S', evt_remun: 'S', evt_pgtos: 'S', tpAmb: '1' };
+  } else {
+    body = { id_esocial: parseInt(id), tpAmb: '1' };
+  }
+
+  try {
+    const resp = await fetch(APIS[layout], {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body),
+    });
+    const data  = await resp.json();
+    const newId = data.id_esocial || id;
+    const sit   = document.getElementById('sit-' + id);
+    const rec   = document.getElementById('rec-' + id);
+    const acao  = document.getElementById('acao-' + id);
+
+    if (data.ok) {
+      sit.className   = 'sit-badge sit-enviado';
+      sit.textContent = 'Enviado';
+      rec.innerHTML   = `<span class="res-ok">${(data.nr_rec||'').slice(0,32)}</span>`;
+      acao.innerHTML  = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>`;
+    } else if (data.aguardando) {
+      sit.className   = 'sit-badge sit-aguardando';
+      sit.textContent = 'Aguardando';
+      acao.innerHTML  =
+        `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">` +
+        `<button class="btn-reconsultar" onclick="_reconsultar(${newId}, this)">&#8635; Re-consultar</button>` +
+        `<button class="btn-excluir" data-id="${newId}" data-nome="${nome.replace(/"/g,"'")}" data-lay="${laycod}" onclick="_excluir(this)">&#10005; Excluir</button>` +
+        `</div>`;
+    } else {
+      sit.className   = 'sit-badge sit-erro';
+      sit.textContent = 'Com Erro';
+      rec.innerHTML   = `<span class="res-erro" title="${(data.msg||'').replace(/"/g,"'")}">${(data.msg||'Erro').slice(0,60)}</span>`;
+      btn.disabled    = false;
+      btn.textContent = '▶ Enviar para eSocial';
+    }
+  } catch(e) {
+    btn.disabled    = false;
+    btn.textContent = '▶ Enviar para eSocial';
+    alert('Falha de comunicação: ' + e);
   }
 }
 
