@@ -4359,7 +4359,11 @@ def _enviar_whatsapp(destinatario, codigo, nome):
         telefone  = normalizar_telefone(destinatario)
         mensagem  = f"Olá {nome},\n\nSeu código de verificação é:\n\n{codigo}\n\nEquipe Folha10 Simples"
         headers   = {"Client-Token": ZAPI_CLIENT_TOKEN, "Content-Type": "application/json"}
+        print(f"[ZAPI] URL: {ZAPI_URL}")
+        print(f"[ZAPI] Telefone: {telefone}")
+        print(f"[ZAPI] Client-Token: {ZAPI_CLIENT_TOKEN[:8]}...")
         r = requests.post(ZAPI_URL, headers=headers, json={"phone": telefone, "message": mensagem}, timeout=30)
+        print(f"[ZAPI] Status: {r.status_code} | Resposta: {r.text}")
         if r.status_code not in (200, 201):
             return False, r.text
         return True, ""
