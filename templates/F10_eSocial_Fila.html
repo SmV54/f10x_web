@@ -47,12 +47,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 /* ── FILTRO BAR ── */
 .filtro-bar {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 10px; padding: 14px 20px; margin-bottom: 20px;
-    display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
+    border-radius: 10px; padding: 10px 20px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px; flex-wrap: nowrap;
 }
-.filtro-group { display: flex; flex-direction: column; gap: 4px; }
+.filtro-group { display: flex; flex-direction: row; align-items: center; gap: 6px; }
 .filtro-group label { font-size: 11px; font-weight: 600; color: #475569;
-                      text-transform: uppercase; letter-spacing: .04em; }
+                      text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
 .filtro-input, .filtro-select {
     height: 36px; border: 1px solid #d1d5db; border-radius: 7px;
     padding: 0 10px; font-size: 13px; font-family: var(--sans);
@@ -225,7 +225,7 @@ tr:hover td { background: #f8fafc; }
     </div>
     <div class="filtro-group">
       <label>Layout</label>
-      <select name="layout" class="filtro-select" style="width:200px;">
+      <select name="layout" class="filtro-select" style="width:180px;">
         <option value="" {% if not f_layout %}selected{% endif %}>— Todos —</option>
         <option value="2200" {% if f_layout=='2200' %}selected{% endif %}>S-2200 Admissão</option>
         <option value="2205" {% if f_layout=='2205' %}selected{% endif %}>S-2205 Alt. Cadastral</option>
