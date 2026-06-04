@@ -18,7 +18,6 @@
     --label:     #374151;
     --mono:      'IBM Plex Mono', monospace;
     --sans:      'IBM Plex Sans', sans-serif;
-    --purple:    #86198f;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--sans); background: var(--bg); color: var(--label); }
@@ -45,84 +44,99 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 
 .conteudo { max-width: 1000px; margin: 32px auto; padding: 0 24px 80px; }
 
-.form-panel {
+.filtros-bar {
+    display: flex; align-items: center; gap: 8px;
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 20px 24px 24px; margin-bottom: 28px;
+    border-radius: 12px; padding: 12px 16px; margin-bottom: 20px; flex-wrap: wrap;
 }
-.form-panel-titulo {
-    font-size: 14px; font-weight: 700; color: #1e293b;
-    padding-bottom: 14px; border-bottom: 1px solid #f1f5f9;
-    margin-bottom: 18px;
+.filtros-label { font-size: 12px; font-weight: 600; color: #64748b; margin-right: 4px; }
+.btn-filtro {
+    padding: 5px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid var(--border); background: var(--bg); color: #64748b;
+    cursor: pointer; transition: .13s; font-family: var(--sans); text-decoration: none; display: inline-block;
 }
-.secao-titulo {
-    font-size: 11px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .06em; color: var(--purple); margin: 18px 0 10px;
-    padding-bottom: 4px; border-bottom: 1px solid #fdf4ff;
-}
-.form-group { display: flex; flex-direction: column; gap: 4px; }
-.form-group label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: .04em; }
-.form-input, .form-select {
-    height: 36px; border: 1px solid #d1d5db; border-radius: 7px;
-    padding: 0 10px; font-size: 13px; font-family: var(--sans);
-    background: #f9fafb; color: var(--label); transition: .13s;
-}
-.form-input:focus, .form-select:focus { outline: none; border-color: var(--purple); background: #fff; }
+.btn-filtro:hover { border-color: var(--accent); color: var(--accent); }
+.btn-filtro.ativo { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-.btn-enviar {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 28px; border-radius: 9px; font-size: 14px; font-weight: 700;
-    background: var(--purple); color: #fff; border: none; cursor: pointer; transition: .15s;
+.contadores { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.contador-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 18px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 100px;
 }
-.btn-enviar:hover:not(:disabled) { filter: brightness(1.1); }
-.btn-enviar:disabled { opacity: .5; cursor: not-allowed; }
+.contador-num { font-size: 22px; font-weight: 700; font-family: var(--mono); color: #1e293b; }
+.contador-txt { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
 
-/* ── LOTE BANNER ── */
-.lote-banner {
-    display: none; margin-top: 16px; background: #1e1b4b;
-    border-radius: 10px; padding: 14px 18px; align-items: center; gap: 14px;
+.tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 9px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; text-align: left; white-space: nowrap;
 }
-.lote-banner.ativo { display: flex; }
-.lote-info { flex: 1; min-width: 0; }
-.lote-titulo  { font-size: 13px; font-weight: 600; color: #e0e7ff; display: block; }
-.lote-detalhe { font-size: 11px; color: #a5b4fc; display: block; margin-top: 2px; word-break: break-all; }
-.lote-bar-wrap { width: 120px; height: 6px; background: #3730a3; border-radius: 3px; flex-shrink: 0; }
-.lote-bar { height: 100%; width: 5%; background: var(--purple); border-radius: 3px; transition: width .5s; }
-.lote-pct { font-family: var(--mono); font-size: 12px; color: #a5b4fc; flex-shrink: 0; width: 38px; text-align: right; }
-
-/* ── TABELA HISTÓRICO ── */
-.tabela-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { background: #f8fafc; padding: 10px 12px; text-align: left;
-     font-size: 11px; font-weight: 700; color: #475569;
-     text-transform: uppercase; letter-spacing: .04em;
-     border-bottom: 1px solid var(--border); white-space: nowrap; }
-td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+td { padding: 11px 14px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
 tr:last-child td { border-bottom: none; }
-tr:hover td { background: #fafafa; }
+tr:hover td { background: #f8fafc; }
+
+.mat-cell  { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+.nome-cell { font-weight: 500; }
 .data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
 
 .sit-badge {
-    display: inline-block; padding: 2px 9px; border-radius: 20px;
-    font-size: 11px; font-weight: 600; white-space: nowrap;
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
 }
-.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
-.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-.sit-aguardando { background: #fff7ed; color: #92400e; border: 1px solid #fed7aa; }
-.sit-gerado     { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
-.sit-pendente   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
+.sit-pendente   { background: #fef9c3; color: #854d0e; border: 1px solid #fde047; }
+.sit-gerado     { background: #dbeafe; color: #1d4ed8; border: 1px solid #93c5fd; }
+.sit-enviado    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.sit-aguardando { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.sit-erro       { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
-.res-ok   { font-family: var(--mono); font-size: 11px; color: #166534; }
-.res-erro { font-size: 11px; color: #991b1b; }
-
-.btn-reconsultar {
-    font-size: 11px; padding: 3px 10px; border-radius: 6px; cursor: pointer;
-    background: #fff7ed; color: #92400e; border: 1px solid #fed7aa; font-family: var(--sans);
-    transition: .12s;
+.btn-enviar {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 13px; border-radius: 7px; font-size: 12px; font-weight: 600;
+    border: 1.5px solid var(--accent); background: #fdf4ff; color: #86198f;
+    cursor: pointer; transition: .13s; font-family: var(--sans); white-space: nowrap;
 }
-.btn-reconsultar:hover { background: #fef3c7; }
-.btn-reconsultar:disabled { opacity: .5; cursor: not-allowed; }
+.btn-enviar:hover:not(:disabled) { background: var(--accent); color: #fff; }
+.btn-enviar:disabled { opacity: .5; cursor: default; }
+.btn-enviar.reenviar { border-color: #64748b; background: #f8fafc; color: #475569; }
+.btn-enviar.reenviar:hover:not(:disabled) { background: #475569; color: #fff; border-color: #475569; }
+.btn-enviar.reconsutar { border-color: #f97316; background: #fff7ed; color: #9a3412; }
+.btn-enviar.reconsutar:hover:not(:disabled) { background: #f97316; color: #fff; border-color: #f97316; }
 
-.vazio { padding: 32px; text-align: center; color: #94a3b8; font-size: 13px; }
+.btn-enviar-todos {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid var(--accent); background: var(--accent); color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-todos:hover:not(:disabled) { filter: brightness(1.1); }
+.btn-enviar-todos:disabled { opacity: .5; cursor: default; }
+
+.lote-banner {
+    display: none; background: #0f172a; border: 1px solid #1e3d5c; border-radius: 10px;
+    padding: 12px 18px; margin-bottom: 16px; align-items: center; gap: 16px;
+}
+.lote-banner.ativo { display: flex; }
+.lote-info  { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.lote-titulo  { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
+.lote-detalhe { font-size: 11px; color: #8baac8; font-family: var(--mono); }
+.lote-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
+.lote-bar { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.lote-pct { font-size: 12px; font-weight: 700; color: #e0a0e3; font-family: var(--mono); min-width: 36px; text-align: right; }
+
+.prog-row { display: none; }
+.prog-cell { padding: 6px 14px 10px !important; }
+.prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
+.prog-bar { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
+
+.res-ok   { color: #166534; font-size: 12px; font-weight: 600; font-family: var(--mono); }
+.res-erro { color: #991b1b; font-size: 12px; font-weight: 600; }
+
+.vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
+.vazio-icone { font-size: 32px; margin-bottom: 12px; }
 </style>
 </head>
 <body>
@@ -158,173 +172,161 @@ tr:hover td { background: #fafafa; }
 
 <div class="conteudo">
 
-  <!-- ── FORMULÁRIO ── -->
-  <div class="form-panel">
-    <div class="form-panel-titulo">
-      &#9997;&#xFE0F; Enviar Alteração de Dados Contratuais
-    </div>
-
-    <div class="secao-titulo">Funcionário</div>
-    <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;">
-      <div class="form-group" style="min-width:280px;">
-        <label>Selecionar Funcionário</label>
-        <select class="form-select" id="selFuncionario">
-          <option value="">— Selecione —</option>
-          {% for f in funcionarios %}
-          <option value="{{ f.matricula }}">{{ '%06d' % f.matricula }} — {{ f.nome }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Data da Alteração</label>
-        <input type="date" class="form-input" id="dtAlteracao" style="width:160px;">
-      </div>
-      <button class="btn-enviar" id="btnEnviar" onclick="enviarS2206(this)">
-        &#9654; Enviar S-2206
+  <div class="filtros-bar">
+    <span class="filtros-label">Situação:</span>
+    <a href="/esocial_s2206"       class="btn-filtro {% if not f_sit %}ativo{% endif %}">Todos</a>
+    <a href="/esocial_s2206?sit=P" class="btn-filtro {% if f_sit=='P' %}ativo{% endif %}">Pendente</a>
+    <a href="/esocial_s2206?sit=E" class="btn-filtro {% if f_sit=='E' %}ativo{% endif %}">Enviado</a>
+    <a href="/esocial_s2206?sit=W" class="btn-filtro {% if f_sit=='W' %}ativo{% endif %}" style="{% if contagens.W %}color:#9a3412;border-color:#fdba74;{% endif %}">Aguardando{% if contagens.W %} ({{ contagens.W }}){% endif %}</a>
+    <a href="/esocial_s2206?sit=X" class="btn-filtro {% if f_sit=='X' %}ativo{% endif %}">Com Erro</a>
+    {% set total_enviar = contagens.P + contagens.X %}
+    {% if total_enviar > 0 %}
+    <div style="margin-left:auto;">
+      <button class="btn-enviar-todos" id="btnEnviarTodos" onclick="enviarTodos(this)">
+        &#9654;&#9654; Enviar Pendentes ({{ total_enviar }})
       </button>
     </div>
-
-    <span style="font-size:12px;color:#94a3b8;display:block;margin-top:10px;">
-      Os dados contratuais atuais do cadastro serão transmitidos ao eSocial.
-    </span>
-
-    <!-- Progresso -->
-    <div class="lote-banner" id="divProgresso">
-      <div class="lote-info">
-        <span class="lote-titulo" id="loteTitulo">Enviando…</span>
-        <span class="lote-detalhe" id="loteDetalhe"></span>
-      </div>
-      <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
-      <span class="lote-pct" id="lotePct">0%</span>
-    </div>
-  </div>
-
-  <!-- ── HISTÓRICO ── -->
-  <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px;">
-    Histórico de Alterações Contratuais Enviadas
-    {% if anomes_atual and anomes_atual|length == 6 %}
-    <span style="font-weight:400;color:#86198f;font-size:12px;margin-left:6px;">— {{ anomes_atual[4:6] }}/{{ anomes_atual[0:4] }}</span>
     {% endif %}
-    {% if total %}<span style="font-weight:400;color:#64748b;font-size:12px;margin-left:8px;">({{ total }} registro{{ 's' if total != 1 else '' }})</span>{% endif %}
   </div>
+
+  <div class="lote-banner" id="loteBanner">
+    <div class="lote-info">
+      <span class="lote-titulo" id="loteTitulo">Enviando lote…</span>
+      <span class="lote-detalhe" id="loteDetalhe"></span>
+    </div>
+    <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
+    <span class="lote-pct" id="lotePct">0%</span>
+  </div>
+
+  {% if not f_sit %}
+  <div class="contadores">
+    <div class="contador-card">
+      <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
+      <span class="contador-txt">Pendente</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#166534;">{{ contagens.E }}</span>
+      <span class="contador-txt">Enviado</span>
+    </div>
+    <div class="contador-card">
+      <span class="contador-num" style="color:#991b1b;">{{ contagens.X }}</span>
+      <span class="contador-txt">Com Erro</span>
+    </div>
+    {% if contagens.W %}
+    <div class="contador-card">
+      <span class="contador-num" style="color:#9a3412;">{{ contagens.W }}</span>
+      <span class="contador-txt">Aguardando</span>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <div class="tabela-wrap">
     {% if rows %}
     <table>
       <thead>
         <tr>
-          <th>Matrícula / Nome</th>
+          <th>Matrícula</th>
+          <th>Nome</th>
+          <th>Registrado em</th>
+          <th>Enviado em</th>
           <th>Situação</th>
-          <th>Cadastro</th>
-          <th>Envio</th>
-          <th>Recibo / Erro</th>
-          <th>Ações</th>
+          <th>Ação</th>
         </tr>
       </thead>
       <tbody>
         {% for r in rows %}
         <tr id="row-{{ r.id_esocial }}">
-          <td>
-            <div style="font-weight:600;font-size:13px;">{{ r._nome }}</div>
-            <div style="font-family:var(--mono);font-size:11px;color:#64748b;">{{ '%06d' % (r.matricula or 0) }}</div>
-          </td>
-          <td>
-            <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
-          </td>
+          <td class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</td>
+          <td class="nome-cell">{{ r._nome }}</td>
           <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
           <td class="data-cell">{{ r._envio_fmt or "—" }}</td>
-          <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
-            {% if r.recibo %}
-              <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>
-            {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
-              <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
-            {% else %}
-              <span style="color:#94a3b8;font-size:12px;">—</span>
+          <td><span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span></td>
+          <td id="acao-{{ r.id_esocial }}">
+            {% if r._sit in ('P', 'G', 'X') %}
+            <button class="btn-enviar {% if r._sit != 'P' %}reenviar{% endif %}"
+                    onclick="enviar({{ r.id_esocial }}, this)">
+              &#9654; {% if r._sit == 'P' %}Enviar ao eSocial{% else %}Reenviar{% endif %}
+            </button>
+            {% elif r._sit == 'W' %}
+            <button class="btn-enviar reconsutar" onclick="reconsutar({{ r.id_esocial }}, this)">
+              &#8635; Re-consultar
+            </button>
+            {% elif r._sit == 'E' %}
+            <span class="res-ok" title="{{ r.recibo }}">✓ {{ (r.recibo or '')[:25] }}</span>
             {% endif %}
           </td>
-          <td id="acao-{{ r.id_esocial }}">
-            {% if r._sit == 'W' %}
-            <button class="btn-reconsultar" onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
-            {% elif r._sit == 'E' %}
-            <span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>
-            {% elif r._sit == 'X' %}
-            <span style="color:#991b1b;font-size:11px;">Verificar erro</span>
-            {% endif %}
+        </tr>
+        <tr class="prog-row" id="prog-{{ r.id_esocial }}">
+          <td colspan="6" class="prog-cell">
+            <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
+            <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
           </td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
     {% else %}
-    <div class="vazio">Nenhuma alteração contratual enviada ainda.</div>
+    <div class="vazio">
+      <div class="vazio-icone">📋</div>
+      {% if f_sit %}
+        Nenhum registro S-2206 com esta situação.
+      {% else %}
+        Nenhum registro S-2206 encontrado.<br>
+        <small style="font-size:12px;color:#b0bec5;margin-top:6px;display:block;">
+          Os registros aparecem automaticamente ao salvar alterações contratuais.
+        </small>
+      {% endif %}
+    </div>
     {% endif %}
   </div>
 
-  <!-- Info -->
-  <div style="margin-top:28px;background:#fdf4ff;border:1px solid #f0abfc;border-radius:10px;padding:14px 18px;">
-    <div style="font-size:13px;font-weight:600;color:#86198f;margin-bottom:6px;">eSocial S-2206 — Alteração de Dados Contratuais do Trabalhador</div>
+  {% if rows %}
+  <div style="margin-top:10px;font-size:12px;color:#94a3b8;text-align:right;">
+    {{ total }} registro{{ 's' if total != 1 else '' }}
+  </div>
+  {% endif %}
+
+  <div style="margin-top:28px;background:#fdf4ff;border:1px solid #e879f9;border-radius:10px;padding:14px 18px;">
+    <div style="font-size:13px;font-weight:600;color:#86198f;margin-bottom:6px;">eSocial S-2206 — Alteração de Dados Contratuais</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
-      <li>Utilizado para informar alterações nos dados do contrato de trabalho (salário, cargo, jornada, categoria).</li>
-      <li>Não inclui alterações cadastrais (nome, endereço, nascimento) — essas devem ser enviadas via S-2205.</li>
-      <li>Os dados contratuais atuais do cadastro são transmitidos automaticamente.</li>
-      <li>O evento é transmitido em lote Grupo 2 (Eventos Não Periódicos).</li>
+      <li>Gerado automaticamente ao salvar alterações contratuais (salário, cargo, jornada, categoria, etc.).</li>
+      <li>Clique em <strong>Enviar ao eSocial</strong> para transmitir com os dados atuais do cadastro.</li>
+      <li>Para alterações cadastrais (nome, endereço, nascimento) utilize o S-2205.</li>
     </ul>
   </div>
 
-</div><!-- /conteudo -->
+</div>
 
 <script>
 const ETAPAS = [
-  [10, 'Gerando XML…'],
-  [25, 'Assinando evento…'],
-  [40, 'Montando lote…'],
-  [55, 'Transmitindo ao eSocial…'],
-  [70, 'Aguardando processamento (1/3)…'],
-  [82, 'Aguardando processamento (2/3)…'],
-  [92, 'Aguardando processamento (3/3)…'],
-  [98, 'Consultando resultado…'],
+  [10, '⚙️  Gerando XML…'],
+  [25, '🔑 Assinando evento…'],
+  [40, '📦 Montando lote…'],
+  [55, '📡 Transmitindo ao eSocial…'],
+  [70, '⏳ Aguardando processamento (1/3)…'],
+  [82, '⏳ Aguardando processamento (2/3)…'],
+  [92, '⏳ Aguardando processamento (3/3)…'],
+  [98, '🔍 Consultando resultado…'],
 ];
 
-(function() {
-  const hoje = new Date();
-  document.getElementById('dtAlteracao').value =
-    `${hoje.getFullYear()}-${String(hoje.getMonth()+1).padStart(2,'0')}-${String(hoje.getDate()).padStart(2,'0')}`;
-
-  const mat = new URLSearchParams(window.location.search).get('mat');
-  if (mat) {
-    const sel = document.getElementById('selFuncionario');
-    if (sel) sel.value = mat;
-  }
-})();
-
-async function enviarS2206(btn) {
-  const mat = document.getElementById('selFuncionario').value;
-  if (!mat) { alert('Selecione um funcionário.'); return; }
-
-  const dtAlt = document.getElementById('dtAlteracao').value;
-  if (!dtAlt) { alert('Informe a data da alteração.'); return; }
+async function enviar(id, btn, suppressReport = false) {
+  const progRow = document.getElementById('prog-' + id);
+  const bar     = document.getElementById('bar-' + id);
+  const lbl     = document.getElementById('lbl-' + id);
+  const sit     = document.getElementById('sit-' + id);
+  const acaoTd  = document.getElementById('acao-' + id);
 
   btn.disabled = true;
-
-  const divProg = document.getElementById('divProgresso');
-  const bar     = document.getElementById('loteBar');
-  const pct     = document.getElementById('lotePct');
-  const titulo  = document.getElementById('loteTitulo');
-  const detalhe = document.getElementById('loteDetalhe');
-
-  divProg.classList.add('ativo');
-  bar.style.width      = '5%';
-  bar.style.background = '#86198f';
-  pct.textContent      = '5%';
-  titulo.textContent   = 'Iniciando…';
-  detalhe.textContent  = '';
+  progRow.style.display = 'table-row';
+  bar.style.width = '5%';
+  lbl.textContent = '⚙️  Iniciando…';
 
   let etapaIdx = 0;
   const animTimer = setInterval(() => {
     if (etapaIdx < ETAPAS.length) {
-      bar.style.width    = ETAPAS[etapaIdx][0] + '%';
-      pct.textContent    = ETAPAS[etapaIdx][0] + '%';
-      titulo.textContent = ETAPAS[etapaIdx][1];
+      bar.style.width = ETAPAS[etapaIdx][0] + '%';
+      lbl.textContent = ETAPAS[etapaIdx][1];
       etapaIdx++;
     }
   }, 4000);
@@ -333,86 +335,83 @@ async function enviarS2206(btn) {
     const r = await fetch('/api/esocial_s2206_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ matricula: mat, dt_alteracao: dtAlt, tpAmb: '1' }),
+      body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
     const data = await r.json();
     clearInterval(animTimer);
-
-    bar.style.width      = '100%';
-    pct.textContent      = '100%';
-    bar.style.background = data.ok ? '#86198f' : (data.aguardando ? '#f97316' : '#ef4444');
+    bar.style.width = '100%';
+    bar.style.background = data.ok ? '#86198f' : '#ef4444';
 
     if (data.ok) {
-      titulo.textContent  = 'Enviado com sucesso!';
-      detalhe.textContent = 'Recibo: ' + (data.nr_rec || '');
-      const sel = document.getElementById('selFuncionario');
-      _adicionarHistorico(data.id_esocial, mat, sel.options[sel.selectedIndex].text, 'E', data.nr_rec || '');
+      lbl.textContent  = '✅ Enviado — Recibo: ' + (data.nr_rec || '');
+      sit.className    = 'sit-badge sit-enviado';
+      sit.textContent  = 'Enviado';
+      acaoTd.innerHTML = `<span class="res-ok" title="${data.nr_rec}">✓ ${(data.nr_rec||'').slice(0,30)}</span>`;
     } else if (data.aguardando) {
-      titulo.textContent  = 'Aguardando processamento…';
-      detalhe.textContent = data.msg;
-      const sel = document.getElementById('selFuncionario');
-      _adicionarHistorico(data.id_esocial, mat, sel.options[sel.selectedIndex].text, 'W', '');
+      lbl.textContent  = '⏳ ' + data.msg;
+      sit.className    = 'sit-badge sit-aguardando';
+      sit.textContent  = 'Aguardando';
+      acaoTd.innerHTML = `<button class="btn-enviar reconsutar" onclick="reconsutar(${id}, this)">&#8635; Re-consultar</button>`;
     } else {
-      titulo.textContent  = 'Erro no envio';
-      detalhe.textContent = data.msg || 'Erro desconhecido';
-      if (data.detalhe) {
-        const det = document.createElement('div');
-        det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
-        det.textContent   = data.detalhe;
-        detalhe.parentNode.appendChild(det);
-      }
+      lbl.textContent = '❌ ' + (data.msg || 'Erro desconhecido');
+      sit.className   = 'sit-badge sit-erro';
+      sit.textContent = 'Com Erro';
+      btn.disabled    = false;
+      btn.textContent = '↻ Reenviar';
     }
-    btn.disabled = false;
   } catch(e) {
     clearInterval(animTimer);
+    bar.style.width = '100%';
     bar.style.background = '#ef4444';
-    bar.style.width      = '100%';
-    titulo.textContent   = 'Falha de comunicação';
-    detalhe.textContent  = String(e);
+    lbl.textContent = '❌ Falha de comunicação: ' + e;
     btn.disabled = false;
   }
 }
 
-function _adicionarHistorico(idEs, mat, nomeOpcao, sit, recibo) {
-  if (!idEs) return;
-  let tbody = document.querySelector('table tbody');
-  if (!tbody) {
-    const wrap = document.querySelector('.tabela-wrap');
-    wrap.innerHTML = `<table><thead><tr>
-      <th>Matrícula / Nome</th><th>Situação</th>
-      <th>Cadastro</th><th>Envio</th><th>Recibo / Erro</th><th>Ações</th>
-    </tr></thead><tbody></tbody></table>`;
-    tbody = wrap.querySelector('tbody');
+async function enviarTodos(btnTodos) {
+  const btns = Array.from(document.querySelectorAll('button.btn-enviar:not(.reconsutar)'));
+  if (!btns.length) return;
+  btnTodos.disabled = true;
+  btns.forEach(b => b.disabled = true);
+  const total  = btns.length;
+  const banner = document.getElementById('loteBanner');
+  const barEl  = document.getElementById('loteBar');
+  const pctEl  = document.getElementById('lotePct');
+  const titEl  = document.getElementById('loteTitulo');
+  const detEl  = document.getElementById('loteDetalhe');
+  banner.classList.add('ativo');
+  let ok = 0, erro = 0, aguard = 0;
+  for (let i = 0; i < btns.length; i++) {
+    const btn = btns[i];
+    const m = (btn.getAttribute('onclick') || '').match(/enviar\((\d+)/);
+    if (!m) continue;
+    const id   = parseInt(m[1]);
+    const nome = document.querySelector(`#row-${id} .nome-cell`)?.textContent.trim() || `ID ${id}`;
+    barEl.style.width = Math.round((i / total) * 100) + '%';
+    pctEl.textContent = Math.round((i / total) * 100) + '%';
+    titEl.textContent = `Enviando ${i + 1} de ${total}`;
+    detEl.textContent = nome;
+    try {
+      await enviar(id, btn, true);
+      const sitEl = document.getElementById('sit-' + id);
+      const s = sitEl ? sitEl.textContent.trim() : '';
+      if (s === 'Enviado') ok++;
+      else if (s === 'Aguardando') aguard++;
+      else erro++;
+    } catch(e) { erro++; }
   }
-  const sitMap = { E: ['sit-enviado','Enviado'], W: ['sit-aguardando','Aguardando'], X: ['sit-erro','Com Erro'] };
-  const [cls, lbl] = sitMap[sit] || ['sit-pendente','Pendente'];
-  const agora = new Date();
-  const hh = String(agora.getHours()).padStart(2,'0');
-  const mm = String(agora.getMinutes()).padStart(2,'0');
-  const dd = String(agora.getDate()).padStart(2,'0');
-  const mo = String(agora.getMonth()+1).padStart(2,'0');
-  const yy = String(agora.getFullYear()).slice(2);
-  const nomeParts = nomeOpcao.split(' — ');
-  const nomeFunc  = nomeParts.length > 1 ? nomeParts.slice(1).join(' — ') : nomeOpcao;
-  const acaoHtml = sit === 'W'
-    ? `<button class="btn-reconsultar" onclick="_reconsultar(${idEs}, this)">&#8635; Re-consultar</button>`
-    : sit === 'E' ? `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>` : '';
-  const tr = document.createElement('tr');
-  tr.id = 'row-' + idEs;
-  tr.innerHTML = `
-    <td><div style="font-weight:600;font-size:13px;">${nomeFunc}</div>
-        <div style="font-family:var(--mono);font-size:11px;color:#64748b;">${String(mat).padStart(6,'0')}</div></td>
-    <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
-    <td class="data-cell">${dd}/${mo}/${yy}</td>
-    <td class="data-cell">${dd}/${mo}/${yy} ${hh}:${mm}</td>
-    <td id="rec-${idEs}">${recibo ? `<span class="res-ok">${recibo.slice(0,30)}</span>` : '<span style="color:#94a3b8;font-size:12px;">—</span>'}</td>
-    <td id="acao-${idEs}">${acaoHtml}</td>`;
-  tbody.insertBefore(tr, tbody.firstChild);
+  barEl.style.width = '100%';
+  pctEl.textContent = '100%';
+  titEl.textContent = `Lote concluído — ${total} registros`;
+  detEl.textContent = `✅ ${ok} enviados  ${aguard ? '⏳ ' + aguard + ' aguardando  ' : ''}${erro ? '❌ ' + erro + ' com erro' : ''}`.trim();
+  barEl.style.background = erro ? '#f97316' : '#86198f';
 }
 
-async function _reconsultar(id, btn) {
+async function reconsutar(id, btn) {
+  const sit    = document.getElementById('sit-'  + id);
+  const acaoTd = document.getElementById('acao-' + id);
   btn.disabled    = true;
-  btn.textContent = 'Consultando…';
+  btn.textContent = '⏳ Consultando…';
   try {
     const r = await fetch('/api/esocial_s2206_reconsultar', {
       method: 'POST',
@@ -420,22 +419,19 @@ async function _reconsultar(id, btn) {
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
     const data = await r.json();
-    const sit  = document.getElementById('sit-' + id);
-    const rec  = document.getElementById('rec-' + id);
-    const acao = document.getElementById('acao-' + id);
     if (data.ok) {
       sit.className    = 'sit-badge sit-enviado';
       sit.textContent  = 'Enviado';
-      rec.innerHTML    = `<span class="res-ok">${(data.nr_rec||'').slice(0,30)}</span>`;
-      acao.innerHTML   = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>`;
+      acaoTd.innerHTML = `<span class="res-ok" title="${data.nr_rec}">✓ ${(data.nr_rec||'').slice(0,30)}</span>`;
     } else if (data.aguardando) {
+      sit.className   = 'sit-badge sit-aguardando';
+      sit.textContent = 'Aguardando';
       btn.disabled    = false;
       btn.textContent = '↻ Re-consultar';
     } else {
       sit.className    = 'sit-badge sit-erro';
       sit.textContent  = 'Com Erro';
-      rec.innerHTML    = `<span class="res-erro" title="${data.msg}">${data.msg.slice(0,60)}</span>`;
-      acao.innerHTML   = `<span style="color:#991b1b;font-size:11px;">Verificar erro</span>`;
+      acaoTd.innerHTML = `<button class="btn-enviar reenviar" onclick="enviar(${id}, this)">↻ Reenviar</button>`;
     }
   } catch(e) {
     btn.disabled    = false;

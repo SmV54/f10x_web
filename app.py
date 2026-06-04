@@ -13547,29 +13547,19 @@ def esocial_s2205():
 
     id_empresa   = _get_id_empresa()
     anomes_atual = str(session.get("anomes_atual") or "")
-
-    funcionarios = []
-    try:
-        funcionarios = (supabase.table("tab_cad")
-                        .select("matricula, nome, situacao")
-                        .eq("id_empresa", id_empresa)
-                        .order("nome")
-                        .execute().data or [])
-        funcionarios = [f for f in funcionarios if str(f.get("situacao") or "A") == "A"]
-    except Exception:
-        pass
+    f_sit        = request.args.get("sit", "").strip().upper()
 
     rows = []
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("*")
-                .eq("id_empresa", id_empresa)
-                .eq("layout", "2205")
-                .gte("data_cad", anomes_atual + "01")
-                .lte("data_cad", anomes_atual + "31")
-                .order("data_cad", desc=True)
-                .order("hora_cad", desc=True)
-                .execute().data or [])
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "2205")
+             .gte("data_cad", anomes_atual + "01")
+             .lte("data_cad", anomes_atual + "31")
+             .order("data_cad", desc=True)
+             .order("hora_cad", desc=True))
+        rows = q.execute().data or []
     except Exception:
         pass
 
@@ -13598,6 +13588,14 @@ def esocial_s2205():
         "P": ("Pendente",   "sit-pendente"),
     }
 
+    _SIT_MAP = {
+        "E": ("Enviado",    "sit-enviado"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+    contagens = {k: 0 for k in _SIT_MAP}
     for r in rows:
         r["_nome"]        = nomes.get(r.get("matricula"), "—")
         r["_datacad_fmt"] = _d8(r.get("data_cad"))
@@ -13614,31 +13612,27 @@ def esocial_s2205():
         obs    = (r.get("observacao_erro") or "").strip()
         dgrava = (r.get("data_grava") or "").strip()
 
-        if recibo:
-            s = "E"
-        elif obs.startswith("AGUARDANDO:"):
-            s = "W"
-            r["_protocolo"] = obs[len("AGUARDANDO:"):]
-        elif obs:
-            s = "X"
-        elif dgrava:
-            s = "G"
-        else:
-            s = "P"
+        if recibo:                          s = "E"
+        elif obs.startswith("AGUARDANDO:"): s = "W"
+        elif obs:                           s = "X"
+        elif dgrava:                        s = "G"
+        else:                               s = "P"
         r["_sit"]       = s
-        r["_sit_label"] = _SIT[s][0]
-        r["_sit_class"] = _SIT[s][1]
+        r["_sit_label"] = _SIT_MAP[s][0]
+        r["_sit_class"] = _SIT_MAP[s][1]
+        contagens[s] = contagens.get(s, 0) + 1
+
+    if f_sit:
+        rows = [r for r in rows if r["_sit"] == f_sit]
 
     return render_template(
         "F10_eSocial_S2205.html",
         versao=ler_versao(),
-        nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
-        rows=rows,
-        total=len(rows),
+        rows=rows, total=len(rows),
         anomes_atual=anomes_atual,
-        funcionarios=funcionarios,
+        f_sit=f_sit, contagens=contagens,
     )
 
 
@@ -13678,28 +13672,36 @@ def api_esocial_s2205_enviar():
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
-    id_cliente = session.get("id_cliente")
     data       = request.get_json(force=True) or {}
 
-    matricula    = data.get("matricula")
-    dt_alteracao = str(data.get("dt_alteracao", "")).strip()
-    tpAmb        = str(data.get("tpAmb", "1")).strip()
-    func_data    = data.get("func", {}) or {}
+    id_reg = data.get("id_esocial")
+    tpAmb  = str(data.get("tpAmb", "1")).strip()
 
-    if not matricula:
-        return jsonify({"ok": False, "msg": "Matrícula não informada."})
-    if not dt_alteracao:
-        return jsonify({"ok": False, "msg": "Data da alteração não informada."})
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
 
+    # Lê o registro existente em tab_esocial
     try:
-        r_func = (supabase.table("tab_cad")
-                  .select("*")
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", id_reg).eq("id_empresa", id_empresa)
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        reg_es   = r_es.data[0]
+        matricula = reg_es.get("matricula")
+        dc = str(reg_es.get("data_cad") or "")
+        dt_alteracao = f"{dc[:4]}-{dc[4:6]}-{dc[6:8]}" if len(dc) == 8 else datetime.now().strftime("%Y-%m-%d")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    # Lê dados atuais do funcionário
+    try:
+        r_func = (supabase.table("tab_cad").select("*")
                   .eq("id_empresa", id_empresa)
-                  .eq("matricula", int(matricula))
-                  .limit(1).execute())
+                  .eq("matricula", int(matricula)).limit(1).execute())
         if not r_func.data:
             return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
-        func = {**r_func.data[0], **{k: v for k, v in func_data.items() if v is not None and v != ""}}
+        func = r_func.data[0]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
@@ -13719,37 +13721,7 @@ def api_esocial_s2205_enviar():
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
-
-    agora = datetime.now()
-    try:
-        ins = {
-            "id_cliente": id_cliente,
-            "id_empresa": id_empresa,
-            "data_cad":   agora.strftime("%Y%m%d"),
-            "hora_cad":   agora.strftime("%H%M"),
-            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
-            "ano_mes":    int(dt_alteracao.replace("-", "")[:6]),
-            "folha_tipo": "N",
-            "layout":     "2205",
-            "matricula":  int(matricula),
-            "codigo2":    0,
-        }
-        res_ins = supabase.table("tab_esocial").insert(ins).execute()
-        id_reg  = res_ins.data[0]["id_esocial"]
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao criar registro: {e}"})
-
-    # Atualiza tab_cad com campos editáveis
-    _campos = ["nome", "sexo", "racacor", "estciv", "grauinstr", "dtnascto",
-               "ender_dsclograd", "ender_nrlograd", "ender_complemento",
-               "ender_bairro", "ender_cep", "ender_codmunic", "ender_uf"]
-    upd_cad = {k: func_data[k] for k in _campos if k in func_data and func_data[k] not in (None, "")}
-    if upd_cad:
-        try:
-            supabase.table("tab_cad").update(upd_cad)\
-                .eq("id_empresa", id_empresa).eq("matricula", int(matricula)).execute()
-        except Exception:
-            pass
+    agora     = datetime.now()
 
     try:
         xml_str = _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb)
@@ -14135,17 +14107,7 @@ def esocial_s2206():
 
     id_empresa   = _get_id_empresa()
     anomes_atual = str(session.get("anomes_atual") or "")
-    mat_param    = request.args.get("mat", "").strip()
-
-    funcionarios = []
-    try:
-        funcionarios = [f for f in (supabase.table("tab_cad")
-                        .select("matricula, nome, situacao")
-                        .eq("id_empresa", id_empresa)
-                        .order("nome").execute().data or [])
-                        if str(f.get("situacao") or "A") == "A"]
-    except Exception:
-        pass
+    f_sit        = request.args.get("sit", "").strip().upper()
 
     rows = []
     try:
@@ -14176,13 +14138,14 @@ def esocial_s2206():
         s = str(v or "").strip()
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
 
-    _SIT = {
+    _SIT_MAP = {
         "E": ("Enviado",    "sit-enviado"),
         "X": ("Com Erro",   "sit-erro"),
         "W": ("Aguardando", "sit-aguardando"),
         "G": ("Gerado",     "sit-gerado"),
         "P": ("Pendente",   "sit-pendente"),
     }
+    contagens = {k: 0 for k in _SIT_MAP}
     for r in rows:
         r["_nome"]        = nomes.get(r.get("matricula"), "—")
         r["_datacad_fmt"] = _d8(r.get("data_cad"))
@@ -14197,14 +14160,18 @@ def esocial_s2206():
         recibo = (r.get("recibo") or "").strip()
         obs    = (r.get("observacao_erro") or "").strip()
         dgrava = (r.get("data_grava") or "").strip()
-        if recibo:                      s = "E"
+        if recibo:                          s = "E"
         elif obs.startswith("AGUARDANDO:"): s = "W"
-        elif obs:                       s = "X"
-        elif dgrava:                    s = "G"
-        else:                           s = "P"
+        elif obs:                           s = "X"
+        elif dgrava:                        s = "G"
+        else:                               s = "P"
         r["_sit"]       = s
-        r["_sit_label"] = _SIT[s][0]
-        r["_sit_class"] = _SIT[s][1]
+        r["_sit_label"] = _SIT_MAP[s][0]
+        r["_sit_class"] = _SIT_MAP[s][1]
+        contagens[s] = contagens.get(s, 0) + 1
+
+    if f_sit:
+        rows = [r for r in rows if r["_sit"] == f_sit]
 
     return render_template(
         "F10_eSocial_S2206.html",
@@ -14213,8 +14180,7 @@ def esocial_s2206():
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
         rows=rows, total=len(rows),
         anomes_atual=anomes_atual,
-        funcionarios=funcionarios,
-        mat_param=mat_param,
+        f_sit=f_sit, contagens=contagens,
     )
 
 
@@ -14252,26 +14218,36 @@ def api_esocial_s2206_enviar():
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
-    id_cliente = session.get("id_cliente")
     data       = request.get_json(force=True) or {}
 
-    matricula    = data.get("matricula")
-    dt_alteracao = str(data.get("dt_alteracao", "")).strip()
-    tpAmb        = str(data.get("tpAmb", "1")).strip()
-    func_data    = data.get("func", {}) or {}
+    id_reg = data.get("id_esocial")
+    tpAmb  = str(data.get("tpAmb", "1")).strip()
 
-    if not matricula:
-        return jsonify({"ok": False, "msg": "Matrícula não informada."})
-    if not dt_alteracao:
-        return jsonify({"ok": False, "msg": "Data da alteração não informada."})
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
 
+    # Lê o registro existente em tab_esocial
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", id_reg).eq("id_empresa", id_empresa)
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        reg_es    = r_es.data[0]
+        matricula = reg_es.get("matricula")
+        dc = str(reg_es.get("data_cad") or "")
+        dt_alteracao = f"{dc[:4]}-{dc[4:6]}-{dc[6:8]}" if len(dc) == 8 else datetime.now().strftime("%Y-%m-%d")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    # Lê dados atuais do funcionário
     try:
         r_func = (supabase.table("tab_cad").select("*")
                   .eq("id_empresa", id_empresa)
                   .eq("matricula", int(matricula)).limit(1).execute())
         if not r_func.data:
             return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
-        func = {**r_func.data[0], **{k: v for k, v in func_data.items() if v is not None and v != ""}}
+        func = r_func.data[0]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
@@ -14291,37 +14267,7 @@ def api_esocial_s2206_enviar():
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
-
-    agora = datetime.now()
-    try:
-        ins = {
-            "id_cliente": id_cliente,
-            "id_empresa": id_empresa,
-            "data_cad":   agora.strftime("%Y%m%d"),
-            "hora_cad":   agora.strftime("%H%M"),
-            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
-            "ano_mes":    int(dt_alteracao.replace("-", "")[:6]),
-            "folha_tipo": "N",
-            "layout":     "2206",
-            "matricula":  int(matricula),
-            "codigo2":    0,
-        }
-        res_ins = supabase.table("tab_esocial").insert(ins).execute()
-        id_reg  = res_ins.data[0]["id_esocial"]
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao criar registro: {e}"})
-
-    # Atualiza tab_cad com campos contratuais editáveis
-    _campos = ["vrsalfx", "undsalfixo", "cbofuncao", "nmcargo", "codcateg",
-               "tpregjor", "natatividade", "qtdhrssem", "tpjornada",
-               "tmpparc", "hornoturno", "tpcontr"]
-    upd_cad = {k: func_data[k] for k in _campos if k in func_data and func_data[k] not in (None, "")}
-    if upd_cad:
-        try:
-            supabase.table("tab_cad").update(upd_cad)\
-                .eq("id_empresa", id_empresa).eq("matricula", int(matricula)).execute()
-        except Exception:
-            pass
+    agora     = datetime.now()
 
     try:
         xml_str = _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb)
