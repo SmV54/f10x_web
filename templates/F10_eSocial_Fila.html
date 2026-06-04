@@ -203,10 +203,17 @@ tr:hover td { background: #f8fafc; }
 
   <!-- ── FILTROS ── -->
   <form method="GET" action="/esocial_fila" class="filtro-bar">
+    <input type="hidden" name="periodo"
+           value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
     <div class="filtro-group">
       <label>Período</label>
-      <input type="month" name="periodo" class="filtro-input" style="width:150px;"
-             value="{{ periodo[:4] + '-' + periodo[4:6] if periodo|length == 6 else '' }}">
+      <div style="height:36px;display:flex;align-items:center;padding:0 12px;
+                  background:#f1f5f9;border:1px solid #d1d5db;border-radius:7px;
+                  font-family:var(--mono);font-size:14px;font-weight:600;color:#1e293b;">
+        {% if anomes_atual|length == 6 %}
+          {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
+        {% else %}—{% endif %}
+      </div>
     </div>
     <div class="filtro-group">
       <label>Layout</label>
@@ -224,10 +231,7 @@ tr:hover td { background: #f8fafc; }
       </select>
     </div>
     <button type="submit" class="btn-filtrar">&#128269; Filtrar</button>
-    <a class="btn-limpar"
-       href="/esocial_fila?periodo={{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length==6 else '' }}">
-      &#10006; Limpar
-    </a>
+    <a class="btn-limpar" href="/esocial_fila">&#10006; Limpar</a>
     <a class="btn-pdf" id="btnPdf" href="#" target="_blank" onclick="abrirPdf(event)">&#128438; Imprimir em PDF</a>
   </form>
 
