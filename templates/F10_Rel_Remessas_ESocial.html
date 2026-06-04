@@ -50,38 +50,36 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); fon
 /* ── FILTROS ── */
 .filtros {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 16px 20px; margin-bottom: 18px;
+    border-radius: 12px; padding: 10px 20px; margin-bottom: 18px;
     box-shadow: 0 2px 8px rgba(0,0,0,.04);
 }
-.filtros-titulo {
-    font-size: 11px; font-weight: 700; letter-spacing: .07em;
-    text-transform: uppercase; color: #2d4a6e;
-    margin-bottom: 12px;
-}
 .filtros-grade {
-    display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end;
+    display: flex; flex-wrap: nowrap; gap: 8px; align-items: center;
 }
-.campo { display: flex; flex-direction: column; gap: 4px; }
-.campo label { font-size: 10px; font-weight: 600; color: var(--sub); letter-spacing: .06em; text-transform: uppercase; }
+.campo { display: flex; flex-direction: row; align-items: center; gap: 5px; flex-shrink: 0; }
+.campo label { font-size: 10px; font-weight: 700; color: var(--sub); letter-spacing: .04em;
+               text-transform: uppercase; white-space: nowrap; }
 .campo input, .campo select {
-    height: 34px; padding: 0 10px;
+    height: 32px; padding: 0 8px;
     border: 1px solid var(--border); border-radius: 7px;
     font-family: var(--sans); font-size: 12px;
-    background: #f8fafc; outline: none; transition: .15s;
+    background: #f8fafc; outline: none; transition: .15s; flex-shrink: 0;
 }
 .campo input:focus, .campo select:focus {
     border-color: var(--accent); background: #fff;
     box-shadow: 0 0 0 3px rgba(42,125,225,.1);
 }
-.campo-sit { display: flex; flex-direction: column; gap: 4px; }
-.campo-sit label.titulo { font-size: 10px; font-weight: 600; color: var(--sub); letter-spacing: .06em; text-transform: uppercase; }
-.campo-sit .checks { display: flex; gap: 12px; align-items: center; height: 34px; }
-.campo-sit .chk-label { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; color: #334155; cursor: pointer; white-space: nowrap; }
+.campo-sit { display: flex; flex-direction: row; align-items: center; gap: 6px; flex-shrink: 0; }
+.campo-sit label.titulo { font-size: 10px; font-weight: 700; color: var(--sub); letter-spacing: .04em;
+                          text-transform: uppercase; white-space: nowrap; }
+.campo-sit .checks { display: flex; gap: 10px; align-items: center; }
+.campo-sit .chk-label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: #334155; cursor: pointer; white-space: nowrap; }
 .campo-sit input[type="checkbox"] { accent-color: var(--accent); transform: scale(0.9); margin: 0; }
+.sep-filtro { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
 
-.btns-filtro { display: flex; gap: 8px; align-items: flex-end; }
+.btns-filtro { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 .btn { display: inline-flex; align-items: center; gap: 6px;
-       height: 34px; padding: 0 16px; border: none; border-radius: 7px;
+       height: 32px; padding: 0 14px; border: none; border-radius: 7px;
        font-family: var(--sans); font-size: 12px; font-weight: 600;
        cursor: pointer; transition: .15s; white-space: nowrap; }
 .btn-buscar { background: var(--accent); color: #fff; }
@@ -264,33 +262,34 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
 
     <!-- FILTROS -->
     <div class="filtros no-print">
-        <div class="filtros-titulo">🔍 Filtros de Consulta</div>
         <form method="get" action="/rel_esocial_remessas" id="formFiltro" onsubmit="prepararFiltros()">
             <input type="hidden" name="buscar" value="1">
             <div class="filtros-grade">
 
                 <div class="campo">
-                    <label>Matrícula</label>
+                    <label>Matr.</label>
                     <input type="text" name="matricula" maxlength="6" placeholder="000000"
-                           value="{{ f_matricula }}" style="width:100px;"
+                           value="{{ f_matricula }}" style="width:68px;"
                            oninput="this.value=this.value.replace(/\D/g,'')">
                 </div>
 
                 <div class="campo">
-                    <label>Mês / Ano (Folha)</label>
+                    <label>Folha</label>
                     <input type="month" name="ano_mes_input" id="inp_anomes"
-                           value="{{ f_ano_mes_input }}" style="width:150px;">
+                           value="{{ f_ano_mes_input }}" style="width:130px;">
                 </div>
 
                 <div class="campo">
                     <label>Layout</label>
-                    <select name="layout" style="width:200px;">
+                    <select name="layout" style="width:155px;">
                         <option value="">— Todos —</option>
                         {% for cod, desc in layouts.items() %}
                         <option value="{{ cod }}" {% if f_layout == cod %}selected{% endif %}>{{ desc }}</option>
                         {% endfor %}
                     </select>
                 </div>
+
+                <div class="sep-filtro"></div>
 
                 <div class="campo-sit">
                     <label class="titulo">Situação</label>
@@ -310,32 +309,36 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
                     </div>
                 </div>
 
+                <div class="sep-filtro"></div>
+
                 <div class="campo">
-                    <label>Dt. Cadastro — De</label>
-                    <input type="date" name="dt_cad_de" value="{{ f_dt_cad_de }}" style="width:145px;">
+                    <label>Cad. De</label>
+                    <input type="date" name="dt_cad_de" value="{{ f_dt_cad_de }}" style="width:122px;">
                 </div>
 
                 <div class="campo">
-                    <label>Dt. Cadastro — Até</label>
-                    <input type="date" name="dt_cad_ate" value="{{ f_dt_cad_ate }}" style="width:145px;">
+                    <label>Até</label>
+                    <input type="date" name="dt_cad_ate" value="{{ f_dt_cad_ate }}" style="width:122px;">
+                </div>
+
+                <div class="sep-filtro"></div>
+
+                <div class="campo">
+                    <label>Rem. De</label>
+                    <input type="date" name="remessa_de" value="{{ f_remessa_de }}" style="width:122px;">
                 </div>
 
                 <div class="campo">
-                    <label>Dt. Remessa — De</label>
-                    <input type="date" name="remessa_de" value="{{ f_remessa_de }}" style="width:145px;">
-                </div>
-
-                <div class="campo">
-                    <label>Dt. Remessa — Até</label>
-                    <input type="date" name="remessa_ate" value="{{ f_remessa_ate }}" style="width:145px;">
+                    <label>Até</label>
+                    <input type="date" name="remessa_ate" value="{{ f_remessa_ate }}" style="width:122px;">
                 </div>
 
                 <div class="btns-filtro">
                     <button type="submit" class="btn btn-buscar">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                         </svg>
-                        Buscar
+                        Filtrar
                     </button>
                     <button type="button" class="btn btn-limpar" onclick="limparFiltros()">Limpar</button>
                 </div>
