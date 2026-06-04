@@ -95,20 +95,68 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .lay-1298 .lay-card-code  { background: #fff7ed; color: #c2410c; }
 .lay-1299 .lay-card-code  { background: #fee2e2; color: #991b1b; }
 .lay-3000 .lay-card-code  { background: #f8fafc; color: #475569; }
+.lay-1000 .lay-card-code  { background: #cffafe; color: #0e7490; }
+.lay-1000.selecionado     { border-color: #06b6d4; }
+.lay-1005 .lay-card-code  { background: #ecfccb; color: #3f6212; }
+.lay-1005.selecionado     { border-color: #65a30d; }
+.lay-1010 .lay-card-code  { background: #fef3c7; color: #92400e; }
+.lay-1010.selecionado     { border-color: #d97706; }
+.lay-1020 .lay-card-code  { background: #e0e7ff; color: #3730a3; }
+.lay-1020.selecionado     { border-color: #6366f1; }
 
 /* ── FORM BAIXO ── */
 .form-func {
     display: none; padding-top: 18px; border-top: 1px solid #f1f5f9; margin-top: 4px;
 }
-.form-group { display: flex; flex-direction: column; gap: 5px; }
-.form-group label { font-size: 11px; font-weight: 700; color: #475569;
-                    text-transform: uppercase; letter-spacing: .04em; }
-.form-select, .form-input {
+.form-input {
     height: 38px; border: 1px solid #d1d5db; border-radius: 8px;
     padding: 0 12px; font-size: 13px; font-family: var(--sans);
     background: #f9fafb; color: var(--label); transition: .13s;
 }
-.form-select:focus, .form-input:focus { outline: none; border-color: var(--accent); background: #fff; }
+.form-input:focus { outline: none; border-color: var(--accent); background: #fff; }
+
+/* aviso selecione funcionário */
+.func-aviso-sel {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    padding: 9px 14px; background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 8px; font-size: 13px; font-weight: 600; color: #92400e;
+}
+
+/* lista multi-seleção */
+.func-lista-wrap {
+    border: 2px solid var(--border); border-radius: 10px; overflow: hidden;
+    transition: border-color .25s, box-shadow .25s;
+}
+.func-lista-wrap.destaque {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(13,148,136,.18);
+}
+.func-busca-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; background: #f8fafc; border-bottom: 1px solid var(--border);
+}
+.func-busca-row input {
+    flex: 1; height: 32px; border: 1px solid #d1d5db; border-radius: 6px;
+    padding: 0 10px; font-size: 12px; font-family: var(--sans); background: #fff; color: var(--label);
+}
+.func-busca-row input:focus { outline: none; border-color: var(--accent); }
+.btn-todos {
+    height: 32px; padding: 0 12px; border: 1px solid #d1d5db; border-radius: 6px;
+    background: #fff; font-size: 11px; font-weight: 700; color: #475569;
+    cursor: pointer; white-space: nowrap; transition: .13s; font-family: var(--sans);
+}
+.btn-todos:hover { border-color: var(--accent); color: var(--accent); }
+.func-contador { font-size: 11px; color: #64748b; white-space: nowrap; min-width: 110px; text-align: right; }
+.func-lista { max-height: 220px; overflow-y: auto; }
+.func-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; cursor: pointer; border-bottom: 1px solid #f8fafc; transition: background .1s;
+}
+.func-item:hover { background: #f0fdfa; }
+.func-item:last-child { border-bottom: none; }
+.func-item input[type="checkbox"] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+.func-mat  { font-family: var(--mono); font-size: 11px; color: #94a3b8; flex-shrink: 0; }
+.func-nome { font-size: 13px; }
 
 .btn-criar {
     display: inline-flex; align-items: center; gap: 8px;
@@ -152,6 +200,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
       <line x1="9"  y1="15" x2="15" y2="15"/>
     </svg>
     eSocial — Gerador de Remessa
+    {% if anomes_atual|length == 6 %}
+    <span style="font-size:13px;font-weight:500;color:#8baac8;font-family:var(--mono);">
+      {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
+    </span>
+    {% endif %}
   </div>
   <div style="display:flex;align-items:center;gap:16px;">
     <div>
@@ -169,8 +222,34 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
       &#43; Criar Nova Remessa eSocial
     </div>
 
+    <!-- ── Eventos de Tabela ── -->
+    <div class="secao-label">Eventos de Tabela</div>
+    <div class="layouts-grid">
+
+      <div class="lay-card lay-1000" data-layout="1000" data-tipo="tabela" onclick="selecionarLayout(this)">
+        <div class="lay-card-code">S-1000</div>
+        <div class="lay-card-desc">Empregador</div>
+      </div>
+
+      <div class="lay-card lay-1005" data-layout="1005" data-tipo="tabela" onclick="selecionarLayout(this)">
+        <div class="lay-card-code">S-1005</div>
+        <div class="lay-card-desc">Estabelecimentos</div>
+      </div>
+
+      <div class="lay-card lay-1010" data-layout="1010" data-tipo="tabela" onclick="selecionarLayout(this)">
+        <div class="lay-card-code">S-1010</div>
+        <div class="lay-card-desc">Rubricas</div>
+      </div>
+
+      <div class="lay-card lay-1020" data-layout="1020" data-tipo="tabela" onclick="selecionarLayout(this)">
+        <div class="lay-card-code">S-1020</div>
+        <div class="lay-card-desc">Lotações</div>
+      </div>
+
+    </div>
+
     <!-- ── Eventos Não Periódicos ── -->
-    <div class="secao-label">Eventos Não Periódicos</div>
+    <div class="secao-label" style="margin-top:4px;">Eventos Não Periódicos</div>
     <div class="layouts-grid">
 
       <div class="lay-card lay-2200" data-layout="2200" data-tipo="func" onclick="selecionarLayout(this)">
@@ -243,17 +322,29 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 
     <!-- ── Formulário de funcionário (não-periódicos) ── -->
     <div class="form-func" id="formFunc">
-      <div class="form-group" style="max-width:420px;">
-        <label>Funcionário *</label>
-        <select class="form-select" id="selFuncionario">
-          <option value="">— Selecione —</option>
-          {% for f in funcionarios %}
-          <option value="{{ f.matricula }}">{{ '%06d' % f.matricula }} — {{ f.nome }}</option>
-          {% endfor %}
-        </select>
+
+      <div class="func-aviso-sel">
+        &#9660; Selecione um ou mais funcionários abaixo
       </div>
 
-      <div style="display:flex;align-items:center;gap:14px;margin-top:18px;flex-wrap:wrap;">
+      <div class="func-lista-wrap" id="funcListaWrap">
+        <div class="func-busca-row">
+          <input type="text" id="funcBusca" placeholder="Filtrar por nome ou matrícula…" oninput="filtrarFuncs()">
+          <button type="button" class="btn-todos" id="btnTodos" onclick="toggleTodos()">Todos</button>
+          <span class="func-contador" id="funcContador">Nenhum selecionado</span>
+        </div>
+        <div class="func-lista" id="funcLista">
+          {% for f in funcionarios %}
+          <label class="func-item">
+            <input type="checkbox" value="{{ f.matricula }}" class="func-chk" onchange="atualizarSelecao()">
+            <span class="func-mat">{{ '%06d' % f.matricula }}</span>
+            <span class="func-nome">{{ f.nome }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap;">
         <button class="btn-criar" id="btnCriar" onclick="criarRemessa(this)" disabled>
           &#10003; Criar Remessa Pendente
         </button>
@@ -263,6 +354,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
       </div>
 
       <div class="resultado" id="divResultado"></div>
+    </div>
+
+    <!-- ── Formulário de tabela (sem funcionário) ── -->
+    <div id="formTabela" style="display:none;padding-top:18px;border-top:1px solid #f1f5f9;margin-top:4px;">
+      <div style="display:flex;align-items:center;gap:14px;margin-top:4px;flex-wrap:wrap;">
+        <button class="btn-criar" id="btnCriarTabela" onclick="criarRemessaTabela(this)">
+          &#10003; Criar Remessa Pendente
+        </button>
+        <span style="font-size:12px;color:#94a3b8;">
+          A remessa ficará pendente na Fila — você envia quando quiser.
+        </span>
+      </div>
+      <div class="resultado" id="divResultadoTabela"></div>
     </div>
 
   </div>
@@ -304,21 +408,37 @@ function selecionarLayout(card) {
   layoutAtual  = layout;
 
   const formFunc      = document.getElementById('formFunc');
+  const formTabela    = document.getElementById('formTabela');
   const avisoPer      = document.getElementById('avisoPeriodico');
   const linkPer       = document.getElementById('linkPeriodico');
   const divResultado  = document.getElementById('divResultado');
+  const divResultadoT = document.getElementById('divResultadoTabela');
 
-  divResultado.style.display = 'none';
+  divResultado.style.display  = 'none';
+  divResultadoT.style.display = 'none';
 
   if (tipo === 'func') {
-    formFunc.style.display  = 'block';
-    avisoPer.style.display  = 'none';
-    _atualizarBtnCriar();
+    formFunc.style.display   = 'block';
+    formTabela.style.display = 'none';
+    avisoPer.style.display   = 'none';
+    atualizarSelecao();
+    setTimeout(() => {
+      formFunc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      const wrap = document.getElementById('funcListaWrap');
+      wrap.classList.add('destaque');
+      setTimeout(() => wrap.classList.remove('destaque'), 1400);
+      document.getElementById('funcBusca').focus();
+    }, 60);
+  } else if (tipo === 'tabela') {
+    formFunc.style.display   = 'none';
+    formTabela.style.display = 'block';
+    avisoPer.style.display   = 'none';
   } else {
-    formFunc.style.display = 'none';
+    formFunc.style.display   = 'none';
+    formTabela.style.display = 'none';
     const info = LINKS_PERIODICOS[layout];
     if (info) {
-      linkPer.innerHTML  = `<a href="${info[0]}">&rarr; Abrir tela de ${info[1]}</a>`;
+      linkPer.innerHTML      = `<a href="${info[0]}">&rarr; Abrir tela de ${info[1]}</a>`;
       avisoPer.style.display = 'block';
     } else {
       avisoPer.style.display = 'none';
@@ -326,41 +446,108 @@ function selecionarLayout(card) {
   }
 }
 
-function _atualizarBtnCriar() {
-  const mat = document.getElementById('selFuncionario').value;
-  document.getElementById('btnCriar').disabled = !(layoutAtual && mat);
+function filtrarFuncs() {
+  const q = document.getElementById('funcBusca').value.toLowerCase();
+  document.querySelectorAll('.func-item').forEach(item => {
+    item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
 }
 
-document.getElementById('selFuncionario').addEventListener('change', _atualizarBtnCriar);
+function toggleTodos() {
+  const visiveis = [...document.querySelectorAll('.func-item')]
+    .filter(item => item.style.display !== 'none')
+    .map(item => item.querySelector('.func-chk'));
+  const allChecked = visiveis.length > 0 && visiveis.every(c => c.checked);
+  visiveis.forEach(c => c.checked = !allChecked);
+  atualizarSelecao();
+}
+
+function atualizarSelecao() {
+  const n   = document.querySelectorAll('.func-chk:checked').length;
+  const btn = document.getElementById('btnCriar');
+
+  document.getElementById('funcContador').textContent =
+    n === 0 ? 'Nenhum selecionado' : `${n} selecionado(s)`;
+
+  btn.disabled  = !(layoutAtual && n > 0);
+  btn.innerHTML = n > 1
+    ? `&#10003; Criar ${n} Remessas Pendentes`
+    : '&#10003; Criar Remessa Pendente';
+}
 
 async function criarRemessa(btn) {
-  const mat = document.getElementById('selFuncionario').value;
-  if (!layoutAtual || !mat) return;
+  const selecionados = [...document.querySelectorAll('.func-chk:checked')];
+  if (!layoutAtual || selecionados.length === 0) return;
 
   btn.disabled = true;
   const div = document.getElementById('divResultado');
   div.style.display = 'none';
 
+  const criados = [];
+  const erros   = [];
+
+  for (const chk of selecionados) {
+    const mat  = chk.value;
+    const nome = chk.closest('.func-item').querySelector('.func-nome').textContent;
+    try {
+      const r    = await fetch('/api/esocial_gerador_criar', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ layout: layoutAtual, matricula: mat }),
+      });
+      const data = await r.json();
+      if (data.ok) {
+        criados.push({ id: data.id_esocial, nome });
+      } else {
+        erros.push(`${nome}: ${data.msg || 'erro'}`);
+      }
+    } catch(e) {
+      erros.push(`${nome}: falha de comunicação`);
+    }
+  }
+
+  div.style.display = 'block';
+  if (erros.length === 0) {
+    div.className = 'resultado ok';
+    div.innerHTML = `&#10003; <strong>${criados.length} remessa(s) S-${layoutAtual} criada(s):</strong><br>`
+      + criados.map(c => `&nbsp;&nbsp;• ${c.nome} (id ${c.id})`).join('<br>')
+      + `<br><a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>`;
+  } else if (criados.length > 0) {
+    div.className = 'resultado ok';
+    div.innerHTML = `&#10003; ${criados.length} criada(s), ${erros.length} com erro:<br>`
+      + erros.map(e => `&nbsp;&nbsp;&#10007; ${e}`).join('<br>')
+      + `<br><a href="/esocial_fila">&#8594; Ver na Fila</a>`;
+  } else {
+    div.className   = 'resultado erro';
+    div.textContent = erros.join('; ');
+  }
+
+  document.querySelectorAll('.func-chk').forEach(c => c.checked = false);
+  atualizarSelecao();
+  btn.disabled = false;
+}
+
+async function criarRemessaTabela(btn) {
+  if (!layoutAtual) return;
+
+  btn.disabled = true;
+  const div = document.getElementById('divResultadoTabela');
+  div.style.display = 'none';
+
   try {
-    const r = await fetch('/api/esocial_gerador_criar', {
+    const r    = await fetch('/api/esocial_gerador_criar', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ layout: layoutAtual, matricula: mat }),
+      body:    JSON.stringify({ layout: layoutAtual }),
     });
     const data = await r.json();
 
     div.style.display = 'block';
     if (data.ok) {
       div.className = 'resultado ok';
-      const nomeOpt = document.getElementById('selFuncionario');
-      const nomeFunc = nomeOpt.options[nomeOpt.selectedIndex].text.split(' — ').slice(1).join(' — ');
-      div.innerHTML = `&#10003; <strong>Remessa S-${data.layout} criada</strong> para <strong>${nomeFunc}</strong>
+      div.innerHTML = `&#10003; <strong>Remessa S-${data.layout} criada</strong>
         (id ${data.id_esocial}).<br>
         <a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>`;
-
-      // Limpa seleção para próxima criação
-      document.getElementById('selFuncionario').value = '';
-      _atualizarBtnCriar();
     } else {
       div.className   = 'resultado erro';
       div.textContent = data.msg || 'Erro desconhecido.';

@@ -157,6 +157,14 @@ tr:hover td { background: #f8fafc; }
 }
 .btn-ir:hover { background: #e0f2fe; border-color: #7dd3fc; }
 
+.btn-excluir {
+    font-size: 11px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+    background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3;
+    font-family: var(--sans); transition: .12s;
+}
+.btn-excluir:hover { background: #ffe4e6; border-color: #fca5a5; }
+.btn-excluir:disabled { opacity: .5; cursor: not-allowed; }
+
 .vazio { padding: 40px; text-align: center; color: #94a3b8; font-size: 13px; }
 </style>
 </head>
@@ -288,14 +296,23 @@ tr:hover td { background: #f8fafc; }
           </td>
 
           <td id="acao-{{ r.id_esocial }}">
-            {% if r._sit == 'W' %}
-            <button class="btn-reconsultar"
-                    onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
-            {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-            <a class="btn-ir" href="{{ r._lay_href }}{% if r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Ir para {{ r._lay_codigo }}</a>
-            {% elif r._sit == 'E' %}
-            <span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>
-            {% endif %}
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              {% if r._sit == 'W' %}
+              <button class="btn-reconsultar"
+                      onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
+              {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
+              <a class="btn-ir" href="{{ r._lay_href }}{% if r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Ir para {{ r._lay_codigo }}</a>
+              {% elif r._sit == 'E' %}
+              <span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>
+              {% endif %}
+              {% if r._sit != 'E' %}
+              <button class="btn-excluir"
+                      data-id="{{ r.id_esocial }}"
+                      data-nome="{{ r._nome }}"
+                      data-lay="{{ r._lay_codigo }}"
+                      onclick="_excluir(this)">&#10005; Excluir</button>
+              {% endif %}
+            </div>
           </td>
 
         </tr>
@@ -320,6 +337,43 @@ function abrirPdf(e) {
   let url = `/rel_esocial_fila_pdf?periodo=${periodo}`;
   if (layout) url += `&layout=${layout}`;
   window.open(url, '_blank');
+}
+
+async function _excluir(btn) {
+  const id   = btn.dataset.id;
+  const nome = btn.dataset.nome !== '—' ? btn.dataset.nome : btn.dataset.lay;
+  const lay  = btn.dataset.lay;
+
+  if (!confirm(`Excluir a remessa ${lay} de "${nome}"?\n\nEsta ação não pode ser desfeita.`)) return;
+
+  btn.disabled    = true;
+  btn.textContent = '…';
+
+  try {
+    const r    = await fetch('/api/esocial_excluir', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ id_esocial: parseInt(id) }),
+    });
+    const data = await r.json();
+
+    if (data.ok) {
+      const row = document.getElementById('row-' + id);
+      if (row) {
+        row.style.transition = 'opacity .3s';
+        row.style.opacity    = '0';
+        setTimeout(() => row.remove(), 300);
+      }
+    } else {
+      alert(data.msg || 'Erro ao excluir.');
+      btn.disabled    = false;
+      btn.textContent = '✕ Excluir';
+    }
+  } catch(e) {
+    alert('Falha de comunicação.');
+    btn.disabled    = false;
+    btn.textContent = '✕ Excluir';
+  }
 }
 
 async function _reconsultar(id, btn) {

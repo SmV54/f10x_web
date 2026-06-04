@@ -154,6 +154,11 @@ tr:hover td { background: #fafafa; }
       <line x1="18.5" y1="8.5" x2="18.5" y2="13.5"/>
     </svg>
     eSocial S-2205 — Alteração Cadastral
+    {% if anomes_atual|length == 6 %}
+    <span style="font-size:13px;font-weight:500;color:#8baac8;font-family:var(--mono);">
+      {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
+    </span>
+    {% endif %}
   </div>
   <div style="display:flex;align-items:center;gap:16px;">
     <div>

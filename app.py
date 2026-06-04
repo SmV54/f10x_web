@@ -14400,7 +14400,9 @@ def api_esocial_gerador_criar():
     matricula = data.get("matricula")
 
     _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2230", "2299"}
-    _LAYOUTS_VALIDOS = {"2200", "2205", "2206", "2230", "2299", "1200", "1210", "1298", "1299", "3000"}
+    _LAYOUTS_VALIDOS = {"1000", "1005", "1010", "1020",
+                        "2200", "2205", "2206", "2230", "2299",
+                        "1200", "1210", "1298", "1299", "3000"}
 
     if layout not in _LAYOUTS_VALIDOS:
         return jsonify({"ok": False, "msg": f"Layout inválido: {layout}"})
@@ -14443,6 +14445,45 @@ def api_esocial_gerador_criar():
     })
 
 
+@app.route("/api/esocial_excluir", methods=["POST"])
+def api_esocial_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa = _get_id_empresa()
+    data       = request.get_json(force=True) or {}
+    id_esocial = data.get("id_esocial")
+
+    if not id_esocial:
+        return jsonify({"ok": False, "msg": "id_esocial ausente."})
+
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, recibo, layout, matricula")
+                .eq("id_esocial", id_esocial)
+                .eq("id_empresa", id_empresa)
+                .execute().data or [])
+
+        if not rows:
+            return jsonify({"ok": False, "msg": "Remessa não encontrada."})
+
+        r      = rows[0]
+        recibo = (r.get("recibo") or "").strip()
+        if recibo:
+            return jsonify({"ok": False, "msg": "Remessa já possui recibo — não pode ser excluída."})
+
+        supabase.table("tab_esocial").delete().eq("id_esocial", id_esocial).execute()
+
+        gravar_log("ESOCIAL",
+                   f"Remessa S-{r.get('layout')} id={id_esocial} excluída pelo usuário",
+                   matricula=r.get("matricula"))
+
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro: {e}"})
+
+
 # =========================================================
 # eSocial S-1200 — TELA DE LISTAGEM
 # =========================================================
@@ -14451,10 +14492,11 @@ def esocial_s1200():
     if not session.get("logado"):
         return redirect("/")
 
-    id_empresa = _get_id_empresa()
-    f_sit      = request.args.get("sit", "")
-    f_anomes   = request.args.get("anomes", "")
-    f_tipo     = request.args.get("tipo", "")
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+    f_sit        = request.args.get("sit", "")
+    f_anomes     = request.args.get("anomes", "")
+    f_tipo       = request.args.get("tipo", "")
 
     rows = []
     try:
@@ -14566,6 +14608,7 @@ def esocial_s1200():
         total=len(rows),
         periodos_disp=periodos_disp,
         TP_FOLHA=_TP_FOLHA,
+        anomes_atual=anomes_atual,
     )
 
 
@@ -14947,10 +14990,11 @@ def esocial_s1210():
     if not session.get("logado"):
         return redirect("/")
 
-    id_empresa = _get_id_empresa()
-    f_sit      = request.args.get("sit", "")
-    f_anomes   = request.args.get("anomes", "")
-    f_tipo     = request.args.get("tipo", "")
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+    f_sit        = request.args.get("sit", "")
+    f_anomes     = request.args.get("anomes", "")
+    f_tipo       = request.args.get("tipo", "")
 
     rows = []
     try:
@@ -15109,6 +15153,7 @@ def esocial_s1210():
         periodos_disp=periodos_disp,
         TP_FOLHA=_TP_FOLHA,
         dtpgto_default=dtpgto_default,
+        anomes_atual=anomes_atual,
     )
 
 
