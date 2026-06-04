@@ -166,6 +166,13 @@ tr:hover td { background: #f8fafc; }
 .btn-excluir:hover { background: #ffe4e6; border-color: #fca5a5; }
 .btn-excluir:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ── PROGRESS ROW ── */
+.prog-row  { display: none; }
+.prog-cell { padding: 4px 12px 10px !important; }
+.prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 5px; overflow: hidden; margin-bottom: 4px; }
+.prog-bar  { height: 5px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-label{ font-size: 11px; color: #64748b; font-family: var(--mono); }
+
 .vazio { padding: 40px; text-align: center; color: #94a3b8; font-size: 13px; }
 </style>
 </head>
@@ -328,6 +335,12 @@ tr:hover td { background: #f8fafc; }
           </td>
 
         </tr>
+        <tr class="prog-row" id="prog-{{ r.id_esocial }}">
+          <td colspan="6" class="prog-cell">
+            <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
+            <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
@@ -388,6 +401,17 @@ async function _excluir(btn) {
   }
 }
 
+const _ETAPAS_FILA = [
+  [10, 'Gerando XML…'],
+  [25, 'Assinando evento…'],
+  [40, 'Montando lote…'],
+  [55, 'Transmitindo ao eSocial…'],
+  [70, 'Aguardando processamento (1/3)…'],
+  [82, 'Aguardando processamento (2/3)…'],
+  [92, 'Aguardando processamento (3/3)…'],
+  [98, 'Consultando resultado…'],
+];
+
 async function _enviarFila(btn) {
   const id     = btn.dataset.id;
   const layout = btn.dataset.layout;
@@ -395,8 +419,28 @@ async function _enviarFila(btn) {
   const nome   = btn.dataset.nome   || '—';
   const laycod = btn.dataset.laycod || layout;
 
+  const progRow = document.getElementById('prog-' + id);
+  const bar     = document.getElementById('bar-'  + id);
+  const lbl     = document.getElementById('lbl-'  + id);
+  const sit     = document.getElementById('sit-'  + id);
+  const rec     = document.getElementById('rec-'  + id);
+  const acao    = document.getElementById('acao-' + id);
+
   btn.disabled    = true;
   btn.textContent = 'Enviando…';
+  progRow.style.display = 'table-row';
+  bar.style.width       = '5%';
+  bar.style.background  = 'var(--accent)';
+  lbl.textContent       = 'Iniciando…';
+
+  let etapaIdx = 0;
+  const animTimer = setInterval(() => {
+    if (etapaIdx < _ETAPAS_FILA.length) {
+      bar.style.width = _ETAPAS_FILA[etapaIdx][0] + '%';
+      lbl.textContent = _ETAPAS_FILA[etapaIdx][1];
+      etapaIdx++;
+    }
+  }, 4000);
 
   const APIS = {
     '2200': '/api/esocial_s2200_enviar',
@@ -421,17 +465,20 @@ async function _enviarFila(btn) {
       body:    JSON.stringify(body),
     });
     const data  = await resp.json();
+    clearInterval(animTimer);
     const newId = data.id_esocial || id;
-    const sit   = document.getElementById('sit-' + id);
-    const rec   = document.getElementById('rec-' + id);
-    const acao  = document.getElementById('acao-' + id);
+
+    bar.style.width = '100%';
+    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
 
     if (data.ok) {
+      lbl.textContent = 'Enviado — Recibo: ' + (data.nr_rec || '');
       sit.className   = 'sit-badge sit-enviado';
       sit.textContent = 'Enviado';
       rec.innerHTML   = `<span class="res-ok">${(data.nr_rec||'').slice(0,32)}</span>`;
       acao.innerHTML  = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>`;
     } else if (data.aguardando) {
+      lbl.textContent = data.msg || 'eSocial ainda processando.';
       sit.className   = 'sit-badge sit-aguardando';
       sit.textContent = 'Aguardando';
       acao.innerHTML  =
@@ -440,6 +487,7 @@ async function _enviarFila(btn) {
         `<button class="btn-excluir" data-id="${newId}" data-nome="${nome.replace(/"/g,"'")}" data-lay="${laycod}" onclick="_excluir(this)">&#10005; Excluir</button>` +
         `</div>`;
     } else {
+      lbl.textContent = data.msg || 'Erro ao enviar.';
       sit.className   = 'sit-badge sit-erro';
       sit.textContent = 'Com Erro';
       rec.innerHTML   = `<span class="res-erro" title="${(data.msg||'').replace(/"/g,"'")}">${(data.msg||'Erro').slice(0,60)}</span>`;
@@ -447,9 +495,12 @@ async function _enviarFila(btn) {
       btn.textContent = '▶ Enviar para eSocial';
     }
   } catch(e) {
+    clearInterval(animTimer);
+    bar.style.width      = '100%';
+    bar.style.background = '#ef4444';
+    lbl.textContent      = 'Falha de comunicação: ' + e;
     btn.disabled    = false;
     btn.textContent = '▶ Enviar para eSocial';
-    alert('Falha de comunicação: ' + e);
   }
 }
 
