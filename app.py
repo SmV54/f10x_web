@@ -14279,12 +14279,18 @@ def rel_esocial_fila_pdf():
         canvas.line(_lm, y2 - 4, _pw - _rm, y2 - 4)
         canvas.restoreState()
 
+    filtros_partes = [f"Período: {periodo_fmt}"]
+    if f_layout:
+        filtros_partes.append(f"Layout: {lay_desc}")
+    filtros_p = P("Filtros aplicados: " + "  |  ".join(filtros_partes),
+                  fn="Helvetica", fs=7, col=C_SUB)
+
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=page,
                             leftMargin=_lm, rightMargin=_rm,
                             topMargin=2.0*cm, bottomMargin=1.5*cm)
     doc.build(
-        [Spacer(1, 4), tbl, Spacer(1, 6), total_p],
+        [Spacer(1, 4), tbl, Spacer(1, 6), total_p, Spacer(1, 4), filtros_p],
         onFirstPage=_header_todas, onLaterPages=_header_todas,
     )
     buf.seek(0)
