@@ -13930,16 +13930,37 @@ def esocial_fila():
     rows = []
     if periodo and len(periodo) == 6:
         try:
-            q = (supabase.table("tab_esocial")
-                 .select("*")
-                 .eq("id_empresa", id_empresa)
-                 .gte("data_cad", periodo + "01")
-                 .lte("data_cad", periodo + "31")
-                 .order("data_cad", desc=True)
-                 .order("hora_cad", desc=True))
+            # 1) registros cujo ano_mes bate com o período
+            q1 = (supabase.table("tab_esocial")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("ano_mes", int(periodo))
+                  .order("data_cad", desc=True)
+                  .order("hora_cad", desc=True))
             if f_layout:
-                q = q.eq("layout", f_layout)
-            rows = q.execute().data or []
+                q1 = q1.eq("layout", f_layout)
+            r1 = q1.execute().data or []
+
+            # 2) registros sem ano_mes criados no mês do período
+            q2 = (supabase.table("tab_esocial")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .is_("ano_mes", "null")
+                  .gte("data_cad", periodo + "01")
+                  .lte("data_cad", periodo + "31")
+                  .order("data_cad", desc=True)
+                  .order("hora_cad", desc=True))
+            if f_layout:
+                q2 = q2.eq("layout", f_layout)
+            r2 = q2.execute().data or []
+
+            # mescla sem duplicatas, ordena por data/hora decrescente
+            seen = set()
+            for r in r1 + r2:
+                if r["id_esocial"] not in seen:
+                    seen.add(r["id_esocial"])
+                    rows.append(r)
+            rows.sort(key=lambda r: (r.get("data_cad", ""), r.get("hora_cad", "")), reverse=True)
         except Exception:
             pass
 
