@@ -589,8 +589,18 @@
       });
       const d = await r.json();
       if (d.ok) {
-        mostrarOk(editando ? `"${nome}" atualizado!` : `"${nome}" incluído!`);
-        setTimeout(() => location.reload(), 1500);
+        const retorno = new URLSearchParams(window.location.search).get('retorno');
+        if (!editando && retorno === 'funcionario') {
+            mostrarOk(`"${nome}" incluído! Voltando ao cadastro de funcionário…`);
+            const savedParams = new URLSearchParams((sessionStorage.getItem('rascunho_retorno_params') || '').replace(/^\?/, ''));
+            savedParams.set('retorno', '1');
+            savedParams.set('tipo', 'sindicato');
+            if (cnpjSoDigitos) savedParams.set('novo', cnpjSoDigitos);
+            setTimeout(() => window.location.href = '/cad_funcionario?' + savedParams.toString(), 1500);
+        } else {
+            mostrarOk(editando ? `"${nome}" atualizado!` : `"${nome}" incluído!`);
+            setTimeout(() => location.reload(), 1500);
+        }
       } else { mostrarErro(d.msg || 'Erro ao gravar.'); }
     } catch(e) { mostrarErro('Erro de comunicação.'); }
   }

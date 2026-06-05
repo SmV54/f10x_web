@@ -306,6 +306,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     .quadro-tomador-corpo { grid-template-columns: 1fr; }
     .container { padding: 0 12px 32px; }
 }
+.campo-com-acao { display:flex; gap:6px; align-items:center; }
+.campo-com-acao select { flex:1; min-width:0; }
+.btn-add-rapido {
+    flex-shrink:0; padding:0 10px; height:36px; border-radius:6px;
+    border:1px dashed var(--accent); background:#eff6ff; color:var(--accent);
+    font-size:12px; font-weight:600; cursor:pointer; white-space:nowrap;
+    transition:.15s;
+}
+.btn-add-rapido:hover { background:var(--accent); color:#fff; }
 </style>
 </head>
 <body
@@ -548,15 +557,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Função</label>
-                    <select id="CBOFuncao">
-                        <option value="">Selecione…</option>
-                        {% for f in funcoes %}
-                        <option value="{{ f.cbo }}">{{ f.cbo }} — {{ f.nome }}</option>
-                        {% endfor %}
-                        {% if not funcoes %}
-                        <option value="" disabled>Nenhuma função cadastrada</option>
-                        {% endif %}
-                    </select>
+                    <div class="campo-com-acao">
+                        <select id="CBOFuncao">
+                            <option value="">Selecione…</option>
+                            {% for f in funcoes %}
+                            <option value="{{ f.cbo }}">{{ f.cbo }} — {{ f.nome }}</option>
+                            {% endfor %}
+                            {% if not funcoes %}
+                            <option value="" disabled>Nenhuma função cadastrada</option>
+                            {% endif %}
+                        </select>
+                        <button type="button" class="btn-add-rapido" onclick="irParaNovaFuncao()" title="Cadastrar nova função">+ Função</button>
+                    </div>
                 </div>
                 {% if modo != 'alteracao' %}
                 <div class="campo">
@@ -660,17 +672,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Sindicato</label>
-                    <select id="cnpjSindCategProf">
-                        {% if sindicatos|length != 1 %}
-                        <option value="">Selecione…</option>
-                        {% endif %}
-                        {% for s in sindicatos %}
-                        <option value="{{ s.cnpj }}" {% if sindicatos|length == 1 %}selected{% endif %}>{{ s.cnpj }} — {{ s.nome }}</option>
-                        {% endfor %}
-                        {% if not sindicatos %}
-                        <option value="" disabled>Nenhum sindicato cadastrado</option>
-                        {% endif %}
-                    </select>
+                    <div class="campo-com-acao">
+                        <select id="cnpjSindCategProf">
+                            {% if sindicatos|length != 1 %}
+                            <option value="">Selecione…</option>
+                            {% endif %}
+                            {% for s in sindicatos %}
+                            <option value="{{ s.cnpj }}" {% if sindicatos|length == 1 %}selected{% endif %}>{{ s.cnpj }} — {{ s.nome }}</option>
+                            {% endfor %}
+                            {% if not sindicatos %}
+                            <option value="" disabled>Nenhum sindicato cadastrado</option>
+                            {% endif %}
+                        </select>
+                        <button type="button" class="btn-add-rapido" onclick="irParaNovoSindicato()" title="Cadastrar novo sindicato">+ Sindicato</button>
+                    </div>
                 </div>
             </div>
 
@@ -1771,11 +1786,68 @@ async function carregarProximaMatricula() {
     } catch(e) {}
 }
 
+// ── Rascunho: navegar para cadastro auxiliar e voltar ────────────────────
+function _salvarRascunho() {
+    const data = {};
+    document.querySelectorAll('[id]').forEach(el => {
+        if (!el.id) return;
+        if (el.tagName === 'INPUT' && el.type === 'checkbox') data[el.id] = el.checked;
+        else if (el.tagName === 'INPUT' && el.type !== 'radio') data[el.id] = el.value;
+        else if (el.tagName === 'SELECT') data[el.id] = el.value;
+    });
+    sessionStorage.setItem('rascunho_funcionario',     JSON.stringify(data));
+    sessionStorage.setItem('rascunho_retorno_params',  window.location.search);
+}
+
+function _restaurarRascunho(novoTipo, novoVal) {
+    const raw = sessionStorage.getItem('rascunho_funcionario');
+    if (!raw) return;
+    sessionStorage.removeItem('rascunho_funcionario');
+    sessionStorage.removeItem('rascunho_retorno_params');
+    const data = JSON.parse(raw);
+    Object.entries(data).forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (el.tagName === 'INPUT' && el.type === 'checkbox') el.checked = val;
+        else if (el.tagName === 'INPUT' || el.tagName === 'SELECT') el.value = val;
+    });
+    // Reativa campos dependentes
+    ['hasInsalubridade','hasPericulosidade'].forEach(id => {
+        const cb = document.getElementById(id);
+        if (cb) cb.dispatchEvent(new Event('change'));
+    });
+    ['tpContr','tpAdmissao'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.dispatchEvent(new Event('change'));
+    });
+    // Seleciona o novo item recém-cadastrado
+    if (novoVal) {
+        const selId = novoTipo === 'funcao' ? 'CBOFuncao' : 'cnpjSindCategProf';
+        const sel   = document.getElementById(selId);
+        if (sel) sel.value = novoVal;
+    }
+}
+
+function irParaNovaFuncao() {
+    _salvarRascunho();
+    window.location.href = '/cad_funcao?retorno=funcionario';
+}
+
+function irParaNovoSindicato() {
+    _salvarRascunho();
+    window.location.href = '/cad_sindicato?retorno=funcionario';
+}
+
 /* ── INIT ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', async () => {
     ajustarAprendiz();
     ajustarImigrante();
-    if (MODO === 'inclusao') await carregarProximaMatricula();
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('retorno') === '1') {
+        _restaurarRascunho(params.get('tipo'), params.get('novo'));
+    } else if (MODO === 'inclusao') {
+        await carregarProximaMatricula();
+    }
 });
 
 </script>

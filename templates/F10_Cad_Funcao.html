@@ -745,8 +745,20 @@
           return;
         }
 
-        alert("Incluído com sucesso!");
-        location.reload();
+        const retorno = new URLSearchParams(window.location.search).get('retorno');
+        if (retorno === 'funcionario') {
+            const linhaAtiva = document.querySelector('#tbodyFuncoesTotal tr.linha-selecionada');
+            const cbo = linhaAtiva ? linhaAtiva.getAttribute('data-cbo') : '';
+            const savedParams = new URLSearchParams((sessionStorage.getItem('rascunho_retorno_params') || '').replace(/^\?/, ''));
+            savedParams.set('retorno', '1');
+            savedParams.set('tipo', 'funcao');
+            if (cbo) savedParams.set('novo', cbo);
+            alert('Função incluída! Voltando ao cadastro de funcionário…');
+            window.location.href = '/cad_funcionario?' + savedParams.toString();
+        } else {
+            alert("Incluído com sucesso!");
+            location.reload();
+        }
 
       } catch (e) {
         alert("Erro de comunicação com o servidor.");
