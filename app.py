@@ -6408,10 +6408,11 @@ def api_funcionario_alterar():
     # Campos que disparam S-2205 (dados pessoais)
     _S2205 = {
         "nome", "nomer", "sexo", "racacor", "estciv", "grauinstr",
-        "dtnascto", "paisnascto", "paisnac",
+        "dtnascto", "paisnascto", "paisnac", "nomemae",
         "ender_dsclograd", "ender_nrlograd", "ender_complemento",
         "ender_bairro", "ender_cep", "ender_codmunic", "ender_uf",
         "fone_princ", "email_princ",
+        "deffisica", "defvisual", "defauditiva", "defmental", "defintelectual", "infocota",
     }
     # Campos que disparam S-2206 (dados contratuais)
     _S2206 = {
@@ -6846,9 +6847,20 @@ def ficha_registro():
 
     cpf_busca = so_numeros(request.args.get("cpf", ""))
     mat_busca = (request.args.get("matricula", "") or "").strip()
+    # aceita ?mats=XXXXXX vindo do select_funcionario
+    if not mat_busca:
+        mats_raw = (request.args.get("mats", "") or "").strip()
+        if mats_raw:
+            mat_busca = mats_raw.split(",")[0].strip()
     id_empresa = _get_id_empresa()
 
     funcionario = None
+    dependentes = []
+    tipos_dep   = {}
+    ev_ferias      = []
+    ev_afastamentos= []
+    ev_aumentos    = []
+    ev_s2206       = []
     erro = None
     horario_nome = ""
 
@@ -6942,6 +6954,136 @@ def ficha_registro():
                 f["_tem_apren"] = (f.get("indaprend") or "0") != "0"
                 f["_tem_imig"]  = (f.get("ind_imigrante") or "N") == "S"
                 funcionario = f
+                # Carrega dependentes
+                try:
+                    rd = (supabase.table("tab_dependentes")
+                          .select("nome, cpfdep, sexodep, dtnascto, tpdep, depirrf, depsf")
+                          .eq("id_empresa", id_empresa)
+                          .eq("matricula", f["matricula"])
+                          .order("nome")
+                          .execute())
+                    _SN2 = {"S": "Sim", "N": "Não"}
+                    _SEXO2 = {"M": "Masculino", "F": "Feminino"}
+                    for d in (rd.data or []):
+                        dn = str(d.get("dtnascto") or "")
+                        d["_dtnascto"] = (f"{dn[6:8]}/{dn[4:6]}/{dn[0:4]}" if len(dn) == 8 else "—")
+                        d["_depirrf"]  = _SN2.get(d.get("depirrf") or "N", "—")
+                        d["_depsf"]    = _SN2.get(d.get("depsf")   or "N", "—")
+                        d["_sexo"]     = _SEXO2.get(d.get("sexodep") or "", "—")
+                        cpfd = so_numeros(str(d.get("cpfdep") or ""))
+                        d["_cpfdep"] = (f"{cpfd[:3]}.{cpfd[3:6]}.{cpfd[6:9]}-{cpfd[9:]}"
+                                        if len(cpfd) == 11 else cpfd or "—")
+                    dependentes = rd.data or []
+                except Exception:
+                    pass
+                # Carrega tipos de dependente para descrição
+                try:
+                    rt = (supabase.table("tab_tabela_total")
+                          .select("codigo, texto")
+                          .eq("num_tabela", 7)
+                          .neq("codigo", "DOC")
+                          .execute())
+                    tipos_dep = {str(r["codigo"]).zfill(2): r["texto"] for r in (rt.data or [])}
+                except Exception:
+                    pass
+
+                mat_int = f["matricula"]
+
+                # ── Férias (op1=3) ──────────────────────────────
+                try:
+                    rf = (supabase.table("tab_eventos")
+                          .select("folha, data1i, data1f, ref1, data2i, data2f")
+                          .eq("id_empresa", id_empresa)
+                          .eq("matricula", mat_int)
+                          .eq("op1", 3)
+                          .order("data1i", desc=True)
+                          .execute())
+                    for e in (rf.data or []):
+                        for k in ("data1i","data1f","data2i","data2f"):
+                            s = str(e.get(k) or "")
+                            e[f"_{k}"] = f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s)==8 else "—"
+                        f_raw = str(e.get("folha") or "")
+                        e["_folha"] = f"{f_raw[4:6]}/{f_raw[0:4]}" if len(f_raw)==6 else f_raw
+                        e["_dias"]  = str(int(e["ref1"])) if e.get("ref1") else "—"
+                    ev_ferias = rf.data or []
+                except Exception:
+                    pass
+
+                # ── Afastamentos (op1=6) ────────────────────────
+                try:
+                    ra = (supabase.table("tab_eventos")
+                          .select("folha, op2, data1i, data1f")
+                          .eq("id_empresa", id_empresa)
+                          .eq("matricula", mat_int)
+                          .eq("op1", 6)
+                          .order("data1i", desc=True)
+                          .execute())
+                    # Busca descrição dos motivos
+                    try:
+                        rm = (supabase.table("tab_tabela_total")
+                              .select("codigo, texto")
+                              .eq("num_tabela", 18)
+                              .execute())
+                        motivos_af = {str(r["codigo"]).zfill(2): r["texto"] for r in (rm.data or [])}
+                    except Exception:
+                        motivos_af = {}
+                    for e in (ra.data or []):
+                        for k in ("data1i","data1f"):
+                            s = str(e.get(k) or "")
+                            e[f"_{k}"] = f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s)==8 else "—"
+                        cod = str(e.get("op2") or "").zfill(2)
+                        e["_motivo"] = motivos_af.get(cod, cod or "—")
+                    ev_afastamentos = ra.data or []
+                except Exception:
+                    pass
+
+                # ── Aumentos de Salário (op1=5) ─────────────────
+                _MOTIVO_AUM = {"1":"Dissídio","2":"Espontâneo","3":"Promoção","9":"Salário Mínimo"}
+                try:
+                    ru = (supabase.table("tab_eventos")
+                          .select("folha, ref1, ref2, campotxt1, campotxt2")
+                          .eq("id_empresa", id_empresa)
+                          .eq("matricula", mat_int)
+                          .eq("op1", 5)
+                          .order("folha", desc=True)
+                          .execute())
+                    for e in (ru.data or []):
+                        f_raw = str(e.get("folha") or "")
+                        e["_folha"]   = f"{f_raw[4:6]}/{f_raw[0:4]}" if len(f_raw)==6 else f_raw
+                        e["_sal_ant"] = fsal(e.get("ref1"))
+                        e["_sal_nov"] = fsal(e.get("ref2"))
+                        e["_perc"]    = str(e.get("campotxt1") or "—")
+                        e["_motivo"]  = _MOTIVO_AUM.get(str(e.get("campotxt2") or ""), "—")
+                    ev_aumentos = ru.data or []
+                except Exception:
+                    pass
+
+                # ── Alterações Contratuais S-2206 ───────────────
+                try:
+                    rs = (supabase.table("tab_esocial")
+                          .select("ano_mes, data_cad, hora_cad, recibo, observacao_erro, data_grava")
+                          .eq("id_empresa", id_empresa)
+                          .eq("matricula", mat_int)
+                          .eq("layout", "2206")
+                          .order("data_cad", desc=True)
+                          .execute())
+                    for e in (rs.data or []):
+                        dc = str(e.get("data_cad") or "")
+                        e["_data"] = f"{dc[6:8]}/{dc[4:6]}/{dc[0:4]}" if len(dc)==8 else "—"
+                        am = str(e.get("ano_mes") or "")
+                        e["_anomes"] = f"{am[4:6]}/{am[0:4]}" if len(am)==6 else am
+                        obs = (e.get("observacao_erro") or "").strip()
+                        rec = (e.get("recibo") or "").strip()
+                        dg  = (e.get("data_grava") or "").strip()
+                        if rec:   e["_sit"] = "Enviado"
+                        elif obs.startswith("AGUARDANDO:"): e["_sit"] = "Aguardando"
+                        elif obs: e["_sit"] = "Com Erro"
+                        elif dg:  e["_sit"] = "Gerado"
+                        else:     e["_sit"] = "Pendente"
+                    ev_s2206 = rs.data or []
+                except Exception:
+                    pass
+
         except Exception as e:
             erro = str(e)
 
@@ -6952,6 +7094,12 @@ def ficha_registro():
         cnpj_empresa=_fmt_cnpj(session.get("cnpj_empresa", "")),
         cliente_nome=session.get("nome", ""),
         funcionario=funcionario,
+        dependentes=dependentes,
+        tipos_dep=tipos_dep,
+        ev_ferias=ev_ferias,
+        ev_afastamentos=ev_afastamentos,
+        ev_aumentos=ev_aumentos,
+        ev_s2206=ev_s2206,
         erro=erro,
     )
 
@@ -13555,8 +13703,7 @@ def esocial_s2205():
              .select("*")
              .eq("id_empresa", id_empresa)
              .eq("layout", "2205")
-             .gte("data_cad", anomes_atual + "01")
-             .lte("data_cad", anomes_atual + "31")
+             .eq("ano_mes", int(anomes_atual))
              .order("data_cad", desc=True)
              .order("hora_cad", desc=True))
         rows = q.execute().data or []
@@ -14115,8 +14262,7 @@ def esocial_s2206():
                 .select("*")
                 .eq("id_empresa", id_empresa)
                 .eq("layout", "2206")
-                .gte("data_cad", anomes_atual + "01")
-                .lte("data_cad", anomes_atual + "31")
+                .eq("ano_mes", int(anomes_atual))
                 .order("data_cad", desc=True)
                 .order("hora_cad", desc=True)
                 .execute().data or [])

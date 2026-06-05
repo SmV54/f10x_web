@@ -74,7 +74,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     padding: 20px 28px; display: grid;
     grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px;
 }
-.doc-empresa-nome { font-size: 15px; font-weight: 700; color: #f5c842; }
+.doc-empresa-nome { font-size: 11px; font-weight: 700; color: #f5c842; line-height: 1.35; }
 .doc-empresa-cnpj { font-family: var(--mono); font-size: 11px; color: var(--text-sub); margin-top: 3px; }
 .doc-titulo-bloco { text-align: center; }
 .doc-titulo      { font-size: 20px; font-weight: 700; color: var(--text-head); letter-spacing: .05em; }
@@ -144,6 +144,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .campo-valor.mono { font-family: var(--mono); font-size: 12px; }
 .campo-valor.vazio { color: #cbd5e1; font-style: italic; font-weight: 400; }
 .campo-valor.destaque { font-size: 14px; font-weight: 600; color: var(--green); }
+
+/* ── TABELAS DE EVENTOS ──────────────────────────────── */
+.ev-table { width:100%; border-collapse:collapse; font-size:12px; }
+.ev-table th { text-align:left; padding:6px 14px; font-size:9px; letter-spacing:.06em;
+               text-transform:uppercase; color:var(--sublabel); font-weight:600;
+               background:#f4f7fc; border-bottom:1px solid var(--border); }
+.ev-table td { padding:6px 14px; border-bottom:1px solid #f0f4f9; color:#1e293b; }
+.ev-table tr:last-child td { border-bottom:none; }
+.ev-table tr:nth-child(even) td { background:#f9fbfd; }
+.ev-table td.mono { font-family:var(--mono); font-size:11px; }
+.ev-table td.dest { font-weight:600; color:var(--green); font-family:var(--mono); font-size:11px; }
+.ev-vazio { padding:12px 20px; font-size:12px; color:var(--sublabel); font-style:italic; }
+.badge-sit { padding:2px 8px; border-radius:10px; font-size:10px; font-weight:600; }
+.sit-env  { background:#dcfce7; color:#15803d; }
+.sit-pend { background:#fef9c3; color:#854d0e; }
+.sit-err  { background:#fee2e2; color:#b91c1c; }
+.sit-ger  { background:#dbeafe; color:#1d4ed8; }
+.sit-agu  { background:#f3e8ff; color:#7e22ce; }
 
 /* ── ESTADO VAZIO (sem busca) ────────────────────────── */
 .estado-vazio {
@@ -236,7 +254,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
            oninput="this.value=this.value.replace(/\D/g,'')" onkeydown="if(event.key==='Enter') buscar()">
     <button class="btn btn-buscar" onclick="buscar()">&#128269; Buscar</button>
     {% if funcionario %}
-    <button class="btn btn-imprimir" onclick="window.print()">&#128438; Imprimir em PDF</button>
+    <button class="btn btn-imprimir" onclick="abrirImpressao()">&#128438; Imprimir em PDF</button>
     {% endif %}
     <span class="msg-busca" id="msg_busca">{% if erro %}{{ erro }}{% endif %}</span>
 </div>
@@ -653,6 +671,174 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     </div>
     {% endif %}
 
+    {# DEPENDENTES #}
+    <div class="secao">
+        <div class="secao-header">
+            <span class="secao-icone">👨‍👩‍👧</span>
+            <span class="secao-titulo">Dependentes</span>
+        </div>
+        <div class="secao-corpo" style="padding:0">
+            {% if dependentes %}
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+                <thead>
+                    <tr style="background:#f4f7fc;border-bottom:1px solid var(--border);">
+                        <th style="text-align:left;padding:7px 14px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--sublabel);font-weight:600;">Nome</th>
+                        <th style="text-align:left;padding:7px 10px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--sublabel);font-weight:600;">Tipo</th>
+                        <th style="text-align:left;padding:7px 10px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--sublabel);font-weight:600;">CPF</th>
+                        <th style="text-align:left;padding:7px 10px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--sublabel);font-weight:600;">Nascimento</th>
+                        <th style="text-align:center;padding:7px 10px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--sublabel);font-weight:600;">IRRF</th>
+                        <th style="text-align:center;padding:7px 10px;font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--sublabel);font-weight:600;">S. Família</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for d in dependentes %}
+                    <tr style="border-bottom:1px solid #f0f4f9;{% if loop.index is odd %}background:#fff;{% else %}background:#f9fbfd;{% endif %}">
+                        <td style="padding:7px 14px;font-weight:500;color:#1e293b;">{{ d.nome }}</td>
+                        <td style="padding:7px 10px;color:#374151;">{{ tipos_dep.get(d.tpdep|string|replace('.0',''), d.tpdep or '—') }}</td>
+                        <td style="padding:7px 10px;font-family:var(--mono);font-size:11px;">{{ d._cpfdep }}</td>
+                        <td style="padding:7px 10px;font-family:var(--mono);font-size:11px;">{{ d._dtnascto }}</td>
+                        <td style="text-align:center;padding:7px 10px;">
+                            <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;
+                                {% if d.depirrf == 'S' %}background:#dcfce7;color:#15803d;{% else %}background:#f1f5f9;color:#94a3b8;{% endif %}">
+                                {{ d._depirrf }}
+                            </span>
+                        </td>
+                        <td style="text-align:center;padding:7px 10px;">
+                            <span style="padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;
+                                {% if d.depsf == 'S' %}background:#dbeafe;color:#1d4ed8;{% else %}background:#f1f5f9;color:#94a3b8;{% endif %}">
+                                {{ d._depsf }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div style="padding:14px 20px;font-size:12px;color:var(--sublabel);font-style:italic;">Nenhum dependente cadastrado.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# FÉRIAS #}
+    <div class="secao">
+        <div class="secao-header">
+            <span class="secao-icone">🏖️</span>
+            <span class="secao-titulo">Férias</span>
+        </div>
+        <div class="secao-corpo" style="padding:0">
+            {% if ev_ferias %}
+            <table class="ev-table">
+                <thead><tr>
+                    <th>Gozo — Início</th><th>Gozo — Fim</th><th>Dias</th>
+                    <th>Per. Aquisitivo Início</th><th>Per. Aquisitivo Fim</th><th>Competência</th>
+                </tr></thead>
+                <tbody>
+                {% for e in ev_ferias %}
+                <tr>
+                    <td class="mono">{{ e._data1i }}</td>
+                    <td class="mono">{{ e._data1f }}</td>
+                    <td class="mono">{{ e._dias }}</td>
+                    <td class="mono">{{ e._data2i }}</td>
+                    <td class="mono">{{ e._data2f }}</td>
+                    <td class="mono">{{ e._folha }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="ev-vazio">Nenhum registro de férias.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# AFASTAMENTOS #}
+    <div class="secao">
+        <div class="secao-header">
+            <span class="secao-icone">🏥</span>
+            <span class="secao-titulo">Afastamentos</span>
+        </div>
+        <div class="secao-corpo" style="padding:0">
+            {% if ev_afastamentos %}
+            <table class="ev-table">
+                <thead><tr>
+                    <th>Motivo</th><th>Início</th><th>Fim</th>
+                </tr></thead>
+                <tbody>
+                {% for e in ev_afastamentos %}
+                <tr>
+                    <td>{{ e._motivo }}</td>
+                    <td class="mono">{{ e._data1i }}</td>
+                    <td class="mono">{{ e._data1f }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="ev-vazio">Nenhum afastamento registrado.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ALTERAÇÕES SALARIAIS #}
+    <div class="secao">
+        <div class="secao-header">
+            <span class="secao-icone">💰</span>
+            <span class="secao-titulo">Histórico de Salário</span>
+        </div>
+        <div class="secao-corpo" style="padding:0">
+            {% if ev_aumentos %}
+            <table class="ev-table">
+                <thead><tr>
+                    <th>Vigência</th><th>Motivo</th>
+                    <th>Salário Anterior</th><th>Salário Novo</th><th>Percentual</th>
+                </tr></thead>
+                <tbody>
+                {% for e in ev_aumentos %}
+                <tr>
+                    <td class="mono">{{ e._folha }}</td>
+                    <td>{{ e._motivo }}</td>
+                    <td class="mono">{{ e._sal_ant }}</td>
+                    <td class="dest">{{ e._sal_nov }}</td>
+                    <td class="mono">{{ e._perc }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="ev-vazio">Nenhuma alteração salarial registrada.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    {# ALTERAÇÕES CONTRATUAIS (S-2206) #}
+    <div class="secao">
+        <div class="secao-header">
+            <span class="secao-icone">📋</span>
+            <span class="secao-titulo">Alterações Contratuais (Cargo / Função)</span>
+        </div>
+        <div class="secao-corpo" style="padding:0">
+            {% if ev_s2206 %}
+            <table class="ev-table">
+                <thead><tr>
+                    <th>Data</th><th>Competência</th><th>Situação eSocial</th>
+                </tr></thead>
+                <tbody>
+                {% for e in ev_s2206 %}
+                {% set sit_cls = {'Enviado':'sit-env','Pendente':'sit-pend','Com Erro':'sit-err','Gerado':'sit-ger','Aguardando':'sit-agu'} %}
+                <tr>
+                    <td class="mono">{{ e._data }}</td>
+                    <td class="mono">{{ e._anomes }}</td>
+                    <td><span class="badge-sit {{ sit_cls.get(e._sit, '') }}">{{ e._sit }}</span></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="ev-vazio">Nenhuma alteração contratual registrada.</div>
+            {% endif %}
+        </div>
+    </div>
+
     {# RODAPÉ DO DOCUMENTO #}
     <div class="secao" style="background:#f8fafc;">
         <div class="secao-corpo" style="display:flex;justify-content:space-between;align-items:center;padding:10px 20px;">
@@ -687,6 +873,16 @@ function buscar() {
 const agora = new Date();
 const fmt = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 ['docData','rodapData'].forEach(id => { const el=document.getElementById(id); if(el) el.textContent=fmt; });
+
+// Impressão em nova aba
+function abrirImpressao() {
+    const url = window.location.href.replace(/[?&]autoprint=1/, '');
+    const sep = url.includes('?') ? '&' : '?';
+    window.open(url + sep + 'autoprint=1', '_blank');
+}
+if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
+    window.addEventListener('load', () => setTimeout(() => window.print(), 600));
+}
 </script>
 </body>
 </html>
