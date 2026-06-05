@@ -319,7 +319,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="topo-logo">Folha10·Simples</div>
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
-        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+        <button class="btn-voltar-topo" onclick="ctx.voltarUrl ? window.location.href=ctx.voltarUrl : window.history.back()">&#8592; Voltar</button>
     </div>
 </div>
 
@@ -606,11 +606,20 @@ const CONTEXTOS = {
         msgMaxSel:     'Para excluir falta, selecione apenas 1 funcionário',
     },
     aumento: {
-        titulo:        'Aumento de Salário — Selecionar Funcionários',
-        subtitulo:     'Selecione os funcionários que receberão o reajuste salarial',
-        tituloCurto:   'Selecionar — Aumento',
+        titulo:        'Alteração de Salário — Selecionar Funcionários',
+        subtitulo:     'Selecione os funcionários que receberão a alteração salarial',
+        tituloCurto:   'Selecionar — Alteração',
         proximo:       '/cad_aumento',
         f_situacao:    'A',
+    },
+    cancelar_aumento: {
+        titulo:        'Cancelar Alteração de Salário — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário cuja alteração salarial será cancelada',
+        tituloCurto:   'Selecionar — Cancelar',
+        proximo:       '/cad_cancelar_aumento',
+        maxSel:        1,
+        f_situacao:    'A',
+        voltarUrl:     '/menu',
     },
     aviso_previo: {
         titulo:        'Aviso Prévio — Selecionar Funcionário',
@@ -646,6 +655,7 @@ const CONTEXTOS = {
         subtitulo:     'Selecione o funcionário para visualizar a ficha de registro',
         tituloCurto:   'Selecionar — Ficha de Registro',
         proximo:       '/ficha_registro',
+        voltarUrl:     '/menu',
         f_situacao:    'all',
         maxSel:        1,
         msgMaxSel:     'Selecione apenas 1 funcionário por vez',

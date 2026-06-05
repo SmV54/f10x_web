@@ -1674,7 +1674,7 @@ def rel_sal_aumento_pdf():
     motivo_filtro    = request.args.get("motivo", "").strip()
     anomes_rel       = str(session.get("anomes_atual") or "")
 
-    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "9": "Salário Mínimo"}
+    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "4": "Salário Mínimo", "9": "Outros Motivos"}
 
     def _fsal(c):
         if c is None:
@@ -1783,7 +1783,7 @@ def rel_aumento_pdf():
     vig_year  = int(vigencia_raw[:4])
     vig_month = int(vigencia_raw[4:6])
 
-    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "9": "Salário Mínimo"}
+    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "4": "Salário Mínimo", "9": "Outros Motivos"}
 
     def _fsal(c):
         if c is None:
@@ -1860,7 +1860,7 @@ def rel_aumento_pdf():
     vig_fmt = f"{vigencia_raw[4:6]}/{vigencia_raw[:4]}"
     sub     = (f"Vigência: {vig_fmt} · {percentual:.2f}% · "
                f"{MOTIVO_LABEL.get(motivo_raw, motivo_raw)}")
-    return _pdf_tabela("Simulação/Aumento de Salário",
+    return _pdf_tabela("Simulação/Alteração de Salário",
                        ["Mat.", "Funcionário", "Dt.Adm.", "Meses", "Prop.",
                         "Sal.Atual", "% Apl.", "Sal.Novo", "Diferença"],
                        [2.0, 5.5, 2.5, 1.5, 1.5, 3.0, 1.7, 3.0, 3.0], rows,
@@ -3565,7 +3565,7 @@ def rel_sal_aumento():
 
     anomes_rel = str(session.get("anomes_atual") or "")
 
-    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "9": "Salário Mínimo"}
+    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "4": "Salário Mínimo", "9": "Outros Motivos"}
 
     def _fsal(c):
         if c is None:
@@ -6852,6 +6852,11 @@ def ficha_registro():
         mats_raw = (request.args.get("mats", "") or "").strip()
         if mats_raw:
             mat_busca = mats_raw.split(",")[0].strip()
+
+    # se não veio nenhum funcionário e não é autoprint, manda para o select
+    if not cpf_busca and not mat_busca and not request.args.get("autoprint"):
+        return redirect("/select_funcionario?contexto=ficha")
+
     id_empresa = _get_id_empresa()
 
     funcionario = None
@@ -7038,14 +7043,14 @@ def ficha_registro():
                     pass
 
                 # ── Aumentos de Salário (op1=5) ─────────────────
-                _MOTIVO_AUM = {"1":"Dissídio","2":"Espontâneo","3":"Promoção","9":"Salário Mínimo"}
+                _MOTIVO_AUM = {"1":"Dissídio","2":"Espontâneo","3":"Promoção","4":"Salário Mínimo","9":"Outros Motivos"}
                 try:
                     ru = (supabase.table("tab_eventos")
                           .select("folha, ref1, ref2, campotxt1, campotxt2")
                           .eq("id_empresa", id_empresa)
                           .eq("matricula", mat_int)
                           .eq("op1", 5)
-                          .order("folha", desc=True)
+                          .order("folha", desc=False)
                           .execute())
                     for e in (ru.data or []):
                         f_raw = str(e.get("folha") or "")
@@ -7196,6 +7201,7 @@ def rel_log():
         f_dt_fim     = f_dt_fim,
         f_cpf        = f_cpf,
         f_menu       = f_menu,
+        anomes_raw   = str(session.get("anomes_atual") or ""),
     )
 
 
@@ -10827,7 +10833,34 @@ def cad_aumento():
                     "nome":      f.get("nome", ""),
                     "dtadm_fmt": dtadm_fmt,
                     "sal_fmt":   sal_fmt,
+                    "sal_cents": int(sal),
                 })
+            # Última vigência de salário por funcionário
+            for f in funcionarios:
+                f["ultima_vigencia"]     = None
+                f["ultima_vigencia_fmt"] = ""
+            if funcionarios:
+                try:
+                    rv = (supabase.table("tab_eventos")
+                          .select("matricula, folha")
+                          .eq("id_empresa", id_empresa)
+                          .in_("matricula", mats_lista)
+                          .eq("op1", 5)
+                          .order("folha", desc=True)
+                          .execute())
+                    _ult = {}
+                    for ev in (rv.data or []):
+                        mat_ev = ev.get("matricula")
+                        fol    = ev.get("folha")
+                        if mat_ev not in _ult and fol:
+                            _ult[mat_ev] = int(fol)
+                    for f in funcionarios:
+                        uv = _ult.get(f["matricula"])
+                        f["ultima_vigencia"] = uv  # int YYYYMM ou None
+                        uv_s = str(uv) if uv else ""
+                        f["ultima_vigencia_fmt"] = f"{uv_s[4:6]}/{uv_s[0:4]}" if len(uv_s) == 6 else ""
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -10910,7 +10943,7 @@ def rel_aumento():
         3: "3 — Proporcional · Arredondando fração > 15 dias",
         4: "4 — Proporcional · Sem contar mês de admissão",
     }
-    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "9": "Salário Mínimo"}
+    MOTIVO_LABEL = {"1": "Dissídio", "2": "Espontâneo", "3": "Promoção", "4": "Salário Mínimo", "9": "Outros Motivos"}
 
     vigencia_fmt   = f"{vigencia_raw[4:6]}/{vigencia_raw[:4]}"
     percentual_fmt = f"{percentual:.2f}".replace(".", ",")
@@ -11026,6 +11059,27 @@ def rel_aumento():
                     f"Salario: de {_brl(sal_at)} para {_brl(sal_novo)}",
                     matricula=mat,
                 )
+
+                # Gera pendência S-2206 (alteração salarial)
+                try:
+                    _agora_es = datetime.now()
+                    _anomes   = str(session.get("anomes_atual") or "")
+                    _ts_es    = _agora_es.strftime("%Y%m%d%H%M%S")
+                    supabase.table("tab_esocial").insert({
+                        "id_cliente": id_cliente,
+                        "id_empresa": id_empresa,
+                        "data_cad":   _agora_es.strftime("%Y%m%d"),
+                        "hora_cad":   _agora_es.strftime("%H%M"),
+                        "id_remessa": f"{_ts_es}2206{mat}",
+                        "ano_mes":    int(_anomes) if len(_anomes) == 6 else None,
+                        "folha_tipo": "N",
+                        "layout":     "2206",
+                        "matricula":  mat,
+                        "codigo2":    0,
+                    }).execute()
+                except Exception:
+                    pass
+
             except Exception as e_grav:
                 erros_gravacao.append(str(mat))
                 continue
@@ -11088,6 +11142,243 @@ def rel_aumento():
         url_voltar=url_voltar,
         erros_gravacao=erros_gravacao,
     )
+
+
+# =========================================================
+# CANCELAR ALTERAÇÃO DE SALÁRIO — TELA
+# =========================================================
+@app.route("/cad_cancelar_aumento")
+def cad_cancelar_aumento():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    sit_folha  = _refresh_situacao_folha()
+    folha_aberta = sit_folha in ("A", "X")
+    anomes_fmt = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else anomes
+
+    ok_msg   = request.args.get("ok", "")
+    erro_msg = request.args.get("erro", "")
+
+    _MOTIVO_AUM = {"1":"Dissídio","2":"Espontâneo","3":"Promoção","4":"Salário Mínimo","9":"Outros Motivos"}
+    linhas = []
+    erro   = None
+
+    if anomes and len(anomes) == 6:
+        try:
+            # 1. Todos os aumentos do período
+            r_ev = (supabase.table("tab_eventos")
+                    .select("id, matricula, folha, ref1, ref2, campotxt1, campotxt2")
+                    .eq("id_empresa", id_empresa)
+                    .eq("op1", 5)
+                    .eq("folha", int(anomes))
+                    .order("matricula")
+                    .execute())
+            eventos = r_ev.data or []
+
+            if eventos:
+                mats_ev = list({ev.get("matricula") for ev in eventos})
+
+                # 2. Nomes dos funcionários
+                r_cad = (supabase.table("tab_cad")
+                         .select("matricula, nome")
+                         .eq("id_empresa", id_empresa)
+                         .in_("matricula", mats_ev)
+                         .execute())
+                nomes = {f.get("matricula"): f.get("nome", "") for f in (r_cad.data or [])}
+
+                # 3. S-2206 do período (todos de uma vez)
+                r_es = (supabase.table("tab_esocial")
+                        .select("id_esocial, matricula, recibo, observacao_erro")
+                        .eq("id_empresa", id_empresa)
+                        .eq("layout", "2206")
+                        .eq("ano_mes", int(anomes))
+                        .in_("matricula", mats_ev)
+                        .execute())
+                # pega o maior id_esocial por matrícula
+                es_map = {}
+                for es in sorted(r_es.data or [], key=lambda x: x.get("id_esocial") or 0):
+                    es_map[es.get("matricula")] = es
+
+                # 4. Aumentos posteriores ao período (para bloquear)
+                r_post = (supabase.table("tab_eventos")
+                          .select("matricula, folha")
+                          .eq("id_empresa", id_empresa)
+                          .eq("op1", 5)
+                          .in_("matricula", mats_ev)
+                          .gt("folha", int(anomes))
+                          .execute())
+                post_map = {}
+                for p in (r_post.data or []):
+                    m = p.get("matricula")
+                    f = str(p.get("folha") or "")
+                    if m not in post_map:
+                        post_map[m] = f"{f[4:6]}/{f[0:4]}" if len(f) == 6 else f
+
+                def _brl(c):
+                    return ("R$ " + f"{(c or 0)/100:,.2f}"
+                            .replace(",", "X").replace(".", ",").replace("X", "."))
+
+                for ev in eventos:
+                    mat      = ev.get("matricula")
+                    sal_ant  = int(ev.get("ref1") or 0)
+                    sal_nov  = int(ev.get("ref2") or 0)
+                    perc     = ev.get("campotxt1") or "—"
+                    motivo   = _MOTIVO_AUM.get(str(ev.get("campotxt2") or ""), "—")
+                    es       = es_map.get(mat)
+                    recibo   = (es.get("recibo") or "").strip() if es else ""
+                    id_es    = es.get("id_esocial") if es else None
+
+                    cancelavel  = True
+                    motivo_bloq = ""
+                    s2206_label = "Sem remessa"
+
+                    if recibo:
+                        s2206_label = f"Recibo: {recibo[:20]}"
+                        cancelavel  = False
+                        motivo_bloq = "S-2206 já enviado com recibo — não pode ser cancelado."
+                    elif es:
+                        s2206_label = "Pendente (sem recibo)"
+
+                    if cancelavel and mat in post_map:
+                        cancelavel  = False
+                        motivo_bloq = f"Existe alteração posterior em {post_map[mat]} — cancele-a primeiro."
+
+                    if not folha_aberta:
+                        cancelavel  = False
+                        motivo_bloq = "Folha fechada ou calculada."
+
+                    linhas.append({
+                        "id":          ev.get("id"),
+                        "id_esocial":  id_es,
+                        "mat":         mat,
+                        "mat_fmt":     str(mat).zfill(6),
+                        "nome":        nomes.get(mat, ""),
+                        "sal_ant_fmt": _brl(sal_ant),
+                        "sal_nov_fmt": _brl(sal_nov),
+                        "perc":        perc,
+                        "motivo":      motivo,
+                        "s2206_label": s2206_label,
+                        "tem_recibo":  bool(recibo),
+                        "cancelavel":  cancelavel,
+                        "motivo_bloq": motivo_bloq,
+                    })
+        except Exception as e:
+            erro = f"Erro ao buscar dados: {e}"
+
+    return render_template(
+        "F10_CancelAumento.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        linhas=linhas,
+        anomes_fmt=anomes_fmt,
+        folha_aberta=folha_aberta,
+        sit_folha=sit_folha,
+        erro=erro,
+        ok_msg=ok_msg,
+        erro_msg=erro_msg,
+    )
+
+
+@app.route("/exec_cancelar_aumento")
+def exec_cancelar_aumento():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_ev   = request.args.get("id_ev", "").strip()
+    mat_raw = request.args.get("mat", "").strip()
+    if not id_ev or not mat_raw:
+        return redirect("/cad_cancelar_aumento")
+
+    id_empresa   = _get_id_empresa()
+    anomes       = str(session.get("anomes_atual") or "")
+    mat          = int(mat_raw)
+    msg_erro     = None
+    sal_anterior = 0
+    sal_novo_ev  = 0
+
+    try:
+        # 1. Folha aberta
+        if _refresh_situacao_folha() not in ("A", "X"):
+            raise Exception("Folha do período está fechada — cancelamento não permitido.")
+
+        # 2. Busca o evento
+        r_ev = (supabase.table("tab_eventos")
+                .select("id, folha, ref1, ref2")
+                .eq("id", int(id_ev))
+                .eq("id_empresa", id_empresa)
+                .eq("matricula", mat)
+                .eq("op1", 5)
+                .limit(1).execute())
+        if not r_ev.data:
+            raise Exception("Evento não encontrado.")
+        ev = r_ev.data[0]
+        if str(ev.get("folha") or "") != anomes:
+            raise Exception("O evento não pertence ao período ativo.")
+
+        sal_anterior = int(ev.get("ref1") or 0)
+        sal_novo_ev  = int(ev.get("ref2") or 0)
+
+        # 3. Verifica S-2206 — bloqueia se qualquer uma tiver recibo
+        r_es = (supabase.table("tab_esocial")
+                .select("id_esocial, recibo")
+                .eq("id_empresa", id_empresa)
+                .eq("matricula", mat)
+                .eq("layout", "2206")
+                .eq("ano_mes", int(anomes))
+                .execute())
+        tem_s2206 = bool(r_es.data)
+        for es in (r_es.data or []):
+            if (es.get("recibo") or "").strip():
+                raise Exception("S-2206 já enviado com recibo — não pode ser cancelado.")
+
+        # 4. Verifica aumento posterior
+        r_post = (supabase.table("tab_eventos")
+                  .select("folha")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", mat)
+                  .eq("op1", 5)
+                  .gt("folha", int(anomes))
+                  .limit(1).execute())
+        if r_post.data:
+            f = str(r_post.data[0].get("folha") or "")
+            raise Exception(f"Existe alteração posterior em "
+                            f"{f[4:6]}/{f[0:4] if len(f)==6 else f} — cancele-a primeiro.")
+
+        # 5. Restaura salário
+        supabase.table("tab_cad").update({"vrsalfx": sal_anterior}) \
+            .eq("id_empresa", id_empresa).eq("matricula", mat).execute()
+
+        # 6. Exclui o evento de aumento
+        supabase.table("tab_eventos").delete() \
+            .eq("id", int(id_ev)).eq("id_empresa", id_empresa).execute()
+
+        # 7. Apaga todas as remessas S-2206 do período (sem recibo, validado acima)
+        if tem_s2206:
+            supabase.table("tab_esocial").delete() \
+                .eq("id_empresa", id_empresa) \
+                .eq("matricula", mat) \
+                .eq("layout", "2206") \
+                .eq("ano_mes", int(anomes)).execute()
+
+    except Exception as e:
+        if not msg_erro:
+            msg_erro = str(e)[:300]
+
+    # 8. Log — fora do try para garantir gravação mesmo se etapa anterior lançar exceção
+    if not msg_erro:
+        def _brl(c):
+            return "R$ " + f"{c/100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        gravar_log("SAL-CANCEL",
+                   f"Cancelado: de {_brl(sal_novo_ev)} voltou para {_brl(sal_anterior)}",
+                   matricula=mat)
+
+    if msg_erro:
+        from urllib.parse import quote as _quote
+        return redirect(f"/cad_cancelar_aumento?erro={_quote(msg_erro)}")
+    return redirect("/cad_cancelar_aumento?ok=1")
 
 
 # =========================================================

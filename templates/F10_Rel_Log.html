@@ -58,9 +58,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); fon
     text-transform: uppercase; color: #2d4a6e;
     margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
 }
+.atalhos {
+    display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.atalho-card {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; padding: 8px 20px; border-radius: 8px; cursor: pointer;
+    border: 2px solid var(--border); background: #f8fafc;
+    transition: .15s; user-select: none; min-width: 110px;
+}
+.atalho-card:hover { border-color: var(--accent); background: #eff6ff; }
+.atalho-card.ativo { border-color: var(--accent); background: #dbeafe; }
+.atalho-icone { font-size: 18px; }
+.atalho-label { font-size: 11px; font-weight: 700; color: #1e3a5f; }
+.atalho-sub   { font-size: 10px; color: #64748b; }
+
 .filtros-grade {
     display: grid;
-    grid-template-columns: 110px 140px 160px 160px 1fr 140px;
+    grid-template-columns: 110px 160px 160px 1fr 140px;
     gap: 10px 14px; align-items: end;
 }
 .campo { display: flex; flex-direction: column; gap: 4px; }
@@ -272,6 +287,26 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
     <!-- ── FILTROS ──────────────────────────────────────── -->
     <div class="filtros no-print">
         <div class="filtros-titulo">🔍 Filtros de Consulta</div>
+
+        <!-- Atalhos de período -->
+        <div class="atalhos" id="atalhos">
+            <div class="atalho-card" id="atHoje" onclick="aplicarAtalho('hoje')">
+                <span class="atalho-icone">📅</span>
+                <span class="atalho-label">Hoje</span>
+                <span class="atalho-sub" id="lblHoje"></span>
+            </div>
+            <div class="atalho-card" id="atFolha" onclick="aplicarAtalho('folha')">
+                <span class="atalho-icone">📂</span>
+                <span class="atalho-label">Esta Folha</span>
+                <span class="atalho-sub" id="lblFolha"></span>
+            </div>
+            <div class="atalho-card" id="atAno" onclick="aplicarAtalho('ano')">
+                <span class="atalho-icone">📆</span>
+                <span class="atalho-label">Este Ano</span>
+                <span class="atalho-sub" id="lblAno"></span>
+            </div>
+        </div>
+
         <form method="get" action="/rel_log" id="formFiltro">
             <input type="hidden" name="buscar" value="1">
             <div class="filtros-grade">
@@ -285,18 +320,15 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
                 </div>
 
                 <div class="campo">
-                    <label>Mês / Ano</label>
-                    <input type="month" name="ano_mes" value="{{ f_ano_mes }}">
-                </div>
-
-                <div class="campo">
                     <label>De (data)</label>
-                    <input type="date" name="dt_inicio" value="{{ f_dt_inicio }}">
+                    <input type="date" id="dt_inicio" name="dt_inicio" value="{{ f_dt_inicio }}"
+                           onchange="desativarAtalhos()">
                 </div>
 
                 <div class="campo">
                     <label>Até (data)</label>
-                    <input type="date" name="dt_fim" value="{{ f_dt_fim }}">
+                    <input type="date" id="dt_fim" name="dt_fim" value="{{ f_dt_fim }}"
+                           onchange="desativarAtalhos()">
                 </div>
 
                 <div class="campo">
@@ -412,6 +444,52 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
 </div>
 
 <script>
+// Mês da folha ativa vindo do backend: "YYYYMM" ou ""
+const ANOMES_RAW = '{{ anomes_raw }}';
+
+function toISO(d) {
+    return d.toISOString().slice(0, 10);
+}
+function ultimoDiaMes(ano, mes) {
+    return new Date(ano, mes, 0); // dia 0 do próximo mês = último do atual
+}
+function fmtBR(iso) {
+    const [a, m, d] = iso.split('-');
+    return `${d}/${m}/${a}`;
+}
+
+function aplicarAtalho(tipo) {
+    const hoje = new Date();
+    let ini, fim;
+
+    if (tipo === 'hoje') {
+        ini = fim = toISO(hoje);
+    } else if (tipo === 'folha') {
+        if (!ANOMES_RAW || ANOMES_RAW.length !== 6) return;
+        const ano = parseInt(ANOMES_RAW.slice(0, 4));
+        const mes = parseInt(ANOMES_RAW.slice(4, 6));
+        ini = `${ANOMES_RAW.slice(0,4)}-${ANOMES_RAW.slice(4,6)}-01`;
+        fim = toISO(ultimoDiaMes(ano, mes));
+    } else if (tipo === 'ano') {
+        const ano = hoje.getFullYear();
+        ini = `${ano}-01-01`;
+        fim = `${ano}-12-31`;
+    }
+
+    document.getElementById('dt_inicio').value = ini;
+    document.getElementById('dt_fim').value    = fim;
+
+    document.querySelectorAll('.atalho-card').forEach(c => c.classList.remove('ativo'));
+    document.getElementById('at' + tipo.charAt(0).toUpperCase() + tipo.slice(1))
+            .classList.add('ativo');
+
+    document.getElementById('formFiltro').submit();
+}
+
+function desativarAtalhos() {
+    document.querySelectorAll('.atalho-card').forEach(c => c.classList.remove('ativo'));
+}
+
 function mascaraCPF(c) {
     let v = c.value.replace(/\D/g,'').substring(0,11);
     if      (v.length>9) v=v.replace(/^(\d{3})(\d{3})(\d{3})(\d{0,2})/,'$1.$2.$3-$4');
@@ -419,14 +497,48 @@ function mascaraCPF(c) {
     else if (v.length>3) v=v.replace(/^(\d{3})(\d{0,3})/,'$1.$2');
     c.value = v;
 }
+
 function limparFiltros() {
-    ['input[name=matricula]','input[name=ano_mes]','input[name=dt_inicio]',
+    ['input[name=matricula]','input[name=dt_inicio]',
      'input[name=dt_fim]','input[name=cpf_usuario]'].forEach(sel => {
         const el = document.querySelector(sel);
         if (el) el.value = '';
     });
     document.querySelector('select[name=menu]').value = '';
+    desativarAtalhos();
 }
+
+// Preenche subtítulos dos cards
+(function() {
+    const hoje = new Date();
+    document.getElementById('lblHoje').textContent = fmtBR(toISO(hoje));
+
+    if (ANOMES_RAW.length === 6) {
+        const mes = ANOMES_RAW.slice(4,6);
+        const ano = ANOMES_RAW.slice(0,4);
+        document.getElementById('lblFolha').textContent = `${mes}/${ano}`;
+    }
+    document.getElementById('lblAno').textContent = hoje.getFullYear();
+
+    // Marca atalho ativo se os campos já estão preenchidos com um período exato
+    const ini = document.getElementById('dt_inicio').value;
+    const fim = document.getElementById('dt_fim').value;
+    if (ini && fim) {
+        const hj = toISO(hoje);
+        if (ini === hj && fim === hj) {
+            document.getElementById('atHoje').classList.add('ativo');
+        } else if (ANOMES_RAW.length === 6) {
+            const ano = parseInt(ANOMES_RAW.slice(0,4));
+            const mes = parseInt(ANOMES_RAW.slice(4,6));
+            const fIni = `${ANOMES_RAW.slice(0,4)}-${ANOMES_RAW.slice(4,6)}-01`;
+            const fFim = toISO(ultimoDiaMes(ano, mes));
+            if (ini === fIni && fim === fFim)
+                document.getElementById('atFolha').classList.add('ativo');
+        }
+        if (ini === `${hoje.getFullYear()}-01-01` && fim === `${hoje.getFullYear()}-12-31`)
+            document.getElementById('atAno').classList.add('ativo');
+    }
+})();
 </script>
 </body>
 </html>
