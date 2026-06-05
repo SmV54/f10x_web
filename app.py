@@ -36,13 +36,18 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise Exception("Erro: SUPABASE_URL ou SUPABASE_KEY não definidos no .env")
 
 def ler_versao():
-    """Lê versão do arquivo versaoxxx.txt; cai para APP_VERSAO do .env."""
+    """Lê versão do arquivo versaoxxx.txt; converte YYYYMMDD-HHMM → DD-MM-YY HHhMM."""
+    import re
     try:
         caminho = os.path.join(os.path.dirname(__file__), "versaoxxx.txt")
         with open(caminho, "r", encoding="utf-8") as f:
             v = f.read().strip()
-            if v:
-                return v
+        if v:
+            m = re.match(r'^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$', v)
+            if m:
+                aa, mm, dd, hh, mi = m.group(1)[2:], m.group(2), m.group(3), m.group(4), m.group(5)
+                return f"{dd}-{mm}-{aa} {hh}h{mi}"
+            return v
     except Exception:
         pass
     return os.getenv("APP_VERSAO", "")
