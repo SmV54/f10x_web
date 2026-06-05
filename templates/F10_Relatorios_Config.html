@@ -249,6 +249,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .btn-iniciar:hover { background: #1a5fb8; }
 .btn-iniciar svg { flex-shrink: 0; }
+.log-atalho {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 2px; padding: 7px 18px; border-radius: 8px; cursor: pointer;
+    border: 2px solid var(--border, #dde3ec); background: #f8fafc;
+    transition: .15s; user-select: none; min-width: 100px;
+}
+.log-atalho:hover { border-color: #2a7de1; background: #eff6ff; }
+.log-atalho.ativo { border-color: #2a7de1; background: #dbeafe; }
+.log-atalho-nome  { font-size: 11px; font-weight: 700; color: #1e3a5f; }
+.log-atalho-sub   { font-size: 10px; color: #64748b; }
 </style>
 </head>
 
@@ -370,7 +380,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         <!-- 04 - Ano / Mês -->
-        <div class="opcao-linha" id="linha-04">
+        <div class="opcao-linha" id="linha-04" {% if rel == 'log' %}style="display:none"{% endif %}>
             <div class="toggle-wrap">
                 <label class="toggle">
                     <input type="checkbox" id="tog-04" onchange="alternarOpcao('04')"
@@ -400,15 +410,28 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         {% if rel == 'log' %}
+        <!-- Atalhos de período para o Log -->
         <div class="opcao-linha">
             <div></div>
-            <div class="opcao-label"><span class="opcao-num">09</span> Módulo</div>
+            <div class="opcao-label">Intervalo Rápido</div>
             <div class="opcao-valor">
-                <select class="select-opcao" name="menu">
-                    <option value="">— Todos —</option>
-                    <option value="FUNCIONARIO">Funcionário</option>
-                    <option value="VERBA">Verba</option>
-                </select>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <div class="log-atalho" id="logAt-hoje"  onclick="logAtalho('hoje')"  title="Preenche as datas com hoje">
+                        <span style="font-size:16px;">📅</span>
+                        <span class="log-atalho-nome">Hoje</span>
+                        <span class="log-atalho-sub" id="logLbl-hoje"></span>
+                    </div>
+                    <div class="log-atalho" id="logAt-folha" onclick="logAtalho('folha')" title="Preenche com o mês da folha ativa">
+                        <span style="font-size:16px;">📂</span>
+                        <span class="log-atalho-nome">Esta Folha</span>
+                        <span class="log-atalho-sub" id="logLbl-folha"></span>
+                    </div>
+                    <div class="log-atalho" id="logAt-ano"   onclick="logAtalho('ano')"   title="Preenche com o ano corrente">
+                        <span style="font-size:16px;">📆</span>
+                        <span class="log-atalho-nome">Este Ano</span>
+                        <span class="log-atalho-sub" id="logLbl-ano"></span>
+                    </div>
+                </div>
             </div>
         </div>
         {% endif %}
@@ -740,6 +763,53 @@ function iniciarRelatorio() {
 
     window.location.href = rota + '?' + params.toString();
 }
+
+// ── Atalhos de período para o Log ──────────────────────────
+(function() {
+    const ANOMES = '{{ anomes_atual }}';
+    function toISO(d) { return d.toISOString().slice(0, 10); }
+    function ultimoDia(ano, mes) { return new Date(ano, mes, 0); }
+    function fmtBR(iso) { const [a,m,d] = iso.split('-'); return `${d}/${m}/${a}`; }
+
+    const hoje = new Date();
+    const el = id => document.getElementById(id);
+
+    if (el('logLbl-hoje'))  el('logLbl-hoje').textContent  = fmtBR(toISO(hoje));
+    if (el('logLbl-ano'))   el('logLbl-ano').textContent   = hoje.getFullYear();
+    if (el('logLbl-folha') && ANOMES.length === 6)
+        el('logLbl-folha').textContent = ANOMES.slice(4,6) + '/' + ANOMES.slice(0,4);
+
+    window.logAtalho = function(tipo) {
+        let ini, fim;
+        if (tipo === 'hoje') {
+            ini = fim = toISO(hoje);
+        } else if (tipo === 'folha' && ANOMES.length === 6) {
+            const ano = parseInt(ANOMES.slice(0,4));
+            const mes = parseInt(ANOMES.slice(4,6));
+            ini = `${ANOMES.slice(0,4)}-${ANOMES.slice(4,6)}-01`;
+            fim = toISO(ultimoDia(ano, mes));
+        } else if (tipo === 'ano') {
+            ini = `${hoje.getFullYear()}-01-01`;
+            fim = `${hoje.getFullYear()}-12-31`;
+        } else { return; }
+
+        const inEl  = document.querySelector('input[name="data_de"]');
+        const fimEl = document.querySelector('input[name="data_ate"]');
+        if (inEl)  inEl.value  = ini;
+        if (fimEl) fimEl.value = fim;
+
+        // Garante que o toggle 03 (intervalo datas) está ativo
+        const tog03 = document.getElementById('tog-03');
+        if (tog03 && !tog03.checked && !tog03.disabled) {
+            tog03.checked = true;
+            if (typeof alternarOpcao === 'function') alternarOpcao('03');
+        }
+
+        document.querySelectorAll('.log-atalho').forEach(c => c.classList.remove('ativo'));
+        const card = document.getElementById('logAt-' + tipo);
+        if (card) card.classList.add('ativo');
+    };
+})();
 </script>
 
 </body>
