@@ -441,7 +441,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
                 </div>
                 <div class="campo-rel">
                     <span class="campo-label">CBO da Função</span>
-                    <span class="campo-valor mono">{{ funcionario.cbofuncao or '—' }}</span>
+                    <span class="campo-valor mono" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ funcionario._funcao_linha }}">{{ funcionario._funcao_linha }}</span>
                 </div>
                 <div class="campo-rel">
                     <span class="campo-label">Filial</span>

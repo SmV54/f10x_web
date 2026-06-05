@@ -6907,6 +6907,25 @@ def ficha_registro():
                         sind_nome = match.get("nome_sindicato", "") if match else "??? NÃO ENCONTRADO ???"
                     except Exception:
                         pass
+                # Busca nome da função pelo CBO
+                func_nome = ""
+                if f.get("cbofuncao"):
+                    try:
+                        cpf_cli = so_numeros(session.get("cpf", ""))
+                        rf = (supabase.table("tab_funcao_cli")
+                              .select("nome_resumido")
+                              .eq("idcliente", cpf_cli)
+                              .eq("cbo_codigo", str(f["cbofuncao"]).strip())
+                              .eq("situacao", "A")
+                              .limit(1)
+                              .execute())
+                        if rf.data:
+                            func_nome = rf.data[0].get("nome_resumido", "")
+                    except Exception:
+                        pass
+                cbo_val = f.get("cbofuncao") or ""
+                f["_funcao_linha"] = (f"{cbo_val} — {func_nome}" if func_nome
+                                      else cbo_val or "—")
                 # Formata campos
                 f["_cpf"]        = fcpf(f.get("cpf"))
                 f["_dtnascto"]   = fdata(f.get("dtnascto"))
