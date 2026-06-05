@@ -500,12 +500,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>País Nascimento</label>
-                    <input type="text" id="paisNascto" maxlength="3" placeholder="105"
+                    <input type="text" id="paisNascto" maxlength="3" value="105"
                            onfocus="showHint(this,'Código do país conforme Tabela 06 do eSocial.\nBrasil = 105')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>País Nacionalidade</label>
-                    <input type="text" id="paisNac" maxlength="3" placeholder="105"
+                    <input type="text" id="paisNac" maxlength="3" value="105"
                            onfocus="showHint(this,'Código do país conforme Tabela 06 do eSocial.\nBrasil = 105')" onblur="clearHint()">
                 </div>
             </div>
@@ -1737,6 +1737,8 @@ function restaurarPadroes() {
     sel('tpRegJor',   '1');
     sel('tpJornada',  '9');
     sel('horNoturno', 'N');
+    sel('paisNascto', '105');
+    sel('paisNac',    '105');
 }
 
 function limparFormulario() {
