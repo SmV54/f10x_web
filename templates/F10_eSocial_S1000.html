@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-1000</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy: #0b1f3a; --navy-line: #1e3d5c; --accent: #2a7de1;
+    --text-head: #e8edf4; --text-sub: #8baac8;
+    --bg: #f0f2f6; --surface: #ffffff; --border: #dde3ec; --label: #374151;
+    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+    --green: #00a651;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* TOPO */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap; text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* CONTEÚDO */
+.conteudo { max-width: 980px; margin: 32px auto; padding: 0 24px 80px; }
+
+/* BARRA SUPERIOR */
+.barra-topo {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+}
+.barra-esq { display: flex; flex-direction: column; gap: 2px; }
+.barra-titulo { font-size: 16px; font-weight: 700; color: #1e293b; }
+.barra-sub    { font-size: 12px; color: #64748b; }
+.barra-dir { display: flex; gap: 8px; }
+
+/* BOTÕES NOVO */
+.btn-novo {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: none; cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-novo.inclusao  { background: var(--accent); color: #fff; }
+.btn-novo.inclusao:hover  { background: #1a6bc0; }
+.btn-novo.alteracao { background: #7c3aed; color: #fff; }
+.btn-novo.alteracao:hover { background: #6d28d9; }
+
+/* CARD EMPRESA */
+.card-empresa {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 20px; margin-bottom: 20px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px 24px;
+}
+.dado-bloco { display: flex; flex-direction: column; gap: 2px; }
+.dado-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
+.dado-valor { font-size: 13px; color: #1e293b; font-family: var(--mono); }
+.dado-valor.missing { color: #ef4444; font-style: italic; font-family: var(--sans); }
+
+/* TABELA */
+.tabela-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 9px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; text-align: left; white-space: nowrap;
+}
+td {
+    padding: 11px 14px; border-bottom: 1px solid #f1f5f9;
+    font-size: 13px; color: var(--label); vertical-align: middle;
+}
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: #f8fafc; }
+.data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
+.per-cell  { font-family: var(--mono); font-size: 13px; font-weight: 600; color: #1e293b; }
+
+/* BADGES SITUAÇÃO */
+.sit-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap;
+}
+.sit-pendente   { background: #fef9c3; color: #854d0e;  border: 1px solid #fde047; }
+.sit-gerado     { background: #dbeafe; color: #1d4ed8;  border: 1px solid #93c5fd; }
+.sit-enviado    { background: #dcfce7; color: #166534;  border: 1px solid #86efac; }
+.sit-aguardando { background: #fff7ed; color: #9a3412;  border: 1px solid #fdba74; }
+.sit-erro       { background: #fee2e2; color: #991b1b;  border: 1px solid #fca5a5; }
+.sit-excluido   { background: #f1f5f9; color: #64748b;  border: 1px solid #cbd5e1; }
+
+/* BADGE TIPO */
+.tp-badge {
+    display: inline-block; padding: 2px 9px; border-radius: 12px;
+    font-size: 10px; font-weight: 700; letter-spacing: .04em; white-space: nowrap;
+}
+.tp-inc { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.tp-alt { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+
+/* BOTÕES AÇÃO NAS LINHAS */
+.btn-acao {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 11px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: .12s; font-family: var(--sans); white-space: nowrap;
+    border: 1.5px solid; background: transparent;
+}
+.btn-xml    { border-color: #94a3b8; color: #475569; }
+.btn-xml:hover { background: #475569; color: #fff; border-color: #475569; }
+.btn-enviar { border-color: var(--green); color: #166534; background: #e8f5ee; }
+.btn-enviar:hover:not(:disabled) { background: var(--green); color: #fff; }
+.btn-enviar:disabled { opacity: .45; cursor: default; }
+
+/* VAZIO */
+.vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
+.vazio-icone { font-size: 32px; margin-bottom: 12px; }
+
+/* CÉLULAS */
+.recibo-cell { font-family: var(--mono); font-size: 10px; color: #166534; word-break: break-all; max-width: 200px; }
+.erro-cell   { font-size: 11px; color: #991b1b; max-width: 280px; word-break: break-word; }
+
+/* MODAL */
+.modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,.55);
+    align-items: flex-start; justify-content: center;
+    padding: 40px 16px 60px; overflow-y: auto;
+}
+.modal-overlay.aberto { display: flex; }
+.modal-painel {
+    background: #fff; border-radius: 16px;
+    width: 100%; max-width: 640px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.35); overflow: hidden;
+}
+.modal-topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 22px; display: flex; align-items: center; justify-content: space-between;
+    min-height: 52px;
+}
+.modal-topo-titulo { font-size: 14px; font-weight: 600; color: var(--text-head); display: flex; align-items: center; gap: 8px; }
+.modal-fechar {
+    background: transparent; border: none; color: var(--text-sub);
+    font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1; transition: color .12s;
+}
+.modal-fechar:hover { color: var(--text-head); }
+.modal-corpo  { padding: 24px 24px 8px; }
+.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 24px 20px; border-top: 1px solid #f1f5f9; margin-top: 16px; }
+
+/* FORM MODAL */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-col-full { grid-column: 1 / -1; }
+.form-group { display: flex; flex-direction: column; gap: 5px; }
+.form-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #64748b; }
+.form-input, .form-select {
+    height: 38px; padding: 0 12px; border-radius: 8px;
+    border: 1.5px solid var(--border); font-size: 13px;
+    font-family: var(--sans); color: var(--label); background: #fff;
+    transition: border-color .12s; outline: none;
+}
+.form-input:focus, .form-select:focus { border-color: var(--accent); }
+.form-input.mono { font-family: var(--mono); }
+.form-hint { font-size: 10px; color: #94a3b8; margin-top: 1px; }
+
+/* CARD REVISÃO */
+.review-card {
+    background: #f8faff; border: 1px solid #c7d8f8; border-radius: 10px;
+    padding: 14px 16px; margin-top: 16px;
+}
+.review-titulo { font-size: 11px; font-weight: 700; color: #1e40af; margin-bottom: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 20px; }
+.review-linha { display: flex; flex-direction: column; gap: 1px; }
+.review-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #64748b; }
+.review-val { font-size: 12px; color: #1e293b; font-family: var(--mono); }
+.review-val.miss { color: #ef4444; font-family: var(--sans); }
+
+/* BOTÕES MODAL */
+.btn-modal {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    cursor: pointer; font-family: var(--sans); border: none; transition: .13s;
+}
+.btn-modal.primario       { background: var(--accent); color: #fff; }
+.btn-modal.primario:hover { background: #1a6bc0; }
+.btn-modal.primario.alt       { background: #7c3aed; color: #fff; }
+.btn-modal.primario.alt:hover { background: #6d28d9; }
+.btn-modal.secundario       { background: #f1f5f9; color: #64748b; }
+.btn-modal.secundario:hover { background: #e2e8f0; color: #374151; }
+.btn-modal:disabled { opacity: .5; cursor: default; }
+
+/* SPINNER */
+.spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.msg-envio { margin-top: 8px; padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+.msg-ok   { background: #dcfce7; color: #166534; }
+.msg-erro { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body>
+<div class="topo">
+    <div>
+        <div class="topo-empresa">{{ empresa_info }}</div>
+        <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+    </div>
+    <div class="topo-titulo">🏢 eSocial S-1000 — Informações do Empregador</div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div>
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <a href="/menu" class="btn-voltar-topo">&#8592; Voltar</a>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- Barra superior -->
+    <div class="barra-topo">
+        <div class="barra-esq">
+            <div class="barra-titulo">S-1000 · Informações do Empregador/Contribuinte</div>
+            <div class="barra-sub">{{ total }} registro{{ 's' if total != 1 else '' }} · Grupo 1 — Tabelas do Empregador</div>
+        </div>
+        <div class="barra-dir">
+            <button class="btn-novo inclusao" onclick="abrirModal('inclusao')">＋ Nova Inclusão</button>
+            <button class="btn-novo alteracao" onclick="abrirModal('alteracao')">✎ Nova Alteração</button>
+        </div>
+    </div>
+
+    <!-- Card dados da empresa -->
+    <div class="card-empresa">
+        <div class="dado-bloco">
+            <div class="dado-label">Razão Social</div>
+            <div class="dado-valor {% if not empresa.get('razaosocial') %}missing{% endif %}">
+                {{ empresa.get('razaosocial') or '— não preenchido —' }}
+            </div>
+        </div>
+        <div class="dado-bloco">
+            <div class="dado-label">Class. Tributária</div>
+            <div class="dado-valor {% if not empresa.get('class_trib') %}missing{% endif %}">
+                {{ empresa.get('_class_trib_label') or '— não preenchido —' }}
+            </div>
+        </div>
+        <div class="dado-bloco">
+            <div class="dado-label">Nat. Jurídica</div>
+            <div class="dado-valor {% if not empresa.get('nat_juridica') %}missing{% endif %}">
+                {{ empresa.get('nat_juridica') or '— não preenchido —' }}
+            </div>
+        </div>
+        <div class="dado-bloco">
+            <div class="dado-label">Ind. Cooperativa</div>
+            <div class="dado-valor">{{ empresa.get('ind_coop') or '0' }}</div>
+        </div>
+        <div class="dado-bloco">
+            <div class="dado-label">Ind. Construção</div>
+            <div class="dado-valor">{{ empresa.get('ind_constr') or '0' }}</div>
+        </div>
+        <div class="dado-bloco">
+            <div class="dado-label">Ind. Desoneração</div>
+            <div class="dado-valor">{{ empresa.get('ind_des_folha') or '0' }}</div>
+        </div>
+        <div class="dado-bloco">
+            <div class="dado-label">Ind. Porte</div>
+            <div class="dado-valor">{{ empresa.get('ind_porte') or '—' }}</div>
+        </div>
+    </div>
+
+    <!-- Tabela -->
+    <div class="tabela-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Cad.</th>
+                    <th>Tipo</th>
+                    <th>Período Início</th>
+                    <th>Contato</th>
+                    <th>Situação</th>
+                    <th>Recibo / Erro</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% if rows %}
+                {% for r in rows %}
+                <tr id="row-{{ r.id_esocial }}">
+                    <td class="data-cell">{{ r.id_esocial }}</td>
+                    <td class="data-cell">{{ r._datacad_fmt or '—' }}</td>
+                    <td>
+                        <span class="tp-badge {{ 'tp-inc' if r._tp_op_label == 'Inclusão' else 'tp-alt' }}">
+                            {{ r._tp_op_label }}
+                        </span>
+                    </td>
+                    <td class="per-cell">{{ r._ini_valid or '—' }}</td>
+                    <td style="font-size:12px; color:#475569;">{{ r._ctt_nome or '—' }}</td>
+                    <td>
+                        <span id="sit-{{ r.id_esocial }}" class="sit-badge {{ r._sit_class }}">
+                            {{ r._sit_label }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if r.get('recibo') %}
+                            <div class="recibo-cell">{{ r.recibo }}</div>
+                        {% elif r._sit == 'X' %}
+                            <div class="erro-cell">{{ (r.get('observacao_erro') or '')[:120] }}</div>
+                        {% elif r._sit == 'W' %}
+                            <div class="data-cell" style="color:#9a3412;">Aguardando...</div>
+                        {% else %}
+                            <span style="color:#94a3b8; font-size:12px;">—</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                            <button class="btn-acao btn-xml"
+                                    onclick="baixarXml({{ r.id_esocial }})">
+                                ⬇ XML
+                            </button>
+                            {% if r._sit in ('P', 'G', 'W', 'X') %}
+                            <button class="btn-acao btn-enviar" id="btn-env-{{ r.id_esocial }}"
+                                    onclick="enviarS1000({{ r.id_esocial }}, this)">
+                                ▶ Enviar
+                            </button>
+                            {% elif r._sit == 'E' %}
+                            <span style="color:#166534; font-size:11px; font-weight:600; align-self:center;">✔ Enviado</span>
+                            {% endif %}
+                        </div>
+                        <div id="msg-{{ r.id_esocial }}" style="display:none; margin-top:5px;"></div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="8">
+                        <div class="vazio">
+                            <div class="vazio-icone">🏢</div>
+                            <div>Nenhum S-1000 registrado ainda.</div>
+                            <div style="margin-top:6px; font-size:12px;">Clique em <strong>Nova Inclusão</strong> para criar o primeiro evento.</div>
+                        </div>
+                    </td>
+                </tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-novo">
+    <div class="modal-painel">
+        <div class="modal-topo">
+            <div class="modal-topo-titulo" id="modal-titulo">🏢 Novo S-1000</div>
+            <button class="modal-fechar" onclick="fecharModal()">✕</button>
+        </div>
+        <div class="modal-corpo">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label class="form-label">Início de Validade *</label>
+                    <input type="month" id="f-ini-valid" class="form-input mono" required>
+                    <span class="form-hint">Período inicial de vigência do cadastro</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Fim de Validade (opcional)</label>
+                    <input type="month" id="f-fim-valid" class="form-input mono">
+                    <span class="form-hint">Deixe em branco se sem prazo</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nome do Contato *</label>
+                    <input type="text" id="f-ctt-nome" class="form-input" maxlength="70"
+                           placeholder="Nome completo do responsável">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">CPF do Contato *</label>
+                    <input type="text" id="f-ctt-cpf" class="form-input mono" maxlength="14"
+                           placeholder="000.000.000-00">
+                </div>
+                <div class="form-group form-col-full">
+                    <label class="form-label">Ambiente</label>
+                    <select id="f-tpamb" class="form-select">
+                        <option value="1">1 — Produção</option>
+                        <option value="2">2 — Homologação (Testes)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Revisão dados empresa -->
+            <div class="review-card">
+                <div class="review-titulo">Dados da empresa que serão enviados</div>
+                <div class="review-grid">
+                    <div class="review-linha">
+                        <div class="review-lbl">Razão Social</div>
+                        <div class="review-val {{ 'miss' if not empresa.get('razaosocial') }}">
+                            {{ empresa.get('razaosocial') or '⚠ não preenchido' }}
+                        </div>
+                    </div>
+                    <div class="review-linha">
+                        <div class="review-lbl">Class. Tributária</div>
+                        <div class="review-val {{ 'miss' if not empresa.get('class_trib') }}">
+                            {{ empresa.get('_class_trib_label') or '⚠ não preenchido' }}
+                        </div>
+                    </div>
+                    <div class="review-linha">
+                        <div class="review-lbl">Natureza Jurídica</div>
+                        <div class="review-val {{ 'miss' if not empresa.get('nat_juridica') }}">
+                            {{ empresa.get('nat_juridica') or '⚠ não preenchido' }}
+                        </div>
+                    </div>
+                    <div class="review-linha">
+                        <div class="review-lbl">Ind. Cooperativa</div>
+                        <div class="review-val">{{ empresa.get('ind_coop') or '0' }}</div>
+                    </div>
+                    <div class="review-linha">
+                        <div class="review-lbl">Ind. Construção Civil</div>
+                        <div class="review-val">{{ empresa.get('ind_constr') or '0' }}</div>
+                    </div>
+                    <div class="review-linha">
+                        <div class="review-lbl">Ind. Desoneração</div>
+                        <div class="review-val">{{ empresa.get('ind_des_folha') or '0' }}</div>
+                    </div>
+                </div>
+                {% if not empresa.get('razaosocial') or not empresa.get('class_trib') or not empresa.get('nat_juridica') %}
+                <div style="margin-top:10px; padding:8px 10px; background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; font-size:11px; color:#991b1b;">
+                    ⚠ Os campos em vermelho são obrigatórios para o eSocial. Complete-os no cadastro da empresa antes de enviar.
+                </div>
+                {% endif %}
+            </div>
+
+            <div id="msg-modal" style="display:none; margin-top:12px;"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn-modal secundario" onclick="fecharModal()">Cancelar</button>
+            <button class="btn-modal primario" id="btn-gravar" onclick="gravarS1000()">
+                💾 Gravar
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+let _tpOp = 'inclusao';
+
+function abrirModal(tp) {
+    _tpOp = tp;
+    const titulo  = document.getElementById('modal-titulo');
+    const btnG    = document.getElementById('btn-gravar');
+    if (tp === 'inclusao') {
+        titulo.textContent = '🏢 Nova Inclusão — S-1000';
+        btnG.className = 'btn-modal primario';
+    } else {
+        titulo.textContent = '✎ Nova Alteração — S-1000';
+        btnG.className = 'btn-modal primario alt';
+    }
+    ['f-ini-valid','f-fim-valid','f-ctt-nome','f-ctt-cpf'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
+    document.getElementById('f-tpamb').value = '1';
+    document.getElementById('msg-modal').style.display = 'none';
+    document.getElementById('modal-novo').classList.add('aberto');
+}
+
+function fecharModal() {
+    document.getElementById('modal-novo').classList.remove('aberto');
+}
+document.getElementById('modal-novo').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+});
+
+function gravarS1000() {
+    const ini  = document.getElementById('f-ini-valid').value.trim();
+    const fim  = document.getElementById('f-fim-valid').value.trim();
+    const nome = document.getElementById('f-ctt-nome').value.trim();
+    const cpf  = document.getElementById('f-ctt-cpf').value.replace(/\D/g,'');
+    const amb  = document.getElementById('f-tpamb').value;
+    const btn  = document.getElementById('btn-gravar');
+
+    if (!ini)             { showModalMsg('Informe o período de início de validade.', false); return; }
+    if (!nome)            { showModalMsg('Informe o nome do contato.', false); return; }
+    if (cpf.length !== 11){ showModalMsg('CPF inválido — informe 11 dígitos.', false); return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin"></span> Gravando...';
+
+    fetch('/api/esocial_s1000_gravar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ tp_op: _tpOp, ini_valid: ini, fim_valid: fim,
+                               contato_nome: nome, contato_cpf: cpf, tpAmb: amb })
+    })
+    .then(r => r.json())
+    .then(d => {
+        btn.disabled = false;
+        btn.innerHTML = '💾 Gravar';
+        if (d.ok) {
+            fecharModal();
+            window.location.reload();
+        } else {
+            showModalMsg(d.msg || 'Erro ao gravar.', false);
+        }
+    })
+    .catch(e => {
+        btn.disabled = false;
+        btn.innerHTML = '💾 Gravar';
+        showModalMsg('Erro de comunicação: ' + e, false);
+    });
+}
+
+function showModalMsg(txt, ok) {
+    const el = document.getElementById('msg-modal');
+    el.className = 'msg-envio ' + (ok ? 'msg-ok' : 'msg-erro');
+    el.textContent = txt;
+    el.style.display = 'block';
+}
+
+function baixarXml(id) {
+    window.open('/api/esocial_s1000_xml?id=' + id, '_blank');
+}
+
+function enviarS1000(id, btnEl) {
+    if (!confirm('Confirma o envio do S-1000 ao eSocial?')) return;
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<span class="spin" style="border-top-color:#166534;border-color:#a7e0bc;"></span>';
+
+    const msgEl = document.getElementById('msg-' + id);
+    msgEl.style.display = 'none';
+
+    fetch('/api/esocial_s1000_enviar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id_esocial: id })
+    })
+    .then(r => r.json())
+    .then(d => {
+        btnEl.disabled = false;
+        btnEl.innerHTML = '▶ Enviar';
+        msgEl.className = 'msg-envio ' + (d.ok ? 'msg-ok' : 'msg-erro');
+        msgEl.textContent = d.msg || (d.ok ? 'Enviado!' : 'Erro no envio.');
+        msgEl.style.display = 'block';
+        const sitEl = document.getElementById('sit-' + id);
+        if (sitEl) {
+            if (d.recibo) { sitEl.className = 'sit-badge sit-enviado'; sitEl.textContent = 'Enviado'; }
+            else if (d.ok){ sitEl.className = 'sit-badge sit-aguardando'; sitEl.textContent = 'Aguardando'; }
+            else           { sitEl.className = 'sit-badge sit-erro'; sitEl.textContent = 'Com Erro'; }
+        }
+        if (d.ok) setTimeout(() => window.location.reload(), 2500);
+    })
+    .catch(e => {
+        btnEl.disabled = false;
+        btnEl.innerHTML = '▶ Enviar';
+        msgEl.className = 'msg-envio msg-erro';
+        msgEl.textContent = 'Erro de comunicação: ' + e;
+        msgEl.style.display = 'block';
+    });
+}
+</script>
+</body>
+</html>

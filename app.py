@@ -13206,6 +13206,576 @@ def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
 
 
 # =========================================================
+# eSocial — helpers de contexto (S-1005 / S-1010 / S-1020)
+# =========================================================
+def _ctx_esocial():
+    cnpj_raw = so_numeros(session.get("cnpj_empresa", ""))
+    cnpj_fmt = _fmt_cnpj(cnpj_raw) if len(cnpj_raw) == 14 else cnpj_raw
+    return dict(
+        versao=ler_versao(),
+        empresa_info=session.get("empresa_info", ""),
+        cnpj_fmt=cnpj_fmt,
+    )
+
+
+# =========================================================
+# eSocial S-1000 — GERADOR DE XML
+# =========================================================
+def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, contato_cpf):
+    """Gera string XML do S-1000 (Informações do Empregador/Contribuinte).
+    tp_op: 'inclusao' ou 'alteracao'
+    ini_valid / fim_valid: 'YYYY-MM'
+    """
+    import re as _re2
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):
+        return _re2.sub(r'\D', '', str(v or ''))
+
+    def x(v):
+        return _esc(str(v or ''))
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    nm_razao   = x(empresa.get('razaosocial', ''))
+    class_trib = str(empresa.get('class_trib') or '01').zfill(2)
+    nat_jurid  = str(empresa.get('nat_juridica') or '').strip()
+    ind_coop   = str(empresa.get('ind_coop') or '0')
+    ind_constr = str(empresa.get('ind_constr') or '0')
+    ind_des    = str(empresa.get('ind_des_folha') or '0')
+    ind_porte  = str(empresa.get('ind_porte') or '').strip()
+
+    fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
+    nat_jurid_xml = f"\n          <natJurid>{x(nat_jurid)}</natJurid>" if nat_jurid else ''
+    ind_porte_xml = f"\n          <indPorte>{x(ind_porte)}</indPorte>" if ind_porte else ''
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v02_05_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v02_05_00 evtInfoEmpregador_v02_05_00.xsd">
+  <evtInfoEmpregador Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>Folha10-Simples</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <infoEmpregador>
+      <{tp_op}>
+        <idePeriodo>
+          <iniValid>{x(ini_valid)}</iniValid>{fim_valid_xml}
+        </idePeriodo>
+        <infoCadastro>
+          <nmRazao>{nm_razao}</nmRazao>
+          <classTrib>{x(class_trib)}</classTrib>{nat_jurid_xml}
+          <indCoop>{x(ind_coop)}</indCoop>
+          <indConstr>{x(ind_constr)}</indConstr>
+          <indDesFolha>{x(ind_des)}</indDesFolha>
+          <indOptRegEletron>0</indOptRegEletron>{ind_porte_xml}
+          <contato>
+            <nmCtt>{x(contato_nome)}</nmCtt>
+            <cpfCtt>{dg(contato_cpf)}</cpfCtt>
+          </contato>
+        </infoCadastro>
+      </{tp_op}>
+    </infoEmpregador>
+  </evtInfoEmpregador>
+</eSocial>"""
+
+
+# =========================================================
+# eSocial S-1000 — TELA DE LISTAGEM
+# =========================================================
+@app.route("/esocial_s1000")
+def esocial_s1000():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+
+    rows = []
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1000")
+                .order("data_cad", desc=True)
+                .order("hora_cad", desc=True)
+                .execute().data or [])
+    except Exception:
+        rows = []
+
+    empresa = {}
+    try:
+        r = supabase.table("tab_empresa").select("*")\
+            .eq("cnpj", cnpj_emp).limit(1).execute()
+        empresa = r.data[0] if r.data else {}
+    except Exception:
+        pass
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    _SIT = {
+        "E": ("Enviado",    "sit-enviado"),
+        "D": ("Excluído",   "sit-excluido"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+
+    import json as _json
+    for r in rows:
+        r["_datacad_fmt"]   = _d8(r.get("data_cad"))
+        r["_datagrava_fmt"] = _d8(r.get("data_grava"))
+        r["_tp_op_label"]   = "Inclusão" if str(r.get("codigo2") or "1") == "1" else "Alteração"
+
+        # Parse stored PARAMS from observacao_erro
+        obs = (r.get("observacao_erro") or "").strip()
+        r["_ini_valid"] = ""
+        r["_fim_valid"] = ""
+        r["_ctt_nome"]  = ""
+        if obs.startswith("PARAMS:"):
+            try:
+                p = _json.loads(obs[7:])
+                r["_ini_valid"] = p.get("ini", "")
+                r["_fim_valid"] = p.get("fim", "")
+                r["_ctt_nome"]  = p.get("ctt_nome", "")
+            except Exception:
+                pass
+        # Fallback: derive period from ano_mes
+        if not r["_ini_valid"]:
+            am = str(r.get("ano_mes") or "")
+            if len(am) == 6:
+                r["_ini_valid"] = f"{am[:4]}-{am[4:6]}"
+
+        recibo = (r.get("recibo") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+
+        if recibo and obs == "EXCLUIDO":
+            s = "D"
+        elif recibo:
+            s = "E"
+        elif obs.startswith("AGUARDANDO:"):
+            s = "W"
+            r["_protocolo"] = obs[len("AGUARDANDO:"):]
+        elif obs and not obs.startswith("PARAMS:"):
+            s = "X"
+        elif dgrava:
+            s = "G"
+        else:
+            s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT[s][0]
+        r["_sit_class"] = _SIT[s][1]
+
+    _CLASS_TRIB = {
+        '01': '01 — CNPJ com FGTS', '02': '02 — CNPJ sem FGTS',
+        '03': '03 — Simples Nacional', '04': '04 — Simples c/ FGTS',
+        '06': '06 — MEI', '07': '07 — Prod. Rural PF',
+        '08': '08 — Órgão Público', '09': '09 — RPPS',
+        '21': '21 — Emp. Doméstico', '22': '22 — Emp. Dom. MEI',
+    }
+    ct = str(empresa.get('class_trib') or '').zfill(2)
+    empresa['_class_trib_label'] = _CLASS_TRIB.get(ct, ct or '—')
+
+    cnpj_fmt = _fmt_cnpj(cnpj_emp) if len(cnpj_emp) == 14 else cnpj_emp
+
+    return render_template(
+        "F10_eSocial_S1000.html",
+        versao=ler_versao(),
+        empresa_info=session.get("empresa_info", ""),
+        cnpj_fmt=cnpj_fmt,
+        rows=rows,
+        total=len(rows),
+        empresa=empresa,
+    )
+
+
+# =========================================================
+# eSocial S-1000 — API: gravar (cria registro pendente)
+# =========================================================
+@app.route("/api/esocial_s1000_gravar", methods=["POST"])
+def api_esocial_s1000_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import json as _json
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    data       = request.get_json(force=True) or {}
+
+    tp_op     = data.get("tp_op", "inclusao")
+    ini_valid = data.get("ini_valid", "").strip()
+    fim_valid = data.get("fim_valid", "").strip()
+    ctt_nome  = data.get("contato_nome", "").strip()
+    ctt_cpf   = data.get("contato_cpf", "").strip()
+    tpAmb     = str(data.get("tpAmb", "1"))
+
+    if not ini_valid or len(ini_valid) != 7 or ini_valid[4] != '-':
+        return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
+    if not ctt_nome:
+        return jsonify({"ok": False, "msg": "Nome do contato obrigatório."})
+    if len(so_numeros(ctt_cpf)) != 11:
+        return jsonify({"ok": False, "msg": "CPF do contato inválido (deve ter 11 dígitos)."})
+
+    codigo2 = 1 if tp_op == "inclusao" else 2
+    ano_mes = ini_valid.replace("-", "")
+
+    params_json = _json.dumps({
+        "ini": ini_valid, "fim": fim_valid,
+        "ctt_nome": ctt_nome, "ctt_cpf": so_numeros(ctt_cpf),
+        "tpAmb": tpAmb,
+    }, ensure_ascii=False)
+
+    agora = datetime.now()
+    try:
+        r = supabase.table("tab_esocial").insert({
+            "id_cliente":      id_cliente,
+            "id_empresa":      id_empresa,
+            "data_cad":        agora.strftime("%Y%m%d"),
+            "hora_cad":        agora.strftime("%H%M"),
+            "layout":          "1000",
+            "ano_mes":         int(ano_mes),
+            "folha_tipo":      "I",
+            "codigo2":         codigo2,
+            "observacao_erro": f"PARAMS:{params_json}",
+        }).execute()
+        id_esocial = r.data[0]["id_esocial"] if r.data else None
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+
+    if not id_esocial:
+        return jsonify({"ok": False, "msg": "Falha ao obter ID do registro."})
+
+    return jsonify({"ok": True, "id_esocial": id_esocial})
+
+
+# =========================================================
+# eSocial S-1000 — API: baixar XML
+# =========================================================
+@app.route("/api/esocial_s1000_xml")
+def api_esocial_s1000_xml():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from flask import Response
+    import json as _json
+
+    id_empresa = _get_id_empresa()
+    id_reg     = request.args.get("id", "").strip()
+    tpAmb      = request.args.get("tpAmb", "").strip()
+
+    if not id_reg or not id_reg.isdigit():
+        return Response("ID inválido.", status=400, mimetype="text/plain")
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1000")
+                .limit(1).execute())
+        if not r_es.data:
+            return Response("Registro não encontrado.", status=404, mimetype="text/plain")
+        es = r_es.data[0]
+    except Exception as e:
+        return Response(str(e), status=500, mimetype="text/plain")
+
+    # Parse stored params
+    obs = (es.get("observacao_erro") or "").strip()
+    params = {}
+    if obs.startswith("PARAMS:"):
+        try:
+            params = _json.loads(obs[7:])
+        except Exception:
+            pass
+
+    ini_valid  = tpAmb and params.get("ini", "") or params.get("ini", "")
+    fim_valid  = params.get("fim", "")
+    ctt_nome   = params.get("ctt_nome", "")
+    ctt_cpf    = params.get("ctt_cpf", "")
+    if not tpAmb:
+        tpAmb  = params.get("tpAmb", "1")
+    tp_op      = "inclusao" if str(es.get("codigo2") or "1") == "1" else "alteracao"
+
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {"cnpj": cnpj_emp}
+    except Exception:
+        empresa = {"cnpj": cnpj_emp}
+
+    xml_str = _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, ctt_nome, ctt_cpf)
+
+    try:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+    except Exception:
+        pass
+
+    fname = f"S1000_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    return Response(
+        xml_str,
+        mimetype="application/xml; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# =========================================================
+# eSocial S-1000 — API: assinar + enviar + consultar
+# =========================================================
+@app.route("/api/esocial_s1000_enviar", methods=["POST"])
+def api_esocial_s1000_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time, os as _os3, json as _json
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    # ── 1. Registro na tab_esocial ────────────────────────
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1000")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-1000 não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    # Parse stored params
+    obs = (es.get("observacao_erro") or "").strip()
+    params = {}
+    if obs.startswith("PARAMS:"):
+        try:
+            params = _json.loads(obs[7:])
+        except Exception:
+            pass
+
+    ini_valid = params.get("ini", "")
+    fim_valid = params.get("fim", "")
+    ctt_nome  = params.get("ctt_nome", "")
+    ctt_cpf   = params.get("ctt_cpf", "")
+    if not tpAmb or tpAmb == "1":
+        tpAmb = params.get("tpAmb", tpAmb)
+    tp_op = "inclusao" if str(es.get("codigo2") or "1") == "1" else "alteracao"
+
+    if not ini_valid:
+        return jsonify({"ok": False, "msg": "Parâmetros de envio não encontrados. Recrie o registro."})
+
+    # ── 2. Empresa + certificado ──────────────────────────
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    # ── 3. Gerar XML ──────────────────────────────────────
+    try:
+        xml_str = _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, ctt_nome, ctt_cpf)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    # ── 4. Salvar arquivo XML ─────────────────────────────
+    _now2    = datetime.now()
+    _ano     = _now2.strftime("%Y")
+    _ano_mes = _now2.strftime("%Y-%m")
+    _emp_dir = str(id_empresa).zfill(6)
+    _dir_xml = _os3.path.join(_os3.path.dirname(__file__),
+                               "eSocial_XML", _ano, _ano_mes, _emp_dir)
+    _os3.makedirs(_dir_xml, exist_ok=True)
+    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
+    _pref = _os3.path.join(_dir_xml, f"S1000_{ini_valid.replace('-','')}_{_ts}")
+
+    try:
+        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_str)
+    except Exception:
+        pass
+
+    # ── 5. Assinar ────────────────────────────────────────
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    try:
+        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_assinado)
+    except Exception:
+        pass
+
+    # ── 6. Montar lote (S-1000 = Grupo 1 — Tabelas) ───────
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="1")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    try:
+        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
+            _f.write(lote_xml)
+    except Exception:
+        pass
+
+    # ── 7. Enviar ─────────────────────────────────────────
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        supabase.table("tab_esocial").update({
+            "observacao_erro": f"Erro no envio: {detalhe[:200]}",
+            "data_grava": datetime.now().strftime("%Y%m%d"),
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
+
+    try:
+        with open(f"{_pref}_4_resposta.xml", "w", encoding="utf-8") as _f:
+            _f.write(resp_envio)
+    except Exception:
+        pass
+
+    # ── 8. Analisar resposta do envio ─────────────────────
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+    agora = datetime.now()
+    if not protocolo_envio:
+        supabase.table("tab_esocial").update({
+            "observacao_erro": analise["erro"][:295],
+            "data_grava":      agora.strftime("%Y%m%d"),
+            "hora_grava":      agora.strftime("%H%M"),
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    # ── 9. Consultar resultado (até 3 tentativas) ─────────
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta ao eSocial: {e}"
+            break
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar resposta da consulta: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    if recibo_final and not obs_erro and not aguardando:
+        return jsonify({"ok": True, "recibo": recibo_final,
+                        "msg": f"S-1000 enviado com sucesso. Recibo: {recibo_final}"})
+    if aguardando:
+        return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
+                        "protocolo": protocolo_envio})
+    return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
+
+@app.route("/esocial_s1005")
+def esocial_s1005():
+    if not session.get("logado"): return redirect("/")
+    ctx = _ctx_esocial()
+    # Endereço da empresa cadastrada
+    empresa = {}
+    try:
+        r = supabase.table("tab_empresa").select("logradouro,nrlograd,bairro,uf,cep")\
+            .eq("id_empresa", _get_id_empresa()).limit(1).execute()
+        empresa = r.data[0] if r.data else {}
+    except Exception:
+        pass
+    end = " ".join(filter(None, [
+        empresa.get("logradouro"), empresa.get("nrlograd"),
+        empresa.get("bairro"), empresa.get("uf"),
+    ]))
+    ctx["endereco_empresa"] = end or "—"
+    return render_template("F10_eSocial_S1005.html", **ctx)
+
+@app.route("/esocial_s1010")
+def esocial_s1010():
+    if not session.get("logado"): return redirect("/")
+    return render_template("F10_eSocial_S1010.html", **_ctx_esocial())
+
+@app.route("/esocial_s1020")
+def esocial_s1020():
+    if not session.get("logado"): return redirect("/")
+    return render_template("F10_eSocial_S1020.html", **_ctx_esocial())
+
+# =========================================================
 # eSocial S-2200 — TELA DE LISTAGEM
 # =========================================================
 @app.route("/esocial_s2200")
