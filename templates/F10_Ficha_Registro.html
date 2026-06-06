@@ -528,7 +528,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
                     <span class="campo-label">Complemento</span>
                     <span class="campo-valor {{ 'vazio' if not funcionario.ender_complemento }}">{{ funcionario.ender_complemento or '—' }}</span>
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 10px 20px; grid-column: span 4;">
+                <div style="display:grid; grid-template-columns: 1.5fr 0.9fr 0.7fr 2.5fr auto; gap: 10px 20px; grid-column: span 4;">
                     <div class="campo-rel">
                         <span class="campo-label">Bairro</span>
                         <span class="campo-valor {{ 'vazio' if not funcionario.ender_bairro }}">{{ funcionario.ender_bairro or '—' }}</span>
@@ -542,8 +542,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
                         </span>
                     </div>
                     <div class="campo-rel">
+                        <span class="campo-label">Cód. IBGE</span>
+                        <span class="campo-valor mono {{ 'vazio' if not funcionario.ender_codmunic }}">{{ funcionario.ender_codmunic or '—' }}</span>
+                    </div>
+                    <div class="campo-rel">
                         <span class="campo-label">Cidade</span>
-                        <span class="campo-valor {{ 'vazio' if not funcionario._nome_cidade }}">{{ funcionario._nome_cidade or '—' }}</span>
+                        <span class="campo-valor {{ 'vazio' if not funcionario._nome_cidade }}"
+                              id="cidade-display"
+                              data-codmunic="{{ funcionario.ender_codmunic or '' }}">{{ funcionario._nome_cidade or '—' }}</span>
                     </div>
                     <div class="campo-rel">
                         <span class="campo-label">UF</span>
@@ -863,6 +869,26 @@ function abrirImpressao() {
 if (new URLSearchParams(window.location.search).get('autoprint') === '1') {
     window.addEventListener('load', () => setTimeout(() => window.print(), 600));
 }
+
+// Busca nome da cidade via API pública do IBGE se ainda não veio do servidor
+(function() {
+    const el = document.getElementById('cidade-display');
+    if (!el) return;
+    const cod = el.dataset.codmunic;
+    if (!cod) return;
+    const atual = el.textContent.trim();
+    // Se já veio o nome (não é código puro de dígitos), não precisa buscar
+    if (atual && !/^\d+$/.test(atual)) return;
+    fetch('https://servicodados.ibge.gov.br/api/v1/localidades/municipios/' + cod)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+            if (d && d.nome) {
+                el.textContent = d.nome;
+                el.classList.remove('vazio');
+            }
+        })
+        .catch(() => {});
+})();
 </script>
 </body>
 </html>

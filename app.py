@@ -4553,7 +4553,7 @@ def listar_funcoes_total():
             supabase
             .table("tab_aux_funcao_total")
             .select("id, cbo_codigo, cbo_nome, cbo_atividade")
-            .order("cbo_codigo")
+            .order("cbo_nome")
             .execute()
         )
         lista = []
@@ -4622,6 +4622,8 @@ def cad_funcao():
             "nome_funcao": base.get("nome_funcao", "")
         })
 
+    aviso = request.args.get("aviso", "")
+
     return render_template(
         "F10_Cad_Funcao.html",
         versao=ler_versao(),
@@ -4632,7 +4634,8 @@ def cad_funcao():
         funcoes_total=funcoes_total,
         funcoes_cli=funcoes_cli_fmt,
         funcao_selecionada="",
-        nome_resumido=""
+        nome_resumido="",
+        aviso=aviso,
     )
 
 # =========================================================
@@ -6928,18 +6931,21 @@ def ficha_registro():
                                       else cbo_val or "—")
                 # Busca nome da cidade pelo código IBGE do endereço
                 nome_cidade = ""
-                if f.get("ender_codmunic"):
-                    try:
-                        rc = (supabase.table("tab_cidades")
-                              .select("nome")
-                              .eq("cod_ibge", int(f["ender_codmunic"]))
-                              .limit(1)
-                              .execute())
-                        if rc.data:
-                            nome_cidade = rc.data[0].get("nome", "")
-                    except Exception:
-                        pass
-                f["_nome_cidade"] = nome_cidade or str(f.get("ender_codmunic") or "")
+                _codmunic = f.get("ender_codmunic")
+                if _codmunic:
+                    for _cod_val in [_codmunic, str(_codmunic), int(_codmunic)]:
+                        try:
+                            rc = (supabase.table("tab_cidades")
+                                  .select("nome")
+                                  .eq("cod_ibge", _cod_val)
+                                  .limit(1)
+                                  .execute())
+                            if rc.data:
+                                nome_cidade = rc.data[0].get("nome", "")
+                                break
+                        except Exception:
+                            pass
+                f["_nome_cidade"] = nome_cidade or str(_codmunic or "")
                 # Formata campos
                 f["_cpf"]        = fcpf(f.get("cpf"))
                 f["_dtnascto"]   = fdata(f.get("dtnascto"))
@@ -7402,22 +7408,16 @@ def cad_funcionario():
             .execute()
         )
         cli_rows = r.data or []
-        if cli_rows:
-            ids = [row["idfuncao_total"] for row in cli_rows if row.get("idfuncao_total")]
-            mapa_cbo = {}
-            if ids:
-                rt = supabase.table("tab_aux_funcao_total").select("id, cbo_codigo").in_("id", ids).execute()
-                mapa_cbo = {row["id"]: row.get("cbo_codigo", "") for row in (rt.data or [])}
-            for row in cli_rows:
-                cbo = str(mapa_cbo.get(row.get("idfuncao_total"), "") or "").strip()
-                funcoes.append({"cbo": cbo, "nome": row.get("nome_resumido", "")})
-        else:
-            rt = supabase.table("tab_aux_funcao_total").select("cbo_codigo, cbo_nome").order("cbo_codigo").limit(200).execute()
-            funcoes = [
-                {"cbo": str(row.get("cbo_codigo", "") or "").strip(),
-                 "nome": str(row.get("cbo_nome", "") or "").strip()}
-                for row in (rt.data or [])
-            ]
+        if not cli_rows:
+            return redirect("/cad_funcao?aviso=sem_funcao")
+        ids = [row["idfuncao_total"] for row in cli_rows if row.get("idfuncao_total")]
+        mapa_cbo = {}
+        if ids:
+            rt = supabase.table("tab_aux_funcao_total").select("id, cbo_codigo").in_("id", ids).execute()
+            mapa_cbo = {row["id"]: row.get("cbo_codigo", "") for row in (rt.data or [])}
+        for row in cli_rows:
+            cbo = str(mapa_cbo.get(row.get("idfuncao_total"), "") or "").strip()
+            funcoes.append({"cbo": cbo, "nome": row.get("nome_resumido", "")})
     except Exception:
         pass
 

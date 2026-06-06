@@ -519,8 +519,51 @@
         </div>
 
         <div class="card-info">
-          <div class="rotulo">Modo da tela</div>
-          <div class="valor">Inclusão / manutenção de funções</div>
+          <div class="rotulo">Funções disponíveis / escolhidas</div>
+          <div class="valor" id="resumo-contadores">Carregando...</div>
+        </div>
+      </div>
+
+      {% if aviso == 'sem_funcao' %}
+      <div style="background:#fef2f2; border:2px solid #fca5a5; border-radius:12px; padding:14px 20px; margin-bottom:12px; display:flex; align-items:flex-start; gap:14px; flex:0 0 auto;">
+        <div style="font-size:22px; line-height:1; margin-top:2px;">🚫</div>
+        <div>
+          <div style="font-size:14px; font-weight:700; color:#991b1b; margin-bottom:4px;">Nenhuma função cadastrada — não é possível registrar funcionários</div>
+          <div style="font-size:13px; color:#7f1d1d; line-height:1.5;">
+            Antes de cadastrar o primeiro funcionário, você precisa escolher pelo menos uma função na lista abaixo e clicar em <strong>Gravar Inclusão</strong>.
+            Isso garante que o funcionário tenha uma função válida vinculada à sua empresa.
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Banner explicativo -->
+      <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:12px; padding:14px 20px; margin-bottom:12px; display:flex; align-items:flex-start; gap:14px; flex:0 0 auto;">
+        <div style="font-size:22px; line-height:1; margin-top:2px;">💡</div>
+        <div>
+          <div style="font-size:13px; font-weight:700; color:#1e40af; margin-bottom:6px;">Como funciona o Cadastro de Funções</div>
+          <div style="font-size:12px; color:#1e3a8a; line-height:1.6;">
+            A base da CBO (Classificação Brasileira de Ocupações) contém todas as funções oficiais reconhecidas pelo Ministério do Trabalho.
+            <strong>Você não cria funções do zero</strong> — você <strong>escolhe</strong> quais funções existem na sua empresa a partir dessa base.
+          </div>
+          <div style="display:flex; gap:24px; margin-top:10px; flex-wrap:wrap;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="background:#2563eb; color:white; font-size:11px; font-weight:700; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">1</div>
+              <span style="font-size:12px; color:#1e3a8a;">Pesquise e clique numa função<br>da lista à <strong>esquerda</strong></span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="background:#2563eb; color:white; font-size:11px; font-weight:700; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">2</div>
+              <span style="font-size:12px; color:#1e3a8a;">Defina um <strong>nome resumido</strong><br>para uso interno na empresa</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="background:#2563eb; color:white; font-size:11px; font-weight:700; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">3</div>
+              <span style="font-size:12px; color:#1e3a8a;">Escolha se vale para esta empresa<br>ou para <strong>todas as suas empresas</strong></span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <div style="background:#16a34a; color:white; font-size:11px; font-weight:700; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">4</div>
+              <span style="font-size:12px; color:#1e3a8a;">Clique em <strong>Gravar Inclusão</strong> — a função<br>aparece na lista à <strong>direita</strong></span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -528,8 +571,8 @@
 
         <div class="bloco">
           <div class="bloco-header">
-            <h2>Todas Funções da Base da CBO</h2>
-            <p>Consulta e seleção das funções disponíveis</p>
+            <h2>📋 Catálogo CBO — Funções Disponíveis</h2>
+            <p>Base oficial do Ministério do Trabalho · Clique em uma função para selecioná-la</p>
           </div>
 
           <div class="bloco-body">
@@ -542,8 +585,12 @@
               <table>
                 <thead>
                   <tr>
-                    <th style="width:120px;">CBO</th>
-                    <th>Função oficial</th>
+                    <th style="width:120px; cursor:pointer; user-select:none;" onclick="ordenarTabela('cbo')" id="th-cbo">
+                      CBO <span id="icon-cbo" style="color:#94a3b8;">↕</span>
+                    </th>
+                    <th style="cursor:pointer; user-select:none;" onclick="ordenarTabela('nome')" id="th-nome">
+                      Função oficial <span id="icon-nome" style="color:#2563eb;">↑</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody id="tbodyFuncoesTotal">
@@ -567,15 +614,15 @@
             {% endif %}
 
             <div class="observacao">
-              Esta lista mostra todas as funções disponíveis na base geral da CBO.
+              A base CBO contém {{ funcoes_total|length if funcoes_total else 0 }} funções oficiais. Use a pesquisa acima para encontrar rapidamente pelo código CBO ou pelo nome da função.
             </div>
           </div>
         </div>
 
         <div class="bloco">
           <div class="bloco-header">
-            <h2>Suas Funções ja Escolhidas. Prontas para serem usada</h2>
-            <p>Funções ativas já definidas para este cliente</p>
+            <h2>✅ Minhas Funções — Já Escolhidas</h2>
+            <p>Funções vinculadas à sua empresa · Disponíveis para uso no cadastro de funcionários</p>
           </div>
 
           <div class="bloco-body">
@@ -614,23 +661,23 @@
             {% endif %}
 
             <div class="form-area">
-              <h3>Dados da função escolhida</h3>
+              <h3>➕ Adicionar função escolhida à minha empresa</h3>
 
               <div class="form-grid">
                 <div class="campo">
-                  <label>Função oficial selecionada</label>
-                  <input type="text" id="funcaoSelecionada" value="{{ funcao_selecionada if funcao_selecionada else '' }}" readonly>
+                  <label>① Função oficial selecionada (clique na lista acima)</label>
+                  <input type="text" id="funcaoSelecionada" value="{{ funcao_selecionada if funcao_selecionada else '' }}" readonly placeholder="Nenhuma função selecionada — clique na lista à esquerda">
                 </div>
 
                 <div class="campo">
-                  <label>Nome resumido definido pelo cliente</label>
-                  <input type="text" id="nomeResumido" value="{{ nome_resumido if nome_resumido else '' }}">
+                  <label>② Nome resumido para uso interno na empresa</label>
+                  <input type="text" id="nomeResumido" value="{{ nome_resumido if nome_resumido else '' }}" placeholder="Ex: Motorista, Aux. Administrativo, Gerente...">
                 </div>
               </div>
 
               <div class="grupo-opcoes">
                 <div class="grupo-opcoes-linha">
-                  <div class="grupo-opcoes-titulo">Aplicação atual</div>
+                  <div class="grupo-opcoes-titulo">③ Aplicar em:</div>
 
                   <label class="opcao-inline">
                     <input type="radio" name="abrangencia" value="empresa">
@@ -692,6 +739,35 @@
       if (campoId) campoId.value = id;
       if (campoFuncao) campoFuncao.value = cbo + " - " + nome;
       if (campoNome) campoNome.value = nome;
+    }
+
+    var _ordemAtual = { col: 'nome', asc: true };
+
+    function ordenarTabela(col) {
+      var tbody = document.getElementById("tbodyFuncoesTotal");
+      if (!tbody) return;
+
+      if (_ordemAtual.col === col) {
+        _ordemAtual.asc = !_ordemAtual.asc;
+      } else {
+        _ordemAtual.col = col;
+        _ordemAtual.asc = true;
+      }
+
+      var linhas = Array.from(tbody.querySelectorAll("tr"));
+      linhas.sort(function(a, b) {
+        var va = (col === 'cbo' ? a.getAttribute("data-cbo") : a.getAttribute("data-nome")) || "";
+        var vb = (col === 'cbo' ? b.getAttribute("data-cbo") : b.getAttribute("data-nome")) || "";
+        var cmp = va.localeCompare(vb, 'pt-BR', { sensitivity: 'base' });
+        return _ordemAtual.asc ? cmp : -cmp;
+      });
+      linhas.forEach(function(tr) { tbody.appendChild(tr); });
+
+      // Atualiza ícones
+      document.getElementById("icon-cbo").textContent  = col === 'cbo'  ? (_ordemAtual.asc ? '↑' : '↓') : '↕';
+      document.getElementById("icon-nome").textContent = col === 'nome' ? (_ordemAtual.asc ? '↑' : '↓') : '↕';
+      document.getElementById("icon-cbo").style.color  = col === 'cbo'  ? '#2563eb' : '#94a3b8';
+      document.getElementById("icon-nome").style.color = col === 'nome' ? '#2563eb' : '#94a3b8';
     }
 
     function filtrarFuncoes() {
@@ -770,6 +846,11 @@
       if (campoPesquisa) {
         campoPesquisa.addEventListener("input", filtrarFuncoes);
       }
+
+      var total = document.querySelectorAll("#tbodyFuncoesTotal tr").length;
+      var escolhidas = {{ funcoes_cli|length if funcoes_cli else 0 }};
+      var resumo = document.getElementById("resumo-contadores");
+      if (resumo) resumo.textContent = total + " disponíveis · " + escolhidas + " escolhidas";
     });
   </script>
 </body>
