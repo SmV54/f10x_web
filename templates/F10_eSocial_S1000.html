@@ -56,8 +56,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 }
 .btn-novo.inclusao  { background: var(--accent); color: #fff; }
 .btn-novo.inclusao:hover  { background: #1a6bc0; }
-.btn-novo.alteracao { background: #7c3aed; color: #fff; }
-.btn-novo.alteracao:hover { background: #6d28d9; }
 
 /* CARD EMPRESA */
 .card-empresa {
@@ -199,6 +197,22 @@ tr:hover td { background: #f8fafc; }
 .btn-modal.secundario:hover { background: #e2e8f0; color: #374151; }
 .btn-modal:disabled { opacity: .5; cursor: default; }
 
+/* TIPO OPERAÇÃO */
+.tipo-op-grupo {
+    display: flex; gap: 10px;
+}
+.tipo-op-opcao {
+    flex: 1; display: flex; flex-direction: column; gap: 3px;
+    border: 2px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; cursor: pointer; transition: border-color .12s, background .12s;
+    position: relative;
+}
+.tipo-op-opcao input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+.tipo-op-opcao:has(input:checked) { border-color: var(--accent); background: #eff6ff; }
+.tipo-op-opcao:has(input[value="alteracao"]:checked) { border-color: #7c3aed; background: #f5f3ff; }
+.tipo-op-txt  { font-size: 13px; font-weight: 700; color: #1e293b; }
+.tipo-op-desc { font-size: 11px; color: #64748b; }
+
 /* SPINNER */
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -232,8 +246,7 @@ tr:hover td { background: #f8fafc; }
             <div class="barra-sub">{{ total }} registro{{ 's' if total != 1 else '' }} · Grupo 1 — Tabelas do Empregador</div>
         </div>
         <div class="barra-dir">
-            <button class="btn-novo inclusao" onclick="abrirModal('inclusao')">＋ Nova Inclusão</button>
-            <button class="btn-novo alteracao" onclick="abrirModal('alteracao')">✎ Nova Alteração</button>
+            <button class="btn-novo inclusao" onclick="abrirModal()">＋ Nova Remessa</button>
         </div>
     </div>
 
@@ -358,11 +371,28 @@ tr:hover td { background: #f8fafc; }
 <div class="modal-overlay" id="modal-novo">
     <div class="modal-painel">
         <div class="modal-topo">
-            <div class="modal-topo-titulo" id="modal-titulo">🏢 Novo S-1000</div>
+            <div class="modal-topo-titulo">🏢 Nova Remessa S-1000</div>
             <button class="modal-fechar" onclick="fecharModal()">✕</button>
         </div>
         <div class="modal-corpo">
             <div class="form-grid">
+                <div class="form-group form-col-full">
+                    <label class="form-label">Tipo de Operação *</label>
+                    <div class="tipo-op-grupo">
+                        <label class="tipo-op-opcao" id="lbl-inclusao">
+                            <input type="radio" name="f-tp-op" id="f-tp-inclusao" value="inclusao" checked
+                                   onchange="atualizarTipoOp()">
+                            <span class="tipo-op-txt">＋ Inclusão</span>
+                            <span class="tipo-op-desc">Primeiro envio dos dados do empregador</span>
+                        </label>
+                        <label class="tipo-op-opcao" id="lbl-alteracao">
+                            <input type="radio" name="f-tp-op" id="f-tp-alteracao" value="alteracao"
+                                   onchange="atualizarTipoOp()">
+                            <span class="tipo-op-txt">✎ Alteração</span>
+                            <span class="tipo-op-desc">Atualização de dados já enviados</span>
+                        </label>
+                    </div>
+                </div>
                 <div class="form-group">
                     <label class="form-label">Início de Validade *</label>
                     <input type="month" id="f-ini-valid" class="form-input mono" required>
@@ -446,23 +476,19 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
-let _tpOp = 'inclusao';
+function atualizarTipoOp() {
+    const tp  = document.querySelector('input[name="f-tp-op"]:checked').value;
+    const btn = document.getElementById('btn-gravar');
+    btn.className = tp === 'inclusao' ? 'btn-modal primario' : 'btn-modal primario alt';
+}
 
-function abrirModal(tp) {
-    _tpOp = tp;
-    const titulo  = document.getElementById('modal-titulo');
-    const btnG    = document.getElementById('btn-gravar');
-    if (tp === 'inclusao') {
-        titulo.textContent = '🏢 Nova Inclusão — S-1000';
-        btnG.className = 'btn-modal primario';
-    } else {
-        titulo.textContent = '✎ Nova Alteração — S-1000';
-        btnG.className = 'btn-modal primario alt';
-    }
+function abrirModal() {
+    document.getElementById('f-tp-inclusao').checked = true;
     ['f-ini-valid','f-fim-valid','f-ctt-nome','f-ctt-cpf'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('f-tpamb').value = '1';
+    document.getElementById('btn-gravar').className = 'btn-modal primario';
     document.getElementById('msg-modal').style.display = 'none';
     document.getElementById('modal-novo').classList.add('aberto');
 }
@@ -475,6 +501,7 @@ document.getElementById('modal-novo').addEventListener('click', function(e) {
 });
 
 function gravarS1000() {
+    const tpOp = document.querySelector('input[name="f-tp-op"]:checked').value;
     const ini  = document.getElementById('f-ini-valid').value.trim();
     const fim  = document.getElementById('f-fim-valid').value.trim();
     const nome = document.getElementById('f-ctt-nome').value.trim();
@@ -492,7 +519,7 @@ function gravarS1000() {
     fetch('/api/esocial_s1000_gravar', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ tp_op: _tpOp, ini_valid: ini, fim_valid: fim,
+        body: JSON.stringify({ tp_op: tpOp, ini_valid: ini, fim_valid: fim,
                                contato_nome: nome, contato_cpf: cpf, tpAmb: amb })
     })
     .then(r => r.json())
