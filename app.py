@@ -6926,6 +6926,20 @@ def ficha_registro():
                 cbo_val = f.get("cbofuncao") or ""
                 f["_funcao_linha"] = (f"{cbo_val} — {func_nome}" if func_nome
                                       else cbo_val or "—")
+                # Busca nome da cidade pelo código IBGE do endereço
+                nome_cidade = ""
+                if f.get("ender_codmunic"):
+                    try:
+                        rc = (supabase.table("tab_cidades")
+                              .select("nome")
+                              .eq("cod_ibge", int(f["ender_codmunic"]))
+                              .limit(1)
+                              .execute())
+                        if rc.data:
+                            nome_cidade = rc.data[0].get("nome", "")
+                    except Exception:
+                        pass
+                f["_nome_cidade"] = nome_cidade or str(f.get("ender_codmunic") or "")
                 # Formata campos
                 f["_cpf"]        = fcpf(f.get("cpf"))
                 f["_dtnascto"]   = fdata(f.get("dtnascto"))
