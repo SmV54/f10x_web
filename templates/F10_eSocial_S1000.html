@@ -198,9 +198,7 @@ tr:hover td { background: #f8fafc; }
 .btn-modal:disabled { opacity: .5; cursor: default; }
 
 /* TIPO OPERAÇÃO */
-.tipo-op-grupo {
-    display: flex; gap: 10px;
-}
+.tipo-op-grupo { display: flex; gap: 10px; }
 .tipo-op-opcao {
     flex: 1; display: flex; flex-direction: column; gap: 3px;
     border: 2px solid var(--border); border-radius: 10px;
@@ -208,10 +206,20 @@ tr:hover td { background: #f8fafc; }
     position: relative;
 }
 .tipo-op-opcao input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
-.tipo-op-opcao:has(input:checked) { border-color: var(--accent); background: #eff6ff; }
-.tipo-op-opcao:has(input[value="alteracao"]:checked) { border-color: #7c3aed; background: #f5f3ff; }
+.tipo-op-opcao.ativo-inc { border-color: var(--accent); background: #eff6ff; }
+.tipo-op-opcao.ativo-alt { border-color: #7c3aed; background: #f5f3ff; }
 .tipo-op-txt  { font-size: 13px; font-weight: 700; color: #1e293b; }
 .tipo-op-desc { font-size: 11px; color: #64748b; }
+
+/* BOTÃO EXCLUIR */
+.btn-excluir {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 11px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    cursor: pointer; transition: .12s; font-family: var(--sans); white-space: nowrap;
+    border: 1.5px solid #fca5a5; background: #fff5f5; color: #dc2626;
+}
+.btn-excluir:hover:not(:disabled) { background: #dc2626; color: #fff; border-color: #dc2626; }
+.btn-excluir:disabled { opacity: .4; cursor: default; }
 
 /* SPINNER */
 .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; }
@@ -333,7 +341,7 @@ tr:hover td { background: #f8fafc; }
                         {% endif %}
                     </td>
                     <td>
-                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                        <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;">
                             <button class="btn-acao btn-xml"
                                     onclick="baixarXml({{ r.id_esocial }})">
                                 ⬇ XML
@@ -343,8 +351,19 @@ tr:hover td { background: #f8fafc; }
                                     onclick="enviarS1000({{ r.id_esocial }}, this)">
                                 ▶ Enviar
                             </button>
+                            <button class="btn-excluir" id="btn-del-{{ r.id_esocial }}"
+                                    onclick="apagarS1000({{ r.id_esocial }}, this)"
+                                    title="Apagar este registro localmente">
+                                🗑 Apagar
+                            </button>
                             {% elif r._sit == 'E' %}
-                            <span style="color:#166534; font-size:11px; font-weight:600; align-self:center;">✔ Enviado</span>
+                            <button class="btn-excluir" id="btn-del-{{ r.id_esocial }}"
+                                    onclick="excluirS1000({{ r.id_esocial }}, this)"
+                                    title="Enviar S-3000 para excluir no eSocial">
+                                ✕ Excluir S-3000
+                            </button>
+                            {% elif r._sit == 'D' %}
+                            <span style="color:#94a3b8; font-size:11px;">Excluído</span>
                             {% endif %}
                         </div>
                         <div id="msg-{{ r.id_esocial }}" style="display:none; margin-top:5px;"></div>
@@ -477,9 +496,19 @@ tr:hover td { background: #f8fafc; }
 
 <script>
 function atualizarTipoOp() {
-    const tp  = document.querySelector('input[name="f-tp-op"]:checked').value;
-    const btn = document.getElementById('btn-gravar');
-    btn.className = tp === 'inclusao' ? 'btn-modal primario' : 'btn-modal primario alt';
+    const tp     = document.querySelector('input[name="f-tp-op"]:checked').value;
+    const lblInc = document.getElementById('lbl-inclusao');
+    const lblAlt = document.getElementById('lbl-alteracao');
+    const btn    = document.getElementById('btn-gravar');
+    lblInc.classList.remove('ativo-inc', 'ativo-alt');
+    lblAlt.classList.remove('ativo-inc', 'ativo-alt');
+    if (tp === 'inclusao') {
+        lblInc.classList.add('ativo-inc');
+        btn.className = 'btn-modal primario';
+    } else {
+        lblAlt.classList.add('ativo-alt');
+        btn.className = 'btn-modal primario alt';
+    }
 }
 
 function abrirModal() {
@@ -490,6 +519,7 @@ function abrirModal() {
     document.getElementById('f-tpamb').value = '1';
     document.getElementById('btn-gravar').className = 'btn-modal primario';
     document.getElementById('msg-modal').style.display = 'none';
+    atualizarTipoOp();
     document.getElementById('modal-novo').classList.add('aberto');
 }
 
@@ -549,6 +579,68 @@ function showModalMsg(txt, ok) {
 
 function baixarXml(id) {
     window.open('/api/esocial_s1000_xml?id=' + id, '_blank');
+}
+
+function apagarS1000(id, btnEl) {
+    if (!confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial, portanto não precisa de S-3000.)')) return;
+    btnEl.disabled = true;
+    btnEl.textContent = '...';
+    fetch('/api/esocial_s1000_deletar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id_esocial: id })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) {
+            const row = document.getElementById('row-' + id);
+            if (row) row.remove();
+        } else {
+            btnEl.disabled = false;
+            btnEl.textContent = '🗑 Apagar';
+            const msgEl = document.getElementById('msg-' + id);
+            msgEl.className = 'msg-envio msg-erro';
+            msgEl.textContent = d.msg;
+            msgEl.style.display = 'block';
+        }
+    })
+    .catch(e => {
+        btnEl.disabled = false;
+        btnEl.textContent = '🗑 Apagar';
+    });
+}
+
+function excluirS1000(id, btnEl) {
+    if (!confirm('Enviar S-3000 para excluir este S-1000 no eSocial?\nEsta ação não pode ser desfeita.')) return;
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<span class="spin" style="border-top-color:#dc2626;border-color:#fca5a5;"></span>';
+    const msgEl = document.getElementById('msg-' + id);
+    msgEl.style.display = 'none';
+    fetch('/api/esocial_s1000_excluir', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id_esocial: id })
+    })
+    .then(r => r.json())
+    .then(d => {
+        btnEl.disabled = false;
+        btnEl.innerHTML = '✕ Excluir S-3000';
+        msgEl.className = 'msg-envio ' + (d.ok ? 'msg-ok' : 'msg-erro');
+        msgEl.textContent = d.msg;
+        msgEl.style.display = 'block';
+        if (d.ok) {
+            const sitEl = document.getElementById('sit-' + id);
+            if (sitEl) { sitEl.className = 'sit-badge sit-excluido'; sitEl.textContent = 'Excluído'; }
+            setTimeout(() => window.location.reload(), 2000);
+        }
+    })
+    .catch(e => {
+        btnEl.disabled = false;
+        btnEl.innerHTML = '✕ Excluir S-3000';
+        msgEl.className = 'msg-envio msg-erro';
+        msgEl.textContent = 'Erro de comunicação: ' + e;
+        msgEl.style.display = 'block';
+    });
 }
 
 function enviarS1000(id, btnEl) {

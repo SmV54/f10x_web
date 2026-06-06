@@ -13167,7 +13167,9 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto, recibo_s
 # eSocial S-3000 — GERADOR DE XML
 # =========================================================
 def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
-    """Gera string XML do S-3000 (Exclusão de Eventos)."""
+    """Gera string XML do S-3000 (Exclusão de Eventos).
+    cpf_trab vazio = evento de empregador (S-1000, S-1005, etc.) — sem ideTrabalhador.
+    """
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
     import re
@@ -13183,6 +13185,9 @@ def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
+    ide_trab_xml = (f"\n      <ideTrabalhador>\n        <cpfTrab>{x(cpf_trab)}</cpfTrab>\n"
+                    f"      </ideTrabalhador>") if cpf_trab else ""
+
     return f"""<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtExclusao/v_S_01_03_00">
   <evtExclusao Id="{evt_id}">
     <ideEvento>
@@ -13196,10 +13201,7 @@ def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
     </ideEmpregador>
     <infoExclusao>
       <tpEvento>S-{x(tp_evento)}</tpEvento>
-      <nrRecEvt>{x(recibo_excluir)}</nrRecEvt>
-      <ideTrabalhador>
-        <cpfTrab>{x(cpf_trab)}</cpfTrab>
-      </ideTrabalhador>
+      <nrRecEvt>{x(recibo_excluir)}</nrRecEvt>{ide_trab_xml}
     </infoExclusao>
   </evtExclusao>
 </eSocial>"""
@@ -13745,6 +13747,185 @@ def api_esocial_s1000_enviar():
         return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
                         "protocolo": protocolo_envio})
     return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
+
+
+# =========================================================
+# eSocial S-1000 — API: apagar registro local (sem recibo)
+# =========================================================
+@app.route("/api/esocial_s1000_deletar", methods=["POST"])
+def api_esocial_s1000_deletar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa = _get_id_empresa()
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial").select("recibo")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1000")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        if (r_es.data[0].get("recibo") or "").strip():
+            return jsonify({"ok": False,
+                            "msg": "Registro já foi enviado ao eSocial. Use 'Excluir via S-3000'."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao verificar registro: {e}"})
+
+    try:
+        supabase.table("tab_esocial")\
+            .delete()\
+            .eq("id_esocial", int(id_reg))\
+            .eq("id_empresa", id_empresa)\
+            .eq("layout", "1000")\
+            .execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao apagar: {e}"})
+
+    return jsonify({"ok": True, "msg": "Registro apagado."})
+
+
+# =========================================================
+# eSocial S-1000 — API: excluir via S-3000 (com recibo)
+# =========================================================
+@app.route("/api/esocial_s1000_excluir", methods=["POST"])
+def api_esocial_s1000_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time, os as _os4
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    # ── 1. Buscar registro ────────────────────────────────
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1000")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    recibo_excluir = (es.get("recibo") or "").strip()
+    if not recibo_excluir:
+        return jsonify({"ok": False,
+                        "msg": "Registro sem recibo — use 'Apagar' para remover localmente."})
+
+    # ── 2. Empresa + certificado ──────────────────────────
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    # ── 3. Gerar XML S-3000 (sem cpfTrab — evento de empregador) ──
+    try:
+        xml_str = _gerar_xml_s3000(recibo_excluir, "1000", "", empresa, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML S-3000: {e}"})
+
+    # ── 4. Salvar diagnóstico ─────────────────────────────
+    _now2    = datetime.now()
+    _dir_xml = _os4.path.join(_os4.path.dirname(__file__),
+                               "eSocial_XML", _now2.strftime("%Y"),
+                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
+    _os4.makedirs(_dir_xml, exist_ok=True)
+    _pref = _os4.path.join(_dir_xml, f"S3000_S1000_{_now2.strftime('%Y%m%d_%H%M%S')}")
+    try:
+        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_str)
+    except Exception:
+        pass
+
+    # ── 5. Assinar ────────────────────────────────────────
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    # ── 6. Montar lote (grupo 1 — tabelas) ────────────────
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="1")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    # ── 7. Enviar ─────────────────────────────────────────
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    try:
+        resp_envio = _http_post_cert(url_envio, _soap_enviar(lote_xml),
+                                     pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro no envio: {e}"})
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+    if not protocolo_envio:
+        return jsonify({"ok": False, "msg": "eSocial recusou a exclusão.", "detalhe": analise["erro"]})
+
+    # ── 8. Consultar resultado ────────────────────────────
+    recibo_excl = ""
+    obs_err     = ""
+    for _ in range(3):
+        time.sleep(10)
+        try:
+            resp_cons = _http_post_cert(url_consulta, _soap_consultar(protocolo_envio),
+                                        pfx_bytes, senha_str, _SA_CONSULTAR)
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_err = f"Erro na consulta: {e}"
+            break
+        cd = resultado.get("cdResposta", "")
+        if cd in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_excl = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                obs_err = " · ".join(ev0.get("ocorrs", [])) or resultado.get("descResposta", "")
+        break
+
+    if recibo_excl and not obs_err:
+        supabase.table("tab_esocial").update({
+            "observacao_erro": "EXCLUIDO",
+            "data_grava":      datetime.now().strftime("%Y%m%d"),
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": True, "msg": f"S-1000 excluído com sucesso. Recibo S-3000: {recibo_excl}"})
+
+    if obs_err:
+        return jsonify({"ok": False, "msg": f"Erro na exclusão: {obs_err}"})
+
+    return jsonify({"ok": True, "msg": f"Exclusão enviada. Aguardando confirmação. Protocolo: {protocolo_envio}",
+                    "protocolo": protocolo_envio})
+
 
 @app.route("/esocial_s1005")
 def esocial_s1005():
