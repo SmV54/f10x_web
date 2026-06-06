@@ -198,18 +198,13 @@ tr:hover td { background: #f8fafc; }
 .btn-modal:disabled { opacity: .5; cursor: default; }
 
 /* TIPO OPERAÇÃO */
-.tipo-op-grupo { display: flex; gap: 10px; }
-.tipo-op-opcao {
-    flex: 1; display: flex; flex-direction: column; gap: 3px;
-    border: 2px solid var(--border); border-radius: 10px;
-    padding: 10px 14px; cursor: pointer; transition: border-color .12s, background .12s;
-    position: relative;
+.sel-tipo-op {
+    height: 44px; padding: 0 14px; border-radius: 8px;
+    border: 2px solid var(--accent); font-size: 14px; font-weight: 600;
+    font-family: var(--sans); color: #1e293b; background: #f0f7ff;
+    outline: none; cursor: pointer; width: 100%;
 }
-.tipo-op-opcao input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
-.tipo-op-opcao.ativo-inc { border-color: var(--accent); background: #eff6ff; }
-.tipo-op-opcao.ativo-alt { border-color: #7c3aed; background: #f5f3ff; }
-.tipo-op-txt  { font-size: 13px; font-weight: 700; color: #1e293b; }
-.tipo-op-desc { font-size: 11px; color: #64748b; }
+.sel-tipo-op:focus { border-color: #1a6bc0; }
 
 /* BOTÃO EXCLUIR */
 .btn-excluir {
@@ -397,20 +392,10 @@ tr:hover td { background: #f8fafc; }
             <div class="form-grid">
                 <div class="form-group form-col-full">
                     <label class="form-label">Tipo de Operação *</label>
-                    <div class="tipo-op-grupo">
-                        <label class="tipo-op-opcao" id="lbl-inclusao">
-                            <input type="radio" name="f-tp-op" id="f-tp-inclusao" value="inclusao" checked
-                                   onchange="atualizarTipoOp()">
-                            <span class="tipo-op-txt">＋ Inclusão</span>
-                            <span class="tipo-op-desc">Primeiro envio dos dados do empregador</span>
-                        </label>
-                        <label class="tipo-op-opcao" id="lbl-alteracao">
-                            <input type="radio" name="f-tp-op" id="f-tp-alteracao" value="alteracao"
-                                   onchange="atualizarTipoOp()">
-                            <span class="tipo-op-txt">✎ Alteração</span>
-                            <span class="tipo-op-desc">Atualização de dados já enviados</span>
-                        </label>
-                    </div>
+                    <select id="f-tp-op" class="sel-tipo-op">
+                        <option value="inclusao">➕ Inclusão — Primeiro envio dos dados do empregador</option>
+                        <option value="alteracao">✎ Alteração — Atualização de dados já enviados</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Início de Validade *</label>
@@ -495,31 +480,14 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
-function atualizarTipoOp() {
-    const tp     = document.querySelector('input[name="f-tp-op"]:checked').value;
-    const lblInc = document.getElementById('lbl-inclusao');
-    const lblAlt = document.getElementById('lbl-alteracao');
-    const btn    = document.getElementById('btn-gravar');
-    lblInc.classList.remove('ativo-inc', 'ativo-alt');
-    lblAlt.classList.remove('ativo-inc', 'ativo-alt');
-    if (tp === 'inclusao') {
-        lblInc.classList.add('ativo-inc');
-        btn.className = 'btn-modal primario';
-    } else {
-        lblAlt.classList.add('ativo-alt');
-        btn.className = 'btn-modal primario alt';
-    }
-}
-
 function abrirModal() {
-    document.getElementById('f-tp-inclusao').checked = true;
+    document.getElementById('f-tp-op').value = 'inclusao';
     ['f-ini-valid','f-fim-valid','f-ctt-nome','f-ctt-cpf'].forEach(id => {
         document.getElementById(id).value = '';
     });
     document.getElementById('f-tpamb').value = '1';
     document.getElementById('btn-gravar').className = 'btn-modal primario';
     document.getElementById('msg-modal').style.display = 'none';
-    atualizarTipoOp();
     document.getElementById('modal-novo').classList.add('aberto');
 }
 
@@ -531,7 +499,7 @@ document.getElementById('modal-novo').addEventListener('click', function(e) {
 });
 
 function gravarS1000() {
-    const tpOp = document.querySelector('input[name="f-tp-op"]:checked').value;
+    const tpOp = document.getElementById('f-tp-op').value;
     const ini  = document.getElementById('f-ini-valid').value.trim();
     const fim  = document.getElementById('f-fim-valid').value.trim();
     const nome = document.getElementById('f-ctt-nome').value.trim();
