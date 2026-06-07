@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10-Simples - Cadastro de Empresa</title>
+
+<style>
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f3f5f8;
+}
+
+.topo-padrao {
+    background: #0f2f57;
+    color: #fff;
+    padding: 12px 24px 14px 24px;
+    border-bottom: 4px solid #1d4f8c;
+}
+
+.topo-sistema {
+    font-size: 24px;
+    font-weight: 700;
+    text-align: left;
+}
+
+.topo-funcao {
+    text-align: center;
+    font-size: 26px;
+    font-weight: 700;
+    margin: 4px 0 8px 0;
+}
+
+.topo-contexto {
+    font-size: 14px;
+    color: #dbeafe;
+    line-height: 1.35;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 14px auto;
+    padding: 0 16px 20px 16px;
+}
+
+.card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.card h3 {
+    margin: 0 0 10px 0;
+    color: #0f2f57;
+    border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 6px;
+    font-size: 18px;
+}
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px 12px;
+}
+
+.grid-identificacao {
+    display: grid;
+    grid-template-columns: 180px 2fr 1.2fr 140px;
+    gap: 10px 12px;
+    align-items: stretch;
+}
+
+/* FPAS mais largo e descrição um pouco menor */
+.grid-fpas-topo {
+    display: grid;
+    grid-template-columns: 220px 1.35fr 140px 140px;
+    gap: 10px 12px;
+    align-items: end;
+    margin-bottom: 12px;
+}
+
+.grid-terceiros-area {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 14px;
+    align-items: start;
+}
+
+.grid-encargos {
+    display: grid;
+    grid-template-columns: repeat(6, 110px);
+    gap: 10px 12px;
+    justify-content: start;
+}
+
+.bloco-botao-terceiros {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding-top: 22px;
+}
+
+.campo {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+}
+
+.campo label {
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    color: #1f2937;
+    white-space: nowrap;
+}
+
+.campo input,
+.campo select {
+    height: 36px;
+    box-sizing: border-box;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 14px;
+    background: #fff;
+    width: 100%;
+    min-width: 0;
+}
+
+.campo input:focus,
+.campo select:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 2px rgba(37,99,235,0.10);
+}
+
+.campo-automatico[readonly],
+.campo-encargo[readonly] {
+    background: #eef2f7;
+    color: #334155;
+}
+
+.campo-encargo {
+    text-align: center;
+}
+
+.botao {
+    padding: 11px 18px;
+    border: none;
+    border-radius: 6px;
+    font-weight: bold;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.salvar {
+    background: #1f7a35;
+    color: white;
+}
+
+.limpar {
+    background: #e5e7eb;
+    color: #111827;
+}
+
+.botao-secundario {
+    background: #dbe5f1;
+    color: #0f2f57;
+    border: 1px solid #b8c7dc;
+    white-space: normal;
+    line-height: 1.25;
+    text-align: center;
+    width: 220px;
+}
+
+.acoes {
+    margin-top: 14px;
+    display: flex;
+    gap: 10px;
+}
+
+@media (max-width: 1100px) {
+    .grid,
+    .grid-identificacao,
+    .grid-fpas-topo {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .grid-terceiros-area {
+        grid-template-columns: 1fr;
+    }
+
+    .grid-encargos {
+        grid-template-columns: repeat(4, 110px);
+    }
+
+    .bloco-botao-terceiros {
+        padding-top: 0;
+    }
+}
+
+@media (max-width: 700px) {
+    .grid,
+    .grid-identificacao,
+    .grid-fpas-topo {
+        grid-template-columns: 1fr;
+    }
+
+    .grid-encargos {
+        grid-template-columns: repeat(2, 110px);
+    }
+
+    .topo-funcao {
+        font-size: 22px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="topo-padrao">
+    <div class="topo-sistema">{{ titulo_sistema }}</div>
+    <div class="topo-funcao">{{ titulo_tela }}</div>
+    <div class="topo-contexto">Cliente: {{ cliente_info }}</div>
+    <div class="topo-contexto">Empresa: {{ empresa_info }}</div>
+</div>
+
+<div class="container">
+
+    <div class="card">
+        <h3>Identificação da Empresa</h3>
+
+        <div class="grid-identificacao">
+            <div class="campo">
+                <label>CNPJ</label>
+                <input
+                    type="text"
+                    maxlength="18"
+                    placeholder="00.000.000/0000-00"
+                    oninput="mascaraCNPJ(this)">
+            </div>
+
+            <div class="campo">
+                <label>Razão Social</label>
+                <input type="text" maxlength="60">
+            </div>
+
+            <div class="campo">
+                <label>Nome Fantasia</label>
+                <input type="text" maxlength="30">
+            </div>
+
+            <div class="campo">
+                <label>Mês Dissídio</label>
+                <select>
+                    <option value=""></option>
+                    <option value="01">01 - Janeiro</option>
+                    <option value="02">02 - Fevereiro</option>
+                    <option value="03">03 - Março</option>
+                    <option value="04">04 - Abril</option>
+                    <option value="05">05 - Maio</option>
+                    <option value="06">06 - Junho</option>
+                    <option value="07">07 - Julho</option>
+                    <option value="08">08 - Agosto</option>
+                    <option value="09">09 - Setembro</option>
+                    <option value="10">10 - Outubro</option>
+                    <option value="11">11 - Novembro</option>
+                    <option value="12">12 - Dezembro</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>INSS / Encargos</h3>
+
+        <div class="grid-fpas-topo">
+            <div class="campo">
+                <label>FPAS</label>
+                <select id="fpas" onchange="carregarFPAS()">
+                    <option value="">Selecione...</option>
+                </select>
+            </div>
+
+            <div class="campo">
+                <label>Descrição FPAS</label>
+                <input type="text" id="fpas_descricao" class="campo-automatico" readonly>
+            </div>
+
+            <div class="campo">
+                <label>Cód. Terceiros</label>
+                <input type="text" id="cod_terceiros" class="campo-automatico" readonly>
+            </div>
+
+            <div class="campo">
+                <label>Alíquota Total</label>
+                <input type="text" id="aliq_total" class="campo-automatico" readonly>
+            </div>
+        </div>
+
+        <div class="grid-terceiros-area">
+            <div class="grid-encargos">
+                <div class="campo"><label>Sal. Educação</label><input type="text" id="sal_educ" class="campo-encargo" readonly oninput="mascaraPercentual(this)" onblur="normalizarPercentual(this)"></div>
+                <div class="campo"><label>INCRA</label><input type="text" id="incra" class="campo-encargo" readonly oninput="mascaraPercentual(this)" onblur="normalizarPercentual(this)"></div>
+                <div class="campo"><label>SENAI</label><input type="text" id="senai" class="campo-encargo" readonly oninput="mascaraPercentual(this)" onblur="normalizarPercentual(this)"></div>
+                <div class="campo"><label>SESI</label><input type="text" id="sesi" class="campo-encargo" readonly oninput="mascaraPercentual(this)" onblur="normalizarPercentual(this)"></div>
+                <div class="campo"><label>SENAC</label><input type="text" id="senac" class="campo-encargo" readonly oninput="mascaraPercentual(this)" onblur="normalizarPercentual(this)

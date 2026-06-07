@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — eSocial S-1020</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy: #0b1f3a; --navy-line: #1e3d5c; --accent: #2a7de1;
+    --text-head: #e8edf4; --text-sub: #8baac8;
+    --bg: #f0f2f6; --surface: #ffffff; --border: #dde3ec; --label: #374151;
+    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap; text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.conteudo { max-width: 860px; margin: 40px auto; padding: 0 24px 80px; }
+.card-dev {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 48px 40px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.06);
+}
+.card-dev .icone { font-size: 48px; margin-bottom: 16px; }
+.card-dev h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
+.card-dev .subtitulo { font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.6; max-width: 520px; margin-left: auto; margin-right: auto; }
+.badge-dev { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 20px; padding: 4px 16px; font-size: 12px; font-weight: 700; }
+.info-box {
+    margin-top: 32px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px;
+    padding: 20px 24px; text-align: left;
+}
+.info-box h3 { font-size: 13px; font-weight: 700; color: #0369a1; margin-bottom: 10px; }
+.info-box ul { padding-left: 18px; }
+.info-box li { font-size: 13px; color: #0c4a6e; line-height: 1.8; }
+</style>
+</head>
+<body>
+<div class="topo">
+    <div>
+        <div class="topo-empresa">{{ empresa_info }}</div>
+        <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+    </div>
+    <div class="topo-titulo">💼 eSocial S-1020 — Lotações Tributárias</div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div>
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <a href="/menu" class="btn-voltar-topo">&#8592; Voltar</a>
+    </div>
+</div>
+
+<div class="conteudo">
+    <div class="card-dev">
+        <div class="icone">💼</div>
+        <h1>S-1020 · Tabela de Lotações Tributárias</h1>
+        <div class="subtitulo">
+            Este evento informa ao eSocial as lotações tributárias utilizadas na folha de pagamento,
+            vinculando os trabalhadores ao estabelecimento correto para fins de apuração tributária.
+        </div>
+        <span class="badge-dev">🚧 Em desenvolvimento</span>
+
+        <div class="info-box">
+            <h3>O que será informado neste evento:</h3>
+            <ul>
+                <li>Código e descrição de cada lotação tributária</li>
+                <li>Tipo de lotação (estabelecimento, obra de construção, órgão público)</li>
+                <li>CNPJ / CNO do estabelecimento vinculado</li>
+                <li>FPAS e código de terceiros aplicável</li>
+                <li>Período de validade das informações</li>
+            </ul>
+        </div>
+    </div>
+</div>
+</body>
+</html>
