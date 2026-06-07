@@ -88,6 +88,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .lay-2205 .lay-card-code  { background: #f5f3ff; color: #7c3aed; }
 .lay-2205.selecionado     { border-color: #8b5cf6; }
 .lay-2206 .lay-card-code  { background: #fdf4ff; color: #86198f; }
+.lay-2220 .lay-card-code  { background: #ecfdf5; color: #065f46; }
+.lay-2220.selecionado     { border-color: #10b981; }
 .lay-2230 .lay-card-code  { background: #fefce8; color: #854d0e; }
 .lay-2299 .lay-card-code  { background: #fff1f2; color: #9f1239; }
 .lay-1200 .lay-card-code  { background: #dbeafe; color: #1e40af; }
@@ -177,6 +179,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .op-btn:hover:not(.ativo-i):not(.ativo-a) { border-color: #94a3b8; color: #374151; }
 .op-btn.ativo-i { border-color: #0d9488; background: #f0fdfa; color: #0d9488; }
 .op-btn.ativo-a { border-color: #7c3aed; background: #f5f3ff; color: #7c3aed; }
+
+/* ── REFERÊNCIA REMESSA (Alteração) ── */
+.ref-wrap { border: 2px solid #ddd6fe; border-radius: 10px; overflow: hidden; margin-top: 10px; }
+.ref-table { width: 100%; border-collapse: collapse; }
+.ref-table th {
+    background: #faf5ff; padding: 7px 12px; text-align: left;
+    font-size: 10px; font-weight: 700; color: #6d28d9;
+    text-transform: uppercase; letter-spacing: .04em;
+    border-bottom: 1px solid #ddd6fe; white-space: nowrap;
+}
+.ref-table td { padding: 8px 12px; border-bottom: 1px solid #f5f3ff; font-size: 12px; vertical-align: middle; }
+.ref-table tr:last-child td { border-bottom: none; }
+.ref-table tr:hover td { background: #faf5ff; cursor: pointer; }
+.ref-table tr.selecionada td { background: #ede9fe; }
+.ref-recibo { font-family: var(--mono); font-size: 10px; color: #166534; word-break: break-all; }
 
 /* ── AVISO PERIÓDICOS ── */
 .aviso-periodico {
@@ -285,6 +302,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="lay-card-desc">Alt. Cadastral</div>
       </div>
 
+      <div class="lay-card lay-2220" data-layout="2220" data-tipo="func" onclick="selecionarLayout(this)">
+        <div class="lay-card-code">S-2220</div>
+        <div class="lay-card-desc">Saúde do Trabalhador</div>
+      </div>
+
       <div class="lay-card lay-2206 lay-card-disabled" data-layout="2206" data-tipo="func">
         <div class="lay-card-code">S-2206</div>
         <div class="lay-card-desc">Alt. Contrato</div>
@@ -334,6 +356,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="lay-card-desc">Exclusão</div>
       </div>
 
+    </div>
+
+    <!-- ── Remessa de Referência (só para Alteração) ── -->
+    <div id="divRefRemessa" style="display:none;padding-top:16px;border-top:1px solid #f1f5f9;margin-top:4px;">
+      <div class="secao-label" style="color:#7c3aed;">
+        Remessa a Alterar
+        <span id="refPeriodoLabel" style="font-weight:500;text-transform:none;font-size:11px;color:#94a3b8;margin-left:6px;"></span>
+      </div>
+      <div style="padding:9px 14px;background:#faf5ff;border:1px solid #ddd6fe;border-radius:8px;font-size:12px;color:#6d28d9;margin-bottom:4px;">
+        ⚠ Exibindo apenas remessas com recibo da folha ativa. Selecione qual deseja alterar.
+      </div>
+      <div class="ref-wrap">
+        <div id="refLista" style="max-height:220px;overflow-y:auto;">
+          <div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;">Selecione um layout acima para ver as remessas disponíveis.</div>
+        </div>
+      </div>
     </div>
 
     <!-- ── Aviso para periódicos ── -->
@@ -417,16 +455,24 @@ const LINKS_PERIODICOS = {
   '1299': ['/esocial_s1299', 'S-1299 Fechamento'],
   '3000': ['/esocial_s3000', 'S-3000 Exclusão'],
 };
+const _PERIODICOS = new Set(['1200','1210','1298','1299','3000']);
 
-let layoutAtual   = null;
-let operacaoAtual = 'I';
+let layoutAtual    = null;
+let operacaoAtual  = 'I';
+let refSelecionado = null; // { id_esocial, recibo }
 
+/* ── Operação ── */
 function setOperacao(op) {
-  operacaoAtual = op;
-  document.getElementById('opInclusao').className = 'op-btn' + (op === 'I' ? ' ativo-i' : '');
+  operacaoAtual  = op;
+  refSelecionado = null;
+  document.getElementById('opInclusao').className  = 'op-btn' + (op === 'I' ? ' ativo-i' : '');
   document.getElementById('opAlteracao').className = 'op-btn' + (op === 'A' ? ' ativo-a' : '');
+  _atualizarRefSection();
+  atualizarSelecao();
+  _atualizarBotaoTabela();
 }
 
+/* ── Layout ── */
 function selecionarLayout(card) {
   if (card.classList.contains('lay-card-disabled')) return;
 
@@ -435,47 +481,109 @@ function selecionarLayout(card) {
 
   const layout = card.dataset.layout;
   const tipo   = card.dataset.tipo;
-  layoutAtual  = layout;
+  layoutAtual    = layout;
+  refSelecionado = null;
 
-  const formFunc      = document.getElementById('formFunc');
-  const formTabela    = document.getElementById('formTabela');
-  const avisoPer      = document.getElementById('avisoPeriodico');
-  const linkPer       = document.getElementById('linkPeriodico');
-  const divResultado  = document.getElementById('divResultado');
-  const divResultadoT = document.getElementById('divResultadoTabela');
+  document.getElementById('divResultado').style.display  = 'none';
+  document.getElementById('divResultadoTabela').style.display = 'none';
 
-  divResultado.style.display  = 'none';
-  divResultadoT.style.display = 'none';
+  _atualizarRefSection();
 
   if (tipo === 'func') {
-    formFunc.style.display   = 'block';
-    formTabela.style.display = 'none';
-    avisoPer.style.display   = 'none';
+    document.getElementById('formFunc').style.display    = 'block';
+    document.getElementById('formTabela').style.display  = 'none';
+    document.getElementById('avisoPeriodico').style.display = 'none';
     atualizarSelecao();
     setTimeout(() => {
-      formFunc.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      document.getElementById('formFunc').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       const wrap = document.getElementById('funcListaWrap');
       wrap.classList.add('destaque');
       setTimeout(() => wrap.classList.remove('destaque'), 1400);
       document.getElementById('funcBusca').focus();
     }, 60);
   } else if (tipo === 'tabela') {
-    formFunc.style.display   = 'none';
-    formTabela.style.display = 'block';
-    avisoPer.style.display   = 'none';
+    document.getElementById('formFunc').style.display    = 'none';
+    document.getElementById('formTabela').style.display  = 'block';
+    document.getElementById('avisoPeriodico').style.display = 'none';
+    _atualizarBotaoTabela();
   } else {
-    formFunc.style.display   = 'none';
-    formTabela.style.display = 'none';
+    document.getElementById('formFunc').style.display    = 'none';
+    document.getElementById('formTabela').style.display  = 'none';
     const info = LINKS_PERIODICOS[layout];
     if (info) {
-      linkPer.innerHTML      = `<a href="${info[0]}">&rarr; Abrir tela de ${info[1]}</a>`;
-      avisoPer.style.display = 'block';
+      document.getElementById('linkPeriodico').innerHTML  = `<a href="${info[0]}">&rarr; Abrir tela de ${info[1]}</a>`;
+      document.getElementById('avisoPeriodico').style.display = 'block';
     } else {
-      avisoPer.style.display = 'none';
+      document.getElementById('avisoPeriodico').style.display = 'none';
     }
   }
 }
 
+/* ── Seção de referência para Alteração ── */
+function _atualizarRefSection() {
+  const div = document.getElementById('divRefRemessa');
+  if (operacaoAtual === 'A' && layoutAtual && !_PERIODICOS.has(layoutAtual)) {
+    div.style.display = 'block';
+    _carregarRefRemessas();
+  } else {
+    div.style.display = 'none';
+    document.getElementById('refLista').innerHTML =
+      '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;">Selecione um layout acima para ver as remessas disponíveis.</div>';
+  }
+}
+
+async function _carregarRefRemessas() {
+  const lista = document.getElementById('refLista');
+  lista.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px;">Carregando…</div>';
+  try {
+    const r    = await fetch(`/api/esocial_remessas_com_recibo?layout=${layoutAtual}`);
+    const data = await r.json();
+
+    document.getElementById('refPeriodoLabel').textContent =
+      data.periodo ? `— Folha ${data.periodo}` : '';
+
+    if (!data.items || data.items.length === 0) {
+      lista.innerHTML = '<div style="padding:20px;text-align:center;color:#94a3b8;font-size:12px;">Nenhuma remessa com recibo encontrada para este layout na folha ativa.</div>';
+      return;
+    }
+
+    let html = `<table class="ref-table"><thead><tr>
+      <th style="width:32px;"></th>
+      <th>ID</th><th>Envio</th><th>Funcionário</th><th>Recibo</th>
+    </tr></thead><tbody>`;
+    for (const item of data.items) {
+      const re = item.recibo.replace(/'/g,"\\'");
+      html += `<tr onclick="selecionarRef(${item.id_esocial},'${re}',this)">
+        <td><input type="radio" name="refRadio" style="accent-color:#7c3aed;cursor:pointer;"></td>
+        <td style="font-family:var(--mono);font-size:11px;color:#64748b;">${item.id_esocial}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:#64748b;white-space:nowrap;">${item.data_fmt}</td>
+        <td>${item.nome !== '—' ? item.nome : '<span style="color:#94a3b8;">—</span>'}</td>
+        <td class="ref-recibo">${item.recibo.slice(0,45)}${item.recibo.length>45?'…':''}</td>
+      </tr>`;
+    }
+    html += '</tbody></table>';
+    lista.innerHTML = html;
+  } catch(e) {
+    lista.innerHTML = `<div style="padding:16px;color:#991b1b;font-size:12px;">Erro ao carregar: ${e}</div>`;
+  }
+}
+
+function selecionarRef(idEsocial, recibo, trEl) {
+  refSelecionado = { id_esocial: idEsocial, recibo };
+  trEl.querySelector('input[type="radio"]').checked = true;
+  document.querySelectorAll('.ref-table tr').forEach(tr => tr.classList.remove('selecionada'));
+  trEl.classList.add('selecionada');
+  atualizarSelecao();
+  _atualizarBotaoTabela();
+}
+
+function _atualizarBotaoTabela() {
+  const btn = document.getElementById('btnCriarTabela');
+  if (!btn) return;
+  btn.disabled = operacaoAtual === 'A' && !refSelecionado;
+}
+
+/* ── Funcionários ── */
 function filtrarFuncs() {
   const q = document.getElementById('funcBusca').value.toLowerCase();
   document.querySelectorAll('.func-item').forEach(item => {
@@ -493,101 +601,100 @@ function toggleTodos() {
 }
 
 function atualizarSelecao() {
-  const n   = document.querySelectorAll('.func-chk:checked').length;
-  const btn = document.getElementById('btnCriar');
+  const n     = document.querySelectorAll('.func-chk:checked').length;
+  const btn   = document.getElementById('btnCriar');
+  const refOk = operacaoAtual === 'I' || refSelecionado !== null;
 
   document.getElementById('funcContador').textContent =
     n === 0 ? 'Nenhum selecionado' : `${n} selecionado(s)`;
 
-  btn.disabled  = !(layoutAtual && n > 0);
+  btn.disabled  = !(layoutAtual && n > 0 && refOk);
   btn.innerHTML = n > 1
     ? `&#10003; Criar ${n} Remessas Pendentes`
     : '&#10003; Criar Remessa Pendente';
 }
 
+/* ── Criar remessa (func) ── */
 async function criarRemessa(btn) {
   const selecionados = [...document.querySelectorAll('.func-chk:checked')];
   if (!layoutAtual || selecionados.length === 0) return;
+  if (operacaoAtual === 'A' && !refSelecionado) {
+    const div = document.getElementById('divResultado');
+    div.className = 'resultado erro'; div.textContent = 'Selecione uma remessa de referência para alterar.'; div.style.display = 'block';
+    return;
+  }
 
   btn.disabled = true;
   const div = document.getElementById('divResultado');
   div.style.display = 'none';
-
-  const criados = [];
-  const erros   = [];
+  const criados = [], erros = [];
 
   for (const chk of selecionados) {
     const mat  = chk.value;
     const nome = chk.closest('.func-item').querySelector('.func-nome').textContent;
     try {
       const r    = await fetch('/api/esocial_gerador_criar', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ layout: layoutAtual, matricula: mat, operacao: operacaoAtual }),
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ layout: layoutAtual, matricula: mat,
+                               operacao: operacaoAtual,
+                               recibo_ref: refSelecionado ? refSelecionado.recibo : null }),
       });
       const data = await r.json();
-      if (data.ok) {
-        criados.push({ id: data.id_esocial, nome });
-      } else {
-        erros.push(`${nome}: ${data.msg || 'erro'}`);
-      }
-    } catch(e) {
-      erros.push(`${nome}: falha de comunicação`);
-    }
+      if (data.ok) criados.push({ id: data.id_esocial, nome });
+      else erros.push(`${nome}: ${data.msg || 'erro'}`);
+    } catch(e) { erros.push(`${nome}: falha de comunicação`); }
   }
 
   div.style.display = 'block';
   if (erros.length === 0) {
     div.className = 'resultado ok';
     div.innerHTML = `&#10003; <strong>${criados.length} remessa(s) S-${layoutAtual} criada(s):</strong><br>`
-      + criados.map(c => `&nbsp;&nbsp;• ${c.nome} (id ${c.id})`).join('<br>')
+      + criados.map(c=>`&nbsp;&nbsp;• ${c.nome} (id ${c.id})`).join('<br>')
       + `<br><a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>`;
   } else if (criados.length > 0) {
     div.className = 'resultado ok';
     div.innerHTML = `&#10003; ${criados.length} criada(s), ${erros.length} com erro:<br>`
-      + erros.map(e => `&nbsp;&nbsp;&#10007; ${e}`).join('<br>')
+      + erros.map(e=>`&nbsp;&nbsp;&#10007; ${e}`).join('<br>')
       + `<br><a href="/esocial_fila">&#8594; Ver na Fila</a>`;
   } else {
-    div.className   = 'resultado erro';
-    div.textContent = erros.join('; ');
+    div.className = 'resultado erro'; div.textContent = erros.join('; ');
   }
-
   document.querySelectorAll('.func-chk').forEach(c => c.checked = false);
   atualizarSelecao();
   btn.disabled = false;
 }
 
+/* ── Criar remessa (tabela) ── */
 async function criarRemessaTabela(btn) {
   if (!layoutAtual) return;
+  if (operacaoAtual === 'A' && !refSelecionado) {
+    const div = document.getElementById('divResultadoTabela');
+    div.className = 'resultado erro'; div.textContent = 'Selecione uma remessa de referência para alterar.'; div.style.display = 'block';
+    return;
+  }
 
   btn.disabled = true;
   const div = document.getElementById('divResultadoTabela');
   div.style.display = 'none';
-
   try {
     const r    = await fetch('/api/esocial_gerador_criar', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ layout: layoutAtual, operacao: operacaoAtual }),
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ layout: layoutAtual, operacao: operacaoAtual,
+                             recibo_ref: refSelecionado ? refSelecionado.recibo : null }),
     });
     const data = await r.json();
-
     div.style.display = 'block';
     if (data.ok) {
       div.className = 'resultado ok';
-      div.innerHTML = `&#10003; <strong>Remessa S-${data.layout} criada</strong>
-        (id ${data.id_esocial}).<br>
+      div.innerHTML = `&#10003; <strong>Remessa S-${data.layout} criada</strong> (id ${data.id_esocial}).<br>
         <a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>`;
     } else {
-      div.className   = 'resultado erro';
-      div.textContent = data.msg || 'Erro desconhecido.';
+      div.className = 'resultado erro'; div.textContent = data.msg || 'Erro desconhecido.';
     }
   } catch(e) {
-    div.style.display = 'block';
-    div.className     = 'resultado erro';
-    div.textContent   = 'Falha de comunicação: ' + e;
+    div.style.display = 'block'; div.className = 'resultado erro';
+    div.textContent = 'Falha de comunicação: ' + e;
   }
-
   btn.disabled = false;
 }
 </script>

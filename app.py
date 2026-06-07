@@ -9062,6 +9062,304 @@ def api_exame_med_excluir():
 
 
 # =========================================================
+# eSocial S-2220 — GERADOR DE XML
+# =========================================================
+def _gerar_xml_s2220(exame, func, empresa, tpAmb="1"):
+    import re as _re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):  return _re.sub(r'\D', '', str(v or ''))
+    def x(v):   return _esc(str(v or ''))
+    def d8(v):
+        s = str(v or '').strip()
+        return f"{s[:4]}-{s[4:6]}-{s[6:]}" if len(s) == 8 and s.isdigit() else ''
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    cpf       = dg(func.get('cpf', '')).zfill(11)
+    mat_es    = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    nis       = dg(func.get('nis') or func.get('pis') or '')
+    nis_xml   = f"\n      <nisTrab>{x(nis)}</nisTrab>" if nis else ''
+
+    # Dados do exame — extraídos dos campos do tab_eventos
+    dt_aso    = d8(exame.get('data1i'))
+    txt2      = str(exame.get('campotxt2') or '')
+    _p        = dict(seg.split('=', 1) for seg in txt2.split('/') if '=' in seg)
+    res_aso   = _p.get('resAso', '1')
+    ind_result = _p.get('indResult', '1')
+    txt3      = str(exame.get('campotxt3') or '')
+    ordem     = txt3.replace('ORDEM=', '').strip() or '2'
+    # tpExameOcup: 0=Admissional (ordem 1), 1=Periódico (ordem 2+)
+    tp_exame  = '0' if ordem == '1' else '1'
+    txt4      = str(exame.get('campotxt4') or '')
+    nm_med    = txt4[:50].strip()
+    nr_crm    = txt4[50:60].strip()
+    uf_crm    = txt4[60:62].strip()
+    proc      = str(exame.get('campotxt1') or '').strip()
+
+    obs_raw   = str(exame.get('observacao') or '').strip()
+    obs_xml   = f"\n        <obsProc>{x(obs_raw)}</obsProc>" if obs_raw else ''
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_02_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_02_00 evtMonit_v_S_01_02_00.xsd">
+  <evtMonit Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>Folha10-Simples</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <ideVinculo>
+      <cpfTrab>{x(cpf)}</cpfTrab>{nis_xml}
+      <matricula>{x(mat_es)}</matricula>
+    </ideVinculo>
+    <exMedOcup>
+      <tpExameOcup>{x(tp_exame)}</tpExameOcup>
+      <dtAso>{x(dt_aso)}</dtAso>
+      <resAso>{x(res_aso)}</resAso>
+      <medico>
+        <nmMed>{x(nm_med)}</nmMed>
+        <nrCRM>{x(nr_crm)}</nrCRM>
+        <ufCRM>{x(uf_crm)}</ufCRM>
+      </medico>
+      <exame>
+        <dtExm>{x(dt_aso)}</dtExm>
+        <procRealizado>{x(proc)}</procRealizado>{obs_xml}
+        <ordExame>{x(ordem)}</ordExame>
+        <indResult>{x(ind_result)}</indResult>
+      </exame>
+    </exMedOcup>
+  </evtMonit>
+</eSocial>"""
+
+
+# =========================================================
+# eSocial S-2220 — API: baixar XML
+# =========================================================
+@app.route("/api/esocial_s2220_xml")
+def api_esocial_s2220_xml():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from flask import Response
+    id_empresa = _get_id_empresa()
+    id_reg     = request.args.get("id", "").strip()
+    tpAmb      = request.args.get("tpAmb", "1")
+
+    if not id_reg or not id_reg.isdigit():
+        return Response("ID inválido.", status=400, mimetype="text/plain")
+
+    try:
+        es = (supabase.table("tab_esocial")
+              .select("*").eq("id_esocial", int(id_reg))
+              .eq("id_empresa", id_empresa).eq("layout", "2220")
+              .limit(1).execute().data or [{}])[0]
+        if not es:
+            return Response("Registro não encontrado.", status=404, mimetype="text/plain")
+
+        id_ev = es.get("codigo2")
+        exame = (supabase.table("tab_eventos")
+                 .select("*").eq("id", id_ev).eq("id_empresa", id_empresa)
+                 .limit(1).execute().data or [{}])[0]
+
+        func = (supabase.table("tab_cad")
+                .select("*").eq("id_empresa", id_empresa)
+                .eq("matricula", es.get("matricula")).limit(1).execute().data or [{}])[0]
+
+        cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+        empresa  = (supabase.table("tab_empresa").select("*")
+                    .eq("cnpj", cnpj_emp).limit(1).execute().data or [{}])[0]
+    except Exception as e:
+        return Response(f"Erro: {e}", status=500, mimetype="text/plain")
+
+    xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
+    mat     = es.get("matricula", "")
+    fname   = f"S2220_{mat}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    return Response(xml_str, mimetype="application/xml; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+# =========================================================
+# eSocial S-2220 — API: enviar
+# =========================================================
+@app.route("/api/esocial_s2220_enviar", methods=["POST"])
+def api_esocial_s2220_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    # ── 1. Registro tab_esocial ───────────────────────────
+    try:
+        es = (supabase.table("tab_esocial").select("*")
+              .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa)
+              .eq("layout", "2220").limit(1).execute().data or [{}])[0]
+        if not es.get("id_esocial"):
+            return jsonify({"ok": False, "msg": "Registro S-2220 não encontrado."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    # ── 2. Exame (tab_eventos) ────────────────────────────
+    try:
+        id_ev = es.get("codigo2")
+        exame = (supabase.table("tab_eventos").select("*")
+                 .eq("id", id_ev).eq("id_empresa", id_empresa)
+                 .limit(1).execute().data or [{}])[0]
+        if not exame.get("id"):
+            return jsonify({"ok": False, "msg": "Exame médico não encontrado."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar exame: {e}"})
+
+    # ── 3. Funcionário ────────────────────────────────────
+    try:
+        func = (supabase.table("tab_cad").select("*")
+                .eq("id_empresa", id_empresa).eq("matricula", es.get("matricula"))
+                .limit(1).execute().data or [{}])[0]
+        if not func.get("matricula"):
+            return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
+
+    # ── 4. Empresa + certificado ──────────────────────────
+    try:
+        empresa = (supabase.table("tab_empresa").select("*")
+                   .eq("cnpj", cnpj_emp).limit(1).execute().data or [{}])[0]
+        if not empresa.get("cnpj"):
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    # ── 5. Gerar XML ──────────────────────────────────────
+    try:
+        xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    # ── 6. Salvar e assinar ───────────────────────────────
+    import os as _os2
+    _now2    = datetime.now()
+    _dir_xml = _os2.path.join(_os2.path.dirname(__file__), "eSocial_XML",
+                              _now2.strftime("%Y"), _now2.strftime("%Y-%m"),
+                              str(id_empresa).zfill(6))
+    _os2.makedirs(_dir_xml, exist_ok=True)
+    _pref = _os2.path.join(_dir_xml, f"S2220_{es.get('matricula')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+    try:
+        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f: _f.write(xml_str)
+    except Exception: pass
+
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    try:
+        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f: _f.write(xml_assinado)
+    except Exception: pass
+
+    # ── 7. Montar lote e enviar ───────────────────────────
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": str(e)})
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    nr_rec          = analise["nr_rec"]
+    protocolo_envio = nr_rec
+    if not nr_rec:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    agora = datetime.now()
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    # ── 8. Consultar resultado (até 3×) ───────────────────
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+    for _ in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(nr_rec)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"; break
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"; break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"): continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL", f"S-2220 enviado: mat={es.get('matricula')} nrRec={recibo_final}",
+               matricula=es.get("matricula"))
+
+    return jsonify({
+        "ok":         bool(recibo_final) and not obs_erro,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "msg": ("Ainda processando." if aguardando
+                else obs_erro or f"Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
 # EXAME MÉDICO — Relatório: tela de configuração
 # =========================================================
 @app.route("/rel_config_exame_med")
@@ -15808,6 +16106,7 @@ def esocial_fila():
         "2200": ("S-2200", "Admissão",      "/esocial_s2200",    True),
         "2205": ("S-2205", "Alt.Cadastral", "/esocial_s2205",    True),
         "2206": ("S-2206", "Alt.Contrato",  "/esocial_s2206",    True),
+        "2220": ("S-2220", "Saúde",         "/cad_exame_med",    True),
         "2230": ("S-2230", "Afastamento",   "/cad_afastamento",  True),
         "2299": ("S-2299", "Desligamento",  "#",                 True),
     }
@@ -16257,6 +16556,65 @@ def esocial_gerador():
     )
 
 
+# =========================================================
+# eSocial — API: remessas com recibo (para seleção de Alteração)
+# =========================================================
+@app.route("/api/esocial_remessas_com_recibo")
+def api_esocial_remessas_com_recibo():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "items": []})
+
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+    layout       = request.args.get("layout", "").strip()
+
+    if not layout or not anomes_atual or len(anomes_atual) != 6:
+        return jsonify({"ok": False, "msg": "Parâmetros inválidos.", "items": []})
+
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, recibo, data_grava, hora_grava, matricula")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", layout)
+                .eq("ano_mes", int(anomes_atual))
+                .order("data_grava", desc=True)
+                .execute().data or [])
+        rows = [r for r in rows if (r.get("recibo") or "").strip()]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200], "items": []})
+
+    mats = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad")
+                      .select("matricula, nome")
+                      .eq("id_empresa", id_empresa)
+                      .in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    items = []
+    for r in rows:
+        dg = str(r.get("data_grava") or "").strip()
+        hg = str(r.get("hora_grava") or "").strip()
+        data_fmt = f"{dg[6:8]}/{dg[4:6]}/{dg[0:4]}" if len(dg) == 8 else "—"
+        if len(hg) >= 4:
+            data_fmt += f" {hg[0:2]}:{hg[2:4]}"
+        items.append({
+            "id_esocial": r["id_esocial"],
+            "recibo":     (r.get("recibo") or "").strip(),
+            "data_fmt":   data_fmt,
+            "nome":       nomes.get(r.get("matricula"), "—") if r.get("matricula") else "—",
+        })
+
+    am_s = anomes_atual
+    periodo_fmt = f"{am_s[4:6]}/{am_s[0:4]}" if len(am_s) == 6 else anomes_atual
+    return jsonify({"ok": True, "items": items, "periodo": periodo_fmt})
+
+
 @app.route("/api/esocial_gerador_criar", methods=["POST"])
 def api_esocial_gerador_criar():
     if not session.get("logado"):
@@ -16267,13 +16625,14 @@ def api_esocial_gerador_criar():
     anomes_atual = str(session.get("anomes_atual") or "")
     data         = request.get_json(force=True) or {}
 
-    layout    = str(data.get("layout", "")).strip()
-    matricula = data.get("matricula")
-    operacao  = "A" if str(data.get("operacao", "I")).upper() == "A" else "I"
+    layout     = str(data.get("layout", "")).strip()
+    matricula  = data.get("matricula")
+    operacao   = "A" if str(data.get("operacao", "I")).upper() == "A" else "I"
+    recibo_ref = (data.get("recibo_ref") or "").strip()
 
-    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2230", "2299"}
+    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2220", "2230", "2299"}
     _LAYOUTS_VALIDOS = {"1000", "1005", "1010", "1020",
-                        "2200", "2205", "2206", "2230", "2299",
+                        "2200", "2205", "2206", "2220", "2230", "2299",
                         "1200", "1210", "1298", "1299", "3000"}
 
     if layout not in _LAYOUTS_VALIDOS:
@@ -16295,6 +16654,7 @@ def api_esocial_gerador_criar():
             "layout":     layout,
             "codigo2":    0,
             "operacao":   operacao,
+            "recibo_ref": recibo_ref or None,
         }
         if ano_mes_val:
             ins["ano_mes"] = ano_mes_val
