@@ -50,18 +50,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
     border: none; cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
 }
-.btn-novo.inclusao  { background: var(--accent); color: #fff; }
-.btn-novo.inclusao:hover  { background: #1a6bc0; }
-
-.card-info {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-    padding: 16px 20px; margin-bottom: 20px;
-    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
-}
-.info-bloco { display: flex; flex-direction: column; gap: 2px; }
-.info-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; }
-.info-valor { font-size: 22px; font-weight: 700; color: #1e293b; font-family: var(--mono); }
-.info-sub   { font-size: 11px; color: #64748b; }
+.btn-novo.inclusao { background: var(--accent); color: #fff; }
+.btn-novo.inclusao:hover { background: #1a6bc0; }
 
 .tabela-wrap {
     background: var(--surface); border: 1px solid var(--border);
@@ -111,7 +101,6 @@ tr:hover td { background: #f8fafc; }
 .btn-enviar { border-color: var(--green); color: #166534; background: #e8f5ee; }
 .btn-enviar:hover:not(:disabled) { background: var(--green); color: #fff; }
 .btn-enviar:disabled { opacity: .45; cursor: default; }
-
 .btn-excluir {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 4px 11px; border-radius: 6px; font-size: 11px; font-weight: 600;
@@ -126,16 +115,17 @@ tr:hover td { background: #f8fafc; }
 .vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
 .vazio-icone { font-size: 32px; margin-bottom: 12px; }
 
+/* MODAL */
 .modal-overlay {
     display: none; position: fixed; inset: 0; z-index: 1000;
     background: rgba(0,0,0,.55);
     align-items: flex-start; justify-content: center;
-    padding: 40px 16px 60px; overflow-y: auto;
+    padding: 32px 16px 40px; overflow-y: auto;
 }
 .modal-overlay.aberto { display: flex; }
 .modal-painel {
     background: #fff; border-radius: 16px;
-    width: 100%; max-width: 560px;
+    width: 100%; max-width: 680px;
     box-shadow: 0 20px 60px rgba(0,0,0,.35); overflow: hidden;
 }
 .modal-topo {
@@ -149,8 +139,8 @@ tr:hover td { background: #f8fafc; }
     font-size: 20px; cursor: pointer; padding: 4px 8px; line-height: 1; transition: color .12s;
 }
 .modal-fechar:hover { color: var(--text-head); }
-.modal-corpo  { padding: 24px 24px 8px; }
-.modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 24px 20px; border-top: 1px solid #f1f5f9; margin-top: 16px; }
+.modal-corpo  { padding: 20px 24px 8px; }
+.modal-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 24px 20px; border-top: 1px solid #f1f5f9; margin-top: 12px; }
 
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-col-full { grid-column: 1 / -1; }
@@ -172,15 +162,46 @@ tr:hover td { background: #f8fafc; }
     font-family: var(--sans); color: #1e293b; background: #f0f7ff;
     outline: none; cursor: pointer; width: 100%;
 }
-.sel-tipo-op:focus { border-color: #1a6bc0; }
 
-.review-card {
-    background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
-    padding: 14px 16px; margin-top: 16px;
+/* LISTA DE RUBRICAS */
+.rub-section { margin-top: 14px; }
+.rub-section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: #64748b; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
 }
-.review-titulo { font-size: 11px; font-weight: 700; color: #166534; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em; }
-.review-linha  { font-size: 13px; color: #1e293b; }
-.review-num    { font-size: 22px; font-weight: 700; color: #166534; font-family: var(--mono); }
+.rub-cnt { font-size: 12px; font-weight: 700; color: var(--accent); }
+.rub-toolbar {
+    display: flex; gap: 8px; align-items: center; margin-bottom: 8px;
+}
+.rub-filtro {
+    flex: 1; height: 34px; padding: 0 10px; border-radius: 7px;
+    border: 1.5px solid var(--border); font-size: 12px;
+    font-family: var(--sans); outline: none;
+}
+.rub-filtro:focus { border-color: var(--accent); }
+.rub-btn-link {
+    background: none; border: none; font-size: 11px; font-weight: 600;
+    color: var(--accent); cursor: pointer; padding: 0 2px; white-space: nowrap;
+}
+.rub-btn-link:hover { text-decoration: underline; }
+.rub-lista {
+    border: 1.5px solid var(--border); border-radius: 8px;
+    max-height: 240px; overflow-y: auto; background: #fafbfc;
+}
+.rub-item {
+    border-bottom: 1px solid #f1f5f9; padding: 0;
+}
+.rub-item:last-child { border-bottom: none; }
+.rub-lbl {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; cursor: pointer; transition: background .1s;
+}
+.rub-lbl:hover { background: #f0f7ff; }
+.rub-lbl input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent); }
+.rub-cod  { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #1e293b; min-width: 36px; }
+.rub-dsc  { font-size: 12px; color: #374151; flex: 1; }
+.rub-tp   { font-size: 10px; color: #64748b; white-space: nowrap; padding: 1px 7px; border-radius: 10px; background: #f1f5f9; border: 1px solid #e2e8f0; }
+.rub-vazio { padding: 20px; text-align: center; font-size: 12px; color: #94a3b8; }
 
 .btn-modal {
     display: inline-flex; align-items: center; gap: 6px;
@@ -224,25 +245,13 @@ tr:hover td { background: #f8fafc; }
             <div class="barra-sub">{{ total }} remessa{{ 's' if total != 1 else '' }} · Grupo 1 — Tabelas do Empregador</div>
         </div>
         <div class="barra-dir">
-            <button class="btn-novo inclusao" onclick="abrirModal()">＋ Nova Remessa</button>
+            <button class="btn-novo inclusao" onclick="abrirModal()"
+                    {% if not rubricas_lista %}disabled title="Cadastre rubricas primeiro"{% endif %}>
+                ＋ Nova Remessa
+            </button>
         </div>
     </div>
 
-    <!-- Card informativo de rubricas -->
-    <div class="card-info">
-        <div class="info-bloco">
-            <div class="info-label">Rubricas Ativas</div>
-            <div class="info-valor">{{ qtd_rubricas }}</div>
-            <div class="info-sub">verbas que serão incluídas no S-1010</div>
-        </div>
-        <div style="flex:1; min-width:200px; font-size:12px; color:#475569; line-height:1.6;">
-            O evento S-1010 envia ao eSocial todas as rubricas (verbas) da folha de pagamento,
-            com sua natureza e incidências tributárias (INSS, IRRF, FGTS, SEFIP).
-            Cada envio gera um evento por rubrica no lote.
-        </div>
-    </div>
-
-    <!-- Tabela de remessas -->
     <div class="tabela-wrap">
         <table>
             <thead>
@@ -251,7 +260,7 @@ tr:hover td { background: #f8fafc; }
                     <th>Cad.</th>
                     <th>Tipo</th>
                     <th>Período</th>
-                    <th>Rubricas</th>
+                    <th style="text-align:center;">Rubricas</th>
                     <th>Situação</th>
                     <th>Recibo / Info</th>
                     <th>Ações</th>
@@ -317,7 +326,7 @@ tr:hover td { background: #f8fafc; }
                         <div class="vazio">
                             <div class="vazio-icone">📑</div>
                             <div>Nenhum S-1010 registrado ainda.</div>
-                            <div style="margin-top:6px; font-size:12px;">Clique em <strong>Nova Remessa</strong> para enviar a tabela de rubricas ao eSocial.</div>
+                            <div style="margin-top:6px; font-size:12px;">Clique em <strong>Nova Remessa</strong> para enviar rubricas ao eSocial.</div>
                         </div>
                     </td>
                 </tr>
@@ -339,14 +348,14 @@ tr:hover td { background: #f8fafc; }
                 <div class="form-group form-col-full">
                     <label class="form-label">Tipo de Operação *</label>
                     <select id="f-tp-op" class="sel-tipo-op">
-                        <option value="inclusao">➕ Inclusão — Primeiro envio da tabela de rubricas</option>
+                        <option value="inclusao">➕ Inclusão — Primeiro envio de cada rubrica</option>
                         <option value="alteracao">✎ Alteração — Atualização de rubricas já enviadas</option>
                     </select>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Início de Validade *</label>
                     <input type="month" id="f-ini-valid" class="form-input mono" required>
-                    <span class="form-hint">Período inicial de vigência das rubricas</span>
+                    <span class="form-hint">Período inicial de vigência</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Fim de Validade (opcional)</label>
@@ -362,25 +371,27 @@ tr:hover td { background: #f8fafc; }
                 </div>
             </div>
 
-            <div class="review-card">
-                <div class="review-titulo">Rubricas que serão enviadas</div>
-                <div class="review-num">{{ qtd_rubricas }}</div>
-                <div class="review-linha" style="margin-top:4px;">
-                    rubrica{{ 's' if qtd_rubricas != 1 else '' }} ativa{{ 's' if qtd_rubricas != 1 else '' }} no cadastro (inclui verbas do sistema e da empresa)
+            <!-- Seleção de rubricas -->
+            <div class="rub-section">
+                <div class="rub-section-label">
+                    <span>Rubricas a enviar *</span>
+                    <span class="rub-cnt" id="cnt-sel">0 selecionadas</span>
                 </div>
-                {% if qtd_rubricas == 0 %}
-                <div style="margin-top:10px; padding:8px 10px; background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; font-size:11px; color:#991b1b;">
-                    ⚠ Nenhuma rubrica ativa encontrada. Cadastre as verbas da folha antes de gerar o S-1010.
+                <div class="rub-toolbar">
+                    <input type="text" id="f-filtro-rub" class="rub-filtro"
+                           placeholder="Filtrar por código ou descrição..."
+                           oninput="renderRubricas(this.value)">
+                    <button class="rub-btn-link" onclick="selTodas()">Todas</button>
+                    <button class="rub-btn-link" onclick="selNenhuma()">Nenhuma</button>
                 </div>
-                {% endif %}
+                <div id="lista-rubricas" class="rub-lista"></div>
             </div>
 
             <div id="msg-modal" style="display:none; margin-top:12px;"></div>
         </div>
         <div class="modal-footer">
             <button class="btn-modal secundario" onclick="fecharModal()">Cancelar</button>
-            <button class="btn-modal primario" id="btn-gravar" onclick="gravarS1010()"
-                    {% if qtd_rubricas == 0 %}disabled{% endif %}>
+            <button class="btn-modal primario" id="btn-gravar" onclick="gravarS1010()">
                 💾 Gravar
             </button>
         </div>
@@ -388,12 +399,74 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
+const RUBRICAS = {{ rubricas_lista | tojson }};
+const TP_LABEL = {'1':'Provento','2':'Desconto','3':'Informativo','4':'Inf.Ded.'};
+let selecionadas = new Set();
+
+function renderRubricas(filtro) {
+    const lista = document.getElementById('lista-rubricas');
+    const f = (filtro || '').toLowerCase().trim();
+    const visiv = RUBRICAS.filter(r => {
+        if (!f) return true;
+        const cod = String(r.cod_rubr || '');
+        return cod.includes(f) || (r.dsc_rubr || '').toLowerCase().includes(f);
+    });
+
+    if (!visiv.length) {
+        lista.innerHTML = '<div class="rub-vazio">Nenhuma rubrica encontrada.</div>';
+        return;
+    }
+
+    lista.innerHTML = visiv.map(r => {
+        const chk = selecionadas.has(r.cod_rubr) ? 'checked' : '';
+        const tp  = TP_LABEL[String(r.tp_rubr)] || r.tp_rubr || '';
+        const cod = String(r.cod_rubr || '').padStart(4, '0');
+        return `<div class="rub-item">
+          <label class="rub-lbl">
+            <input type="checkbox" value="${r.cod_rubr}" ${chk}
+                   onchange="toggleRub(${r.cod_rubr}, this.checked)">
+            <span class="rub-cod">${cod}</span>
+            <span class="rub-dsc">${r.dsc_rubr || ''}</span>
+            <span class="rub-tp">${tp}</span>
+          </label>
+        </div>`;
+    }).join('');
+
+    atualizarCnt();
+}
+
+function toggleRub(cod, checked) {
+    if (checked) selecionadas.add(cod);
+    else selecionadas.delete(cod);
+    atualizarCnt();
+}
+
+function atualizarCnt() {
+    document.getElementById('cnt-sel').textContent =
+        selecionadas.size + (selecionadas.size === 1 ? ' selecionada' : ' selecionadas');
+}
+
+function selTodas() {
+    RUBRICAS.forEach(r => selecionadas.add(r.cod_rubr));
+    renderRubricas(document.getElementById('f-filtro-rub').value);
+}
+
+function selNenhuma() {
+    selecionadas.clear();
+    renderRubricas(document.getElementById('f-filtro-rub').value);
+}
+
 function abrirModal() {
     document.getElementById('f-tp-op').value = 'inclusao';
     document.getElementById('f-ini-valid').value = '';
     document.getElementById('f-fim-valid').value = '';
     document.getElementById('f-tpamb').value = '1';
+    document.getElementById('f-filtro-rub').value = '';
     document.getElementById('msg-modal').style.display = 'none';
+    document.getElementById('btn-gravar').disabled = false;
+    document.getElementById('btn-gravar').innerHTML = '💾 Gravar';
+    selecionadas.clear();
+    renderRubricas('');
     document.getElementById('modal-novo').classList.add('aberto');
 }
 
@@ -412,6 +485,7 @@ function gravarS1010() {
     const btn  = document.getElementById('btn-gravar');
 
     if (!ini) { showModalMsg('Informe o período de início de validade.', false); return; }
+    if (!selecionadas.size) { showModalMsg('Selecione ao menos uma rubrica.', false); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Gravando...';
@@ -419,18 +493,17 @@ function gravarS1010() {
     fetch('/api/esocial_s1010_gravar', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ tp_op: tpOp, ini_valid: ini, fim_valid: fim, tpAmb: amb })
+        body: JSON.stringify({
+            tp_op: tpOp, ini_valid: ini, fim_valid: fim, tpAmb: amb,
+            rubricas: Array.from(selecionadas)
+        })
     })
     .then(r => r.json())
     .then(d => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
-        if (d.ok) {
-            fecharModal();
-            window.location.reload();
-        } else {
-            showModalMsg(d.msg || 'Erro ao gravar.', false);
-        }
+        if (d.ok) { fecharModal(); window.location.reload(); }
+        else showModalMsg(d.msg || 'Erro ao gravar.', false);
     })
     .catch(e => {
         btn.disabled = false;
@@ -452,8 +525,7 @@ function baixarXml(id) {
 
 function apagarS1010(id, btnEl) {
     if (!confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial.)')) return;
-    btnEl.disabled = true;
-    btnEl.textContent = '...';
+    btnEl.disabled = true; btnEl.textContent = '...';
     fetch('/api/esocial_s1010_deletar', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -461,29 +533,20 @@ function apagarS1010(id, btnEl) {
     })
     .then(r => r.json())
     .then(d => {
-        if (d.ok) {
-            const row = document.getElementById('row-' + id);
-            if (row) row.remove();
-        } else {
-            btnEl.disabled = false;
-            btnEl.textContent = '🗑 Apagar';
-            const msgEl = document.getElementById('msg-' + id);
-            msgEl.className = 'msg-envio msg-erro';
-            msgEl.textContent = d.msg;
-            msgEl.style.display = 'block';
+        if (d.ok) { const row = document.getElementById('row-' + id); if (row) row.remove(); }
+        else {
+            btnEl.disabled = false; btnEl.textContent = '🗑 Apagar';
+            const el = document.getElementById('msg-' + id);
+            el.className = 'msg-envio msg-erro'; el.textContent = d.msg; el.style.display = 'block';
         }
     })
-    .catch(() => {
-        btnEl.disabled = false;
-        btnEl.textContent = '🗑 Apagar';
-    });
+    .catch(() => { btnEl.disabled = false; btnEl.textContent = '🗑 Apagar'; });
 }
 
 function enviarS1010(id, btnEl) {
-    if (!confirm('Confirma o envio do S-1010 ao eSocial?\nTodas as rubricas ativas serão incluídas no lote.')) return;
+    if (!confirm('Confirma o envio do S-1010 ao eSocial?\nAs rubricas selecionadas nesta remessa serão enviadas.')) return;
     btnEl.disabled = true;
     btnEl.innerHTML = '<span class="spin" style="border-top-color:#166534;border-color:#a7e0bc;"></span>';
-
     const msgEl = document.getElementById('msg-' + id);
     msgEl.style.display = 'none';
 
@@ -494,8 +557,7 @@ function enviarS1010(id, btnEl) {
     })
     .then(r => r.json())
     .then(d => {
-        btnEl.disabled = false;
-        btnEl.innerHTML = '▶ Enviar';
+        btnEl.disabled = false; btnEl.innerHTML = '▶ Enviar';
         msgEl.className = 'msg-envio ' + (d.ok ? 'msg-ok' : 'msg-erro');
         msgEl.textContent = d.msg || (d.ok ? 'Enviado!' : 'Erro no envio.');
         msgEl.style.display = 'block';
@@ -508,8 +570,7 @@ function enviarS1010(id, btnEl) {
         if (d.ok) setTimeout(() => window.location.reload(), 2500);
     })
     .catch(e => {
-        btnEl.disabled = false;
-        btnEl.innerHTML = '▶ Enviar';
+        btnEl.disabled = false; btnEl.innerHTML = '▶ Enviar';
         msgEl.className = 'msg-envio msg-erro';
         msgEl.textContent = 'Erro de comunicação: ' + e;
         msgEl.style.display = 'block';

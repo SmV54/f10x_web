@@ -14375,15 +14375,15 @@ def esocial_s1010():
     except Exception:
         rows = []
 
-    # Contagem de rubricas ativas
-    qtd_rubricas = 0
+    # Lista completa de rubricas para o modal de seleção
+    rubricas_lista = []
     try:
-        r_rub = (supabase.table("tab_rubrica")
-                 .select("cod_rubr", count="exact")
-                 .in_("id_cliente", [0, id_cliente])
-                 .eq("situacao", "A")
-                 .execute())
-        qtd_rubricas = r_rub.count or 0
+        rubricas_lista = (supabase.table("tab_rubrica")
+                          .select("cod_rubr,dsc_rubr,tp_rubr")
+                          .in_("id_cliente", [0, id_cliente])
+                          .eq("situacao", "A")
+                          .order("cod_rubr")
+                          .execute().data or [])
     except Exception:
         pass
 
@@ -14411,9 +14411,10 @@ def esocial_s1010():
         if obs.startswith("PARAMS:"):
             try:
                 p = _json.loads(obs[7:])
-                r["_ini_valid"]     = p.get("ini", "")
-                r["_fim_valid"]     = p.get("fim", "")
-                r["_qtd_rubricas"]  = str(p.get("qtd_rubricas", ""))
+                r["_ini_valid"]    = p.get("ini", "")
+                r["_fim_valid"]    = p.get("fim", "")
+                rubs = p.get("rubricas", [])
+                r["_qtd_rubricas"] = str(len(rubs)) if rubs else str(p.get("qtd_rubricas", ""))
             except Exception:
                 pass
         if not r["_ini_valid"]:
@@ -14451,7 +14452,7 @@ def esocial_s1010():
         cnpj_fmt=cnpj_fmt,
         rows=rows,
         total=len(rows),
-        qtd_rubricas=qtd_rubricas,
+        rubricas_lista=rubricas_lista,
     )
 
 
@@ -14468,33 +14469,29 @@ def api_esocial_s1010_gravar():
     id_cliente = session.get("id_cliente")
     data       = request.get_json(force=True) or {}
 
-    tp_op     = data.get("tp_op", "inclusao")
-    ini_valid = data.get("ini_valid", "").strip()
-    fim_valid = data.get("fim_valid", "").strip()
-    tpAmb     = str(data.get("tpAmb", "1"))
+    tp_op              = data.get("tp_op", "inclusao")
+    ini_valid          = data.get("ini_valid", "").strip()
+    fim_valid          = data.get("fim_valid", "").strip()
+    tpAmb              = str(data.get("tpAmb", "1"))
+    rubricas_sel       = data.get("rubricas", [])   # lista de cod_rubr (int)
 
     if not ini_valid or len(ini_valid) != 7 or ini_valid[4] != '-':
         return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
 
-    # Contar rubricas ativas
-    try:
-        r_rub = (supabase.table("tab_rubrica")
-                 .select("cod_rubr", count="exact")
-                 .in_("id_cliente", [0, id_cliente])
-                 .eq("situacao", "A")
-                 .execute())
-        qtd_rubricas = r_rub.count or 0
-    except Exception:
-        qtd_rubricas = 0
+    if not rubricas_sel:
+        return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica."})
 
-    if qtd_rubricas == 0:
-        return jsonify({"ok": False, "msg": "Nenhuma rubrica ativa encontrada. Cadastre rubricas antes de gerar o S-1010."})
+    # Garantir que os codes são inteiros
+    try:
+        rubricas_sel = [int(c) for c in rubricas_sel]
+    except Exception:
+        return jsonify({"ok": False, "msg": "Códigos de rubrica inválidos."})
 
     ano_mes = ini_valid.replace("-", "")
     params_json = _json.dumps({
         "ini": ini_valid, "fim": fim_valid,
         "tpAmb": tpAmb,
-        "qtd_rubricas": qtd_rubricas,
+        "rubricas": rubricas_sel,
     }, ensure_ascii=False)
 
     agora = datetime.now()
@@ -14517,7 +14514,7 @@ def api_esocial_s1010_gravar():
     if not id_esocial:
         return jsonify({"ok": False, "msg": "Falha ao obter ID do registro."})
 
-    return jsonify({"ok": True, "id_esocial": id_esocial, "qtd_rubricas": qtd_rubricas})
+    return jsonify({"ok": True, "id_esocial": id_esocial, "qtd_rubricas": len(rubricas_sel)})
 
 
 # =========================================================
@@ -14559,10 +14556,11 @@ def api_esocial_s1010_xml():
         except Exception:
             pass
 
-    ini_valid = params.get("ini", "")
-    fim_valid = params.get("fim", "")
-    tpAmb     = params.get("tpAmb", "1")
-    tp_op     = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
+    ini_valid       = params.get("ini", "")
+    fim_valid       = params.get("fim", "")
+    tpAmb           = params.get("tpAmb", "1")
+    rubricas_sel    = params.get("rubricas", [])
+    tp_op           = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
 
     cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
     try:
@@ -14573,13 +14571,15 @@ def api_esocial_s1010_xml():
         empresa = {"cnpj": cnpj_emp}
 
     try:
-        rubricas = (supabase.table("tab_rubrica")
-                    .select("cod_rubr,dsc_rubr,tp_rubr,es03_nat_rubr,"
-                            "tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf,tpn_inc_pis")
-                    .in_("id_cliente", [0, id_cliente])
-                    .eq("situacao", "A")
-                    .order("cod_rubr")
-                    .execute().data or [])
+        q = (supabase.table("tab_rubrica")
+             .select("cod_rubr,dsc_rubr,tp_rubr,es03_nat_rubr,"
+                     "tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf,tpn_inc_pis")
+             .in_("id_cliente", [0, id_cliente])
+             .eq("situacao", "A")
+             .order("cod_rubr"))
+        if rubricas_sel:
+            q = q.in_("cod_rubr", rubricas_sel)
+        rubricas = q.execute().data or []
     except Exception:
         rubricas = []
 
@@ -14647,8 +14647,9 @@ def api_esocial_s1010_enviar():
         except Exception:
             pass
 
-    ini_valid = params.get("ini", "")
-    fim_valid = params.get("fim", "")
+    ini_valid    = params.get("ini", "")
+    fim_valid    = params.get("fim", "")
+    rubricas_sel = params.get("rubricas", [])
     if not tpAmb or tpAmb == "1":
         tpAmb = params.get("tpAmb", tpAmb)
     tp_op = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
@@ -14675,24 +14676,26 @@ def api_esocial_s1010_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 3. Buscar rubricas ────────────────────────────────
+    # ── 3. Buscar rubricas selecionadas ───────────────────
     try:
-        rubricas = (supabase.table("tab_rubrica")
-                    .select("cod_rubr,dsc_rubr,tp_rubr,es03_nat_rubr,"
-                            "tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf,tpn_inc_pis")
-                    .in_("id_cliente", [0, id_cliente])
-                    .eq("situacao", "A")
-                    .order("cod_rubr")
-                    .execute().data or [])
+        q = (supabase.table("tab_rubrica")
+             .select("cod_rubr,dsc_rubr,tp_rubr,es03_nat_rubr,"
+                     "tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf,tpn_inc_pis")
+             .in_("id_cliente", [0, id_cliente])
+             .eq("situacao", "A")
+             .order("cod_rubr"))
+        if rubricas_sel:
+            q = q.in_("cod_rubr", rubricas_sel)
+        rubricas = q.execute().data or []
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar rubricas: {e}"})
 
     if not rubricas:
-        return jsonify({"ok": False, "msg": "Nenhuma rubrica ativa encontrada."})
+        return jsonify({"ok": False, "msg": "Nenhuma rubrica encontrada para este registro."})
 
     MAX_POR_LOTE = 50
     if len(rubricas) > MAX_POR_LOTE:
-        return jsonify({"ok": False, "msg": f"Muitas rubricas ({len(rubricas)}). Limite por envio: {MAX_POR_LOTE}. Desative rubricas não utilizadas e tente novamente."})
+        return jsonify({"ok": False, "msg": f"Muitas rubricas ({len(rubricas)}). Limite por lote: {MAX_POR_LOTE}. Divida em remessas menores."})
 
     # ── 4. Gerar e assinar cada evento ───────────────────
     _now2    = datetime.now()
