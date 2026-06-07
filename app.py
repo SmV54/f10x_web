@@ -13452,6 +13452,7 @@ def api_esocial_s1000_gravar():
             "ano_mes":         int(ano_mes),
             "folha_tipo":      "I",
             "codigo2":         codigo2,
+            "operacao":        "I" if tp_op == "inclusao" else "A",
             "observacao_erro": f"PARAMS:{params_json}",
         }).execute()
         id_esocial = r.data[0]["id_esocial"] if r.data else None
@@ -15858,6 +15859,7 @@ def esocial_fila():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
+        r["_operacao"]  = str(r.get("operacao") or "I").upper()
 
         am = r.get("ano_mes")
         if am:
@@ -16267,6 +16269,7 @@ def api_esocial_gerador_criar():
 
     layout    = str(data.get("layout", "")).strip()
     matricula = data.get("matricula")
+    operacao  = "A" if str(data.get("operacao", "I")).upper() == "A" else "I"
 
     _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2230", "2299"}
     _LAYOUTS_VALIDOS = {"1000", "1005", "1010", "1020",
@@ -16291,6 +16294,7 @@ def api_esocial_gerador_criar():
             "folha_tipo": "N",
             "layout":     layout,
             "codigo2":    0,
+            "operacao":   operacao,
         }
         if ano_mes_val:
             ins["ano_mes"] = ano_mes_val

@@ -166,6 +166,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .btn-criar:hover:not(:disabled) { background: #0f766e; }
 .btn-criar:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ── TIPO OPERAÇÃO ── */
+.op-toggle { display: flex; gap: 8px; margin-bottom: 20px; }
+.op-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid var(--border); background: var(--surface); color: #64748b;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+}
+.op-btn:hover:not(.ativo-i):not(.ativo-a) { border-color: #94a3b8; color: #374151; }
+.op-btn.ativo-i { border-color: #0d9488; background: #f0fdfa; color: #0d9488; }
+.op-btn.ativo-a { border-color: #7c3aed; background: #f5f3ff; color: #7c3aed; }
+
 /* ── AVISO PERIÓDICOS ── */
 .aviso-periodico {
     display: none; margin-top: 16px; padding: 12px 16px;
@@ -220,6 +232,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
   <div class="panel">
     <div class="panel-titulo">
       &#43; Criar Nova Remessa eSocial
+    </div>
+
+    <!-- ── Tipo de Operação ── -->
+    <div class="secao-label">Tipo de Operação</div>
+    <div class="op-toggle">
+      <button type="button" class="op-btn ativo-i" id="opInclusao" onclick="setOperacao('I')">
+        ➕ Inclusão <span style="font-family:var(--mono);font-size:11px;opacity:.7;">(I)</span>
+      </button>
+      <button type="button" class="op-btn" id="opAlteracao" onclick="setOperacao('A')">
+        ✎ Alteração <span style="font-family:var(--mono);font-size:11px;opacity:.7;">(A)</span>
+      </button>
     </div>
 
     <!-- ── Eventos de Tabela ── -->
@@ -395,7 +418,14 @@ const LINKS_PERIODICOS = {
   '3000': ['/esocial_s3000', 'S-3000 Exclusão'],
 };
 
-let layoutAtual = null;
+let layoutAtual   = null;
+let operacaoAtual = 'I';
+
+function setOperacao(op) {
+  operacaoAtual = op;
+  document.getElementById('opInclusao').className = 'op-btn' + (op === 'I' ? ' ativo-i' : '');
+  document.getElementById('opAlteracao').className = 'op-btn' + (op === 'A' ? ' ativo-a' : '');
+}
 
 function selecionarLayout(card) {
   if (card.classList.contains('lay-card-disabled')) return;
@@ -493,7 +523,7 @@ async function criarRemessa(btn) {
       const r    = await fetch('/api/esocial_gerador_criar', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ layout: layoutAtual, matricula: mat }),
+        body:    JSON.stringify({ layout: layoutAtual, matricula: mat, operacao: operacaoAtual }),
       });
       const data = await r.json();
       if (data.ok) {
@@ -538,7 +568,7 @@ async function criarRemessaTabela(btn) {
     const r    = await fetch('/api/esocial_gerador_criar', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ layout: layoutAtual }),
+      body:    JSON.stringify({ layout: layoutAtual, operacao: operacaoAtual }),
     });
     const data = await r.json();
 

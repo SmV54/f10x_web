@@ -174,6 +174,14 @@ tr:hover td { background: #f8fafc; }
 .prog-label{ font-size: 11px; color: #64748b; font-family: var(--mono); }
 
 .vazio { padding: 40px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+/* ── OPERAÇÃO BADGE ── */
+.op-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; font-family: var(--mono);
+}
+.op-badge-i { background: #f0fdfa; color: #0d9488; border: 1px solid #99f6e4; }
+.op-badge-a { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
 </style>
 </head>
 <body>
@@ -265,6 +273,7 @@ tr:hover td { background: #f8fafc; }
       <thead>
         <tr>
           <th>Layout / Funcionário</th>
+          <th>Operação</th>
           <th>Situação</th>
           <th>Cadastro</th>
           <th>Envio</th>
@@ -284,6 +293,14 @@ tr:hover td { background: #f8fafc; }
             <span style="font-weight:600;font-size:13px;">{{ r._nome }}</span>
             {% elif r._periodo_fmt %}
             <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:#1e293b;margin-left:6px;">{{ r._periodo_fmt }}</span>
+            {% endif %}
+          </td>
+
+          <td>
+            {% if r._operacao == 'A' %}
+            <span style="display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;">Alteração</span>
+            {% else %}
+            <span style="display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;background:#f0fdfa;color:#0d9488;border:1px solid #99f6e4;">Inclusão</span>
             {% endif %}
           </td>
 
@@ -336,7 +353,7 @@ tr:hover td { background: #f8fafc; }
 
         </tr>
         <tr class="prog-row" id="prog-{{ r.id_esocial }}">
-          <td colspan="6" class="prog-cell">
+          <td colspan="7" class="prog-cell">
             <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
             <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
           </td>
