@@ -116,6 +116,8 @@ tr:hover td { background: #f8fafc; }
     font-size: 11px; font-weight: 700; white-space: nowrap;
     font-family: var(--mono);
 }
+.lay-1000 { background: #f0f9ff; color: #0369a1; border: 1px solid #7dd3fc; }
+.lay-1010 { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 .lay-1200 { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
 .lay-1210 { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
 .lay-1298 { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
@@ -328,7 +330,7 @@ tr:hover td { background: #f8fafc; }
               <button class="btn-reconsultar"
                       onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-              {% if r.layout in ('2200', '2220', '1200', '1298', '1299') %}
+              {% if r.layout in ('1010', '2200', '2220', '1200', '1298', '1299') %}
               <button class="btn-ir"
                       data-id="{{ r.id_esocial }}"
                       data-layout="{{ r.layout }}"
@@ -461,6 +463,7 @@ async function _enviarFila(btn) {
   }, 4000);
 
   const APIS = {
+    '1010': '/api/esocial_s1010_enviar',
     '2200': '/api/esocial_s2200_enviar',
     '2220': '/api/esocial_s2220_enviar',
     '1200': '/api/esocial_s1200_enviar',
