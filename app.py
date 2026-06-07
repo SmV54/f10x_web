@@ -17158,6 +17158,8 @@ def esocial_gerador():
     id_empresa   = _get_id_empresa()
     anomes_atual = str(session.get("anomes_atual") or "")
 
+    id_cliente = session.get("id_cliente")
+
     funcionarios = []
     try:
         funcionarios = (supabase.table("tab_cad")
@@ -17169,6 +17171,17 @@ def esocial_gerador():
     except Exception:
         pass
 
+    rubricas_lista = []
+    try:
+        rubricas_lista = (supabase.table("tab_rubrica")
+                          .select("cod_rubr,dsc_rubr,tp_rubr")
+                          .in_("id_cliente", [0, id_cliente])
+                          .eq("situacao", "A")
+                          .order("cod_rubr")
+                          .execute().data or [])
+    except Exception:
+        pass
+
     return render_template(
         "F10_eSocial_Gerador.html",
         versao=ler_versao(),
@@ -17176,6 +17189,7 @@ def esocial_gerador():
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
         funcionarios=funcionarios,
+        rubricas_lista=rubricas_lista,
         anomes_atual=anomes_atual,
     )
 
@@ -17249,10 +17263,13 @@ def api_esocial_gerador_criar():
     anomes_atual = str(session.get("anomes_atual") or "")
     data         = request.get_json(force=True) or {}
 
+    import json as _json_g
+
     layout     = str(data.get("layout", "")).strip()
     matricula  = data.get("matricula")
     operacao   = "A" if str(data.get("operacao", "I")).upper() == "A" else "I"
     recibo_ref = (data.get("recibo_ref") or "").strip()
+    rubricas   = data.get("rubricas", [])   # usado apenas para S-1010
 
     _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2220", "2230", "2299"}
     _LAYOUTS_VALIDOS = {"1000", "1005", "1010", "1020",
@@ -17265,9 +17282,14 @@ def api_esocial_gerador_criar():
     if layout in _LAYOUTS_FUNC and not matricula:
         return jsonify({"ok": False, "msg": "Funcionário é obrigatório para este layout."})
 
+    if layout == "1010" and not rubricas:
+        return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica para o S-1010."})
+
     agora = datetime.now()
     try:
         ano_mes_val = int(anomes_atual) if anomes_atual and len(anomes_atual) == 6 else None
+        ini_valid = f"{anomes_atual[:4]}-{anomes_atual[4:6]}" if len(anomes_atual) == 6 else ""
+
         ins = {
             "id_cliente": id_cliente,
             "id_empresa": id_empresa,
@@ -17284,6 +17306,19 @@ def api_esocial_gerador_criar():
             ins["ano_mes"] = ano_mes_val
         if matricula:
             ins["matricula"] = int(matricula)
+
+        # S-1010: grava PARAMS com as rubricas selecionadas
+        if layout == "1010":
+            try:
+                rubricas_int = [int(c) for c in rubricas]
+            except Exception:
+                return jsonify({"ok": False, "msg": "Códigos de rubrica inválidos."})
+            params = _json_g.dumps(
+                {"ini": ini_valid, "fim": "", "tpAmb": "1", "rubricas": rubricas_int},
+                ensure_ascii=False
+            )
+            ins["observacao_erro"] = f"PARAMS:{params}"
+
         res = supabase.table("tab_esocial").insert(ins).execute()
         id_reg = res.data[0]["id_esocial"]
     except Exception as e:

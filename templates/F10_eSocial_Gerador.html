@@ -195,6 +195,48 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .ref-table tr.selecionada td { background: #ede9fe; }
 .ref-recibo { font-family: var(--mono); font-size: 10px; color: #166534; word-break: break-all; }
 
+/* ── SELEÇÃO RUBRICAS S-1010 ── */
+.rub1010-box {
+    display: none; margin-top: 14px; padding: 14px 16px;
+    border: 2px solid #fde68a; border-radius: 10px; background: #fffbeb;
+}
+.rub1010-box.visivel { display: block; }
+.rub1010-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: #92400e; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.rub1010-cnt { font-size: 12px; font-weight: 700; color: #0d9488; }
+.rub1010-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+.rub1010-filtro {
+    flex: 1; height: 32px; padding: 0 10px; border-radius: 6px;
+    border: 1.5px solid #d1d5db; font-size: 12px; font-family: var(--sans); outline: none;
+}
+.rub1010-filtro:focus { border-color: var(--accent); }
+.rub1010-link {
+    background: none; border: none; font-size: 11px; font-weight: 700;
+    color: #0d9488; cursor: pointer; padding: 0 2px; white-space: nowrap; font-family: var(--sans);
+}
+.rub1010-link:hover { text-decoration: underline; }
+.rub1010-lista {
+    border: 1.5px solid #d1d5db; border-radius: 8px;
+    max-height: 220px; overflow-y: auto; background: #fff;
+}
+.rub1010-item { border-bottom: 1px solid #f1f5f9; }
+.rub1010-item:last-child { border-bottom: none; }
+.rub1010-lbl {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 12px; cursor: pointer; transition: background .1s;
+}
+.rub1010-lbl:hover { background: #f0fdfa; }
+.rub1010-lbl input[type="checkbox"] {
+    width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; accent-color: var(--accent);
+}
+.rub1010-cod { font-family: var(--mono); font-size: 12px; font-weight: 700; color: #1e293b; min-width: 38px; }
+.rub1010-dsc { font-size: 12px; color: #374151; flex: 1; }
+.rub1010-tp  { font-size: 10px; color: #64748b; white-space: nowrap; padding: 1px 7px; border-radius: 10px; background: #f1f5f9; border: 1px solid #e2e8f0; }
+.rub1010-vazio { padding: 16px; text-align: center; font-size: 12px; color: #94a3b8; }
+
 /* ── AVISO PERIÓDICOS ── */
 .aviso-periodico {
     display: none; margin-top: 16px; padding: 12px 16px;
@@ -419,7 +461,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 
     <!-- ── Formulário de tabela (sem funcionário) ── -->
     <div id="formTabela" style="display:none;padding-top:18px;border-top:1px solid #f1f5f9;margin-top:4px;">
-      <div style="display:flex;align-items:center;gap:14px;margin-top:4px;flex-wrap:wrap;">
+
+      <!-- Seleção de rubricas — aparece só para S-1010 -->
+      <div class="rub1010-box" id="rub1010Box">
+        <div class="rub1010-label">
+          <span>Rubricas a enviar *</span>
+          <span class="rub1010-cnt" id="rub1010Cnt">0 selecionadas</span>
+        </div>
+        <div class="rub1010-toolbar">
+          <input type="text" id="rub1010Filtro" class="rub1010-filtro"
+                 placeholder="Filtrar por código ou descrição…"
+                 oninput="renderRub1010(this.value)">
+          <button class="rub1010-link" onclick="rub1010Todas()">Todas</button>
+          <button class="rub1010-link" onclick="rub1010Nenhuma()">Nenhuma</button>
+        </div>
+        <div id="rub1010Lista" class="rub1010-lista"></div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:14px;margin-top:14px;flex-wrap:wrap;">
         <button class="btn-criar" id="btnCriarTabela" onclick="criarRemessaTabela(this)">
           &#10003; Criar Remessa Pendente
         </button>
@@ -448,6 +507,58 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 </div>
 
 <script>
+const RUBRICAS_1010 = {{ rubricas_lista | tojson }};
+const _TP_RUB = {'1':'Provento','2':'Desconto','3':'Informativo','4':'Inf.Ded.'};
+let rubSel = new Set();
+
+function renderRub1010(filtro) {
+  const lista = document.getElementById('rub1010Lista');
+  const f = (filtro || '').toLowerCase().trim();
+  const vis = RUBRICAS_1010.filter(r =>
+    !f || String(r.cod_rubr).includes(f) || (r.dsc_rubr || '').toLowerCase().includes(f)
+  );
+  if (!vis.length) {
+    lista.innerHTML = '<div class="rub1010-vazio">Nenhuma rubrica encontrada.</div>';
+    return;
+  }
+  lista.innerHTML = vis.map(r => {
+    const cod = String(r.cod_rubr || '').padStart(4, '0');
+    const tp  = _TP_RUB[String(r.tp_rubr)] || r.tp_rubr || '';
+    const chk = rubSel.has(r.cod_rubr) ? 'checked' : '';
+    return `<div class="rub1010-item"><label class="rub1010-lbl">
+      <input type="checkbox" value="${r.cod_rubr}" ${chk}
+             onchange="toggleRub1010(${r.cod_rubr},this.checked)">
+      <span class="rub1010-cod">${cod}</span>
+      <span class="rub1010-dsc">${r.dsc_rubr || ''}</span>
+      <span class="rub1010-tp">${tp}</span>
+    </label></div>`;
+  }).join('');
+  _atualizarCntRub();
+}
+
+function toggleRub1010(cod, checked) {
+  if (checked) rubSel.add(cod); else rubSel.delete(cod);
+  _atualizarCntRub();
+  _atualizarBotaoTabela();
+}
+
+function _atualizarCntRub() {
+  document.getElementById('rub1010Cnt').textContent =
+    rubSel.size + (rubSel.size === 1 ? ' selecionada' : ' selecionadas');
+}
+
+function rub1010Todas() {
+  RUBRICAS_1010.forEach(r => rubSel.add(r.cod_rubr));
+  renderRub1010(document.getElementById('rub1010Filtro').value);
+  _atualizarBotaoTabela();
+}
+
+function rub1010Nenhuma() {
+  rubSel.clear();
+  renderRub1010(document.getElementById('rub1010Filtro').value);
+  _atualizarBotaoTabela();
+}
+
 const LINKS_PERIODICOS = {
   '1200': ['/esocial_s1200', 'S-1200 Remuneração'],
   '1210': ['/esocial_s1210', 'S-1210 Pagamentos'],
@@ -505,6 +616,16 @@ function selecionarLayout(card) {
     document.getElementById('formFunc').style.display    = 'none';
     document.getElementById('formTabela').style.display  = 'block';
     document.getElementById('avisoPeriodico').style.display = 'none';
+
+    const rub1010Box = document.getElementById('rub1010Box');
+    if (layout === '1010') {
+      rubSel.clear();
+      document.getElementById('rub1010Filtro').value = '';
+      rub1010Box.classList.add('visivel');
+      renderRub1010('');
+    } else {
+      rub1010Box.classList.remove('visivel');
+    }
     _atualizarBotaoTabela();
   } else {
     document.getElementById('formFunc').style.display    = 'none';
@@ -580,7 +701,9 @@ function selecionarRef(idEsocial, recibo, trEl) {
 function _atualizarBotaoTabela() {
   const btn = document.getElementById('btnCriarTabela');
   if (!btn) return;
-  btn.disabled = operacaoAtual === 'A' && !refSelecionado;
+  const refOk = operacaoAtual !== 'A' || refSelecionado !== null;
+  const rubOk = layoutAtual !== '1010' || rubSel.size > 0;
+  btn.disabled = !refOk || !rubOk;
 }
 
 /* ── Funcionários ── */
@@ -672,22 +795,37 @@ async function criarRemessaTabela(btn) {
     div.className = 'resultado erro'; div.textContent = 'Selecione uma remessa de referência para alterar.'; div.style.display = 'block';
     return;
   }
+  if (layoutAtual === '1010' && rubSel.size === 0) {
+    const div = document.getElementById('divResultadoTabela');
+    div.className = 'resultado erro'; div.textContent = 'Selecione ao menos uma rubrica.'; div.style.display = 'block';
+    return;
+  }
 
   btn.disabled = true;
   const div = document.getElementById('divResultadoTabela');
   div.style.display = 'none';
+
+  const payload = {
+    layout: layoutAtual, operacao: operacaoAtual,
+    recibo_ref: refSelecionado ? refSelecionado.recibo : null,
+  };
+  if (layoutAtual === '1010') payload.rubricas = Array.from(rubSel);
+
   try {
     const r    = await fetch('/api/esocial_gerador_criar', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ layout: layoutAtual, operacao: operacaoAtual,
-                             recibo_ref: refSelecionado ? refSelecionado.recibo : null }),
+      body: JSON.stringify(payload),
     });
     const data = await r.json();
     div.style.display = 'block';
     if (data.ok) {
+      const rubInfo = layoutAtual === '1010' ? ` · ${rubSel.size} rubrica(s)` : '';
       div.className = 'resultado ok';
-      div.innerHTML = `&#10003; <strong>Remessa S-${data.layout} criada</strong> (id ${data.id_esocial}).<br>
-        <a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>`;
+      div.innerHTML = `&#10003; <strong>Remessa S-${data.layout} criada</strong>${rubInfo} (id ${data.id_esocial}).<br>
+        <a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>
+        <span style="margin:0 8px;color:#86efac;">·</span>
+        <a href="/esocial_s1010">&#8594; Ver em S-1010</a>`;
+      if (layoutAtual === '1010') { rubSel.clear(); renderRub1010(''); _atualizarBotaoTabela(); }
     } else {
       div.className = 'resultado erro'; div.textContent = data.msg || 'Erro desconhecido.';
     }
