@@ -166,10 +166,71 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 .sem-verbas  { padding: 20px 16px; color: var(--sub); font-size: 13px; font-style: italic; }
 
+/* ── BADGE TIPO DE FOLHA ── */
+.badge-tipo {
+    display: inline-block; font-size: 10px; font-weight: 700; font-family: var(--mono);
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap; letter-spacing: 0.03em;
+}
+.badge-tipo-N { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.badge-tipo-F { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+.badge-tipo-R { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+
 /* ── CABEÇALHO FOLHA ── */
 .cabec-folha {
     font-size: 12px; color: #8baac8; margin-top: 2px;
 }
+
+/* ── BANNER FOLHA NÃO FECHADA ── */
+.aviso-nao-definitivo {
+    display: flex; align-items: center; gap: 12px;
+    background: #fffbeb; border-bottom: 2px solid #f59e0b;
+    padding: 10px 24px;
+    position: sticky; top: 58px; z-index: 100;
+}
+.aviso-icone { font-size: 20px; flex-shrink: 0; }
+.aviso-corpo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.aviso-titulo {
+    font-size: 13px; font-weight: 700; color: #92400e; white-space: nowrap;
+}
+.aviso-subtitulo { font-size: 12px; color: #b45309; }
+
+/* ── SEÇÃO POR TIPO DE FOLHA ── */
+.secao-header {
+    padding: 8px 16px 4px;
+    background: #f8fafc;
+    border-top: 1px solid var(--border);
+}
+.func-card > .secao-header:first-of-type { border-top: none; }
+
+/* ── TOTAL GERAL (quando há mais de uma seção) ── */
+.total-geral {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 10px 16px; border-top: 2px solid var(--label);
+    background: #f0f4fa;
+    font-size: 13px;
+}
+
+/* ── BASES DE CÁLCULO (tab_total) ── */
+.bases-section {
+    border-top: 1px solid var(--border);
+    background: #f8fafc; padding: 12px 16px;
+}
+.bases-titulo {
+    font-size: 11px; font-weight: 700; color: var(--sub);
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px;
+}
+.bases-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.bases-scroll { overflow-x: auto; }
+.bases-table { border-collapse: collapse; white-space: nowrap; font-size: 12px; }
+.bases-table th {
+    padding: 4px 14px 3px; text-align: center;
+    font-size: 10px; font-weight: 600; color: var(--sub);
+    text-transform: uppercase; letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border);
+}
+.bases-table td { padding: 4px 14px; text-align: center; }
+.bases-table .val { font-family: var(--mono); font-size: 12px; font-weight: 500; }
+.bases-table .val-zero { color: #d1d5db; font-size: 11px; }
 </style>
 </head>
 <body>
@@ -193,6 +254,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <button class="btn-voltar-topo" onclick="window.location.href='/menu'">← Voltar</button>
     </div>
 </div>
+
+{% if folha_sit_label != 'Fechada' %}
+<div class="aviso-nao-definitivo" id="avisoNaoDefinitivo">
+    <div class="aviso-icone">⚠️</div>
+    <div class="aviso-corpo">
+        <div class="aviso-titulo">Folha {{ folha_sit_label or 'Aberta' }} — Valores não definitivos</div>
+        <div class="aviso-subtitulo">Os valores exibidos são provisórios. Feche a folha para torná-los definitivos.</div>
+    </div>
+</div>
+{% endif %}
 
 <div class="layout">
 
@@ -284,6 +355,95 @@ async function visualizar() {
     }
 }
 
+const TIPO_LABEL = { N: 'Folha Normal', F: 'Férias', R: 'Rescisão' };
+const TIPO_ORD   = { N: 0, F: 1, R: 2 };
+
+const BASES_FIELDS = [
+    { key: 'valor_base_inss_semlimite', lbl: 'Base INSS s/ limite'    },
+    { key: 'valor_base_inss_comlimite', lbl: 'Base INSS c/ limite'    },
+    { key: 'valor_inss_retido',         lbl: 'INSS Retido'            },
+    { key: 'valor_base_fgts',           lbl: 'Base FGTS'              },
+    { key: 'valor_fgts',                lbl: 'FGTS (8%)'              },
+    { key: 'valor_irrf_basetotal',      lbl: 'Base IRRF total'        },
+    { key: 'valor_irrf_basetabela',     lbl: 'Base IRRF (tabela)'     },
+    { key: 'valor_irrf_dependentes',    lbl: 'Ded. Depend. IRRF'      },
+    { key: 'qtd_irrf_dependentes',      lbl: 'Qtd Depend. IRRF', int: true },
+];
+
+function renderSecao(secao) {
+    // Retorna um fragmento com: subheader de tipo + tabela de verbas + subtotal + bases
+    const wrap = document.createDocumentFragment();
+
+    // sub-header da seção
+    const subhdr = document.createElement('div');
+    subhdr.className = 'secao-header';
+    const ftClass = `badge-tipo badge-tipo-${secao.ft}`;
+    subhdr.innerHTML = `<span class="${ftClass}">${TIPO_LABEL[secao.ft] || secao.ft}</span>`;
+    wrap.appendChild(subhdr);
+
+    // tabela de verbas
+    const tbl = document.createElement('table');
+    tbl.className = 'verbas-table';
+    tbl.innerHTML = `<thead><tr>
+        <th style="width:60px">Cód</th>
+        <th>Descrição</th>
+        <th class="num" style="width:90px">Qtd</th>
+        <th class="num" style="width:130px">Provento</th>
+        <th class="num" style="width:130px">Desconto</th>
+    </tr></thead>`;
+    const tbody = document.createElement('tbody');
+    for (const v of secao.verbas) {
+        const prov = v.tp === '1';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="td-cod">${String(v.cod).padStart(4,'0')}</td>
+            <td class="td-dsc">${v.dsc}</td>
+            <td class="td-qtd">${fmtQtd(v.qtd, v.unid)}</td>
+            <td class="${prov ? 'td-prov' : 'td-vazio'}">${prov ? fmtBRL(v.valor) : ''}</td>
+            <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>`;
+        tbody.appendChild(tr);
+    }
+    // subtotal da seção
+    const tfoot = document.createElement('tfoot');
+    tfoot.innerHTML = `<tr>
+        <td class="tf-liq" colspan="2">Subtotal &nbsp; ${TIPO_LABEL[secao.ft] || secao.ft} &nbsp;·&nbsp; Líquido &nbsp; ${fmtBRL(secao.sub_liq)}</td>
+        <td class="tf-label" style="text-align:right">Subtotal</td>
+        <td class="tf-prov">${fmtBRL(secao.sub_prov)}</td>
+        <td class="tf-desc">${fmtBRL(secao.sub_desc)}</td>
+    </tr>`;
+    tbl.appendChild(tbody);
+    tbl.appendChild(tfoot);
+    wrap.appendChild(tbl);
+
+    // bases do tab_total para esta seção — layout horizontal (thead + 1 linha de valores)
+    const tot = secao.total_reg;
+    if (tot) {
+        const baseDiv = document.createElement('div');
+        baseDiv.className = 'bases-section';
+        let heads = '', vals = '';
+        for (const f of BASES_FIELDS) {
+            const raw = tot[f.key];
+            const v   = raw != null ? Number(raw) : null;
+            const valHtml = (v == null || v === 0)
+                ? `<span class="val-zero">—</span>`
+                : (f.int ? `<span class="val">${v}</span>` : `<span class="val">${fmtBRL(v)}</span>`);
+            heads += `<th>${f.lbl}</th>`;
+            vals  += `<td>${valHtml}</td>`;
+        }
+        baseDiv.innerHTML = `
+            <div class="bases-titulo">Bases de Cálculo</div>
+            <div class="bases-scroll">
+              <table class="bases-table">
+                <thead><tr>${heads}</tr></thead>
+                <tbody><tr>${vals}</tr></tbody>
+              </table>
+            </div>`;
+        wrap.appendChild(baseDiv);
+    }
+
+    return wrap;
+}
+
 function renderResultados(data) {
     const main = document.getElementById('mainArea');
     main.innerHTML = '';
@@ -297,7 +457,6 @@ function renderResultados(data) {
         const card = document.createElement('div');
         card.className = 'func-card';
 
-        // header
         const detalhe = [func.dtadm ? `Admissão: ${func.dtadm}` : '', func.info_extra || '']
                          .filter(Boolean).join(' · ');
         card.innerHTML = `
@@ -309,7 +468,7 @@ function renderResultados(data) {
                 ${detalhe ? `<div class="func-card-detalhe">${detalhe}</div>` : ''}
             </div>`;
 
-        if (!func.verbas || !func.verbas.length) {
+        if (!func.secoes || !func.secoes.length) {
             const sv = document.createElement('div');
             sv.className = 'sem-verbas';
             sv.textContent = 'Sem verbas calculadas para esta folha.';
@@ -318,40 +477,26 @@ function renderResultados(data) {
             continue;
         }
 
-        // tabela
-        const tbl = document.createElement('table');
-        tbl.className = 'verbas-table';
-        tbl.innerHTML = `<thead><tr>
-            <th style="width:64px">Cód</th>
-            <th>Descrição</th>
-            <th class="num" style="width:90px">Qtd</th>
-            <th class="num" style="width:130px">Provento</th>
-            <th class="num" style="width:130px">Desconto</th>
-        </tr></thead>`;
-        const tbody = document.createElement('tbody');
-
-        for (const v of func.verbas) {
-            const prov = v.tp === '1';
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td class="td-cod">${String(v.cod).padStart(4,'0')}</td>
-                <td class="td-dsc">${v.dsc}</td>
-                <td class="td-qtd">${fmtQtd(v.qtd, v.unid)}</td>
-                <td class="${prov ? 'td-prov' : 'td-vazio'}">${prov ? fmtBRL(v.valor) : ''}</td>
-                <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>`;
-            tbody.appendChild(tr);
+        // renderiza cada seção (Normal, Férias, Rescisão)
+        for (const secao of func.secoes) {
+            card.appendChild(renderSecao(secao));
         }
-        // rodapé: Líquido | espaço | Total | Proventos | Descontos
-        const tfoot = document.createElement('tfoot');
-        tfoot.innerHTML = `<tr>
-            <td class="tf-liq" colspan="2">Líquido &nbsp; ${fmtBRL(func.liquido)}</td>
-            <td class="tf-label" style="text-align:right">Total</td>
-            <td class="tf-prov">${fmtBRL(func.total_prov)}</td>
-            <td class="tf-desc">${fmtBRL(func.total_desc)}</td>
-        </tr>`;
-        tbl.appendChild(tbody);
-        tbl.appendChild(tfoot);
-        card.appendChild(tbl);
+
+        // total geral (só quando há mais de uma seção)
+        if (func.secoes.length > 1) {
+            const totDiv = document.createElement('div');
+            totDiv.className = 'total-geral';
+            totDiv.innerHTML = `
+                <span class="tf-label">Total Geral</span>
+                <span class="tf-liq">Líquido &nbsp; ${fmtBRL(func.liquido)}</span>
+                <span style="flex:1"></span>
+                <span class="tf-label">Proventos</span>
+                <span class="tf-prov">${fmtBRL(func.total_prov)}</span>
+                <span style="margin:0 8px;color:var(--sub)">·</span>
+                <span class="tf-label">Descontos</span>
+                <span class="tf-desc">${fmtBRL(func.total_desc)}</span>`;
+            card.appendChild(totDiv);
+        }
 
         main.appendChild(card);
     }

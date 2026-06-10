@@ -483,6 +483,7 @@ def menu():
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
         folha_situacao=str(session.get("anomes_situacao") or ""),
+        cpf_usuario=str(session.get("cpf") or ""),
     )
 
 # =========================================================
@@ -8297,7 +8298,15 @@ def api_ferias_gravar():
                      .eq("matricula", mat_int)
                      .single()
                      .execute())
-            dtadm_str = str((r_cad.data or {}).get("dtadm") or "")
+            dtadm_str = _norm_data8(str((r_cad.data or {}).get("dtadm") or ""))
+
+            # Valida: férias não podem ser antes da admissão
+            if dtadm_str and len(dtadm_str) >= 8 and data1i < dtadm_str:
+                erros.append(
+                    f"Mat {mat_int}: início das férias ({data1i[6:]}/{data1i[4:6]}/{data1i[:4]}) "
+                    f"é anterior à data de admissão ({dtadm_str[6:]}/{dtadm_str[4:6]}/{dtadm_str[:4]})."
+                )
+                continue
 
             # Buscar todas as férias registradas (para checar sobreposição e período aquisitivo)
             r_prev = (supabase.table("tab_eventos")
@@ -9786,9 +9795,29 @@ def api_tab_mov_gravar():
     if qtd == 0 and valor == 0:
         return jsonify({"ok": False, "msg": "Informe quantidade ou valor."})
 
+    # Busca data de admissão de todas as matrículas de uma vez
+    mats_int = [int(m) for m in matriculas]
+    try:
+        r_adm = (supabase.table("tab_cad")
+                 .select("matricula, dtadm")
+                 .eq("id_empresa", id_empresa)
+                 .in_("matricula", mats_int)
+                 .execute())
+        adm_map = {int(r["matricula"]): _norm_data8(str(r.get("dtadm") or ""))
+                   for r in (r_adm.data or [])}
+    except Exception:
+        adm_map = {}
+
     inseridos = 0
     for mat in matriculas:
         try:
+            mat_int   = int(mat)
+            dtadm_mov = adm_map.get(mat_int, "")
+            if dtadm_mov and len(dtadm_mov) >= 6 and anomes < dtadm_mov[:6]:
+                adm_fmt = f"{dtadm_mov[4:6]}/{dtadm_mov[:4]}"
+                return jsonify({"ok": False,
+                                "msg": f"Mat {mat_int}: mês {anomes[4:]}/{anomes[:4]} é anterior "
+                                       f"à admissão ({adm_fmt}). Nenhum registro gravado."})
             supabase.table("tab_mov").insert({
                 "id_cliente":  id_cliente,
                 "id_empresa":  id_empresa,
@@ -20774,11 +20803,22 @@ def _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=None):
     return result
 
 
+def _norm_data8(s):
+    """Normaliza data para YYYYMMDD, aceitando YYYY-MM-DD ou YYYYMMDD."""
+    s = str(s or "").strip()
+    if len(s) == 10 and s[4] == "-":   # YYYY-MM-DD → YYYYMMDD
+        return s[:4] + s[5:7] + s[8:10]
+    return s
+
+
 def _dias_no_mes(di_raw, df_raw, dt_ini_c, dt_fim_c):
     """Dias de sobreposição de [di_raw, df_raw] com o mês [dt_ini_c, dt_fim_c]. YYYYMMDD."""
     try:
         def _p(s):
+            s = _norm_data8(s)
             return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        di_raw = _norm_data8(di_raw)
+        df_raw = _norm_data8(df_raw)
         if not di_raw or len(di_raw) < 8:
             return None
         d_ini_orig = _p(di_raw)
@@ -20810,8 +20850,8 @@ def _calc_etapa2_ferias(id_empresa, anomes):
              .execute())
         for ev in (r.data or []):
             mat = int(ev.get("matricula") or 0)
-            di1 = str(ev.get("data1i") or "")
-            df1 = str(ev.get("data1f") or "")
+            di1 = _norm_data8(ev.get("data1i") or "")
+            df1 = _norm_data8(ev.get("data1f") or "")
             # data2i/data2f é o período aquisitivo, não conta como dias de gozo
             p1_ok = di1 and di1 <= dt_fim_c and (not df1 or df1 >= dt_ini_c)
             if p1_ok:
@@ -22902,6 +22942,7 @@ def api_visualizar_calculo_dados():
     mats = [int(m) for m in mats_param.split(",") if m.strip().isdigit()]
     if not mats or not anomes:
         return jsonify({"erro": "parâmetros inválidos"}), 400
+    mats_set = set(mats)
 
     # rubricas
     rubricas_info = {}
@@ -22952,19 +22993,38 @@ def api_visualizar_calculo_dados():
     except Exception:
         pass
 
-    # lê tab_mov do mês inteiro e filtra em Python (mesmo padrão do _calc_etapa9_tab_mov)
+    # lê tab_total do mês para os funcionários selecionados
+    totais_data = {}
+    try:
+        q_tot = (supabase.table("tab_total")
+                 .select("matricula, folha_tipo, "
+                         "valor_base_inss_semlimite, valor_base_inss_comlimite, "
+                         "valor_inss_retido, valor_base_fgts, valor_fgts, "
+                         "valor_irrf_basetotal, valor_irrf_basetabela, "
+                         "valor_irrf_dependentes, qtd_irrf_dependentes, "
+                         "valor_total_proventos, valor_total_descontos, valor_liquido")
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha", int(anomes)))
+        if id_cliente:
+            q_tot = q_tot.eq("id_cliente", id_cliente)
+        for reg in (q_tot.execute().data or []):
+            mat = int(reg.get("matricula") or 0)
+            if mat in mats_set:
+                totais_data.setdefault(mat, []).append(reg)
+    except Exception:
+        pass
+
+    # lê tab_mov do mês inteiro (todos os tipos de folha) e filtra em Python
     mov_data = {}
     erro_query = None
     try:
         q = (supabase.table("tab_mov")
-             .select("matricula, cod_verba, qtd, valor, origem")
+             .select("matricula, cod_verba, qtd, valor, origem, folha_tipo")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
-             .eq("folha", int(anomes))
-             .eq("folha_tipo", folha_tipo_mov))
+             .eq("folha", int(anomes)))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        mats_set = set(mats)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
             if mat in mats_set:
@@ -22972,25 +23032,51 @@ def api_visualizar_calculo_dados():
     except Exception as e_q:
         erro_query = str(e_q)
 
+    _tipo_ord = {"N": 0, "F": 1, "R": 2}
+
     # monta resultado por funcionário
     resultado = []
     for mat in sorted(mats):
+        # agrupa verbas por folha_tipo
         agg = {}
         for v in mov_data.get(mat, []):
-            cod = int(v.get("cod_verba") or 0)
-            val = float(v.get("valor")   or 0)
-            qtd = int(v.get("qtd")       or 0)
-            if cod in agg:
-                agg[cod]["valor"] += val
-                agg[cod]["qtd"]   += qtd
+            cod = int(v.get("cod_verba")  or 0)
+            val = float(v.get("valor")    or 0)
+            qtd = int(v.get("qtd")        or 0)
+            ft  = str(v.get("folha_tipo") or "N")
+            key = (cod, ft)
+            if key in agg:
+                agg[key]["valor"] += val
+                agg[key]["qtd"]   += qtd
             else:
                 ri = rubricas_info.get(cod, {"tp": "1", "dsc": f"Verba {cod:04d}", "unid": "V"})
-                agg[cod] = {"cod": cod, "dsc": ri["dsc"] or f"Verba {cod:04d}",
-                             "tp": ri["tp"], "unid": ri["unid"], "qtd": qtd, "valor": val}
+                agg[key] = {"cod": cod, "dsc": ri["dsc"] or f"Verba {cod:04d}",
+                            "tp": ri["tp"], "unid": ri["unid"],
+                            "qtd": qtd, "valor": val, "ft": ft}
 
-        verbas = sorted(agg.values(), key=lambda x: x["cod"])
-        total_prov = sum(v["valor"] for v in verbas if v["tp"] == "1")
-        total_desc = sum(v["valor"] for v in verbas if v["tp"] != "1")
+        todos_verbas = sorted(agg.values(), key=lambda x: (_tipo_ord.get(x["ft"], 9), x["cod"]))
+
+        # monta seções separadas por tipo de folha
+        tipos_presentes = sorted({v["ft"] for v in todos_verbas}, key=lambda t: _tipo_ord.get(t, 9))
+        secoes = []
+        for ft in tipos_presentes:
+            vbs = [v for v in todos_verbas if v["ft"] == ft]
+            prov = sum(v["valor"] for v in vbs if v["tp"] == "1")
+            desc = sum(v["valor"] for v in vbs if v["tp"] != "1")
+            # total do tab_total para este tipo
+            tot_reg = next((t for t in totais_data.get(mat, []) if t.get("folha_tipo") == ft), None)
+            secoes.append({
+                "ft":         ft,
+                "verbas":     vbs,
+                "sub_prov":   prov,
+                "sub_desc":   desc,
+                "sub_liq":    prov - desc,
+                "total_reg":  tot_reg,
+            })
+
+        total_prov = sum(s["sub_prov"] for s in secoes)
+        total_desc = sum(s["sub_desc"] for s in secoes)
+
         # info extra: afastamentos e férias do mês
         info_partes = []
         for ev in afastamentos_mes.get(mat, []):
@@ -23008,7 +23094,7 @@ def api_visualizar_calculo_dados():
             "nome":       nomes.get(mat, f"Matrícula {mat:06d}"),
             "dtadm":      _dt_br(dtadms.get(mat, "")),
             "info_extra": " · ".join(info_partes),
-            "verbas":     verbas,
+            "secoes":     secoes,
             "total_prov": total_prov,
             "total_desc": total_desc,
             "liquido":    total_prov - total_desc,
@@ -23787,6 +23873,102 @@ def api_memoria_calculo_pdf(matricula):
     if not arquivos:
         return "PDF não encontrado para esta matrícula", 404
     arquivo = arquivos[-1]          # mais recente pelo nome (timestamp no final)
+    from flask import send_file as _send_file
+    return _send_file(arquivo, mimetype="application/pdf",
+                      as_attachment=False,
+                      download_name=os.path.basename(arquivo))
+
+
+@app.route("/memoria_ferias")
+def memoria_ferias():
+    if not session.get("logado"):
+        return redirect("/")
+    import glob as _glob
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes      = str(session.get("anomes_atual") or "")
+    sit_map     = {"A":("Aberta","sit-aberta"), "X":("Aberta","sit-aberta"),
+                   "C":("Calculada","sit-calculada"), "F":("Fechada","sit-fechada")}
+    sit_st      = str(session.get("anomes_situacao") or "")
+    sit_label, sit_class = sit_map.get(sit_st, ("",""))
+
+    funcionarios = []
+    if len(anomes) == 6:
+        try:
+            r_ev = (supabase.table("tab_eventos")
+                    .select("matricula")
+                    .eq("id_cliente", id_cliente)
+                    .eq("id_empresa", id_empresa)
+                    .eq("op1", 3)
+                    .gte("data1i", anomes + "01")
+                    .lte("data1i", anomes + "31")
+                    .execute())
+            mats = list({ev["matricula"] for ev in (r_ev.data or [])})
+            if mats:
+                r_cad = (supabase.table("tab_cad")
+                         .select("matricula, nome, nomer")
+                         .eq("id_cliente", id_cliente)
+                         .eq("id_empresa", id_empresa)
+                         .in_("matricula", mats)
+                         .execute())
+                for c in sorted(r_cad.data or [], key=lambda x: x.get("matricula") or 0):
+                    funcionarios.append({
+                        "matricula": int(c["matricula"]),
+                        "nome":      (c.get("nomer") or c.get("nome") or "").strip(),
+                    })
+        except Exception:
+            pass
+
+    mats_com_pdf = set()
+    if len(anomes) == 6:
+        pasta = os.path.join("C:\\Folha10-Simples_Memoria",
+                             anomes[:4], f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
+        if os.path.isdir(pasta):
+            for fname in os.listdir(pasta):
+                if "_Ferias_" in fname and "_Matricula_" in fname and fname.endswith(".pdf"):
+                    try:
+                        mat_str = fname.split("_Matricula_")[1].split("_")[0]
+                        mats_com_pdf.add(int(mat_str))
+                    except Exception:
+                        pass
+
+    for f in funcionarios:
+        f["tem_pdf"] = f["matricula"] in mats_com_pdf
+
+    return render_template(
+        "F10_Memoria_Calculo.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo_ativa="F",
+        folha_sit_label=sit_label,
+        folha_sit_class=sit_class,
+        funcionarios=funcionarios,
+        titulo_pagina="Memória de Cálculo — Férias",
+        card_subtitulo="Selecione o funcionário para abrir a memória de cálculo de férias em PDF",
+        pdf_endpoint="/api/memoria_ferias_pdf",
+    )
+
+
+@app.route("/api/memoria_ferias_pdf/<int:matricula>")
+def api_memoria_ferias_pdf(matricula):
+    if not session.get("logado"):
+        return "Sessão expirada", 401
+    import glob as _glob
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return "Folha ativa não definida", 400
+    pasta = os.path.join("C:\\Folha10-Simples_Memoria",
+                         anomes[:4], f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
+    if not os.path.isdir(pasta):
+        return "Pasta de memórias não encontrada", 404
+    padrao   = os.path.join(pasta, f"*_Ferias_*_Matricula_{matricula:06d}_em_*.pdf")
+    arquivos = sorted(_glob.glob(padrao))
+    if not arquivos:
+        return "PDF de férias não encontrado para esta matrícula", 404
+    arquivo = arquivos[-1]
     from flask import send_file as _send_file
     return _send_file(arquivo, mimetype="application/pdf",
                       as_attachment=False,
@@ -24881,6 +25063,348 @@ def calc_ferias():
     )
 
 
+def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_brutos):
+    """Grava PDF de memória de cálculo de férias por funcionário em C:\\Folha10-Simples_Memoria."""
+    if not resultados_brutos or len(anomes) != 6:
+        return
+
+    anomes_pasta = f"{anomes[:4]}-{anomes[4:6]}"
+    pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
+    try:
+        os.makedirs(pasta, exist_ok=True)
+    except Exception:
+        return
+
+    ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+
+    st_etapa   = ParagraphStyle("mf_eta",  fontName="Helvetica", fontSize=8,
+                                spaceBefore=10, spaceAfter=3, leftIndent=0)
+    st_formula = ParagraphStyle("mf_fml",  fontName="Helvetica", fontSize=7,
+                                spaceAfter=6, leftIndent=10, textColor=colors.HexColor("#374151"))
+    st_detalhe = ParagraphStyle("mf_det",  fontName="Helvetica", fontSize=8,
+                                leftIndent=10, textColor=colors.HexColor("#374151"))
+    _st_zero = TableStyle([
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("TOPPADDING",    (0, 0), (0, 0), 8),
+        ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+    ])
+    _st_op = ParagraphStyle("mf_op", fontName="Helvetica", fontSize=7,
+                             alignment=1, textColor=colors.HexColor("#374151"))
+
+    try:
+        pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
+                                    anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
+        pdfs_ferias = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf") and "_Ferias_" in f]
+        if pdfs_ferias:
+            os.makedirs(pasta_antiga, exist_ok=True)
+            for pdf in pdfs_ferias:
+                shutil.move(os.path.join(pasta, pdf), os.path.join(pasta_antiga, pdf))
+    except Exception:
+        pass
+
+    for r in resultados_brutos:
+        mat  = int(r["matricula"])
+        nome = r["nome"]
+        nome_f  = (f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Ferias_{anomes}"
+                   f"_Matricula_{mat:06d}_em_{ts}.pdf")
+        caminho = os.path.join(pasta, nome_f)
+        try:
+            sal_mes      = int(r["sal_mes"])
+            dias         = int(r["dias"])
+            dias_abono   = int(r["dias_abono"])
+            sal_ferias   = int(r["sal_ferias"])
+            terco_const  = int(r["terco_const"])
+            abono_val    = int(r["abono_val"])
+            terco_abono  = int(r["terco_abono"])
+            base_calc    = int(r["base_calc"])
+            inss_val     = int(r["inss_val"])
+            inss_det     = r.get("inss_det") or []
+            ndep         = int(r["ndep"])
+            dep_irrf_ded = int(r["dep_irrf_ded"])
+            dep_total    = int(r["dep_total"])
+            base_irrf    = int(r["base_irrf"])
+            irrf_val     = int(r["irrf_val"])
+            irrf_info    = r.get("irrf_info")
+            total_prov   = int(r["total_prov"])
+            total_desc   = int(r["total_desc"])
+            liquido      = int(r["liquido"])
+
+            buf = io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=A4,
+                                    leftMargin=2*cm, rightMargin=2*cm,
+                                    topMargin=1.5*cm, bottomMargin=1.5*cm)
+            elems = []
+            titulo_mem = f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — FERIAS — {mat:06d} — {nome}"
+            elems.append(_pdf_cabecalho(titulo_mem, cnpj_fmt, empresa_nm))
+            elems.append(Spacer(1, 0.4*cm))
+
+            # ── etapa 2 — período de férias ────────────────────────────
+            abono_txt = (f"   Abono Pecuniario: {dias_abono} dias" if dias_abono
+                         else "   Sem abono pecuniario")
+            e2_tbl = Table([
+                [Paragraph("ETAPA 0002 - PERIODO DE FERIAS", st_etapa)],
+                [Paragraph(
+                    f"Periodo: {r.get('data1i_fmt','—')} a {r.get('data1f_fmt','—')}"
+                    f"   Dias de Ferias: {dias}{abono_txt}", st_detalhe)],
+            ], colWidths=[17*cm])
+            e2_tbl.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                ("TOPPADDING",    (0, 0), (0, 0), 8),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                ("TOPPADDING",    (0, 1), (0, 1), 0),
+                ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+            ]))
+            elems.append(e2_tbl)
+
+            # ── etapa 3 — cálculo das verbas de férias ─────────────────
+            _cw3 = [3.5*cm, 0.4*cm, 3.0*cm, 0.4*cm, 1.5*cm, 0.4*cm, 1.5*cm]
+            form3a = Table([
+                [Paragraph("Sal. Ferias", st_formula),     Paragraph("=", _st_op),
+                 Paragraph("Salario Mensal", st_formula),  Paragraph("x", _st_op),
+                 Paragraph("Dias", _st_op),                Paragraph("/", _st_op),
+                 Paragraph("30", _st_op)],
+                [Paragraph(_fmt_brl(sal_ferias), st_formula), Paragraph("=", _st_op),
+                 Paragraph(_fmt_brl(sal_mes), st_formula),    Paragraph("x", _st_op),
+                 Paragraph(str(dias), _st_op),                Paragraph("/", _st_op),
+                 Paragraph("30", _st_op)],
+            ], colWidths=_cw3)
+            form3a.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
+                ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ]))
+            _cw3b = [3.5*cm, 0.4*cm, 3.0*cm]
+            form3b = Table([
+                [Paragraph("1/3 Constitucional", st_formula), Paragraph("=", _st_op),
+                 Paragraph("Sal. Ferias / 3", st_formula)],
+                [Paragraph(_fmt_brl(terco_const), st_formula), Paragraph("=", _st_op),
+                 Paragraph(f"{_fmt_brl(sal_ferias)} / 3", st_formula)],
+            ], colWidths=_cw3b)
+            form3b.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
+                ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+            ]))
+            e3_tbl = Table([
+                [Paragraph("ETAPA 0003 - CALCULO DAS VERBAS DE FERIAS", st_etapa)],
+                [form3a],
+                [form3b],
+                [Paragraph(
+                    f"Base de Calculo (INSS/IRRF) = Sal. Ferias + 1/3 = "
+                    f"{_fmt_brl(sal_ferias)} + {_fmt_brl(terco_const)} = {_fmt_brl(base_calc)}",
+                    st_detalhe)],
+            ], colWidths=[17*cm])
+            e3_tbl.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("LEFTPADDING",   (0, 1), (0, 3), 10),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                ("TOPPADDING",    (0, 0), (0, 0), 8),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                ("TOPPADDING",    (0, 1), (0, 3), 2),
+                ("BOTTOMPADDING", (0, 1), (0, 3), 2),
+            ]))
+            elems.append(e3_tbl)
+
+            # ── etapa 4 — abono pecuniário ─────────────────────────────
+            if dias_abono:
+                _cw4a = [3.5*cm, 0.4*cm, 3.0*cm, 0.4*cm, 2.0*cm, 0.4*cm, 1.5*cm]
+                form4a = Table([
+                    [Paragraph("Abono Pecuniario", st_formula),  Paragraph("=", _st_op),
+                     Paragraph("Salario Mensal", st_formula),    Paragraph("x", _st_op),
+                     Paragraph("Dias Abono", _st_op),            Paragraph("/", _st_op),
+                     Paragraph("30", _st_op)],
+                    [Paragraph(_fmt_brl(abono_val), st_formula), Paragraph("=", _st_op),
+                     Paragraph(_fmt_brl(sal_mes), st_formula),   Paragraph("x", _st_op),
+                     Paragraph(str(dias_abono), _st_op),         Paragraph("/", _st_op),
+                     Paragraph("30", _st_op)],
+                ], colWidths=_cw4a)
+                form4a.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]))
+                form4b = Table([
+                    [Paragraph("1/3 sobre Abono", st_formula),   Paragraph("=", _st_op),
+                     Paragraph("Abono / 3", st_formula)],
+                    [Paragraph(_fmt_brl(terco_abono), st_formula), Paragraph("=", _st_op),
+                     Paragraph(f"{_fmt_brl(abono_val)} / 3", st_formula)],
+                ], colWidths=_cw3b)
+                form4b.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]))
+                e4_tbl = Table([
+                    [Paragraph("ETAPA 0004 - ABONO PECUNIARIO (isento de INSS e IRRF)", st_etapa)],
+                    [form4a],
+                    [form4b],
+                ], colWidths=[17*cm])
+                e4_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING",   (0, 1), (0, 2), 10),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0), 8),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                    ("TOPPADDING",    (0, 1), (0, 2), 2),
+                    ("BOTTOMPADDING", (0, 1), (0, 2), 2),
+                ]))
+            else:
+                e4_tbl = Table([[Paragraph(
+                    "ETAPA 0004 - ABONO PECUNIARIO   Nao ha abono pecuniario.", st_etapa)
+                ]], colWidths=[17*cm])
+                e4_tbl.setStyle(_st_zero)
+            elems.append(e4_tbl)
+
+            # ── etapa 5 — INSS progressivo ─────────────────────────────
+            hdr5_txt = f"ETAPA 0005 - RUBRICA INSS (Desconto)   Base: {_fmt_brl(base_calc)}"
+            if inss_det:
+                hdr_row5 = [
+                    Paragraph("Faixa",      _st_op),
+                    Paragraph("Ate (R$)",   _st_op),
+                    Paragraph("Aliq.",      _st_op),
+                    Paragraph("Base Faixa", _st_op),
+                    Paragraph("Desconto",   _st_op),
+                ]
+                det5_rows = [hdr_row5]
+                for idx5, (lim5, pct5, bf5, vf5) in enumerate(inss_det, 1):
+                    det5_rows.append([
+                        Paragraph(str(idx5), _st_op),
+                        Paragraph(_fmt_brl(lim5), _st_op),
+                        Paragraph(f"{pct5/100:g}%", _st_op),
+                        Paragraph(_fmt_brl(bf5), _st_op),
+                        Paragraph(_fmt_brl(vf5), _st_op),
+                    ])
+                det5_rows.append([
+                    Paragraph("", _st_op), Paragraph("", _st_op), Paragraph("", _st_op),
+                    Paragraph("Total INSS:", _st_op),
+                    Paragraph(_fmt_brl(inss_val), _st_op),
+                ])
+                det5_tbl = Table(det5_rows, colWidths=[1.5*cm, 3.5*cm, 2*cm, 4*cm, 3*cm])
+                det5_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                    ("LINEBELOW",     (0, 0), (-1, 0), 0.3, colors.HexColor("#94a3b8")),
+                    ("LINEABOVE",     (0, -1), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
+                ]))
+                e5_tbl = Table([
+                    [Paragraph(hdr5_txt, st_etapa)],
+                    [det5_tbl],
+                ], colWidths=[17*cm])
+                e5_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING",   (0, 1), (0, 1), 10),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0), 10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                    ("TOPPADDING",    (0, 1), (0, 1), 2),
+                    ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+                ]))
+            else:
+                e5_tbl = Table([[Paragraph(
+                    "ETAPA 0005 - RUBRICA INSS (Desconto)   Base de calculo = ZERO — sem desconto.",
+                    st_etapa)]], colWidths=[17*cm])
+                e5_tbl.setStyle(_st_zero)
+            elems.append(e5_tbl)
+
+            # ── etapa 6 — IRRF ─────────────────────────────────────────
+            _st_lbl6 = ParagraphStyle("mf_l6", fontName="Helvetica",      fontSize=7,
+                                      alignment=0, textColor=colors.HexColor("#374151"))
+            _st_val6 = ParagraphStyle("mf_v6", fontName="Helvetica",      fontSize=7,
+                                      alignment=2, textColor=colors.HexColor("#374151"))
+            _st_hdr6 = ParagraphStyle("mf_h6", fontName="Helvetica-Bold", fontSize=7,
+                                      alignment=1, textColor=colors.HexColor("#374151"))
+            _st_win6 = ParagraphStyle("mf_w6", fontName="Helvetica-Bold", fontSize=7,
+                                      alignment=2, textColor=colors.HexColor("#1d4ed8"))
+
+            def _pct_ded6(info):
+                if info is None:
+                    return "Isento"
+                a, d = info
+                return f"{a/100:g}% / {_fmt_brl(d)}"
+
+            irrf_rows6 = [
+                [Paragraph("", _st_lbl6),
+                 Paragraph("Deducoes Legais", _st_hdr6)],
+                [Paragraph("Base de Ferias + 1/3 (tributavel)", _st_lbl6),
+                 Paragraph(_fmt_brl(base_calc), _st_val6)],
+                [Paragraph("(-) INSS", _st_lbl6),
+                 Paragraph(_fmt_brl(inss_val), _st_val6)],
+                [Paragraph(f"(-) Dependentes ({ndep} x {_fmt_brl(dep_irrf_ded)})", _st_lbl6),
+                 Paragraph(_fmt_brl(dep_total) if dep_total else "—", _st_val6)],
+                [Paragraph("= Base IRRF", _st_lbl6),
+                 Paragraph(_fmt_brl(base_irrf), _st_val6)],
+                [Paragraph("Aliquota / Parcela a deduzir", _st_lbl6),
+                 Paragraph(_pct_ded6(irrf_info), _st_val6)],
+                [Paragraph("IRRF calculado", _st_lbl6),
+                 Paragraph("Isento" if irrf_info is None else _fmt_brl(irrf_val), _st_win6)],
+            ]
+            irrf6_tbl = Table(irrf_rows6, colWidths=[9*cm, 5*cm])
+            irrf6_tbl.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 3),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 3),
+                ("TOPPADDING",    (0, 0), (-1, -1), 1.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("LINEBELOW",    (0, 0), (-1, 0), 0.5, colors.HexColor("#94a3b8")),
+                ("LINEBELOW",    (0, 3), (-1, 3), 0.3, colors.HexColor("#94a3b8")),
+                ("LINEABOVE",    (0, 6), (-1, 6), 0.3, colors.HexColor("#94a3b8")),
+                ("LINEAFTER",    (0, 0), (0, -1), 0.3, colors.HexColor("#cbd5e1")),
+            ]))
+            e6_tbl = Table([
+                [Paragraph(
+                    f"ETAPA 0006 - RUBRICA IRRF (Desconto)   Base tributavel: {_fmt_brl(base_calc)}",
+                    st_etapa)],
+                [irrf6_tbl],
+            ], colWidths=[17*cm])
+            e6_tbl.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("LEFTPADDING",   (0, 1), (0, 1), 10),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                ("TOPPADDING",    (0, 0), (0, 0), 10),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                ("TOPPADDING",    (0, 1), (0, 1), 2),
+                ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+            ]))
+            elems.append(e6_tbl)
+
+            # ── totais ─────────────────────────────────────────────────
+            st_tot_lbl  = ParagraphStyle("mf_tl",  fontName="Helvetica-Bold", fontSize=9,
+                                         alignment=2, textColor=colors.HexColor("#111827"))
+            st_tot_val  = ParagraphStyle("mf_tv",  fontName="Helvetica-Bold", fontSize=9,
+                                         alignment=2, textColor=colors.HexColor("#111827"))
+            st_tot_desc = ParagraphStyle("mf_tdv", fontName="Helvetica-Bold", fontSize=9,
+                                         alignment=2, textColor=colors.HexColor("#b91c1c"))
+            tot_rows = [
+                [Paragraph("Total Proventos:", st_tot_lbl),  Paragraph(_fmt_brl(total_prov), st_tot_val)],
+                [Paragraph("Total Descontos:", st_tot_lbl),  Paragraph(_fmt_brl(total_desc), st_tot_desc)],
+                [Paragraph("Liquido a Receber:", st_tot_lbl), Paragraph(_fmt_brl(liquido), st_tot_val)],
+            ]
+            tot_tbl = Table(tot_rows, colWidths=[14.5*cm, 2.5*cm])
+            tot_tbl.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                ("TOPPADDING",    (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LINEABOVE",     (0, 0), (-1, 0),  0.75, colors.HexColor("#374151")),
+                ("LINEBELOW",     (0, -1), (-1, -1), 0.75, colors.HexColor("#374151")),
+            ]))
+            elems.append(Spacer(1, 0.5*cm))
+            elems.append(tot_tbl)
+
+            doc.build(elems, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+            with open(caminho, "wb") as fh:
+                fh.write(buf.getvalue())
+        except Exception as e_pdf:
+            print(f"[gerar_memoria_ferias] mat={mat} erro: {e_pdf}")
+
+
 # =========================================================
 # CÁLCULO DE FÉRIAS — API
 # =========================================================
@@ -24899,6 +25423,9 @@ def api_calc_ferias_calcular():
 
     if not anomes or len(anomes) != 6:
         return jsonify({"ok": False, "msg": "Folha ativa não definida."})
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
 
     tabela = _get_tabela_legais(anomes)
     if not tabela:
@@ -24948,7 +25475,7 @@ def api_calc_ferias_calcular():
     # ── Verbas de férias no tab_rubrica ────────────────────────────
     try:
         r_rub = (supabase.table("tab_rubrica")
-                 .select("cod_rubr, dsc_rubr, tp_rubr, inc_ferias, tpf_inc_cp, tpf_inc_irrf")
+                 .select("cod_rubr, dsc_rubr, tp_rubr, tpn_inc_cp, tpf_inc_cp, tpf_inc_irrf")
                  .in_("id_cliente", [0, id_cliente])
                  .eq("situacao", "A")
                  .order("cod_rubr")
@@ -24957,20 +25484,30 @@ def api_calc_ferias_calcular():
     except Exception:
         rubrics_fc = []
 
-    # Proventos de férias (excl. abono 45/46): 1.º = sal férias, 2.º = 1/3 const.
-    prov_ferias    = [r for r in rubrics_fc
-                      if str(r.get("tp_rubr") or "") == "1"
-                      and r.get("inc_ferias")
-                      and int(r.get("cod_rubr") or 0) not in (45, 46)]
+    # Proventos exclusivos de férias: aparecem em férias (tpf_inc_cp != X/N/vazio)
+    # e NÃO aparecem em folha normal (tpn_inc_cp == X/vazio).
+    # 1.º = sal férias (ex: 0041), 2.º = 1/3 constitucional (ex: 0042).
+    # Excluem-se 45/46 (abono pecuniário, tratado separado).
+    def _aparece_ferias(r):
+        return str(r.get("tpf_inc_cp") or "X") not in ("X", "N", "")
+    def _nao_aparece_normal(r):
+        return str(r.get("tpn_inc_cp") or "X") in ("X", "")
+
+    prov_ferias = [r for r in rubrics_fc
+                   if str(r.get("tp_rubr") or "") == "1"
+                   and _aparece_ferias(r)
+                   and _nao_aparece_normal(r)
+                   and int(r.get("cod_rubr") or 0) not in (45, 46)]
     cod_sal_ferias = int(prov_ferias[0]["cod_rubr"]) if prov_ferias else None
     cod_terco_fc   = int(prov_ferias[1]["cod_rubr"]) if len(prov_ferias) > 1 else None
     cod_inss_fc    = next((int(r.get("cod_rubr") or 0) for r in rubrics_fc
-                           if str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_cp")), None)
+                           if str(r.get("tp_rubr") or "") == "2"
+                           and r.get("tpf_inc_cp") not in (None, "", "X", "N")), None)
     cod_irrf_fc    = next((int(r.get("cod_rubr") or 0) for r in rubrics_fc
-                           if str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_irrf")), None)
+                           if str(r.get("tp_rubr") or "") == "2"
+                           and r.get("tpf_inc_irrf") not in (None, "", "X", "N")), None)
 
-    anomes_tipo    = str(session.get("anomes_tipo") or "N")
-    folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+    folha_tipo_mov = "F"  # férias sempre gravam com tipo F
     folha_int      = int(anomes)
 
     def _fmt8(s):
@@ -25007,13 +25544,13 @@ def api_calc_ferias_calcular():
 
         # INSS e IRRF incidem apenas sobre férias + 1/3 (abono é isento)
         base_calc   = sal_ferias + terco_const
-        inss_val, _, _ = _calc_inss_progressivo(base_calc, tabela)
-        fgts_val       = (base_calc * 8) // 100
+        inss_val, inss_det, _ = _calc_inss_progressivo(base_calc, tabela)
+        fgts_val              = (base_calc * 8) // 100
 
         ndep           = dep_count.get(mat, 0)
         dep_total      = ndep * dep_irrf_ded
         base_irrf      = max(0, base_calc - inss_val - dep_total)
-        irrf_val, _    = _calc_irrf(base_irrf, tabela)
+        irrf_val, irrf_info = _calc_irrf(base_irrf, tabela)
 
         liquido = base_calc - inss_val - irrf_val + abono_val + terco_abono
 
@@ -25025,8 +25562,7 @@ def api_calc_ferias_calcular():
              .eq("id_empresa", id_empresa)
              .eq("matricula",  mat)
              .eq("folha",      folha_int)
-             .eq("folha_tipo", folha_tipo_mov)
-             .eq("origem",     "F")
+             .eq("folha_tipo", "F")
              .execute())
         except Exception:
             pass
@@ -25049,9 +25585,9 @@ def api_calc_ferias_calcular():
             "situacao":   "A",
             "matricula":  mat,
             "folha":      folha_int,
-            "folha_tipo": folha_tipo_mov,
+            "folha_tipo": "F",
             "lote":       0,
-            "origem":     "F",
+            "origem":     "C",
             "controle":   0,
             "os":         0,
         }
@@ -25127,14 +25663,36 @@ def api_calc_ferias_calcular():
                    f"INSS={_fmt_brl(inss_val)} IRRF={_fmt_brl(irrf_val)} Liq={_fmt_brl(liquido)}",
                    matricula=mat)
 
+        calc_dhg_now = datetime.now().strftime("%d/%m/%Y %H:%M")
         resultados.append({
             "matricula":      mat,
             "mat_fmt":        str(mat).zfill(6),
             "nome":           nome,
+            "calc_dhg":       calc_dhg_now,
+            "data1i":         str(ev.get("data1i") or ""),
+            "data1f":         str(ev.get("data1f") or ""),
             "data1i_fmt":     _fmt8(ev.get("data1i")),
             "data1f_fmt":     _fmt8(ev.get("data1f")),
             "dias":           dias,
             "dias_abono":     dias_abono,
+            "sal_mes":        sal_mes,
+            "sal_ferias":     sal_ferias,
+            "terco_const":    terco_const,
+            "abono_val":      abono_val,
+            "terco_abono":    terco_abono,
+            "base_calc":      base_calc,
+            "inss_val":       inss_val,
+            "inss_det":       inss_det,
+            "fgts_val":       fgts_val,
+            "ndep":           ndep,
+            "dep_irrf_ded":   dep_irrf_ded,
+            "dep_total":      dep_total,
+            "base_irrf":      base_irrf,
+            "irrf_val":       irrf_val,
+            "irrf_info":      irrf_info,
+            "total_prov":     total_prov,
+            "total_desc":     total_desc,
+            "liquido":        liquido,
             "sal_mes_fmt":    _fmt_brl(sal_mes),
             "sal_ferias_fmt": _fmt_brl(sal_ferias),
             "terco_fmt":      _fmt_brl(terco_const),
@@ -25143,14 +25701,23 @@ def api_calc_ferias_calcular():
             "base_calc_fmt":  _fmt_brl(base_calc),
             "inss_fmt":       _fmt_brl(inss_val),
             "fgts_fmt":       _fmt_brl(fgts_val),
-            "ndep":           ndep,
             "dep_fmt":        _fmt_brl(dep_total) if dep_total else "—",
             "base_irrf_fmt":  _fmt_brl(base_irrf),
             "irrf_fmt":       _fmt_brl(irrf_val),
             "liquido_fmt":    _fmt_brl(liquido),
         })
 
-    return jsonify({"ok": True, "resultados": resultados})
+    try:
+        _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados)
+    except Exception as e_mem:
+        print(f"[gerar_memoria_ferias] erro geral: {e_mem}")
+
+    _CAMPOS_PDF = {"data1i","data1f","sal_mes","sal_ferias","terco_const","abono_val",
+                   "terco_abono","base_calc","inss_val","inss_det","fgts_val",
+                   "dep_irrf_ded","dep_total","base_irrf","irrf_val","irrf_info",
+                   "total_prov","total_desc","liquido"}
+    resultados_web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
+    return jsonify({"ok": True, "resultados": resultados_web})
 
 
 # =========================================================

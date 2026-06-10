@@ -317,21 +317,30 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
                             <th>Matrícula</th>
                             <th>Nome</th>
                             <th class="num">Dias</th>
-                            <th class="num">Sal. Férias</th>
+                            <th class="num">Férias</th>
                             <th class="num">1/3 Const.</th>
                             <th class="num">Bruto</th>
                             <th class="num">INSS</th>
                             <th class="num">IRRF</th>
                             <th class="num">Líquido</th>
-                            <th class="num">FGTS*</th>
                         </tr>
                     </thead>
                     <tbody id="tbodyResultados"></tbody>
                 </table>
             </div>
-            <div style="padding:8px 16px;font-size:10px;color:#94a3b8;border-top:1px solid var(--border);background:#f8fafc;">
-                * FGTS informativo — depositado pela empresa, não descontado do líquido
-            </div>
+        </div>
+
+        <div style="margin-top: 14px;">
+            <a href="/memoria_ferias"
+               style="display:inline-flex; align-items:center; gap:8px;
+                      background:#fff; border:1px solid #dde3ec; border-radius:10px;
+                      padding:12px 20px; text-decoration:none; color:#1e293b;
+                      font-size:13px; font-weight:600; transition:0.15s;
+                      box-shadow:0 1px 4px rgba(0,0,0,0.06);"
+               onmouseover="this.style.borderColor='#2a7de1';this.style.color='#2a7de1'"
+               onmouseout="this.style.borderColor='#dde3ec';this.style.color='#1e293b'">
+                📄 Memória de Cálculo
+            </a>
         </div>
     </div>
 
@@ -401,6 +410,8 @@ async function calcularFerias() {
     }
 }
 
+function n(v) { return (v || '').replace('R$ ', ''); }
+
 function mostrarResultados(lista) {
     const tbody = document.getElementById('tbodyResultados');
     tbody.innerHTML = lista.map(r => `
@@ -408,15 +419,24 @@ function mostrarResultados(lista) {
             <td class="mat">${r.mat_fmt}</td>
             <td class="nome">${r.nome}</td>
             <td class="dias">${r.dias}</td>
-            <td class="val">${r.sal_ferias_fmt}</td>
-            <td class="val">${r.terco_fmt}</td>
-            <td class="val-pos">${r.base_calc_fmt}</td>
-            <td class="val-neg">(${r.inss_fmt})</td>
-            <td class="val-neg">${r.irrf_fmt !== 'R$ 0,00' ? '(' + r.irrf_fmt + ')' : '—'}</td>
-            <td class="val-liq">${r.liquido_fmt}</td>
-            <td class="val-fgts">${r.fgts_fmt}</td>
+            <td class="val">${n(r.sal_ferias_fmt)}</td>
+            <td class="val">${n(r.terco_fmt)}</td>
+            <td class="val-pos">${n(r.base_calc_fmt)}</td>
+            <td class="val-neg">(${n(r.inss_fmt)})</td>
+            <td class="val-neg">${r.irrf_fmt !== 'R$ 0,00' ? '(' + n(r.irrf_fmt) + ')' : '—'}</td>
+            <td class="val-liq">${n(r.liquido_fmt)}</td>
         </tr>
     `).join('');
+
+    // Atualiza badge de Situação na tabela de listagem
+    lista.forEach(r => {
+        const chk = document.querySelector(`.chk-func[value="${r.matricula}"]`);
+        if (!chk) return;
+        const td = chk.closest('tr').querySelector('td.sit-calc');
+        if (!td) return;
+        td.innerHTML = `<span class="badge-calc" title="Calculado em ${r.calc_dhg}">✓ ${r.calc_dhg}</span>`;
+    });
+
     document.getElementById('secResultados').style.display = 'block';
     document.getElementById('secResultados').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

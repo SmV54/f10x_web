@@ -249,6 +249,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 const FOLHA_SITUACAO      = '{{ folha_situacao }}';
 const FOLHA_PERIODO       = '{{ folha_ativa }}';
 const FOLHA_SIT_LABEL     = '{{ folha_ativa_situacao }}';
+const CPF_USUARIO         = '{{ cpf_usuario }}';
 
 const modulos = {
 
@@ -299,8 +300,9 @@ const modulos = {
         secoes: [
             { nome: 'Férias', itens: [
                 { icone: '🏖️', nome: 'Lançar Férias',        href: '/select_funcionario?contexto=ferias', ok: true, bloqueioFolha: true },
-                { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',   ok: true },
-                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias', ok: true },
+                { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',    ok: true },
+                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias', ok: true },
+                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',  ok: true },
                 { icone: '📆', nome: 'Programação de Férias', href: '#' },
                 { icone: '⏰', nome: 'Férias Vencidas',       href: '#' },
             ]},
@@ -493,10 +495,21 @@ const modulos = {
                 { icone: '📤', nome: 'Exportar Dados', href: '#' },
             ]}
         ]
+    },
+
+    interno_f10: {
+        titulo: 'INTERNO F10', icone: '🔧',
+        secoes: [
+            { nome: 'Ferramentas', itens: [
+                { icone: '🔧', nome: 'Em breve', href: '#' },
+            ]}
+        ]
     }
 };
 
-const ordem = ['cadastros','novafolha','eventuais','movimento','movimentofixo','calculo','relatorios','conexoes','esocial','diversos'];
+const CPF_INTERNO = '15313921487';
+const ordem = ['cadastros','novafolha','eventuais','movimento','movimentofixo','calculo','relatorios','conexoes','esocial',
+                'diversos', ...(CPF_USUARIO === CPF_INTERNO ? ['interno_f10'] : [])];
 
 // ── Renderiza os 10 cards ──
 const grid = document.getElementById('modulosGrid');
@@ -532,6 +545,12 @@ for (const id of ordem) {
                 </svg>
             </div>
             <div class="modulo-nome">eSocial</div>`;
+    } else if (id === 'interno_f10') {
+        card.style.background = '#f0fdf4';
+        card.style.borderColor = '#86efac';
+        card.innerHTML = `
+            <div class="modulo-icone" style="background:#dcfce7;">🔧</div>
+            <div class="modulo-nome" style="color:#166534;font-size:9px;letter-spacing:0.04em;">INTERNO F10</div>`;
     } else {
         const nomeCard = (id === 'novafolha') ? 'Mês/Ano' : m.titulo;
         card.innerHTML = `<div class="modulo-icone">${m.icone}</div><div class="modulo-nome">${nomeCard}</div>`;
@@ -544,6 +563,7 @@ for (const id of ordem) {
     }
     grid.appendChild(card);
 }
+grid.style.gridTemplateColumns = `repeat(${ordem.length}, 1fr)`;
 
 // ── Navegação em 3 etapas ──
 let moduloAtivo = null;

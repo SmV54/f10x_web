@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memória de Cálculo — Folha10 Simples</title>
+<title>{{ titulo_pagina or 'Memória de Cálculo' }} — Folha10 Simples</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -109,7 +109,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     <span class="topo-nome">{{ nome }}</span>
   </div>
   <div class="topo-titulo">
-    <span>Memória de Cálculo</span>
+    <span>{{ titulo_pagina or 'Memória de Cálculo' }}</span>
     {% if anomes_atual %}
     <span class="badge-folha {{ folha_sit_class }}">
       {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
@@ -135,7 +135,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
   {% else %}
   <div class="card">
     <div class="card-topo">
-      <span class="card-titulo">Selecione o funcionário para abrir a memória de cálculo em PDF</span>
+      <span class="card-titulo">{{ card_subtitulo or 'Selecione o funcionário para abrir a memória de cálculo em PDF' }}</span>
       <span style="font-size:11px;color:#64748b;">{{ funcionarios|length }} funcionário(s)</span>
     </div>
     <div class="card-body">
@@ -156,7 +156,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
             {% if f.tem_pdf %}
             <span class="badge-pdf badge-pdf-ok">PDF ✓</span>
             <a class="btn-abrir btn-abrir-ok"
-               href="/api/memoria_calculo_pdf/{{ f.matricula }}"
+               href="{{ pdf_endpoint or '/api/memoria_calculo_pdf' }}/{{ f.matricula }}"
                target="_blank">
               &#128438; Imprimir em PDF
             </a>
