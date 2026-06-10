@@ -63,6 +63,29 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;
     margin-bottom: 20px;
 }
+
+/* ── BARRA DO CARD SELECIONADO ── */
+#cardSelecionadoBar {
+    display: none; align-items: center; gap: 12px;
+    padding: 10px 14px; margin-bottom: 16px;
+    border: 1.5px solid var(--border); border-radius: 10px;
+    background: #f8fafc;
+}
+#cardSelMini {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 6px 12px; border-radius: 8px; border: 2px solid var(--border);
+    background: var(--surface); pointer-events: none;
+}
+#cardSelMini .lay-card-code { margin-bottom: 0; }
+#cardSelMini .lay-card-desc { font-size: 12px; }
+.btn-trocar {
+    margin-left: auto; background: transparent;
+    border: 1px solid var(--border); border-radius: 7px;
+    color: #64748b; font-size: 12px; font-weight: 600;
+    padding: 5px 14px; cursor: pointer; font-family: var(--sans); transition: .13s;
+    white-space: nowrap;
+}
+.btn-trocar:hover { border-color: var(--accent); color: var(--accent); }
 .lay-card {
     border: 2px solid var(--border); border-radius: 10px; padding: 12px 10px 10px;
     cursor: pointer; text-align: center; transition: .14s; user-select: none;
@@ -220,7 +243,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .rub1010-link:hover { text-decoration: underline; }
 .rub1010-lista {
     border: 1.5px solid #d1d5db; border-radius: 8px;
-    max-height: 220px; overflow-y: auto; background: #fff;
+    max-height: 340px; overflow-y: auto; background: #fff;
+}
+.rub1010-box.destaque {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(13,148,136,.18);
 }
 .rub1010-item { border-bottom: 1px solid #f1f5f9; }
 .rub1010-item:last-child { border-bottom: none; }
@@ -304,7 +331,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
       </button>
     </div>
 
+    <!-- ── Barra card selecionado ── -->
+    <div id="cardSelecionadoBar">
+      <div id="cardSelMini">
+        <div class="lay-card-code" id="cardSelCode"></div>
+        <div class="lay-card-desc" id="cardSelDesc"></div>
+      </div>
+      <button class="btn-trocar" onclick="trocarLayout()">↩ Trocar evento</button>
+    </div>
+
     <!-- ── Eventos de Tabela ── -->
+    <div id="cardsSection">
     <div class="secao-label">Eventos de Tabela</div>
     <div class="layouts-grid">
 
@@ -399,6 +436,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
       </div>
 
     </div>
+    </div><!-- /cardsSection -->
 
     <!-- ── Remessa de Referência (só para Alteração) ── -->
     <div id="divRefRemessa" style="display:none;padding-top:16px;border-top:1px solid #f1f5f9;margin-top:4px;">
@@ -584,6 +622,18 @@ function setOperacao(op) {
 }
 
 /* ── Layout ── */
+function trocarLayout() {
+  document.getElementById('cardsSection').style.display       = '';
+  document.getElementById('cardSelecionadoBar').style.display = 'none';
+  document.getElementById('formFunc').style.display           = 'none';
+  document.getElementById('formTabela').style.display         = 'none';
+  document.getElementById('avisoPeriodico').style.display     = 'none';
+  document.getElementById('divRefRemessa').style.display      = 'none';
+  document.querySelectorAll('.lay-card').forEach(c => c.classList.remove('selecionado'));
+  layoutAtual    = null;
+  refSelecionado = null;
+}
+
 function selecionarLayout(card) {
   if (card.classList.contains('lay-card-disabled')) return;
 
@@ -594,6 +644,17 @@ function selecionarLayout(card) {
   const tipo   = card.dataset.tipo;
   layoutAtual    = layout;
   refSelecionado = null;
+
+  /* ── Esconde grid, mostra barra compacta ── */
+  document.getElementById('cardsSection').style.display       = 'none';
+  const bar     = document.getElementById('cardSelecionadoBar');
+  const mini    = document.getElementById('cardSelMini');
+  bar.style.display = 'flex';
+  document.getElementById('cardSelCode').textContent = card.querySelector('.lay-card-code').textContent;
+  document.getElementById('cardSelDesc').textContent = card.querySelector('.lay-card-desc').textContent;
+  mini.className = '';
+  mini.id = 'cardSelMini';
+  card.classList.forEach(cls => { if (cls !== 'selecionado') mini.classList.add(cls); });
 
   document.getElementById('divResultado').style.display  = 'none';
   document.getElementById('divResultadoTabela').style.display = 'none';
@@ -606,7 +667,6 @@ function selecionarLayout(card) {
     document.getElementById('avisoPeriodico').style.display = 'none';
     atualizarSelecao();
     setTimeout(() => {
-      document.getElementById('formFunc').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       const wrap = document.getElementById('funcListaWrap');
       wrap.classList.add('destaque');
       setTimeout(() => wrap.classList.remove('destaque'), 1400);
@@ -623,6 +683,11 @@ function selecionarLayout(card) {
       document.getElementById('rub1010Filtro').value = '';
       rub1010Box.classList.add('visivel');
       renderRub1010('');
+      setTimeout(() => {
+        rub1010Box.classList.add('destaque');
+        setTimeout(() => rub1010Box.classList.remove('destaque'), 1400);
+        document.getElementById('rub1010Filtro').focus();
+      }, 60);
     } else {
       rub1010Box.classList.remove('visivel');
     }

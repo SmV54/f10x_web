@@ -104,6 +104,7 @@ def inject_folha_ativa():
         "folha_ativa_tipo":      tipo_label,
         "folha_ativa_situacao":  sit_label,
         "folha_ativa_sit_class": sit_class,
+        "folha_situacao":        st,
     }
 
 # =========================================================
@@ -8231,11 +8232,12 @@ def api_ferias_gravar():
         return jsonify({"ok": False, "msg": f"Folha está {sit_label} — registro de férias não permitido."})
 
     data = request.get_json(force=True) or {}
-    matriculas      = data.get("matriculas", [])
-    data1i          = str(data.get("data1i", "")).strip()
-    data1f          = str(data.get("data1f", "")).strip()
-    qtd_dias        = data.get("qtd_dias")
-    periodo_ferias  = str(data.get("periodo_ferias", "auto")).strip()  # auto | sim | nao
+    matriculas       = data.get("matriculas", [])
+    data1i           = str(data.get("data1i", "")).strip()
+    data1f           = str(data.get("data1f", "")).strip()
+    qtd_dias         = data.get("qtd_dias")
+    periodo_ferias   = str(data.get("periodo_ferias", "auto")).strip()   # auto | sim | nao
+    abono_pecuniario = str(data.get("abono_pecuniario", "nao")).strip()  # sim | nao | auto
 
     if not matriculas:
         return jsonify({"ok": False, "msg": "Nenhuma matrícula informada."})
@@ -8252,6 +8254,8 @@ def api_ferias_gravar():
             raise ValueError()
     except (TypeError, ValueError):
         return jsonify({"ok": False, "msg": "Quantidade de dias deve ser entre 10 e 30."})
+
+    dias_abono = (qtd // 3) if abono_pecuniario == "sim" else 0
 
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
@@ -8355,6 +8359,7 @@ def api_ferias_gravar():
                 "data1i":     data1i,
                 "data1f":     data1f,
                 "ref1":       qtd,
+                "ref2":       dias_abono if dias_abono else None,
                 "data2i":     data2i_out,
                 "data2f":     data2f_out,
             }).execute()
@@ -13030,7 +13035,7 @@ def _analisar_resposta_envio(xml_resp):
             continue
         tag = el.tag.split("}")[-1]
         txt = (el.text or "").strip()
-        if tag == "protocoloEnvio" and not result["nr_rec"]:  result["nr_rec"]  = txt
+        if tag in ("protocoloEnvio", "nrProtEnvio") and not result["nr_rec"]:  result["nr_rec"]  = txt
         if tag == "cdResposta"     and not result["cd_resp"]: result["cd_resp"] = txt
         if tag == "descResposta"   and not result["desc"]:    result["desc"]    = txt
 
@@ -13064,15 +13069,17 @@ def _extrair_resultado_consulta(xml_resp):
         # recibos e ocorrências por evento
         for ev in root.iter():
             if ev.tag.split("}")[-1] == "evento":
-                nrRec  = ""
-                cdEvt  = ""
-                dhEvt  = ""
-                ocorrs = []
+                nrRec   = ""
+                cdEvt   = ""
+                dscEvt  = ""
+                dhEvt   = ""
+                ocorrs  = []
                 for c in ev.iter():
                     t = c.tag.split("}")[-1]
-                    if t == "nrRecibo":       nrRec = (c.text or "").strip()
-                    if t == "cdResposta":     cdEvt = (c.text or "").strip()
-                    if t == "dhProcessamento": dhEvt = (c.text or "").strip()
+                    if t in ("nrRec", "nrRecibo"): nrRec  = (c.text or "").strip()
+                    if t == "cdResposta":           cdEvt  = (c.text or "").strip()
+                    if t == "descResposta":         dscEvt = (c.text or "").strip()
+                    if t == "dhProcessamento":      dhEvt  = (c.text or "").strip()
                 for oc in ev.iter():
                     if oc.tag.split("}")[-1] == "ocorrencia":
                         cod  = ""
@@ -13084,10 +13091,11 @@ def _extrair_resultado_consulta(xml_resp):
                         if desc:
                             ocorrs.append(f"[{cod}] {desc}" if cod else desc)
                 result["eventos"].append({
-                    "nrRec":  nrRec,
-                    "cdResp": cdEvt,
-                    "dh":     dhEvt,
-                    "ocorrs": ocorrs,
+                    "nrRec":   nrRec,
+                    "cdResp":  cdEvt,
+                    "dscResp": dscEvt,
+                    "dh":      dhEvt,
+                    "ocorrs":  ocorrs,
                 })
                 # dhProcessamento do evento tem precedência sobre o do lote
                 if dhEvt and not result["dhProcessamento"]:
@@ -14273,21 +14281,20 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     dsc_rubr  = x((rubrica.get('dsc_rubr') or '')[:100])
     nat_rubr  = str(rubrica.get('es03_nat_rubr') or '').strip()
     tp_rubr   = str(rubrica.get('tp_rubr') or '1').strip()
-    inc_cp    = str(rubrica.get('tpn_inc_cp') or '00').zfill(2)
-    inc_irrf  = str(rubrica.get('tpn_inc_irrf') or '00').zfill(2)
-    inc_fgts  = str(rubrica.get('tpn_inc_fgts') or '00').zfill(2)
-    inc_sind  = str(rubrica.get('tpn_inc_pis') or '00').zfill(2)
+    def _inc(v): s = str(v or '').strip(); return s.zfill(2) if s.isdigit() else '00'
+    inc_cp    = _inc(rubrica.get('tpn_inc_cp'))
+    inc_irrf  = _inc(rubrica.get('tpn_inc_irrf'))
+    inc_fgts  = _inc(rubrica.get('tpn_inc_fgts'))
+    inc_sind  = _inc(rubrica.get('tpn_inc_pis'))
 
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTabRubrica/v02_05_00"
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTabRubrica/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtTabRubrica/v02_05_00 evtTabRubrica_v02_05_00.xsd">
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtTabRubrica/v_S_01_03_00 evtTabRubrica_v_S_01_03_00.xsd">
   <evtTabRubrica Id="{evt_id}">
     <ideEvento>
-      <indRetif>1</indRetif>
-      <nrSeqEvento>{seq_str}</nrSeqEvento>
       <tpAmb>{x(tpAmb)}</tpAmb>
       <procEmi>1</procEmi>
       <verProc>Folha10-Simples</verProc>
@@ -14298,11 +14305,11 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     </ideEmpregador>
     <infoRubrica>
       <{tp_op}>
-        <ideTpRubrica>
+        <ideRubrica>
           <codRubr>{x(cod_rubr)}</codRubr>
-          <ideTabRubr>S</ideTabRubr>
+          <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
           <iniValid>{x(ini_valid)}</iniValid>{fim_valid_xml}
-        </ideTpRubrica>
+        </ideRubrica>
         <dadosRubrica>
           <dscRubr>{dsc_rubr}</dscRubr>
           <natRubr>{x(nat_rubr)}</natRubr>
@@ -14310,11 +14317,72 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
           <codIncCP>{inc_cp}</codIncCP>
           <codIncIRRF>{inc_irrf}</codIncIRRF>
           <codIncFGTS>{inc_fgts}</codIncFGTS>
-          <codIncSIND>{inc_sind}</codIncSIND>
         </dadosRubrica>
       </{tp_op}>
     </infoRubrica>
   </evtTabRubrica>
+</eSocial>"""
+
+
+def _gerar_xml_s1020_evento(lotacao, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1):
+    """Gera o XML de um evtTabLotacao (S-1020) para uma lotação tributária.
+    tp_op: 'inclusao' ou 'alteracao'
+    """
+    import re as _re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):
+        return _re.sub(r'\D', '', str(v or ''))
+
+    def x(v):
+        return _esc(str(v or ''))
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    seq_str   = str(nr_seq).zfill(5)
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}{seq_str}"
+
+    cod_lot   = str(lotacao.get('codLotacao') or '01').strip()
+    tp_lot    = str(lotacao.get('tpLotacao')  or '01').strip()
+    fpas      = str(lotacao.get('fpas')       or '').strip()
+    cod_tercs = str(lotacao.get('codTercs')   or '0000').strip()
+
+    fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTabLotacao/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtTabLotacao/v_S_01_03_00 evtTabLotacao_v_S_01_03_00.xsd">
+  <evtTabLotacao Id="{evt_id}">
+    <ideEvento>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>Folha10-Simples</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <infoLotacao>
+      <{tp_op}>
+        <ideLotacao>
+          <codLotacao>{x(cod_lot)}</codLotacao>
+          <iniValid>{x(ini_valid)}</iniValid>{fim_valid_xml}
+        </ideLotacao>
+        <dadosLotacao>
+          <tpLotacao>{x(tp_lot)}</tpLotacao>
+          <tpInsc>1</tpInsc>
+          <nrInsc>{x(cnpj_emp)}</nrInsc>
+        </dadosLotacao>
+        <fpas>
+          <fpas>{x(fpas)}</fpas>
+          <codTercs>{x(cod_tercs)}</codTercs>
+        </fpas>
+      </{tp_op}>
+    </infoLotacao>
+  </evtTabLotacao>
 </eSocial>"""
 
 
@@ -14407,14 +14475,27 @@ def esocial_s1010():
         obs = (r.get("observacao_erro") or "").strip()
         r["_ini_valid"] = ""
         r["_fim_valid"] = ""
-        r["_qtd_rubricas"] = ""
-        if obs.startswith("PARAMS:"):
+        r["_cod_rubr"]  = "—"
+        r["_dsc_rubr"]  = ""
+        _params_part = ""
+        _status_part = ""
+        if "|" in obs:
+            parts = obs.split("|", 1)
+            _params_part = parts[0] if parts[0].startswith("PARAMS:") else ""
+            _status_part = parts[1] if len(parts) > 1 else ""
+        elif obs.startswith("PARAMS:"):
+            _params_part = obs
+        else:
+            _status_part = obs
+        if _params_part:
             try:
-                p = _json.loads(obs[7:])
-                r["_ini_valid"]    = p.get("ini", "")
-                r["_fim_valid"]    = p.get("fim", "")
-                rubs = p.get("rubricas", [])
-                r["_qtd_rubricas"] = str(len(rubs)) if rubs else str(p.get("qtd_rubricas", ""))
+                p = _json.loads(_params_part[7:])
+                r["_ini_valid"] = p.get("ini", "")
+                r["_fim_valid"] = p.get("fim", "")
+                cod_rubr_p = p.get("cod_rubr")
+                if cod_rubr_p is not None:
+                    r["_cod_rubr"] = str(int(cod_rubr_p)).zfill(4)
+                    r["_dsc_rubr"] = p.get("dsc_rubr", "")
             except Exception:
                 pass
         if not r["_ini_valid"]:
@@ -14426,14 +14507,14 @@ def esocial_s1010():
         recibo = (r.get("recibo") or "").strip()
         dgrava = (r.get("data_grava") or "").strip()
 
-        if recibo and obs == "EXCLUIDO":
+        if recibo and _status_part == "EXCLUIDO":
             s = "D"
         elif recibo:
             s = "E"
-        elif obs.startswith("AGUARDANDO:"):
+        elif _status_part.startswith("AGUARDANDO:"):
             s = "W"
-            r["_protocolo"] = obs[len("AGUARDANDO:"):]
-        elif obs and not obs.startswith("PARAMS:"):
+            r["_protocolo"] = _status_part[len("AGUARDANDO:"):]
+        elif _status_part:
             s = "X"
         elif dgrava:
             s = "G"
@@ -14469,52 +14550,52 @@ def api_esocial_s1010_gravar():
     id_cliente = session.get("id_cliente")
     data       = request.get_json(force=True) or {}
 
-    tp_op              = data.get("tp_op", "inclusao")
-    ini_valid          = data.get("ini_valid", "").strip()
-    fim_valid          = data.get("fim_valid", "").strip()
-    tpAmb              = str(data.get("tpAmb", "1"))
-    rubricas_sel       = data.get("rubricas", [])   # lista de cod_rubr (int)
+    tp_op     = data.get("tp_op", "inclusao")
+    ini_valid = data.get("ini_valid", "").strip()
+    fim_valid = data.get("fim_valid", "").strip()
+    tpAmb     = str(data.get("tpAmb", "1"))
+    verbas    = data.get("verbas", [])   # lista de {cod_rubr, dsc_rubr}
 
     if not ini_valid or len(ini_valid) != 7 or ini_valid[4] != '-':
         return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
 
-    if not rubricas_sel:
+    if not verbas:
         return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica."})
 
-    # Garantir que os codes são inteiros
-    try:
-        rubricas_sel = [int(c) for c in rubricas_sel]
-    except Exception:
-        return jsonify({"ok": False, "msg": "Códigos de rubrica inválidos."})
-
     ano_mes = ini_valid.replace("-", "")
-    params_json = _json.dumps({
-        "ini": ini_valid, "fim": fim_valid,
-        "tpAmb": tpAmb,
-        "rubricas": rubricas_sel,
-    }, ensure_ascii=False)
 
     agora = datetime.now()
-    try:
-        r = supabase.table("tab_esocial").insert({
-            "id_cliente":      id_cliente,
-            "id_empresa":      id_empresa,
-            "data_cad":        agora.strftime("%Y%m%d"),
-            "hora_cad":        agora.strftime("%H%M"),
-            "layout":          "1010",
-            "ano_mes":         int(ano_mes),
-            "folha_tipo":      "I",
-            "operacao":        "I" if tp_op == "inclusao" else "A",
-            "observacao_erro": f"PARAMS:{params_json}",
-        }).execute()
-        id_esocial = r.data[0]["id_esocial"] if r.data else None
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+    ids_criados = []
+    for v in verbas:
+        try:
+            cod_rubr = int(v.get("cod_rubr", 0))
+            dsc_rubr = str(v.get("dsc_rubr", "")).strip()
+        except Exception:
+            return jsonify({"ok": False, "msg": "Dados de rubrica inválidos."})
+        p_json = _json.dumps({
+            "ini": ini_valid, "fim": fim_valid,
+            "tpAmb": tpAmb,
+            "cod_rubr": cod_rubr,
+            "dsc_rubr": dsc_rubr,
+        }, ensure_ascii=False)
+        try:
+            r = supabase.table("tab_esocial").insert({
+                "id_cliente":      id_cliente,
+                "id_empresa":      id_empresa,
+                "data_cad":        agora.strftime("%Y%m%d"),
+                "hora_cad":        agora.strftime("%H%M"),
+                "layout":          "1010",
+                "ano_mes":         int(ano_mes),
+                "folha_tipo":      "I",
+                "operacao":        "I" if tp_op == "inclusao" else "A",
+                "observacao_erro": f"PARAMS:{p_json}",
+            }).execute()
+            if r.data:
+                ids_criados.append(r.data[0].get("id_esocial"))
+        except Exception as e:
+            return jsonify({"ok": False, "msg": f"Erro ao gravar rubrica {cod_rubr}: {e}"})
 
-    if not id_esocial:
-        return jsonify({"ok": False, "msg": "Falha ao obter ID do registro."})
-
-    return jsonify({"ok": True, "id_esocial": id_esocial, "qtd_rubricas": len(rubricas_sel)})
+    return jsonify({"ok": True, "qtd_rubricas": len(ids_criados)})
 
 
 # =========================================================
@@ -14550,17 +14631,23 @@ def api_esocial_s1010_xml():
 
     obs = (es.get("observacao_erro") or "").strip()
     params = {}
-    if obs.startswith("PARAMS:"):
+    _params_raw = obs.split("|")[0] if "|" in obs else obs
+    if _params_raw.startswith("PARAMS:"):
         try:
-            params = _json.loads(obs[7:])
+            params = _json.loads(_params_raw[7:])
         except Exception:
             pass
 
-    ini_valid       = params.get("ini", "")
-    fim_valid       = params.get("fim", "")
-    tpAmb           = params.get("tpAmb", "1")
-    rubricas_sel    = params.get("rubricas", [])
-    tp_op           = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
+    ini_valid    = params.get("ini", "")
+    fim_valid    = params.get("fim", "")
+    tpAmb        = params.get("tpAmb", "1")
+    cod_rubr_reg = params.get("cod_rubr")
+    tp_op        = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
+
+    if not ini_valid:
+        am = str(es.get("ano_mes") or "")
+        if len(am) == 6:
+            ini_valid = f"{am[:4]}-{am[4:6]}"
 
     cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
     try:
@@ -14577,8 +14664,8 @@ def api_esocial_s1010_xml():
              .in_("id_cliente", [0, id_cliente])
              .eq("situacao", "A")
              .order("cod_rubr"))
-        if rubricas_sel:
-            q = q.in_("cod_rubr", rubricas_sel)
+        if cod_rubr_reg is not None:
+            q = q.eq("cod_rubr", int(cod_rubr_reg))
         rubricas = q.execute().data or []
     except Exception:
         rubricas = []
@@ -14641,20 +14728,44 @@ def api_esocial_s1010_enviar():
 
     obs = (es.get("observacao_erro") or "").strip()
     params = {}
+    _params_raw = ""  # parte PARAMS: preservada em todos os updates
     if obs.startswith("PARAMS:"):
+        # pode ter "|STATUS:..." após os PARAMS — pega só o bloco PARAMS
+        _params_raw = obs.split("|")[0]
         try:
-            params = _json.loads(obs[7:])
+            params = _json.loads(_params_raw[7:])
         except Exception:
             pass
+    elif "|" in obs:
+        # já foi enviado antes: PARAMS:{...}|STATUS:...
+        for part in obs.split("|"):
+            if part.startswith("PARAMS:"):
+                _params_raw = part
+                try:
+                    params = _json.loads(_params_raw[7:])
+                except Exception:
+                    pass
+                break
+
+    def _obs_upd(msg):
+        """Grava erro/status preservando o bloco PARAMS."""
+        if _params_raw:
+            return f"{_params_raw}|{msg[:200]}"
+        return msg[:295]
 
     ini_valid    = params.get("ini", "")
     fim_valid    = params.get("fim", "")
-    rubricas_sel = params.get("rubricas", [])
+    cod_rubr_reg = params.get("cod_rubr")
     if not tpAmb or tpAmb == "1":
         tpAmb = params.get("tpAmb", tpAmb)
     tp_op = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
 
+    # Reconstrói ini_valid a partir de ano_mes quando PARAMS foi perdido
     if not ini_valid:
+        am = str(es.get("ano_mes") or "")
+        if len(am) == 6:
+            ini_valid = f"{am[:4]}-{am[4:6]}"
+    if not ini_valid or cod_rubr_reg is None:
         return jsonify({"ok": False, "msg": "Parâmetros não encontrados. Recrie o registro."})
 
     # ── 2. Empresa + certificado ──────────────────────────
@@ -14676,26 +14787,20 @@ def api_esocial_s1010_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 3. Buscar rubricas selecionadas ───────────────────
+    # ── 3. Buscar rubrica do registro ─────────────────────
     try:
-        q = (supabase.table("tab_rubrica")
-             .select("cod_rubr,dsc_rubr,tp_rubr,es03_nat_rubr,"
-                     "tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf,tpn_inc_pis")
-             .in_("id_cliente", [0, id_cliente])
-             .eq("situacao", "A")
-             .order("cod_rubr"))
-        if rubricas_sel:
-            q = q.in_("cod_rubr", rubricas_sel)
-        rubricas = q.execute().data or []
+        rubricas = (supabase.table("tab_rubrica")
+                    .select("cod_rubr,dsc_rubr,tp_rubr,es03_nat_rubr,"
+                            "tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf,tpn_inc_pis")
+                    .in_("id_cliente", [0, id_cliente])
+                    .eq("situacao", "A")
+                    .eq("cod_rubr", int(cod_rubr_reg))
+                    .limit(1).execute().data or [])
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar rubricas: {e}"})
+        return jsonify({"ok": False, "msg": f"Erro ao buscar rubrica: {e}"})
 
     if not rubricas:
-        return jsonify({"ok": False, "msg": "Nenhuma rubrica encontrada para este registro."})
-
-    MAX_POR_LOTE = 50
-    if len(rubricas) > MAX_POR_LOTE:
-        return jsonify({"ok": False, "msg": f"Muitas rubricas ({len(rubricas)}). Limite por lote: {MAX_POR_LOTE}. Divida em remessas menores."})
+        return jsonify({"ok": False, "msg": f"Rubrica {cod_rubr_reg} não encontrada ou inativa."})
 
     # ── 4. Gerar e assinar cada evento ───────────────────
     _now2    = datetime.now()
@@ -14745,9 +14850,9 @@ def api_esocial_s1010_enviar():
     except Exception as e:
         detalhe = str(e)
         supabase.table("tab_esocial").update({
-            "observacao_erro": f"Erro no envio: {detalhe[:200]}",
+            "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
             "data_grava": datetime.now().strftime("%Y%m%d"),
-        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        }).eq("id_esocial", int(id_reg)).execute()
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
     try:
@@ -14762,16 +14867,16 @@ def api_esocial_s1010_enviar():
     agora = datetime.now()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
-            "observacao_erro": analise["erro"][:295],
+            "observacao_erro": _obs_upd(analise["erro"]),
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
-        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        }).eq("id_esocial", int(id_reg)).execute()
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
-    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+    }).eq("id_esocial", int(id_reg)).execute()
 
     # ── 8. Consultar resultado (até 3 tentativas) ─────────
     recibo_final = ""
@@ -14788,6 +14893,12 @@ def api_esocial_s1010_enviar():
             break
 
         try:
+            with open(f"{_pref}_4_consulta_{tentativa+1}.xml", "w", encoding="utf-8") as _f:
+                _f.write(resp_cons)
+        except Exception:
+            pass
+
+        try:
             resultado = _extrair_resultado_consulta(resp_cons)
         except Exception as e:
             obs_erro = f"Erro ao analisar consulta: {e}"
@@ -14802,8 +14913,12 @@ def api_esocial_s1010_enviar():
             recibo_final = ev0.get("nrRec", "")
             if ev0.get("cdResp", "") not in ("", "201"):
                 ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
-        elif not recibo_final:
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
+        # cd_resp 201 sem nrRec individual → protocolo é o recibo
+        if cd_resp == "201" and not recibo_final and not obs_erro:
+            recibo_final = protocolo_envio
+        elif not recibo_final and not obs_erro:
             obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
         break
 
@@ -14811,22 +14926,124 @@ def api_esocial_s1010_enviar():
 
     upd = {"recibo": recibo_final}
     if aguardando:
-        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+        upd["observacao_erro"] = _obs_upd(f"AGUARDANDO:{protocolo_envio}")
     elif obs_erro:
-        upd["observacao_erro"] = obs_erro[:295]
+        upd["observacao_erro"] = _obs_upd(obs_erro)
     else:
-        upd["observacao_erro"] = ""
+        upd["observacao_erro"] = _params_raw  # sucesso: só preserva PARAMS
     supabase.table("tab_esocial").update(upd)\
-        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        .eq("id_esocial", int(id_reg)).execute()
 
-    qtd = len(rubricas)
+    rub_dsc = rubricas[0].get("dsc_rubr", "") if rubricas else ""
     if recibo_final and not obs_erro and not aguardando:
         return jsonify({"ok": True, "recibo": recibo_final,
-                        "msg": f"S-1010 enviado com sucesso ({qtd} rubricas). Recibo: {recibo_final}"})
+                        "msg": f"S-1010 enviado — Verba {cod_rubr_reg} {rub_dsc}. Recibo: {recibo_final}"})
     if aguardando:
-        return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
+        return jsonify({"ok": True, "aguardando": True,
+                        "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
                         "protocolo": protocolo_envio})
     return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
+
+
+# =========================================================
+# eSocial S-1010 — API: dados para o relatório de remessas
+# =========================================================
+@app.route("/api/esocial_s1010_relatorio")
+def api_esocial_s1010_relatorio():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import json as _json
+    id_empresa = _get_id_empresa()
+
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, ano_mes, observacao_erro, recibo, data_grava, hora_grava, operacao, codigo2")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1010")
+                .order("data_grava", desc=True)
+                .order("hora_grava", desc=True)
+                .limit(200)
+                .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    resultado = []
+    for r in rows:
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+        hgrava = (r.get("hora_grava") or "").strip()
+
+        _params_part = ""
+        _status_part = ""
+        if "|" in obs:
+            parts = obs.split("|", 1)
+            _params_part = parts[0] if parts[0].startswith("PARAMS:") else ""
+            _status_part = parts[1] if len(parts) > 1 else ""
+        elif obs.startswith("PARAMS:"):
+            _params_part = obs
+        else:
+            _status_part = obs
+
+        ini_valid    = ""
+        fim_valid    = ""
+        cod_rubr_fmt = ""
+        dsc_rubr_fmt = ""
+        if _params_part:
+            try:
+                p = _json.loads(_params_part[7:])
+                ini_valid    = p.get("ini", "")
+                fim_valid    = p.get("fim", "")
+                cod_rubr_p   = p.get("cod_rubr")
+                if cod_rubr_p is not None:
+                    cod_rubr_fmt = str(int(cod_rubr_p)).zfill(4)
+                    dsc_rubr_fmt = p.get("dsc_rubr", "")
+            except Exception:
+                pass
+        if not ini_valid:
+            am = str(r.get("ano_mes") or "")
+            if len(am) == 6:
+                ini_valid = f"{am[:4]}-{am[4:6]}"
+
+        if recibo and _status_part == "EXCLUIDO":
+            sit, sit_label = "D", "Excluído"
+        elif recibo:
+            sit, sit_label = "E", "Enviado"
+        elif _status_part.startswith("AGUARDANDO:"):
+            sit, sit_label = "W", "Aguardando"
+        elif _status_part:
+            sit, sit_label = "X", "Com Erro"
+        elif dgrava:
+            sit, sit_label = "G", "Gerado"
+        else:
+            sit, sit_label = "P", "Pendente"
+
+        erro_exib = _status_part if sit == "X" else ""
+
+        dh = ""
+        if dgrava and len(dgrava) == 8 and dgrava.isdigit():
+            dh = f"{dgrava[6:]}/{dgrava[4:6]}/{dgrava[:4]}"
+            if hgrava and len(hgrava) >= 4:
+                dh += f" {hgrava[:2]}:{hgrava[2:4]}"
+
+        tp_op = "Inclusão" if str(r.get("operacao") or "I") == "I" else "Alteração"
+
+        resultado.append({
+            "id_esocial":  r["id_esocial"],
+            "per_ini":     ini_valid,
+            "per_fim":     fim_valid,
+            "cod_rubr":    cod_rubr_fmt,
+            "dsc_rubr":    dsc_rubr_fmt,
+            "tp_op":       tp_op,
+            "sit":         sit,
+            "sit_label":   sit_label,
+            "recibo":      recibo,
+            "erro":        erro_exib,
+            "dh_grava":    dh,
+        })
+
+    return jsonify({"ok": True, "rows": resultado})
 
 
 # =========================================================
@@ -14870,10 +15087,515 @@ def api_esocial_s1010_deletar():
 
     return jsonify({"ok": True, "msg": "Registro apagado."})
 
+# =========================================================
+# eSocial S-1020 — TELA DE LISTAGEM
+# =========================================================
 @app.route("/esocial_s1020")
 def esocial_s1020():
-    if not session.get("logado"): return redirect("/")
-    return render_template("F10_eSocial_S1020.html", **_ctx_esocial())
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+
+    rows = []
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1020")
+                .order("data_cad", desc=True)
+                .order("hora_cad", desc=True)
+                .execute().data or [])
+    except Exception:
+        rows = []
+
+    # FPAS da empresa para pré-preencher o modal
+    fpas_empresa = ""
+    try:
+        r_emp = (supabase.table("tab_empresa").select("gps_fpas")
+                 .eq("id_empresa", id_empresa).limit(1).execute())
+        if r_emp.data:
+            fpas_empresa = str(r_emp.data[0].get("gps_fpas") or "")
+    except Exception:
+        pass
+
+    import json as _json
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    _SIT = {
+        "E": ("Enviado",    "sit-enviado"),
+        "D": ("Excluído",   "sit-excluido"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+
+    for r in rows:
+        r["_datacad_fmt"] = _d8(r.get("data_cad"))
+        obs = (r.get("observacao_erro") or "").strip()
+        r["_ini_valid"]    = ""
+        r["_fim_valid"]    = ""
+        r["_cod_lotacao"]  = ""
+        r["_fpas"]         = ""
+        _params_part = ""
+        _status_part = ""
+        if "|" in obs:
+            parts = obs.split("|", 1)
+            _params_part = parts[0] if parts[0].startswith("PARAMS:") else ""
+            _status_part = parts[1] if len(parts) > 1 else ""
+        elif obs.startswith("PARAMS:"):
+            _params_part = obs
+        else:
+            _status_part = obs
+        if _params_part:
+            try:
+                p = _json.loads(_params_part[7:])
+                r["_ini_valid"]   = p.get("ini", "")
+                r["_fim_valid"]   = p.get("fim", "")
+                r["_cod_lotacao"] = p.get("codLotacao", "")
+                r["_fpas"]        = p.get("fpas", "")
+            except Exception:
+                pass
+        if not r["_ini_valid"]:
+            am = str(r.get("ano_mes") or "")
+            if len(am) == 6:
+                r["_ini_valid"] = f"{am[:4]}-{am[4:6]}"
+
+        r["_tp_op_label"] = "Inclusão" if str(r.get("operacao") or "I") == "I" else "Alteração"
+        recibo = (r.get("recibo") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+
+        if recibo and _status_part == "EXCLUIDO":
+            s = "D"
+        elif recibo:
+            s = "E"
+        elif _status_part.startswith("AGUARDANDO:"):
+            s = "W"
+            r["_protocolo"] = _status_part[len("AGUARDANDO:"):]
+        elif _status_part:
+            s = "X"
+        elif dgrava:
+            s = "G"
+        else:
+            s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT[s][0]
+        r["_sit_class"] = _SIT[s][1]
+
+    cnpj_fmt = _fmt_cnpj(cnpj_emp) if len(cnpj_emp) == 14 else cnpj_emp
+
+    return render_template(
+        "F10_eSocial_S1020.html",
+        versao=ler_versao(),
+        empresa_info=session.get("empresa_info", ""),
+        cnpj_fmt=cnpj_fmt,
+        rows=rows,
+        total=len(rows),
+        fpas_empresa=fpas_empresa,
+    )
+
+
+# =========================================================
+# eSocial S-1020 — API: gravar registro pendente
+# =========================================================
+@app.route("/api/esocial_s1020_gravar", methods=["POST"])
+def api_esocial_s1020_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import json as _json
+    id_empresa = _get_id_empresa()
+    data       = request.get_json(force=True) or {}
+
+    tp_op      = data.get("tp_op", "inclusao")
+    ini_valid  = data.get("ini_valid", "").strip()
+    fim_valid  = data.get("fim_valid", "").strip()
+    tpAmb      = str(data.get("tpAmb", "1"))
+    cod_lotacao = data.get("codLotacao", "01").strip()
+    tp_lotacao  = data.get("tpLotacao", "01").strip()
+    fpas        = data.get("fpas", "").strip()
+    cod_tercs   = data.get("codTercs", "").strip()
+
+    if not ini_valid or len(ini_valid) != 7 or ini_valid[4] != '-':
+        return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
+    if not cod_lotacao:
+        return jsonify({"ok": False, "msg": "Código da lotação é obrigatório."})
+    if not fpas:
+        return jsonify({"ok": False, "msg": "Código FPAS é obrigatório."})
+    if not cod_tercs:
+        return jsonify({"ok": False, "msg": "Código de Terceiros é obrigatório."})
+
+    ano_mes = ini_valid.replace("-", "")
+    params_json = _json.dumps({
+        "ini": ini_valid, "fim": fim_valid,
+        "tpAmb": tpAmb,
+        "codLotacao": cod_lotacao,
+        "tpLotacao":  tp_lotacao,
+        "fpas":       fpas,
+        "codTercs":   cod_tercs,
+    }, ensure_ascii=False)
+
+    agora = datetime.now()
+    try:
+        r = supabase.table("tab_esocial").insert({
+            "id_empresa":      id_empresa,
+            "data_cad":        agora.strftime("%Y%m%d"),
+            "hora_cad":        agora.strftime("%H%M"),
+            "layout":          "1020",
+            "ano_mes":         int(ano_mes),
+            "folha_tipo":      "I",
+            "operacao":        "I" if tp_op == "inclusao" else "A",
+            "observacao_erro": f"PARAMS:{params_json}",
+        }).execute()
+        id_esocial = r.data[0]["id_esocial"] if r.data else None
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+
+    if not id_esocial:
+        return jsonify({"ok": False, "msg": "Falha ao obter ID do registro."})
+
+    return jsonify({"ok": True, "id_esocial": id_esocial})
+
+
+# =========================================================
+# eSocial S-1020 — API: baixar XML (preview)
+# =========================================================
+@app.route("/api/esocial_s1020_xml")
+def api_esocial_s1020_xml():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from flask import Response
+    import json as _json
+
+    id_empresa = _get_id_empresa()
+    id_reg     = request.args.get("id", "").strip()
+
+    if not id_reg or not id_reg.isdigit():
+        return Response("ID inválido.", status=400, mimetype="text/plain")
+
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1020")
+                .limit(1).execute())
+        if not r_es.data:
+            return Response("Registro não encontrado.", status=404, mimetype="text/plain")
+        es = r_es.data[0]
+    except Exception as e:
+        return Response(str(e), status=500, mimetype="text/plain")
+
+    obs = (es.get("observacao_erro") or "").strip()
+    params = {}
+    if obs.startswith("PARAMS:"):
+        try:
+            params = _json.loads(obs[7:])
+        except Exception:
+            pass
+
+    ini_valid  = params.get("ini", "")
+    fim_valid  = params.get("fim", "")
+    tpAmb      = params.get("tpAmb", "1")
+    tp_op      = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
+
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {"cnpj": cnpj_emp}
+    except Exception:
+        empresa = {"cnpj": cnpj_emp}
+
+    xml_str = _gerar_xml_s1020_evento(params, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1)
+
+    try:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+    except Exception:
+        pass
+
+    fname = f"S1020_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    return Response(
+        xml_str,
+        mimetype="application/xml; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# =========================================================
+# eSocial S-1020 — API: assinar + enviar + consultar
+# =========================================================
+@app.route("/api/esocial_s1020_enviar", methods=["POST"])
+def api_esocial_s1020_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time, os as _os6, json as _json
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    # ── 1. Registro ──────────────────────────────────────
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1020")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-1020 não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    obs = (es.get("observacao_erro") or "").strip()
+    params = {}
+    _params_raw = ""
+    if obs.startswith("PARAMS:"):
+        _params_raw = obs.split("|")[0]
+        try:
+            params = _json.loads(_params_raw[7:])
+        except Exception:
+            pass
+    elif "|" in obs:
+        for part in obs.split("|"):
+            if part.startswith("PARAMS:"):
+                _params_raw = part
+                try:
+                    params = _json.loads(_params_raw[7:])
+                except Exception:
+                    pass
+                break
+
+    def _obs_upd(msg):
+        if _params_raw:
+            return f"{_params_raw}|{msg[:200]}"
+        return msg[:295]
+
+    ini_valid = params.get("ini", "")
+    fim_valid = params.get("fim", "")
+    if not tpAmb or tpAmb == "1":
+        tpAmb = params.get("tpAmb", tpAmb)
+    tp_op = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
+
+    if not ini_valid:
+        am = str(es.get("ano_mes") or "")
+        if len(am) == 6:
+            ini_valid = f"{am[:4]}-{am[4:6]}"
+    if not ini_valid:
+        return jsonify({"ok": False, "msg": "Parâmetros não encontrados. Recrie o registro."})
+
+    # ── 2. Empresa + certificado ──────────────────────────
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    # ── 3. Gerar e assinar ────────────────────────────────
+    _now2    = datetime.now()
+    _dir_xml = _os6.path.join(_os6.path.dirname(__file__),
+                               "eSocial_XML", _now2.strftime("%Y"),
+                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
+    _os6.makedirs(_dir_xml, exist_ok=True)
+    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
+    _pref = _os6.path.join(_dir_xml, f"S1020_{ini_valid.replace('-','')}_{_ts}")
+
+    try:
+        xml_str = _gerar_xml_s1020_evento(params, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    try:
+        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
+            _f.write(xml_assinado)
+    except Exception:
+        pass
+
+    # ── 4. Montar lote ────────────────────────────────────
+    try:
+        lote_xml = _montar_lote_multi([xml_assinado], cnpj_emp, tpAmb, grupo="1")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    try:
+        with open(f"{_pref}_2_lote.xml", "w", encoding="utf-8") as _f:
+            _f.write(lote_xml)
+    except Exception:
+        pass
+
+    # ── 5. Enviar ─────────────────────────────────────────
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        supabase.table("tab_esocial").update({
+            "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
+            "data_grava": datetime.now().strftime("%Y%m%d"),
+        }).eq("id_esocial", int(id_reg)).execute()
+        return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
+
+    try:
+        with open(f"{_pref}_3_resposta.xml", "w", encoding="utf-8") as _f:
+            _f.write(resp_envio)
+    except Exception:
+        pass
+
+    # ── 6. Analisar resposta ──────────────────────────────
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+    agora = datetime.now()
+    if not protocolo_envio:
+        supabase.table("tab_esocial").update({
+            "observacao_erro": _obs_upd(analise["erro"]),
+            "data_grava":      agora.strftime("%Y%m%d"),
+            "hora_grava":      agora.strftime("%H%M"),
+        }).eq("id_esocial", int(id_reg)).execute()
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).execute()
+
+    # ── 7. Consultar resultado (até 3 tentativas) ─────────
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+
+        try:
+            with open(f"{_pref}_4_consulta_{tentativa+1}.xml", "w", encoding="utf-8") as _f:
+                _f.write(resp_cons)
+        except Exception:
+            pass
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
+        # cd_resp 201 sem nrRec individual → protocolo é o recibo
+        if cd_resp == "201" and not recibo_final and not obs_erro:
+            recibo_final = protocolo_envio
+        elif not recibo_final and not obs_erro:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = _obs_upd(f"AGUARDANDO:{protocolo_envio}")
+    elif obs_erro:
+        upd["observacao_erro"] = _obs_upd(obs_erro)
+    else:
+        upd["observacao_erro"] = _params_raw
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).execute()
+
+    if recibo_final and not obs_erro and not aguardando:
+        return jsonify({"ok": True, "recibo": recibo_final,
+                        "msg": f"S-1020 enviado com sucesso. Recibo: {recibo_final}"})
+    if aguardando:
+        return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
+                        "protocolo": protocolo_envio})
+    return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
+
+
+# =========================================================
+# eSocial S-1020 — API: apagar registro local
+# =========================================================
+@app.route("/api/esocial_s1020_deletar", methods=["POST"])
+def api_esocial_s1020_deletar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa = _get_id_empresa()
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial").select("recibo")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1020")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        if (r_es.data[0].get("recibo") or "").strip():
+            return jsonify({"ok": False,
+                            "msg": "Registro já enviado ao eSocial. Não é possível apagar localmente."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao verificar: {e}"})
+
+    try:
+        supabase.table("tab_esocial")\
+            .delete()\
+            .eq("id_esocial", int(id_reg))\
+            .eq("id_empresa", id_empresa)\
+            .eq("layout", "1020")\
+            .execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao apagar: {e}"})
+
+    return jsonify({"ok": True, "msg": "Registro apagado."})
 
 # =========================================================
 # eSocial S-2200 — TELA DE LISTAGEM
@@ -15264,7 +15986,8 @@ def api_esocial_s2200_enviar():
             dh_proc = ev0.get("dh", "") or dh_proc
             if ev0.get("cdResp", "") not in ("", "201"):
                 ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
         elif not recibo_final:
             obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
         break
@@ -16744,6 +17467,8 @@ def esocial_fila():
         s = str(v or "").strip()
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
 
+    import json as _json_fila
+
     for r in rows:
         lay  = str(r.get("layout") or "")
         info = _LAY.get(lay, (f"S-{lay}", "", "#", False))
@@ -16753,6 +17478,20 @@ def esocial_fila():
         r["_lay_func"]    = info[3]
         r["_nome"]        = nomes.get(r.get("matricula"), "—") if r.get("matricula") else "—"
         r["_datacad_fmt"] = _d8_fila(r.get("data_cad"))
+        r["_verba_cod"]   = ""
+        r["_verba_dsc"]   = ""
+        if lay == "1010":
+            obs_f = (r.get("observacao_erro") or "").strip()
+            p_raw = obs_f.split("|")[0] if "|" in obs_f else obs_f
+            if p_raw.startswith("PARAMS:"):
+                try:
+                    pj = _json_fila.loads(p_raw[7:])
+                    cod = pj.get("cod_rubr")
+                    if cod is not None:
+                        r["_verba_cod"] = str(int(cod)).zfill(4)
+                        r["_verba_dsc"] = pj.get("dsc_rubr", "")
+                except Exception:
+                    pass
 
         _hg = str(r.get("hora_grava") or "").strip()
         _dg = str(r.get("data_grava") or "").strip()
@@ -17074,10 +17813,18 @@ def api_esocial_reconsultar_generico():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
-    if not obs.startswith("AGUARDANDO:"):
+    _params_raw = ""
+    protocolo_envio = ""
+    if obs.startswith("AGUARDANDO:"):
+        protocolo_envio = obs[len("AGUARDANDO:"):]
+    elif "|AGUARDANDO:" in obs:
+        for part in obs.split("|"):
+            if part.startswith("PARAMS:"):
+                _params_raw = part
+            elif part.startswith("AGUARDANDO:"):
+                protocolo_envio = part[len("AGUARDANDO:"):]
+    if not protocolo_envio:
         return jsonify({"ok": False, "msg": "Registro não está aguardando."})
-
-    protocolo_envio = obs[len("AGUARDANDO:"):]
 
     try:
         r_emp = (supabase.table("tab_empresa").select("*")
@@ -17121,19 +17868,24 @@ def api_esocial_reconsultar_generico():
             recibo_final = ev0.get("nrRec", "")
             if ev0.get("cdResp", "") not in ("", "201"):
                 ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
-        elif not recibo_final:
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
+        if cd_resp == "201" and not recibo_final and not obs_erro:
+            recibo_final = protocolo_envio
+        elif not recibo_final and not obs_erro:
             obs_erro = f"[{cd_resp}] {resultado.get('descResposta','')}"
         break
 
     aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
     upd = {"recibo": recibo_final}
     if aguardando:
-        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+        _ag = f"AGUARDANDO:{protocolo_envio}"
+        upd["observacao_erro"] = f"{_params_raw}|{_ag}" if _params_raw else _ag
     elif obs_erro:
-        upd["observacao_erro"] = obs_erro[:295]
+        upd["observacao_erro"] = (f"{_params_raw}|{obs_erro[:200]}" if _params_raw
+                                  else obs_erro[:295])
     else:
-        upd["observacao_erro"] = ""
+        upd["observacao_erro"] = _params_raw  # sucesso: preserva PARAMS, remove AGUARDANDO
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
@@ -17729,7 +18481,8 @@ def api_esocial_s1200_enviar():
             dh_proc = ev0.get("dh", "") or dh_proc
             if ev0.get("cdResp", "") not in ("", "201"):
                 ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
         elif not recibo_final:
             obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
         break
@@ -19693,7 +20446,8 @@ def api_esocial_s3000_enviar():
             dh_proc = ev0.get("dh", "") or dh_proc
             if ev0.get("cdResp", "") not in ("", "201"):
                 ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
         elif not recibo_final:
             obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
         break
@@ -24004,6 +24758,848 @@ def resumo_folha_pdf():
     resp = make_response(buf.read())
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
+    return resp
+
+
+# =========================================================
+# CÁLCULO DE FÉRIAS — TELA DE LISTAGEM
+# =========================================================
+@app.route("/calc_ferias")
+def calc_ferias():
+    if not session.get("logado"):
+        return redirect("/")
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    funcionarios = []
+    erro_msg     = None
+
+    if not anomes or len(anomes) != 6:
+        erro_msg = "Nenhuma Folha Ativa definida. Selecione um mês/ano antes de continuar."
+    else:
+        try:
+            r_ev = (
+                supabase.table("tab_eventos")
+                .select("matricula, data1i, data1f, ref1, data2i, data2f")
+                .eq("id_cliente", id_cliente)
+                .eq("id_empresa", id_empresa)
+                .eq("op1", 3)
+                .gte("data1i", anomes + "01")
+                .lte("data1i", anomes + "31")
+                .order("matricula")
+                .execute()
+            )
+            eventos = r_ev.data or []
+
+            if eventos:
+                mats = list({e["matricula"] for e in eventos})
+                r_cad = (
+                    supabase.table("tab_cad")
+                    .select("matricula, nome, nomer")
+                    .eq("id_cliente", id_cliente)
+                    .eq("id_empresa", id_empresa)
+                    .in_("matricula", mats)
+                    .execute()
+                )
+                nomes = {
+                    c["matricula"]: (c.get("nomer") or c.get("nome") or "").strip()
+                    for c in (r_cad.data or [])
+                }
+
+                def fmt8(s):
+                    s = str(s or "")
+                    if len(s) == 8:
+                        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}"
+                    return "—"
+
+                # Busca último cálculo de férias por funcionário (tab_log)
+                calc_map = {}
+                try:
+                    r_log = (supabase.table("tab_log")
+                             .select("matricula, data_hora_grava")
+                             .eq("id_cliente", id_cliente)
+                             .eq("id_empresa", id_empresa)
+                             .eq("menu", "CALC_FER")
+                             .eq("ano_mes", anomes)
+                             .in_("matricula", mats)
+                             .order("data_hora_grava", desc=True)
+                             .execute())
+                    for lg in (r_log.data or []):
+                        m = lg.get("matricula")
+                        if m and m not in calc_map:
+                            calc_map[m] = str(lg.get("data_hora_grava") or "")
+                except Exception:
+                    pass
+
+                def fmt_dhg(s):
+                    # "YYYYMMDD HHMM" → "DD/MM/YYYY HH:MM"
+                    s = str(s or "").strip()
+                    if len(s) >= 13 and s[8] == " ":
+                        return f"{s[6:8]}/{s[4:6]}/{s[0:4]} {s[9:11]}:{s[11:13]}"
+                    return ""
+
+                for ev in eventos:
+                    mat  = ev["matricula"]
+                    dias = int(ev.get("ref1") or 0)
+                    if dias == 0 and ev.get("data1i") and ev.get("data1f"):
+                        d1 = ev["data1i"]; d2 = ev["data1f"]
+                        try:
+                            from datetime import date as _d
+                            di = _d(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
+                            df = _d(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
+                            dias = (df - di).days + 1
+                        except Exception:
+                            pass
+                    funcionarios.append({
+                        "matricula":   mat,
+                        "mat_fmt":     str(mat).zfill(6),
+                        "nome":        nomes.get(mat, "—"),
+                        "data1i_fmt":  fmt8(ev.get("data1i")),
+                        "data1f_fmt":  fmt8(ev.get("data1f")),
+                        "data2i_fmt":  fmt8(ev.get("data2i")),
+                        "data2f_fmt":  fmt8(ev.get("data2f")),
+                        "dias":        dias,
+                        "data1i_raw":  str(ev.get("data1i") or ""),
+                        "calc_dhg":    fmt_dhg(calc_map.get(mat, "")),
+                    })
+        except Exception as e:
+            erro_msg = f"Erro ao consultar férias: {e}"
+
+    anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""
+
+    return render_template(
+        "F10_Calc_Ferias.html",
+        empresa      = session.get("empresa_info", ""),
+        nome         = session.get("nome", ""),
+        versao       = ler_versao(),
+        funcionarios = funcionarios,
+        erro_msg     = erro_msg,
+        anomes       = anomes,
+        anomes_fmt   = anomes_fmt,
+    )
+
+
+# =========================================================
+# CÁLCULO DE FÉRIAS — API
+# =========================================================
+@app.route("/api/calc_ferias_calcular", methods=["POST"])
+def api_calc_ferias_calcular():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    sit = str(session.get("anomes_situacao") or "")
+    if sit in ("C", "F"):
+        return jsonify({"ok": False, "msg": "Folha está calculada/fechada — reabra para calcular férias."})
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    if not anomes or len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa não definida."})
+
+    tabela = _get_tabela_legais(anomes)
+    if not tabela:
+        return jsonify({"ok": False, "msg": "Tabela legal (INSS/IRRF) não encontrada para este período."})
+
+    data     = request.get_json(force=True) or {}
+    mats_req = [int(m) for m in data.get("matriculas", []) if str(m).strip().isdigit() or isinstance(m, int)]
+
+    try:
+        q = (
+            supabase.table("tab_eventos")
+            .select("matricula, data1i, data1f, ref1, ref2")
+            .eq("id_cliente", id_cliente)
+            .eq("id_empresa", id_empresa)
+            .eq("op1", 3)
+            .gte("data1i", anomes + "01")
+            .lte("data1i", anomes + "31")
+            .order("matricula")
+        )
+        if mats_req:
+            q = q.in_("matricula", mats_req)
+        eventos = q.execute().data or []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar férias: {e}"})
+
+    if not eventos:
+        return jsonify({"ok": False, "msg": "Nenhum funcionário com férias iniciando neste mês."})
+
+    mats = list({ev["matricula"] for ev in eventos})
+
+    try:
+        r_cad = (
+            supabase.table("tab_cad")
+            .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes")
+            .eq("id_cliente", id_cliente)
+            .eq("id_empresa", id_empresa)
+            .in_("matricula", mats)
+            .execute()
+        )
+        cad_map = {c["matricula"]: c for c in (r_cad.data or [])}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"})
+
+    dep_count    = _get_dep_irrf_count(id_empresa)
+    dep_irrf_ded = int(tabela.get("irrf_dep_dedu") or 0)
+
+    # ── Verbas de férias no tab_rubrica ────────────────────────────
+    try:
+        r_rub = (supabase.table("tab_rubrica")
+                 .select("cod_rubr, dsc_rubr, tp_rubr, inc_ferias, tpf_inc_cp, tpf_inc_irrf")
+                 .in_("id_cliente", [0, id_cliente])
+                 .eq("situacao", "A")
+                 .order("cod_rubr")
+                 .execute())
+        rubrics_fc = r_rub.data or []
+    except Exception:
+        rubrics_fc = []
+
+    # Proventos de férias (excl. abono 45/46): 1.º = sal férias, 2.º = 1/3 const.
+    prov_ferias    = [r for r in rubrics_fc
+                      if str(r.get("tp_rubr") or "") == "1"
+                      and r.get("inc_ferias")
+                      and int(r.get("cod_rubr") or 0) not in (45, 46)]
+    cod_sal_ferias = int(prov_ferias[0]["cod_rubr"]) if prov_ferias else None
+    cod_terco_fc   = int(prov_ferias[1]["cod_rubr"]) if len(prov_ferias) > 1 else None
+    cod_inss_fc    = next((int(r.get("cod_rubr") or 0) for r in rubrics_fc
+                           if str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_cp")), None)
+    cod_irrf_fc    = next((int(r.get("cod_rubr") or 0) for r in rubrics_fc
+                           if str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_irrf")), None)
+
+    anomes_tipo    = str(session.get("anomes_tipo") or "N")
+    folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+    folha_int      = int(anomes)
+
+    def _fmt8(s):
+        s = str(s or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+    resultados = []
+    for ev in eventos:
+        mat = ev["matricula"]
+        cad = cad_map.get(mat, {})
+
+        vrsalfx   = int(cad.get("vrsalfx")   or 0)
+        qtdhrsmes = int(cad.get("qtdhrsmes")  or 220)
+        und       = (cad.get("undsalfixo") or "M").upper()
+        nome      = (cad.get("nomer") or cad.get("nome") or "").strip()
+
+        sal_mes    = vrsalfx * qtdhrsmes if und == "H" else vrsalfx
+        dias_abono = int(ev.get("ref2") or 0)
+
+        dias = int(ev.get("ref1") or 0)
+        if dias == 0 and ev.get("data1i") and ev.get("data1f"):
+            d1, d2 = str(ev["data1i"]), str(ev["data1f"])
+            try:
+                di = date(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
+                df = date(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
+                dias = (df - di).days + 1
+            except Exception:
+                dias = 30
+
+        sal_ferias  = (sal_mes * dias) // 30
+        terco_const = sal_ferias // 3
+        abono_val   = (sal_mes * dias_abono) // 30 if dias_abono else 0
+        terco_abono = abono_val // 3 if abono_val else 0
+
+        # INSS e IRRF incidem apenas sobre férias + 1/3 (abono é isento)
+        base_calc   = sal_ferias + terco_const
+        inss_val, _, _ = _calc_inss_progressivo(base_calc, tabela)
+        fgts_val       = (base_calc * 8) // 100
+
+        ndep           = dep_count.get(mat, 0)
+        dep_total      = ndep * dep_irrf_ded
+        base_irrf      = max(0, base_calc - inss_val - dep_total)
+        irrf_val, _    = _calc_irrf(base_irrf, tabela)
+
+        liquido = base_calc - inss_val - irrf_val + abono_val + terco_abono
+
+        # ── Apaga calc anterior para este funcionário ────────────
+        try:
+            (supabase.table("tab_mov")
+             .delete()
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("matricula",  mat)
+             .eq("folha",      folha_int)
+             .eq("folha_tipo", folha_tipo_mov)
+             .eq("origem",     "F")
+             .execute())
+        except Exception:
+            pass
+        try:
+            (supabase.table("tab_total")
+             .delete()
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("matricula",  mat)
+             .eq("folha",      folha_int)
+             .eq("folha_tipo", "F")
+             .execute())
+        except Exception:
+            pass
+
+        # ── Monta e insere registros em tab_mov ──────────────────
+        base_mov = {
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "situacao":   "A",
+            "matricula":  mat,
+            "folha":      folha_int,
+            "folha_tipo": folha_tipo_mov,
+            "lote":       0,
+            "origem":     "F",
+            "controle":   0,
+            "os":         0,
+        }
+        recs_mov = []
+
+        if cod_sal_ferias and sal_ferias:
+            recs_mov.append({**base_mov, "cod_verba": cod_sal_ferias,
+                             "qtd": dias, "valor": sal_ferias})
+        if cod_terco_fc and terco_const:
+            recs_mov.append({**base_mov, "cod_verba": cod_terco_fc,
+                             "qtd": 0, "valor": terco_const})
+        elif not cod_terco_fc and cod_sal_ferias and terco_const:
+            # sem verba separada p/ 1/3: soma no mesmo registro
+            for r in recs_mov:
+                if r["cod_verba"] == cod_sal_ferias:
+                    r["valor"] += terco_const
+                    break
+        if dias_abono and abono_val:
+            recs_mov.append({**base_mov, "cod_verba": 45,
+                             "qtd": dias_abono, "valor": abono_val})
+        if dias_abono and terco_abono:
+            recs_mov.append({**base_mov, "cod_verba": 46,
+                             "qtd": 0, "valor": terco_abono})
+        if cod_inss_fc and inss_val:
+            recs_mov.append({**base_mov, "cod_verba": cod_inss_fc,
+                             "qtd": 0, "valor": inss_val})
+        if cod_irrf_fc and irrf_val:
+            recs_mov.append({**base_mov, "cod_verba": cod_irrf_fc,
+                             "qtd": 0, "valor": irrf_val})
+
+        if recs_mov:
+            try:
+                supabase.table("tab_mov").insert(recs_mov).execute()
+            except Exception:
+                pass
+
+        # ── Insere totais em tab_total (folha_tipo='F') ──────────
+        total_prov = sal_ferias + terco_const + abono_val + terco_abono
+        total_desc = inss_val + irrf_val
+        try:
+            rec_tot = {
+                "id_cliente":                id_cliente,
+                "id_empresa":                id_empresa,
+                "matricula":                 mat,
+                "folha":                     folha_int,
+                "folha_tipo":                "F",
+                "valor_base_inss_semlimite": base_calc,
+                "valor_base_inss_comlimite": base_calc,
+                "valor_inss_retido":         inss_val,
+                "valor_base_fgts":           base_calc,
+                "valor_fgts":                fgts_val,
+                "valor_irrf_basetotal":      base_calc,
+                "valor_irrf_basetabela":     base_irrf,
+                "valor_irrf_dependentes":    dep_total,
+                "qtd_irrf_dependentes":      ndep,
+                "valor_salario":             sal_mes,
+                "valor_total_proventos":     total_prov,
+                "valor_total_descontos":     total_desc,
+                "valor_liquido":             liquido,
+                "os":                        0,
+                "controle":                  0,
+            }
+            try:
+                supabase.table("tab_total").insert(rec_tot).execute()
+            except Exception:
+                rec_sem_sit = {k: v for k, v in rec_tot.items() if k != "situacao"}
+                supabase.table("tab_total").insert(rec_sem_sit).execute()
+        except Exception:
+            pass
+
+        gravar_log("CALC_FER",
+                   f"Férias calculadas: {dias}d sal={_fmt_brl(sal_ferias)} 1/3={_fmt_brl(terco_const)} "
+                   f"INSS={_fmt_brl(inss_val)} IRRF={_fmt_brl(irrf_val)} Liq={_fmt_brl(liquido)}",
+                   matricula=mat)
+
+        resultados.append({
+            "matricula":      mat,
+            "mat_fmt":        str(mat).zfill(6),
+            "nome":           nome,
+            "data1i_fmt":     _fmt8(ev.get("data1i")),
+            "data1f_fmt":     _fmt8(ev.get("data1f")),
+            "dias":           dias,
+            "dias_abono":     dias_abono,
+            "sal_mes_fmt":    _fmt_brl(sal_mes),
+            "sal_ferias_fmt": _fmt_brl(sal_ferias),
+            "terco_fmt":      _fmt_brl(terco_const),
+            "abono_fmt":      _fmt_brl(abono_val) if abono_val else "—",
+            "terco_abono_fmt":_fmt_brl(terco_abono) if terco_abono else "—",
+            "base_calc_fmt":  _fmt_brl(base_calc),
+            "inss_fmt":       _fmt_brl(inss_val),
+            "fgts_fmt":       _fmt_brl(fgts_val),
+            "ndep":           ndep,
+            "dep_fmt":        _fmt_brl(dep_total) if dep_total else "—",
+            "base_irrf_fmt":  _fmt_brl(base_irrf),
+            "irrf_fmt":       _fmt_brl(irrf_val),
+            "liquido_fmt":    _fmt_brl(liquido),
+        })
+
+    return jsonify({"ok": True, "resultados": resultados})
+
+
+# =========================================================
+# RECIBO DE FÉRIAS — TELA DE SELEÇÃO
+# =========================================================
+@app.route("/recibo_ferias")
+def recibo_ferias():
+    if not session.get("logado"):
+        return redirect("/")
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    funcionarios = []
+    erro_msg     = None
+
+    if not anomes or len(anomes) != 6:
+        erro_msg = "Nenhuma Folha Ativa definida. Selecione um mês/ano antes de continuar."
+    else:
+        try:
+            r_ev = (
+                supabase.table("tab_eventos")
+                .select("matricula, data1i, data1f, ref1, data2i, data2f")
+                .eq("id_cliente", id_cliente)
+                .eq("id_empresa", id_empresa)
+                .eq("op1", 3)
+                .gte("data1i", anomes + "01")
+                .lte("data1i", anomes + "31")
+                .order("matricula")
+                .execute()
+            )
+            eventos = r_ev.data or []
+            if eventos:
+                mats  = list({e["matricula"] for e in eventos})
+                r_cad = (
+                    supabase.table("tab_cad")
+                    .select("matricula, nome, nomer")
+                    .eq("id_cliente", id_cliente)
+                    .eq("id_empresa", id_empresa)
+                    .in_("matricula", mats)
+                    .execute()
+                )
+                nomes = {c["matricula"]: (c.get("nomer") or c.get("nome") or "").strip()
+                         for c in (r_cad.data or [])}
+
+                def _f8(s):
+                    s = str(s or "")
+                    return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+                for ev in eventos:
+                    mat  = ev["matricula"]
+                    dias = int(ev.get("ref1") or 0)
+                    if not dias and ev.get("data1i") and ev.get("data1f"):
+                        d1, d2 = str(ev["data1i"]), str(ev["data1f"])
+                        try:
+                            di = date(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
+                            df = date(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
+                            dias = (df - di).days + 1
+                        except Exception:
+                            pass
+                    funcionarios.append({
+                        "matricula":  mat,
+                        "mat_fmt":    str(mat).zfill(6),
+                        "nome":       nomes.get(mat, "—"),
+                        "data1i_fmt": _f8(ev.get("data1i")),
+                        "data1f_fmt": _f8(ev.get("data1f")),
+                        "data2i_fmt": _f8(ev.get("data2i")),
+                        "data2f_fmt": _f8(ev.get("data2f")),
+                        "dias":       dias,
+                    })
+        except Exception as e:
+            erro_msg = f"Erro ao consultar férias: {e}"
+
+    anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""
+    return render_template(
+        "F10_Recibo_Ferias.html",
+        empresa      = session.get("empresa_info", ""),
+        nome         = session.get("nome", ""),
+        versao       = ler_versao(),
+        funcionarios = funcionarios,
+        erro_msg     = erro_msg,
+        anomes       = anomes,
+        anomes_fmt   = anomes_fmt,
+    )
+
+
+# =========================================================
+# RECIBO DE FÉRIAS — PDF
+# =========================================================
+@app.route("/api/recibo_ferias_pdf", methods=["POST"])
+def api_recibo_ferias_pdf():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+
+    data       = request.get_json(force=True) or {}
+    mats_req   = [int(m) for m in data.get("matriculas", [])
+                  if str(m).strip().lstrip("-").isdigit()]
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    if not anomes or len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa não definida."}), 400
+    if not mats_req:
+        return jsonify({"ok": False, "msg": "Nenhuma matrícula selecionada."}), 400
+
+    tabela = _get_tabela_legais(anomes)
+    if not tabela:
+        return jsonify({"ok": False, "msg": "Tabela legal não encontrada para o período."}), 400
+
+    # ── dados empresa ──────────────────────────────────────────────
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("razaosocial, nome_fantasia, cnpj")
+                 .eq("id_cliente", id_cliente)
+                 .eq("id_empresa", id_empresa)
+                 .limit(1).execute())
+        emp = r_emp.data[0] if r_emp.data else {}
+    except Exception:
+        emp = {}
+    empresa_nome = (emp.get("razaosocial") or emp.get("nome_fantasia") or
+                    session.get("empresa_info", "Empresa")).strip()
+    empresa_cnpj = _fmt_cnpj(str(emp.get("cnpj") or ""))
+
+    # ── eventos de férias ──────────────────────────────────────────
+    try:
+        r_ev = (supabase.table("tab_eventos")
+                .select("matricula, data1i, data1f, ref1, ref2, data2i, data2f")
+                .eq("id_cliente", id_cliente)
+                .eq("id_empresa", id_empresa)
+                .eq("op1", 3)
+                .gte("data1i", anomes + "01")
+                .lte("data1i", anomes + "31")
+                .in_("matricula", mats_req)
+                .order("matricula")
+                .execute())
+        eventos = r_ev.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar férias: {e}"}), 500
+
+    if not eventos:
+        return jsonify({"ok": False, "msg": "Nenhum evento de férias encontrado."}), 404
+
+    mats_ev = list({ev["matricula"] for ev in eventos})
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, cpf, dtadm, cbofuncao, undsalfixo, vrsalfx, qtdhrsmes")
+                 .eq("id_cliente", id_cliente)
+                 .eq("id_empresa", id_empresa)
+                 .in_("matricula", mats_ev)
+                 .execute())
+        cad_map = {c["matricula"]: c for c in (r_cad.data or [])}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"}), 500
+
+    dep_count    = _get_dep_irrf_count(id_empresa)
+    dep_irrf_ded = int(tabela.get("irrf_dep_dedu") or 0)
+
+    def _f8(s):
+        s = str(s or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
+
+    def _fmt_cpf(s):
+        s = somente_numeros(str(s or ""))
+        if len(s) == 11:
+            return f"{s[:3]}.{s[3:6]}.{s[6:9]}-{s[9:]}"
+        return s or "—"
+
+    def _brl(c):
+        v = abs(c) / 100
+        return f"R$ {v:,.2f}".replace(",","X").replace(".",",").replace("X",".")
+
+    # ── busca verbas para o recibo ─────────────────────────────────
+    def _busca_verba(rubrics, predicado):
+        """Retorna (cod_fmt, dsc) da primeira rubrica que satisfaz o predicado."""
+        for r in rubrics:
+            if predicado(r):
+                cod = int(r.get("cod_rubr") or 0)
+                dsc = (r.get("dsc_rubr") or "").strip()
+                return f"{cod:04d}", dsc
+        return None, None
+
+    try:
+        r_rub = (supabase.table("tab_rubrica")
+                 .select("cod_rubr, dsc_rubr, tp_rubr, inc_ferias, tpf_inc_cp, tpf_inc_irrf")
+                 .in_("id_cliente", [0, id_cliente])
+                 .eq("situacao", "A")
+                 .order("cod_rubr")
+                 .execute())
+        rubrics = r_rub.data or []
+    except Exception:
+        rubrics = []
+
+    # Verba férias: provento com inc_ferias preenchido
+    v_ferias_cod, v_ferias_dsc = _busca_verba(
+        rubrics,
+        lambda r: str(r.get("tp_rubr") or "") == "1" and r.get("inc_ferias")
+    )
+    # Verba INSS: desconto com incidência CP em férias
+    v_inss_cod, v_inss_dsc = _busca_verba(
+        rubrics,
+        lambda r: str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_cp")
+    )
+    # Verba IRRF: desconto com incidência IRRF em férias
+    v_irrf_cod, v_irrf_dsc = _busca_verba(
+        rubrics,
+        lambda r: str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_irrf")
+    )
+    # Verba Abono Pecuniário (0045) e 1/3 s/ Abono (0046) — por código fixo
+    v_abono_cod, v_abono_dsc = _busca_verba(
+        rubrics, lambda r: int(r.get("cod_rubr") or 0) == 45
+    )
+    v_abono3_cod, v_abono3_dsc = _busca_verba(
+        rubrics, lambda r: int(r.get("cod_rubr") or 0) == 46
+    )
+
+    # ── monta PDF ─────────────────────────────────────────────────
+    buf = io.BytesIO()
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
+
+    W, H = A4
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=1.8*cm, rightMargin=1.8*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    PRETO  = colors.black
+    CINZA  = colors.HexColor("#555555")
+    BORDA  = colors.HexColor("#aaaaaa")
+
+    st_titulo   = ParagraphStyle("ti", fontName="Helvetica-Bold", fontSize=13,
+                                 alignment=TA_CENTER, textColor=PRETO, spaceAfter=14)
+    st_empresa  = ParagraphStyle("em", fontName="Helvetica-Bold", fontSize=10,
+                                 alignment=TA_CENTER, textColor=PRETO, spaceAfter=1)
+    st_cnpj     = ParagraphStyle("cj", fontName="Helvetica", fontSize=8,
+                                 alignment=TA_CENTER, textColor=CINZA, spaceAfter=6)
+    st_label    = ParagraphStyle("lb", fontName="Helvetica", fontSize=7,
+                                 textColor=CINZA)
+    st_valor    = ParagraphStyle("vl", fontName="Helvetica-Bold", fontSize=9,
+                                 textColor=PRETO)
+    st_rodape   = ParagraphStyle("rd", fontName="Helvetica", fontSize=7,
+                                 alignment=TA_CENTER, textColor=CINZA)
+    st_ass      = ParagraphStyle("as", fontName="Helvetica", fontSize=8,
+                                 alignment=TA_CENTER, textColor=PRETO)
+
+    LW = W - 3.6*cm   # largura útil
+
+    story = []
+
+    for ev in eventos:
+        mat  = ev["matricula"]
+        cad  = cad_map.get(mat, {})
+        nome = (cad.get("nomer") or cad.get("nome") or "—").strip()
+        cpf  = _fmt_cpf(cad.get("cpf"))
+        dtadm = _f8(cad.get("dtadm"))
+        funcao = (cad.get("cbofuncao") or "—").strip()
+
+        vrsalfx   = int(cad.get("vrsalfx")   or 0)
+        qtdhrsmes = int(cad.get("qtdhrsmes")  or 220)
+        und       = (cad.get("undsalfixo") or "M").upper()
+        sal_mes   = vrsalfx * qtdhrsmes if und == "H" else vrsalfx
+
+        dias = int(ev.get("ref1") or 0)
+        if not dias and ev.get("data1i") and ev.get("data1f"):
+            d1, d2 = str(ev["data1i"]), str(ev["data1f"])
+            try:
+                di = date(int(d1[:4]), int(d1[4:6]), int(d1[6:]))
+                df = date(int(d2[:4]), int(d2[4:6]), int(d2[6:]))
+                dias = (df - di).days + 1
+            except Exception:
+                dias = 30
+
+        dias_abono  = int(ev.get("ref2") or 0)
+
+        sal_ferias  = (sal_mes * dias) // 30
+        terco_const = sal_ferias // 3
+        abono_val   = (sal_mes * dias_abono) // 30 if dias_abono else 0
+        terco_abono = abono_val // 3 if abono_val else 0
+
+        # INSS e IRRF incidem apenas sobre férias + 1/3 (abono é isento)
+        base_calc   = sal_ferias + terco_const
+        inss_val, _, _ = _calc_inss_progressivo(base_calc, tabela)
+        fgts_val       = (base_calc * 8) // 100   # FGTS: só sobre férias+1/3
+        ndep           = dep_count.get(mat, 0)
+        dep_total      = ndep * dep_irrf_ded
+        base_irrf      = max(0, base_calc - inss_val - dep_total)
+        irrf_val, _    = _calc_irrf(base_irrf, tabela)
+        liquido        = base_calc - inss_val - irrf_val + abono_val + terco_abono
+
+        data1i_fmt = _f8(ev.get("data1i"))
+        data1f_fmt = _f8(ev.get("data1f"))
+        data2i_fmt = _f8(ev.get("data2i"))
+        data2f_fmt = _f8(ev.get("data2f"))
+        anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}"
+
+        # ── CABEÇALHO DO RECIBO ────────────────────────────────────
+        story.append(Paragraph("RECIBO DE FÉRIAS", st_titulo))
+        story.append(Paragraph(empresa_nome, st_empresa))
+        if empresa_cnpj:
+            story.append(Paragraph(f"CNPJ: {empresa_cnpj}", st_cnpj))
+        story.append(HRFlowable(width=LW, thickness=1, color=PRETO, spaceAfter=8))
+
+        # ── DADOS DO FUNCIONÁRIO ───────────────────────────────────
+        st_lbl2 = ParagraphStyle("lb2", fontName="Helvetica-Bold", fontSize=8,
+                                 textColor=PRETO)
+        st_val2 = ParagraphStyle("vl2", fontName="Helvetica", fontSize=9,
+                                 textColor=PRETO)
+        CW_L = 2.1*cm   # rótulo mais estreito → label e valor mais próximos
+        CW_V = LW/2 - CW_L
+
+        dados_func = Table([
+            [Paragraph("Funcionário:", st_lbl2), Paragraph(f"<b>{nome}</b>",              st_val2),
+             Paragraph("Matrícula:",   st_lbl2), Paragraph(f"<b>{str(mat).zfill(6)}</b>", st_val2)],
+            [Paragraph("CPF:",         st_lbl2), Paragraph(cpf,               st_val2),
+             Paragraph("Admissão:",    st_lbl2), Paragraph(dtadm,             st_val2)],
+            [Paragraph("Função:",      st_lbl2), Paragraph(funcao,            st_val2),
+             Paragraph("Folha:",       st_lbl2), Paragraph(anomes_fmt,        st_val2)],
+        ], colWidths=[CW_L, CW_V, CW_L, CW_V])
+        dados_func.setStyle(TableStyle([
+            ("TOPPADDING",    (0,0),(-1,-1), 4),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ("LEFTPADDING",   (0,0),(-1,-1), 2),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 4),
+            ("LINEBELOW",     (0,-1),(-1,-1), 0.5, BORDA),
+            ("LINEBELOW",     (0,0), (-1,-2), 0.3, BORDA),
+        ]))
+        story.append(dados_func)
+        story.append(Spacer(1, 6))
+
+        # ── PERÍODO ───────────────────────────────────────────────
+        # Label + valor na mesma célula → sem gap entre eles
+        st_per = ParagraphStyle("pp", fontName="Helvetica", fontSize=9, textColor=PRETO)
+        aquis_txt = (f"{data2i_fmt}  a  {data2f_fmt}" if data2i_fmt != "—" else "—")
+        periodo_tbl = Table([
+            [Paragraph(f"<b>Período de Gozo:</b>  {data1i_fmt}  a  {data1f_fmt}  ({dias} dias)", st_per),
+             Paragraph(f"<b>Período Aquisitivo:</b>  {aquis_txt}", st_per)],
+        ], colWidths=[LW * 0.52, LW * 0.48])
+        periodo_tbl.setStyle(TableStyle([
+            ("TOPPADDING",    (0,0),(-1,-1), 5),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 5),
+            ("LEFTPADDING",   (0,0),(-1,-1), 4),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 4),
+            ("LINEBELOW",     (0,0),(-1,-1), 0.5, BORDA),
+            ("LINEABOVE",     (0,0),(-1,0),  0.5, BORDA),
+        ]))
+        story.append(periodo_tbl)
+        story.append(Spacer(1, 10))
+
+        # ── PROVENTOS / DESCONTOS ─────────────────────────────────
+        def lin(desc, val, bold=False):
+            fn = "Helvetica-Bold" if bold else "Helvetica"
+            return [
+                Paragraph(desc, ParagraphStyle("x", fontName=fn, fontSize=9, textColor=PRETO)),
+                Paragraph(val,  ParagraphStyle("y", fontName=fn, fontSize=9,
+                                               alignment=TA_RIGHT, textColor=PRETO)),
+            ]
+
+        def _verba_prefix(cod, dsc):
+            if cod and dsc:
+                return f"{cod}  {dsc}  —  "
+            elif cod:
+                return f"{cod}  —  "
+            return ""
+
+        total_bruto = sal_ferias + terco_const + abono_val + terco_abono
+        rows = [
+            lin(f"{_verba_prefix(v_ferias_cod, v_ferias_dsc)}Salário Férias  ({dias} dias)", _brl(sal_ferias)),
+            lin("1/3 Constitucional",             _brl(terco_const)),
+        ]
+        if dias_abono:
+            rows += [
+                lin(f"{_verba_prefix(v_abono_cod, v_abono_dsc)}Abono Pecuniário  ({dias_abono} dias)", _brl(abono_val)),
+                lin(f"{_verba_prefix(v_abono3_cod, v_abono3_dsc)}1/3 s/ Abono Pecuniário", _brl(terco_abono)),
+            ]
+        rows += [
+            lin("Total Bruto",                    _brl(total_bruto), bold=True),
+            lin(f"{_verba_prefix(v_inss_cod, v_inss_dsc)}( - ) INSS", f"({_brl(inss_val)})"),
+        ]
+        if ndep:
+            rows.append(lin(f"( - ) Dedução Dependentes  ({ndep}×)", f"({_brl(dep_total)})"))
+        rows += [
+            lin(f"{_verba_prefix(v_irrf_cod, v_irrf_dsc)}( - ) IRRF", f"({_brl(irrf_val)})" if irrf_val else "—"),
+            lin("Valor Líquido",                  _brl(liquido), bold=True),
+            lin("FGTS  (8% — depósito empresa, informativo)", _brl(fgts_val)),
+        ]
+
+        # índice dinâmico: "1/3 Constitucional" sempre na pos 1;
+        # "Total Bruto" = 2 (sem abono) ou 4 (com abono)
+        idx_bruto = 4 if dias_abono else 2
+        calc_tbl = Table(rows, colWidths=[LW - 3.5*cm, 3.5*cm])
+        ts = TableStyle([
+            ("TOPPADDING",    (0,0),(-1,-1), 4),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 4),
+            ("LEFTPADDING",   (0,0),(-1,-1), 8),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 8),
+            ("LINEBELOW",     (0,1),          (-1,1),          0.5, BORDA),  # após 1/3
+            ("LINEBELOW",     (0,idx_bruto),  (-1,idx_bruto),  1.0, PRETO),  # após bruto
+            ("LINEBELOW",     (0,-2),         (-1,-2),         1.0, PRETO),  # após líquido
+            ("LINEBELOW",     (0,-1),         (-1,-1),         0.5, BORDA),
+        ])
+        calc_tbl.setStyle(ts)
+        story.append(calc_tbl)
+        story.append(Spacer(1, 20))
+
+        # ── ASSINATURAS ───────────────────────────────────────────
+        agora_fmt = datetime.now().strftime("%d/%m/%Y")
+        ass_tbl = Table([
+            ["_" * 38, "", "_" * 38],
+            [Paragraph(nome, st_ass), "",
+             Paragraph(empresa_nome[:45], st_ass)],
+            [Paragraph("Funcionário", st_ass), "",
+             Paragraph("Empregador", st_ass)],
+        ], colWidths=[LW*0.45, LW*0.10, LW*0.45])
+        ass_tbl.setStyle(TableStyle([
+            ("ALIGN",         (0,0),(-1,-1), "CENTER"),
+            ("TOPPADDING",    (0,0),(-1,-1), 3),
+            ("BOTTOMPADDING", (0,0),(-1,-1), 2),
+            ("LEFTPADDING",   (0,0),(-1,-1), 0),
+            ("RIGHTPADDING",  (0,0),(-1,-1), 0),
+        ]))
+        story.append(ass_tbl)
+        story.append(Spacer(1, 10))
+        story.append(Paragraph(
+            f"Declaro ter recebido a importância líquida de <b>{_brl(liquido)}</b> "
+            f"referente às férias do período de {data1i_fmt} a {data1f_fmt}.   "
+            f"Data: {agora_fmt}",
+            ParagraphStyle("dc", fontName="Helvetica", fontSize=8,
+                           alignment=TA_CENTER, textColor=PRETO)))
+        story.append(HRFlowable(width=LW, thickness=0.5, color=BORDA, spaceBefore=12, spaceAfter=20))
+
+        # ── CANHOTO (2ª via) ─────────────────────────────────────
+        story.append(Paragraph("2ª VIA — EMPRESA", st_titulo))
+        story.append(Paragraph(f"{nome}  |  Mat. {str(mat).zfill(6)}  |  "
+                                f"Gozo: {data1i_fmt} a {data1f_fmt}  ({dias} dias)  |  "
+                                f"Líquido: {_brl(liquido)}", st_cnpj))
+        story.append(HRFlowable(width=LW, thickness=1.5, color=PRETO, spaceBefore=4, spaceAfter=20))
+
+    doc.build(story)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="Recibo_Ferias.pdf"'
     return resp
 
 

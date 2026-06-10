@@ -294,6 +294,9 @@ tr:hover td { background: #f8fafc; }
             <span style="font-weight:600;font-size:13px;margin-left:6px;">{{ '%06d' % (r.matricula or 0) }}</span>
             <span style="color:#e2e8f0;margin:0 3px;">·</span>
             <span style="font-weight:600;font-size:13px;">{{ r._nome }}</span>
+            {% elif r._verba_cod %}
+            <span style="font-family:var(--mono);font-weight:700;font-size:13px;margin-left:6px;color:#1e3d5c;">{{ r._verba_cod }}</span>
+            {% if r._verba_dsc %}<span style="font-size:12px;color:#475569;margin-left:5px;">{{ r._verba_dsc }}</span>{% endif %}
             {% elif r._periodo_fmt %}
             <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:#1e293b;margin-left:6px;">{{ r._periodo_fmt }}</span>
             {% endif %}

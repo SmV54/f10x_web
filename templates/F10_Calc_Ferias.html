@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Cálculo de Férias</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1000px; margin: 36px auto; padding: 0 24px 60px; }
+
+/* ── CABEÇALHO ── */
+.pg-header { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.pg-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.pg-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+/* ── CARD ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 20px;
+}
+.card-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 20px; background: #f8fafc; border-bottom: 1px solid var(--border);
+}
+.card-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+}
+.badge-count {
+    background: var(--accent); color: #fff;
+    font-size: 11px; font-weight: 700; padding: 2px 9px;
+    border-radius: 20px; font-family: var(--mono);
+}
+
+/* ── TABELA LISTAGEM ── */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+    padding: 8px 14px; text-align: left;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b;
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+}
+thead th.num { text-align: right; }
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #fafbfc; }
+tbody td { padding: 9px 14px; color: #334155; vertical-align: middle; }
+td.mat   { font-family: var(--mono); font-size: 12px; color: #64748b; }
+td.nome  { font-weight: 600; color: #1e293b; }
+td.data  { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+td.dias  { font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent); text-align: right; }
+td.aquis    { font-size: 11px; color: #64748b; font-family: var(--mono); }
+td.sit-calc { white-space: nowrap; }
+.badge-calc    { display: inline-flex; align-items: center; gap: 4px; font-size: 10px;
+                 font-weight: 600; font-family: var(--mono); padding: 2px 8px;
+                 border-radius: 20px; background: #f0fdf4; color: #166534;
+                 border: 1px solid #86efac; white-space: nowrap; }
+.badge-pendente { display: inline-flex; align-items: center; font-size: 10px;
+                  font-weight: 600; padding: 2px 8px; border-radius: 20px;
+                  background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+td.val   { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; }
+td.val-pos { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; color: #15803d; font-weight: 600; }
+td.val-neg { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; color: #dc2626; }
+td.val-liq { font-family: var(--mono); font-size: 13px; text-align: right; white-space: nowrap; color: #1d4ed8; font-weight: 700; }
+td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; color: #64748b; }
+
+/* ── CARD DE RESULTADO POR FUNCIONÁRIO ── */
+.res-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; margin-bottom: 14px; overflow: hidden;
+}
+.res-card-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 18px; background: #f0f7ff; border-bottom: 1px solid #bfdbfe;
+}
+.res-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.res-nome { font-size: 14px; font-weight: 600; color: #1e293b; }
+.res-dias { font-family: var(--mono); font-size: 11px; color: #2563eb; font-weight: 600;
+             background: #dbeafe; padding: 2px 8px; border-radius: 5px; }
+
+/* ── VAZIO / ERRO ── */
+.msg-vazio {
+    padding: 40px 24px; text-align: center;
+    font-size: 13px; color: #94a3b8; line-height: 1.6;
+}
+.msg-erro {
+    margin: 20px 0; padding: 14px 18px;
+    background: #fff1f2; border: 1px solid #fca5a5; border-radius: 10px;
+    font-size: 13px; color: #991b1b; font-weight: 500;
+}
+
+/* ── OVERLAY LOADING ── */
+.loading-overlay {
+    display: none; position: fixed; inset: 0; z-index: 9999;
+    background: rgba(11,31,58,0.72); backdrop-filter: blur(3px);
+    flex-direction: column; align-items: center; justify-content: center; gap: 20px;
+}
+.loading-overlay.ativo { display: flex; }
+.loading-spinner {
+    width: 48px; height: 48px; border-radius: 50%;
+    border: 5px solid rgba(255,255,255,0.15);
+    border-top-color: #2a7de1;
+    animation: spin 0.85s linear infinite;
+}
+.loading-msg { font-size: 15px; font-weight: 600; color: #e8edf4; font-family: var(--sans); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── RODAPÉ ── */
+.rodape {
+    display: flex; align-items: center; justify-content: flex-end;
+    padding-top: 8px; gap: 10px;
+}
+.btn-calcular {
+    background: var(--accent); border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-calcular:hover    { background: #1a5fb8; }
+.btn-calcular:disabled { background: #93c5fd; cursor: not-allowed; }
+</style>
+</head>
+
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-msg">Calculando férias…</div>
+</div>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Cálculo de Férias</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="pg-header">
+        <a class="btn-voltar" href="/menu">&#8592; Menu</a>
+        <div>
+            <div class="pg-titulo">🏖️ Cálculo de Férias</div>
+            <div class="pg-subtitulo">
+                {% if anomes_fmt %}
+                    Funcionários com férias iniciando em {{ anomes_fmt }}
+                {% else %}
+                    Selecione uma Folha Ativa para visualizar
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    {% if erro_msg %}
+        <div class="msg-erro">⚠️ {{ erro_msg }}</div>
+    {% else %}
+
+    <!-- ── LISTAGEM DE FUNCIONÁRIOS ── -->
+    <div class="card">
+        <div class="card-header">
+            <span class="card-titulo">Funcionários em Férias no Mês</span>
+            {% if funcionarios %}
+                <span class="badge-count">{{ funcionarios|length }}</span>
+            {% endif %}
+        </div>
+
+        {% if funcionarios %}
+        <div class="tbl-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width:36px;padding-left:16px;">
+                            <input type="checkbox" id="chkTodos" title="Selecionar todos"
+                                   onchange="toggleTodos(this.checked)" checked>
+                        </th>
+                        <th>Matrícula</th>
+                        <th>Nome</th>
+                        <th>Início Gozo</th>
+                        <th>Fim Gozo</th>
+                        <th class="num">Dias</th>
+                        <th>Período Aquisitivo</th>
+                        <th>Situação</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for f in funcionarios %}
+                    <tr>
+                        <td style="padding-left:16px;">
+                            <input type="checkbox" class="chk-func" value="{{ f.matricula }}" checked
+                                   onchange="atualizarSelecao()">
+                        </td>
+                        <td class="mat">{{ f.mat_fmt }}</td>
+                        <td class="nome">{{ f.nome }}</td>
+                        <td class="data">{{ f.data1i_fmt }}</td>
+                        <td class="data">{{ f.data1f_fmt }}</td>
+                        <td class="dias">{{ f.dias }}</td>
+                        <td class="aquis">
+                            {% if f.data2i_fmt != '—' and f.data2f_fmt != '—' %}
+                                {{ f.data2i_fmt }} → {{ f.data2f_fmt }}
+                            {% else %}—{% endif %}
+                        </td>
+                        <td class="sit-calc">
+                            {% if f.calc_dhg %}
+                                <span class="badge-calc" title="Calculado em {{ f.calc_dhg }}">✓ {{ f.calc_dhg }}</span>
+                            {% else %}
+                                <span class="badge-pendente">Pendente</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="msg-vazio">
+            Nenhum funcionário com férias iniciando em <strong>{{ anomes_fmt or '—' }}</strong>.<br>
+            Para lançar férias, acesse <strong>Eventuais → Lançar Férias</strong>.
+        </div>
+        {% endif %}
+    </div>
+
+    {% if funcionarios %}
+    <div class="rodape">
+        {% if folha_situacao in ('C', 'F') %}
+        <span style="font-size:12px;color:#9a3412;background:#fff7ed;border:1px solid #f97316;
+                     border-radius:7px;padding:6px 13px;font-weight:500;">
+            🔒 Folha {{ folha_ativa_situacao }} — reabra para calcular
+        </span>
+        {% endif %}
+        <span id="labelSelecao" style="font-size:12px;color:#64748b;"></span>
+        <button class="btn-calcular" id="btnCalcular"
+            {% if folha_situacao in ('C', 'F') %}disabled{% endif %}
+            onclick="calcularFerias()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+            </svg>
+            Calcular Férias
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- ── RESULTADOS (preenchido via JS) ── -->
+    <div id="secResultados" style="display:none; margin-top: 28px;">
+        <div class="card">
+            <div class="card-header">
+                <span class="card-titulo">Resultado do Cálculo</span>
+            </div>
+            <div class="tbl-wrap">
+                <table id="tblResultados">
+                    <thead>
+                        <tr>
+                            <th>Matrícula</th>
+                            <th>Nome</th>
+                            <th class="num">Dias</th>
+                            <th class="num">Sal. Férias</th>
+                            <th class="num">1/3 Const.</th>
+                            <th class="num">Bruto</th>
+                            <th class="num">INSS</th>
+                            <th class="num">IRRF</th>
+                            <th class="num">Líquido</th>
+                            <th class="num">FGTS*</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyResultados"></tbody>
+                </table>
+            </div>
+            <div style="padding:8px 16px;font-size:10px;color:#94a3b8;border-top:1px solid var(--border);background:#f8fafc;">
+                * FGTS informativo — depositado pela empresa, não descontado do líquido
+            </div>
+        </div>
+    </div>
+
+    {% endif %}
+
+</div>
+
+<script>
+function matriculasSelecionadas() {
+    return Array.from(document.querySelectorAll('.chk-func:checked')).map(el => parseInt(el.value));
+}
+
+function toggleTodos(checked) {
+    document.querySelectorAll('.chk-func').forEach(el => el.checked = checked);
+    atualizarSelecao();
+}
+
+function atualizarSelecao() {
+    const todas = document.querySelectorAll('.chk-func');
+    const marcadas = document.querySelectorAll('.chk-func:checked');
+    const chkTodos = document.getElementById('chkTodos');
+    const label = document.getElementById('labelSelecao');
+    const btn = document.getElementById('btnCalcular');
+
+    chkTodos.indeterminate = marcadas.length > 0 && marcadas.length < todas.length;
+    chkTodos.checked = marcadas.length === todas.length;
+
+    if (marcadas.length === 0) {
+        label.textContent = 'Nenhum selecionado';
+        label.style.color = '#ef4444';
+        if (btn) btn.disabled = true;
+    } else {
+        label.textContent = marcadas.length === todas.length
+            ? `Todos (${todas.length})`
+            : `${marcadas.length} de ${todas.length} selecionado${marcadas.length > 1 ? 's' : ''}`;
+        label.style.color = '#64748b';
+        {% if folha_situacao not in ('C', 'F') %}
+        if (btn) btn.disabled = false;
+        {% endif %}
+    }
+}
+
+async function calcularFerias() {
+    const mats = matriculasSelecionadas();
+    if (!mats.length) { alert('Selecione ao menos um funcionário.'); return; }
+
+    const btn = document.getElementById('btnCalcular');
+    const overlay = document.getElementById('loadingOverlay');
+    btn.disabled = true;
+    overlay.classList.add('ativo');
+
+    try {
+        const resp = await fetch('/api/calc_ferias_calcular', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matriculas: mats })
+        });
+        const d = await resp.json();
+        if (!d.ok) { alert('Erro: ' + (d.msg || 'Falha no cálculo.')); return; }
+        mostrarResultados(d.resultados);
+    } catch(e) {
+        alert('Erro de comunicação com o servidor.');
+    } finally {
+        btn.disabled = false;
+        overlay.classList.remove('ativo');
+        atualizarSelecao();
+    }
+}
+
+function mostrarResultados(lista) {
+    const tbody = document.getElementById('tbodyResultados');
+    tbody.innerHTML = lista.map(r => `
+        <tr>
+            <td class="mat">${r.mat_fmt}</td>
+            <td class="nome">${r.nome}</td>
+            <td class="dias">${r.dias}</td>
+            <td class="val">${r.sal_ferias_fmt}</td>
+            <td class="val">${r.terco_fmt}</td>
+            <td class="val-pos">${r.base_calc_fmt}</td>
+            <td class="val-neg">(${r.inss_fmt})</td>
+            <td class="val-neg">${r.irrf_fmt !== 'R$ 0,00' ? '(' + r.irrf_fmt + ')' : '—'}</td>
+            <td class="val-liq">${r.liquido_fmt}</td>
+            <td class="val-fgts">${r.fgts_fmt}</td>
+        </tr>
+    `).join('');
+    document.getElementById('secResultados').style.display = 'block';
+    document.getElementById('secResultados').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Inicializa label ao carregar
+document.addEventListener('DOMContentLoaded', atualizarSelecao);
+</script>
+
+</body>
+</html>

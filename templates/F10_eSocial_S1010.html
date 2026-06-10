@@ -70,7 +70,7 @@ td {
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #f8fafc; }
 .data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
-.per-cell  { font-family: var(--mono); font-size: 13px; font-weight: 600; color: #1e293b; }
+.per-cell  { font-family: var(--mono); font-size: 13px; font-weight: 600; color: #1e293b; white-space: nowrap; }
 
 .sit-badge {
     display: inline-block; padding: 3px 10px; border-radius: 20px;
@@ -101,6 +101,9 @@ tr:hover td { background: #f8fafc; }
 .btn-enviar { border-color: var(--green); color: #166534; background: #e8f5ee; }
 .btn-enviar:hover:not(:disabled) { background: var(--green); color: #fff; }
 .btn-enviar:disabled { opacity: .45; cursor: default; }
+.btn-reconsultar { border-color: #fed7aa; color: #92400e; background: #fff7ed; }
+.btn-reconsultar:hover:not(:disabled) { background: #f97316; color: #fff; border-color: #f97316; }
+.btn-reconsultar:disabled { opacity: .4; cursor: default; }
 .btn-excluir {
     display: inline-flex; align-items: center; gap: 5px;
     padding: 4px 11px; border-radius: 6px; font-size: 11px; font-weight: 600;
@@ -219,9 +222,37 @@ tr:hover td { background: #f8fafc; }
 .msg-envio { margin-top: 8px; padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 600; }
 .msg-ok   { background: #dcfce7; color: #166534; }
 .msg-erro { background: #fee2e2; color: #991b1b; }
+
+/* PROGRESSO INLINE POR LINHA */
+.prog-row { display: none; }
+.prog-cell { padding: 6px 14px 10px !important; }
+.prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
+.prog-bar { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
+
+/* MODAL RELATÓRIO */
+.rel-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rel-table th { background: #f1f5f9; padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #475569; border-bottom: 2px solid #e2e8f0; white-space: nowrap; }
+.rel-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.rel-table tr:last-child td { border-bottom: none; }
+.rel-row-ok   { background: #f0fdf4; }
+.rel-row-erro { background: #fff1f2; }
+.rel-rec-ok   { color: #166534; font-size: 11px; font-weight: 600; font-family: var(--mono); word-break: break-all; }
+.rel-rec-erro { color: #991b1b; font-size: 11px; word-break: break-word; }
+.rel-vazio    { text-align: center; padding: 24px; color: #94a3b8; font-size: 13px; }
+.btn-rel-fechar { padding: 7px 20px; border-radius: 8px; border: 1.5px solid var(--border); background: #fff; color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--sans); transition: .12s; }
+.btn-rel-fechar:hover { background: #f1f5f9; }
+.btn-rel-atualizar { padding: 7px 16px; border-radius: 8px; border: 1.5px solid var(--accent); background: #f0f7ff; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; font-family: var(--sans); transition: .12s; }
+.btn-rel-atualizar:hover { background: var(--accent); color: #fff; }
+@media print {
+    body > .topo { display: none !important; }
+    .conteudo    { display: none !important; }
+    #modalRelatorio { position: static !important; background: none !important; padding: 0 !important; display: block !important; }
+}
 </style>
 </head>
 <body>
+
 <div class="topo">
     <div>
         <div class="topo-empresa">{{ empresa_info }}</div>
@@ -260,7 +291,7 @@ tr:hover td { background: #f8fafc; }
                     <th>Cad.</th>
                     <th>Tipo</th>
                     <th>Período</th>
-                    <th style="text-align:center;">Rubricas</th>
+                    <th>Verba</th>
                     <th>Situação</th>
                     <th>Recibo / Info</th>
                     <th>Ações</th>
@@ -278,7 +309,10 @@ tr:hover td { background: #f8fafc; }
                         </span>
                     </td>
                     <td class="per-cell">{{ r._ini_valid or '—' }}{% if r._fim_valid %} → {{ r._fim_valid }}{% endif %}</td>
-                    <td class="data-cell" style="text-align:center;">{{ r._qtd_rubricas or '—' }}</td>
+                    <td>
+                        <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:#1e293b;">{{ r._cod_rubr }}</span>
+                        {% if r._dsc_rubr %}<span style="font-size:11px;color:#64748b;margin-left:5px;">{{ r._dsc_rubr }}</span>{% endif %}
+                    </td>
                     <td>
                         <span id="sit-{{ r.id_esocial }}" class="sit-badge {{ r._sit_class }}">
                             {{ r._sit_label }}
@@ -288,7 +322,7 @@ tr:hover td { background: #f8fafc; }
                         {% if r.get('recibo') %}
                             <div class="recibo-cell">{{ r.recibo }}</div>
                         {% elif r._sit == 'X' %}
-                            <div class="erro-cell">{{ (r.get('observacao_erro') or '')[:120] }}</div>
+                            <div class="erro-cell">{{ ((r.get('observacao_erro') or '').split('|')[-1] if '|' in (r.get('observacao_erro') or '') else (r.get('observacao_erro') or ''))[:120] }}</div>
                         {% elif r._sit == 'W' %}
                             <div class="data-cell" style="color:#9a3412;">Aguardando...</div>
                         {% else %}
@@ -301,7 +335,12 @@ tr:hover td { background: #f8fafc; }
                                     onclick="baixarXml({{ r.id_esocial }})">
                                 ⬇ XML
                             </button>
-                            {% if r._sit in ('P', 'G', 'W', 'X') %}
+                            {% if r._sit == 'W' %}
+                            <button class="btn-acao btn-reconsultar" id="btn-env-{{ r.id_esocial }}"
+                                    onclick="reconsultarS1010({{ r.id_esocial }}, this)">
+                                &#8635; Re-consultar
+                            </button>
+                            {% elif r._sit in ('P', 'G', 'X') %}
                             <button class="btn-acao btn-enviar" id="btn-env-{{ r.id_esocial }}"
                                     onclick="enviarS1010({{ r.id_esocial }}, this)">
                                 ▶ Enviar
@@ -316,8 +355,13 @@ tr:hover td { background: #f8fafc; }
                             <span style="color:#94a3b8; font-size:11px;">Excluído</span>
                             {% endif %}
                         </div>
-                        <div id="msg-{{ r.id_esocial }}" style="display:none; margin-top:5px;"></div>
                     </td>
+                </tr>
+                <tr class="prog-row" id="prog-{{ r.id_esocial }}">
+                  <td colspan="8" class="prog-cell">
+                    <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
+                    <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
+                  </td>
                 </tr>
                 {% endfor %}
             {% else %}
@@ -396,6 +440,49 @@ tr:hover td { background: #f8fafc; }
             </button>
         </div>
     </div>
+</div>
+
+<!-- MODAL RESULTADO DE ENVIO S-1010 -->
+<div class="modal-overlay" id="modalRelatorio" onclick="if(event.target===this)fecharRelatorio()">
+  <div class="modal-painel" style="max-width:900px;">
+    <div class="modal-topo">
+      <div>
+        <div class="topo-empresa">{{ empresa_info }}</div>
+        <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+      </div>
+      <div class="modal-topo-titulo">📑 Resultado de Envio — S-1010 Rubricas</div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div>
+          <div class="topo-logo">Folha10·Simples</div>
+          <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="modal-fechar" onclick="fecharRelatorio()">✕ Fechar</button>
+      </div>
+    </div>
+    <div class="modal-corpo">
+      <div style="overflow-x:auto;">
+        <table class="rel-table">
+          <thead>
+            <tr>
+              <th>Período</th>
+              <th>Tipo</th>
+              <th>Verba</th>
+              <th>Situação</th>
+              <th>Recibo / Erro</th>
+              <th>Processado em</th>
+            </tr>
+          </thead>
+          <tbody id="relTbody">
+            <tr><td colspan="6" class="rel-vazio">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div><button class="btn-rel-atualizar" onclick="carregarRelatorio()">&#8635; Atualizar</button></div>
+      <div><button class="btn-rel-fechar" onclick="fecharRelatorio()">Fechar</button></div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -490,12 +577,16 @@ function gravarS1010() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Gravando...';
 
+    const verbas = Array.from(selecionadas).map(cod => {
+        const r = RUBRICAS.find(x => x.cod_rubr == cod);
+        return { cod_rubr: cod, dsc_rubr: r ? r.dsc_rubr : '' };
+    });
     fetch('/api/esocial_s1010_gravar', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             tp_op: tpOp, ini_valid: ini, fim_valid: fim, tpAmb: amb,
-            rubricas: Array.from(selecionadas)
+            verbas: verbas
         })
     })
     .then(r => r.json())
@@ -533,48 +624,190 @@ function apagarS1010(id, btnEl) {
     })
     .then(r => r.json())
     .then(d => {
-        if (d.ok) { const row = document.getElementById('row-' + id); if (row) row.remove(); }
-        else {
+        if (d.ok) {
+            const row = document.getElementById('row-' + id);
+            const prog = document.getElementById('prog-' + id);
+            if (row) row.remove();
+            if (prog) prog.remove();
+        } else {
             btnEl.disabled = false; btnEl.textContent = '🗑 Apagar';
-            const el = document.getElementById('msg-' + id);
-            el.className = 'msg-envio msg-erro'; el.textContent = d.msg; el.style.display = 'block';
+            alert(d.msg || 'Erro ao apagar.');
         }
     })
     .catch(() => { btnEl.disabled = false; btnEl.textContent = '🗑 Apagar'; });
 }
 
-function enviarS1010(id, btnEl) {
-    if (!confirm('Confirma o envio do S-1010 ao eSocial?\nAs rubricas selecionadas nesta remessa serão enviadas.')) return;
-    btnEl.disabled = true;
-    btnEl.innerHTML = '<span class="spin" style="border-top-color:#166534;border-color:#a7e0bc;"></span>';
-    const msgEl = document.getElementById('msg-' + id);
-    msgEl.style.display = 'none';
+const ETAPAS_1010 = [
+    [15, '⚙️  Gerando XMLs das rubricas...'],
+    [30, '✍️  Assinando eventos...'],
+    [50, '📤 Enviando lote ao eSocial...'],
+    [65, '⏳ Aguardando processamento (1/3)…'],
+    [80, '⏳ Aguardando processamento (2/3)…'],
+    [92, '⏳ Aguardando processamento (3/3)…'],
+    [98, '🔍 Consultando resultado…'],
+];
 
-    fetch('/api/esocial_s1010_enviar', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id_esocial: id })
-    })
-    .then(r => r.json())
-    .then(d => {
-        btnEl.disabled = false; btnEl.innerHTML = '▶ Enviar';
-        msgEl.className = 'msg-envio ' + (d.ok ? 'msg-ok' : 'msg-erro');
-        msgEl.textContent = d.msg || (d.ok ? 'Enviado!' : 'Erro no envio.');
-        msgEl.style.display = 'block';
-        const sitEl = document.getElementById('sit-' + id);
-        if (sitEl) {
-            if (d.recibo)  { sitEl.className = 'sit-badge sit-enviado';    sitEl.textContent = 'Enviado'; }
-            else if (d.ok) { sitEl.className = 'sit-badge sit-aguardando'; sitEl.textContent = 'Aguardando'; }
-            else           { sitEl.className = 'sit-badge sit-erro';       sitEl.textContent = 'Com Erro'; }
+async function enviarS1010(id, btnEl) {
+    if (!confirm('Confirma o envio do S-1010 ao eSocial?\nAs rubricas selecionadas nesta remessa serão enviadas.')) return;
+    const progRow = document.getElementById('prog-' + id);
+    const bar     = document.getElementById('bar-' + id);
+    const lbl     = document.getElementById('lbl-' + id);
+    const sit     = document.getElementById('sit-' + id);
+
+    btnEl.disabled = true;
+    progRow.style.display = 'table-row';
+
+    let etapaIdx = 0;
+    const animTimer = setInterval(() => {
+        if (etapaIdx < ETAPAS_1010.length) {
+            bar.style.width = ETAPAS_1010[etapaIdx][0] + '%';
+            lbl.textContent  = ETAPAS_1010[etapaIdx][1];
+            etapaIdx++;
         }
-        if (d.ok) setTimeout(() => window.location.reload(), 2500);
-    })
-    .catch(e => {
-        btnEl.disabled = false; btnEl.innerHTML = '▶ Enviar';
-        msgEl.className = 'msg-envio msg-erro';
-        msgEl.textContent = 'Erro de comunicação: ' + e;
-        msgEl.style.display = 'block';
-    });
+    }, 4000);
+    bar.style.width = '5%';
+    lbl.textContent  = '⚙️  Iniciando…';
+
+    try {
+        const r = await fetch('/api/esocial_s1010_enviar', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id_esocial: id })
+        });
+        const d = await r.json();
+        clearInterval(animTimer);
+        bar.style.width = '100%';
+        bar.style.background = d.ok ? '#00a651' : (d.aguardando ? '#f97316' : '#ef4444');
+
+        if (d.recibo) {
+            lbl.textContent = '✅ Enviado — Recibo: ' + d.recibo;
+            sit.className = 'sit-badge sit-enviado'; sit.textContent = 'Enviado';
+            btnEl.textContent = '✓ Enviado'; btnEl.disabled = true;
+        } else if (d.ok || d.aguardando) {
+            lbl.textContent = '⏳ ' + (d.msg || 'Aguardando processamento.');
+            sit.className = 'sit-badge sit-aguardando'; sit.textContent = 'Aguardando';
+            btnEl.innerHTML = '&#8635; Re-consultar';
+            btnEl.disabled = false;
+            btnEl.className = 'btn-acao btn-reconsultar';
+            btnEl.onclick = function(){ reconsultarS1010(id, btnEl); };
+        } else {
+            lbl.textContent = '❌ ' + (d.msg || 'Erro desconhecido');
+            bar.style.background = '#ef4444';
+            sit.className = 'sit-badge sit-erro'; sit.textContent = 'Com Erro';
+            btnEl.disabled = false; btnEl.textContent = '▶ Enviar';
+        }
+        abrirRelatorio();
+    } catch(e) {
+        clearInterval(animTimer);
+        bar.style.width = '100%'; bar.style.background = '#ef4444';
+        lbl.textContent = '❌ Falha de comunicação: ' + e;
+        btnEl.disabled = false; btnEl.textContent = '▶ Enviar';
+        abrirRelatorio();
+    }
+}
+
+async function reconsultarS1010(id, btnEl) {
+    const progRow = document.getElementById('prog-' + id);
+    const bar     = document.getElementById('bar-' + id);
+    const lbl     = document.getElementById('lbl-' + id);
+    const sit     = document.getElementById('sit-' + id);
+
+    btnEl.disabled = true;
+    progRow.style.display = 'table-row';
+    bar.style.background = 'var(--accent)';
+    bar.style.width = '30%';
+    lbl.textContent = '🔍 Consultando resultado no eSocial…';
+
+    try {
+        const r = await fetch('/api/esocial_reconsultar_generico', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id_esocial: id, tpAmb: '1' })
+        });
+        const d = await r.json();
+        bar.style.width = '100%';
+        bar.style.background = d.ok ? '#00a651' : (d.aguardando ? '#f97316' : '#ef4444');
+
+        if (d.ok) {
+            lbl.textContent = '✅ Enviado — Recibo: ' + (d.nr_rec || '');
+            sit.className = 'sit-badge sit-enviado'; sit.textContent = 'Enviado';
+        } else if (d.aguardando) {
+            lbl.textContent = '⏳ ' + (d.msg || 'Ainda processando.');
+            sit.className = 'sit-badge sit-aguardando'; sit.textContent = 'Aguardando';
+            btnEl.disabled = false;
+        } else {
+            lbl.textContent = '❌ ' + (d.msg || 'Erro na consulta.');
+            sit.className = 'sit-badge sit-erro'; sit.textContent = 'Com Erro';
+            btnEl.disabled = false;
+            btnEl.textContent = '▶ Enviar';
+            btnEl.className = 'btn-acao btn-enviar';
+            btnEl.onclick = function(){ enviarS1010(id, btnEl); };
+        }
+        abrirRelatorio();
+    } catch(e) {
+        bar.style.width = '100%'; bar.style.background = '#ef4444';
+        lbl.textContent = '❌ Falha de comunicação: ' + e;
+        btnEl.disabled = false;
+        abrirRelatorio();
+    }
+}
+
+// ── Relatório de remessas ──────────────────────────────
+const SIT_CSS_1010 = {
+    'E': 'sit-enviado', 'D': 'sit-excluido', 'X': 'sit-erro',
+    'W': 'sit-aguardando', 'G': 'sit-gerado', 'P': 'sit-pendente'
+};
+
+function abrirRelatorio() {
+    carregarRelatorio();
+    document.getElementById('modalRelatorio').classList.add('aberto');
+}
+
+function fecharRelatorio() {
+    document.getElementById('modalRelatorio').classList.remove('aberto');
+}
+
+async function carregarRelatorio() {
+    const tbody = document.getElementById('relTbody');
+    tbody.innerHTML = '<tr><td colspan="6" class="rel-vazio">Carregando…</td></tr>';
+    try {
+        const r    = await fetch('/api/esocial_s1010_relatorio');
+        const data = await r.json();
+        if (!data.ok || !data.rows.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="rel-vazio">Nenhuma remessa encontrada.</td></tr>';
+            return;
+        }
+        tbody.innerHTML = data.rows.map(row => {
+            const sitCss = SIT_CSS_1010[row.sit] || 'sit-pendente';
+            let recCell  = '<span style="color:#94a3b8;font-size:11px;">—</span>';
+            if (row.sit === 'E')
+                recCell = `<span class="rel-rec-ok">${escHtml(row.recibo)}</span>`;
+            else if (row.sit === 'X')
+                recCell = `<span class="rel-rec-erro">${escHtml(row.erro)}</span>`;
+            else if (row.sit === 'W')
+                recCell = `<span style="color:#9a3412;font-size:11px;">Aguardando retorno do eSocial</span>`;
+            const per = row.per_fim ? `${row.per_ini} → ${row.per_fim}` : (row.per_ini || '—');
+            let verbaCell = '—';
+            if (row.cod_rubr) {
+                verbaCell = `<span style="font-family:monospace;font-weight:700;">${escHtml(row.cod_rubr)}</span>`;
+                if (row.dsc_rubr) verbaCell += ` <span style="font-size:11px;color:#64748b;">${escHtml(row.dsc_rubr)}</span>`;
+            }
+            return `<tr class="${row.sit==='E'?'rel-row-ok':row.sit==='X'?'rel-row-erro':''}">` +
+                `<td class="per-cell">${escHtml(per)}</td>` +
+                `<td style="font-size:11px;">${escHtml(row.tp_op)}</td>` +
+                `<td>${verbaCell}</td>` +
+                `<td><span class="sit-badge ${sitCss}">${escHtml(row.sit_label)}</span></td>` +
+                `<td>${recCell}</td>` +
+                `<td class="data-cell">${escHtml(row.dh_grava||'—')}</td>` +
+                `</tr>`;
+        }).join('');
+    } catch(e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="rel-vazio" style="color:#ef4444;">Erro: ${escHtml(String(e))}</td></tr>`;
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 </body>
