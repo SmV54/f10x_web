@@ -420,9 +420,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>Filial</label>
                     {% if filiais_func|length == 1 %}
-                    <input type="text" id="filial" value="{{ filiais_func[0].valor }}"
-                           title="{{ filiais_func[0].nome }}" readonly
+                    <input type="text" id="filial" value="{{ filiais_func[0].valor }}" readonly
                            style="background:var(--read-bg);color:var(--read-text);">
+                    <div style="font-size:10px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                        {{ filiais_func[0].nome }}
+                    </div>
                     {% elif filiais_func %}
                     <select id="filial">
                         <option value="">— Selecione —</option>
