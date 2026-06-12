@@ -465,6 +465,33 @@ def api_selecionar_empresa():
     session["anomes_atual"]    = anomes_atual
     session["anomes_tipo"]     = anomes_tipo
     session["anomes_situacao"] = situacao
+
+    # Verifica se o cliente já tem funções cadastradas (compartilhadas entre empresas)
+    try:
+        cpf_cli = session.get("cpf", "")
+        tem_funcao = (supabase.table("tab_funcao_cli")
+                      .select("id", count="exact")
+                      .eq("idcliente", cpf_cli)
+                      .eq("situacao", "A")
+                      .limit(1)
+                      .execute())
+        if not (tem_funcao.data):
+            return jsonify({"ok": True, "redirect": "/cad_funcao?aviso=sem_funcao"})
+    except Exception:
+        pass
+
+    # Verifica se a empresa já tem funcionários cadastrados
+    try:
+        tem_func = (supabase.table("tab_cad")
+                    .select("id")
+                    .eq("id_empresa", id_empresa)
+                    .limit(1)
+                    .execute())
+        if not tem_func.data:
+            return jsonify({"ok": True, "redirect": "/cad_funcionario?aviso=sem_funcionario"})
+    except Exception:
+        pass
+
     return jsonify({"ok": True, "redirect": "/menu"})
 
 
@@ -5469,6 +5496,306 @@ def api_sindicato_desativar():
 
 
 # =========================================================
+# CENTRO DE CUSTO — TELA
+# =========================================================
+@app.route("/cad_cc")
+def cad_cc():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    r = (
+        supabase
+        .table("tab_cc")
+        .select("*")
+        .eq("id_cliente", id_cliente)
+        .eq("id_empresa", id_empresa)
+        .eq("situacao", "A")
+        .order("codigo_cc")
+        .execute()
+    )
+
+    import json
+    centros_json = json.dumps(r.data or [])
+
+    return render_template(
+        "F10_Cad_CC.html",
+        versao=ler_versao(),
+        nome_cliente=session.get("nome", ""),
+        empresa_info=session.get("empresa_info", ""),
+        centros=r.data or [],
+        centros_json=centros_json,
+    )
+
+
+# =========================================================
+# CENTRO DE CUSTO — API INCLUIR
+# =========================================================
+@app.route("/api/cc/incluir", methods=["POST"])
+def api_cc_incluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    codigo     = (data.get("codigo_CC") or "").strip().upper()
+    nome       = (data.get("nomeCC") or "").strip()
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    if not codigo:
+        return jsonify({"ok": False, "msg": "Código do centro de custo obrigatório"})
+    if not nome:
+        return jsonify({"ok": False, "msg": "Nome do centro de custo obrigatório"})
+    if len(codigo) > 8:
+        return jsonify({"ok": False, "msg": "Código muito longo (máx. 8 caracteres)"})
+    if len(nome) > 40:
+        return jsonify({"ok": False, "msg": "Nome muito longo (máx. 40 caracteres)"})
+
+    dup = (
+        supabase.table("tab_cc")
+        .select("id")
+        .eq("id_empresa", id_empresa)
+        .eq("codigo_cc", codigo)
+        .execute()
+    )
+    if dup.data:
+        return jsonify({"ok": False, "msg": f'Código "{codigo}" já cadastrado nesta empresa'})
+
+    try:
+        supabase.table("tab_cc").insert({
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "situacao":   "A",
+            "codigo_cc":  codigo,
+            "nomecc":     nome,
+        }).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# CENTRO DE CUSTO — API EDITAR
+# =========================================================
+@app.route("/api/cc/editar", methods=["POST"])
+def api_cc_editar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    id_reg     = data.get("id")
+    codigo     = (data.get("codigo_CC") or "").strip().upper()
+    nome       = (data.get("nomeCC") or "").strip()
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado"})
+    if not codigo:
+        return jsonify({"ok": False, "msg": "Código obrigatório"})
+    if not nome:
+        return jsonify({"ok": False, "msg": "Nome obrigatório"})
+
+    dup = (
+        supabase.table("tab_cc")
+        .select("id")
+        .eq("id_empresa", id_empresa)
+        .eq("codigo_cc", codigo)
+        .neq("id", id_reg)
+        .execute()
+    )
+    if dup.data:
+        return jsonify({"ok": False, "msg": f'Código "{codigo}" já está em uso por outro centro de custo'})
+
+    try:
+        supabase.table("tab_cc").update({"codigo_cc": codigo, "nomecc": nome}) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# CENTRO DE CUSTO — API DESATIVAR
+# =========================================================
+@app.route("/api/cc/desativar", methods=["POST"])
+def api_cc_desativar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    id_reg     = data.get("id")
+    id_cliente = session.get("id_cliente")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado"})
+
+    try:
+        supabase.table("tab_cc").update({"situacao": "D"}) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# FILIAIS — TELA
+# =========================================================
+@app.route("/cad_filial")
+def cad_filial():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    r = (
+        supabase
+        .table("tab_filial")
+        .select("*")
+        .eq("id_cliente", id_cliente)
+        .eq("id_empresa", id_empresa)
+        .eq("situacao", "A")
+        .order("filial_nome")
+        .execute()
+    )
+
+    import json
+    filiais_json = json.dumps(r.data or [])
+
+    return render_template(
+        "F10_Cad_Filial.html",
+        versao=ler_versao(),
+        nome_cliente=session.get("nome", ""),
+        empresa_info=session.get("empresa_info", ""),
+        filiais=r.data or [],
+        filiais_json=filiais_json,
+    )
+
+
+# =========================================================
+# FILIAIS — API INCLUIR
+# =========================================================
+@app.route("/api/filial/incluir", methods=["POST"])
+def api_filial_incluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    cnpj       = (data.get("cnpj") or "").strip()
+    nome       = (data.get("filial_nome") or "").strip()
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    if not cnpj:
+        return jsonify({"ok": False, "msg": "CNPJ obrigatório"})
+    if not nome:
+        return jsonify({"ok": False, "msg": "Nome da filial obrigatório"})
+    if len(nome) > 40:
+        return jsonify({"ok": False, "msg": "Nome muito longo (máx. 40 caracteres)"})
+
+    dup = (
+        supabase.table("tab_filial")
+        .select("id")
+        .eq("id_empresa", id_empresa)
+        .eq("cnpj", cnpj)
+        .execute()
+    )
+    if dup.data:
+        return jsonify({"ok": False, "msg": f'CNPJ "{cnpj}" já cadastrado nesta empresa'})
+
+    campos = {
+        "id_cliente":  id_cliente,
+        "id_empresa":  id_empresa,
+        "situacao":    "A",
+        "cnpj":        cnpj,
+        "filial_nome": nome,
+    }
+    for f in ["ender_cep", "ender_dsclograd", "ender_nrlograd", "ender_complemento",
+              "ender_bairro", "ender_cidade_nome", "ender_codmunic", "ender_uf"]:
+        v = data.get(f)
+        if v is not None:
+            campos[f] = v
+
+    try:
+        supabase.table("tab_filial").insert(campos).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# FILIAIS — API EDITAR
+# =========================================================
+@app.route("/api/filial/editar", methods=["POST"])
+def api_filial_editar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    id_reg     = data.get("id")
+    cnpj       = (data.get("cnpj") or "").strip()
+    nome       = (data.get("filial_nome") or "").strip()
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado"})
+    if not cnpj:
+        return jsonify({"ok": False, "msg": "CNPJ obrigatório"})
+    if not nome:
+        return jsonify({"ok": False, "msg": "Nome obrigatório"})
+
+    dup = (
+        supabase.table("tab_filial")
+        .select("id")
+        .eq("id_empresa", id_empresa)
+        .eq("cnpj", cnpj)
+        .neq("id", id_reg)
+        .execute()
+    )
+    if dup.data:
+        return jsonify({"ok": False, "msg": f'CNPJ "{cnpj}" já está em uso por outra filial'})
+
+    campos = {"cnpj": cnpj, "filial_nome": nome}
+    for f in ["ender_cep", "ender_dsclograd", "ender_nrlograd", "ender_complemento",
+              "ender_bairro", "ender_cidade_nome", "ender_codmunic", "ender_uf"]:
+        campos[f] = data.get(f)  # None limpa o campo
+
+    try:
+        supabase.table("tab_filial").update(campos) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# FILIAIS — API DESATIVAR
+# =========================================================
+@app.route("/api/filial/desativar", methods=["POST"])
+def api_filial_desativar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    id_reg     = data.get("id")
+    id_cliente = session.get("id_cliente")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado"})
+
+    try:
+        supabase.table("tab_filial").update({"situacao": "D"}) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
 # TESTE BLOCO ENDEREÇO (remover após validação)
 # =========================================================
 @app.route("/teste_endereco")
@@ -6657,7 +6984,7 @@ def api_funcionario_incluir():
         "tpregjor":      sv("tpRegJor"),
         "cbofuncao":     sv("CBOFuncao"),
         "natatividade":  "1",
-        "centrocusto":   None,
+        "centrocusto":   sv("centrocusto") or None,
     }
     # mapeamento campo_payload → coluna_db
     opcionais = {
@@ -7442,6 +7769,45 @@ def cad_funcionario():
     except Exception:
         pass
 
+    id_empresa = session.get("id_empresa")
+
+    # Centros de Custo da empresa
+    centros_custo = []
+    try:
+        r = (
+            supabase
+            .table("tab_cc")
+            .select("codigo_cc, nomecc")
+            .eq("id_cliente", id_cliente)
+            .eq("id_empresa", id_empresa)
+            .eq("situacao", "A")
+            .order("codigo_cc")
+            .execute()
+        )
+        centros_custo = r.data or []
+    except Exception:
+        pass
+
+    # Filiais da empresa
+    filiais_func = []
+    try:
+        r = (
+            supabase
+            .table("tab_filial")
+            .select("cnpj, filial_nome")
+            .eq("id_cliente", id_cliente)
+            .eq("id_empresa", id_empresa)
+            .eq("situacao", "A")
+            .order("filial_nome")
+            .execute()
+        )
+        filiais_func = [
+            {"valor": row["cnpj"][-6:], "nome": row["filial_nome"], "cnpj": row["cnpj"]}
+            for row in (r.data or [])
+        ]
+    except Exception:
+        pass
+
     # Horários do cliente
     horarios = []
     try:
@@ -7479,7 +7845,8 @@ def cad_funcionario():
     except Exception:
         pass
 
-    modo = request.args.get("modo", "inclusao")
+    modo  = request.args.get("modo",  "inclusao")
+    aviso = request.args.get("aviso", "")
 
     return render_template(
         "F10_Cad_Funcionario.html",
@@ -7493,7 +7860,10 @@ def cad_funcionario():
         sindicatos=sindicatos,
         horarios=horarios,
         categorias=categorias,
+        centros_custo=centros_custo,
+        filiais_func=filiais_func,
         modo=modo,
+        aviso=aviso,
         folha_situacao=str(session.get("anomes_situacao") or ""),
         anomes_atual=str(session.get("anomes_atual") or ""),
     )
@@ -26168,6 +26538,545 @@ def api_recibo_ferias_pdf():
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = 'inline; filename="Recibo_Ferias.pdf"'
     return resp
+
+
+# =========================================================
+# ADMINISTRADOR — Lista de Clientes
+# =========================================================
+CPF_ADMIN_F10 = '15313921487'
+
+@app.route("/admin_clientes")
+def admin_clientes():
+    if not session.get("logado"):
+        return redirect("/")
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return redirect("/menu")
+    try:
+        clientes = (supabase.table("tab_cliente")
+                    .select("id_cliente, nome, cpf, email, data_limite")
+                    .order("nome")
+                    .execute().data or [])
+        empresas_all = (supabase.table("tab_empresa")
+                        .select("id_cliente")
+                        .execute().data or [])
+        from collections import Counter
+        emp_count = Counter(e["id_cliente"] for e in empresas_all)
+        for c in clientes:
+            c["qtd_empresas_real"] = emp_count.get(c["id_cliente"], 0)
+    except Exception:
+        clientes = []
+    return render_template(
+        "F10_Admin_Clientes.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        clientes=clientes,
+    )
+
+
+@app.route("/api/admin_clientes/<int:id_cliente>")
+def api_admin_clientes_empresas(id_cliente):
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return jsonify({"ok": False}), 403
+    try:
+        empresas = (supabase.table("tab_empresa")
+                    .select("id_empresa, razaosocial, nome_fantasia, cnpj, anomes_atual")
+                    .eq("id_cliente", id_cliente)
+                    .order("razaosocial")
+                    .execute().data or [])
+        if empresas:
+            ids = [e["id_empresa"] for e in empresas]
+            cads = (supabase.table("tab_cad")
+                    .select("id_empresa")
+                    .in_("id_empresa", ids)
+                    .execute().data or [])
+            from collections import Counter
+            cont = Counter(c["id_empresa"] for c in cads)
+        else:
+            cont = {}
+        for e in empresas:
+            e["qtd_funcionarios"] = cont.get(e["id_empresa"], 0)
+            e["cnpj_fmt"] = _fmt_cnpj(e.get("cnpj", ""))
+            e["razao_fmt"] = (e.get("nome_fantasia") or e.get("razaosocial") or "—").strip()
+        return jsonify({"ok": True, "empresas": empresas})
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": str(ex)})
+
+
+# =========================================================
+# ADMINISTRADOR — Importar do Folha 10 Antigo
+# =========================================================
+PASTA_BASES_F10 = r'C:\folha10\arquivos\bases'
+
+def _fmt_bytes(b):
+    if b < 1024:       return f'{b} B'
+    if b < 1_048_576:  return f'{b/1024:.0f} KB'
+    return f'{b/1_048_576:.1f} MB'
+
+def _inc_f10(c):
+    """Converte posição de incidência do Folha 10 antigo para código do novo sistema."""
+    return {'1':'11','2':'12','3':'21','4':'22','S':'11'}.get(str(c).strip().upper(), 'N')
+
+
+# Mapeamento: coluna_access_lower → (coluna_tab_empresa, rótulo)
+MAPA_EMPRESA_F10 = {
+    'razaosocial'   : ('razaosocial',   'Razão Social'),
+    'razao_social'  : ('razaosocial',   'Razão Social'),
+    'fantasia'      : ('nome_fantasia', 'Nome Fantasia'),
+    'nomefantasia'  : ('nome_fantasia', 'Nome Fantasia'),
+    'nome_fantasia' : ('nome_fantasia', 'Nome Fantasia'),
+    'cgc'           : ('cnpj',          'CNPJ'),
+    'cnpj'          : ('cnpj',          'CNPJ'),
+    'cnae'          : ('cnae',          'CNAE'),
+    'fpas'          : ('gps_fpas',      'FPAS'),
+    'codterceiros'  : ('gps_cod_pagto', 'Cód. Terceiros'),
+    'cod_terceiros' : ('gps_cod_pagto', 'Cód. Terceiros'),
+    'terceiros'     : ('gps_cod_pagto', 'Cód. Terceiros'),
+    'risco'         : ('risco',         'Grau de Risco'),
+    'mesdissidio'   : ('mes_dissidio',  'Mês Dissídio'),
+    'mes_dissidio'  : ('mes_dissidio',  'Mês Dissídio'),
+    'dissidio'      : ('mes_dissidio',  'Mês Dissídio'),
+    # Alíquotas GPS — Access guarda como inteiro ×100 (ex: 2000 = 20,00%)
+    'aliqfpas'      : ('gps_fpas_perc', 'Alíq. FPAS'),
+    'aliq'          : ('gps_fpas_perc', 'Alíq. FPAS'),
+    'aliqtotal'     : ('gps_fpas_perc', 'Alíq. FPAS'),
+    'perctotal'     : ('gps_fpas_perc', 'Alíq. FPAS'),
+    'gps_fpas_perc' : ('gps_fpas_perc', 'Alíq. FPAS'),
+    'gps_fpasper'   : ('gps_fpas_perc', 'Alíq. FPAS'),
+    'saleduc'       : ('gps_saleduc',   'Sal. Educação'),
+    'sal_educ'      : ('gps_saleduc',   'Sal. Educação'),
+    'gps_saleduc'   : ('gps_saleduc',   'Sal. Educação'),
+    'incra'         : ('gps_incra',     'INCRA'),
+    'gps_incra'     : ('gps_incra',     'INCRA'),
+    'senai'         : ('gps_senai',     'SENAI'),
+    'gps_senai'     : ('gps_senai',     'SENAI'),
+    'sesi'          : ('gps_sesi',      'SESI'),
+    'gps_sesi'      : ('gps_sesi',      'SESI'),
+    'senac'         : ('gps_senac',     'SENAC'),
+    'gps_senac'     : ('gps_senac',     'SENAC'),
+    'sesc'          : ('gps_sesc',      'SESC'),
+    'gps_sesc'      : ('gps_sesc',      'SESC'),
+    'sebrae'        : ('gps_sebrae',    'SEBRAE'),
+    'gps_sebrae'    : ('gps_sebrae',    'SEBRAE'),
+    'dpc'           : ('gps_dpc',       'DPC'),
+    'gps_dpc'       : ('gps_dpc',       'DPC'),
+    'senar'         : ('gps_senar',     'SENAR'),
+    'gps_senar'     : ('gps_senar',     'SENAR'),
+    'sest'          : ('gps_sest',      'SEST'),
+    'gps_sest'      : ('gps_sest',      'SEST'),
+    'senat'         : ('gps_senat',     'SENAT'),
+    'gps_senat'     : ('gps_senat',     'SENAT'),
+    'sescoop'       : ('gps_sesco',     'SESCOOP'),
+    'sesco'         : ('gps_sesco',     'SESCOOP'),
+    'gps_sesco'     : ('gps_sesco',     'SESCOOP'),
+}
+
+# Colunas de alíquota GPS que precisam de divisão por 100
+_GPS_RATE_COLS = {
+    'gps_fpas_perc', 'gps_saleduc', 'gps_incra', 'gps_senai',
+    'gps_sesi', 'gps_senac', 'gps_sesc', 'gps_sebrae',
+    'gps_dpc', 'gps_senar', 'gps_sest', 'gps_senat', 'gps_sesco',
+}
+
+
+def _imp_empresas_f10(caminho, id_cliente):
+    """Importa tabempresas do Access para tab_empresa. Retorna (gravados, erros, log)."""
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+    except Exception as ex:
+        return 0, 1, [f'✗ Conexão com o arquivo: {ex}']
+
+    cur = conn.cursor()
+    log  = []
+    grav = err = 0
+
+    # descobre o nome real da tabela
+    tabelas_exist = {t.table_name.lower(): t.table_name
+                     for t in cur.tables(tableType='TABLE')
+                     if not t.table_name.startswith('MSys')}
+    tabela = None
+    for candidato in ('tabempresas', 'tabempresa', 'tabemp'):
+        if candidato in tabelas_exist:
+            tabela = tabelas_exist[candidato]
+            break
+    if not tabela:
+        conn.close()
+        return 0, 1, [f'✗ Tabela de empresas não encontrada. Tabelas no arquivo: {", ".join(sorted(tabelas_exist.keys()))}']
+
+    # lê colunas
+    cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+    col_names = [col[0].lower() for col in cur.description]
+
+    # descobre coluna CNPJ/CGC
+    col_cnpj = next((c for c in col_names if c in ('cnpj', 'cgc')), None)
+    if not col_cnpj:
+        conn.close()
+        return 0, 1, [f'✗ Coluna CNPJ/CGC não encontrada em [{tabela}]. Colunas: {", ".join(col_names)}']
+
+    # lê registros (filtra ativas se coluna existir)
+    if 'situacao' in col_names:
+        cur.execute(f"SELECT * FROM [{tabela}] WHERE situacao='A'")
+    else:
+        cur.execute(f'SELECT * FROM [{tabela}]')
+    rows = cur.fetchall()
+    conn.close()
+
+    log.append(f'📂 Tabela [{tabela}] — {len(rows)} registro(s) lido(s)')
+
+    for row in rows:
+        r = dict(zip(col_names, row))
+        cnpj_raw = ''.join(filter(str.isdigit, str(r.get(col_cnpj) or '')))
+        razao    = str(r.get('razaosocial') or r.get('razao_social') or '').strip()
+        if not cnpj_raw:
+            log.append(f'⚠  CNPJ vazio — {razao or "(sem nome)"}')
+            err += 1
+            continue
+        if len(cnpj_raw) != 14:
+            log.append(f'⚠  CNPJ inválido ({cnpj_raw}) — {razao}')
+            err += 1
+            continue
+
+        payload = {'id_cliente': id_cliente, 'tp_insc': '1', 'cnpj': cnpj_raw}
+        for acc_col, (new_col, _) in MAPA_EMPRESA_F10.items():
+            if acc_col == col_cnpj:
+                continue  # CNPJ já definido
+            if acc_col in r and r[acc_col] is not None:
+                raw = r[acc_col]
+                if new_col in _GPS_RATE_COLS:
+                    try:
+                        val = str(round(float(raw) / 100, 4)).rstrip('0').rstrip('.')
+                    except (TypeError, ValueError):
+                        val = str(raw).strip()
+                else:
+                    val = str(raw).strip()
+                if val:
+                    payload[new_col] = val
+
+        # normaliza CNAE: remove pontuação, garante 7 dígitos
+        if 'cnae' in payload:
+            payload['cnae'] = ''.join(filter(str.isdigit, payload['cnae']))[:7]
+
+        try:
+            ex_rows = (supabase.table('tab_empresa')
+                       .select('id_empresa').eq('cnpj', cnpj_raw).execute().data or [])
+            if ex_rows:
+                resp = supabase.table('tab_empresa').update(payload).eq('cnpj', cnpj_raw).execute()
+                acao = 'atualizado'
+            else:
+                resp = supabase.table('tab_empresa').insert(payload).execute()
+                acao = 'novo'
+            if resp.data:
+                grav += 1
+                log.append(f"✓  {cnpj_raw}  {payload.get('razaosocial', '')[:40]}  ({acao})")
+            else:
+                err += 1
+                log.append(f"✗  {cnpj_raw}  sem retorno do Supabase — payload: {list(payload.keys())}")
+        except Exception as ex:
+            err += 1
+            log.append(f"✗  {cnpj_raw}  {ex}")
+
+    return grav, err, log
+
+
+def _imp_verbas_f10(caminho, id_cliente, ini_valid):
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+    except Exception as ex:
+        return 0, 1, [f'✗ Conexão com o arquivo: {ex}']
+
+    cur = conn.cursor()
+    log = []
+    grav = err = 0
+
+    try:
+        cur.execute("SELECT * FROM tabverba WHERE situacao='A'")
+        cols = [d[0].lower() for d in cur.description]
+        rows = cur.fetchall()
+    except Exception as ex:
+        conn.close()
+        return 0, 1, [f'✗ Leitura de tabverba: {ex}']
+
+    try:
+        supabase.table('tab_rubrica').delete() \
+            .eq('id_cliente', id_cliente).eq('ini_valid', ini_valid).execute()
+        log.append(f'🗑  Registros anteriores removidos (cliente {id_cliente}, vigência {ini_valid})')
+    except Exception as ex:
+        log.append(f'⚠  Não foi possível limpar registros anteriores: {ex}')
+
+    for row in rows:
+        r = dict(zip(cols, row))
+        try:
+            inc = (r.get('incidencia') or '     ').ljust(5)
+            yn  = lambda c: 'N' if (r.get(c) or 'NAO').upper() in ('NAO','N','') else 'S'
+            payload = {
+                'id_cliente'       : id_cliente,
+                'cod_rubr'         : int(r.get('codigo') or 0),
+                'dsc_rubr'         : (r.get('nomec') or '')[:40].strip(),
+                'dsc_rubr_resumido': (r.get('nomer') or '')[:20].strip(),
+                'tp_rubr'          : '1' if (r.get('sinal') or '+') == '+' else '2',
+                'unid_verba'       : r.get('unidade') or 'V',
+                'situacao'         : 'A',
+                'es03_nat_rubr'    : int(r.get('esocial_tab03') or 0) or None,
+                'ini_valid'        : ini_valid,
+                'tpn_inc_cp'       : _inc_f10(inc[0]),
+                'tpn_inc_fgts'     : _inc_f10(inc[1]),
+                'tpn_inc_irrf'     : _inc_f10(inc[2]),
+                'tpn_inc_pis'      : _inc_f10(inc[3]),
+                'inc_rescisao'     : yn('rescisao'),
+                'inc_ferias'       : yn('ferias'),
+                'inc_13sal'        : yn('13sal'),
+                'inc_adto13'       : yn('13sala'),
+            }
+            supabase.table('tab_rubrica').insert(payload).execute()
+            grav += 1
+            log.append(f"✓  {payload['cod_rubr']:4d}  {payload['dsc_rubr']}")
+        except Exception as ex:
+            err += 1
+            log.append(f"✗  {r.get('codigo')}  {ex}")
+
+    conn.close()
+    return grav, err, log
+
+
+@app.route('/admin_importar_f10')
+def admin_importar_f10():
+    if not session.get('logado'):
+        return redirect('/')
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return redirect('/menu')
+    try:
+        clientes = (supabase.table('tab_cliente')
+                    .select('id_cliente, nome').order('nome').execute().data or [])
+    except Exception:
+        clientes = []
+    return render_template('F10_Admin_Importar_F10.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''),
+                           clientes=clientes,
+                           pasta=PASTA_BASES_F10)
+
+
+@app.route('/api/admin_importar_f10/arquivos')
+def api_admin_imp_arquivos():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    try:
+        if not os.path.isdir(PASTA_BASES_F10):
+            return jsonify({'ok': True, 'arquivos': [],
+                            'aviso': f'Pasta não encontrada: {PASTA_BASES_F10}'})
+        arquivos = []
+        for fname in sorted(os.listdir(PASTA_BASES_F10)):
+            if fname.lower().endswith(('.accdb', '.mdb')):
+                fp = os.path.join(PASTA_BASES_F10, fname)
+                st = os.stat(fp)
+                arquivos.append({
+                    'nome'       : fname,
+                    'tamanho_fmt': _fmt_bytes(st.st_size),
+                    'modificado' : datetime.fromtimestamp(st.st_mtime).strftime('%d/%m/%Y %H:%M'),
+                })
+        return jsonify({'ok': True, 'arquivos': arquivos})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_importar_f10/inspecionar')
+def api_admin_imp_inspecionar():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import pyodbc
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+        cur = conn.cursor()
+        CONHECIDAS = {
+            'tabverba'  : ('Verbas / Rubricas', True),
+            'tabfunc'   : ('Funcionários',      False),
+            'tabemp'    : ('Empresas',          False),
+            'tabempresa': ('Empresas',          False),
+        }
+        tabelas = []
+        for t in cur.tables(tableType='TABLE'):
+            n = t.table_name
+            if n.startswith('MSys'): continue
+            try:
+                cur.execute(f'SELECT COUNT(*) FROM [{n}]')
+                qtd = cur.fetchone()[0]
+            except Exception:
+                qtd = -1
+            desc, impl = CONHECIDAS.get(n.lower(), ('', False))
+            tabelas.append({'nome': n, 'descricao': desc, 'qtd': qtd, 'implementado': impl})
+        conn.close()
+        return jsonify({'ok': True, 'tabelas': tabelas})
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado neste ambiente'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+def _ler_empresas_access(caminho):
+    """Abre um arquivo Access e retorna lista de {codigo, razaosocial} da tabela de empresas."""
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+    )
+    cur = conn.cursor()
+    tabelas_exist = {t.table_name.lower(): t.table_name
+                     for t in cur.tables(tableType='TABLE')
+                     if not t.table_name.startswith('MSys')}
+    tabela = None
+    for candidato in ('tabempresas', 'tabempresa', 'tabemp', 'empresa', 'empresas'):
+        if candidato in tabelas_exist:
+            tabela = tabelas_exist[candidato]
+            break
+    if not tabela:
+        conn.close()
+        raise ValueError(f"Tabela de empresas não encontrada. Tabelas: {', '.join(sorted(tabelas_exist.keys()))}")
+    cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+    colunas_lower = {col[0].lower(): col[0] for col in cur.description}
+    col_cod  = next((colunas_lower[c] for c in ('codigo', 'cod', 'codigoemp', 'id') if c in colunas_lower), None)
+    col_nome = next((colunas_lower[c] for c in ('razaosocial', 'razao_social', 'nomeemp', 'nome', 'fantasia') if c in colunas_lower), None)
+    if not col_cod or not col_nome:
+        conn.close()
+        raise ValueError(f"Colunas não identificadas em [{tabela}]. Disponíveis: {', '.join(colunas_lower.keys())}")
+    cur.execute(f'SELECT [{col_cod}], [{col_nome}] FROM [{tabela}] ORDER BY [{col_cod}]')
+    resultado = [{'codigo': str(r[0] or '').strip(), 'razaosocial': str(r[1] or '').strip()}
+                 for r in cur.fetchall()]
+    conn.close()
+    return resultado
+
+
+@app.route('/api/admin_importar_f10/empresas')
+def api_admin_imp_empresas():
+    """Varre todos os arquivos FolhaFIX_*.accdb/.mdb e retorna empresas de cada um."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    try:
+        import pyodbc  # noqa — só para verificar disponibilidade
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado neste ambiente'})
+    if not os.path.isdir(PASTA_BASES_F10):
+        return jsonify({'ok': True, 'empresas': [],
+                        'aviso': f'Pasta não encontrada: {PASTA_BASES_F10}'})
+    empresas_total = []
+    erros = []
+    for fname in sorted(os.listdir(PASTA_BASES_F10)):
+        if not fname.lower().endswith(('.accdb', '.mdb')):
+            continue
+        if not fname.upper().startswith('FOLHAFIX_'):
+            continue
+        caminho = os.path.join(PASTA_BASES_F10, fname)
+        # extrai o número do cliente antigo do nome do arquivo
+        base = os.path.splitext(fname)[0]          # FolhaFIX_000001
+        num_antigo = base.split('_', 1)[-1]        # 000001
+        try:
+            lista = _ler_empresas_access(caminho)
+            for e in lista:
+                e['arquivo'] = fname
+                e['num_antigo'] = num_antigo
+            empresas_total.extend(lista)
+        except Exception as ex:
+            erros.append({'arquivo': fname, 'erro': str(ex)})
+    return jsonify({'ok': True, 'empresas': empresas_total, 'erros': erros})
+
+
+@app.route('/api/admin_importar_f10/comparar_empresa')
+def api_admin_imp_comparar_empresa():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import pyodbc
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+        cur = conn.cursor()
+        tabelas_exist = {t.table_name.lower(): t.table_name
+                         for t in cur.tables(tableType='TABLE')
+                         if not t.table_name.startswith('MSys')}
+        tabela = None
+        for candidato in ('tabempresas', 'tabempresa', 'tabemp'):
+            if candidato in tabelas_exist:
+                tabela = tabelas_exist[candidato]
+                break
+        if not tabela:
+            conn.close()
+            return jsonify({'ok': False, 'msg': 'Tabela de empresas não encontrada'})
+        cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+        cols_raw = [(col[0], str(col[1])) for col in cur.description]
+        cur.execute(f'SELECT COUNT(*) FROM [{tabela}]')
+        total = cur.fetchone()[0]
+        conn.close()
+        campos = []
+        for nome_col, tipo in cols_raw:
+            mapa = MAPA_EMPRESA_F10.get(nome_col.lower())
+            campos.append({
+                'access'  : nome_col,
+                'tipo'    : tipo,
+                'destino' : mapa[0] if mapa else None,
+                'rotulo'  : mapa[1] if mapa else None,
+            })
+        return jsonify({'ok': True, 'tabela': tabela, 'total': total, 'campos': campos})
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_importar_f10/executar', methods=['POST'])
+def api_admin_imp_executar():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    body       = request.get_json(silent=True) or {}
+    nome_arq   = (body.get('arquivo')    or '').strip()
+    id_cliente = body.get('id_cliente')
+    tabelas_s  = body.get('tabelas')     or []
+    ini_valid  = int(body.get('ini_valid') or 202001)
+    if not nome_arq or not id_cliente or not tabelas_s:
+        return jsonify({'ok': False, 'msg': 'Parâmetros incompletos'})
+    if '..' in nome_arq:
+        return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome_arq)
+    if not os.path.isfile(caminho):
+        return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import pyodbc  # noqa
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
+
+    resultados = []
+    for tabela in tabelas_s:
+        tl = tabela.lower()
+        if tl == 'tabverba':
+            grav, err, log = _imp_verbas_f10(caminho, int(id_cliente), ini_valid)
+            resultados.append({'tabela': tabela, 'descricao': 'Verbas / Rubricas',
+                                'gravados': grav, 'erros': err, 'log': log})
+        elif tl in ('tabempresas', 'tabempresa', 'tabemp'):
+            grav, err, log = _imp_empresas_f10(caminho, int(id_cliente))
+            resultados.append({'tabela': tabela, 'descricao': 'Empresas',
+                                'gravados': grav, 'erros': err, 'log': log})
+        else:
+            resultados.append({'tabela': tabela, 'descricao': tabela,
+                                'gravados': 0, 'erros': 0,
+                                'log': [f'⚠  Tabela "{tabela}" ainda não implementada nesta versão.']})
+
+    return jsonify({'ok': True, 'resultados': resultados,
+                    'total_gravados': sum(r['gravados'] for r in resultados),
+                    'total_erros':    sum(r['erros']    for r in resultados)})
 
 
 # =========================================================

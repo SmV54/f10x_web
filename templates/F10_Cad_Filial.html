@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>F10 — Filiais</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; background: #f4f6f9; color: #1f2937; min-height: 100vh; }
+    .pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+    /* ── TOPO ── */
+    .topo {
+        background: #0b1f3a; border-bottom: 1px solid #1e3d5c;
+        padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+        align-items: center; gap: 0 32px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+    }
+    .topo-logo    { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: #2a7de1; letter-spacing: 0.04em; white-space: nowrap; }
+    .topo-versao  { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: #8baac8; letter-spacing: 0.03em; margin-top: 2px; }
+    .topo-titulo  { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center; letter-spacing: 0.01em; }
+    .topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+    .topo-nome    { font-size: 11px; color: #8baac8; margin-top: 2px; }
+    .btn-voltar-topo {
+        margin-left: 16px; background: transparent;
+        border: 1px solid #1e3d5c; color: #8baac8;
+        font-size: 12px; padding: 5px 12px; border-radius: 6px;
+        cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: 0.15s; white-space: nowrap;
+    }
+    .btn-voltar-topo:hover { border-color: #2a7de1; color: #e8edf4; }
+    .topo-folha-ativa { display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+    .sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
+    .sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
+    .sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+    /* CONTAINER */
+    .container { max-width: 1200px; width: 100%; margin: 14px auto 0; padding: 0 18px 24px; flex: 1; display: flex; flex-direction: column; }
+
+    /* INFO CARDS */
+    .painel-info { display: grid; grid-template-columns: 2fr 1.2fr 0.8fr; gap: 12px; margin-bottom: 14px; }
+    .card-info { background: white; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+    .card-info .rotulo { font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px; }
+    .card-info .valor  { font-size: 15px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* LAYOUT */
+    .layout-principal { display: grid; grid-template-columns: 1fr 1.4fr; gap: 20px; flex: 1; align-items: start; }
+
+    /* BLOCOS */
+    .bloco { background: white; border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); display: flex; flex-direction: column; }
+    .bloco-header { padding: 12px 16px 10px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; border-radius: 12px 12px 0 0; }
+    .bloco-header h2 { margin: 0; font-size: 16px; color: #0f172a; }
+    .bloco-header p  { margin: 3px 0 0; font-size: 12px; color: #64748b; }
+    .bloco-body { padding: 14px 16px; flex: 1; display: flex; flex-direction: column; gap: 10px; overflow-y: auto; }
+
+    /* LISTA */
+    .filtro input { width: 100%; height: 34px; padding: 5px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; }
+    .filtro input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .lista { border: 1px solid #dbe3ee; border-radius: 10px; overflow: auto; flex: 1; min-height: 200px; }
+    .lista table { width: 100%; border-collapse: collapse; }
+    .lista thead { background: #eaf1fb; }
+    .lista thead th { position: sticky; top: 0; background: #eaf1fb; z-index: 2; }
+    .lista th, .lista td { text-align: left; padding: 6px 10px; font-size: 12px; border-bottom: 1px solid #eef2f7; white-space: nowrap; }
+    .lista th { color: #334155; font-weight: 600; }
+    .lista tbody tr:hover { background: #f8fafc; }
+    .lista tbody tr.selecionada { background: #dbeafe !important; }
+    .btn-acao { border: none; border-radius: 7px; cursor: pointer; font-size: 11px; font-weight: 700; padding: 3px 8px; height: 24px; display: inline-flex; align-items: center; gap: 3px; }
+    .btn-edit    { background: #dbeafe; color: #1d4ed8; }
+    .btn-edit:hover    { background: #bfdbfe; }
+    .btn-desativ { background: #fee2e2; color: #991b1b; }
+    .btn-desativ:hover { background: #fecaca; }
+
+    /* FORM */
+    .form-label  { display: block; font-size: 12px; color: #475569; font-weight: 700; margin-bottom: 4px; }
+    .form-input  { width: 100%; height: 36px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; background: white; }
+    .form-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+    .form-secao  { display: flex; flex-direction: column; gap: 4px; }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    /* MODO */
+    .form-modo        { font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 8px; text-align: center; }
+    .form-modo-novo   { background: #dcfce7; color: #166534; }
+    .form-modo-editar { background: #fef9c3; color: #92400e; }
+
+    /* MENSAGENS */
+    .msg-ok   { display: none; background: #dcfce7; border: 1px solid #bbf7d0; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; color: #166534; }
+    .msg-erro { display: none; background: #fee2e2; border: 1px solid #fecaca; border-radius: 10px; padding: 8px 14px; font-size: 12px; font-weight: 600; color: #991b1b; }
+
+    /* BOTÕES */
+    .btn          { height: 38px; border: none; border-radius: 10px; padding: 0 16px; font-size: 13px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-gravar   { background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%); color: white; border: 1px solid #2f9d4d; flex: 1; justify-content: center; }
+    .btn-gravar:hover   { filter: brightness(1.04); }
+    .btn-cancelar { background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%); color: #0f172a; border: 1px solid #c7d2de; }
+    .btn-cancelar:hover { filter: brightness(1.02); }
+    .btn-voltar   { background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%); color: #0f172a; border: 1px solid #c7d2de; min-width: 160px; }
+    .rodape-acoes { display: flex; gap: 8px; margin-top: 6px; }
+    .rodape-final { margin-top: 14px; }
+
+    .vazio { padding: 20px; font-size: 13px; color: #64748b; text-align: center; border: 1px dashed #cbd5e1; border-radius: 10px; background: #fafafa; }
+
+    @media (max-width: 960px) {
+      .layout-principal { grid-template-columns: 1fr; }
+      .painel-info      { grid-template-columns: 1fr; }
+      .form-grid-2      { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="pagina">
+
+  <div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa_info }}</span>
+        <span class="topo-nome">{{ nome_cliente }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Filiais</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <div class="painel-info">
+      <div class="card-info">
+        <div class="rotulo">Cliente</div>
+        <div class="valor">{{ nome_cliente }}</div>
+      </div>
+      <div class="card-info">
+        <div class="rotulo">Empresa</div>
+        <div class="valor">{{ empresa_info or '—' }}</div>
+      </div>
+      <div class="card-info">
+        <div class="rotulo">Filiais cadastradas</div>
+        <div class="valor">{{ filiais|length }}</div>
+      </div>
+    </div>
+
+    <div class="layout-principal">
+
+      <!-- ── LISTA ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2>🏢 Filiais Cadastradas</h2>
+          <p>Clique em ✏️ para editar</p>
+        </div>
+        <div class="bloco-body">
+          <div class="filtro">
+            <input type="text" id="txtFiltro" placeholder="Filtrar por CNPJ ou nome..." oninput="filtrar()">
+          </div>
+          <div class="lista">
+            {% if filiais %}
+            <table>
+              <thead>
+                <tr>
+                  <th>CNPJ</th>
+                  <th>Nome</th>
+                  <th style="width:60px;"></th>
+                </tr>
+              </thead>
+              <tbody id="tbodyFiliais">
+                {% for f in filiais %}
+                <tr id="tr_{{ f.id }}" data-busca="{{ (f.cnpj ~ ' ' ~ f.filial_nome)|lower }}">
+                  <td><span style="font-family:monospace;">{{ f.cnpj|replace('','') }}</span>
+                      <br><span style="font-size:10px;color:#94a3b8;">{{ f.cnpj }}</span></td>
+                  <td>{{ f.filial_nome }}
+                      {% if f.ender_uf %}<br><span style="font-size:10px;color:#94a3b8;">{{ f.ender_bairro or '' }}{% if f.ender_bairro and f.ender_uf %} · {% endif %}{{ f.ender_uf }}</span>{% endif %}
+                  </td>
+                  <td>
+                    <button class="btn-acao btn-edit"    onclick="editarFilial({{ f.id }})">✏️</button>
+                    <button class="btn-acao btn-desativ" onclick="desativarFilial({{ f.id }}, '{{ f.filial_nome }}')">🚫</button>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">Nenhuma filial cadastrada ainda.</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- ── FORM ── -->
+      <div class="bloco">
+        <div class="bloco-header">
+          <h2 id="formTitulo">➕ Nova Filial</h2>
+          <p id="formSubtitulo">Preencha os dados da filial</p>
+        </div>
+        <div class="bloco-body">
+
+          <div id="msgModo" class="form-modo form-modo-novo">Modo: Inclusão</div>
+          <div id="msgOk"   class="msg-ok"></div>
+          <div id="msgErro" class="msg-erro"></div>
+
+          <input type="hidden" id="inpId">
+
+          <div class="form-grid-2">
+            <div class="form-secao">
+              <label class="form-label">CNPJ <span style="color:#ef4444;">*</span></label>
+              <input class="form-input" type="text" id="inpCnpj" maxlength="18"
+                placeholder="00.000.000/0000-00"
+                oninput="mascaraCnpj(this)" onblur="validarCnpjBlur(this)">
+            </div>
+            <div class="form-secao">
+              <label class="form-label">Nome da Filial <span style="color:#ef4444;">*</span></label>
+              <input class="form-input" type="text" id="inpNome" maxlength="40"
+                placeholder="Ex: FILIAL CENTRO">
+            </div>
+          </div>
+
+          {% include '_bloco_endereco.html' %}
+
+          <div class="rodape-acoes">
+            <button class="btn btn-gravar"   onclick="gravarFilial()">💾 &nbsp;Gravar</button>
+            <button class="btn btn-cancelar" id="btnCancelar" style="display:none;" onclick="modoNovo()">✖ Cancelar</button>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <div class="rodape-final">
+      <button class="btn btn-voltar" onclick="window.location.href='/menu'">↩ &nbsp;Voltar ao Menu</button>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const FILIAIS_DATA = {{ filiais_json | safe }};
+
+  // ── Máscara / validação CNPJ ───────────────────────────────
+  function mascaraCnpj(el) {
+    let v = el.value.replace(/\D/g, '').substring(0, 14);
+    if (v.length > 12) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2})/, '$1.$2.$3/$4-$5');
+    else if (v.length > 8) v = v.replace(/^(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+    else if (v.length > 5) v = v.replace(/^(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+    else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3})/, '$1.$2');
+    el.value = v;
+    el.style.borderColor = '';
+  }
+
+  function cnpjValido(cnpj) {
+    const d = cnpj.replace(/\D/g, '');
+    if (d.length !== 14 || /^(\d)\1+$/.test(d)) return false;
+    const calc = (base, pesos) => {
+      const soma = base.split('').reduce((s, n, i) => s + parseInt(n) * pesos[i], 0);
+      const r = soma % 11; return r < 2 ? 0 : 11 - r;
+    };
+    const d1 = calc(d.substring(0, 12), [5,4,3,2,9,8,7,6,5,4,3,2]);
+    const d2 = calc(d.substring(0, 13), [6,5,4,3,2,9,8,7,6,5,4,3,2]);
+    return parseInt(d[12]) === d1 && parseInt(d[13]) === d2;
+  }
+
+  function validarCnpjBlur(el) {
+    const v = el.value.trim();
+    if (!v) { el.style.borderColor = ''; return; }
+    if (!cnpjValido(v)) {
+      el.style.borderColor = '#ef4444';
+      mostrarErro('CNPJ inválido. Verifique o número digitado.');
+    } else {
+      el.style.borderColor = '#22c55e';
+      document.getElementById('msgErro').style.display = 'none';
+    }
+  }
+
+  // ── Filtro ─────────────────────────────────────────────────
+  function filtrar() {
+    const txt = document.getElementById('txtFiltro').value.toLowerCase();
+    document.querySelectorAll('#tbodyFiliais tr').forEach(tr => {
+      tr.style.display = !txt || (tr.dataset.busca || '').includes(txt) ? '' : 'none';
+    });
+  }
+
+  // ── Modo Novo ──────────────────────────────────────────────
+  function modoNovo() {
+    document.getElementById('inpId').value    = '';
+    document.getElementById('inpCnpj').value  = '';
+    document.getElementById('inpNome').value  = '';
+    document.getElementById('inpCnpj').style.borderColor = '';
+    Endereco.clear();
+    document.getElementById('formTitulo').textContent    = '➕ Nova Filial';
+    document.getElementById('formSubtitulo').textContent = 'Preencha os dados da filial';
+    document.getElementById('msgModo').textContent       = 'Modo: Inclusão';
+    document.getElementById('msgModo').className         = 'form-modo form-modo-novo';
+    document.getElementById('btnCancelar').style.display = 'none';
+    document.getElementById('msgOk').style.display       = 'none';
+    document.getElementById('msgErro').style.display     = 'none';
+    document.querySelectorAll('#tbodyFiliais tr').forEach(tr => tr.classList.remove('selecionada'));
+  }
+
+  // ── Editar ─────────────────────────────────────────────────
+  function editarFilial(id) {
+    const f = FILIAIS_DATA.find(x => x.id === id);
+    if (!f) return;
+
+    document.getElementById('inpId').value   = id;
+    document.getElementById('inpNome').value = f.filial_nome || '';
+
+    const cnpjEl = document.getElementById('inpCnpj');
+    cnpjEl.value = f.cnpj || '';
+    mascaraCnpj(cnpjEl);
+
+    Endereco.setData({
+      cep:         f.ender_cep        || '',
+      logradouro:  f.ender_dsclograd  || '',
+      numero:      f.ender_nrlograd   || '',
+      complemento: f.ender_complemento || '',
+      bairro:      f.ender_bairro     || '',
+      cidade_nome: f.ender_cidade_nome  || '',
+      uf:          f.ender_uf         || '',
+      cod_ibge:    f.ender_codmunic   || '',
+    });
+
+    document.getElementById('formTitulo').textContent    = '✏️ Editando: ' + f.filial_nome;
+    document.getElementById('formSubtitulo').textContent = 'Altere os dados e salve';
+    document.getElementById('msgModo').textContent       = 'Modo: Edição';
+    document.getElementById('msgModo').className         = 'form-modo form-modo-editar';
+    document.getElementById('btnCancelar').style.display = '';
+    document.getElementById('msgOk').style.display       = 'none';
+    document.getElementById('msgErro').style.display     = 'none';
+
+    document.querySelectorAll('#tbodyFiliais tr').forEach(tr => tr.classList.remove('selecionada'));
+    const trSel = document.getElementById(`tr_${id}`);
+    if (trSel) { trSel.classList.add('selecionada'); trSel.scrollIntoView({ block: 'nearest' }); }
+
+    document.getElementById('inpCnpj').focus();
+  }
+
+  // ── Desativar ──────────────────────────────────────────────
+  async function desativarFilial(id, nome) {
+    if (!confirm(`Desativar a filial "${nome}"?`)) return;
+    try {
+      const r = await fetch('/api/filial/desativar', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ id })
+      });
+      const d = await r.json();
+      if (d.ok) location.reload();
+      else mostrarErro(d.msg || 'Erro ao desativar.');
+    } catch(e) { mostrarErro('Erro de comunicação.'); }
+  }
+
+  // ── Mensagens ──────────────────────────────────────────────
+  function mostrarOk(msg) {
+    const el = document.getElementById('msgOk');
+    el.textContent = '✔ ' + msg; el.style.display = 'block';
+    document.getElementById('msgErro').style.display = 'none';
+    setTimeout(() => { el.style.display = 'none'; }, 3000);
+  }
+  function mostrarErro(msg) {
+    const el = document.getElementById('msgErro');
+    el.textContent = '✖ ' + msg; el.style.display = 'block';
+    document.getElementById('msgOk').style.display = 'none';
+  }
+
+  // ── Gravar ─────────────────────────────────────────────────
+  async function gravarFilial() {
+    const id   = document.getElementById('inpId').value;
+    const cnpj = document.getElementById('inpCnpj').value.trim();
+    const nome = document.getElementById('inpNome').value.trim();
+
+    if (!cnpj) { mostrarErro('Informe o CNPJ da filial.'); return; }
+    if (!cnpjValido(cnpj)) {
+      mostrarErro('CNPJ inválido. Corrija antes de gravar.');
+      document.getElementById('inpCnpj').style.borderColor = '#ef4444';
+      return;
+    }
+    if (!nome) { mostrarErro('Informe o nome da filial.'); return; }
+
+    const end = Endereco.getData();
+    const editando = !!id;
+
+    try {
+      const r = await fetch(editando ? '/api/filial/editar' : '/api/filial/incluir', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          id,
+          cnpj:                cnpj.replace(/\D/g, ''),
+          filial_nome:         nome,
+          ender_cep:           end.cep        || null,
+          ender_dsclograd:     end.logradouro  || null,
+          ender_nrlograd:      end.numero      || null,
+          ender_complemento:   end.complemento || null,
+          ender_bairro:        end.bairro      || null,
+          ender_cidade_nome:   end.cidade_nome || null,
+          ender_codmunic:      end.cod_ibge    || null,
+          ender_uf:            end.uf          || null,
+        })
+      });
+      const d = await r.json();
+      if (d.ok) {
+        mostrarOk(editando ? `"${nome}" atualizada!` : `"${nome}" incluída!`);
+        setTimeout(() => location.reload(), 1500);
+      } else { mostrarErro(d.msg || 'Erro ao gravar.'); }
+    } catch(e) { mostrarErro('Erro de comunicação.'); }
+  }
+</script>
+</body>
+</html>

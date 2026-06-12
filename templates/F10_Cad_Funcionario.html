@@ -378,6 +378,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
     {% endif %}
 
+    {% if aviso == 'sem_funcionario' %}
+    <div style="background:#fef2f2; border:2px solid #fca5a5; border-radius:12px; padding:14px 20px; margin-bottom:16px; display:flex; align-items:flex-start; gap:14px;">
+        <div style="font-size:22px; line-height:1; margin-top:2px;">🚫</div>
+        <div>
+            <div style="font-size:14px; font-weight:700; color:#991b1b; margin-bottom:4px;">Nenhum funcionário cadastrado para esta empresa</div>
+            <div style="font-size:13px; color:#7f1d1d; line-height:1.5;">
+                Preencha os dados abaixo e clique em <strong>Gravar Inclusão</strong> para cadastrar o primeiro funcionário.
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div id="form_funcionario" {% if modo == 'alteracao' %}style="display:none"{% endif %}>
 
     <!-- ── IDENTIFICAÇÃO ──────────────────────────────── -->
@@ -407,7 +419,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo campo-mono">
                     <label>Filial</label>
-                    <input type="text" id="filial" maxlength="6" value="{{ filial }}" readonly>
+                    {% if filiais_func|length == 1 %}
+                    <input type="text" id="filial" value="{{ filiais_func[0].valor }}"
+                           title="{{ filiais_func[0].nome }}" readonly
+                           style="background:var(--read-bg);color:var(--read-text);">
+                    {% elif filiais_func %}
+                    <select id="filial">
+                        <option value="">— Selecione —</option>
+                        {% for f in filiais_func %}
+                        <option value="{{ f.valor }}">{{ f.nome }}</option>
+                        {% endfor %}
+                    </select>
+                    {% else %}
+                    <input type="text" id="filial" value="{{ filial }}" readonly
+                           style="background:var(--read-bg);color:var(--read-text);">
+                    {% endif %}
                 </div>
                 <div class="campo">
                     <label>Categoria eSocial</label>
@@ -749,10 +775,26 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="secao-titulo">Local de Trabalho</span>
             </div>
             <div class="secao-corpo">
-                <div style="display:grid; grid-template-columns:110px 100px 145px; gap:8px 14px;">
+                <div style="display:grid; grid-template-columns:170px 100px 145px; gap:8px 14px;">
                     <div class="campo">
                         <label>Centro de Custo</label>
-                        <input type="text" id="centrocusto" maxlength="8" placeholder="(uso futuro)" readonly>
+                        {% if centros_custo|length == 1 %}
+                        <input type="text" id="centrocusto" value="{{ centros_custo[0].codigo_cc }}" readonly
+                               style="background:var(--read-bg);color:var(--read-text);">
+                        <div style="font-size:10px;color:#64748b;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                            {{ centros_custo[0].nomecc }}
+                        </div>
+                        {% elif centros_custo %}
+                        <select id="centrocusto">
+                            <option value="">— Selecione —</option>
+                            {% for cc in centros_custo %}
+                            <option value="{{ cc.codigo_cc }}">{{ cc.codigo_cc }} — {{ cc.nomecc }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" id="centrocusto" value="" placeholder="(nenhum cadastrado)" readonly
+                               style="background:var(--read-bg);color:var(--read-text);">
+                        {% endif %}
                     </div>
                     <div class="campo">
                         <label>Tipo de Inscrição</label>
@@ -1428,6 +1470,8 @@ function preencherFormulario(d) {
     sv('banco_AgenciaDV',d.banco_agenciadv);
     sv('banco_Conta',    d.banco_conta);
     sv('banco_ContaDV',  d.banco_contadv);
+    sv('filial',         d.filial);
+    sv('centrocusto',    d.centrocusto);
     sv('ind_Imigrante',  d.ind_imigrante);
     sv('imigrante_tmpResid', d.imigrante_tmpresid);
     sv('condIng',        d.conding);

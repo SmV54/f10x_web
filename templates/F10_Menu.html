@@ -269,6 +269,8 @@ const modulos = {
                 { icone: '🚌', nome: 'Vale Transporte',       href: '/cad_vt',        ok: true },
                 { icone: '📑', nome: 'Rubricas (Verbas)',     href: '/cad_verba',     ok: true },
                 { icone: '📅', nome: 'Feriados',              href: '/cad_feriado',   ok: true },
+                { icone: '🏷️', nome: 'Centros de Custo',     href: '/cad_cc',        ok: true },
+                { icone: '🏢', nome: 'Filiais',               href: '/cad_filial',    ok: true },
                 { icone: '🏙️', nome: 'Cidades',              href: '#' },
             ]},
             { nome: 'Empresa', itens: [
@@ -498,8 +500,14 @@ const modulos = {
     },
 
     interno_f10: {
-        titulo: 'INTERNO F10', icone: '🔧',
+        titulo: 'Administrador', icone: '🛡️',
         secoes: [
+            { nome: 'Clientes', itens: [
+                { icone: '🏢', nome: 'Lista de Clientes', href: '/admin_clientes', ok: true },
+            ]},
+            { nome: 'Migração', itens: [
+                { icone: '📦', nome: 'Importar do Folha 10 Antigo', href: '/admin_importar_f10', ok: true },
+            ]},
             { nome: 'Ferramentas', itens: [
                 { icone: '🔧', nome: 'Em breve', href: '#' },
             ]}
@@ -549,8 +557,8 @@ for (const id of ordem) {
         card.style.background = '#f0fdf4';
         card.style.borderColor = '#86efac';
         card.innerHTML = `
-            <div class="modulo-icone" style="background:#dcfce7;">🔧</div>
-            <div class="modulo-nome" style="color:#166534;font-size:9px;letter-spacing:0.04em;">INTERNO F10</div>`;
+            <div class="modulo-icone" style="background:#dcfce7;">🛡️</div>
+            <div class="modulo-nome" style="color:#166534;font-size:9px;letter-spacing:0.04em;">ADMIN</div>`;
     } else {
         const nomeCard = (id === 'novafolha') ? 'Mês/Ano' : m.titulo;
         card.innerHTML = `<div class="modulo-icone">${m.icone}</div><div class="modulo-nome">${nomeCard}</div>`;
