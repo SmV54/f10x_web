@@ -560,7 +560,17 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             </div>
 
             <div class="card" id="cardResultado" style="display:none;">
-                <div class="card-header">📋 Resultado</div>
+                <div class="card-header">
+                    📋 Resultado
+                    <button id="btnCopiarLog" onclick="copiarLog()"
+                            style="margin-left:auto;background:none;border:1px solid #334155;color:#94a3b8;
+                                   font-size:11px;padding:3px 10px;border-radius:6px;cursor:pointer;
+                                   font-family:var(--sans);transition:0.15s;"
+                            onmouseover="this.style.borderColor='#64748b';this.style.color='#e2e8f0'"
+                            onmouseout="this.style.borderColor='#334155';this.style.color='#94a3b8'">
+                        📋 Copiar log
+                    </button>
+                </div>
                 <div class="card-body">
                     <div class="resumo-badges" id="resumoBadges"></div>
                     <div class="log-area" id="logArea"></div>
@@ -1386,6 +1396,27 @@ document.addEventListener('DOMContentLoaded', () => {
     carregarArquivos();
     carregarEmpresas();
 });
+
+function copiarLog() {
+    const txt = document.getElementById('logArea').textContent;
+    if (!txt) return;
+    navigator.clipboard.writeText(txt).then(() => {
+        const btn = document.getElementById('btnCopiarLog');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copiado!';
+        btn.style.color = '#4ade80';
+        setTimeout(() => { btn.textContent = orig; btn.style.color = '#94a3b8'; }, 2000);
+    }).catch(() => {
+        // fallback para navegadores sem clipboard API
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+        mostrarToast('Log copiado', 'ok');
+    });
+}
 
 let _toastTimer = null;
 function mostrarToast(msg, tipo) {
