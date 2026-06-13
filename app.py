@@ -27521,12 +27521,32 @@ def _imp_verbas_f10(caminho, id_cliente, ini_valid):
     grav = err = 0
 
     try:
-        cur.execute("SELECT * FROM tabverba WHERE situacao='A' AND codigo >= 1000")
+        cur.execute("SELECT * FROM tabverba WHERE situacao='A'")
         cols = [d[0].lower() for d in cur.description]
         rows = cur.fetchall()
     except Exception as ex:
         conn.close()
         return 0, 1, [f'✗ Leitura de tabverba: {ex}']
+
+    # filtra em Python para garantir comparação numérica (campo pode ser Texto no Access)
+    rows_import = []
+    ignorados   = 0
+    for row in rows:
+        r = dict(zip(cols, row))
+        try:
+            cod = int(r.get('codigo') or 0)
+        except (ValueError, TypeError):
+            cod = 0
+        if cod >= 1000:
+            rows_import.append(row)
+        else:
+            ignorados += 1
+
+    log.append(f'📋 tabverba: {len(rows)} registro(s) lido(s) — {len(rows_import)} com código ≥ 1000 / {ignorados} ignorados')
+
+    if not rows_import:
+        conn.close()
+        return 0, 0, log + ['⚠  Nenhuma verba com código ≥ 1000 encontrada — nada foi alterado no Supabase.']
 
     try:
         supabase.table('tab_rubrica').delete() \
@@ -27535,13 +27555,10 @@ def _imp_verbas_f10(caminho, id_cliente, ini_valid):
     except Exception as ex:
         log.append(f'⚠  Não foi possível limpar registros anteriores: {ex}')
 
-    for row in rows:
+    for row in rows_import:
         r = dict(zip(cols, row))
         try:
             cod_int = int(r.get('codigo') or 0)
-            if cod_int < 1000:
-                log.append(f"⏭  {cod_int:4d}  ignorado (código < 1000)")
-                continue
             inc = (r.get('incidencia') or '     ').ljust(5)
             yn  = lambda c: 'N' if (r.get(c) or 'NAO').upper() in ('NAO','N','') else 'S'
             payload = {
