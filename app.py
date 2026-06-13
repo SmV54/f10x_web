@@ -5,6 +5,7 @@ import shutil
 import json
 import queue
 import threading
+import uuid
 import base64
 import hashlib
 import random
@@ -468,10 +469,9 @@ def api_selecionar_empresa():
 
     # Verifica se o cliente já tem funções cadastradas (compartilhadas entre empresas)
     try:
-        cpf_cli = session.get("cpf", "")
         tem_funcao = (supabase.table("tab_funcao_cli")
                       .select("id", count="exact")
-                      .eq("idcliente", cpf_cli)
+                      .eq("id_cliente", session.get("id_cliente"))
                       .eq("situacao", "A")
                       .limit(1)
                       .execute())
@@ -743,16 +743,15 @@ def demo_modulos():
 def rel_funcoes():
     if not session.get("logado"):
         return redirect("/")
-    cpf_cliente        = session.get("cpf", "")
     cnpj_empresa_atual = so_numeros(session.get("cnpj_empresa", ""))
 
-    funcoes_cli   = listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa_atual)
+    funcoes_cli   = listar_funcoes_cli_ativas(session.get("id_cliente"), cnpj_empresa_atual)
     funcoes_total = listar_funcoes_total()
     mapa = {str(f["id"]): f for f in funcoes_total}
 
     lista = []
     for f in funcoes_cli:
-        base = mapa.get(str(f.get("idfuncao_total")), {})
+        base = mapa.get(str(f.get("id_funcao_total")), {})
         lista.append({
             "cbo":           base.get("cbo", ""),
             "nome_resumido": f.get("nome_resumido", ""),
@@ -1015,14 +1014,13 @@ def rel_funcoes_pdf():
     if not session.get("logado"):
         return redirect("/")
 
-    cpf_cliente        = session.get("cpf", "")
     cnpj_empresa_atual = so_numeros(session.get("cnpj_empresa", ""))
-    funcoes_cli        = listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa_atual)
+    funcoes_cli        = listar_funcoes_cli_ativas(session.get("id_cliente"), cnpj_empresa_atual)
     funcoes_total      = listar_funcoes_total()
     mapa               = {str(f["id"]): f for f in funcoes_total}
 
     lista = sorted([{
-        "cbo":           mapa.get(str(f.get("idfuncao_total")), {}).get("cbo", ""),
+        "cbo":           mapa.get(str(f.get("id_funcao_total")), {}).get("cbo", ""),
         "nome_resumido": f.get("nome_resumido", ""),
     } for f in funcoes_cli], key=lambda x: x["nome_resumido"].upper())
 
@@ -4598,14 +4596,13 @@ def listar_funcoes_total():
         print("Erro em listar_funcoes_total:", str(e))
         return []
 
-def listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa_atual=None):
+def listar_funcoes_cli_ativas(id_cliente, cnpj_empresa_atual=None):
     try:
-        cpf_cliente = so_numeros(cpf_cliente)
         r = (
             supabase
             .table("tab_funcao_cli")
-            .select("id, idfuncao_total, cbo_codigo, nome_resumido, cnpj")
-            .eq("idcliente", cpf_cliente)
+            .select("id, id_funcao_total, cbo_codigo, nome_resumido, cnpj")
+            .eq("id_cliente", id_cliente)
             .eq("situacao", "A")
             .order("nome_resumido")
             .execute()
@@ -4614,7 +4611,7 @@ def listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa_atual=None):
         for row in (r.data or []):
             lista.append({
                 "id":             row.get("id"),
-                "idfuncao_total": row.get("idfuncao_total"),
+                "id_funcao_total": row.get("id_funcao_total"),
                 "cbo_codigo":     str(row.get("cbo_codigo") or "").strip(),
                 "nome_resumido":  row.get("nome_resumido", ""),
                 "cnpj":           row.get("cnpj", "")
@@ -4635,16 +4632,16 @@ def cad_funcao():
     cnpj_empresa_atual = so_numeros(session.get("cnpj_empresa", ""))
 
     funcoes_total = listar_funcoes_total()
-    funcoes_cli   = listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa_atual)
+    funcoes_cli   = listar_funcoes_cli_ativas(session.get("id_cliente"), cnpj_empresa_atual)
 
     mapa_funcoes_total = {str(f["id"]): {"cbo": f["cbo"], "nome_funcao": f["nome_funcao"]} for f in funcoes_total}
 
     funcoes_cli_fmt = []
     for f in funcoes_cli:
-        base = mapa_funcoes_total.get(str(f.get("idfuncao_total")), {})
+        base = mapa_funcoes_total.get(str(f.get("id_funcao_total")), {})
         funcoes_cli_fmt.append({
             "id": f.get("id"),
-            "idfuncao_total": f.get("idfuncao_total"),
+            "id_funcao_total": f.get("id_funcao_total"),
             "nome_resumido": f.get("nome_resumido", ""),
             "cnpj": f.get("cnpj", ""),
             "cbo": base.get("cbo", ""),
@@ -4676,18 +4673,18 @@ def incluir_funcao_cliente():
         return jsonify({"ok": False, "msg": "Sessão inválida"})
 
     data          = request.get_json() or {}
-    idfuncao      = data.get("idfuncao_total", "")
+    idfuncao      = data.get("id_funcao_total", "")
     nome_resumido = (data.get("nome_resumido") or "").strip()
     abrangencia   = (data.get("abrangencia") or "todas").strip()
 
-    cpf_cliente   = so_numeros(session.get("cpf", ""))
+    id_cliente    = session.get("id_cliente")
     cnpj_empresa  = so_numeros(session.get("cnpj_empresa", ""))
 
     if not idfuncao:
         return jsonify({"ok": False, "msg": "Função não informada"})
     if not nome_resumido:
         return jsonify({"ok": False, "msg": "Nome resumido não informado"})
-    if not cpf_cliente:
+    if not id_cliente:
         return jsonify({"ok": False, "msg": "Sessão inválida"})
 
     cnpj_funcao = cnpj_empresa if abrangencia == "empresa" else "0"
@@ -4706,8 +4703,8 @@ def incluir_funcao_cliente():
 
     try:
         payload = {
-            "idcliente":      cpf_cliente,
-            "idfuncao_total": int(idfuncao),
+            "id_cliente":      id_cliente,
+            "id_funcao_total": int(idfuncao),
             "cbo_codigo":     cbo_codigo,
             "nome_resumido":  nome_resumido,
             "cnpj":           cnpj_funcao,
@@ -6500,13 +6497,13 @@ def api_funcoes():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão inválida"})
 
-    cpf_cliente = so_numeros(session.get("cpf", ""))
+    id_cliente = session.get("id_cliente")
     try:
         r = (
             supabase
             .table("tab_funcao_cli")
-            .select("idfuncao_total, nome_resumido")
-            .eq("idcliente", cpf_cliente)
+            .select("id_funcao_total, nome_resumido")
+            .eq("id_cliente", id_cliente)
             .eq("situacao", "A")
             .order("nome_resumido")
             .execute()
@@ -6515,7 +6512,7 @@ def api_funcoes():
 
         if cli_rows:
             # Busca CBOs do tab_aux_funcao_total
-            ids = [row["idfuncao_total"] for row in cli_rows if row.get("idfuncao_total")]
+            ids = [row["id_funcao_total"] for row in cli_rows if row.get("id_funcao_total")]
             mapa_cbo = {}
             if ids:
                 rt = (
@@ -6528,7 +6525,7 @@ def api_funcoes():
                 mapa_cbo = {row["id"]: row.get("cbo_codigo", "") for row in (rt.data or [])}
             dados = []
             for row in cli_rows:
-                cbo = str(mapa_cbo.get(row.get("idfuncao_total"), "") or "").strip()
+                cbo = str(mapa_cbo.get(row.get("id_funcao_total"), "") or "").strip()
                 dados.append({"cbo": cbo, "nome_resumido": row.get("nome_resumido", "")})
         else:
             # Fallback: carrega da tabela geral (primeiros 200, ordenados por código)
@@ -7243,10 +7240,9 @@ def ficha_registro():
                 func_nome = ""
                 if f.get("cbofuncao"):
                     try:
-                        cpf_cli = so_numeros(session.get("cpf", ""))
                         rf = (supabase.table("tab_funcao_cli")
                               .select("nome_resumido")
-                              .eq("idcliente", cpf_cli)
+                              .eq("id_cliente", session.get("id_cliente"))
                               .eq("cbo_codigo", str(f["cbofuncao"]).strip())
                               .eq("situacao", "A")
                               .limit(1)
@@ -7730,8 +7726,8 @@ def cad_funcionario():
         r = (
             supabase
             .table("tab_funcao_cli")
-            .select("idfuncao_total, nome_resumido")
-            .eq("idcliente", cpf_cliente)
+            .select("id_funcao_total, nome_resumido")
+            .eq("id_cliente", id_cliente)
             .eq("situacao", "A")
             .order("nome_resumido")
             .execute()
@@ -7739,13 +7735,13 @@ def cad_funcionario():
         cli_rows = r.data or []
         if not cli_rows:
             return redirect("/cad_funcao?aviso=sem_funcao")
-        ids = [row["idfuncao_total"] for row in cli_rows if row.get("idfuncao_total")]
+        ids = [row["id_funcao_total"] for row in cli_rows if row.get("id_funcao_total")]
         mapa_cbo = {}
         if ids:
             rt = supabase.table("tab_aux_funcao_total").select("id, cbo_codigo").in_("id", ids).execute()
             mapa_cbo = {row["id"]: row.get("cbo_codigo", "") for row in (rt.data or [])}
         for row in cli_rows:
-            cbo = str(mapa_cbo.get(row.get("idfuncao_total"), "") or "").strip()
+            cbo = str(mapa_cbo.get(row.get("id_funcao_total"), "") or "").strip()
             funcoes.append({"cbo": cbo, "nome": row.get("nome_resumido", "")})
     except Exception:
         pass
@@ -7889,9 +7885,8 @@ def select_funcionario():
         pass
     funcoes = []
     try:
-        cpf_cliente  = session.get("cpf", "")
         cnpj_empresa = so_numeros(session.get("cnpj_empresa", ""))
-        for f in listar_funcoes_cli_ativas(cpf_cliente, cnpj_empresa):
+        for f in listar_funcoes_cli_ativas(session.get("id_cliente"), cnpj_empresa):
             cbo = f.get("cbo_codigo", "")
             if cbo:
                 funcoes.append({"cbo": cbo, "nome": f.get("nome_resumido", "")})
@@ -12724,7 +12719,7 @@ def mov_fixo():
     try:
         r = (supabase.table("tab_funcao_cli")
              .select("id, nome_resumido, cbo_codigo")
-             .eq("idcliente", cpf_cliente)
+             .eq("id_cliente", id_cliente)
              .eq("situacao", "A")
              .order("nome_resumido")
              .execute())
@@ -26608,6 +26603,7 @@ def api_admin_clientes_empresas(id_cliente):
 # ADMINISTRADOR — Importar do Folha 10 Antigo
 # =========================================================
 PASTA_BASES_F10 = r'C:\folha10\arquivos\bases'
+_import_jobs = {}   # job_id → {pct, etapa, done, resultado}
 
 def _fmt_bytes(b):
     if b < 1024:       return f'{b} B'
@@ -26778,6 +26774,735 @@ def _imp_empresas_f10(caminho, id_cliente):
         except Exception as ex:
             err += 1
             log.append(f"✗  {cnpj_raw}  {ex}")
+
+    return grav, err, log
+
+
+def _col_access(r, *keys):
+    """Retorna o primeiro valor não-vazio entre as colunas listadas de um dict de linha Access."""
+    for k in keys:
+        v = str(r.get(k) or '').strip()
+        if v:
+            return v
+    return None
+
+
+def _ler_tabfilial_de_arquivo(caminho_arq):
+    """Abre um arquivo Access e lê a tabfilial (bruta, sem exigir CNPJ).
+    Retorna (nome_tabela_ou_None, col_names, rows_raw, total_count, erro_ou_None, todas_tabelas).
+    rows_raw: lista de dicts com os valores originais do Access (strings).
+    """
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho_arq};'
+        )
+    except Exception as ex:
+        return None, [], [], 0, f'conexão: {ex}', []
+
+    cur = conn.cursor()
+    try:
+        tabelas = {t.table_name.lower(): t.table_name
+                   for t in cur.tables()
+                   if not t.table_name.startswith('MSys')
+                   and not t.table_name.startswith('~')}
+    except Exception as ex:
+        conn.close()
+        return None, [], [], 0, f'leitura de tabelas: {ex}', []
+
+    todas = sorted(tabelas.values())
+
+    tabela = None
+    for cand in ('tabfilial', 'tabfiliais', 'tab_filial', 'filiais', 'filial'):
+        if cand in tabelas:
+            tabela = tabelas[cand]
+            break
+    if not tabela:
+        conn.close()
+        return None, [], [], 0, None, todas
+
+    try:
+        cur.execute(f'SELECT COUNT(*) FROM [{tabela}]')
+        total = cur.fetchone()[0]
+
+        cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+        col_names = [col[0] for col in cur.description]   # mantém capitalização original
+
+        if total == 0:
+            conn.close()
+            return tabela, col_names, [], 0, None, todas
+
+        cur.execute(f'SELECT * FROM [{tabela}]')
+        rows_raw = []
+        for row in cur.fetchall():
+            rows_raw.append({k: (str(v).strip() if v is not None else '')
+                             for k, v in zip(col_names, row)})
+        conn.close()
+        return tabela, col_names, rows_raw, total, None, todas
+    except Exception as ex:
+        conn.close()
+        return tabela, [], [], 0, f'leitura: {ex}', todas
+
+
+def _ler_empresa_raiz_de_arquivo(caminho_arq):
+    """Lê tabempresa/tabempresas do arquivo Access e retorna dict {codigo_emp: cnpj_raiz8}.
+    Usado para complementar o CNPJ parcial da tabfilial.
+    """
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho_arq};'
+        )
+        cur  = conn.cursor()
+        tabs = {t.table_name.lower(): t.table_name
+                for t in cur.tables()
+                if not t.table_name.startswith('MSys')
+                and not t.table_name.startswith('~')}
+        tabela = None
+        for cand in ('tabempresas', 'tabempresa', 'tabemp'):
+            if cand in tabs:
+                tabela = tabs[cand]
+                break
+        if not tabela:
+            conn.close()
+            return {}
+        cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+        cols = [c[0].lower() for c in cur.description]
+        col_cod  = next((c for c in cols if c in
+                         ('codigo', 'cod', 'codigoemp', 'codemp', 'codempresa',
+                          'num', 'numero', 'numempresa')), None)
+        col_cnpj = next((c for c in cols if c in ('cnpj', 'cgc')), None)
+        if not col_cnpj:
+            conn.close()
+            return {}
+        cur.execute(f'SELECT * FROM [{tabela}]')
+        mapa = {}
+        for row in cur.fetchall():
+            r    = dict(zip(cols, row))
+            cnpj = ''.join(filter(str.isdigit, str(r.get(col_cnpj) or '')))
+            if len(cnpj) == 14:
+                raiz = cnpj[:8]
+                # mapeia por código (com e sem zeros à esquerda)
+                if col_cod:
+                    cod_raw = str(r.get(col_cod) or '').strip()
+                    mapa[cod_raw] = raiz                          # ex: '000690'
+                    mapa[cod_raw.lstrip('0') or '0'] = raiz      # ex: '690'
+                # mapeia pelo próprio raiz e pelo CNPJ completo
+                mapa[raiz] = raiz
+                mapa[cnpj] = raiz
+        conn.close()
+        return mapa
+    except Exception:
+        return {}
+
+
+def _mapear_registros_filial(col_names_orig, rows_raw):
+    """Converte rows_raw (dicts Access tabfilial) para lista de dicts normalizados.
+    Aceita cnpj com qualquer número de dígitos — o CNPJ completo será resolvido
+    depois em _imp_filiais_f10 usando o mapa_raiz do Supabase.
+    Retorna lista de dicts com cnpj_sufixo (dígitos do campo cnpj), nome, endereço.
+    Descarta apenas registros marcados como inativos.
+    """
+    cols_lower = {c.lower(): c for c in col_names_orig}
+
+    col_cnpj = next((cols_lower[c] for c in cols_lower
+                     if c in ('cnpj', 'cgc', 'cnpjfilial', 'cgcfilial', 'cnpj_filial')), None)
+    col_emp  = next((cols_lower[c] for c in cols_lower
+                     if c in ('empresa', 'codemp', 'codigoemp', 'cod_empresa')), None)
+
+    def _g(r, *keys):
+        for k in keys:
+            v = r.get(cols_lower.get(k, '__x__'), '') or ''
+            if str(v).strip():
+                return str(v).strip()
+        return None
+
+    registros = []
+    for r in rows_raw:
+        sit = str(r.get('situacao') or r.get('Situacao') or '').strip().upper()
+        if sit in ('I', 'D', 'INATIVO', 'DELETADO'):
+            continue
+
+        cnpj_digitos = ''.join(filter(str.isdigit, r.get(col_cnpj, '') if col_cnpj else ''))
+        cod_emp      = str(r.get(col_emp) or '').strip() if col_emp else ''
+
+        nome_cols = ['nome', 'nomefilial', 'fantasia', 'nomefantasia', 'razaosocial', 'razao_social']
+        nome = next((r[cols_lower[c]] for c in nome_cols
+                     if c in cols_lower and r.get(cols_lower[c])), '') or cnpj_digitos
+        nome = nome[:40]
+
+        registros.append({
+            'cnpj_digitos':      cnpj_digitos,   # pode ser 6, 14 ou outro
+            'cod_emp':           cod_emp,
+            'filial_nome':       nome,
+            'ender_cep':         _g(r, 'cep'),
+            'ender_dsclograd':   _g(r, 'logradouro', 'endereco'),
+            'ender_nrlograd':    _g(r, 'numero', 'nr', 'endereconumero'),
+            'ender_complemento': _g(r, 'complemento'),
+            'ender_bairro':      _g(r, 'bairro'),
+            'ender_cidade_nome': _g(r, 'cidade', 'nomecidade'),
+            'ender_uf':          _g(r, 'estado', 'uf'),
+            'ender_codmunic':    _g(r, 'codmunicibge', 'codibge', 'codmunic'),
+        })
+    return registros
+
+
+def _imp_filiais_f10(caminho, id_cliente):
+    """Importa filiais do Access para tab_filial.
+    Varre TODOS os arquivos .mdb/.accdb da pasta procurando tabfilial com registros.
+    Se não encontrar em nenhum, deriva filiais de tabempresa do arquivo principal.
+    Retorna (gravados, erros, log).
+    """
+    import pyodbc, glob as _glob
+
+    log  = []
+    grav = err = 0
+    pasta = os.path.dirname(caminho)
+
+    # ── Varre toda a pasta procurando tabfilial ──────────────────
+    todos_arqs = sorted(
+        _glob.glob(os.path.join(pasta, '*.mdb')) +
+        _glob.glob(os.path.join(pasta, '*.accdb'))
+    )
+    log.append(f'🗂  Arquivos na pasta: {len(todos_arqs)}')
+
+    # Lê o raiz do CNPJ a partir do arquivo FolhaFIX (tabempresa) — usado para completar
+    # os 6 dígitos parciais da tabfilial nos arquivos de empresa
+    mapa_raiz_folhafix = _ler_empresa_raiz_de_arquivo(caminho)
+    if mapa_raiz_folhafix:
+        log.append(f'   raiz(s) lida(s) do FolhaFIX: {", ".join(sorted(set(mapa_raiz_folhafix.values())))}')
+    else:
+        log.append('   ⚠ não foi possível ler raiz do CNPJ do arquivo FolhaFIX')
+
+    registros     = []
+    fontes_usadas = []
+    for arq in todos_arqs:
+        nome_arq = os.path.basename(arq)
+        # tabfilial fica nos arquivos de empresa (ex: F000690_0001), nunca no FolhaFIX
+        if nome_arq.upper().startswith('FOLHAFIX'):
+            continue
+        tabela_nome, col_names, rows_raw, total, erro, todas_tabs = _ler_tabfilial_de_arquivo(arq)
+        if tabela_nome is None and erro:
+            log.append(f'   {nome_arq} → erro: {erro}')
+            log.append(f'      tabelas: {", ".join(todas_tabs) or "(nenhuma)"}')
+            continue
+        if tabela_nome is None:
+            log.append(f'   {nome_arq} → sem tabfilial  [tabelas: {", ".join(todas_tabs) or "(nenhuma)"}]')
+            continue
+        if erro:
+            log.append(f'   {nome_arq} → [{tabela_nome}] erro ao ler: {erro}')
+            continue
+        if total == 0:
+            log.append(f'   {nome_arq} → [{tabela_nome}] vazia (0 registros no Access)')
+            continue
+        log.append(f'   {nome_arq} → [{tabela_nome}] {total} registros brutos — colunas: {", ".join(col_names)}')
+        recs = _mapear_registros_filial(col_names, rows_raw)
+        inativos = total - len(recs)
+        if inativos:
+            log.append(f'      {inativos} registro(s) ignorados (inativo)')
+        log.append(f'✓  {nome_arq} → {len(recs)} registro(s) para importar')
+        registros.extend(recs)
+        fontes_usadas.append(nome_arq)
+
+    # ── Fallback: sem tabfilial em nenhum arquivo → deriva de tabempresa ──
+    if not registros:
+        log.append('⚠  tabfilial não encontrada com registros em nenhum arquivo — derivando de tabempresa')
+        try:
+            conn = pyodbc.connect(
+                f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+            )
+        except Exception as ex:
+            return 0, 1, log + [f'✗ Conexão com o arquivo principal: {ex}']
+
+        cur = conn.cursor()
+        tabelas = {t.table_name.lower(): t.table_name
+                   for t in cur.tables()
+                   if not t.table_name.startswith('MSys')}
+        tabela_emp = None
+        for cand in ('tabempresas', 'tabempresa', 'tabemp'):
+            if cand in tabelas:
+                tabela_emp = tabelas[cand]
+                break
+        if not tabela_emp:
+            conn.close()
+            return 0, 1, log + ['✗ Tabela de empresas não encontrada no arquivo principal.']
+
+        cur.execute(f'SELECT * FROM [{tabela_emp}] WHERE 1=0')
+        col_names_fb = [col[0].lower() for col in cur.description]
+        col_cnpj_fb  = next((c for c in col_names_fb if c in ('cnpj', 'cgc')), None)
+        if not col_cnpj_fb:
+            conn.close()
+            return 0, 1, log + [f'✗ [{tabela_emp}]: coluna CNPJ/CGC não encontrada.']
+        cur.execute(f'SELECT * FROM [{tabela_emp}]')
+        rows_fb = cur.fetchall()
+        conn.close()
+        log.append(f'📂 Fallback [{tabela_emp}] — {len(rows_fb)} registro(s)')
+        for row in rows_fb:
+            r        = dict(zip(col_names_fb, row))
+            cnpj_raw = ''.join(filter(str.isdigit, str(r.get(col_cnpj_fb) or '')))
+            if len(cnpj_raw) != 14:
+                continue
+            nome = (_col_access(r, 'fantasia', 'nomefantasia', 'razaosocial', 'razao_social') or cnpj_raw)[:40]
+            registros.append({
+                'cnpj_digitos': cnpj_raw, 'cod_emp': '',
+                'filial_nome':       nome,
+                'ender_cep':         _col_access(r, 'cep'),
+                'ender_dsclograd':   _col_access(r, 'logradouro', 'endereco'),
+                'ender_nrlograd':    _col_access(r, 'numero', 'nr', 'endereconumero'),
+                'ender_complemento': _col_access(r, 'complemento'),
+                'ender_bairro':      _col_access(r, 'bairro'),
+                'ender_cidade_nome': _col_access(r, 'cidade', 'nomecidade'),
+                'ender_uf':          _col_access(r, 'uf'),
+                'ender_codmunic':    _col_access(r, 'codmunicibge', 'codibge', 'codmunic'),
+            })
+
+    if not registros:
+        return 0, 0, ['⚠  Nenhum registro válido encontrado.']
+
+    # ── Monta mapa raiz → id_empresa a partir do Supabase ────────
+    try:
+        emp_rows = (supabase.table('tab_empresa')
+                    .select('id_empresa, cnpj')
+                    .eq('id_cliente', id_cliente)
+                    .execute().data or [])
+    except Exception as ex:
+        return 0, 1, log + [f'✗ Erro ao consultar tab_empresa: {ex}']
+
+    # raiz (8 dig) → id_empresa  (prefere CNPJ 0001)
+    mapa_raiz = {}
+    for e in emp_rows:
+        raiz = e['cnpj'][:8]
+        if raiz not in mapa_raiz or e['cnpj'][8:12] == '0001':
+            mapa_raiz[raiz] = (e['id_empresa'], e['cnpj'])
+
+    # se só existe uma empresa, usa ela como fallback para CNPJs parciais
+    raiz_unica = list(mapa_raiz.keys())[0] if len(mapa_raiz) == 1 else None
+
+    # ── Grava cada filial ─────────────────────────────────────────
+    for rec in registros:
+        digitos = rec['cnpj_digitos']
+
+        if len(digitos) == 14:
+            cnpj_full = digitos
+            raiz      = digitos[:8]
+        elif len(digitos) == 6:
+            # complementa com raiz da única empresa ou tenta via mapa_raiz_folhafix
+            raiz = raiz_unica or next(
+                (r for r in mapa_raiz if mapa_raiz_folhafix.get(r)), None
+            )
+            cnpj_full = (raiz + digitos) if raiz else None
+        else:
+            cnpj_full = None
+            raiz      = None
+
+        if not cnpj_full or raiz not in mapa_raiz:
+            log.append(f"⚠  {rec['filial_nome']} ({digitos}) — empresa-raiz não encontrada; importe as empresas primeiro")
+            err += 1
+            continue
+
+        id_empresa = mapa_raiz[raiz][0]
+        campos = {
+            'id_cliente':  id_cliente,
+            'id_empresa':  id_empresa,
+            'situacao':    'A',
+            'cnpj':        cnpj_full,
+            'filial_nome': rec['filial_nome'],
+        }
+        for f in ['ender_cep', 'ender_dsclograd', 'ender_nrlograd',
+                  'ender_complemento', 'ender_bairro', 'ender_cidade_nome',
+                  'ender_uf', 'ender_codmunic']:
+            if rec.get(f):
+                campos[f] = rec[f]
+
+        try:
+            ex_rows = (supabase.table('tab_filial')
+                       .select('id')
+                       .eq('id_empresa', id_empresa)
+                       .eq('cnpj', cnpj_full)
+                       .execute().data or [])
+            if ex_rows:
+                supabase.table('tab_filial').update(campos).eq('id', ex_rows[0]['id']).execute()
+                acao = 'atualizada'
+            else:
+                supabase.table('tab_filial').insert(campos).execute()
+                acao = 'nova'
+            grav += 1
+            log.append(f"✓  {cnpj_full}  {rec['filial_nome']}  ({acao})")
+        except Exception as ex:
+            err += 1
+            log.append(f"✗  {cnpj_full}  {ex}")
+
+    return grav, err, log
+
+
+def _ler_tabcc_de_arquivo(caminho_arq):
+    """Abre um arquivo Access e lê a tabcc (centros de custo).
+    Retorna (nome_tabela_ou_None, col_names, rows_raw, total, erro_ou_None, todas_tabelas).
+    """
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho_arq};'
+        )
+    except Exception as ex:
+        return None, [], [], 0, f'conexão: {ex}', []
+
+    cur = conn.cursor()
+    try:
+        tabelas = {t.table_name.lower(): t.table_name
+                   for t in cur.tables()
+                   if not t.table_name.startswith('MSys')
+                   and not t.table_name.startswith('~')}
+    except Exception as ex:
+        conn.close()
+        return None, [], [], 0, f'leitura de tabelas: {ex}', []
+
+    todas = sorted(tabelas.values())
+
+    tabela = None
+    for cand in ('tabcc', 'tab_cc', 'tabcentrocusto', 'centrocusto', 'centros_custo', 'cc'):
+        if cand in tabelas:
+            tabela = tabelas[cand]
+            break
+    if not tabela:
+        conn.close()
+        return None, [], [], 0, None, todas
+
+    try:
+        cur.execute(f'SELECT COUNT(*) FROM [{tabela}]')
+        total = cur.fetchone()[0]
+        cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+        col_names = [col[0] for col in cur.description]
+        if total == 0:
+            conn.close()
+            return tabela, col_names, [], 0, None, todas
+        cur.execute(f'SELECT * FROM [{tabela}]')
+        rows_raw = [{k: (str(v).strip() if v is not None else '')
+                     for k, v in zip(col_names, row)}
+                    for row in cur.fetchall()]
+        conn.close()
+        return tabela, col_names, rows_raw, total, None, todas
+    except Exception as ex:
+        conn.close()
+        return tabela, [], [], 0, f'leitura: {ex}', todas
+
+
+def _mapear_registros_cc(col_names_orig, rows_raw):
+    """Converte rows_raw (dicts Access tabcc) para lista de dicts normalizados.
+    Retorna lista de {codigo_cc, nomecc, cod_emp}.
+    Descarta apenas registros marcados como inativos.
+    """
+    cols_lower = {c.lower(): c for c in col_names_orig}
+
+    col_cod = next((cols_lower[c] for c in cols_lower
+                    if c in ('cc', 'codigo', 'codcc', 'cod_cc', 'codigoc',
+                             'codigocc', 'cod', 'codigocusto')), None)
+    col_nom = next((cols_lower[c] for c in cols_lower
+                    if c in ('nome', 'descricao', 'desc', 'nomecusto',
+                             'desccc', 'nome_cc', 'descricaocc')), None)
+    col_emp = next((cols_lower[c] for c in cols_lower
+                    if c in ('empresa', 'codemp', 'codigoemp', 'cod_empresa')), None)
+
+    registros = []
+    for r in rows_raw:
+        sit = str(r.get('situacao') or r.get('Situacao') or '').strip().upper()
+        if sit in ('I', 'D', 'INATIVO', 'DELETADO'):
+            continue
+        codigo = str(r.get(col_cod) or '').strip()[:8] if col_cod else ''
+        if not codigo:
+            continue
+        nome   = str(r.get(col_nom) or '').strip()[:40] if col_nom else ''
+        cod_emp = str(r.get(col_emp) or '').strip()     if col_emp else ''
+        registros.append({'codigo_cc': codigo, 'nomecc': nome or codigo, 'cod_emp': cod_emp})
+    return registros
+
+
+def _imp_cc_f10(caminho, id_cliente):
+    """Importa centros de custo do Access para tab_cc.
+    Varre arquivos não-FolhaFIX da pasta procurando tabcc.
+    Retorna (gravados, erros, log).
+    """
+    import pyodbc, glob as _glob
+
+    log  = []
+    grav = err = 0
+    pasta = os.path.dirname(caminho)
+
+    todos_arqs = sorted(
+        _glob.glob(os.path.join(pasta, '*.mdb')) +
+        _glob.glob(os.path.join(pasta, '*.accdb'))
+    )
+    log.append(f'🗂  Arquivos na pasta: {len(todos_arqs)}')
+
+    mapa_raiz_folhafix = _ler_empresa_raiz_de_arquivo(caminho)
+
+    registros     = []
+    for arq in todos_arqs:
+        nome_arq = os.path.basename(arq)
+        if nome_arq.upper().startswith('FOLHAFIX'):
+            continue
+        tabela_nome, col_names, rows_raw, total, erro, todas_tabs = _ler_tabcc_de_arquivo(arq)
+        if tabela_nome is None and erro:
+            log.append(f'   {nome_arq} → erro: {erro}')
+            continue
+        if tabela_nome is None:
+            log.append(f'   {nome_arq} → sem tabcc  [tabelas: {", ".join(todas_tabs) or "(nenhuma)"}]')
+            continue
+        if erro:
+            log.append(f'   {nome_arq} → [{tabela_nome}] erro ao ler: {erro}')
+            continue
+        if total == 0:
+            log.append(f'   {nome_arq} → [{tabela_nome}] vazia')
+            continue
+        recs = _mapear_registros_cc(col_names, rows_raw)
+        inativos = total - len(recs)
+        if inativos:
+            log.append(f'   {inativos} registro(s) ignorados (inativo)')
+        log.append(f'   {nome_arq} → [{tabela_nome}] {total} brutos → {len(recs)} para importar')
+        registros.extend(recs)
+
+    if not registros:
+        return 0, 0, log + ['⚠  Nenhum centro de custo encontrado.']
+
+    # Monta mapa raiz → id_empresa via Supabase
+    try:
+        emp_rows = (supabase.table('tab_empresa')
+                    .select('id_empresa, cnpj')
+                    .eq('id_cliente', id_cliente)
+                    .execute().data or [])
+    except Exception as ex:
+        return 0, 1, log + [f'✗ Erro ao consultar tab_empresa: {ex}']
+
+    mapa_raiz = {}
+    for e in emp_rows:
+        raiz = e['cnpj'][:8]
+        if raiz not in mapa_raiz or e['cnpj'][8:12] == '0001':
+            mapa_raiz[raiz] = e['id_empresa']
+
+    raiz_unica   = list(mapa_raiz.keys())[0] if len(mapa_raiz) == 1 else None
+    id_emp_unica = mapa_raiz[raiz_unica]      if raiz_unica else None
+
+    for rec in registros:
+        # Resolve id_empresa: tenta via cod_emp → raiz (folhafix) → supabase; senão usa única
+        id_empresa = None
+        cod_emp = rec.get('cod_emp', '')
+        if cod_emp:
+            raiz = mapa_raiz_folhafix.get(cod_emp)
+            if raiz and raiz in mapa_raiz:
+                id_empresa = mapa_raiz[raiz]
+        if id_empresa is None:
+            id_empresa = id_emp_unica
+
+        if id_empresa is None:
+            log.append(f"⚠  [{rec['codigo_cc']}] empresa não resolvida — importe empresas primeiro")
+            err += 1
+            continue
+
+        campos = {
+            'id_cliente': id_cliente,
+            'id_empresa': id_empresa,
+            'situacao'  : 'A',
+            'codigo_cc' : rec['codigo_cc'],
+            'nomecc'    : rec['nomecc'],
+        }
+        try:
+            ex_rows = (supabase.table('tab_cc')
+                       .select('id')
+                       .eq('id_empresa', id_empresa)
+                       .eq('codigo_cc', rec['codigo_cc'])
+                       .execute().data or [])
+            if ex_rows:
+                supabase.table('tab_cc').update(campos).eq('id', ex_rows[0]['id']).execute()
+                acao = 'atualizado'
+            else:
+                supabase.table('tab_cc').insert(campos).execute()
+                acao = 'novo'
+            grav += 1
+            log.append(f"✓  {rec['codigo_cc']}  {rec['nomecc']}  ({acao})")
+        except Exception as ex:
+            err += 1
+            log.append(f"✗  {rec['codigo_cc']}  {ex}")
+
+    return grav, err, log
+
+
+def _ler_tabfuncao_de_arquivo(caminho_arq):
+    """Abre um arquivo Access e lê a tabela de funções/cargos.
+    Retorna (nome_tabela_ou_None, col_names, rows_raw, total, erro_ou_None, todas_tabelas).
+    """
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho_arq};'
+        )
+    except Exception as ex:
+        return None, [], [], 0, f'conexão: {ex}', []
+
+    cur = conn.cursor()
+    try:
+        tabelas = {t.table_name.lower(): t.table_name
+                   for t in cur.tables()
+                   if not t.table_name.startswith('MSys')
+                   and not t.table_name.startswith('~')}
+    except Exception as ex:
+        conn.close()
+        return None, [], [], 0, f'leitura de tabelas: {ex}', []
+
+    todas = sorted(tabelas.values())
+
+    tabela = None
+    for cand in ('tabfuncao', 'tabfuncoes', 'tab_funcao', 'tabcargo', 'tabcargos',
+                 'tab_cargo', 'funcoes', 'funcao', 'cargo', 'cargos'):
+        if cand in tabelas:
+            tabela = tabelas[cand]
+            break
+    if not tabela:
+        conn.close()
+        return None, [], [], 0, None, todas
+
+    try:
+        cur.execute(f'SELECT COUNT(*) FROM [{tabela}]')
+        total = cur.fetchone()[0]
+        cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+        col_names = [col[0] for col in cur.description]
+        if total == 0:
+            conn.close()
+            return tabela, col_names, [], 0, None, todas
+        cur.execute(f'SELECT * FROM [{tabela}]')
+        rows_raw = [{k: (str(v).strip() if v is not None else '')
+                     for k, v in zip(col_names, row)}
+                    for row in cur.fetchall()]
+        conn.close()
+        return tabela, col_names, rows_raw, total, None, todas
+    except Exception as ex:
+        conn.close()
+        return tabela, [], [], 0, f'leitura: {ex}', todas
+
+
+def _mapear_registros_funcao(col_names_orig, rows_raw):
+    """Converte rows_raw (dicts Access tabfuncao) para lista de dicts normalizados.
+    Retorna lista de {cbo, nome_resumido} — já deduplicada por CBO (primeiro ativo vence).
+    Descarta inativos e registros sem CBO.
+    """
+    cols_lower = {c.lower(): c for c in col_names_orig}
+
+    col_cbo = next((cols_lower[c] for c in cols_lower
+                    if c in ('cbo', 'cbofuncao', 'cbo_funcao', 'cbocargo',
+                             'cbo_cargo', 'codigocbo', 'cod_cbo')), None)
+    col_nom = next((cols_lower[c] for c in cols_lower
+                    if c in ('nome', 'nomefuncao', 'nome_funcao', 'nomecargo',
+                             'nome_cargo', 'descricao', 'desc', 'cargo')), None)
+
+    vistos = {}   # cbo → dict (dedup: primeiro ativo vence)
+    for r in rows_raw:
+        sit = str(r.get('situacao') or r.get('Situacao') or '').strip().upper()
+        if sit in ('I', 'D', 'INATIVO', 'DELETADO'):
+            continue
+        cbo = ''.join(filter(str.isdigit, r.get(col_cbo, '') if col_cbo else ''))
+        if not cbo:
+            continue
+        if cbo not in vistos:
+            nome = str(r.get(col_nom) or '').strip()[:40] if col_nom else ''
+            vistos[cbo] = {'cbo': cbo, 'nome_resumido': nome or cbo}
+    return list(vistos.values())
+
+
+def _imp_funcao_f10(caminho, id_cliente):
+    """Importa funções/cargos do Access para tab_funcao_cli.
+    Varre TODOS os arquivos da pasta (inclusive FolhaFIX) procurando tabfuncao.
+    Deduplicação por CBO: apenas 1 registro por CBO por cliente.
+    Retorna (gravados, erros, log).
+    """
+    import pyodbc, glob as _glob
+
+    log  = []
+    grav = err = 0
+    pasta = os.path.dirname(caminho)
+
+    # ── Varre TODOS os arquivos da pasta ─────────────────────────────
+    todos_arqs = sorted(
+        _glob.glob(os.path.join(pasta, '*.mdb')) +
+        _glob.glob(os.path.join(pasta, '*.accdb'))
+    )
+    log.append(f'🗂  Arquivos na pasta: {len(todos_arqs)}')
+
+    # Coleta todos os registros únicos por CBO (primeiro ativo encontrado vence)
+    cbo_map = {}   # cbo → {cbo, nome_resumido}
+    for arq in todos_arqs:
+        nome_arq = os.path.basename(arq)
+        tabela_nome, col_names, rows_raw, total, erro, todas_tabs = _ler_tabfuncao_de_arquivo(arq)
+        if tabela_nome is None and erro:
+            log.append(f'   {nome_arq} → erro: {erro}')
+            continue
+        if tabela_nome is None:
+            log.append(f'   {nome_arq} → sem tabfuncao  [tabelas: {", ".join(todas_tabs) or "(nenhuma)"}]')
+            continue
+        if erro:
+            log.append(f'   {nome_arq} → [{tabela_nome}] erro ao ler: {erro}')
+            continue
+        if total == 0:
+            log.append(f'   {nome_arq} → [{tabela_nome}] vazia')
+            continue
+        recs = _mapear_registros_funcao(col_names, rows_raw)
+        novos = 0
+        for rec in recs:
+            if rec['cbo'] not in cbo_map:
+                cbo_map[rec['cbo']] = rec
+                novos += 1
+        log.append(f'   {nome_arq} → [{tabela_nome}] {total} brutos → {len(recs)} ativos → {novos} CBOs novos')
+
+    if not cbo_map:
+        return 0, 0, log + ['⚠  Nenhuma função encontrada com CBO válido.']
+
+    log.append(f'📋 Total de CBOs únicos coletados: {len(cbo_map)}')
+
+    # ── Carrega mapa CBO → id_funcao_total do Supabase ────────────────
+    try:
+        ft_rows = (supabase.table('tab_aux_funcao_total')
+                   .select('id, cbo_codigo')
+                   .execute().data or [])
+    except Exception as ex:
+        return 0, 1, log + [f'✗ Erro ao consultar tab_aux_funcao_total: {ex}']
+    mapa_ft = {str(r['cbo_codigo']).strip(): r['id'] for r in ft_rows}
+
+    # ── Carrega CBOs já existentes para esse cliente ──────────────────
+    try:
+        ex_rows = (supabase.table('tab_funcao_cli')
+                   .select('id, cbo_codigo')
+                   .eq('id_cliente', id_cliente)
+                   .execute().data or [])
+    except Exception as ex:
+        return 0, 1, log + [f'✗ Erro ao consultar tab_funcao_cli: {ex}']
+    cbo_existente = {str(r['cbo_codigo']).strip(): r['id'] for r in ex_rows}
+
+    # ── Grava cada função ─────────────────────────────────────────────
+    for cbo, rec in sorted(cbo_map.items()):
+        id_funcao_total = mapa_ft.get(cbo)
+        if not id_funcao_total:
+            log.append(f'⚠  CBO {cbo} ({rec["nome_resumido"]}) — não encontrado em tab_aux_funcao_total; ignorado')
+            err += 1
+            continue
+
+        campos = {
+            'id_cliente':      id_cliente,
+            'id_funcao_total': id_funcao_total,
+            'cbo_codigo':     cbo,
+            'nome_resumido':  rec['nome_resumido'],
+            'cnpj':           '0',
+            'situacao':       'A',
+        }
+        try:
+            if cbo in cbo_existente:
+                supabase.table('tab_funcao_cli').update(campos).eq('id', cbo_existente[cbo]).execute()
+                acao = 'atualizado'
+            else:
+                supabase.table('tab_funcao_cli').insert(campos).execute()
+                acao = 'novo'
+            grav += 1
+            log.append(f'✓  CBO {cbo}  {rec["nome_resumido"]}  ({acao})')
+        except Exception as ex:
+            err += 1
+            log.append(f'✗  CBO {cbo}  {ex}')
 
     return grav, err, log
 
@@ -27037,6 +27762,441 @@ def api_admin_imp_comparar_empresa():
         return jsonify({'ok': False, 'msg': str(ex)})
 
 
+@app.route('/api/admin_importar_f10/dump_filial')
+def api_admin_imp_dump_filial():
+    """Diagnóstico bruto: abre cada arquivo não-FolhaFIX, lista tabelas e primeiras linhas."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import pyodbc, glob as _glob
+        todos_arqs = sorted(
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.mdb')) +
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.accdb'))
+        )
+        arquivos_info = []
+        for arq in todos_arqs:
+            nome_arq = os.path.basename(arq)
+            if nome_arq.upper().startswith('FOLHAFIX'):
+                continue
+            info = {'arquivo': nome_arq, 'tabelas': [], 'erro': None}
+            try:
+                conn = pyodbc.connect(
+                    f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={arq};'
+                )
+                cur = conn.cursor()
+                # lista todas as tabelas sem nenhum filtro
+                todas = [(t.table_name, t.table_type) for t in cur.tables()]
+                for tname, ttype in todas:
+                    if tname.startswith('MSys') or tname.startswith('~'):
+                        continue
+                    t_info = {'nome': tname, 'tipo': ttype, 'total': 0,
+                              'colunas': [], 'primeiras_linhas': []}
+                    try:
+                        cur.execute(f'SELECT COUNT(*) FROM [{tname}]')
+                        t_info['total'] = cur.fetchone()[0]
+                        cur.execute(f'SELECT * FROM [{tname}] WHERE 1=0')
+                        t_info['colunas'] = [c[0] for c in cur.description]
+                        if t_info['total'] > 0:
+                            cur.execute(f'SELECT TOP 5 * FROM [{tname}]')
+                            t_info['primeiras_linhas'] = [
+                                {k: (str(v).strip() if v is not None else '')
+                                 for k, v in zip(t_info['colunas'], row)}
+                                for row in cur.fetchall()
+                            ]
+                    except Exception as ex:
+                        t_info['erro_leitura'] = str(ex)
+                    info['tabelas'].append(t_info)
+                conn.close()
+            except Exception as ex:
+                info['erro'] = str(ex)
+            arquivos_info.append(info)
+        return jsonify({'ok': True, 'arquivos': arquivos_info})
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_importar_f10/comparar_filial')
+def api_admin_imp_comparar_filial():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import pyodbc, glob as _glob
+
+        todos_arqs = sorted(
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.mdb')) +
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.accdb'))
+        )
+
+        # Varre todos os arquivos da pasta
+        fontes    = []   # [{arquivo, tabela, total, colunas, registros}]
+        registros_total = []
+
+        for arq in todos_arqs:
+            nome_arq = os.path.basename(arq)
+            # tabfilial fica nos arquivos de empresa, nunca no FolhaFIX
+            if nome_arq.upper().startswith('FOLHAFIX'):
+                continue
+            tabela_nome, col_names, rows_raw, total, erro, todas_tabs = _ler_tabfilial_de_arquivo(arq)
+            if tabela_nome is None and erro:
+                fontes.append({'arquivo': nome_arq, 'tabela': None, 'total': 0,
+                               'status': 'erro', 'erro': erro, 'tabelas': todas_tabs})
+                continue
+            if tabela_nome is None:
+                fontes.append({'arquivo': nome_arq, 'tabela': None, 'total': 0,
+                               'status': 'sem_tabfilial', 'tabelas': todas_tabs})
+                continue
+            if erro:
+                fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome, 'total': 0,
+                               'status': 'erro', 'erro': erro, 'tabelas': todas_tabs})
+                continue
+            if total == 0:
+                fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome, 'total': 0,
+                               'status': 'vazia', 'erro': None, 'tabelas': todas_tabs,
+                               'colunas': col_names})
+                continue
+            # tem registros — monta preview e mapeia
+            recs   = _mapear_registros_filial(col_names, rows_raw)
+            rejeit = total - len(recs)
+            preview = rows_raw[:200]   # preview bruto para exibição
+            fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome,
+                           'total': total, 'mapeados': len(recs), 'rejeitados': rejeit,
+                           'status': 'ok' if recs else 'sem_cnpj',
+                           'colunas': col_names, 'registros': preview,
+                           'tabelas': todas_tabs})
+            registros_total.extend(recs)
+
+        tem_filial = any(f['status'] == 'ok' for f in fontes)
+
+        # Fallback: usa tabempresa do arquivo principal para preview
+        fallback_registros = []
+        fallback_tabela    = None
+        if not tem_filial:
+            try:
+                conn3 = pyodbc.connect(
+                    f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+                )
+                cur3 = conn3.cursor()
+                tabs3 = {t.table_name.lower(): t.table_name
+                         for t in cur3.tables(tableType='TABLE')
+                         if not t.table_name.startswith('MSys')}
+                for cand in ('tabempresas', 'tabempresa', 'tabemp'):
+                    if cand in tabs3:
+                        fallback_tabela = tabs3[cand]
+                        break
+                if fallback_tabela:
+                    cur3.execute(f'SELECT * FROM [{fallback_tabela}] WHERE 1=0')
+                    cols_fb = [col[0] for col in cur3.description]
+                    cur3.execute(f'SELECT TOP 200 * FROM [{fallback_tabela}]')
+                    rows_fb = cur3.fetchall()
+                    conn3.close()
+                    fallback_registros = [{k: (str(v).strip() if v is not None else '')
+                                           for k, v in zip(cols_fb, row)} for row in rows_fb]
+                else:
+                    conn3.close()
+            except Exception:
+                pass
+
+        return jsonify({
+            'ok'                 : True,
+            'tem_filial'         : tem_filial,
+            'fontes'             : fontes,
+            'total_registros'    : len(registros_total),
+            'fallback_tabela'    : fallback_tabela,
+            'fallback_registros' : fallback_registros,
+        })
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_importar_f10/comparar_cc')
+def api_admin_imp_comparar_cc():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import glob as _glob
+
+        todos_arqs = sorted(
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.mdb')) +
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.accdb'))
+        )
+
+        fontes = []
+        registros_total = []
+
+        for arq in todos_arqs:
+            nome_arq = os.path.basename(arq)
+            if nome_arq.upper().startswith('FOLHAFIX'):
+                continue
+            tabela_nome, col_names, rows_raw, total, erro, todas_tabs = _ler_tabcc_de_arquivo(arq)
+            if tabela_nome is None and erro:
+                fontes.append({'arquivo': nome_arq, 'status': 'erro', 'erro': erro, 'tabelas': todas_tabs})
+                continue
+            if tabela_nome is None:
+                fontes.append({'arquivo': nome_arq, 'status': 'sem_tabcc', 'tabelas': todas_tabs})
+                continue
+            if erro:
+                fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome, 'status': 'erro',
+                               'erro': erro, 'tabelas': todas_tabs})
+                continue
+            if total == 0:
+                fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome, 'status': 'vazia',
+                               'colunas': col_names, 'tabelas': todas_tabs})
+                continue
+            recs   = _mapear_registros_cc(col_names, rows_raw)
+            rejeit = total - len(recs)
+            fontes.append({
+                'arquivo'  : nome_arq,
+                'tabela'   : tabela_nome,
+                'total'    : total,
+                'mapeados' : len(recs),
+                'rejeitados': rejeit,
+                'status'   : 'ok' if recs else 'sem_codigo',
+                'colunas'  : col_names,
+                'registros': rows_raw[:200],
+                'tabelas'  : todas_tabs,
+            })
+            registros_total.extend(recs)
+
+        return jsonify({
+            'ok'             : True,
+            'tem_cc'         : any(f['status'] == 'ok' for f in fontes),
+            'fontes'         : fontes,
+            'total_registros': len(registros_total),
+        })
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_importar_f10/comparar_funcao')
+def api_admin_imp_comparar_funcao():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import glob as _glob
+
+        todos_arqs = sorted(
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.mdb')) +
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.accdb'))
+        )
+
+        # Carrega mapa CBO → nome oficial (tab_aux_funcao_total)
+        ft_rows = (supabase.table('tab_aux_funcao_total')
+                   .select('cbo_codigo, cbo_nome')
+                   .execute().data or [])
+        mapa_ft = {str(r['cbo_codigo']).strip(): r['cbo_nome'] for r in ft_rows}
+
+        fontes     = []
+        cbo_global = {}   # cbo → {nome_resumido, arquivo, nome_oficial}
+
+        for arq in todos_arqs:
+            nome_arq = os.path.basename(arq)
+            tabela_nome, col_names, rows_raw, total, erro, todas_tabs = _ler_tabfuncao_de_arquivo(arq)
+            if tabela_nome is None and erro:
+                fontes.append({'arquivo': nome_arq, 'status': 'erro', 'erro': erro, 'tabelas': todas_tabs})
+                continue
+            if tabela_nome is None:
+                fontes.append({'arquivo': nome_arq, 'status': 'sem_tabfuncao', 'tabelas': todas_tabs})
+                continue
+            if erro:
+                fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome, 'status': 'erro',
+                               'erro': erro, 'tabelas': todas_tabs})
+                continue
+            if total == 0:
+                fontes.append({'arquivo': nome_arq, 'tabela': tabela_nome, 'status': 'vazia',
+                               'colunas': col_names, 'tabelas': todas_tabs})
+                continue
+            recs   = _mapear_registros_funcao(col_names, rows_raw)
+            rejeit = total - len(recs)
+            novos  = sum(1 for r in recs if r['cbo'] not in cbo_global)
+            for rec in recs:
+                if rec['cbo'] not in cbo_global:
+                    cbo_global[rec['cbo']] = {
+                        'cbo'         : rec['cbo'],
+                        'nome_resumido': rec['nome_resumido'],
+                        'arquivo'     : nome_arq,
+                        'nome_oficial': mapa_ft.get(rec['cbo'], '⚠ não encontrado na tabela CBO'),
+                        'encontrado'  : rec['cbo'] in mapa_ft,
+                    }
+            fontes.append({
+                'arquivo'   : nome_arq,
+                'tabela'    : tabela_nome,
+                'total'     : total,
+                'mapeados'  : len(recs),
+                'rejeitados': rejeit,
+                'novos_cbo' : novos,
+                'status'    : 'ok' if recs else 'sem_cbo',
+                'colunas'   : col_names,
+                'registros' : rows_raw[:200],
+                'tabelas'   : todas_tabs,
+            })
+
+        cbos_list  = sorted(cbo_global.values(), key=lambda x: x['cbo'])
+        sem_match  = sum(1 for c in cbos_list if not c['encontrado'])
+
+        return jsonify({
+            'ok'            : True,
+            'tem_funcao'    : bool(cbo_global),
+            'fontes'        : fontes,
+            'cbos'          : cbos_list,
+            'total_cbos'    : len(cbos_list),
+            'sem_match_ft'  : sem_match,
+        })
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_importar_f10/comparar_func')
+def api_admin_imp_comparar_func():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    nome = request.args.get('arquivo', '').strip()
+    if not nome or '..' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
+    caminho = os.path.join(PASTA_BASES_F10, nome)
+    if not os.path.isfile(caminho): return jsonify({'ok': False, 'msg': 'Arquivo não encontrado'})
+    try:
+        import pyodbc, glob as _glob
+
+        todos_arqs = sorted(
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.mdb')) +
+            _glob.glob(os.path.join(PASTA_BASES_F10, '*.accdb'))
+        )
+
+        fontes     = []
+        total_func = 0
+
+        for arq in todos_arqs:
+            nome_arq = os.path.basename(arq)
+            if nome_arq.upper().startswith('FOLHAFIX'):
+                continue
+
+            fonte = {'arquivo': nome_arq}
+            try:
+                conn = pyodbc.connect(
+                    f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={arq};'
+                )
+                cur = conn.cursor()
+                todas_tabs = {t.table_name.lower(): t.table_name
+                              for t in cur.tables(tableType='TABLE')
+                              if not t.table_name.startswith('MSys')}
+                fonte['tabelas'] = sorted(todas_tabs.keys())
+
+                # ── localiza tabfunc ──────────────────────────────────────────
+                tab_func = None
+                for cand in ('tabfunc', 'tabfuncionario', 'tabfuncionarios'):
+                    if cand in todas_tabs:
+                        tab_func = todas_tabs[cand]
+                        break
+                if not tab_func:
+                    fonte['status'] = 'sem_tabfunc'
+                    fontes.append(fonte)
+                    conn.close()
+                    continue
+
+                # ── lê colunas e registros ────────────────────────────────────
+                cur.execute(f'SELECT * FROM [{tab_func}] WHERE 1=0')
+                all_cols = [d[0] for d in cur.description]
+                cols_w       = [c for c in all_cols if c.upper().endswith('W')]
+                cols_uteis   = [c for c in all_cols if not c.upper().endswith('W')]
+                idx_uteis    = [i for i, c in enumerate(all_cols) if not c.upper().endswith('W')]
+
+                cur.execute(f'SELECT * FROM [{tab_func}]')
+                rows_raw = cur.fetchall()
+                total    = len(rows_raw)
+
+                registros = []
+                for row in rows_raw[:10]:
+                    reg = {}
+                    for i in idx_uteis:
+                        v = row[i]
+                        reg[all_cols[i].lower()] = (
+                            '' if v is None else
+                            v  if isinstance(v, (int, float)) else
+                            str(v).strip()
+                        )
+                    registros.append(reg)
+
+                # ── lê tabfuncao para mapa cod_funcao → cbo ──────────────────
+                mapa_funcao_cbo = {}
+                tab_funcao_nome = None
+                for cand in ('tabfuncao', 'tabfuncoes'):
+                    if cand in todas_tabs:
+                        tab_funcao_nome = todas_tabs[cand]
+                        break
+                if tab_funcao_nome:
+                    try:
+                        cur.execute(f'SELECT * FROM [{tab_funcao_nome}]')
+                        fc_cols = [d[0].lower() for d in cur.description]
+                        fc_rows = cur.fetchall()
+                        col_cod = next((c for c in fc_cols if c in ('codigo','cod','id','codigofuncao')), fc_cols[0] if fc_cols else None)
+                        col_cbo = next((c for c in fc_cols if 'cbo' in c), None)
+                        col_nom = next((c for c in fc_cols if 'nome' in c or 'descri' in c), None)
+                        if col_cod and col_cbo:
+                            for fr in fc_rows:
+                                fd = dict(zip(fc_cols, fr))
+                                k = str(fd.get(col_cod) or '').strip()
+                                if k:
+                                    mapa_funcao_cbo[k] = {
+                                        'cbo' : str(fd.get(col_cbo) or '').strip(),
+                                        'nome': str(fd.get(col_nom) or '') if col_nom else '',
+                                    }
+                    except Exception as ex_fc:
+                        mapa_funcao_cbo = {'_erro': str(ex_fc)}
+
+                conn.close()
+                total_func += total
+                fonte.update({
+                    'status'         : 'ok',
+                    'tabela'         : tab_func,
+                    'total'          : total,
+                    'colunas'        : cols_uteis,
+                    'colunas_w'      : cols_w,
+                    'registros'      : registros,
+                    'tab_funcao'     : tab_funcao_nome,
+                    'mapa_funcao_cbo': mapa_funcao_cbo,
+                })
+
+            except Exception as ex:
+                fonte['status'] = 'erro'
+                fonte['erro']   = str(ex)
+
+            fontes.append(fonte)
+
+        return jsonify({
+            'ok'       : True,
+            'tem_func' : any(f.get('status') == 'ok' for f in fontes),
+            'fontes'   : fontes,
+            'total_func': total_func,
+        })
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não instalado'})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
 @app.route('/api/admin_importar_f10/executar', methods=['POST'])
 def api_admin_imp_executar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
@@ -27058,25 +28218,70 @@ def api_admin_imp_executar():
     except ImportError:
         return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
 
-    resultados = []
-    for tabela in tabelas_s:
-        tl = tabela.lower()
-        if tl == 'tabverba':
-            grav, err, log = _imp_verbas_f10(caminho, int(id_cliente), ini_valid)
-            resultados.append({'tabela': tabela, 'descricao': 'Verbas / Rubricas',
-                                'gravados': grav, 'erros': err, 'log': log})
-        elif tl in ('tabempresas', 'tabempresa', 'tabemp'):
-            grav, err, log = _imp_empresas_f10(caminho, int(id_cliente))
-            resultados.append({'tabela': tabela, 'descricao': 'Empresas',
-                                'gravados': grav, 'erros': err, 'log': log})
-        else:
-            resultados.append({'tabela': tabela, 'descricao': tabela,
-                                'gravados': 0, 'erros': 0,
-                                'log': [f'⚠  Tabela "{tabela}" ainda não implementada nesta versão.']})
+    job_id = uuid.uuid4().hex[:12]
+    _import_jobs[job_id] = {'pct': 0, 'etapa': '', 'step': 0,
+                             'total_steps': len(tabelas_s), 'done': False, 'resultado': None}
 
-    return jsonify({'ok': True, 'resultados': resultados,
-                    'total_gravados': sum(r['gravados'] for r in resultados),
-                    'total_erros':    sum(r['erros']    for r in resultados)})
+    def _run():
+        resultados = []
+        total = len(tabelas_s)
+        for i, tabela in enumerate(tabelas_s):
+            _import_jobs[job_id]['step']  = i
+            _import_jobs[job_id]['pct']   = int(i / total * 100)
+            _import_jobs[job_id]['etapa'] = tabela
+            tl = tabela.lower()
+            try:
+                if tl == 'tabverba':
+                    grav, err, log = _imp_verbas_f10(caminho, int(id_cliente), ini_valid)
+                    resultados.append({'tabela': tabela, 'descricao': 'Verbas / Rubricas',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl in ('tabempresas', 'tabempresa', 'tabemp'):
+                    grav, err, log = _imp_empresas_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Empresas',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl == 'tabfiliais':
+                    grav, err, log = _imp_filiais_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Filiais',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl == 'tabcc':
+                    grav, err, log = _imp_cc_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Centros de Custo',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl == 'tabfuncao':
+                    grav, err, log = _imp_funcao_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Funções / Cargos',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                else:
+                    resultados.append({'tabela': tabela, 'descricao': tabela,
+                                        'gravados': 0, 'erros': 0,
+                                        'log': [f'⚠  Tabela "{tabela}" ainda não implementada nesta versão.']})
+            except Exception as ex:
+                resultados.append({'tabela': tabela, 'descricao': tabela,
+                                    'gravados': 0, 'erros': 1, 'log': [f'✗ Erro: {ex}']})
+
+        _import_jobs[job_id]['pct']       = 100
+        _import_jobs[job_id]['step']      = total
+        _import_jobs[job_id]['etapa']     = ''
+        _import_jobs[job_id]['done']      = True
+        _import_jobs[job_id]['resultado'] = {
+            'ok'            : True,
+            'resultados'    : resultados,
+            'total_gravados': sum(r['gravados'] for r in resultados),
+            'total_erros'   : sum(r['erros']    for r in resultados),
+        }
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id, 'total_steps': len(tabelas_s)})
+
+
+@app.route('/api/admin_importar_f10/progresso')
+def api_admin_imp_progresso():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    job_id = request.args.get('job', '').strip()
+    job = _import_jobs.get(job_id)
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
 
 
 # =========================================================

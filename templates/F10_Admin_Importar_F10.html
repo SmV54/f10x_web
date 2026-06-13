@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Importar do Folha 10 Antigo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #0b1f3a;
+    --navy-line: #1e3d5c;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #8baac8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 72px;
+    position: sticky; top: 0; z-index: 100;
+}
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80; border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    color: #dcfce7; letter-spacing: 0.14em;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 3px 10px rgba(0,0,0,0.35);
+    white-space: nowrap; flex-shrink: 0;
+}
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); }
+.topo-versao { font-size: 10px; color: var(--text-sub); }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT 5 COLUNAS ── */
+.layout {
+    display: grid;
+    grid-template-columns: 240px 220px 280px 440px 1fr;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+
+/* ══ PAINÉIS LATERAIS (estilos comuns) ══ */
+.painel-lateral {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--surface); overflow: hidden;
+}
+.painel-header {
+    padding: 12px 14px 10px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc; flex-shrink: 0;
+}
+.painel-header-row {
+    display: flex; align-items: flex-start;
+    justify-content: space-between; gap: 6px;
+}
+.etapa-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--accent); margin-bottom: 4px;
+}
+.etapa-num {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-size: 10px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.etapa-num.inativa { background: #cbd5e1; }
+.painel-header-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b;
+}
+.pasta-hint { font-family: var(--mono); font-size: 10px; color: #94a3b8; margin-top: 3px; }
+.painel-scroll { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.painel-scroll::-webkit-scrollbar { width: 5px; }
+.painel-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.painel-footer {
+    padding: 7px 14px; border-top: 1px solid var(--border);
+    font-size: 11px; color: #64748b; text-align: right;
+    background: #f8fafc; flex-shrink: 0;
+}
+
+/* estado vazio nos painéis laterais */
+.painel-vazio {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px; padding: 30px 16px;
+    color: #94a3b8; text-align: center;
+}
+.painel-vazio-icone { font-size: 28px; opacity: 0.45; }
+.painel-vazio-texto { font-size: 12px; font-weight: 500; }
+
+/* ── COL 1: ARQUIVOS ── */
+.btn-atualizar {
+    flex-shrink: 0; background: none; border: 1px solid var(--border);
+    border-radius: 6px; padding: 3px 9px; cursor: pointer; font-size: 13px;
+    color: #64748b; font-family: var(--sans); transition: 0.15s;
+}
+.btn-atualizar:hover { border-color: var(--accent); color: var(--accent); }
+
+.arquivo-card {
+    display: flex; align-items: flex-start; gap: 8px;
+    padding: 8px 10px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 2px;
+}
+.arquivo-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
+.arquivo-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.arquivo-icone { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.arquivo-info  { flex: 1; min-width: 0; }
+.arquivo-nome  { font-family: var(--mono); font-size: 11px; font-weight: 600; color: #0f172a;
+                 word-break: break-all; line-height: 1.4; }
+.arquivo-card.ativo .arquivo-nome { color: var(--accent); }
+.arquivo-meta  { font-size: 10px; color: #94a3b8; margin-top: 2px; }
+
+/* ── COL 2: EMPRESAS ── */
+.empresa-row {
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 7px 10px; border-radius: 8px;
+    border-bottom: 1px solid #f1f5f9; margin-bottom: 0;
+}
+.empresa-row:last-child { border-bottom: none; }
+.empresa-cod  { font-family: var(--mono); font-size: 11px; font-weight: 600;
+                color: #64748b; flex-shrink: 0; white-space: nowrap; }
+.empresa-nome { font-size: 12px; font-weight: 500; color: #0f172a;
+                overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── COL 4: ETAPAS ── */
+.etapa-card {
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 2px;
+    white-space: nowrap; overflow: hidden;
+}
+.etapa-card:not(.etapa-pendente):hover { background: #f0f6ff; border-color: #c3d9f8; }
+.etapa-card:has(input:checked) { background: #eaf2fd; border-color: var(--accent); }
+.etapa-pendente { opacity: 0.5; cursor: default; }
+.etapa-chk { width: 14px; height: 14px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.etapa-pendente .etapa-chk { cursor: not-allowed; }
+.etapa-card-label {
+    flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    font-size: 12px; color: #0f172a;
+}
+.etapa-card-label strong {
+    font-family: var(--mono); font-weight: 700; color: var(--accent); margin-right: 4px;
+}
+.etapa-card:has(input:checked) .etapa-card-label { color: var(--accent); }
+.etapa-card:has(input:checked) .etapa-card-label strong { color: var(--accent); }
+.etapa-pendente .etapa-card-label { color: #94a3b8; }
+.etapa-pendente .etapa-card-label strong { color: #94a3b8; }
+
+/* ── COL 3: CLIENTES ── */
+.busca-wrap { position: relative; margin-top: 7px; }
+.busca-icone {
+    position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; color: #94a3b8; pointer-events: none;
+}
+.input-busca {
+    width: 100%; padding: 6px 9px 6px 28px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 12px; font-family: var(--sans);
+    background: var(--surface); color: var(--label); outline: none; transition: 0.15s;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+
+.cliente-card {
+    display: flex; align-items: center;
+    padding: 6px 10px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 2px; gap: 8px;
+}
+.cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
+.cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.cliente-info { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; overflow: hidden; }
+.cliente-id   { font-family: var(--mono); font-size: 10px; font-weight: 500; color: #64748b; white-space: nowrap; flex-shrink: 0; }
+.cliente-nome { font-size: 12px; font-weight: 600; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cliente-cpf  { font-family: var(--mono); font-size: 10px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+.cliente-card.ativo .cliente-nome { color: var(--accent); }
+.cliente-chk  { width: 15px; height: 15px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+
+/* ══ COL 4: CONFIG ══ */
+.painel-direito { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.painel-direito-corpo {
+    flex: 1; overflow-y: auto; padding: 20px 24px 40px;
+    display: flex; flex-direction: column; gap: 16px;
+}
+.painel-direito-corpo::-webkit-scrollbar { width: 5px; }
+.painel-direito-corpo::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+.estado-vazio {
+    flex: 1; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 12px; color: #94a3b8;
+}
+.estado-vazio-icone { font-size: 44px; opacity: 0.4; }
+.estado-vazio-texto { font-size: 15px; font-weight: 600; }
+.estado-vazio-sub   { font-size: 12px; }
+
+/* ── aviso bloqueio múltiplos clientes ── */
+.banner-bloqueio {
+    grid-column: 1 / -1; display: none;
+    background: #7f1d1d; border-bottom: 2px solid #ef4444;
+    padding: 10px 24px; align-items: center; gap: 12px;
+    font-size: 13px; color: #fecaca; font-weight: 500;
+}
+.banner-bloqueio.visivel { display: flex; }
+.banner-bloqueio-icone { font-size: 20px; flex-shrink: 0; }
+.banner-bloqueio strong { color: #fff; }
+.arquivo-card.bloqueado { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.card-header {
+    padding: 10px 16px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #475569;
+    display: flex; align-items: center; gap: 8px;
+}
+.card-body { padding: 14px 16px; }
+.card-etapa {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); color: #fff;
+    font-size: 10px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+
+.sel-resumo {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    background: #f0f6ff; border: 1px solid #c3d9f8;
+    border-radius: 8px; padding: 10px 14px; font-size: 12px; color: #1e40af;
+    align-items: center;
+}
+.sel-item { display: flex; align-items: center; gap: 5px; }
+.sel-label { font-weight: 700; font-size: 10px; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; }
+.sel-val   { font-family: var(--mono); font-size: 11px; }
+
+.tabela-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid #f1f5f9;
+}
+.tabela-row:last-child { border-bottom: none; }
+.tabela-row input[type=checkbox] { accent-color: var(--accent); width: 15px; height: 15px; flex-shrink: 0; cursor: pointer; }
+.tabela-row-info { flex: 1; min-width: 0; }
+.tabela-nome { font-family: var(--mono); font-size: 12px; font-weight: 600; color: #0f172a; }
+.tabela-desc { font-size: 11px; color: #64748b; margin-top: 1px; }
+.badge-impl  { font-size: 10px; font-weight: 700; border-radius: 6px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0; }
+.badge-impl.sim { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.badge-impl.nao { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+
+.form-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.form-row:last-child { margin-bottom: 0; }
+.form-label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; }
+.form-input {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px; font-family: var(--mono); color: var(--label);
+    background: var(--surface); outline: none; transition: 0.15s; width: 140px;
+}
+.form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.form-hint { font-size: 11px; color: #94a3b8; }
+
+.aviso-warn {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 10px 14px; font-size: 12px; color: #92400e; line-height: 1.5;
+}
+
+.btn-executar {
+    width: 100%; padding: 13px 0; border-radius: 10px; border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 15px; font-weight: 700;
+    background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #fff;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 2px 10px rgba(37,99,235,0.3); transition: 0.15s;
+}
+.btn-executar:hover:not(:disabled) { background: linear-gradient(135deg, #1e40af, #1d4ed8); }
+.btn-executar:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+.progresso-wrap {
+    display: none; margin-bottom: 12px;
+    background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px 16px;
+}
+.progresso-wrap.ativo { display: block; }
+.progresso-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: #475569; margin-bottom: 8px; font-family: var(--sans);
+}
+.progresso-label strong { color: #1e293b; }
+.progresso-bar-track {
+    width: 100%; height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+}
+.progresso-bar-fill {
+    height: 100%; border-radius: 99px;
+    background: linear-gradient(90deg, #2563eb, #3b82f6);
+    transition: width 0.4s ease;
+    width: 0%;
+}
+.progresso-etapas {
+    margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px;
+}
+.progresso-etapa-chip {
+    font-size: 11px; font-family: var(--sans); padding: 3px 10px; border-radius: 99px;
+    border: 1px solid #cbd5e1; background: #fff; color: #64748b;
+}
+.progresso-etapa-chip.ativa  { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; font-weight: 600; }
+.progresso-etapa-chip.ok     { background: #dcfce7; border-color: #86efac; color: #166534; }
+.progresso-etapa-chip.erro   { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
+
+.btn-autorizar {
+    width: 100%; padding: 13px 0; border-radius: 10px; border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 15px; font-weight: 700;
+    background: linear-gradient(135deg, #d97706, #f59e0b); color: #fff;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 2px 10px rgba(217,119,6,0.3); transition: 0.15s; margin-bottom: 8px;
+}
+.btn-autorizar:hover { background: linear-gradient(135deg, #b45309, #d97706); }
+
+.log-area {
+    font-family: var(--mono); font-size: 12px; line-height: 1.7;
+    background: #0f172a; color: #e2e8f0; border-radius: 8px;
+    padding: 14px 16px; max-height: 300px; overflow-y: auto;
+    white-space: pre-wrap; word-break: break-word;
+}
+.log-area::-webkit-scrollbar { width: 5px; }
+.log-area::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+.resumo-badges { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.resumo-badge  { font-size: 13px; font-weight: 700; padding: 5px 16px; border-radius: 10px; }
+.resumo-badge.ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.resumo-badge.err { background: #fff1f2; color: #be123c; border: 1px solid #fda4af; }
+
+/* ── Toast ── */
+#toastImport {
+    position: fixed; bottom: 28px; right: 28px; z-index: 9999;
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px; border-radius: 12px;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    opacity: 0; transform: translateY(16px);
+    transition: opacity 0.25s, transform 0.25s;
+    pointer-events: none;
+}
+#toastImport.visivel { opacity: 1; transform: translateY(0); pointer-events: auto; }
+#toastImport.ok  { background: #166534; color: #f0fdf4; }
+#toastImport.err { background: #be123c; color: #fff1f2; }
+#toastImport.aviso { background: #92400e; color: #fef3c7; }
+
+/* ── tabela de comparação de campos ── */
+.comp-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.comp-table th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase;
+                 letter-spacing: 0.05em; color: #64748b; padding: 0 8px 6px; border-bottom: 2px solid var(--border); }
+.comp-table td { padding: 5px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.comp-table tr:last-child td { border-bottom: none; }
+.comp-col-access { font-family: var(--mono); color: #0f172a; font-weight: 500; }
+.comp-col-tipo   { font-family: var(--mono); font-size: 10px; color: #94a3b8; }
+.comp-col-dest   { font-family: var(--mono); font-size: 11px; color: #166534; font-weight: 600; }
+.comp-col-none   { font-size: 10px; color: #cbd5e1; }
+.comp-badge-map  { display:inline-block; background:#f0fdf4; color:#166534; border:1px solid #86efac;
+                   border-radius:4px; padding:1px 6px; font-size:10px; font-weight:700; }
+.comp-badge-skip { display:inline-block; background:#f8fafc; color:#94a3b8; border:1px solid #e2e8f0;
+                   border-radius:4px; padding:1px 6px; font-size:10px; }
+
+.loading-inline { display: flex; align-items: center; gap: 8px; padding: 14px 0; font-size: 13px; color: #64748b; }
+.spinner {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2.5px solid #e2e8f0; border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div>
+        <span class="badge-admin">🛡️ ADMIN</span>
+    </div>
+    <div class="topo-titulo">Importar do Folha 10 Antigo</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="layout">
+
+    <!-- ══ BANNER BLOQUEIO (span all cols) ══ -->
+    <div class="banner-bloqueio" id="bannerBloqueio">
+        <span class="banner-bloqueio-icone">🚫</span>
+        <span id="bannerBloqueioMsg">
+            <strong>Múltiplos clientes na pasta.</strong>
+            A pasta deve conter arquivos de apenas um cliente (um único código FolhaFIX_NNNNNN).
+            Remova os arquivos excedentes e atualize as listas.
+        </span>
+    </div>
+
+    <!-- ══ COL 1 — ARQUIVO ACCESS ══ -->
+    <aside class="painel-lateral">
+        <div class="painel-header">
+            <div class="painel-header-row">
+                <div>
+                    <div class="etapa-label"><span class="etapa-num">1</span> Arquivo Access</div>
+                    <div class="pasta-hint">{{ pasta }}</div>
+                </div>
+                <button class="btn-atualizar" onclick="atualizarTudo()" title="Atualizar">↺</button>
+            </div>
+        </div>
+        <div class="painel-scroll" id="listaArquivos">
+            <div class="loading-inline" style="padding:20px 10px;">
+                <div class="spinner"></div> Carregando…
+            </div>
+        </div>
+        <div class="painel-footer" id="totalArquivos"></div>
+    </aside>
+
+    <!-- ══ COL 2 — EMPRESAS (FolhaFIX_*) ══ -->
+    <aside class="painel-lateral">
+        <div class="painel-header">
+            <div class="etapa-label"><span class="etapa-num">2</span> Empresas nos arquivos</div>
+            <div class="painel-header-titulo">FolhaFIX_* → tabempresas</div>
+        </div>
+        <div class="painel-scroll" id="listaEmpresas">
+            <div class="loading-inline" style="padding:20px 10px;">
+                <div class="spinner"></div> Carregando…
+            </div>
+        </div>
+        <div class="painel-footer" id="totalEmpresas"></div>
+    </aside>
+
+    <!-- ══ COL 3 — CLIENTE DESTINO ══ -->
+    <aside class="painel-lateral">
+        <div class="painel-header">
+            <div class="etapa-label"><span class="etapa-num">3</span> Selecione um cliente destino</div>
+            <div class="painel-header-titulo">
+                Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span>
+            </div>
+            <div class="busca-wrap">
+                <span class="busca-icone">🔍</span>
+                <input class="input-busca" id="inputBusca" type="text"
+                       placeholder="Buscar…" oninput="filtrarClientes()" autocomplete="off">
+            </div>
+        </div>
+        <div class="painel-scroll" id="listaClientes">
+            {% for c in clientes %}
+            <label class="cliente-card"
+                   id="cli-{{ c.id_cliente }}"
+                   data-nome="{{ (c.nome or '') | lower }}"
+                   data-nomeorig="{{ c.nome or '' }}">
+                <input type="checkbox" class="cliente-chk"
+                       id="chk-cli-{{ c.id_cliente }}"
+                       onchange="marcarCliente(this, {{ c.id_cliente }})">
+                <div class="cliente-info">
+                    <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
+                    <span class="cliente-nome">{{ c.nome or '—' }}</span>
+                    <span class="cliente-cpf">{{ c.cpf or '' }}</span>
+                </div>
+            </label>
+            {% else %}
+            <div style="padding:20px 14px;font-size:12px;color:#94a3b8;">Nenhum cliente cadastrado.</div>
+            {% endfor %}
+        </div>
+        <div class="painel-footer">{{ clientes | length }} cliente(s)</div>
+    </aside>
+
+    <!-- ══ COL 4 — ETAPAS DE IMPORTAÇÃO ══ -->
+    <aside class="painel-lateral">
+        <div class="painel-header">
+            <div class="etapa-label"><span class="etapa-num">4</span> Etapas</div>
+            <div class="painel-header-titulo">O que importar</div>
+        </div>
+        <div class="painel-scroll" id="listaEtapas"></div>
+        <div class="painel-footer" id="totalEtapas"></div>
+    </aside>
+
+    <!-- ══ COL 5 — CONFIG / EXECUÇÃO ══ -->
+    <main class="painel-direito">
+        <div class="painel-direito-corpo">
+
+<div class="estado-vazio" id="estadoVazio">
+                <span class="estado-vazio-icone">👈</span>
+                <span class="estado-vazio-texto">Selecione arquivo, cliente e etapa</span>
+                <span class="estado-vazio-sub">Colunas 1, 3 e 4</span>
+            </div>
+
+            <div id="selResumo" style="display:none;" class="sel-resumo">
+                <div class="sel-item">
+                    <span class="sel-label">Arquivo:</span>
+                    <span class="sel-val" id="selArqNome">—</span>
+                </div>
+                <div class="sel-item" style="margin-left:auto;">
+                    <span class="sel-label">Cliente:</span>
+                    <span class="sel-val" id="selCliNome">—</span>
+                </div>
+            </div>
+
+            <!-- Comparação de campos: Access ↔ destino -->
+            <div class="card" id="cardComparacao" style="display:none;">
+                <div class="card-header">
+                    <span class="card-etapa">✦</span>
+                    <span id="compTitulo">Mapeamento de Campos</span>
+                    <span id="compTotalBadge" style="margin-left:auto;font-size:10px;color:#64748b;font-weight:400;text-transform:none;letter-spacing:0;"></span>
+                </div>
+                <div class="card-body" id="comparacaoCorpo">
+                    <div class="loading-inline"><div class="spinner"></div> Lendo colunas…</div>
+                </div>
+            </div>
+
+            <div class="card" id="cardConfig" style="display:none;">
+                <div class="card-header"><span class="card-etapa">5</span> Vigência Inicial</div>
+                <div class="card-body">
+                    <div class="form-row">
+                        <label class="form-label">Vigência inicial dos registros importados</label>
+                        <input class="form-input" id="inputIniValid" type="text"
+                               value="202001" maxlength="6" placeholder="YYYYMM">
+                        <span class="form-hint">Formato YYYYMM — ex: 202001</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="aviso-warn" id="avisoWarn" style="display:none;">
+                <span style="font-size:16px;flex-shrink:0;">ℹ️</span>
+                <span>Registros já existentes serão <strong>mantidos</strong>. A importação adiciona novos registros e atualiza os existentes pelo código (upsert).</span>
+            </div>
+
+            <button class="btn-autorizar" id="btnAutorizar" style="display:none;"
+                    onclick="autorizarImportacao()">
+                🔓 Autorizar Importação
+            </button>
+            <button class="btn-executar" id="btnIniciar" style="display:none;"
+                    onclick="executarImportacao()">
+                ▶ Iniciar Importação
+            </button>
+
+            <div class="progresso-wrap" id="progressoWrap">
+                <div class="progresso-label">
+                    <strong id="progressoTexto">Preparando…</strong>
+                    <span id="progressoPct">0%</span>
+                </div>
+                <div class="progresso-bar-track">
+                    <div class="progresso-bar-fill" id="progressoFill"></div>
+                </div>
+                <div class="progresso-etapas" id="progressoEtapas"></div>
+            </div>
+
+            <div class="card" id="cardResultado" style="display:none;">
+                <div class="card-header">📋 Resultado</div>
+                <div class="card-body">
+                    <div class="resumo-badges" id="resumoBadges"></div>
+                    <div class="log-area" id="logArea"></div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+</div>
+
+<script>
+let arquivoAtivo          = null;
+let clienteAtivo          = null;
+let clienteNome           = null;
+let bloqueioMultiCliente  = false;
+
+const ETAPAS = [
+    { num: '01', nome: 'Importar a empresa',       tabela: 'tabempresas',  implementado: true  },
+    { num: '02', nome: 'Importar filiais',          tabela: 'tabfiliais',   implementado: true  },
+    { num: '03', nome: 'Importar centros de custo', tabela: 'tabcc',        implementado: true  },
+    { num: '04', nome: 'Importar funções/cargos',  tabela: 'tabfuncao',    implementado: true  },
+    { num: '05', nome: 'Importar rubricas/verbas', tabela: 'tabverba',     implementado: true  },
+    { num: '06', nome: 'Importar funcionários',    tabela: 'tabfunc',      implementado: true  },
+];
+
+function renderEtapas() {
+    const el = document.getElementById('listaEtapas');
+    el.innerHTML = ETAPAS.map(e => `
+        <label class="etapa-card${e.implementado ? '' : ' etapa-pendente'}">
+            <input type="checkbox" class="etapa-chk" id="chk-etapa-${esc(e.num)}"
+                   value="${esc(e.tabela)}"
+                   ${e.implementado ? '' : 'disabled'}
+                   onchange="_verificarPronto()">
+            <span class="etapa-card-label">
+                <strong>Etapa ${esc(e.num)}:</strong>${esc(e.nome)}
+            </span>
+            <span class="badge-impl ${e.implementado ? 'sim' : 'nao'}">${e.implementado ? '✓' : '⏳'}</span>
+        </label>`
+    ).join('');
+    const disp = ETAPAS.filter(e => e.implementado).length;
+    document.getElementById('totalEtapas').textContent = disp + ' disponível(is)';
+}
+
+// ── Atualiza List 1 + List 2 e reinicia bloqueio ──
+function atualizarTudo() {
+    bloqueioMultiCliente = false;
+    arquivoAtivo = null;
+    clienteAtivo = null;
+    clienteNome  = null;
+    document.getElementById('bannerBloqueio').classList.remove('visivel');
+    document.querySelectorAll('.cliente-chk').forEach(c => c.checked = false);
+    document.querySelectorAll('.cliente-card').forEach(c => c.classList.remove('ativo'));
+    _resetDireito();
+    carregarArquivos();
+    carregarEmpresas();
+}
+
+// ── Col 1: Carrega lista de arquivos ──
+function carregarArquivos() {
+    const el = document.getElementById('listaArquivos');
+    const ft = document.getElementById('totalArquivos');
+    el.innerHTML = '<div class="loading-inline" style="padding:20px 10px;"><div class="spinner"></div> Carregando…</div>';
+    ft.textContent = '';
+    fetch('/api/admin_importar_f10/arquivos')
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) { el.innerHTML = msgErro(d.msg); return; }
+            if (d.aviso) {
+                el.innerHTML = `<div style="padding:14px 10px;font-size:11px;color:#f59e0b;">${esc(d.aviso)}</div>`;
+                return;
+            }
+            if (!d.arquivos.length) {
+                el.innerHTML = '<div class="painel-vazio"><span class="painel-vazio-icone">📂</span><span class="painel-vazio-texto">Nenhum arquivo encontrado</span></div>';
+                return;
+            }
+            el.innerHTML = d.arquivos.map(a =>
+                `<div class="arquivo-card${bloqueioMultiCliente ? ' bloqueado' : ''}" id="arq-${esc(a.nome)}" onclick="selecionarArquivo(${JSON.stringify(a)})">
+                    <span class="arquivo-icone">📦</span>
+                    <div class="arquivo-info">
+                        <div class="arquivo-nome">${esc(a.nome)}</div>
+                        <div class="arquivo-meta">${esc(a.tamanho_fmt)} · ${esc(a.modificado)}</div>
+                    </div>
+                </div>`
+            ).join('');
+            ft.textContent = d.arquivos.length + ' arquivo(s)';
+
+            // auto-seleciona se há exatamente 1 arquivo FolhaFIX e ainda não há seleção
+            if (!arquivoAtivo) {
+                const folhafx = d.arquivos.filter(a => a.nome.toUpperCase().startsWith('FOLHAFIX_'));
+                if (folhafx.length === 1) selecionarArquivo(folhafx[0]);
+            }
+        })
+        .catch(() => { el.innerHTML = msgErro('Falha ao comunicar com o servidor.'); });
+}
+
+// ── Col 1: Seleciona arquivo ──
+function selecionarArquivo(a) {
+    if (bloqueioMultiCliente) return;   // bloqueado — múltiplos clientes na pasta
+    if (arquivoAtivo === a.nome) return;
+    arquivoAtivo = a.nome;
+    clienteAtivo = null;
+    clienteNome  = null;
+    document.querySelectorAll('.cliente-chk').forEach(c => c.checked = false);
+    document.querySelectorAll('.cliente-card').forEach(c => c.classList.remove('ativo'));
+    document.querySelectorAll('.arquivo-card').forEach(c => c.classList.remove('ativo'));
+    const card = document.getElementById('arq-' + a.nome);
+    if (card) card.classList.add('ativo');
+    _resetDireito();
+}
+
+// ── Col 2: Carrega empresas de todos FolhaFIX_* (autônomo) ──
+function carregarEmpresas() {
+    const el = document.getElementById('listaEmpresas');
+    const ft = document.getElementById('totalEmpresas');
+    el.innerHTML = '<div class="loading-inline" style="padding:20px 10px;"><div class="spinner"></div> Lendo empresas…</div>';
+    ft.textContent = '';
+    fetch('/api/admin_importar_f10/empresas')
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) {
+                el.innerHTML = `<div style="padding:12px 10px;">
+                    <div style="font-size:11px;font-weight:700;color:#ef4444;margin-bottom:4px;">Erro</div>
+                    <div style="font-size:11px;color:#64748b;line-height:1.5;word-break:break-word;">${esc(d.msg)}</div>
+                </div>`;
+                return;
+            }
+            if (d.aviso) {
+                el.innerHTML = `<div style="padding:14px 10px;font-size:11px;color:#f59e0b;">${esc(d.aviso)}</div>`;
+                return;
+            }
+            if (!d.empresas.length && !d.erros.length) {
+                el.innerHTML = '<div class="painel-vazio"><span class="painel-vazio-icone">🏢</span><span class="painel-vazio-texto">Nenhuma empresa encontrada</span><span style="font-size:11px;">Nenhum arquivo FolhaFIX_* na pasta</span></div>';
+                return;
+            }
+
+            // verifica se há mais de um cliente antigo (NNNNNN distinto)
+            const numerosCliente = [...new Set(d.empresas.map(e => e.num_antigo))];
+            if (numerosCliente.length > 1) {
+                bloqueioMultiCliente = true;
+                document.getElementById('bannerBloqueio').classList.add('visivel');
+                document.getElementById('bannerBloqueioMsg').innerHTML =
+                    `<strong>Múltiplos clientes na pasta (${numerosCliente.length} códigos: ${numerosCliente.join(', ')}).</strong>
+                     A pasta deve conter arquivos de um único código FolhaFIX_NNNNNN.
+                     Remova os arquivos excedentes e clique em ↺ para atualizar.`;
+                // desativa os cards de arquivo em List 1
+                document.querySelectorAll('.arquivo-card').forEach(c => c.classList.add('bloqueado'));
+            }
+
+            let html = d.empresas.map(e =>
+                `<div class="empresa-row">
+                    <span class="empresa-cod">${esc(e.num_antigo)}›${esc(e.codigo)}</span>
+                    <span class="empresa-nome">${esc(e.razaosocial)}</span>
+                </div>`
+            ).join('');
+            if (d.erros.length) {
+                html += d.erros.map(x =>
+                    `<div style="padding:5px 10px;font-size:10px;color:#ef4444;">⚠ ${esc(x.arquivo)}: ${esc(x.erro)}</div>`
+                ).join('');
+            }
+            el.innerHTML = html;
+            ft.textContent = d.empresas.length + ' empresa(s)';
+        })
+        .catch(ex => {
+            el.innerHTML = `<div style="padding:12px 10px;font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
+        });
+}
+
+// ── Col 3: Checkbox exclusivo ──
+function marcarCliente(chk, id) {
+    chk.checked = true;
+    document.querySelectorAll('.cliente-chk').forEach(c => { if (c !== chk) c.checked = false; });
+    if (clienteAtivo === id) return;
+    clienteAtivo = id;
+    const card = document.getElementById('cli-' + id);
+    clienteNome  = (card && card.dataset.nomeorig) ? card.dataset.nomeorig : String(id);
+    document.querySelectorAll('.cliente-card').forEach(c => c.classList.remove('ativo'));
+    document.getElementById('cli-' + id).classList.add('ativo');
+    _verificarPronto();
+}
+
+// ── Col 5: Mostra config quando arquivo + cliente + etapa selecionados ──
+function _verificarPronto() {
+    const temEtapa = ETAPAS.some(e => {
+        const el = document.getElementById('chk-etapa-' + e.num);
+        return el && el.checked;
+    });
+    const pronto = !!(arquivoAtivo && clienteAtivo && temEtapa);
+
+    document.getElementById('estadoVazio').style.display    = pronto ? 'none'  : 'flex';
+    document.getElementById('selResumo').style.display      = pronto ? 'flex'  : 'none';
+    document.getElementById('cardComparacao').style.display = pronto ? 'block' : 'none';
+    document.getElementById('cardConfig').style.display     = pronto ? 'block' : 'none';
+    document.getElementById('avisoWarn').style.display      = pronto ? 'flex'  : 'none';
+    document.getElementById('btnAutorizar').style.display   = pronto ? 'flex'  : 'none';
+    document.getElementById('btnIniciar').style.display     = 'none';
+    document.getElementById('cardResultado').style.display  = 'none';
+    if (!pronto) return;
+
+    document.getElementById('selArqNome').textContent = arquivoAtivo;
+    document.getElementById('selCliNome').textContent = clienteNome;
+    carregarComparacao();
+}
+
+function _resetDireito() {
+    document.getElementById('estadoVazio').style.display    = 'flex';
+    document.getElementById('selResumo').style.display      = 'none';
+    document.getElementById('cardComparacao').style.display = 'none';
+    document.getElementById('cardConfig').style.display     = 'none';
+    document.getElementById('avisoWarn').style.display      = 'none';
+    document.getElementById('btnAutorizar').style.display   = 'none';
+    document.getElementById('btnIniciar').style.display     = 'none';
+    document.getElementById('cardResultado').style.display  = 'none';
+}
+
+// ── Comparação de campos Access ↔ destino ──
+function carregarComparacao() {
+    if (!arquivoAtivo) return;
+    const checkedEtapas = ETAPAS.filter(e => {
+        const el = document.getElementById('chk-etapa-' + e.num);
+        return el && el.checked;
+    }).map(e => e.tabela);
+
+    const corpo  = document.getElementById('comparacaoCorpo');
+    const badge  = document.getElementById('compTotalBadge');
+    const titulo = document.getElementById('compTitulo');
+
+    if (checkedEtapas.includes('tabempresas')) {
+        titulo.textContent = 'Mapeamento de Campos — Empresas';
+        corpo.innerHTML = '<div class="loading-inline"><div class="spinner"></div> Lendo colunas…</div>';
+        fetch('/api/admin_importar_f10/comparar_empresa?arquivo=' + encodeURIComponent(arquivoAtivo))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(d.msg)}</div>`;
+                    return;
+                }
+                badge.textContent = `[${d.tabela}]  ${d.total} registro(s)`;
+                const mapeados  = d.campos.filter(c => c.destino).length;
+                const ignorados = d.campos.length - mapeados;
+                corpo.innerHTML = `
+                    <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+                        <span style="font-size:11px;background:#f0fdf4;color:#166534;border:1px solid #86efac;border-radius:6px;padding:2px 10px;">
+                            ✓ ${mapeados} campo(s) importado(s)
+                        </span>
+                        <span style="font-size:11px;background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;border-radius:6px;padding:2px 10px;">
+                            — ${ignorados} campo(s) ignorado(s)
+                        </span>
+                    </div>
+                    <table class="comp-table">
+                        <thead><tr>
+                            <th>Campo no Access</th>
+                            <th>Tipo</th>
+                            <th>→ tab_empresa</th>
+                        </tr></thead>
+                        <tbody>
+                        ${d.campos.map(c => `
+                            <tr>
+                                <td class="comp-col-access">${esc(c.access)}</td>
+                                <td class="comp-col-tipo">${esc(c.tipo)}</td>
+                                <td>${c.destino
+                                    ? `<span class="comp-badge-map">${esc(c.destino)}</span>
+                                       <span style="font-size:10px;color:#64748b;margin-left:4px;">${esc(c.rotulo||'')}</span>`
+                                    : '<span class="comp-badge-skip">ignorado</span>'
+                                }</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            })
+            .catch(ex => {
+                corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
+            });
+
+    } else if (checkedEtapas.includes('tabfiliais')) {
+        titulo.textContent = 'Registros no Access — Filiais';
+        badge.textContent  = '';
+        corpo.innerHTML = `
+            <div class="loading-inline"><div class="spinner"></div> Varrendo pasta…</div>
+            <button onclick="verDadosBrutos()" style="margin-top:8px;background:none;border:1px solid var(--border);
+                border-radius:6px;padding:4px 12px;font-size:11px;cursor:pointer;color:#64748b;">
+                🔬 Ver dados brutos dos arquivos
+            </button>`;
+        fetch('/api/admin_importar_f10/comparar_filial?arquivo=' + encodeURIComponent(arquivoAtivo))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(d.msg)}</div>`;
+                    return;
+                }
+
+                // resumo das fontes encontradas
+                const fontesOk    = (d.fontes || []).filter(f => f.status === 'ok');
+                const fontesVazia = (d.fontes || []).filter(f => f.status === 'vazia');
+
+                badge.textContent = d.tem_filial
+                    ? `tabfilial — ${d.total_registros} registro(s) em ${fontesOk.length} arquivo(s)`
+                    : `fallback tabempresa — ${(d.fallback_registros||[]).length} registro(s)`;
+
+                let html = '';
+
+                // bloco de diagnóstico por arquivo — mostra todos
+                const diagLinhas = (d.fontes || []).map(f => {
+                    if (f.status === 'ok')
+                        return `<span style="color:#166534;">✓ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} linhas brutas / ${f.mapeados} mapeadas${f.rejeitados ? ' / '+f.rejeitados+' rejeit.' : ''}</span>`;
+                    if (f.status === 'sem_cnpj')
+                        return `<span style="color:#f59e0b;">⚠ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} linhas mas 0 CNPJ válido — colunas: ${esc((f.colunas||[]).join(', '))}</span>`;
+                    if (f.status === 'vazia')
+                        return `<span style="color:#92400e;">○ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] vazia — colunas: ${esc((f.colunas||[]).join(', '))}</span>`;
+                    if (f.status === 'erro')
+                        return `<span style="color:#ef4444;">✗ <strong>${esc(f.arquivo)}</strong> → erro: ${esc(f.erro||'')} — tabelas: ${esc((f.tabelas||[]).join(', ')||'?')}</span>`;
+                    const tabs = (f.tabelas || []).join(', ') || '(nenhuma)';
+                    return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabfilial — [${esc(tabs)}]</span>`;
+                });
+                if (diagLinhas.length) {
+                    html += `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:9px 13px;font-size:11px;margin-bottom:12px;display:flex;flex-direction:column;gap:3px;">
+                        ${diagLinhas.join('')}
+                    </div>`;
+                }
+
+                if (!d.tem_filial) {
+                    html += `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 13px;font-size:11px;color:#92400e;margin-bottom:12px;">
+                        ⚠ tabfilial não encontrada com registros em nenhum arquivo — usando <strong>[${esc(d.fallback_tabela||'?')}]</strong> como fallback
+                    </div>`;
+                }
+
+                // renderiza tabela de preview do primeiro arquivo com dados
+                const fonte = d.tem_filial ? fontesOk[0] : null;
+                const previewRegs  = fonte ? (fonte.registros || []) : (d.fallback_registros || []);
+                const previewCols  = fonte ? (fonte.colunas  || []) : Object.keys(previewRegs[0] || {});
+
+                if (previewRegs.length) {
+                    const colCnpj  = previewCols.find(c => ['cnpj','cgc'].includes(c.toLowerCase()));
+                    const colNome  = previewCols.find(c => ['fantasia','nomefantasia','razaosocial','razao_social','nome'].includes(c.toLowerCase()));
+                    const colSit   = previewCols.find(c => c.toLowerCase() === 'situacao');
+                    const base     = [colCnpj, colNome, colSit].filter(Boolean);
+                    const extras   = previewCols.filter(c => !base.includes(c)).slice(0, 4);
+                    const cols     = [...base, ...extras];
+
+                    const thead = cols.map(c => `<th>${esc(c)}</th>`).join('');
+                    const tbody = previewRegs.map(r => {
+                        const cells = cols.map(c => `<td style="font-family:var(--mono);font-size:11px;">${esc(r[c] ?? '')}</td>`).join('');
+                        return `<tr>${cells}</tr>`;
+                    }).join('');
+
+                    const labelArq = fonte ? fonte.arquivo : (d.fallback_tabela || '');
+                    html += `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">
+                        Preview: <strong>${esc(labelArq)}</strong> — ${previewRegs.length} registro(s) exibido(s)
+                        ${fontesOk.length > 1 ? `<span style="color:#94a3b8;">(+${fontesOk.length-1} arquivo(s) com mais registros)</span>` : ''}
+                    </div>
+                    <div style="overflow-x:auto;">
+                    <table class="comp-table">
+                        <thead><tr>${thead}</tr></thead>
+                        <tbody>${tbody}</tbody>
+                    </table></div>`;
+                } else {
+                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhum registro para exibir.</div>`;
+                }
+
+                corpo.innerHTML = html;
+            })
+            .catch(ex => {
+                corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
+            });
+
+    } else if (checkedEtapas.includes('tabcc')) {
+        titulo.textContent = 'Registros no Access — Centros de Custo';
+        badge.textContent  = '';
+        corpo.innerHTML    = '<div class="loading-inline"><div class="spinner"></div> Varrendo pasta…</div>';
+        fetch('/api/admin_importar_f10/comparar_cc?arquivo=' + encodeURIComponent(arquivoAtivo))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(d.msg)}</div>`;
+                    return;
+                }
+                const fontesOk = (d.fontes || []).filter(f => f.status === 'ok');
+                badge.textContent = d.tem_cc
+                    ? `tabcc — ${d.total_registros} registro(s) em ${fontesOk.length} arquivo(s)`
+                    : 'tabcc não encontrada';
+
+                const diagLinhas = (d.fontes || []).map(f => {
+                    if (f.status === 'ok')
+                        return `<span style="color:#166534;">✓ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} linhas / ${f.mapeados} mapeadas${f.rejeitados ? ' / '+f.rejeitados+' rejeit.' : ''}</span>`;
+                    if (f.status === 'sem_codigo')
+                        return `<span style="color:#f59e0b;">⚠ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} linhas mas 0 código válido — colunas: ${esc((f.colunas||[]).join(', '))}</span>`;
+                    if (f.status === 'vazia')
+                        return `<span style="color:#92400e;">○ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] vazia — colunas: ${esc((f.colunas||[]).join(', '))}</span>`;
+                    if (f.status === 'erro')
+                        return `<span style="color:#ef4444;">✗ <strong>${esc(f.arquivo)}</strong> → erro: ${esc(f.erro||'')} — tabelas: ${esc((f.tabelas||[]).join(', ')||'?')}</span>`;
+                    return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabcc — [${esc((f.tabelas||[]).join(', ')||'nenhuma')}]</span>`;
+                });
+
+                let html = '';
+                if (diagLinhas.length) {
+                    html += `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:9px 13px;font-size:11px;margin-bottom:12px;display:flex;flex-direction:column;gap:3px;">
+                        ${diagLinhas.join('')}
+                    </div>`;
+                }
+
+                const fonte      = fontesOk[0];
+                const previewRegs = fonte ? (fonte.registros || []) : [];
+                const previewCols = fonte ? (fonte.colunas   || []) : [];
+
+                if (previewRegs.length) {
+                    const colCod = previewCols.find(c => ['cc','codigo','codcc'].includes(c.toLowerCase()));
+                    const colNom = previewCols.find(c => ['nome','descricao','desc'].includes(c.toLowerCase()));
+                    const colSit = previewCols.find(c => c.toLowerCase() === 'situacao');
+                    const base   = [colCod, colNom, colSit].filter(Boolean);
+                    const extras = previewCols.filter(c => !base.includes(c)).slice(0, 4);
+                    const cols   = [...base, ...extras];
+                    const thead  = cols.map(c => `<th>${esc(c)}</th>`).join('');
+                    const tbody  = previewRegs.map(r => {
+                        const cells = cols.map(c => `<td style="font-family:var(--mono);font-size:11px;">${esc(r[c] ?? '')}</td>`).join('');
+                        return `<tr>${cells}</tr>`;
+                    }).join('');
+                    html += `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">
+                        Preview: <strong>${esc(fonte.arquivo)}</strong> — ${previewRegs.length} registro(s)
+                        ${fontesOk.length > 1 ? `<span style="color:#94a3b8;">(+${fontesOk.length-1} arquivo(s) com mais registros)</span>` : ''}
+                    </div>
+                    <div style="overflow-x:auto;">
+                    <table class="comp-table">
+                        <thead><tr>${thead}</tr></thead>
+                        <tbody>${tbody}</tbody>
+                    </table></div>`;
+                } else if (!d.tem_cc) {
+                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhum centro de custo encontrado nos arquivos da pasta.</div>`;
+                }
+                corpo.innerHTML = html;
+            })
+            .catch(ex => {
+                corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
+            });
+
+    } else if (checkedEtapas.includes('tabfuncao')) {
+        titulo.textContent = 'Registros no Access — Funções / Cargos';
+        badge.textContent  = '';
+        corpo.innerHTML    = '<div class="loading-inline"><div class="spinner"></div> Varrendo pasta…</div>';
+        fetch('/api/admin_importar_f10/comparar_funcao?arquivo=' + encodeURIComponent(arquivoAtivo))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(d.msg)}</div>`;
+                    return;
+                }
+                badge.textContent = d.tem_funcao
+                    ? `${d.total_cbos} CBO(s) único(s)${d.sem_match_ft ? ' — ⚠ ' + d.sem_match_ft + ' sem match' : ''}`
+                    : 'tabfuncao não encontrada';
+
+                const diagLinhas = (d.fontes || []).map(f => {
+                    if (f.status === 'ok')
+                        return `<span style="color:#166534;">✓ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} linhas / ${f.mapeados} ativos / ${f.novos_cbo} CBOs novos${f.rejeitados ? ' / '+f.rejeitados+' inativos' : ''}</span>`;
+                    if (f.status === 'sem_cbo')
+                        return `<span style="color:#f59e0b;">⚠ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} linhas mas 0 CBO válido — colunas: ${esc((f.colunas||[]).join(', '))}</span>`;
+                    if (f.status === 'vazia')
+                        return `<span style="color:#92400e;">○ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] vazia</span>`;
+                    if (f.status === 'erro')
+                        return `<span style="color:#ef4444;">✗ <strong>${esc(f.arquivo)}</strong> → erro: ${esc(f.erro||'')}</span>`;
+                    return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabfuncao</span>`;
+                });
+
+                let html = '';
+                if (diagLinhas.length) {
+                    html += `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:9px 13px;font-size:11px;margin-bottom:12px;display:flex;flex-direction:column;gap:3px;">
+                        ${diagLinhas.join('')}
+                    </div>`;
+                }
+
+                // Tabela consolidada de CBOs únicos
+                if ((d.cbos || []).length) {
+                    const thead = '<th>CBO</th><th>Nome no Access</th><th>Nome oficial (tab_aux)</th><th>Status</th>';
+                    const tbody = d.cbos.map(c => `<tr>
+                        <td style="font-family:var(--mono);font-size:11px;">${esc(c.cbo)}</td>
+                        <td style="font-size:11px;">${esc(c.nome_resumido)}</td>
+                        <td style="font-size:11px;color:${c.encontrado ? '#166534' : '#ef4444'};">${esc(c.nome_oficial)}</td>
+                        <td>${c.encontrado
+                            ? '<span style="font-size:10px;background:#dcfce7;color:#166534;border-radius:4px;padding:1px 7px;">✓ ok</span>'
+                            : '<span style="font-size:10px;background:#fee2e2;color:#991b1b;border-radius:4px;padding:1px 7px;">✗ sem match</span>'
+                        }</td>
+                    </tr>`).join('');
+                    html += `<div style="font-size:11px;color:#64748b;margin-bottom:6px;">
+                        <strong>${d.total_cbos}</strong> CBO(s) únicos — ${d.total_cbos - (d.sem_match_ft||0)} importáveis, ${d.sem_match_ft||0} sem correspondência na tabela CBO do sistema
+                    </div>
+                    <div style="overflow-x:auto;">
+                    <table class="comp-table">
+                        <thead><tr>${thead}</tr></thead>
+                        <tbody>${tbody}</tbody>
+                    </table></div>`;
+                } else if (!d.tem_funcao) {
+                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhuma função encontrada com CBO válido nos arquivos da pasta.</div>`;
+                }
+                corpo.innerHTML = html;
+            })
+            .catch(ex => {
+                corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
+            });
+
+    } else if (checkedEtapas.includes('tabverba')) {
+        titulo.textContent = 'Registros no Access — Rubricas / Verbas';
+        badge.textContent  = 'arquivo FolhaFIX_* → tab_rubrica';
+        corpo.innerHTML    = `<div style="font-size:12px;color:#475569;padding:8px 0;line-height:1.6;">
+            A tabela <strong>tabverba</strong> está no arquivo FolhaFIX selecionado (Coluna 1).<br>
+            A importação lê apenas as verbas ativas (<code>situacao='A'</code>) e as mapeia para
+            <strong>tab_rubrica</strong> — campos: <code>cod_rubr</code>, <code>dsc_rubr</code>,
+            <code>tp_rubr</code>, <code>unid_verba</code>, incidências (INSS/FGTS/IRRF/PIS).<br><br>
+            Clique em <strong>Autorizar → Iniciar</strong> para executar.
+        </div>`;
+
+    } else if (checkedEtapas.includes('tabfunc')) {
+        titulo.textContent = 'Registros no Access — Funcionários (tabfunc)';
+        badge.textContent  = '';
+        corpo.innerHTML    = '<div class="loading-inline"><div class="spinner"></div> Varrendo arquivos F######_####…</div>';
+        fetch('/api/admin_importar_f10/comparar_func?arquivo=' + encodeURIComponent(arquivoAtivo))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(d.msg)}</div>`;
+                    return;
+                }
+                const fontesOk = (d.fontes || []).filter(f => f.status === 'ok');
+                badge.textContent = d.tem_func
+                    ? `tabfunc — ${d.total_func} funcionário(s) em ${fontesOk.length} arquivo(s)`
+                    : 'tabfunc não encontrada nos arquivos';
+
+                const diagLinhas = (d.fontes || []).map(f => {
+                    if (f.status === 'ok')
+                        return `<span style="color:#166534;">✓ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} funcionário(s) — ${esc((f.colunas||[]).length)} campo(s) úteis${(f.colunas_w||[]).length ? ' / ' + f.colunas_w.length + ' ignorados (W)' : ''}</span>`;
+                    if (f.status === 'sem_tabfunc')
+                        return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabfunc — [${esc((f.tabelas||[]).join(', ')||'nenhuma')}]</span>`;
+                    if (f.status === 'erro')
+                        return `<span style="color:#ef4444;">✗ <strong>${esc(f.arquivo)}</strong> → erro: ${esc(f.erro||'')}</span>`;
+                    return `<span style="color:#94a3b8;">· <strong>${esc(f.arquivo)}</strong> → ${esc(f.status)}</span>`;
+                });
+
+                let html = '';
+                if (diagLinhas.length) {
+                    html += `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:9px 13px;font-size:11px;margin-bottom:12px;display:flex;flex-direction:column;gap:3px;">
+                        ${diagLinhas.join('')}
+                    </div>`;
+                }
+
+                if (!d.tem_func) {
+                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhum arquivo com tabfunc encontrado.</div>`;
+                    corpo.innerHTML = html;
+                    return;
+                }
+
+                // Para cada arquivo com tabfunc, mostra: colunas úteis + mapa funcao→cbo + preview
+                for (const f of fontesOk) {
+                    html += `<div style="margin-bottom:20px;">`;
+                    html += `<div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;">📦 ${esc(f.arquivo)}</div>`;
+
+                    // Colunas filtradas
+                    html += `<div style="font-size:11px;color:#475569;margin-bottom:4px;">
+                        <strong>Campos úteis (${(f.colunas||[]).length}):</strong>
+                        <span style="font-family:var(--mono);font-size:10px;color:#64748b;">${esc((f.colunas||[]).join(', '))}</span>
+                    </div>`;
+                    if ((f.colunas_w||[]).length) {
+                        html += `<div style="font-size:10px;color:#94a3b8;margin-bottom:8px;">
+                            Ignorados (sufixo W): ${esc(f.colunas_w.join(', '))}
+                        </div>`;
+                    }
+
+                    // Mapa funcao→cbo
+                    const mapa = f.mapa_funcao_cbo || {};
+                    const mapaEntries = Object.entries(mapa).filter(([k]) => k !== '_erro');
+                    if (mapa._erro) {
+                        html += `<div style="font-size:11px;color:#f59e0b;margin-bottom:8px;">⚠ Erro ao ler tabfuncao: ${esc(mapa._erro)}</div>`;
+                    } else if (f.tab_funcao && mapaEntries.length) {
+                        html += `<div style="font-size:11px;font-weight:600;color:#475569;margin-bottom:4px;">
+                            Mapa funcao → CBO (${esc(f.tab_funcao)}, ${mapaEntries.length} função/ões):
+                        </div>
+                        <div style="overflow-x:auto;margin-bottom:10px;">
+                        <table class="comp-table">
+                            <thead><tr><th>Cód.funcao</th><th>Nome</th><th>CBO</th></tr></thead>
+                            <tbody>${mapaEntries.slice(0,20).map(([k,v]) => `<tr>
+                                <td style="font-family:var(--mono);font-size:11px;">${esc(k)}</td>
+                                <td style="font-size:11px;">${esc(v.nome)}</td>
+                                <td style="font-family:var(--mono);font-size:11px;color:#166534;font-weight:600;">${esc(v.cbo)}</td>
+                            </tr>`).join('')}
+                            ${mapaEntries.length > 20 ? `<tr><td colspan="3" style="font-size:10px;color:#94a3b8;">...mais ${mapaEntries.length-20} função/ões</td></tr>` : ''}
+                            </tbody>
+                        </table></div>`;
+                    } else if (!f.tab_funcao) {
+                        html += `<div style="font-size:11px;color:#f59e0b;margin-bottom:8px;">⚠ tabfuncao não encontrada neste arquivo — campo CBOFuncao ficará vazio</div>`;
+                    }
+
+                    // Preview funcionários
+                    const regs = f.registros || [];
+                    if (regs.length) {
+                        const colsPreview = (f.colunas || []).slice(0, 10).map(c => c.toLowerCase());
+                        html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Preview: primeiros ${regs.length} funcionário(s)</div>
+                        <div style="overflow-x:auto;">
+                        <table class="comp-table">
+                            <thead><tr>${colsPreview.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+                            <tbody>${regs.map(r =>
+                                `<tr>${colsPreview.map(c => `<td style="font-family:var(--mono);font-size:10px;">${esc(r[c]??'')}</td>`).join('')}</tr>`
+                            ).join('')}</tbody>
+                        </table></div>`;
+                    }
+                    html += `</div>`;
+                }
+
+                corpo.innerHTML = html;
+            })
+            .catch(ex => {
+                corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
+            });
+
+    } else {
+        titulo.textContent = 'Mapeamento de Campos';
+        badge.textContent  = '';
+        corpo.innerHTML    = '<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Mapeamento não disponível para esta etapa.</div>';
+    }
+}
+
+function verDadosBrutos() {
+    if (!arquivoAtivo) return;
+    const corpo = document.getElementById('comparacaoCorpo');
+    corpo.innerHTML = '<div class="loading-inline"><div class="spinner"></div> Lendo arquivos (bruto)…</div>';
+    fetch('/api/admin_importar_f10/dump_filial?arquivo=' + encodeURIComponent(arquivoAtivo))
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) { corpo.innerHTML = `<div style="color:#ef4444;font-size:11px;">${esc(d.msg)}</div>`; return; }
+            if (!d.arquivos.length) { corpo.innerHTML = '<div style="font-size:11px;color:#94a3b8;">Nenhum arquivo não-FolhaFIX encontrado.</div>'; return; }
+            let html = '';
+            for (const arq of d.arquivos) {
+                html += `<div style="margin-bottom:16px;">
+                    <div style="font-weight:700;font-size:12px;color:#0f172a;margin-bottom:6px;">
+                        📦 ${esc(arq.arquivo)}
+                        ${arq.erro ? `<span style="color:#ef4444;font-weight:400;"> — erro: ${esc(arq.erro)}</span>` : ''}
+                    </div>`;
+                if (!arq.erro) {
+                    for (const t of arq.tabelas) {
+                        const destaque = t.nome.toLowerCase().includes('filial');
+                        html += `<div style="margin-bottom:10px;${destaque ? 'background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px 10px;' : ''}">
+                            <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:${destaque?'#166534':'#475569'};">
+                                [${esc(t.nome)}] <span style="font-weight:400;color:#94a3b8;">${t.tipo}</span>
+                                — ${t.total} reg.
+                                ${t.erro_leitura ? `<span style="color:#ef4444;"> ✗ ${esc(t.erro_leitura)}</span>` : ''}
+                            </div>
+                            <div style="font-size:10px;color:#64748b;margin:2px 0 4px;">colunas: ${esc((t.colunas||[]).join(', '))}</div>`;
+                        if (t.primeiras_linhas && t.primeiras_linhas.length) {
+                            const cols = t.colunas.slice(0, 8);
+                            html += `<div style="overflow-x:auto;"><table class="comp-table">
+                                <thead><tr>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead>
+                                <tbody>${t.primeiras_linhas.map(r =>
+                                    `<tr>${cols.map(c=>`<td style="font-family:var(--mono);font-size:10px;">${esc(r[c]??'')}</td>`).join('')}</tr>`
+                                ).join('')}</tbody>
+                            </table></div>`;
+                        }
+                        html += `</div>`;
+                    }
+                }
+                html += `</div>`;
+            }
+            corpo.innerHTML = html;
+        })
+        .catch(ex => { corpo.innerHTML = `<div style="color:#ef4444;font-size:11px;">${esc(String(ex))}</div>`; });
+}
+
+function atualizarBotao() {
+    _verificarPronto();
+}
+
+// ── Autorizar → Iniciar (2-step) ──
+function autorizarImportacao() {
+    document.getElementById('btnAutorizar').style.display = 'none';
+    document.getElementById('btnIniciar').style.display   = '';
+}
+
+let _pollTimer = null;
+
+function executarImportacao() {
+    const ini_valid = (document.getElementById('inputIniValid').value || '202001').replace(/\D/g,'');
+    const etapasSel = ETAPAS.filter(e => {
+        const el = document.getElementById('chk-etapa-' + e.num);
+        return el && el.checked;
+    });
+    const tabelas = etapasSel.map(e => e.tabela);
+    if (!clienteAtivo || !arquivoAtivo || !tabelas.length) return;
+
+    const btn = document.getElementById('btnIniciar');
+    btn.disabled  = true;
+    btn.innerHTML = '<div class="spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,0.25);border-width:2.5px;"></div> Importando…';
+    document.getElementById('cardResultado').style.display = 'none';
+
+    // Monta chips de etapas
+    const wrapEtapas = document.getElementById('progressoEtapas');
+    wrapEtapas.innerHTML = etapasSel.map(e =>
+        `<span class="progresso-etapa-chip" id="chip-${e.tabela}">${e.nome || e.tabela}</span>`
+    ).join('');
+
+    _atualizarBarra(0, 'Iniciando…');
+    document.getElementById('progressoWrap').classList.add('ativo');
+
+    fetch('/api/admin_importar_f10/executar', {
+        method : 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body   : JSON.stringify({
+            arquivo   : arquivoAtivo,
+            id_cliente: clienteAtivo,
+            tabelas   : tabelas,
+            ini_valid : parseInt(ini_valid),
+        })
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) { _finalizarImportacao(d); return; }
+        _pollProgresso(d.job_id, tabelas, etapasSel);
+    })
+    .catch(ex => _finalizarImportacao({ok: false, msg: String(ex)}));
+}
+
+function _atualizarBarra(pct, texto, etapaAtiva) {
+    document.getElementById('progressoFill').style.width  = pct + '%';
+    document.getElementById('progressoPct').textContent   = pct + '%';
+    document.getElementById('progressoTexto').textContent = texto || '';
+}
+
+function _pollProgresso(jobId, tabelas, etapasSel) {
+    if (_pollTimer) clearTimeout(_pollTimer);
+
+    const labelMap = {};
+    etapasSel.forEach(e => { labelMap[e.tabela] = e.nome || e.tabela; });
+
+    function poll() {
+        fetch('/api/admin_importar_f10/progresso?job=' + jobId)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) { _finalizarImportacao({ok: false, msg: d.msg}); return; }
+
+            const pct   = d.pct || 0;
+            const step  = d.step || 0;
+            const total = d.total_steps || tabelas.length;
+
+            // Atualiza chips
+            tabelas.forEach((t, i) => {
+                const chip = document.getElementById('chip-' + t);
+                if (!chip) return;
+                if (d.done || i < step) {
+                    // verificar se esse passo está nos resultados
+                    const res = d.resultado && d.resultado.resultados &&
+                                d.resultado.resultados.find(r => r.tabela === t);
+                    chip.className = 'progresso-etapa-chip ' +
+                        (res && res.erros > 0 ? 'erro' : 'ok');
+                } else if (t === d.etapa) {
+                    chip.className = 'progresso-etapa-chip ativa';
+                } else {
+                    chip.className = 'progresso-etapa-chip';
+                }
+            });
+
+            if (d.done) {
+                _atualizarBarra(100, 'Concluído');
+                setTimeout(() => _finalizarImportacao(d.resultado), 400);
+            } else {
+                const label = labelMap[d.etapa] || d.etapa || 'Processando…';
+                _atualizarBarra(pct, `Etapa ${step + 1} de ${total}: ${label}…`);
+                _pollTimer = setTimeout(poll, 1000);
+            }
+        })
+        .catch(() => { _pollTimer = setTimeout(poll, 2000); });
+    }
+    poll();
+}
+
+function _finalizarImportacao(d) {
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+    const btn = document.getElementById('btnIniciar');
+    btn.disabled  = false;
+    btn.innerHTML = '▶ Iniciar Importação';
+    document.getElementById('btnIniciar').style.display   = 'none';
+    document.getElementById('btnAutorizar').style.display = '';
+    document.getElementById('progressoWrap').classList.remove('ativo');
+    renderResultado(d);
+}
+
+function renderResultado(d) {
+    const card   = document.getElementById('cardResultado');
+    const badges = document.getElementById('resumoBadges');
+    const log    = document.getElementById('logArea');
+    card.style.display = '';
+    card.scrollIntoView({behavior: 'smooth', block: 'start'});
+    if (!d.ok) {
+        badges.innerHTML = `<span class="resumo-badge err">✗ Erro: ${esc(d.msg)}</span>`;
+        log.textContent  = '';
+        mostrarToast('✗ Falha na importação — ' + esc(d.msg), 'err');
+        return;
+    }
+    badges.innerHTML =
+        `<span class="resumo-badge ok">✓ ${d.total_gravados} gravados</span>` +
+        (d.total_erros ? `<span class="resumo-badge err">✗ ${d.total_erros} erros</span>` : '');
+    const linhas = [];
+    for (const r of d.resultados) {
+        linhas.push(`── ${r.descricao || r.tabela} ──`);
+        linhas.push(...r.log);
+        linhas.push('');
+    }
+    log.textContent = linhas.join('\n');
+    if (d.total_erros) {
+        mostrarToast(`⚠ Concluído com erros — ${d.total_gravados} gravados, ${d.total_erros} erros`, 'aviso');
+    } else {
+        mostrarToast(`✓ Importação concluída — ${d.total_gravados} registro(s) gravado(s)`, 'ok');
+    }
+}
+
+function filtrarClientes() {
+    const t = document.getElementById('inputBusca').value.toLowerCase().trim();
+    document.querySelectorAll('.cliente-card[data-nome]').forEach(c => {
+        c.style.display = (!t || c.dataset.nome.includes(t)) ? '' : 'none';
+    });
+}
+
+function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function msgErro(msg) {
+    return `<div style="font-size:11px;color:#ef4444;padding:8px 4px;">${esc(msg)}</div>`;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    renderEtapas();
+    carregarArquivos();
+    carregarEmpresas();
+});
+
+let _toastTimer = null;
+function mostrarToast(msg, tipo) {
+    const el = document.getElementById('toastImport');
+    el.textContent = msg;
+    el.className   = 'visivel ' + (tipo || 'ok');
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(() => { el.classList.remove('visivel'); }, 5000);
+}
+</script>
+<div id="toastImport"></div>
+</body>
+</html>
