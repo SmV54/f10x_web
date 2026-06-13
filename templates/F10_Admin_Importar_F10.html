@@ -594,7 +594,7 @@ const ETAPAS = [
     { num: '03', nome: 'Importar centros de custo', tabela: 'tabcc',        implementado: true  },
     { num: '04', nome: 'Importar funções/cargos',  tabela: 'tabfuncao',    implementado: true  },
     { num: '05', nome: 'Importar rubricas/verbas', tabela: 'tabverba',     implementado: true  },
-    { num: '06', nome: 'Importar funcionários',    tabela: 'tabfunc',      implementado: true  },
+    { num: '06', nome: 'Importar funcionários',    tabela: 'tabcad',       implementado: true  },
 ];
 
 function renderEtapas() {
@@ -1078,8 +1078,8 @@ function carregarComparacao() {
             Clique em <strong>Autorizar → Iniciar</strong> para executar.
         </div>`;
 
-    } else if (checkedEtapas.includes('tabfunc')) {
-        titulo.textContent = 'Registros no Access — Funcionários (tabfunc)';
+    } else if (checkedEtapas.includes('tabcad')) {
+        titulo.textContent = 'Registros no Access — Funcionários (tabcad)';
         badge.textContent  = '';
         corpo.innerHTML    = '<div class="loading-inline"><div class="spinner"></div> Varrendo arquivos F######_####…</div>';
         fetch('/api/admin_importar_f10/comparar_func?arquivo=' + encodeURIComponent(arquivoAtivo))
@@ -1091,14 +1091,14 @@ function carregarComparacao() {
                 }
                 const fontesOk = (d.fontes || []).filter(f => f.status === 'ok');
                 badge.textContent = d.tem_func
-                    ? `tabfunc — ${d.total_func} funcionário(s) em ${fontesOk.length} arquivo(s)`
+                    ? `tabcad — ${d.total_func} funcionário(s) em ${fontesOk.length} arquivo(s)`
                     : 'tabfunc não encontrada nos arquivos';
 
                 const diagLinhas = (d.fontes || []).map(f => {
                     if (f.status === 'ok')
                         return `<span style="color:#166534;">✓ <strong>${esc(f.arquivo)}</strong> → [${esc(f.tabela)}] ${f.total} funcionário(s) — ${esc((f.colunas||[]).length)} campo(s) úteis${(f.colunas_w||[]).length ? ' / ' + f.colunas_w.length + ' ignorados (W)' : ''}</span>`;
                     if (f.status === 'sem_tabfunc')
-                        return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabfunc — [${esc((f.tabelas||[]).join(', ')||'nenhuma')}]</span>`;
+                        return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabcad — [${esc((f.tabelas||[]).join(', ')||'nenhuma')}]</span>`;
                     if (f.status === 'erro')
                         return `<span style="color:#ef4444;">✗ <strong>${esc(f.arquivo)}</strong> → erro: ${esc(f.erro||'')}</span>`;
                     return `<span style="color:#94a3b8;">· <strong>${esc(f.arquivo)}</strong> → ${esc(f.status)}</span>`;
@@ -1112,12 +1112,12 @@ function carregarComparacao() {
                 }
 
                 if (!d.tem_func) {
-                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhum arquivo com tabfunc encontrado.</div>`;
+                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhum arquivo com tabcad encontrado.</div>`;
                     corpo.innerHTML = html;
                     return;
                 }
 
-                // Para cada arquivo com tabfunc, mostra: colunas úteis + mapa funcao→cbo + preview
+                // Para cada arquivo com tabcad, mostra: colunas úteis + mapa funcao→cbo + preview
                 for (const f of fontesOk) {
                     html += `<div style="margin-bottom:20px;">`;
                     html += `<div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:6px;">📦 ${esc(f.arquivo)}</div>`;

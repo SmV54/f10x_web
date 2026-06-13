@@ -28094,6 +28094,13 @@ def api_admin_imp_comparar_funcao():
         return jsonify({'ok': False, 'msg': str(ex)})
 
 
+def _imp_func_f10(caminho, id_cliente):
+    """Importa tabcad do Access para tab_cad. Retorna (gravados, erros, log).
+    Implementação pendente — aguardando mapeamento de campos confirmado via comparar_func.
+    """
+    return 0, 0, ['⏳  Importação de funcionários ainda não implementada. Use o botão Etapa 06 → comparar primeiro.']
+
+
 @app.route('/api/admin_importar_f10/comparar_func')
 def api_admin_imp_comparar_func():
     if not session.get('logado'): return jsonify({'ok': False}), 401
@@ -28129,9 +28136,9 @@ def api_admin_imp_comparar_func():
                               if not t.table_name.startswith('MSys')}
                 fonte['tabelas'] = sorted(todas_tabs.keys())
 
-                # ── localiza tabfunc ──────────────────────────────────────────
+                # ── localiza tabcad (funcionários) ───────────────────────────
                 tab_func = None
-                for cand in ('tabfunc', 'tabfuncionario', 'tabfuncionarios'):
+                for cand in ('tabcad', 'tabfunc', 'tabfuncionario', 'tabfuncionarios'):
                     if cand in todas_tabs:
                         tab_func = todas_tabs[cand]
                         break
@@ -28275,6 +28282,10 @@ def api_admin_imp_executar():
                 elif tl == 'tabfuncao':
                     grav, err, log = _imp_funcao_f10(caminho, int(id_cliente))
                     resultados.append({'tabela': tabela, 'descricao': 'Funções / Cargos',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl == 'tabcad':
+                    grav, err, log = _imp_func_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Funcionários',
                                         'gravados': grav, 'erros': err, 'log': log})
                 else:
                     resultados.append({'tabela': tabela, 'descricao': tabela,
