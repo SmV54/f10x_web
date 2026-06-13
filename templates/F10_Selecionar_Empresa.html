@@ -19,7 +19,7 @@ body {
 
 .card {
     width: 100%;
-    max-width: 480px;
+    max-width: 680px;
     background: white;
     border-radius: 18px;
     padding: 32px 28px;
@@ -78,12 +78,13 @@ body {
 }
 
 .empresa-btn:hover {
-    background: #eff6ff;
-    border-color: #2a7de1;
+    background: #bfdbfe;
+    border-color: #1d4ed8;
 }
 
 .empresa-btn:active {
-    background: #dbeafe;
+    background: #93c5fd;
+    border-color: #1e40af;
 }
 
 .empresa-info { flex: 1; }
@@ -92,7 +93,9 @@ body {
     font-size: 14px;
     font-weight: 600;
     color: #0f172a;
-    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .empresa-cnpj {
@@ -145,17 +148,15 @@ body {
 
 <div class="card">
     <div class="logo">Folha10 Simples</div>
-    <div class="versao">{{ versao }}</div>
+    <div class="versao">Versão {{ versao }}</div>
 
-    <div class="boas-vindas">Bem-vindo, <strong>{{ nome }}</strong></div>
-    <div class="titulo">Selecione a Empresa</div>
+    <div class="titulo">Selecione uma Empresa</div>
 
     <div class="lista-empresas">
         {% for emp in empresas %}
         <button class="empresa-btn" onclick="selecionar({{ emp.id_empresa }})">
             <div class="empresa-info">
-                <div class="empresa-nome">{{ emp.nome }}</div>
-                <div class="empresa-cnpj">{{ emp.cnpj_fmt }}</div>
+                <div class="empresa-nome">{{ emp.cnpj_fmt }} — {{ emp.nome }}</div>
             </div>
             <span class="empresa-icone">&#8594;</span>
         </button>

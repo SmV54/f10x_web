@@ -28095,118 +28095,18 @@ def api_admin_imp_comparar_funcao():
 
 
 def _imp_func_f10(caminho, id_cliente):
-    """Importa tabcad do Access para tab_cad. Retorna (gravados, erros, log)."""
-    import pyodbc
+    """Importa tabcad do Access para tab_cad.
+    Fase 1: lê CNPJ do FolhaFIX (caminho) → resolve id_empresa no Supabase.
+    Fase 2: varre arquivos F######_#### da pasta → tabfuncao (mapa CBO) + tabcad.
+    Retorna (gravados, erros, log).
+    """
+    import pyodbc, glob as _glob
 
     log  = []
     grav = err = 0
+    pasta = os.path.dirname(caminho)
 
-    # ── 1. Conecta ao arquivo Access ──────────────────────────────────
-    try:
-        conn = pyodbc.connect(
-            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
-        )
-    except Exception as ex:
-        return 0, 1, [f'✗ Conexão: {ex}']
-
-    cur = conn.cursor()
-    todas_tabs = {t.table_name.lower(): t.table_name
-                  for t in cur.tables(tableType='TABLE')
-                  if not t.table_name.startswith('MSys')}
-
-    # ── 2. CNPJ da empresa → id_empresa no Supabase ──────────────────
-    cnpj_empresa = None
-    for cand in ('tabempresa', 'tabemp', 'tabempresas'):
-        if cand in todas_tabs:
-            try:
-                cur.execute(f"SELECT * FROM [{todas_tabs[cand]}]")
-                ec  = [d[0].lower() for d in cur.description]
-                row = cur.fetchone()
-                if row:
-                    ed       = dict(zip(ec, row))
-                    col_cnpj = next((c for c in ec if c in ('cnpj', 'cgc')), None)
-                    if col_cnpj:
-                        cnpj_empresa = ''.join(filter(str.isdigit, str(ed.get(col_cnpj) or '')))
-            except Exception:
-                pass
-            break
-
-    if not cnpj_empresa:
-        conn.close()
-        return 0, 1, ['✗ CNPJ da empresa não encontrado no arquivo Access']
-
-    try:
-        r_emp = (supabase.table('tab_empresa')
-                 .select('id_empresa')
-                 .eq('cnpj', cnpj_empresa)
-                 .eq('id_cliente', id_cliente)
-                 .execute().data or [])
-        if not r_emp:
-            conn.close()
-            return 0, 1, [f'✗ Empresa CNPJ {cnpj_empresa} não encontrada no Supabase para este cliente — importe a empresa primeiro (Etapa 01)']
-        id_empresa = r_emp[0]['id_empresa']
-        log.append(f'🏢 Empresa CNPJ {cnpj_empresa} → id_empresa={id_empresa}')
-    except Exception as ex:
-        conn.close()
-        return 0, 1, [f'✗ Erro ao buscar empresa: {ex}']
-
-    # ── 3. Mapa funcao → CBO (tabfuncao) ─────────────────────────────
-    mapa_cbo = {}
-    for cand in ('tabfuncao', 'tabfuncoes'):
-        if cand in todas_tabs:
-            try:
-                cur.execute(f"SELECT * FROM [{todas_tabs[cand]}]")
-                fc      = [d[0].lower() for d in cur.description]
-                col_cod = next((c for c in fc if c in ('codigo', 'cod', 'id')), fc[0] if fc else None)
-                col_cbo = next((c for c in fc if 'cbo' in c), None)
-                if col_cod and col_cbo:
-                    for fr in cur.fetchall():
-                        fd = dict(zip(fc, fr))
-                        k  = str(fd.get(col_cod) or '').strip()
-                        v  = str(fd.get(col_cbo) or '').strip()
-                        if k and v:
-                            mapa_cbo[k] = v
-            except Exception as ex:
-                log.append(f'⚠  Erro ao ler tabfuncao: {ex}')
-            break
-    log.append(f'📋 Mapa funcao→CBO: {len(mapa_cbo)} função/ões')
-
-    # ── 4. Lê tabcad ─────────────────────────────────────────────────
-    tab_cad_nome = None
-    for cand in ('tabcad', 'tabfunc', 'tabfuncionario'):
-        if cand in todas_tabs:
-            tab_cad_nome = todas_tabs[cand]
-            break
-    if not tab_cad_nome:
-        conn.close()
-        return 0, 1, [f'✗ tabcad não encontrada. Tabelas: {", ".join(sorted(todas_tabs.keys()))}']
-
-    try:
-        cur.execute(f'SELECT * FROM [{tab_cad_nome}]')
-        all_cols = [d[0] for d in cur.description]
-        # descarta campos terminados em W (legado)
-        idx_ok = [i for i, c in enumerate(all_cols) if not c.upper().endswith('W')]
-        cols   = [all_cols[i].lower() for i in idx_ok]
-        rows   = cur.fetchall()
-    except Exception as ex:
-        conn.close()
-        return 0, 1, [f'✗ Leitura de {tab_cad_nome}: {ex}']
-
-    conn.close()
-    log.append(f'👥 {tab_cad_nome}: {len(rows)} funcionário(s) lido(s)')
-
-    # ── 5. Matriculas já existentes no Supabase (para upsert) ─────────
-    try:
-        ex_rows = (supabase.table('tab_cad')
-                   .select('id, matricula')
-                   .eq('id_empresa', id_empresa)
-                   .execute().data or [])
-        mat_existente = {str(r['matricula']): r['id'] for r in ex_rows if r.get('matricula') is not None}
-    except Exception as ex:
-        return 0, 1, [f'✗ Erro ao consultar tab_cad existente: {ex}']
-    log.append(f'📂 Supabase: {len(mat_existente)} funcionário(s) já cadastrado(s) para esta empresa')
-
-    # ── 6. Helpers ────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────
     def _data(v):
         if v is None: return None
         if hasattr(v, 'strftime'): return v.strftime('%Y%m%d')
@@ -28217,7 +28117,7 @@ def _imp_func_f10(caminho, id_cliente):
         s = ''.join(filter(str.isdigit, str(v or '')))
         return s[:11] if s else None
 
-    def _cnpj(v):
+    def _cnpj14(v):
         s = ''.join(filter(str.isdigit, str(v or '')))
         return s[:14] if len(s) >= 14 else None
 
@@ -28232,113 +28132,382 @@ def _imp_func_f10(caminho, id_cliente):
         except (ValueError, TypeError):
             return None
 
-    # ── 7. Importa cada funcionário ───────────────────────────────────
-    for row in rows:
-        r = {cols[j]: row[idx_ok[j]] for j in range(len(cols))}
+    def _raca(v):
+        if v is None: return '6'
+        # de-para Access→eSocial: 8→3(Parda) 2→1(Branca) 4→2(Preta) 6→4(Amarela) 1→5(Indígena)
+        mapa = {'8': '3', '2': '1', '4': '2', '6': '4', '1': '5'}
+        return mapa.get(str(v).strip(), '6')  # '6' = Não informado se não reconhecido
+
+    def _dv(v):
+        """DV bancário: aceita zero como valor válido. Retorna '?' se não informado."""
+        if v is None: return '?'
+        s = str(v).strip()
+        return s if s != '' else '?'
+
+    # ── Fase 1: CNPJ do FolhaFIX → id_empresa ────────────────────────
+    nome_fix = os.path.basename(caminho)
+    try:
+        conn_fix = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+    except Exception as ex:
+        return 0, 1, [f'✗ Conexão ao FolhaFIX: {ex}']
+
+    cnpj_empresa = None
+    mapa_cbo_fix  = {}   # acesso→CBO
+    mapa_tabtab   = {}   # acesso→{nome, codigo}
+    try:
+        cur_fix = conn_fix.cursor()
+        tabs_fix = {t.table_name.lower(): t.table_name
+                    for t in cur_fix.tables(tableType='TABLE')
+                    if not t.table_name.startswith('MSys')}
+        # CNPJ
+        for cand in ('tabempresa', 'tabempresas', 'tabemp'):
+            if cand in tabs_fix:
+                cur_fix.execute(f"SELECT * FROM [{tabs_fix[cand]}]")
+                ec  = [d[0].lower() for d in cur_fix.description]
+                row = cur_fix.fetchone()
+                if row:
+                    ed       = dict(zip(ec, row))
+                    col_cnpj = next((c for c in ec if c in ('cnpj', 'cgc')), None)
+                    if col_cnpj:
+                        cnpj_empresa = ''.join(filter(str.isdigit, str(ed.get(col_cnpj) or '')))
+                break
+        # tabfuncao → mapa CBO global
+        for cand in ('tabfuncao', 'tabfuncoes'):
+            if cand in tabs_fix:
+                try:
+                    cur_fix.execute(f"SELECT * FROM [{tabs_fix[cand]}]")
+                    fc      = [d[0].lower() for d in cur_fix.description]
+                    col_cod = next((c for c in fc if c in ('codigo', 'cod', 'id')), fc[0] if fc else None)
+                    col_cbo = next((c for c in fc if 'cbo' in c), None)
+                    if col_cod and col_cbo:
+                        for fr in cur_fix.fetchall():
+                            fd = dict(zip(fc, fr))
+                            k  = str(fd.get(col_cod) or '').strip()
+                            v  = str(fd.get(col_cbo) or '').strip()
+                            if k and v:
+                                mapa_cbo_fix[k] = v
+                except Exception:
+                    pass
+                break
+        # tabtab → mapa acesso→{nome, codigo} (bairro e cidade)
+        if 'tabtab' in tabs_fix:
+            try:
+                cur_fix.execute(f"SELECT * FROM [{tabs_fix['tabtab']}]")
+                tc      = [d[0].lower() for d in cur_fix.description]
+                col_ac  = next((c for c in tc if c == 'acesso'), None)
+                col_nm  = next((c for c in tc if c in ('nome', 'descricao', 'descr', 'dsc')), None)
+                col_cdo = next((c for c in tc if c == 'codigo'), None)
+                if col_ac:
+                    for tr in cur_fix.fetchall():
+                        td = dict(zip(tc, tr))
+                        k_raw = str(td.get(col_ac) or '').strip()
+                        if not k_raw:
+                            continue
+                        entry = {
+                            'nome'  : str(td.get(col_nm)  or '').strip() if col_nm  else '',
+                            'codigo': str(td.get(col_cdo) or '').strip() if col_cdo else '',
+                        }
+                        mapa_tabtab[k_raw] = entry
+                        # também indexa sem zeros à esquerda para garantir match
+                        k_int = k_raw.lstrip('0') or '0'
+                        if k_int != k_raw:
+                            mapa_tabtab[k_int] = entry
+            except Exception as ex:
+                log.append(f'⚠  Erro ao ler tabtab: {ex}')
+    except Exception as ex:
+        log.append(f'⚠  Erro ao ler FolhaFIX: {ex}')
+    finally:
+        conn_fix.close()
+    exemplo_tab = next(iter(mapa_tabtab.items()), None)
+    log.append(f'📋 Mapa funcao→CBO (FolhaFIX): {len(mapa_cbo_fix)} função/ões  |  tabtab: {len(mapa_tabtab)} chave(s)'
+               + (f'  ex: {exemplo_tab[0]!r}→{exemplo_tab[1]}' if exemplo_tab else ''))
+
+    if not cnpj_empresa:
+        return 0, 1, [f'✗ CNPJ da empresa não encontrado em {nome_fix} (tabempresa)']
+
+    try:
+        r_emp = (supabase.table('tab_empresa')
+                 .select('id_empresa, razaosocial')
+                 .eq('cnpj', cnpj_empresa)
+                 .eq('id_cliente', id_cliente)
+                 .execute().data or [])
+    except Exception as ex:
+        return 0, 1, [f'✗ Erro ao buscar empresa no Supabase: {ex}']
+
+    if not r_emp:
+        return 0, 1, [f'✗ Empresa CNPJ {cnpj_empresa} não encontrada no Supabase para este cliente — importe a empresa primeiro (Etapa 01)']
+
+    id_empresa   = r_emp[0]['id_empresa']
+    razao_social = r_emp[0].get('razaosocial', '')
+    log.append(f'🏢 Empresa: {razao_social}  CNPJ {cnpj_empresa} → id_empresa={id_empresa}')
+
+    # ── Fase 2: varre arquivos F######_#### ──────────────────────────
+    todos_arqs = sorted(
+        _glob.glob(os.path.join(pasta, '*.mdb')) +
+        _glob.glob(os.path.join(pasta, '*.accdb'))
+    )
+    arqs_func = [a for a in todos_arqs
+                 if not os.path.basename(a).upper().startswith('FOLHAFIX')]
+    log.append(f'🗂  Arquivos de empresa na pasta: {len(arqs_func)}')
+
+    # Matriculas já existentes no Supabase (para upsert global)
+    try:
+        ex_rows = (supabase.table('tab_cad')
+                   .select('id, matricula')
+                   .eq('id_empresa', id_empresa)
+                   .execute().data or [])
+        mat_existente = {str(r['matricula']): r['id'] for r in ex_rows if r.get('matricula') is not None}
+    except Exception as ex:
+        return 0, 1, [f'✗ Erro ao consultar tab_cad existente: {ex}']
+    log.append(f'📂 Supabase: {len(mat_existente)} funcionário(s) já cadastrado(s)')
+
+    for arq in arqs_func:
+        nome_arq = os.path.basename(arq)
+
         try:
-            # matricula
-            try:
-                mat = int(r.get('registro') or 0)
-            except (ValueError, TypeError):
-                mat = 0
-            if not mat:
-                log.append(f'⚠  Matrícula inválida ({r.get("registro")!r}) — ignorado')
-                err += 1
-                continue
-
-            sit = str(r.get('situacao') or 'A').strip().upper()
-            if sit not in ('A', 'D'): sit = 'A'
-
-            # salário: float Access → centavos inteiros
-            try:
-                vrsalfx = int(round(float(r.get('salario') or 0) * 100)) or None
-            except (ValueError, TypeError):
-                vrsalfx = None
-
-            campos = {
-                'id_cliente'  : id_cliente,
-                'id_empresa'  : id_empresa,
-                'matricula'   : mat,
-                'situacao'    : sit,
-                'nome'        : _s(r.get('nome'), 70),
-                'nomer'       : _s(r.get('nomeresumido'), 30),
-                'cpf'         : _cpf(r.get('cpf')),
-                'nomemae'     : _s(r.get('nomemae'), 70),
-                'sexo'        : _s(r.get('sexo'), 1),
-                'racacor'     : _s(r.get('raca'), 1),
-                'estciv'      : _s(r.get('estadocivil'), 1),
-                'grauinstr'   : _grau(r.get('grauinstrucao')),
-                'dtnascto'    : _data(r.get('datanascimento')),
-                'dtadm'       : _data(r.get('dataadmissao')),
-                'filial'      : _s(r.get('filial'), 6),
-                'undsalfixo'  : _s(r.get('tiposal'), 1),
-                'qtdhrsmes'   : _s(r.get('horastrab'), 3),
-                'qtdhrssem'   : _s(r.get('horastrabsemana'), 2),
-                'cbofuncao'   : mapa_cbo.get(str(r.get('funcao') or '').strip()) or None,
-                'natatividade': '1',
-                'tpadmissao'  : '1',
-                'tpcontr'     : '1',
-                'tpregjor'    : '1',
-                'indadmissao' : '1',
-            }
-
-            if vrsalfx:
-                campos['vrsalfx'] = vrsalfx
-
-            # categoria eSocial (esocial_tab01_categoria → codcateg)
-            categ = _s(r.get('esocial_tab01_categoria'), 3)
-            if categ:
-                campos['codcateg'] = categ
-
-            # demissão
-            if sit == 'D':
-                campos['datarescisao'] = _data(r.get('datademissao'))
-                mot = _s(r.get('motivodemissao'), 2)
-                if mot:
-                    campos['motrescisao'] = mot
-
-            # banco
-            for acc_f, db_f in [('banco_numero',    'banco_numero'),
-                                  ('banco_agencia',   'banco_agencia'),
-                                  ('banco_agenciadv', 'banco_agenciadv'),
-                                  ('banco_conta',     'banco_conta'),
-                                  ('banco_contadv',   'banco_contadv')]:
-                v = _s(r.get(acc_f), 20)
-                if v: campos[db_f] = v
-
-            # sindicato (CNPJ)
-            sind = _cnpj(r.get('sindicato'))
-            if sind:
-                campos['cnpjsindcategprof'] = sind
-
-            # tomador
-            tom = _cnpj(r.get('tomador_cnpj'))
-            if tom:
-                campos['tomador_nrinsc'] = tom
-                tip = _s(r.get('tomador_cnpj_tipo'), 1)
-                if tip: campos['tomador_tpinsc'] = tip
-
-            # remove Nones para não sobrescrever campos com null
-            campos = {k: v for k, v in campos.items() if v is not None}
-
-            mat_key = str(mat)
-            if mat_key in mat_existente:
-                resp = supabase.table('tab_cad').update(campos).eq('id', mat_existente[mat_key]).execute()
-                acao = 'atualizado'
-            else:
-                resp = supabase.table('tab_cad').insert(campos).execute()
-                acao = 'novo'
-
-            if resp.data:
-                grav += 1
-                log.append(f"✓  {mat:>6}  {campos.get('nome','')[:30]:<30}  {sit}  ({acao})")
-            else:
-                err += 1
-                log.append(f"✗  {mat:>6}  {campos.get('nome','')[:30]}  sem retorno do Supabase")
-
+            conn = pyodbc.connect(
+                f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={arq};'
+            )
         except Exception as ex:
+            log.append(f'✗ {nome_arq} → Conexão: {ex}')
             err += 1
-            log.append(f"✗  mat={r.get('registro')}  {ex}")
+            continue
+
+        cur = conn.cursor()
+        todas_tabs = {t.table_name.lower(): t.table_name
+                      for t in cur.tables(tableType='TABLE')
+                      if not t.table_name.startswith('MSys')}
+
+        # Verifica se tem tabcad
+        tab_cad_nome = None
+        for cand in ('tabcad', 'tabfunc', 'tabfuncionario'):
+            if cand in todas_tabs:
+                tab_cad_nome = todas_tabs[cand]
+                break
+        if not tab_cad_nome:
+            conn.close()
+            log.append(f'   {nome_arq} → sem tabcad — ignorado')
+            continue
+
+        # Mapa funcao → CBO via tabfuncao do mesmo arquivo
+        mapa_cbo = {}
+        for cand in ('tabfuncao', 'tabfuncoes'):
+            if cand in todas_tabs:
+                try:
+                    cur.execute(f"SELECT * FROM [{todas_tabs[cand]}]")
+                    fc      = [d[0].lower() for d in cur.description]
+                    col_cod = next((c for c in fc if c in ('codigo', 'cod', 'id')), fc[0] if fc else None)
+                    col_cbo = next((c for c in fc if 'cbo' in c), None)
+                    if col_cod and col_cbo:
+                        for fr in cur.fetchall():
+                            fd = dict(zip(fc, fr))
+                            k  = str(fd.get(col_cod) or '').strip()
+                            v  = str(fd.get(col_cbo) or '').strip()
+                            if k and v:
+                                mapa_cbo[k] = v
+                except Exception as ex:
+                    log.append(f'   ⚠  Erro ao ler tabfuncao: {ex}')
+                break
+
+        # Lê tabcad
+        try:
+            cur.execute(f'SELECT * FROM [{tab_cad_nome}]')
+            all_cols = [d[0] for d in cur.description]
+            idx_ok = [i for i, c in enumerate(all_cols) if not c.upper().endswith('W')]
+            cols   = [all_cols[i].lower() for i in idx_ok]
+            rows   = cur.fetchall()
+        except Exception as ex:
+            conn.close()
+            log.append(f'✗ {nome_arq} → Leitura de {tab_cad_nome}: {ex}')
+            err += 1
+            continue
+
+        # Lê tabreg → mapa_mat_es (op1=190) e mapa_ender (op1=1, op2=61)
+        mapa_mat_es = {}
+        mapa_ender  = {}
+        if 'tabreg' in todas_tabs:
+            try:
+                cur.execute(f"SELECT * FROM [{todas_tabs['tabreg']}]")
+                rc = [d[0].lower() for d in cur.description]
+                col_reg  = next((c for c in rc if c == 'registro'), None)
+                col_op1  = next((c for c in rc if c == 'op1'), None)
+                col_op2  = next((c for c in rc if c == 'op2'), None)
+                col_txt  = next((c for c in rc if c == 'campotxt24'), None)
+                col_comt = next((c for c in rc if c in ('comentario', 'comment', 'obs')), None)
+                if col_reg and col_op1:
+                    for rr in cur.fetchall():
+                        rd = dict(zip(rc, rr))
+                        try:
+                            op1_val = int(rd.get(col_op1) or 0)
+                            op2_val = int(rd.get(col_op2) or 0) if col_op2 else 0
+                        except (ValueError, TypeError):
+                            op1_val = op2_val = 0
+                        k = str(rd.get(col_reg) or '').strip()
+                        if not k:
+                            continue
+                        # matricula_es personalizada
+                        if op1_val == 190 and col_txt:
+                            v = str(rd.get(col_txt) or '').strip()
+                            if v:
+                                mapa_mat_es[k] = v
+                        # endereço em posições fixas no campo comentario
+                        if op1_val == 1 and op2_val == 61 and col_comt:
+                            comt = str(rd.get(col_comt) or '')
+                            comt = comt.ljust(206)  # garante tamanho mínimo
+                            def _tab_lookup(cod):
+                                """Busca em mapa_tabtab: tenta exato, sem zeros à esquerda e como int."""
+                                if not cod: return {}
+                                r = mapa_tabtab.get(cod)
+                                if r: return r
+                                stripped = cod.lstrip('0') or '0'
+                                return mapa_tabtab.get(stripped, {})
+
+                            cod_bairro = comt[66:72].strip()
+                            cod_cidade = comt[72:78].strip()
+                            bairro_rec = _tab_lookup(cod_bairro)
+                            cidade_rec = _tab_lookup(cod_cidade)
+                            mapa_ender[k] = {
+                                'ender_dsclograd'  : comt[0:40].strip(),
+                                'ender_nrlograd'   : comt[40:46].strip(),
+                                'ender_complemento': comt[46:66].strip(),
+                                'ender_bairro'     : bairro_rec.get('nome') or cod_bairro,
+                                'ender_codmunic'   : cidade_rec.get('codigo') or None,
+                                'ender_cep'        : comt[78:86].strip(),
+                                'ender_uf'         : comt[86:88].strip(),
+                            }
+            except Exception as ex:
+                log.append(f'   ⚠  Erro ao ler tabreg: {ex}')
+        if mapa_mat_es:
+            log.append(f'   📋 tabreg op1=190: {len(mapa_mat_es)} matrícula(s) com matricula_es personalizada')
+        if mapa_ender:
+            log.append(f'   📋 tabreg op1=1/op2=61: {len(mapa_ender)} endereço(s) encontrado(s)')
+
+        conn.close()
+        log.append(f'   {nome_arq} → {tab_cad_nome}: {len(rows)} funcionário(s)  |  funcao→CBO: {len(mapa_cbo)}')
+
+        # Importa cada funcionário
+        for row in rows:
+            r = {cols[j]: row[idx_ok[j]] for j in range(len(cols))}
+            try:
+                try:
+                    mat = int(r.get('registro') or 0)
+                except (ValueError, TypeError):
+                    mat = 0
+                if not mat:
+                    log.append(f'⚠  Matrícula inválida ({r.get("registro")!r}) — ignorado')
+                    err += 1
+                    continue
+
+                sit = str(r.get('situacao') or 'A').strip().upper()
+                if sit not in ('A', 'D'): sit = 'A'
+
+                try:
+                    vrsalfx = int(round(float(r.get('salario') or 0))) or None
+                except (ValueError, TypeError):
+                    vrsalfx = None
+
+                campos = {
+                    'id_cliente'  : id_cliente,
+                    'id_empresa'  : id_empresa,
+                    'matricula'   : mat,
+                    'situacao'    : sit,
+                    'nome'        : _s(r.get('nome'), 70),
+                    'nomer'       : _s(r.get('nomeresumido'), 30),
+                    'cpf'         : _cpf(r.get('cpf')),
+                    'nomemae'     : _s(r.get('nomemae'), 70),
+                    'sexo'        : _s(r.get('sexo'), 1),
+                    'racacor'     : _raca(r.get('raca')),
+                    'estciv'      : _s(r.get('estadocivil'), 1),
+                    'grauinstr'   : _grau(r.get('grauinstrucao')),
+                    'dtnascto'    : _data(r.get('datanascimento')),
+                    'dtadm'       : _data(r.get('dataadmissao')),
+                    'filial'      : _s(r.get('filial'), 6),
+                    'undsalfixo'  : _s(r.get('tiposal'), 1),
+                    'qtdhrsmes'   : _s(r.get('horastrab'), 3),
+                    'qtdhrssem'   : _s(r.get('horastrabsemana'), 2),
+                    'cbofuncao'   : (mapa_cbo.get(str(r.get('funcao') or '').strip())
+                                     or mapa_cbo_fix.get(str(r.get('funcao') or '').strip())
+                                     or None),
+                    'natatividade': '1',
+                    'paisnascto'  : '105',
+                    'paisnac'     : '105',
+                    'tpadmissao'  : '1',
+                    'tpcontr'     : '1',
+                    'tpregjor'    : '1',
+                    'tpjornada'   : '9',
+                    'hornoturno'  : 'N',
+                    'indadmissao' : '1',
+                    'centrocusto' : _s(r.get('centrocusto'), 9),
+                }
+
+                if not campos.get('cbofuncao'):
+                    log.append(f"⚠  mat={mat}  {campos.get('nome','')[:30]}  — funcao={r.get('funcao')!r} sem CBO mapeado — ignorado")
+                    err += 1
+                    continue
+
+                if vrsalfx:
+                    campos['vrsalfx'] = vrsalfx
+
+                categ = _s(r.get('esocial_tab01_categoria'), 3)
+                if categ:
+                    campos['codcateg'] = categ
+
+                if sit == 'D':
+                    campos['datarescisao'] = _data(r.get('datademissao'))
+                    mot = _s(r.get('motivodemissao'), 2)
+                    if mot:
+                        campos['motrescisao'] = mot
+
+                for acc_f, db_f, fn in [('banco_numero',    'banco_numero',    _s),
+                                         ('banco_agencia',   'banco_agencia',   _s),
+                                         ('banco_agenciadv', 'banco_agenciadv', _dv),
+                                         ('banco_conta',     'banco_conta',     _s),
+                                         ('banco_contadac',  'banco_contadv',   _dv)]:
+                    v = fn(r.get(acc_f), 20) if fn is _s else fn(r.get(acc_f))
+                    if v is not None: campos[db_f] = v
+
+                sind = _cnpj14(r.get('sindicato'))
+                if sind:
+                    campos['cnpjsindcategprof'] = sind
+
+                tom = _cnpj14(r.get('tomador_cnpj'))
+                if tom:
+                    campos['tomador_nrinsc'] = tom
+                    tip = _s(r.get('tomador_cnpj_tipo'), 1)
+                    if tip: campos['tomador_tpinsc'] = tip
+
+                # matricula_es: personalizada via tabreg op1=190, ou padrão 6 dígitos
+                mat_es = mapa_mat_es.get(str(mat)) or str(mat).zfill(6)
+                campos['matricula_es'] = mat_es
+
+                # endereço via tabreg op1=1, op2=61
+                ender = mapa_ender.get(str(mat)) or {}
+                for ef, ev in ender.items():
+                    if ev:
+                        campos[ef] = ev
+
+                campos = {k: v for k, v in campos.items() if v is not None}
+
+                mat_key = str(mat)
+                if mat_key in mat_existente:
+                    resp = supabase.table('tab_cad').update(campos).eq('id', mat_existente[mat_key]).execute()
+                    acao = 'atualizado'
+                else:
+                    resp = supabase.table('tab_cad').insert(campos).execute()
+                    acao = 'novo'
+
+                if resp.data:
+                    grav += 1
+                    log.append(f"✓  {mat:>6}  {campos.get('nome','')[:30]:<30}  {sit}  ({acao})")
+                else:
+                    err += 1
+                    log.append(f"✗  {mat:>6}  {campos.get('nome','')[:30]}  sem retorno do Supabase")
+
+            except Exception as ex:
+                err += 1
+                log.append(f"✗  mat={r.get('registro')}  {ex}")
 
     return grav, err, log
 

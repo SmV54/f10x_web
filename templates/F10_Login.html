@@ -330,6 +330,11 @@ async function fazerLogin(){
             return;
         }
 
+        // Se precisa selecionar empresa, vai direto sem modal
+        if (data.redirect && data.redirect.includes('selecionar_empresa')) {
+            window.location.href = data.redirect;
+            return;
+        }
         abrirModal(data.msg || "Login realizado com sucesso", data.redirect);
 
     } catch(e) {
