@@ -27521,7 +27521,7 @@ def _imp_verbas_f10(caminho, id_cliente, ini_valid):
     grav = err = 0
 
     try:
-        cur.execute("SELECT * FROM tabverba WHERE situacao='A'")
+        cur.execute("SELECT * FROM tabverba WHERE situacao='A' AND codigo >= 1000")
         cols = [d[0].lower() for d in cur.description]
         rows = cur.fetchall()
     except Exception as ex:
@@ -27538,11 +27538,15 @@ def _imp_verbas_f10(caminho, id_cliente, ini_valid):
     for row in rows:
         r = dict(zip(cols, row))
         try:
+            cod_int = int(r.get('codigo') or 0)
+            if cod_int < 1000:
+                log.append(f"⏭  {cod_int:4d}  ignorado (código < 1000)")
+                continue
             inc = (r.get('incidencia') or '     ').ljust(5)
             yn  = lambda c: 'N' if (r.get(c) or 'NAO').upper() in ('NAO','N','') else 'S'
             payload = {
                 'id_cliente'       : id_cliente,
-                'cod_rubr'         : int(r.get('codigo') or 0),
+                'cod_rubr'         : cod_int,
                 'dsc_rubr'         : (r.get('nomec') or '')[:40].strip(),
                 'dsc_rubr_resumido': (r.get('nomer') or '')[:20].strip(),
                 'tp_rubr'          : '1' if (r.get('sinal') or '+') == '+' else '2',
