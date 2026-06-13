@@ -27580,9 +27580,13 @@ def _imp_verbas_f10(caminho, id_cliente, ini_valid):
                 'inc_13sal'        : yn('13sal'),
                 'inc_adto13'       : yn('13sala'),
             }
-            supabase.table('tab_rubrica').insert(payload).execute()
-            grav += 1
-            log.append(f"✓  {payload['cod_rubr']:4d}  {payload['dsc_rubr']}")
+            resp = supabase.table('tab_rubrica').insert(payload).execute()
+            if resp.data:
+                grav += 1
+                log.append(f"✓  {payload['cod_rubr']:4d}  {payload['dsc_rubr']}")
+            else:
+                err += 1
+                log.append(f"✗  {payload['cod_rubr']:4d}  sem retorno do Supabase (RLS ou constraint) — campos: {list(payload.keys())}")
         except Exception as ex:
             err += 1
             log.append(f"✗  {r.get('codigo')}  {ex}")
