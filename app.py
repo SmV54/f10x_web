@@ -23860,7 +23860,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             mat = int(f.get("matricula") or 0)
             if not mat:
                 continue
-            nome  = str(f.get("nomer") or f.get("nome") or f"Matr. {mat:06d}").strip()
+            nome  = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
             cbo   = str(f.get("cbofuncao") or "").strip()
             cargo = f"CBO {cbo}" if cbo else "—"
             func_info[mat] = {
@@ -23886,7 +23886,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 mat = int(f.get("matricula") or 0)
                 if not mat:
                     continue
-                nome = str(f.get("nomer") or f.get("nome") or f"Matr. {mat:06d}").strip()
+                nome = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
                 func_info[mat] = {
                     "nome":   nome,
                     "dtadm":  str(f.get("dtadm")  or ""),
