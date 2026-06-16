@@ -36,7 +36,13 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .topo-nome    { font-size: 11px; color: #8baac8; margin-top: 2px; }
 .badge {
   display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
-  font-size: 12px; font-weight: 700; background: #fff; border: 2px solid #dde3ec; color: #6b7280;
+  font-size: 12px; font-weight: 700; background: rgba(42,125,225,0.18); border: 2px solid #93c5fd; color: #e8edf4;
+}
+.badge-periodo {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 16px; border-radius: 8px; font-family: var(--mono);
+  font-size: 15px; font-weight: 700; letter-spacing: 0.06em;
+  background: #1e3a5f; border: 2px solid var(--accent); color: #e8edf4;
 }
 .btn-voltar-topo {
   margin-left: 16px; background: transparent; border: 1px solid var(--navy-ln);
@@ -199,7 +205,10 @@ tr.tr-liq td { border-top: 2px solid #374151; }
 
   <div class="barra-acoes">
     <a class="btn-voltar" href="/relatorios">&#8592; Voltar</a>
-    <a class="btn-pdf" href="/relatorio_folha_pdf" target="_blank">&#128438; Imprimir em PDF</a>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="badge-periodo">&#128197; {{ anomes_fmt }} &nbsp;·&nbsp; {{ tipo_lbl }}</span>
+      <a class="btn-pdf" href="/relatorio_folha_pdf" target="_blank">&#128438; Imprimir em PDF</a>
+    </div>
   </div>
 
   {% if cc_list %}
