@@ -73,23 +73,43 @@ def inject_folha_ativa():
     tp = str(session.get("anomes_tipo")  or "")
     st = str(session.get("anomes_situacao") or "")
 
-    # Lê situação direto do banco para refletir mudanças imediatas em todas as telas
-    if am and tp and session.get("logado"):
-        try:
-            id_emp = session.get("id_empresa")
-            if id_emp:
-                r = (supabase.table("tab_anomes")
-                     .select("situacao")
-                     .eq("id_empresa", int(id_emp))
-                     .eq("ano_mes", am)
-                     .eq("tipo", tp)
-                     .limit(1)
-                     .execute())
-                if r.data:
-                    st = str(r.data[0].get("situacao") or "")
-                    session["anomes_situacao"] = st
-        except Exception:
-            pass  # fallback: mantém o valor da sessão
+    if session.get("logado"):
+        id_emp     = session.get("id_empresa")
+        id_cliente = session.get("id_cliente")
+        if id_emp:
+            try:
+                if am and tp:
+                    # Lê situação atualizada do período ativo
+                    r = (supabase.table("tab_anomes")
+                         .select("situacao")
+                         .eq("id_cliente", id_cliente)
+                         .eq("id_empresa", int(id_emp))
+                         .eq("ano_mes", am)
+                         .eq("tipo", tp)
+                         .limit(1)
+                         .execute())
+                    if r.data:
+                        st = str(r.data[0].get("situacao") or "")
+                        session["anomes_situacao"] = st
+                else:
+                    # anomes_atual não definido — busca o período mais recente da empresa
+                    r = (supabase.table("tab_anomes")
+                         .select("ano_mes, tipo, situacao")
+                         .eq("id_cliente", id_cliente)
+                         .eq("id_empresa", int(id_emp))
+                         .order("ano_mes", desc=True)
+                         .order("tipo")
+                         .limit(1)
+                         .execute())
+                    if r.data:
+                        am = str(r.data[0].get("ano_mes") or "")
+                        tp = str(r.data[0].get("tipo")    or "")
+                        st = str(r.data[0].get("situacao") or "")
+                        session["anomes_atual"]    = am
+                        session["anomes_tipo"]     = tp
+                        session["anomes_situacao"] = st
+            except Exception:
+                pass
 
     tipo_label = {"1": "· 13º Mês", "A": "· Adiant. 13"}.get(tp, "")
     folha_fmt  = f"{am[4:6]}/{am[0:4]}" if len(am) == 6 else ""
@@ -98,6 +118,7 @@ def inject_folha_ativa():
         "X": ("Aberta",    "sit-aberta"),
         "C": ("Calculada", "sit-calculada"),
         "F": ("Fechada",   "sit-fechada"),
+        "P": ("Processada","sit-processada"),
     }
     sit_label, sit_class = sit_map.get(st, ("", ""))
     return {
