@@ -21374,13 +21374,16 @@ def _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=None):
             qpb = int(rec.get("qtd_parcelas_before") or 0)
             fi  = rec.get("folha_inicial")
             ff  = rec.get("folha_final")
+
+            # folha_final preenchida e já passou → encerrado, não calcular
+            if ff and anomes_int > int(ff):
+                continue
+
             if qp is not None:
                 if qpb >= int(qp):
                     continue   # parcelas esgotadas
             else:
                 if fi and anomes_int < int(fi):
-                    continue
-                if ff and anomes_int > int(ff):
                     continue
             result.append(rec)
 
