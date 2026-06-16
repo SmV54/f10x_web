@@ -24511,12 +24511,13 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         hline(x0, xEND, y - R["hdr"], C_LINE, 1.4)   # borda inferior
 
         # linha 1 (topo): empresa (esq) | "CONTRACHEQUE" (dir)
-        y1 = y - 7
+        # baseline precisa estar abaixo do cap-height para não transbordar a borda
+        y1 = y - FS_TIT - 4          # 4pt gap acima do cap-height
         text_at(empresa_nm[:46], x0+HPAD, y1, "Helvetica-Bold", FS_TIT, C_TXT)
         text_at("CONTRACHEQUE", xEND-HPAD, y1, "Helvetica-Bold", FS_TIT, C_TXT, "right")
 
         # linha 2 (meio): CNPJ (esq) | mês/ano em destaque (dir)
-        y2 = y - R["hdr"] + 16
+        y2 = y - R["hdr"] + FS_EMP + 6
         text_at(f"CNPJ: {cnpj_fmt}", x0+HPAD, y2, "Helvetica", FS_DET, C_LGRAY)
         tipo_hdr = "" if anomes_tipo == "N" else f"  ·  {tipo_lbl}"
         text_at(f"{anomes_fmt}{tipo_hdr}", xEND-HPAD, y2,
@@ -24524,7 +24525,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
         # linha 3 (base): VIA label (dir)
         if label_via:
-            y3 = y - R["hdr"] + 5
+            y3 = y - R["hdr"] + FS_DET + 2
             text_at(f"VIA {label_via}", xEND-HPAD, y3,
                     "Helvetica", FS_DET, C_LGRAY, "right")
         y -= R["hdr"]
