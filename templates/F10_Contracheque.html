@@ -18,8 +18,8 @@
     --surface:    #ffffff;
     --border:     #dde3ec;
     --label:      #374151;
-    --mono: 'IBM Plex Mono', monospace;
     --sans: 'IBM Plex Sans', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
@@ -27,201 +27,262 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .topo {
     background: var(--navy); border-bottom: 1px solid var(--navy-line);
     padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
-    align-items: center; gap: 0 32px; min-height: 64px;
-    position: sticky; top: 0; z-index: 10;
+    align-items: center; gap: 0 32px; min-height: 64px; position: sticky; top: 0; z-index: 10;
 }
-.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
-.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
-.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; display: flex; align-items: center; justify-content: center; gap: 12px; }
 .topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
-.topo-nome   { font-size: 11px; font-weight: 400; color: var(--text-sub); margin-top: 2px; }
-.btn-voltar-topo {
-    margin-left: 16px; background: transparent;
-    border: 1px solid var(--navy-line); color: var(--text-sub);
-    font-size: 12px; padding: 5px 12px; border-radius: 6px;
-    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
-    text-decoration: none; display: inline-block;
+.topo-nome   { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; text-decoration: none; display: inline-block;
 }
-.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa { font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 12px; border: 1px solid currentColor; }
+.sit-aberta    { color: #4ade80; } .sit-calculada { color: #fbbf24; }
+.sit-fechada   { color: #f87171; } .sit-processada{ color: #60a5fa; }
 
-.topo-folha-ativa {
-    font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 12px;
-    border: 1px solid currentColor; margin-left: 12px;
-}
-.sit-aberta    { color: #4ade80; border-color: #4ade80; }
-.sit-calculada { color: #fbbf24; border-color: #fbbf24; }
-.sit-fechada   { color: #f87171; border-color: #f87171; }
-.sit-processada{ color: #60a5fa; border-color: #60a5fa; }
+.conteudo { max-width: 760px; margin: 40px auto; padding: 0 24px 64px; }
 
-.conteudo { max-width: 700px; margin: 48px auto; padding: 0 24px 64px; }
-
-.page-title {
-    font-size: 22px; font-weight: 600; color: var(--navy); margin-bottom: 6px;
-}
-.page-sub { font-size: 14px; color: #64748b; margin-bottom: 32px; }
-
-.card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 12px; padding: 28px 32px; margin-bottom: 24px;
-}
-.card-title { font-size: 14px; font-weight: 600; color: var(--navy); margin-bottom: 16px; }
-
-.modo-opcoes { display: flex; flex-direction: column; gap: 12px; }
-
-.modo-card {
-    display: flex; align-items: flex-start; gap: 14px;
-    padding: 16px 18px; border-radius: 8px; border: 2px solid var(--border);
-    cursor: pointer; transition: 0.15s; background: #fafbfc;
-}
-.modo-card:hover { border-color: var(--accent); background: #f0f6ff; }
-.modo-card input[type="radio"] { margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
-.modo-card-body { flex: 1; }
-.modo-card-title { font-size: 14px; font-weight: 600; color: #111827; margin-bottom: 3px; }
-.modo-card-desc  { font-size: 12px; color: #64748b; line-height: 1.5; }
-.modo-card-badge {
-    font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
-    background: #e8edf4; color: #374151; margin-left: 8px; vertical-align: middle;
-}
-.modo-card.selected { border-color: var(--accent); background: #eff6ff; }
+.page-title { font-size: 22px; font-weight: 600; color: var(--navy); margin-bottom: 6px; }
+.page-sub   { font-size: 14px; color: #64748b; margin-bottom: 28px; }
 
 .info-periodo {
     background: var(--navy); color: var(--text-head); border-radius: 8px;
-    padding: 14px 18px; margin-bottom: 20px;
-    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;
 }
-.info-periodo-icone { font-size: 22px; }
-.info-periodo-txt   { font-size: 14px; font-weight: 600; }
-.info-periodo-sub   { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+.info-periodo-txt { font-size: 14px; font-weight: 600; }
+.info-periodo-sub { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
 
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 24px 28px; margin-bottom: 20px; }
+.card-title { font-size: 13px; font-weight: 600; color: var(--navy); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 14px; }
+
+/* Modo selector */
+.modo-opcoes { display: flex; flex-direction: column; gap: 10px; }
+.modo-card {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 14px 16px; border-radius: 8px; border: 2px solid var(--border);
+    cursor: pointer; transition: border-color 0.12s, background 0.12s; background: #fafbfc;
+}
+.modo-card:hover  { border-color: var(--accent); background: #f0f6ff; }
+.modo-card.sel    { border-color: var(--accent); background: #eff6ff; }
+.modo-card input[type="radio"] { margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+.modo-card-title { font-size: 13.5px; font-weight: 600; color: #111827; }
+.modo-card-desc  { font-size: 12px; color: #64748b; margin-top: 3px; line-height: 1.5; }
+.badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: #e8edf4; color: var(--label); margin-left: 8px; vertical-align: middle; }
+
+/* Funcionários */
+.func-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.func-header-title { font-size: 13px; font-weight: 600; color: var(--navy); text-transform: uppercase; letter-spacing: 0.04em; }
+.btn-toggle-all { font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; font-family: var(--sans); text-decoration: underline; padding: 0; }
+
+.todos-check { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; }
+.todos-check input { accent-color: var(--accent); }
+.todos-check-label { font-size: 13.5px; font-weight: 600; color: #111827; cursor: pointer; }
+
+.func-lista {
+    max-height: 280px; overflow-y: auto; border: 1px solid var(--border);
+    border-radius: 8px; display: none;
+}
+.func-lista.visivel { display: block; }
+.func-item {
+    display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.func-item:last-child { border-bottom: none; }
+.func-item:hover { background: #f8fafc; }
+.func-item input { accent-color: var(--accent); flex-shrink: 0; }
+.func-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 80px; flex-shrink: 0; }
+.func-nome { font-size: 13px; color: #111827; }
+.func-count { font-size: 11px; color: #94a3b8; margin-left: auto; }
+
+/* Opções extras */
+.opcoes-extra { display: flex; flex-direction: column; gap: 10px; }
+.chk-row { display: flex; align-items: center; gap: 10px; }
+.chk-row input { accent-color: var(--accent); }
+.chk-row label { font-size: 13px; color: #374151; cursor: pointer; }
+
+/* Aviso */
 .aviso {
     background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
-    padding: 12px 16px; font-size: 12px; color: #92400e; margin-top: 16px;
-    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 14px; font-size: 12px; color: #92400e;
+    display: flex; gap: 8px; align-items: flex-start; margin-top: 14px;
 }
-.aviso-icone { flex-shrink: 0; font-size: 14px; margin-top: 1px; }
 
 .btn-gerar {
     display: inline-flex; align-items: center; gap: 8px;
     background: var(--accent); color: white; border: none;
     font-family: var(--sans); font-size: 15px; font-weight: 600;
     padding: 12px 32px; border-radius: 8px; cursor: pointer;
-    text-decoration: none; transition: 0.15s; margin-top: 8px;
+    text-decoration: none; transition: background 0.15s; margin-top: 6px;
 }
 .btn-gerar:hover { background: var(--accent-dim); }
-.btn-gerar:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
 
 <div class="topo">
-    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+    <div style="display:flex;flex-direction:column;">
         <span class="topo-empresa">{{ empresa }}</span>
         <span class="topo-nome">{{ nome }}</span>
     </div>
-    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+    <div class="topo-titulo">
         <span>Contracheque</span>
         {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">{{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
-        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <div>
             <div class="topo-logo">Folha10·Simples</div>
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
-        <a class="btn-voltar-topo" href="/rel_folha">&#8592; Voltar</a>
+        <a class="btn-voltar" href="/rel_folha">&#8592; Voltar</a>
     </div>
 </div>
 
 <div class="conteudo">
-
     <div class="page-title">Contracheque / Holerite</div>
-    <div class="page-sub">Geração de contracheques individuais em PDF para impressão ou envio</div>
+    <div class="page-sub">Configure as opções e clique em Gerar PDF</div>
 
     <div class="info-periodo">
-        <div class="info-periodo-icone">📅</div>
+        <span style="font-size:20px">📅</span>
         <div>
             <div class="info-periodo-txt">{{ anomes_fmt }}</div>
             <div class="info-periodo-sub">{{ tipo_lbl }}</div>
         </div>
     </div>
 
-    <div class="card">
-        <div class="card-title">Formato de impressão</div>
+    <form id="frm" action="/contracheque_pdf" method="GET" target="_blank">
 
-        <form id="frmContracheque" action="/contracheque_pdf" method="GET" target="_blank">
+        <!-- Formato -->
+        <div class="card">
+            <div class="card-title">Formato de impressão</div>
             <div class="modo-opcoes">
-
-                <label class="modo-card" id="card-1" onclick="selecionar('1')">
-                    <input type="radio" name="modo" value="1" checked id="modo1">
-                    <div class="modo-card-body">
-                        <div class="modo-card-title">
-                            1 contracheque por página
-                        </div>
-                        <div class="modo-card-desc">
-                            Cada funcionário ocupa uma página inteira. Ideal quando há muitas verbas ou o texto precisa de mais espaço.
-                        </div>
+                <label class="modo-card sel" id="card-1">
+                    <input type="radio" name="modo" value="1" checked id="m1" onchange="selModo('1')">
+                    <div>
+                        <div class="modo-card-title">1 contracheque por página</div>
+                        <div class="modo-card-desc">Cada funcionário ocupa uma página inteira. Mais espaço para verbas.</div>
                     </div>
                 </label>
-
-                <label class="modo-card" id="card-2S" onclick="selecionar('2S')">
-                    <input type="radio" name="modo" value="2S" id="modo2S">
-                    <div class="modo-card-body">
-                        <div class="modo-card-title">
-                            2 por página — mesmo funcionário
-                            <span class="modo-card-badge">Via Empresa + Via Funcionário</span>
-                        </div>
-                        <div class="modo-card-desc">
-                            Cada página traz duas cópias do mesmo contracheque: via empresa (topo) e via funcionário (baixo), separadas por linha de corte.
-                            Para funcionários com muitas verbas, o sistema usa automaticamente 1 por página.
-                        </div>
+                <label class="modo-card" id="card-2S">
+                    <input type="radio" name="modo" value="2S" id="m2S" onchange="selModo('2S')">
+                    <div>
+                        <div class="modo-card-title">2 por página — mesmo funcionário <span class="badge">Via Empresa + Funcionário</span></div>
+                        <div class="modo-card-desc">Duas cópias na mesma página separadas por linha de corte. Excesso de verbas usa 1 por página automaticamente.</div>
                     </div>
                 </label>
-
-                <label class="modo-card" id="card-2D" onclick="selecionar('2D')">
-                    <input type="radio" name="modo" value="2D" id="modo2D">
-                    <div class="modo-card-body">
-                        <div class="modo-card-title">
-                            2 por página — funcionários diferentes
-                            <span class="modo-card-badge">Econômico</span>
-                        </div>
-                        <div class="modo-card-desc">
-                            Dois funcionários distintos por página, separados por linha de corte. Ideal para empresas com pequeno número de verbas por funcionário.
-                            Para funcionários com muitas verbas, o sistema usa automaticamente 1 por página.
-                        </div>
+                <label class="modo-card" id="card-2D">
+                    <input type="radio" name="modo" value="2D" id="m2D" onchange="selModo('2D')">
+                    <div>
+                        <div class="modo-card-title">2 por página — funcionários diferentes <span class="badge">Econômico</span></div>
+                        <div class="modo-card-desc">Dois funcionários por página com linha de corte. Excesso de verbas usa 1 por página automaticamente.</div>
                     </div>
                 </label>
+            </div>
+        </div>
 
+        <!-- Funcionários -->
+        <div class="card">
+            <div class="func-header">
+                <span class="func-header-title">Funcionários</span>
+                <button type="button" class="btn-toggle-all" id="btnToggleAll" onclick="toggleMostrarLista()">Selecionar individualmente</button>
+            </div>
+
+            <!-- Opção Todos -->
+            <label class="todos-check" id="labelTodos">
+                <input type="checkbox" id="chkTodos" checked onchange="onTodosChange(this)">
+                <span class="todos-check-label">Todos os funcionários ({{ funcionarios|length }})</span>
+            </label>
+
+            <!-- Lista individual -->
+            <div class="func-lista" id="funcLista">
+                {% for f in funcionarios %}
+                <label class="func-item">
+                    <input type="checkbox" name="mat" value="{{ f.mat }}" class="chk-func" checked>
+                    <span class="func-mat">{{ f.mat_fmt }}</span>
+                    <span class="func-nome">{{ f.nome }}</span>
+                </label>
+                {% endfor %}
+            </div>
+
+            {% if not funcionarios %}
+            <div style="font-size:13px;color:#64748b;margin-top:8px;">Nenhum funcionário com movimento neste período.</div>
+            {% endif %}
+        </div>
+
+        <!-- Opções extras -->
+        <div class="card">
+            <div class="card-title">Opções</div>
+            <div class="opcoes-extra">
+                <div class="chk-row">
+                    <input type="checkbox" id="chkAssinatura" name="assinatura" value="1" checked>
+                    <label for="chkAssinatura">Incluir linha de assinatura do funcionário</label>
+                </div>
             </div>
 
             <div class="aviso">
-                <span class="aviso-icone">ℹ️</span>
-                <span>
-                    Nos modos de 2 por página, se um funcionário tiver mais de 13 linhas de verbas,
-                    o sistema muda automaticamente para 1 por página naquele contracheque,
-                    evitando que o conteúdo seja cortado.
-                </span>
+                <span>ℹ️</span>
+                <span>Funcionários sem proventos nem descontos são ignorados automaticamente.
+                No modo 2 por página, se houver mais de 13 verbas o sistema usa 1 por página.</span>
             </div>
+        </div>
 
-            <div style="margin-top: 24px;">
-                <button type="submit" class="btn-gerar">
-                    &#128196; Gerar PDF
-                </button>
-            </div>
-        </form>
-    </div>
+        <!-- Botão -->
+        <button type="submit" class="btn-gerar" onclick="prepareSubmit()">
+            &#128196; Gerar PDF
+        </button>
 
+    </form>
 </div>
 
 <script>
-function selecionar(modo) {
-    document.getElementById('modo1').checked  = (modo === '1');
-    document.getElementById('modo2S').checked = (modo === '2S');
-    document.getElementById('modo2D').checked = (modo === '2D');
-    ['1','2S','2D'].forEach(m => {
-        document.getElementById('card-' + m).classList.toggle('selected', m === modo);
-    });
+let listaVisivel = false;
+
+function selModo(m) {
+    ['1','2S','2D'].forEach(x => document.getElementById('card-'+x).classList.toggle('sel', x === m));
 }
-// Estado inicial
-document.getElementById('card-1').classList.add('selected');
+
+function toggleMostrarLista() {
+    listaVisivel = !listaVisivel;
+    document.getElementById('funcLista').classList.toggle('visivel', listaVisivel);
+    document.getElementById('btnToggleAll').textContent = listaVisivel ? 'Mostrar todos' : 'Selecionar individualmente';
+    if (listaVisivel) {
+        document.getElementById('chkTodos').checked = false;
+        document.getElementById('labelTodos').style.display = 'none';
+    } else {
+        document.getElementById('chkTodos').checked = true;
+        document.getElementById('labelTodos').style.display = '';
+        // marca todos
+        document.querySelectorAll('.chk-func').forEach(c => c.checked = true);
+    }
+}
+
+function onTodosChange(chk) {
+    if (!chk.checked) toggleMostrarLista();
+}
+
+function prepareSubmit() {
+    // Se "todos" está marcado, desabilita os checkboxes individuais para não enviar nenhum mat
+    if (document.getElementById('chkTodos').checked) {
+        document.querySelectorAll('.chk-func').forEach(c => c.disabled = true);
+    }
+    // Converte checkbox assinatura: se desmarcado, envia assinatura=0
+    const chkA = document.getElementById('chkAssinatura');
+    if (!chkA.checked) {
+        chkA.value = '0';
+        chkA.checked = true;  // force submit with value 0
+    }
+}
+
+// Selecionar/deselecionar todos na lista
+document.querySelectorAll('.chk-func').forEach(c => {
+    c.addEventListener('change', () => {
+        const todos = [...document.querySelectorAll('.chk-func')].every(x => x.checked);
+        // se todos marcados e lista visível, poderia colapsar, mas não obrigatório
+    });
+});
 </script>
 
 </body>
