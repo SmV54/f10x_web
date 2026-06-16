@@ -405,8 +405,7 @@ def fazer_login():
     session["anomes_atual"]    = empresa["anomes_atual"]
     session["anomes_tipo"]     = empresa["anomes_tipo"]
     session["anomes_situacao"] = empresa["anomes_situacao"]
-    return jsonify({"ok": True, "redirect": "/menu",
-                    "msg": f"Empresa: {empresa['nome']}"})
+    return jsonify({"ok": True, "redirect": "/menu"})
 
 # =========================================================
 # LOGOUT
@@ -21379,12 +21378,11 @@ def _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=None):
             if ff and anomes_int > int(ff):
                 continue
 
-            if qp is not None:
-                if qpb >= int(qp):
-                    continue   # parcelas esgotadas
-            else:
+            # modo período (qtd_parcelas ausente): verifica folha_inicial
+            if qp is None:
                 if fi and anomes_int < int(fi):
                     continue
+            # modo parcelas: contagem de lançamentos feita no loop por funcionário
             result.append(rec)
 
         # Múltiplos registros para mesma (matricula, cod_verba) → usa só o último (maior id)
@@ -21803,6 +21801,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             mmVmm = {}
             mmQmm = {}
             cod_verbas_fixas = set()   # verbas originadas de mov_fixo → origem='F'
+            mov_fixo_lote    = {}      # cod_v → acesso_f10a (para gravar lote no tab_mov)
             if l["tipo"] == "Mensalista":
                 formula = (f"Salário Hora = Salário Base / Horas/Mes  =  "
                            f"{l['sal_base_fmt']} / {l['qtdhrsmes']} h  =  {l['sal_hora_fmt']}")
@@ -22206,12 +22205,77 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ok, motivo_enq = _enquadra_mov_fixo(rec, l)
                 if not ok:
                     continue
-                mf_achou  = True
+
                 cod_v     = int(rec.get("cod_verba") or 0)
                 val_bruto = int(rec.get("valor")     or 0)
                 nas_fer   = str(rec.get("nas_ferias")   or "1")
                 se_afx    = str(rec.get("se_afastado")  or "1")
                 mes_adm_r = str(rec.get("mes_admissao") or "T")
+                qp        = rec.get("qtd_parcelas")
+                fi        = rec.get("folha_inicial")
+                ff        = rec.get("folha_final")
+                acesso    = rec.get("acesso_f10a")
+                ri        = rubricas_info.get(cod_v, {"tp":"1","dsc":""})
+                tp_s      = "Provento" if ri["tp"] == "1" else "Desconto"
+                dsc_s     = ri["dsc"] or f"Verba {cod_v:04d}"
+
+                # ── verificação por parcelas (apenas quando qtd > 0 e sem folha_final) ──
+                if qp is not None and int(qp) > 0 and not ff:
+                    try:
+                        q_parc = (supabase.table("tab_mov")
+                                  .select("folha, valor")
+                                  .eq("id_empresa", id_empresa)
+                                  .eq("matricula",  matr)
+                                  .eq("cod_verba",  cod_v)
+                                  .eq("lote",       int(acesso or 0))
+                                  .eq("situacao",   "A")
+                                  .lt("folha",      int(anomes)))
+                        if id_cliente:
+                            q_parc = q_parc.eq("id_cliente", id_cliente)
+                        parc_data     = sorted(q_parc.execute().data or [],
+                                               key=lambda x: int(x.get("folha") or 0))
+                        parc_lancadas = len(parc_data)
+                    except Exception:
+                        parc_data     = []
+                        parc_lancadas = 0
+
+                    # monta texto detalhado dos lançamentos anteriores
+                    def _folha_mm_aa(f):
+                        s = str(f or "")
+                        return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else s
+                    det_parc = "  |  ".join(
+                        f"{_folha_mm_aa(p['folha'])} {_fmt_brl(int(p.get('valor') or 0))}"
+                        for p in parc_data
+                    )
+
+                    if parc_lancadas >= int(qp):
+                        # parcelas esgotadas — registra na memória mas não lança
+                        idx_mf = len(mf_rows)
+                        mf_rows.append([Paragraph(
+                            f"{cod_v:04d} — {dsc_s}   [{tp_s}]   PARCELAS ESGOTADAS", st_detalhe), "", ""])
+                        mf_spans.append(("SPAN", (0, idx_mf), (2, idx_mf)))
+                        idx_mf = len(mf_rows)
+                        mf_rows.append([Paragraph(
+                            f"Motivo: {motivo_enq}   |   "
+                            f"Lancadas: {parc_lancadas} de {qp}  (acesso_f10a={acesso})", st_detalhe), "", ""])
+                        mf_spans.append(("SPAN", (0, idx_mf), (2, idx_mf)))
+                        if det_parc:
+                            idx_mf = len(mf_rows)
+                            mf_rows.append([Paragraph(
+                                f"Lancamentos anteriores: {det_parc}", st_detalhe), "", ""])
+                            mf_spans.append(("SPAN", (0, idx_mf), (2, idx_mf)))
+                        continue
+
+                    txt_vig = (f"Parcela {parc_lancadas + 1} de {qp}  "
+                               f"(acesso_f10a={acesso})  ja lancadas: {parc_lancadas}")
+                    if det_parc:
+                        txt_vig += f"  —  {det_parc}"
+                else:
+                    _fi = f"{str(fi)[4:6]}/{str(fi)[:4]}" if fi else "inicio"
+                    _ff = f"{str(ff)[4:6]}/{str(ff)[:4]}" if ff else "sem limite"
+                    txt_vig = f"Vigencia: {_fi} a {_ff}"
+
+                mf_achou  = True
                 val_calc  = float(val_bruto)
                 obs_prop  = ""
                 if nas_fer == "0" and ferias_func:
@@ -22225,19 +22289,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     obs_prop = f"Proporcional — {dias_trabalhados} dias trabalhados / {dias_mes} dias do mes"
                 mmVmm[cod_v] = mmVmm.get(cod_v, 0.0) + val_calc
                 cod_verbas_fixas.add(cod_v)
-                ri    = rubricas_info.get(cod_v, {"tp":"1","dsc":""})
-                tp_s  = "Provento" if ri["tp"] == "1" else "Desconto"
-                dsc_s = ri["dsc"] or f"Verba {cod_v:04d}"
-                # Vigência / parcelas
-                qp  = rec.get("qtd_parcelas")
-                qpb = int(rec.get("qtd_parcelas_before") or 0)
-                fi  = rec.get("folha_inicial"); ff = rec.get("folha_final")
-                if qp is not None:
-                    txt_vig = f"Parcela {qpb+1} de {qp}"
-                else:
-                    _fi = f"{str(fi)[4:6]}/{str(fi)[:4]}" if fi else "inicio"
-                    _ff = f"{str(ff)[4:6]}/{str(ff)[:4]}" if ff else "sem limite"
-                    txt_vig = f"Vigencia: {_fi} a {_ff}"
+                if acesso:
+                    mov_fixo_lote[cod_v] = int(acesso)
+
                 # Linhas no PDF
                 idx_mf = len(mf_rows)
                 mf_rows.append([Paragraph(
@@ -22592,6 +22646,35 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(Spacer(1, 0.5*cm))
             elems.append(tot_tbl)
 
+            # Apaga registros calculados anteriores (origem C ou F, folha_tipo N) antes de regravar
+            try:
+                q_del = (supabase.table("tab_mov")
+                         .delete()
+                         .eq("id_empresa", id_empresa)
+                         .eq("matricula",  matr)
+                         .eq("folha",      int(anomes))
+                         .eq("folha_tipo", "N")
+                         .in_("origem",    ["C", "F"]))
+                if id_cliente:
+                    q_del = q_del.eq("id_cliente", id_cliente)
+                q_del.execute()
+            except Exception as e_del:
+                print(f"[tab_mov-DELETE] mat={matr} erro: {e_del}")
+
+            # Apaga totais anteriores (folha_tipo N) antes de regravar
+            try:
+                q_del_tot = (supabase.table("tab_total")
+                             .delete()
+                             .eq("id_empresa", id_empresa)
+                             .eq("matricula",  matr)
+                             .eq("folha",      int(anomes))
+                             .eq("folha_tipo", "N"))
+                if id_cliente:
+                    q_del_tot = q_del_tot.eq("id_cliente", id_cliente)
+                q_del_tot.execute()
+            except Exception as e_del_tot:
+                print(f"[tab_total-DELETE] mat={matr} erro: {e_del_tot}")
+
             # Grava verbas calculadas no tab_mov com origem='C'
             try:
                 cod_verbas_manuais = {int(r.get("cod_verba") or 0) for r in mov_func
@@ -22607,7 +22690,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         "cod_verba":  cod_v,
                         "qtd":        mmQmm.get(cod_v, 0),
                         "valor":      int(val_v),
-                        "lote":       0,
+                        "lote":       mov_fixo_lote.get(cod_v, 0),
                         "origem":     "F" if cod_v in cod_verbas_fixas else "C",
                         "controle":   0,
                         "os":         0,
@@ -23461,18 +23544,21 @@ def api_visualizar_calculo_dados():
         tipos_presentes = sorted({v["ft"] for v in todos_verbas}, key=lambda t: _tipo_ord.get(t, 9))
         secoes = []
         for ft in tipos_presentes:
-            vbs = [v for v in todos_verbas if v["ft"] == ft]
+            vbs_all  = [v for v in todos_verbas if v["ft"] == ft]
+            vbs      = [v for v in vbs_all if int(v["cod"]) < 9900]
+            vbs_info = [v for v in vbs_all if int(v["cod"]) >= 9900]
             prov = sum(v["valor"] for v in vbs if v["tp"] == "1")
             desc = sum(v["valor"] for v in vbs if v["tp"] != "1")
             # total do tab_total para este tipo
             tot_reg = next((t for t in totais_data.get(mat, []) if t.get("folha_tipo") == ft), None)
             secoes.append({
-                "ft":         ft,
-                "verbas":     vbs,
-                "sub_prov":   prov,
-                "sub_desc":   desc,
-                "sub_liq":    prov - desc,
-                "total_reg":  tot_reg,
+                "ft":          ft,
+                "verbas":      vbs,
+                "verbas_info": vbs_info,
+                "sub_prov":    prov,
+                "sub_desc":    desc,
+                "sub_liq":     prov - desc,
+                "total_reg":   tot_reg,
             })
 
         total_prov = sum(s["sub_prov"] for s in secoes)
@@ -29944,6 +30030,7 @@ def _imp_movfix_f10(caminho, id_cliente):
                                                _s(r.get('no_mes_admissao'), 1) or 'N', 'T'),
                     'mes_rescisao'        : {'N':'T','P':'P'}.get(
                                                _s(r.get('na_rescisao'), 1) or 'N', 'T'),
+                    'acesso_f10a'         : _int_or_none(r.get('acesso')),
                     'data_cad'            : agora.strftime('%Y%m%d'),
                     'hora_cad'            : agora.strftime('%H%M'),
                     'dt_gravacao'         : agora.strftime('%Y%m%d %H%M'),

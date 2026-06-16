@@ -419,6 +419,34 @@ function renderSecao(secao) {
     tbl.appendChild(tfoot);
     wrap.appendChild(tbl);
 
+    // verbas informativas (cod >= 9900) — após totais, antes das bases
+    if (secao.verbas_info && secao.verbas_info.length) {
+        const infDiv = document.createElement('div');
+        infDiv.style.cssText = 'border-top:1px dashed var(--border); background:#f8fafc;';
+        const infHdr = document.createElement('div');
+        infHdr.style.cssText = 'padding:5px 12px 2px; font-size:10px; font-weight:700; color:var(--sub); text-transform:uppercase; letter-spacing:0.05em;';
+        infHdr.textContent = 'Informativas';
+        infDiv.appendChild(infHdr);
+        const infTbl = document.createElement('table');
+        infTbl.className = 'verbas-table';
+        const infBody = document.createElement('tbody');
+        for (const v of secao.verbas_info) {
+            const prov = v.tp === '1';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="td-cod">${String(v.cod).padStart(4,'0')}</td>
+                <td class="td-dsc">${v.dsc}</td>
+                <td class="td-qtd">${fmtQtd(v.qtd, v.unid)}</td>
+                <td class="${prov ? 'td-prov' : 'td-vazio'}">${prov ? fmtBRL(v.valor) : ''}</td>
+                <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>
+                <td class="td-orig">${v.orig || ''}</td>`;
+            infBody.appendChild(tr);
+        }
+        infTbl.appendChild(infBody);
+        infDiv.appendChild(infTbl);
+        wrap.appendChild(infDiv);
+    }
+
     // bases do tab_total para esta seção — layout horizontal (thead + 1 linha de valores)
     const tot = secao.total_reg;
     if (tot) {
