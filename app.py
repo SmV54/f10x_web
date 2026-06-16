@@ -29875,7 +29875,10 @@ def _imp_movfix_f10(caminho, id_cliente):
                     err += 1
                     continue
 
-                mat = _int(r.get('registro'))
+                mat     = _int(r.get('registro'))
+                qtd_acc = _int(r.get('qtd'))
+                fi      = _int(r.get('folhai'))
+                ff      = _int(r.get('folhaf'))
 
                 # 0 → null para chaves estrangeiras e campos de filtro
                 def _nn(v):   # int, 0 → None
@@ -29906,16 +29909,26 @@ def _imp_movfix_f10(caminho, id_cliente):
                     'idade2'              : _int_or_none(r.get('idade2')),
                     'tempo_servico1'      : _int_or_none(r.get('temposervico1')),
                     'tempo_servico2'      : _int_or_none(r.get('temposervico2')),
-                    'folha_inicial'       : _nn(r.get('folhai')),
-                    'folha_final'         : _nn(r.get('folhaf')),
+                    # parcelas x período são mutuamente exclusivos:
+                    # qtd=0 → modo período (folha_inicial/final); qtd>0 → modo parcelas (sem datas)
+                    'folha_inicial'       : (fi if (190001 <= fi <= 209912) else None)
+                                           if qtd_acc == 0 else None,
+                    'folha_final'         : (ff if (190001 <= ff <= 209912) else None)
+                                           if qtd_acc == 0 else None,
                     'cod_verba'           : verba,
-                    'qtd_parcelas'        : _int(r.get('qtd')),
+                    'qtd_parcelas'        : (qtd_acc if 1 <= qtd_acc <= 99 else None)
+                                           if qtd_acc > 0 else None,
                     'qtd_parcelas_before' : _int(r.get('parcelas_before')),
                     'valor'               : int(round(float(r.get('valor') or 0))),
                     'nas_ferias'          : _s(r.get('nas_ferias'), 1) or '0',
-                    'se_afastado'         : _s(r.get('se_afastado'), 1) or '5',
-                    'mes_admissao'        : _s(r.get('no_mes_admissao'), 1) or 'P',
-                    'mes_rescisao'        : _s(r.get('na_rescisao'), 1) or 'P',
+                    # se_afastado: Access usa '5','6','7' → Supabase '1','2','3'
+                    'se_afastado'         : {'5':'1','6':'2','7':'3'}.get(
+                                               _s(r.get('se_afastado'), 1) or '5', '1'),
+                    # mes_admissao/rescisao: Access 'N' → Supabase 'T' (total)
+                    'mes_admissao'        : {'N':'T','P':'P'}.get(
+                                               _s(r.get('no_mes_admissao'), 1) or 'N', 'T'),
+                    'mes_rescisao'        : {'N':'T','P':'P'}.get(
+                                               _s(r.get('na_rescisao'), 1) or 'N', 'T'),
                     'data_cad'            : agora.strftime('%Y%m%d'),
                     'hora_cad'            : agora.strftime('%H%M'),
                     'dt_gravacao'         : agora.strftime('%Y%m%d %H%M'),
