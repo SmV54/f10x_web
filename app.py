@@ -29905,8 +29905,8 @@ def _imp_movfix_f10(caminho, id_cliente):
                     'dataadmissao2'       : _s(r.get('dataadmissao2'), 8),
                     'salariobase1'        : _int(r.get('salariobase1'), 1),
                     'salariobase2'        : _int(r.get('salariobase2'), 999999999),
-                    'idade1'              : _int_or_none(r.get('idade1')),
-                    'idade2'              : _int_or_none(r.get('idade2')),
+                    'idade1'              : (lambda n: n if 0 <= n <= 120 else None)(_int(r.get('idade1'))),
+                    'idade2'              : (lambda n: n if 0 <= n <= 120 else None)(_int(r.get('idade2'))),
                     'tempo_servico1'      : _int_or_none(r.get('temposervico1')),
                     'tempo_servico2'      : _int_or_none(r.get('temposervico2')),
                     # parcelas x período são mutuamente exclusivos:
