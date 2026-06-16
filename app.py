@@ -24794,13 +24794,96 @@ def contracheque_pdf():
     matriculas_sel = [int(m) for m in mats_str if m.isdigit()] if mats_str else []
     com_assinatura = request.args.get("assinatura", "1") != "0"
 
-    buf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
-                                   empresa_nm, cnpj_fmt, modo,
-                                   matriculas_sel, com_assinatura)
     from flask import make_response
     ano, mes  = anomes[:4], anomes[4:6]
     nome_arq  = f"Contracheque_{empresa_nm[:20].replace(' ','_')}_{ano}{mes}.pdf"
 
+    # ── Gravar um arquivo por funcionário ────────────────────────────
+    salvar_ind = request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
+    if salvar_ind:
+        try:
+            ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+            cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
+            anomes_pasta = f"{ano}-{mes}"
+            pasta        = os.path.join("C:\\Folha10-Simples_Contracheque",
+                                        ano, anomes_pasta, f"{int(id_empresa):06d}")
+            os.makedirs(pasta, exist_ok=True)
+
+            folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+            q = (supabase.table("tab_mov")
+                 .select("matricula")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao",   "A")
+                 .eq("folha",      int(anomes))
+                 .eq("folha_tipo", folha_tipo_mov))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            mats_all = sorted({int(r["matricula"]) for r in (q.execute().data or [])
+                               if r.get("matricula")})
+            if matriculas_sel:
+                sel_set  = set(matriculas_sel)
+                mats_all = [m for m in mats_all if m in sel_set]
+
+            saved = []
+            erros = []
+            for mat in mats_all:
+                try:
+                    buf_i    = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo,
+                                                       id_cliente, empresa_nm, cnpj_fmt,
+                                                       modo, [mat], com_assinatura)
+                    pdf_i    = buf_i.read()
+                    if len(pdf_i) < 3000:
+                        continue  # sem conteúdo (zero proventos/descontos)
+                    nome_f   = (f"Folha10_Contracheque_CNPJ_{cnpj_digits}"
+                                f"_Folha_{anomes}_Matricula_{mat:06d}_em_{ts}.pdf")
+                    caminho  = os.path.join(pasta, nome_f)
+                    with open(caminho, "wb") as fh:
+                        fh.write(pdf_i)
+                    saved.append((mat, caminho))
+                except Exception as e_m:
+                    erros.append(f"Matrícula {mat:06d}: {e_m}")
+
+            linhas = "".join(
+                f'<div class="frow"><span class="mat">{m:06d}</span>'
+                f'<span class="pth">{c}</span></div>'
+                for m, c in saved)
+            erros_html = "".join(f'<div class="err">{e}</div>' for e in erros)
+            html_ind = f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Contracheques gravados</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'IBM Plex Sans',sans-serif;background:#f0f2f6;padding:40px 24px}}
+.box{{background:#fff;border:1px solid #dde3ec;border-radius:12px;padding:32px 36px;max-width:700px;margin:0 auto}}
+h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
+.sub{{font-size:13px;color:#64748b;margin-bottom:20px}}
+.frow{{display:flex;gap:14px;padding:7px 0;border-bottom:1px solid #f1f5f9;align-items:baseline}}
+.frow:last-of-type{{border-bottom:none}}
+.mat{{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#2a7de1;flex-shrink:0;width:70px}}
+.pth{{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#374151;word-break:break-all}}
+.err{{font-size:12px;color:#dc2626;margin-top:6px}}
+.btns{{margin-top:24px;display:flex;gap:12px}}
+.btn{{display:inline-block;background:#2a7de1;color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:600;padding:9px 24px;border-radius:8px;text-decoration:none}}
+.btn-sec{{background:#374151}}
+.btn:hover{{opacity:.88}}
+</style></head><body>
+<div class="box">
+<h2>&#128190; {len(saved)} arquivo(s) gravado(s)</h2>
+<div class="sub">Pasta: {pasta}</div>
+{linhas}
+{erros_html}
+<div class="btns">
+<a class="btn btn-sec" href="/contracheque">&#8592; Voltar</a>
+<a class="btn" href="javascript:window.close()">Fechar</a>
+</div>
+</div></body></html>"""
+            return make_response(html_ind, 200, {"Content-Type": "text/html; charset=utf-8"})
+        except Exception as e_ind:
+            return make_response(f"Erro ao gravar arquivos individuais: {e_ind}", 500)
+
+    buf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                   empresa_nm, cnpj_fmt, modo,
+                                   matriculas_sel, com_assinatura)
     pdf_bytes = buf.read()
     salvar = request.args.get("salvar", "0") == "1"
 

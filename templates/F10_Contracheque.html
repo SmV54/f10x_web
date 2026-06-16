@@ -227,6 +227,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="checkbox" id="chkSalvar" name="salvar" value="1">
                     <label for="chkSalvar">Gravar PDF no disco <span style="font-size:11px;color:#64748b;">(C:\Folha10-Simples_Contracheque\…)</span></label>
                 </div>
+                <div class="chk-row" id="rowSalvarInd">
+                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1">
+                    <label for="chkSalvarInd">Gravar um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
+                </div>
             </div>
 
             <div class="aviso">
@@ -249,6 +253,9 @@ let listaVisivel = false;
 
 function selModo(m) {
     ['1','2S','2D'].forEach(x => document.getElementById('card-'+x).classList.toggle('sel', x === m));
+    const indOk = m === '1' || m === '2S';
+    document.getElementById('rowSalvarInd').style.display = indOk ? '' : 'none';
+    if (!indOk) document.getElementById('chkSalvarInd').checked = false;
 }
 
 function toggleMostrarLista() {
