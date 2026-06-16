@@ -28718,7 +28718,8 @@ def _imp_dep_f10(caminho, id_cliente):
                     'tpdep'      : int(tpdep),
                     'dtnascto'   : _data(r.get('nascimento') or r.get('dtnascto') or r.get('datanasc')),
                     'cpfdep'     : _cpf(r.get('cpf') or r.get('cpfdep')),
-                    'sexodep'    : _s(r.get('sexo') or r.get('sexodep'), 1),
+                    'sexodep'    : (lambda s: s if s in ('M', 'F') else None)(
+                                       (_s(r.get('sexo') or r.get('sexodep'), 1) or '').upper()),
                     'depirrf'    : _sn(r.get('irrf') or r.get('depirrf')),
                     'depsf'      : _sn(r.get('sf') or r.get('depsf') or r.get('salfam')),
                     'inctrabf'   : _sn(r.get('incapaz') or r.get('inctrabf') or r.get('incapacitado')),
