@@ -29715,6 +29715,226 @@ def _imp_mov_f10(caminho, id_cliente):
     return grav, err, log
 
 
+def _imp_movfix_f10(caminho, id_cliente):
+    """Importa tabfix do Access para tab_mov_fixo.
+    Fase 1: lê CNPJ do FolhaFIX → resolve id_empresa.
+    Fase 2: varre arquivos F######_#### → lê tabfix e grava movimentos fixos.
+    Retorna (gravados, erros, log).
+    """
+    import pyodbc, glob as _glob
+
+    log  = []
+    grav = err = 0
+    pasta = os.path.dirname(caminho)
+
+    def _int(v, default=0):
+        try:   return int(v or default)
+        except (ValueError, TypeError): return default
+
+    def _int_or_none(v):
+        try:
+            n = int(str(v or '').strip())
+            return n if n else None
+        except (ValueError, TypeError):
+            return None
+
+    def _s(v, mx):
+        s = str(v or '').strip()
+        return s[:mx] if s else None
+
+    # ── Fase 1: CNPJ do FolhaFIX → id_empresa ────────────────────────
+    try:
+        conn_fix = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+    except Exception as ex:
+        return 0, 1, [f'✗ Conexão ao FolhaFIX: {ex}']
+
+    cnpj_empresa = None
+    try:
+        cur_fix = conn_fix.cursor()
+        tabs_fix = {t.table_name.lower(): t.table_name
+                    for t in cur_fix.tables(tableType='TABLE')
+                    if not t.table_name.startswith('MSys')}
+        for cand in ('tabempresa', 'tabempresas', 'tabemp'):
+            if cand in tabs_fix:
+                cur_fix.execute(f"SELECT * FROM [{tabs_fix[cand]}]")
+                ec  = [d[0].lower() for d in cur_fix.description]
+                row = cur_fix.fetchone()
+                if row:
+                    ed       = dict(zip(ec, row))
+                    col_cnpj = next((c for c in ec if c in ('cnpj', 'cgc')), None)
+                    if col_cnpj:
+                        cnpj_empresa = ''.join(filter(str.isdigit, str(ed.get(col_cnpj) or '')))
+                break
+    except Exception as ex:
+        log.append(f'⚠  Erro ao ler FolhaFIX: {ex}')
+    finally:
+        conn_fix.close()
+
+    if not cnpj_empresa:
+        return 0, 1, ['✗ CNPJ da empresa não encontrado no FolhaFIX']
+
+    try:
+        r_emp = (supabase.table('tab_empresa')
+                 .select('id_empresa, razaosocial')
+                 .eq('cnpj', cnpj_empresa)
+                 .eq('id_cliente', id_cliente)
+                 .execute().data or [])
+    except Exception as ex:
+        return 0, 1, [f'✗ Erro ao buscar empresa no Supabase: {ex}']
+
+    if not r_emp:
+        return 0, 1, [f'✗ Empresa CNPJ {cnpj_empresa} não encontrada — importe a empresa primeiro']
+
+    id_empresa   = r_emp[0]['id_empresa']
+    razao_social = r_emp[0].get('razaosocial', '')
+    log.append(f'🏢 Empresa: {razao_social}  CNPJ {cnpj_empresa} → id_empresa={id_empresa}')
+
+    # ── Fase 2: varre arquivos F######_#### ──────────────────────────
+    todos_arqs = sorted(
+        _glob.glob(os.path.join(pasta, '*.mdb')) +
+        _glob.glob(os.path.join(pasta, '*.accdb'))
+    )
+    arqs_func = [a for a in todos_arqs
+                 if not os.path.basename(a).upper().startswith('FOLHAFIX')]
+    log.append(f'🗂  Arquivos na pasta: {len(arqs_func)}')
+
+    try:
+        ex_check = (supabase.table('tab_mov_fixo')
+                    .select('id')
+                    .eq('id_empresa', id_empresa)
+                    .limit(1)
+                    .execute().data or [])
+        if ex_check:
+            log.append('⚠  Supabase já tem movimentos fixos para esta empresa — serão adicionados sem excluir os existentes')
+    except Exception:
+        pass
+
+    agora = datetime.now()
+
+    for arq in arqs_func:
+        nome_arq = os.path.basename(arq)
+
+        try:
+            conn = pyodbc.connect(
+                f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={arq};'
+            )
+        except Exception as ex:
+            log.append(f'✗ {nome_arq} → Conexão: {ex}')
+            err += 1
+            continue
+
+        cur = conn.cursor()
+        todas_tabs = {t.table_name.lower(): t.table_name
+                      for t in cur.tables(tableType='TABLE')
+                      if not t.table_name.startswith('MSys')}
+
+        tab_nome = todas_tabs.get('tabfix')
+        if not tab_nome:
+            conn.close()
+            log.append(f'   {nome_arq} → sem tabfix — ignorado')
+            continue
+
+        try:
+            cur.execute(f'SELECT * FROM [{tab_nome}]')
+            dc   = [d[0].lower() for d in cur.description]
+            rows = cur.fetchall()
+        except Exception as ex:
+            conn.close()
+            log.append(f'✗ {nome_arq} → Leitura de {tab_nome}: {ex}')
+            err += 1
+            continue
+
+        conn.close()
+        log.append(f'   {nome_arq} → {tab_nome}: {len(rows)} registro(s)')
+
+        lote = []
+
+        def _flush():
+            nonlocal grav, err
+            if not lote:
+                return
+            try:
+                resp = supabase.table('tab_mov_fixo').insert(lote).execute()
+                n    = len(resp.data) if resp.data else 0
+                grav += n
+                err  += len(lote) - n
+                if n < len(lote):
+                    log.append(f'   ⚠  lote: {n}/{len(lote)} gravados')
+            except Exception as ex:
+                err += len(lote)
+                log.append(f'   ✗ Erro no insert (lote {len(lote)}): {ex}')
+            lote.clear()
+
+        for row in rows:
+            r = dict(zip(dc, row))
+            try:
+                verba = _int(r.get('verba'))
+                if not verba:
+                    err += 1
+                    continue
+
+                mat = _int(r.get('registro'))
+
+                # 0 → null para chaves estrangeiras e campos de filtro
+                def _nn(v):   # int, 0 → None
+                    n = _int(v)
+                    return n if n else None
+
+                def _snn(v):  # str, '0'/'' → None
+                    s = _s(v, 20)
+                    return None if (s is None or s == '0') else s
+
+                campos = {
+                    'id_cliente'          : id_cliente,
+                    'id_empresa'          : id_empresa,
+                    'situacao'            : _s(r.get('situacao'), 1) or 'A',
+                    'matricula'           : mat if mat else None,
+                    'id_sindicato'        : _nn(r.get('sindicato')),
+                    'id_funcao'           : _nn(r.get('funcao')),
+                    'id_centrocusto'      : _snn(r.get('centrocusto')),
+                    'id_filial'           : _snn(r.get('filial')),
+                    'categoria'           : _nn(r.get('vinculo')),
+                    'datanascimento1'     : _s(r.get('datanascimento1'), 8),
+                    'datanascimento2'     : _s(r.get('datanascimento2'), 8),
+                    'dataadmissao1'       : _s(r.get('dataadmissao1'), 8),
+                    'dataadmissao2'       : _s(r.get('dataadmissao2'), 8),
+                    'salariobase1'        : _int(r.get('salariobase1'), 1),
+                    'salariobase2'        : _int(r.get('salariobase2'), 999999999),
+                    'idade1'              : _int_or_none(r.get('idade1')),
+                    'idade2'              : _int_or_none(r.get('idade2')),
+                    'tempo_servico1'      : _int_or_none(r.get('temposervico1')),
+                    'tempo_servico2'      : _int_or_none(r.get('temposervico2')),
+                    'folha_inicial'       : _nn(r.get('folhai')),
+                    'folha_final'         : _nn(r.get('folhaf')),
+                    'cod_verba'           : verba,
+                    'qtd_parcelas'        : _int(r.get('qtd')),
+                    'qtd_parcelas_before' : _int(r.get('parcelas_before')),
+                    'valor'               : float(r.get('valor') or 0),
+                    'nas_ferias'          : _s(r.get('nas_ferias'), 1) or '0',
+                    'se_afastado'         : _s(r.get('se_afastado'), 1) or '5',
+                    'mes_admissao'        : _s(r.get('no_mes_admissao'), 1) or 'P',
+                    'mes_rescisao'        : _s(r.get('na_rescisao'), 1) or 'P',
+                    'data_cad'            : agora.strftime('%Y%m%d'),
+                    'hora_cad'            : agora.strftime('%H%M'),
+                    'dt_gravacao'         : agora.strftime('%Y%m%d %H%M'),
+                }
+
+                lote.append(campos)
+                if len(lote) >= 50:
+                    _flush()
+
+            except Exception as ex:
+                err += 1
+                log.append(f"✗  registro={r.get('registro')} verba={r.get('verba')}: {ex}")
+
+        _flush()
+        log.append(f'   ✓ {nome_arq} — {grav} gravado(s) / {err} erro(s)')
+
+    return grav, err, log
+
+
 def _imp_total_f10(caminho, id_cliente):
     """Importa tabtotal do Access para tab_total.
     Fase 1: lê CNPJ do FolhaFIX → resolve id_empresa.
@@ -30330,6 +30550,10 @@ def api_admin_imp_executar():
                 elif tl == 'tabfolhas':
                     grav, err, log = _imp_folhas_f10(caminho, int(id_cliente))
                     resultados.append({'tabela': tabela, 'descricao': 'Períodos de Folha (Ano/Mês)',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl == 'tabfix':
+                    grav, err, log = _imp_movfix_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Movimentos Fixos',
                                         'gravados': grav, 'erros': err, 'log': log})
                 else:
                     resultados.append({'tabela': tabela, 'descricao': tabela,
