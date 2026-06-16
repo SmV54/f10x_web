@@ -224,12 +224,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label for="chkAssinatura">Incluir linha de assinatura do funcionário</label>
                 </div>
                 <div class="chk-row">
-                    <input type="checkbox" id="chkSalvar" name="salvar" value="1">
+                    <input type="checkbox" id="chkSalvar" name="salvar" value="1" onchange="excluir(this,'chkSalvarInd')">
                     <label for="chkSalvar">Gravar PDF no disco <span style="font-size:11px;color:#64748b;">(C:\Folha10-Simples_Contracheque\…)</span></label>
                 </div>
                 <div class="chk-row" id="rowSalvarInd">
-                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1">
-                    <label for="chkSalvarInd">Gravar um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
+                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1" onchange="excluir(this,'chkSalvar')">
+                    <label for="chkSalvarInd">Gravar em PDF um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
                 </div>
             </div>
 
@@ -250,6 +250,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 <script>
 let listaVisivel = false;
+
+function excluir(src, outroId) {
+    if (src.checked) document.getElementById(outroId).checked = false;
+}
 
 function selModo(m) {
     ['1','2S','2D'].forEach(x => document.getElementById('card-'+x).classList.toggle('sel', x === m));
