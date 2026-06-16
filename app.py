@@ -21383,6 +21383,15 @@ def _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=None):
                 if ff and anomes_int > int(ff):
                     continue
             result.append(rec)
+
+        # Múltiplos registros para mesma (matricula, cod_verba) → usa só o último (maior id)
+        dedup = {}
+        for rec in result:
+            key = (rec.get("matricula"), int(rec.get("cod_verba") or 0))
+            if key not in dedup or int(rec.get("id") or 0) > int(dedup[key].get("id") or 0):
+                dedup[key] = rec
+        result = list(dedup.values())
+
     except Exception as e:
         print(f"[mov_fixo] ERRO: {e}")
     return result
