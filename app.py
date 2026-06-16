@@ -24811,7 +24811,8 @@ def contracheque_pdf():
             pasta        = os.path.join("C:\\Folha10-Simples_Contracheque",
                                         ano, anomes_pasta, f"{int(id_empresa):06d}")
             os.makedirs(pasta, exist_ok=True)
-            nome_f       = f"Folha10_Contracheque_Empresa_{int(id_empresa):06d}_Folha_{anomes}_em_{ts}.pdf"
+            cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
+            nome_f       = f"Folha10_Contracheque_CNPJ_{cnpj_digits}_Folha_{anomes}_em_{ts}.pdf"
             caminho_salvo = os.path.join(pasta, nome_f)
             with open(caminho_salvo, "wb") as fh:
                 fh.write(pdf_bytes)
