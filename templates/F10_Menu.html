@@ -37,12 +37,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
 .topo-folha-ativa {
-    display: inline-flex; align-items: center; gap: 5px; margin-top: 4px;
-    border-radius: 6px; padding: 3px 11px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 8px;
+    border-radius: 8px; padding: 5px 16px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    letter-spacing: 0.06em; white-space: nowrap;
 }
-.sit-aberta    { background: #fff; color: #166534; border: 2px solid #86efac; }
-.sit-calculada { background: #fff; color: #854d0e; border: 2px solid #fde047; }
-.sit-fechada   { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+.topo-folha-sit {
+    font-family: var(--sans); font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.08em; opacity: 0.85;
+}
+.sit-aberta    { background: rgba(22,101,52,0.25);  color: #86efac; border: 2px solid #16a34a; }
+.sit-calculada { background: rgba(133,77,14,0.25);  color: #fde047; border: 2px solid #ca8a04; }
+.sit-fechada   { background: rgba(153,27,27,0.25);  color: #fca5a5; border: 2px solid #dc2626; }
+.sit-processada{ background: rgba(37,99,235,0.25);  color: #93c5fd; border: 2px solid #2563eb; }
 .btn-sair {
     margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
     color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
@@ -204,9 +211,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <span class="topo-empresa">{{ empresa }}</span>
         <span class="topo-nome">{{ nome }}</span>
     </div>
-    <div class="topo-titulo">
-        <span>Menu Principal</span>
-        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    <div class="topo-titulo" style="flex-direction:column;gap:4px;">
+        <span style="font-size:12px;font-weight:500;color:var(--text-sub);letter-spacing:0.06em;text-transform:uppercase;">Menu Principal</span>
+        {% if folha_ativa %}
+        <span class="topo-folha-ativa {{ folha_ativa_sit_class }}">
+            &#128197; {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}
+            {% if folha_ativa_situacao %}<span class="topo-folha-sit">{{ folha_ativa_situacao }}</span>{% endif %}
+        </span>
+        {% else %}
+        <span style="font-size:13px;font-weight:600;color:var(--text-head);">Menu Principal</span>
+        {% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
@@ -742,8 +756,8 @@ document.addEventListener('click',   e => {
 
 // ── Polling de status da folha (60s, pausa quando aba está em segundo plano) ──
 (function() {
-    const SIT_CSS = { A:'sit-aberta', X:'sit-aberta', P:'sit-calculada', C:'sit-calculada', F:'sit-fechada' };
-    const SIT_LBL = { A:'Aberta', X:'Aberta', P:'Calculando...', C:'Calculada', F:'Fechada' };
+    const SIT_CSS = { A:'sit-aberta', X:'sit-aberta', P:'sit-processada', C:'sit-calculada', F:'sit-fechada' };
+    const SIT_LBL = { A:'Aberta', X:'Aberta', P:'Processada', C:'Calculada', F:'Fechada' };
 
     function atualizarBadge(sit, label, css) {
         document.querySelectorAll('.topo-folha-ativa').forEach(el => {
