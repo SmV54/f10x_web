@@ -24800,7 +24800,51 @@ def contracheque_pdf():
     from flask import make_response
     ano, mes  = anomes[:4], anomes[4:6]
     nome_arq  = f"Contracheque_{empresa_nm[:20].replace(' ','_')}_{ano}{mes}.pdf"
-    resp = make_response(buf.read())
+
+    pdf_bytes = buf.read()
+    salvar = request.args.get("salvar", "0") == "1"
+
+    if salvar:
+        try:
+            ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+            anomes_pasta = f"{ano}-{mes}"
+            pasta        = os.path.join("C:\\Folha10-Simples_Contracheque",
+                                        ano, anomes_pasta, f"{int(id_empresa):06d}")
+            os.makedirs(pasta, exist_ok=True)
+            nome_f       = f"Folha10_Contracheque_Empresa_{int(id_empresa):06d}_Folha_{anomes}_em_{ts}.pdf"
+            caminho_salvo = os.path.join(pasta, nome_f)
+            with open(caminho_salvo, "wb") as fh:
+                fh.write(pdf_bytes)
+            html_ok = f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Contracheque gravado</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'IBM Plex Sans',sans-serif;background:#f0f2f6;display:flex;align-items:center;justify-content:center;min-height:100vh}}
+.box{{background:#fff;border:1px solid #dde3ec;border-radius:12px;padding:36px 40px;max-width:560px;width:100%;text-align:center}}
+.ico{{font-size:48px;margin-bottom:16px}}
+h2{{font-size:20px;font-weight:600;color:#0b1f3a;margin-bottom:10px}}
+p{{font-size:13px;color:#64748b;margin-bottom:16px;line-height:1.6}}
+.path{{font-family:'IBM Plex Mono',monospace;font-size:12px;background:#f8fafc;border:1px solid #dde3ec;border-radius:6px;padding:10px 14px;word-break:break-all;color:#1e3d5c;text-align:left;margin-bottom:24px}}
+.btn{{display:inline-block;background:#2a7de1;color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:600;padding:10px 28px;border-radius:8px;text-decoration:none;transition:background .15s}}
+.btn:hover{{background:#1a5fb8}}
+</style></head><body>
+<div class="box">
+<div class="ico">&#128190;</div>
+<h2>PDF gravado com sucesso</h2>
+<p>O contracheque foi salvo em:</p>
+<div class="path">{caminho_salvo}</div>
+<a class="btn" href="javascript:window.close()">Fechar</a>
+&nbsp;&nbsp;
+<a class="btn" style="background:#374151;" href="/contracheque">&#8592; Voltar</a>
+</div></body></html>"""
+            return make_response(html_ok, 200, {"Content-Type": "text/html; charset=utf-8"})
+        except Exception as e_sv:
+            import logging
+            logging.warning(f"contracheque_pdf: erro ao salvar no disco: {e_sv}")
+            return make_response(f"Erro ao gravar no disco: {e_sv}", 500)
+
+    resp = make_response(pdf_bytes)
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
     return resp
