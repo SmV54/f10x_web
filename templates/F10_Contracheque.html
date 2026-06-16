@@ -170,14 +170,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="radio" name="modo" value="2S" id="m2S" onchange="selModo('2S')">
                     <div>
                         <div class="modo-card-title">2 por página — mesmo funcionário <span class="badge">Via Empresa + Funcionário</span></div>
-                        <div class="modo-card-desc">Duas cópias na mesma página separadas por linha de corte. Excesso de verbas usa 1 por página automaticamente.</div>
+                        <div class="modo-card-desc">Duas cópias na mesma página separadas por linha de corte. Se houver excesso de verbas usa 1 por página automaticamente.</div>
                     </div>
                 </label>
                 <label class="modo-card" id="card-2D">
                     <input type="radio" name="modo" value="2D" id="m2D" onchange="selModo('2D')">
                     <div>
                         <div class="modo-card-title">2 por página — funcionários diferentes <span class="badge">Econômico</span></div>
-                        <div class="modo-card-desc">Dois funcionários por página com linha de corte. Excesso de verbas usa 1 por página automaticamente.</div>
+                        <div class="modo-card-desc">Dois funcionários por página com linha de corte. Se houver excesso de verbas usa 1 por página automaticamente.</div>
                     </div>
                 </label>
             </div>
@@ -187,7 +187,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <div class="card">
             <div class="func-header">
                 <span class="func-header-title">Funcionários</span>
-                <button type="button" class="btn-toggle-all" id="btnToggleAll" onclick="toggleMostrarLista()">Selecionar individualmente</button>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <button type="button" class="btn-toggle-all" id="btnToggleAll" onclick="toggleMostrarLista()">Selecionar individualmente</button>
+                    <button type="button" class="btn-toggle-all" id="btnDesmarcar" onclick="desmarcarTodos()" style="display:none;color:#dc2626;">Desmarcar todos</button>
+                </div>
             </div>
 
             <!-- Opção Todos -->
@@ -247,16 +250,20 @@ function selModo(m) {
 function toggleMostrarLista() {
     listaVisivel = !listaVisivel;
     document.getElementById('funcLista').classList.toggle('visivel', listaVisivel);
-    document.getElementById('btnToggleAll').textContent = listaVisivel ? 'Mostrar todos' : 'Selecionar individualmente';
+    document.getElementById('btnToggleAll').textContent = listaVisivel ? 'Selecionar Todos' : 'Selecionar individualmente';
+    document.getElementById('btnDesmarcar').style.display = listaVisivel ? '' : 'none';
     if (listaVisivel) {
         document.getElementById('chkTodos').checked = false;
         document.getElementById('labelTodos').style.display = 'none';
     } else {
         document.getElementById('chkTodos').checked = true;
         document.getElementById('labelTodos').style.display = '';
-        // marca todos
         document.querySelectorAll('.chk-func').forEach(c => c.checked = true);
     }
+}
+
+function desmarcarTodos() {
+    document.querySelectorAll('.chk-func').forEach(c => c.checked = false);
 }
 
 function onTodosChange(chk) {
