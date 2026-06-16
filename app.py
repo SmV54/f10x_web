@@ -28482,13 +28482,21 @@ def _imp_func_f10(caminho, id_cliente):
                     if mot:
                         campos['motrescisao'] = mot
 
-                for acc_f, db_f, fn in [('banco_numero',    'banco_numero',    _s),
-                                         ('banco_agencia',   'banco_agencia',   _s),
-                                         ('banco_agenciadv', 'banco_agenciadv', _dv),
-                                         ('banco_conta',     'banco_conta',     _s),
-                                         ('banco_contadac',  'banco_contadv',   _dv)]:
-                    v = fn(r.get(acc_f), 20) if fn is _s else fn(r.get(acc_f))
+                for acc_f, db_f, mx in [('banco_numero', 'banco_numero', 3),
+                                         ('banco_conta',   'banco_conta',  20)]:
+                    v = _s(r.get(acc_f), mx)
                     if v is not None: campos[db_f] = v
+
+                # agencia: VARCHAR(4) e deve ser numérica; valor corrompido → None
+                ag_raw = _s(r.get('banco_agencia'), 4)
+                if ag_raw and ag_raw.isdigit():
+                    campos['banco_agencia'] = ag_raw
+
+                campos['banco_agenciadv'] = _dv(r.get('banco_agenciadv'))
+                campos['banco_contadv']   = _dv(r.get('banco_contadac'))
+                for k in ('banco_agenciadv', 'banco_contadv'):
+                    if campos.get(k) is None:
+                        campos.pop(k, None)
 
                 cod_sind = str(r.get('sindicato') or '').strip()
                 sind = mapa_sind.get(cod_sind) or _cnpj14(cod_sind)
