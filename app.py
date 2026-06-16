@@ -29911,7 +29911,7 @@ def _imp_movfix_f10(caminho, id_cliente):
                     'cod_verba'           : verba,
                     'qtd_parcelas'        : _int(r.get('qtd')),
                     'qtd_parcelas_before' : _int(r.get('parcelas_before')),
-                    'valor'               : float(r.get('valor') or 0),
+                    'valor'               : int(round(float(r.get('valor') or 0))),
                     'nas_ferias'          : _s(r.get('nas_ferias'), 1) or '0',
                     'se_afastado'         : _s(r.get('se_afastado'), 1) or '5',
                     'mes_admissao'        : _s(r.get('no_mes_admissao'), 1) or 'P',
