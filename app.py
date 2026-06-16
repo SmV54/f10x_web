@@ -23559,7 +23559,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente):
             mat = int(f.get("matricula") or 0)
             if not mat:
                 continue
-            nome  = str(f.get("nomer") or f.get("nome") or f"Matr. {mat:06d}").strip()
+            nome  = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
             cbo   = str(f.get("cbofuncao") or "").strip()
             func_info[mat] = {
                 "nome":   nome,
@@ -23583,7 +23583,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente):
                 if not mat:
                     continue
                 func_info[mat] = {
-                    "nome":   str(f.get("nomer") or f.get("nome") or f"Matr. {mat:06d}").strip(),
+                    "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
                     "dtadm":  str(f.get("dtadm") or ""),
                     "sal":    int(f.get("vrsalfx") or 0),
                     "funcao": "—",
