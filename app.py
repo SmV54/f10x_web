@@ -21790,6 +21790,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             mmVmm = {}
             mmQmm = {}
+            cod_verbas_fixas = set()   # verbas originadas de mov_fixo → origem='F'
             if l["tipo"] == "Mensalista":
                 formula = (f"Salário Hora = Salário Base / Horas/Mes  =  "
                            f"{l['sal_base_fmt']} / {l['qtdhrsmes']} h  =  {l['sal_hora_fmt']}")
@@ -22211,6 +22212,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     val_calc = int(val_bruto * dias_trabalhados / dias_mes) if dias_mes else 0
                     obs_prop = f"Proporcional — {dias_trabalhados} dias trabalhados / {dias_mes} dias do mes"
                 mmVmm[cod_v] = mmVmm.get(cod_v, 0.0) + val_calc
+                cod_verbas_fixas.add(cod_v)
                 ri    = rubricas_info.get(cod_v, {"tp":"1","dsc":""})
                 tp_s  = "Provento" if ri["tp"] == "1" else "Desconto"
                 dsc_s = ri["dsc"] or f"Verba {cod_v:04d}"
@@ -22594,7 +22596,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         "qtd":        mmQmm.get(cod_v, 0),
                         "valor":      int(val_v),
                         "lote":       0,
-                        "origem":     "C",
+                        "origem":     "F" if cod_v in cod_verbas_fixas else "C",
                         "controle":   0,
                         "os":         0,
                     }
