@@ -150,6 +150,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .td-prov { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--green); }
 .td-desc { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--red); }
 .td-vazio { text-align: right; color: #d1d5db; font-size: 12px; }
+.td-orig  { text-align: center; font-family: var(--mono); font-size: 11px; color: var(--sub); white-space: nowrap; }
 
 /* ── TOTAIS (linha de rodapé da tabela) ── */
 .verbas-table tfoot td {
@@ -390,6 +391,7 @@ function renderSecao(secao) {
         <th class="num" style="width:90px">Qtd</th>
         <th class="num" style="width:130px">Provento</th>
         <th class="num" style="width:130px">Desconto</th>
+        <th style="width:60px;text-align:center">Origem</th>
     </tr></thead>`;
     const tbody = document.createElement('tbody');
     for (const v of secao.verbas) {
@@ -400,7 +402,8 @@ function renderSecao(secao) {
             <td class="td-dsc">${v.dsc}</td>
             <td class="td-qtd">${fmtQtd(v.qtd, v.unid)}</td>
             <td class="${prov ? 'td-prov' : 'td-vazio'}">${prov ? fmtBRL(v.valor) : ''}</td>
-            <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>`;
+            <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>
+            <td class="td-orig">${v.orig || ''}</td>`;
         tbody.appendChild(tr);
     }
     // subtotal da seção
@@ -410,6 +413,7 @@ function renderSecao(secao) {
         <td class="tf-label" style="text-align:right">Subtotal</td>
         <td class="tf-prov">${fmtBRL(secao.sub_prov)}</td>
         <td class="tf-desc">${fmtBRL(secao.sub_desc)}</td>
+        <td></td>
     </tr>`;
     tbl.appendChild(tbody);
     tbl.appendChild(tfoot);

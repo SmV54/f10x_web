@@ -23426,11 +23426,12 @@ def api_visualizar_calculo_dados():
         # agrupa verbas por folha_tipo
         agg = {}
         for v in mov_data.get(mat, []):
-            cod = int(v.get("cod_verba")  or 0)
-            val = float(v.get("valor")    or 0)
-            qtd = int(v.get("qtd")        or 0)
-            ft  = str(v.get("folha_tipo") or "N")
-            key = (cod, ft)
+            cod  = int(v.get("cod_verba")  or 0)
+            val  = float(v.get("valor")    or 0)
+            qtd  = int(v.get("qtd")        or 0)
+            ft   = str(v.get("folha_tipo") or "N")
+            orig = str(v.get("origem")     or "")
+            key  = (cod, ft, orig)
             if key in agg:
                 agg[key]["valor"] += val
                 agg[key]["qtd"]   += qtd
@@ -23438,7 +23439,7 @@ def api_visualizar_calculo_dados():
                 ri = rubricas_info.get(cod, {"tp": "1", "dsc": f"Verba {cod:04d}", "unid": "V"})
                 agg[key] = {"cod": cod, "dsc": ri["dsc"] or f"Verba {cod:04d}",
                             "tp": ri["tp"], "unid": ri["unid"],
-                            "qtd": qtd, "valor": val, "ft": ft}
+                            "qtd": qtd, "valor": val, "ft": ft, "orig": orig}
 
         todos_verbas = sorted(agg.values(), key=lambda x: (_tipo_ord.get(x["ft"], 9), x["cod"]))
 
