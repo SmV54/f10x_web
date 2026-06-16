@@ -24272,6 +24272,8 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if s and len(s) >= 8 else "—"
 
     def _fqtd(qtd, unid):
+        if qtd == 999999:          # qtd especial = ignorar (item 5)
+            return ""
         if unid == "H" and qtd > 0:
             return f"{qtd//100}:{qtd%100:02d}h"
         return str(qtd) if qtd > 0 else "·"
@@ -24412,10 +24414,10 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     # ── Heights por modo (compact=True → meia-página) ─────
     ROWS = {
-        False: {"hdr":30,"emp":26,"col":13,"verb":12,"tot":13,
-                "liq":16,"info":10,"base":12,"sig":34},
-        True:  {"hdr":24,"emp":20,"col":11,"verb":10,"tot":11,
-                "liq":13,"info":9, "base":10,"sig":28},
+        False: {"hdr":42,"emp":26,"col":13,"verb":12,"tot":13,
+                "liq":16,"info":10,"base":12,"sig":44},
+        True:  {"hdr":34,"emp":20,"col":11,"verb":10,"tot":11,
+                "liq":13,"info":9, "base":10,"sig":36},
     }
 
     def stub_height(func_data, compact, com_sig=True):
@@ -24502,23 +24504,28 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             else:
                 c.drawString(fx, fy, text)
 
-        # ── 1. Cabeçalho — fundo branco, sem cor (item 2, 3, 4) ─────
+        # ── 1. Cabeçalho — fundo branco, 3 linhas (items 1, 2, 3, 4) ──
         fill_row(R["hdr"], colors.white)
-        hline(x0, xEND, y,           C_LINE, 1.0)   # borda superior
-        hline(x0, xEND, y - R["hdr"], C_LINE, 1.2)  # borda inferior
+        hline(x0, xEND, y,            C_LINE, 1.0)   # borda superior
+        hline(x0, xEND, y - R["hdr"], C_LINE, 1.4)   # borda inferior
 
-        y1 = y - R["hdr"] + R["hdr"] * 0.60
-        text_at(empresa_nm[:52], x0+PAD, y1, "Helvetica-Bold", FS_TIT, C_TXT)
-        # período: só mostra tipo se não for Folha Normal (item 4)
-        tipo_hdr = "" if anomes_tipo == "N" else f"  ·  {tipo_lbl}"
-        text_at(f"{anomes_fmt}{tipo_hdr}", xEND-PAD, y1,
-                "Helvetica-Bold", FS_DET+1, C_GRAY, "right")
+        # linha 1 (topo): empresa (esq) | "CONTRACHEQUE" (dir)
+        y1 = y - 7
+        text_at(empresa_nm[:46], x0+PAD, y1, "Helvetica-Bold", FS_TIT, C_TXT)
+        text_at("CONTRACHEQUE", xEND-PAD, y1, "Helvetica-Bold", FS_TIT, C_TXT, "right")
 
-        y2 = y - R["hdr"] + 5
+        # linha 2 (meio): CNPJ (esq) | mês/ano em destaque (dir)
+        y2 = y - R["hdr"] + 16
         text_at(f"CNPJ: {cnpj_fmt}", x0+PAD, y2, "Helvetica", FS_DET, C_LGRAY)
+        tipo_hdr = "" if anomes_tipo == "N" else f"  ·  {tipo_lbl}"
+        text_at(f"{anomes_fmt}{tipo_hdr}", xEND-PAD, y2,
+                "Helvetica-Bold", FS_EMP + (0 if compact else 1), C_TXT, "right")
+
+        # linha 3 (base): VIA label (dir)
         if label_via:
-            text_at(f"VIA {label_via}", xEND-PAD, y2, "Helvetica-Bold", FS_DET,
-                    C_GRAY, "right")
+            y3 = y - R["hdr"] + 5
+            text_at(f"VIA {label_via}", xEND-PAD, y3,
+                    "Helvetica", FS_DET, C_LGRAY, "right")
         y -= R["hdr"]
 
         # ── 2. Dados do funcionário — fundo branco (item 3) ─────────
@@ -24574,12 +24581,13 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 "Helvetica-Bold", FS_TOT, C_TXT, "right")
         y -= R["tot"]
 
-        # ── 6. Líquido — sem cor, label alinhado à descrição (itens 3, 7)
+        # ── 6. Líquido — sem cor, label e valor na área da descrição (itens 3, 7)
         hline(x0, xEND, y, C_LINE, 1.2)
         fill_row(R["liq"], colors.HexColor("#f3f4f6"))
         y_l = y - R["liq"] + 3
         text_at("LÍQUIDO A RECEBER", xDSC+PAD, y_l, "Helvetica-Bold", FS_LIQ, C_TXT)
-        text_at(_fmt_brl(func_data["liq"]), xPRV+W_VAL-PAD, y_l,
+        # valor alinhado ao fim da coluna Qtd (mais à esquerda que Proventos)
+        text_at(_fmt_brl(func_data["liq"]), xQTD+W_QTD-PAD, y_l,
                 "Helvetica-Bold", FS_LIQ, C_TXT, "right")
         hline(x0, xEND, y - R["liq"], C_LINE, 1.0)
         y -= R["liq"]
