@@ -133,6 +133,18 @@ td.prov { color: var(--prov); }
 td.desc { color: var(--desc); }
 td.zero { color: #d1d5db; }
 
+/* Verbas informativas */
+.tbl-info { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; }
+.tbl-info-header {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  color: #64748b; padding: 5px 10px 3px; border-top: 1px dashed #cbd5e1;
+}
+.tbl-info td { padding: 4px 10px; color: #475569; }
+.tbl-info td.cod  { font-family: var(--mono); font-size: 10px; color: #94a3b8; text-align: center; width: 52px; }
+.tbl-info td.qtd  { font-family: var(--mono); font-size: 10px; color: #94a3b8; text-align: center; width: 60px; }
+.tbl-info td.val  { font-family: var(--mono); font-size: 11px; text-align: right; color: #64748b; white-space: nowrap; }
+.tbl-info tbody tr:nth-child(even) { background: #f9fafb; }
+
 /* Linha TOTAL */
 tr.tr-total td {
   padding: 7px 10px; background: #f3f4f6;
@@ -271,6 +283,22 @@ tr.tr-liq td { border-top: 2px solid #374151; }
         </tr>
       </tfoot>
     </table>
+
+    {% if f.verbas_info %}
+    <div class="tbl-info-header">Verbas Informativas</div>
+    <table class="tbl-info">
+      <tbody>
+        {% for v in f.verbas_info %}
+        <tr>
+          <td class="cod">{{ v.cod }}</td>
+          <td>{{ v.dsc }}</td>
+          <td class="qtd">{{ v.qtd_fmt }}</td>
+          <td class="val">{{ v.val_fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
 
     <!-- Bases -->
     <div class="func-bases">

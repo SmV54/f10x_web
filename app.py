@@ -23627,7 +23627,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente):
                 agg[cod] = {"cod":cod,"dsc":ri["dsc"],"tp":ri["tp"],
                              "unid":ri["unid"],"icp":ri["icp"],"ift":ri["ift"],
                              "iir":ri["iir"],"qtd":qtd,"val":val}
-        verbas   = sorted(agg.values(), key=lambda x: x["cod"])
+        verbas_all  = sorted(agg.values(), key=lambda x: x["cod"])
+        verbas      = [v for v in verbas_all if v["cod"] <= 9900]
+        verbas_info = [v for v in verbas_all if v["cod"] >  9900]
         tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
@@ -23641,7 +23643,8 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente):
         cc_groups.setdefault(cc_key, []).append({
             "mat":mat, "nome":fi["nome"], "funcao":fi["funcao"],
             "dtadm":fi["dtadm"], "sal":fi["sal"], "filial":fi["filial"],
-            "verbas":verbas, "prov":tot_prov, "desc":tot_desc, "liq":liquido,
+            "verbas":verbas, "verbas_info":verbas_info,
+            "prov":tot_prov, "desc":tot_desc, "liq":liquido,
             "b_inss":base_inss, "b_irrf":base_irrf, "b_fgts":base_fgts, "fgts":fgts_val,
         })
 
@@ -23696,6 +23699,12 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente):
                     "desc_fmt": _fmt_brl(v["val"]) if v["tp"] != "1" else "",
                     "is_prov":  v["tp"] == "1",
                 } for v in f["verbas"]],
+                "verbas_info": [{
+                    "cod":     f"{v['cod']:04d}",
+                    "dsc":     v["dsc"],
+                    "qtd_fmt": _fqtd(v["qtd"], v["unid"]),
+                    "val_fmt": _fmt_brl(v["val"]),
+                } for v in f["verbas_info"]],
             } for f in funcs],
         })
 
@@ -23936,7 +23945,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                              "unid":ri["unid"],"icp":ri["icp"],"ift":ri["ift"],
                              "iir":ri["iir"],"qtd":qtd,"val":val}
 
-        verbas   = sorted(agg.values(), key=lambda x: x["cod"])
+        verbas_all  = sorted(agg.values(), key=lambda x: x["cod"])
+        verbas      = [v for v in verbas_all if v["cod"] <= 9900]
+        verbas_info = [v for v in verbas_all if v["cod"] >  9900]
         tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
@@ -23951,7 +23962,8 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         cc_groups.setdefault(cc_key, []).append({
             "mat":mat,"nome":fi["nome"],"funcao":fi["funcao"],
             "dtadm":fi["dtadm"],"sal":fi["sal"],"unid":fi["unid"],"filial":fi["filial"],
-            "verbas":verbas,"prov":tot_prov,"desc":tot_desc,"liq":liquido,
+            "verbas":verbas,"verbas_info":verbas_info,
+            "prov":tot_prov,"desc":tot_desc,"liq":liquido,
             "b_inss":base_inss,"b_irrf":base_irrf,"b_fgts":base_fgts,"fgts":fgts_val,
         })
 
@@ -24098,7 +24110,44 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 ("LEFTPADDING",   (0,0),(-1,-1), 6),
             ]))
 
-            story.append(KeepTogether([fhdr1, fhdr2, v_tbl, b_tbl, Spacer(1, 4)]))
+            elementos = [fhdr1, fhdr2, v_tbl]
+
+            # Verbas informativas (cod > 9900)
+            if func.get("verbas_info"):
+                st_info_hdr = _st("ih", fontName="Helvetica-Bold", fontSize=6.5,
+                                  textColor=colors.HexColor("#64748b"))
+                st_info_cod = _st("ic", fontName="Helvetica", fontSize=6.5,
+                                  textColor=colors.HexColor("#94a3b8"))
+                st_info_dsc = _st("id", fontName="Helvetica", fontSize=6.5,
+                                  textColor=colors.HexColor("#475569"))
+                st_info_val = _st("iv", fontName="Helvetica", fontSize=6.5,
+                                  textColor=colors.HexColor("#64748b"))
+                info_rows = [[Paragraph("VERBAS INFORMATIVAS", st_info_hdr),
+                              Paragraph("", st_info_hdr),
+                              Paragraph("", st_info_hdr),
+                              Paragraph("", st_info_hdr)]]
+                for vi in func["verbas_info"]:
+                    info_rows.append([
+                        Paragraph(f"{vi['cod']:04d}", st_info_cod),
+                        Paragraph(vi["dsc"],          st_info_dsc),
+                        Paragraph(_fqtd(vi["qtd"], vi.get("unid","V")), st_info_cod),
+                        Paragraph(_fmt_brl(vi["val"]), st_info_val),
+                    ])
+                COLS_INFO = [COLS[0], COLS[1]+COLS[2], COLS[3], COLS[4]]
+                i_tbl = Table(info_rows, colWidths=COLS_INFO)
+                i_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0,0),(-1,-1), 3),
+                    ("RIGHTPADDING",  (0,0),(-1,-1), 3),
+                    ("TOPPADDING",    (0,0),(-1,-1), 1),
+                    ("BOTTOMPADDING", (0,0),(-1,-1), 1),
+                    ("LINEABOVE",     (0,0),(-1,0),  0.5, colors.HexColor("#cbd5e1")),
+                    ("LINEBELOW",     (0,0),(-1,0),  0.3, C_BORD),
+                    ("ALIGN",         (2,0),(-1,-1), "RIGHT"),
+                ]))
+                elementos.append(i_tbl)
+
+            elementos.extend([b_tbl, Spacer(1, 4)])
+            story.append(KeepTogether(elementos))
             cc_prov += func["prov"]; cc_desc += func["desc"]; cc_liq += func["liq"]
 
         grand_prov += cc_prov; grand_desc += cc_desc
