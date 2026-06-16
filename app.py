@@ -24236,6 +24236,529 @@ def relatorio_folha_pdf():
 
 
 # =========================================================
+# CONTRACHEQUE — CONFIGURAÇÃO + PDF
+# =========================================================
+
+def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                              empresa_nm, cnpj_fmt, modo="1"):
+    from reportlab.pdfgen.canvas import Canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from io import BytesIO
+    from datetime import datetime
+
+    buf            = BytesIO()
+    W_page, H_page = A4
+    agora          = datetime.now()
+    ano, mes       = anomes[:4], anomes[4:6]
+    meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                      "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+    mes_nm         = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
+    tipo_lbl       = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
+                      "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    anomes_fmt     = f"{mes_nm.upper()}/{ano}"
+    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+
+    C_NAVY   = colors.HexColor("#0b1f3a")
+    C_BORD   = colors.HexColor("#dde3ec")
+    C_PROV   = colors.HexColor("#166534")
+    C_DESC   = colors.HexColor("#991b1b")
+    C_LIQBG  = colors.HexColor("#dcfce7")
+    C_BASEBG = colors.HexColor("#eff6ff")
+
+    def _fdt(s):
+        return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if s and len(s) >= 8 else "—"
+
+    def _fqtd(qtd, unid):
+        if unid == "H" and qtd > 0:
+            return f"{qtd//100}:{qtd%100:02d}h"
+        return str(qtd) if qtd > 0 else "·"
+
+    # ── Carrega rubricas ──────────────────────────────────
+    rubricas_info = {}
+    try:
+        for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
+            r = (supabase.table("tab_rubrica")
+                 .select("cod_rubr,dsc_rubr,tp_rubr,unid_verba,tpn_inc_cp,tpn_inc_fgts,tpn_inc_irrf")
+                 .eq("id_cliente", cli_id).execute())
+            for row in (r.data or []):
+                cod = int(row.get("cod_rubr") or 0)
+                if cod:
+                    rubricas_info[cod] = {
+                        "dsc":  str(row.get("dsc_rubr")     or f"Verba {cod:04d}"),
+                        "tp":   str(row.get("tp_rubr")      or "1"),
+                        "unid": str(row.get("unid_verba")   or "V"),
+                        "icp":  str(row.get("tpn_inc_cp")   or ""),
+                        "ift":  str(row.get("tpn_inc_fgts") or ""),
+                        "iir":  str(row.get("tpn_inc_irrf") or ""),
+                    }
+    except Exception:
+        pass
+    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
+                  101:"INSS",120:"IRRF",139:"FGTS Provisionado"}
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2"),(139,"2")]:
+        rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod,f"Verba {cod:04d}"),
+                                       "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
+
+    # ── Carrega movimentos ────────────────────────────────
+    mov_data = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula,cod_verba,qtd,valor")
+             .eq("id_empresa",  id_empresa)
+             .eq("situacao",    "A")
+             .eq("folha",       int(anomes))
+             .eq("folha_tipo",  folha_tipo_mov))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for reg in (q.execute().data or []):
+            mat = int(reg.get("matricula") or 0)
+            if mat:
+                mov_data.setdefault(mat, []).append(reg)
+    except Exception:
+        pass
+
+    # ── Carrega funcionários ──────────────────────────────
+    func_info = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao", "A")
+             .execute())
+        for f in (r.data or []):
+            mat = int(f.get("matricula") or 0)
+            if not mat:
+                continue
+            nome = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
+            cbo  = str(f.get("cbofuncao") or "").strip()
+            func_info[mat] = {
+                "nome":   nome,
+                "dtadm":  str(f.get("dtadm")      or ""),
+                "sal":    int(f.get("vrsalfx")     or 0),
+                "funcao": f"CBO {cbo}" if cbo else "—",
+                "cc":     str(f.get("centrocusto") or "000"),
+                "filial": str(f.get("filial")      or ""),
+            }
+    except Exception:
+        pass
+    cbos_unicos = list({fi["funcao"].replace("CBO ","") for fi in func_info.values()
+                        if fi["funcao"].startswith("CBO ")})
+    if cbos_unicos:
+        try:
+            rc = (supabase.table("tab_aux_funcao_total")
+                  .select("cbo_codigo,cbo_nome")
+                  .in_("cbo_codigo", cbos_unicos).execute())
+            cbo_nomes = {r["cbo_codigo"]: r["cbo_nome"] for r in (rc.data or []) if r.get("cbo_codigo")}
+            for fi in func_info.values():
+                if fi["funcao"].startswith("CBO "):
+                    cbo = fi["funcao"].replace("CBO ","")
+                    if cbo in cbo_nomes:
+                        fi["funcao"] = cbo_nomes[cbo]
+        except Exception:
+            pass
+
+    # ── Monta lista de funcionários com verbas ────────────
+    all_funcs = []
+    for mat in sorted(mov_data.keys()):
+        fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
+                                  "funcao":"—","cc":"000","filial":""})
+        agg = {}
+        for v in mov_data[mat]:
+            cod = int(v.get("cod_verba") or 0)
+            val = int(v.get("valor")     or 0)
+            qtd = int(v.get("qtd")       or 0)
+            ri  = rubricas_info.get(cod, {"dsc":f"Verba {cod:04d}","tp":"1",
+                                           "unid":"V","icp":"","ift":"","iir":""})
+            if cod in agg:
+                agg[cod]["val"] += val; agg[cod]["qtd"] += qtd
+            else:
+                agg[cod] = {"cod":cod,"dsc":ri["dsc"],"tp":ri["tp"],
+                             "unid":ri["unid"],"icp":ri["icp"],"ift":ri["ift"],
+                             "iir":ri["iir"],"qtd":qtd,"val":val}
+        verbas_all  = sorted(agg.values(), key=lambda x: x["cod"])
+        verbas      = [v for v in verbas_all if v["cod"] <= 9900]
+        verbas_info = [v for v in verbas_all if v["cod"] >  9900]
+        tot_prov = sum(v["val"] for v in verbas if v["tp"] == "1")
+        tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
+        liquido  = tot_prov - tot_desc
+        inss_val  = agg.get(101,{}).get("val",0)
+        base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
+        base_irrf = max(0, base_inss - inss_val)
+        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
+        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
+        all_funcs.append({
+            "mat":mat,"nome":fi["nome"],"funcao":fi["funcao"],
+            "dtadm":fi["dtadm"],"sal":fi["sal"],"filial":fi["filial"],
+            "verbas":verbas,"verbas_info":verbas_info,
+            "prov":tot_prov,"desc":tot_desc,"liq":liquido,
+            "b_inss":base_inss,"b_irrf":base_irrf,"b_fgts":base_fgts,"fgts":fgts_val,
+        })
+
+    # ── Dimensões de página ───────────────────────────────
+    ML = 1.0*cm; MR = 1.0*cm; MT = 0.8*cm; MB = 0.8*cm
+    W_stub   = W_page - ML - MR
+    H_usable = H_page - MT - MB
+    CUT_GAP  = 0.5*cm
+    H_half   = (H_usable - CUT_GAP) / 2
+
+    # ── Heights por modo (compact=True → meia-página) ─────
+    ROWS = {
+        False: {"hdr":30,"emp":26,"col":13,"verb":12,"tot":13,
+                "liq":16,"info":10,"base":12,"sig":34},
+        True:  {"hdr":24,"emp":20,"col":11,"verb":10,"tot":11,
+                "liq":13,"info":9, "base":10,"sig":28},
+    }
+
+    def stub_height(func_data, compact):
+        R = ROWS[compact]
+        n_info = (1 + len(func_data["verbas_info"])) if func_data["verbas_info"] else 0
+        return (R["hdr"] + R["emp"] + R["col"] +
+                len(func_data["verbas"]) * R["verb"] +
+                R["tot"] + R["liq"] + n_info * R["info"] +
+                R["base"] + R["sig"])
+
+    c = Canvas(buf, pagesize=A4)
+
+    def hline(x0, x1, y, color, lw=0.3):
+        c.saveState()
+        c.setStrokeColor(color)
+        c.setLineWidth(lw)
+        c.line(x0, y, x1, y)
+        c.restoreState()
+
+    def vline(x, y0, y1, color, lw=0.2):
+        c.saveState()
+        c.setStrokeColor(color)
+        c.setLineWidth(lw)
+        c.line(x, y0, x, y1)
+        c.restoreState()
+
+    def draw_cut_line(y_center):
+        c.saveState()
+        c.setStrokeColor(colors.HexColor("#94a3b8"))
+        c.setLineWidth(0.5)
+        c.setDash([3, 5], 0)
+        c.line(ML - 0.2*cm, y_center, W_page - MR + 0.2*cm, y_center)
+        c.setDash([], 0)
+        c.setFont("Helvetica", 7)
+        c.setFillColor(colors.HexColor("#94a3b8"))
+        c.drawCentredString(W_page / 2, y_center + 2.5, "✂")
+        c.restoreState()
+
+    def draw_stub(x0, y_top, w, func_data, compact=False, label_via=None):
+        R   = ROWS[compact]
+        PAD = 3 if compact else 5
+
+        # font sizes
+        FS_TIT = 9  if compact else 11
+        FS_EMP = 8  if compact else 9
+        FS_DET = 6  if compact else 7
+        FS_COL = 5.5 if compact else 6.5
+        FS_VRB = 7  if compact else 8
+        FS_TOT = 7  if compact else 8
+        FS_LIQ = 7.5 if compact else 9
+        FS_BSE = 5.5 if compact else 6.5
+        FS_SIG = 7  if compact else 8
+
+        # column x positions
+        W_COD  = 0.12 * w
+        W_QTD  = 0.10 * w
+        W_VAL  = 0.21 * w
+        W_DSC  = w - W_COD - W_QTD - 2*W_VAL
+
+        xCOD = x0
+        xDSC = x0 + W_COD
+        xQTD = x0 + W_COD + W_DSC
+        xPRV = x0 + W_COD + W_DSC + W_QTD
+        xDSK = x0 + W_COD + W_DSC + W_QTD + W_VAL
+        xEND = x0 + w
+
+        y = y_top
+        y_start = y_top
+
+        def fill_row(row_h, fill_color):
+            c.setFillColor(fill_color)
+            c.rect(x0, y - row_h, w, row_h, fill=1, stroke=0)
+
+        def text_at(text, fx, fy, font, size, fill, align="left"):
+            c.setFont(font, size)
+            c.setFillColor(fill)
+            if align == "right":
+                c.drawRightString(fx, fy, text)
+            elif align == "center":
+                c.drawCentredString(fx, fy, text)
+            else:
+                c.drawString(fx, fy, text)
+
+        # ── 1. Cabeçalho empresa (navy) ───────────────────
+        fill_row(R["hdr"], C_NAVY)
+
+        # linha superior: empresa (esq) | período (dir)
+        y1 = y - R["hdr"] + R["hdr"] * 0.6
+        text_at(empresa_nm[:52], x0+PAD, y1, "Helvetica-Bold", FS_TIT, colors.white)
+        periodo = f"{anomes_fmt}  ·  {tipo_lbl}"
+        text_at(periodo, xEND-PAD, y1, "Helvetica", FS_DET+1,
+                colors.HexColor("#c8d9ec"), "right")
+
+        # linha inferior: CNPJ (esq) | VIA label (dir)
+        y2 = y - R["hdr"] + 5
+        text_at(f"CNPJ: {cnpj_fmt}", x0+PAD, y2, "Helvetica", FS_DET,
+                colors.HexColor("#7fa8d0"))
+        if label_via:
+            text_at(f"VIA {label_via}", xEND-PAD, y2, "Helvetica-Bold", FS_DET,
+                    colors.HexColor("#f5c842"), "right")
+
+        hline(x0, xEND, y - R["hdr"], colors.HexColor("#1e3d5c"), 0.5)
+        y -= R["hdr"]
+
+        # ── 2. Dados do funcionário ───────────────────────
+        fill_row(R["emp"], colors.HexColor("#f0f4fa"))
+
+        y_e1 = y - R["emp"] + R["emp"] * 0.6
+        mat_nm = f"{func_data['mat']:08d}  —  {func_data['nome']}"
+        text_at(mat_nm, x0+PAD, y_e1, "Helvetica-Bold", FS_EMP,
+                colors.HexColor("#0b1f3a"))
+
+        y_e2 = y - R["emp"] + 4
+        det = (f"Admissão: {_fdt(func_data['dtadm'])}   |   "
+               f"Função: {func_data['funcao'][:28]}   |   "
+               f"Salário: {_fmt_brl(func_data['sal'])}/Mês")
+        text_at(det, x0+PAD, y_e2, "Helvetica", FS_DET, colors.HexColor("#374151"))
+
+        hline(x0, xEND, y - R["emp"], C_BORD, 0.5)
+        y -= R["emp"]
+
+        # ── 3. Cabeçalho colunas ─────────────────────────
+        fill_row(R["col"], colors.HexColor("#e8edf4"))
+        y_c = y - R["col"] + 3
+        text_at("CÓD",       xCOD+W_COD/2, y_c, "Helvetica-Bold", FS_COL, colors.HexColor("#374151"), "center")
+        text_at("DESCRIÇÃO", xDSC+PAD,     y_c, "Helvetica-Bold", FS_COL, colors.HexColor("#374151"))
+        text_at("QTD",       xQTD+W_QTD/2, y_c, "Helvetica-Bold", FS_COL, colors.HexColor("#374151"), "center")
+        text_at("PROVENTOS", xPRV+W_VAL-PAD, y_c, "Helvetica-Bold", FS_COL, colors.HexColor("#374151"), "right")
+        text_at("DESCONTOS", xDSK+W_VAL-PAD, y_c, "Helvetica-Bold", FS_COL, colors.HexColor("#374151"), "right")
+        hline(x0, xEND, y - R["col"], C_BORD, 0.4)
+        y -= R["col"]
+
+        # ── 4. Verbas ─────────────────────────────────────
+        for i, v in enumerate(func_data["verbas"]):
+            bg = colors.HexColor("#f9fafb") if i % 2 == 0 else colors.white
+            fill_row(R["verb"], bg)
+            y_v = y - R["verb"] + 3
+
+            text_at(f"{v['cod']:04d}", xCOD+W_COD/2, y_v, "Helvetica", FS_COL,
+                    colors.HexColor("#94a3b8"), "center")
+            text_at(v["dsc"][:46], xDSC+PAD, y_v, "Helvetica", FS_VRB,
+                    colors.HexColor("#1e293b"))
+            text_at(_fqtd(v["qtd"],v["unid"]), xQTD+W_QTD/2, y_v, "Helvetica", FS_COL,
+                    colors.HexColor("#6b7280"), "center")
+            if v["tp"] == "1":
+                text_at(_fmt_brl(v["val"]), xPRV+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
+                        C_PROV, "right")
+            else:
+                text_at(_fmt_brl(v["val"]), xDSK+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
+                        C_DESC, "right")
+            y -= R["verb"]
+
+        # ── 5. Total ──────────────────────────────────────
+        hline(x0, xEND, y, C_BORD, 0.6)
+        fill_row(R["tot"], colors.HexColor("#f3f4f6"))
+        y_t = y - R["tot"] + 3
+        text_at("TOTAL", xQTD+W_QTD-PAD, y_t, "Helvetica-Bold", FS_TOT,
+                colors.HexColor("#374151"), "right")
+        text_at(_fmt_brl(func_data["prov"]), xPRV+W_VAL-PAD, y_t,
+                "Helvetica-Bold", FS_TOT, C_PROV, "right")
+        text_at(_fmt_brl(func_data["desc"]), xDSK+W_VAL-PAD, y_t,
+                "Helvetica-Bold", FS_TOT, C_DESC, "right")
+        y -= R["tot"]
+
+        # ── 6. Líquido ────────────────────────────────────
+        hline(x0, xEND, y, colors.HexColor("#374151"), 0.8)
+        liq_bg = C_LIQBG if func_data["liq"] >= 0 else colors.HexColor("#fee2e2")
+        fill_row(R["liq"], liq_bg)
+        y_l = y - R["liq"] + 3
+        text_at("LÍQUIDO A RECEBER", xQTD+W_QTD-PAD, y_l, "Helvetica-Bold", FS_LIQ,
+                colors.HexColor("#111827"), "right")
+        text_at(_fmt_brl(func_data["liq"]), xPRV+W_VAL-PAD, y_l,
+                "Helvetica-Bold", FS_LIQ, colors.HexColor("#111827"), "right")
+        y -= R["liq"]
+
+        # ── 7. Verbas informativas ────────────────────────
+        if func_data.get("verbas_info"):
+            fill_row(R["info"], colors.HexColor("#f8fafc"))
+            text_at("VERBAS INFORMATIVAS", x0+PAD, y - R["info"] + 3,
+                    "Helvetica-Bold", FS_COL, colors.HexColor("#64748b"))
+            hline(x0, xEND, y - R["info"], C_BORD, 0.3)
+            y -= R["info"]
+            for vi in func_data["verbas_info"]:
+                fill_row(R["info"], colors.HexColor("#f8fafc"))
+                y_i = y - R["info"] + 2
+                text_at(f"{vi['cod']:04d}", xCOD+W_COD/2, y_i, "Helvetica", FS_COL-0.5,
+                        colors.HexColor("#94a3b8"), "center")
+                text_at(vi["dsc"][:46], xDSC+PAD, y_i, "Helvetica", FS_COL,
+                        colors.HexColor("#475569"))
+                text_at(_fmt_brl(vi["val"]), xPRV+W_VAL-PAD, y_i, "Helvetica", FS_COL,
+                        colors.HexColor("#64748b"), "right")
+                hline(x0, xEND, y - R["info"], C_BORD, 0.2)
+                y -= R["info"]
+
+        # ── 8. Bases ──────────────────────────────────────
+        fill_row(R["base"], C_BASEBG)
+        bases_txt = (f"INSS: {_fmt_brl(func_data['b_inss'])}   "
+                     f"|   IRRF: {_fmt_brl(func_data['b_irrf'])}   "
+                     f"|   FGTS Base: {_fmt_brl(func_data['b_fgts'])}   "
+                     f"|   FGTS: {_fmt_brl(func_data['fgts'])}")
+        text_at(bases_txt, x0+PAD, y - R["base"] + 3, "Helvetica", FS_BSE,
+                colors.HexColor("#1e3a5f"))
+        hline(x0, xEND, y - R["base"], C_BORD, 0.4)
+        y -= R["base"]
+
+        # ── 9. Assinaturas ────────────────────────────────
+        fill_row(R["sig"], colors.white)
+        mid_x   = x0 + w / 2
+        sig_y_l = y - R["sig"] + 14  # linha de assinatura
+        sig_y_n = y - R["sig"] + 5   # rótulo abaixo da linha
+
+        hline(x0+PAD+8,   mid_x-PAD-8, sig_y_l, colors.HexColor("#374151"), 0.5)
+        hline(mid_x+PAD+8, xEND-PAD-8, sig_y_l, colors.HexColor("#374151"), 0.5)
+
+        text_at("Empresa",      (x0+mid_x)/2, sig_y_n, "Helvetica", FS_SIG,
+                colors.HexColor("#374151"), "center")
+        text_at("Funcionário",  (mid_x+xEND)/2, sig_y_n, "Helvetica", FS_SIG,
+                colors.HexColor("#374151"), "center")
+
+        data_ger = agora.strftime("%d/%m/%Y  %H:%M")
+        text_at(f"Gerado em {data_ger}", xEND-PAD, y - R["sig"] + 2,
+                "Helvetica", FS_BSE-0.5, colors.HexColor("#94a3b8"), "right")
+        y -= R["sig"]
+
+        # ── Borda externa ─────────────────────────────────
+        used_h = y_start - y
+        c.saveState()
+        c.setStrokeColor(C_BORD)
+        c.setLineWidth(0.6)
+        c.rect(x0, y_start - used_h, w, used_h, fill=0, stroke=1)
+        # linhas verticais de coluna na área de verbas
+        n_verb_rows = len(func_data["verbas"])
+        if n_verb_rows > 0:
+            area_top    = y_start - ROWS[compact]["hdr"] - ROWS[compact]["emp"] - ROWS[compact]["col"]
+            area_bottom = area_top - n_verb_rows * ROWS[compact]["verb"]
+            for xv in [xDSC, xQTD, xPRV, xDSK]:
+                c.setLineWidth(0.15)
+                c.setStrokeColor(C_BORD)
+                c.line(xv, area_bottom, xv, area_top)
+        c.restoreState()
+
+    # ── Posições de página ────────────────────────────────
+    y_full    = H_page - MT
+    y_top_top = H_page - MT
+    y_top_bot = MB + H_half
+    y_cut     = MB + H_half + CUT_GAP / 2
+
+    if modo == "1":
+        for func in all_funcs:
+            draw_stub(ML, y_full, W_stub, func, compact=False)
+            c.showPage()
+
+    elif modo == "2S":
+        for func in all_funcs:
+            h_est = stub_height(func, compact=True)
+            if h_est > H_half - 4:
+                draw_stub(ML, y_full, W_stub, func, compact=False)
+            else:
+                draw_stub(ML, y_top_top, W_stub, func, compact=True,  label_via="EMPRESA")
+                draw_cut_line(y_cut)
+                draw_stub(ML, y_top_bot, W_stub, func, compact=True, label_via="FUNCIONÁRIO")
+            c.showPage()
+
+    elif modo == "2D":
+        i = 0
+        while i < len(all_funcs):
+            func1 = all_funcs[i]
+            h1 = stub_height(func1, compact=True)
+            if h1 > H_half - 4:
+                draw_stub(ML, y_full, W_stub, func1, compact=False)
+                c.showPage()
+                i += 1
+            else:
+                j = i + 1
+                paired = False
+                while j < len(all_funcs):
+                    func2 = all_funcs[j]
+                    h2 = stub_height(func2, compact=True)
+                    if h2 <= H_half - 4:
+                        draw_stub(ML, y_top_top, W_stub, func1, compact=True)
+                        draw_cut_line(y_cut)
+                        draw_stub(ML, y_top_bot, W_stub, func2, compact=True)
+                        c.showPage()
+                        all_funcs.pop(j)
+                        paired = True
+                        break
+                    j += 1
+                if not paired:
+                    draw_stub(ML, y_full, W_stub, func1, compact=False)
+                    c.showPage()
+                i += 1
+
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+@app.route("/contracheque")
+def contracheque():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    empresa_nm  = str(session.get("empresa_info") or "")
+    if not anomes:
+        return redirect("/menu")
+    meses_pt = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+    ano, mes  = anomes[:4], anomes[4:6]
+    mes_nm    = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
+    tipo_lbl  = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
+                 "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    return render_template(
+        "F10_Contracheque.html",
+        versao     = ler_versao(),
+        nome       = session.get("nome", ""),
+        empresa    = empresa_nm,
+        anomes_fmt = f"{mes_nm} / {ano}",
+        tipo_lbl   = tipo_lbl,
+    )
+
+
+@app.route("/contracheque_pdf")
+def contracheque_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    if not anomes:
+        return "Nenhuma folha ativa.", 400
+    empresa_nm  = str(session.get("empresa_info") or "")
+    cnpj_fmt    = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+    modo        = request.args.get("modo", "1")
+    if modo not in ("1","2S","2D"):
+        modo = "1"
+
+    buf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                   empresa_nm, cnpj_fmt, modo)
+    from flask import make_response
+    ano, mes  = anomes[:4], anomes[4:6]
+    nome_arq  = f"Contracheque_{empresa_nm[:20].replace(' ','_')}_{ano}{mes}.pdf"
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
+    return resp
+
+
+# =========================================================
 # MEMÓRIA DE CÁLCULO — TELA + SERVIÇO DO PDF
 # =========================================================
 @app.route("/memoria_calculo")
