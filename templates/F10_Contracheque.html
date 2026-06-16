@@ -137,7 +137,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="topo-logo">Folha10·Simples</div>
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
-        <a class="btn-voltar" href="/rel_folha">&#8592; Voltar</a>
+        <a class="btn-voltar" href="/menu">&#8592; Voltar</a>
     </div>
 </div>
 
@@ -255,6 +255,7 @@ function toggleMostrarLista() {
     if (listaVisivel) {
         document.getElementById('chkTodos').checked = false;
         document.getElementById('labelTodos').style.display = 'none';
+        document.querySelectorAll('.chk-func').forEach(c => c.checked = false);
     } else {
         document.getElementById('chkTodos').checked = true;
         document.getElementById('labelTodos').style.display = '';

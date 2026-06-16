@@ -24579,7 +24579,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                      f"|   Base IRRF: {_fmt_brl(func_data['b_irrf'])}   "
                      f"|   Base FGTS: {_fmt_brl(func_data['b_fgts'])}   "
                      f"|   FGTS: {_fmt_brl(func_data['fgts'])}")
-        text_at(bases_txt, x0+PAD, y - R["base"] + 3, "Helvetica", FS_BSE, C_LGRAY)
+        text_at(bases_txt, xCOD+PAD, y - R["base"] + 3, "Helvetica", FS_BSE, C_LGRAY)
         hline(x0, xEND, y - R["base"], C_LINE, 0.6)
         y -= R["base"]
 
