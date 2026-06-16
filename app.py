@@ -24489,6 +24489,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         C_GRAY  = colors.HexColor("#374151")
         C_LGRAY = colors.HexColor("#6b7280")
         C_LINE  = colors.HexColor("#374151")
+        HPAD    = 8 if compact else 12   # padding interno do cabeçalho
 
         def fill_row(row_h, fill_color):
             c.setFillColor(fill_color)
@@ -24511,20 +24512,20 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
         # linha 1 (topo): empresa (esq) | "CONTRACHEQUE" (dir)
         y1 = y - 7
-        text_at(empresa_nm[:46], x0+PAD, y1, "Helvetica-Bold", FS_TIT, C_TXT)
-        text_at("CONTRACHEQUE", xEND-PAD, y1, "Helvetica-Bold", FS_TIT, C_TXT, "right")
+        text_at(empresa_nm[:46], x0+HPAD, y1, "Helvetica-Bold", FS_TIT, C_TXT)
+        text_at("CONTRACHEQUE", xEND-HPAD, y1, "Helvetica-Bold", FS_TIT, C_TXT, "right")
 
         # linha 2 (meio): CNPJ (esq) | mês/ano em destaque (dir)
         y2 = y - R["hdr"] + 16
-        text_at(f"CNPJ: {cnpj_fmt}", x0+PAD, y2, "Helvetica", FS_DET, C_LGRAY)
+        text_at(f"CNPJ: {cnpj_fmt}", x0+HPAD, y2, "Helvetica", FS_DET, C_LGRAY)
         tipo_hdr = "" if anomes_tipo == "N" else f"  ·  {tipo_lbl}"
-        text_at(f"{anomes_fmt}{tipo_hdr}", xEND-PAD, y2,
+        text_at(f"{anomes_fmt}{tipo_hdr}", xEND-HPAD, y2,
                 "Helvetica-Bold", FS_EMP + (0 if compact else 1), C_TXT, "right")
 
         # linha 3 (base): VIA label (dir)
         if label_via:
             y3 = y - R["hdr"] + 5
-            text_at(f"VIA {label_via}", xEND-PAD, y3,
+            text_at(f"VIA {label_via}", xEND-HPAD, y3,
                     "Helvetica", FS_DET, C_LGRAY, "right")
         y -= R["hdr"]
 
@@ -24570,8 +24571,18 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             hline(x0, xEND, y - R["verb"], colors.HexColor("#e5e7eb"), 0.2)
             y -= R["verb"]
 
-        # ── 5. Total — sem cor (item 3) ─────────────────────────────
+        # ── 5. Bases — logo abaixo das verbas ───────────────────────
         hline(x0, xEND, y, C_LINE, 0.7)
+        fill_row(R["base"], colors.HexColor("#f9fafb"))
+        bases_txt = (f"Base INSS: {_fmt_brl(func_data['b_inss'])}   "
+                     f"|   Base IRRF: {_fmt_brl(func_data['b_irrf'])}   "
+                     f"|   Base FGTS: {_fmt_brl(func_data['b_fgts'])}   "
+                     f"|   FGTS: {_fmt_brl(func_data['fgts'])}")
+        text_at(bases_txt, x0+PAD, y - R["base"] + 3, "Helvetica", FS_BSE, C_LGRAY)
+        hline(x0, xEND, y - R["base"], C_LINE, 0.6)
+        y -= R["base"]
+
+        # ── 6. Total ─────────────────────────────────────────────────
         fill_row(R["tot"], colors.HexColor("#f3f4f6"))
         y_t = y - R["tot"] + 3
         text_at("TOTAL",             xDSC+PAD,        y_t, "Helvetica-Bold", FS_TOT, C_GRAY)
@@ -24581,18 +24592,17 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 "Helvetica-Bold", FS_TOT, C_TXT, "right")
         y -= R["tot"]
 
-        # ── 6. Líquido — sem cor, label e valor na área da descrição (itens 3, 7)
+        # ── 7. Líquido ───────────────────────────────────────────────
         hline(x0, xEND, y, C_LINE, 1.2)
         fill_row(R["liq"], colors.HexColor("#f3f4f6"))
         y_l = y - R["liq"] + 3
         text_at("LÍQUIDO A RECEBER", xDSC+PAD, y_l, "Helvetica-Bold", FS_LIQ, C_TXT)
-        # valor alinhado ao fim da coluna Qtd (mais à esquerda que Proventos)
         text_at(_fmt_brl(func_data["liq"]), xQTD+W_QTD-PAD, y_l,
                 "Helvetica-Bold", FS_LIQ, C_TXT, "right")
         hline(x0, xEND, y - R["liq"], C_LINE, 1.0)
         y -= R["liq"]
 
-        # ── 7. Verbas informativas — sem cor (item 3) ────────────────
+        # ── 8. Verbas informativas ───────────────────────────────────
         if func_data.get("verbas_info"):
             fill_row(R["info"], colors.white)
             text_at("VERBAS INFORMATIVAS", xDSC+PAD, y - R["info"] + 3,
@@ -24609,16 +24619,6 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                         C_GRAY, "right")
                 hline(x0, xEND, y - R["info"], colors.HexColor("#e5e7eb"), 0.2)
                 y -= R["info"]
-
-        # ── 8. Bases — sem cor de fundo (item 3) ────────────────────
-        fill_row(R["base"], colors.HexColor("#f9fafb"))
-        bases_txt = (f"Base INSS: {_fmt_brl(func_data['b_inss'])}   "
-                     f"|   Base IRRF: {_fmt_brl(func_data['b_irrf'])}   "
-                     f"|   Base FGTS: {_fmt_brl(func_data['b_fgts'])}   "
-                     f"|   FGTS: {_fmt_brl(func_data['fgts'])}")
-        text_at(bases_txt, x0+PAD, y - R["base"] + 3, "Helvetica", FS_BSE, C_LGRAY)
-        hline(x0, xEND, y - R["base"], C_LINE, 0.6)
-        y -= R["base"]
 
         # ── 9. Assinatura — só funcionário, opcional (item 5) ───────
         sig_h = R["sig"] if com_sig else 6
