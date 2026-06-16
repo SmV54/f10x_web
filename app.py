@@ -29302,7 +29302,13 @@ def _imp_folhas_f10(caminho, id_cliente):
                 log.append(f'   ✗ Erro no insert (lote {len(lote_insert)}): {ex}')
             lote_insert.clear()
 
-        SIT_MAP = {'L': 'F'}  # Lacrada → Fechada; demais passam direto
+        # L=Lacrada→F=Fechada; X=Futuro pré-criado→A=Aberta; demais passam direto
+        SIT_MAP = {'L': 'F', 'X': 'A'}
+
+        def _date8(v):
+            """Retorna string de 8 dígitos ou None (rejeita '0', ' 0', etc.)."""
+            s = str(v or '').strip()
+            return s if (len(s) == 8 and s.isdigit()) else None
 
         for row in rows:
             r = dict(zip(dc, row))
@@ -29317,18 +29323,18 @@ def _imp_folhas_f10(caminho, id_cliente):
                 sit        = SIT_MAP.get(sit_access, sit_access)
 
                 campos = {
-                    'id_cliente'    : id_cliente,
-                    'id_empresa'    : id_empresa,
-                    'ano_mes'       : str(folha),
-                    'tipo'          : tipo,
-                    'situacao'      : sit,
-                    'data_falta1'   : _s(r.get('faltas_data1'),  8),
-                    'data_falta2'   : _s(r.get('faltas_data2'),  8),
-                    'data_pagamento': _s(r.get('pagamento_data'), 8),
-                    'data_calculo'  : _s(r.get('calculo_data'),  8),
-                    'hora_calculo'  : _s(r.get('calculo_hora'),  4),
-                    'qtd_calculos'  : _int(r.get('calculo_qtd')),
-                    'data_fechamento': _s(r.get('lacre_data'),   8),
+                    'id_cliente'     : id_cliente,
+                    'id_empresa'     : id_empresa,
+                    'ano_mes'        : str(folha),
+                    'tipo'           : tipo,
+                    'situacao'       : sit,
+                    'data_falta1'    : _date8(r.get('faltas_data1')),
+                    'data_falta2'    : _date8(r.get('faltas_data2')),
+                    'data_pagamento' : _date8(r.get('pagamento_data')),
+                    'data_calculo'   : _date8(r.get('calculo_data')),
+                    'hora_calculo'   : _s(r.get('calculo_hora'), 4),
+                    'qtd_calculos'   : _int(r.get('calculo_qtd')),
+                    'data_fechamento': _date8(r.get('lacre_data')),
                 }
 
                 lote_insert.append(campos)
