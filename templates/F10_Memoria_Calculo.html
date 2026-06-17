@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ titulo_pagina or 'Memória de Cálculo' }} — Folha10 Simples</title>
+<title>Memória de Cálculo — Folha10 Simples</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -13,103 +13,142 @@
   --bg:      #f0f2f6;
   --surface: #ffffff;
   --border:  #dde3ec;
+  --sub:     #6b7280;
   --mono: 'IBM Plex Mono', monospace;
   --sans: 'IBM Plex Sans', sans-serif;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+body {
+  font-family: var(--sans); background: var(--bg); color: #374151;
+  min-height: 100vh; display: flex; flex-direction: column;
+}
 
+/* ── TOPO ── */
 .topo {
   background: var(--navy); border-bottom: 1px solid var(--navy-ln);
-  padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
-  align-items: center; gap: 0 32px; min-height: 64px;
-  position: sticky; top: 0; z-index: 10;
+  padding: 0 24px; display: grid; grid-template-columns: 1fr auto 1fr;
+  align-items: center; gap: 0 16px; min-height: 58px;
+  position: sticky; top: 0; z-index: 200;
 }
-.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; }
-.topo-versao  { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
-.topo-titulo  { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center;
-                display: flex; align-items: center; justify-content: center; gap: 12px; }
-.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; }
-.topo-nome    { font-size: 11px; color: #8baac8; margin-top: 2px; }
-.btn-voltar-topo {
-  margin-left: 16px; background: transparent; border: 1px solid var(--navy-ln);
-  color: #8baac8; font-size: 12px; padding: 5px 12px; border-radius: 6px;
-  cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
-  text-decoration: none; display: inline-block;
-}
-.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+.topo-esq { display: flex; flex-direction: column; }
+.topo-ctr { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.topo-dir { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #f5c842; }
+.topo-nome    { font-size: 11px; color: #8baac8; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: #e8edf4; white-space: nowrap; }
 .badge-folha {
-  display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
-  font-size: 12px; font-weight: 700; white-space: nowrap;
-  background: #fff; border: 2px solid #dde3ec; color: #6b7280;
+  font-size: 11px; font-weight: 700; padding: 2px 10px; border-radius: 5px;
+  background: #fff; color: #6b7280; border: 1.5px solid #dde3ec; white-space: nowrap;
 }
 .sit-aberta    { color: #166534; border-color: #86efac; }
 .sit-calculada { color: #854d0e; border-color: #fde047; }
 .sit-fechada   { color: #991b1b; border-color: #fca5a5; }
-
-/* ── CONTEÚDO ── */
-.conteudo { max-width: 780px; margin: 32px auto; padding: 0 20px 60px; display: flex; flex-direction: column; gap: 16px; }
-
-/* ── CARD ── */
-.card {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 14px; overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); }
+.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
+.btn-voltar-topo {
+  background: transparent; border: 1px solid var(--navy-ln); color: #8baac8;
+  font-size: 12px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+  font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+  text-decoration: none; display: inline-block;
 }
-.card-topo {
-  background: #f8fafc; border-bottom: 1px solid var(--border);
-  padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-}
-.card-titulo { font-size: 14px; font-weight: 600; color: #1e293b; }
-.card-body   { padding: 16px 20px; }
+.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
 
-/* ── FILTRO ── */
-.filtro-wrap { margin-bottom: 12px; }
-.filtro-input {
-  width: 100%; height: 36px; padding: 5px 12px;
-  border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none;
-  font-family: var(--sans);
+/* ── LAYOUT ── */
+.layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  flex: 1;
+  height: calc(100vh - 58px);
 }
-.filtro-input:focus { border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
 
-/* ── LISTA DE FUNCIONÁRIOS ── */
-.lista-func { display: flex; flex-direction: column; gap: 4px; max-height: calc(100vh - 280px); overflow-y: auto; }
-.item-func {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 8px 12px; border-radius: 8px; border: 1px solid #e5e7eb;
-  background: #fafafa; transition: background 0.12s;
+/* ── SIDEBAR ── */
+.sidebar {
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
 }
-.item-func:hover { background: #f0f9ff; border-color: #bae6fd; }
-.item-func.sem-pdf { opacity: 0.55; }
-.item-esq  { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.item-matr { font-family: var(--mono); font-size: 12px; font-weight: 600; color: #1d4ed8; flex-shrink: 0; }
-.item-nome { font-size: 13px; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.badge-pdf { font-size: 10px; padding: 2px 7px; border-radius: 5px; font-weight: 600; flex-shrink: 0; }
-.badge-pdf-ok  { background: #dcfce7; color: #166534; }
-.badge-pdf-no  { background: #f3f4f6; color: #9ca3af; }
-.btn-abrir {
-  height: 30px; padding: 0 14px; border-radius: 7px; font-size: 12px; font-weight: 700;
-  border: none; cursor: pointer; flex-shrink: 0; transition: filter 0.15s;
-  display: inline-flex; align-items: center; gap: 5px; text-decoration: none;
+.sidebar-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--border);
+  background: #f8fafc;
 }
-.btn-abrir-ok  { background: #dc2626; color: #fff; }
-.btn-abrir-ok:hover  { background: #b91c1c; filter: none; }
-.btn-abrir-dis { background: #e5e7eb; color: #9ca3af; cursor: not-allowed; pointer-events: none; }
+.sidebar-titulo {
+  font-size: 12px; font-weight: 600; color: #374151;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 8px;
+}
+.btn-abrir-mem {
+  width: 100%; padding: 9px; border-radius: 8px;
+  background: var(--accent); color: #fff; border: none;
+  font-size: 13px; font-weight: 600; font-family: var(--sans);
+  cursor: pointer; transition: 0.15s; margin-bottom: 8px;
+}
+.btn-abrir-mem:hover { background: #1a6fd4; }
+.btn-abrir-mem:disabled { background: #93b8e8; cursor: not-allowed; }
+.busca-input {
+  width: 100%; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 13px; font-family: var(--sans); color: #374151; background: #fff; outline: none;
+}
+.busca-input:focus { border-color: var(--accent); }
 
-.vazio { padding: 32px 20px; text-align: center; font-size: 13px; color: #6b7280; }
-.sem-folha { padding: 24px 20px; text-align: center; font-size: 13px; color: #92400e;
-             background: #fffbeb; border: 1px solid #fde68a; border-radius: 10px; margin: 8px 0; }
+.func-lista { flex: 1; overflow-y: auto; padding: 6px 0; }
+.func-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px; cursor: pointer; transition: background 0.1s;
+}
+.func-item:hover { background: #f0f4fa; }
+.func-item.sem-pdf { opacity: 0.45; }
+.func-item input { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.func-item label {
+  cursor: pointer; font-size: 12.5px; line-height: 1.3; color: #374151;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 6px;
+}
+.func-item.sem-pdf label { cursor: not-allowed; }
+.func-mat { font-family: var(--mono); font-size: 11px; font-weight: 600; color: #1d4ed8; }
+.badge-s {
+  font-size: 9px; padding: 1px 5px; border-radius: 4px; font-weight: 600; flex-shrink: 0;
+}
+.badge-s-ok { background: #dcfce7; color: #166534; }
+.badge-s-no { background: #f3f4f6; color: #9ca3af; }
+
+/* ── ÁREA PRINCIPAL ── */
+.main { display: flex; flex-direction: column; overflow: hidden; }
+
+.placeholder {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: var(--sub); gap: 12px;
+}
+.placeholder-icone { font-size: 52px; opacity: 0.35; }
+.placeholder-txt   { font-size: 14px; }
+
+.pdf-barra {
+  display: none; align-items: center; gap: 12px;
+  padding: 8px 16px; background: #f8fafc;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.pdf-barra.visivel { display: flex; }
+.pdf-func-matr { font-family: var(--mono); font-size: 12px; color: var(--sub); }
+.pdf-func-nome { font-size: 13px; font-weight: 600; color: #1e293b; }
+.btn-nova-aba {
+  margin-left: auto; padding: 5px 14px; border-radius: 6px; font-size: 12px;
+  font-weight: 600; background: #dc2626; color: #fff; border: none; cursor: pointer;
+  text-decoration: none; display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-nova-aba:hover { background: #b91c1c; }
+
+.pdf-frame { flex: 1; border: none; display: none; background: #525659; }
+.pdf-frame.visivel { display: block; }
 </style>
 </head>
 <body>
 
 <div class="topo">
-  <div style="display:flex;flex-direction:column;align-items:flex-start;">
+  <div class="topo-esq">
     <span class="topo-empresa">{{ empresa }}</span>
     <span class="topo-nome">{{ nome }}</span>
   </div>
-  <div class="topo-titulo">
-    <span>{{ titulo_pagina or 'Memória de Cálculo' }}</span>
+  <div class="topo-ctr">
+    <span class="topo-titulo">Memória de Cálculo</span>
     {% if anomes_atual %}
     <span class="badge-folha {{ folha_sit_class }}">
       {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
@@ -120,8 +159,8 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     <span class="badge-folha" style="color:#991b1b;border-color:#fca5a5;">Sem folha ativa</span>
     {% endif %}
   </div>
-  <div style="display:flex;align-items:center;gap:16px;">
-    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+  <div class="topo-dir">
+    <div style="display:flex;flex-direction:column;align-items:flex-end;">
       <div class="topo-logo">Folha10·Simples</div>
       <div class="topo-versao">Versão: {{ versao }}</div>
     </div>
@@ -129,59 +168,104 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
   </div>
 </div>
 
-<div class="conteudo">
-  {% if not anomes_atual %}
-  <div class="sem-folha">Nenhuma folha ativa. Defina a folha ativa no menu principal para visualizar as memórias.</div>
-  {% else %}
-  <div class="card">
-    <div class="card-topo">
-      <span class="card-titulo">{{ card_subtitulo or 'Selecione o funcionário para abrir a memória de cálculo em PDF' }}</span>
-      <span style="font-size:11px;color:#64748b;">{{ funcionarios|length }} funcionário(s)</span>
+{% if not anomes_atual %}
+<div style="padding:40px 24px;text-align:center;color:#92400e;font-size:14px;">
+  Nenhuma folha ativa. Defina a folha ativa no menu principal.
+</div>
+{% else %}
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-titulo">Funcionários</div>
+      <button class="btn-abrir-mem" id="btnAbrirMem" onclick="abrirMemoria()" disabled>
+        📄 Abrir Memória
+      </button>
+      <input type="text" class="busca-input" id="busca"
+             placeholder="Buscar nome ou matrícula…"
+             oninput="filtrarLista()">
     </div>
-    <div class="card-body">
-      <div class="filtro-wrap">
-        <input class="filtro-input" type="text" id="filtroNome"
-               placeholder="Filtrar por nome ou matrícula..."
-               oninput="filtrar(this.value)">
+    <div class="func-lista" id="funcLista">
+      {% for f in funcionarios %}
+      <div class="func-item {% if not f.tem_pdf %}sem-pdf{% endif %}"
+           data-nome="{{ f.nome | lower }}"
+           data-mat="{{ '%06d' % f.matricula }}">
+        <input type="checkbox"
+               id="chk{{ f.matricula }}"
+               value="{{ f.matricula }}"
+               data-nome="{{ f.nome }}"
+               {% if not f.tem_pdf %}disabled title="PDF não disponível para esta folha"{% endif %}
+               onchange="onCheck(this)">
+        <label for="chk{{ f.matricula }}">
+          <span class="func-mat">{{ '%06d' % f.matricula }}</span>
+          — {{ f.nome }}
+          {% if not f.tem_pdf %}<span class="badge-s badge-s-no">sem PDF</span>{% endif %}
+        </label>
       </div>
-      <div class="lista-func" id="listaFunc">
-        {% for f in funcionarios %}
-        <div class="item-func {% if not f.tem_pdf %}sem-pdf{% endif %}"
-             data-busca="{{ f.matricula }} {{ f.nome | lower }}">
-          <div class="item-esq">
-            <span class="item-matr">{{ '%06d' % f.matricula }}</span>
-            <span class="item-nome" title="{{ f.nome }}">{{ f.nome }}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-            {% if f.tem_pdf %}
-            <span class="badge-pdf badge-pdf-ok">PDF ✓</span>
-            <a class="btn-abrir btn-abrir-ok"
-               href="{{ pdf_endpoint or '/api/memoria_calculo_pdf' }}/{{ f.matricula }}"
-               target="_blank">
-              &#128438; Imprimir em PDF
-            </a>
-            {% else %}
-            <span class="badge-pdf badge-pdf-no">Sem PDF</span>
-            <span class="btn-abrir btn-abrir-dis">📄 Abrir</span>
-            {% endif %}
-          </div>
-        </div>
-        {% else %}
-        <div class="vazio">Nenhum funcionário ativo encontrado.</div>
-        {% endfor %}
-      </div>
+      {% else %}
+      <div style="padding:16px;font-size:13px;color:var(--sub);">Nenhum funcionário ativo.</div>
+      {% endfor %}
     </div>
   </div>
-  {% endif %}
+
+  <!-- ÁREA PRINCIPAL -->
+  <div class="main">
+    <div class="placeholder" id="placeholder">
+      <div class="placeholder-icone">📄</div>
+      <div class="placeholder-txt">Selecione um funcionário e clique em Abrir Memória.</div>
+    </div>
+    <div class="pdf-barra" id="pdfBarra">
+      <span class="pdf-func-matr" id="pdfMatr"></span>
+      <span class="pdf-func-nome" id="pdfNome"></span>
+      <a class="btn-nova-aba" id="pdfLinkNovaAba" href="#" target="_blank">
+        &#128438; Abrir em nova aba
+      </a>
+    </div>
+    <iframe class="pdf-frame" id="pdfFrame" src="about:blank"></iframe>
+  </div>
+
 </div>
+{% endif %}
 
 <script>
-function filtrar(termo) {
-  const t = termo.toLowerCase().trim();
-  document.querySelectorAll('#listaFunc .item-func').forEach(el => {
-    const busca = el.dataset.busca || '';
-    el.style.display = (!t || busca.includes(t)) ? '' : 'none';
+function filtrarLista() {
+  const q = document.getElementById('busca').value.toLowerCase();
+  document.querySelectorAll('.func-item').forEach(el => {
+    const nome = el.dataset.nome || '';
+    const mat  = el.dataset.mat  || '';
+    el.style.display = (!q || nome.includes(q) || mat.includes(q)) ? '' : 'none';
   });
+}
+
+function onCheck(chk) {
+  // comportamento de seleção única: desmarca os outros
+  if (chk.checked) {
+    document.querySelectorAll('#funcLista input[type=checkbox]').forEach(c => {
+      if (c !== chk) c.checked = false;
+    });
+  }
+  document.getElementById('btnAbrirMem').disabled =
+    !document.querySelector('#funcLista input[type=checkbox]:checked');
+}
+
+function abrirMemoria() {
+  const chk = document.querySelector('#funcLista input[type=checkbox]:checked');
+  if (!chk) return;
+
+  const mat  = parseInt(chk.value);
+  const nome = chk.dataset.nome;
+  const matr = chk.closest('.func-item').dataset.mat;
+  const url  = '/api/memoria_calculo_pdf/' + mat;
+
+  document.getElementById('placeholder').style.display = 'none';
+  document.getElementById('pdfBarra').classList.add('visivel');
+  document.getElementById('pdfFrame').classList.add('visivel');
+
+  document.getElementById('pdfMatr').textContent      = matr;
+  document.getElementById('pdfNome').textContent      = nome;
+  document.getElementById('pdfLinkNovaAba').href      = url;
+  document.getElementById('pdfFrame').src             = url;
 }
 </script>
 </body>

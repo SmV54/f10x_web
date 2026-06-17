@@ -233,8 +233,26 @@ src.onmessage = function(e) {
     } else if (d.tipo === 'bloqueio') {
         src.close();
         document.getElementById('sec-prog').style.display = 'none';
-        document.getElementById('bloqueio-msg').textContent = d.msg;
-        document.getElementById('sec-bloqueio').style.display = 'flex';
+        if (d.sit === 'C') {
+            if (confirm('A folha já está calculada.\nDeseja reabrir e calcular novamente?')) {
+                fetch('/api/folha/reabrir', { method: 'POST' })
+                    .then(r => r.json())
+                    .then(j => {
+                        if (j.ok) {
+                            location.reload();
+                        } else {
+                            document.getElementById('bloqueio-msg').textContent = j.msg || 'Erro ao reabrir a folha.';
+                            document.getElementById('sec-bloqueio').style.display = 'flex';
+                        }
+                    });
+            } else {
+                document.getElementById('bloqueio-msg').textContent = d.msg;
+                document.getElementById('sec-bloqueio').style.display = 'flex';
+            }
+        } else {
+            document.getElementById('bloqueio-msg').textContent = d.msg;
+            document.getElementById('sec-bloqueio').style.display = 'flex';
+        }
     } else if (d.tipo === 'erro') {
         src.close();
         document.getElementById('progFunc').innerHTML =

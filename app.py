@@ -21332,8 +21332,42 @@ def _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=None):
     return result
 
 
+def _limpar_folha_calculada(id_cliente, id_empresa, anomes, folha_tipo="N", matricula=None):
+    """Apaga registros calculados (origem C e F) de tab_mov e todos de tab_total
+    para a folha/folha_tipo informados. Se matricula for passado, restringe a esse funcionário."""
+    try:
+        q = (supabase.table("tab_mov")
+             .delete()
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo)
+             .in_("origem",    ["C", "F"]))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if matricula is not None:
+            q = q.eq("matricula", int(matricula))
+        q.execute()
+    except Exception as e:
+        print(f"[limpar-tab_mov] erro: {e}")
+
+    try:
+        q = (supabase.table("tab_total")
+             .delete()
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if matricula is not None:
+            q = q.eq("matricula", int(matricula))
+        q.execute()
+    except Exception as e:
+        print(f"[limpar-tab_total] erro: {e}")
+
+
 def _calc_etapa9_tab_mov(id_empresa, anomes, folha_tipo="N", id_cliente=None):
-    """Dict {matricula: [records]} de tab_mov MANUAIS (origem != 'C') ativos no mês anomes e folha_tipo."""
+    """Dict {matricula: [records]} de tab_mov com origem='M' (manuais) ativos no mês anomes e folha_tipo.
+    Apenas origem='M' — entradas 'F' (mov_fixo) são recalculadas a cada cálculo e não devem bloquear reinserção."""
     result = {}
     try:
         q = (supabase.table("tab_mov")
@@ -21342,7 +21376,7 @@ def _calc_etapa9_tab_mov(id_empresa, anomes, folha_tipo="N", id_cliente=None):
              .eq("situacao", "A")
              .eq("folha", int(anomes))
              .eq("folha_tipo", folha_tipo)
-             .neq("origem", "C"))
+             .eq("origem", "M"))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         r = q.execute()
@@ -21480,10 +21514,27 @@ def _get_dep_irrf_count(id_empresa):
         return {}
 
 
+def _get_dep_todos_por_empresa(id_empresa):
+    """Retorna {matricula: [lista de dependentes]} com todos os dependentes (qualquer depirrf)."""
+    try:
+        r = (supabase.table("tab_dependentes")
+             .select("matricula, nome, tpdep, dtnascto, depirrf, depsf")
+             .eq("id_empresa", id_empresa)
+             .execute())
+        result = {}
+        for row in (r.data or []):
+            m = int(row.get("matricula") or 0)
+            if m:
+                result.setdefault(m, []).append(row)
+        return result
+    except Exception:
+        return {}
+
+
 def _calc_irrf(base_centavos, tabela):
-    """IRRF: (base × alíq) // 10000 - parcela_deduzir.
+    """IRRF: round(base × alíq / 10000) - parcela_deduzir.
     Retorna (irrf_centavos, (aliq_raw, dedu_centavos)) ou (0, None) se isento/sem tabela.
-    Divisão inteira — trunca sem arredondar.
+    Usa arredondamento normal (round half up via +5000//10000).
     """
     if not tabela or base_centavos <= 0:
         return 0, None
@@ -21504,7 +21555,7 @@ def _calc_irrf(base_centavos, tabela):
             break
     if aliq_ap == 0:
         return 0, None
-    irrf = (base_centavos * aliq_ap) // 10000 - dedu_ap
+    irrf = (base_centavos * aliq_ap + 5000) // 10000 - dedu_ap
     return max(0, irrf), (aliq_ap, dedu_ap)
 
 
@@ -21624,7 +21675,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                            id_cliente=id_cliente)
     sm_centavos     = _get_sm_centavos(anomes)
     tabela_legais   = _get_tabela_legais(anomes)
-    dep_irrf_count  = _get_dep_irrf_count(id_empresa)
+    dep_irrf_count    = _get_dep_irrf_count(id_empresa)
+    dep_todos_por_mat = _get_dep_todos_por_empresa(id_empresa)
 
     # Pré-busca: tipo e descrição de cada rubrica {cod: {tp, dsc, inc_cp}}
     rubricas_info = {}
@@ -21722,29 +21774,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     except Exception:
         pass
 
-    # Apaga todos os registros calculados anteriores desta folha antes de recalcular
-    try:
-        (supabase.table("tab_mov")
-         .delete()
-         .eq("id_cliente", id_cliente)
-         .eq("id_empresa", id_empresa)
-         .eq("folha", int(anomes))
-         .eq("folha_tipo", _folha_tipo_mov)
-         .eq("origem", "C")
-         .execute())
-    except Exception:
-        pass
-
-    try:
-        (supabase.table("tab_total")
-         .delete()
-         .eq("id_cliente", id_cliente)
-         .eq("id_empresa", id_empresa)
-         .eq("folha", int(anomes))
-         .eq("folha_tipo", anomes_tipo)
-         .execute())
-    except Exception:
-        pass
+    # Apaga registros calculados anteriores desta folha antes de recalcular
+    _limpar_folha_calculada(id_cliente, id_empresa, anomes, _folha_tipo_mov)
 
     # Apaga S-1200 e S-1210 desta folha antes de recalcular
     try:
@@ -22490,7 +22521,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _ra, _rb = int(_redutor_a), int(_redutor_b)
                     _ri, _rf = int(_redutor_ini), int(_redutor_fim)
                     if _ri <= int(base_irrf_bruta) <= _rf:
-                        _rc = (_ra * 1000000 - _rb * int(base_irrf_bruta)) // 1000000
+                        _rc = (_ra * 1000000 - _rb * int(base_irrf_bruta) + 500000) // 1000000
                         redutor_val = max(0, min(_rc, irrf_val_pre_redutor))
                         irrf_val    = irrf_val_pre_redutor - redutor_val
             mmVmm[120] = irrf_val
@@ -22617,6 +22648,80 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
             elems.append(e11_tbl)
 
+            # ── 11.1 dependentes IRRF ─────────────────────────
+            _TPDEP_D = {
+                1: "Conjuge/Companh.", 2: "Uniao Estavel",
+                3: "Filho(a)/Enteado(a)", 4: "Menor Guarda/Tutela",
+                5: "Pais/Sogros/Avos", 6: "Irmao/a", 7: "Neto(a)", 9: "Outros",
+            }
+            _dep_func_todos = dep_todos_por_mat.get(matr, [])
+            _st_dh11 = ParagraphStyle("dh11", fontName="Helvetica-Bold", fontSize=6.5,
+                                      alignment=1, textColor=colors.white)
+            _st_dv11 = ParagraphStyle("dv11", fontName="Helvetica", fontSize=6.5,
+                                      alignment=0, textColor=colors.HexColor("#1d4ed8"))
+            _st_dn11 = ParagraphStyle("dn11", fontName="Helvetica", fontSize=6.5,
+                                      alignment=0, textColor=colors.HexColor("#6b7280"))
+            _dep_d_rows = [
+                [Paragraph("Nome do Dependente", _st_dh11),
+                 Paragraph("Tipo", _st_dh11),
+                 Paragraph("Dt.Nasc.", _st_dh11),
+                 Paragraph("IRRF?", _st_dh11),
+                 Paragraph("Observacao", _st_dh11)],
+            ]
+            _dep_span_extra = []
+            if _dep_func_todos:
+                for _dep in _dep_func_todos:
+                    _irrf_s  = str(_dep.get("depirrf") or "N").upper()
+                    _irrf_ok = (_irrf_s == "S")
+                    _dn      = str(_dep.get("dtnascto") or "")
+                    _dn_fmt  = f"{_dn[6:8]}/{_dn[4:6]}/{_dn[0:4]}" if len(_dn) == 8 else "—"
+                    _tpd     = int(_dep.get("tpdep") or 0)
+                    _tpd_s   = _TPDEP_D.get(_tpd, f"Tipo {_tpd}" if _tpd else "—")
+                    _obs     = ("" if _irrf_ok
+                                else "Nao incluido — campo 'depirrf' nao marcado como S no cadastro de dependentes")
+                    _st_use  = _st_dv11 if _irrf_ok else _st_dn11
+                    _dep_d_rows.append([
+                        Paragraph(_dep.get("nome") or "—", _st_use),
+                        Paragraph(_tpd_s, _st_use),
+                        Paragraph(_dn_fmt, _st_use),
+                        Paragraph("Sim" if _irrf_ok else "Nao", _st_use),
+                        Paragraph(_obs, _st_use),
+                    ])
+            else:
+                _dep_d_rows.append([
+                    Paragraph("Nenhum dependente cadastrado.", _st_dn11),
+                    Paragraph("", _st_dn11),
+                    Paragraph("", _st_dn11),
+                    Paragraph("", _st_dn11),
+                    Paragraph("", _st_dn11),
+                ])
+                _dep_span_extra = [("SPAN", (0, 1), (-1, 1))]
+            _dep_det_tbl11 = Table(_dep_d_rows, colWidths=[4.5*cm, 3*cm, 2*cm, 1.2*cm, 6.3*cm])
+            _dep_det_tbl11.setStyle(TableStyle([
+                *_dep_span_extra,
+                ("BACKGROUND",    (0, 0), (-1, 0),  colors.HexColor("#1e3d5c")),
+                ("TEXTCOLOR",     (0, 0), (-1, 0),  colors.white),
+                ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+                ("TOPPADDING",    (0, 0), (-1, -1), 1.5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
+                ("LINEBELOW",     (0, 0), (-1, 0),  0.3, colors.HexColor("#94a3b8")),
+            ]))
+            _dep_outer11 = Table([
+                [Paragraph("11.1 - Dependentes cadastrados:", st_detalhe)],
+                [_dep_det_tbl11],
+            ], colWidths=[17*cm])
+            _dep_outer11.setStyle(TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("LEFTPADDING",   (0, 1), (0, 1),   10),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                ("TOPPADDING",    (0, 0), (0, 0),   4),
+                ("BOTTOMPADDING", (0, 0), (0, 0),   1),
+                ("TOPPADDING",    (0, 1), (0, 1),   1),
+                ("BOTTOMPADDING", (0, 1), (0, 1),   4),
+            ]))
+            elems.append(_dep_outer11)
+
             # ── totais ────────────────────────────────────────
             total_prov = sum(v for r, v in mmVmm.items()
                              if rubricas_info.get(r, {"tp":"1"})["tp"] == "1")
@@ -22646,34 +22751,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(Spacer(1, 0.5*cm))
             elems.append(tot_tbl)
 
-            # Apaga registros calculados anteriores (origem C ou F, folha_tipo N) antes de regravar
-            try:
-                q_del = (supabase.table("tab_mov")
-                         .delete()
-                         .eq("id_empresa", id_empresa)
-                         .eq("matricula",  matr)
-                         .eq("folha",      int(anomes))
-                         .eq("folha_tipo", "N")
-                         .in_("origem",    ["C", "F"]))
-                if id_cliente:
-                    q_del = q_del.eq("id_cliente", id_cliente)
-                q_del.execute()
-            except Exception as e_del:
-                print(f"[tab_mov-DELETE] mat={matr} erro: {e_del}")
-
-            # Apaga totais anteriores (folha_tipo N) antes de regravar
-            try:
-                q_del_tot = (supabase.table("tab_total")
-                             .delete()
-                             .eq("id_empresa", id_empresa)
-                             .eq("matricula",  matr)
-                             .eq("folha",      int(anomes))
-                             .eq("folha_tipo", "N"))
-                if id_cliente:
-                    q_del_tot = q_del_tot.eq("id_cliente", id_cliente)
-                q_del_tot.execute()
-            except Exception as e_del_tot:
-                print(f"[tab_total-DELETE] mat={matr} erro: {e_del_tot}")
+            # Segurança: apaga registros calculados deste funcionário antes de regravar
+            _limpar_folha_calculada(id_cliente, id_empresa, anomes, _folha_tipo_mov, matricula=matr)
 
             # Grava verbas calculadas no tab_mov com origem='C'
             try:
@@ -22815,8 +22894,8 @@ def calcular_folha_stream():
         elif sit == "F":
             msg = "Folha Fechada — reabra antes de calcular."
         else:
-            msg = "Folha Calculada: Reabrir antes de Calcular Novamente."
-        bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg}, ensure_ascii=False)
+            msg = "Folha já está calculada."
+        bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": sit}, ensure_ascii=False)
         return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
 
     anomes      = str(session.get("anomes_atual") or "")
@@ -29590,8 +29669,8 @@ def _imp_dep_f10(caminho, id_cliente):
                     'cpfdep'     : _cpf(r.get('cpf') or r.get('cpfdep')),
                     'sexodep'    : (lambda s: s if s in ('M', 'F') else None)(
                                        (_s(r.get('sexo') or r.get('sexodep'), 1) or '').upper()),
-                    'depirrf'    : _sn(r.get('irrf') or r.get('depirrf')),
-                    'depsf'      : _sn(r.get('sf') or r.get('depsf') or r.get('salfam')),
+                    'depirrf'    : _sn(r.get('descir') or r.get('irrf') or r.get('depirrf')),
+                    'depsf'      : _sn(r.get('descsf') or r.get('sf') or r.get('depsf') or r.get('salfam')),
                     'inctrabf'   : _sn(r.get('incapaz') or r.get('inctrabf') or r.get('incapacitado')),
                 }
                 campos = {k: v for k, v in campos.items() if v is not None}
@@ -29980,6 +30059,7 @@ def _imp_movfix_f10(caminho, id_cliente):
                 qtd_acc = _int(r.get('qtd'))
                 fi      = _int(r.get('folhai'))
                 ff      = _int(r.get('folhaf'))
+                fp      = _int(r.get('folhaparada'))  # quando preenchido, encerra o movimento nesta folha
 
                 # 0 → null para chaves estrangeiras e campos de filtro
                 def _nn(v):   # int, 0 → None
@@ -30010,12 +30090,15 @@ def _imp_movfix_f10(caminho, id_cliente):
                     'idade2'              : (lambda n: n if 0 <= n <= 120 else None)(_int(r.get('idade2'))),
                     'tempo_servico1'      : _int_or_none(r.get('temposervico1')),
                     'tempo_servico2'      : _int_or_none(r.get('temposervico2')),
-                    # parcelas x período são mutuamente exclusivos:
-                    # qtd=0 → modo período (folha_inicial/final); qtd>0 → modo parcelas (sem datas)
+                    # folha_inicial: apenas no modo período (qtd=0)
                     'folha_inicial'       : (fi if (190001 <= fi <= 209912) else None)
                                            if qtd_acc == 0 else None,
-                    'folha_final'         : (ff if (190001 <= ff <= 209912) else None)
-                                           if qtd_acc == 0 else None,
+                    # folha_final: folhaparada vale em QUALQUER modo (data de encerramento forçado);
+                    # folhaf só no modo período (qtd=0)
+                    'folha_final'         : (fp if (190001 <= fp <= 209912) else None) or (
+                                               (ff if (190001 <= ff <= 209912) else None)
+                                               if qtd_acc == 0 else None
+                                           ),
                     'cod_verba'           : verba,
                     'qtd_parcelas'        : (qtd_acc if 1 <= qtd_acc <= 99 else None)
                                            if qtd_acc > 0 else None,
