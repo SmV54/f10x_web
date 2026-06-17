@@ -25078,7 +25078,9 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
                                     ano, anomes_pasta, f"{int(id_empresa):06d}")
         os.makedirs(pasta_sv, exist_ok=True)
         cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
-        nome_f       = f"Folha10_Contracheque_CNPJ_{cnpj_digits}_Folha_{anomes}_em_{ts}.pdf"
+        _mat_sfx     = (f"_Matricula_{matriculas_sel[0]:06d}"
+                        if len(matriculas_sel) == 1 else "")
+        nome_f       = f"Folha10_Contracheque_CNPJ_{cnpj_digits}_Folha_{anomes}{_mat_sfx}_em_{ts}.pdf"
         with open(os.path.join(pasta_sv, nome_f), "wb") as fh:
             fh.write(pdf_bytes)
     except Exception as e_sv:
