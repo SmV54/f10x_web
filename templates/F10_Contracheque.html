@@ -223,13 +223,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="checkbox" id="chkAssinatura" name="assinatura" value="1" checked>
                     <label for="chkAssinatura">Incluir linha de assinatura do funcionário</label>
                 </div>
-                <div class="chk-row">
-                    <input type="checkbox" id="chkSalvar" name="salvar" value="1" onchange="excluir(this,'chkSalvarInd')">
-                    <label for="chkSalvar">Gravar PDF no disco <span style="font-size:11px;color:#64748b;">(C:\Folha10-Simples_Contracheque\…)</span></label>
-                </div>
                 <div class="chk-row" id="rowSalvarInd">
-                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1" onchange="excluir(this,'chkSalvar')">
-                    <label for="chkSalvarInd">Gravar em PDF um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
+                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1">
+                    <label for="chkSalvarInd">Um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
                 </div>
             </div>
 
@@ -240,20 +236,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
         </div>
 
-        <!-- Botão -->
+        <!-- Botão + caminho de gravação -->
         <button type="submit" class="btn-gerar" onclick="prepareSubmit()">
-            &#128196; Gerar PDF
+            &#128190; Gerar PDF
         </button>
+        {% if pasta_salvar %}
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;">
+            <span>💾</span>
+            <span>Gravado automaticamente em:&nbsp;<code style="font-family:'IBM Plex Mono',monospace;font-size:11px;background:#f8fafc;border:1px solid #dde3ec;border-radius:4px;padding:2px 7px;color:#1e3d5c;">{{ pasta_salvar }}</code></span>
+        </div>
+        {% endif %}
 
     </form>
 </div>
 
 <script>
 let listaVisivel = false;
-
-function excluir(src, outroId) {
-    if (src.checked) document.getElementById(outroId).checked = false;
-}
 
 function selModo(m) {
     ['1','2S','2D'].forEach(x => document.getElementById('card-'+x).classList.toggle('sel', x === m));
