@@ -248,6 +248,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         {% endif %}
 
     </form>
+
+    <!-- Card: Outro Contracheque -->
+    <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+        <div>
+            <div class="card-title" style="margin-bottom:3px;">Outro Contracheque</div>
+            <div style="font-size:12px;color:#64748b;">Voltar e escolher outro funcionário ou período</div>
+        </div>
+        <a href="/contracheque"
+           style="flex-shrink:0;display:inline-flex;align-items:center;gap:7px;
+                  background:#374151;color:#fff;font-family:var(--sans);font-size:13px;
+                  font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;
+                  transition:background 0.15s;"
+           onmouseover="this.style.background='#1f2937'"
+           onmouseout="this.style.background='#374151'">
+            &#8635; Selecionar
+        </a>
+    </div>
+
 </div>
 
 <script>
