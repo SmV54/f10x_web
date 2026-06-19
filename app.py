@@ -24240,7 +24240,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente):
             "cc_desc_fmt": _fmt_brl(cc_desc),
             "cc_liq_fmt":  _fmt_brl(cc_liq),
             "funcs": [{
-                "mat":        f"{f['mat']:08d}",
+                "mat":        f"{f['mat']:06d}",
                 "nome":       f["nome"],
                 "funcao":     f["funcao"],
                 "dtadm_fmt":  _fdt(f["dtadm"]),
