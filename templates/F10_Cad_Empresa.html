@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10-Simples — Cadastro de Empresa</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -531,6 +533,19 @@ body {
     .grid-encargos { grid-template-columns: repeat(2, 1fr); }
     .container { padding: 0 12px 32px; gap: 10px; }
 }
+
+/* ── BOTÃO TOUR ── */
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #2a7de1; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(42,125,225,0.40);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); line-height: 1;
+}
+#btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 </style>
 </head>
 <body>
@@ -558,7 +573,7 @@ body {
 <div class="container">
 
     <!-- ── IDENTIFICAÇÃO ──────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-id">
         <div class="secao-header">
             <div class="secao-icone"></div>
             <span class="secao-titulo">Identificação da Empresa</span>
@@ -608,7 +623,7 @@ body {
     </div>
 
     <!-- ── INSS / ENCARGOS ────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-inss">
         <div class="secao-header">
             <div class="secao-icone" style="background:#18795b"></div>
             <span class="secao-titulo">INSS / Encargos Previdenciários</span>
@@ -679,7 +694,7 @@ body {
     </div>
 
     <!-- ── TRIBUTAÇÃO ─────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-trib">
         <div class="secao-header">
             <div class="secao-icone" style="background:#b45309"></div>
             <span class="secao-titulo">Tributação / Gerais</span>
@@ -747,7 +762,7 @@ body {
     </div>
 
     <!-- ── eSocial ────────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-esocial">
         <div class="secao-header">
             <div class="secao-icone" style="background:#7c3aed"></div>
             <span class="secao-titulo">Indicadores do eSocial</span>
@@ -937,6 +952,8 @@ body {
     <div id="resultadoValidacao"></div>
 
 </div>
+
+<button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
 
 <script>
 /* ── MÁSCARA CNPJ ──────────────────────────────────────── */
@@ -1492,6 +1509,129 @@ document.addEventListener('DOMContentLoaded', async () => {
     preencherFormulario({{ empresa_dados | tojson }});
     {% endif %}
 });
+
+/* ── TOUR DRIVER.JS ── */
+function iniciarTour() {
+    const modoAlterar = window._modoAlterar;
+
+    const d = window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: [
+            {
+                element: '.topo',
+                popover: {
+                    title: modoAlterar ? '✏️ Alterar Empresa' : '🏢 Cadastro de Empresa',
+                    description: modoAlterar
+                        ? 'Aqui você altera os dados da empresa. O CNPJ não pode ser modificado. Preencha ou corrija os campos e clique em <strong>Atualizar Empresa</strong>.'
+                        : 'Preencha os dados do cliente de cima para baixo. Campos obrigatórios são sinalizados ao tentar salvar (borda verde = ok, vermelha = erro).',
+                    side: 'bottom', align: 'center'
+                }
+            },
+            {
+                element: '#secao-id',
+                popover: {
+                    title: '🪪 Identificação da Empresa',
+                    description: 'Dados básicos: CNPJ, Razão Social, Nome Fantasia, CNAE e o mês em que o sindicato reajusta os salários (Dissídio).',
+                    side: 'bottom', align: 'start'
+                }
+            },
+            {
+                element: '#cnpj',
+                popover: {
+                    title: '🔢 CNPJ',
+                    description: 'A máscara é aplicada automaticamente. Ao sair do campo, o sistema <strong>valida o dígito verificador</strong>: borda verde = válido; borda vermelha = número incorreto.',
+                    side: 'bottom', align: 'start'
+                }
+            },
+            {
+                element: '#razaosocial',
+                popover: {
+                    title: '🏷️ Razão Social',
+                    description: 'Digite exatamente como consta no Cartão do CNPJ. <strong>Acentos são removidos automaticamente</strong> — o eSocial exige texto sem acentuação.',
+                    side: 'bottom', align: 'start'
+                }
+            },
+            {
+                element: '#cnae',
+                popover: {
+                    title: '📋 CNAE',
+                    description: 'Classificação Nacional de Atividades Econômicas — 7 dígitos no formato XX.XXX-XX. Consulte o <strong>Cartão do CNPJ</strong> para o código correto. Ao clicar no campo aparece uma dica de preenchimento.',
+                    side: 'bottom', align: 'start'
+                }
+            },
+            {
+                element: '#mes_dissidio',
+                popover: {
+                    title: '📅 Mês Dissídio',
+                    description: 'Mês em que o sindicato da categoria reajusta os salários. Usado para alertas de reajuste e para o eSocial.',
+                    side: 'bottom', align: 'start'
+                }
+            },
+            {
+                element: '#secao-inss',
+                popover: {
+                    title: '💰 INSS / Encargos Previdenciários',
+                    description: 'Selecione o <strong>FPAS</strong> e todos os percentuais de terceiros (SESI, SENAI, SEBRAE etc.) são preenchidos automaticamente conforme a tabela da Receita Federal.',
+                    side: 'bottom', align: 'start'
+                }
+            },
+            {
+                element: '#fpas',
+                popover: {
+                    title: '📑 FPAS',
+                    description: 'Fundo de Previdência e Assistência Social — código que define a alíquota da empresa e as contribuições destinadas a terceiros. <strong>Consulte o contador</strong> para o código correto da atividade.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '.quadro-terceiros',
+                popover: {
+                    title: '🏦 Contribuições de Terceiros',
+                    description: 'Percentuais preenchidos automaticamente pelo FPAS. Use o botão <em>Alterar percentuais manualmente</em> apenas se o contador ou a Receita Federal orientar valores diferentes.',
+                    side: 'top', align: 'center'
+                }
+            },
+            {
+                element: '#secao-trib',
+                popover: {
+                    title: '🧾 Tributação / Gerais',
+                    description: '<strong>Natureza Jurídica</strong> e <strong>Classificação Tributária</strong> são obrigatórias para o eSocial (S-1000). Consulte o contador para o enquadramento correto. ISS e PIS só para empresas prestadoras de serviços.',
+                    side: 'top', align: 'start'
+                }
+            },
+            {
+                element: '#secao-esocial',
+                popover: {
+                    title: '📃 Indicadores do eSocial',
+                    description: 'Campos exigidos pelo evento S-1000. Para a maioria das empresas o valor é <strong>0 — Não</strong>. Preencha conforme o enquadramento do cliente. Ao clicar em cada campo, uma dica detalhada é exibida.',
+                    side: 'top', align: 'start'
+                }
+            },
+            {
+                element: '.secao-cnab-toggle',
+                popover: {
+                    title: '🏦 CNAB 240 — Opcional',
+                    description: 'Preencha somente se a empresa pagar salários via <strong>arquivo bancário CNAB 240</strong>. Clique aqui para expandir. Os dados de convênio, layout e câmara de compensação são fornecidos pelo gerente do banco.',
+                    side: 'top', align: 'start'
+                }
+            },
+            {
+                element: '.acoes',
+                popover: {
+                    title: '💾 Salvar',
+                    description: 'Ao clicar, o sistema valida todos os campos obrigatórios. Campos com erro ficam com borda <span style="color:#dc2626;font-weight:700">vermelha</span> e a lista de erros é exibida abaixo. Corrija e tente novamente.',
+                    side: 'top', align: 'start'
+                }
+            },
+        ],
+    });
+    d.drive();
+}
 </script>
 </body>
 </html>
