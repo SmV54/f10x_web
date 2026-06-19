@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Contracheque</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:       #a0d9be;
@@ -114,6 +116,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     text-decoration: none; transition: background 0.15s; margin-top: 4px;
 }
 .btn-gerar:hover { background: var(--accent-dim); }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: var(--accent-dim); }
 </style>
 </head>
 <body>
@@ -149,7 +162,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <form id="frm" action="/contracheque_pdf" method="GET" target="_blank">
 
         <!-- Formato -->
-        <div class="card">
+        <div class="card" id="card-formato">
             <div class="card-title">Formato de impressão</div>
             <div class="modo-opcoes">
                 <label class="modo-card sel" id="card-1">
@@ -177,7 +190,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         <!-- Funcionários -->
-        <div class="card">
+        <div class="card" id="card-funcionarios">
             <div class="func-header">
                 <span class="func-header-title">Funcionários</span>
                 <div style="display:flex;gap:12px;align-items:center;">
@@ -209,7 +222,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         <!-- Opções extras -->
-        <div class="card">
+        <div class="card" id="card-opcoes">
             <div class="card-title">Opções</div>
             <div class="opcoes-extra">
                 <div class="chk-row">
@@ -243,7 +256,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </form>
 
     <!-- Card: Outro Contracheque -->
-    <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+    <div class="card" id="card-outro" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
         <div>
             <div class="card-title" style="margin-bottom:3px;">Outro Contracheque</div>
             <div style="font-size:12px;color:#64748b;">Voltar e escolher outro funcionário ou período</div>
@@ -260,6 +273,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
 </div>
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
 let listaVisivel = false;
@@ -315,6 +330,124 @@ document.querySelectorAll('.chk-func').forEach(c => {
         // se todos marcados e lista visível, poderia colapsar, mas não obrigatório
     });
 });
+
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '📄 Contracheque / Holerite',
+                description: 'Aqui você gera o PDF do contracheque dos funcionários referente à competência ativa. A empresa e o período aparecem no cabeçalho.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.page-header',
+            popover: {
+                title: '📅 Competência',
+                description: 'Mostra o mês/ano da folha ativa e o tipo (Normal, 13º, Férias…). O PDF gerado sempre corresponde a esse período.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-formato',
+            popover: {
+                title: '🖨️ Formato de impressão',
+                description: 'Escolha como os contracheques serão organizados no PDF. São três opções — veja cada uma abaixo.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-1',
+            popover: {
+                title: '1 por página',
+                description: 'Cada funcionário ocupa uma página inteira. Ideal quando há muitas verbas ou quando se quer mais espaço para assinatura.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: '#card-2S',
+            popover: {
+                title: 'Via Empresa + Funcionário',
+                description: 'Duas cópias do mesmo contracheque na mesma página separadas por linha de corte — uma fica com a empresa, a outra com o funcionário. Se houver mais de 13 verbas, o sistema usa 1 por página automaticamente.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: '#card-2D',
+            popover: {
+                title: 'Econômico — 2 funcionários/página',
+                description: 'Dois funcionários diferentes dividem a mesma página com linha de corte. Economiza papel em folhas com poucos lançamentos. Acima de 13 verbas o sistema sobe para 1 por página.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: '#card-funcionarios',
+            popover: {
+                title: '👥 Seleção de funcionários',
+                description: 'Por padrão o PDF inclui todos os funcionários com movimento no período. Você pode selecionar individualmente se quiser imprimir só alguns.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#labelTodos',
+            popover: {
+                title: 'Todos marcado',
+                description: 'Quando este checkbox está marcado, o sistema envia o contracheque de todos os funcionários com lançamento. Desmarcar abre a lista individual.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#btnToggleAll',
+            popover: {
+                title: 'Selecionar individualmente',
+                description: 'Clique para expandir a lista e escolher funcionário por funcionário. Um botão "Desmarcar todos" também aparece para limpar a seleção rapidamente.',
+                side: 'bottom', align: 'end',
+            }
+        },
+        {
+            element: '#card-opcoes',
+            popover: {
+                title: '⚙️ Opções extras',
+                description: '"Incluir linha de assinatura" adiciona um espaço no rodapé para o funcionário assinar. "Um arquivo por funcionário" grava PDFs separados com o número da matrícula no nome.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '.aviso',
+            popover: {
+                title: 'ℹ️ Regras automáticas',
+                description: 'Funcionários sem nenhum provento ou desconto são ignorados silenciosamente. No modo 2 por página, o limite de 13 verbas é verificado automaticamente — acima disso o sistema usa 1 por página para não cortar conteúdo.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '.btn-gerar',
+            popover: {
+                title: '💾 Gerar PDF',
+                description: 'Clique para abrir o PDF em nova aba. Se a pasta de gravação estiver configurada, o arquivo também é salvo automaticamente no disco com o nome da competência.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#card-outro',
+            popover: {
+                title: '🔄 Outro Contracheque',
+                description: 'Voltou ao menu de seleção sem precisar usar o botão Voltar. Útil para gerar contracheques de períodos ou funcionários diferentes sem sair do fluxo.',
+                side: 'top', align: 'end',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 
 </body>
