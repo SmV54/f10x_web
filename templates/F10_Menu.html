@@ -170,6 +170,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .grupo-coluna { display: flex; flex-direction: column; gap: 8px; }
 .nav-quebra   { width: 100%; height: 0; }
 
+/* ── CARD TROCAR EMPRESA ── */
+.card-trocar-emp {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 9px 16px; border-radius: 10px; cursor: pointer;
+    background: var(--surface); border: 1.5px solid var(--border);
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.card-trocar-emp:hover {
+    border-color: var(--accent); background: #eaf2fd;
+    box-shadow: 0 4px 14px rgba(42,125,225,0.12);
+}
+.trocar-icone { font-size: 18px; line-height: 1; }
+.trocar-label { font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.04em; }
+
 /* ── OVERLAY LOADING ── */
 .loading-overlay {
     display: none; position: fixed; inset: 0; z-index: 9999;
@@ -239,6 +253,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
     <div class="modulos-grid" id="modulosGrid"></div>
 
+    {% if qtd_empresas > 1 %}
+    <div id="areaTrocarEmpresa" style="margin-top:40px;padding-top:24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+      <div class="card-trocar-emp" onclick="window.location.href='/selecionar_empresa'">
+        <div class="trocar-icone">🔄</div>
+        <div class="trocar-label">Trocar Empresa</div>
+      </div>
+    </div>
+    {% endif %}
+
     <div class="nav-panel" id="navPanel">
         <div class="nav-header">
             <div class="nav-header-titulo">
@@ -260,6 +283,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <script>
 const FOLHA_SITUACAO      = '{{ folha_situacao }}';
 const FOLHA_PERIODO       = '{{ folha_ativa }}';
+const QTD_EMPRESAS        = {{ qtd_empresas }};
 const FOLHA_SIT_LABEL     = '{{ folha_ativa_situacao }}';
 const CPF_USUARIO         = '{{ cpf_usuario }}';
 

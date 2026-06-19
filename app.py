@@ -525,6 +525,8 @@ def menu():
         return redirect("/")
     if not session.get("id_empresa"):
         return redirect("/selecionar_empresa")
+    id_cliente = session.get("id_cliente")
+    qtd_empresas = len(_listar_empresas(id_cliente)) if id_cliente else 1
     return render_template(
         "F10_Menu.html",
         versao=ler_versao(),
@@ -532,6 +534,7 @@ def menu():
         empresa=session.get("empresa_info", ""),
         folha_situacao=str(session.get("anomes_situacao") or ""),
         cpf_usuario=str(session.get("cpf") or ""),
+        qtd_empresas=qtd_empresas,
     )
 
 # =========================================================
