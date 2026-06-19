@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Registro de Férias</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -187,6 +189,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 #toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 #toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
 </style>
 </head>
 
@@ -220,7 +233,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
     </div>
 
-    <div class="pref-card">
+    <div class="pref-card" id="card-funcionarios">
 
         <div class="pref-secao-titulo">Funcionários</div>
 
@@ -272,7 +285,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div><!-- /pref-card -->
 
     <!-- ── PERÍODO DE FÉRIAS ── -->
-    <div class="pref-card">
+    <div class="pref-card" id="card-periodo">
         <div class="pref-secao-titulo">Período de Férias</div>
         <div class="periodo-corpo">
 
@@ -304,7 +317,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div><!-- /periodo de férias -->
 
     <!-- ── ABONO PECUNIÁRIO ── -->
-    <div class="pref-card">
+    <div class="pref-card" id="card-abono">
         <div class="pref-secao-titulo">Pagar Abono Pecuniário?</div>
         <div class="periodo-corpo">
 
@@ -347,6 +360,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 </div><!-- /conteudo -->
 <div id="toast"></div>
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
 /* ── Folha Ativa e Matrículas ── */
@@ -583,6 +598,93 @@ async function registrarFerias() {
 
 /* ── Init ── */
 carregarResumo();
+
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '🏖️ Registro de Férias',
+                description: 'Aqui você registra o período de gozo de férias para um ou mais funcionários selecionados na tela anterior. Os dados ficam em tab_Eventos e são usados no Cálculo de Férias.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.rel-header',
+            popover: {
+                title: '📌 Contexto',
+                description: 'Exibe o título da operação e um botão Voltar para retornar à seleção de funcionários caso precise trocar a seleção.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-funcionarios',
+            popover: {
+                title: '👥 Funcionários selecionados',
+                description: 'Lista os funcionários vindos da tela de seleção. Para cada um mostra a matrícula, o nome e o último período aquisitivo e de gozo já registrado — útil para conferir antes de lançar.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#func-resumo-lista',
+            popover: {
+                title: '📋 Histórico de Férias',
+                description: 'Cada linha mostra o funcionário e suas férias anteriores (Gozo e Período Aquisitivo). Se não houver registro anterior aparece "Nenhuma Férias Registrada".',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#data_inicio',
+            popover: {
+                title: '📅 Data Início das Férias',
+                description: 'Informe o primeiro dia do gozo no formato dd/mm/aaaa. A data precisa estar dentro do mês da folha ativa. O campo valida automaticamente e calcula o término ao digitar.',
+                side: 'left', align: 'center',
+            }
+        },
+        {
+            element: '#qtd_dias',
+            popover: {
+                title: '🔢 Quantidade de Dias',
+                description: 'Entre 10 e 30 dias conforme a CLT. Ao preencher os dois campos, o sistema calcula e exibe a data de término automaticamente e verifica sobreposição com férias anteriores.',
+                side: 'left', align: 'center',
+            }
+        },
+        {
+            element: '#card-periodo',
+            popover: {
+                title: '📆 Período Aquisitivo',
+                description: '"Automático" detecta se é novo ou continuação com base nos dias e no histórico. "Sim para Todos" força novo período. "Não para Todos" registra como continuação do anterior para todos os funcionários selecionados.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#card-abono',
+            popover: {
+                title: '💰 Abono Pecuniário',
+                description: 'O funcionário pode converter ⅓ das férias em dinheiro (abono pecuniário). "Automático" aplica quando as férias forem menos de 20 dias e não houve abono na anterior. "Sim" ou "Não" forçam a opção para todos.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#btn-registrar',
+            popover: {
+                title: '✅ Registrar Férias',
+                description: 'Grava o período de gozo para todos os funcionários selecionados. Após salvar, retorna automaticamente à tela de seleção. Use o botão Voltar para cancelar sem gravar.',
+                side: 'top', align: 'end',
+            }
+        },
+    ];
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 
 </body>
