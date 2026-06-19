@@ -5,6 +5,7 @@ import shutil
 import json
 import queue
 import threading
+import calendar
 import uuid
 import base64
 import hashlib
@@ -9966,11 +9967,16 @@ def cad_mov():
     funcionarios = []
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, situacao")
+             .select("matricula, nome, nomer, situacao, dtadm")
              .eq("id_empresa", id_empresa)
+             .eq("situacao", "A")
              .order("nomer")
              .execute())
         for f in (r.data or []):
+            dtadm_raw = str(f.get("dtadm") or "")
+            # Admitido após o mês da folha → não aparece
+            if len(dtadm_raw) >= 6 and anomes and dtadm_raw[:6] > anomes:
+                continue
             nome = (f.get("nomer") or f.get("nome") or "").strip()
             funcionarios.append({
                 "matricula": f.get("matricula"),
@@ -10073,6 +10079,7 @@ def api_tab_mov_listar():
              .eq("id_cliente", id_cliente)
              .eq("folha",      folha_int)
              .eq("situacao",   "A")
+             .eq("origem",     "M")
              .order("id", desc=True)
              .execute())
         registros_raw = r.data or []
@@ -10180,8 +10187,44 @@ def api_tab_mov_gravar():
     if qtd == 0 and valor == 0:
         return jsonify({"ok": False, "msg": "Informe quantidade ou valor."})
 
-    # Busca data de admissão de todas as matrículas de uma vez
     mats_int = [int(m) for m in matriculas]
+
+    # Verifica se a verba é do tipo Hora (H) para calcular valor monetário
+    verba_unid = "V"
+    try:
+        r_rub = (supabase.table("tab_rubrica")
+                 .select("unid_verba, id_cliente")
+                 .eq("cod_rubr", int(cod_verba))
+                 .in_("id_cliente", [0, id_cliente])
+                 .execute())
+        for rv in sorted(r_rub.data or [], key=lambda x: x.get("id_cliente") or 0):
+            if rv.get("unid_verba"):
+                verba_unid = str(rv["unid_verba"])
+    except Exception:
+        pass
+
+    # Para verba H: busca sal_hora de cada funcionário
+    sal_hora_map = {}
+    if verba_unid == "H" and qtd > 0:
+        try:
+            r_cad = (supabase.table("tab_cad")
+                     .select("matricula, vrsalfx, undsalfixo, qtdhrsmes")
+                     .eq("id_empresa", id_empresa)
+                     .in_("matricula", mats_int)
+                     .execute())
+            for emp in (r_cad.data or []):
+                mat_e      = int(emp.get("matricula") or 0)
+                vrsalfx    = int(emp.get("vrsalfx")   or 0)
+                undsalfix  = (emp.get("undsalfixo") or "M").upper()
+                qtdhrsmes  = int(emp.get("qtdhrsmes") or 0)
+                if undsalfix == "H":
+                    sal_hora_map[mat_e] = vrsalfx
+                else:
+                    sal_hora_map[mat_e] = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+        except Exception:
+            pass
+
+    # Busca data de admissão de todas as matrículas de uma vez
     try:
         r_adm = (supabase.table("tab_cad")
                  .select("matricula, dtadm")
@@ -10203,6 +10246,12 @@ def api_tab_mov_gravar():
                 return jsonify({"ok": False,
                                 "msg": f"Mat {mat_int}: mês {anomes[4:]}/{anomes[:4]} é anterior "
                                        f"à admissão ({adm_fmt}). Nenhum registro gravado."})
+            # Para verba H, calcula valor = horas × sal_hora
+            if verba_unid == "H" and qtd > 0:
+                sh = sal_hora_map.get(mat_int, 0)
+                valor_gravar = int(round(qtd / 60 * sh))
+            else:
+                valor_gravar = valor
             supabase.table("tab_mov").insert({
                 "id_cliente":  id_cliente,
                 "id_empresa":  id_empresa,
@@ -10212,7 +10261,7 @@ def api_tab_mov_gravar():
                 "folha_tipo":  folha_tipo,
                 "cod_verba":   int(cod_verba),
                 "qtd":         qtd,
-                "valor":       valor,
+                "valor":       valor_gravar,
                 "lote":        0,
                 "origem":      "M",
                 "controle":    0,
@@ -10251,19 +10300,56 @@ def api_tab_mov_alterar():
         return jsonify({"ok": False, "msg": "Informe quantidade ou valor."})
     try:
         r = (supabase.table("tab_mov")
-             .select("id")
+             .select("id, cod_verba, matricula")
              .eq("id",         id_ev)
              .eq("id_empresa", id_empresa)
              .eq("id_cliente", id_cliente)
              .execute())
         if not r.data:
             return jsonify({"ok": False, "msg": "Registro não encontrado."})
+
+        rec       = r.data[0]
+        cod_verba = rec.get("cod_verba")
+        matricula = rec.get("matricula")
+
+        # Para verba H: recalcula valor = horas × sal_hora
+        valor_gravar = valor
+        if cod_verba and qtd > 0:
+            try:
+                r_rub = (supabase.table("tab_rubrica")
+                         .select("unid_verba")
+                         .eq("cod_rubr", int(cod_verba))
+                         .in_("id_cliente", [0, id_cliente])
+                         .execute())
+                verba_unid = "V"
+                for rv in sorted(r_rub.data or [], key=lambda x: x.get("id_cliente") or 0):
+                    if rv.get("unid_verba"):
+                        verba_unid = str(rv["unid_verba"])
+                if verba_unid == "H" and matricula:
+                    r_cad = (supabase.table("tab_cad")
+                             .select("vrsalfx, undsalfixo, qtdhrsmes")
+                             .eq("id_empresa", id_empresa)
+                             .eq("matricula",  int(matricula))
+                             .execute())
+                    if r_cad.data:
+                        emp       = r_cad.data[0]
+                        vrsalfx   = int(emp.get("vrsalfx")   or 0)
+                        undsalfix = (emp.get("undsalfixo") or "M").upper()
+                        qtdhrsmes = int(emp.get("qtdhrsmes") or 0)
+                        if undsalfix == "H":
+                            sh = vrsalfx
+                        else:
+                            sh = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+                        valor_gravar = int(round(qtd / 60 * sh))
+            except Exception:
+                pass
+
         supabase.table("tab_mov").update({
             "qtd":        qtd,
-            "valor":      valor,
+            "valor":      valor_gravar,
             "folha_tipo": folha_tipo,
         }).eq("id", id_ev).execute()
-        gravar_log("MOV-ALT", f"id={id_ev} qtd={qtd} valor={valor}")
+        gravar_log("MOV-ALT", f"id={id_ev} qtd={qtd} valor={valor_gravar}")
         return jsonify({"ok": True, "msg": "Registro alterado com sucesso."})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
@@ -21052,6 +21138,42 @@ def api_certificado_remover():
 # =========================================================
 # CÁLCULO DA FOLHA
 # =========================================================
+_FERIADOS_FIXOS = [
+    (1,  1),   # Confraternização Universal
+    (4,  21),  # Tiradentes
+    (5,  1),   # Dia do Trabalho
+    (9,  7),   # Independência do Brasil
+    (10, 12),  # Nossa Senhora Aparecida
+    (11, 2),   # Finados
+    (11, 15),  # Proclamação da República
+    (12, 25),  # Natal
+]
+
+def _calc_dsr_mes(anomes):
+    """Retorna (dias_uteis, dias_dsr) para o mês da folha.
+    dias_uteis = seg-sáb excluindo feriados nacionais fixos que caem em dia útil
+    dias_dsr   = domingos + feriados nacionais fixos que caem em seg-sáb
+    """
+    try:
+        ano = int(str(anomes)[:4])
+        mes = int(str(anomes)[4:6])
+        _, total_dias = calendar.monthrange(ano, mes)
+        feriados_mes = {fd for (fm, fd) in _FERIADOS_FIXOS if fm == mes}
+        domingos = 0
+        feriados_dia_util = 0
+        for dia in range(1, total_dias + 1):
+            wd = date(ano, mes, dia).weekday()  # 0=seg … 6=dom
+            if wd == 6:
+                domingos += 1
+            elif dia in feriados_mes:
+                feriados_dia_util += 1
+        dias_dsr   = domingos + feriados_dia_util
+        dias_uteis = total_dias - domingos - feriados_dia_util
+        return dias_uteis, dias_dsr
+    except Exception:
+        return 22, 4   # fallback conservador
+
+
 def _calc_etapa1_dados(id_empresa):
     """Busca funcionários e calcula salário hora (Etapa 1)."""
     linhas = []
@@ -21833,7 +21955,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             mmQmm = {}
             cod_verbas_fixas = set()   # verbas originadas de mov_fixo → origem='F'
             mov_fixo_lote    = {}      # cod_v → acesso_f10a (para gravar lote no tab_mov)
-            if l["tipo"] == "Mensalista":
+            is_intermitente  = str(l.get("codcateg", "")).strip() == "111"
+            if is_intermitente:
+                formula = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
+                           f"  Salário calculado via Verba 003 (lançamento manual).")
+            elif l["tipo"] == "Mensalista":
                 formula = (f"Salário Hora = Salário Base / Horas/Mes  =  "
                            f"{l['sal_base_fmt']} / {l['qtdhrsmes']} h  =  {l['sal_hora_fmt']}")
             else:
@@ -21853,7 +21979,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("BOTTOMPADDING", (0, 1), (0, 1), 4),
             ]))
             elems.append(etapa_tbl)
-            mmVmm[1] = l["sal_mes"]
+            if not is_intermitente:
+                mmVmm[1] = l["sal_mes"]
 
             # ── etapa 2 — admissão no mês ────────────────
             dias_antes_admissao = 0
@@ -21984,7 +22111,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("TOPPADDING",    (0, 0), (0, 0), 8),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 4),
             ])
-            if dias_trabalhados == 0:
+            if is_intermitente:
+                e4_tbl = Table([[Paragraph(
+                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL"
+                    "   Nao aplicavel — Intermitente (Cat. 111). Remuneracao via Verba 003.",
+                    st_etapa)]], colWidths=[17*cm])
+                e4_tbl.setStyle(_st_e4_zero)
+            elif dias_trabalhados == 0:
                 mmVmm[1] = 0
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
@@ -22045,7 +22178,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # ── etapa 5 — faltas no mês ────────────────────
             faltas_func  = faltas.get(matr, [])
-            val_dia_f    = l["sal_mes"] / dias_mes if dias_mes else 0.0
+            val_dia_f    = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
             qty_inj      = sum(1 for ft in faltas_func if ft.get("op2") == 1)
             val_falta    = int(val_dia_f * qty_inj)
             mmQmm[139]   = qty_inj
@@ -22229,10 +22362,15 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(e7_tbl)
 
             # ── etapa 8 — movimentos fixos ─────────────────────
+            # Intermitente sem horas lançadas nesta folha → não gera mov_fixo
+            intermitente_tem_horas = (
+                not is_intermitente or
+                any(int(r.get("valor") or 0) > 0 for r in tab_mov_dict.get(matr, []))
+            )
             mf_rows  = [[Paragraph("ETAPA 0008 - MOVIMENTOS FIXOS", st_etapa), "", ""]]
             mf_spans = [("SPAN", (0, 0), (2, 0))]
             mf_achou = False
-            for rec in mov_fixo_lista:
+            for rec in (mov_fixo_lista if intermitente_tem_horas else []):
                 ok, motivo_enq = _enquadra_mov_fixo(rec, l)
                 if not ok:
                     continue
@@ -22338,7 +22476,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     mf_spans.append(("SPAN", (0, idx_mf), (2, idx_mf)))
             if not mf_achou:
                 idx_mf = len(mf_rows)
-                mf_rows.append([Paragraph("Sem movimentos fixos nesta Folha.", st_detalhe), "", ""])
+                msg_mf = ("Nao aplicavel — Intermitente (Cat. 111) sem horas lancadas nesta Folha."
+                          if is_intermitente and not intermitente_tem_horas
+                          else "Sem movimentos fixos nesta Folha.")
+                mf_rows.append([Paragraph(msg_mf, st_detalhe), "", ""])
                 mf_spans.append(("SPAN", (0, idx_mf), (2, idx_mf)))
             e8_tbl = Table(mf_rows, colWidths=[4*cm, 4*cm, 9*cm])
             e8_tbl.setStyle(TableStyle([
@@ -22369,8 +22510,15 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     dsc_s  = ri["dsc"] or f"Verba {cod_v:04d}"
                     unid   = ri.get("unid", "V")
                     orig_s = ORIG_LABEL.get(origem, origem)
+                    # Verbas em Horas: valor = (qtd_min / 60) × sal_hora
+                    if unid == "H" and qtd > 0:
+                        sal_hora_c = l["sal_hora"]   # centavos/hora
+                        valor_calc = int(round(qtd / 60 * sal_hora_c))
+                        hh_q = qtd // 60; mm_q = qtd % 60
+                        txt_qtd = (f"   {hh_q:02d}h{mm_q:02d} × {_fmt_brl(sal_hora_c)}/h"
+                                   f"  =  {_fmt_brl(valor_calc)}")
                     # Verbas em Dias: valor = qtd × salário-dia
-                    if unid == "D" and qtd > 0:
+                    elif unid == "D" and qtd > 0:
                         sal_dia    = val_dia_f  # centavos/dia, já calculado na etapa 5
                         valor_calc = int(qtd * sal_dia)
                         txt_qtd    = f"   {qtd} dias × {_fmt_brl(sal_dia)}/dia"
@@ -22400,6 +22548,60 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("BOTTOMPADDING", (0, 1), (-1, -1), 1.5),
             ]))
             elems.append(e9_tbl)
+
+            # ── etapa 9B — verbas automáticas do intermitente ─
+            _st_e9b_zero = TableStyle([
+                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                ("TOPPADDING",    (0, 0), (0, 0), 8),
+                ("BOTTOMPADDING", (0, 0), (0, 0), 4),
+            ])
+            if is_intermitente:
+                val_003 = int(mmVmm.get(3, 0))
+                if val_003 > 0:
+                    # DSR — Repouso Remunerado
+                    dias_uteis_dsr, dias_dsr = _calc_dsr_mes(anomes)
+                    val_024 = int(round(val_003 / dias_uteis_dsr * dias_dsr)) if dias_uteis_dsr else 0
+                    mmVmm[24] = mmVmm.get(24, 0.0) + val_024
+                    # 13º e férias intermitentes
+                    dozeavo = val_003 // 12
+                    terco   = dozeavo // 3
+                    val_56  = dozeavo
+                    val_58  = dozeavo + terco
+                    mmVmm[56] = mmVmm.get(56, 0.0) + val_56
+                    mmVmm[58] = mmVmm.get(58, 0.0) + val_58
+                    dsc_24 = rubricas_info.get(24, {}).get("dsc") or "Repouso Remunerado"
+                    dsc_56 = rubricas_info.get(56, {}).get("dsc") or "13 Salario Intermitente"
+                    dsc_58 = rubricas_info.get(58, {}).get("dsc") or "Ferias Intermitentes"
+                    txt_24 = (f"0024 — {dsc_24}"
+                              f"   {_fmt_brl(val_003)} / {dias_uteis_dsr} dias uteis"
+                              f" × {dias_dsr} dias DSR  =  {_fmt_brl(val_024)}")
+                    txt_56 = (f"0056 — {dsc_56}   1/12 de {_fmt_brl(val_003)}"
+                              f"  =  {_fmt_brl(dozeavo)}")
+                    txt_58 = (f"0058 — {dsc_58}   1/12 + 1/3 de 1/12"
+                              f"  =  {_fmt_brl(dozeavo)} + {_fmt_brl(terco)}"
+                              f"  =  {_fmt_brl(val_58)}")
+                    e9b_tbl = Table([
+                        [Paragraph("ETAPA 0009B - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)", st_etapa)],
+                        [Paragraph(txt_24, st_formula)],
+                        [Paragraph(txt_56, st_formula)],
+                        [Paragraph(txt_58, st_formula)],
+                    ], colWidths=[17*cm])
+                    e9b_tbl.setStyle(TableStyle([
+                        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                        ("TOPPADDING",    (0, 0), (0, 0), 8),
+                        ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                        ("TOPPADDING",    (0, 1), (0, 3), 0),
+                        ("BOTTOMPADDING", (0, 3), (0, 3), 4),
+                    ]))
+                else:
+                    e9b_tbl = Table([[Paragraph(
+                        "ETAPA 0009B - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)"
+                        "   Nao aplicavel — Verba 003 com valor zero.",
+                        st_etapa)]], colWidths=[17*cm])
+                    e9b_tbl.setStyle(_st_e9b_zero)
+                elems.append(e9b_tbl)
 
             # ── base INSS ─────────────────────────────────────
             base_inss = sum(
@@ -23528,14 +23730,18 @@ def api_visualizar_calculo_dados():
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V", "inc_cp": ""})
 
-    # dados dos funcionários (nome + dtadm)
-    nomes  = {}
-    dtadms = {}
+    # dados dos funcionários (nome + dtadm + sal_hora + codcateg)
+    nomes        = {}
+    dtadms       = {}
+    sal_hora_map = {}
+    codcateg_map = {}
     try:
         for l in (_calc_etapa1_dados(id_empresa) or []):
             mat = int(l["matricula"])
-            nomes[mat]  = l["nome"]
-            dtadms[mat] = str(l.get("dtadm") or "")
+            nomes[mat]        = l["nome"]
+            dtadms[mat]       = str(l.get("dtadm") or "")
+            sal_hora_map[mat] = float(l.get("sal_hora") or 0)
+            codcateg_map[mat] = str(l.get("codcateg") or "")
     except Exception:
         pass
 
@@ -23607,17 +23813,66 @@ def api_visualizar_calculo_dados():
             qtd  = int(v.get("qtd")        or 0)
             ft   = str(v.get("folha_tipo") or "N")
             orig = str(v.get("origem")     or "")
+            ri   = rubricas_info.get(cod, {"tp": "1", "dsc": f"Verba {cod:04d}", "unid": "V"})
+            formula = ""
+            # Verba H: recalcula valor = horas × sal_hora (ignora o que está no banco)
+            if ri.get("unid") == "H" and qtd > 0:
+                sh  = sal_hora_map.get(mat, 0)
+                val = round(qtd / 60 * sh, 4)
+                hh_q = qtd // 60; mm_q = qtd % 60
+                formula = (f"{hh_q:02d}h{mm_q:02d} × {_fmt_brl(int(sh))}/h"
+                           f"  =  {_fmt_brl(int(round(val)))}")
             key  = (cod, ft, orig)
             if key in agg:
                 agg[key]["valor"] += val
                 agg[key]["qtd"]   += qtd
             else:
-                ri = rubricas_info.get(cod, {"tp": "1", "dsc": f"Verba {cod:04d}", "unid": "V"})
                 agg[key] = {"cod": cod, "dsc": ri["dsc"] or f"Verba {cod:04d}",
                             "tp": ri["tp"], "unid": ri["unid"],
-                            "qtd": qtd, "valor": val, "ft": ft, "orig": orig}
+                            "qtd": qtd, "valor": val, "ft": ft, "orig": orig,
+                            "formula": formula}
 
         todos_verbas = sorted(agg.values(), key=lambda x: (_tipo_ord.get(x["ft"], 9), x["cod"]))
+
+        # ETAPA 9B — verbas automáticas do intermitente (024, 56, 58)
+        # Só acrescenta se ainda não vieram do tab_mov (evita duplicata após cálculo)
+        is_int = codcateg_map.get(mat, "") == "111"
+        if is_int:
+            cods_presentes = {v["cod"] for v in todos_verbas}
+            val_003 = int(sum(v["valor"] for v in todos_verbas if v["cod"] == 3))
+            if val_003 > 0:
+                dias_uteis_dsr, dias_dsr = _calc_dsr_mes(anomes)
+                val_024 = int(round(val_003 / dias_uteis_dsr * dias_dsr)) if dias_uteis_dsr else 0
+                dozeavo = val_003 // 12
+                terco   = dozeavo // 3
+                val_56  = dozeavo
+                val_58  = dozeavo + terco
+                ri_24   = rubricas_info.get(24, {"tp": "1", "dsc": "Repouso Remunerado",       "unid": "V"})
+                ri_56   = rubricas_info.get(56, {"tp": "1", "dsc": "13 Salario Intermitente",  "unid": "V"})
+                ri_58   = rubricas_info.get(58, {"tp": "1", "dsc": "Ferias Intermitentes",     "unid": "V"})
+                if 24 not in cods_presentes:
+                    todos_verbas.append({
+                        "cod": 24, "dsc": ri_24.get("dsc") or "Repouso Remunerado",
+                        "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_024),
+                        "ft": "N", "orig": "C",
+                        "formula": (f"{_fmt_brl(val_003)} ÷ {dias_uteis_dsr} dias úteis"
+                                    f" × {dias_dsr} dias DSR = {_fmt_brl(val_024)}"),
+                    })
+                if 56 not in cods_presentes:
+                    todos_verbas.append({
+                        "cod": 56, "dsc": ri_56.get("dsc") or "13 Salario Intermitente",
+                        "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_56),
+                        "ft": "N", "orig": "C",
+                        "formula": f"1/12 de {_fmt_brl(val_003)} = {_fmt_brl(dozeavo)}",
+                    })
+                if 58 not in cods_presentes:
+                    todos_verbas.append({
+                        "cod": 58, "dsc": ri_58.get("dsc") or "Ferias Intermitentes",
+                        "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_58),
+                        "ft": "N", "orig": "C",
+                        "formula": (f"1/12 de {_fmt_brl(val_003)} + 1/3 = "
+                                    f"{_fmt_brl(dozeavo)} + {_fmt_brl(terco)} = {_fmt_brl(val_58)}"),
+                    })
 
         # monta seções separadas por tipo de folha
         tipos_presentes = sorted({v["ft"] for v in todos_verbas}, key=lambda t: _tipo_ord.get(t, 9))
@@ -23655,15 +23910,18 @@ def api_visualizar_calculo_dados():
             dias = int(ev.get("ref1") or 0)
             info_partes.append("Férias: " + f"{di} a {df}" + (f" ({dias}d)" if dias else ""))
 
+        sh_emp = sal_hora_map.get(mat, 0)
         resultado.append({
-            "matricula":  mat,
-            "nome":       nomes.get(mat, f"Matrícula {mat:06d}"),
-            "dtadm":      _dt_br(dtadms.get(mat, "")),
-            "info_extra": " · ".join(info_partes),
-            "secoes":     secoes,
-            "total_prov": total_prov,
-            "total_desc": total_desc,
-            "liquido":    total_prov - total_desc,
+            "matricula":       mat,
+            "nome":            nomes.get(mat, f"Matrícula {mat:06d}"),
+            "dtadm":           _dt_br(dtadms.get(mat, "")),
+            "is_intermitente": is_int,
+            "sal_hora_fmt":    _fmt_brl(int(sh_emp)) if is_int and sh_emp else "",
+            "info_extra":      " · ".join(info_partes),
+            "secoes":          secoes,
+            "total_prov":      total_prov,
+            "total_desc":      total_desc,
+            "liquido":         total_prov - total_desc,
         })
 
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else anomes
@@ -25389,7 +25647,11 @@ def calcular_folha_etapa1_pdf():
             # ── etapa 1 ────────────────────────────────────
             mmVmm = {}
             mmQmm = {}
-            if l["tipo"] == "Mensalista":
+            is_intermitente = str(l.get("codcateg", "")).strip() == "111"
+            if is_intermitente:
+                formula_txt = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
+                               f"  Salário calculado via Verba 003 (lançamento manual).")
+            elif l["tipo"] == "Mensalista":
                 formula_txt = (f"Salário Hora = Salário Base / Horas/Mes  =  "
                                f"{l['sal_base_fmt']} / {l['qtdhrsmes']} h  =  {l['sal_hora_fmt']}")
             else:
@@ -25412,11 +25674,11 @@ def calcular_folha_etapa1_pdf():
 
             # tabela de valores
             dados = [
-                ["Tipo de Salário",  l["tipo"]],
+                ["Tipo de Salário",  "Intermitente" if is_intermitente else l["tipo"]],
                 ["Salário Base",     l["sal_base_fmt"]],
                 ["Horas / Mês",      f"{l['qtdhrsmes']} h"],
                 ["Salário Hora",     l["sal_hora_fmt"]],
-                ["Salário Mensal",   l["sal_mes_fmt"]],
+                ["Salário Mensal",   "— Verba 003 (manual)" if is_intermitente else l["sal_mes_fmt"]],
             ]
             val_tbl = Table(dados, colWidths=[5*cm, 7*cm])
             val_tbl.setStyle(TableStyle([
@@ -25438,7 +25700,8 @@ def calcular_folha_etapa1_pdf():
                 ("TEXTCOLOR",     (1, 4), (1, 4),  colors.HexColor("#15803d")),
             ]))
             elems.append(val_tbl)
-            mmVmm[1] = l["sal_mes"]
+            if not is_intermitente:
+                mmVmm[1] = l["sal_mes"]
 
             # ── etapa 2 — admissão no mês ────────────────
             dias_antes_admissao = 0
@@ -25569,7 +25832,13 @@ def calcular_folha_etapa1_pdf():
                 ("TOPPADDING",    (0, 0), (0, 0), 8),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 4),
             ])
-            if dias_trabalhados == 0:
+            if is_intermitente:
+                e4_tbl = Table([[Paragraph(
+                    "ETAPA 0004 — CÁLCULO DO SALÁRIO PROPORCIONAL"
+                    "   Não aplicável — Intermitente (Cat. 111). Remuneração via Verba 003.",
+                    st_etapa)]], colWidths=[16*cm])
+                e4_tbl.setStyle(_st_e4_zero2)
+            elif dias_trabalhados == 0:
                 mmVmm[1] = 0
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
@@ -25629,7 +25898,7 @@ def calcular_folha_etapa1_pdf():
 
             # ── etapa 5 — faltas no mês ────────────────────
             faltas_func  = faltas.get(matr, [])
-            val_dia_f    = l["sal_mes"] / dias_mes if dias_mes else 0.0
+            val_dia_f    = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
             qty_inj      = sum(1 for ft in faltas_func if ft.get("op2") == 1)
             val_falta    = int(val_dia_f * qty_inj)
             mmQmm[139]   = qty_inj
@@ -28209,8 +28478,15 @@ def _imp_cc_f10(caminho, id_cliente):
     raiz_unica   = list(mapa_raiz.keys())[0] if len(mapa_raiz) == 1 else None
     id_emp_unica = mapa_raiz[raiz_unica]      if raiz_unica else None
 
+    # Fallback via CNPJ do FolhaFIX selecionado (cobre clientes com 2+ empresas)
+    id_emp_folhafix = None
+    for raiz_ff in set(mapa_raiz_folhafix.values()):
+        if raiz_ff in mapa_raiz:
+            id_emp_folhafix = mapa_raiz[raiz_ff]
+            break
+
     for rec in registros:
-        # Resolve id_empresa: tenta via cod_emp → raiz (folhafix) → supabase; senão usa única
+        # Resolve id_empresa: tenta via cod_emp → raiz (folhafix) → supabase; senão usa folhafix ou única
         id_empresa = None
         cod_emp = rec.get('cod_emp', '')
         if cod_emp:
@@ -28218,7 +28494,7 @@ def _imp_cc_f10(caminho, id_cliente):
             if raiz and raiz in mapa_raiz:
                 id_empresa = mapa_raiz[raiz]
         if id_empresa is None:
-            id_empresa = id_emp_unica
+            id_empresa = id_emp_folhafix or id_emp_unica
 
         if id_empresa is None:
             log.append(f"⚠  [{rec['codigo_cc']}] empresa não resolvida — importe empresas primeiro")
@@ -30007,23 +30283,16 @@ def _imp_movfix_f10(caminho, id_cliente):
         conn.close()
         log.append(f'   {nome_arq} → {tab_nome}: {len(rows)} registro(s)')
 
-        lote = []
-
-        def _flush():
+        def _insert_um(campos_row):
             nonlocal grav, err
-            if not lote:
-                return
             try:
-                resp = supabase.table('tab_mov_fixo').insert(lote).execute()
-                n    = len(resp.data) if resp.data else 0
-                grav += n
-                err  += len(lote) - n
-                if n < len(lote):
-                    log.append(f'   ⚠  lote: {n}/{len(lote)} gravados')
+                supabase.table('tab_mov_fixo').insert(campos_row).execute()
+                grav += 1
             except Exception as ex:
-                err += len(lote)
-                log.append(f'   ✗ Erro no insert (lote {len(lote)}): {ex}')
-            lote.clear()
+                err += 1
+                verba_id = campos_row.get('cod_verba', '?')
+                mat_id   = campos_row.get('matricula', '?')
+                log.append(f'   ✗ verba={verba_id} mat={mat_id} valor={campos_row.get("valor","?")} → {ex}')
 
         for row in rows:
             r = dict(zip(dc, row))
@@ -30032,6 +30301,8 @@ def _imp_movfix_f10(caminho, id_cliente):
                 if not verba:
                     err += 1
                     continue
+
+                valor_acc = int(round(float(r.get('valor') or 0)))
 
                 mat     = _int(r.get('registro'))
                 qtd_acc = _int(r.get('qtd'))
@@ -30081,7 +30352,7 @@ def _imp_movfix_f10(caminho, id_cliente):
                     'qtd_parcelas'        : (qtd_acc if 1 <= qtd_acc <= 99 else None)
                                            if qtd_acc > 0 else None,
                     'qtd_parcelas_before' : _int(r.get('parcelas_before')),
-                    'valor'               : int(round(float(r.get('valor') or 0))),
+                    'valor'               : valor_acc,
                     'nas_ferias'          : _s(r.get('nas_ferias'), 1) or '0',
                     # se_afastado: Access usa '5','6','7' → Supabase '1','2','3'
                     'se_afastado'         : {'5':'1','6':'2','7':'3'}.get(
@@ -30097,15 +30368,12 @@ def _imp_movfix_f10(caminho, id_cliente):
                     'dt_gravacao'         : agora.strftime('%Y%m%d %H%M'),
                 }
 
-                lote.append(campos)
-                if len(lote) >= 50:
-                    _flush()
+                _insert_um(campos)
 
             except Exception as ex:
                 err += 1
                 log.append(f"✗  registro={r.get('registro')} verba={r.get('verba')}: {ex}")
 
-        _flush()
         log.append(f'   ✓ {nome_arq} — {grav} gravado(s) / {err} erro(s)')
 
     return grav, err, log
@@ -30317,6 +30585,198 @@ def _imp_total_f10(caminho, id_cliente):
             except Exception as ex:
                 err += 1
                 log.append(f"✗  mat={r.get('registro')}  {ex}")
+
+        _flush_lote()
+        log.append(f'   ✓ {nome_arq} — {grav} gravado(s) / {err} erro(s)')
+
+    return grav, err, log
+
+
+def _imp_esocial_f10(caminho, id_cliente):
+    """Importa tabesocial do Access para tab_esocial.
+    Fase 1: lê CNPJ do FolhaFIX → resolve id_empresa.
+    Fase 2: varre arquivos F######_#### → lê tabesocial e grava histórico eSocial.
+    Retorna (gravados, erros, log).
+    """
+    import pyodbc, glob as _glob, re as _re
+
+    log  = []
+    grav = err = 0
+    pasta = os.path.dirname(caminho)
+
+    def _int(v, default=0):
+        try:
+            return int(v or default)
+        except (ValueError, TypeError):
+            return default
+
+    def _s(v, mx):
+        s = str(v or '').strip()
+        return s[:mx] if s else None
+
+    def _int_codigo2(v):
+        if v is None:
+            return 0
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            m = _re.match(r'(\d+)', str(v).strip())
+            return int(m.group(1)) if m else 0
+
+    # ── Fase 1: CNPJ do FolhaFIX → id_empresa ────────────────────────
+    try:
+        conn_fix = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+    except Exception as ex:
+        return 0, 1, [f'✗ Conexão ao FolhaFIX: {ex}']
+
+    cnpj_empresa = None
+    try:
+        cur_fix = conn_fix.cursor()
+        tabs_fix = {t.table_name.lower(): t.table_name
+                    for t in cur_fix.tables(tableType='TABLE')
+                    if not t.table_name.startswith('MSys')}
+        for cand in ('tabempresa', 'tabempresas', 'tabemp'):
+            if cand in tabs_fix:
+                cur_fix.execute(f"SELECT * FROM [{tabs_fix[cand]}]")
+                ec  = [d[0].lower() for d in cur_fix.description]
+                row = cur_fix.fetchone()
+                if row:
+                    ed       = dict(zip(ec, row))
+                    col_cnpj = next((c for c in ec if c in ('cnpj', 'cgc')), None)
+                    if col_cnpj:
+                        cnpj_empresa = ''.join(filter(str.isdigit, str(ed.get(col_cnpj) or '')))
+                break
+    except Exception as ex:
+        log.append(f'⚠  Erro ao ler FolhaFIX: {ex}')
+    finally:
+        conn_fix.close()
+
+    if not cnpj_empresa:
+        return 0, 1, ['✗ CNPJ da empresa não encontrado no FolhaFIX']
+
+    try:
+        r_emp = (supabase.table('tab_empresa')
+                 .select('id_empresa, razaosocial')
+                 .eq('cnpj', cnpj_empresa)
+                 .eq('id_cliente', id_cliente)
+                 .execute().data or [])
+    except Exception as ex:
+        return 0, 1, [f'✗ Erro ao buscar empresa no Supabase: {ex}']
+
+    if not r_emp:
+        return 0, 1, [f'✗ Empresa CNPJ {cnpj_empresa} não encontrada — importe a empresa primeiro']
+
+    id_empresa   = r_emp[0]['id_empresa']
+    razao_social = r_emp[0].get('razaosocial', '')
+    log.append(f'🏢 Empresa: {razao_social}  CNPJ {cnpj_empresa} → id_empresa={id_empresa}')
+
+    # ── Fase 2: varre arquivos F######_#### ──────────────────────────
+    todos_arqs = sorted(
+        _glob.glob(os.path.join(pasta, '*.mdb')) +
+        _glob.glob(os.path.join(pasta, '*.accdb'))
+    )
+    arqs_func = [a for a in todos_arqs
+                 if not os.path.basename(a).upper().startswith('FOLHAFIX')]
+    log.append(f'🗂  Arquivos na pasta: {len(arqs_func)}')
+
+    deletado = False
+
+    for arq in arqs_func:
+        nome_arq = os.path.basename(arq)
+
+        try:
+            conn = pyodbc.connect(
+                f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={arq};'
+            )
+        except Exception as ex:
+            log.append(f'✗ {nome_arq} → Conexão: {ex}')
+            err += 1
+            continue
+
+        cur = conn.cursor()
+        todas_tabs = {t.table_name.lower(): t.table_name
+                      for t in cur.tables(tableType='TABLE')
+                      if not t.table_name.startswith('MSys')}
+
+        tab_nome = todas_tabs.get('tabesocial')
+        if not tab_nome:
+            conn.close()
+            log.append(f'   {nome_arq} → sem tabesocial — ignorado')
+            continue
+
+        try:
+            cur.execute(f'SELECT * FROM [{tab_nome}]')
+            dc   = [d[0].lower() for d in cur.description]
+            rows = cur.fetchall()
+        except Exception as ex:
+            conn.close()
+            log.append(f'✗ {nome_arq} → Leitura de {tab_nome}: {ex}')
+            err += 1
+            continue
+
+        conn.close()
+        log.append(f'   {nome_arq} → {tab_nome}: {len(rows)} linha(s)  cols={dc}')
+
+        if not deletado:
+            try:
+                (supabase.table('tab_esocial')
+                 .delete()
+                 .eq('id_cliente', id_cliente)
+                 .eq('id_empresa', id_empresa)
+                 .execute())
+                log.append(f'   🗑  Registros anteriores excluídos para id_empresa={id_empresa}')
+                deletado = True
+            except Exception as ex:
+                log.append(f'   ⚠  Erro ao excluir registros anteriores: {ex}')
+
+        lote_insert = []
+
+        def _flush_lote():
+            nonlocal grav, err
+            if not lote_insert:
+                return
+            try:
+                resp = supabase.table('tab_esocial').insert(lote_insert).execute()
+                n = len(resp.data) if resp.data else 0
+                grav += n
+                err  += len(lote_insert) - n
+                if n < len(lote_insert):
+                    log.append(f'   ⚠  lote: {n}/{len(lote_insert)} gravados')
+            except Exception as ex:
+                err += len(lote_insert)
+                log.append(f'   ✗ Erro no insert (lote {len(lote_insert)}): {ex}')
+            lote_insert.clear()
+
+        for i, row in enumerate(rows):
+            r = dict(zip(dc, row))
+            try:
+                campos = {
+                    'id_cliente' : id_cliente,
+                    'id_empresa' : id_empresa,
+                    'data_cad'   : _s(r.get('datacad'),      8),
+                    'hora_cad'   : _s(r.get('horacad'),      4),
+                    'id_remessa' : _s(r.get('id'),          100),
+                    'ano_mes'    : _int(r.get('folha')) or None,
+                    'folha_tipo' : _s(r.get('folhatipo'),     1),
+                    'layout'     : _s(r.get('layout'),        4),
+                    'matricula'  : _int(r.get('codigo1')),
+                    'codigo2'    : _int_codigo2(r.get('codigo2')),
+                    'recibo'     : _s(r.get('resultado'),   100),
+                    'flag1'      : _s(r.get('flag1'),         1),
+                    'data_grava' : _s(r.get('data_esocial'),  8),
+                    'hora_grava' : _s(r.get('hora_esocial'),  4),
+                }
+                lote_insert.append(campos)
+
+                if len(lote_insert) >= 50:
+                    _flush_lote()
+                    log.append(f'   … {i+1}/{len(rows)} processados — {grav} gravados')
+
+            except Exception as ex:
+                err += 1
+                log.append(f"✗  acesso={r.get('acesso')}  {ex}")
 
         _flush_lote()
         log.append(f'   ✓ {nome_arq} — {grav} gravado(s) / {err} erro(s)')
@@ -30722,6 +31182,10 @@ def api_admin_imp_executar():
                 elif tl == 'tabtotal':
                     grav, err, log = _imp_total_f10(caminho, int(id_cliente))
                     resultados.append({'tabela': tabela, 'descricao': 'Totais de Folha',
+                                        'gravados': grav, 'erros': err, 'log': log})
+                elif tl == 'tabesocial':
+                    grav, err, log = _imp_esocial_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Histórico eSocial',
                                         'gravados': grav, 'erros': err, 'log': log})
                 elif tl == 'tabfolhas':
                     grav, err, log = _imp_folhas_f10(caminho, int(id_cliente))

@@ -151,6 +151,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .td-desc { text-align: right; font-family: var(--mono); font-size: 13px; font-weight: 500; white-space: nowrap; color: var(--red); }
 .td-vazio { text-align: right; color: #d1d5db; font-size: 12px; }
 .td-orig  { text-align: center; font-family: var(--mono); font-size: 11px; color: var(--sub); white-space: nowrap; }
+.tr-formula td { padding: 0 12px 5px; border-bottom: none; background: transparent !important; }
+.td-formula { font-family: var(--mono); font-size: 11px; color: #7ca0c0; font-style: italic; }
+.badge-interm { display:inline-flex; align-items:center; gap:5px; background:#1e3a5f; color:#7dd3fc;
+                font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px; margin-left:8px; }
 
 /* ── TOTAIS (linha de rodapé da tabela) ── */
 .verbas-table tfoot td {
@@ -329,7 +333,11 @@ function fmtBRL(centavos) {
 function fmtQtd(qtd, unid) {
     if (!qtd) return '—';
     if (unid === 'D') return qtd + ' d';
-    if (unid === 'H') return qtd + ' h';
+    if (unid === 'H') {
+        const hh = Math.floor(qtd / 60);
+        const mm = qtd % 60;
+        return hh.toString().padStart(2,'0') + 'h' + mm.toString().padStart(2,'0');
+    }
     return String(qtd);
 }
 
@@ -405,6 +413,12 @@ function renderSecao(secao) {
             <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>
             <td class="td-orig">${v.orig || ''}</td>`;
         tbody.appendChild(tr);
+        if (v.formula) {
+            const trF = document.createElement('tr');
+            trF.className = 'tr-formula';
+            trF.innerHTML = `<td></td><td colspan="4" class="td-formula">${v.formula}</td><td></td>`;
+            tbody.appendChild(trF);
+        }
     }
     // subtotal da seção
     const tfoot = document.createElement('tfoot');
@@ -491,11 +505,15 @@ function renderResultados(data) {
 
         const detalhe = [func.dtadm ? `Admissão: ${func.dtadm}` : '', func.info_extra || '']
                          .filter(Boolean).join(' · ');
+        const badgeInterm = func.is_intermitente
+            ? `<span class="badge-interm">Cat. 111 — Intermitente${func.sal_hora_fmt ? ' · Sal/h: R$ ' + func.sal_hora_fmt : ''}</span>`
+            : '';
         card.innerHTML = `
             <div class="func-card-header" style="flex-direction:column;align-items:flex-start;gap:3px;">
-                <div style="display:flex;align-items:center;gap:10px;">
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
                     <span class="func-card-mat">${String(func.matricula).padStart(6,'0')}</span>
                     <span class="func-card-nome">${func.nome}</span>
+                    ${badgeInterm}
                 </div>
                 ${detalhe ? `<div class="func-card-detalhe">${detalhe}</div>` : ''}
             </div>`;

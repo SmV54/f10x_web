@@ -356,11 +356,13 @@ function mascaraValor(el) {
         const digits = el.value.replace(/\D/g, '');
         el.value = formatValor(parseInt(digits || '0', 10));
     } else if (campoUnidAtual === 'H') {
-        const digits = el.value.replace(/\D/g, '');
+        // Extrai apenas os primeiros 4 dígitos — evita acúmulo de dígitos do próprio formato
+        const digits = el.value.replace(/\D/g, '').slice(0, 4);
         if (!digits) { el.value = ''; return; }
-        const lim = String(parseInt(digits, 10) || 0).slice(-4).padStart(4, '0');
-        const mm  = parseInt(lim.slice(2));
-        el.value  = lim.slice(0, 2) + ':' + (mm > 59 ? '59' : lim.slice(2));
+        if (digits.length <= 2) { el.value = digits; return; }
+        const hh = digits.slice(0, 2);
+        const mm = parseInt(digits.slice(2), 10);
+        el.value = hh + ':' + (mm > 59 ? '59' : digits.slice(2).padStart(2, '0'));
     }
 }
 
@@ -473,7 +475,7 @@ function getEntradaValues() {
     const s    = document.getElementById('inp-entrada').value.trim();
     if (unid==='H') {
         const m = parseHoras(s);
-        if (!m) return {ok:false,msg:'Informe as horas no formato HH:MM.'};
+        if (m === null) return {ok:false,msg:'Informe as horas no formato HH:MM.'};
         return {ok:true,qtd:m,valor:0};
     } else if (unid==='D') {
         const d = parseInt(s,10);
