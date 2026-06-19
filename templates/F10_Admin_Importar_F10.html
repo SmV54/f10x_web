@@ -7,11 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-    --navy:      #0b1f3a;
-    --navy-line: #1e3d5c;
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
     --accent:    #2a7de1;
     --text-head: #e8edf4;
-    --text-sub:  #8baac8;
+    --text-sub:  #374151;
     --bg:        #f0f2f6;
     --surface:   #ffffff;
     --border:    #dde3ec;
@@ -39,8 +39,8 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     white-space: nowrap; flex-shrink: 0;
 }
 .topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
-.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: var(--accent); }
-.topo-versao { font-size: 10px; color: var(--text-sub); }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
 .btn-voltar {
     background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
     font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
@@ -599,7 +599,8 @@ const ETAPAS = [
     { num: '08', nome: 'Importar períodos (Ano/Mês)', tabela: 'tabfolhas', implementado: true  },
     { num: '09', nome: 'Importar movimentos',         tabela: 'tabmov',    implementado: true  },
     { num: '10', nome: 'Importar totais de folha',    tabela: 'tabtotal',  implementado: true  },
-    { num: '11', nome: 'Importar movimentos fixos',   tabela: 'tabfix',    implementado: true  },
+    { num: '11', nome: 'Importar movimentos fixos',   tabela: 'tabfix',      implementado: true  },
+    { num: '12', nome: 'Importar histórico eSocial',  tabela: 'tabesocial',  implementado: true  },
 ];
 
 function renderEtapas() {

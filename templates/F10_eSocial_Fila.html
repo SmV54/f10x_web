@@ -7,11 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-    --navy:      #0b1f3a;
-    --navy-line: #1e3d5c;
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
     --accent:    #0d9488;
     --text-head: #e8edf4;
-    --text-sub:  #8baac8;
+    --text-sub:  #374151;
     --bg:        #f0f2f6;
     --surface:   #ffffff;
     --border:    #dde3ec;
@@ -28,11 +28,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     align-items: center; gap: 0 32px; min-height: 64px;
     position: sticky; top: 0; z-index: 10;
 }
-.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
-.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
 .topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
                display: flex; align-items: center; gap: 10px; justify-content: center; }
-.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
 .topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
 .btn-voltar-topo {
     margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
@@ -295,7 +295,7 @@ tr:hover td { background: #f8fafc; }
             <span style="color:#e2e8f0;margin:0 3px;">·</span>
             <span style="font-weight:600;font-size:13px;">{{ r._nome }}</span>
             {% elif r._verba_cod %}
-            <span style="font-family:var(--mono);font-weight:700;font-size:13px;margin-left:6px;color:#1e3d5c;">{{ r._verba_cod }}</span>
+            <span style="font-family:var(--mono);font-weight:700;font-size:13px;margin-left:6px;color:#70c4a0;">{{ r._verba_cod }}</span>
             {% if r._verba_dsc %}<span style="font-size:12px;color:#475569;margin-left:5px;">{{ r._verba_dsc }}</span>{% endif %}
             {% elif r._periodo_fmt %}
             <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:#1e293b;margin-left:6px;">{{ r._periodo_fmt }}</span>

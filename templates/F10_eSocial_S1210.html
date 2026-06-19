@@ -7,11 +7,11 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-    --navy:      #0b1f3a;
-    --navy-line: #1e3d5c;
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
     --accent:    #2a7de1;
     --text-head: #e8edf4;
-    --text-sub:  #8baac8;
+    --text-sub:  #374151;
     --bg:        #f0f2f6;
     --surface:   #ffffff;
     --border:    #dde3ec;
@@ -29,11 +29,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     align-items: center; gap: 0 32px; min-height: 64px;
     position: sticky; top: 0; z-index: 10;
 }
-.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; }
-.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
 .topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
                display: flex; align-items: center; gap: 10px; justify-content: center; }
-.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
 .topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
 .btn-voltar-topo {
     margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
@@ -148,15 +148,15 @@ tr:hover td { background: #f8fafc; }
 /* ── BANNER LOTE ── */
 .lote-banner {
     display: none;
-    background: #0f172a; border: 1px solid #1e3d5c; border-radius: 10px;
+    background: #0f172a; border: 1px solid #70c4a0; border-radius: 10px;
     padding: 12px 18px; margin-bottom: 16px;
     align-items: center; gap: 16px;
 }
 .lote-banner.ativo { display: flex; }
 .lote-info   { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .lote-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
-.lote-detalhe{ font-size: 11px; color: #8baac8; font-family: var(--mono); }
-.lote-bar-wrap { width: 180px; background: #1e3d5c; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
+.lote-detalhe{ font-size: 11px; color: #374151; font-family: var(--mono); }
+.lote-bar-wrap { width: 180px; background: #70c4a0; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
 .lote-bar  { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
 .lote-pct  { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
 .btn-lote-cancelar {
@@ -197,7 +197,7 @@ tr:hover td { background: #f8fafc; }
     </svg>
     eSocial S-1210 — Pagamentos
     {% if anomes_atual|length == 6 %}
-    <span style="font-size:13px;font-weight:500;color:#8baac8;font-family:var(--mono);">
+    <span style="font-size:13px;font-weight:500;color:#374151;font-family:var(--mono);">
       {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
     </span>
     {% endif %}

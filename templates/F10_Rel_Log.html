@@ -7,8 +7,8 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-    --navy:    #0b1f3a;
-    --navy-ln: #1e3d5c;
+    --navy:    #a0d9be;
+    --navy-ln: #70c4a0;
     --accent:  #2a7de1;
     --green:   #18795b;
     --bg:      #f0f2f6;
@@ -31,18 +31,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); fon
     align-items: center; gap: 0 32px; min-height: 64px;
     position: sticky; top: 0; z-index: 10;
 }
-.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; white-space: nowrap; }
-.topo-versao { font-family: var(--mono); font-size: 10px; color: #8baac8; margin-top: 2px; }
-.topo-titulo { font-size: 16px; font-weight: 600; color: #e8edf4; text-align: center; }
-.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
-.topo-nome   { font-size: 11px; color: #8baac8; margin-top: 2px; }
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome   { font-size: 11px; color: #374151; margin-top: 2px; }
 .btn-voltar-topo {
     margin-left: 16px; background: transparent;
-    border: 1px solid var(--navy-ln); color: #8baac8;
+    border: 1px solid var(--navy-ln); color: #374151;
     font-size: 12px; padding: 5px 12px; border-radius: 6px;
     cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
 }
-.btn-voltar-topo:hover { border-color: var(--accent); color: #e8edf4; }
+.btn-voltar-topo:hover { border-color: var(--accent); color: #1e293b; }
 
 /* ── CONTAINER ──────────────────────────────────────────── */
 .container { max-width: 1300px; margin: 20px auto 60px; padding: 0 20px; }
@@ -192,14 +192,14 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
         gap: 0 16px;
-        border-bottom: 2px solid #0b1f3a;
+        border-bottom: 2px solid #a0d9be;
         padding-bottom: 8px;
         margin-bottom: 14px;
     }
-    .print-header .ph-empresa { font-size: 13px; font-weight: 700; color: #0b1f3a; }
+    .print-header .ph-empresa { font-size: 13px; font-weight: 700; color: #a0d9be; }
     .print-header .ph-nome    { font-size: 10px; color: #374151; margin-top: 2px; }
-    .print-header .ph-titulo  { font-size: 14px; font-weight: 700; color: #0b1f3a; text-align: center; }
-    .print-header .ph-logo    { font-size: 12px; font-weight: 600; color: #0b1f3a; text-align: right; }
+    .print-header .ph-titulo  { font-size: 14px; font-weight: 700; color: #a0d9be; text-align: center; }
+    .print-header .ph-logo    { font-size: 12px; font-weight: 600; color: #a0d9be; text-align: right; }
     .print-header .ph-versao  { font-size: 9px; color: #374151; text-align: right; }
 
     .tabela-wrap { border: none; border-radius: 0; box-shadow: none; }
@@ -208,8 +208,8 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
     thead th {
         position: static;
         background: #fff !important;
-        border-bottom: 2px solid #0b1f3a;
-        color: #0b1f3a;
+        border-bottom: 2px solid #a0d9be;
+        color: #a0d9be;
         font-size: 9px;
         padding: 5px 8px;
     }

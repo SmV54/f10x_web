@@ -8,11 +8,11 @@
 
 <style>
 :root {
-    --navy:      #0b1f3a;
-    --navy-line: #1e3d5c;
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
     --accent:    #2a7de1;
-    --text-head: #e8edf4;
-    --text-sub:  #8baac8;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
     --bg:        #f0f2f6;
     --surface:   #ffffff;
     --border:    #dde3ec;
@@ -30,11 +30,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     align-items: center; gap: 0 32px; min-height: 64px;
     position: sticky; top: 0; z-index: 200;
 }
-.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: 0.04em; white-space: nowrap; }
-.topo-versao { font-family: var(--mono); font-size: 10px; color: var(--text-sub); letter-spacing: 0.03em; margin-top: 2px; }
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; letter-spacing: 0.03em; margin-top: 2px; }
 .topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
                display: flex; align-items: center; justify-content: center; gap: 12px; }
-.topo-empresa { font-size: 15px; font-weight: 600; color: #f5c842; letter-spacing: 0.01em; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
 .topo-folha-ativa {
     display: inline-flex; align-items: center; gap: 7px;
@@ -46,13 +46,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     font-family: var(--sans); font-size: 10px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85;
 }
-.sit-aberta    { background: rgba(22,101,52,0.25);  color: #86efac; border: 2px solid #16a34a; }
-.sit-calculada { background: rgba(133,77,14,0.25);  color: #fde047; border: 2px solid #ca8a04; }
-.sit-fechada   { background: rgba(153,27,27,0.25);  color: #fca5a5; border: 2px solid #dc2626; }
-.sit-processada{ background: rgba(37,99,235,0.25);  color: #93c5fd; border: 2px solid #2563eb; }
+.sit-aberta    { background: rgba(255,255,255,0.20); color: #111827; border: 2px solid rgba(255,255,255,0.5); }
+.sit-calculada { background: rgba(255,255,255,0.20); color: #111827; border: 2px solid rgba(255,255,255,0.5); }
+.sit-fechada   { background: rgba(255,255,255,0.20); color: #111827; border: 2px solid rgba(255,255,255,0.5); }
+.sit-processada{ background: rgba(255,255,255,0.20); color: #111827; border: 2px solid rgba(255,255,255,0.5); }
 .btn-sair {
     margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
-    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    color: #111827; font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 6px;
     cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
 }
 .btn-sair:hover { border-color: var(--accent); color: var(--text-head); }
@@ -188,7 +188,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     font-family: var(--sans); text-align: center; max-width: 280px; line-height: 1.5;
 }
 .loading-sub {
-    font-size: 12px; color: #8baac8; font-family: var(--sans); margin-top: -12px;
+    font-size: 12px; color: #374151; font-family: var(--sans); margin-top: -12px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .nav-aviso-folha {

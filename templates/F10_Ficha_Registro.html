@@ -7,13 +7,13 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
-    --navy:      #0b1f3a;
+    --navy:      #a0d9be;
     --navy-mid:  #122947;
-    --navy-line: #1e3d5c;
+    --navy-line: #70c4a0;
     --accent:    #2a7de1;
     --green:     #18795b;
     --text-head: #e8edf4;
-    --text-sub:  #8baac8;
+    --text-sub:  #374151;
     --bg:        #f0f2f6;
     --surface:   #ffffff;
     --border:    #dde3ec;
@@ -33,10 +33,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     align-items: center; gap: 0 32px; min-height: 64px;
     position: sticky; top: 0; z-index: 10;
 }
-.topo-logo  { font-family: var(--mono); font-size: 15px; font-weight: 500; color: var(--accent); letter-spacing: .04em; white-space: nowrap; }
-.topo-versao{ font-family: var(--mono); font-size: 10px; color: var(--text-sub); margin-top: 2px; }
+.topo-logo  { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; white-space: nowrap; }
+.topo-versao{ font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
 .topo-titulo{ font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
-.topo-empresa{ font-size: 15px; font-weight: 600; color: #f5c842; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
 .topo-nome  { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
 .btn-voltar-topo {
     margin-left: 16px; background: transparent;
@@ -74,7 +74,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     padding: 20px 28px; display: grid;
     grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px;
 }
-.doc-empresa-nome { font-size: 11px; font-weight: 700; color: #f5c842; line-height: 1.35; }
+.doc-empresa-nome { font-size: 11px; font-weight: 700; color: #111827; line-height: 1.35; }
 .doc-empresa-cnpj { font-family: var(--mono); font-size: 11px; color: var(--text-sub); margin-top: 3px; }
 .doc-titulo-bloco { text-align: center; }
 .doc-titulo      { font-size: 20px; font-weight: 700; color: var(--text-head); letter-spacing: .05em; }
@@ -190,12 +190,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     /* cabeçalho branco no PDF/impressão */
     .doc-header { border-radius: 0; padding: 10px 16px;
                   background: #fff !important;
-                  border-bottom: 2px solid #0b1f3a; }
-    .doc-titulo       { font-size: 15px; color: #0b1f3a; }
+                  border-bottom: 2px solid #a0d9be; }
+    .doc-titulo       { font-size: 15px; color: #a0d9be; }
     .doc-subtitulo    { color: #374151; }
-    .doc-empresa-nome { font-size: 12px; color: #0b1f3a; }
+    .doc-empresa-nome { font-size: 12px; color: #a0d9be; }
     .doc-empresa-cnpj { font-size: 10px; color: #374151; }
-    .doc-logo-texto   { font-size: 11px; color: #0b1f3a; }
+    .doc-logo-texto   { font-size: 11px; color: #a0d9be; }
     .doc-versao, .doc-data { color: #374151; }
 
     .banner { padding: 10px 16px; border-bottom: 1px solid var(--accent); }

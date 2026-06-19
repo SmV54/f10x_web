@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Clientes</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #e8edf4;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 72px;
+    position: sticky; top: 0; z-index: 100;
+}
+.topo-esq  { display: flex; align-items: center; }
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80;
+    border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    color: #dcfce7; letter-spacing: 0.14em; text-transform: uppercase;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 3px 10px rgba(0,0,0,0.35);
+    white-space: nowrap; flex-shrink: 0;
+}
+.topo-centro { text-align: center; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT DOIS PAINÉIS ── */
+.layout {
+    display: grid;
+    grid-template-columns: 440px 1fr;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+
+/* ── PAINEL ESQUERDO — CLIENTES ── */
+.painel-clientes {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+}
+.painel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+.painel-header-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b; margin-bottom: 10px;
+}
+.busca-wrap { position: relative; }
+.busca-icone {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; color: #94a3b8; pointer-events: none;
+}
+.input-busca {
+    width: 100%; padding: 7px 10px 7px 30px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 13px; font-family: var(--sans);
+    background: var(--surface); color: var(--label); outline: none; transition: 0.15s;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.lista-clientes { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.cliente-card {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 2px;
+    gap: 10px;
+}
+.cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
+.cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.cliente-info {
+    flex: 1; min-width: 0;
+    display: flex; align-items: baseline; gap: 7px; overflow: hidden;
+}
+.cliente-id {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: #64748b; white-space: nowrap; flex-shrink: 0;
+}
+.cliente-nome {
+    font-size: 13px; font-weight: 600; color: #0f172a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex-shrink: 1;
+}
+.cliente-card.ativo .cliente-nome { color: var(--accent); }
+.cliente-cpf {
+    font-family: var(--mono); font-size: 11px; color: #94a3b8;
+    white-space: nowrap; flex-shrink: 0;
+}
+.badge-empresas {
+    flex-shrink: 0;
+    font-size: 11px; font-weight: 700; color: #1d4ed8;
+    background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: 10px; padding: 2px 9px; white-space: nowrap;
+}
+.cliente-card.ativo .badge-empresas { background: var(--accent); border-color: var(--accent); color: #fff; }
+.badge-zero { color: #94a3b8; background: #f1f5f9; border-color: #e2e8f0; }
+.lista-vazia { padding: 32px 16px; text-align: center; font-size: 13px; color: #94a3b8; }
+.total-clientes {
+    padding: 8px 16px; border-top: 1px solid var(--border);
+    font-size: 11px; color: #64748b; text-align: right; background: #f8fafc;
+}
+
+/* ── PAINEL DIREITO — EMPRESAS ── */
+.painel-empresas {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+}
+.empresas-header {
+    padding: 16px 24px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    display: flex; align-items: center; gap: 12px;
+}
+.empresas-header-nome {
+    font-size: 15px; font-weight: 600; color: #0f172a;
+}
+.empresas-header-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+.badge-total-emp {
+    margin-left: auto; font-size: 12px; font-weight: 700;
+    background: #f0fdf4; border: 1px solid #86efac; color: #166534;
+    border-radius: 10px; padding: 3px 12px;
+}
+.empresas-corpo { flex: 1; overflow-y: auto; padding: 16px 20px; }
+
+/* ── ESTADO VAZIO ── */
+.estado-vazio {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; gap: 12px; color: #94a3b8;
+}
+.estado-vazio-icone { font-size: 40px; opacity: 0.5; }
+.estado-vazio-texto { font-size: 14px; font-weight: 500; }
+.estado-vazio-sub   { font-size: 12px; }
+
+/* ── TABELA DE EMPRESAS ── */
+.tabela-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    background: #eaf1fb; padding: 10px 16px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.04em; color: #334155; text-align: left;
+    border-bottom: 1px solid #d1dded;
+}
+thead th.col-num { text-align: center; }
+tbody tr { transition: background 0.1s; }
+tbody tr:not(:last-child) td { border-bottom: 1px solid #f1f5f9; }
+tbody tr:hover td { background: #f8fafc; }
+tbody td { padding: 10px 16px; font-size: 13px; color: var(--label); vertical-align: middle; }
+tbody td.col-num { text-align: center; }
+tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.pill-func {
+    display: inline-block; font-size: 12px; font-weight: 700;
+    padding: 2px 11px; border-radius: 10px; white-space: nowrap;
+}
+.pill-func.tem  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.pill-func.zero { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+
+/* ── LOADING ── */
+.loading-empresas {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 40px; color: #64748b; font-size: 14px;
+}
+.spinner {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 3px solid #e2e8f0; border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── SCROLLBAR FINA ── */
+.lista-clientes::-webkit-scrollbar,
+.empresas-corpo::-webkit-scrollbar { width: 5px; }
+.lista-clientes::-webkit-scrollbar-thumb,
+.empresas-corpo::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="badge-admin">🛡️ ADMIN</span>
+    </div>
+    <div class="topo-centro">
+        <div class="topo-titulo">Lista de Clientes</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="layout">
+
+    <!-- ── PAINEL ESQUERDO — CLIENTES ── -->
+    <aside class="painel-clientes">
+        <div class="painel-header">
+            <div class="painel-header-titulo">Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span></div>
+            <div class="busca-wrap">
+                <span class="busca-icone">🔍</span>
+                <input class="input-busca" id="inputBusca" type="text" placeholder="Buscar cliente…" oninput="filtrarClientes()" autocomplete="off">
+            </div>
+        </div>
+
+        <div class="lista-clientes" id="listaClientes">
+            {% for c in clientes %}
+            <div class="cliente-card"
+                 id="card-{{ c.id_cliente }}"
+                 data-nome="{{ (c.nome or '') | lower }}"
+                 onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}', {{ c.qtd_empresas_real }})">
+                <div class="cliente-info">
+                    <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
+                    <span class="cliente-nome">{{ c.nome or '—' }}</span>
+                    <span class="cliente-cpf">{{ c.cpf or '' }}</span>
+                </div>
+                <span class="badge-empresas {% if c.qtd_empresas_real == 0 %}badge-zero{% endif %}">
+                    {{ c.qtd_empresas_real }}
+                    {% if c.qtd_empresas_real == 1 %}empresa{% else %}empresas{% endif %}
+                </span>
+            </div>
+            {% else %}
+            <div class="lista-vazia">Nenhum cliente cadastrado.</div>
+            {% endfor %}
+        </div>
+
+        <div class="total-clientes">{{ clientes | length }} cliente(s)</div>
+    </aside>
+
+    <!-- ── PAINEL DIREITO — EMPRESAS ── -->
+    <main class="painel-empresas">
+        <div class="empresas-header" id="empresasHeader" style="display:none;">
+            <div>
+                <div class="empresas-header-nome" id="headerNomeCliente"></div>
+                <div class="empresas-header-sub" id="headerSubCliente"></div>
+            </div>
+            <span class="badge-total-emp" id="headerTotalEmp"></span>
+        </div>
+
+        <div class="empresas-corpo" id="empresasCorpo">
+            <div class="estado-vazio" id="estadoVazio">
+                <span class="estado-vazio-icone">🏢</span>
+                <span class="estado-vazio-texto">Selecione um cliente</span>
+                <span class="estado-vazio-sub">As empresas serão exibidas aqui</span>
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<script>
+let clienteAtivo = null;
+
+function selecionarCliente(idCliente, nomeCliente, qtdEmpresas) {
+    if (clienteAtivo === idCliente) return;
+    clienteAtivo = idCliente;
+
+    document.querySelectorAll('.cliente-card').forEach(c => c.classList.remove('ativo'));
+    const card = document.getElementById('card-' + idCliente);
+    if (card) card.classList.add('ativo');
+
+    const header = document.getElementById('empresasHeader');
+    header.style.display = 'flex';
+    document.getElementById('headerNomeCliente').textContent = nomeCliente;
+    document.getElementById('headerSubCliente').textContent  = 'ID ' + idCliente;
+    document.getElementById('headerTotalEmp').textContent    =
+        qtdEmpresas + (qtdEmpresas === 1 ? ' empresa' : ' empresas');
+
+    const corpo = document.getElementById('empresasCorpo');
+    corpo.innerHTML = '<div class="loading-empresas"><div class="spinner"></div> Carregando empresas…</div>';
+
+    fetch('/api/admin_clientes/' + idCliente)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) { corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Erro ao carregar</span></div>'; return; }
+            renderEmpresas(d.empresas);
+        })
+        .catch(() => {
+            corpo.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Falha na requisição</span></div>';
+        });
+}
+
+function renderEmpresas(empresas) {
+    const corpo = document.getElementById('empresasCorpo');
+
+    if (!empresas || empresas.length === 0) {
+        corpo.innerHTML = `
+            <div class="estado-vazio">
+                <span class="estado-vazio-icone">📭</span>
+                <span class="estado-vazio-texto">Nenhuma empresa cadastrada</span>
+                <span class="estado-vazio-sub">Este cliente ainda não tem empresas</span>
+            </div>`;
+        return;
+    }
+
+    const linhas = empresas.map(e => {
+        const pill = e.qtd_funcionarios > 0
+            ? `<span class="pill-func tem">${e.qtd_funcionarios}</span>`
+            : `<span class="pill-func zero">0</span>`;
+        return `
+            <tr>
+                <td>${escHtml(e.razao_fmt)}</td>
+                <td class="col-cnpj">${escHtml(e.cnpj_fmt || '—')}</td>
+                <td class="col-num">${pill}</td>
+            </tr>`;
+    }).join('');
+
+    corpo.innerHTML = `
+        <div class="tabela-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Empresa</th>
+                        <th>CNPJ</th>
+                        <th class="col-num">Funcionários</th>
+                    </tr>
+                </thead>
+                <tbody>${linhas}</tbody>
+            </table>
+        </div>`;
+}
+
+function filtrarClientes() {
+    const termo = document.getElementById('inputBusca').value.toLowerCase().trim();
+    document.querySelectorAll('.cliente-card[data-nome]').forEach(card => {
+        const nome = card.dataset.nome || '';
+        card.style.display = (!termo || nome.includes(termo)) ? '' : 'none';
+    });
+}
+
+function escHtml(str) {
+    return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
