@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Cálculo da Folha</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -168,6 +170,19 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     padding: 10px 22px; cursor: pointer; transition: background 0.15s;
 }
 .btn-modal-sec:hover { background: #e2e8f0; }
+
+/* ── BOTÃO TOUR ── */
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #2a7de1; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(42,125,225,0.40);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); line-height: 1;
+}
+#btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 </style>
 </head>
 <body>
@@ -239,6 +254,8 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
              background:#fff7ed; border:1px solid #f97316; border-radius:8px;"></div>
     </div>
 </div>
+
+<button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
 
 <script>
 const src = new EventSource('/api/calcular_folha_stream');
@@ -368,6 +385,92 @@ function mostrarModalRecalcular(onConfirm) {
     };
     document.getElementById('btnCancelarRecalc').onclick = () => overlay.remove();
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+/* ── TOUR DRIVER.JS ── */
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '🖩 Cálculo da Folha',
+                description: 'Esta tela <strong>inicia o cálculo automaticamente</strong> ao ser aberta — não há botão para acionar. O sistema processa todos os funcionários em sequência, aplicando salário, movimentos, INSS, IRRF e apurando o líquido de cada um.',
+                side: 'bottom', align: 'center'
+            }
+        },
+    ];
+
+    if (document.querySelector('.topo-folha-ativa')) {
+        passos.push({
+            element: '.topo-folha-ativa',
+            popover: {
+                title: '📅 Folha em Processamento',
+                description: 'Indica qual competência está sendo calculada. Após a conclusão, a situação muda automaticamente de <strong>Aberta → Calculada</strong> e o badge é atualizado aqui mesmo, sem precisar recarregar a página.',
+                side: 'bottom', align: 'center'
+            }
+        });
+    }
+
+    passos.push(
+        {
+            element: '#sec-prog',
+            popover: {
+                title: '⏳ Em Andamento — Barra de Progresso',
+                description: 'Enquanto o cálculo está rodando, você vê a barra avançar e o nome do funcionário atual sendo processado. A atualização é em <strong>tempo real</strong> via conexão contínua com o servidor.',
+                side: 'top', align: 'center'
+            }
+        },
+        {
+            element: '.prog-track',
+            popover: {
+                title: '📊 O que é Calculado em Cada Etapa',
+                description: 'Para cada funcionário o sistema aplica, nessa ordem:<br>1. Salário base proporcional (faltas/afastamentos)<br>2. Verbas de Movimento Fixo<br>3. Eventos variáveis lançados<br>4. INSS (progressivo ou 11% fixo para cat. 700-799)<br>5. IRRF com dependentes<br>6. Apuração do líquido',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '.prog-func',
+            popover: {
+                title: '👤 Funcionário em Processamento',
+                description: 'Mostra a matrícula e o nome do funcionário sendo calculado agora. Se aparecer uma mensagem em vermelho aqui, houve um erro naquele funcionário — anote a matrícula e verifique o cadastro.',
+                side: 'top', align: 'center'
+            }
+        },
+        {
+            element: '#sec-resumo',
+            popover: {
+                title: '✅ Resumo Final — após o cálculo',
+                description: 'Quando concluído, este painel exibe 4 indicadores: <strong>funcionários calculados</strong>, quantos têm afastamento, registros de afastamento e férias futuras agendadas. Também mostra a pasta onde as <strong>memórias de cálculo</strong> (PDF por funcionário) foram gravadas no servidor.',
+                side: 'top', align: 'center'
+            }
+        },
+        {
+            element: '#sec-bloqueio',
+            popover: {
+                title: '⚠️ Folha Já Calculada ou Fechada',
+                description: 'Se a folha já estiver <strong>Calculada</strong>, aparece um modal perguntando se deseja recalcular — o sistema reabre e processa novamente. Se estiver <strong>Fechada</strong>, ou se o usuário cancelar, esta área é exibida com o botão <em>Ir para Reabrir Folha</em>.',
+                side: 'top', align: 'center'
+            }
+        },
+        {
+            element: '#avisos-calc',
+            popover: {
+                title: '🟡 Avisos Não Fatais',
+                description: 'Aparece somente se houver advertências durante o processamento — por exemplo, tabela de IRRF não encontrada para o período ou funcionário sem sindicato. O cálculo <strong>não é interrompido</strong>, mas cada aviso merece atenção.',
+                side: 'top', align: 'center'
+            }
+        }
+    );
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
 }
 </script>
 </body>
