@@ -262,7 +262,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     <div class="topo-titulo">
         <span>Lançamento de Movimento</span>
         {% if anomes_atual %}
-        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_tipo_ativa != 'N' %} · {{ {'F':'Férias','R':'Rescisão'}.get(folha_tipo_ativa,'') }}{% endif %}</span>
+        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_tipo_ativa != 'N' %} · {{ {'F':'Férias','R':'Rescisão'}.get(folha_tipo_ativa,'') }}{% endif %}{% if folha_ativa_situacao %} · {{ folha_ativa_situacao }}{% endif %}</span>
         {% else %}
         <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
         {% endif %}
