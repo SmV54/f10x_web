@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Lançamento de Movimento</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -250,6 +252,19 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     padding: 10px 22px; cursor: pointer; transition: background 0.15s;
 }
 .btn-modal-sec:hover { background: #e2e8f0; }
+
+/* ── BOTÃO TOUR ── */
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #2a7de1; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(42,125,225,0.40);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); line-height: 1;
+}
+#btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 </style>
 </head>
 <body>
@@ -292,7 +307,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
                 <input type="text" id="busca-func" class="busca-inp"
                        placeholder="Buscar…" oninput="filtrarFuncionarios()">
                 <div class="lista-scroll" id="func-lista"></div>
-                <div class="col-acoes">
+                <div class="col-acoes" id="col-acoes">
                     <button class="btn-mini" onclick="selecionarTodos()">Todos</button>
                     <button class="btn-mini" onclick="limparSelecao()">Limpar</button>
                     <span id="sel-count" class="sel-count">0 selecionado(s)</span>
@@ -300,7 +315,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
             </div>
 
             <!-- ── COL 2: VERBAS ── -->
-            <div class="col-verbas col-sep">
+            <div class="col-verbas col-sep" id="col-verbas">
                 <div class="col-subtitle">Verbas Disponíveis</div>
                 <input type="text" id="busca-verba" class="busca-inp"
                        placeholder="Buscar verba…" oninput="filtrarVerbas()">
@@ -355,7 +370,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     </div><!-- /card form -->
 
     <!-- CARD: Lançamentos -->
-    <div class="card">
+    <div class="card" id="card-lancamentos">
         <div class="card-titulo">
             {% if anomes_atual %}
             <span>Lançamentos — Folha {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
@@ -366,6 +381,8 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     </div>
 
 </div>
+
+<button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
 
 <script>
 const FUNCIONARIOS      = {{ funcionarios | tojson | safe }};
@@ -713,6 +730,108 @@ async function carregarLista() {
         TODOS_REGISTROS.forEach(r => { LISTA_DATA[r.id]=r; });
         filtrarLista();
     } catch { el.innerHTML='<div class="vazio" style="color:#be123c;">Erro ao carregar.</div>'; }
+}
+
+/* ── TOUR DRIVER.JS ── */
+function iniciarTour() {
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: [
+            {
+                element: '.topo',
+                popover: {
+                    title: '🔄 Lançamento de Movimento',
+                    description: 'Aqui você lança os eventos variáveis do mês: horas extras, faltas, verbas avulsas, adiantamentos e outros. O lançamento segue 3 etapas da <strong>esquerda para a direita</strong>.',
+                    side: 'bottom', align: 'center'
+                }
+            },
+            {
+                element: '.badge-folha-topo',
+                popover: {
+                    title: '📅 Folha Ativa',
+                    description: 'Exibe o mês/ano e situação da folha. Lançamentos só são permitidos com a folha <strong>Aberta</strong>. Se a folha estiver Calculada ou Fechada, reabra-a pelo menu Mês/Ano antes de lançar.',
+                    side: 'bottom', align: 'center'
+                }
+            },
+            {
+                element: '#form-layout',
+                popover: {
+                    title: '📋 O Fluxo de 3 Etapas',
+                    description: '<strong>1 →</strong> Selecione um ou mais funcionários<br><strong>2 →</strong> Clique em uma verba<br><strong>3 →</strong> Informe o valor e clique Incluir<br><br>Você pode selecionar vários funcionários e lançar a mesma verba para todos de uma vez.',
+                    side: 'bottom', align: 'center'
+                }
+            },
+            {
+                element: '#col-funcs',
+                popover: {
+                    title: '👥 Etapa 1 — Funcionários',
+                    description: 'Selecione um ou vários funcionários marcando o checkbox ao lado do nome. A mesma verba será lançada para todos os selecionados com o mesmo valor.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '#func-lista',
+                popover: {
+                    title: '🔍 Lista de Funcionários',
+                    description: 'Use o campo de busca acima para filtrar por nome ou matrícula. Os botões <strong>Todos</strong> e <strong>Limpar</strong> selecionam ou desmarcam todos de uma vez. O contador mostra quantos estão selecionados.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '#col-verbas',
+                popover: {
+                    title: '📑 Etapa 2 — Verbas',
+                    description: 'Clique em uma verba para selecioná-la (fica destacada em azul). Cada linha mostra o código, o nome e a unidade da verba.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '#verba-lista',
+                popover: {
+                    title: '🏷️ Tipos e Unidades de Verba',
+                    description: 'O badge colorido indica o tipo: <span style="color:#166534;font-weight:700">Provento</span> (adiciona), <span style="color:#be123c;font-weight:700">Desconto</span> (subtrai), <span style="color:#1d4ed8;font-weight:700">Informativa</span> (sem efeito no líquido). A unidade <strong>V</strong> = valor em R$, <strong>H</strong> = horas, <strong>D</strong> = diárias.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '#col-entrada',
+                popover: {
+                    title: '✏️ Etapa 3 — Entrada de Dados',
+                    description: 'Após selecionar funcionários e verba, este painel mostra as informações da verba e o campo para digitar o valor. Selecione uma verba na coluna ao lado para ativar o painel.',
+                    side: 'left', align: 'start'
+                }
+            },
+            {
+                element: '#inp-entrada',
+                popover: {
+                    title: '💵 Campo de Valor / Horas',
+                    description: 'Para verbas em <strong>Valor (V)</strong>: formato R$ 0,00 — digit apenas números, a máscara é aplicada automaticamente.<br>Para verbas em <strong>Horas (H)</strong>: formato HH:MM.<br>Pressione <kbd>Enter</kbd> para incluir sem usar o mouse.',
+                    side: 'left', align: 'start'
+                }
+            },
+            {
+                element: '#btn-principal',
+                popover: {
+                    title: '✓ Incluir',
+                    description: 'Grava o lançamento para todos os funcionários selecionados. Se algum já tiver essa verba lançada, o sistema exibe aviso antes de sobrescrever. O botão vira <strong>Salvar Alteração</strong> quando você edita um lançamento existente.',
+                    side: 'top', align: 'start'
+                }
+            },
+            {
+                element: '#card-lancamentos',
+                popover: {
+                    title: '📋 Lançamentos Gravados',
+                    description: 'Todos os lançamentos da folha aparecem aqui. Clique em <strong>✏️</strong> para editar ou <strong>🗑️</strong> para excluir. Selecionar funcionários na coluna 1 filtra a tabela para mostrar só os lançamentos deles. O botão <strong>↻ Atualizar</strong> recarrega a lista do servidor.',
+                    side: 'top', align: 'center'
+                }
+            },
+        ],
+    }).drive();
 }
 
 /* ── INIT ── */
