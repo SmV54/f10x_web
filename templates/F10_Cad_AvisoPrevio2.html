@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Aviso Prévio</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -179,6 +181,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     text-decoration: none;
 }
 .btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
 </style>
 </head>
 
@@ -219,7 +232,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     {% else %}
 
     {# ── FUNCIONÁRIO ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-func">
         <div class="pref-secao-titulo"><span>Funcionário</span></div>
         <div class="func-ficha-header">
             <span>Matrícula</span><span>Nome</span><span>Admissão</span><span style="text-align:right;">Salário</span>
@@ -233,7 +246,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     {# ── RESUMO AVISO ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-resumo">
         <div class="pref-secao-titulo"><span>Dados do Aviso</span></div>
         <div class="resumo-grid">
             <div class="resumo-item">
@@ -248,7 +261,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     {# ── PRAZO ── dois avisos prévio distintos ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-prazo">
         <div class="pref-secao-titulo"><span>Aviso Prévio</span></div>
         <div class="prazo-body">
             <div style="text-align:center;flex-shrink:0;">
@@ -280,7 +293,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     {# ── TIPO ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-tipo">
         <div class="pref-secao-titulo"><span>Parâmetros</span></div>
 
         <div class="opcao-linha">
@@ -296,7 +309,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div><!-- /pref-card -->
 
     {# ── DATAS ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-datas">
         <div class="pref-secao-titulo"><span>Período do Aviso</span></div>
         <div class="datas-grid">
             <div class="data-item">
@@ -334,6 +347,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     {% endif %}
 
 </div><!-- /conteudo -->
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
 const DATA_AVISO  = '{{ data_aviso }}';   // YYYY-MM-DD
@@ -383,6 +398,92 @@ function recalcular() {
 }
 
 document.addEventListener('DOMContentLoaded', recalcular);
+
+function iniciarTour() {
+    var temFunc = !!document.querySelector('#card-func');
+
+    var passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '📋 Aviso Prévio — Passo 2',
+                description: 'Tela de confirmação. Revise todos os dados calculados e clique em Gravar para registrar o aviso prévio no sistema.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.rel-header',
+            popover: {
+                title: '↩️ Passo 2 de 2',
+                description: 'Clique em "Voltar" para retornar ao passo 1 e corrigir qualquer parâmetro antes de gravar.',
+                side: 'bottom', align: 'start',
+            }
+        },
+    ];
+
+    if (temFunc) {
+        passos.push(
+            {
+                element: '#card-func',
+                popover: {
+                    title: '👤 Funcionário',
+                    description: 'Confirmação do funcionário, data de admissão e salário que servirão de base para o cálculo das verbas rescisórias.',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '#card-resumo',
+                popover: {
+                    title: '📝 Dados do Aviso',
+                    description: 'Resumo dos parâmetros escolhidos no passo 1: data em que o aviso foi dado e quem o comunicou (Empresa, Funcionário ou Acordo).',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '#card-prazo',
+                popover: {
+                    title: '⏱️ Prazos do Aviso Prévio',
+                    description: '1º Aviso Prévio: 30 dias (ou 15 dias em Acordo) — trabalhado ou indenizado. 2º Aviso (Lei 12.506/2011): dias calculados pelo tempo de serviço, sempre convertido em dinheiro como verba separada.',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '#card-tipo',
+                popover: {
+                    title: '🔀 Trabalhado / Indenizado',
+                    description: 'Confirma o tipo do 1º aviso prévio. Se Trabalhado, o funcionário segue prestando serviço. Se Indenizado, é dispensado e recebe os dias em dinheiro.',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '#card-datas',
+                popover: {
+                    title: '📅 Período do Aviso',
+                    description: 'Data do aviso, início do cumprimento (dia seguinte) e data de desligamento calculada com base no prazo do 1º aviso prévio.',
+                    side: 'top', align: 'start',
+                }
+            },
+            {
+                element: '.rodape',
+                popover: {
+                    title: '💾 Gravar Aviso Prévio',
+                    description: 'Clique em "Gravar Aviso Prévio" para registrar em tab_Eventos e tab_log. A operação não pode ser desfeita — certifique-se de que todos os dados estão corretos.',
+                    side: 'top', align: 'end',
+                }
+            }
+        );
+    }
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 </body>
 </html>

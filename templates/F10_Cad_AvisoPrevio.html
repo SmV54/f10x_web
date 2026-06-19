@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Aviso Prévio</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -189,6 +191,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 margin-left: -8px; border-left: 3px solid #2a7de1; }
 .lei-destaque .lei-label { color: #1d4ed8; }
 .lei-destaque .lei-valor { color: #1d4ed8; font-size: 14px; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
 </style>
 </head>
 
@@ -247,7 +260,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     {% else %}
 
     {# ── FUNCIONÁRIO ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-func">
         <div class="pref-secao-titulo">
             <span>Funcionário</span>
             <a class="btn-alterar" href="/select_funcionario?contexto=aviso_previo">&#8592; Alterar</a>
@@ -302,11 +315,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     {# ── PARÂMETROS ── #}
-    <div class="pref-card">
+    <div class="pref-card" id="card-params">
         <div class="pref-secao-titulo"><span>Parâmetros do Aviso Prévio</span></div>
 
         {# 1 — Data do Aviso #}
-        <div class="opcao-linha">
+        <div class="opcao-linha" id="row-data">
             <span class="opcao-num">1</span>
             <div>
                 <div class="opcao-label">Data do Aviso Prévio</div>
@@ -323,7 +336,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         {# 2 — Trabalhado ou Indenizado #}
-        <div class="opcao-linha top">
+        <div class="opcao-linha top" id="row-tipo">
             <span class="opcao-num">2</span>
             <div>
                 <div class="opcao-label">Aviso Prévio</div>
@@ -347,7 +360,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         {# 3 — Quem deu o aviso #}
-        <div class="opcao-linha top">
+        <div class="opcao-linha top" id="row-quem">
             <span class="opcao-num">3</span>
             <div>
                 <div class="opcao-label">Quem deu o Aviso Prévio</div>
@@ -378,7 +391,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         {# 4 — Condição especial #}
-        <div class="opcao-linha top">
+        <div class="opcao-linha top" id="row-cond">
             <span class="opcao-num">4</span>
             <div>
                 <div class="opcao-label">Marque se for Condição Especial</div>
@@ -424,6 +437,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     {% endif %}{# /funcionario #}
 
 </div><!-- /conteudo -->
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
 const FOLHA_YM   = '{{ folha_ym }}';   // "YYYY-MM"
@@ -493,6 +508,116 @@ document.addEventListener('DOMContentLoaded', function() {
         r.addEventListener('change', atualizarAP1);
     });
 });
+
+function iniciarTour() {
+    var temBloqueio = !!document.querySelector('.bloqueio-card');
+    var temFunc     = !!document.querySelector('#card-func');
+    var temParams   = !!document.querySelector('#card-params');
+
+    var passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '📋 Aviso Prévio — Passo 1',
+                description: 'Registra o aviso prévio de um funcionário. O processo tem 2 passos: aqui você informa os parâmetros; na tela seguinte confirma e grava.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.rel-header',
+            popover: {
+                title: '↩️ Contexto',
+                description: 'O botão "Selecionar" retorna à lista de funcionários caso precise trocar o selecionado. A folha ativa precisa estar Aberta para registrar o aviso.',
+                side: 'bottom', align: 'start',
+            }
+        },
+    ];
+
+    if (temBloqueio) {
+        passos.push({
+            element: '.bloqueio-card',
+            popover: {
+                title: '🔒 Operação bloqueada',
+                description: 'O aviso prévio só pode ser registrado com a folha Aberta — ou este funcionário já possui um aviso ativo. Resolva a situação indicada para continuar.',
+                side: 'bottom', align: 'start',
+            }
+        });
+    }
+
+    if (temFunc) {
+        passos.push({
+            element: '#card-func',
+            popover: {
+                title: '👤 Funcionário selecionado',
+                description: 'Mostra matrícula, nome, data de admissão e salário. Clique em "Alterar" no canto do card se precisar trocar o funcionário.',
+                side: 'bottom', align: 'start',
+            }
+        });
+    }
+
+    if (temParams) {
+        passos.push(
+            {
+                element: '.lei-strip',
+                popover: {
+                    title: '⚖️ Referência Legal',
+                    description: '1º Aviso: 30 dias (ou 15 dias em caso de Acordo — Lei 13.467/2017). 2º Aviso (Lei 12.506/2011): 3 dias por ano trabalhado, limitado a 60 dias — sempre indenizado em dinheiro.',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '#row-data',
+                popover: {
+                    title: '📅 Data do Aviso Prévio',
+                    description: 'Data em que o aviso foi comunicado ao funcionário. Deve estar dentro do mês da folha ativa. O sistema valida automaticamente.',
+                    side: 'left', align: 'center',
+                }
+            },
+            {
+                element: '#row-tipo',
+                popover: {
+                    title: '🔀 Trabalhado ou Indenizado',
+                    description: '"Trabalhado": o funcionário continua prestando serviço durante o período do aviso. "Indenizado": a empresa dispensa o trabalho e paga os dias em dinheiro.',
+                    side: 'left', align: 'center',
+                }
+            },
+            {
+                element: '#row-quem',
+                popover: {
+                    title: '👥 Quem deu o Aviso',
+                    description: '"Empresa": demissão sem justa causa — gera verbas rescisórias completas. "Funcionário": pedido de demissão — sem multa do FGTS. "Acordo" (Lei 13.467/2017): aviso de 15 dias e metade da multa do FGTS.',
+                    side: 'left', align: 'center',
+                }
+            },
+            {
+                element: '#row-cond',
+                popover: {
+                    title: '⚠️ Condição Especial',
+                    description: 'Marque apenas se for um caso especial: Justa Causa (sem aviso e sem multa), Contrato Temporário (encerramento previsto) ou Falecimento. Deixe em branco na maioria dos casos.',
+                    side: 'left', align: 'center',
+                }
+            },
+            {
+                element: '.rodape',
+                popover: {
+                    title: '▶️ Continuar',
+                    description: 'Clique em Continuar para avançar ao passo 2, onde o sistema exibe os prazos e datas calculados antes de gravar.',
+                    side: 'top', align: 'end',
+                }
+            }
+        );
+    }
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 </body>
 </html>
