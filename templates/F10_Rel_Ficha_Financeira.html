@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Ficha Financeira</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 * { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
 html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
@@ -163,6 +165,17 @@ tr.row-base-header td {
     display: inline-flex; align-items: center;
 }
 .btn-menu:hover { background: #d1d5db; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #2563eb; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: 'IBM Plex Sans', sans-serif;
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1d4ed8; }
 </style>
 </head>
 <body>
@@ -186,7 +199,7 @@ tr.row-base-header td {
 <div class="container">
 
     <form method="get" action="/rel_ficha_financeira">
-        <div class="filtros">
+        <div class="filtros" id="sec-filtros">
             <div class="filtro-campo">
                 <span class="filtro-label">Funcionário</span>
                 <select class="filtro-select" name="mat" style="width:320px">
@@ -216,7 +229,7 @@ tr.row-base-header td {
     {% endif %}
 
     {% if func %}
-    <div class="func-info">
+    <div class="func-info" id="sec-func-info">
         <span class="func-mat">{{ "%06d"|format(func.matricula) }}</span>
         <span class="func-nome">{{ func.nome_fmt }}</span>
         <span class="func-sit {{ 'sit-A' if func.situacao == 'A' else 'sit-D' }}">
@@ -226,7 +239,7 @@ tr.row-base-header td {
     {% endif %}
 
     {% if func %}
-    <div class="card">
+    <div class="card" id="sec-tabela">
         <div class="table-scroll">
         <table>
             <thead>
@@ -351,8 +364,8 @@ tr.row-base-header td {
         </div>
     </div>
 
-    <div class="rodape">
-        <a class="btn-pdf"
+    <div class="rodape" id="sec-rodape">
+        <a class="btn-pdf" id="btn-pdf"
            href="/rel_ficha_financeira_pdf?mat={{ mat }}&ano={{ ano }}"
            target="_blank">&#128438; Imprimir em PDF</a>
         <a class="btn-menu" href="/menu">Voltar ao Menu</a>
@@ -370,5 +383,167 @@ tr.row-base-header td {
     {% endif %}
 
 </div>
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
+<script>
+function iniciarTour() {
+    const temFunc   = !!document.querySelector('#sec-func-info');
+    const temTabela = !!document.querySelector('#sec-tabela table');
+    const temProv   = !!document.querySelector('.sec-prov');
+    const temDesc   = !!document.querySelector('.sec-desc');
+    const temLiq    = !!document.querySelector('.row-liquido');
+    const temBase   = !!document.querySelector('.row-base-header');
+
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '📋 Ficha Financeira',
+                description: 'Relatório de movimentação salarial anual por funcionário. Mostra mês a mês todos os proventos, descontos, líquido e bases de cálculo (INSS, IRRF, FGTS).',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#sec-filtros',
+            popover: {
+                title: '🔍 Filtros',
+                description: 'Selecione o funcionário e o ano desejado e clique em Gerar. Todos os funcionários cadastrados com movimento aparecem na lista.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: 'select[name="mat"]',
+            popover: {
+                title: '👤 Funcionário',
+                description: 'Escolha o funcionário pela matrícula e nome. A lista inclui ativos e desligados que tenham pelo menos um registro no ano consultado.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: 'select[name="ano"]',
+            popover: {
+                title: '📅 Ano de referência',
+                description: 'O sistema lista apenas os anos que possuem folha calculada. Selecione o ano e clique em Gerar.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: '.btn-gerar',
+            popover: {
+                title: '▶️ Gerar',
+                description: 'Clique para carregar a ficha do funcionário e ano selecionados. A página recarrega exibindo a tabela completa.',
+                side: 'right', align: 'start',
+            }
+        },
+    ];
+
+    if (temFunc) {
+        passos.push({
+            element: '#sec-func-info',
+            popover: {
+                title: '📌 Dados do Funcionário',
+                description: 'Exibe matrícula, nome completo e situação (Ativo ou Desligado) do funcionário consultado.',
+                side: 'bottom', align: 'start',
+            }
+        });
+    }
+
+    if (temTabela) {
+        passos.push({
+            element: '#sec-tabela',
+            popover: {
+                title: '📊 Tabela de movimentação anual',
+                description: 'Cada linha é uma verba (salário, horas extras, INSS, IRRF…). As colunas mostram o valor de cada mês. As três últimas colunas resumem o ano, o adiantamento de 13º e o 13º salário.',
+                side: 'bottom', align: 'start',
+            }
+        });
+        passos.push({
+            element: 'thead',
+            popover: {
+                title: '📅 Colunas da tabela',
+                description: 'Jan a Dez trazem os valores mensais. "Total Ano" é a soma da folha normal. "Adiant. 13" é o adiantamento pago em novembro. "13º Sal." é o valor calculado em dezembro.',
+                side: 'bottom', align: 'start',
+            }
+        });
+    }
+
+    if (temProv) {
+        passos.push({
+            element: '.sec-prov',
+            popover: {
+                title: '↑ Proventos',
+                description: 'Verbas que somam ao salário do funcionário — salário base, horas extras, adicionais, DSR, etc. Fundo verde claro.',
+                side: 'bottom', align: 'start',
+            }
+        });
+    }
+
+    if (temDesc) {
+        passos.push({
+            element: '.sec-desc',
+            popover: {
+                title: '↓ Descontos',
+                description: 'Verbas que reduzem o salário — INSS, IRRF, vale-transporte, vale-refeição, faltas, etc. Fundo vermelho claro.',
+                side: 'bottom', align: 'start',
+            }
+        });
+    }
+
+    if (temLiq) {
+        passos.push({
+            element: '.row-liquido',
+            popover: {
+                title: '💰 Líquido',
+                description: 'Valor final a receber em cada mês: Total Proventos menos Total Descontos. Linha em azul, destaque para facilitar a leitura.',
+                side: 'top', align: 'start',
+            }
+        });
+    }
+
+    if (temBase) {
+        passos.push({
+            element: '.row-base-header',
+            popover: {
+                title: '📐 Bases de Cálculo',
+                description: 'Abaixo do líquido ficam as bases usadas para os encargos: Base INSS (sem e com teto), Base IRRF (total e após deduções), Base e valor do FGTS. Útil para conferência com a GFIP/eSocial.',
+                side: 'top', align: 'start',
+            }
+        });
+    }
+
+    if (document.querySelector('#btn-pdf')) {
+        passos.push({
+            element: '#btn-pdf',
+            popover: {
+                title: '🖨️ Imprimir em PDF',
+                description: 'Gera a ficha em PDF no mesmo formato da tela, pronta para arquivamento ou envio ao funcionário. Abre em nova aba.',
+                side: 'top', align: 'start',
+            }
+        });
+    }
+
+    if (document.querySelector('.btn-menu')) {
+        passos.push({
+            element: '.btn-menu',
+            popover: {
+                title: '🏠 Voltar ao Menu',
+                description: 'Retorna à tela principal do sistema.',
+                side: 'top', align: 'end',
+            }
+        });
+    }
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+</script>
 </body>
 </html>
