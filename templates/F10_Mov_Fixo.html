@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Movimento Fixo</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -203,6 +205,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .btn-acao:hover { background: #f1f5f9; }
 .tabela-rodape { padding: 8px 14px; background: #f8fafc; border-top: 1px solid var(--border); font-size: 11px; color: #64748b; }
 .vazio { padding: 36px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
 </style>
 </head>
 <body>
@@ -225,7 +238,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <div class="conteudo">
 
     <!-- CARD: FORMULÁRIO -->
-    <div class="card">
+    <div class="card" id="card-form">
         <div class="card-titulo">
             <span id="form-titulo">📌 Novo Movimento Fixo</span>
         </div>
@@ -236,7 +249,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
 
             <!-- VERBA E VALOR -->
-            <div class="sec-div"><span class="sec-div-label">Rubrica e Valor</span><div class="sec-div-line"></div></div>
+            <div class="sec-div" id="sec-rubrica"><span class="sec-div-label">Rubrica e Valor</span><div class="sec-div-line"></div></div>
             <div class="field-row">
                 <div class="fg lg">
                     <label>Rubrica (Verba) *</label>
@@ -259,7 +272,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
 
             <!-- PARA QUEM -->
-            <div class="sec-div"><span class="sec-div-label">Para Quem?</span><div class="sec-div-line"></div></div>
+            <div class="sec-div" id="sec-para-quem"><span class="sec-div-label">Para Quem?</span><div class="sec-div-line"></div></div>
             <div class="radio-group">
                 <label class="radio-label">
                     <input type="radio" name="modo_alvo" value="especifico" checked onchange="setModoAlvo('especifico')">
@@ -351,7 +364,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
 
             <!-- VIGÊNCIA -->
-            <div class="sec-div"><span class="sec-div-label">Opções de Vigência deste Movimento Fixo</span><div class="sec-div-line"></div></div>
+            <div class="sec-div" id="sec-vigencia"><span class="sec-div-label">Opções de Vigência deste Movimento Fixo</span><div class="sec-div-line"></div></div>
 
             <div class="vig-boxes">
 
@@ -408,7 +421,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
 
             <!-- REGRAS -->
-            <div class="sec-div"><span class="sec-div-label">Regras de Processamento</span><div class="sec-div-line"></div></div>
+            <div class="sec-div" id="sec-regras"><span class="sec-div-label">Regras de Processamento</span><div class="sec-div-line"></div></div>
             <div class="field-row">
                 <div class="fg">
                     <label>Nas Férias</label>
@@ -456,7 +469,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- CARD: LISTA -->
-    <div class="card">
+    <div class="card" id="card-lista">
         <div class="card-titulo">
             <span>Movimentos Fixos Cadastrados</span>
             <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
@@ -929,6 +942,117 @@ async function carregarLista() {
 }
 
 carregarLista();
+
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '📌 Movimento Fixo',
+                description: 'Verbas que se repetem todo mês automaticamente — adicional de periculosidade, plano de saúde, vale-refeição fixo, etc. Você cadastra uma vez e o sistema inclui em toda folha dentro da vigência.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-form',
+            popover: {
+                title: '📝 Formulário',
+                description: 'Preencha os campos para incluir um novo movimento fixo. Quando você clica em Editar (✏️) na lista abaixo, o formulário muda para modo de alteração.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#sec-rubrica',
+            popover: {
+                title: '🔢 Rubrica e Valor',
+                description: 'Busque a verba pelo código ou nome. O sistema mostra o tipo (Provento, Desconto, Informativa). Informe o valor em reais — apenas dígitos, sem ponto de milhar.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#inp-valor',
+            popover: {
+                title: '💰 Valor (R$)',
+                description: 'Digite o valor fixo que será lançado a cada folha. A máscara formata automaticamente (ex: "15000" → "150,00"). Deve ser maior que zero.',
+                side: 'left', align: 'center',
+            }
+        },
+        {
+            element: '#sec-para-quem',
+            popover: {
+                title: '👥 Para Quem?',
+                description: '"Funcionários específicos": você marca individualmente na lista abaixo. "Filtrar": aplica a todos que atendam a critérios de sindicato, função, categoria, faixa salarial, idade ou tempo de serviço.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#div-especifico',
+            popover: {
+                title: '🔍 Lista de Funcionários',
+                description: 'Busque por nome ou matrícula. Use "Todos" para marcar todos de uma vez. O contador mostra quantos estão selecionados. O movimento fixo será gravado uma linha por funcionário.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: '#sec-vigencia',
+            popover: {
+                title: '📅 Vigência',
+                description: 'Define até quando o lançamento se repete. Escolha entre controle por parcelas ou por período de folha.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#box-parcelas',
+            popover: {
+                title: '🔢 Por Parcelas',
+                description: 'Informe o total de parcelas e quantas já foram descontadas (útil ao migrar do sistema antigo). O sistema para de incluir automaticamente quando as parcelas se esgotarem.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#box-periodo',
+            popover: {
+                title: '📆 Por Período',
+                description: 'Defina folha inicial e folha final (MM/AAAA). Marque "Por tempo indeterminado" para lançar sem data de fim — útil para benefícios permanentes como plano de saúde.',
+                side: 'bottom', align: 'end',
+            }
+        },
+        {
+            element: '#sec-regras',
+            popover: {
+                title: '⚙️ Regras de Processamento',
+                description: '"Nas Férias": define se a verba entra na folha de férias (integral, proporcional ou não entra). "Se Afastado": continua, interrompe ou proporciona. "Mês Admissão/Rescisão": se paga integral ou proporcional nos meses de entrada/saída.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#btn-principal',
+            popover: {
+                title: '✅ Incluir / Salvar',
+                description: 'Grava o movimento fixo para todos os funcionários selecionados. Em modo de edição o botão vira "Salvar Alteração". Use "Cancelar" para descartar a edição.',
+                side: 'top', align: 'end',
+            }
+        },
+        {
+            element: '#card-lista',
+            popover: {
+                title: '📋 Movimentos Cadastrados',
+                description: 'Lista todos os movimentos fixos ativos e inativos. Colunas: alvo (funcionário ou grupo), verba, valor, vigência, regras e situação. Use ✏️ para editar e 🗑️ para inativar.',
+                side: 'top', align: 'start',
+            }
+        },
+    ];
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 </body>
 </html>
