@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Recibo de Férias</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -125,6 +127,17 @@ td.aquis { font-size: 11px; color: #64748b; font-family: var(--mono); }
 }
 .btn-recibo:hover    { background: #0d6b61; }
 .btn-recibo:disabled { background: #99d4cf; cursor: not-allowed; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
 </style>
 </head>
 <body>
@@ -169,7 +182,7 @@ td.aquis { font-size: 11px; color: #64748b; font-family: var(--mono); }
         <div class="msg-erro">⚠️ {{ erro_msg }}</div>
     {% else %}
 
-    <div class="card">
+    <div class="card" id="card-lista">
         <div class="card-header">
             <span class="card-titulo">Selecione os funcionários</span>
             {% if funcionarios %}<span class="badge-count">{{ funcionarios|length }}</span>{% endif %}
@@ -178,7 +191,7 @@ td.aquis { font-size: 11px; color: #64748b; font-family: var(--mono); }
         {% if funcionarios %}
         <div class="tbl-wrap">
             <table>
-                <thead>
+                <thead id="thead-lista">
                     <tr>
                         <th style="width:36px;padding-left:16px;">
                             <input type="checkbox" id="chkTodos" title="Selecionar todos"
@@ -240,6 +253,8 @@ td.aquis { font-size: 11px; color: #64748b; font-family: var(--mono); }
 
     {% endif %}
 </div>
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
 function matriculasSelecionadas() {
@@ -307,6 +322,86 @@ async function gerarRecibo() {
 }
 
 document.addEventListener('DOMContentLoaded', atualizarSelecao);
+
+function iniciarTour() {
+    const temFunc = !!document.querySelector('.chk-func');
+
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '🧾 Recibo de Férias',
+                description: 'Gera o PDF do recibo de férias para os funcionários com gozo lançado no mês da folha ativa. O recibo contém os dados do período, dias, valores e campos de assinatura.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.pg-header',
+            popover: {
+                title: '📅 Competência',
+                description: 'Mostra o mês/ano da folha ativa. Só aparecem os funcionários cujo início de gozo cai nessa competência. Se a lista estiver vazia, o cálculo de férias ainda não foi executado.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-lista',
+            popover: {
+                title: '👥 Seleção de funcionários',
+                description: temFunc
+                    ? 'Lista todos os funcionários com férias calculadas no período. Marque os que devem constar no PDF e clique em Gerar Recibo PDF.'
+                    : 'Nenhum funcionário com férias calculadas para este mês. Execute o Cálculo de Férias antes de gerar o recibo.',
+                side: 'bottom', align: 'start',
+            }
+        },
+    ];
+
+    if (temFunc) {
+        passos.push(
+            {
+                element: '#chkTodos',
+                popover: {
+                    title: '☑️ Selecionar todos',
+                    description: 'Marca ou desmarca todos de uma vez. Você pode gerar o recibo de apenas um funcionário desmarcando os demais.',
+                    side: 'right', align: 'center',
+                }
+            },
+            {
+                element: '#thead-lista',
+                popover: {
+                    title: '📊 Colunas da tabela',
+                    description: 'Início e fim do gozo delimitam o período de descanso. "Dias" é a quantidade de dias. "Período Aquisitivo" mostra os 12 meses trabalhados que geraram o direito a essas férias.',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '.rodape',
+                popover: {
+                    title: '🎯 Seleção e ação',
+                    description: 'Exibe quantos funcionários estão selecionados. O botão fica bloqueado quando nenhum está marcado.',
+                    side: 'top', align: 'end',
+                }
+            },
+            {
+                element: '#btnRecibo',
+                popover: {
+                    title: '🖨️ Gerar Recibo PDF',
+                    description: 'Gera um PDF com o recibo de férias de cada funcionário selecionado — um por página — com dados do período, valores calculados e linha de assinatura. Abre em nova aba.',
+                    side: 'top', align: 'end',
+                }
+            }
+        );
+    }
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 
 </body>
