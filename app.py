@@ -22014,7 +22014,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             mmQmm = {}
             cod_verbas_fixas = set()   # verbas originadas de mov_fixo → origem='F'
             mov_fixo_lote    = {}      # cod_v → acesso_f10a (para gravar lote no tab_mov)
-            is_intermitente  = str(l.get("codcateg", "")).strip() == "111"
+            _categ_s         = str(l.get("codcateg", "")).strip()
+            _categ_n         = int(_categ_s) if _categ_s.isdigit() else 0
+            is_intermitente  = _categ_n == 111
+            is_domestico     = 700 <= _categ_n <= 799
             if is_intermitente:
                 formula = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
                            f"  Salário calculado via Verba 003 (lançamento manual).")
@@ -22673,8 +22676,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             )
 
             # ── etapa 10 — INSS ───────────────────────────────
-            inss_val, inss_det, inss_teto = _calc_inss_progressivo(
-                int(base_inss), tabela_legais)
+            if is_domestico:
+                inss_val  = (int(base_inss) * 11) // 100
+                inss_det  = []
+                inss_teto = 0
+            else:
+                inss_val, inss_det, inss_teto = _calc_inss_progressivo(
+                    int(base_inss), tabela_legais)
             mmVmm[101] = inss_val
 
             _st_e10_zero = TableStyle([
@@ -22734,6 +22742,22 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 0), (0, 0), 2),
                     ("TOPPADDING",    (0, 1), (0, 1), 2),
                     ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+                ]))
+            elif is_domestico and inss_val > 0:
+                e10_tbl = Table([
+                    [Paragraph(hdr10_txt, st_etapa)],
+                    [Paragraph(
+                        f"Aliquota fixa 11% (Cat. 700-799)   "
+                        f"{_fmt_brl(int(base_inss))} x 11% = {_fmt_brl(inss_val)}",
+                        st_detalhe)],
+                ], colWidths=[17*cm])
+                e10_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",   (0, 0), (0, 0), 10),
+                    ("BOTTOMPADDING",(0, 0), (0, 0), 2),
+                    ("TOPPADDING",   (0, 1), (0, 1), 0),
+                    ("BOTTOMPADDING",(0, 1), (0, 1), 4),
                 ]))
             else:
                 e10_tbl = Table([[Paragraph(
@@ -25748,7 +25772,10 @@ def calcular_folha_etapa1_pdf():
             # ── etapa 1 ────────────────────────────────────
             mmVmm = {}
             mmQmm = {}
-            is_intermitente = str(l.get("codcateg", "")).strip() == "111"
+            _categ_s2    = str(l.get("codcateg", "")).strip()
+            _categ_n2    = int(_categ_s2) if _categ_s2.isdigit() else 0
+            is_intermitente = _categ_n2 == 111
+            is_domestico    = 700 <= _categ_n2 <= 799
             if is_intermitente:
                 formula_txt = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
                                f"  Salário calculado via Verba 003 (lançamento manual).")
