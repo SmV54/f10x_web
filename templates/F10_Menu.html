@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Menu Principal</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -215,6 +217,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     color: #94a3b8; font-size: 13px; font-style: italic;
     padding: 24px 20px;
 }
+
+/* ── BOTÃO TOUR ── */
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(42,125,225,0.40);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); line-height: 1;
+}
+#btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
+#btnTour title { display: none; }
 </style>
 </head>
 
@@ -279,6 +295,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
 </div>
+
+<button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer o sistema">?</button>
 
 <script>
 const FOLHA_SITUACAO      = '{{ folha_situacao }}';
@@ -774,7 +792,7 @@ function fecharPanel() {
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharPanel(); });
 document.addEventListener('click',   e => {
-    if (!e.target.closest('.modulos-grid') && !e.target.closest('#navPanel')) fecharPanel();
+    if (!e.target.closest('.modulos-grid') && !e.target.closest('#navPanel') && !e.target.closest('#btnTour')) fecharPanel();
 });
 
 // ── Polling de status da folha (60s, pausa quando aba está em segundo plano) ──
@@ -804,6 +822,145 @@ document.addEventListener('click',   e => {
         else { checarStatus(); timer = setInterval(checarStatus, 60000); }
     });
 })();
+
+// ── TOUR DRIVER.JS ──
+const TOUR_KEY = 'f10_tour_' + (CPF_USUARIO || 'u');
+
+function iniciarTour() {
+    fecharPanel();
+
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '👋 Bem-vindo ao Folha10·Simples!',
+                description: 'Este é o cabeçalho. À esquerda: empresa e usuário logado. No centro: a folha ativa. À direita: versão e botão Sair.',
+                side: 'bottom', align: 'center'
+            }
+        },
+    ];
+
+    if (document.querySelector('.topo-folha-ativa')) {
+        passos.push({
+            element: '.topo-folha-ativa',
+            popover: {
+                title: '📅 Folha Ativa',
+                description: 'Mostra o mês/ano e a situação da folha atual: <strong>Aberta</strong> (em lançamento), <strong>Calculada</strong> (processada) ou <strong>Fechada</strong>. A cor muda conforme o status.',
+                side: 'bottom', align: 'center'
+            }
+        });
+    }
+
+    passos.push(
+        {
+            element: '#modulosGrid',
+            popover: {
+                title: '📦 Módulos do Sistema',
+                description: 'Clique em qualquer card para abrir o painel com todas as funções daquele módulo. O painel abre logo abaixo.',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '[data-modulo="cadastros"]',
+            popover: {
+                title: '🗄️ Cadastros',
+                description: 'Funcionários, dependentes, ficha de registro, funções, horários, sindicatos, vale transporte, rubricas (verbas) e outras tabelas auxiliares.',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '[data-modulo="novafolha"]',
+            popover: {
+                title: '📅 Mês/Ano',
+                description: 'Abre uma nova competência ou troca para outro mês/ano. Aqui também ficam os botões para <strong>Reabrir</strong> e <strong>Fechar</strong> a folha.',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '[data-modulo="eventuais"]',
+            popover: {
+                title: '🗓️ Eventuais',
+                description: 'Férias, rescisões, afastamentos, alterações salariais, faltas, exames médicos e insalubridade — eventos que ocorrem fora da rotina mensal.',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '[data-modulo="movimento"]',
+            popover: {
+                title: '🔄 Movimento',
+                description: 'Lançamento de eventos variáveis do mês: verbas avulsas, horas extras e adiantamentos.',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '[data-modulo="movimentofixo"]',
+            popover: {
+                title: '📌 Movimento Fixo',
+                description: 'Verbas que se repetem automaticamente todo mês — por exemplo, vale refeição fixo ou gratificação mensal.',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '[data-modulo="calculo"]',
+            popover: {
+                title: '🖩 Cálculo',
+                description: 'Processa a folha de pagamento: aplica INSS, IRRF, apura o valor líquido de cada funcionário e gera contracheques em PDF.',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '[data-modulo="relatorios"]',
+            popover: {
+                title: '🖨️ Relatórios',
+                description: 'Folha de pagamento, contracheque, resumo, ficha financeira, listagens de cadastro e o gerador de relatório personalizado.',
+                side: 'bottom', align: 'center'
+            }
+        },
+        {
+            element: '[data-modulo="esocial"]',
+            popover: {
+                title: '📃 eSocial',
+                description: 'Envio de eventos ao governo: tabelas do empregador, admissões (S-2200), remunerações (S-1200) e fechamento mensal (S-1299).',
+                side: 'bottom', align: 'end'
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: '? Tour de orientação',
+                description: 'Este botão fica sempre visível. Clique a qualquer momento para rever o tour.',
+                side: 'top', align: 'end'
+            }
+        }
+    );
+
+    if (document.getElementById('areaTrocarEmpresa')) {
+        passos.splice(passos.length - 1, 0, {
+            element: '#areaTrocarEmpresa',
+            popover: {
+                title: '🔄 Trocar Empresa',
+                description: 'Alterne rapidamente entre as empresas do cliente sem precisar fazer novo login.',
+                side: 'top', align: 'end'
+            }
+        });
+    }
+
+    const d = window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+        onDestroyed: () => localStorage.setItem(TOUR_KEY, '1'),
+    });
+    d.drive();
+}
+
+if (!localStorage.getItem(TOUR_KEY)) {
+    setTimeout(iniciarTour, 900);
+}
 </script>
 
 </body>
