@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Relatórios</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -154,6 +156,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     .sit-aberta    { background: #fff; color: #111827; border: 2px solid #86efac; }
     .sit-calculada { background: #fff; color: #111827; border: 2px solid #fde047; }
     .sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
   </style>
 </head>
 
@@ -207,7 +220,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── CADASTROS ── -->
-    <div class="grupo" data-grupo="cadastros">
+    <div class="grupo" data-grupo="cadastros" id="grupo-cadastros">
         <div class="grupo-titulo">
             <span class="grupo-icone">🗄️</span> Cadastros
         </div>
@@ -231,7 +244,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="rel-card-desc">Relação de contas bancárias dos funcionários</div>
             </a>
 
-            <a class="rel-card" href="/relatorios_config?rel=funcoes&voltar=/relatorios">
+            <a class="rel-card" id="card-exemplo" href="/relatorios_config?rel=funcoes&voltar=/relatorios">
                 <div class="rel-card-icone">💼</div>
                 <div class="rel-card-nome">Funções</div>
                 <div class="rel-card-desc">Lista de funções e cargos cadastrados</div>
@@ -271,7 +284,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── EVENTOS ── -->
-    <div class="grupo" data-grupo="eventos">
+    <div class="grupo" data-grupo="eventos" id="grupo-eventos">
         <div class="grupo-titulo">
             <span class="grupo-icone">🗓️</span> Eventos
         </div>
@@ -329,7 +342,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── FOLHA DE PAGAMENTO ── -->
-    <div class="grupo" data-grupo="folha">
+    <div class="grupo" data-grupo="folha" id="grupo-folha">
         <div class="grupo-titulo">
             <span class="grupo-icone">💰</span> Folha de Pagamento
         </div>
@@ -381,7 +394,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── EVENTUAIS ── -->
-    <div class="grupo" data-grupo="eventuais">
+    <div class="grupo" data-grupo="eventuais" id="grupo-eventuais">
         <div class="grupo-titulo">
             <span class="grupo-icone">📌</span> Eventuais
         </div>
@@ -422,6 +435,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
 function filtrarGrupo(grupo, abaEl) {
     document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
@@ -431,6 +446,93 @@ function filtrarGrupo(grupo, abaEl) {
     });
 }
 
+function iniciarTour() {
+    // Garante que todos os grupos estão visíveis durante o tour
+    document.querySelectorAll('.grupo').forEach(g => g.style.display = '');
+    document.querySelectorAll('.aba').forEach(a => a.classList.remove('ativa'));
+    document.querySelector('.aba')?.classList.add('ativa');
+
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '🖨️ Relatórios',
+                description: 'Central de relatórios do Folha10·Simples. Aqui você encontra todos os documentos geráveis: cadastros, eventos, folha de pagamento e eventuais.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.page-header',
+            popover: {
+                title: '📌 Contexto',
+                description: 'Botão Menu para retornar à tela principal. Os relatórios são gerados com base na empresa e folha ativa exibidas no topo.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.abas',
+            popover: {
+                title: '🗂️ Filtro por Categoria',
+                description: 'Clique em uma aba para exibir apenas os relatórios daquela categoria. "Todos" mostra tudo de uma vez. As abas não mudam os dados — só filtram a visualização.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-exemplo',
+            popover: {
+                title: '📄 Como usar um relatório',
+                description: 'Clique em qualquer card para abrir a tela de configuração do relatório, onde você define os filtros (período, funcionário…) antes de gerar o PDF ou visualizar na tela.',
+                side: 'right', align: 'start',
+            }
+        },
+        {
+            element: '#grupo-cadastros',
+            popover: {
+                title: '🗄️ Cadastros',
+                description: 'Relatórios de dados mestres: funções, rubricas (verbas e incidências), dependentes, dados bancários e ficha cadastral dos funcionários.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#grupo-eventos',
+            popover: {
+                title: '🗓️ Eventos',
+                description: 'Relatórios de movimentações cadastrais: listagem de férias (gozo e aquisitivo), admissões, demissões, afastamentos e programação anual de férias.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#grupo-folha',
+            popover: {
+                title: '💰 Folha de Pagamento',
+                description: 'Relatórios da folha mensal: resumo de proventos/descontos/líquido, holerites individuais ou em lote, GPS (INSS), FGTS e IRRF.',
+                side: 'top', align: 'start',
+            }
+        },
+        {
+            element: '#grupo-eventuais',
+            popover: {
+                title: '📌 Eventuais',
+                description: 'Relatórios de verbas eventuais: adiantamento e pagamento final do 13º salário, resumo do 13º, TRCT (rescisão) e memória de cálculo das verbas rescisórias.',
+                side: 'top', align: 'start',
+            }
+        },
+    ];
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+        onDestroyed: () => {
+            // Restaura o filtro "Todos" ao fechar o tour
+            document.querySelectorAll('.grupo').forEach(g => g.style.display = '');
+        }
+    }).drive();
+}
 </script>
 
 </body>
