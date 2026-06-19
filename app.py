@@ -517,6 +517,62 @@ def api_selecionar_empresa():
 
 
 # =========================================================
+# TROCAR EMPRESA (atalho: 2 empresas → alterna direto; >2 → lista)
+# =========================================================
+@app.route("/trocar_empresa")
+def trocar_empresa():
+    if not session.get("logado"):
+        return redirect("/")
+    id_cliente = session.get("id_cliente")
+    empresas   = _listar_empresas(id_cliente)
+    if len(empresas) <= 1:
+        return redirect("/menu")
+    if len(empresas) > 2:
+        return redirect("/selecionar_empresa")
+
+    # Exatamente 2: troca para a outra
+    id_atual = session.get("id_empresa")
+    outra = next((e for e in empresas if e["id_empresa"] != id_atual), None)
+    if not outra:
+        return redirect("/selecionar_empresa")
+
+    id_empresa = outra["id_empresa"]
+    r = (supabase.table("tab_empresa")
+         .select("id_empresa, cnpj, razaosocial, nome_fantasia, anomes_atual, anomes_tipo")
+         .eq("id_empresa", id_empresa)
+         .eq("id_cliente", id_cliente)
+         .limit(1)
+         .execute())
+    if not r.data:
+        return redirect("/selecionar_empresa")
+
+    row          = r.data[0]
+    anomes_atual = str(row.get("anomes_atual") or "")
+    anomes_tipo  = str(row.get("anomes_tipo")  or "")
+    situacao     = ""
+    if anomes_atual and anomes_tipo:
+        try:
+            r2 = (supabase.table("tab_anomes")
+                  .select("situacao")
+                  .eq("id_empresa", id_empresa)
+                  .eq("ano_mes",    anomes_atual)
+                  .eq("tipo",       anomes_tipo)
+                  .limit(1)
+                  .execute())
+            situacao = (r2.data[0].get("situacao") or "") if r2.data else ""
+        except Exception:
+            pass
+
+    session["empresa_info"]    = row.get("razaosocial") or row.get("nome_fantasia") or "Empresa"
+    session["cnpj_empresa"]    = row.get("cnpj", "")
+    session["id_empresa"]      = id_empresa
+    session["anomes_atual"]    = anomes_atual
+    session["anomes_tipo"]     = anomes_tipo
+    session["anomes_situacao"] = situacao
+    return redirect("/menu")
+
+
+# =========================================================
 # MENU PRINCIPAL
 # =========================================================
 @app.route("/menu")
