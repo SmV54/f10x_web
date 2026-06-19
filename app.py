@@ -22563,8 +22563,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     dias_uteis_dsr, dias_dsr = _calc_dsr_mes(anomes)
                     val_024 = int(round(val_003 / dias_uteis_dsr * dias_dsr)) if dias_uteis_dsr else 0
                     mmVmm[24] = mmVmm.get(24, 0.0) + val_024
-                    # 13º e férias intermitentes
-                    dozeavo = val_003 // 12
+                    # Base 56/58 = soma de todos proventos que incidem no INSS
+                    base_56_58 = int(sum(
+                        val for cod, val in mmVmm.items()
+                        if rubricas_info.get(cod, {}).get("inc_cp") == "11" and val > 0
+                    ))
+                    dozeavo = base_56_58 // 12
                     terco   = dozeavo // 3
                     val_56  = dozeavo
                     val_58  = dozeavo + terco
@@ -22576,10 +22580,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     txt_24 = (f"0024 — {dsc_24}"
                               f"   {_fmt_brl(val_003)} / {dias_uteis_dsr} dias uteis"
                               f" × {dias_dsr} dias DSR  =  {_fmt_brl(val_024)}")
-                    txt_56 = (f"0056 — {dsc_56}   1/12 de {_fmt_brl(val_003)}"
-                              f"  =  {_fmt_brl(dozeavo)}")
-                    txt_58 = (f"0058 — {dsc_58}   1/12 + 1/3 de 1/12"
-                              f"  =  {_fmt_brl(dozeavo)} + {_fmt_brl(terco)}"
+                    txt_56 = (f"0056 — {dsc_56}   Base INSS: {_fmt_brl(base_56_58)}"
+                              f"   1/12  =  {_fmt_brl(dozeavo)}")
+                    txt_58 = (f"0058 — {dsc_58}   Base INSS: {_fmt_brl(base_56_58)}"
+                              f"   1/12 + 1/3  =  {_fmt_brl(dozeavo)} + {_fmt_brl(terco)}"
                               f"  =  {_fmt_brl(val_58)}")
                     e9b_tbl = Table([
                         [Paragraph("ETAPA 0009B - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)", st_etapa)],
@@ -23730,10 +23734,11 @@ def api_visualizar_calculo_dados():
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V", "inc_cp": ""})
 
-    # dados dos funcionários (nome + dtadm + sal_hora + codcateg)
+    # dados dos funcionários (nome + dtadm + sal_hora + sal_mes + codcateg)
     nomes        = {}
     dtadms       = {}
     sal_hora_map = {}
+    sal_mes_map  = {}
     codcateg_map = {}
     try:
         for l in (_calc_etapa1_dados(id_empresa) or []):
@@ -23741,9 +23746,17 @@ def api_visualizar_calculo_dados():
             nomes[mat]        = l["nome"]
             dtadms[mat]       = str(l.get("dtadm") or "")
             sal_hora_map[mat] = float(l.get("sal_hora") or 0)
+            sal_mes_map[mat]  = float(l.get("sal_mes")  or 0)
             codcateg_map[mat] = str(l.get("codcateg") or "")
     except Exception:
         pass
+
+    # dias do mês da folha (para sal_dia das verbas D-type)
+    try:
+        _ano_f = int(anomes[:4]); _mes_f = int(anomes[4:6])
+        dias_mes_folha = calendar.monthrange(_ano_f, _mes_f)[1]
+    except Exception:
+        dias_mes_folha = 30
 
     # afastamentos e férias do mês
     def _dt_br(s):
@@ -23822,6 +23835,17 @@ def api_visualizar_calculo_dados():
                 hh_q = qtd // 60; mm_q = qtd % 60
                 formula = (f"{hh_q:02d}h{mm_q:02d} × {_fmt_brl(int(sh))}/h"
                            f"  =  {_fmt_brl(int(round(val)))}")
+            # Verba D: recalcula valor = qtd_dias × sal_dia
+            elif ri.get("unid") == "D" and qtd > 0:
+                sm  = sal_mes_map.get(mat, 0)
+                sal_dia = round(sm / dias_mes_folha, 4) if dias_mes_folha else 0
+                val = round(qtd * sal_dia, 4)
+                formula = (f"{qtd} {'dia' if qtd == 1 else 'dias'}"
+                           f" × {_fmt_brl(int(round(sal_dia)))}/dia"
+                           f"  =  {_fmt_brl(int(round(val)))}")
+            else:
+                _orig_lbl = {"M": "Lançamento manual", "C": "Calculado automaticamente", "F": "Movimento fixo"}
+                formula = _orig_lbl.get(orig, f"Origem: {orig}")
             key  = (cod, ft, orig)
             if key in agg:
                 agg[key]["valor"] += val
@@ -23835,44 +23859,62 @@ def api_visualizar_calculo_dados():
         todos_verbas = sorted(agg.values(), key=lambda x: (_tipo_ord.get(x["ft"], 9), x["cod"]))
 
         # ETAPA 9B — verbas automáticas do intermitente (024, 56, 58)
-        # Só acrescenta se ainda não vieram do tab_mov (evita duplicata após cálculo)
         is_int = codcateg_map.get(mat, "") == "111"
         if is_int:
-            cods_presentes = {v["cod"] for v in todos_verbas}
             val_003 = int(sum(v["valor"] for v in todos_verbas if v["cod"] == 3))
             if val_003 > 0:
+                ri_24 = rubricas_info.get(24, {"tp": "1", "dsc": "Repouso Remunerado",      "unid": "V"})
+                ri_56 = rubricas_info.get(56, {"tp": "1", "dsc": "13 Salario Intermitente", "unid": "V"})
+                ri_58 = rubricas_info.get(58, {"tp": "1", "dsc": "Ferias Intermitentes",    "unid": "V"})
+
+                # 1. Garante verba 024 em todos_verbas antes de calcular base
                 dias_uteis_dsr, dias_dsr = _calc_dsr_mes(anomes)
                 val_024 = int(round(val_003 / dias_uteis_dsr * dias_dsr)) if dias_uteis_dsr else 0
-                dozeavo = val_003 // 12
-                terco   = dozeavo // 3
-                val_56  = dozeavo
-                val_58  = dozeavo + terco
-                ri_24   = rubricas_info.get(24, {"tp": "1", "dsc": "Repouso Remunerado",       "unid": "V"})
-                ri_56   = rubricas_info.get(56, {"tp": "1", "dsc": "13 Salario Intermitente",  "unid": "V"})
-                ri_58   = rubricas_info.get(58, {"tp": "1", "dsc": "Ferias Intermitentes",     "unid": "V"})
-                if 24 not in cods_presentes:
+                fml_024 = (f"{_fmt_brl(val_003)} ÷ {dias_uteis_dsr} dias úteis"
+                           f" × {dias_dsr} dias DSR = {_fmt_brl(val_024)}")
+                ex_024 = next((v for v in todos_verbas if v["cod"] == 24), None)
+                if ex_024:
+                    ex_024["formula"] = fml_024
+                else:
                     todos_verbas.append({
                         "cod": 24, "dsc": ri_24.get("dsc") or "Repouso Remunerado",
                         "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_024),
-                        "ft": "N", "orig": "C",
-                        "formula": (f"{_fmt_brl(val_003)} ÷ {dias_uteis_dsr} dias úteis"
-                                    f" × {dias_dsr} dias DSR = {_fmt_brl(val_024)}"),
+                        "ft": "N", "orig": "C", "formula": fml_024,
                     })
-                if 56 not in cods_presentes:
-                    todos_verbas.append({
-                        "cod": 56, "dsc": ri_56.get("dsc") or "13 Salario Intermitente",
-                        "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_56),
-                        "ft": "N", "orig": "C",
-                        "formula": f"1/12 de {_fmt_brl(val_003)} = {_fmt_brl(dozeavo)}",
-                    })
-                if 58 not in cods_presentes:
-                    todos_verbas.append({
-                        "cod": 58, "dsc": ri_58.get("dsc") or "Ferias Intermitentes",
-                        "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_58),
-                        "ft": "N", "orig": "C",
-                        "formula": (f"1/12 de {_fmt_brl(val_003)} + 1/3 = "
-                                    f"{_fmt_brl(dozeavo)} + {_fmt_brl(terco)} = {_fmt_brl(val_58)}"),
-                    })
+
+                # 2. Base 56/58 = soma de todos proventos que incidem no INSS
+                base_56_58 = int(sum(
+                    v["valor"] for v in todos_verbas
+                    if rubricas_info.get(v["cod"], {}).get("inc_cp") == "11" and v["valor"] > 0
+                ))
+                dozeavo = base_56_58 // 12
+                terco   = dozeavo // 3
+                val_56  = dozeavo
+                val_58  = dozeavo + terco
+
+                formulas_56_58 = {
+                    56: (f"Base INSS: {_fmt_brl(base_56_58)}  ÷ 12"
+                         f" = {_fmt_brl(dozeavo)}"),
+                    58: (f"Base INSS: {_fmt_brl(base_56_58)}  ÷ 12 + 1/3"
+                         f" = {_fmt_brl(dozeavo)} + {_fmt_brl(terco)}"
+                         f" = {_fmt_brl(val_58)}"),
+                }
+                novos_56_58 = {
+                    56: {"cod": 56, "dsc": ri_56.get("dsc") or "13 Salario Intermitente",
+                         "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_56),
+                         "ft": "N", "orig": "C"},
+                    58: {"cod": 58, "dsc": ri_58.get("dsc") or "Ferias Intermitentes",
+                         "tp": "1", "unid": "V", "qtd": 0, "valor": float(val_58),
+                         "ft": "N", "orig": "C"},
+                }
+                for cod_9b, fml in formulas_56_58.items():
+                    ex = next((v for v in todos_verbas if v["cod"] == cod_9b), None)
+                    if ex:
+                        ex["formula"] = fml
+                    else:
+                        entry = novos_56_58[cod_9b].copy()
+                        entry["formula"] = fml
+                        todos_verbas.append(entry)
 
         # monta seções separadas por tipo de folha
         tipos_presentes = sorted({v["ft"] for v in todos_verbas}, key=lambda t: _tipo_ord.get(t, 9))
