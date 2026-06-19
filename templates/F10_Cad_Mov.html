@@ -10,7 +10,7 @@
     --navy:      #a0d9be;
     --navy-line: #70c4a0;
     --accent:    #2a7de1;
-    --text-head: #e8edf4;
+    --text-head: #1e293b;
     --text-sub:  #374151;
     --bg:        #f0f2f6;
     --surface:   #ffffff;
@@ -216,6 +216,60 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .btn-acao:hover { background: #f1f5f9; }
 .tabela-rodape { padding: 9px 16px; background: #f8fafc; border-top: 1px solid var(--border); font-size: 12px; color: #64748b; }
 .vazio { padding: 40px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+/* ── MODAL EXCLUIR ── */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999; backdrop-filter: blur(2px);
+}
+.modal-box {
+    background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+    padding: 36px 32px 28px; max-width: 420px; width: 90%; text-align: center;
+}
+.modal-icone-exc {
+    width: 54px; height: 54px; border-radius: 50%; background: #fee2e2;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin: 0 auto 18px;
+}
+.modal-titulo { font-size: 17px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+.modal-desc   { font-size: 12px; font-family: var(--mono); color: #475569;
+                background: #f8fafc; border: 1px solid var(--border);
+                border-radius: 8px; padding: 9px 14px; margin-bottom: 20px;
+                text-align: left; line-height: 1.5; }
+.modal-chk-wrap {
+    display: flex; align-items: center; gap: 12px;
+    background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 24px; cursor: pointer; text-align: left;
+}
+.modal-chk-wrap input[type=checkbox] { display: none; }
+.chk-custom {
+    width: 20px; height: 20px; border-radius: 5px; flex-shrink: 0;
+    border: 2px solid #f97316; background: #fff; display: flex;
+    align-items: center; justify-content: center; transition: 0.15s;
+}
+.modal-chk-wrap.checked .chk-custom {
+    background: #f97316; border-color: #f97316;
+}
+.chk-mark {
+    display: none; color: #fff; font-size: 13px; font-weight: 700; line-height: 1;
+}
+.modal-chk-wrap.checked .chk-mark { display: block; }
+.chk-label { font-size: 13px; font-weight: 500; color: #9a3412; line-height: 1.4; }
+.modal-acoes { display: flex; gap: 10px; justify-content: center; }
+.btn-modal-del {
+    background: #dc2626; color: #fff; border: none; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    padding: 10px 22px; cursor: pointer; transition: background 0.15s;
+}
+.btn-modal-del:hover:not(:disabled) { background: #b91c1c; }
+.btn-modal-del:disabled { background: #fca5a5; cursor: not-allowed; }
+.btn-modal-sec {
+    background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+    border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 500;
+    padding: 10px 22px; cursor: pointer; transition: background 0.15s;
+}
+.btn-modal-sec:hover { background: #e2e8f0; }
 </style>
 </head>
 <body>
@@ -596,16 +650,49 @@ async function excluirRegistro(id) {
     const r = LISTA_DATA[id];
     if (!r) return;
     const desc = `Mat. ${String(r.matricula).padStart(6,'0')} — ${r.dsc_rubr} — ${r.entrada_fmt}`;
-    if (!confirm(`Excluir lançamento?\n\n${desc}`)) return;
-    try {
-        const res = await fetch('/api/tab_mov_excluir',{
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({id}),
-        });
-        const d = await res.json();
-        if (d.ok) carregarLista();
-        else alert(d.msg||'Erro ao excluir.');
-    } catch { alert('Erro de comunicação.'); }
+    mostrarModalExcluir(desc, async () => {
+        try {
+            const res = await fetch('/api/tab_mov_excluir',{
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({id}),
+            });
+            const d = await res.json();
+            if (d.ok) carregarLista();
+            else alert(d.msg||'Erro ao excluir.');
+        } catch { alert('Erro de comunicação.'); }
+    });
+}
+
+function mostrarModalExcluir(desc, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-box">
+            <div class="modal-icone-exc">🗑️</div>
+            <div class="modal-titulo">Excluir Lançamento?</div>
+            <div class="modal-desc">${desc}</div>
+            <label class="modal-chk-wrap" id="chkWrap">
+                <input type="checkbox" id="chkConfirm">
+                <div class="chk-custom"><span class="chk-mark">✓</span></div>
+                <span class="chk-label">Confirmo que desejo excluir este lançamento</span>
+            </label>
+            <div class="modal-acoes">
+                <button class="btn-modal-del" id="btnExcluirConf" disabled>Excluir</button>
+                <button class="btn-modal-sec" id="btnCancelarExc">Cancelar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    const chkWrap = overlay.querySelector('#chkWrap');
+    const chk     = overlay.querySelector('#chkConfirm');
+    const btnDel  = overlay.querySelector('#btnExcluirConf');
+    chkWrap.addEventListener('click', () => {
+        chk.checked = !chk.checked;
+        chkWrap.classList.toggle('checked', chk.checked);
+        btnDel.disabled = !chk.checked;
+    });
+    btnDel.onclick = () => { overlay.remove(); onConfirm(); };
+    overlay.querySelector('#btnCancelarExc').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 /* ── LISTA ── */
