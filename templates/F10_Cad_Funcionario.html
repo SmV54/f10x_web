@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10-Simples — Cadastro de Funcionário</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:       #a0d9be;
@@ -315,6 +317,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     transition:.15s;
 }
 .btn-add-rapido:hover { background:var(--accent); color:#fff; }
+
+/* ── BOTÃO TOUR ── */
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #2a7de1; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(42,125,225,0.40);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); line-height: 1;
+}
+#btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 </style>
 </head>
 <body
@@ -393,7 +408,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <div id="form_funcionario" {% if modo == 'alteracao' %}style="display:none"{% endif %}>
 
     <!-- ── IDENTIFICAÇÃO ──────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-ident">
         <div class="secao-header">
             <div class="secao-icone"></div>
             <span class="secao-titulo">Identificação</span>
@@ -474,7 +489,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── DADOS PESSOAIS ──────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-pessoal">
         <div class="secao-header">
             <div class="secao-icone" style="background:#7c3aed"></div>
             <span class="secao-titulo">Dados Pessoais</span>
@@ -550,7 +565,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── SALÁRIO / CONTRATO ───────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-salario">
         <div class="secao-header">
             <div class="secao-icone" style="background:#18795b"></div>
             <span class="secao-titulo">Salário / Contrato</span>
@@ -647,7 +662,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── ADMISSÃO ────────────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-admissao">
         <div class="secao-header">
             <div class="secao-icone" style="background:#b45309"></div>
             <span class="secao-titulo">Admissão</span>
@@ -768,7 +783,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── LOCAL DE TRABALHO + JORNADA (lado a lado) ────── -->
-    <div style="display:flex; gap:8px; align-items:stretch;">
+    <div id="secao-local-jornada" style="display:flex; gap:8px; align-items:stretch;">
 
         <!-- Local de Trabalho -->
         <div class="secao" style="flex:0 0 auto;">
@@ -886,7 +901,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── ENDEREÇO ────────────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-endereco">
         <div class="secao-header">
             <div class="secao-icone" style="background:#0f766e"></div>
             <span class="secao-titulo">Endereço do Funcionário</span>
@@ -939,7 +954,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── DADOS BANCÁRIOS ─────────────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-banco">
         <div class="secao-header">
             <div class="secao-icone" style="background:#1d4ed8"></div>
             <span class="secao-titulo">Dados Bancários</span>
@@ -985,7 +1000,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
 
     <!-- ── IMIGRANTE (colapsável) ──────────────────────── -->
-    <div class="secao">
+    <div class="secao" id="secao-opcionais">
         <div class="secao-toggle" onclick="toggleSecao('imigrante')">
             <div class="toggle-esq">
                 <div class="secao-icone" style="background:#0891b2"></div>
@@ -1136,6 +1151,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div><!-- /form_funcionario -->
 
 </div>
+
+<button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
 
 <script>
 const MODO           = '{{ modo }}';
@@ -1882,6 +1899,167 @@ function irParaNovaFuncao() {
 function irParaNovoSindicato() {
     _salvarRascunho();
     window.location.href = '/cad_sindicato?retorno=funcionario';
+}
+
+/* ── TOUR DRIVER.JS ─────────────────────────────────────── */
+function iniciarTour() {
+    const alterar = MODO === 'alteracao';
+    const passos  = [];
+
+    passos.push({
+        element: '.topo',
+        popover: {
+            title: alterar ? '✏️ Alterar Funcionário' : '👤 Cadastro de Funcionário',
+            description: alterar
+                ? 'Busque o funcionário pelo CPF ou matrícula. Após localizar, os campos são preenchidos para edição. Salário e matrícula são somente leitura neste modo.'
+                : 'Preencha os dados do funcionário de cima para baixo. Os campos obrigatórios são sinalizados ao tentar salvar. Campos com dica de ajuda exibem um balão ao clicar.',
+            side: 'bottom', align: 'center'
+        }
+    });
+
+    if (alterar) {
+        passos.push({
+            element: '.lista-func-wrap',
+            popover: {
+                title: '🔍 Localizar Funcionário',
+                description: 'Digite o CPF ou matrícula e clique em Buscar. Você também pode filtrar pelo nome na lista. Clique no funcionário para carregar os dados.',
+                side: 'bottom', align: 'start'
+            }
+        });
+    }
+
+    passos.push(
+        {
+            element: '#secao-ident',
+            popover: {
+                title: '🪪 Identificação',
+                description: 'Dados principais do funcionário: matrícula, CPF, nome, categoria eSocial e filial.',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '#matricula',
+            popover: {
+                title: '🔢 Matrícula',
+                description: 'Número único do funcionário na empresa — 6 dígitos, completado com zeros à esquerda. É sincronizado automaticamente com o campo <em>Matrícula eSocial</em>.',
+                side: 'right', align: 'start'
+            }
+        },
+        {
+            element: '#cpf',
+            popover: {
+                title: '📋 CPF',
+                description: 'A máscara é aplicada automaticamente. O sistema verifica o dígito verificador ao sair do campo: <span style="color:#18795b;font-weight:700">verde = válido</span>, <span style="color:#dc2626;font-weight:700">vermelho = inválido</span>.',
+                side: 'right', align: 'start'
+            }
+        },
+        {
+            element: '#codCateg',
+            popover: {
+                title: '📑 Categoria eSocial',
+                description: 'Define o tipo de vínculo empregatício. <strong>Exemplos:</strong> 101 – Empregado geral, 103 – Aprendiz, 104 – Trabalhador Doméstico. <strong>Atenção:</strong> a categoria 104 aplica INSS à alíquota fixa de 11% em vez de faixas progressivas.',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '#nome',
+            popover: {
+                title: '🔤 Nome Completo',
+                description: 'Digitado em maiúsculas automaticamente. Ao sair do campo, o <em>Nome nos Relatórios</em> é preenchido com a forma abreviada (máx. 30 caracteres).',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '#secao-pessoal',
+            popover: {
+                title: '👤 Dados Pessoais',
+                description: 'Sexo, raça/cor, estado civil, grau de instrução e data de nascimento — campos exigidos pelo eSocial. País de nascimento e nacionalidade já vêm preenchidos com Brasil (105).',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '#secao-salario',
+            popover: {
+                title: '💰 Salário / Contrato',
+                description: 'Salário, unidade (mensal/hora/dia), tipo de contrato e função (CBO). Se o contrato for por prazo determinado, aparece um bloco extra com a data de término.',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '#vrSalFx',
+            popover: {
+                title: '💵 Salário',
+                description: 'Digite <strong>apenas os dígitos</strong> — ex.: <code>150000</code> → R$ 1.500,00. A formatação é aplicada ao sair do campo.',
+                side: 'right', align: 'start'
+            }
+        },
+        {
+            element: '#CBOFuncao',
+            popover: {
+                title: '💼 Função / CBO',
+                description: 'Selecione a função já cadastrada. Se precisar de uma nova, clique em <strong>+ Nova Função</strong> — o sistema salva o rascunho, abre o cadastro de funções e ao voltar restaura tudo automaticamente.',
+                side: 'bottom', align: 'start'
+            }
+        },
+        {
+            element: '#secao-admissao',
+            popover: {
+                title: '📅 Admissão',
+                description: 'Data de admissão, tipo (normal, transferência, decisão judicial), regime de jornada e sindicato da categoria. Transferências exibem campos adicionais automaticamente.',
+                side: 'top', align: 'start'
+            }
+        },
+        {
+            element: '#secao-local-jornada',
+            popover: {
+                title: '🏢 Local de Trabalho + Jornada',
+                description: '<strong>Local:</strong> centro de custo e CNPJ do estabelecimento (pré-preenchido com o da empresa). <strong>Jornada:</strong> horas semanais/mensais (padrão 44h/220h), tipo de jornada e horário de trabalho.',
+                side: 'top', align: 'start'
+            }
+        },
+        {
+            element: '#secao-endereco',
+            popover: {
+                title: '📍 Endereço',
+                description: 'Digite o CEP e pressione Tab — o sistema preenche logradouro, bairro, município e UF automaticamente via ViaCEP. Apenas o número precisa ser digitado manualmente.',
+                side: 'top', align: 'start'
+            }
+        },
+        {
+            element: '#secao-banco',
+            popover: {
+                title: '🏦 Dados Bancários',
+                description: 'Banco, agência e conta para pagamento do salário. Selecione <strong>000 — Pagamento em Caixa</strong> quando o funcionário recebe em espécie.',
+                side: 'top', align: 'start'
+            }
+        },
+        {
+            element: '#secao-opcionais',
+            popover: {
+                title: '📂 Seções Opcionais',
+                description: 'Três seções colapsáveis para casos específicos: <strong>Trabalhador Estrangeiro</strong> (para imigrantes), <strong>Deficiência / Reabilitação</strong> (cota de PcD) e <strong>Menor Aprendiz</strong>. Clique no título da seção para expandir.',
+                side: 'top', align: 'start'
+            }
+        },
+        {
+            element: '.acoes',
+            popover: {
+                title: '💾 Salvar',
+                description: 'O sistema valida todos os campos obrigatórios antes de gravar. Erros ficam com borda <span style="color:#dc2626;font-weight:700">vermelha</span> e são listados abaixo do botão. Corrija e tente novamente.',
+                side: 'top', align: 'start'
+            }
+        }
+    );
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
 }
 
 /* ── INIT ───────────────────────────────────────────────── */
