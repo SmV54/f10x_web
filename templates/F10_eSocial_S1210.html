@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1210</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -178,6 +180,16 @@ tr:hover td { background: #f8fafc; }
 
 .vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
 .vazio-icone { font-size: 32px; margin-bottom: 12px; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -214,7 +226,7 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   <!-- Filtros -->
-  <div class="filtros-bar">
+  <div class="filtros-bar" id="filtroBar">
     <span class="filtros-label">Situação:</span>
     <button class="btn-filtro {% if not f_sit %}ativo{% endif %}" onclick="filtrarSit('')">Todos</button>
     <button class="btn-filtro {% if f_sit=='P' %}ativo{% endif %}" onclick="filtrarSit('P')">Pendente</button>
@@ -246,7 +258,7 @@ tr:hover td { background: #f8fafc; }
   </div>
 
   <!-- Data de Pagamento -->
-  <div class="dtpgto-bar">
+  <div class="dtpgto-bar" id="dtpgtoBar">
     <span class="dtpgto-label">&#128197; Data de Pagamento:</span>
     <input type="date" class="dtpgto-input" id="inputDtPgto" value="{{ dtpgto_default }}">
     <span class="dtpgto-nota">Informe a data em que o salário foi / será creditado ao funcionário (dtPgto do S-1210).</span>
@@ -274,7 +286,7 @@ tr:hover td { background: #f8fafc; }
 
   <!-- Contadores -->
   {% if not f_sit %}
-  <div class="contadores">
+  <div class="contadores" id="secaoContadores">
     <div class="contador-card">
       <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
       <span class="contador-txt">Pendente</span>
@@ -309,7 +321,7 @@ tr:hover td { background: #f8fafc; }
   </div>
 
   <!-- Tabela -->
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoTabela">
     {% if rows %}
     <table>
       <thead>
@@ -406,7 +418,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- Info -->
-  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-1210 — Pagamentos de Rendimentos do Trabalho</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>O S-1210 deve ser enviado <strong>após</strong> o S-1200 correspondente estar com recibo (coluna S-1200 = Enviado).</li>
@@ -419,7 +431,72 @@ tr:hover td { background: #f8fafc; }
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1210 — Pagamentos de Rendimentos',
+                description: 'Este evento informa ao eSocial as datas e valores de pagamento aos trabalhadores. Deve ser enviado após o S-1200 correspondente já ter recibo.',
+            }
+        },
+        {
+            element: '#filtroBar',
+            popover: {
+                title: 'Filtros',
+                description: 'Filtre os registros por situação (Pendente, Enviado, Aguardando, Com Erro), período de competência e tipo de folha. Use para encontrar rapidamente o que precisa enviar.',
+            }
+        },
+        {
+            element: '#dtpgtoBar',
+            popover: {
+                title: 'Data de Pagamento',
+                description: 'Informe aqui a data em que o salário foi ou será creditado na conta do funcionário. Este campo é obrigatório (dtPgto) no S-1210 e deve ser preenchido antes de enviar.',
+            }
+        },
+        ...(!!document.querySelector('#secaoContadores') ? [{
+            element: '#secaoContadores',
+            popover: {
+                title: 'Contadores por Situação',
+                description: 'Resumo rápido do total de registros em cada situação: Pendente, Enviado, Aguardando e Com Erro. Clique nos botões de filtro acima para ver apenas uma categoria.',
+            }
+        }] : []),
+        {
+            element: '#secaoTabela',
+            popover: {
+                title: 'Registros S-1210',
+                description: 'Lista de pagamentos a enviar. A coluna S-1200 mostra se o evento de remuneração correspondente já foi enviado — o S-1210 só pode ser transmitido depois disso. Use o botão Enviar em cada linha ou "Enviar todas as pendentes" para envio em lote.',
+            }
+        },
+        {
+            element: '#secaoInfo',
+            popover: {
+                title: 'Sobre o S-1210',
+                description: 'Dicas e regras sobre o evento: dependência do S-1200, importância da data de pagamento, e o que fazer quando o registro fica em estado Aguardando.',
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const ETAPAS = [
   [10,  'Gerando XML…'],
   [25,  'Assinando evento…'],

@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1020</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy: #a0d9be; --navy-line: #70c4a0; --accent: #6366f1;
@@ -183,6 +185,16 @@ tr:hover td { background: #f8fafc; }
 .msg-erro { background: #fee2e2; color: #991b1b; }
 
 .separador { border: none; border-top: 1px solid #f1f5f9; margin: 14px 0; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -203,7 +215,7 @@ tr:hover td { background: #f8fafc; }
 
 <div class="conteudo">
 
-    <div class="barra-topo">
+    <div class="barra-topo" id="barraTopo">
         <div class="barra-esq">
             <div class="barra-titulo">S-1020 · Tabela de Lotações Tributárias</div>
             <div class="barra-sub">{{ total }} remessa{{ 's' if total != 1 else '' }} · Grupo 1 — Tabelas do Empregador</div>
@@ -211,7 +223,7 @@ tr:hover td { background: #f8fafc; }
         <button class="btn-novo" onclick="abrirModal()">＋ Nova Remessa</button>
     </div>
 
-    <div class="tabela-wrap">
+    <div class="tabela-wrap" id="secaoTabela">
         <table>
             <thead>
                 <tr>
@@ -301,6 +313,8 @@ tr:hover td { background: #f8fafc; }
     </div>
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <!-- MODAL -->
 <div class="modal-overlay" id="modal-novo">
     <div class="modal-painel">
@@ -382,6 +396,48 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1020 — Lotações Tributárias',
+                description: 'Este evento define as lotações tributárias da empresa: cada lotação agrupa trabalhadores para fins de tributação previdenciária (FPAS, código de terceiros). É usado pelo eSocial para calcular o INSS patronal.',
+            }
+        },
+        ...(!!document.querySelector('#barraTopo .btn-novo') ? [{
+            element: '#barraTopo .btn-novo',
+            popover: {
+                title: 'Nova Remessa',
+                description: 'Cria uma nova remessa S-1020. Informe o código da lotação, o tipo (estabelecimento, obra, etc.), o FPAS e o código de terceiros. Esses dados devem corresponder ao código FPAS da empresa.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#secaoTabela') ? [{
+            element: '#secaoTabela',
+            popover: {
+                title: 'Histórico de Lotações Enviadas',
+                description: 'Lista das remessas S-1020 já criadas. Use o botão Enviar para transmitir ao eSocial. Remessas Aguardando podem ser re-consultadas. Lotações enviadas ficam com status Enviado.',
+            }
+        }] : []),
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const FPAS_EMPRESA = "{{ fpas_empresa }}";
 
 function abrirModal() {

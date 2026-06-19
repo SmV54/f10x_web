@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1299</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -134,6 +136,16 @@ tr:hover td { background: #f8fafc; }
 .res-erro { color: #991b1b; font-size: 12px; font-weight: 600; word-break: break-all; }
 
 .vazio { text-align: center; padding: 36px 20px; color: #94a3b8; font-size: 14px; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -170,7 +182,7 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   <!-- ── FORMULÁRIO ── -->
-  <div class="form-panel">
+  <div class="form-panel" id="painelFormulario">
     <div class="form-panel-titulo" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;justify-content:space-between;">
       <div style="display:flex;align-items:center;gap:10px;">
         &#128274; Novo Fechamento do Período
@@ -190,7 +202,7 @@ tr:hover td { background: #f8fafc; }
            value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
 
     <!-- Eventos do período -->
-    <div id="divEventos" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-top:12px;">
+    <div id="divEventos" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;margin-top:12px;" data-tour="eventos">
       <label class="check-semmov">
         <input type="checkbox" id="chkS1200" checked>
         S-1200 Remuneração
@@ -224,7 +236,7 @@ tr:hover td { background: #f8fafc; }
     Histórico de Fechamentos
   </div>
 
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoHistorico">
     {% if rows %}
     <table>
       <thead>
@@ -287,7 +299,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- Info -->
-  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-1299 — Fechamento dos Eventos Periódicos</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>Deve ser enviado <strong>após</strong> todos os S-1200 e S-1210 do período estarem transmitidos. Os indicadores de eventos são detectados automaticamente.</li>
@@ -298,7 +310,65 @@ tr:hover td { background: #f8fafc; }
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1299 — Fechamento do Período',
+                description: 'Este evento sinaliza ao eSocial que o empregador concluiu o envio de todos os eventos periódicos (S-1200 e S-1210) para o mês de apuração. Após o fechamento, nenhum novo evento pode ser transmitido sem antes enviar um S-1298.',
+            }
+        },
+        {
+            element: '#painelFormulario',
+            popover: {
+                title: 'Envio Direto',
+                description: 'Diferente de S-1200 e S-1210, o S-1299 é gerado e transmitido em uma única etapa. Marque "Empresa Sem Movimento" se não houver trabalhadores no período. Os checkboxes S-1200 e S-1210 indicam quais eventos foram enviados.',
+            }
+        },
+        {
+            element: '#divEventos',
+            popover: {
+                title: 'Indicadores de Eventos',
+                description: 'Marque os tipos de eventos transmitidos no período. Se a empresa não teve movimento (nenhum funcionário ativo), marque "Empresa Sem Movimento" acima — os indicadores serão informados como N automaticamente.',
+            }
+        },
+        {
+            element: '#secaoHistorico',
+            popover: {
+                title: 'Histórico de Fechamentos',
+                description: 'Registro de todos os fechamentos enviados para este empregador. Registros em estado Aguardando podem ser reconsultados. Lembre-se: cada fechamento cobre um período específico de apuração.',
+            }
+        },
+        {
+            element: '#secaoInfo',
+            popover: {
+                title: 'Sobre o S-1299',
+                description: 'Regras importantes: envie somente após todos os S-1200 e S-1210 do período terem recibo. Se precisar corrigir algo depois do fechamento, use o S-1298 para reabrir e depois feche novamente com um novo S-1299.',
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const ETAPAS = [
   [10,  'Gerando XML…'],
   [25,  'Assinando evento…'],

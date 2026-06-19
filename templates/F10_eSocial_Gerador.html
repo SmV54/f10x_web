@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial Gerador de Remessa</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -280,6 +282,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .resultado.ok    { background: #dcfce7; border: 1px solid #86efac; color: #166534; }
 .resultado.erro  { background: #fee2e2; border: 1px solid #fca5a5; color: #991b1b; }
 .resultado a { font-weight: 700; color: inherit; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -315,14 +327,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 
 <div class="conteudo">
 
-  <div class="panel">
+  <div class="panel" id="painelPrincipal">
     <div class="panel-titulo">
       &#43; Criar Nova Remessa eSocial
     </div>
 
     <!-- ── Tipo de Operação ── -->
     <div class="secao-label">Tipo de Operação</div>
-    <div class="op-toggle">
+    <div class="op-toggle" id="secaoOperacao">
       <button type="button" class="op-btn ativo-i" id="opInclusao" onclick="setOperacao('I')">
         ➕ Inclusão <span style="font-family:var(--mono);font-size:11px;opacity:.7;">(I)</span>
       </button>
@@ -341,7 +353,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     </div>
 
     <!-- ── Eventos de Tabela ── -->
-    <div id="cardsSection">
+    <div id="cardsSection" data-tour="cards">
     <div class="secao-label">Eventos de Tabela</div>
     <div class="layouts-grid">
 
@@ -530,7 +542,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
   </div>
 
   <!-- ── Info ── -->
-  <div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#134e4a;margin-bottom:6px;">
       Como funciona o Gerador de Remessa
     </div>
@@ -544,10 +556,61 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
 const RUBRICAS_1010 = {{ rubricas_lista | tojson }};
 const _TP_RUB = {'1':'Provento','2':'Desconto','3':'Informativo','4':'Inf.Ded.'};
 let rubSel = new Set();
+
+function iniciarTour() {
+    const passos = [
+        {
+            element: '#painelPrincipal',
+            popover: {
+                title: 'Gerador de Remessa eSocial',
+                description: 'Aqui você cria remessas eSocial manualmente. Selecione o tipo de operação, o evento e (se necessário) os funcionários. A remessa ficará pendente na Fila até você enviar.',
+            }
+        },
+        {
+            element: '#secaoOperacao',
+            popover: {
+                title: 'Tipo de Operação',
+                description: 'Inclusão: primeiro envio de um evento. Alteração: atualiza um evento já enviado com recibo — você deverá selecionar a remessa original na seção que aparecerá abaixo.',
+            }
+        },
+        {
+            element: '#cardsSection',
+            popover: {
+                title: 'Eventos Disponíveis',
+                description: 'Escolha o tipo de evento clicando em um dos cards: Tabela (dados cadastrais da empresa), Não Periódicos (admissão, alterações) ou Periódicos (remuneração, pagamentos, fechamento).',
+            }
+        },
+        ...(!!document.querySelector('#secaoInfo') ? [{
+            element: '#secaoInfo',
+            popover: {
+                title: 'Como funciona',
+                description: 'Após criar a remessa, acesse a Fila de Remessas para visualizar e transmitir ao eSocial. Eventos com tela própria (S-2200, S-2205) abrirão o formulário com o funcionário já selecionado.',
+            }
+        }] : []),
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 
 function renderRub1010(filtro) {
   const lista = document.getElementById('rub1010Lista');

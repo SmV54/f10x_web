@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-2205</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -137,6 +139,16 @@ tr:hover td { background: #f8fafc; }
 
 .vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
 .vazio-icone { font-size: 32px; margin-bottom: 12px; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -172,7 +184,7 @@ tr:hover td { background: #f8fafc; }
 
 <div class="conteudo">
 
-  <div class="filtros-bar">
+  <div class="filtros-bar" id="filtroBar">
     <span class="filtros-label">Situação:</span>
     <a href="/esocial_s2205"       class="btn-filtro {% if not f_sit %}ativo{% endif %}">Todos</a>
     <a href="/esocial_s2205?sit=P" class="btn-filtro {% if f_sit=='P' %}ativo{% endif %}">Pendente</a>
@@ -199,7 +211,7 @@ tr:hover td { background: #f8fafc; }
   </div>
 
   {% if not f_sit %}
-  <div class="contadores">
+  <div class="contadores" id="secaoContadores">
     <div class="contador-card">
       <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
       <span class="contador-txt">Pendente</span>
@@ -221,7 +233,7 @@ tr:hover td { background: #f8fafc; }
   </div>
   {% endif %}
 
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoTabela">
     {% if rows %}
     <table>
       <thead>
@@ -287,7 +299,7 @@ tr:hover td { background: #f8fafc; }
   </div>
   {% endif %}
 
-  <div style="margin-top:28px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="margin-top:28px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#6d28d9;margin-bottom:6px;">eSocial S-2205 — Alteração de Dados Cadastrais</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>Gerado automaticamente ao salvar alterações cadastrais (nome, endereço, nascimento, etc.).</li>
@@ -298,7 +310,65 @@ tr:hover td { background: #f8fafc; }
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-2205 — Alteração de Dados Cadastrais',
+                description: 'Este evento comunica ao eSocial mudanças nos dados pessoais do trabalhador: nome, endereço, data de nascimento, documentos, etc. É gerado automaticamente ao salvar alterações cadastrais no sistema.',
+            }
+        },
+        {
+            element: '#filtroBar',
+            popover: {
+                title: 'Filtros por Situação',
+                description: 'Filtre por situação do evento: Pendente, Enviado, Aguardando ou Com Erro. O botão "Enviar Pendentes" permite enviar todos os registros pendentes de uma só vez.',
+            }
+        },
+        ...(!!document.querySelector('#secaoContadores') ? [{
+            element: '#secaoContadores',
+            popover: {
+                title: 'Contadores por Situação',
+                description: 'Resumo de quantos registros estão em cada estado. Útil para verificar se há alterações cadastrais pendentes de envio ao eSocial.',
+            }
+        }] : []),
+        {
+            element: '#secaoTabela',
+            popover: {
+                title: 'Registros S-2205',
+                description: 'Lista das alterações cadastrais pendentes ou já transmitidas. Para alterações contratuais (salário, cargo, jornada) o evento correto é o S-2206. Cada linha representa uma alteração de um funcionário.',
+            }
+        },
+        {
+            element: '#secaoInfo',
+            popover: {
+                title: 'Sobre o S-2205',
+                description: 'O S-2205 cobre alterações de dados pessoais (nome, CPF, nascimento, endereço). Para mudanças no contrato de trabalho (cargo, salário, jornada), use o S-2206.',
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const ETAPAS = [
   [10, '⚙️  Gerando XML…'],
   [25, '🔑 Assinando evento…'],

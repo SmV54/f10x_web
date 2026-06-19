@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1200</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -185,6 +187,16 @@ tr:hover td { background: #f8fafc; }
     body > .topo { display: none !important; }
     .conteudo    { display: none !important; }
 }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -222,7 +234,7 @@ tr:hover td { background: #f8fafc; }
 
   {% set total_pendentes = contagens.P + contagens.X %}
   {% if total_pendentes > 0 %}
-  <div style="margin-bottom:12px;">
+  <div style="margin-bottom:12px;" id="secaoEnviarTodos">
     <button class="btn-enviar-todos" id="btnEnviarTodos" onclick="enviarTodos(this)">
       &#9654;&#9654; Enviar todas as remessas ({{ total_pendentes }})
     </button>
@@ -242,7 +254,7 @@ tr:hover td { background: #f8fafc; }
 
   <!-- Contadores -->
   {% if not f_sit %}
-  <div class="contadores">
+  <div class="contadores" id="secaoContadores">
     <div class="contador-card">
       <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
       <span class="contador-txt">Pendente</span>
@@ -279,7 +291,7 @@ tr:hover td { background: #f8fafc; }
   </div>
 
   <!-- Tabela -->
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoTabela">
     {% if rows %}
     <table>
       <thead>
@@ -365,7 +377,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- Info -->
-  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-1200 — Remuneração do Trabalhador (RGPS)</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>Clique em <strong>Enviar</strong>: o sistema gera o XML, assina com o certificado A1 e transmite ao eSocial.</li>
@@ -379,7 +391,65 @@ tr:hover td { background: #f8fafc; }
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1200 — Remuneração do Trabalhador',
+                description: 'Este evento informa ao governo a remuneração mensal de cada trabalhador (salário bruto, horas extras, adicionais, bases de INSS e IRRF). É gerado automaticamente ao calcular a folha de pagamento.',
+            }
+        },
+        ...(!!document.querySelector('#secaoContadores') ? [{
+            element: '#secaoContadores',
+            popover: {
+                title: 'Contadores de Status',
+                description: 'Visão geral: quantos registros estão Pendentes (aguardando envio), Enviados (com recibo), Aguardando (eSocial processando) e Com Erro. Clique nos filtros acima para exibir apenas um grupo.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#secaoEnviarTodos') ? [{
+            element: '#secaoEnviarTodos',
+            popover: {
+                title: 'Enviar Todos Pendentes',
+                description: 'Transmite todos os registros pendentes em sequência automática. O sistema respeita o limite de 50 eventos por lote do eSocial. Você pode cancelar o processo durante o envio.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#secaoTabela') ? [{
+            element: '#secaoTabela',
+            popover: {
+                title: 'Tabela de Remessas S-1200',
+                description: 'Cada linha é um trabalhador por período. Use o botão Enviar para transmitir individualmente, ou Reenviar em caso de erro. Remessas Aguardando podem ser re-consultadas após alguns minutos.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#secaoInfo') ? [{
+            element: '#secaoInfo',
+            popover: {
+                title: 'Dicas Importantes',
+                description: 'O envio leva cerca de 30 segundos. Para homologação use o seletor de Ambiente. O S-1200 deve ser enviado antes do S-1210 (Pagamentos) do mesmo período.',
+            }
+        }] : []),
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const ETAPAS = [
   [10,  'Gerando XML…'],
   [25,  'Assinando evento…'],

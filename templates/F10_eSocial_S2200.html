@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-2200</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -277,6 +279,16 @@ tr:hover td { background: #f8fafc; }
     text-align: center; text-transform: uppercase; letter-spacing: .06em;
     padding: 3pt 0 5pt 0; border-bottom: .5pt solid #94a3b8;
 }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 
 @media print {
     @page { margin: 1.2cm 1.5cm; }
@@ -331,7 +343,7 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   <!-- Filtros por situação -->
-  <div class="filtros-bar">
+  <div class="filtros-bar" id="filtroBar">
     <span class="filtros-label">Situação:</span>
     <a href="/esocial_s2200"       class="btn-filtro {% if not f_sit %}ativo{% endif %}">Todos</a>
     <a href="/esocial_s2200?sit=P" class="btn-filtro {% if f_sit=='P' %}ativo{% endif %}">Pendente</a>
@@ -362,7 +374,7 @@ tr:hover td { background: #f8fafc; }
 
   <!-- Contadores (visíveis quando sem filtro) -->
   {% if not f_sit %}
-  <div class="contadores">
+  <div class="contadores" id="secaoContadores">
     <div class="contador-card">
       <span class="contador-num" style="color:#854d0e;">{{ contagens.P }}</span>
       <span class="contador-txt">Pendente</span>
@@ -383,7 +395,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- Tabela -->
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoTabela">
     {% if rows %}
     <table>
       <thead>
@@ -463,7 +475,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- Info -->
-  <div style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="margin-top:28px;background:#f0f7ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#1d4ed8;margin-bottom:6px;">eSocial S-2200 — Admissão / Ingresso</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>Clique em <strong>Enviar ao eSocial</strong>: o sistema gera, assina e transmite automaticamente.</li>
@@ -552,7 +564,65 @@ tr:hover td { background: #f8fafc; }
   </div><!-- /modal-painel -->
 </div><!-- /modal-overlay -->
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-2200 — Cadastramento Inicial / Admissão',
+                description: 'Este evento transmite ao eSocial os dados de admissão de cada trabalhador. É gerado automaticamente ao incluir um funcionário no sistema e deve ser enviado antes de qualquer evento periódico (S-1200, S-1210) para aquele trabalhador.',
+            }
+        },
+        {
+            element: '#filtroBar',
+            popover: {
+                title: 'Filtros por Situação',
+                description: 'Filtre os registros por situação: Pendente (aguarda envio), Gerado, Enviado, Aguardando (enviado mas sem retorno ainda) ou Com Erro. Use "Enviar Pendentes" para enviar todos de uma vez.',
+            }
+        },
+        ...(!!document.querySelector('#secaoContadores') ? [{
+            element: '#secaoContadores',
+            popover: {
+                title: 'Contadores por Situação',
+                description: 'Visão geral do estado dos registros: quantos estão pendentes, gerados, enviados ou com erro. Clique nos botões de filtro para ver detalhes de cada categoria.',
+            }
+        }] : []),
+        {
+            element: '#secaoTabela',
+            popover: {
+                title: 'Registros S-2200',
+                description: 'Lista dos funcionários com evento de admissão. Clique em "Enviar ao eSocial" para transmitir individualmente, ou use o botão "Enviar Pendentes" no filtro para envio em lote. Funcionários enviados podem ser excluídos via S-3000 se necessário.',
+            }
+        },
+        {
+            element: '#secaoInfo',
+            popover: {
+                title: 'Sobre o S-2200',
+                description: 'Dicas importantes: o processo leva cerca de 30 segundos por evento. Após o envio, o recibo é gravado automaticamente. Em caso de rejeição, corrija os dados cadastrais e use Reenviar.',
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const ETAPAS = [
   [10, '⚙️  Gerando XML…'],
   [25, '🔑 Assinando evento…'],

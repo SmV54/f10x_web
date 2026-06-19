@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1005</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy: #a0d9be; --navy-line: #70c4a0; --accent: #2a7de1;
@@ -55,6 +57,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .dado-linha { display: flex; gap: 12px; margin-bottom: 8px; align-items: baseline; }
 .dado-label { font-size: 11px; font-weight: 700; color: #64748b; min-width: 140px; text-transform: uppercase; letter-spacing: .03em; }
 .dado-valor { font-size: 13px; color: #1e293b; font-family: var(--mono); }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -74,7 +86,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 </div>
 
 <div class="conteudo">
-    <div class="card-dev">
+    <div class="card-dev" id="cardDev">
         <div class="icone">🏭</div>
         <h1>S-1005 · Tabela de Estabelecimentos e Obras de Construção Civil</h1>
         <div class="subtitulo">
@@ -83,7 +95,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         </div>
         <span class="badge-dev">🚧 Em desenvolvimento</span>
 
-        <div class="dados-empresa">
+        <div class="dados-empresa" id="dadosEmpresa">
             <h3>Dados da empresa que serão utilizados:</h3>
             <div class="dado-linha">
                 <span class="dado-label">Empresa</span>
@@ -99,7 +111,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
             </div>
         </div>
 
-        <div class="info-box">
+        <div class="info-box" id="infoBox">
             <h3>O que será informado neste evento:</h3>
             <ul>
                 <li>CNPJ do estabelecimento (matriz ou filial)</li>
@@ -112,5 +124,57 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         </div>
     </div>
 </div>
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
+<script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1005 — Tabela de Estabelecimentos',
+                description: 'Este evento informa ao eSocial os estabelecimentos do empregador (matriz e filiais), com endereço, CNAE e alíquota RAT. É parte do Grupo 1 — Tabelas do Empregador.',
+            }
+        },
+        {
+            element: '#cardDev',
+            popover: {
+                title: 'Em Desenvolvimento',
+                description: 'Esta tela está em desenvolvimento. Os dados do estabelecimento serão montados automaticamente a partir do cadastro da empresa assim que o evento estiver disponível.',
+            }
+        },
+        ...(!!document.querySelector('#dadosEmpresa') ? [{
+            element: '#dadosEmpresa',
+            popover: {
+                title: 'Dados da Empresa',
+                description: 'Estes são os dados do cadastro que serão utilizados para preencher o S-1005: empresa, CNPJ e endereço do estabelecimento.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#infoBox') ? [{
+            element: '#infoBox',
+            popover: {
+                title: 'Conteúdo do Evento',
+                description: 'O S-1005 deve incluir CNPJ, endereço completo, CNAE da atividade principal, alíquota RAT (Risco Ambiental do Trabalho) e o período de validade das informações.',
+            }
+        }] : []),
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+</script>
 </body>
 </html>

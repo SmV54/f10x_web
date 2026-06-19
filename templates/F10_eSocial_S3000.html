@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-3000</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -158,6 +160,16 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 }
 .secao-titulo::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 .tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -192,7 +204,7 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 
 <div class="conteudo">
 
-  <div class="alerta">
+  <div class="alerta" id="secaoAlerta">
     <strong>Atenção:</strong> Só é possível excluir eventos da <strong>folha ativa</strong>. A operação não pode ser desfeita.
   </div>
 
@@ -201,7 +213,7 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
   {% endif %}
 
   <!-- PASSO 1 — Layout -->
-  <div class="passo-wrap">
+  <div class="passo-wrap" id="passo1">
     <div class="passo-titulo">
       <span class="passo-num" id="numPasso1">1</span>
       Selecione o Layout do Evento a Excluir
@@ -256,7 +268,7 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 
   <!-- S-3000 já enviados -->
   <div class="secao-titulo">Exclusões já Enviadas — S-3000</div>
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoEnviados">
     {% if s3000_rows %}
     <table>
       <thead>
@@ -287,7 +299,65 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 
 </div><!-- /conteudo -->
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-3000 — Exclusão de Eventos',
+                description: 'Este evento cancela um evento já transmitido ao eSocial (com recibo). Só é possível excluir eventos da folha ativa. A operação é irreversível — use com cuidado.',
+            }
+        },
+        {
+            element: '#secaoAlerta',
+            popover: {
+                title: 'Atenção: Operação Irreversível',
+                description: 'A exclusão via S-3000 não pode ser desfeita. Só é possível excluir eventos que já foram enviados e têm recibo, e somente da folha ativa atual.',
+            }
+        },
+        {
+            element: '#passo1',
+            popover: {
+                title: 'Passo 1 — Selecione o Layout',
+                description: 'Escolha qual tipo de evento você deseja excluir: S-2200 (Admissão), S-2205 (Alt. Cadastral), S-2206 (Alt. Contratual), etc. Cada card mostra quantos registros com recibo estão disponíveis para exclusão.',
+            }
+        },
+        {
+            element: '#passo2',
+            popover: {
+                title: 'Passo 2 — Selecione os Funcionários',
+                description: 'Após escolher o layout, selecione um ou mais funcionários cujos eventos serão excluídos. Use o checkbox no cabeçalho para selecionar todos. O botão de envio mostrará quantos estão selecionados.',
+            }
+        },
+        {
+            element: '#secaoEnviados',
+            popover: {
+                title: 'Exclusões já Enviadas',
+                description: 'Histórico de todos os S-3000 transmitidos. Cada linha mostra o funcionário, o recibo do S-3000 e a situação do evento de exclusão.',
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 // Dados injetados pelo servidor
 const POR_LAYOUT = {{ por_layout | tojson }};
 

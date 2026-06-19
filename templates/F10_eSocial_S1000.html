@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1000</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy: #a0d9be; --navy-line: #70c4a0; --accent: #2a7de1;
@@ -222,6 +224,16 @@ tr:hover td { background: #f8fafc; }
 .msg-envio { margin-top: 8px; padding: 7px 11px; border-radius: 8px; font-size: 12px; font-weight: 600; }
 .msg-ok   { background: #dcfce7; color: #166534; }
 .msg-erro { background: #fee2e2; color: #991b1b; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -243,7 +255,7 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
     <!-- Barra superior -->
-    <div class="barra-topo">
+    <div class="barra-topo" id="barraTopo">
         <div class="barra-esq">
             <div class="barra-titulo">S-1000 · Informações do Empregador/Contribuinte</div>
             <div class="barra-sub">{{ total }} registro{{ 's' if total != 1 else '' }} · Grupo 1 — Tabelas do Empregador</div>
@@ -254,7 +266,7 @@ tr:hover td { background: #f8fafc; }
     </div>
 
     <!-- Card dados da empresa -->
-    <div class="card-empresa">
+    <div class="card-empresa" id="cardEmpresa">
         <div class="dado-bloco">
             <div class="dado-label">Razão Social</div>
             <div class="dado-valor {% if not empresa.get('razaosocial') %}missing{% endif %}">
@@ -292,7 +304,7 @@ tr:hover td { background: #f8fafc; }
     </div>
 
     <!-- Tabela -->
-    <div class="tabela-wrap">
+    <div class="tabela-wrap" id="secaoTabela">
         <table>
             <thead>
                 <tr>
@@ -380,6 +392,8 @@ tr:hover td { background: #f8fafc; }
         </table>
     </div>
 </div>
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <!-- MODAL -->
 <div class="modal-overlay" id="modal-novo">
@@ -480,6 +494,55 @@ tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1000 — Informações do Empregador',
+                description: 'Este evento informa ao governo os dados cadastrais do empregador (classificação tributária, natureza jurídica, indicativos). É o primeiro evento a ser enviado ao eSocial para habilitar a empresa.',
+            }
+        },
+        ...(!!document.querySelector('#cardEmpresa') ? [{
+            element: '#cardEmpresa',
+            popover: {
+                title: 'Dados da Empresa',
+                description: 'Resumo dos dados cadastrais que serão incluídos no evento. Campos em vermelho indicam que o dado ainda não foi preenchido no cadastro da empresa e deve ser corrigido antes do envio.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#barraTopo .btn-novo') ? [{
+            element: '#barraTopo .btn-novo',
+            popover: {
+                title: 'Nova Remessa',
+                description: 'Cria uma nova remessa S-1000. Você pode enviar como Inclusão (primeiro envio) ou Alteração (atualização de dados já cadastrados no eSocial). Informe o período de vigência e o responsável pelo contato.',
+            }
+        }] : []),
+        ...(!!document.querySelector('#secaoTabela') ? [{
+            element: '#secaoTabela',
+            popover: {
+                title: 'Histórico de Remessas',
+                description: 'Lista de todas as remessas S-1000 criadas. Para cada uma você pode baixar o XML, enviar ao eSocial (botão Enviar) ou excluir via S-3000 (quando o evento já foi recebido pelo governo).',
+            }
+        }] : []),
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 function abrirModal() {
     document.getElementById('f-tp-op').value = 'inclusao';
     ['f-ini-valid','f-fim-valid','f-ctt-nome','f-ctt-cpf'].forEach(id => {

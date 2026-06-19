@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial Fila de Remessas</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -185,6 +187,16 @@ tr:hover td { background: #f8fafc; }
 }
 .op-badge-i { background: #f0fdfa; color: #0d9488; border: 1px solid #99f6e4; }
 .op-badge-a { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -221,7 +233,7 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   <!-- ── FILTROS ── -->
-  <form method="GET" action="/esocial_fila" class="filtro-bar">
+  <form id="secaoFiltros" method="GET" action="/esocial_fila" class="filtro-bar">
     <input type="hidden" name="periodo"
            value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
     <div class="filtro-group">
@@ -270,7 +282,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- ── TABELA ── -->
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoTabela">
     {% if rows %}
     <table>
       <thead>
@@ -376,6 +388,8 @@ tr:hover td { background: #f8fafc; }
   </div>
 
 </div>
+
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
 function abrirPdf(e) {
@@ -527,6 +541,55 @@ async function _enviarFila(btn) {
     btn.disabled    = false;
     btn.textContent = '▶ Enviar para eSocial';
   }
+}
+
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'Fila de Remessas eSocial',
+                description: 'Esta tela exibe todas as remessas enviadas ou pendentes de envio ao eSocial. Aqui você acompanha o status de cada evento — desde pendente até recebido com recibo.',
+            }
+        },
+        ...(!!document.querySelector('#secaoFiltros') ? [{
+            element: '#secaoFiltros',
+            popover: {
+                title: 'Filtros',
+                description: 'Use o filtro de Layout para ver somente eventos de um tipo específico (S-2200, S-1200 etc.). O botão "Imprimir em PDF" gera um relatório da fila filtrada.',
+            }
+        }] : []),
+        ...(!!document.querySelector('.counters') ? [{
+            element: '.counters',
+            popover: {
+                title: 'Contadores de Status',
+                description: 'Esses badges resumem quantos eventos estão em cada situação: Enviados (recibo OK), Aguardando (eSocial ainda processando), Com Erro e Outros (pendente/gerado).',
+            }
+        }] : []),
+        ...(!!document.querySelector('#secaoTabela') ? [{
+            element: '#secaoTabela',
+            popover: {
+                title: 'Tabela de Remessas',
+                description: 'Cada linha é uma remessa. A coluna Situação mostra o status atual; a coluna Recibo/Erro mostra o protocolo retornado pelo eSocial ou a mensagem de erro. Use as ações para Enviar, Re-consultar ou Excluir.',
+            }
+        }] : []),
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
 }
 
 async function _reconsultar(id, btn) {

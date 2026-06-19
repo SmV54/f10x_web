@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1298</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
     --navy:      #a0d9be;
@@ -118,6 +120,16 @@ tr:hover td { background: #f8fafc; }
 .res-erro { color: #991b1b; font-size: 12px; font-weight: 600; word-break: break-all; }
 
 .vazio { text-align: center; padding: 36px 20px; color: #94a3b8; font-size: 14px; }
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #0d9488; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #0f766e; }
 </style>
 </head>
 <body>
@@ -154,7 +166,7 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   <!-- ── FORMULÁRIO ── -->
-  <div class="form-panel">
+  <div class="form-panel" id="painelFormulario">
     <div class="form-panel-titulo">
       &#128275; Reabertura do Período
       {% if anomes_atual|length == 6 %}
@@ -190,7 +202,7 @@ tr:hover td { background: #f8fafc; }
     Histórico de Reaberturas
   </div>
 
-  <div class="tabela-wrap">
+  <div class="tabela-wrap" id="secaoHistorico">
     {% if rows %}
     <table>
       <thead>
@@ -253,7 +265,7 @@ tr:hover td { background: #f8fafc; }
   {% endif %}
 
   <!-- Info -->
-  <div style="margin-top:28px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 18px;">
+  <div id="secaoInfo" style="margin-top:28px;background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:14px 18px;">
     <div style="font-size:13px;font-weight:600;color:#c2410c;margin-bottom:6px;">eSocial S-1298 — Reabertura dos Eventos Periódicos</div>
     <ul style="font-size:12px;color:#475569;line-height:2;padding-left:18px;">
       <li>Reabre um período previamente fechado pelo S-1299, permitindo novas transmissões de S-1200 e S-1210.</li>
@@ -264,7 +276,58 @@ tr:hover td { background: #f8fafc; }
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
+function iniciarTour() {
+    const passos = [
+        {
+            element: '.topo-titulo',
+            popover: {
+                title: 'S-1298 — Reabertura de Período',
+                description: 'Este evento reabre um período previamente fechado pelo S-1299, permitindo transmitir correções de S-1200 e S-1210. Após corrigir, envie um novo S-1299 para fechar o período novamente.',
+            }
+        },
+        {
+            element: '#painelFormulario',
+            popover: {
+                title: 'Envio Direto',
+                description: 'Diferente de S-1200 e S-1210, o S-1298 é gerado e transmitido em uma única etapa — sem fila de espera. Clique em "Enviar S-1298" e o evento é enviado imediatamente ao eSocial.',
+            }
+        },
+        {
+            element: '#secaoHistorico',
+            popover: {
+                title: 'Histórico de Reaberturas',
+                description: 'Registro de todas as reaberturas enviadas para este empregador. Registros em estado Aguardando podem ser reconsultados com o botão Re-consultar.',
+            }
+        },
+        {
+            element: '#secaoInfo',
+            popover: {
+                title: 'Sobre o S-1298',
+                description: 'Regras importantes: só é possível reabrir um período que tenha recibo de S-1299. Após corrigir os dados, lembre-se de enviar um novo S-1299 para fechar o período novamente.',
+            }
+        },
+        {
+            element: '#btnTour',
+            popover: {
+                title: 'Tour concluído!',
+                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
+            }
+        },
+    ];
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
+
 const ETAPAS = [
   [10,  'Gerando XML…'],
   [25,  'Assinando evento…'],
