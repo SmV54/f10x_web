@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10 Simples — Cálculo de Férias</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 
 <style>
 :root {
@@ -172,6 +174,17 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
 }
 .btn-calcular:hover    { background: #1a5fb8; }
 .btn-calcular:disabled { background: #93c5fd; cursor: not-allowed; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
 </style>
 </head>
 
@@ -221,7 +234,7 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
     {% else %}
 
     <!-- ── LISTAGEM DE FUNCIONÁRIOS ── -->
-    <div class="card">
+    <div class="card" id="card-lista">
         <div class="card-header">
             <span class="card-titulo">Funcionários em Férias no Mês</span>
             {% if funcionarios %}
@@ -232,7 +245,7 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
         {% if funcionarios %}
         <div class="tbl-wrap">
             <table>
-                <thead>
+                <thead id="thead-lista">
                     <tr>
                         <th style="width:36px;padding-left:16px;">
                             <input type="checkbox" id="chkTodos" title="Selecionar todos"
@@ -348,6 +361,8 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
 
 </div>
 
+<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
+
 <script>
 function matriculasSelecionadas() {
     return Array.from(document.querySelectorAll('.chk-func:checked')).map(el => parseInt(el.value));
@@ -443,6 +458,102 @@ function mostrarResultados(lista) {
 
 // Inicializa label ao carregar
 document.addEventListener('DOMContentLoaded', atualizarSelecao);
+
+function iniciarTour() {
+    const temFunc = !!document.querySelector('.chk-func');
+
+    const passos = [
+        {
+            element: '.topo',
+            popover: {
+                title: '🏖️ Cálculo de Férias',
+                description: 'Processa as férias dos funcionários com gozo lançado para o mês da folha ativa. O sistema calcula salário de férias, 1/3 constitucional, INSS e IRRF automaticamente.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '.pg-header',
+            popover: {
+                title: '📅 Competência e contexto',
+                description: 'Exibe o mês/ano da folha ativa. Só aparecem aqui os funcionários cujo início do gozo de férias cai nesse mês. Para registrar férias, acesse Eventuais → Lançar Férias.',
+                side: 'bottom', align: 'start',
+            }
+        },
+        {
+            element: '#card-lista',
+            popover: {
+                title: '📋 Funcionários em Férias no Mês',
+                description: temFunc
+                    ? 'Lista todos os funcionários com férias iniciando nesta competência. Marque os que deseja calcular e clique em Calcular Férias.'
+                    : 'Nenhum funcionário tem férias lançadas para este mês. Use Eventuais → Lançar Férias para registrar o período de gozo antes de calcular.',
+                side: 'bottom', align: 'start',
+            }
+        },
+    ];
+
+    if (temFunc) {
+        passos.push(
+            {
+                element: '#chkTodos',
+                popover: {
+                    title: '☑️ Selecionar todos',
+                    description: 'Marca ou desmarca todos os funcionários de uma vez. Você pode calcular apenas um subconjunto desmarcando os demais individualmente.',
+                    side: 'right', align: 'center',
+                }
+            },
+            {
+                element: '#thead-lista',
+                popover: {
+                    title: '📊 Colunas da tabela',
+                    description: 'Início e fim do gozo definem o período de descanso. "Dias" é a quantidade de dias de férias. "Período Aquisitivo" é o intervalo de 12 meses trabalhados que gerou o direito. "Situação" indica se já foi calculado.',
+                    side: 'bottom', align: 'start',
+                }
+            },
+            {
+                element: '.rodape',
+                popover: {
+                    title: '🎯 Seleção e status',
+                    description: 'Mostra quantos funcionários estão selecionados. Se a folha estiver calculada ou fechada, um aviso aparece aqui e o botão Calcular fica bloqueado — reabra a folha antes.',
+                    side: 'top', align: 'end',
+                }
+            },
+            {
+                element: '#btnCalcular',
+                popover: {
+                    title: '▶️ Calcular Férias',
+                    description: 'Processa o cálculo para todos os selecionados: salário proporcional aos dias de gozo, acresce o 1/3 constitucional, desconta INSS e IRRF. O resultado aparece logo abaixo.',
+                    side: 'top', align: 'end',
+                }
+            },
+            {
+                element: '#secResultados',
+                popover: {
+                    title: '📈 Resultado do Cálculo',
+                    description: 'Após calcular, esta seção exibe uma tabela com: dias, salário de férias, 1/3, bruto total, INSS descontado, IRRF e líquido a pagar para cada funcionário.',
+                    side: 'top', align: 'start',
+                }
+            },
+            {
+                element: 'a[href="/memoria_ferias"]',
+                popover: {
+                    title: '📄 Memória de Cálculo',
+                    description: 'Abre o demonstrativo detalhado: base de férias, projeção do salário, deduções de faltas, INSS com alíquotas e IRRF com deduções. Útil para conferência e impressão.',
+                    side: 'top', align: 'start',
+                }
+            }
+        );
+    }
+
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: passos,
+    }).drive();
+}
 </script>
 
 </body>
