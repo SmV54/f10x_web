@@ -229,6 +229,8 @@ body {
 {% endif %}
 
 <script>
+const PDF_ENDPOINT = "{{ pdf_endpoint | default('/api/memoria_calculo_pdf') }}";
+
 function filtrarLista() {
   const q = document.getElementById('busca').value.toLowerCase();
   document.querySelectorAll('.func-item').forEach(el => {
@@ -256,7 +258,7 @@ function abrirMemoria() {
   const mat  = parseInt(chk.value);
   const nome = chk.dataset.nome;
   const matr = chk.closest('.func-item').dataset.mat;
-  const url  = '/api/memoria_calculo_pdf/' + mat;
+  const url  = PDF_ENDPOINT + '/' + mat;
 
   document.getElementById('placeholder').style.display = 'none';
   document.getElementById('pdfBarra').classList.add('visivel');

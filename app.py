@@ -21864,9 +21864,17 @@ def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm
     col_d = page_width * 0.25
 
     cel_comp = Paragraph(f"Competência: {xe(anomes_fmt)}", st_C) if anomes_fmt else ""
+    from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
+    _prefix = f"{cnpj_fmt} — "
+    _avail_pts = col_e - _sw(_prefix, "Helvetica", 8) - 4
+    _nm = empresa_nm
+    while _nm and _sw(_nm, "Helvetica", 8) > _avail_pts:
+        _nm = _nm[:-1]
+    if len(_nm) < len(empresa_nm):
+        _nm = (_nm.rstrip()[:-3] if len(_nm) > 3 else _nm) + "..."
     hdr = Table(
         [
-            [Paragraph(f"{xe(cnpj_fmt)} — {xe(empresa_nm)}", st_L), cel_comp, Paragraph(agora, st_R)],
+            [Paragraph(f"{xe(cnpj_fmt)} — {xe(_nm)}", st_L), cel_comp, Paragraph(agora, st_R)],
             [Paragraph(xe(titulo), st_T), "", ""],
         ],
         colWidths=[col_e, col_c, col_d])
@@ -25979,11 +25987,15 @@ def api_memoria_ferias_pdf(matricula):
     arquivos = sorted(_glob.glob(padrao))
     if not arquivos:
         return "PDF de férias não encontrado para esta matrícula", 404
-    arquivo = arquivos[-1]
+    arquivo = max(arquivos, key=os.path.getmtime)
     from flask import send_file as _send_file
-    return _send_file(arquivo, mimetype="application/pdf",
+    resp = _send_file(arquivo, mimetype="application/pdf",
                       as_attachment=False,
                       download_name=os.path.basename(arquivo))
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"]  = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 # rota temporária mantida para compatibilidade — não exposta no menu
@@ -27136,7 +27148,14 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
         if pdfs_ferias:
             os.makedirs(pasta_antiga, exist_ok=True)
             for pdf in pdfs_ferias:
-                shutil.move(os.path.join(pasta, pdf), os.path.join(pasta_antiga, pdf))
+                src = os.path.join(pasta, pdf)
+                try:
+                    shutil.move(src, os.path.join(pasta_antiga, pdf))
+                except Exception:
+                    try:
+                        os.remove(src)
+                    except Exception:
+                        pass
     except Exception:
         pass
 
@@ -27213,8 +27232,11 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     "Nenhuma verba com incidencia em Ferias (inc_ferias = MAP/M12/MAN) cadastrada.",
                     st_detalhe)])
             else:
-                _st_mes = ParagraphStyle("mf_mes", fontName="Helvetica", fontSize=7,
-                                        leftIndent=22, textColor=colors.HexColor("#374151"))
+                _st_v7h   = ParagraphStyle("mf_v7h",   fontName="Helvetica", fontSize=6,
+                                           leading=7, textColor=colors.HexColor("#374151"))
+                _st_mline = ParagraphStyle("mf_mline", fontName="Helvetica", fontSize=5,
+                                           leading=6, leftIndent=20,
+                                           textColor=colors.HexColor("#374151"))
                 cods_encontrados = {m7["cod"] for m7 in medias_pdf}
                 for v7 in verbas_med_pesq:
                     metodo7 = v7.get("metodo", "MAP")
@@ -27226,51 +27248,47 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                         fi_f = m7.get("fi_fmt", "—")
                         ff_f = m7.get("ff_fmt", "—")
                         maq  = m7.get("meses", 0)
-                        por_mes7 = m7.get("por_mes") or []   # [(folha, {valor, qtd}), ...]
-                        # cabeçalho da verba
+                        por_mes7 = m7.get("por_mes") or []
                         e7_rows.append([Paragraph(
                             f"  {cod7:04d} - {dsc7}  [{mlbl7} — {fi_f} a {ff_f} / {maq} meses]",
-                            st_detalhe)])
+                            _st_v7h)])
                         if m7.get("tipo") == "H":
                             sh   = m7.get("sal_hora_c", 0)
                             tmin = m7.get("total_min", 0)
                             amin = m7.get("avg_min", 0)
                             ah, am_h = amin // 60, amin % 60
                             vmes_h   = round(amin * sh / 60)
-                            # breakdown por mês
                             for fol, dados in por_mes7:
                                 q = dados.get("qtd", 0)
                                 qh, qm = q // 60, q % 60
                                 s_fol = str(fol)
                                 fol_fmt = f"{s_fol[4:6]}/{s_fol[:4]}" if len(s_fol) == 6 else str(fol)
                                 e7_rows.append([Paragraph(
-                                    f"{fol_fmt}:  {q} min  ({qh:02d}:{qm:02d} h)",
-                                    _st_mes)])
-                            # linha de soma
+                                    f"{fol_fmt}   {q} min ({qh:02d}:{qm:02d}h)",
+                                    _st_mline)])
                             e7_rows.append([Paragraph(
-                                f"Total = {tmin} min / {maq} meses = {amin} min/mes ({ah:02d}:{am_h:02d}h)  "
-                                f"x  {_fmt_brl(sh)}/h  /  60 = {_fmt_brl(vmes_h)}/mes  "
-                                f"x  {dias}d/30 = {_fmt_brl(m7['val'])}",
-                                _st_mes)])
+                                f'Total {tmin}min/{maq}m={amin}min/m({ah:02d}:{am_h:02d}h)'
+                                f' x {_fmt_brl(sh)[3:]}/h/60={_fmt_brl(vmes_h)[3:]}/m'
+                                f' x {dias}d/30={_fmt_brl(m7["val"])[3:]}',
+                                _st_mline)])
                         else:
                             total_aq7 = m7.get("total_aq", 0)
-                            # breakdown por mês
                             for fol, dados in por_mes7:
                                 v = dados.get("valor", 0)
                                 s_fol = str(fol)
                                 fol_fmt = f"{s_fol[4:6]}/{s_fol[:4]}" if len(s_fol) == 6 else str(fol)
                                 e7_rows.append([Paragraph(
-                                    f"{fol_fmt}:  {_fmt_brl(v)}",
-                                    _st_mes)])
-                            # linha de soma
+                                    f"{fol_fmt}   {_fmt_brl(v)[3:]}",
+                                    _st_mline)])
                             e7_rows.append([Paragraph(
-                                f"Total = {_fmt_brl(total_aq7)} / {maq} meses = "
-                                f"{_fmt_brl(m7['media_mes'])}/mes  x  {dias}d/30 = {_fmt_brl(m7['val'])}",
-                                _st_mes)])
+                                f'Total {_fmt_brl(total_aq7)[3:]}/{maq}m'
+                                f'={_fmt_brl(m7["media_mes"])[3:]}/m x {dias}d/30'
+                                f'={_fmt_brl(m7["val"])[3:]}',
+                                _st_mline)])
                     else:
                         e7_rows.append([Paragraph(
                             f"  {cod7:04d} - {dsc7}  [{mlbl7}]:   Sem lancamentos no periodo",
-                            st_detalhe)])
+                            _st_v7h)])
             e7_tbl = Table(e7_rows, colWidths=[17*cm])
             e7_tbl.setStyle(TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -27278,8 +27296,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
                 ("TOPPADDING",    (0, 0), (0, 0), 8),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 2),
-                ("TOPPADDING",    (0, 1), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
+                ("TOPPADDING",    (0, 1), (-1, -1), 1),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 1),
                 ("LEFTPADDING",   (0, 0), (0, 0), 0),
             ]))
             elems.append(e7_tbl)
