@@ -27201,77 +27201,17 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             ]))
             elems.append(e2_tbl)
 
-            # ── etapa 3 — verbas fixas de férias + abono integrado ────
-            _cw3 = [3.5*cm, 0.4*cm, 3.0*cm, 0.4*cm, 1.5*cm, 0.4*cm, 1.5*cm]
-            form3a = Table([
-                [Paragraph("Sal. Ferias", st_formula),     Paragraph("=", _st_op),
-                 Paragraph("Salario Mensal", st_formula),  Paragraph("x", _st_op),
-                 Paragraph("Dias", _st_op),                Paragraph("/", _st_op),
-                 Paragraph("30", _st_op)],
-                [Paragraph(_fmt_brl(sal_ferias), st_formula), Paragraph("=", _st_op),
-                 Paragraph(_fmt_brl(sal_mes), st_formula),    Paragraph("x", _st_op),
-                 Paragraph(str(dias), _st_op),                Paragraph("/", _st_op),
-                 Paragraph("30", _st_op)],
-            ], colWidths=_cw3)
-            form3a.setStyle(TableStyle([
-                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
-                ("TOPPADDING",    (0, 0), (-1, -1), 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-            ]))
-            _cw3b = [3.5*cm, 0.4*cm, 3.0*cm]
-            form3b = Table([
-                [Paragraph("1/3 Constitucional", st_formula), Paragraph("=", _st_op),
-                 Paragraph("Sal. Ferias / 3", st_formula)],
-                [Paragraph(_fmt_brl(terco_const), st_formula), Paragraph("=", _st_op),
-                 Paragraph(f"{_fmt_brl(sal_ferias)} / 3", st_formula)],
-            ], colWidths=_cw3b)
-            form3b.setStyle(TableStyle([
-                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
-                ("TOPPADDING",    (0, 0), (-1, -1), 1),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-            ]))
+            # ── etapa 3 — quantidade de dias de férias ─────────────────
             e3_rows = [
-                [Paragraph("ETAPA 0003 - CALCULO DAS VERBAS DE FERIAS", st_etapa)],
-                [form3a],
-                [form3b],
+                [Paragraph("ETAPA 0003 - QUANTIDADE DE DIAS DE FERIAS", st_etapa)],
+                [Paragraph(f"Quantidade de dias de ferias: {dias} dias", st_detalhe)],
+                [Paragraph(f"Data inicial: {r.get('data1i_fmt','—')}", st_detalhe)],
+                [Paragraph(f"Data final:   {r.get('data1f_fmt','—')}", st_detalhe)],
             ]
             if dias_abono:
-                _cw4a = [3.5*cm, 0.4*cm, 3.0*cm, 0.4*cm, 2.0*cm, 0.4*cm, 1.5*cm]
-                form_ab_a = Table([
-                    [Paragraph("Abono Pecuniario", st_formula),  Paragraph("=", _st_op),
-                     Paragraph("Salario Mensal", st_formula),    Paragraph("x", _st_op),
-                     Paragraph("Dias Abono", _st_op),            Paragraph("/", _st_op),
-                     Paragraph("30", _st_op)],
-                    [Paragraph(_fmt_brl(abono_val), st_formula), Paragraph("=", _st_op),
-                     Paragraph(_fmt_brl(sal_mes), st_formula),   Paragraph("x", _st_op),
-                     Paragraph(str(dias_abono), _st_op),         Paragraph("/", _st_op),
-                     Paragraph("30", _st_op)],
-                ], colWidths=_cw4a)
-                form_ab_a.setStyle(TableStyle([
-                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
-                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-                ]))
-                form_ab_b = Table([
-                    [Paragraph("1/3 sobre Abono", st_formula),     Paragraph("=", _st_op),
-                     Paragraph("Abono / 3", st_formula)],
-                    [Paragraph(_fmt_brl(terco_abono), st_formula), Paragraph("=", _st_op),
-                     Paragraph(f"{_fmt_brl(abono_val)} / 3", st_formula)],
-                ], colWidths=_cw3b)
-                form_ab_b.setStyle(TableStyle([
-                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                    ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
-                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-                ]))
                 e3_rows.append([Paragraph(
-                    f"Abono Pecuniario ({dias_abono} dias) — isento de INSS e IRRF:",
+                    f"Abono Pecuniario: {dias_abono} dias (vendidos — isentos de INSS e IRRF)",
                     st_detalhe)])
-                e3_rows.append([form_ab_a])
-                e3_rows.append([form_ab_b])
             e3_tbl = Table(e3_rows, colWidths=[17*cm])
             e3_tbl.setStyle(TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -27456,9 +27396,11 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             e9a_rows = [[Paragraph(
                 "ETAPA 0009A - BASE DE CALCULO CONSOLIDADA (INSS / IRRF / FGTS)", st_etapa)]]
             e9a_rows.append([Paragraph(
-                f"Sal. Ferias ({dias} dias):      {_fmt_brl(sal_ferias)}", st_detalhe)])
+                f"Sal. Ferias ({dias} dias): {_fmt_brl(sal_ferias)}"
+                f"   = {_fmt_brl(sal_mes)} x {dias} / 30", st_detalhe)])
             e9a_rows.append([Paragraph(
-                f"1/3 Constitucional:             {_fmt_brl(terco_const)}", st_detalhe)])
+                f"1/3 Constitucional:        {_fmt_brl(terco_const)}"
+                f"   = {_fmt_brl(sal_ferias)} / 3", st_detalhe)])
             for m9a in medias_pdf:
                 e9a_rows.append([Paragraph(
                     f"Media {m9a['cod']:04d} {m9a.get('dsc', '')}:   {_fmt_brl(m9a['val'])}",
@@ -27467,12 +27409,16 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             if _soma_medias9a:
                 _bc_formula9a += f" + Medias {_fmt_brl(_soma_medias9a)}"
             e9a_rows.append([Paragraph(
-                f"Base de Calculo:                {_fmt_brl(base_calc)}"
+                f"Base de Calculo:           {_fmt_brl(base_calc)}"
                 f"   ({_bc_formula9a})", st_detalhe)])
             if abono_val:
                 e9a_rows.append([Paragraph(
                     f"Abono Pecuniario ({dias_abono} dias): {_fmt_brl(abono_val)}"
-                    f" + 1/3 Abono {_fmt_brl(terco_abono)}   (isento de INSS e IRRF)",
+                    f"   = {_fmt_brl(sal_mes)} x {dias_abono} / 30   (isento de INSS e IRRF)",
+                    st_detalhe)])
+                e9a_rows.append([Paragraph(
+                    f"1/3 sobre Abono: {_fmt_brl(terco_abono)}"
+                    f"   = {_fmt_brl(abono_val)} / 3   (isento de INSS e IRRF)",
                     st_detalhe)])
             e9a_tbl = Table(e9a_rows, colWidths=[17*cm])
             e9a_tbl.setStyle(TableStyle([
