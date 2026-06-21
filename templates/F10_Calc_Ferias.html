@@ -257,7 +257,7 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
                         <th>Fim Gozo</th>
                         <th class="num">Dias</th>
                         <th>Período Aquisitivo</th>
-                        <th>Situação</th>
+                        <th>Último Cálculo</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -343,16 +343,42 @@ td.val-fgts{ font-family: var(--mono); font-size: 12px; text-align: right; white
             </div>
         </div>
 
-        <div style="margin-top: 14px;">
-            <a href="/memoria_ferias"
-               style="display:inline-flex; align-items:center; gap:8px;
-                      background:#fff; border:1px solid #dde3ec; border-radius:10px;
-                      padding:12px 20px; text-decoration:none; color:#1e293b;
-                      font-size:13px; font-weight:600; transition:0.15s;
+        <div style="display:flex; gap:14px; margin-top:16px; flex-wrap:wrap;">
+            <a href="/visualizar_calc_ferias"
+               style="display:flex; flex-direction:column; gap:8px; flex:1; min-width:180px;
+                      background:#fff; border:1px solid #dde3ec; border-radius:12px;
+                      padding:18px 20px; text-decoration:none; color:#1e293b;
+                      transition:box-shadow 0.15s, border-color 0.15s, transform 0.1s;
                       box-shadow:0 1px 4px rgba(0,0,0,0.06);"
-               onmouseover="this.style.borderColor='#2a7de1';this.style.color='#2a7de1'"
-               onmouseout="this.style.borderColor='#dde3ec';this.style.color='#1e293b'">
-                📄 Memória de Cálculo
+               onmouseover="this.style.borderColor='#2a7de1';this.style.boxShadow='0 6px 20px rgba(42,125,225,0.12)';this.style.transform='translateY(-2px)'"
+               onmouseout="this.style.borderColor='#dde3ec';this.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';this.style.transform=''">
+                <div style="width:40px;height:40px;border-radius:10px;background:#e6f0fb;display:flex;align-items:center;justify-content:center;font-size:20px;">📊</div>
+                <div style="font-size:14px;font-weight:600;color:#1e293b;">Visualizar Cálculo</div>
+                <div style="font-size:12px;color:#64748b;line-height:1.4;">Ver proventos e descontos por funcionário</div>
+            </a>
+            <a href="/memoria_ferias"
+               style="display:flex; flex-direction:column; gap:8px; flex:1; min-width:180px;
+                      background:#fff; border:1px solid #dde3ec; border-radius:12px;
+                      padding:18px 20px; text-decoration:none; color:#1e293b;
+                      transition:box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+                      box-shadow:0 1px 4px rgba(0,0,0,0.06);"
+               onmouseover="this.style.borderColor='#2a7de1';this.style.boxShadow='0 6px 20px rgba(42,125,225,0.12)';this.style.transform='translateY(-2px)'"
+               onmouseout="this.style.borderColor='#dde3ec';this.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';this.style.transform=''">
+                <div style="width:40px;height:40px;border-radius:10px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:20px;">📄</div>
+                <div style="font-size:14px;font-weight:600;color:#1e293b;">Memória de Cálculo</div>
+                <div style="font-size:12px;color:#64748b;line-height:1.4;">PDF com detalhamento completo do cálculo</div>
+            </a>
+            <a href="/recibo_ferias"
+               style="display:flex; flex-direction:column; gap:8px; flex:1; min-width:180px;
+                      background:#fff; border:1px solid #dde3ec; border-radius:12px;
+                      padding:18px 20px; text-decoration:none; color:#1e293b;
+                      transition:box-shadow 0.15s, border-color 0.15s, transform 0.1s;
+                      box-shadow:0 1px 4px rgba(0,0,0,0.06);"
+               onmouseover="this.style.borderColor='#2a7de1';this.style.boxShadow='0 6px 20px rgba(42,125,225,0.12)';this.style.transform='translateY(-2px)'"
+               onmouseout="this.style.borderColor='#dde3ec';this.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)';this.style.transform=''">
+                <div style="width:40px;height:40px;border-radius:10px;background:#fefce8;display:flex;align-items:center;justify-content:center;font-size:20px;">🧾</div>
+                <div style="font-size:14px;font-weight:600;color:#1e293b;">Recibo</div>
+                <div style="font-size:12px;color:#64748b;line-height:1.4;">Recibo de férias para impressão</div>
             </a>
         </div>
     </div>

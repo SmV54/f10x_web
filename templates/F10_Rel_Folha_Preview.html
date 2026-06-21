@@ -217,11 +217,32 @@ tr.tr-liq td { border-top: 2px solid #374151; }
 
   <div class="barra-acoes">
     <a class="btn-voltar" href="/relatorios">&#8592; Voltar</a>
-    <div style="display:flex;align-items:center;gap:12px;">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <!-- Toggle de ordem -->
+      <div style="display:flex;align-items:center;gap:6px;background:#f1f5f9;border:1px solid #cbd5e1;border-radius:8px;padding:4px 10px;">
+        <span style="font-size:11px;font-weight:600;color:#64748b;margin-right:4px;">Ordem:</span>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;font-weight:500;color:{% if ordem=='mat' %}#1e293b{% else %}#64748b{% endif %}">
+          <input type="radio" name="ordem" value="mat" {% if ordem=='mat' %}checked{% endif %}
+                 onchange="mudarOrdem(this.value)" style="accent-color:#2a7de1;cursor:pointer;">
+          Matrícula
+        </label>
+        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:12px;font-weight:500;color:{% if ordem=='alfa' %}#1e293b{% else %}#64748b{% endif %}">
+          <input type="radio" name="ordem" value="alfa" {% if ordem=='alfa' %}checked{% endif %}
+                 onchange="mudarOrdem(this.value)" style="accent-color:#2a7de1;cursor:pointer;">
+          Alfabética
+        </label>
+      </div>
       <span class="badge-periodo">&#128197; {{ anomes_fmt }} &nbsp;·&nbsp; {{ tipo_lbl }}</span>
-      <a class="btn-pdf" href="/relatorio_folha_pdf" target="_blank">&#128438; Imprimir em PDF</a>
+      <a class="btn-pdf" id="btnPdf" href="/relatorio_folha_pdf?ordem={{ ordem }}" target="_blank">&#128438; Imprimir em PDF</a>
     </div>
   </div>
+<script>
+function mudarOrdem(v) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('ordem', v);
+    window.location.href = url.toString();
+}
+</script>
 
   {% if cc_list %}
 

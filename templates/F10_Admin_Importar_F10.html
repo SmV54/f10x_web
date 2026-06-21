@@ -600,7 +600,8 @@ const ETAPAS = [
     { num: '09', nome: 'Importar movimentos',         tabela: 'tabmov',    implementado: true  },
     { num: '10', nome: 'Importar totais de folha',    tabela: 'tabtotal',  implementado: true  },
     { num: '11', nome: 'Importar movimentos fixos',   tabela: 'tabfix',      implementado: true  },
-    { num: '12', nome: 'Importar histórico eSocial',  tabela: 'tabesocial',  implementado: true  },
+    { num: '12', nome: 'Importar histórico eSocial',       tabela: 'tabesocial', implementado: true },
+    { num: '13', nome: 'Importar eventos (tabreg → tab_eventos)', tabela: 'tabreg', implementado: true },
 ];
 
 function renderEtapas() {
@@ -1184,6 +1185,70 @@ function carregarComparacao() {
             .catch(ex => {
                 corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`;
             });
+
+    } else if (checkedEtapas.includes('tabreg')) {
+        titulo.textContent = 'Registros no Access — Eventos (tabreg → tab_eventos)';
+        badge.textContent  = '';
+        corpo.innerHTML    = '<div class="loading-inline"><div class="spinner"></div> Varrendo arquivos…</div>';
+        fetch('/api/admin_importar_f10/comparar_tabreg?arquivo=' + encodeURIComponent(arquivoAtivo))
+            .then(r => r.json())
+            .then(d => {
+                if (!d.ok) {
+                    corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(d.msg)}</div>`;
+                    return;
+                }
+                const fontesOk = (d.fontes || []).filter(f => f.status === 'ok');
+                badge.textContent = fontesOk.length
+                    ? `tabreg — ${d.total_regs} registro(s) em ${fontesOk.length} arquivo(s)`
+                    : 'tabreg não encontrada nos arquivos';
+
+                let html = '';
+                const diagLinhas = (d.fontes || []).map(f => {
+                    if (f.status === 'ok')
+                        return `<span style="color:#166534;">✓ <strong>${esc(f.arquivo)}</strong> → ${f.total} reg. — cols: ${esc((f.colunas||[]).join(', '))}</span>`;
+                    if (f.status === 'sem_tabreg')
+                        return `<span style="color:#94a3b8;">· <strong style="color:#475569;">${esc(f.arquivo)}</strong> → sem tabreg</span>`;
+                    if (f.status === 'erro')
+                        return `<span style="color:#ef4444;">✗ <strong>${esc(f.arquivo)}</strong> → ${esc(f.erro||'')}</span>`;
+                    return `<span style="color:#94a3b8;">· ${esc(f.arquivo)}</span>`;
+                });
+                if (diagLinhas.length) {
+                    html += `<div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:9px 13px;font-size:11px;margin-bottom:12px;display:flex;flex-direction:column;gap:3px;">${diagLinhas.join('')}</div>`;
+                }
+                if (!fontesOk.length) {
+                    html += `<div style="font-size:12px;color:#94a3b8;padding:8px 0;">Nenhum arquivo com tabreg encontrado.</div>`;
+                    corpo.innerHTML = html;
+                    return;
+                }
+                for (const f of fontesOk) {
+                    html += `<div style="margin-bottom:18px;">
+                        <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:5px;">📦 ${esc(f.arquivo)} — ${f.total} registro(s)</div>`;
+                    // Distribuição por op1
+                    const op1s = Object.entries(f.por_op1 || {});
+                    if (op1s.length) {
+                        html += `<div style="font-size:11px;color:#475569;margin-bottom:6px;"><strong>Distribuição por op1:</strong>
+                            <span style="font-family:var(--mono);font-size:10px;color:#64748b;">
+                            ${op1s.map(([k,v]) => `op1=${k}: ${v}`).join(' · ')}
+                            </span></div>`;
+                    }
+                    // Preview
+                    const amostra = f.amostra || [];
+                    if (amostra.length) {
+                        const cols = (f.colunas || []).slice(0, 10);
+                        html += `<div style="font-size:11px;color:#64748b;margin-bottom:4px;">Amostra (${amostra.length} reg.):</div>
+                        <div style="overflow-x:auto;">
+                        <table class="comp-table">
+                            <thead><tr>${cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+                            <tbody>${amostra.map(r =>
+                                `<tr>${cols.map(c => `<td style="font-family:var(--mono);font-size:10px;">${esc(r[c]??'')}</td>`).join('')}</tr>`
+                            ).join('')}</tbody>
+                        </table></div>`;
+                    }
+                    html += `</div>`;
+                }
+                corpo.innerHTML = html;
+            })
+            .catch(ex => { corpo.innerHTML = `<div style="font-size:11px;color:#ef4444;">${esc(String(ex))}</div>`; });
 
     } else {
         titulo.textContent = 'Mapeamento de Campos';

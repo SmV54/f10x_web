@@ -253,6 +253,15 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .btn-modal-sec:hover { background: #e2e8f0; }
 
+/* ── PIN VERBA ── */
+.btn-pin-toggle {
+    background: #f1f5f9; border: 1px solid #e2e8f0; color: #64748b;
+    font-size: 10px; padding: 2px 8px; border-radius: 5px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap; line-height: 1.5;
+}
+.btn-pin-toggle:hover { background: #e2e8f0; }
+.btn-pin-toggle.ativo { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; font-weight: 600; }
+
 /* ── BOTÃO TOUR ── */
 #btnTour {
     position: fixed; bottom: 24px; right: 24px; z-index: 500;
@@ -316,7 +325,10 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
             <!-- ── COL 2: VERBAS ── -->
             <div class="col-verbas col-sep" id="col-verbas">
-                <div class="col-subtitle">Verbas Disponíveis</div>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div class="col-subtitle">Verbas Disponíveis</div>
+                    <button id="btn-pin-verba" class="btn-pin-toggle" onclick="togglePinVerba()" title="Fixar verba selecionada após lançamento">&#128204; Fixar</button>
+                </div>
                 <input type="text" id="busca-verba" class="busca-inp"
                        placeholder="Buscar verba…" oninput="filtrarVerbas()">
                 <div class="lista-scroll verba-lista" id="verba-lista"></div>
@@ -400,6 +412,24 @@ let idEdicao   = null;
 let LISTA_DATA = {};
 let TODOS_REGISTROS = [];
 let campoUnidAtual = 'V';
+let verbaPinada = localStorage.getItem('mov_pin_verba') === '1';
+
+/* ── PIN VERBA ── */
+function togglePinVerba() {
+    verbaPinada = !verbaPinada;
+    localStorage.setItem('mov_pin_verba', verbaPinada ? '1' : '0');
+    atualizarBtnPin();
+}
+function atualizarBtnPin() {
+    const btn = document.getElementById('btn-pin-verba');
+    if (verbaPinada) {
+        btn.classList.add('ativo');
+        btn.innerHTML = '&#128204; Fixada';
+    } else {
+        btn.classList.remove('ativo');
+        btn.innerHTML = '&#128204; Fixar';
+    }
+}
 
 /* ── MÁSCARA MONETÁRIA / HORA ── */
 function mascaraValor(el) {
@@ -574,14 +604,22 @@ async function incluir() {
 }
 
 function resetarForm() {
+    const verbaAnterior = verbaSelecionada;
     verbaSelecionada = null;
-    document.getElementById('entrada-placeholder').style.display = 'flex';
-    document.getElementById('entrada-form').style.display        = 'none';
     limparSelecao();
-    document.getElementById('busca-func').value  = '';
-    document.getElementById('busca-verba').value = '';
+    document.getElementById('busca-func').value = '';
     filtrarFuncionarios();
-    filtrarVerbas();
+
+    if (verbaPinada && verbaAnterior) {
+        verbaSelecionada = verbaAnterior;
+        filtrarVerbas();
+        mostrarEntradaForm(verbaSelecionada, false);
+    } else {
+        document.getElementById('entrada-placeholder').style.display = 'flex';
+        document.getElementById('entrada-form').style.display        = 'none';
+        document.getElementById('busca-verba').value = '';
+        filtrarVerbas();
+    }
 }
 
 /* ── EDITAR ── */
@@ -835,6 +873,7 @@ function iniciarTour() {
 }
 
 /* ── INIT ── */
+atualizarBtnPin();
 renderFuncionarios(FUNCIONARIOS);
 renderVerbas(VERBAS);
 carregarLista();
