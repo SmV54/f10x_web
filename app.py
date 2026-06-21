@@ -27201,32 +27201,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             ]))
             elems.append(e2_tbl)
 
-            # ── etapa 3 — quantidade de dias de férias ─────────────────
-            e3_rows = [
-                [Paragraph("ETAPA 0003 - QUANTIDADE DE DIAS DE FERIAS", st_etapa)],
-                [Paragraph(f"Quantidade de dias de ferias: {dias} dias", st_detalhe)],
-                [Paragraph(f"Data inicial: {r.get('data1i_fmt','—')}", st_detalhe)],
-                [Paragraph(f"Data final:   {r.get('data1f_fmt','—')}", st_detalhe)],
-            ]
-            if dias_abono:
-                e3_rows.append([Paragraph(
-                    f"Abono Pecuniario: {dias_abono} dias (vendidos — isentos de INSS e IRRF)",
-                    st_detalhe)])
-            e3_tbl = Table(e3_rows, colWidths=[17*cm])
-            e3_tbl.setStyle(TableStyle([
-                ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                ("LEFTPADDING",   (0, 1), (-1, -1), 10),
-                ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
-                ("TOPPADDING",    (0, 0), (0, 0), 8),
-                ("BOTTOMPADDING", (0, 0), (0, 0), 2),
-                ("TOPPADDING",    (0, 1), (-1, -1), 2),
-                ("BOTTOMPADDING", (0, 1), (-1, -1), 2),
-                ("LEFTPADDING",   (0, 0), (0, 0), 0),
-            ]))
-            elems.append(e3_tbl)
-
-            # ── etapa 7 — médias das verbas variáveis ─────────────────
-            e7_rows = [[Paragraph("ETAPA 0007 - MEDIAS DAS VERBAS VARIAVEIS (inc_ferias=S)", st_etapa)]]
+            # ── etapa 3 — médias das verbas variáveis ─────────────────
+            e7_rows = [[Paragraph("ETAPA 0003 - MEDIAS DAS VERBAS VARIAVEIS (inc_ferias=S)", st_etapa)]]
             if not verbas_med_pesq:
                 e7_rows.append([Paragraph(
                     "Nenhuma verba com incidencia em Ferias (campo inc_ferias=S) cadastrada.",
@@ -27282,8 +27258,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             ]))
             elems.append(e7_tbl)
 
-            # ── etapa 8 — premissas e filtros do cálculo ──────────────
-            e8_rows = [[Paragraph("ETAPA 0008 - PREMISSAS E FILTROS DO CALCULO", st_etapa)]]
+            # ── etapa 4 — premissas e filtros do cálculo ──────────────
+            e8_rows = [[Paragraph("ETAPA 0004 - PREMISSAS E FILTROS DO CALCULO", st_etapa)]]
             e8_rows.append([Paragraph(f"Funcionario: {mat:06d} — {nome}", st_detalhe)])
             tipo_sal8 = "Horista" if und_pdf == "H" else "Mensalista"
             e8_rows.append([Paragraph(f"Salario: {_fmt_brl(sal_mes)} ({tipo_sal8})", st_detalhe)])
@@ -27333,7 +27309,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             ]))
             elems.append(e8_tbl)
 
-            # ── etapa 9 — lançamentos digitados ────────────────────────
+            # ── etapa 5 — lançamentos digitados ────────────────────────
             _st_lbl9 = ParagraphStyle("mf_l9", fontName="Helvetica", fontSize=7,
                                       alignment=0, textColor=colors.HexColor("#374151"))
             _st_val9 = ParagraphStyle("mf_v9", fontName="Helvetica", fontSize=7,
@@ -27363,7 +27339,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("LINEBELOW",     (0, 0), (-1, 0), 0.3, colors.HexColor("#94a3b8")),
                 ]))
                 e9_tbl = Table([
-                    [Paragraph("ETAPA 0009 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
+                    [Paragraph("ETAPA 0005 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
                     [e9_det],
                 ], colWidths=[17*cm])
                 e9_tbl.setStyle(TableStyle([
@@ -27377,7 +27353,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
             else:
                 e9_tbl = Table([
-                    [Paragraph("ETAPA 0009 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
+                    [Paragraph("ETAPA 0005 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
                     [Paragraph("Nao houve Lancamentos Digitados para essa Ferias.", st_detalhe)],
                 ], colWidths=[17*cm])
                 e9_tbl.setStyle(TableStyle([
@@ -27391,10 +27367,10 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
             elems.append(e9_tbl)
 
-            # ── etapa 9A — base de cálculo consolidada ─────────────────
+            # ── etapa 6 — base de cálculo consolidada ──────────────────
             _soma_medias9a = sum(m.get("val", 0) for m in medias_pdf)
             e9a_rows = [[Paragraph(
-                "ETAPA 0009A - BASE DE CALCULO CONSOLIDADA (INSS / IRRF / FGTS)", st_etapa)]]
+                "ETAPA 0006 - BASE DE CALCULO CONSOLIDADA (INSS / IRRF / FGTS)", st_etapa)]]
             e9a_rows.append([Paragraph(
                 f"Sal. Ferias ({dias} dias): {_fmt_brl(sal_ferias)}"
                 f"   = {_fmt_brl(sal_mes)} x {dias} / 30", st_detalhe)])
@@ -27433,11 +27409,11 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             ]))
             elems.append(e9a_tbl)
 
-            # ── etapa 10 — INSS ────────────────────────────────────────
+            # ── etapa 7 — INSS ─────────────────────────────────────────
             _st_op10f = ParagraphStyle("op10f", fontName="Helvetica", fontSize=7,
                                        alignment=1, textColor=colors.HexColor("#374151"))
             if inss_det:
-                hdr10f_txt = (f"ETAPA 0010 - INSS (Desconto)"
+                hdr10f_txt = (f"ETAPA 0007 - INSS (Desconto)"
                               f"   Base: {_fmt_brl(base_calc)}")
                 det10f_rows = [[
                     Paragraph("Faixa",      _st_op10f),
@@ -27484,7 +27460,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
             else:
                 e10f_tbl = Table([[Paragraph(
-                    "ETAPA 0010 - INSS (Desconto)   Base de calculo = ZERO — sem desconto.",
+                    "ETAPA 0007 - INSS (Desconto)   Base de calculo = ZERO — sem desconto.",
                     st_etapa)]], colWidths=[17*cm])
                 e10f_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -27494,10 +27470,10 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
             elems.append(e10f_tbl)
 
-            # ── etapa 11 — IRRF ────────────────────────────────────────
+            # ── etapa 8 — IRRF ─────────────────────────────────────────
             if base_irrf <= 0 or irrf_info is None:
                 e11f_tbl = Table([[Paragraph(
-                    "ETAPA 0011 - IRRF (Desconto)"
+                    "ETAPA 0008 - IRRF (Desconto)"
                     "   Base IRRF = ZERO ou isento — sem desconto.",
                     st_etapa)]], colWidths=[17*cm])
                 e11f_tbl.setStyle(TableStyle([
@@ -27542,7 +27518,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("LINEABOVE",     (0, 5), (-1, 5), 0.3, colors.HexColor("#94a3b8")),
                 ]))
                 e11f_tbl = Table([
-                    [Paragraph("ETAPA 0011 - IRRF (Desconto)", st_etapa)],
+                    [Paragraph("ETAPA 0008 - IRRF (Desconto)", st_etapa)],
                     [irrf11f_det],
                 ], colWidths=[17*cm])
                 e11f_tbl.setStyle(TableStyle([
