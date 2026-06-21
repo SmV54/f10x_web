@@ -27213,36 +27213,63 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     "Nenhuma verba com incidencia em Ferias (inc_ferias = MAP/M12/MAN) cadastrada.",
                     st_detalhe)])
             else:
+                _st_mes = ParagraphStyle("mf_mes", fontName="Helvetica", fontSize=7,
+                                        leftIndent=22, textColor=colors.HexColor("#374151"))
                 cods_encontrados = {m7["cod"] for m7 in medias_pdf}
                 for v7 in verbas_med_pesq:
                     metodo7 = v7.get("metodo", "MAP")
                     mlbl7   = _METODO_LABELS.get(metodo7, metodo7)
-                    if v7["cod"] in cods_encontrados:
-                        m7   = next(m for m in medias_pdf if m["cod"] == v7["cod"])
+                    cod7    = v7["cod"]
+                    dsc7    = v7["dsc"]
+                    if cod7 in cods_encontrados:
+                        m7   = next(m for m in medias_pdf if m["cod"] == cod7)
                         fi_f = m7.get("fi_fmt", "—")
                         ff_f = m7.get("ff_fmt", "—")
                         maq  = m7.get("meses", 0)
+                        por_mes7 = m7.get("por_mes") or []   # [(folha, {valor, qtd}), ...]
+                        # cabeçalho da verba
+                        e7_rows.append([Paragraph(
+                            f"  {cod7:04d} - {dsc7}  [{mlbl7} — {fi_f} a {ff_f} / {maq} meses]",
+                            st_detalhe)])
                         if m7.get("tipo") == "H":
                             sh   = m7.get("sal_hora_c", 0)
                             tmin = m7.get("total_min", 0)
                             amin = m7.get("avg_min", 0)
                             ah, am_h = amin // 60, amin % 60
                             vmes_h   = round(amin * sh / 60)
+                            # breakdown por mês
+                            for fol, dados in por_mes7:
+                                q = dados.get("qtd", 0)
+                                qh, qm = q // 60, q % 60
+                                s_fol = str(fol)
+                                fol_fmt = f"{s_fol[4:6]}/{s_fol[:4]}" if len(s_fol) == 6 else str(fol)
+                                e7_rows.append([Paragraph(
+                                    f"{fol_fmt}:  {q} min  ({qh:02d}:{qm:02d} h)",
+                                    _st_mes)])
+                            # linha de soma
                             e7_rows.append([Paragraph(
-                                f"  {v7['cod']:04d} {v7['dsc']} [{mlbl7} — {fi_f} a {ff_f} / {maq} meses]:   "
                                 f"Total = {tmin} min / {maq} meses = {amin} min/mes ({ah:02d}:{am_h:02d}h)  "
                                 f"x  {_fmt_brl(sh)}/h  /  60 = {_fmt_brl(vmes_h)}/mes  "
                                 f"x  {dias}d/30 = {_fmt_brl(m7['val'])}",
-                                st_detalhe)])
+                                _st_mes)])
                         else:
+                            total_aq7 = m7.get("total_aq", 0)
+                            # breakdown por mês
+                            for fol, dados in por_mes7:
+                                v = dados.get("valor", 0)
+                                s_fol = str(fol)
+                                fol_fmt = f"{s_fol[4:6]}/{s_fol[:4]}" if len(s_fol) == 6 else str(fol)
+                                e7_rows.append([Paragraph(
+                                    f"{fol_fmt}:  {_fmt_brl(v)}",
+                                    _st_mes)])
+                            # linha de soma
                             e7_rows.append([Paragraph(
-                                f"  {v7['cod']:04d} {v7['dsc']} [{mlbl7} — {fi_f} a {ff_f} / {maq} meses]:   "
-                                f"Total = {_fmt_brl(m7['total_aq'])} / {maq} meses = "
+                                f"Total = {_fmt_brl(total_aq7)} / {maq} meses = "
                                 f"{_fmt_brl(m7['media_mes'])}/mes  x  {dias}d/30 = {_fmt_brl(m7['val'])}",
-                                st_detalhe)])
+                                _st_mes)])
                     else:
                         e7_rows.append([Paragraph(
-                            f"  {v7['cod']:04d} {v7['dsc']} [{mlbl7}]:   Sem lancamentos no periodo",
+                            f"  {cod7:04d} - {dsc7}  [{mlbl7}]:   Sem lancamentos no periodo",
                             st_detalhe)])
             e7_tbl = Table(e7_rows, colWidths=[17*cm])
             e7_tbl.setStyle(TableStyle([
@@ -27784,6 +27811,7 @@ def api_calc_ferias_calcular():
             s = str(am)
             return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else "—"
 
+        _por_mes: dict = {}   # cod -> {folha_anomes: {"valor": X, "qtd": Y}}
         if _verbas_media:
             for metodo, cods in _grupos_metodo.items():
                 periodo = _periodo_metodo_fc(metodo)
@@ -27794,7 +27822,7 @@ def api_calc_ferias_calcular():
                     meses_aq_pdf = meses
                 try:
                     r_med = (supabase.table("tab_mov")
-                             .select("cod_verba, valor, qtd")
+                             .select("cod_verba, valor, qtd, folha")
                              .eq("id_cliente", id_cliente)
                              .eq("id_empresa", id_empresa)
                              .eq("matricula",  mat)
@@ -27805,11 +27833,20 @@ def api_calc_ferias_calcular():
                              .neq("folha_tipo", "F")
                              .execute())
                     for row in (r_med.data or []):
-                        cod = int(row.get("cod_verba") or 0)
+                        cod    = int(row.get("cod_verba") or 0)
+                        folha_r = int(row.get("folha") or 0)
+                        valor_r = int(row.get("valor") or 0)
+                        qtd_r   = int(row.get("qtd")   or 0)
+                        if cod not in _por_mes:
+                            _por_mes[cod] = {}
+                        if folha_r not in _por_mes[cod]:
+                            _por_mes[cod][folha_r] = {"valor": 0, "qtd": 0}
+                        _por_mes[cod][folha_r]["valor"] += valor_r
+                        _por_mes[cod][folha_r]["qtd"]   += qtd_r
                         if cod in _verbas_horas:
-                            totais_qtd_pdf[cod] = totais_qtd_pdf.get(cod, 0) + int(row.get("qtd") or 0)
+                            totais_qtd_pdf[cod] = totais_qtd_pdf.get(cod, 0) + qtd_r
                         else:
-                            totais_aq_pdf[cod] = totais_aq_pdf.get(cod, 0) + int(row.get("valor") or 0)
+                            totais_aq_pdf[cod] = totais_aq_pdf.get(cod, 0) + valor_r
                     fi_fmt = _fmt_anomes_fc(fi)
                     ff_fmt = _fmt_anomes_fc(ff)
                     for cod in cods:
@@ -28009,6 +28046,7 @@ def api_calc_ferias_calcular():
                                   if _verbas_periodo_pdf.get(cod, {}).get("meses") and totais_qtd_pdf.get(cod) else 0),
                     "sal_hora_c": sal_hora_c,
                     "val": val,
+                    "por_mes": sorted(_por_mes.get(cod, {}).items()),
                 }
                 for cod, val in sorted(medias_variaveis.items()) if val
             ],
