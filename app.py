@@ -22964,7 +22964,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 mult_mf = 1 + pct_mf / 100
                 if unid_mf == "H":
                     horas_mf    = val_bruto / 100
-                    sal_hora_mf = l["sal_hora"]
+                    sal_hora_mf = int(l["sal_hora"])
                     val_base    = int(horas_mf * sal_hora_mf * mult_mf)
                     hh_mf = int(horas_mf); mm_mf = round((horas_mf - hh_mf) * 60)
                     obs_unid = (f"Horas: {hh_mf:02d}h{mm_mf:02d}"
@@ -23074,7 +23074,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                 pass
                     # Verbas em Horas: valor = (qtd_min / 60) × sal_hora × (1 + percentual/100)
                     elif unid == "H" and qtd > 0:
-                        sal_hora_c = l["sal_hora"]   # centavos/hora
+                        sal_hora_c = int(l["sal_hora"])  # centavos/hora truncado para bater com exibição
                         pct_h      = ri.get("percentual") or 0
                         mult_h     = 1 + pct_h / 100
                         valor_calc = int(round(qtd / 60 * sal_hora_c * mult_h))
