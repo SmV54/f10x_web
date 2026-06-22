@@ -22286,21 +22286,22 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
             r_rub = (supabase.table("tab_rubrica")
-                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts, is_adic_noturno, percentual")
+                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts, is_adic_noturno, percentual, verbas_somabase")
                      .eq("id_cliente", cli_id)
                      .execute())
             for row in (r_rub.data or []):
                 cod = int(row.get("cod_rubr") or 0)
                 if cod:
                     rubricas_info[cod] = {
-                        "tp":             str(row.get("tp_rubr")        or "1"),
-                        "dsc":            str(row.get("dsc_rubr")       or ""),
-                        "inc_cp":         str(row.get("tpn_inc_cp")     or ""),
-                        "inc_irrf":       str(row.get("tpn_inc_irrf")   or ""),
-                        "inc_fgts":       str(row.get("tpn_inc_fgts")   or ""),
-                        "unid":           str(row.get("unid_verba")     or "V"),
+                        "tp":              str(row.get("tp_rubr")        or "1"),
+                        "dsc":             str(row.get("dsc_rubr")       or ""),
+                        "inc_cp":          str(row.get("tpn_inc_cp")     or ""),
+                        "inc_irrf":        str(row.get("tpn_inc_irrf")   or ""),
+                        "inc_fgts":        str(row.get("tpn_inc_fgts")   or ""),
+                        "unid":            str(row.get("unid_verba")     or "V"),
                         "is_adic_noturno": bool(row.get("is_adic_noturno")),
-                        "percentual":     row.get("percentual"),
+                        "percentual":      row.get("percentual"),
+                        "verbas_somabase": str(row.get("verbas_somabase") or "").strip(),
                     }
     except Exception:
         pass
@@ -22968,23 +22969,63 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 # val_bruto: monetário (V) ou quantidade centesimal (H=horas, D=dias)
                 pct_mf  = ri.get("percentual") or 0
                 mult_mf = 1 + pct_mf / 100
+
+                # ── verbas_somabase: soma valores já calculados ao salário-base ──
+                def _sb_calc(ri_in, mmVmm_in, rubricas_info_in):
+                    vsb = (ri_in.get("verbas_somabase") or "").strip()
+                    soma, det = 0, []
+                    for s in vsb.split(","):
+                        try: c = int(s.strip())
+                        except ValueError: continue
+                        v   = int(mmVmm_in.get(c, 0))
+                        dsc = (rubricas_info_in.get(c) or {}).get("dsc") or f"{c:04d}"
+                        soma += v
+                        det.append((c, dsc, v))
+                    return soma, det
+                soma_sb_mf, det_sb_mf = _sb_calc(ri, mmVmm, rubricas_info)
+
                 if unid_mf == "H":
-                    horas_mf    = val_bruto / 100
-                    sal_hora_mf = int(l["sal_hora"])
-                    val_base    = int(horas_mf * sal_hora_mf * mult_mf)
+                    horas_mf = val_bruto / 100
+                    qhm = l.get("qtdhrsmes") or 0
+                    if soma_sb_mf > 0 and qhm > 0:
+                        base_aug_mf = int(l["sal_mes"]) + soma_sb_mf
+                        sal_hora_mf = int(base_aug_mf / qhm)
+                        obs_sb_mf   = (f"Base ampliada: {_fmt_brl(int(l['sal_mes']))} (salario)"
+                                       + "".join(f" + {_fmt_brl(v)} ({c:04d} {d})"
+                                                 for c, d, v in det_sb_mf)
+                                       + f" = {_fmt_brl(base_aug_mf)} / {qhm}h"
+                                       + f" = {_fmt_brl(sal_hora_mf)}/h")
+                    else:
+                        sal_hora_mf = int(l["sal_hora"])
+                        obs_sb_mf   = ""
+                    val_base = int(horas_mf * sal_hora_mf * mult_mf)
                     hh_mf = int(horas_mf); mm_mf = round((horas_mf - hh_mf) * 60)
-                    obs_unid = (f"Horas: {hh_mf:02d}h{mm_mf:02d}"
+                    obs_calc = (f"Horas: {hh_mf:02d}h{mm_mf:02d}"
                                 f" x {_fmt_brl(sal_hora_mf)}/h"
                                 + (f" x {mult_mf:g} ({pct_mf}%)" if pct_mf else "")
                                 + f" = {_fmt_brl(val_base)}")
+                    obs_unid = (f"{obs_sb_mf}   |   {obs_calc}" if obs_sb_mf else obs_calc)
                 elif unid_mf == "D":
-                    dias_mf  = val_bruto / 100
-                    val_base = int(dias_mf * val_dia_f * mult_mf) if val_dia_f > 0 else val_bruto
-                    obs_unid = (f"Dias: {dias_mf:g}"
-                                f" x {_fmt_brl(int(val_dia_f))}/dia"
+                    dias_mf = val_bruto / 100
+                    if soma_sb_mf > 0 and dias_mes > 0:
+                        base_aug_mf  = int(l["sal_mes"]) + soma_sb_mf
+                        val_dia_aug  = int(base_aug_mf / dias_mes)
+                        obs_sb_mf    = (f"Base ampliada: {_fmt_brl(int(l['sal_mes']))} (salario)"
+                                        + "".join(f" + {_fmt_brl(v)} ({c:04d} {d})"
+                                                  for c, d, v in det_sb_mf)
+                                        + f" = {_fmt_brl(base_aug_mf)} / {dias_mes}d"
+                                        + f" = {_fmt_brl(val_dia_aug)}/dia")
+                        val_base     = int(dias_mf * val_dia_aug * mult_mf)
+                    else:
+                        val_dia_aug  = int(val_dia_f) if val_dia_f > 0 else 0
+                        obs_sb_mf    = ""
+                        val_base     = int(dias_mf * val_dia_f * mult_mf) if val_dia_f > 0 else val_bruto
+                    obs_calc = (f"Dias: {dias_mf:g}"
+                                f" x {_fmt_brl(val_dia_aug)}/dia"
                                 + (f" x {mult_mf:g} ({pct_mf}%)" if pct_mf else "")
                                 + f" = {_fmt_brl(val_base)}"
-                                if val_dia_f > 0 else "")
+                                if val_dia_aug > 0 else "")
+                    obs_unid = (f"{obs_sb_mf}   |   {obs_calc}" if obs_sb_mf and obs_calc else obs_calc)
                 else:
                     val_base = val_bruto
                     obs_unid = ""
@@ -23080,23 +23121,66 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                 pass
                     # Verbas em Horas: valor = (qtd_min / 60) × sal_hora × (1 + percentual/100)
                     elif unid == "H" and qtd > 0:
-                        sal_hora_c = int(l["sal_hora"])  # centavos/hora truncado para bater com exibição
-                        pct_h      = ri.get("percentual") or 0
-                        mult_h     = 1 + pct_h / 100
-                        valor_calc = int(round(qtd / 60 * sal_hora_c * mult_h))
+                        pct_h  = ri.get("percentual") or 0
+                        mult_h = 1 + pct_h / 100
+                        # verbas_somabase: soma valores já calculados ao salário-mensal
+                        vsb_h = (ri.get("verbas_somabase") or "").strip()
+                        soma_sb_h, det_sb_h, obs_sb_h = 0, [], ""
+                        if vsb_h:
+                            for _s in vsb_h.split(","):
+                                try: _c = int(_s.strip())
+                                except ValueError: continue
+                                _v   = int(mmVmm.get(_c, 0))
+                                _dsc = (rubricas_info.get(_c) or {}).get("dsc") or f"{_c:04d}"
+                                soma_sb_h += _v
+                                det_sb_h.append((_c, _dsc, _v))
+                        qhm_h = l.get("qtdhrsmes") or 0
+                        if soma_sb_h > 0 and qhm_h > 0:
+                            base_aug_h  = int(l["sal_mes"]) + soma_sb_h
+                            sal_hora_c  = int(base_aug_h / qhm_h)
+                            obs_sb_h    = (f"Base ampliada: {_fmt_brl(int(l['sal_mes']))} (salario)"
+                                           + "".join(f" + {_fmt_brl(v)} ({c:04d} {d})"
+                                                     for c, d, v in det_sb_h)
+                                           + f" = {_fmt_brl(base_aug_h)} / {qhm_h}h"
+                                           + f" = {_fmt_brl(sal_hora_c)}/h")
+                        else:
+                            sal_hora_c = int(l["sal_hora"])
                         hh_q = qtd // 60; mm_q = qtd % 60
-                        txt_qtd = (f"   {hh_q:02d}h{mm_q:02d} × {_fmt_brl(sal_hora_c)}/h"
-                                   + (f" × {mult_h:g} ({pct_h}%)" if pct_h else "")
-                                   + f"  =  {_fmt_brl(valor_calc)}")
+                        valor_calc = int(round(qtd / 60 * sal_hora_c * mult_h))
+                        obs_calc_h = (f"   {hh_q:02d}h{mm_q:02d} × {_fmt_brl(sal_hora_c)}/h"
+                                      + (f" × {mult_h:g} ({pct_h}%)" if pct_h else "")
+                                      + f"  =  {_fmt_brl(valor_calc)}")
+                        txt_qtd = (f"   {obs_sb_h}   |{obs_calc_h}" if obs_sb_h else obs_calc_h)
                     # Verbas em Dias: valor = qtd × salário-dia × (1 + percentual/100)
                     elif unid == "D" and qtd > 0:
-                        sal_dia    = val_dia_f  # centavos/dia, já calculado na etapa 5
-                        pct_d      = ri.get("percentual") or 0
-                        mult_d     = 1 + pct_d / 100
+                        pct_d  = ri.get("percentual") or 0
+                        mult_d = 1 + pct_d / 100
+                        # verbas_somabase: soma valores já calculados ao salário-mensal
+                        vsb_d = (ri.get("verbas_somabase") or "").strip()
+                        soma_sb_d, det_sb_d, obs_sb_d = 0, [], ""
+                        if vsb_d:
+                            for _s in vsb_d.split(","):
+                                try: _c = int(_s.strip())
+                                except ValueError: continue
+                                _v   = int(mmVmm.get(_c, 0))
+                                _dsc = (rubricas_info.get(_c) or {}).get("dsc") or f"{_c:04d}"
+                                soma_sb_d += _v
+                                det_sb_d.append((_c, _dsc, _v))
+                        if soma_sb_d > 0 and dias_mes > 0:
+                            base_aug_d = int(l["sal_mes"]) + soma_sb_d
+                            sal_dia    = int(base_aug_d / dias_mes)
+                            obs_sb_d   = (f"Base ampliada: {_fmt_brl(int(l['sal_mes']))} (salario)"
+                                          + "".join(f" + {_fmt_brl(v)} ({c:04d} {d})"
+                                                    for c, d, v in det_sb_d)
+                                          + f" = {_fmt_brl(base_aug_d)} / {dias_mes}d"
+                                          + f" = {_fmt_brl(sal_dia)}/dia")
+                        else:
+                            sal_dia = val_dia_f
                         valor_calc = int(qtd * sal_dia * mult_d) if sal_dia > 0 else valor
-                        txt_qtd    = (f"   {qtd} dias × {_fmt_brl(sal_dia)}/dia"
+                        obs_calc_d = (f"   {qtd} dias × {_fmt_brl(sal_dia)}/dia"
                                       + (f" × {mult_d:g} ({pct_d}%)" if pct_d else "")
                                       if sal_dia > 0 else f"   Qtd: {qtd}")
+                        txt_qtd = (f"   {obs_sb_d}   |{obs_calc_d}" if obs_sb_d else obs_calc_d)
                         # Persiste valor calculado no registro manual para relatórios
                         if valor_calc > 0 and valor_calc != valor and reg.get("id"):
                             try:
