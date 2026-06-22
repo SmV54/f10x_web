@@ -23150,14 +23150,37 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 if rubricas_info.get(cod, {}).get("inc_cp") == "11" and val > 0
             )
 
+            # Busca INSS pago nas ferias do mesmo mes para base consolidada.
+            # Regra: base_folha + base_ferias → 1 calculo progressivo; INSS ferias = adiantamento.
+            _fer_inss_base   = 0
+            _fer_inss_retido = 0
+            try:
+                _q_fer = (supabase.table("tab_total")
+                          .select("valor_base_inss_semlimite,valor_inss_retido")
+                          .eq("id_empresa", id_empresa)
+                          .eq("matricula",  matr)
+                          .eq("folha",      int(anomes))
+                          .eq("folha_tipo", "F"))
+                if id_cliente:
+                    _q_fer = _q_fer.eq("id_cliente", id_cliente)
+                _r_fer = _q_fer.execute()
+                if _r_fer.data:
+                    _fer_inss_base   = int(_r_fer.data[0].get("valor_base_inss_semlimite") or 0)
+                    _fer_inss_retido = int(_r_fer.data[0].get("valor_inss_retido")         or 0)
+            except Exception:
+                pass
+
             # ── etapa 10 — INSS ───────────────────────────────
+            _base_inss_cons = int(base_inss) + _fer_inss_base   # base consolidada (folha + ferias)
             if is_domestico:
-                inss_val  = (int(base_inss) * 11) // 100
-                inss_det  = []
-                inss_teto = 0
+                _inss_total = (_base_inss_cons * 11) // 100
+                inss_det    = []
+                inss_teto   = 0
             else:
-                inss_val, inss_det, inss_teto = _calc_inss_progressivo(
-                    int(base_inss), tabela_legais)
+                _inss_total, inss_det, inss_teto = _calc_inss_progressivo(
+                    _base_inss_cons, tabela_legais)
+            # Desconta o INSS das ferias como adiantamento; o restante e o desconto da folha
+            inss_val = max(0, _inss_total - _fer_inss_retido) if _fer_inss_base else _inss_total
             if is_domestico:
                 mmVmm[102] = inss_val
             else:
@@ -23172,11 +23195,17 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             _st_op10 = ParagraphStyle("op10", fontName="Helvetica", fontSize=7,
                                       alignment=1, textColor=colors.HexColor("#374151"))
             teto_obs = ""
-            if inss_teto and base_inss > inss_teto:
+            if inss_teto and _base_inss_cons > inss_teto:
                 teto_obs = f"   (Salario acima do teto {_fmt_brl(inss_teto)} — INSS sobre o teto)"
             _rb_inss_cod = "0102" if is_domestico else "0101"
-            hdr10_txt = (f"ETAPA 0010 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
-                         f"   Base: {_fmt_brl(int(base_inss))}{teto_obs}")
+            if _fer_inss_base:
+                hdr10_txt = (f"ETAPA 0010 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
+                             f"   Base Folha: {_fmt_brl(int(base_inss))}"
+                             f" + Base Ferias: {_fmt_brl(_fer_inss_base)}"
+                             f" = Base Total: {_fmt_brl(_base_inss_cons)}{teto_obs}")
+            else:
+                hdr10_txt = (f"ETAPA 0010 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
+                             f"   Base: {_fmt_brl(int(base_inss))}{teto_obs}")
             if inss_det:
                 hdr_row10 = [
                     Paragraph("Faixa", _st_op10),
@@ -23194,12 +23223,26 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         Paragraph(_fmt_brl(bf10), _st_op10),
                         Paragraph(_fmt_brl(vf10), _st_op10),
                     ])
+                _lbl_total = "INSS s/ Base Total:" if _fer_inss_base else "Total INSS:"
                 det10_rows.append([
                     Paragraph("", _st_op10), Paragraph("", _st_op10),
                     Paragraph("", _st_op10),
-                    Paragraph("Total INSS:", _st_op10),
-                    Paragraph(_fmt_brl(inss_val), _st_op10),
+                    Paragraph(_lbl_total, _st_op10),
+                    Paragraph(_fmt_brl(_inss_total), _st_op10),
                 ])
+                if _fer_inss_base:
+                    det10_rows.append([
+                        Paragraph("", _st_op10), Paragraph("", _st_op10),
+                        Paragraph("", _st_op10),
+                        Paragraph("(-) INSS Ferias (adiant.):", _st_op10),
+                        Paragraph(_fmt_brl(_fer_inss_retido), _st_op10),
+                    ])
+                    det10_rows.append([
+                        Paragraph("", _st_op10), Paragraph("", _st_op10),
+                        Paragraph("", _st_op10),
+                        Paragraph("INSS na Folha:", _st_op10),
+                        Paragraph(_fmt_brl(inss_val), _st_op10),
+                    ])
                 det10_tbl = Table(det10_rows, colWidths=[1.5*cm, 3.5*cm, 2*cm, 4*cm, 3*cm])
                 det10_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 2),
@@ -23223,12 +23266,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 1), (0, 1), 4),
                 ]))
             elif is_domestico and inss_val > 0:
+                _dom_det = (f"Aliquota fixa 11% (Cat. 700-799)   "
+                            f"{_fmt_brl(_base_inss_cons)} x 11% = {_fmt_brl(_inss_total)}")
+                if _fer_inss_base:
+                    _dom_det += (f"   (-) INSS Ferias (adiant.) {_fmt_brl(_fer_inss_retido)}"
+                                 f" = INSS na Folha {_fmt_brl(inss_val)}")
                 e10_tbl = Table([
                     [Paragraph(hdr10_txt, st_etapa)],
-                    [Paragraph(
-                        f"Aliquota fixa 11% (Cat. 700-799)   "
-                        f"{_fmt_brl(int(base_inss))} x 11% = {_fmt_brl(inss_val)}",
-                        st_detalhe)],
+                    [Paragraph(_dom_det, st_detalhe)],
                 ], colWidths=[17*cm])
                 e10_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",  (0, 0), (-1, -1), 0),
