@@ -310,7 +310,7 @@ const modulos = {
     cadastros: {
         titulo: 'Cadastros', icone: '🗄️',
         bloqueioFolha: true,
-        msgBloqueio: 'cadastros não podem ser alterados com a folha Calculada ou Fechada. Reabra a folha para continuar.',
+        msgBloqueio: 'cadastros bloqueados. Reabra a folha para continuar.',
         secoes: [
             { nome: 'Funcionário', itens: [
                 { icone: '👤', nome: 'Incluir Funcionário',  href: '/cad_funcionario',                ok: true },
@@ -667,7 +667,7 @@ function selecionarModulo(cardEl, id) {
     if (m.bloqueioFolha && folhaBloqueada) {
         navPanel.style.display = 'block';
         const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
-        const msg = m.msgBloqueio || `alterações não são permitidas com a folha ${sit}. Reabra a folha para continuar.`;
+        const msg = m.msgBloqueio || `bloqueado. Reabra a folha para continuar.`;
         navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — ${msg}`;
         navAviso.style.display = 'block';
         return;
