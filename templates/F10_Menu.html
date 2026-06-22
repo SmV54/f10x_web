@@ -309,10 +309,12 @@ const modulos = {
 
     cadastros: {
         titulo: 'Cadastros', icone: '🗄️',
+        bloqueioFolha: true,
+        msgBloqueio: 'cadastros não podem ser alterados com a folha Calculada ou Fechada. Reabra a folha para continuar.',
         secoes: [
             { nome: 'Funcionário', itens: [
-                { icone: '👤', nome: 'Incluir Funcionário',  href: '/cad_funcionario',                ok: true, bloqueioFolha: true },
-                { icone: '✏️', nome: 'Alterar Funcionário',  href: '/cad_funcionario?modo=alteracao', ok: true, bloqueioFolha: true },
+                { icone: '👤', nome: 'Incluir Funcionário',  href: '/cad_funcionario',                ok: true },
+                { icone: '✏️', nome: 'Alterar Funcionário',  href: '/cad_funcionario?modo=alteracao', ok: true },
                 { icone: '👨‍👩‍👧', nome: 'Dependentes',        href: '/select_funcionario?contexto=dep',    ok: true, quebraLinha: true },
                 { icone: '📄', nome: 'Ficha de Registro',    href: '/select_funcionario?contexto=ficha', ok: true, quebraLinha: true },
             ]},
@@ -321,7 +323,7 @@ const modulos = {
                 { icone: '🕐', nome: 'Horários de Trabalho', href: '/cad_horario',   ok: true },
                 { icone: '🤝', nome: 'Sindicatos',            href: '/cad_sindicato', ok: true },
                 { icone: '🚌', nome: 'Vale Transporte',       href: '/cad_vt',        ok: true },
-                { icone: '📑', nome: 'Rubricas (Verbas)',     href: '/cad_verba',     ok: true, bloqueioFolha: true },
+                { icone: '📑', nome: 'Rubricas (Verbas)',     href: '/cad_verba',     ok: true },
                 { icone: '📅', nome: 'Feriados',              href: '/cad_feriado',   ok: true },
                 { icone: '🏷️', nome: 'Centros de Custo',     href: '/cad_cc',        ok: true },
                 { icone: '🏢', nome: 'Filiais',               href: '/cad_filial',    ok: true },
@@ -665,7 +667,8 @@ function selecionarModulo(cardEl, id) {
     if (m.bloqueioFolha && folhaBloqueada) {
         navPanel.style.display = 'block';
         const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
-        navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — lançamento de eventuais não é permitido com a folha calculada ou fechada. Reabra a folha para fazer alterações.`;
+        const msg = m.msgBloqueio || `alterações não são permitidas com a folha ${sit}. Reabra a folha para continuar.`;
+        navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — ${msg}`;
         navAviso.style.display = 'block';
         return;
     }
