@@ -25053,8 +25053,10 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
 
     def _fqtd(qtd, unid):
         if unid == "H" and qtd > 0:
-            return f"{qtd // 100}:{qtd % 100:02d}h"
-        return str(qtd) if qtd > 0 else "···"
+            return f"{qtd // 60}h{qtd % 60:02d}"
+        if unid == "D" and qtd > 0:
+            return f"{qtd} dia{'s' if qtd != 1 else ''}"
+        return ""
 
     grand_prov = grand_desc = grand_liq = grand_funcs = 0
     cc_list = []
@@ -25469,12 +25471,11 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             ]]
             for v in func["verbas"]:
                 if v["unid"] == "H" and v["qtd"] > 0:
-                    h = v["qtd"] // 100; m = v["qtd"] % 100
-                    qtd_txt = f"{h}:{m:02d}h"
-                elif v["qtd"] > 0:
-                    qtd_txt = str(v["qtd"])
+                    qtd_txt = f"{v['qtd'] // 60}h{v['qtd'] % 60:02d}"
+                elif v["unid"] == "D" and v["qtd"] > 0:
+                    qtd_txt = f"{v['qtd']} dia{'s' if v['qtd'] != 1 else ''}"
                 else:
-                    qtd_txt = "···"
+                    qtd_txt = ""
                 prov_txt = _fmt_brl(v["val"]) if v["tp"] == "1" else ""
                 desc_txt = _fmt_brl(v["val"]) if v["tp"] != "1" else ""
                 rows.append([
@@ -25704,8 +25705,10 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         if qtd == 999999:          # qtd especial = ignorar (item 5)
             return ""
         if unid == "H" and qtd > 0:
-            return f"{qtd//100}:{qtd%100:02d}h"
-        return str(qtd) if qtd > 0 else "·"
+            return f"{qtd // 60}h{qtd % 60:02d}"
+        if unid == "D" and qtd > 0:
+            return f"{qtd} dia{'s' if qtd != 1 else ''}"
+        return ""
 
     # ── Carrega rubricas ──────────────────────────────────
     rubricas_info = {}
