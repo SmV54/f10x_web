@@ -22280,7 +22280,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
             r_rub = (supabase.table("tab_rubrica")
-                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts, is_adic_noturno")
+                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts, is_adic_noturno, percentual")
                      .eq("id_cliente", cli_id)
                      .execute())
             for row in (r_rub.data or []):
@@ -22294,6 +22294,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         "inc_fgts":       str(row.get("tpn_inc_fgts")   or ""),
                         "unid":           str(row.get("unid_verba")     or "V"),
                         "is_adic_noturno": bool(row.get("is_adic_noturno")),
+                        "percentual":     row.get("percentual"),
                     }
     except Exception:
         pass
@@ -22959,18 +22960,24 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 unid_mf   = ri.get("unid", "V")
 
                 # val_bruto: monetário (V) ou quantidade centesimal (H=horas, D=dias)
+                pct_mf  = ri.get("percentual") or 0
+                mult_mf = 1 + pct_mf / 100
                 if unid_mf == "H":
                     horas_mf    = val_bruto / 100
                     sal_hora_mf = l["sal_hora"]
-                    val_base    = int(horas_mf * sal_hora_mf)
+                    val_base    = int(horas_mf * sal_hora_mf * mult_mf)
                     hh_mf = int(horas_mf); mm_mf = round((horas_mf - hh_mf) * 60)
                     obs_unid = (f"Horas: {hh_mf:02d}h{mm_mf:02d}"
-                                f" x {_fmt_brl(sal_hora_mf)}/h = {_fmt_brl(val_base)}")
+                                f" x {_fmt_brl(sal_hora_mf)}/h"
+                                + (f" x {mult_mf:g} ({pct_mf}%)" if pct_mf else "")
+                                + f" = {_fmt_brl(val_base)}")
                 elif unid_mf == "D":
                     dias_mf  = val_bruto / 100
-                    val_base = int(dias_mf * val_dia_f) if val_dia_f > 0 else val_bruto
+                    val_base = int(dias_mf * val_dia_f * mult_mf) if val_dia_f > 0 else val_bruto
                     obs_unid = (f"Dias: {dias_mf:g}"
-                                f" x {_fmt_brl(int(val_dia_f))}/dia = {_fmt_brl(val_base)}"
+                                f" x {_fmt_brl(int(val_dia_f))}/dia"
+                                + (f" x {mult_mf:g} ({pct_mf}%)" if pct_mf else "")
+                                + f" = {_fmt_brl(val_base)}"
                                 if val_dia_f > 0 else "")
                 else:
                     val_base = val_bruto
@@ -23065,19 +23072,25 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                 supabase.table("tab_mov").update({"valor": valor_calc}).eq("id", reg["id"]).execute()
                             except Exception:
                                 pass
-                    # Verbas em Horas: valor = (qtd_min / 60) × sal_hora
+                    # Verbas em Horas: valor = (qtd_min / 60) × sal_hora × (1 + percentual/100)
                     elif unid == "H" and qtd > 0:
                         sal_hora_c = l["sal_hora"]   # centavos/hora
-                        valor_calc = int(round(qtd / 60 * sal_hora_c))
+                        pct_h      = ri.get("percentual") or 0
+                        mult_h     = 1 + pct_h / 100
+                        valor_calc = int(round(qtd / 60 * sal_hora_c * mult_h))
                         hh_q = qtd // 60; mm_q = qtd % 60
                         txt_qtd = (f"   {hh_q:02d}h{mm_q:02d} × {_fmt_brl(sal_hora_c)}/h"
-                                   f"  =  {_fmt_brl(valor_calc)}")
-                    # Verbas em Dias: valor = qtd × salário-dia
+                                   + (f" × {mult_h:g} ({pct_h}%)" if pct_h else "")
+                                   + f"  =  {_fmt_brl(valor_calc)}")
+                    # Verbas em Dias: valor = qtd × salário-dia × (1 + percentual/100)
                     elif unid == "D" and qtd > 0:
                         sal_dia    = val_dia_f  # centavos/dia, já calculado na etapa 5
-                        valor_calc = int(qtd * sal_dia) if sal_dia > 0 else valor
-                        txt_qtd    = (f"   {qtd} dias × {_fmt_brl(sal_dia)}/dia" if sal_dia > 0
-                                      else f"   Qtd: {qtd}")
+                        pct_d      = ri.get("percentual") or 0
+                        mult_d     = 1 + pct_d / 100
+                        valor_calc = int(qtd * sal_dia * mult_d) if sal_dia > 0 else valor
+                        txt_qtd    = (f"   {qtd} dias × {_fmt_brl(sal_dia)}/dia"
+                                      + (f" × {mult_d:g} ({pct_d}%)" if pct_d else "")
+                                      if sal_dia > 0 else f"   Qtd: {qtd}")
                         # Persiste valor calculado no registro manual para relatórios
                         if valor_calc > 0 and valor_calc != valor and reg.get("id"):
                             try:
