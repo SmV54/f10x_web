@@ -267,7 +267,7 @@ function mudarOrdem(v) {
       <span>Admissão: <strong>{{ f.dtadm_fmt }}</strong></span>
       <span>Função: <strong>{{ f.funcao }}</strong></span>
       <span>Salário: <strong>{{ f.sal_fmt }}</strong></span>
-      <span>Filial: <strong>{{ f.filial }}</strong></span>
+      {% if f.filial %}<span>Filial: <strong>{{ f.filial }}</strong></span>{% endif %}
     </div>
 
     <!-- Verbas -->

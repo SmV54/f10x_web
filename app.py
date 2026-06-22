@@ -21684,8 +21684,25 @@ def _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=None):
     ano  = int(anomes[:4])
     mes  = int(anomes[4:6])
     ultimo = ((date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)) - timedelta(days=1)).day
-    dt_ini_c = f"{ano:04d}{mes:02d}01"
-    dt_fim_c = f"{ano:04d}{mes:02d}{ultimo:02d}"
+    d_ini_c = date(ano, mes, 1)
+    d_fim_c = date(ano, mes, ultimo)
+
+    def _parse_dt(v):
+        """YYYYMMDD, YYYY-MM-DD ou DDMMYYYY → date. None se inválido ou vazio."""
+        s = str(v or "").strip()
+        d = ''.join(c for c in s if c.isdigit())
+        if len(d) < 8:
+            return None
+        d = d[:8]
+        try:                          # YYYYMMDD (formato padrão)
+            return date(int(d[:4]), int(d[4:6]), int(d[6:8]))
+        except ValueError:
+            pass
+        try:                          # DDMMYYYY (legado Access)
+            return date(int(d[4:8]), int(d[2:4]), int(d[:2]))
+        except ValueError:
+            return None
+
     result = {}
     try:
         q = (supabase.table("tab_eventos")
@@ -21699,9 +21716,12 @@ def _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=None):
             mat = int(ev.get("matricula") or 0)
             if mat == 0:
                 continue
-            di  = str(ev.get("data1i") or "")
-            df  = str(ev.get("data1f") or "")
-            if len(di) == 8 and di <= dt_fim_c and (not df or (len(df) == 8 and df >= dt_ini_c)):
+            # op2 >= 10 indica registro auxiliar (CAT, retorno, etc.), não afastamento real
+            if int(ev.get("op2") or 0) >= 10:
+                continue
+            d_ini = _parse_dt(ev.get("data1i"))
+            d_fim = _parse_dt(ev.get("data1f"))
+            if d_ini and d_ini <= d_fim_c and (d_fim is None or d_fim >= d_ini_c):
                 result.setdefault(mat, []).append(ev)
     except Exception as e:
         print(f"[afast] ERRO: {e}")
@@ -24736,7 +24756,12 @@ def api_visualizar_calculo_dados():
 # =========================================================
 # FOLHA DE PAGAMENTO — DADOS (compartilhado entre tela e PDF)
 # =========================================================
-def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat"):
+def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat", cnpj_empresa=""):
+    _cnpj_dig = ''.join(c for c in cnpj_empresa if c.isdigit())
+    def _clean_fil(v):
+        raw = str(v or "").strip()
+        dig = ''.join(c for c in raw if c.isdigit())
+        return raw if (dig and dig.lstrip("0") and dig != _cnpj_dig) else ""
     folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
     ano, mes = anomes[:4], anomes[4:6]
     meses_pt = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -24924,7 +24949,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "funcao":     f["funcao"],
                 "dtadm_fmt":  _fdt(f["dtadm"]),
                 "sal_fmt":    _fsal(f["sal"]),
-                "filial":     f["filial"] or "—",
+                "filial":     _clean_fil(f["filial"]),
                 "prov_fmt":   _fmt_brl(f["prov"]),
                 "desc_fmt":   _fmt_brl(f["desc"]),
                 "liq_fmt":    _fmt_brl(f["liq"]),
@@ -24976,7 +25001,8 @@ def relatorio_folha():
 
     from flask import request as _req
     ordem = _req.args.get("ordem", "mat")
-    d = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem=ordem)
+    cnpj_empresa = str(session.get("cnpj_empresa") or "")
+    d = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem=ordem, cnpj_empresa=cnpj_empresa)
     return render_template(
         "F10_Rel_Folha_Preview.html",
         versao  = ler_versao(),
@@ -25263,6 +25289,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     _filiais_pdf = {str(f.get("filial") or "").strip()
                     for funcs_cc in cc_groups.values() for f in funcs_cc}
     _mostrar_filial = len(_filiais_pdf) > 1
+    _cnpj_digits = ''.join(c for c in cnpj_fmt if c.isdigit())
 
     for cc_code in sorted(cc_groups.keys()):
         funcs = cc_groups[cc_code]
@@ -25286,10 +25313,12 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             ]))
             # Sub-header: detalhes
             st_emp_det2 = _st("ed2", fontName="Helvetica", fontSize=7, textColor=colors.HexColor("#64748b"))
-            _fil_val = str(func['filial'] or "").strip().lstrip("0") or ""
+            _fil_raw = str(func['filial'] or "").strip()
+            _fil_dig = ''.join(c for c in _fil_raw if c.isdigit())
+            _fil_val = _fil_raw if (_fil_dig and _fil_dig.lstrip("0") and _fil_dig != _cnpj_digits) else ""
             det = (f"Admissão: {_fdt(func['dtadm'])}  ·  Função: {func['funcao']}"
                    f"  ·  Salário: {_fsal(func['sal'],func['unid'])}"
-                   + (f"  ·  Filial: {func['filial']}" if _mostrar_filial and _fil_val else ""))
+                   + (f"  ·  Filial: {_fil_val}" if _mostrar_filial and _fil_val else ""))
             fhdr2 = Table([[Paragraph(det, st_emp_det2)]], colWidths=[W])
             fhdr2.setStyle(TableStyle([
                 ("BACKGROUND",(0,0),(-1,-1), colors.HexColor("#f8fafc")),
