@@ -13330,6 +13330,9 @@ def api_mov_fixo_gravar():
 
     def _int(v): return int(v) if v else None
     def _str(v): return str(v).strip() or None if v else None
+    def _folha_fim(v):
+        n = _int(v)
+        return None if (n is None or n >= 999912) else n
 
     matriculas_list = data.get("matriculas") or []
 
@@ -13353,7 +13356,7 @@ def api_mov_fixo_gravar():
         "tempo_servico1":      _int(data.get("tempo_servico1")),
         "tempo_servico2":      _int(data.get("tempo_servico2")),
         "folha_inicial":       _int(data.get("folha_inicial")),
-        "folha_final":         _int(data.get("folha_final")),
+        "folha_final":         _folha_fim(data.get("folha_final")),
         "cod_verba":           cod_verba,
         "qtd_parcelas":        _int(data.get("qtd_parcelas")),
         "qtd_parcelas_before": _int(data.get("qtd_parcelas_before")) or 0,
@@ -13423,6 +13426,9 @@ def api_mov_fixo_alterar():
 
     def _int(v): return int(v) if v else None
     def _str(v): return str(v).strip() or None if v else None
+    def _folha_fim(v):
+        n = _int(v)
+        return None if (n is None or n >= 999912) else n
 
     campos = {
         "matricula":           _int(data.get("matricula")),
@@ -13440,7 +13446,7 @@ def api_mov_fixo_alterar():
         "tempo_servico1":      _int(data.get("tempo_servico1")),
         "tempo_servico2":      _int(data.get("tempo_servico2")),
         "folha_inicial":       _int(data.get("folha_inicial")),
-        "folha_final":         _int(data.get("folha_final")),
+        "folha_final":         _folha_fim(data.get("folha_final")),
         "cod_verba":           cod_verba,
         "qtd_parcelas":        _int(data.get("qtd_parcelas")),
         "qtd_parcelas_before": _int(data.get("qtd_parcelas_before")) or 0,
