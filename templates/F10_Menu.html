@@ -355,10 +355,12 @@ const modulos = {
         titulo: 'Eventuais', icone: '🗓️', bloqueioFolha: true,
         secoes: [
             { nome: 'Férias', itens: [
-                { icone: '🏖️', nome: 'Lançar Férias',        href: '/select_funcionario?contexto=ferias', ok: true, bloqueioFolha: true },
-                { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',    ok: true },
-                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias', ok: true },
-                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',  ok: true },
+                { icone: '🏖️', nome: 'Lançar Férias',          href: '/select_funcionario?contexto=ferias', ok: true, bloqueioFolha: true },
+                { icone: '📝',  nome: 'Lançar Movimento Férias', href: '/cad_mov_ferias',    ok: true, bloqueioFolha: true },
+                { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',         ok: true },
+                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias',       ok: true },
+                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',        ok: true },
+                { icone: '❌',  nome: 'Cancelar Férias',      href: '/cad_cancelar_ferias',  ok: true, bloqueioFolha: true },
                 { icone: '📆', nome: 'Programação de Férias', href: '#' },
                 { icone: '⏰', nome: 'Férias Vencidas',       href: '#' },
             ]},
