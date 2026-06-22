@@ -22996,16 +22996,18 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     unid   = ri.get("unid", "V")
                     orig_s = ORIG_LABEL.get(origem, origem)
                     # ── Rotina exclusiva: verba 89 — Feriado Trabalhado ──
-                    # Calcula qtd_dias × sal_dia × 2 independente de qtd estar zerado no lançamento
+                    # Sempre calcula qtd_dias × sal_dia × 2.
+                    # qtd=0 (lançado como Valor) → assume 1 dia; sal_dia=0 → fallback valor×2.
                     if cod_v == 89:
-                        _sal_dia_89 = val_dia_f  # centavos/dia
-                        if qtd > 0 and _sal_dia_89 > 0:
-                            _base_89 = int(qtd * _sal_dia_89)
-                            _pal_dia = "dia" if qtd == 1 else "dias"
-                            txt_qtd  = (f"   {qtd} {_pal_dia} × {_fmt_brl(_sal_dia_89)}/dia"
+                        _sal_dia_89 = val_dia_f                    # centavos/dia
+                        _qtd_dias   = qtd if qtd > 0 else 1        # padrão: 1 feriado
+                        if _sal_dia_89 > 0:
+                            _base_89 = int(_qtd_dias * _sal_dia_89)
+                            _pal_dia = "dia" if _qtd_dias == 1 else "dias"
+                            txt_qtd  = (f"   {_qtd_dias} {_pal_dia} × {_fmt_brl(_sal_dia_89)}/dia"
                                         f"   × 2 (em dobro)")
                         else:
-                            # Fallback: usa valor manual × 2
+                            # Fallback: sal_dia indisponível — usa valor gravado × 2
                             _base_89 = valor
                             txt_qtd  = "   × 2 (em dobro)" if valor else ""
                         valor_calc = _base_89 * 2
