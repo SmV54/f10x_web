@@ -22956,17 +22956,40 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     txt_vig = f"Vigencia: {_fi} a {_ff}"
 
                 mf_achou  = True
-                val_calc  = float(val_bruto)
-                obs_prop  = ""
+                unid_mf   = ri.get("unid", "V")
+
+                # val_bruto: monetário (V) ou quantidade centesimal (H=horas, D=dias)
+                if unid_mf == "H":
+                    horas_mf    = val_bruto / 100
+                    sal_hora_mf = l["sal_hora"]
+                    val_base    = int(horas_mf * sal_hora_mf)
+                    hh_mf = int(horas_mf); mm_mf = round((horas_mf - hh_mf) * 60)
+                    obs_unid = (f"Horas: {hh_mf:02d}h{mm_mf:02d}"
+                                f" x {_fmt_brl(sal_hora_mf)}/h = {_fmt_brl(val_base)}")
+                elif unid_mf == "D":
+                    dias_mf  = val_bruto / 100
+                    val_base = int(dias_mf * val_dia_f) if val_dia_f > 0 else val_bruto
+                    obs_unid = (f"Dias: {dias_mf:g}"
+                                f" x {_fmt_brl(int(val_dia_f))}/dia = {_fmt_brl(val_base)}"
+                                if val_dia_f > 0 else "")
+                else:
+                    val_base = val_bruto
+                    obs_unid = ""
+
+                val_calc  = float(val_base)
+                obs_prop  = obs_unid
                 if nas_fer == "0" and ferias_func:
                     val_calc = 0.0
-                    obs_prop = "Zerado — ferias no mes (nas_ferias=0)"
+                    obs_prop = ("Zerado — ferias no mes (nas_ferias=0)"
+                                + (f"  [{obs_unid}]" if obs_unid else ""))
                 elif se_afx == "2" and afast_func:
                     val_calc = 0.0
-                    obs_prop = "Zerado — afastado (se_afastado=2)"
+                    obs_prop = ("Zerado — afastado (se_afastado=2)"
+                                + (f"  [{obs_unid}]" if obs_unid else ""))
                 elif (se_afx == "3" and afast_func) or (mes_adm_r == "P" and dias_antes_admissao > 0):
-                    val_calc = int(val_bruto * dias_trabalhados / dias_mes) if dias_mes else 0
-                    obs_prop = f"Proporcional — {dias_trabalhados} dias trabalhados / {dias_mes} dias do mes"
+                    val_calc  = int(val_base * dias_trabalhados / dias_mes) if dias_mes else 0
+                    prop_msg  = f"Proporcional — {dias_trabalhados} dias trabalhados / {dias_mes} dias do mes"
+                    obs_prop  = (f"{obs_unid}   |   {prop_msg}" if obs_unid else prop_msg)
                 mmVmm[cod_v] = mmVmm.get(cod_v, 0.0) + val_calc
                 cod_verbas_fixas.add(cod_v)
                 if acesso:
