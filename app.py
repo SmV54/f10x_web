@@ -6134,7 +6134,7 @@ def api_rubrica_incluir():
               "is_periculosidade", "is_gorjeta", "is_dsr", "is_sal_familia",
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
-              "is_periodo", "is_hora_sobreaviso"]:
+              "is_periodo", "is_hora_sobreaviso", "percentual"]:
         v = data.get(f)
         if v is not None:
             campos[f] = v
@@ -6191,7 +6191,7 @@ def api_rubrica_editar():
               "is_periculosidade", "is_gorjeta", "is_dsr", "is_sal_familia",
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
-              "is_periodo", "is_hora_sobreaviso"]:
+              "is_periodo", "is_hora_sobreaviso", "percentual"]:
         campos[f] = data.get(f)
 
     # Busca estado atual para detectar o que mudou

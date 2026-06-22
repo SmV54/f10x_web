@@ -428,7 +428,7 @@
             </div>
             <div class="form-secao">
               <label class="form-label">Unidade da Verba</label>
-              <select class="form-input" id="inpUnid">
+              <select class="form-input" id="inpUnid" onchange="togglePercentual()">
                 <option value="V">Valor (R$)</option>
                 <option value="H">Hora</option>
                 <option value="D">Diária</option>
@@ -450,6 +450,20 @@
                 </option>
                 {% endfor %}
               </select>
+            </div>
+          </div>
+
+          <!-- ── Percentual (só para Hora / Diária) ── -->
+          <div id="div-percentual" style="display:none; margin-top:10px;">
+            <div class="form-secao" style="max-width:280px;">
+              <label class="form-label">Percentual de Acréscimo (%)
+                <span style="font-size:10px; color:#64748b; font-weight:400;">
+                  — ex: 50 = hora extra 50% (×1,5) · 100 = dobro (×2)
+                </span>
+              </label>
+              <input class="form-input" type="number" id="inpPerc"
+                min="0" max="9999" placeholder="0 – 9999"
+                style="font-family:'Courier New',monospace; font-weight:700; max-width:120px;">
             </div>
           </div>
 
@@ -778,6 +792,8 @@
     document.getElementById('inpIniValid').value    = mesAtual();
     document.getElementById('inpTipo').value        = '';
     document.getElementById('inpUnid').value        = 'V';
+    document.getElementById('inpPerc').value        = '';
+    document.getElementById('div-percentual').style.display = 'none';
     ['inpIncFerias','inpIncRescisao','inpInc13sal','inpIncAdto13'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.value = 'NI'; el.disabled = true; }
@@ -821,6 +837,8 @@
     document.getElementById('inpNomeRes').value  = v.dsc_rubr_resumido     || '';
     document.getElementById('inpTipo').value     = v.tp_rubr               || '';
     document.getElementById('inpUnid').value     = v.unid_verba            || 'V';
+    document.getElementById('inpPerc').value     = v.percentual != null ? v.percentual : '';
+    togglePercentual();
     document.getElementById('inpNatRubr').value  = v.es03_nat_rubr || '';
 
     // Uso da Verba / Incidências
@@ -911,6 +929,13 @@
     });
   }
 
+  function togglePercentual() {
+    const unid = document.getElementById('inpUnid').value;
+    const mostrar = unid === 'H' || unid === 'D';
+    document.getElementById('div-percentual').style.display = mostrar ? '' : 'none';
+    if (!mostrar) document.getElementById('inpPerc').value = '';
+  }
+
   function mostrarOk(msg) {
     const el = document.getElementById('msgOk');
     el.textContent = '✔ ' + msg; el.style.display = 'block';
@@ -992,6 +1017,12 @@
       inc_rescisao:       document.getElementById('inpIncRescisao').value,
       inc_13sal:          document.getElementById('inpInc13sal').value,
       inc_adto13:         document.getElementById('inpIncAdto13').value,
+      percentual: (() => {
+        const u = document.getElementById('inpUnid').value;
+        if (u !== 'H' && u !== 'D') return null;
+        const p = parseInt(document.getElementById('inpPerc').value, 10);
+        return (!isNaN(p) && p >= 0 && p <= 9999) ? p : null;
+      })(),
     };
 
     CHK_FIELDS.forEach(([elId, campo]) => {
