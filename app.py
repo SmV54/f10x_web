@@ -22995,8 +22995,28 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     dsc_s  = ri["dsc"] or f"Verba {cod_v:04d}"
                     unid   = ri.get("unid", "V")
                     orig_s = ORIG_LABEL.get(origem, origem)
+                    # ── Rotina exclusiva: verba 89 — Feriado Trabalhado ──
+                    # Calcula qtd_dias × sal_dia × 2 independente de qtd estar zerado no lançamento
+                    if cod_v == 89:
+                        _sal_dia_89 = val_dia_f  # centavos/dia
+                        if qtd > 0 and _sal_dia_89 > 0:
+                            _base_89 = int(qtd * _sal_dia_89)
+                            _pal_dia = "dia" if qtd == 1 else "dias"
+                            txt_qtd  = (f"   {qtd} {_pal_dia} × {_fmt_brl(_sal_dia_89)}/dia"
+                                        f"   × 2 (em dobro)")
+                        else:
+                            # Fallback: usa valor manual × 2
+                            _base_89 = valor
+                            txt_qtd  = "   × 2 (em dobro)" if valor else ""
+                        valor_calc = _base_89 * 2
+                        # Persiste o valor-base (sem dobro) no tab_mov para referência
+                        if _base_89 > 0 and _base_89 != valor and reg.get("id"):
+                            try:
+                                supabase.table("tab_mov").update({"valor": _base_89}).eq("id", reg["id"]).execute()
+                            except Exception:
+                                pass
                     # Verbas em Horas: valor = (qtd_min / 60) × sal_hora
-                    if unid == "H" and qtd > 0:
+                    elif unid == "H" and qtd > 0:
                         sal_hora_c = l["sal_hora"]   # centavos/hora
                         valor_calc = int(round(qtd / 60 * sal_hora_c))
                         hh_q = qtd // 60; mm_q = qtd % 60
