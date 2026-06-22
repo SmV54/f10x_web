@@ -415,30 +415,38 @@
           <hr class="separador">
 
           <!-- ── Classificação ── -->
-          <div class="form-grid-3">
-            <div class="form-secao">
+          <div style="display:flex; flex-wrap:nowrap; align-items:flex-start; gap:10px;">
+            <div class="form-secao" style="flex:0 0 155px;">
               <label class="form-label">Tipo da Rubrica <span style="color:#ef4444;">*</span></label>
               <select class="form-input" id="inpTipo">
                 <option value="">— Selecione —</option>
                 <option value="1">1 — Provento</option>
                 <option value="2">2 — Desconto</option>
                 <option value="3">3 — Informativa</option>
-                <option value="4">4 — Informativa Dedutora</option>
+                <option value="4">4 — Info. Dedutora</option>
               </select>
             </div>
-            <div class="form-secao">
-              <label class="form-label">Unidade da Verba</label>
+            <div class="form-secao" style="flex:0 0 95px;">
+              <label class="form-label">Unidade</label>
               <select class="form-input" id="inpUnid" onchange="togglePercentual()">
                 <option value="V">Valor (R$)</option>
                 <option value="H">Hora</option>
                 <option value="D">Diária</option>
               </select>
             </div>
-            <div class="form-secao">
-              <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
-                Natureza da Rubrica (eSocial Tabela 03)
+            <div class="form-secao" id="div-percentual" style="display:none; flex:0 0 140px;">
+              <label class="form-label">% Acréscimo
+                <span style="font-size:10px; color:#64748b; font-weight:400;">50=×1,5 · 100=×2</span>
+              </label>
+              <input class="form-input" type="number" id="inpPerc"
+                min="0" max="9999" placeholder="0 – 9999"
+                style="font-family:'Courier New',monospace; font-weight:700;">
+            </div>
+            <div class="form-secao" style="flex:1; min-width:0;">
+              <label class="form-label" style="display:flex; justify-content:space-between; align-items:center; gap:6px; white-space:nowrap;">
+                <span>Natureza (eSocial Tab. 03)</span>
                 <button type="button" id="btnOrdemNat" onclick="alternarOrdemNat()"
-                  style="font-size:10px; font-weight:600; padding:1px 6px; border:1px solid #cbd5e1; border-radius:5px; background:#f1f5f9; cursor:pointer; color:#475569;">
+                  style="font-size:10px; font-weight:600; padding:1px 6px; border:1px solid #cbd5e1; border-radius:5px; background:#f1f5f9; cursor:pointer; color:#475569; white-space:nowrap; flex-shrink:0;">
                   Listar pelo Nome
                 </button>
               </label>
@@ -450,20 +458,6 @@
                 </option>
                 {% endfor %}
               </select>
-            </div>
-          </div>
-
-          <!-- ── Percentual (só para Hora / Diária) ── -->
-          <div id="div-percentual" style="display:none; margin-top:10px;">
-            <div class="form-secao" style="max-width:280px;">
-              <label class="form-label">Percentual de Acréscimo (%)
-                <span style="font-size:10px; color:#64748b; font-weight:400;">
-                  — ex: 50 = hora extra 50% (×1,5) · 100 = dobro (×2)
-                </span>
-              </label>
-              <input class="form-input" type="number" id="inpPerc"
-                min="0" max="9999" placeholder="0 – 9999"
-                style="font-family:'Courier New',monospace; font-weight:700; max-width:120px;">
             </div>
           </div>
 
@@ -792,8 +786,8 @@
     document.getElementById('inpIniValid').value    = mesAtual();
     document.getElementById('inpTipo').value        = '';
     document.getElementById('inpUnid').value        = 'V';
-    document.getElementById('inpPerc').value        = '';
-    document.getElementById('div-percentual').style.display = 'none';
+    document.getElementById('inpPerc').value         = '';
+    document.getElementById('div-percentual').style.display  = 'none';
     ['inpIncFerias','inpIncRescisao','inpInc13sal','inpIncAdto13'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.value = 'NI'; el.disabled = true; }
@@ -932,7 +926,7 @@
   function togglePercentual() {
     const unid = document.getElementById('inpUnid').value;
     const mostrar = unid === 'H' || unid === 'D';
-    document.getElementById('div-percentual').style.display = mostrar ? '' : 'none';
+    document.getElementById('div-percentual').style.display = mostrar ? 'flex' : 'none';
     if (!mostrar) document.getElementById('inpPerc').value = '';
   }
 
