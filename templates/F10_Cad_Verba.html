@@ -251,6 +251,31 @@
     .separador { border: none; border-top: 1px solid #e5e7eb; margin: 1px 0; }
     .vazio { padding: 20px; font-size: 13px; color: #64748b; text-align: center; border: 1px dashed #cbd5e1; border-radius: 10px; background: #fafafa; }
 
+    /* SEÇÃO VERBAS SOMA BASE */
+    .secao-somabase {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+      padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
+    }
+    .secao-somabase-titulo { font-size: 11px; font-weight: 700; color: #1e40af; text-transform: uppercase; letter-spacing: 0.5px; }
+    .somabase-chips-area {
+      display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-height: 30px;
+      align-items: center; padding: 4px 6px;
+      border: 1px solid #bfdbfe; border-radius: 8px; background: white;
+    }
+    .chip-verba {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: #dbeafe; border: 1px solid #93c5fd; border-radius: 12px;
+      padding: 2px 8px; font-size: 11px; font-weight: 700; color: #1e40af;
+    }
+    .chip-verba button { border: none; background: none; color: #60a5fa; cursor: pointer; font-size: 13px; padding: 0; line-height: 1; }
+    .chip-verba button:hover { color: #dc2626; }
+    .btn-somabase-limpar { height: 28px; padding: 0 10px; border: 1px solid #fca5a5; border-radius: 8px; font-size: 11px; font-weight: 700; cursor: pointer; background: #fee2e2; color: #991b1b; white-space: nowrap; }
+    .btn-somabase-limpar:hover { background: #fecaca; }
+    .somabase-drop-item { display: flex; align-items: center; gap: 8px; padding: 5px 10px; font-size: 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer; }
+    .somabase-drop-item:last-child { border-bottom: none; }
+    .somabase-drop-item:hover { background: #eff6ff; }
+    .somabase-drop-item.ja-sel { background: #f0fdf4; cursor: default; }
+
     @media (max-width: 1024px) {
       .layout-principal { grid-template-columns: 1fr; }
       .bloco-lista { position: static; }
@@ -375,6 +400,12 @@
           <p id="formSubtitulo">Preencha os dados da verba</p>
         </div>
         <div class="bloco-body">
+
+          {% if folha_situacao not in ('A', 'X') %}
+          <div style="background:#fef9c3;border:1.5px solid #fde047;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:700;color:#92400e;display:flex;align-items:center;gap:8px;">
+            ⚠ Folha <strong>{{ folha_ativa_situacao or 'sem folha ativa' }}</strong> — alterações em verbas só são permitidas com a folha Aberta.
+          </div>
+          {% endif %}
 
           <div id="msgModo" class="form-modo form-modo-novo">Modo: Inclusão</div>
           <div id="msgOk"   class="msg-ok"></div>
@@ -621,6 +652,27 @@
             </div>
           </div>
 
+          <!-- ── Verbas Soma Base ── -->
+          <div class="secao-somabase">
+            <div class="secao-somabase-titulo">🔢 Verbas que compõem a base de cálculo</div>
+            <div style="display:flex; gap:6px; align-items:flex-start;">
+              <div class="somabase-chips-area" id="somabase-chips">
+                <span id="somabase-vazio" style="font-size:11px;color:#94a3b8;">Nenhuma verba selecionada</span>
+              </div>
+              <button type="button" class="btn-somabase-limpar" onclick="limparSomaBase()">✕ Limpar todas</button>
+            </div>
+            <div style="display:flex; gap:6px; position:relative;">
+              <input type="text" id="somabase-busca"
+                placeholder="Buscar verba para adicionar (nome ou código)..."
+                oninput="filtrarSomaBase()"
+                style="flex:1; height:30px; padding:4px 10px; border:1px solid #bfdbfe; border-radius:8px; font-size:12px; outline:none; background:white;">
+              <button type="button" onclick="limparBuscaSomaBase()"
+                style="height:30px; width:30px; border:1px solid #bfdbfe; border-radius:8px; font-size:12px; cursor:pointer; background:#f1f5f9; color:#64748b;">✕</button>
+              <div id="somabase-dropdown" style="display:none; position:absolute; top:32px; left:0; right:36px; max-height:180px; overflow-y:auto; border:1px solid #bfdbfe; border-radius:8px; background:white; box-shadow:0 4px 16px rgba(0,0,0,0.1); z-index:50;"></div>
+            </div>
+            <input type="hidden" id="inpSomaBase">
+          </div>
+
           <div class="rodape-acoes">
             <button class="btn btn-voltar" onclick="window.location.href='/menu'">↩ &nbsp;Voltar ao Menu</button>
             <div class="rodape-acoes-dir">
@@ -683,7 +735,8 @@
 </div>
 
 <script>
-  const VERBAS_DATA = {{ verbas_json | safe }};
+  const VERBAS_DATA   = {{ verbas_json | safe }};
+  const FOLHA_ABERTA  = {{ (folha_situacao in ('A', 'X')) | tojson }};
 
   function iniParaTela(val) {
     if (!val) return '';
@@ -788,6 +841,7 @@
     document.getElementById('inpUnid').value        = 'V';
     document.getElementById('inpPerc').value         = '';
     document.getElementById('div-percentual').style.display  = 'none';
+    _somaBaseSel = []; atualizarChipsSomaBase(); limparBuscaSomaBase();
     ['inpIncFerias','inpIncRescisao','inpInc13sal','inpIncAdto13'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.value = 'NI'; el.disabled = true; }
@@ -834,6 +888,17 @@
     document.getElementById('inpPerc').value     = v.percentual != null ? v.percentual : '';
     togglePercentual();
     document.getElementById('inpNatRubr').value  = v.es03_nat_rubr || '';
+
+    // Verbas soma base
+    _somaBaseSel = [];
+    if (v.verbas_somabase) {
+      v.verbas_somabase.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n)).forEach(cod => {
+        const vb = VERBAS_DATA.find(x => x.cod_rubr === cod);
+        if (vb) _somaBaseSel.push(vb);
+      });
+    }
+    atualizarChipsSomaBase();
+    limparBuscaSomaBase();
 
     // Uso da Verba / Incidências
     const tipoUso = v.tipo_uso || '';
@@ -885,6 +950,7 @@
   }
 
   async function desativarVerba(id, nome) {
+    if (!FOLHA_ABERTA) { mostrarErro('A folha precisa estar Aberta para desativar verbas.'); return; }
     if (!confirm(`Desativar a verba "${nome}"?`)) return;
     try {
       const r = await fetch('/api/rubrica/desativar', {
@@ -930,6 +996,89 @@
     if (!mostrar) document.getElementById('inpPerc').value = '';
   }
 
+  // ── VERBAS SOMA BASE ───────────────────────────────────
+  let _somaBaseSel = []; // [{cod_rubr, dsc_rubr, dsc_rubr_resumido}]
+
+  function atualizarChipsSomaBase() {
+    const area  = document.getElementById('somabase-chips');
+    const vazio = document.getElementById('somabase-vazio');
+    area.querySelectorAll('.chip-verba').forEach(c => c.remove());
+    if (_somaBaseSel.length === 0) {
+      vazio.style.display = '';
+    } else {
+      vazio.style.display = 'none';
+      _somaBaseSel.forEach(v => {
+        const cod  = String(v.cod_rubr).padStart(4, '0');
+        const nome = v.dsc_rubr_resumido || v.dsc_rubr || '';
+        const chip = document.createElement('span');
+        chip.className = 'chip-verba';
+        chip.innerHTML = `${cod} — ${nome} <button type="button" onclick="removerSomaBase(${v.cod_rubr})" title="Remover">×</button>`;
+        area.appendChild(chip);
+      });
+    }
+    document.getElementById('inpSomaBase').value = _somaBaseSel.map(v => v.cod_rubr).join(',');
+  }
+
+  function removerSomaBase(cod) {
+    _somaBaseSel = _somaBaseSel.filter(v => v.cod_rubr !== cod);
+    atualizarChipsSomaBase();
+    filtrarSomaBase();
+  }
+
+  function limparSomaBase() {
+    _somaBaseSel = [];
+    atualizarChipsSomaBase();
+  }
+
+  function adicionarSomaBase(cod) {
+    if (_somaBaseSel.find(v => v.cod_rubr === cod)) return;
+    const v = VERBAS_DATA.find(x => x.cod_rubr === cod);
+    if (!v) return;
+    _somaBaseSel.push(v);
+    atualizarChipsSomaBase();
+    filtrarSomaBase();
+  }
+
+  function filtrarSomaBase() {
+    const txt  = (document.getElementById('somabase-busca').value || '').toLowerCase().trim();
+    const drop = document.getElementById('somabase-dropdown');
+    if (!txt) { drop.style.display = 'none'; return; }
+    const selCods = new Set(_somaBaseSel.map(v => v.cod_rubr));
+    const lista = VERBAS_DATA.filter(v => {
+      const nome = (v.dsc_rubr || '').toLowerCase();
+      const cod  = String(v.cod_rubr).padStart(4, '0');
+      return nome.includes(txt) || cod.includes(txt);
+    }).slice(0, 25);
+    if (lista.length === 0) {
+      drop.innerHTML = '<div style="padding:8px 12px;font-size:12px;color:#94a3b8;">Nenhuma verba encontrada</div>';
+    } else {
+      drop.innerHTML = lista.map(v => {
+        const cod   = String(v.cod_rubr).padStart(4, '0');
+        const nome  = v.dsc_rubr_resumido || v.dsc_rubr || '';
+        const jaSel = selCods.has(v.cod_rubr);
+        return `<div class="somabase-drop-item${jaSel ? ' ja-sel' : ''}"
+                     onclick="${jaSel ? '' : `adicionarSomaBase(${v.cod_rubr})`}">
+                  <span style="font-family:monospace;font-weight:700;color:#1d4ed8;min-width:40px;">${cod}</span>
+                  <span style="flex:1;">${nome}</span>
+                  ${jaSel ? '<span style="font-size:10px;color:#16a34a;font-weight:700;">✓</span>' : '<span style="font-size:10px;color:#2563eb;">+ add</span>'}
+                </div>`;
+      }).join('');
+    }
+    drop.style.display = 'block';
+  }
+
+  function limparBuscaSomaBase() {
+    document.getElementById('somabase-busca').value = '';
+    document.getElementById('somabase-dropdown').style.display = 'none';
+  }
+
+  // Fechar dropdown ao clicar fora
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#somabase-busca') && !e.target.closest('#somabase-dropdown')) {
+      document.getElementById('somabase-dropdown').style.display = 'none';
+    }
+  });
+
   function mostrarOk(msg) {
     const el = document.getElementById('msgOk');
     el.textContent = '✔ ' + msg; el.style.display = 'block';
@@ -943,6 +1092,7 @@
   }
 
   async function gravarVerba() {
+    if (!FOLHA_ABERTA) { mostrarErro('A folha precisa estar Aberta para alterar verbas.'); return; }
     const id       = document.getElementById('inpId').value;
     const cod      = document.getElementById('inpCod').value.trim();
     const iniValid = document.getElementById('inpIniValid').value;
@@ -1017,6 +1167,7 @@
         const p = parseInt(document.getElementById('inpPerc').value, 10);
         return (!isNaN(p) && p >= 0 && p <= 9999) ? p : null;
       })(),
+      verbas_somabase: document.getElementById('inpSomaBase').value.trim() || null,
     };
 
     CHK_FIELDS.forEach(([elId, campo]) => {

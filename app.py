@@ -6085,6 +6085,8 @@ def _horas_dia(valor):
 def api_rubrica_incluir():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão inválida"})
+    if str(session.get("anomes_situacao") or "") not in ("A", "X"):
+        return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para incluir verbas."})
 
     data       = request.get_json() or {}
     id_cliente = session.get("id_cliente")
@@ -6134,7 +6136,7 @@ def api_rubrica_incluir():
               "is_periculosidade", "is_gorjeta", "is_dsr", "is_sal_familia",
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
-              "is_periodo", "is_hora_sobreaviso", "percentual"]:
+              "is_periodo", "is_hora_sobreaviso", "percentual", "verbas_somabase"]:
         v = data.get(f)
         if v is not None:
             campos[f] = v
@@ -6154,6 +6156,8 @@ def api_rubrica_incluir():
 def api_rubrica_editar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão inválida"})
+    if str(session.get("anomes_situacao") or "") not in ("A", "X"):
+        return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para alterar verbas."})
 
     data            = request.get_json() or {}
     id_reg          = data.get("id")
@@ -6191,7 +6195,7 @@ def api_rubrica_editar():
               "is_periculosidade", "is_gorjeta", "is_dsr", "is_sal_familia",
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
-              "is_periodo", "is_hora_sobreaviso", "percentual"]:
+              "is_periodo", "is_hora_sobreaviso", "percentual", "verbas_somabase"]:
         campos[f] = data.get(f)
 
     # Busca estado atual para detectar o que mudou
@@ -6230,6 +6234,8 @@ def api_rubrica_editar():
 def api_rubrica_desativar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão inválida"})
+    if str(session.get("anomes_situacao") or "") not in ("A", "X"):
+        return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para desativar verbas."})
 
     data       = request.get_json() or {}
     id_reg     = data.get("id")
