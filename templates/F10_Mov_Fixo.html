@@ -265,7 +265,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <div class="verba-info" id="verba-info"></div>
                 </div>
                 <div class="fg md">
-                    <label>Valor (R$) *</label>
+                    <label id="lbl-valor">Valor (R$) *</label>
                     <input type="text" id="inp-valor" class="inp-valor" placeholder="0,00"
                            oninput="mascaraValor(this)">
                 </div>
@@ -573,6 +573,8 @@ function selecionarVerba(cod) {
     const info = document.getElementById('verba-info');
     info.textContent = `${TP_LABEL[v.tp_rubr]||v.tp_rubr} · Unidade: ${v.unid_verba === 'V' ? 'Valor (R$)' : v.unid_verba === 'H' ? 'Hora' : 'Diária'}`;
     info.classList.add('show');
+    const lblMap = {'V': 'Valor (R$) *', 'H': 'Horas *', 'D': 'Diárias *'};
+    document.getElementById('lbl-valor').textContent = lblMap[v.unid_verba] || 'Valor *';
 }
 
 // ── MODOS ──
@@ -745,6 +747,7 @@ function resetarForm() {
     document.getElementById('cod_verba').value     = '';
     document.getElementById('inp-valor').value     = '';
     document.getElementById('verba-info').classList.remove('show');
+    document.getElementById('lbl-valor').textContent = 'Valor (R$) *';
     verbaSel = null;
 
     document.querySelector('input[name="modo_alvo"][value="especifico"]').checked = true;
