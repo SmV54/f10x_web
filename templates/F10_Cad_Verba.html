@@ -321,7 +321,7 @@
         </div>
         <div class="bloco-body">
           <div class="filtro">
-            <input type="text" id="txtFiltro" placeholder="Filtrar pelo nome..." oninput="filtrar()">
+            <input type="text" id="txtFiltro" placeholder="Filtrar pelo nome ou código..." oninput="filtrar()">
           </div>
           <div class="lista">
             {% if verbas %}
@@ -336,7 +336,7 @@
               </thead>
               <tbody id="tbodyVerbas">
                 {% for v in verbas %}
-                <tr id="tr_{{ v.id }}" data-nome="{{ v.dsc_rubr|lower }}">
+                <tr id="tr_{{ v.id }}" data-nome="{{ v.dsc_rubr|lower }}" data-cod="{{ '%04d' % v.cod_rubr }}">
                   <td style="font-family:'Courier New',monospace; font-weight:700; color:#1d4ed8;">
                     {{ '%04d' % v.cod_rubr }}
                   </td>
@@ -903,9 +903,11 @@
   }
 
   function filtrar() {
-    const txt = document.getElementById('txtFiltro').value.toLowerCase();
+    const txt = document.getElementById('txtFiltro').value.toLowerCase().trim();
     document.querySelectorAll('#tbodyVerbas tr').forEach(tr => {
-      tr.style.display = !txt || (tr.dataset.nome || '').includes(txt) ? '' : 'none';
+      const nome = tr.dataset.nome || '';
+      const cod  = tr.dataset.cod  || '';
+      tr.style.display = !txt || nome.includes(txt) || cod.includes(txt) ? '' : 'none';
     });
   }
 
