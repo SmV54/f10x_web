@@ -379,8 +379,13 @@
                     {% endif %}
                   </td>
                   <td class="col-acoes">
-                    <button class="btn-acao btn-edit" onclick="editarVerba({{ v.id }})">✏️</button>
+                    {% if folha_situacao in ('A', 'X') %}
+                    <button class="btn-acao btn-edit"   onclick="editarVerba({{ v.id }})">✏️</button>
                     <button class="btn-acao btn-desativ" onclick="desativarVerba({{ v.id }}, '{{ v.dsc_rubr }}')">🚫</button>
+                    {% else %}
+                    <button class="btn-acao btn-edit" disabled style="opacity:0.35;cursor:not-allowed;" title="Folha não está Aberta">✏️</button>
+                    <button class="btn-acao btn-desativ" disabled style="opacity:0.35;cursor:not-allowed;" title="Folha não está Aberta">🚫</button>
+                    {% endif %}
                   </td>
                 </tr>
                 {% endfor %}
@@ -872,6 +877,7 @@
   }
 
   function editarVerba(id) {
+    if (!FOLHA_ABERTA) return;
     const v = VERBAS_DATA.find(x => x.id === id);
     if (!v) return;
 
@@ -1190,6 +1196,22 @@
 
   // Ao carregar a página já preenche o mês atual
   document.getElementById('inpIniValid').value = mesAtual();
+
+  // Bloqueia todo o formulário quando a folha não está Aberta
+  if (!FOLHA_ABERTA) {
+    // Desabilita inputs, selects e checkboxes do formulário
+    document.querySelectorAll(
+      '.bloco:not(.bloco-lista) input:not([type=hidden]), ' +
+      '.bloco:not(.bloco-lista) select, ' +
+      '.bloco:not(.bloco-lista) textarea'
+    ).forEach(el => { el.disabled = true; });
+    // Desabilita botão Gravar
+    const btnGravar = document.querySelector('.btn-gravar');
+    if (btnGravar) { btnGravar.disabled = true; btnGravar.style.opacity = '0.4'; btnGravar.style.cursor = 'not-allowed'; }
+    // Esconde botão Cancelar (não faz sentido em modo bloqueado)
+    document.getElementById('btnCancelar').style.display = 'none';
+  }
+
 
   // ── RELAÇÃO DE VERBAS ──────────────────────────────────
   const NAT_MAP = Object.fromEntries(
