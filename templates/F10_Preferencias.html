@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Preferências</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --accent-dim:#1a5fb8;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --sub:       #6b7280;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 24px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 16px; min-height: 58px;
+    position: sticky; top: 0; z-index: 200;
+}
+.topo-esq  { display: flex; flex-direction: column; }
+.topo-ctr  { display: flex; align-items: center; gap: 10px; }
+.topo-dir  { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: #374151; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: #1e293b; white-space: nowrap; }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.btn-voltar-topo {
+    background: transparent; border: 1px solid var(--navy-line); color: #374151;
+    font-size: 12px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+    text-decoration: none;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: #1e293b; }
+
+.conteudo { max-width: 720px; margin: 28px auto; padding: 0 24px 60px; }
+
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 14px;
+}
+.pref-card-titulo {
+    font-size: 13px; font-weight: 700; color: var(--accent);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+}
+.pref-card-sub {
+    font-size: 12px; color: var(--sub); margin-bottom: 14px; line-height: 1.45;
+}
+
+.opcoes-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.opc-card {
+    flex: 1; min-width: 200px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 14px; border-radius: 8px; border: 2px solid var(--border);
+    cursor: pointer; transition: border-color 0.12s, background 0.12s;
+    background: #fafbfc; user-select: none;
+}
+.opc-card:hover { border-color: var(--accent); background: #f0f6ff; }
+.opc-card.sel { border-color: var(--accent); background: #eff6ff; }
+.opc-card input[type="radio"] { accent-color: var(--accent); flex-shrink: 0; }
+.opc-card-cont { display: flex; flex-direction: column; gap: 2px; }
+.opc-card-titulo { font-size: 13px; font-weight: 600; color: #111827; }
+.opc-card-desc { font-size: 11.5px; color: #64748b; }
+
+.feedback {
+    display: none; margin-top: 10px;
+    font-size: 12px; color: #166534;
+    background: #dcfce7; border: 1px solid #86efac;
+    padding: 6px 10px; border-radius: 6px;
+}
+.feedback.erro { color: #991b1b; background: #fee2e2; border-color: #fca5a5; }
+.feedback.show { display: inline-block; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-ctr">
+        <span class="topo-titulo">⚙️ Preferências</span>
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <a class="btn-voltar-topo" href="/menu">← Voltar</a>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- Preferência 1: Ordem dos relatórios -->
+    <div class="pref-card">
+        <div class="pref-card-titulo">Ordem preferencial dos relatórios</div>
+        <div class="pref-card-sub">
+            Define como os funcionários aparecem por padrão nos relatórios (Folha de Pagamento, Relação de N Verbas, etc.). Você sempre pode trocar a ordem na hora de gerar cada relatório.
+        </div>
+        <div class="opcoes-row" id="ordemOpcoes">
+            <label class="opc-card {% if prefs.ordem_rel == 'alfa' %}sel{% endif %}" data-val="alfa">
+                <input type="radio" name="ordem_rel" value="alfa" {% if prefs.ordem_rel == 'alfa' %}checked{% endif %}>
+                <div class="opc-card-cont">
+                    <span class="opc-card-titulo">Alfabética</span>
+                    <span class="opc-card-desc">Por nome do funcionário (A → Z)</span>
+                </div>
+            </label>
+            <label class="opc-card {% if prefs.ordem_rel != 'alfa' %}sel{% endif %}" data-val="mat">
+                <input type="radio" name="ordem_rel" value="mat" {% if prefs.ordem_rel != 'alfa' %}checked{% endif %}>
+                <div class="opc-card-cont">
+                    <span class="opc-card-titulo">Matrícula</span>
+                    <span class="opc-card-desc">Por número de matrícula (menor → maior)</span>
+                </div>
+            </label>
+        </div>
+        <span class="feedback" id="fbOrdem"></span>
+    </div>
+
+</div>
+
+<script>
+function fb(elId, msg, erro = false) {
+    const fb = document.getElementById(elId);
+    fb.textContent = msg;
+    fb.classList.remove('erro', 'show');
+    if (erro) fb.classList.add('erro');
+    fb.classList.add('show');
+    setTimeout(() => fb.classList.remove('show'), 2500);
+}
+
+async function savePref(codigo, texto) {
+    try {
+        const resp = await fetch('/api/pref/salvar', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({codigo, texto}),
+        });
+        const data = await resp.json();
+        return data.ok === true;
+    } catch (e) {
+        return false;
+    }
+}
+
+document.querySelectorAll('#ordemOpcoes .opc-card').forEach(card => {
+    card.addEventListener('click', async () => {
+        const val = card.dataset.val;
+        document.querySelectorAll('#ordemOpcoes .opc-card').forEach(c =>
+            c.classList.toggle('sel', c === card));
+        card.querySelector('input[type=radio]').checked = true;
+        const ok = await savePref('ordem_rel', val);
+        if (ok) fb('fbOrdem', '✓ Preferência salva');
+        else    fb('fbOrdem', 'Erro ao salvar', true);
+    });
+});
+</script>
+
+</body>
+</html>

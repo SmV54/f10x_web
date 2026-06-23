@@ -38,6 +38,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                display: flex; align-items: center; justify-content: center; gap: 12px; }
 .topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+/* ── LABEL LICENÇA FIXO (canto inferior esquerdo, oposto às Preferências) ── */
+.label-licenca {
+    position: fixed; bottom: 28px; left: 24px; z-index: 500;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 22px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+    border: 1px solid transparent; font-family: var(--sans); white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(15,23,42,0.07);
+}
+.label-licenca.lic-ok     { background: #dcfce7; color: #166534; border-color: #86efac; }
+.label-licenca.lic-alerta { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .topo-folha-ativa {
     display: inline-flex; align-items: center; gap: 7px;
     border-radius: 7px; padding: 4px 13px;
@@ -190,6 +201,40 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .trocar-icone { font-size: 18px; line-height: 1; }
 .trocar-label { font-size: 11px; font-weight: 700; color: #1e293b; text-transform: uppercase; letter-spacing: 0.04em; }
 
+/* ── FAIXA DE UTILITÁRIOS (Trocar Empresa) ── */
+.modulos-utils {
+    margin-top: 18px;
+    display: flex; justify-content: flex-end; gap: 10px;
+    flex-wrap: wrap; align-items: center;
+}
+
+/* ── BOTÃO PREFERÊNCIAS FIXO (canto inferior direito, ao lado do Tour) ── */
+.card-pref {
+    position: fixed; bottom: 28px; right: 78px; z-index: 500;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px 5px 5px; border-radius: 22px; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--border);
+    text-decoration: none; opacity: 0.85;
+    box-shadow: 0 2px 8px rgba(15,23,42,0.07);
+    transition: opacity 0.15s, border-color 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+.card-pref:hover {
+    opacity: 1; border-color: var(--accent);
+    box-shadow: 0 4px 14px rgba(42,125,225,0.16);
+    transform: translateY(-1px);
+}
+.card-pref-icone {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: #e6f0fb; display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+}
+.card-pref:hover .card-pref-icone { background: #cce0f8; }
+.card-pref-label {
+    font-size: 11.5px; font-weight: 600; color: #475569;
+    letter-spacing: 0.01em;
+}
+.card-pref:hover .card-pref-label { color: var(--accent); }
+
 /* ── OVERLAY LOADING ── */
 .loading-overlay {
     display: none; position: fixed; inset: 0; z-index: 9999;
@@ -274,7 +319,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <div class="modulos-grid" id="modulosGrid"></div>
 
     {% if qtd_empresas > 1 %}
-    <div id="areaTrocarEmpresa" style="margin-top:40px;padding-top:24px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;">
+    <div class="modulos-utils">
       <div class="card-trocar-emp" onclick="window.location.href='/trocar_empresa'">
         <div class="trocar-icone">🔄</div>
         <div class="trocar-label">Trocar Empresa</div>
@@ -974,6 +1019,17 @@ function iniciarTour() {
 }
 
 </script>
+
+{% if licenca_fmt %}
+<span class="label-licenca {{ licenca_classe }}" title="Data limite da licença">
+  🔐 Licença Folha10-Simples até {{ licenca_fmt }}
+</span>
+{% endif %}
+
+<a class="card-pref" href="/preferencias" title="Preferências">
+  <span class="card-pref-icone">⚙️</span>
+  <span class="card-pref-label">Preferências</span>
+</a>
 
 </body>
 </html>

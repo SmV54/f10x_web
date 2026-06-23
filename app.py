@@ -581,6 +581,28 @@ def menu():
         return redirect("/selecionar_empresa")
     id_cliente = session.get("id_cliente")
     qtd_empresas = len(_listar_empresas(id_cliente)) if id_cliente else 1
+
+    # Data limite da licença (tab_cliente.data_limite, formato "YYYY-MM")
+    licenca_fmt = ""
+    licenca_classe = ""
+    try:
+        rl = (supabase.table("tab_cliente")
+              .select("data_limite")
+              .eq("id_cliente", id_cliente)
+              .limit(1).execute())
+        dl = (rl.data or [{}])[0].get("data_limite") or ""
+        if dl and len(dl) >= 7:
+            ano_l, mes_l = dl[:4], dl[5:7]
+            licenca_fmt  = f"{mes_l}/{ano_l}"
+            limite_am    = ano_l + mes_l
+            anomes_atual = str(session.get("anomes_atual") or "")
+            if anomes_atual and limite_am > anomes_atual:
+                licenca_classe = "lic-ok"     # licença vai além da folha atual
+            else:
+                licenca_classe = "lic-alerta"  # licença até a folha atual ou expirada
+    except Exception:
+        pass
+
     return render_template(
         "F10_Menu.html",
         versao=ler_versao(),
@@ -589,6 +611,8 @@ def menu():
         folha_situacao=str(session.get("anomes_situacao") or ""),
         cpf_usuario=str(session.get("cpf") or ""),
         qtd_empresas=qtd_empresas,
+        licenca_fmt=licenca_fmt,
+        licenca_classe=licenca_classe,
     )
 
 # =========================================================
@@ -630,6 +654,77 @@ def _fmt_cnpj(cnpj_raw):
         return f"{c[:2]}.{c[2:5]}.{c[5:8]}/{c[8:12]}-{c[12:]}"
     return cnpj_raw
 
+# =========================================================
+# PREFERÊNCIAS DO CLIENTE — tab_tabela_cli num_tabela="1001"
+# Escopo: por cliente (id_empresa="0"). Para preferências
+# específicas de uma empresa, passar id_empresa explícito.
+# =========================================================
+def _get_pref(codigo, default=None, id_empresa="0"):
+    id_cliente = session.get("id_cliente")
+    if id_cliente is None:
+        return default
+    try:
+        r = (supabase.table("tab_tabela_cli")
+             .select("texto, valor")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("num_tabela", "1001")
+             .eq("codigo",     codigo)
+             .eq("situacao",   "A")
+             .limit(1).execute())
+        if r.data:
+            return r.data[0].get("texto") or default
+    except Exception:
+        pass
+    return default
+
+
+def _def_ordem_pref():
+    """Default da ordem dos relatórios que usam 'ordem' (alfa/mat)."""
+    return _get_pref("ordem_rel", "mat")
+
+
+def _def_classificacao():
+    """Default de 'classificacao' (A=Alfabética, N=Numérica), obedecendo:
+       (1) query-string 'classificacao'; (2) preferência ordem_rel; (3) 'A'."""
+    arg = request.args.get("classificacao") if request else None
+    if arg:
+        return arg.strip().upper()
+    pref = _get_pref("ordem_rel", "alfa")
+    return "A" if pref == "alfa" else "N"
+
+
+def _set_pref(codigo, texto, valor=None, id_empresa="0"):
+    id_cliente = session.get("id_cliente")
+    if id_cliente is None:
+        return False
+    try:
+        r = (supabase.table("tab_tabela_cli")
+             .select("id")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("num_tabela", "1001")
+             .eq("codigo",     codigo)
+             .limit(1).execute())
+        rec = {"texto": str(texto or ""), "situacao": "A"}
+        if valor is not None:
+            rec["valor"] = int(valor)
+        if r.data:
+            supabase.table("tab_tabela_cli").update(rec).eq("id", r.data[0]["id"]).execute()
+        else:
+            rec.update({
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "num_tabela": "1001",
+                "codigo":     codigo,
+            })
+            rec.setdefault("valor", 0)
+            supabase.table("tab_tabela_cli").insert(rec).execute()
+        return True
+    except Exception:
+        return False
+
+
 def _ctx_relatorio():
     """Contexto comum para todas as páginas de relatório."""
     return dict(
@@ -644,6 +739,29 @@ def relatorios():
     if not session.get("logado"):
         return redirect("/")
     return render_template("F10_Relatorios.html", **_ctx_relatorio())
+
+@app.route("/preferencias")
+def preferencias():
+    if not session.get("logado"):
+        return redirect("/")
+    prefs = {
+        "ordem_rel": _get_pref("ordem_rel", "mat"),
+    }
+    return render_template("F10_Preferencias.html", prefs=prefs, **_ctx_relatorio())
+
+
+@app.route("/api/pref/salvar", methods=["POST"])
+def api_pref_salvar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    data   = request.get_json(silent=True) or {}
+    codigo = str(data.get("codigo") or "").strip()
+    texto  = data.get("texto")
+    valor  = data.get("valor")
+    if not codigo:
+        return jsonify({"ok": False, "msg": "Código obrigatório."})
+    ok = _set_pref(codigo, texto, valor)
+    return jsonify({"ok": ok, "msg": "Preferência salva." if ok else "Falha ao salvar."})
 
 @app.route("/rel_cadastros")
 def rel_cadastros():
@@ -706,7 +824,7 @@ def rel_dependentes():
     id_empresa  = _get_id_empresa()
     id_cliente  = session.get("id_cliente")
     matricula   = request.args.get("matricula", "").strip()
-    classificacao = request.args.get("classificacao", "N")
+    classificacao = _def_classificacao()
     depirrf     = request.args.get("depirrf", "")
 
     # Tipos de dependente (tabela 7)
@@ -773,7 +891,7 @@ def rel_ferias_func():
     id_empresa  = _get_id_empresa()
     id_cliente  = session.get("id_cliente")
     matricula   = request.args.get("matricula", "").strip()
-    classificacao = request.args.get("classificacao", "N")
+    classificacao = _def_classificacao()
     data_de     = request.args.get("data_de", "").strip()    # YYYY-MM-DD
     data_ate    = request.args.get("data_ate", "").strip()   # YYYY-MM-DD
     competencia = request.args.get("competencia", "").strip()  # YYYY-MM
@@ -949,7 +1067,7 @@ def rel_lista_funcionarios():
     if not session.get("logado"):
         return redirect("/")
     id_empresa     = _get_id_empresa()
-    classificacao  = request.args.get("classificacao", "A").strip()  # A=Alfabética N=Numérica
+    classificacao  = _def_classificacao()  # A=Alfabética N=Numérica
     situacao_filtro = request.args.get("situacao", "A").strip()       # A=Ativos D=Desligados T=Todos
 
     order_col = "nome" if classificacao == "A" else "matricula"
@@ -988,7 +1106,7 @@ def rel_lista_funcionarios_pdf():
     from reportlab.lib.styles import ParagraphStyle
 
     id_empresa      = _get_id_empresa()
-    classificacao   = request.args.get("classificacao", "A").strip()
+    classificacao   = _def_classificacao()
     situacao_filtro = request.args.get("situacao", "A").strip()
 
     order_col = "nome" if classificacao == "A" else "matricula"
@@ -1169,7 +1287,7 @@ def rel_dependentes_pdf():
 
     id_empresa    = _get_id_empresa()
     matricula     = request.args.get("matricula", "").strip()
-    classificacao = request.args.get("classificacao", "N")
+    classificacao = _def_classificacao()
     depirrf       = request.args.get("depirrf", "")
 
     tipos_dep = {}
@@ -1249,7 +1367,7 @@ def rel_ferias_func_pdf():
 
     id_empresa    = _get_id_empresa()
     matricula     = request.args.get("matricula",   "").strip()
-    classificacao = request.args.get("classificacao", "N")
+    classificacao = _def_classificacao()
     data_de       = request.args.get("data_de",    "").strip()
     data_ate      = request.args.get("data_ate",   "").strip()
     competencia   = request.args.get("competencia","").strip()
@@ -1330,7 +1448,7 @@ def rel_faltas_pdf():
 
     id_empresa    = _get_id_empresa()
     anomes        = str(session.get("anomes_atual") or "")
-    classificacao = request.args.get("classificacao", "A").upper()
+    classificacao = _def_classificacao()
     tipo_falta    = request.args.get("tipo_falta",   "").upper()
     mats_raw      = request.args.get("mats",         "").strip()
     data_de_raw   = request.args.get("data_de",      "").strip()
@@ -1809,7 +1927,7 @@ def rel_sal_aumento_pdf():
         return redirect("/")
 
     id_empresa       = _get_id_empresa()
-    classificacao    = request.args.get("classificacao", "A").strip()
+    classificacao    = _def_classificacao()
     apenas_alterados = request.args.get("apenas_alterados", "").upper() == "S"
     motivo_filtro    = request.args.get("motivo", "").strip()
     anomes_rel       = str(session.get("anomes_atual") or "")
@@ -2742,7 +2860,7 @@ def gerador_relatorio():
     ano            = int(request.args.get("ano",     _ano_folha) or _ano_folha)
     mes_ini        = int(request.args.get("mes_ini", _mes_folha) or _mes_folha)
     mes_fim        = int(request.args.get("mes_fim", _mes_folha) or _mes_folha)
-    classificacao  = request.args.get("classificacao", "A").strip() or "A"
+    classificacao  = _def_classificacao()
     titulo_rel     = request.args.get("titulo_rel",    "").strip()
 
     TOT_BASES = [
@@ -3181,7 +3299,7 @@ def gerador_relatorio_pdf():
     mes_fim       = int(request.args.get("mes_fim", 12) or 12)
     anomes_ini    = int(f"{ano}{mes_ini:02d}")
     anomes_fim    = int(f"{ano}{mes_fim:02d}")
-    classificacao = request.args.get("classificacao", "A").strip() or "A"
+    classificacao = _def_classificacao()
     titulo_rel    = request.args.get("titulo_rel",   "").strip()
     cad_fields    = request.args.getlist("cad_f")
     sec_mov       = request.args.get("sec_mov")    == "1"
@@ -3699,7 +3817,7 @@ def rel_sal_aumento():
 
     id_empresa = _get_id_empresa()
 
-    classificacao    = request.args.get("classificacao", "A").strip()
+    classificacao    = _def_classificacao()
     apenas_alterados = request.args.get("apenas_alterados", "").upper() == "S"
     motivo_filtro    = request.args.get("motivo", "").strip()
 
@@ -11519,7 +11637,7 @@ def rel_faltas():
 
     id_empresa    = _get_id_empresa()
     anomes        = str(session.get("anomes_atual") or "")
-    classificacao = request.args.get("classificacao", "A").upper()
+    classificacao = _def_classificacao()
     tipo_falta    = request.args.get("tipo_falta", "").upper()
 
     # Filtro de matrículas (opcional)
@@ -24404,7 +24522,7 @@ def _nverbas_parse_params():
             cod = int(v)
             if cod not in v_codes:
                 v_codes.append(cod)
-    ordem = request.args.get("ordem", "mat")
+    ordem = request.args.get("ordem") or _get_pref("ordem_rel", "mat")
     return v_codes, ordem
 
 
@@ -25214,7 +25332,7 @@ def relatorio_folha():
         return redirect("/menu")
 
     from flask import request as _req
-    ordem = _req.args.get("ordem", "mat")
+    ordem = _req.args.get("ordem") or _get_pref("ordem_rel", "mat")
     cnpj_empresa = str(session.get("cnpj_empresa") or "")
     d = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem=ordem, cnpj_empresa=cnpj_empresa)
     return render_template(
@@ -25789,7 +25907,7 @@ def relatorio_folha_pdf():
     nome_usuario = str(session.get("nome") or "")
 
     from flask import request as _req
-    ordem = _req.args.get("ordem", "mat")
+    ordem = _req.args.get("ordem") or _get_pref("ordem_rel", "mat")
     buf = _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                                       empresa_nm, cnpj_fmt, versao, sit_label,
                                       nome_usuario, ordem=ordem)
