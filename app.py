@@ -33097,6 +33097,530 @@ def api_admin_imp_progresso():
 
 
 # =========================================================
+# ADIANTAMENTO QUINZENAL
+# =========================================================
+@app.route("/informar_adiantamento")
+def informar_adiantamento():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
+    if folha_tipo not in ("N", "F", "R"):
+        folha_tipo = "N"
+
+    per_empresa = None
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("per_adiantamento")
+                 .eq("id_empresa", id_empresa)
+                 .limit(1).execute())
+        if r_emp.data:
+            per_empresa = r_emp.data[0].get("per_adiantamento")
+    except Exception:
+        pass
+
+    funcionarios = []
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, vrsalfx, dtadm, per_adianta, valor_adianta")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao", "A")
+             .order("nomer")
+             .execute())
+        for f in (r.data or []):
+            dtadm_raw = str(f.get("dtadm") or "")
+            if len(dtadm_raw) >= 6 and anomes and dtadm_raw[:6] > anomes:
+                continue
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
+            funcionarios.append({
+                "matricula":    f.get("matricula"),
+                "nome":         nome,
+                "vrsalfx":      f.get("vrsalfx") or 0,
+                "per_adianta":  f.get("per_adianta"),
+                "valor_adianta": f.get("valor_adianta"),
+            })
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_Mov_Adiantamento.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo_ativa=folha_tipo,
+        per_empresa=per_empresa,
+        funcionarios=funcionarios,
+    )
+
+
+@app.route("/api/adiantamento_gravar", methods=["POST"])
+def api_adiantamento_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+
+    data  = request.get_json(force=True) or {}
+    modo  = (data.get("modo") or "").upper()
+    itens = data.get("itens") or []
+
+    if modo not in ("E", "P", "V"):
+        return jsonify({"ok": False, "msg": "Modo inválido."})
+    if not itens:
+        return jsonify({"ok": False, "msg": "Nenhum funcionário informado."})
+
+    erros = 0
+    for item in itens:
+        mat = item.get("matricula")
+        if not mat:
+            continue
+
+        if modo in ("E", "P"):
+            per = item.get("percentual")
+            if per is None:
+                erros += 1; continue
+            per = int(per)
+            if not (10 <= per <= 60):
+                erros += 1; continue
+            campos = {"per_adianta": per, "valor_adianta": None}
+        else:
+            val = item.get("valor")
+            if val is None:
+                erros += 1; continue
+            val = int(round(float(val)))
+            if val <= 0:
+                erros += 1; continue
+            campos = {"per_adianta": None, "valor_adianta": val}
+
+        try:
+            (supabase.table("tab_cad")
+             .update(campos)
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", int(mat))
+             .execute())
+        except Exception:
+            erros += 1
+
+    if erros:
+        return jsonify({"ok": False, "msg": f"{erros} registro(s) com erro ao gravar."})
+    return jsonify({"ok": True})
+
+
+@app.route("/api/adiantamento_limpar", methods=["POST"])
+def api_adiantamento_limpar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    try:
+        (supabase.table("tab_cad")
+         .update({"per_adianta": None, "valor_adianta": None})
+         .eq("id_empresa", id_empresa)
+         .eq("situacao", "A")
+         .execute())
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# CALCULAR ADIANTAMENTO
+# =========================================================
+@app.route("/calcular_adiantamento")
+def calcular_adiantamento():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
+    if folha_tipo not in ("N", "F", "R"):
+        folha_tipo = "N"
+
+    def _fmt_reais(cents):
+        try:
+            return "R$ {:,.2f}".format(int(cents) / 100).replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return "—"
+
+    ctx = dict(
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        erro_critico=None,
+        aviso_verba=False,
+        verbas_ocupadas=[],
+        verba_usar=None,
+        dsc_verba="",
+        funcionarios=[],
+        sem_adiantamento=0,
+        total_com=0,
+        total_funcs=0,
+        total_fmt="R$ 0,00",
+    )
+    if not anomes:
+        return render_template("F10_Calc_Adiantamento.html", **ctx)
+
+    folha_int = int(anomes)
+
+    # Percentual da empresa
+    per_empresa = None
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("per_adiantamento")
+                 .eq("id_empresa", id_empresa)
+                 .limit(1).execute())
+        if r_emp.data:
+            per_empresa = r_emp.data[0].get("per_adiantamento")
+    except Exception:
+        pass
+
+    # Verbas já usadas nesta folha
+    verbas_todas = list(VERBAS_ADIANTAMENTO)
+    verbas_ocupadas = []
+    try:
+        r_ocu = (supabase.table("tab_mov")
+                 .select("cod_verba")
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      folha_int)
+                 .eq("situacao",   "A")
+                 .in_("cod_verba", verbas_todas)
+                 .execute())
+        verbas_ocupadas = list({r["cod_verba"] for r in (r_ocu.data or [])})
+    except Exception:
+        pass
+
+    verba_usar = next((v for v in verbas_todas if v not in verbas_ocupadas), None)
+    if verba_usar is None:
+        ctx["erro_critico"] = "Todas as verbas de adiantamento (161–164) já foram utilizadas nesta folha."
+        return render_template("F10_Calc_Adiantamento.html", **ctx)
+
+    # Descrição da verba a usar
+    dsc_verba = ""
+    try:
+        r_v = (supabase.table("tab_rubrica")
+               .select("dsc_rubr")
+               .eq("cod_rubr", verba_usar)
+               .limit(1).execute())
+        if r_v.data:
+            dsc_verba = r_v.data[0].get("dsc_rubr") or ""
+    except Exception:
+        pass
+
+    # Funcionários ativos
+    funcionarios = []
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, vrsalfx, dtadm, per_adianta, valor_adianta")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao",   "A")
+                 .order("nomer")
+                 .execute())
+        for f in (r_cad.data or []):
+            dtadm_raw = str(f.get("dtadm") or "")
+            if len(dtadm_raw) >= 6 and dtadm_raw[:6] > anomes:
+                continue
+            nome      = (f.get("nome") or f.get("nomer") or "").strip()
+            vrsalfx   = f.get("vrsalfx") or 0
+            per_ind   = f.get("per_adianta")
+            val_fixo  = f.get("valor_adianta")
+
+            if val_fixo is not None:
+                valor_calc = int(val_fixo)
+                modo_desc  = "Valor fixo"
+            elif per_ind is not None:
+                valor_calc = round(vrsalfx * int(per_ind) / 100)
+                modo_desc  = f"{per_ind}% individual"
+            elif per_empresa is not None:
+                valor_calc = round(vrsalfx * int(per_empresa) / 100)
+                modo_desc  = f"{per_empresa}% empresa"
+            else:
+                valor_calc = None
+                modo_desc  = "—"
+
+            funcionarios.append({
+                "matricula":  f.get("matricula"),
+                "nome":       nome,
+                "vrsalfx":    vrsalfx,
+                "sal_fmt":    _fmt_reais(vrsalfx),
+                "modo_desc":  modo_desc,
+                "valor_calc": valor_calc,
+                "valor_fmt":  _fmt_reais(valor_calc) if valor_calc is not None else "—",
+            })
+    except Exception as e:
+        ctx["erro_critico"] = f"Erro ao carregar funcionários: {str(e)[:150]}"
+        return render_template("F10_Calc_Adiantamento.html", **ctx)
+
+    com_adianta   = [f for f in funcionarios if f["valor_calc"] is not None]
+    total_cents   = sum(f["valor_calc"] for f in com_adianta)
+    sem_count     = len(funcionarios) - len(com_adianta)
+
+    ctx.update(
+        aviso_verba=bool(verbas_ocupadas),
+        verbas_ocupadas=sorted(verbas_ocupadas),
+        verba_usar=verba_usar,
+        dsc_verba=dsc_verba,
+        funcionarios=funcionarios,
+        sem_adiantamento=sem_count,
+        total_com=len(com_adianta),
+        total_funcs=len(funcionarios),
+        total_fmt=_fmt_reais(total_cents),
+    )
+    return render_template("F10_Calc_Adiantamento.html", **ctx)
+
+
+@app.route("/api/calcular_adiantamento", methods=["POST"])
+def api_calcular_adiantamento():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+
+    folha_int  = int(anomes)
+    folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
+    if folha_tipo not in ("N", "F", "R"):
+        folha_tipo = "N"
+
+    # Percentual da empresa
+    per_empresa = None
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("per_adiantamento")
+                 .eq("id_empresa", id_empresa)
+                 .limit(1).execute())
+        if r_emp.data:
+            per_empresa = r_emp.data[0].get("per_adiantamento")
+    except Exception:
+        pass
+
+    # Verba disponível
+    verbas_todas    = list(VERBAS_ADIANTAMENTO)
+    verbas_ocupadas = []
+    try:
+        r_ocu = (supabase.table("tab_mov")
+                 .select("cod_verba")
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      folha_int)
+                 .eq("situacao",   "A")
+                 .in_("cod_verba", verbas_todas)
+                 .execute())
+        verbas_ocupadas = list({r["cod_verba"] for r in (r_ocu.data or [])})
+    except Exception:
+        pass
+
+    verba_usar = next((v for v in verbas_todas if v not in verbas_ocupadas), None)
+    if verba_usar is None:
+        return jsonify({"ok": False, "msg": "Todas as verbas (161–164) já utilizadas nesta folha."})
+
+    # Funcionários e cálculo
+    gravados = 0
+    erros    = 0
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, vrsalfx, dtadm, per_adianta, valor_adianta")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao",   "A")
+                 .execute())
+        for f in (r_cad.data or []):
+            dtadm_raw = str(f.get("dtadm") or "")
+            if len(dtadm_raw) >= 6 and dtadm_raw[:6] > anomes:
+                continue
+            vrsalfx  = f.get("vrsalfx") or 0
+            per_ind  = f.get("per_adianta")
+            val_fixo = f.get("valor_adianta")
+            mat      = f.get("matricula")
+
+            if val_fixo is not None:
+                valor = int(val_fixo)
+            elif per_ind is not None:
+                valor = round(vrsalfx * int(per_ind) / 100)
+            elif per_empresa is not None:
+                valor = round(vrsalfx * int(per_empresa) / 100)
+            else:
+                continue  # sem adiantamento configurado
+
+            if valor <= 0:
+                continue
+
+            try:
+                supabase.table("tab_mov").insert({
+                    "id_cliente": id_cliente,
+                    "id_empresa": id_empresa,
+                    "situacao":   "A",
+                    "matricula":  int(mat),
+                    "folha":      folha_int,
+                    "folha_tipo": folha_tipo,
+                    "cod_verba":  verba_usar,
+                    "qtd":        0,
+                    "valor":      valor,
+                    "lote":       0,
+                    "origem":     "C",
+                    "controle":   0,
+                    "os":         0,
+                }).execute()
+                gravados += 1
+            except Exception:
+                erros += 1
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+    if erros and not gravados:
+        return jsonify({"ok": False, "msg": f"{erros} erro(s) ao gravar. Nenhum adiantamento foi salvo."})
+    if erros:
+        return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
+                        "msg": f"{erros} erro(s) parciais."})
+    return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar})
+
+
+# =========================================================
+# LISTAGEM DE ADIANTAMENTOS
+# =========================================================
+VERBAS_ADIANTAMENTO = (161, 162, 163, 164)
+
+@app.route("/listagem_adiantamentos")
+def listagem_adiantamentos():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    # Folhas que já têm adiantamentos lançados
+    folhas_disponiveis = []
+    try:
+        r = (supabase.table("tab_mov")
+             .select("folha")
+             .eq("id_empresa", id_empresa)
+             .eq("id_cliente", id_cliente)
+             .eq("situacao", "A")
+             .in_("cod_verba", list(VERBAS_ADIANTAMENTO))
+             .execute())
+        vistos = set()
+        for row in (r.data or []):
+            f = row.get("folha")
+            if f and f not in vistos:
+                vistos.add(f)
+                folhas_disponiveis.append({"folha": f})
+        folhas_disponiveis.sort(key=lambda x: x["folha"], reverse=True)
+    except Exception:
+        pass
+
+    # Garante que a folha atual aparece no seletor, mesmo sem registros
+    folha_sel = int(anomes) if anomes else None
+    if folha_sel and not any(f["folha"] == folha_sel for f in folhas_disponiveis):
+        folhas_disponiveis.insert(0, {"folha": folha_sel})
+
+    return render_template(
+        "F10_Rel_Adiantamentos.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_selecionada=folha_sel,
+        folhas_disponiveis=folhas_disponiveis,
+    )
+
+
+@app.route("/api/adiantamento_listagem")
+def api_adiantamento_listagem():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    folha_str = request.args.get("folha", "").strip()
+    if not folha_str:
+        return jsonify({"ok": False, "msg": "Folha não informada."})
+    try:
+        folha = int(folha_str)
+    except ValueError:
+        return jsonify({"ok": False, "msg": "Folha inválida."})
+
+    # Registros de adiantamento do tab_mov
+    try:
+        r_mov = (supabase.table("tab_mov")
+                 .select("id, matricula, cod_verba, valor")
+                 .eq("id_empresa", id_empresa)
+                 .eq("id_cliente", id_cliente)
+                 .eq("folha",      folha)
+                 .eq("situacao",   "A")
+                 .in_("cod_verba", list(VERBAS_ADIANTAMENTO))
+                 .order("matricula")
+                 .execute())
+        registros_raw = r_mov.data or []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+    if not registros_raw:
+        return jsonify({"ok": True, "registros": []})
+
+    # Nomes dos funcionários
+    mats = list({r["matricula"] for r in registros_raw if r.get("matricula")})
+    nomes_map = {}
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer")
+                 .eq("id_empresa", id_empresa)
+                 .in_("matricula", mats)
+                 .execute())
+        for f in (r_cad.data or []):
+            nomes_map[f["matricula"]] = (f.get("nome") or f.get("nomer") or "").strip()
+    except Exception:
+        pass
+
+    # Descrições das verbas
+    verbas_map = {}
+    try:
+        r_v = (supabase.table("tab_rubrica")
+               .select("cod_rubr, dsc_rubr")
+               .in_("cod_rubr", list(VERBAS_ADIANTAMENTO))
+               .execute())
+        for v in (r_v.data or []):
+            verbas_map[v["cod_rubr"]] = v.get("dsc_rubr") or ""
+    except Exception:
+        pass
+
+    registros = [
+        {
+            "id":        r["id"],
+            "matricula": r["matricula"],
+            "nome":      nomes_map.get(r["matricula"], ""),
+            "cod_verba": r["cod_verba"],
+            "dsc_rubr":  verbas_map.get(r["cod_verba"], ""),
+            "valor":     r.get("valor") or 0,
+        }
+        for r in registros_raw
+    ]
+
+    return jsonify({"ok": True, "registros": registros})
+
+
+@app.route("/api/adiantamento_excluir", methods=["POST"])
+def api_adiantamento_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    data = request.get_json(force=True) or {}
+    id_mov = data.get("id")
+    if not id_mov:
+        return jsonify({"ok": False, "msg": "ID não informado."})
+    try:
+        (supabase.table("tab_mov")
+         .update({"situacao": "D"})
+         .eq("id",         int(id_mov))
+         .eq("id_empresa", id_empresa)
+         .in_("cod_verba", list(VERBAS_ADIANTAMENTO))
+         .execute())
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+
+# =========================================================
 # START
 # =========================================================
 if __name__ == "__main__":

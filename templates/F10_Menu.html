@@ -169,6 +169,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     background: #f0fdfa; border-color: #5eead4; color: #0f766e; font-weight: 700;
 }
 .nav-item.acao-gerador:hover { background: #ccfbf1; border-color: #2dd4bf; color: #0d6b61; }
+.nav-item.acao-adiantamento {
+    background: #fffbeb; border-color: #fcd34d; color: #92400e; font-weight: 700;
+}
+.nav-item.acao-adiantamento:hover { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
 .grupo-coluna { display: flex; flex-direction: column; gap: 8px; }
 .nav-quebra   { width: 100%; height: 0; }
 
@@ -442,6 +446,12 @@ const modulos = {
                 { icone: '📄', nome: 'Memória de Cálculo',        href: '/memoria_calculo',     ok: true },
                 { icone: '🔁', nome: 'Recalcular Funcionário',    href: '#' },
                 { icone: '⚠️', nome: 'Verificar Inconsistências', href: '#' },
+            ]},
+            { nome: 'Adiantamento Quinzenal', itens: [
+                { icone: '💰', nome: 'Calcular Adiantamento',    href: '/calcular_adiantamento', ok: true, bloqueioFolha: true, classe: 'acao-adiantamento' },
+                { icone: '✏️', nome: 'Informar Adiantamento',     href: '/informar_adiantamento', ok: true },
+                { icone: '📋', nome: 'Listagem de Adiantamentos', href: '/listagem_adiantamentos', ok: true },
+                { icone: '🧾', nome: 'Recibo do Adiantamento',    href: '#' },
             ]},
             { nome: 'Outros Cálculos', itens: [
                 { icone: '🎁', nome: 'Calcular 13º Salário', href: '#' },

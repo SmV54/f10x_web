@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Informar Adiantamento</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff; color: #111827; border: 2px solid #86efac;
+}
+.badge-sem-folha { color: #991b1b; border-color: #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 960px; margin: 24px auto; padding: 0 20px 60px; }
+
+/* ── CARD ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 20px; overflow: hidden;
+}
+.card-titulo {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.card-corpo { padding: 20px; }
+
+/* ── SELEÇÃO DE MODO ── */
+.modos-grid {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 18px;
+}
+.modo-card {
+    border: 2px solid var(--border); border-radius: 12px; padding: 14px 16px;
+    cursor: pointer; transition: 0.15s; user-select: none;
+    display: flex; flex-direction: column; gap: 6px;
+}
+.modo-card:hover { border-color: #93c5fd; background: #f8fbff; }
+.modo-card.ativo { border-color: var(--accent); background: #eff6ff; }
+.modo-card-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; font-weight: 600; color: var(--text-head);
+}
+.modo-card-label input[type="radio"] { accent-color: var(--accent); flex-shrink: 0; }
+.modo-card-desc { font-size: 11px; color: #64748b; line-height: 1.4; padding-left: 20px; }
+
+/* ── BARRA DE AÇÃO RÁPIDA ── */
+.acao-rapida {
+    display: flex; align-items: center; gap: 10px;
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; font-size: 12px; color: #475569;
+}
+.acao-rapida label { font-weight: 600; white-space: nowrap; }
+.inp-pct {
+    width: 72px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: center;
+    outline: none; transition: border-color 0.15s;
+}
+.inp-pct:focus { border-color: var(--accent); }
+.inp-valor-rapido {
+    width: 120px; padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right;
+    outline: none; transition: border-color 0.15s;
+}
+.inp-valor-rapido:focus { border-color: var(--accent); }
+.btn-aplicar {
+    background: var(--accent); color: #fff; border: none; border-radius: 7px;
+    padding: 6px 14px; font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: 0.15s; white-space: nowrap;
+}
+.btn-aplicar:hover { background: #1a5fb8; }
+.acao-nota { font-size: 11px; color: #94a3b8; margin-left: auto; white-space: nowrap; }
+
+/* ── TABELA DE FUNCIONÁRIOS ── */
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    background: #f1f5f9; padding: 9px 12px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+thead th.th-r { text-align: right; }
+tbody tr { border-bottom: 1px solid #f1f5f9; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #fafbfc; }
+tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
+.td-mat   { font-family: var(--mono); font-size: 11px; color: #64748b; width: 60px; }
+.td-nome  { font-weight: 500; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-sal   { font-family: var(--mono); font-size: 12px; text-align: right; color: #374151; width: 110px; }
+.td-input { width: 110px; text-align: right; }
+.td-est   { font-family: var(--mono); font-size: 12px; text-align: right; width: 110px; color: #1d4ed8; font-weight: 600; }
+.td-est.vazio { color: #cbd5e1; font-weight: 400; }
+
+.inp-pct-row {
+    width: 68px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: center;
+    outline: none; transition: border-color 0.15s;
+}
+.inp-pct-row:focus { border-color: var(--accent); }
+.inp-pct-row[readonly] { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; cursor: default; }
+
+.inp-val-row {
+    width: 100px; padding: 4px 7px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right;
+    outline: none; transition: border-color 0.15s;
+}
+.inp-val-row:focus { border-color: var(--accent); }
+
+.sufixo-pct { font-size: 11px; color: #94a3b8; margin-left: 2px; }
+
+/* ── RODAPÉ TABELA ── */
+.tabela-rodape {
+    padding: 10px 16px; background: #f8fafc; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 16px; font-size: 12px; color: #64748b;
+}
+.rodape-total { font-weight: 700; color: #1e293b; font-family: var(--mono); font-size: 13px; }
+.rodape-acoes { margin-left: auto; display: flex; gap: 8px; }
+.btn-limpar {
+    background: #fff1f2; border: 1px solid #fecdd3; color: #be123c;
+    border-radius: 7px; padding: 7px 16px; font-family: var(--sans);
+    font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.15s;
+}
+.btn-limpar:hover { background: #ffe4e6; border-color: #fb7185; }
+.btn-gravar {
+    background: #16a34a; color: #fff; border: none; border-radius: 7px;
+    padding: 7px 20px; font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: 0.15s;
+}
+.btn-gravar:hover { background: #15803d; }
+.btn-gravar:disabled { background: #94a3b8; cursor: not-allowed; }
+
+/* ── AVISO SEM FOLHA ── */
+.aviso-sem-folha {
+    background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;
+    padding: 18px 20px; color: #9a3412; font-size: 13px; font-weight: 500;
+    text-align: center;
+}
+
+/* ── MSG FEEDBACK ── */
+.msg-topo {
+    padding: 9px 16px; border-radius: 8px; font-size: 12px; font-weight: 500;
+    margin-bottom: 12px; display: none;
+}
+.msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+
+/* ── MODAL LIMPAR ── */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999; backdrop-filter: blur(2px);
+}
+.modal-box {
+    background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+    padding: 32px 28px 24px; max-width: 380px; width: 90%; text-align: center;
+}
+.modal-icone { width: 50px; height: 50px; border-radius: 50%; background: #fee2e2;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; margin: 0 auto 16px; }
+.modal-titulo { font-size: 16px; font-weight: 700; color: #1e293b; margin-bottom: 6px; }
+.modal-desc   { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+.modal-acoes  { display: flex; gap: 10px; justify-content: center; }
+.btn-modal-ok  {
+    background: #dc2626; color: #fff; border: none; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    padding: 9px 20px; cursor: pointer; transition: 0.15s;
+}
+.btn-modal-ok:hover { background: #b91c1c; }
+.btn-modal-sec {
+    background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+    border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 500;
+    padding: 9px 20px; cursor: pointer; transition: 0.15s;
+}
+.btn-modal-sec:hover { background: #e2e8f0; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Informar Adiantamento Quinzenal</span>
+        {% if anomes_atual %}
+        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+        {% else %}
+        <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+{% if not anomes_atual %}
+<div class="aviso-sem-folha">⚠️ Nenhuma folha ativa. Selecione o mês/ano no menu antes de continuar.</div>
+{% else %}
+
+<div id="msgTopo" class="msg-topo"></div>
+
+<!-- ── CARD: MODO ── -->
+<div class="card">
+    <div class="card-titulo">
+        <span>Modo de Cálculo</span>
+    </div>
+    <div class="card-corpo">
+
+        <div class="modos-grid">
+            <div class="modo-card ativo" id="modoCard-E" onclick="selecionarModo('E')">
+                <div class="modo-card-label">
+                    <input type="radio" name="modo" id="radio-E" value="E" checked>
+                    <label for="radio-E">% da Empresa</label>
+                </div>
+                <div class="modo-card-desc">Aplica o mesmo percentual configurado para a empresa a todos os funcionários.</div>
+            </div>
+            <div class="modo-card" id="modoCard-P" onclick="selecionarModo('P')">
+                <div class="modo-card-label">
+                    <input type="radio" name="modo" id="radio-P" value="P">
+                    <label for="radio-P">% Individual</label>
+                </div>
+                <div class="modo-card-desc">Define um percentual diferente para cada funcionário individualmente.</div>
+            </div>
+            <div class="modo-card" id="modoCard-V" onclick="selecionarModo('V')">
+                <div class="modo-card-label">
+                    <input type="radio" name="modo" id="radio-V" value="V">
+                    <label for="radio-V">Valor Fixo</label>
+                </div>
+                <div class="modo-card-desc">Informa um valor em reais fixo por funcionário, independente do salário.</div>
+            </div>
+        </div>
+
+        <!-- Barra modo E -->
+        <div class="acao-rapida" id="barraModoE">
+            <label>Percentual da empresa:</label>
+            <input type="number" id="pctEmpresa" class="inp-pct"
+                   min="10" max="60" value="{{ per_empresa or '' }}"
+                   placeholder="–" oninput="aplicarModoE()">
+            <span>%</span>
+            <span class="acao-nota">Aplica a todos ao digitar</span>
+        </div>
+
+        <!-- Barra modo P -->
+        <div class="acao-rapida" id="barraModoP" style="display:none;">
+            <label>Preencher todos com:</label>
+            <input type="number" id="pctTodos" class="inp-pct"
+                   min="10" max="60" placeholder="%" oninput="" value="{{ per_empresa or '' }}">
+            <span>%</span>
+            <button class="btn-aplicar" onclick="preencherTodosP()">Aplicar a todos</button>
+            <span class="acao-nota">ou edite linha a linha na tabela</span>
+        </div>
+
+        <!-- Barra modo V -->
+        <div class="acao-rapida" id="barraModoV" style="display:none;">
+            <label>Preencher todos com:</label>
+            <input type="text" id="valorTodos" class="inp-valor-rapido"
+                   placeholder="R$ 0,00" oninput="mascaraValor(this)">
+            <button class="btn-aplicar" onclick="preencherTodosV()">Aplicar a todos</button>
+            <span class="acao-nota">ou edite linha a linha na tabela</span>
+        </div>
+
+    </div>
+</div>
+
+<!-- ── CARD: FUNCIONÁRIOS ── -->
+<div class="card">
+    <div class="card-titulo">
+        <span id="tituloFuncionarios">Funcionários</span>
+        <span id="contadorFunc" style="font-size:11px;font-weight:400;color:#64748b;"></span>
+    </div>
+
+    <div class="tabela-wrap">
+        <table id="tabelaFunc">
+            <thead>
+                <tr>
+                    <th>Mat.</th>
+                    <th>Nome</th>
+                    <th class="th-r">Sal. Base</th>
+                    <th class="th-r" id="thEntrada">% Adiant.</th>
+                    <th class="th-r" id="thEstimado">Estimado</th>
+                </tr>
+            </thead>
+            <tbody id="corpoTabela"></tbody>
+        </table>
+    </div>
+
+    <div class="tabela-rodape">
+        <span id="rodapeTotal">Total estimado: <span class="rodape-total" id="totalEstimado">—</span></span>
+        <div class="rodape-acoes">
+            <button class="btn-limpar" onclick="confirmarLimpar()">Limpar</button>
+            <button class="btn-gravar" id="btnGravar" onclick="gravar()">Gravar</button>
+        </div>
+    </div>
+</div>
+
+{% endif %}
+</div>
+
+<!-- MODAL LIMPAR -->
+<div class="modal-overlay" id="modalLimpar" style="display:none;">
+    <div class="modal-box">
+        <div class="modal-icone">🗑️</div>
+        <div class="modal-titulo">Limpar Adiantamentos?</div>
+        <div class="modal-desc">Todos os adiantamentos informados para esta folha serão apagados.</div>
+        <div class="modal-acoes">
+            <button class="btn-modal-ok" onclick="executarLimpar()">Limpar</button>
+            <button class="btn-modal-sec" onclick="fecharModal()">Cancelar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const FUNCIONARIOS = {{ funcionarios | tojson }};
+const PER_EMPRESA  = {{ per_empresa  | tojson }};
+
+let modoAtivo = 'E';
+
+// ── inicialização ──
+(function init() {
+    const total = FUNCIONARIOS.length;
+    document.getElementById('contadorFunc').textContent =
+        total === 0 ? 'Nenhum funcionário ativo' : `${total} funcionário${total !== 1 ? 's' : ''} ativo${total !== 1 ? 's' : ''}`;
+
+    // Detecta modo pelos campos já preenchidos no cadastro
+    const comValor = FUNCIONARIOS.some(f => f.valor_adianta != null);
+    const comPct   = FUNCIONARIOS.some(f => f.per_adianta  != null);
+    const modoInicial = comValor ? 'V' : comPct ? 'P' : 'E';
+
+    selecionarModo(modoInicial, true);
+})();
+
+function selecionarModo(modo, init) {
+    modoAtivo = modo;
+
+    ['E','P','V'].forEach(m => {
+        document.getElementById(`modoCard-${m}`).classList.toggle('ativo', m === modo);
+        document.getElementById(`radio-${m}`).checked = (m === modo);
+    });
+
+    document.getElementById('barraModoE').style.display = modo === 'E' ? 'flex' : 'none';
+    document.getElementById('barraModoP').style.display = modo === 'P' ? 'flex' : 'none';
+    document.getElementById('barraModoV').style.display = modo === 'V' ? 'flex' : 'none';
+
+    const thEntrada  = document.getElementById('thEntrada');
+    const thEstimado = document.getElementById('thEstimado');
+    if (modo === 'V') {
+        thEntrada.textContent  = 'Valor (R$)';
+        thEstimado.textContent = '';
+        thEstimado.style.display = 'none';
+    } else {
+        thEntrada.textContent  = '% Adiant.';
+        thEstimado.textContent = 'Estimado';
+        thEstimado.style.display = '';
+    }
+
+    renderizarTabela(init);
+}
+
+function renderizarTabela(manterValores) {
+    const tbody = document.getElementById('corpoTabela');
+    tbody.innerHTML = '';
+
+    FUNCIONARIOS.forEach(f => {
+        const salCents = f.vrsalfx || 0;
+        const salFmt   = fmtReais(salCents);
+        const tr       = document.createElement('tr');
+
+        let celEntrada = '';
+        let celEstimado = '';
+
+        if (modoAtivo === 'E') {
+            const pct = _getPctEmpresa();
+            celEntrada  = `<td class="td-input">
+                <span style="font-family:var(--mono);font-size:13px;font-weight:600;color:#374151;">
+                    ${pct !== null ? pct + '%' : '—'}
+                </span>
+            </td>`;
+            celEstimado = `<td class="td-est" id="est-${f.matricula}">
+                ${pct !== null ? fmtReais(Math.round(salCents * pct / 100)) : '—'}
+            </td>`;
+
+        } else if (modoAtivo === 'P') {
+            const pctVal = manterValores && f.per_adianta != null ? f.per_adianta : '';
+            celEntrada  = `<td class="td-input">
+                <input type="number" class="inp-pct-row" min="10" max="60"
+                       value="${pctVal}" placeholder="10-60"
+                       data-mat="${f.matricula}" data-sal="${salCents}"
+                       oninput="calcEstimado(this)" onblur="validarPct(this)">
+                <span class="sufixo-pct">%</span>
+            </td>`;
+            const estInicial = pctVal !== '' ? fmtReais(Math.round(salCents * pctVal / 100)) : '—';
+            celEstimado = `<td class="td-est" id="est-${f.matricula}">${estInicial}</td>`;
+
+        } else { // V
+            const valFmt = manterValores && f.valor_adianta != null ? fmtReaisInput(f.valor_adianta) : '';
+            celEntrada  = `<td class="td-input">
+                <input type="text" class="inp-val-row"
+                       value="${valFmt}" placeholder="R$ 0,00"
+                       data-mat="${f.matricula}"
+                       oninput="mascaraValorRow(this)" onfocus="this.select()">
+            </td>`;
+            celEstimado = `<td style="display:none;"></td>`;
+        }
+
+        tr.innerHTML = `
+            <td class="td-mat">${String(f.matricula).padStart(4,'0')}</td>
+            <td class="td-nome" title="${_esc(f.nome)}">${_esc(f.nome)}</td>
+            <td class="td-sal">${salFmt}</td>
+            ${celEntrada}
+            ${celEstimado}
+        `;
+        tbody.appendChild(tr);
+    });
+
+    atualizarTotal();
+}
+
+function _getPctEmpresa() {
+    const v = document.getElementById('pctEmpresa').value.trim();
+    const n = parseInt(v, 10);
+    return (!isNaN(n) && n >= 10 && n <= 60) ? n : null;
+}
+
+function aplicarModoE() {
+    renderizarTabela(false);
+}
+
+function preencherTodosP() {
+    const v = parseInt(document.getElementById('pctTodos').value, 10);
+    if (isNaN(v) || v < 10 || v > 60) {
+        mostrarMsg('Informe um percentual entre 10 e 60.', 'err');
+        return;
+    }
+    document.querySelectorAll('.inp-pct-row').forEach(inp => {
+        inp.value = v;
+        calcEstimado(inp);
+    });
+}
+
+function preencherTodosV() {
+    const raw = document.getElementById('valorTodos').value;
+    const cents = parseCents(raw);
+    if (cents <= 0) {
+        mostrarMsg('Informe um valor válido.', 'err');
+        return;
+    }
+    document.querySelectorAll('.inp-val-row').forEach(inp => {
+        inp.value = fmtReaisInput(cents);
+        inp.dataset.cents = cents;
+    });
+    atualizarTotal();
+}
+
+function calcEstimado(inp) {
+    const pct    = parseInt(inp.value, 10);
+    const salCts = parseInt(inp.dataset.sal, 10) || 0;
+    const mat    = inp.dataset.mat;
+    const cel    = document.getElementById(`est-${mat}`);
+    if (!cel) return;
+    if (!isNaN(pct) && pct >= 10 && pct <= 60 && salCts > 0) {
+        cel.textContent = fmtReais(Math.round(salCts * pct / 100));
+        cel.classList.remove('vazio');
+    } else {
+        cel.textContent = '—';
+        cel.classList.add('vazio');
+    }
+    atualizarTotal();
+}
+
+function validarPct(inp) {
+    const v = parseInt(inp.value, 10);
+    if (!isNaN(v) && (v < 10 || v > 60)) {
+        inp.style.borderColor = '#dc2626';
+    } else {
+        inp.style.borderColor = '';
+    }
+}
+
+function atualizarTotal() {
+    let total = 0;
+    let valido = false;
+
+    if (modoAtivo === 'E') {
+        const pct = _getPctEmpresa();
+        if (pct !== null) {
+            FUNCIONARIOS.forEach(f => {
+                total += Math.round((f.vrsalfx || 0) * pct / 100);
+            });
+            valido = true;
+        }
+    } else if (modoAtivo === 'P') {
+        document.querySelectorAll('.inp-pct-row').forEach(inp => {
+            const pct = parseInt(inp.value, 10);
+            const sal = parseInt(inp.dataset.sal, 10) || 0;
+            if (!isNaN(pct) && pct >= 10 && pct <= 60) {
+                total += Math.round(sal * pct / 100);
+                valido = true;
+            }
+        });
+    } else { // V
+        document.querySelectorAll('.inp-val-row').forEach(inp => {
+            const c = parseCents(inp.value);
+            if (c > 0) { total += c; valido = true; }
+        });
+    }
+
+    const el = document.getElementById('totalEstimado');
+    el.textContent = valido ? fmtReais(total) : '—';
+}
+
+function mascaraValor(inp) {
+    const digits = inp.value.replace(/\D/g, '');
+    const cents  = parseInt(digits || '0', 10);
+    inp.value = fmtReaisInput(cents);
+    inp.dataset.cents = cents;
+    atualizarTotal();
+}
+
+function mascaraValorRow(inp) {
+    mascaraValor(inp);
+}
+
+// ── gravar ──
+async function gravar() {
+    const btn = document.getElementById('btnGravar');
+    btn.disabled = true;
+
+    const itens = [];
+    let erroValidacao = false;
+
+    if (modoAtivo === 'E') {
+        const pct = _getPctEmpresa();
+        if (pct === null) {
+            mostrarMsg('Informe o percentual da empresa (10–60).', 'err');
+            btn.disabled = false;
+            return;
+        }
+        FUNCIONARIOS.forEach(f => {
+            itens.push({ matricula: f.matricula, percentual: pct, valor: null });
+        });
+
+    } else if (modoAtivo === 'P') {
+        document.querySelectorAll('.inp-pct-row').forEach(inp => {
+            const mat = parseInt(inp.dataset.mat, 10);
+            const pct = parseInt(inp.value, 10);
+            if (isNaN(pct) || pct < 10 || pct > 60) {
+                inp.style.borderColor = '#dc2626';
+                erroValidacao = true;
+                return;
+            }
+            inp.style.borderColor = '';
+            itens.push({ matricula: mat, percentual: pct, valor: null });
+        });
+
+    } else { // V
+        document.querySelectorAll('.inp-val-row').forEach(inp => {
+            const mat   = parseInt(inp.dataset.mat, 10);
+            const cents = parseCents(inp.value);
+            if (cents <= 0) {
+                inp.style.borderColor = '#dc2626';
+                erroValidacao = true;
+                return;
+            }
+            inp.style.borderColor = '';
+            itens.push({ matricula: mat, percentual: null, valor: cents });
+        });
+    }
+
+    if (erroValidacao) {
+        mostrarMsg('Corrija os campos destacados em vermelho.', 'err');
+        btn.disabled = false;
+        return;
+    }
+    if (itens.length === 0) {
+        mostrarMsg('Nenhum funcionário para gravar.', 'err');
+        btn.disabled = false;
+        return;
+    }
+
+    try {
+        const r = await fetch('/api/adiantamento_gravar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ modo: modoAtivo, itens }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            // Atualiza FUNCIONARIOS local para refletir o que foi gravado
+            itens.forEach(item => {
+                const f = FUNCIONARIOS.find(x => x.matricula === item.matricula);
+                if (!f) return;
+                f.per_adianta   = modoAtivo !== 'V' ? item.percentual : null;
+                f.valor_adianta = modoAtivo === 'V' ? item.valor      : null;
+            });
+            mostrarMsg(`${itens.length} adiantamento${itens.length !== 1 ? 's' : ''} gravado${itens.length !== 1 ? 's' : ''} com sucesso.`, 'ok');
+        } else {
+            mostrarMsg(d.msg || 'Erro ao gravar.', 'err');
+        }
+    } catch(e) {
+        mostrarMsg('Erro de comunicação com o servidor.', 'err');
+    }
+
+    btn.disabled = false;
+}
+
+// ── limpar ──
+function confirmarLimpar() {
+    document.getElementById('modalLimpar').style.display = 'flex';
+}
+function fecharModal() {
+    document.getElementById('modalLimpar').style.display = 'none';
+}
+async function executarLimpar() {
+    fecharModal();
+    try {
+        const r = await fetch('/api/adiantamento_limpar', { method: 'POST' });
+        const d = await r.json();
+        if (d.ok) {
+            FUNCIONARIOS.forEach(f => { f.per_adianta = null; f.valor_adianta = null; });
+            selecionarModo(modoAtivo, false);
+            mostrarMsg('Adiantamentos dos funcionários limpos.', 'ok');
+        } else {
+            mostrarMsg(d.msg || 'Erro ao limpar.', 'err');
+        }
+    } catch(e) {
+        mostrarMsg('Erro de comunicação com o servidor.', 'err');
+    }
+}
+
+// ── utilidades ──
+function fmtReais(cents) {
+    if (cents == null || isNaN(cents)) return '—';
+    return 'R$ ' + (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function fmtReaisInput(cents) {
+    if (!cents) return '';
+    return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function parseCents(str) {
+    if (!str) return 0;
+    const digits = str.replace(/\D/g, '');
+    return parseInt(digits || '0', 10);
+}
+function _esc(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function mostrarMsg(texto, tipo) {
+    const el = document.getElementById('msgTopo');
+    el.textContent = texto;
+    el.className   = `msg-topo msg-${tipo}`;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 4000);
+}
+</script>
+
+</body>
+</html>

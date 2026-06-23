@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Calcular Adiantamento</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+               display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff; color: #111827; border: 2px solid #86efac;
+}
+.badge-sem-folha { color: #991b1b; border-color: #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 860px; margin: 24px auto; padding: 0 20px 60px; }
+
+/* ── ALERTAS ── */
+.alerta {
+    display: flex; align-items: flex-start; gap: 12px;
+    border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px;
+}
+.alerta-aviso  { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.alerta-erro   { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.alerta-ok     { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.alerta-icone  { font-size: 18px; flex-shrink: 0; line-height: 1.3; }
+.alerta strong { font-weight: 700; }
+
+/* ── CARD ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 16px;
+}
+.card-titulo {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.badge-verba {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #fffbeb; border: 1px solid #fcd34d; color: #92400e;
+    border-radius: 7px; padding: 3px 10px; font-family: var(--mono);
+    font-size: 11px; font-weight: 700;
+}
+.badge-verba.v161 { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+
+/* ── TABELA ── */
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    background: #f1f5f9; padding: 9px 14px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+thead th.th-r { text-align: right; }
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #fafbfc; }
+tbody tr.sem-adianta { opacity: 0.45; }
+tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
+.td-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 58px; }
+.td-nome { font-weight: 500; max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-sal  { font-family: var(--mono); font-size: 12px; text-align: right; color: #374151; width: 110px; }
+.td-modo { font-size: 11px; color: #64748b; width: 120px; }
+.td-val  { font-family: var(--mono); font-size: 13px; font-weight: 700; text-align: right;
+           color: #1d4ed8; width: 110px; }
+.td-val.sem { color: #cbd5e1; font-weight: 400; font-style: italic; }
+
+/* ── RODAPÉ TABELA ── */
+.tabela-rodape {
+    padding: 10px 16px; background: #f8fafc; border-top: 2px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+}
+.rodape-info  { font-size: 11px; color: #94a3b8; }
+.rodape-total { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.rodape-label { font-size: 12px; color: #64748b; font-weight: 600; }
+.rodape-valor { font-family: var(--mono); font-size: 14px; font-weight: 700; color: #1e293b; }
+
+/* ── BOTÃO CALCULAR ── */
+.barra-acao {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    margin-top: 4px;
+}
+.btn-calcular {
+    background: #f59e0b; color: #fff; border: none; border-radius: 9px;
+    padding: 11px 28px; font-family: var(--sans); font-size: 14px; font-weight: 700;
+    cursor: pointer; transition: 0.15s; display: flex; align-items: center; gap: 8px;
+}
+.btn-calcular:hover    { background: #d97706; }
+.btn-calcular:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-listagem {
+    background: var(--surface); border: 1px solid var(--border); color: #374151;
+    border-radius: 9px; padding: 11px 20px; font-family: var(--sans);
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-listagem:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── AVISO SEM FOLHA ── */
+.aviso-sem-folha {
+    background: #fff7ed; border: 1px solid #fed7aa; border-radius: 10px;
+    padding: 18px 20px; color: #9a3412; font-size: 13px; text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Calcular Adiantamento Quinzenal</span>
+        {% if anomes_atual %}
+        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+        {% else %}
+        <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+{% if not anomes_atual %}
+<div class="aviso-sem-folha">⚠️ Nenhuma folha ativa. Selecione o mês/ano no menu antes de continuar.</div>
+
+{% elif erro_critico %}
+<div class="alerta alerta-erro">
+    <span class="alerta-icone">🚫</span>
+    <div><strong>Não é possível calcular.</strong> {{ erro_critico }}</div>
+</div>
+
+{% else %}
+
+{% if aviso_verba %}
+<div class="alerta alerta-aviso">
+    <span class="alerta-icone">⚠️</span>
+    <div>
+        <strong>Verbas {{ verbas_ocupadas | join(', ') }} já utilizadas nesta folha.</strong>
+        O adiantamento será lançado na verba <strong>{{ verba_usar }}</strong>.
+    </div>
+</div>
+{% endif %}
+
+{% if sem_adiantamento %}
+<div class="alerta alerta-aviso">
+    <span class="alerta-icone">ℹ️</span>
+    <div>
+        <strong>{{ sem_adiantamento }} funcionário{{ 's' if sem_adiantamento != 1 else '' }}</strong>
+        sem adiantamento configurado {{ 'serão' if sem_adiantamento != 1 else 'será' }} ignorado{{ 's' if sem_adiantamento != 1 else '' }}.
+    </div>
+</div>
+{% endif %}
+
+<!-- CARD: PRÉVIA -->
+<div class="card">
+    <div class="card-titulo">
+        <span>Prévia do Cálculo</span>
+        <span class="badge-verba {% if verba_usar == 161 %}v161{% endif %}">
+            Verba {{ verba_usar }}{% if dsc_verba %} — {{ dsc_verba }}{% endif %}
+        </span>
+    </div>
+
+    <div class="tabela-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Mat.</th>
+                    <th>Nome</th>
+                    <th class="th-r">Sal. Base</th>
+                    <th>Modo</th>
+                    <th class="th-r">Adiantamento</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in funcionarios %}
+                <tr {% if f.valor_calc is none %}class="sem-adianta"{% endif %}>
+                    <td class="td-mat">{{ '%04d' % f.matricula }}</td>
+                    <td class="td-nome" title="{{ f.nome }}">{{ f.nome }}</td>
+                    <td class="td-sal">{{ f.sal_fmt }}</td>
+                    <td class="td-modo">{{ f.modo_desc }}</td>
+                    <td class="td-val {% if f.valor_calc is none %}sem{% endif %}">
+                        {{ f.valor_fmt if f.valor_calc is not none else 'sem config.' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="tabela-rodape">
+        <span class="rodape-info">{{ total_com }} de {{ total_funcs }} funcionário{{ 's' if total_funcs != 1 else '' }} com adiantamento</span>
+        <div class="rodape-total">
+            <span class="rodape-label">Total:</span>
+            <span class="rodape-valor">{{ total_fmt }}</span>
+        </div>
+    </div>
+</div>
+
+<!-- AÇÕES -->
+<div class="barra-acao">
+    <a class="btn-listagem" href="/listagem_adiantamentos">📋 Ver Listagem</a>
+    {% if total_com > 0 %}
+    <button class="btn-calcular" id="btnCalc" onclick="calcular()">
+        💰 Calcular Adiantamento
+    </button>
+    {% endif %}
+</div>
+
+<div id="msgResultado" style="margin-top:14px;display:none;"></div>
+
+{% endif %}
+</div>
+
+<script>
+async function calcular() {
+    const btn = document.getElementById('btnCalc');
+    btn.disabled = true;
+    btn.textContent = 'Calculando…';
+
+    try {
+        const r = await fetch('/api/calcular_adiantamento', { method: 'POST' });
+        const d = await r.json();
+        const el = document.getElementById('msgResultado');
+        el.style.display = 'block';
+        if (d.ok) {
+            el.innerHTML = `<div class="alerta alerta-ok">
+                <span class="alerta-icone">✅</span>
+                <div><strong>${d.gravados} adiantamento${d.gravados !== 1 ? 's' : ''} gravado${d.gravados !== 1 ? 's' : ''}</strong>
+                na verba ${d.verba} com sucesso.
+                <a href="/listagem_adiantamentos" style="margin-left:12px;color:#166534;font-weight:600;">Ver listagem →</a></div>
+            </div>`;
+            btn.style.display = 'none';
+        } else {
+            el.innerHTML = `<div class="alerta alerta-erro">
+                <span class="alerta-icone">❌</span>
+                <div><strong>Erro:</strong> ${d.msg || 'Falha ao gravar.'}</div>
+            </div>`;
+            btn.disabled = false;
+            btn.textContent = '💰 Calcular Adiantamento';
+        }
+    } catch(e) {
+        document.getElementById('msgResultado').innerHTML = `<div class="alerta alerta-erro">
+            <span class="alerta-icone">❌</span>
+            <div>Erro de comunicação com o servidor.</div>
+        </div>`;
+        document.getElementById('msgResultado').style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = '💰 Calcular Adiantamento';
+    }
+}
+</script>
+
+</body>
+</html>

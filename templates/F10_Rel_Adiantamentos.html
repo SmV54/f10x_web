@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Listagem de Adiantamentos</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff; color: #111827; border: 2px solid #86efac;
+}
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 860px; margin: 24px auto; padding: 0 20px 60px; }
+
+/* ── FILTRO ── */
+.filtro-bar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 12px 16px;
+}
+.filtro-bar label { font-size: 12px; font-weight: 600; color: #64748b; white-space: nowrap; }
+.sel-folha {
+    padding: 6px 10px; border: 1px solid var(--border); border-radius: 7px;
+    font-family: var(--mono); font-size: 13px; font-weight: 600; outline: none;
+    transition: border-color 0.15s; background: #f8fafc; cursor: pointer;
+}
+.sel-folha:focus { border-color: var(--accent); }
+.btn-buscar {
+    background: var(--accent); color: #fff; border: none; border-radius: 7px;
+    padding: 7px 16px; font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: 0.15s;
+}
+.btn-buscar:hover { background: #1a5fb8; }
+.filtro-resumo { margin-left: auto; font-size: 11px; color: #94a3b8; }
+
+/* ── CARD TABELA ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden;
+}
+.card-titulo {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.card-titulo-right { font-size: 11px; font-weight: 400; color: #94a3b8; }
+
+/* ── TABELA ── */
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    background: #f1f5f9; padding: 9px 14px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+thead th.th-r { text-align: right; }
+tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
+
+.td-mat   { font-family: var(--mono); font-size: 11px; color: #64748b; width: 58px; }
+.td-nome  { font-weight: 500; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-verba { font-size: 12px; color: #374151; }
+.td-cod   { font-family: var(--mono); font-size: 11px; color: #94a3b8; margin-right: 4px; }
+.td-valor { font-family: var(--mono); font-size: 13px; font-weight: 600; text-align: right;
+            color: #1d4ed8; width: 110px; }
+
+/* ── RODAPÉ ── */
+.tabela-rodape {
+    padding: 10px 16px; background: #f8fafc; border-top: 2px solid var(--border);
+    display: flex; align-items: center; justify-content: flex-end; gap: 12px;
+}
+.rodape-label { font-size: 12px; color: #64748b; font-weight: 600; }
+.rodape-total { font-family: var(--mono); font-size: 14px; font-weight: 700; color: #1e293b; }
+
+/* ── VAZIO / LOADING ── */
+.estado-central {
+    padding: 48px 24px; text-align: center; color: #94a3b8; font-size: 14px;
+}
+.estado-central .icone { font-size: 32px; margin-bottom: 10px; }
+.spinner {
+    width: 24px; height: 24px; border: 3px solid #e2e8f0;
+    border-top-color: var(--accent); border-radius: 50%;
+    animation: spin 0.7s linear infinite; margin: 0 auto 10px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-excluir {
+    background: none; border: none; cursor: pointer; padding: 3px 6px;
+    border-radius: 5px; color: #cbd5e1; font-size: 15px; transition: 0.15s;
+    line-height: 1;
+}
+.btn-excluir:hover { background: #fee2e2; color: #dc2626; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Listagem de Adiantamentos Quinzenais</span>
+        {% if anomes_atual %}
+        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- FILTRO -->
+    <div class="filtro-bar">
+        <label>Folha:</label>
+        <select class="sel-folha" id="selFolha">
+            {% for f in folhas_disponiveis %}
+            {% set fs = f.folha | string %}
+            <option value="{{ f.folha }}" {% if f.folha == folha_selecionada %}selected{% endif %}>
+                {{ fs[4:6] }}/{{ fs[:4] }}
+            </option>
+            {% endfor %}
+            {% if not folhas_disponiveis %}
+            <option value="{{ anomes_atual }}">{{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</option>
+            {% endif %}
+        </select>
+        <button class="btn-buscar" onclick="carregar()">Buscar</button>
+        <span class="filtro-resumo" id="resumoFiltro"></span>
+    </div>
+
+    <!-- TABELA -->
+    <div class="card">
+        <div class="card-titulo">
+            <span>Adiantamentos lançados</span>
+            <span class="card-titulo-right">Verbas 161–164 · tab_mov</span>
+        </div>
+
+        <div class="tabela-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mat.</th>
+                        <th>Nome</th>
+                        <th>Verba</th>
+                        <th class="th-r">Valor</th>
+                        <th style="width:36px;"></th>
+                    </tr>
+                </thead>
+                <tbody id="corpoTabela">
+                    <tr>
+                        <td colspan="5">
+                            <div class="estado-central">
+                                <div class="spinner"></div>
+                                Carregando…
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="tabela-rodape" id="rodape" style="display:none;">
+            <span class="rodape-label">Total:</span>
+            <span class="rodape-total" id="totalGeral">—</span>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const ANOMES_ATUAL = {{ anomes_atual | tojson }};
+
+function fmtFolha(f) {
+    const s = String(f);
+    return s.slice(4,6) + '/' + s.slice(0,4);
+}
+function fmtReais(cents) {
+    return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function _esc(s) {
+    return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function carregar() {
+    const folha = document.getElementById('selFolha').value || ANOMES_ATUAL;
+    const tbody  = document.getElementById('corpoTabela');
+    const rodape = document.getElementById('rodape');
+
+    tbody.innerHTML = `<tr><td colspan="4"><div class="estado-central"><div class="spinner"></div>Carregando…</div></td></tr>`;
+    rodape.style.display = 'none';
+    document.getElementById('resumoFiltro').textContent = '';
+
+    try {
+        const r = await fetch(`/api/adiantamento_listagem?folha=${folha}`);
+        const d = await r.json();
+
+        if (!d.ok) {
+            tbody.innerHTML = `<tr><td colspan="4"><div class="estado-central"><div class="icone">⚠️</div>${_esc(d.msg || 'Erro ao carregar.')}</div></td></tr>`;
+            return;
+        }
+
+        const lista = d.registros || [];
+        if (lista.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5"><div class="estado-central"><div class="icone">📭</div>Nenhum adiantamento lançado para esta folha.</div></td></tr>`;
+            document.getElementById('resumoFiltro').textContent = '0 registros';
+            return;
+        }
+
+        renderTabela(lista);
+
+    } catch(e) {
+        tbody.innerHTML = `<tr><td colspan="5"><div class="estado-central"><div class="icone">⚠️</div>Erro de comunicação com o servidor.</div></td></tr>`;
+    }
+}
+
+function renderTabela(lista) {
+    const tbody = document.getElementById('corpoTabela');
+    let total = 0;
+    tbody.innerHTML = lista.map(reg => {
+        total += reg.valor || 0;
+        return `<tr id="row-${reg.id}">
+            <td class="td-mat">${String(reg.matricula).padStart(4,'0')}</td>
+            <td class="td-nome" title="${_esc(reg.nome)}">${_esc(reg.nome)}</td>
+            <td class="td-verba"><span class="td-cod">${reg.cod_verba}</span>${_esc(reg.dsc_rubr || '—')}</td>
+            <td class="td-valor">${fmtReais(reg.valor || 0)}</td>
+            <td style="text-align:center;">
+                <button class="btn-excluir" title="Apagar lançamento"
+                        onclick="excluir(${reg.id}, ${reg.valor || 0})">🗑</button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    atualizarTotal(total);
+    document.getElementById('resumoFiltro').textContent = `${lista.length} registro${lista.length !== 1 ? 's' : ''}`;
+    document.getElementById('rodape').style.display = 'flex';
+}
+
+function atualizarTotal(total) {
+    document.getElementById('totalGeral').textContent = fmtReais(total);
+}
+
+async function excluir(id, valor) {
+    const tr = document.getElementById(`row-${id}`);
+    if (!tr) return;
+
+    tr.style.opacity = '0.4';
+    try {
+        const r = await fetch('/api/adiantamento_excluir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            // Recalcula total subtraindo o valor da linha removida
+            const totalEl = document.getElementById('totalGeral');
+            const totalAtual = parseCents(totalEl.textContent);
+            tr.remove();
+            atualizarTotal(totalAtual - valor);
+            // Atualiza contador
+            const linhas = document.querySelectorAll('#corpoTabela tr').length;
+            document.getElementById('resumoFiltro').textContent =
+                `${linhas} registro${linhas !== 1 ? 's' : ''}`;
+            if (linhas === 0) {
+                document.getElementById('corpoTabela').innerHTML =
+                    `<tr><td colspan="5"><div class="estado-central"><div class="icone">📭</div>Nenhum adiantamento lançado para esta folha.</div></td></tr>`;
+                document.getElementById('rodape').style.display = 'none';
+            }
+        } else {
+            tr.style.opacity = '';
+            alert(d.msg || 'Erro ao apagar.');
+        }
+    } catch(e) {
+        tr.style.opacity = '';
+        alert('Erro de comunicação com o servidor.');
+    }
+}
+
+function parseCents(str) {
+    if (!str) return 0;
+    return Math.round(parseFloat(str.replace(/[^\d,]/g, '').replace(',', '.')) * 100) || 0;
+}
+
+// Carrega ao abrir
+carregar();
+</script>
+
+</body>
+</html>

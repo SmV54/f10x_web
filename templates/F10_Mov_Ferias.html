@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Lançamento de Movimento de Férias</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff3cd; color: #92400e; border: 2px solid #f59e0b;
+}
+
+/* ── BANNER FÉRIAS ── */
+.banner-ferias {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    border-radius: 14px; padding: 18px 28px; margin-bottom: 22px;
+    display: flex; align-items: center; gap: 20px;
+    box-shadow: 0 4px 18px rgba(245,158,11,0.35);
+}
+.banner-ferias-icone { font-size: 42px; line-height: 1; flex-shrink: 0; }
+.banner-ferias-titulo {
+    font-size: 26px; font-weight: 800; color: #fff;
+    letter-spacing: 0.06em; text-transform: uppercase; line-height: 1;
+}
+.banner-ferias-sub {
+    font-size: 13px; color: rgba(255,255,255,0.90); margin-top: 5px; line-height: 1.4;
+}
+.banner-ferias-sub strong { color: #fff; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1100px; margin: 24px auto; padding: 0 20px 60px; }
+
+/* ── CARD ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 24px; overflow: hidden;
+}
+.card-titulo {
+    background: #fffbeb; border-bottom: 1px solid #fde68a;
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #92400e;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.btn-refresh {
+    background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+    font-size: 11px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s;
+}
+.btn-refresh:hover { background: #fde68a; }
+
+/* ── 3 COLUNAS ── */
+.form-layout { display: grid; grid-template-columns: 3fr 4fr 3fr; min-height: 330px; }
+.col-sep { border-right: 1px solid var(--border); }
+
+/* ── COL 1: FUNCIONÁRIOS ── */
+.col-funcs {
+    padding: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.col-subtitle {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+}
+.busca-inp {
+    width: 100%; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 7px; font-family: var(--sans); font-size: 12px; outline: none;
+    transition: border-color 0.15s;
+}
+.busca-inp:focus { border-color: var(--accent); }
+.lista-scroll {
+    flex: 1; max-height: 250px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 8px; background: #fafbfc;
+}
+.func-item {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 9px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    transition: background 0.1s;
+}
+.func-item:last-child { border-bottom: none; }
+.func-item:hover { background: #fffbeb; }
+.func-item input[type="checkbox"] { accent-color: #d97706; cursor: pointer; flex-shrink: 0; }
+.func-mat  { font-family: var(--mono); font-size: 10px; color: #94a3b8; flex-shrink: 0; }
+.func-nome { font-size: 12px; font-weight: 500; color: #1e293b; line-height: 1.2; }
+.lista-vazio { padding: 14px; font-size: 12px; color: #94a3b8; text-align: center; }
+.col-acoes { display: flex; align-items: center; gap: 6px; }
+.btn-mini {
+    background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569;
+    font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer;
+    font-family: var(--sans); white-space: nowrap;
+}
+.btn-mini:hover { background: #e2e8f0; }
+.sel-count { font-size: 11px; color: #64748b; margin-left: auto; white-space: nowrap; }
+
+/* ── COL 2: VERBAS ── */
+.col-verbas {
+    padding: 14px; display: flex; flex-direction: column; gap: 8px;
+}
+.verba-lista { flex: 1; max-height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: #fafbfc; }
+.verba-item {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 10px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    transition: background 0.1s; user-select: none;
+}
+.verba-item:last-child { border-bottom: none; }
+.verba-item:hover { background: #fffbeb; }
+.verba-item.ativa {
+    background: #fef3c7 !important;
+    border-left: 3px solid #f59e0b;
+    padding-left: 7px;
+}
+.verba-item.bloqueada { cursor: default; opacity: 0.6; }
+.v-cod  { font-family: var(--mono); font-size: 11px; color: #64748b; flex-shrink: 0; width: 34px; }
+.v-nome { font-size: 12px; font-weight: 500; color: #1e293b; flex: 1; line-height: 1.2; }
+.v-unid {
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    padding: 1px 5px; border-radius: 4px; flex-shrink: 0;
+    background: #fefce8; color: #854d0e; border: 1px solid #fde68a;
+}
+.v-unid-H { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.v-unid-D { background: #fdf4ff; color: #7e22ce; border-color: #e9d5ff; }
+
+/* ── COL 3: ENTRADA ── */
+.col-entrada {
+    padding: 16px; display: flex; flex-direction: column; gap: 14px;
+}
+.placeholder-verba {
+    flex: 1; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 10px; color: #cbd5e1; font-size: 13px;
+    text-align: center; border: 2px dashed #e2e8f0; border-radius: 12px;
+    padding: 20px; min-height: 140px;
+}
+.placeholder-verba svg { opacity: 0.4; }
+
+.edit-banner {
+    background: #fefce8; border: 1px solid #fcd34d; border-radius: 8px;
+    padding: 7px 12px; font-size: 11px; color: #92400e;
+    display: flex; align-items: center; gap: 5px;
+}
+.verba-selecionada-box {
+    background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 8px; padding: 9px 12px;
+}
+.vs-nome { font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 5px; }
+.vs-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge-tp {
+    display: inline-block; padding: 2px 7px; border-radius: 5px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+}
+.badge-tp-1 { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.badge-tp-2 { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+.badge-tp-3 { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.badge-tp-4 { background: #faf5ff; color: #6b21a8; border: 1px solid #d8b4fe; }
+.badge-unid-box {
+    display: inline-block; padding: 2px 7px; border-radius: 5px;
+    font-size: 10px; font-weight: 600; background: #fefce8; color: #854d0e; border: 1px solid #fde68a;
+}
+.campo-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #94a3b8; display: block; margin-bottom: 4px; }
+.inp-entrada {
+    width: 100%; padding: 10px 14px; border: 2px solid #fde68a; border-radius: 8px;
+    font-family: var(--mono); font-size: 20px; font-weight: 600; outline: none;
+    text-align: right; transition: border-color 0.15s;
+}
+.inp-entrada:focus { border-color: #f59e0b; }
+.btn-row { display: flex; gap: 8px; }
+.btn-incluir {
+    flex: 1; background: #d97706; color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: 0.15s; display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn-incluir:hover { background: #b45309; }
+.btn-incluir:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-cancelar {
+    background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 10px 14px; font-family: var(--sans);
+    font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.btn-cancelar:hover { background: #e2e8f0; }
+.msg-form { font-size: 12px; padding: 7px 12px; border-radius: 6px; display: none; }
+.msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+
+/* ── TABELA ── */
+.tabela-card table { width: 100%; border-collapse: collapse; }
+.tabela-card thead th {
+    background: #fffbeb; padding: 8px 12px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; color: #92400e;
+    text-align: left; border-bottom: 1px solid #fde68a; white-space: nowrap;
+}
+.tabela-card tbody tr { border-bottom: 1px solid #f1f5f9; }
+.tabela-card tbody tr:last-child { border-bottom: none; }
+.tabela-card tbody tr:hover { background: #fffbeb; }
+.tabela-card tbody td { padding: 7px 12px; font-size: 12px; color: #1e293b; }
+.td-seq   { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 32px; text-align: right; }
+.td-mat   { font-family: var(--mono); font-size: 11px; width: 72px; }
+.td-cod   { font-family: var(--mono); font-size: 11px; width: 44px; color: #475569; }
+.td-valor { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
+.btn-acao { background: none; border: none; cursor: pointer; font-size: 14px; padding: 3px 5px; border-radius: 4px; transition: background 0.1s; }
+.btn-acao:hover { background: #fef3c7; }
+.tabela-rodape { padding: 9px 16px; background: #fffbeb; border-top: 1px solid #fde68a; font-size: 12px; color: #92400e; }
+.vazio { padding: 40px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+/* ── MODAL EXCLUIR ── */
+.modal-overlay {
+    position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 999; backdrop-filter: blur(2px);
+}
+.modal-box {
+    background: #fff; border-radius: 16px; box-shadow: 0 20px 60px rgba(0,0,0,0.22);
+    padding: 36px 32px 28px; max-width: 420px; width: 90%; text-align: center;
+}
+.modal-icone-exc {
+    width: 54px; height: 54px; border-radius: 50%; background: #fee2e2;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; margin: 0 auto 18px;
+}
+.modal-titulo { font-size: 17px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+.modal-desc   { font-size: 12px; font-family: var(--mono); color: #475569;
+                background: #f8fafc; border: 1px solid var(--border);
+                border-radius: 8px; padding: 9px 14px; margin-bottom: 20px;
+                text-align: left; line-height: 1.5; }
+.modal-acoes { display: flex; gap: 10px; justify-content: center; }
+.btn-modal-del {
+    background: #dc2626; color: #fff; border: none; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    padding: 10px 22px; cursor: pointer; transition: background 0.15s;
+}
+.btn-modal-del:hover { background: #b91c1c; }
+.btn-modal-sec {
+    background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1;
+    border-radius: 8px; font-family: var(--sans); font-size: 13px; font-weight: 500;
+    padding: 10px 22px; cursor: pointer; transition: background 0.15s;
+}
+.btn-modal-sec:hover { background: #e2e8f0; }
+
+/* ── PIN VERBA ── */
+.btn-pin-toggle {
+    background: #fef3c7; border: 1px solid #fde68a; color: #92400e;
+    font-size: 10px; padding: 2px 8px; border-radius: 5px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap; line-height: 1.5;
+}
+.btn-pin-toggle:hover { background: #fde68a; }
+.btn-pin-toggle.ativo { background: #fde68a; border-color: #f59e0b; color: #78350f; font-weight: 600; }
+
+/* ── BOTÃO TOUR ── */
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 500;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: #d97706; color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(217,119,6,0.40);
+    transition: transform 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--sans); line-height: 1;
+}
+#btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(217,119,6,0.50); }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Lançamento de Movimento — Férias</span>
+        {% if anomes_atual %}
+        <span class="badge-folha-topo">🏖️ FÉRIAS · {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+        {% else %}
+        <span class="badge-folha-topo" style="color:#991b1b;border-color:#fca5a5;background:#fff;">Sem folha ativa</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <!-- BANNER FÉRIAS -->
+    <div class="banner-ferias" id="banner-ferias">
+        <div class="banner-ferias-icone">🏖️</div>
+        <div>
+            <div class="banner-ferias-titulo">Lançamentos de Férias</div>
+            <div class="banner-ferias-sub">
+                Todos os lançamentos desta tela serão gravados com <strong>folha_tipo = F (Férias)</strong>.<br>
+                Estes valores são usados exclusivamente no cálculo e recibo de férias.
+            </div>
+        </div>
+    </div>
+
+    <!-- CARD: Lançamento -->
+    <div class="card">
+        <div class="card-titulo">
+            <span id="card-form-titulo">🏖️ Novo Lançamento — Férias</span>
+        </div>
+
+        <div class="form-layout" id="form-layout">
+
+            <!-- ── COL 1: FUNCIONÁRIOS ── -->
+            <div class="col-funcs col-sep" id="col-funcs">
+                <div class="col-subtitle">Funcionários</div>
+                <input type="text" id="busca-func" class="busca-inp"
+                       placeholder="Buscar…" oninput="filtrarFuncionarios()">
+                <div class="lista-scroll" id="func-lista"></div>
+                <div class="col-acoes" id="col-acoes">
+                    <button class="btn-mini" onclick="selecionarTodos()">Todos</button>
+                    <button class="btn-mini" onclick="limparSelecao()">Limpar</button>
+                    <span id="sel-count" class="sel-count">0 selecionado(s)</span>
+                </div>
+            </div>
+
+            <!-- ── COL 2: VERBAS ── -->
+            <div class="col-verbas col-sep" id="col-verbas">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                    <div class="col-subtitle">Verbas Disponíveis</div>
+                    <button id="btn-pin-verba" class="btn-pin-toggle" onclick="togglePinVerba()" title="Fixar verba selecionada após lançamento">&#128204; Fixar</button>
+                </div>
+                <input type="text" id="busca-verba" class="busca-inp"
+                       placeholder="Buscar verba…" oninput="filtrarVerbas()">
+                <div class="lista-scroll verba-lista" id="verba-lista"></div>
+            </div>
+
+            <!-- ── COL 3: ENTRADA ── -->
+            <div class="col-entrada" id="col-entrada">
+
+                <!-- Placeholder quando nenhuma verba selecionada -->
+                <div id="entrada-placeholder" class="placeholder-verba">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="15 3 15 8 20 8"/></svg>
+                    <span>Selecione uma verba<br>na coluna ao lado</span>
+                </div>
+
+                <!-- Formulário de entrada -->
+                <div id="entrada-form" style="display:none;flex-direction:column;gap:12px;">
+
+                    <!-- Banner de edição -->
+                    <div id="edit-banner" class="edit-banner" style="display:none;">
+                        ✏️ Editando &nbsp;·&nbsp; Mat. <strong id="edit-mat"></strong> — <span id="edit-nome-func"></span>
+                    </div>
+
+                    <!-- Info da verba selecionada -->
+                    <div class="verba-selecionada-box">
+                        <div class="vs-nome" id="vs-nome"></div>
+                        <div class="vs-tags">
+                            <span class="badge-tp" id="vs-tp-badge"></span>
+                            <span class="badge-unid-box" id="vs-unid-badge"></span>
+                        </div>
+                    </div>
+
+                    <!-- Campo dinâmico: Qtd ou Valor -->
+                    <div>
+                        <label class="campo-label" id="lbl-entrada">Valor</label>
+                        <input type="text" id="inp-entrada" class="inp-entrada" placeholder="0,00"
+                               oninput="mascaraValor(this)"
+                               onkeydown="if(event.key==='Enter'){event.preventDefault();modoEdicao?salvarAlteracao():incluir();}">
+                    </div>
+
+                    <!-- Botões -->
+                    <div class="btn-row">
+                        <button id="btn-principal" class="btn-incluir" onclick="incluir()">✓ Incluir em Férias</button>
+                        <button id="btn-cancelar" class="btn-cancelar" onclick="cancelarEdicao()" style="display:none;">✕ Cancelar</button>
+                    </div>
+
+                    <div id="msg-form" class="msg-form"></div>
+                </div>
+            </div>
+
+        </div><!-- /form-layout -->
+    </div><!-- /card form -->
+
+    <!-- CARD: Lançamentos -->
+    <div class="card" id="card-lancamentos">
+        <div class="card-titulo">
+            {% if anomes_atual %}
+            <span>🏖️ Lançamentos de Férias — {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+            {% else %}<span>🏖️ Lançamentos de Férias</span>{% endif %}
+            <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
+        </div>
+        <div id="lista-container"><div class="vazio">Carregando…</div></div>
+    </div>
+
+</div>
+
+<button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
+
+<script>
+const FUNCIONARIOS      = {{ funcionarios | tojson | safe }};
+const VERBAS            = {{ verbas       | tojson | safe }};
+const FOLHA_TIPO_ATIVA  = 'F';
+
+const TP_LABEL  = {'1':'Provento','2':'Desconto','3':'Informativa','4':'Info. Dedutora'};
+const TP_CLASS  = {'1':'badge-tp-1','2':'badge-tp-2','3':'badge-tp-3','4':'badge-tp-4'};
+const UNID_LABEL = {'V':'Valor (R$)','H':'Hora','D':'Diária'};
+const UNID_CLS   = {'H':'v-unid-H','D':'v-unid-D'};
+
+let verbaSelecionada = null;
+let modoEdicao = false;
+let idEdicao   = null;
+let LISTA_DATA = {};
+let TODOS_REGISTROS = [];
+let campoUnidAtual = 'V';
+let verbaPinada = localStorage.getItem('mov_ferias_pin_verba') === '1';
+
+/* ── PIN VERBA ── */
+function togglePinVerba() {
+    verbaPinada = !verbaPinada;
+    localStorage.setItem('mov_ferias_pin_verba', verbaPinada ? '1' : '0');
+    atualizarBtnPin();
+}
+function atualizarBtnPin() {
+    const btn = document.getElementById('btn-pin-verba');
+    if (verbaPinada) {
+        btn.classList.add('ativo');
+        btn.innerHTML = '&#128204; Fixada';
+    } else {
+        btn.classList.remove('ativo');
+        btn.innerHTML = '&#128204; Fixar';
+    }
+}
+
+/* ── MÁSCARA MONETÁRIA / HORA ── */
+function mascaraValor(el) {
+    if (campoUnidAtual === 'V') {
+        const digits = el.value.replace(/\D/g, '');
+        el.value = formatValor(parseInt(digits || '0', 10));
+    } else if (campoUnidAtual === 'H') {
+        const digits = el.value.replace(/\D/g, '').slice(0, 4);
+        if (!digits) { el.value = ''; return; }
+        if (digits.length <= 2) { el.value = digits; return; }
+        const hh = digits.slice(0, 2);
+        const mm = parseInt(digits.slice(2), 10);
+        el.value = hh + ':' + (mm > 59 ? '59' : digits.slice(2).padStart(2, '0'));
+    }
+}
+
+/* ── FUNCIONÁRIOS ── */
+function renderFuncionarios(lista) {
+    const el = document.getElementById('func-lista');
+    if (!lista.length) { el.innerHTML = '<div class="lista-vazio">Nenhum funcionário.</div>'; return; }
+    el.innerHTML = lista.map(f => `
+        <label class="func-item">
+            <input type="checkbox" class="func-chk" value="${f.matricula}" onchange="atualizarContador();filtrarLista()">
+            <span class="func-mat">${String(f.matricula).padStart(6,'0')}</span>
+            <span class="func-nome">${f.nome||'—'}</span>
+        </label>`).join('');
+}
+function filtrarFuncionarios() {
+    const b = document.getElementById('busca-func').value.toLowerCase().trim();
+    renderFuncionarios(b
+        ? FUNCIONARIOS.filter(f => f.nome.toLowerCase().includes(b) || String(f.matricula).padStart(6,'0').includes(b))
+        : FUNCIONARIOS);
+    atualizarContador();
+}
+function selecionarTodos() { document.querySelectorAll('.func-chk').forEach(c => c.checked=true);  atualizarContador(); filtrarLista(); }
+function limparSelecao()   { document.querySelectorAll('.func-chk').forEach(c => c.checked=false); atualizarContador(); filtrarLista(); }
+function atualizarContador() {
+    document.getElementById('sel-count').textContent =
+        `${document.querySelectorAll('.func-chk:checked').length} selecionado(s)`;
+}
+function getMatsSelecionadas() {
+    return [...document.querySelectorAll('.func-chk:checked')].map(c => parseInt(c.value));
+}
+
+/* ── VERBAS ── */
+function renderVerbas(lista) {
+    const el = document.getElementById('verba-lista');
+    if (!lista.length) { el.innerHTML = '<div class="lista-vazio">Nenhuma verba.</div>'; return; }
+    el.innerHTML = lista.map(v => {
+        const cod    = String(v.cod_rubr).padStart(4,'0');
+        const uCls   = UNID_CLS[v.unid_verba] || '';
+        const ativa  = verbaSelecionada?.cod_rubr === v.cod_rubr ? ' ativa' : '';
+        const bloq   = modoEdicao ? ' bloqueada' : '';
+        const tpCls  = TP_CLASS[v.tp_rubr] || 'badge-tp-3';
+        const tpLbl  = TP_LABEL[v.tp_rubr] || '—';
+        return `<div class="verba-item${ativa}${bloq}" data-cod="${v.cod_rubr}" onclick="selecionarVerba(${v.cod_rubr})">
+            <span class="v-cod">${cod}</span>
+            <span class="v-nome">${v.dsc_rubr}</span>
+            <span class="badge-tp ${tpCls}" style="font-size:9px;padding:1px 6px;flex-shrink:0;">${tpLbl}</span>
+            <span class="v-unid ${uCls}">${v.unid_verba}</span>
+        </div>`;
+    }).join('');
+}
+function filtrarVerbas() {
+    const b = document.getElementById('busca-verba').value.toLowerCase().trim();
+    renderVerbas(b
+        ? VERBAS.filter(v => v.dsc_rubr.toLowerCase().includes(b) || String(v.cod_rubr).padStart(4,'0').includes(b))
+        : VERBAS);
+}
+function selecionarVerba(cod) {
+    if (modoEdicao) return;
+    const v = VERBAS.find(x => x.cod_rubr === cod);
+    if (!v) return;
+    verbaSelecionada = v;
+    filtrarVerbas();
+    mostrarEntradaForm(v, false);
+}
+
+/* ── ENTRADA ── */
+function mostrarEntradaForm(v, preenchido) {
+    document.getElementById('entrada-placeholder').style.display = 'none';
+    document.getElementById('entrada-form').style.display        = 'flex';
+
+    const cod = String(v.cod_rubr).padStart(4,'0');
+    document.getElementById('vs-nome').textContent = `${cod} — ${v.dsc_rubr}`;
+    const tpBadge = document.getElementById('vs-tp-badge');
+    tpBadge.textContent  = TP_LABEL[v.tp_rubr] || v.tp_rubr || '—';
+    tpBadge.className    = `badge-tp ${TP_CLASS[v.tp_rubr]||'badge-tp-3'}`;
+    document.getElementById('vs-unid-badge').textContent = UNID_LABEL[v.unid_verba] || v.unid_verba;
+
+    campoUnidAtual = v.unid_verba;
+    const lbl = document.getElementById('lbl-entrada');
+    const inp = document.getElementById('inp-entrada');
+    if (v.unid_verba === 'H') { lbl.textContent = 'Horas (HH:MM)'; inp.placeholder = '00:00'; }
+    else if (v.unid_verba === 'D') { lbl.textContent = 'Diárias'; inp.placeholder = '0'; }
+    else { lbl.textContent = 'Valor (R$)'; inp.placeholder = '0,00'; }
+    if (!preenchido) inp.value = '';
+    else if (v.unid_verba === 'V' && preenchido) inp.value = formatValor(parseInt(inp.value.replace(/\D/g,'')||'0'));
+    setTimeout(() => inp.focus(), 50);
+}
+
+/* ── CONVERSÕES ── */
+function parseHoras(s) {
+    const p = s.trim().split(':');
+    if (p.length !== 2) return null;
+    const h = parseInt(p[0],10), m = parseInt(p[1],10);
+    if (isNaN(h)||isNaN(m)||m<0||m>59||h<0) return null;
+    return h*60+m;
+}
+function formatHoras(min) {
+    return `${String(Math.floor(min/60)).padStart(2,'0')}:${String(min%60).padStart(2,'0')}`;
+}
+function parseValor(s) {
+    const v = parseFloat(s.replace(/\./g,'').replace(',','.'));
+    if (isNaN(v)||v<0) return null;
+    return Math.round(v*100);
+}
+function formatValor(c) {
+    return (c/100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function getEntradaValues() {
+    const unid = verbaSelecionada?.unid_verba||'V';
+    const s    = document.getElementById('inp-entrada').value.trim();
+    if (unid==='H') {
+        const m = parseHoras(s);
+        if (m === null) return {ok:false,msg:'Informe as horas no formato HH:MM.'};
+        return {ok:true,qtd:m,valor:0};
+    } else if (unid==='D') {
+        const d = parseInt(s,10);
+        if (isNaN(d)||d<=0) return {ok:false,msg:'Informe o número de diárias.'};
+        return {ok:true,qtd:d,valor:0};
+    } else {
+        const c = parseValor(s);
+        if (!c) return {ok:false,msg:'Informe um valor válido maior que zero.'};
+        return {ok:true,qtd:0,valor:c};
+    }
+}
+
+/* ── MENSAGEM ── */
+function mostrarMsg(msg, tipo) {
+    const el = document.getElementById('msg-form');
+    el.textContent  = msg;
+    el.className    = 'msg-form '+(tipo==='ok'?'msg-ok':'msg-err');
+    el.style.display = 'block';
+    setTimeout(()=>{ el.style.display='none'; }, 4500);
+}
+
+/* ── INCLUIR ── */
+async function incluir() {
+    if (!verbaSelecionada) { mostrarMsg('Selecione uma verba.','err'); return; }
+    const mats = getMatsSelecionadas();
+    if (!mats.length) { mostrarMsg('Selecione ao menos um funcionário.','err'); return; }
+    const e = getEntradaValues();
+    if (!e.ok) { mostrarMsg(e.msg,'err'); return; }
+
+    const btn = document.getElementById('btn-principal');
+    btn.disabled=true; btn.textContent='…';
+    try {
+        const r = await fetch('/api/tab_mov_gravar',{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({
+                matriculas: mats, cod_verba: verbaSelecionada.cod_rubr,
+                qtd: e.qtd, valor: e.valor, folha_tipo: FOLHA_TIPO_ATIVA,
+            }),
+        });
+        const d = await r.json();
+        if (d.ok) { mostrarMsg(d.msg,'ok'); resetarForm(); carregarLista(); }
+        else mostrarMsg(d.msg||'Erro ao gravar.','err');
+    } catch { mostrarMsg('Erro de comunicação.','err'); }
+    finally { btn.disabled=false; btn.textContent='✓ Incluir em Férias'; }
+}
+
+function resetarForm() {
+    const verbaAnterior = verbaSelecionada;
+    verbaSelecionada = null;
+    limparSelecao();
+    document.getElementById('busca-func').value = '';
+    filtrarFuncionarios();
+
+    if (verbaPinada && verbaAnterior) {
+        verbaSelecionada = verbaAnterior;
+        filtrarVerbas();
+        mostrarEntradaForm(verbaSelecionada, false);
+    } else {
+        document.getElementById('entrada-placeholder').style.display = 'flex';
+        document.getElementById('entrada-form').style.display        = 'none';
+        document.getElementById('busca-verba').value = '';
+        filtrarVerbas();
+    }
+}
+
+/* ── EDITAR ── */
+function editarFromList(id) {
+    const r = LISTA_DATA[id];
+    if (!r) return;
+    modoEdicao=true; idEdicao=id;
+
+    document.getElementById('card-form-titulo').textContent     = '✏️ Alterar Lançamento — Férias';
+    document.getElementById('edit-banner').style.display        = 'flex';
+    document.getElementById('edit-mat').textContent             = String(r.matricula).padStart(6,'0');
+    document.getElementById('edit-nome-func').textContent       = r.nome;
+    document.getElementById('col-funcs').style.display          = 'none';
+    document.getElementById('form-layout').style.gridTemplateColumns = '4fr 3fr';
+
+    verbaSelecionada = {cod_rubr:r.cod_verba, dsc_rubr:r.dsc_rubr, tp_rubr:r.tp_rubr, unid_verba:r.unid_verba};
+    filtrarVerbas();
+    mostrarEntradaForm(verbaSelecionada, true);
+
+    const inp = document.getElementById('inp-entrada');
+    if      (r.unid_verba==='H') inp.value = formatHoras(r.qtd_raw);
+    else if (r.unid_verba==='D') inp.value = String(r.qtd_raw);
+    else                          inp.value = formatValor(r.valor_raw);
+
+    document.getElementById('btn-principal').textContent  = '✓ Salvar';
+    document.getElementById('btn-principal').onclick      = salvarAlteracao;
+    document.getElementById('btn-cancelar').style.display = 'inline-flex';
+    setTimeout(()=>inp.focus(),50);
+}
+
+async function salvarAlteracao() {
+    const e = getEntradaValues();
+    if (!e.ok) { mostrarMsg(e.msg,'err'); return; }
+    const btn = document.getElementById('btn-principal');
+    btn.disabled=true;
+    try {
+        const r = await fetch('/api/tab_mov_alterar',{
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id:idEdicao, qtd:e.qtd, valor:e.valor, folha_tipo:FOLHA_TIPO_ATIVA}),
+        });
+        const d = await r.json();
+        if (d.ok) { mostrarMsg(d.msg,'ok'); cancelarEdicao(); carregarLista(); }
+        else mostrarMsg(d.msg||'Erro.','err');
+    } catch { mostrarMsg('Erro de comunicação.','err'); }
+    finally { btn.disabled=false; }
+}
+
+function cancelarEdicao() {
+    modoEdicao=false; idEdicao=null;
+    document.getElementById('card-form-titulo').textContent         = '🏖️ Novo Lançamento — Férias';
+    document.getElementById('edit-banner').style.display            = 'none';
+    document.getElementById('col-funcs').style.display              = '';
+    document.getElementById('form-layout').style.gridTemplateColumns = '';
+    document.getElementById('btn-principal').textContent            = '✓ Incluir em Férias';
+    document.getElementById('btn-principal').onclick                = incluir;
+    document.getElementById('btn-cancelar').style.display           = 'none';
+    resetarForm();
+}
+
+/* ── EXCLUIR ── */
+async function excluirRegistro(id) {
+    const r = LISTA_DATA[id];
+    if (!r) return;
+    const desc = `Mat. ${String(r.matricula).padStart(6,'0')} — ${r.dsc_rubr} — ${r.entrada_fmt}`;
+    mostrarModalExcluir(desc, async () => {
+        try {
+            const res = await fetch('/api/tab_mov_excluir',{
+                method:'POST', headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({id}),
+            });
+            const d = await res.json();
+            if (d.ok) carregarLista();
+            else alert(d.msg||'Erro ao excluir.');
+        } catch { alert('Erro de comunicação.'); }
+    });
+}
+
+function mostrarModalExcluir(desc, onConfirm) {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `
+        <div class="modal-box">
+            <div class="modal-icone-exc">🗑️</div>
+            <div class="modal-titulo">Excluir Lançamento de Férias?</div>
+            <div class="modal-desc">${desc}</div>
+            <div class="modal-acoes">
+                <button class="btn-modal-del" id="btnExcluirConf">Excluir</button>
+                <button class="btn-modal-sec" id="btnCancelarExc">Cancelar</button>
+            </div>
+        </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#btnExcluirConf').onclick = () => { overlay.remove(); onConfirm(); };
+    overlay.querySelector('#btnCancelarExc').onclick = () => overlay.remove();
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
+/* ── LISTA ── */
+function renderLista(regs, emptyMsg) {
+    const el = document.getElementById('lista-container');
+    if (!regs.length) {
+        el.innerHTML = `<div class="vazio">${emptyMsg || 'Nenhum lançamento de férias para esta folha.'}</div>`;
+        return;
+    }
+    const rows = regs.map((r,i) => `<tr>
+        <td class="td-seq">${i+1}</td>
+        <td class="td-mat">${String(r.matricula).padStart(6,'0')}</td>
+        <td>${r.nome}</td>
+        <td class="td-cod">${String(r.cod_verba).padStart(4,'0')}</td>
+        <td style="font-size:11px;color:#475569;">${r.dsc_rubr||'—'}</td>
+        <td class="td-valor">${r.entrada_fmt}</td>
+        <td style="white-space:nowrap;">
+            <button class="btn-acao" title="Editar"  onclick="editarFromList(${r.id})">✏️</button>
+            <button class="btn-acao" title="Excluir" onclick="excluirRegistro(${r.id})">🗑️</button>
+        </td>
+    </tr>`).join('');
+    el.innerHTML = `<div class="tabela-card"><table>
+        <thead><tr>
+            <th class="td-seq">#</th><th class="td-mat">Matrícula</th>
+            <th>Nome</th><th class="td-cod">Verba</th><th>Descrição</th>
+            <th style="text-align:right;">Qtd / Valor</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>
+    <div class="tabela-rodape">${regs.length} registro(s) de férias</div></div>`;
+}
+
+function filtrarLista() {
+    const mats = getMatsSelecionadas();
+    const regs = mats.length ? TODOS_REGISTROS.filter(r => mats.includes(r.matricula)) : TODOS_REGISTROS;
+    const msg  = (mats.length && !regs.length)
+        ? 'Nenhum lançamento de férias para os funcionários selecionados.'
+        : 'Nenhum lançamento de férias para esta folha.';
+    renderLista(regs, msg);
+}
+
+async function carregarLista() {
+    const el = document.getElementById('lista-container');
+    el.innerHTML = '<div class="vazio">Carregando…</div>';
+    try {
+        const res = await fetch('/api/tab_mov_listar?folha_tipo=F');
+        const d   = await res.json();
+        if (!d.ok) { el.innerHTML=`<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
+        TODOS_REGISTROS = d.registros||[];
+        LISTA_DATA = {};
+        TODOS_REGISTROS.forEach(r => { LISTA_DATA[r.id]=r; });
+        filtrarLista();
+    } catch { el.innerHTML='<div class="vazio" style="color:#be123c;">Erro ao carregar.</div>'; }
+}
+
+/* ── TOUR DRIVER.JS ── */
+function iniciarTour() {
+    window.driver.js.driver({
+        animate: true,
+        showProgress: true,
+        progressText: '{{current}} de {{total}}',
+        nextBtnText: 'Próximo →',
+        prevBtnText: '← Anterior',
+        doneBtnText: 'Concluir ✓',
+        steps: [
+            {
+                element: '#banner-ferias',
+                popover: {
+                    title: '🏖️ Lançamentos de Férias',
+                    description: 'Esta tela é dedicada a lançamentos que fazem parte do pagamento de <strong>férias</strong>. Tudo que for incluído aqui fica com <strong>folha_tipo = F</strong> e é usado no cálculo e recibo de férias — separado da folha normal.',
+                    side: 'bottom', align: 'center'
+                }
+            },
+            {
+                element: '#form-layout',
+                popover: {
+                    title: '📋 O Fluxo de 3 Etapas',
+                    description: '<strong>1 →</strong> Selecione um ou mais funcionários<br><strong>2 →</strong> Clique em uma verba<br><strong>3 →</strong> Informe o valor e clique Incluir em Férias<br><br>Você pode selecionar vários funcionários e lançar a mesma verba para todos de uma vez.',
+                    side: 'bottom', align: 'center'
+                }
+            },
+            {
+                element: '#col-funcs',
+                popover: {
+                    title: '👥 Etapa 1 — Funcionários',
+                    description: 'Selecione um ou vários funcionários marcando o checkbox. A mesma verba será lançada para todos os selecionados com o mesmo valor.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '#col-verbas',
+                popover: {
+                    title: '📑 Etapa 2 — Verbas',
+                    description: 'Clique em uma verba para selecioná-la (fica destacada em amarelo). Cada linha mostra o código, o nome e a unidade da verba.',
+                    side: 'right', align: 'start'
+                }
+            },
+            {
+                element: '#col-entrada',
+                popover: {
+                    title: '✏️ Etapa 3 — Entrada de Dados',
+                    description: 'Após selecionar funcionários e verba, informe o valor e clique <strong>Incluir em Férias</strong>. O lançamento será gravado exclusivamente na folha de férias.',
+                    side: 'left', align: 'start'
+                }
+            },
+            {
+                element: '#card-lancamentos',
+                popover: {
+                    title: '📋 Lançamentos de Férias Gravados',
+                    description: 'Todos os lançamentos de férias da folha aparecem aqui. Clique em <strong>✏️</strong> para editar ou <strong>🗑️</strong> para excluir. Selecionar funcionários filtra a tabela.',
+                    side: 'top', align: 'center'
+                }
+            },
+        ],
+    }).drive();
+}
+
+/* ── INIT ── */
+atualizarBtnPin();
+renderFuncionarios(FUNCIONARIOS);
+renderVerbas(VERBAS);
+carregarLista();
+</script>
+</body>
+</html>
