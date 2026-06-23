@@ -26257,7 +26257,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             sig_y_n   = y - sig_h + 5
             data_ger  = agora.strftime("%d/%m/%Y  %H:%M")
             hline(sig_ctr - sig_span, sig_ctr + sig_span, sig_y_l, C_LINE, 0.5)
-            text_at("Assinatura do Funcionário", sig_ctr, sig_y_n,
+            text_at(func_data["nome"][:60], sig_ctr, sig_y_n,
                     "Helvetica", FS_SIG, C_LGRAY, "center")
             text_at(f"Gerado em {data_ger}", xEND-PAD, y - sig_h + 2,
                     "Helvetica", FS_BSE-0.5, C_LGRAY, "right")
@@ -26531,6 +26531,611 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
             fh.write(pdf_bytes)
     except Exception as e_sv:
         _log.warning(f"contracheque_pdf: erro ao salvar no disco: {e_sv}")
+
+    resp = make_response(pdf_bytes)
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
+    return resp
+
+
+# =========================================================
+# RECIBO DE ADIANTAMENTO QUINZENAL — TELA + PDF
+# =========================================================
+def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                    empresa_nm, cnpj_fmt, modo="1",
+                                    matriculas_sel=None, com_assinatura=True,
+                                    separar_verba=False):
+    """Gera PDF do Recibo de Adiantamento Quinzenal seguindo o padrão visual do
+    contracheque. Por padrão consolida todas as verbas 161-164 do funcionário em
+    um único recibo; se separar_verba=True, gera um recibo por (matricula, verba)."""
+    from reportlab.pdfgen.canvas import Canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from io import BytesIO
+    from datetime import datetime
+
+    buf            = BytesIO()
+    W_page, H_page = A4
+    agora          = datetime.now()
+    ano, mes       = anomes[:4], anomes[4:6]
+    meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                      "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+    mes_nm         = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
+    anomes_fmt     = f"{mes_nm.upper()}/{ano}"
+    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+
+    def _fbrl(c, dec=2):
+        return f"{c/100:,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+    def _fdt(s):
+        return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if s and len(s) >= 8 else "—"
+
+    def _extenso(c):
+        # Texto simples sem dependência externa: "(reais e centavos)"
+        reais  = c // 100
+        cents  = c % 100
+        if reais == 0 and cents == 0:
+            return "zero real"
+        s_r = ("um real" if reais == 1 else f"{reais} reais") if reais else ""
+        s_c = ("um centavo" if cents == 1 else f"{cents} centavos") if cents else ""
+        if s_r and s_c: return f"{s_r} e {s_c}"
+        return s_r or s_c
+
+    # ── Rubricas ──────────────────────────────────────────
+    rubricas_info = {}
+    try:
+        for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
+            r = (supabase.table("tab_rubrica")
+                 .select("cod_rubr,dsc_rubr")
+                 .eq("id_cliente", cli_id).execute())
+            for row in (r.data or []):
+                cod = int(row.get("cod_rubr") or 0)
+                if cod:
+                    rubricas_info[cod] = str(row.get("dsc_rubr") or f"Verba {cod:04d}")
+    except Exception:
+        pass
+    for c in VERBAS_ADIANTAMENTO:
+        rubricas_info.setdefault(c, f"Adiantamento Quinzenal {c-160}ª")
+
+    # ── Movimentos (apenas 161-164) ───────────────────────
+    mov_data = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula,cod_verba,valor")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao",   "A")
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo_mov)
+             .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for reg in (q.execute().data or []):
+            mat = int(reg.get("matricula") or 0)
+            cod = int(reg.get("cod_verba") or 0)
+            val = int(reg.get("valor")     or 0)
+            if mat and cod and val > 0:
+                mov_data.setdefault(mat, []).append({"cod": cod, "val": val})
+    except Exception:
+        pass
+
+    # ── Funcionários ──────────────────────────────────────
+    func_info = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao", "A")
+             .execute())
+        for f in (r.data or []):
+            mat = int(f.get("matricula") or 0)
+            if not mat:
+                continue
+            nome = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
+            cbo  = str(f.get("cbofuncao") or "").strip()
+            func_info[mat] = {
+                "nome":   nome,
+                "dtadm":  str(f.get("dtadm")  or ""),
+                "sal":    int(f.get("vrsalfx") or 0),
+                "funcao": f"CBO {cbo}" if cbo else "—",
+            }
+    except Exception:
+        pass
+    cbos_unicos = list({fi["funcao"].replace("CBO ","") for fi in func_info.values()
+                        if fi["funcao"].startswith("CBO ")})
+    if cbos_unicos:
+        try:
+            rc = (supabase.table("tab_aux_funcao_total")
+                  .select("cbo_codigo,cbo_nome")
+                  .in_("cbo_codigo", cbos_unicos).execute())
+            cbo_nomes = {r["cbo_codigo"]: r["cbo_nome"] for r in (rc.data or []) if r.get("cbo_codigo")}
+            for fi in func_info.values():
+                if fi["funcao"].startswith("CBO "):
+                    cbo = fi["funcao"].replace("CBO ", "")
+                    if cbo in cbo_nomes:
+                        fi["funcao"] = cbo_nomes[cbo]
+        except Exception:
+            pass
+
+    # ── Lista de stubs (um por recibo a gerar) ────────────
+    stubs = []
+    for mat in sorted(mov_data.keys()):
+        if matriculas_sel and mat not in matriculas_sel:
+            continue
+        fi = func_info.get(mat, {"nome": f"Matr. {mat:06d}", "dtadm": "",
+                                  "sal": 0, "funcao": "—"})
+        verbas = sorted(mov_data[mat], key=lambda v: v["cod"])
+        if separar_verba and len(verbas) > 1:
+            for v in verbas:
+                stubs.append({"mat": mat, "fi": fi, "verbas": [v],
+                              "total": v["val"]})
+        else:
+            total = sum(v["val"] for v in verbas)
+            stubs.append({"mat": mat, "fi": fi, "verbas": verbas, "total": total})
+
+    # ── Dimensões / cores ─────────────────────────────────
+    ML = 1.0*cm; MR = 1.0*cm; MT = 0.8*cm; MB = 0.8*cm
+    W_stub   = W_page - ML - MR
+    H_usable = H_page - MT - MB
+    CUT_GAP  = 0.5*cm
+    H_half   = (H_usable - CUT_GAP) / 2
+
+    C_LINE = colors.HexColor("#374151")
+    C_TXT  = colors.HexColor("#111827")
+    C_GRAY = colors.HexColor("#374151")
+    C_LGRAY= colors.HexColor("#6b7280")
+
+    ROWS = {
+        False: {"hdr":42,"emp":26,"col":13,"verb":13,"tot":14,
+                "txt":40,"sig":44},
+        True:  {"hdr":34,"emp":20,"col":11,"verb":11,"tot":12,
+                "txt":34,"sig":36},
+    }
+
+    def stub_height(stub, compact, com_sig=True):
+        R = ROWS[compact]
+        sig_h = R["sig"] if com_sig else 6
+        return (R["hdr"] + R["emp"] + R["col"] +
+                len(stub["verbas"]) * R["verb"] +
+                R["tot"] + R["txt"] + sig_h)
+
+    c = Canvas(buf, pagesize=A4)
+
+    _qtd_c, _dhc = _get_calc_info(id_empresa, id_cliente, anomes, anomes_tipo)
+    _emit = agora.strftime("%d/%m/%Y %H:%M")
+    rod_txt = (f"Cálculo n.º {_qtd_c}  —  {_dhc}  —  emitido em {_emit}"
+               if _qtd_c and _dhc else f"Emitido em {_emit}")
+
+    def _draw_rod():
+        c.saveState()
+        c.setFont("Helvetica", 7)
+        c.setFillColor(colors.HexColor("#64748b"))
+        c.drawString(ML, 0.7*cm, rod_txt)
+        c.restoreState()
+
+    def finish_page():
+        _draw_rod()
+        c.showPage()
+
+    def hline(x0, x1, y, color, lw=0.3):
+        c.saveState()
+        c.setStrokeColor(color); c.setLineWidth(lw); c.line(x0, y, x1, y); c.restoreState()
+
+    def draw_cut(y_c):
+        c.saveState()
+        c.setStrokeColor(colors.HexColor("#94a3b8"))
+        c.setLineWidth(0.5); c.setDash([3, 5], 0)
+        c.line(ML - 0.2*cm, y_c, W_page - MR + 0.2*cm, y_c)
+        c.setDash([], 0)
+        c.setFont("Helvetica", 7); c.setFillColor(colors.HexColor("#94a3b8"))
+        c.drawCentredString(W_page/2, y_c + 2.5, "✂")
+        c.restoreState()
+
+    def draw_stub(x0, y_top, w, stub, compact=False, com_sig=True):
+        R   = ROWS[compact]
+        PAD = 3 if compact else 5
+
+        FS_TIT = 9   if compact else 11
+        FS_EMP = 8   if compact else 9
+        FS_DET = 6   if compact else 7
+        FS_COL = 5.5 if compact else 6.5
+        FS_VRB = 7   if compact else 8
+        FS_TOT = 8   if compact else 9
+        FS_TXT = 6.5 if compact else 7.5
+        FS_SIG = 7   if compact else 8
+
+        W_COD = 0.12 * w
+        W_VAL = 0.21 * w
+        W_DSC = w - W_COD - W_VAL
+
+        xCOD = x0
+        xDSC = x0 + W_COD
+        xVAL = x0 + W_COD + W_DSC
+        xEND = x0 + w
+
+        y       = y_top
+        y_start = y_top
+        HPAD    = 8 if compact else 12
+
+        fi    = stub["fi"]
+        mat   = stub["mat"]
+        verbas= stub["verbas"]
+        total = stub["total"]
+
+        def fill_row(row_h, fill_color):
+            c.setFillColor(fill_color)
+            c.rect(x0, y - row_h, w, row_h, fill=1, stroke=0)
+
+        def text_at(text, fx, fy, font, size, fill, align="left"):
+            c.setFont(font, size); c.setFillColor(fill)
+            if align == "right":  c.drawRightString(fx, fy, text)
+            elif align == "center": c.drawCentredString(fx, fy, text)
+            else:                  c.drawString(fx, fy, text)
+
+        # ── 1. Cabeçalho — empresa + título ─────────────────────────
+        fill_row(R["hdr"], colors.white)
+        hline(x0, xEND, y,            C_LINE, 1.0)
+        hline(x0, xEND, y - R["hdr"], C_LINE, 1.4)
+
+        y1 = y - FS_TIT - 4
+        text_at(empresa_nm[:46], x0+HPAD, y1, "Helvetica-Bold", FS_TIT, C_TXT)
+        text_at("RECIBO DE ADIANTAMENTO", xEND-HPAD, y1, "Helvetica-Bold",
+                FS_TIT, C_TXT, "right")
+
+        y2 = y - R["hdr"] + FS_EMP + 6
+        text_at(f"CNPJ: {cnpj_fmt}", x0+HPAD, y2, "Helvetica", FS_EMP, C_GRAY)
+        text_at(anomes_fmt, xEND-HPAD, y2, "Helvetica-Bold", FS_EMP+1,
+                colors.HexColor("#9a3412"), "right")
+
+        y3 = y - R["hdr"] + 4
+        text_at("Quinzenal — Adiantamento de Salário", x0+HPAD, y3,
+                "Helvetica", FS_DET, C_LGRAY)
+        y -= R["hdr"]
+
+        # ── 2. Dados do funcionário ─────────────────────────────────
+        fill_row(R["emp"], colors.white)
+        y_e1 = y - R["emp"] + R["emp"] * 0.60
+        text_at(f"{mat:08d}  —  {fi['nome']}",
+                x0+PAD, y_e1, "Helvetica-Bold", FS_EMP, C_TXT)
+        y_e2 = y - R["emp"] + 4
+        det = (f"Admissão: {_fdt(fi['dtadm'])}   |   "
+               f"Função: {fi['funcao'][:32]}   |   "
+               f"Salário: {_fbrl(fi['sal'])}/Mês")
+        text_at(det, x0+PAD, y_e2, "Helvetica", FS_DET, C_LGRAY)
+        hline(x0, xEND, y - R["emp"], C_LINE, 0.6)
+        y -= R["emp"]
+
+        # ── 3. Cabeçalho colunas ────────────────────────────────────
+        fill_row(R["col"], colors.HexColor("#f3f4f6"))
+        y_c = y - R["col"] + 3
+        text_at("CÓD",       xCOD+W_COD/2,  y_c, "Helvetica-Bold", FS_COL, C_GRAY, "center")
+        text_at("DESCRIÇÃO", xDSC+PAD,       y_c, "Helvetica-Bold", FS_COL, C_GRAY)
+        text_at("VALOR",     xVAL+W_VAL-PAD, y_c, "Helvetica-Bold", FS_COL, C_GRAY, "right")
+        hline(x0, xEND, y - R["col"], C_LINE, 0.5)
+        y -= R["col"]
+
+        # ── 4. Verbas ───────────────────────────────────────────────
+        for v in verbas:
+            fill_row(R["verb"], colors.white)
+            y_v = y - R["verb"] + 3
+            text_at(f"{v['cod']:04d}", xCOD+W_COD/2, y_v, "Helvetica", FS_COL,
+                    C_LGRAY, "center")
+            dsc = rubricas_info.get(v["cod"], f"Verba {v['cod']:04d}")
+            text_at(dsc[:50], xDSC+PAD, y_v, "Helvetica", FS_VRB, C_TXT)
+            text_at(_fbrl(v["val"]), xVAL+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
+                    C_TXT, "right")
+            hline(x0, xEND, y - R["verb"], colors.HexColor("#e5e7eb"), 0.2)
+            y -= R["verb"]
+
+        # ── 5. Total ────────────────────────────────────────────────
+        fill_row(R["tot"], colors.HexColor("#fff7ed"))
+        hline(x0, xEND, y, C_LINE, 0.7)
+        y_t = y - R["tot"] + 3
+        text_at("TOTAL DO ADIANTAMENTO", xDSC+PAD, y_t, "Helvetica-Bold", FS_TOT,
+                colors.HexColor("#9a3412"))
+        text_at(_fbrl(total), xVAL+W_VAL-PAD, y_t, "Helvetica-Bold", FS_TOT,
+                colors.HexColor("#9a3412"), "right")
+        hline(x0, xEND, y - R["tot"], C_LINE, 1.0)
+        y -= R["tot"]
+
+        # ── 6. Texto do recibo ──────────────────────────────────────
+        fill_row(R["txt"], colors.white)
+        rec_txt1 = (f"Declaro ter recebido de {empresa_nm[:60]} a importância de "
+                    f"{_fbrl(total)} ({_extenso(total)}),")
+        rec_txt2 = (f"referente ao Adiantamento Quinzenal do mês de "
+                    f"{mes_nm.upper()}/{ano}, dando plena e geral quitação.")
+        text_at(rec_txt1, x0+PAD, y - 13, "Helvetica", FS_TXT, C_TXT)
+        text_at(rec_txt2, x0+PAD, y - 13 - FS_TXT - 4, "Helvetica", FS_TXT, C_TXT)
+        y -= R["txt"]
+
+        # ── 7. Assinatura ───────────────────────────────────────────
+        sig_h = R["sig"] if com_sig else 6
+        fill_row(sig_h, colors.white)
+        if com_sig:
+            sig_ctr   = x0 + w / 2
+            sig_span  = w * 0.36
+            sig_y_l   = y - sig_h + 14
+            sig_y_n   = y - sig_h + 5
+            data_ger  = agora.strftime("%d/%m/%Y  %H:%M")
+            hline(sig_ctr - sig_span, sig_ctr + sig_span, sig_y_l, C_LINE, 0.5)
+            text_at(fi["nome"][:60], sig_ctr, sig_y_n,
+                    "Helvetica", FS_SIG, C_LGRAY, "center")
+            text_at(f"Gerado em {data_ger}", xEND-PAD, y - sig_h + 2,
+                    "Helvetica", FS_TXT-0.5, C_LGRAY, "right")
+        y -= sig_h
+
+        # ── Borda externa ───────────────────────────────────────────
+        used_h = y_start - y
+        c.saveState()
+        c.setStrokeColor(C_LINE); c.setLineWidth(0.8)
+        c.rect(x0, y_start - used_h, w, used_h, fill=0, stroke=1)
+        c.restoreState()
+
+    # ── Posições e renderização por modo ──────────────────
+    y_full    = H_page - MT
+    y_top_top = H_page - MT
+    y_top_bot = MB + H_half
+    y_cut     = MB + H_half + CUT_GAP / 2
+    cs        = com_assinatura
+
+    if not stubs:
+        # PDF mínimo com aviso
+        c.setFont("Helvetica", 11)
+        c.setFillColor(colors.HexColor("#374151"))
+        c.drawCentredString(W_page/2, H_page/2,
+                            "Nenhum adiantamento quinzenal encontrado para os funcionários selecionados.")
+        finish_page()
+    elif modo == "1":
+        for stub in stubs:
+            draw_stub(ML, y_full, W_stub, stub, compact=False, com_sig=cs)
+            finish_page()
+    elif modo == "2S":
+        for stub in stubs:
+            h_est = stub_height(stub, compact=True, com_sig=cs)
+            if h_est > H_half - 4:
+                draw_stub(ML, y_full, W_stub, stub, compact=False, com_sig=cs)
+            else:
+                draw_stub(ML, y_top_top, W_stub, stub, compact=True, com_sig=cs)
+                draw_cut(y_cut)
+                draw_stub(ML, y_top_bot, W_stub, stub, compact=True, com_sig=cs)
+            finish_page()
+    else:  # 2D
+        i = 0
+        while i < len(stubs):
+            s1 = stubs[i]
+            h1 = stub_height(s1, compact=True, com_sig=cs)
+            if h1 > H_half - 4:
+                draw_stub(ML, y_full, W_stub, s1, compact=False, com_sig=cs)
+                finish_page(); i += 1; continue
+            draw_stub(ML, y_top_top, W_stub, s1, compact=True, com_sig=cs)
+            if i + 1 < len(stubs):
+                s2 = stubs[i+1]
+                h2 = stub_height(s2, compact=True, com_sig=cs)
+                if h2 > H_half - 4:
+                    draw_cut(y_cut); finish_page()
+                    draw_stub(ML, y_full, W_stub, s2, compact=False, com_sig=cs)
+                    finish_page(); i += 2; continue
+                draw_cut(y_cut)
+                draw_stub(ML, y_top_bot, W_stub, s2, compact=True, com_sig=cs)
+                i += 2
+            else:
+                i += 1
+            finish_page()
+
+    c.save()
+    buf.seek(0)
+    return buf
+
+
+@app.route("/recibo_adiantamento")
+def recibo_adiantamento():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    empresa_nm  = str(session.get("empresa_info") or "")
+    if not anomes:
+        return redirect("/menu")
+    meses_pt = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
+                "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+    ano, mes  = anomes[:4], anomes[4:6]
+    mes_nm    = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
+    tipo_lbl  = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
+                 "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+
+    # Funcionários com adiantamento lançado nesta folha (verbas 161-164)
+    funcionarios = []
+    existe_multi_verba = False
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, cod_verba")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao",   "A")
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo_mov)
+             .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        regs = q.execute().data or []
+        # Agrupa: {mat: {set de verbas}}
+        por_mat = {}
+        for r in regs:
+            mat = int(r.get("matricula") or 0)
+            cod = int(r.get("cod_verba") or 0)
+            if mat and cod:
+                por_mat.setdefault(mat, set()).add(cod)
+        mats = sorted(por_mat.keys())
+        if mats:
+            r2 = (supabase.table("tab_cad")
+                  .select("matricula,nome,nomer")
+                  .eq("id_empresa", id_empresa)
+                  .in_("matricula", mats)
+                  .execute())
+            nomes_map = {int(r["matricula"]): str(r.get("nome") or r.get("nomer")
+                         or f"Matr. {r['matricula']:06d}").strip()
+                         for r in (r2.data or []) if r.get("matricula")}
+            for mat in mats:
+                vbs = sorted(por_mat[mat])
+                if len(vbs) > 1:
+                    existe_multi_verba = True
+                funcionarios.append({
+                    "mat":     mat,
+                    "mat_fmt": f"{mat:08d}",
+                    "nome":    nomes_map.get(mat, f"Matr. {mat:06d}"),
+                    "vbs_str": " ".join(f"{c:04d}" for c in vbs),
+                })
+    except Exception:
+        pass
+
+    pasta_salvar = (f"C:\\Folha10-Simples_ReciboAdiantamento\\{ano}\\{ano}-{mes}\\{int(id_empresa):06d}"
+                    if anomes else "")
+    return render_template(
+        "F10_Recibo_Adiantamento.html",
+        versao            = ler_versao(),
+        nome              = session.get("nome", ""),
+        empresa           = empresa_nm,
+        anomes_fmt        = f"{mes_nm} / {ano}",
+        tipo_lbl          = tipo_lbl,
+        funcionarios      = funcionarios,
+        existe_multi_verba= existe_multi_verba,
+        pasta_salvar      = pasta_salvar,
+    )
+
+
+@app.route("/recibo_adiantamento_pdf")
+def recibo_adiantamento_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa  = _get_id_empresa()
+    id_cliente  = session.get("id_cliente")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    if not anomes:
+        return "Nenhuma folha ativa.", 400
+    empresa_nm  = str(session.get("empresa_info") or "")
+    cnpj_fmt    = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+
+    modo = request.args.get("modo", "1")
+    if modo not in ("1","2S","2D"):
+        modo = "1"
+    mats_str       = request.args.getlist("mat")
+    matriculas_sel = [int(m) for m in mats_str if m.isdigit()] if mats_str else []
+    com_assinatura = request.args.get("assinatura", "1") != "0"
+    separar_verba  = request.args.get("separar", "0") == "1"
+
+    from flask import make_response
+    ano, mes  = anomes[:4], anomes[4:6]
+    nome_arq  = f"ReciboAdiantamento_{empresa_nm[:20].replace(' ','_')}_{ano}{mes}.pdf"
+
+    # Salvar um arquivo por funcionário
+    salvar_ind = request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
+    if salvar_ind:
+        try:
+            ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+            cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
+            anomes_pasta = f"{ano}-{mes}"
+            pasta        = os.path.join("C:\\Folha10-Simples_ReciboAdiantamento",
+                                        ano, anomes_pasta, f"{int(id_empresa):06d}")
+            os.makedirs(pasta, exist_ok=True)
+
+            folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+            q = (supabase.table("tab_mov")
+                 .select("matricula")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao",   "A")
+                 .eq("folha",      int(anomes))
+                 .eq("folha_tipo", folha_tipo_mov)
+                 .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            mats_all = sorted({int(r["matricula"]) for r in (q.execute().data or [])
+                               if r.get("matricula")})
+            if matriculas_sel:
+                sel_set  = set(matriculas_sel)
+                mats_all = [m for m in mats_all if m in sel_set]
+
+            saved = []
+            erros = []
+            for mat in mats_all:
+                try:
+                    buf_i = _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo,
+                                                           id_cliente, empresa_nm, cnpj_fmt,
+                                                           modo, [mat], com_assinatura,
+                                                           separar_verba)
+                    pdf_i = buf_i.read()
+                    if len(pdf_i) < 2000:
+                        continue
+                    nome_f  = (f"Folha10_ReciboAdiantamento_CNPJ_{cnpj_digits}"
+                               f"_Folha_{anomes}_Matricula_{mat:06d}_em_{ts}.pdf")
+                    caminho = os.path.join(pasta, nome_f)
+                    with open(caminho, "wb") as fh:
+                        fh.write(pdf_i)
+                    saved.append((mat, caminho))
+                except Exception as e_m:
+                    erros.append(f"Matrícula {mat:06d}: {e_m}")
+
+            linhas = "".join(
+                f'<div class="frow"><span class="mat">{m:06d}</span>'
+                f'<span class="pth">{c}</span></div>'
+                for m, c in saved)
+            erros_html = "".join(f'<div class="err">{e}</div>' for e in erros)
+            html_ind = f"""<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+<title>Recibos gravados</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:'IBM Plex Sans',sans-serif;background:#f0f2f6;padding:40px 24px}}
+.box{{background:#fff;border:1px solid #dde3ec;border-radius:12px;padding:32px 36px;max-width:700px;margin:0 auto}}
+h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
+.sub{{font-size:13px;color:#64748b;margin-bottom:20px}}
+.frow{{display:flex;gap:14px;padding:7px 0;border-bottom:1px solid #f1f5f9;align-items:baseline}}
+.frow:last-of-type{{border-bottom:none}}
+.mat{{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#2a7de1;flex-shrink:0;width:70px}}
+.pth{{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#374151;word-break:break-all}}
+.err{{font-size:12px;color:#dc2626;margin-top:6px}}
+.btns{{margin-top:24px;display:flex;gap:12px}}
+.btn{{display:inline-block;background:#2a7de1;color:#fff;font-family:'IBM Plex Sans',sans-serif;font-size:14px;font-weight:600;padding:9px 24px;border-radius:8px;text-decoration:none}}
+.btn-sec{{background:#374151}}
+.btn:hover{{opacity:.88}}
+</style></head><body>
+<div class="box">
+<h2>&#128190; {len(saved)} arquivo(s) gravado(s)</h2>
+<div class="sub">Pasta: {pasta}</div>
+{linhas}
+{erros_html}
+<div class="btns">
+<a class="btn btn-sec" href="/recibo_adiantamento">&#8592; Voltar</a>
+<a class="btn" href="javascript:window.close()">Fechar</a>
+</div>
+</div></body></html>"""
+            return make_response(html_ind, 200, {"Content-Type": "text/html; charset=utf-8"})
+        except Exception as e_ind:
+            return make_response(f"Erro ao gravar arquivos individuais: {e_ind}", 500)
+
+    buf = _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
+                                          empresa_nm, cnpj_fmt, modo,
+                                          matriculas_sel, com_assinatura, separar_verba)
+    pdf_bytes = buf.read()
+
+    # Grava automaticamente no disco
+    try:
+        import logging as _log
+        ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+        anomes_pasta = f"{ano}-{mes}"
+        pasta_sv     = os.path.join("C:\\Folha10-Simples_ReciboAdiantamento",
+                                    ano, anomes_pasta, f"{int(id_empresa):06d}")
+        os.makedirs(pasta_sv, exist_ok=True)
+        cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
+        _mat_sfx     = (f"_Matricula_{matriculas_sel[0]:06d}"
+                        if len(matriculas_sel) == 1 else "")
+        nome_f       = f"Folha10_ReciboAdiantamento_CNPJ_{cnpj_digits}_Folha_{anomes}{_mat_sfx}_em_{ts}.pdf"
+        with open(os.path.join(pasta_sv, nome_f), "wb") as fh:
+            fh.write(pdf_bytes)
+    except Exception as e_sv:
+        _log.warning(f"recibo_adiantamento_pdf: erro ao salvar: {e_sv}")
 
     resp = make_response(pdf_bytes)
     resp.headers["Content-Type"]        = "application/pdf"

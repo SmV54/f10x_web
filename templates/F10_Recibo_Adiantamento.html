@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Recibo de Adiantamento</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:       #a0d9be;
+    --navy-mid:   #122947;
+    --navy-line:  #70c4a0;
+    --accent:     #2a7de1;
+    --accent-dim: #1a5fb8;
+    --text-head:  #1e293b;
+    --text-sub:   #374151;
+    --bg:         #f0f2f6;
+    --surface:    #ffffff;
+    --border:     #dde3ec;
+    --label:      #374151;
+    --sans: 'IBM Plex Sans', sans-serif;
+    --mono: 'IBM Plex Mono', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome   { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; text-decoration: none; display: inline-block;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa { font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 12px; border: 1px solid currentColor; }
+.sit-aberta    { color: #4ade80; } .sit-calculada { color: #fbbf24; }
+.sit-fechada   { color: #f87171; } .sit-processada{ color: #60a5fa; }
+
+.conteudo { max-width: 760px; margin: 18px auto; padding: 0 24px 32px; }
+
+.page-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.page-title  { font-size: 20px; font-weight: 600; color: var(--navy); }
+.page-periodo { font-size: 15px; font-weight: 600; color: var(--accent); }
+.page-tipo   { font-size: 12px; color: #94a3b8; margin-left: 2px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; margin-bottom: 12px; }
+.card-title { font-size: 12px; font-weight: 600; color: var(--navy); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 10px; }
+
+.modo-opcoes { display: flex; flex-direction: column; gap: 7px; }
+.modo-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 14px; border-radius: 7px; border: 2px solid var(--border);
+    cursor: pointer; transition: border-color 0.12s, background 0.12s; background: #fafbfc;
+}
+.modo-card:hover  { border-color: var(--accent); background: #f0f6ff; }
+.modo-card.sel    { border-color: var(--accent); background: #eff6ff; }
+.modo-card input[type="radio"] { accent-color: var(--accent); flex-shrink: 0; }
+.modo-card-title { font-size: 13px; font-weight: 600; color: #111827; }
+.modo-card-desc  { font-size: 11.5px; color: #64748b; margin-top: 1px; line-height: 1.4; }
+.badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; background: #e8edf4; color: var(--label); margin-left: 7px; vertical-align: middle; }
+
+.func-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.func-header-title { font-size: 12px; font-weight: 600; color: var(--navy); text-transform: uppercase; letter-spacing: 0.04em; }
+.btn-toggle-all { font-size: 12px; color: var(--accent); background: none; border: none; cursor: pointer; font-family: var(--sans); text-decoration: underline; padding: 0; }
+
+.todos-check { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 12px; background: #f8fafc; border-radius: 7px; border: 1px solid var(--border); cursor: pointer; }
+.todos-check input { accent-color: var(--accent); }
+.todos-check-label { font-size: 13px; font-weight: 600; color: #111827; cursor: pointer; }
+
+.func-lista {
+    max-height: 220px; overflow-y: auto; border: 1px solid var(--border);
+    border-radius: 7px; display: none;
+}
+.func-lista.visivel { display: block; }
+.func-item {
+    display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+    border-bottom: 1px solid var(--border); cursor: pointer;
+}
+.func-item:last-child { border-bottom: none; }
+.func-item:hover { background: #f8fafc; }
+.func-item input { accent-color: var(--accent); flex-shrink: 0; }
+.func-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 80px; flex-shrink: 0; }
+.func-nome { font-size: 13px; color: #111827; }
+.func-vbs  { font-family: var(--mono); font-size: 10.5px; color: #c2410c; margin-left: auto; flex-shrink: 0; }
+
+.opcoes-extra { display: flex; flex-direction: column; gap: 8px; }
+.chk-row { display: flex; align-items: center; gap: 10px; }
+.chk-row input { accent-color: var(--accent); }
+.chk-row label { font-size: 13px; color: #374151; cursor: pointer; }
+
+.aviso {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 7px;
+    padding: 8px 12px; font-size: 11.5px; color: #92400e;
+    display: flex; gap: 8px; align-items: flex-start; margin-top: 10px;
+}
+.aviso-vazio {
+    background: #fef2f2; border: 1px solid #fecaca; border-radius: 7px;
+    padding: 12px 14px; font-size: 13px; color: #991b1b;
+}
+
+.btn-gerar {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: white; border: none;
+    font-family: var(--sans); font-size: 14px; font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: background 0.15s; margin-top: 4px;
+}
+.btn-gerar:hover { background: var(--accent-dim); }
+.btn-gerar:disabled { background: #94a3b8; cursor: not-allowed; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Recibo de Adiantamento</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">{{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div>
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <a class="btn-voltar" href="/menu">&#8592; Voltar</a>
+    </div>
+</div>
+
+<div class="conteudo">
+    <div class="page-header">
+        <span class="page-title">Recibo de Adiantamento Quinzenal</span>
+        <span style="color:#cbd5e1;font-size:18px;">—</span>
+        <span class="page-periodo">{{ anomes_fmt }}</span>
+        {% if tipo_lbl and tipo_lbl != 'Folha Normal' %}
+        <span class="page-tipo">· {{ tipo_lbl }}</span>
+        {% endif %}
+    </div>
+
+    {% if not funcionarios %}
+    <div class="aviso-vazio">
+        Nenhum adiantamento quinzenal lançado nesta folha. Use <a href="/calcular_adiantamento" style="color:#7f1d1d;font-weight:600;">Calcular Adiantamento</a> ou <a href="/informar_adiantamento" style="color:#7f1d1d;font-weight:600;">Informar Adiantamento</a> primeiro.
+    </div>
+    {% else %}
+
+    <form id="frm" action="/recibo_adiantamento_pdf" method="GET" target="_blank">
+
+        <!-- Formato -->
+        <div class="card">
+            <div class="card-title">Formato de impressão</div>
+            <div class="modo-opcoes">
+                <label class="modo-card sel" id="card-1">
+                    <input type="radio" name="modo" value="1" checked id="m1" onchange="selModo('1')">
+                    <div>
+                        <div class="modo-card-title">1 recibo por página</div>
+                        <div class="modo-card-desc">Cada recibo ocupa uma página inteira.</div>
+                    </div>
+                </label>
+                <label class="modo-card" id="card-2S">
+                    <input type="radio" name="modo" value="2S" id="m2S" onchange="selModo('2S')">
+                    <div>
+                        <div class="modo-card-title">2 por página — mesmo funcionário <span class="badge">Via Empresa + Funcionário</span></div>
+                        <div class="modo-card-desc">Duas cópias do mesmo recibo separadas por linha de corte — uma fica com a empresa, outra com o funcionário.</div>
+                    </div>
+                </label>
+                <label class="modo-card" id="card-2D">
+                    <input type="radio" name="modo" value="2D" id="m2D" onchange="selModo('2D')">
+                    <div>
+                        <div class="modo-card-title">2 por página — funcionários diferentes <span class="badge">Econômico</span></div>
+                        <div class="modo-card-desc">Dois funcionários por página, com linha de corte.</div>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        <!-- Funcionários -->
+        <div class="card">
+            <div class="func-header">
+                <span class="func-header-title">Funcionários com adiantamento ({{ funcionarios|length }})</span>
+                <div style="display:flex;gap:12px;align-items:center;">
+                    <button type="button" class="btn-toggle-all" id="btnToggleAll" onclick="toggleMostrarLista()">Selecionar individualmente</button>
+                    <button type="button" class="btn-toggle-all" id="btnDesmarcar" onclick="desmarcarTodos()" style="display:none;color:#dc2626;">Desmarcar todos</button>
+                </div>
+            </div>
+
+            <label class="todos-check" id="labelTodos">
+                <input type="checkbox" id="chkTodos" checked onchange="onTodosChange(this)">
+                <span class="todos-check-label">Todos os funcionários ({{ funcionarios|length }})</span>
+            </label>
+
+            <div class="func-lista" id="funcLista">
+                {% for f in funcionarios %}
+                <label class="func-item">
+                    <input type="checkbox" name="mat" value="{{ f.mat }}" class="chk-func" checked>
+                    <span class="func-mat">{{ f.mat_fmt }}</span>
+                    <span class="func-nome">{{ f.nome }}</span>
+                    <span class="func-vbs">{{ f.vbs_str }}</span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Opções extras -->
+        <div class="card">
+            <div class="card-title">Opções</div>
+            <div class="opcoes-extra">
+                {% if existe_multi_verba %}
+                <div class="chk-row" style="margin-bottom:4px;">
+                    <input type="checkbox" id="chkSeparar" name="separar" value="1">
+                    <label for="chkSeparar">Gerar um recibo separado por verba <span style="font-size:11px;color:#64748b;">(há funcionário com mais de uma verba 161-164 lançada — por padrão, um recibo único consolida todas)</span></label>
+                </div>
+                {% endif %}
+                <div class="chk-row">
+                    <input type="checkbox" id="chkAssinatura" name="assinatura" value="1" checked>
+                    <label for="chkAssinatura">Incluir linha de assinatura do funcionário</label>
+                </div>
+                <div class="chk-row" id="rowSalvarInd">
+                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1">
+                    <label for="chkSalvarInd">Um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
+                </div>
+            </div>
+
+            <div class="aviso">
+                <span>ℹ️</span>
+                <span>O recibo lista apenas as verbas 161-164 (Adiantamento Quinzenal). Funcionários sem adiantamento não aparecem na lista.</span>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-gerar" onclick="prepareSubmit()">
+            &#128190; Gerar PDF
+        </button>
+        {% if pasta_salvar %}
+        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;">
+            <span>💾</span>
+            <span>Gravado automaticamente em:&nbsp;<code style="font-family:'IBM Plex Mono',monospace;font-size:11px;background:#f8fafc;border:1px solid #dde3ec;border-radius:4px;padding:2px 7px;color:#70c4a0;">{{ pasta_salvar }}</code></span>
+        </div>
+        {% endif %}
+
+    </form>
+
+    <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;">
+        <div>
+            <div class="card-title" style="margin-bottom:3px;">Listagem de Adiantamentos</div>
+            <div style="font-size:12px;color:#64748b;">Consultar os adiantamentos lançados na folha</div>
+        </div>
+        <a href="/listagem_adiantamentos"
+           style="flex-shrink:0;display:inline-flex;align-items:center;gap:7px;
+                  background:#374151;color:#fff;font-family:var(--sans);font-size:13px;
+                  font-weight:600;padding:9px 20px;border-radius:8px;text-decoration:none;">
+            📋 Abrir Listagem
+        </a>
+    </div>
+
+    {% endif %}
+</div>
+
+<script>
+let listaVisivel = false;
+
+function selModo(m) {
+    ['1','2S','2D'].forEach(x => document.getElementById('card-'+x).classList.toggle('sel', x === m));
+    const indOk = m === '1' || m === '2S';
+    document.getElementById('rowSalvarInd').style.display = indOk ? '' : 'none';
+    if (!indOk) document.getElementById('chkSalvarInd').checked = false;
+}
+
+function toggleMostrarLista() {
+    listaVisivel = !listaVisivel;
+    document.getElementById('funcLista').classList.toggle('visivel', listaVisivel);
+    document.getElementById('btnToggleAll').textContent = listaVisivel ? 'Selecionar Todos' : 'Selecionar individualmente';
+    document.getElementById('btnDesmarcar').style.display = listaVisivel ? '' : 'none';
+    if (listaVisivel) {
+        document.getElementById('chkTodos').checked = false;
+        document.getElementById('labelTodos').style.display = 'none';
+        document.querySelectorAll('.chk-func').forEach(c => c.checked = false);
+    } else {
+        document.getElementById('chkTodos').checked = true;
+        document.getElementById('labelTodos').style.display = '';
+        document.querySelectorAll('.chk-func').forEach(c => c.checked = true);
+    }
+}
+
+function desmarcarTodos() {
+    document.querySelectorAll('.chk-func').forEach(c => c.checked = false);
+}
+
+function onTodosChange(chk) {
+    if (!chk.checked) toggleMostrarLista();
+}
+
+function prepareSubmit() {
+    if (document.getElementById('chkTodos').checked) {
+        document.querySelectorAll('.chk-func').forEach(c => c.disabled = true);
+    }
+    const chkA = document.getElementById('chkAssinatura');
+    if (!chkA.checked) { chkA.value = '0'; chkA.checked = true; }
+}
+</script>
+
+</body>
+</html>
