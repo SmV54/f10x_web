@@ -460,6 +460,34 @@ function renderSecao(secao) {
     tbl.appendChild(tfoot);
     wrap.appendChild(tbl);
 
+    // verbas de adiantamento (161-164) — após subtotal, antes das informativas
+    if (secao.verbas_adiant && secao.verbas_adiant.length) {
+        const adDiv = document.createElement('div');
+        adDiv.style.cssText = 'border-top:1px dashed var(--border); background:#fff7ed;';
+        const adHdr = document.createElement('div');
+        adHdr.style.cssText = 'padding:5px 12px 2px; font-size:10px; font-weight:700; color:#9a3412; text-transform:uppercase; letter-spacing:0.05em;';
+        adHdr.textContent = 'Adiantamento Quinzenal';
+        adDiv.appendChild(adHdr);
+        const adTbl = document.createElement('table');
+        adTbl.className = 'verbas-table';
+        const adBody = document.createElement('tbody');
+        for (const v of secao.verbas_adiant) {
+            const prov = v.tp === '1';
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td class="td-cod">${String(v.cod).padStart(4,'0')}</td>
+                <td class="td-dsc">${v.dsc}</td>
+                <td class="td-qtd">${fmtQtd(v.qtd, v.unid)}</td>
+                <td class="${prov ? 'td-prov' : 'td-vazio'}">${prov ? fmtBRL(v.valor) : ''}</td>
+                <td class="${!prov ? 'td-desc' : 'td-vazio'}">${!prov ? fmtBRL(v.valor) : ''}</td>
+                <td class="td-orig">${v.orig || ''}</td>`;
+            adBody.appendChild(tr);
+        }
+        adTbl.appendChild(adBody);
+        adDiv.appendChild(adTbl);
+        wrap.appendChild(adDiv);
+    }
+
     // verbas informativas (cod >= 9900) — após totais, antes das bases
     if (secao.verbas_info && secao.verbas_info.length) {
         const infDiv = document.createElement('div');

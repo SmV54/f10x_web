@@ -21886,14 +21886,17 @@ def _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=None):
 
 def _limpar_folha_calculada(id_cliente, id_empresa, anomes, folha_tipo="N", matricula=None):
     """Apaga registros calculados (origem C e F) de tab_mov e todos de tab_total
-    para a folha/folha_tipo informados. Se matricula for passado, restringe a esse funcionário."""
+    para a folha/folha_tipo informados. Se matricula for passado, restringe a esse funcionário.
+    Verbas 161-164 (Adiantamento Quinzenal) são preservadas — foram lançadas em fluxo
+    próprio antes do cálculo da folha e não devem ser apagadas no recálculo."""
     try:
         q = (supabase.table("tab_mov")
              .delete()
              .eq("id_empresa", id_empresa)
              .eq("folha",      int(anomes))
              .eq("folha_tipo", folha_tipo)
-             .in_("origem",    ["C", "F"]))
+             .in_("origem",    ["C", "F"])
+             .not_.in_("cod_verba", [161, 162, 163, 164]))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         if matricula is not None:
@@ -22330,6 +22333,27 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             pass
         rubricas_info.setdefault(501, {"tp":"1","dsc":"Arredondamento","unid":"V","inc_cp":"","inc_irrf":"","inc_fgts":""})
         rubricas_info.setdefault(509, {"tp":"2","dsc":"Desc.Arred.Ant.","unid":"V","inc_cp":"","inc_irrf":"","inc_fgts":""})
+
+    # ── Pré-carga adiantamentos quinzenais (verbas 161-164) por matrícula ─────
+    # A verba 160 é gerada na ETAPA 0011B como desconto do total lançado.
+    _adiant_por_mat = {}
+    try:
+        _q_ad = (supabase.table("tab_mov")
+                 .select("matricula, valor")
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      int(anomes))
+                 .eq("folha_tipo", _folha_tipo_mov)
+                 .eq("situacao",   "A")
+                 .in_("cod_verba", [161, 162, 163, 164]))
+        if id_cliente:
+            _q_ad = _q_ad.eq("id_cliente", id_cliente)
+        for _r in (_q_ad.execute().data or []):
+            _m = int(_r.get("matricula") or 0)
+            _adiant_por_mat[_m] = _adiant_por_mat.get(_m, 0) + int(_r.get("valor") or 0)
+    except Exception:
+        pass
+    rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
+                                   "unid": "V", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
 
     def _enquadra_mov_fixo(rec, func_data):
         """Retorna (True, motivo_str) ou (False, '') conforme enquadramento."""
@@ -23708,6 +23732,28 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]))
             elems.append(_dep_outer11)
 
+            # ── ETAPA 0011B — DESCONTO DE ADIANTAMENTO QUINZENAL (verba 160) ──
+            # Soma os valores das verbas 161-164 lançadas previamente e gera a
+            # verba 160 como desconto único na folha.
+            _adiant_v = int(_adiant_por_mat.get(matr, 0))
+            if _adiant_v > 0:
+                mmVmm[160] = mmVmm.get(160, 0) + _adiant_v
+                _ad_linha = (f"Adiantamento Quinzenal (verbas 161-164): {_fmt_brl(_adiant_v)}"
+                             f"  →  V160 (desconto) = {_fmt_brl(_adiant_v)}")
+                _ad_tbl = Table([
+                    [Paragraph("ETAPA 0011B - DESCONTO DE ADIANTAMENTO QUINZENAL", st_etapa)],
+                    [Paragraph(_ad_linha, st_detalhe)],
+                ], colWidths=[17*cm])
+                _ad_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0),   8),
+                    ("BOTTOMPADDING", (0, 0), (0, 0),   2),
+                    ("TOPPADDING",    (0, 1), (0, 1),   0),
+                    ("BOTTOMPADDING", (0, 1), (0, 1),   4),
+                ]))
+                elems.append(_ad_tbl)
+
             # Remove 501/509 do mmVmm antes dos totais (re-runs não contaminam a base)
             if int(id_empresa) == 4:
                 mmVmm.pop(501, None)
@@ -24640,6 +24686,8 @@ def api_visualizar_calculo_dados():
         pass
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V", "inc_cp": ""})
+    rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
+                                   "unid": "V", "inc_cp": ""})
 
     # dados dos funcionários (nome + dtadm + sal_hora + sal_mes + codcateg)
     nomes        = {}
@@ -24703,6 +24751,8 @@ def api_visualizar_calculo_dados():
         pass
 
     # lê tab_mov do mês inteiro (todos os tipos de folha) e filtra em Python
+    # (verbas 161-164 são exibidas separadamente após o subtotal — não incluí-las
+    #  no cálculo de proventos/descontos, mas listá-las no card)
     mov_data = {}
     erro_query = None
     try:
@@ -24827,21 +24877,25 @@ def api_visualizar_calculo_dados():
         tipos_presentes = sorted({v["ft"] for v in todos_verbas}, key=lambda t: _tipo_ord.get(t, 9))
         secoes = []
         for ft in tipos_presentes:
-            vbs_all  = [v for v in todos_verbas if v["ft"] == ft]
-            vbs      = [v for v in vbs_all if int(v["cod"]) < 9900]
-            vbs_info = [v for v in vbs_all if int(v["cod"]) >= 9900]
+            vbs_all    = [v for v in todos_verbas if v["ft"] == ft]
+            vbs_adiant = [v for v in vbs_all if int(v["cod"]) in (161, 162, 163, 164)]
+            vbs_info   = [v for v in vbs_all if int(v["cod"]) >= 9900]
+            vbs        = [v for v in vbs_all
+                          if int(v["cod"]) < 9900
+                          and int(v["cod"]) not in (161, 162, 163, 164)]
             prov = sum(v["valor"] for v in vbs if v["tp"] == "1")
             desc = sum(v["valor"] for v in vbs if v["tp"] != "1")
             # total do tab_total para este tipo
             tot_reg = next((t for t in totais_data.get(mat, []) if t.get("folha_tipo") == ft), None)
             secoes.append({
-                "ft":          ft,
-                "verbas":      vbs,
-                "verbas_info": vbs_info,
-                "sub_prov":    prov,
-                "sub_desc":    desc,
-                "sub_liq":     prov - desc,
-                "total_reg":   tot_reg,
+                "ft":            ft,
+                "verbas":        vbs,
+                "verbas_adiant": vbs_adiant,
+                "verbas_info":   vbs_info,
+                "sub_prov":      prov,
+                "sub_desc":      desc,
+                "sub_liq":       prov - desc,
+                "total_reg":     tot_reg,
             })
 
         total_prov = sum(s["sub_prov"] for s in secoes)
@@ -24928,7 +24982,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod, f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
 
-    mov_data = {}
+    # 161-164: lidos em dict próprio (linha "Adiantamento Quinzenal" acima das informativas)
+    mov_data    = {}
+    adiant_data = {}
     try:
         q = (supabase.table("tab_mov")
              .select("matricula,cod_verba,qtd,valor")
@@ -24940,7 +24996,12 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if mat:
+            if not mat:
+                continue
+            cod = int(reg.get("cod_verba") or 0)
+            if cod in (161, 162, 163, 164):
+                adiant_data.setdefault(mat, []).append(reg)
+            else:
                 mov_data.setdefault(mat, []).append(reg)
     except Exception:
         pass
@@ -25036,11 +25097,25 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
 
+        # Adiantamento Quinzenal (161-164) — bloco próprio acima das informativas
+        adiant_list = []
+        for r_ad in adiant_data.get(mat, []):
+            cod_ad = int(r_ad.get("cod_verba") or 0)
+            val_ad = int(r_ad.get("valor")     or 0)
+            if val_ad <= 0:
+                continue
+            ri_ad = rubricas_info.get(cod_ad, {"dsc": f"Verba {cod_ad:04d}"})
+            adiant_list.append({"cod": cod_ad,
+                                "dsc": ri_ad.get("dsc") or f"Verba {cod_ad:04d}",
+                                "val": val_ad})
+        adiant_list.sort(key=lambda x: x["cod"])
+
         cc_key   = fi["cc"] or "000"
         cc_groups.setdefault(cc_key, []).append({
             "mat":mat, "nome":fi["nome"], "funcao":fi["funcao"],
             "dtadm":fi["dtadm"], "sal":fi["sal"], "filial":fi["filial"],
             "verbas":verbas, "verbas_info":verbas_info,
+            "adiant_list": adiant_list,
             "prov":tot_prov, "desc":tot_desc, "liq":liquido,
             "b_inss":base_inss, "b_irrf":base_irrf, "b_fgts":base_fgts, "fgts":fgts_val,
         })
@@ -25106,6 +25181,11 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                     "qtd_fmt": _fqtd(v["qtd"], v["unid"]),
                     "val_fmt": _fmt_brl(v["val"]),
                 } for v in f["verbas_info"]],
+                "adiant_list": [{
+                    "cod":     f"{a['cod']:04d}",
+                    "dsc":     a["dsc"],
+                    "val_fmt": _fmt_brl(a["val"]),
+                } for a in f.get("adiant_list", [])],
             } for f in funcs],
         })
 
@@ -25245,7 +25325,10 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod,f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
 
-    mov_data = {}
+    # 161-164 (Adiantamento Quinzenal) são listados em bloco próprio acima das
+    # verbas informativas — não compõem os totais (já abatidos via verba 160).
+    mov_data    = {}
+    adiant_data = {}
     try:
         q = (supabase.table("tab_mov")
              .select("matricula,cod_verba,qtd,valor")
@@ -25257,7 +25340,12 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if mat:
+            if not mat:
+                continue
+            cod = int(reg.get("cod_verba") or 0)
+            if cod in (161, 162, 163, 164):
+                adiant_data.setdefault(mat, []).append(reg)
+            else:
                 mov_data.setdefault(mat, []).append(reg)
     except Exception:
         pass
@@ -25363,11 +25451,25 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
 
+        # Adiantamentos quinzenais (verbas 161-164) — linha acima das informativas
+        adiant_list = []
+        for r_ad in adiant_data.get(mat, []):
+            cod_ad = int(r_ad.get("cod_verba") or 0)
+            val_ad = int(r_ad.get("valor")     or 0)
+            if val_ad <= 0:
+                continue
+            ri_ad = rubricas_info.get(cod_ad, {"dsc": f"Verba {cod_ad:04d}"})
+            adiant_list.append({"cod": cod_ad,
+                                "dsc": ri_ad.get("dsc") or f"Verba {cod_ad:04d}",
+                                "val": val_ad})
+        adiant_list.sort(key=lambda x: x["cod"])
+
         cc_key = fi["cc"] or "000"
         cc_groups.setdefault(cc_key, []).append({
             "mat":mat,"nome":fi["nome"],"funcao":fi["funcao"],
             "dtadm":fi["dtadm"],"sal":fi["sal"],"unid":fi["unid"],"filial":fi["filial"],
             "verbas":verbas,"verbas_info":verbas_info,
+            "adiant_list": adiant_list,
             "prov":tot_prov,"desc":tot_desc,"liq":liquido,
             "b_inss":base_inss,"b_irrf":base_irrf,"b_fgts":base_fgts,"fgts":fgts_val,
         })
@@ -25540,6 +25642,41 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
             elementos = [fhdr1, fhdr2, v_tbl]
 
+            # Adiantamento Quinzenal (verbas 161-164) — acima das informativas
+            if func.get("adiant_list"):
+                st_ad_hdr = _st("ah", fontName="Helvetica-Bold", fontSize=6.5,
+                                textColor=colors.HexColor("#9a3412"))
+                st_ad_cod = _st("ac", fontName="Helvetica", fontSize=6.5,
+                                textColor=colors.HexColor("#c2410c"))
+                st_ad_dsc = _st("ad", fontName="Helvetica", fontSize=6.5,
+                                textColor=colors.HexColor("#7c2d12"))
+                st_ad_val = _st("av", fontName="Helvetica", fontSize=6.5,
+                                textColor=colors.HexColor("#9a3412"), alignment=2)
+                ad_rows = [[Paragraph("ADIANTAMENTO QUINZENAL", st_ad_hdr),
+                            Paragraph("", st_ad_hdr),
+                            Paragraph("", st_ad_hdr),
+                            Paragraph("", st_ad_hdr)]]
+                for ad in func["adiant_list"]:
+                    ad_rows.append([
+                        Paragraph(f"{ad['cod']:04d}", st_ad_cod),
+                        Paragraph(ad["dsc"],          st_ad_dsc),
+                        Paragraph("",                  st_ad_cod),
+                        Paragraph(_fmt_brl(ad["val"]), st_ad_val),
+                    ])
+                COLS_AD = [COLS[0], COLS[1]+COLS[2], COLS[3], COLS[4]]
+                ad_tbl = Table(ad_rows, colWidths=COLS_AD)
+                ad_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0,0),(-1,-1), 3),
+                    ("RIGHTPADDING",  (0,0),(-1,-1), 3),
+                    ("TOPPADDING",    (0,0),(-1,-1), 1),
+                    ("BOTTOMPADDING", (0,0),(-1,-1), 1),
+                    ("BACKGROUND",    (0,0),(-1,0),  colors.HexColor("#fff7ed")),
+                    ("LINEABOVE",     (0,0),(-1,0),  0.5, colors.HexColor("#fdba74")),
+                    ("LINEBELOW",     (0,0),(-1,0),  0.3, colors.HexColor("#fdba74")),
+                    ("ALIGN",         (3,0),(3,-1),  "RIGHT"),
+                ]))
+                elementos.append(ad_tbl)
+
             # Verbas informativas (cod > 9900)
             if func.get("verbas_info"):
                 st_info_hdr = _st("ih", fontName="Helvetica-Bold", fontSize=6.5,
@@ -25701,6 +25838,10 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     def _fdt(s):
         return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if s and len(s) >= 8 else "—"
 
+    def _fbrl(c, dec=2):
+        # Valor formatado em padrão BR, SEM o prefixo "R$"
+        return f"{c/100:,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
     def _fqtd(qtd, unid):
         if qtd == 999999:          # qtd especial = ignorar (item 5)
             return ""
@@ -25737,7 +25878,10 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
 
     # ── Carrega movimentos ────────────────────────────────
-    mov_data = {}
+    # 161-164 (Adiantamento Quinzenal) são exibidos em linha própria antes das bases
+    # — não entram no rateio de proventos/descontos (já abatidos via verba 160).
+    mov_data    = {}
+    adiant_data = {}
     try:
         q = (supabase.table("tab_mov")
              .select("matricula,cod_verba,qtd,valor")
@@ -25749,7 +25893,12 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if mat:
+            if not mat:
+                continue
+            cod = int(reg.get("cod_verba") or 0)
+            if cod in (161, 162, 163, 164):
+                adiant_data.setdefault(mat, []).append(reg)
+            else:
                 mov_data.setdefault(mat, []).append(reg)
     except Exception:
         pass
@@ -25823,10 +25972,24 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         base_irrf = max(0, base_inss - inss_val)
         base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
+        # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
+        adiant_list = []
+        for r_ad in adiant_data.get(mat, []):
+            cod_ad = int(r_ad.get("cod_verba") or 0)
+            val_ad = int(r_ad.get("valor")     or 0)
+            if val_ad <= 0:
+                continue
+            ri_ad = rubricas_info.get(cod_ad, {"dsc": f"Verba {cod_ad:04d}"})
+            adiant_list.append({"cod": cod_ad,
+                                "dsc": ri_ad.get("dsc") or f"Verba {cod_ad:04d}",
+                                "val": val_ad})
+        adiant_list.sort(key=lambda x: x["cod"])
+
         all_funcs.append({
             "mat":mat,"nome":fi["nome"],"funcao":fi["funcao"],
             "dtadm":fi["dtadm"],"sal":fi["sal"],"filial":fi["filial"],
             "verbas":verbas,"verbas_info":verbas_info,
+            "adiant_list": adiant_list,
             "prov":tot_prov,"desc":tot_desc,"liq":liquido,
             "b_inss":base_inss,"b_irrf":base_irrf,"b_fgts":base_fgts,"fgts":fgts_val,
         })
@@ -25856,10 +26019,11 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         R     = ROWS[compact]
         sig_h = R["sig"] if com_sig else 6
         n_info = (1 + len(func_data["verbas_info"])) if func_data["verbas_info"] else 0
+        h_adiant = R["base"] if func_data.get("adiant_list") else 0
         return (R["hdr"] + R["emp"] + R["col"] +
                 len(func_data["verbas"]) * R["verb"] +
                 R["tot"] + R["liq"] + n_info * R["info"] +
-                R["base"] + sig_h)
+                h_adiant + R["base"] + sig_h)
 
     _qtd_c_cc, _dhc_cc = _get_calc_info(id_empresa, id_cliente, anomes, anomes_tipo)
     _emitido_cc = agora.strftime("%d/%m/%Y %H:%M")
@@ -25988,7 +26152,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         y_e2 = y - R["emp"] + 4
         det = (f"Admissão: {_fdt(func_data['dtadm'])}   |   "
                f"Função: {func_data['funcao'][:28]}   |   "
-               f"Salário: {_fmt_brl(func_data['sal'])}/Mês")
+               f"Salário: {_fbrl(func_data['sal'])}/Mês")
         text_at(det, x0+PAD, y_e2, "Helvetica", FS_DET, C_LGRAY)
         hline(x0, xEND, y - R["emp"], C_LINE, 0.6)
         y -= R["emp"]
@@ -26014,21 +26178,33 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             text_at(_fqtd(v["qtd"],v["unid"]), xQTD+W_QTD/2, y_v, "Helvetica", FS_COL,
                     C_LGRAY, "center")
             if v["tp"] == "1":
-                text_at(_fmt_brl(v["val"]), xPRV+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
+                text_at(_fbrl(v["val"]), xPRV+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
                         C_TXT, "right")
             else:
-                text_at(_fmt_brl(v["val"]), xDSK+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
+                text_at(_fbrl(v["val"]), xDSK+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
                         C_TXT, "right")
             hline(x0, xEND, y - R["verb"], colors.HexColor("#e5e7eb"), 0.2)
             y -= R["verb"]
 
+        # ── 4B. Adiantamentos Quinzenais (verbas 161-164) ───────────
+        if func_data.get("adiant_list"):
+            hline(x0, xEND, y, C_LINE, 0.5)
+            fill_row(R["base"], colors.HexColor("#fff7ed"))
+            partes = [f"{a['cod']:04d} {a['dsc'][:24]}: {_fbrl(a['val'])}"
+                      for a in func_data["adiant_list"]]
+            adiant_txt = "Adiantamento Quinzenal — " + "   |   ".join(partes)
+            text_at(adiant_txt, xCOD+PAD, y - R["base"] + 3, "Helvetica",
+                    FS_BSE, colors.HexColor("#9a3412"))
+            hline(x0, xEND, y - R["base"], C_LINE, 0.3)
+            y -= R["base"]
+
         # ── 5. Bases — logo abaixo das verbas ───────────────────────
         hline(x0, xEND, y, C_LINE, 0.7)
         fill_row(R["base"], colors.HexColor("#f9fafb"))
-        bases_txt = (f"Base INSS: {_fmt_brl(func_data['b_inss'])}   "
-                     f"|   Base IRRF: {_fmt_brl(func_data['b_irrf'])}   "
-                     f"|   Base FGTS: {_fmt_brl(func_data['b_fgts'])}   "
-                     f"|   FGTS: {_fmt_brl(func_data['fgts'])}")
+        bases_txt = (f"Base INSS: {_fbrl(func_data['b_inss'])}   "
+                     f"|   Base IRRF: {_fbrl(func_data['b_irrf'])}   "
+                     f"|   Base FGTS: {_fbrl(func_data['b_fgts'])}   "
+                     f"|   FGTS: {_fbrl(func_data['fgts'])}")
         text_at(bases_txt, xCOD+PAD, y - R["base"] + 3, "Helvetica", FS_BSE, C_LGRAY)
         hline(x0, xEND, y - R["base"], C_LINE, 0.6)
         y -= R["base"]
@@ -26037,9 +26213,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         fill_row(R["tot"], colors.HexColor("#f3f4f6"))
         y_t = y - R["tot"] + 3
         text_at("TOTAL",             xDSC+PAD,        y_t, "Helvetica-Bold", FS_TOT, C_GRAY)
-        text_at(_fmt_brl(func_data["prov"]), xPRV+W_VAL-PAD, y_t,
+        text_at(_fbrl(func_data["prov"]), xPRV+W_VAL-PAD, y_t,
                 "Helvetica-Bold", FS_TOT, C_TXT, "right")
-        text_at(_fmt_brl(func_data["desc"]), xDSK+W_VAL-PAD, y_t,
+        text_at(_fbrl(func_data["desc"]), xDSK+W_VAL-PAD, y_t,
                 "Helvetica-Bold", FS_TOT, C_TXT, "right")
         y -= R["tot"]
 
@@ -26048,7 +26224,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         fill_row(R["liq"], colors.HexColor("#f3f4f6"))
         y_l = y - R["liq"] + 3
         text_at("LÍQUIDO A RECEBER", xDSC+PAD, y_l, "Helvetica-Bold", FS_LIQ, C_TXT)
-        text_at(_fmt_brl(func_data["liq"]), xQTD+W_QTD-PAD, y_l,
+        text_at(_fbrl(func_data["liq"]), xQTD+W_QTD-PAD, y_l,
                 "Helvetica-Bold", FS_LIQ, C_TXT, "right")
         hline(x0, xEND, y - R["liq"], C_LINE, 1.0)
         y -= R["liq"]
@@ -26066,7 +26242,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 text_at(f"{vi['cod']:04d}", xCOD+W_COD/2, y_i, "Helvetica", FS_COL-0.5,
                         C_LGRAY, "center")
                 text_at(vi["dsc"][:46], xDSC+PAD, y_i, "Helvetica", FS_COL, C_GRAY)
-                text_at(_fmt_brl(vi["val"]), xPRV+W_VAL-PAD, y_i, "Helvetica", FS_COL,
+                text_at(_fbrl(vi["val"]), xPRV+W_VAL-PAD, y_i, "Helvetica", FS_COL,
                         C_GRAY, "right")
                 hline(x0, xEND, y - R["info"], colors.HexColor("#e5e7eb"), 0.2)
                 y -= R["info"]
@@ -33319,7 +33495,8 @@ def calcular_adiantamento():
                  .execute())
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
-            if len(dtadm_raw) >= 6 and dtadm_raw[:6] > anomes:
+            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            if dtadm_anomes and dtadm_anomes > anomes:
                 continue
             nome      = (f.get("nome") or f.get("nomer") or "").strip()
             vrsalfx   = f.get("vrsalfx") or 0
@@ -33427,7 +33604,8 @@ def api_calcular_adiantamento():
                  .execute())
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
-            if len(dtadm_raw) >= 6 and dtadm_raw[:6] > anomes:
+            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            if dtadm_anomes and dtadm_anomes > anomes:
                 continue
             vrsalfx  = f.get("vrsalfx") or 0
             per_ind  = f.get("per_adianta")
@@ -33463,8 +33641,8 @@ def api_calcular_adiantamento():
                     "os":         0,
                 }).execute()
                 gravados += 1
-            except Exception:
-                erros += 1
+            except Exception as e_ins:
+                return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 

@@ -145,6 +145,16 @@ td.zero { color: #d1d5db; }
 .tbl-info td.val  { font-family: var(--mono); font-size: 11px; text-align: right; color: #64748b; white-space: nowrap; }
 .tbl-info tbody tr:nth-child(even) { background: #f9fafb; }
 
+/* Adiantamento Quinzenal (verbas 161-164) */
+.tbl-adiant { width: 100%; border-collapse: collapse; font-size: 11px; margin-top: 6px; background: #fff7ed; }
+.tbl-adiant-header {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  color: #9a3412; padding: 5px 10px 3px; border-top: 1px solid #fdba74;
+}
+.tbl-adiant td { padding: 4px 10px; color: #7c2d12; }
+.tbl-adiant td.cod { font-family: var(--mono); font-size: 10px; color: #c2410c; text-align: center; width: 52px; }
+.tbl-adiant td.val { font-family: var(--mono); font-size: 11px; text-align: right; color: #9a3412; white-space: nowrap; font-weight: 600; }
+
 /* Linha TOTAL */
 tr.tr-total td {
   padding: 7px 10px; background: #f3f4f6;
@@ -304,6 +314,21 @@ function mudarOrdem(v) {
         </tr>
       </tfoot>
     </table>
+
+    {% if f.adiant_list %}
+    <div class="tbl-adiant-header">Adiantamento Quinzenal</div>
+    <table class="tbl-adiant">
+      <tbody>
+        {% for a in f.adiant_list %}
+        <tr>
+          <td class="cod">{{ a.cod }}</td>
+          <td>{{ a.dsc }}</td>
+          <td class="val">{{ a.val_fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
 
     {% if f.verbas_info %}
     <div class="tbl-info-header">Verbas Informativas</div>
