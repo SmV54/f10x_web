@@ -101,6 +101,29 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .modulo-nome { font-size: 9px; font-weight: 600; color: #1e293b; text-transform: uppercase; letter-spacing: 0.04em; line-height: 1.3; white-space: normal; }
 .modulo-card.ativo .modulo-nome { color: var(--accent); }
 
+/* ── NUMERAÇÃO DE CARDS (toggle: classe "menu-numerado" no <body>) ─────
+   Para REVERTER: remover a classe "menu-numerado" do <body>. ─────────── */
+body.menu-numerado .modulos-grid { counter-reset: modulo-counter; }
+body.menu-numerado .modulo-card  { position: relative; }
+body.menu-numerado .modulo-card::before {
+    counter-increment: modulo-counter;
+    content: counter(modulo-counter);
+    position: absolute; top: 4px; left: 6px;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: #f1f5f9; color: var(--text-sub);
+    font-size: 9px; font-weight: 700; font-family: var(--mono);
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1; pointer-events: none;
+}
+body.menu-numerado .modulo-card.ativo::before { background: var(--accent); color: #fff; }
+body.menu-numerado .nav-itens { counter-reset: nav-item-counter; }
+body.menu-numerado .nav-item  { counter-increment: nav-item-counter; }
+body.menu-numerado .nav-item::before {
+    content: counter(nav-item-counter) ".";
+    color: var(--sub); font-size: 11px; font-weight: 600;
+    font-family: var(--mono); margin-right: 2px;
+}
+
 /* ── PAINEL DE NAVEGAÇÃO (3 etapas) ── */
 .nav-panel {
     display: none;
@@ -283,7 +306,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 </style>
 </head>
 
-<body>
+<body{% if menu_numerado == "S" %} class="menu-numerado"{% endif %}>
 
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">

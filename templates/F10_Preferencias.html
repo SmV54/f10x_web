@@ -101,7 +101,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     opacity: 0; transition: opacity 0.15s;
     white-space: nowrap; min-width: 110px; text-align: center;
 }
-.feedback.erro { color: #991b1b; background: #fee2e2; border-color: #fca5a5; }
+.feedback.erro {
+    color: #991b1b; background: #fee2e2; border-color: #fca5a5;
+    white-space: normal; max-width: 320px; text-align: left; line-height: 1.35;
+}
 .feedback.show { opacity: 1; }
 </style>
 </head>
@@ -113,7 +116,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <span class="topo-nome">{{ nome }}</span>
     </div>
     <div class="topo-ctr">
-        <span class="topo-titulo">⚙️ Preferências</span>
+        <span class="topo-titulo">⚙️ Preferências do seu Folha10-Simples</span>
     </div>
     <div class="topo-dir">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
@@ -145,6 +148,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <span class="feedback" id="fbOrdem"></span>
     </div>
 
+    <!-- Preferência 2: Numeração no menu principal -->
+    <div class="pref-card">
+        <div class="pref-card-info">
+            <span class="pref-card-titulo">Numeração no menu</span>
+            <span class="pref-card-help">?<span class="tip">Exibe números nos cards do menu principal e nos itens de cada módulo (ex: 6. Cálculo → 1. Calcular Folha). Útil para orientação por telefone: "vá em 6, depois 1".</span></span>
+        </div>
+        <div class="opcoes-row" id="numeradoOpcoes">
+            <label class="opc-card {% if prefs.menu_num == 'S' %}sel{% endif %}" data-val="S" title="Mostra números antes dos nomes">
+                <input type="radio" name="menu_numerado" value="S" {% if prefs.menu_num == 'S' %}checked{% endif %}>
+                <span>Mostrar</span>
+            </label>
+            <label class="opc-card {% if prefs.menu_num != 'S' %}sel{% endif %}" data-val="N" title="Esconde os números">
+                <input type="radio" name="menu_numerado" value="N" {% if prefs.menu_num != 'S' %}checked{% endif %}>
+                <span>Ocultar</span>
+            </label>
+        </div>
+        <span class="feedback" id="fbNum"></span>
+    </div>
+
 </div>
 
 <script>
@@ -154,7 +176,7 @@ function fb(elId, msg, erro = false) {
     fb.classList.remove('erro', 'show');
     if (erro) fb.classList.add('erro');
     fb.classList.add('show');
-    setTimeout(() => fb.classList.remove('show'), 2500);
+    setTimeout(() => fb.classList.remove('show'), erro ? 8000 : 2500);
 }
 
 async function savePref(codigo, texto) {
@@ -165,9 +187,9 @@ async function savePref(codigo, texto) {
             body: JSON.stringify({codigo, texto}),
         });
         const data = await resp.json();
-        return data.ok === true;
+        return {ok: data.ok === true, msg: data.msg || ''};
     } catch (e) {
-        return false;
+        return {ok: false, msg: String(e)};
     }
 }
 
@@ -184,17 +206,21 @@ document.addEventListener('click', () => {
     document.querySelectorAll('.pref-card-help.aberto').forEach(h => h.classList.remove('aberto'));
 });
 
-document.querySelectorAll('#ordemOpcoes .opc-card').forEach(card => {
-    card.addEventListener('click', async () => {
-        const val = card.dataset.val;
-        document.querySelectorAll('#ordemOpcoes .opc-card').forEach(c =>
-            c.classList.toggle('sel', c === card));
-        card.querySelector('input[type=radio]').checked = true;
-        const ok = await savePref('ordem_rel', val);
-        if (ok) fb('fbOrdem', '✓ Preferência salva');
-        else    fb('fbOrdem', 'Erro ao salvar', true);
+function bindOpcoes(grupoSel, codigo, fbId) {
+    document.querySelectorAll(grupoSel + ' .opc-card').forEach(card => {
+        card.addEventListener('click', async () => {
+            const val = card.dataset.val;
+            document.querySelectorAll(grupoSel + ' .opc-card').forEach(c =>
+                c.classList.toggle('sel', c === card));
+            card.querySelector('input[type=radio]').checked = true;
+            const res = await savePref(codigo, val);
+            if (res.ok) fb(fbId, '✓ Preferência salva');
+            else        fb(fbId, res.msg || 'Erro ao salvar', true);
+        });
     });
-});
+}
+bindOpcoes('#ordemOpcoes',    'ordem_rel',     'fbOrdem');
+bindOpcoes('#numeradoOpcoes', 'menu_num', 'fbNum');
 </script>
 
 </body>

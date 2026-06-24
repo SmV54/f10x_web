@@ -31,8 +31,9 @@ from services.validacoes import somente_numeros, validar_cpf
 # =========================================================
 load_dotenv(override=True)
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+SUPABASE_URL          = os.getenv("SUPABASE_URL")
+SUPABASE_KEY          = os.getenv("SUPABASE_KEY")
+SUPABASE_SERVICE_KEY  = os.getenv("SUPABASE_SERVICE_KEY")  # service_role — usado só pelo Storage
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise Exception("Erro: SUPABASE_URL ou SUPABASE_KEY não definidos no .env")
@@ -132,6 +133,60 @@ def inject_folha_ativa():
 # SUPABASE CLIENT
 # =========================================================
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# =========================================================
+# eSocial XML — armazenamento (Supabase Storage, bucket "esocial-xml")
+# =========================================================
+import os as _os_xml
+import logging as _log_xml
+
+_ESOC_BUCKET    = "esocial-xml"
+_RUNNING_RENDER = bool(_os_xml.environ.get("RENDER"))
+
+# Cliente dedicado para Storage usando service_role (bypass RLS).
+# Se SUPABASE_SERVICE_KEY não estiver definido, cai pra anon (vai falhar com RLS).
+_supabase_storage = create_client(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_KEY or SUPABASE_KEY,
+)
+
+def _xml_dir_rel(id_empresa, when=None):
+    """Caminho relativo dentro do bucket: YYYY/YYYY-MM/EMPRESA."""
+    when = when or datetime.now()
+    return (f"{when.strftime('%Y')}/{when.strftime('%Y-%m')}/"
+            f"{str(id_empresa).zfill(6)}")
+
+def _xml_save(rel_path, content):
+    """
+    Sobe XML para o Supabase Storage (bucket 'esocial-xml').
+    Em dev (fora do Render) também grava cópia local em ./eSocial_XML para debug.
+    rel_path: caminho relativo (ex: '2026/2026-06/000001/S2220_xxx_1_evento.xml')
+    content : str ou bytes
+    Retorna True se subiu pro Storage com sucesso.
+    """
+    data = content.encode("utf-8") if isinstance(content, str) else content
+    ok = False
+    # 1) Sobe para o Supabase Storage
+    try:
+        _supabase_storage.storage.from_(_ESOC_BUCKET).upload(
+            path=rel_path, file=data,
+            file_options={"content-type": "application/xml", "upsert": "true"})
+        ok = True
+        print(f"[XML] OK Storage: {rel_path}")
+    except Exception as e:
+        print(f"[XML] ERRO Storage '{rel_path}': {type(e).__name__}: {e}")
+        _log_xml.warning(f"_xml_save: falha upload Storage '{rel_path}': {e}")
+    # 2) Sempre tenta também no disco local do servidor (cópia / debug)
+    try:
+        full = _os_xml.path.join(
+            _os_xml.path.dirname(__file__), "eSocial_XML", rel_path)
+        _os_xml.makedirs(_os_xml.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as _f:
+            _f.write(data)
+        print(f"[XML] OK Local:   {full}")
+    except Exception as e:
+        print(f"[XML] ERRO Local '{rel_path}': {type(e).__name__}: {e}")
+    return ok
 
 # =========================================================
 # CERTIFICADO DIGITAL — HELPERS
@@ -613,6 +668,7 @@ def menu():
         qtd_empresas=qtd_empresas,
         licenca_fmt=licenca_fmt,
         licenca_classe=licenca_classe,
+        menu_numerado=_get_pref("menu_num", "S"),
     )
 
 # =========================================================
@@ -695,9 +751,10 @@ def _def_classificacao():
 
 
 def _set_pref(codigo, texto, valor=None, id_empresa="0"):
+    """Retorna (ok: bool, msg: str). msg traz a exceção quando ok=False."""
     id_cliente = session.get("id_cliente")
     if id_cliente is None:
-        return False
+        return False, "Sem id_cliente na sessão."
     try:
         r = (supabase.table("tab_tabela_cli")
              .select("id")
@@ -720,9 +777,9 @@ def _set_pref(codigo, texto, valor=None, id_empresa="0"):
             })
             rec.setdefault("valor", 0)
             supabase.table("tab_tabela_cli").insert(rec).execute()
-        return True
-    except Exception:
-        return False
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 def _ctx_relatorio():
@@ -745,7 +802,8 @@ def preferencias():
     if not session.get("logado"):
         return redirect("/")
     prefs = {
-        "ordem_rel": _get_pref("ordem_rel", "mat"),
+        "ordem_rel":     _get_pref("ordem_rel",     "mat"),
+        "menu_num": _get_pref("menu_num", "S"),
     }
     return render_template("F10_Preferencias.html", prefs=prefs, **_ctx_relatorio())
 
@@ -760,8 +818,10 @@ def api_pref_salvar():
     valor  = data.get("valor")
     if not codigo:
         return jsonify({"ok": False, "msg": "Código obrigatório."})
-    ok = _set_pref(codigo, texto, valor)
-    return jsonify({"ok": ok, "msg": "Preferência salva." if ok else "Falha ao salvar."})
+    ok, err = _set_pref(codigo, texto, valor)
+    if ok:
+        return jsonify({"ok": True, "msg": "Preferência salva."})
+    return jsonify({"ok": False, "msg": f"Falha ao salvar: {err}"})
 
 @app.route("/rel_cadastros")
 def rel_cadastros():
@@ -9861,7 +9921,7 @@ def api_esocial_s2220_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
-    # ── 4. Empresa + certificado ──────────────────────────
+    # ── 4. Empresa (cert validado depois do save do XML cru) ──
     try:
         empresa = (supabase.table("tab_empresa").select("*")
                    .eq("cnpj", cnpj_emp).limit(1).execute().data or [{}])[0]
@@ -9870,6 +9930,19 @@ def api_esocial_s2220_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # ── 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2220_{es.get('matricula')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 6. Validar certificado e assinar ──────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -9878,32 +9951,12 @@ def api_esocial_s2220_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 5. Gerar XML ──────────────────────────────────────
-    try:
-        xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    # ── 6. Salvar e assinar ───────────────────────────────
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__), "eSocial_XML",
-                              _now2.strftime("%Y"), _now2.strftime("%Y-%m"),
-                              str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _pref = _os2.path.join(_dir_xml, f"S2220_{es.get('matricula')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f: _f.write(xml_str)
-    except Exception: pass
-
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f: _f.write(xml_assinado)
-    except Exception: pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # ── 7. Montar lote e enviar ───────────────────────────
     try:
@@ -14882,7 +14935,7 @@ def api_esocial_s1000_enviar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
-    import time, os as _os3, json as _json
+    import time, json as _json
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
@@ -14926,7 +14979,7 @@ def api_esocial_s1000_enviar():
     if not ini_valid:
         return jsonify({"ok": False, "msg": "Parâmetros de envio não encontrados. Recrie o registro."})
 
-    # ── 2. Empresa + certificado ──────────────────────────
+    # ── 2. Empresa (cert validado depois do save do XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa").select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
@@ -14936,6 +14989,19 @@ def api_esocial_s1000_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # ── 3. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1000_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, ctt_nome, ctt_cpf)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 4. Validar certificado e assinar ──────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -14945,40 +15011,12 @@ def api_esocial_s1000_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 3. Gerar XML ──────────────────────────────────────
-    try:
-        xml_str = _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, ctt_nome, ctt_cpf)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    # ── 4. Salvar arquivo XML ─────────────────────────────
-    _now2    = datetime.now()
-    _ano     = _now2.strftime("%Y")
-    _ano_mes = _now2.strftime("%Y-%m")
-    _emp_dir = str(id_empresa).zfill(6)
-    _dir_xml = _os3.path.join(_os3.path.dirname(__file__),
-                               "eSocial_XML", _ano, _ano_mes, _emp_dir)
-    _os3.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os3.path.join(_dir_xml, f"S1000_{ini_valid.replace('-','')}_{_ts}")
-
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
-
-    # ── 5. Assinar ────────────────────────────────────────
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # ── 6. Montar lote (S-1000 = Grupo 1 — Tabelas) ───────
     try:
@@ -14986,11 +15024,7 @@ def api_esocial_s1000_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     # ── 7. Enviar ─────────────────────────────────────────
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
@@ -15006,11 +15040,7 @@ def api_esocial_s1000_enviar():
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
-    try:
-        with open(f"{_pref}_4_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_resposta.xml", resp_envio)
 
     # ── 8. Analisar resposta do envio ─────────────────────
     analise         = _analisar_resposta_envio(resp_envio)
@@ -15134,7 +15164,7 @@ def api_esocial_s1000_excluir():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
-    import time, os as _os4
+    import time
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
@@ -15163,7 +15193,7 @@ def api_esocial_s1000_excluir():
         return jsonify({"ok": False,
                         "msg": "Registro sem recibo — use 'Apagar' para remover localmente."})
 
-    # ── 2. Empresa + certificado ──────────────────────────
+    # ── 2. Empresa (cert validado depois do save do XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa").select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
@@ -15173,6 +15203,19 @@ def api_esocial_s1000_excluir():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # ── 3. Gerar XML S-3000 cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S3000_S1000_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s3000(recibo_excluir, "1000", "", empresa, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML S-3000: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 4. Validar certificado e assinar ──────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -15182,26 +15225,6 @@ def api_esocial_s1000_excluir():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 3. Gerar XML S-3000 (sem cpfTrab — evento de empregador) ──
-    try:
-        xml_str = _gerar_xml_s3000(recibo_excluir, "1000", "", empresa, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML S-3000: {e}"})
-
-    # ── 4. Salvar diagnóstico ─────────────────────────────
-    _now2    = datetime.now()
-    _dir_xml = _os4.path.join(_os4.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os4.makedirs(_dir_xml, exist_ok=True)
-    _pref = _os4.path.join(_dir_xml, f"S3000_S1000_{_now2.strftime('%Y%m%d_%H%M%S')}")
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
-
-    # ── 5. Assinar ────────────────────────────────────────
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
@@ -15729,7 +15752,7 @@ def api_esocial_s1010_enviar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
-    import time, os as _os5, json as _json
+    import time, json as _json
 
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
@@ -15796,7 +15819,7 @@ def api_esocial_s1010_enviar():
     if not ini_valid or cod_rubr_reg is None:
         return jsonify({"ok": False, "msg": "Parâmetros não encontrados. Recrie o registro."})
 
-    # ── 2. Empresa + certificado ──────────────────────────
+    # ── 2. Empresa (cert validado mais à frente, após gerar XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa").select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
@@ -15805,15 +15828,6 @@ def api_esocial_s1010_enviar():
         empresa = r_emp.data[0]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
-
-    pfx_b64   = empresa.get("cert_pfx_b64")
-    senha_enc = empresa.get("cert_senha_enc")
-    if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado."})
-
-    pfx_bytes = base64.b64decode(pfx_b64)
-    senha_str = _cert_decrypt(senha_enc)
 
     # ── 3. Buscar rubrica do registro ─────────────────────
     try:
@@ -15830,46 +15844,52 @@ def api_esocial_s1010_enviar():
     if not rubricas:
         return jsonify({"ok": False, "msg": f"Rubrica {cod_rubr_reg} não encontrada ou inativa."})
 
-    # ── 4. Gerar e assinar cada evento ───────────────────
-    _now2    = datetime.now()
-    _dir_xml = _os5.path.join(_os5.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os5.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os5.path.join(_dir_xml, f"S1010_{ini_valid.replace('-','')}_{_ts}")
+    # ── 4. Gerar XML cru de cada rubrica e salvar ASAP ───
+    # (salvar antes do cert/assinatura/envio garante cópia pra debug
+    #  mesmo se algo falhar nas etapas seguintes)
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1010_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
-    xmls_assinados = []
+    xmls_crus = []
     for idx, rub in enumerate(rubricas, start=1):
         try:
             xml_str = _gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op, ini_valid, fim_valid, idx)
         except Exception as e:
             return jsonify({"ok": False, "msg": f"Erro ao gerar XML rubrica {rub.get('cod_rubr')}: {e}"})
+        xmls_crus.append(xml_str)
+
+    _xml_save(f"{_pref}_1_eventos_cru.xml", "\n".join(xmls_crus))
+
+    # ── 5. Validar certificado e assinar ──────────────────
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    xmls_assinados = []
+    for idx, xml_str in enumerate(xmls_crus, start=1):
         try:
             xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
         except Exception as e:
-            return jsonify({"ok": False, "msg": f"Erro na assinatura rubrica {rub.get('cod_rubr')}: {e}"})
+            return jsonify({"ok": False, "msg": f"Erro na assinatura rubrica {rubricas[idx-1].get('cod_rubr')}: {e}"})
         xmls_assinados.append(xml_assinado)
 
-    try:
-        with open(f"{_pref}_1_eventos.xml", "w", encoding="utf-8") as _f:
-            _f.write("\n".join(xmls_assinados))
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_eventos_assinados.xml", "\n".join(xmls_assinados))
 
-    # ── 5. Montar lote com todos os eventos ──────────────
+    # ── 6. Montar lote com todos os eventos ──────────────
     try:
         lote_xml = _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_2_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
-    # ── 6. Enviar ─────────────────────────────────────────
+    # ── 7. Enviar ─────────────────────────────────────────
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
@@ -15883,13 +15903,9 @@ def api_esocial_s1010_enviar():
         }).eq("id_esocial", int(id_reg)).execute()
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
-    try:
-        with open(f"{_pref}_3_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_resposta.xml", resp_envio)
 
-    # ── 7. Analisar resposta ──────────────────────────────
+    # ── 8. Analisar resposta ──────────────────────────────
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
     agora = datetime.now()
@@ -15906,7 +15922,7 @@ def api_esocial_s1010_enviar():
         "hora_grava": agora.strftime("%H%M"),
     }).eq("id_esocial", int(id_reg)).execute()
 
-    # ── 8. Consultar resultado (até 3 tentativas) ─────────
+    # ── 9. Consultar resultado (até 3 tentativas) ─────────
     recibo_final = ""
     obs_erro     = ""
     cd_resp      = ""
@@ -15920,11 +15936,7 @@ def api_esocial_s1010_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_4_consulta_{tentativa+1}.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_consulta_{tentativa+1}.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -16367,7 +16379,7 @@ def api_esocial_s1020_enviar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
-    import time, os as _os6, json as _json
+    import time, json as _json
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
@@ -16428,7 +16440,7 @@ def api_esocial_s1020_enviar():
     if not ini_valid:
         return jsonify({"ok": False, "msg": "Parâmetros não encontrados. Recrie o registro."})
 
-    # ── 2. Empresa + certificado ──────────────────────────
+    # ── 2. Empresa (cert validado depois do save do XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa").select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
@@ -16438,6 +16450,19 @@ def api_esocial_s1020_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # ── 3. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1020_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s1020_evento(params, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 4. Validar certificado e assinar ──────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -16446,43 +16471,22 @@ def api_esocial_s1020_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 3. Gerar e assinar ────────────────────────────────
-    _now2    = datetime.now()
-    _dir_xml = _os6.path.join(_os6.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os6.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os6.path.join(_dir_xml, f"S1020_{ini_valid.replace('-','')}_{_ts}")
-
-    try:
-        xml_str = _gerar_xml_s1020_evento(params, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
-    # ── 4. Montar lote ────────────────────────────────────
+    # ── 5. Montar lote ────────────────────────────────────
     try:
         lote_xml = _montar_lote_multi([xml_assinado], cnpj_emp, tpAmb, grupo="1")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_2_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
-    # ── 5. Enviar ─────────────────────────────────────────
+    # ── 6. Enviar ─────────────────────────────────────────
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
@@ -16496,13 +16500,9 @@ def api_esocial_s1020_enviar():
         }).eq("id_esocial", int(id_reg)).execute()
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
-    try:
-        with open(f"{_pref}_3_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_resposta.xml", resp_envio)
 
-    # ── 6. Analisar resposta ──────────────────────────────
+    # ── 7. Analisar resposta ──────────────────────────────
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
     agora = datetime.now()
@@ -16519,7 +16519,7 @@ def api_esocial_s1020_enviar():
         "hora_grava": agora.strftime("%H%M"),
     }).eq("id_esocial", int(id_reg)).execute()
 
-    # ── 7. Consultar resultado (até 3 tentativas) ─────────
+    # ── 8. Consultar resultado (até 3 tentativas) ─────────
     recibo_final = ""
     obs_erro     = ""
     cd_resp      = ""
@@ -16533,11 +16533,7 @@ def api_esocial_s1020_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_4_consulta_{tentativa+1}.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_consulta_{tentativa+1}.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -16854,7 +16850,7 @@ def api_esocial_s2200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
-    # ── 3. Dados da empresa + certificado ─────────────────
+    # ── 3. Dados da empresa (cert validado depois do save do XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa")
                  .select("*")
@@ -16866,6 +16862,20 @@ def api_esocial_s2200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # ── 4. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2200(func, empresa, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    # Salva XML gerado antes de qualquer processamento
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 5. Validar certificado e assinar ──────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -16875,42 +16885,12 @@ def api_esocial_s2200_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 4. Gerar XML ──────────────────────────────────────
-    try:
-        xml_str = _gerar_xml_s2200(func, empresa, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    # ── 5. Assinar XML do evento ──────────────────────────
-    # ── 6b. Prefixo dos arquivos de diagnóstico ───────────
-    import os as _os2
-    _now2     = datetime.now()
-    _ano      = _now2.strftime("%Y")
-    _ano_mes  = _now2.strftime("%Y-%m")
-    _emp_dir  = str(id_empresa).zfill(6)
-    _dir_xml  = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _ano, _ano_mes, _emp_dir)
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S2200_{matricula}_{_ts}")
-
-    # Salva XML gerado antes de qualquer processamento
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
-
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura do evento: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # ── 6. Montar lote ────────────────────────────────────
     try:
@@ -16918,40 +16898,24 @@ def api_esocial_s2200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     # ── 7. Enviar ao eSocial ──────────────────────────────
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
     # Salva SOAP de envio (transmissão real) antes de enviar
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
-            _f.write(soap_env)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-                _f.write(detalhe)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     # Salva resposta bruta para diagnóstico
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise        = _analisar_resposta_envio(resp_envio)
     nr_rec         = analise["nr_rec"]
@@ -16990,11 +16954,7 @@ def api_esocial_s2200_enviar():
             obs_erro = f"Erro na consulta ao eSocial: {e}"
             break
 
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -17201,16 +17161,9 @@ def api_esocial_s2200_reconsutar():
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
 
     # Prefixo para salvar XML de re-consulta
-    import os as _os2
-    _now2    = datetime.now()
-    _ano     = _now2.strftime("%Y")
-    _ano_mes = _now2.strftime("%Y-%m")
-    _emp_dir = str(id_empresa).zfill(6)
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                              "eSocial_XML", _ano, _ano_mes, _emp_dir)
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S2200_{matricula}_{_ts}")
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     # Loop de consulta (até 3×)
     recibo_final = ""
@@ -17228,11 +17181,7 @@ def api_esocial_s2200_reconsutar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_reconsulta_{tentativa+1}.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_reconsulta_{tentativa+1}.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -17611,6 +17560,21 @@ def api_esocial_s2205_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    agora = datetime.now()
+
+    # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2205_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── Validar certificado e assinar ──────────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -17618,58 +17582,31 @@ def api_esocial_s2205_enviar():
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
-    agora     = datetime.now()
-
-    try:
-        xml_str = _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S2205_{matricula}_{_ts}")
-
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f: _f.write(xml_str)
-    except Exception: pass
 
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f: _f.write(xml_assinado)
-    except Exception: pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f: _f.write(lote_xml)
-    except Exception: pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f: _f.write(soap_env)
-    except Exception: pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f: _f.write(detalhe)
-        except Exception: pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         supabase.table("tab_esocial").update({
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
@@ -17677,9 +17614,7 @@ def api_esocial_s2205_enviar():
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f: _f.write(resp_envio)
-    except Exception: pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -17710,9 +17645,7 @@ def api_esocial_s2205_enviar():
         except Exception as e:
             obs_erro = f"Erro na consulta: {e}"
             break
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f: _f.write(resp_cons)
-        except Exception: pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
         except Exception as e:
@@ -18156,6 +18089,21 @@ def api_esocial_s2206_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    agora = datetime.now()
+
+    # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2206_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── Validar certificado e assinar ──────────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -18163,58 +18111,31 @@ def api_esocial_s2206_enviar():
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
-    agora     = datetime.now()
-
-    try:
-        xml_str = _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S2206_{matricula}_{_ts}")
-
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f: _f.write(xml_str)
-    except Exception: pass
 
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f: _f.write(xml_assinado)
-    except Exception: pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f: _f.write(lote_xml)
-    except Exception: pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f: _f.write(soap_env)
-    except Exception: pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f: _f.write(detalhe)
-        except Exception: pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
             "hora_grava": agora.strftime("%H%M"),
@@ -18222,9 +18143,7 @@ def api_esocial_s2206_enviar():
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f: _f.write(resp_envio)
-    except Exception: pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -18255,9 +18174,7 @@ def api_esocial_s2206_enviar():
         except Exception as e:
             obs_erro = f"Erro na consulta: {e}"
             break
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f: _f.write(resp_cons)
-        except Exception: pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
         except Exception as e:
@@ -19358,7 +19275,7 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar movimento: {e}"})
 
-    # 4. Empresa + certificado
+    # 4. Empresa (cert validado depois do save do XML cru)
     try:
         r_emp = (supabase.table("tab_empresa")
                  .select("*")
@@ -19370,6 +19287,19 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # 6. Validar certificado e assinar
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -19379,39 +19309,12 @@ def api_esocial_s1200_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # 5. Gerar XML
-    try:
-        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    # Diretório de diagnóstico
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S1200_{matricula}_{_ts}")
-
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
-
-    # 6. Assinar
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # 7. Montar lote  (S-1200 = Grupo 3 — Periódicos)
     try:
@@ -19419,38 +19322,22 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     # 8. Enviar
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
-            _f.write(soap_env)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-                _f.write(detalhe)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -19485,11 +19372,7 @@ def api_esocial_s1200_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -19917,7 +19800,7 @@ def api_esocial_s1210_enviar():
     except Exception:
         pass
 
-    # 5. Empresa + certificado
+    # 5. Empresa (cert validado depois do save do XML cru)
     try:
         r_emp = (supabase.table("tab_empresa")
                  .select("*")
@@ -19929,6 +19812,20 @@ def api_esocial_s1210_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # 6. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1210_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb,
+                                   dtPgto, recibo_s1200, totais)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # 7. Validar certificado e assinar
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -19937,39 +19834,12 @@ def api_esocial_s1210_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # 6. Gerar XML
-    try:
-        xml_str = _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb,
-                                   dtPgto, recibo_s1200, totais)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S1210_{matricula}_{_ts}")
-
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
-
-    # 7. Assinar
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # 8. Montar lote (Grupo 3 — Periódicos)
     try:
@@ -19977,38 +19847,22 @@ def api_esocial_s1210_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     # 9. Enviar
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
-            _f.write(soap_env)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-                _f.write(detalhe)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -20042,11 +19896,7 @@ def api_esocial_s1210_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -20367,7 +20217,7 @@ def api_esocial_s1299_enviar():
     if not ano_mes:
         return jsonify({"ok": False, "msg": "Período não informado."})
 
-    # Empresa + certificado
+    # Empresa (cert validado depois do save do XML cru)
     try:
         r_emp = (supabase.table("tab_empresa")
                  .select("*")
@@ -20378,14 +20228,6 @@ def api_esocial_s1299_enviar():
         empresa = r_emp.data[0]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
-
-    pfx_b64   = empresa.get("cert_pfx_b64")
-    senha_enc = empresa.get("cert_senha_enc")
-    if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
-
-    pfx_bytes = base64.b64decode(pfx_b64)
-    senha_str = _cert_decrypt(senha_enc)
 
     # Reutiliza registro existente ou cria novo
     agora = datetime.now()
@@ -20438,39 +20280,34 @@ def api_esocial_s1299_enviar():
         evt_remun = "S" if evt_remun_raw == "S" else "N"
         evt_pgtos = "S" if evt_pgtos_raw == "S" else "N"
 
-    # Gerar XML
+    # Gerar XML cru e salvar ASAP (antes de cert/assinatura)
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1299_{ano_mes}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
     try:
         xml_str = _gerar_xml_s1299(empresa, ano_mes, ind_apuracao,
                                    evt_remun, evt_pgtos, tpAmb)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S1299_{ano_mes}_{_ts}")
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
+    # Validar certificado e assinar
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
-    # Assinar
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # Montar lote (S-1299 = Grupo 3 — Periódicos)
     try:
@@ -20478,40 +20315,24 @@ def api_esocial_s1299_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     # Enviar
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
-            _f.write(soap_env)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-                _f.write(detalhe)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         supabase.table("tab_esocial").update({"observacao_erro": detalhe[:295]})\
             .eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -20546,11 +20367,7 @@ def api_esocial_s1299_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -20860,14 +20677,7 @@ def api_esocial_s1298_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
-    pfx_b64   = empresa.get("cert_pfx_b64")
-    senha_enc = empresa.get("cert_senha_enc")
-    if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
-
-    pfx_bytes = base64.b64decode(pfx_b64)
-    senha_str = _cert_decrypt(senha_enc)
-
+    # (cert validado depois do save do XML cru)
     agora      = datetime.now()
     folha_tp   = "1" if ind_apuracao == "2" else "N"
     id_cliente = session.get("id_cliente")
@@ -20907,75 +20717,56 @@ def api_esocial_s1298_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao criar/atualizar registro: {e}"})
 
+    # Gerar XML cru e salvar ASAP (antes de cert/assinatura)
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1298_{ano_mes}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
     try:
         xml_str = _gerar_xml_s1298(empresa, ano_mes, ind_apuracao, tpAmb)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
-    import os as _os2
-    _now2    = datetime.now()
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _now2.strftime("%Y"),
-                               _now2.strftime("%Y-%m"), str(id_empresa).zfill(6))
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S1298_{ano_mes}_{_ts}")
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
+    # Validar certificado e assinar
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
 
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
-            _f.write(soap_env)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
-        try:
-            with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-                _f.write(detalhe)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         supabase.table("tab_esocial").update({"observacao_erro": detalhe[:295]})\
             .eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -21009,11 +20800,7 @@ def api_esocial_s1298_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -21340,7 +21127,7 @@ def api_esocial_s3000_enviar():
     if len(cpf_trab) != 11:
         return jsonify({"ok": False, "msg": "CPF do funcionário inválido."})
 
-    # ── 3. Empresa + certificado ───────────────────────────
+    # ── 3. Empresa (cert validado depois do save do XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa")
                  .select("*")
@@ -21352,6 +21139,19 @@ def api_esocial_s3000_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # ── 4. Gerar XML S-3000 cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S3000_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s3000(recibo_excluir, layout, cpf_trab, empresa, tpAmb)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 5. Validar certificado e assinar ───────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -21361,41 +21161,12 @@ def api_esocial_s3000_enviar():
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
-    # ── 4. Gerar XML S-3000 ────────────────────────────────
-    try:
-        xml_str = _gerar_xml_s3000(recibo_excluir, layout, cpf_trab, empresa, tpAmb)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
-
-    # ── 5. Diretório de diagnóstico ────────────────────────
-    import os as _os2
-    _now2    = datetime.now()
-    _ano     = _now2.strftime("%Y")
-    _ano_mes = _now2.strftime("%Y-%m")
-    _emp_dir = str(id_empresa).zfill(6)
-    _dir_xml = _os2.path.join(_os2.path.dirname(__file__),
-                               "eSocial_XML", _ano, _ano_mes, _emp_dir)
-    _os2.makedirs(_dir_xml, exist_ok=True)
-    _ts   = _now2.strftime("%Y%m%d_%H%M%S")
-    _pref = _os2.path.join(_dir_xml, f"S3000_{matricula}_{_ts}")
-
-    try:
-        with open(f"{_pref}_1_evento.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_str)
-    except Exception:
-        pass
-
-    # ── 6. Assinar XML ─────────────────────────────────────
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
-    try:
-        with open(f"{_pref}_2_assinado.xml", "w", encoding="utf-8") as _f:
-            _f.write(xml_assinado)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     # ── 7. Montar lote ─────────────────────────────────────
     try:
@@ -21403,32 +21174,20 @@ def api_esocial_s3000_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
-    try:
-        with open(f"{_pref}_3_lote.xml", "w", encoding="utf-8") as _f:
-            _f.write(lote_xml)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
     # ── 8. Enviar ao eSocial ───────────────────────────────
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
     soap_env = _soap_enviar(lote_xml)
 
-    try:
-        with open(f"{_pref}_4_soap_envio.xml", "w", encoding="utf-8") as _f:
-            _f.write(soap_env)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": str(e)})
 
-    try:
-        with open(f"{_pref}_5_resposta.xml", "w", encoding="utf-8") as _f:
-            _f.write(resp_envio)
-    except Exception:
-        pass
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
 
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
@@ -21450,11 +21209,7 @@ def api_esocial_s3000_enviar():
             obs_erro = f"Erro na consulta: {e}"
             break
 
-        try:
-            with open(f"{_pref}_6_resultado_consulta.xml", "w", encoding="utf-8") as _f:
-                _f.write(resp_cons)
-        except Exception:
-            pass
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
 
         try:
             resultado = _extrair_resultado_consulta(resp_cons)
@@ -25881,6 +25636,36 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     ]))
     story.append(tot_tbl)
 
+    # ── Linha discreta: número e data do último cálculo ─────────
+    try:
+        r_ci = (supabase.table("tab_anomes")
+                .select("qtd_calculos, data_hora_calculo, situacao")
+                .eq("id_empresa", int(id_empresa))
+                .eq("ano_mes",    int(anomes))
+                .eq("tipo",       anomes_tipo)
+                .limit(1).execute())
+        row = (r_ci.data or [{}])[0]
+        n_calc = int(row.get("qtd_calculos") or 0)
+        dhc    = str(row.get("data_hora_calculo") or "")
+        dt_fmt = ""
+        if dhc:
+            try:
+                dt_fmt = datetime.fromisoformat(
+                    dhc.replace("T", " ").split(".")[0]
+                ).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                s = "".join(filter(str.isdigit, dhc))
+                if len(s) >= 12:
+                    dt_fmt = f"{s[6:8]}/{s[4:6]}/{s[:4]} {s[8:10]}:{s[10:12]}"
+        if n_calc > 0 and dt_fmt:
+            st_calc = _st("ucl", fontName="Helvetica-Oblique", fontSize=6.5,
+                          textColor=colors.HexColor("#94a3b8"), alignment=2)
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f"Último cálculo: N° {n_calc} em {dt_fmt}", st_calc))
+    except Exception:
+        pass
+
     doc.build(story, onFirstPage=_draw_header, onLaterPages=_draw_header)
     buf.seek(0)
     return buf
@@ -25945,6 +25730,31 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                       "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
     anomes_fmt     = f"{mes_nm.upper()}/{ano}"
     folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+
+    # ── Número e data do último cálculo (mesmo para todos os stubs) ──
+    n_calc_folha = 0
+    dt_calc_folha = ""
+    try:
+        r_ci = (supabase.table("tab_anomes")
+                .select("qtd_calculos, data_hora_calculo")
+                .eq("id_empresa", int(id_empresa))
+                .eq("ano_mes",    int(anomes))
+                .eq("tipo",       anomes_tipo)
+                .limit(1).execute())
+        row = (r_ci.data or [{}])[0]
+        n_calc_folha = int(row.get("qtd_calculos") or 0)
+        dhc = str(row.get("data_hora_calculo") or "")
+        if dhc:
+            try:
+                dt_calc_folha = datetime.fromisoformat(
+                    dhc.replace("T", " ").split(".")[0]
+                ).strftime("%d/%m/%Y %H:%M")
+            except Exception:
+                s = "".join(filter(str.isdigit, dhc))
+                if len(s) >= 12:
+                    dt_calc_folha = f"{s[6:8]}/{s[4:6]}/{s[:4]} {s[8:10]}:{s[10:12]}"
+    except Exception:
+        pass
 
     C_NAVY   = colors.HexColor("#0b1f3a")
     C_BORD   = colors.HexColor("#dde3ec")
@@ -26379,6 +26189,10 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     "Helvetica", FS_SIG, C_LGRAY, "center")
             text_at(f"Gerado em {data_ger}", xEND-PAD, y - sig_h + 2,
                     "Helvetica", FS_BSE-0.5, C_LGRAY, "right")
+            if n_calc_folha > 0 and dt_calc_folha:
+                text_at(f"Cálculo N° {n_calc_folha} em {dt_calc_folha}",
+                        x0+PAD, y - sig_h + 2,
+                        "Helvetica-Oblique", FS_BSE-0.5, C_LGRAY, "left")
         y -= sig_h
 
         # ── Borda externa ────────────────────────────────────────────
@@ -28258,11 +28072,16 @@ def resumo_folha_pdf():
 
     larg = doc.width
 
+    def _v(s):
+        """Remove o prefixo 'R$ ' de um valor formatado."""
+        s = str(s or "")
+        return s[3:] if s.startswith("R$ ") else s
+
     def _tbl_verbas(linhas_v, tp):
         cor_val = verde if tp == "1" else verm
         dados   = [["Cód", "Descrição", "Func.", "Valor Total"]]
         for v in linhas_v:
-            dados.append([v["cod"], v["dsc"], str(v["n_funcs"]), v["valor_fmt"]])
+            dados.append([v["cod"], v["dsc"], str(v["n_funcs"]), _v(v["valor_fmt"])])
         t = Table(dados, colWidths=[1.2*cm, larg-4.4*cm, 1.4*cm, 3.8*cm])
         t.setStyle(TableStyle([
             ("BACKGROUND",   (0,0), (-1,0), fundo),
@@ -28283,25 +28102,32 @@ def resumo_folha_pdf():
         return t
 
     def _tbl_trio(label1, val1, sub1, label2, val2, sub2, label3, val3, sub3):
-        dados = [[label1, label2, label3], [val1, val2, val3], [sub1, sub2, sub3]]
+        has_sub = bool(sub1) or bool(sub2) or bool(sub3)
+        dados = [[label1, label2, label3], [val1, val2, val3]]
+        if has_sub:
+            dados.append([sub1, sub2, sub3])
         t = Table(dados, colWidths=[larg/3]*3)
-        t.setStyle(TableStyle([
+        style = [
             ("FONTNAME",     (0,0), (-1,0), "Helvetica-Bold"),
             ("FONTSIZE",     (0,0), (-1,0), 7),
             ("TEXTCOLOR",    (0,0), (-1,0), cinza),
             ("FONTNAME",     (0,1), (-1,1), "Helvetica-Bold"),
             ("FONTSIZE",     (0,1), (-1,1), 10),
             ("TEXTCOLOR",    (0,1), (-1,1), azul),
-            ("FONTNAME",     (0,2), (-1,2), "Helvetica"),
-            ("FONTSIZE",     (0,2), (-1,2), 7),
-            ("TEXTCOLOR",    (0,2), (-1,2), cinza),
             ("ALIGN",        (0,0), (-1,-1), "CENTER"),
             ("VALIGN",       (0,0), (-1,-1), "MIDDLE"),
             ("LINEAFTER",    (0,0), (1,-1), 0.5, borda),
             ("TOPPADDING",   (0,0), (-1,-1), 5),
             ("BOTTOMPADDING",(0,0), (-1,-1), 5),
             ("BOX",          (0,0), (-1,-1), 0.5, borda),
-        ]))
+        ]
+        if has_sub:
+            style += [
+                ("FONTNAME",  (0,2), (-1,2), "Helvetica"),
+                ("FONTSIZE",  (0,2), (-1,2), 7),
+                ("TEXTCOLOR", (0,2), (-1,2), cinza),
+            ]
+        t.setStyle(TableStyle(style))
         return t
 
     elems = []
@@ -28310,12 +28136,12 @@ def resumo_folha_pdf():
     elems.append(Paragraph("TOTALIZAÇÕES", st_secao))
     elems.append(_tbl_trio(
         "FUNCIONÁRIOS", str(d["n_funcionarios"]), "com movimento",
-        "TOTAL PROVENTOS", d["total_prov"], "",
-        "TOTAL DESCONTOS", d["total_desc"], "",
+        "TOTAL PROVENTOS", _v(d["total_prov"]), "",
+        "TOTAL DESCONTOS", _v(d["total_desc"]), "",
     ))
     liq_label = "LÍQUIDO A PAGAR"
     elems.append(Spacer(1, 0.15*cm))
-    t_liq = Table([[liq_label, d["liquido"]]], colWidths=[larg*0.5, larg*0.5])
+    t_liq = Table([[liq_label, _v(d["liquido"])]], colWidths=[larg*0.5, larg*0.5])
     t_liq.setStyle(TableStyle([
         ("FONTNAME",     (0,0), (-1,-1), "Helvetica-Bold"),
         ("FONTSIZE",     (0,0), (-1,-1), 10),
@@ -28330,17 +28156,20 @@ def resumo_folha_pdf():
     ]))
     elems.append(t_liq)
 
+    # Mesmo grid de colunas da tabela de verbas, para alinhar os totais
+    COLS_V = [1.2*cm, larg-4.4*cm, 1.4*cm, 3.8*cm]
+
     # Proventos
     elems.append(Paragraph("PROVENTOS", st_secao))
     if d["proventos"]:
         elems.append(_tbl_verbas(d["proventos"], "1"))
-    # total prov
-    t_tp = Table([["Total Proventos", d["total_prov"]]], colWidths=[larg-3.8*cm, 3.8*cm])
+    t_tp = Table([["", "Total Proventos", "", _v(d["total_prov"])]], colWidths=COLS_V)
     t_tp.setStyle(TableStyle([
         ("FONTNAME",     (0,0), (-1,-1), "Helvetica-Bold"),
         ("FONTSIZE",     (0,0), (-1,-1), 8),
-        ("TEXTCOLOR",    (1,0), (1,0), verde),
+        ("TEXTCOLOR",    (3,0), (3,0), verde),
         ("ALIGN",        (1,0), (1,0), "RIGHT"),
+        ("ALIGN",        (3,0), (3,0), "RIGHT"),
         ("TOPPADDING",   (0,0), (-1,-1), 4),
         ("BOTTOMPADDING",(0,0), (-1,-1), 4),
         ("LINEABOVE",    (0,0), (-1,0), 0.8, azul),
@@ -28351,45 +28180,95 @@ def resumo_folha_pdf():
     elems.append(Paragraph("DESCONTOS", st_secao))
     if d["descontos"]:
         elems.append(_tbl_verbas(d["descontos"], "2"))
-    t_td = Table([["Total Descontos", d["total_desc"]]], colWidths=[larg-3.8*cm, 3.8*cm])
+    t_td = Table([["", "Total Descontos", "", _v(d["total_desc"])]], colWidths=COLS_V)
     t_td.setStyle(TableStyle([
         ("FONTNAME",     (0,0), (-1,-1), "Helvetica-Bold"),
         ("FONTSIZE",     (0,0), (-1,-1), 8),
-        ("TEXTCOLOR",    (1,0), (1,0), verm),
+        ("TEXTCOLOR",    (3,0), (3,0), verm),
         ("ALIGN",        (1,0), (1,0), "RIGHT"),
+        ("ALIGN",        (3,0), (3,0), "RIGHT"),
         ("TOPPADDING",   (0,0), (-1,-1), 4),
         ("BOTTOMPADDING",(0,0), (-1,-1), 4),
         ("LINEABOVE",    (0,0), (-1,0), 0.8, azul),
     ]))
     elems.append(t_td)
 
-    # INSS
-    elems.append(Paragraph("RESUMO INSS", st_secao))
+    # INSS — Empregado
+    elems.append(Paragraph("RESUMO INSS — EMPREGADO", st_secao))
     elems.append(_tbl_trio(
-        "BASE DE CÁLCULO", d["base_inss"], "verbas com incidência CP",
-        "INSS RETIDO (0101)", d["inss_val"], "cálculo progressivo por faixa",
+        "BASE DE CÁLCULO", _v(d["base_inss"]), "verbas com incidência CP",
+        "INSS RETIDO (0101)", _v(d["inss_val"]), "cálculo progressivo por faixa",
         "ALÍQUOTA EFETIVA MÉDIA", d["inss_aliq"] + "%", "INSS ÷ base × 100",
     ))
+
+    # INSS — Empresa (GPS)
+    titulo_emp = "RESUMO INSS — EMPRESA (GPS)"
+    sub_emp    = f"FPAS {d['gps_fpas']}"
+    if d.get("ind_simples") == "S":
+        sub_emp += "  ·  Simples Nacional — contribuição patronal substituída"
+    elems.append(Paragraph(titulo_emp, st_secao))
+    elems.append(Paragraph(
+        f"<font size=7 color='#64748b'>{sub_emp}</font>",
+        ParagraphStyle("subemp", fontName="Helvetica", fontSize=7,
+                       textColor=cinza, spaceAfter=4)))
+    if d["inss_emp_linhas"]:
+        dados_emp = [["Componente", "Alíquota", "Valor"]]
+        for l in d["inss_emp_linhas"]:
+            dados_emp.append([l["label"], l["pct"], _v(l["val"])])
+        t_emp = Table(dados_emp, colWidths=[larg-5.5*cm, 1.7*cm, 3.8*cm])
+        t_emp.setStyle(TableStyle([
+            ("BACKGROUND",   (0,0), (-1,0), fundo),
+            ("TEXTCOLOR",    (0,0), (-1,0), cinza),
+            ("FONTNAME",     (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE",     (0,0), (-1,-1), 8),
+            ("ALIGN",        (1,0), (-1,-1), "RIGHT"),
+            ("ALIGN",        (0,0), (0,-1),  "LEFT"),
+            ("LINEBELOW",    (0,0), (-1,0), 0.5, borda),
+            ("LINEBELOW",    (0,1), (-1,-1), 0.3, colors.HexColor("#f1f5f9")),
+            ("TOPPADDING",   (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING",(0,0), (-1,-1), 4),
+            ("FONTNAME",     (0,1), (-1,-1), "Helvetica"),
+            ("TEXTCOLOR",    (2,1), (2,-1), verde),
+        ]))
+        elems.append(t_emp)
+        t_emp_tot = Table(
+            [[f"Total INSS Empresa  (Alíq. Efetiva {d['inss_emp_aliq']}%)",
+              _v(d["inss_emp_total"])]],
+            colWidths=[larg-3.8*cm, 3.8*cm])
+        t_emp_tot.setStyle(TableStyle([
+            ("FONTNAME",     (0,0), (-1,-1), "Helvetica-Bold"),
+            ("FONTSIZE",     (0,0), (-1,-1), 8),
+            ("TEXTCOLOR",    (0,0), (0,0), cinza),
+            ("TEXTCOLOR",    (1,0), (1,0), verde),
+            ("ALIGN",        (0,0), (0,0), "RIGHT"),
+            ("ALIGN",        (1,0), (1,0), "RIGHT"),
+            ("TOPPADDING",   (0,0), (-1,-1), 4),
+            ("BOTTOMPADDING",(0,0), (-1,-1), 4),
+            ("LINEABOVE",    (0,0), (-1,0), 0.8, azul),
+        ]))
+        elems.append(t_emp_tot)
+    else:
+        elems.append(Paragraph(
+            "Sem dados de encargos cadastrados na empresa.",
+            ParagraphStyle("noenc", fontName="Helvetica-Oblique", fontSize=8,
+                           textColor=cinza, alignment=1)))
 
     # IRRF
     elems.append(Paragraph("RESUMO IRRF", st_secao))
     elems.append(_tbl_trio(
-        "BASE BRUTA (inc. IRRF)", d["base_irrf"], "antes de deduções",
-        "IRRF RETIDO (0120)", d["irrf_val"], "cálculo progressivo por faixa",
+        "BASE BRUTA (inc. IRRF)", _v(d["base_irrf"]), "antes de deduções",
+        "IRRF RETIDO (0120)", _v(d["irrf_val"]), "cálculo progressivo por faixa",
         "ALÍQUOTA EFETIVA MÉDIA", d["irrf_aliq"] + "%", "IRRF ÷ base bruta × 100",
     ))
 
     # FGTS
     elems.append(Paragraph("RESUMO FGTS", st_secao))
-    def _fgts_ok_txt(ok, dif_fmt):
-        return ("✓ confere" if ok else f"⚠ dif. {dif_fmt}")
     if d["tem_aprendiz"]:
         # 4 células: base8 | fgts8 | base2 | fgts2 — duas linhas de duo
         fgts_dados4 = [
             ["BASE (8%)", "FGTS A RECOLHER 8%", "BASE (2%)", "FGTS A RECOLHER 2%"],
-            [d["base_fgts_8"], d["fgts8_calc"], d["base_fgts_2"], d["fgts2_calc"]],
-            ["verbas com inc. FGTS", _fgts_ok_txt(d["fgts8_ok"], d["fgts8_dif_fmt"]),
-             "Menor Aprendiz (cat. 103)", _fgts_ok_txt(d["fgts2_ok"], d["fgts2_dif_fmt"])],
+            [_v(d["base_fgts_8"]), _v(d["fgts8_calc"]),
+             _v(d["base_fgts_2"]), _v(d["fgts2_calc"])],
         ]
         t4 = Table(fgts_dados4, colWidths=[larg/4]*4)
         t4.setStyle(TableStyle([
@@ -28399,9 +28278,6 @@ def resumo_folha_pdf():
             ("FONTNAME",     (0,1), (-1,1), "Helvetica-Bold"),
             ("FONTSIZE",     (0,1), (-1,1), 10),
             ("TEXTCOLOR",    (0,1), (-1,1), azul),
-            ("FONTNAME",     (0,2), (-1,2), "Helvetica"),
-            ("FONTSIZE",     (0,2), (-1,2), 7),
-            ("TEXTCOLOR",    (0,2), (-1,2), cinza),
             ("ALIGN",        (0,0), (-1,-1), "CENTER"),
             ("VALIGN",       (0,0), (-1,-1), "MIDDLE"),
             ("LINEAFTER",    (0,0), (2,-1), 0.5, borda),
@@ -28411,7 +28287,7 @@ def resumo_folha_pdf():
         ]))
         elems.append(t4)
         elems.append(Spacer(1, 0.1*cm))
-        t_tot = Table([["TOTAL FGTS A RECOLHER", d["fgts_total_calc"]]],
+        t_tot = Table([["TOTAL FGTS A RECOLHER", _v(d["fgts_total_calc"])]],
                       colWidths=[larg*0.5, larg*0.5])
         t_tot.setStyle(TableStyle([
             ("FONTNAME",     (0,0), (-1,-1), "Helvetica-Bold"),
@@ -28428,10 +28304,9 @@ def resumo_folha_pdf():
         elems.append(t_tot)
     else:
         elems.append(_tbl_trio(
-            "BASE DE CÁLCULO (8%)", d["base_fgts_8"], "verbas com incidência FGTS",
-            "FGTS A RECOLHER 8%", d["fgts8_calc"],
-            _fgts_ok_txt(d["fgts8_ok"], d["fgts8_dif_fmt"]),
-            "TOTAL FGTS A RECOLHER", d["fgts_total_calc"], "alíquota 8%",
+            "BASE DE CÁLCULO (8%)", _v(d["base_fgts_8"]), "",
+            "FGTS A RECOLHER 8%", _v(d["fgts8_calc"]), "",
+            "TOTAL FGTS A RECOLHER", _v(d["fgts_total_calc"]), "",
         ))
 
     doc.build(elems, onFirstPage=_draw_header, onLaterPages=_draw_header)
