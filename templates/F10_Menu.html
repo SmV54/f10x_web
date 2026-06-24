@@ -38,7 +38,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                display: flex; align-items: center; justify-content: center; gap: 12px; }
 .topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
-/* ── LABEL LICENÇA FIXO (canto inferior esquerdo, oposto às Preferências) ── */
+/* ── LABEL LICENÇA FIXO (canto inferior esquerdo) ── */
 .label-licenca {
     position: fixed; bottom: 28px; left: 24px; z-index: 500;
     display: inline-flex; align-items: center; gap: 6px;
@@ -208,9 +208,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     flex-wrap: wrap; align-items: center;
 }
 
-/* ── BOTÃO PREFERÊNCIAS FIXO (canto inferior direito, ao lado do Tour) ── */
+/* ── BOTÃO PREFERÊNCIAS FIXO (canto superior direito, abaixo do cabeçalho) ── */
 .card-pref {
-    position: fixed; bottom: 28px; right: 78px; z-index: 500;
+    position: fixed; top: 76px; right: 24px; z-index: 500;
     display: inline-flex; align-items: center; gap: 8px;
     padding: 5px 12px 5px 5px; border-radius: 22px; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border);
