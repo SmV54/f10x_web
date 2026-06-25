@@ -597,18 +597,50 @@ function downloadXml() {
 
 // Pretty-print XML simples (indenta tags)
 function formatarXml(xml) {
-    if (!xml || !xml.trim().startsWith('<')) return xml;
-    let formatted = '';
-    let indent = 0;
+    if (!xml || !xml.trim()) return xml;
+    let doc;
+    try {
+        doc = new DOMParser().parseFromString(xml, 'application/xml');
+        if (doc.querySelector('parsererror')) return xml;  // fallback raw
+    } catch (e) { return xml; }
+    const root = doc.documentElement;
+    if (!root) return xml;
+    const decl = (xml.match(/^\s*<\?xml[^>]*\?>/i) || [''])[0];
+    const corpo = _ppNode(root, 0);
+    return (decl ? decl + '\n' : '') + corpo;
+}
+
+function _ppNode(node, indent) {
     const tab = '  ';
-    xml = xml.replace(/>\s*</g, '><').trim();
-    xml.split(/(?=<)/g).forEach(node => {
-        if (!node) return;
-        if (node.match(/^<\/[^>]+>/)) indent--;
-        formatted += tab.repeat(Math.max(0, indent)) + node + '\n';
-        if (node.match(/^<[^!?\/][^>]*[^\/]>$/) && !node.match(/^<[^>]+>.*<\/[^>]+>$/)) indent++;
-    });
-    return formatted.trim();
+    const pad = tab.repeat(indent);
+    if (node.nodeType === Node.COMMENT_NODE) {
+        return `${pad}<!--${node.nodeValue}-->`;
+    }
+    if (node.nodeType === Node.TEXT_NODE) {
+        const t = node.nodeValue.trim();
+        return t ? pad + _escXml(t) : '';
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+    const tag = node.nodeName;
+    let attrs = '';
+    for (const a of node.attributes) attrs += ` ${a.name}="${_escAttr(a.value)}"`;
+    const children = [...node.childNodes].filter(c =>
+        c.nodeType !== Node.TEXT_NODE || c.nodeValue.trim() !== ''
+    );
+    if (children.length === 0) return `${pad}<${tag}${attrs}/>`;
+    if (children.length === 1 && children[0].nodeType === Node.TEXT_NODE) {
+        return `${pad}<${tag}${attrs}>${_escXml(children[0].nodeValue.trim())}</${tag}>`;
+    }
+    const inner = children.map(c => _ppNode(c, indent + 1))
+                          .filter(s => s !== '').join('\n');
+    return `${pad}<${tag}${attrs}>\n${inner}\n${pad}</${tag}>`;
+}
+
+function _escXml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function _escAttr(s) {
+    return _escXml(s).replace(/"/g,'&quot;');
 }
 
 // Colorização simples
