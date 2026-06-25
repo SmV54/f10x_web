@@ -612,8 +612,8 @@ function baixarXml(id) {
     window.open('/api/esocial_s1000_xml?id=' + id, '_blank');
 }
 
-function apagarS1000(id, btnEl) {
-    if (!confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial, portanto não precisa de S-3000.)')) return;
+async function apagarS1000(id, btnEl) {
+    if (!await f10Confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial, portanto não precisa de S-3000.)')) return;
     btnEl.disabled = true;
     btnEl.textContent = '...';
     fetch('/api/esocial_s1000_deletar', {
@@ -641,8 +641,8 @@ function apagarS1000(id, btnEl) {
     });
 }
 
-function excluirS1000(id, btnEl) {
-    if (!confirm('Enviar S-3000 para excluir este S-1000 no eSocial?\nEsta ação não pode ser desfeita.')) return;
+async function excluirS1000(id, btnEl) {
+    if (!await f10Confirm('Enviar S-3000 para excluir este S-1000 no eSocial?\nEsta ação não pode ser desfeita.')) return;
     btnEl.disabled = true;
     btnEl.innerHTML = '<span class="spin" style="border-top-color:#dc2626;border-color:#fca5a5;"></span>';
     const msgEl = document.getElementById('msg-' + id);
@@ -674,8 +674,8 @@ function excluirS1000(id, btnEl) {
     });
 }
 
-function enviarS1000(id, btnEl) {
-    if (!confirm('Confirma o envio do S-1000 ao eSocial?')) return;
+async function enviarS1000(id, btnEl) {
+    if (!await f10Confirm('Confirma o envio do S-1000 ao eSocial?')) return;
     btnEl.disabled = true;
     btnEl.innerHTML = '<span class="spin" style="border-top-color:#166534;border-color:#a7e0bc;"></span>';
 
@@ -711,5 +711,6 @@ function enviarS1000(id, btnEl) {
     });
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

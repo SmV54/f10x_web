@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Visualizar XML eSocial</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 72px;
+    position: sticky; top: 0; z-index: 100;
+}
+.topo-esq  { display: flex; align-items: center; }
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80;
+    border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    color: #dcfce7; letter-spacing: 0.14em; text-transform: uppercase;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 3px 10px rgba(0,0,0,0.35);
+    white-space: nowrap; flex-shrink: 0;
+}
+.topo-centro { text-align: center; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT ── */
+.layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+
+/* ── PAINEL ESQUERDO — CLIENTES ── */
+.painel-clientes {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow: hidden;
+}
+.painel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+.painel-header-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b; margin-bottom: 10px;
+}
+.busca-wrap { position: relative; }
+.busca-icone {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; color: #94a3b8; pointer-events: none;
+}
+.input-busca {
+    width: 100%; padding: 7px 10px 7px 30px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 13px; font-family: var(--sans);
+    background: var(--surface); color: var(--label); outline: none; transition: 0.15s;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.lista-clientes { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.cliente-card {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 2px;
+    gap: 10px;
+}
+.cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
+.cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.cliente-info {
+    flex: 1; min-width: 0;
+    display: flex; align-items: baseline; gap: 7px; overflow: hidden;
+}
+.cliente-id {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: #64748b; white-space: nowrap; flex-shrink: 0;
+}
+.cliente-nome {
+    font-size: 13px; font-weight: 600; color: #0f172a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex-shrink: 1;
+}
+.cliente-card.ativo .cliente-nome { color: var(--accent); }
+.lista-vazia { padding: 32px 16px; text-align: center; font-size: 13px; color: #94a3b8; }
+.total-clientes {
+    padding: 8px 16px; border-top: 1px solid var(--border);
+    font-size: 11px; color: #64748b; text-align: right; background: #f8fafc;
+}
+
+/* ── PAINEL DIREITO ── */
+.painel-direito {
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+/* ── BARRA DE FILTROS ── */
+.filtros {
+    padding: 14px 22px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr 130px 1.6fr auto;
+    gap: 12px;
+    align-items: end;
+}
+.filtro-grupo { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.filtro-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b;
+}
+.filtro-input, .filtro-select {
+    padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border);
+    font-size: 13px; font-family: var(--sans); background: var(--surface);
+    color: var(--label); outline: none; transition: 0.15s;
+    width: 100%;
+}
+.filtro-input:focus, .filtro-select:focus {
+    border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12);
+}
+.filtro-input:disabled, .filtro-select:disabled {
+    background: #f1f5f9; color: #94a3b8; cursor: not-allowed;
+}
+.btn-buscar {
+    padding: 8px 18px; border-radius: 8px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; font-size: 13px;
+    cursor: pointer; transition: 0.15s; font-family: var(--sans);
+    white-space: nowrap;
+}
+.btn-buscar:hover:not(:disabled) { background: #1e63c4; }
+.btn-buscar:disabled { background: #94a3b8; cursor: not-allowed; }
+
+/* ── CORPO: LISTA + VISUALIZADOR ── */
+.corpo {
+    flex: 1; display: grid; grid-template-columns: 360px 1fr;
+    overflow: hidden; min-height: 0;
+}
+.lista-arquivos {
+    border-right: 1px solid var(--border); background: var(--surface);
+    overflow-y: auto; padding: 10px;
+}
+.lista-arquivos-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    color: #64748b; letter-spacing: 0.06em; padding: 4px 6px 10px;
+}
+.arquivo-card {
+    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); margin-bottom: 6px;
+    transition: 0.12s; background: var(--surface);
+}
+.arquivo-card:hover { border-color: #c3d9f8; background: #f8fbff; }
+.arquivo-card.ativo { border-color: var(--accent); background: #eaf2fd; }
+.arquivo-nome {
+    font-family: var(--mono); font-size: 11px; font-weight: 500;
+    color: #0f172a; word-break: break-all; line-height: 1.4;
+}
+.arquivo-etapa {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 6px; margin-top: 5px;
+}
+.arquivo-etapa.e1 { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+.arquivo-etapa.e4 { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+
+/* ── VISUALIZADOR XML ── */
+.viewer {
+    display: flex; flex-direction: column; overflow: hidden; background: var(--bg);
+}
+.viewer-header {
+    padding: 10px 22px; background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+}
+.viewer-titulo {
+    flex: 1; font-family: var(--mono); font-size: 12px; color: #334155;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.btn-download {
+    padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface); font-size: 12px; cursor: pointer;
+    color: var(--text-sub); font-family: var(--sans); transition: 0.15s;
+}
+.btn-download:hover { border-color: var(--accent); color: var(--accent); }
+.viewer-body {
+    flex: 1; overflow: auto; padding: 16px 22px;
+    background: #0f172a; color: #e2e8f0;
+    font-family: var(--mono); font-size: 12px; line-height: 1.55;
+    white-space: pre; tab-size: 2;
+}
+.viewer-body .xml-tag    { color: #93c5fd; }
+.viewer-body .xml-attr   { color: #fbbf24; }
+.viewer-body .xml-val    { color: #86efac; }
+.viewer-body .xml-text   { color: #f1f5f9; }
+.viewer-body .xml-comment{ color: #64748b; font-style: italic; }
+
+/* ── ESTADOS VAZIOS ── */
+.estado-vazio {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    height: 100%; gap: 12px; color: #94a3b8;
+}
+.estado-vazio-icone { font-size: 40px; opacity: 0.5; }
+.estado-vazio-texto { font-size: 14px; font-weight: 500; }
+.estado-vazio-sub   { font-size: 12px; }
+
+/* ── LOADING ── */
+.loading {
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px; padding: 40px; color: #64748b; font-size: 14px;
+}
+.spinner {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 3px solid #e2e8f0; border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── SCROLLBAR ── */
+.lista-clientes::-webkit-scrollbar,
+.lista-arquivos::-webkit-scrollbar,
+.viewer-body::-webkit-scrollbar { width: 6px; height: 6px; }
+.lista-clientes::-webkit-scrollbar-thumb,
+.lista-arquivos::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.viewer-body::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="badge-admin">🛡️ ADMIN</span>
+    </div>
+    <div class="topo-centro">
+        <div class="topo-titulo">Visualizar XML do eSocial</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="layout">
+
+    <!-- ── CLIENTES ── -->
+    <aside class="painel-clientes">
+        <div class="painel-header">
+            <div class="painel-header-titulo">Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span></div>
+            <div class="busca-wrap">
+                <span class="busca-icone">🔍</span>
+                <input class="input-busca" id="inputBusca" type="text" placeholder="Buscar cliente…" oninput="filtrarClientes()" autocomplete="off">
+            </div>
+        </div>
+
+        <div class="lista-clientes" id="listaClientes">
+            {% for c in clientes %}
+            <div class="cliente-card"
+                 id="card-{{ c.id_cliente }}"
+                 data-nome="{{ (c.nome or '') | lower }}"
+                 onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}')">
+                <div class="cliente-info">
+                    <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
+                    <span class="cliente-nome">{{ c.nome or '—' }}</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="lista-vazia">Nenhum cliente cadastrado.</div>
+            {% endfor %}
+        </div>
+
+        <div class="total-clientes">{{ clientes | length }} cliente(s)</div>
+    </aside>
+
+    <!-- ── DIREITO ── -->
+    <main class="painel-direito">
+
+        <!-- Filtros -->
+        <div class="filtros">
+            <div class="filtro-grupo">
+                <label class="filtro-label">Empresa</label>
+                <select class="filtro-select" id="selEmpresa" disabled onchange="onEmpresaChange()">
+                    <option value="">— Escolha um cliente —</option>
+                </select>
+            </div>
+            <div class="filtro-grupo">
+                <label class="filtro-label">Ano/Mês</label>
+                <input type="month" class="filtro-input" id="inAnomes" disabled>
+            </div>
+            <div class="filtro-grupo">
+                <label class="filtro-label">&nbsp;</label>
+                <!-- spacer / alinhamento; deixei aqui pra Layout ficar mais largo -->
+                <span></span>
+            </div>
+            <div class="filtro-grupo">
+                <label class="filtro-label">Layout</label>
+                <select class="filtro-select" id="selLayout" disabled>
+                    {% for cod, rotulo in layouts %}
+                    <option value="{{ cod }}">{{ rotulo }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button class="btn-buscar" id="btnBuscar" disabled onclick="buscarArquivos()">🔎 Buscar</button>
+        </div>
+
+        <!-- Corpo: lista + viewer -->
+        <div class="corpo">
+            <div class="lista-arquivos" id="listaArquivos">
+                <div class="estado-vazio">
+                    <span class="estado-vazio-icone">📁</span>
+                    <span class="estado-vazio-texto">Defina os filtros e clique em Buscar</span>
+                </div>
+            </div>
+
+            <div class="viewer">
+                <div class="viewer-header" id="viewerHeader" style="display:none;">
+                    <span class="viewer-titulo" id="viewerTitulo"></span>
+                    <button class="btn-download" id="btnDownload" onclick="downloadXml()">⬇ Download</button>
+                </div>
+                <div class="viewer-body" id="viewerBody">
+                    <div class="estado-vazio">
+                        <span class="estado-vazio-icone">📄</span>
+                        <span class="estado-vazio-texto">Selecione um arquivo</span>
+                        <span class="estado-vazio-sub">O XML será exibido aqui</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+</div>
+
+<script>
+let clienteAtivo = null;
+let empresaAtiva = null;
+let arquivoAtivoPath = null;
+
+function filtrarClientes() {
+    const q = (document.getElementById('inputBusca').value || '').trim().toLowerCase();
+    document.querySelectorAll('.cliente-card').forEach(card => {
+        const nome = card.dataset.nome || '';
+        card.style.display = (!q || nome.includes(q)) ? '' : 'none';
+    });
+}
+
+function selecionarCliente(idCliente, nomeCliente) {
+    if (clienteAtivo === idCliente) return;
+    clienteAtivo = idCliente;
+    empresaAtiva = null;
+
+    document.querySelectorAll('.cliente-card').forEach(c => c.classList.remove('ativo'));
+    const card = document.getElementById('card-' + idCliente);
+    if (card) card.classList.add('ativo');
+
+    const sel = document.getElementById('selEmpresa');
+    sel.innerHTML = '<option value="">Carregando…</option>';
+    sel.disabled = true;
+    document.getElementById('inAnomes').disabled = true;
+    document.getElementById('selLayout').disabled = true;
+    document.getElementById('btnBuscar').disabled = true;
+
+    fetch('/api/admin_esocial_xml/empresas/' + idCliente)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok || !d.empresas || d.empresas.length === 0) {
+                sel.innerHTML = '<option value="">— Nenhuma empresa —</option>';
+                return;
+            }
+            sel.innerHTML = '<option value="">— Escolha uma empresa —</option>'
+                + d.empresas.map(e =>
+                    `<option value="${e.id_empresa}" data-anomes="${e.anomes_fmt || ''}">`
+                    + `${e.id_empresa.toString().padStart(6,'0')} · ${e.razao_fmt}</option>`
+                ).join('');
+            sel.disabled = false;
+        })
+        .catch(() => {
+            sel.innerHTML = '<option value="">Erro ao carregar</option>';
+        });
+}
+
+function onEmpresaChange() {
+    const sel = document.getElementById('selEmpresa');
+    const opt = sel.options[sel.selectedIndex];
+    const idEmp = sel.value;
+    const inAno = document.getElementById('inAnomes');
+    const selLay = document.getElementById('selLayout');
+    const btn = document.getElementById('btnBuscar');
+
+    if (!idEmp) {
+        empresaAtiva = null;
+        inAno.disabled = true; selLay.disabled = true; btn.disabled = true;
+        return;
+    }
+    empresaAtiva = parseInt(idEmp, 10);
+    inAno.disabled = false;
+    selLay.disabled = false;
+    btn.disabled = false;
+    // Default = anomes_atual da empresa
+    const am = opt.getAttribute('data-anomes');
+    if (am) inAno.value = am;
+}
+
+function buscarArquivos() {
+    if (!clienteAtivo || !empresaAtiva) return;
+    const anomes = document.getElementById('inAnomes').value;
+    const layout = document.getElementById('selLayout').value;
+    if (!anomes) { alert('Informe o ano/mês.'); return; }
+
+    const lista = document.getElementById('listaArquivos');
+    lista.innerHTML = '<div class="loading"><div class="spinner"></div> Buscando arquivos…</div>';
+
+    const q = new URLSearchParams({
+        id_cliente: clienteAtivo, id_empresa: empresaAtiva,
+        anomes, layout,
+    });
+    fetch('/api/admin_esocial_xml/listar?' + q.toString())
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) {
+                lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">${d.msg || 'Erro'}</span></div>`;
+                return;
+            }
+            if (!d.arquivos || d.arquivos.length === 0) {
+                lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">📭</span><span class="estado-vazio-texto">Nenhum XML encontrado</span><span class="estado-vazio-sub">${d.prefixo}/${layout}_*</span></div>`;
+                return;
+            }
+            renderArquivos(d.arquivos);
+        })
+        .catch(() => {
+            lista.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Falha na requisição</span></div>';
+        });
+}
+
+function renderArquivos(arquivos) {
+    const lista = document.getElementById('listaArquivos');
+    lista.innerHTML = `<div class="lista-arquivos-titulo">${arquivos.length} arquivo(s)</div>`;
+    arquivos.forEach(a => {
+        const cls = a.etapa.startsWith('1') ? 'e1' : 'e4';
+        const div = document.createElement('div');
+        div.className = 'arquivo-card';
+        div.dataset.path = a.path;
+        div.innerHTML = `
+            <div class="arquivo-nome">${a.nome}</div>
+            <span class="arquivo-etapa ${cls}">${a.etapa}</span>
+        `;
+        div.onclick = () => abrirArquivo(a);
+        lista.appendChild(div);
+    });
+}
+
+function abrirArquivo(a) {
+    document.querySelectorAll('.arquivo-card').forEach(c => c.classList.remove('ativo'));
+    const cards = [...document.querySelectorAll('.arquivo-card')];
+    const card = cards.find(c => c.dataset.path === a.path);
+    if (card) card.classList.add('ativo');
+
+    arquivoAtivoPath = a.path;
+    document.getElementById('viewerHeader').style.display = 'flex';
+    document.getElementById('viewerTitulo').textContent = a.path;
+    const body = document.getElementById('viewerBody');
+    body.innerHTML = '<div class="loading"><div class="spinner"></div> Carregando XML…</div>';
+
+    fetch('/api/admin_esocial_xml/arquivo?path=' + encodeURIComponent(a.path))
+        .then(r => r.text())
+        .then(txt => {
+            const pretty = formatarXml(txt);
+            body.textContent = pretty;
+            body.innerHTML = colorirXml(body.innerHTML);
+        })
+        .catch(() => {
+            body.textContent = 'Erro ao carregar XML.';
+        });
+}
+
+function downloadXml() {
+    if (!arquivoAtivoPath) return;
+    const a = document.createElement('a');
+    a.href = '/api/admin_esocial_xml/arquivo?path=' + encodeURIComponent(arquivoAtivoPath);
+    a.download = arquivoAtivoPath.split('/').pop();
+    document.body.appendChild(a); a.click(); a.remove();
+}
+
+// Pretty-print XML simples (indenta tags)
+function formatarXml(xml) {
+    if (!xml || !xml.trim().startsWith('<')) return xml;
+    let formatted = '';
+    let indent = 0;
+    const tab = '  ';
+    xml = xml.replace(/>\s*</g, '><').trim();
+    xml.split(/(?=<)/g).forEach(node => {
+        if (!node) return;
+        if (node.match(/^<\/[^>]+>/)) indent--;
+        formatted += tab.repeat(Math.max(0, indent)) + node + '\n';
+        if (node.match(/^<[^!?\/][^>]*[^\/]>$/) && !node.match(/^<[^>]+>.*<\/[^>]+>$/)) indent++;
+    });
+    return formatted.trim();
+}
+
+// Colorização simples
+function colorirXml(html) {
+    // html já é texto escapado (textContent fez o escape antes)
+    return html
+        .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="xml-comment">$1</span>')
+        .replace(/(&lt;\/?)([a-zA-Z0-9:_\-]+)/g, '$1<span class="xml-tag">$2</span>')
+        .replace(/([a-zA-Z0-9:_\-]+)=&quot;([^&]*?)&quot;/g,
+                 '<span class="xml-attr">$1</span>=<span class="xml-val">&quot;$2&quot;</span>');
+}
+</script>
+
+<script src="/static/f10_dialog.js"></script>
+
+</body>
+</html>

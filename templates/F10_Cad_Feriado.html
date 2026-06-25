@@ -536,7 +536,7 @@
 
   // ── Excluir ───────────────────────────────────────────────
   async function excluir(id) {
-    if (!confirm('Excluir este feriado?')) return;
+    if (!await f10Confirm('Excluir este feriado?')) return;
     try {
       const r = await fetch('/api/feriado/excluir', {
         method: 'POST',
@@ -549,5 +549,6 @@
     } catch(e) { alert('Erro de comunicação.'); }
   }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

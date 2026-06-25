@@ -347,13 +347,15 @@ async function salvarCert() {
 }
 
 async function removerCert() {
-    if (!confirm('Remover o certificado digital? Você precisará instalar novamente para transmitir ao eSocial.')) return;
+    if (!await f10Confirm('Remover o certificado digital? Você precisará instalar novamente para transmitir ao eSocial.')) return;
     const r    = await fetch('/api/certificado_remover', { method: 'POST' });
     const data = await r.json();
     if (data.ok) location.reload();
     else alert('Erro: ' + data.msg);
 }
 </script>
+
+<script src="/static/f10_dialog.js"></script>
 
 </body>
 </html>

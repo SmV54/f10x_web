@@ -294,7 +294,7 @@
   }
 
   async function desativarCC(id, nome) {
-    if (!confirm(`Desativar o centro de custo "${nome}"?`)) return;
+    if (!await f10Confirm(`Desativar o centro de custo "${nome}"?`)) return;
     try {
       const r = await fetch('/api/cc/desativar', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -340,5 +340,6 @@
     } catch(e) { mostrarErro('Erro de comunicação.'); }
   }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

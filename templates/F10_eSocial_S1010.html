@@ -670,8 +670,8 @@ function baixarXml(id) {
     window.open('/api/esocial_s1010_xml?id=' + id, '_blank');
 }
 
-function apagarS1010(id, btnEl) {
-    if (!confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial.)')) return;
+async function apagarS1010(id, btnEl) {
+    if (!await f10Confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial.)')) return;
     btnEl.disabled = true; btnEl.textContent = '...';
     fetch('/api/esocial_s1010_deletar', {
         method: 'POST',
@@ -704,7 +704,7 @@ const ETAPAS_1010 = [
 ];
 
 async function enviarS1010(id, btnEl) {
-    if (!confirm('Confirma o envio do S-1010 ao eSocial?\nAs rubricas selecionadas nesta remessa serão enviadas.')) return;
+    if (!await f10Confirm('Confirma o envio do S-1010 ao eSocial?\nAs rubricas selecionadas nesta remessa serão enviadas.')) return;
     const progRow = document.getElementById('prog-' + id);
     const bar     = document.getElementById('bar-' + id);
     const lbl     = document.getElementById('lbl-' + id);
@@ -866,5 +866,6 @@ function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

@@ -656,7 +656,7 @@ async function gravarDep() {
 
 /* ── Excluir ────────────────────────────────────────── */
 async function excluirDep(id) {
-    if (!confirm('Confirma exclusão deste dependente?')) return;
+    if (!await f10Confirm('Confirma exclusão deste dependente?')) return;
     try {
         const r = await fetch('/api/dependente_excluir', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -683,5 +683,6 @@ function showToast(msg, tipo) {
 document.getElementById('dep-tp').addEventListener('change', function() { onTpDepChange(true); });
 carregarLista();
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

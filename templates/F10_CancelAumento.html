@@ -223,8 +223,8 @@ tbody td.nome { font-weight: 600; color: #1e293b; max-width: 220px; overflow: hi
 </div>
 
 <script>
-function confirmar(idEvento, mat, nome, salAnt) {
-    if (!confirm(
+async function confirmar(idEvento, mat, nome, salAnt) {
+    if (!await f10Confirm(
         'Confirma o cancelamento?\n\n' +
         'Funcionário: ' + nome + '\n' +
         'Salário será restaurado para: ' + salAnt + '\n\n' +
@@ -233,6 +233,8 @@ function confirmar(idEvento, mat, nome, salAnt) {
     window.location.href = '/exec_cancelar_aumento?id_ev=' + idEvento + '&mat=' + mat;
 }
 </script>
+
+<script src="/static/f10_dialog.js"></script>
 
 </body>
 </html>

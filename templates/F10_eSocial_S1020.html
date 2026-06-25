@@ -514,8 +514,8 @@ function baixarXml(id) {
     window.open('/api/esocial_s1020_xml?id=' + id, '_blank');
 }
 
-function apagarS1020(id, btnEl) {
-    if (!confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial.)')) return;
+async function apagarS1020(id, btnEl) {
+    if (!await f10Confirm('Apagar este registro localmente?\n(Não foi enviado ao eSocial.)')) return;
     btnEl.disabled = true; btnEl.textContent = '...';
     fetch('/api/esocial_s1020_deletar', {
         method: 'POST',
@@ -534,8 +534,8 @@ function apagarS1020(id, btnEl) {
     .catch(() => { btnEl.disabled = false; btnEl.textContent = '🗑 Apagar'; });
 }
 
-function enviarS1020(id, btnEl) {
-    if (!confirm('Confirma o envio do S-1020 ao eSocial?')) return;
+async function enviarS1020(id, btnEl) {
+    if (!await f10Confirm('Confirma o envio do S-1020 ao eSocial?')) return;
     btnEl.disabled = true;
     btnEl.innerHTML = '<span class="spin" style="border-top-color:#166534;border-color:#a7e0bc;"></span>';
     const msgEl = document.getElementById('msg-' + id);
@@ -594,5 +594,6 @@ function reconsultarS1020(id, btnEl) {
     });
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

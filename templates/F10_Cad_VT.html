@@ -503,7 +503,7 @@
 
   // ── Desativar ─────────────────────────────────────────────
   async function desativarVT(id, codigo) {
-    if (!confirm(`Desativar o tipo "${codigo}"?\nEle não aparecerá mais na lista.`)) return;
+    if (!await f10Confirm(`Desativar o tipo "${codigo}"?\nEle não aparecerá mais na lista.`)) return;
     try {
       const r = await fetch('/api/vt/desativar', {
         method: 'POST',
@@ -546,5 +546,6 @@
     } catch(e) { mostrarErro('Erro de comunicação com o servidor.'); }
   }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

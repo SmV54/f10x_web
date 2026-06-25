@@ -471,7 +471,7 @@ function maskNovoSal(el) {
     el.addEventListener('focus', function() { this.select(); });
 });
 
-function processar() {
+async function processar() {
     if (!MATS) {
         alert('Nenhum funcionário selecionado. Volte e selecione os funcionários.');
         return;
@@ -506,10 +506,10 @@ function processar() {
         alert('Informe o percentual de reajuste (deve ser diferente de zero).'); return;
     }
     if (percentual < 0) {
-        if (!confirm(`Atenção: o percentual informado é ${percentual.toFixed(2).replace('.', ',')}%.\nIsso representa uma REDUÇÃO salarial. Deseja continuar?`)) return;
+        if (!await f10Confirm(`Atenção: o percentual informado é ${percentual.toFixed(2).replace('.', ',')}%.\nIsso representa uma REDUÇÃO salarial. Deseja continuar?`)) return;
     }
     if (percentual > 30) {
-        if (!confirm(`Atenção: o percentual de reajuste informado é ${percentual.toFixed(2).replace('.', ',')}%.\nUm aumento acima de 30% é incomum. Deseja continuar?`)) return;
+        if (!await f10Confirm(`Atenção: o percentual de reajuste informado é ${percentual.toFixed(2).replace('.', ',')}%.\nUm aumento acima de 30% é incomum. Deseja continuar?`)) return;
     }
 
     var tipo   = document.querySelector('input[name="tipo"]:checked').value;
@@ -537,5 +537,6 @@ function processar() {
     window.location.href = '/rel_aumento?' + p.toString();
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

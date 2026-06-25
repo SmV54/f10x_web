@@ -810,7 +810,7 @@ const SIT_CSS = {
 async function confirmarExcluir(id, btn) {
   const nomeTd = document.querySelector(`#row-${id} .nome-cell`);
   const nome   = nomeTd ? nomeTd.textContent.trim() : `ID ${id}`;
-  if (!confirm(`Confirma o envio do S-3000 para EXCLUIR o evento de admissão de:\n\n${nome}\n\nEsta operação não pode ser desfeita.`)) return;
+  if (!await f10Confirm(`Confirma o envio do S-3000 para EXCLUIR o evento de admissão de:\n\n${nome}\n\nEsta operação não pode ser desfeita.`)) return;
 
   const sit    = document.getElementById('sit-'  + id);
   const acaoTd = document.getElementById('acao-' + id);
@@ -904,6 +904,8 @@ function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
+
+<script src="/static/f10_dialog.js"></script>
 
 </body>
 </html>

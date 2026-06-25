@@ -1009,13 +1009,13 @@ function mascaraCNAE(campo) {
 }
 
 /* ── TOGGLE ENCARGOS MANUAIS ───────────────────────────── */
-function toggleEncargosManual() {
+async function toggleEncargosManual() {
     const campos = document.querySelectorAll('.campo-enc input');
     const btn    = document.getElementById('btnTerceiros');
     const liberar = campos[0].hasAttribute('readonly');
 
     if (liberar) {
-        const confirma = confirm(
+        const confirma = await f10Confirm(
             'Atenção!\n\n' +
             'Os percentuais de Contribuições Destinadas a Terceiros são pré-definidos ' +
             'automaticamente de acordo com o código FPAS selecionado.\n\n' +
@@ -1633,5 +1633,6 @@ function iniciarTour() {
     d.drive();
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

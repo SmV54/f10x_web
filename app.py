@@ -150,10 +150,20 @@ _supabase_storage = create_client(
     SUPABASE_SERVICE_KEY or SUPABASE_KEY,
 )
 
-def _xml_dir_rel(id_empresa, when=None):
-    """Caminho relativo dentro do bucket: YYYY/YYYY-MM/EMPRESA."""
+def _xml_dir_rel(id_empresa, when=None, id_cliente=None):
+    """Caminho relativo dentro do bucket: YYYY/YYYY-MM/CLIENTE/EMPRESA.
+
+    id_cliente: se não fornecido, busca em session['id_cliente'].
+                Cai para '000000' se nenhum estiver disponível.
+    """
     when = when or datetime.now()
+    if id_cliente is None:
+        try:
+            id_cliente = session.get("id_cliente")
+        except Exception:
+            id_cliente = None
     return (f"{when.strftime('%Y')}/{when.strftime('%Y-%m')}/"
+            f"{str(id_cliente or 0).zfill(6)}/"
             f"{str(id_empresa).zfill(6)}")
 
 def _xml_save(rel_path, content):
@@ -30130,6 +30140,147 @@ def api_admin_clientes_empresas(id_cliente):
         return jsonify({"ok": True, "empresas": empresas})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})
+
+
+# =========================================================
+# ADMINISTRADOR — Visualizar XML do eSocial (Supabase Storage)
+# =========================================================
+# Layouts oferecidos no dropdown (rótulo amigável + prefixo no Storage)
+_ADMIN_XML_LAYOUTS = [
+    ("S1000", "S-1000 — Informações do Empregador"),
+    ("S1010", "S-1010 — Tabela de Rubricas"),
+    ("S1020", "S-1020 — Tabela de Lotações"),
+    ("S1200", "S-1200 — Remuneração (Trabalhador RGPS)"),
+    ("S1210", "S-1210 — Pagamentos de Rendimentos"),
+    ("S1298", "S-1298 — Reabertura dos Eventos Periódicos"),
+    ("S1299", "S-1299 — Fechamento dos Eventos Periódicos"),
+    ("S2200", "S-2200 — Admissão de Trabalhador"),
+    ("S2205", "S-2205 — Alteração de Dados Cadastrais"),
+    ("S2206", "S-2206 — Alteração de Contrato de Trabalho"),
+    ("S2210", "S-2210 — CAT (Comunicação de Acidente)"),
+    ("S2220", "S-2220 — Monitoramento da Saúde do Trabalhador"),
+    ("S3000", "S-3000 — Exclusão de Eventos"),
+]
+
+
+@app.route("/admin_esocial_xml")
+def admin_esocial_xml():
+    if not session.get("logado"):
+        return redirect("/")
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return redirect("/menu")
+    try:
+        clientes = (supabase.table("tab_cliente")
+                    .select("id_cliente, nome, cpf")
+                    .order("nome")
+                    .execute().data or [])
+    except Exception:
+        clientes = []
+    return render_template(
+        "F10_Admin_Esocial_XML.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        clientes=clientes,
+        layouts=_ADMIN_XML_LAYOUTS,
+    )
+
+
+@app.route("/api/admin_esocial_xml/empresas/<int:id_cliente>")
+def api_admin_xml_empresas(id_cliente):
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return jsonify({"ok": False}), 403
+    try:
+        empresas = (supabase.table("tab_empresa")
+                    .select("id_empresa, razaosocial, nome_fantasia, cnpj, anomes_atual")
+                    .eq("id_cliente", id_cliente)
+                    .order("razaosocial")
+                    .execute().data or [])
+        for e in empresas:
+            e["cnpj_fmt"] = _fmt_cnpj(e.get("cnpj", ""))
+            e["razao_fmt"] = (e.get("nome_fantasia") or e.get("razaosocial") or "—").strip()
+            am = e.get("anomes_atual") or ""
+            # anomes_atual no banco vem como YYYYMM — formata pra YYYY-MM
+            if len(str(am)) == 6 and str(am).isdigit():
+                e["anomes_fmt"] = f"{str(am)[:4]}-{str(am)[4:]}"
+            else:
+                e["anomes_fmt"] = ""
+        return jsonify({"ok": True, "empresas": empresas})
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": str(ex)})
+
+
+@app.route("/api/admin_esocial_xml/listar")
+def api_admin_xml_listar():
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return jsonify({"ok": False}), 403
+
+    id_cliente = request.args.get("id_cliente", "").strip()
+    id_empresa = request.args.get("id_empresa", "").strip()
+    anomes     = request.args.get("anomes", "").strip()   # YYYY-MM
+    layout     = request.args.get("layout", "").strip().upper()
+
+    if not (id_cliente.isdigit() and id_empresa.isdigit()):
+        return jsonify({"ok": False, "msg": "Cliente/empresa inválidos."})
+    if len(anomes) != 7 or anomes[4] != "-":
+        return jsonify({"ok": False, "msg": "Ano/mês inválido (use YYYY-MM)."})
+    if not layout:
+        return jsonify({"ok": False, "msg": "Layout não informado."})
+
+    ano = anomes[:4]
+    cli = str(int(id_cliente)).zfill(6)
+    emp = str(int(id_empresa)).zfill(6)
+    prefix = f"{ano}/{anomes}/{cli}/{emp}"
+
+    try:
+        # Lista o conteúdo da "pasta" e filtra por layout + etapas 1 e 4
+        items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
+        arquivos = []
+        for it in items:
+            name = it.get("name") or ""
+            if not name.upper().startswith(layout + "_"):
+                continue
+            # Aceita só _1_evento e _4_resposta
+            if "_1_evento.xml" in name or "_4_resposta.xml" in name:
+                etapa = "1 — Evento gerado" if "_1_evento.xml" in name else "4 — Resposta do servidor"
+                arquivos.append({
+                    "nome": name,
+                    "path": f"{prefix}/{name}",
+                    "etapa": etapa,
+                    "tamanho": it.get("metadata", {}).get("size") if it.get("metadata") else None,
+                    "atualizado": it.get("updated_at") or it.get("created_at"),
+                })
+        arquivos.sort(key=lambda a: a["nome"])
+        return jsonify({"ok": True, "arquivos": arquivos, "prefixo": prefix})
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": str(ex)})
+
+
+@app.route("/api/admin_esocial_xml/arquivo")
+def api_admin_xml_arquivo():
+    if not session.get("logado"):
+        return Response("Não autenticado.", status=401, mimetype="text/plain")
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return Response("Acesso negado.", status=403, mimetype="text/plain")
+
+    path = request.args.get("path", "").strip()
+    if not path or ".." in path or path.startswith("/"):
+        return Response("Path inválido.", status=400, mimetype="text/plain")
+
+    try:
+        data = _supabase_storage.storage.from_(_ESOC_BUCKET).download(path)
+    except Exception as ex:
+        return Response(f"Erro ao baixar: {ex}", status=500, mimetype="text/plain")
+
+    if isinstance(data, bytes):
+        try:
+            data = data.decode("utf-8")
+        except Exception:
+            data = data.decode("utf-8", errors="replace")
+    return Response(data, mimetype="application/xml; charset=utf-8")
 
 
 # =========================================================

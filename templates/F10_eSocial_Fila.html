@@ -406,7 +406,7 @@ async function _excluir(btn) {
   const nome = btn.dataset.nome !== '—' ? btn.dataset.nome : btn.dataset.lay;
   const lay  = btn.dataset.lay;
 
-  if (!confirm(`Excluir a remessa ${lay} de "${nome}"?\n\nEsta ação não pode ser desfeita.`)) return;
+  if (!await f10Confirm(`Excluir a remessa ${lay} de "${nome}"?\n\nEsta ação não pode ser desfeita.`)) return;
 
   btn.disabled    = true;
   btn.textContent = '…';
@@ -626,5 +626,6 @@ async function _reconsultar(id, btn) {
   }
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

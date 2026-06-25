@@ -957,7 +957,7 @@
 
   async function desativarVerba(id, nome) {
     if (!FOLHA_ABERTA) { mostrarErro('A folha precisa estar Aberta para desativar verbas.'); return; }
-    if (!confirm(`Desativar a verba "${nome}"?`)) return;
+    if (!await f10Confirm(`Desativar a verba "${nome}"?`)) return;
     try {
       const r = await fetch('/api/rubrica/desativar', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1346,6 +1346,7 @@
         <tbody>${rows}</tbody>
       </table>
       ${rodapePDF('Total: ' + dados.length + ' verba(s)')}
+    <script src="/static/f10_dialog.js"></script>
     </body></html>`;
 
     const w = window.open('', '_blank');

@@ -1407,17 +1407,17 @@ function _cfgCarregar() {
     } catch(e) {}
 }
 
-function _cfgSalvar() {
+async function _cfgSalvar() {
     var p          = _cfgColetarParametros();
     var tituloRel  = (document.querySelector('[name="titulo_rel"]') || {}).value || '';
 
     if (_cfgAtualId) {
         // ── Relatório carregado: confirma gravação por cima ──
-        if (!confirm('Salvar alterações em "' + _cfgAtualNome + '"?')) return;
+        if (!await f10Confirm('Salvar alterações em "' + _cfgAtualNome + '"?')) return;
         _doSave('PUT', _cfgAtualId, _cfgAtualNome, p);
     } else {
         // ── Novo: pede nome (sugerindo título do relatório) ──
-        var nome = prompt('Nome para este relatório:', tituloRel);
+        var nome = await f10Prompt('Nome para este relatório:', { valor: tituloRel, titulo: 'Salvar relatório' });
         if (nome === null) return;
         nome = nome.trim();
         if (!nome) { alert('Nome obrigatório.'); return; }
@@ -1434,7 +1434,7 @@ function _cfgSalvar() {
             }
         }
         if (dupOpt) {
-            if (!confirm('Já existe um relatório com o nome "' + nome + '".\nDeseja substituí-lo?')) return;
+            if (!await f10Confirm('Já existe um relatório com o nome "' + nome + '".\nDeseja substituí-lo?')) return;
             _cfgAtualId   = dupOpt.value;
             _cfgAtualNome = nome;
             _doSave('PUT', dupOpt.value, nome, p);
@@ -1484,9 +1484,9 @@ function _doSave(method, id, nome, p) {
     });
 }
 
-function _cfgExcluir() {
+async function _cfgExcluir() {
     if (!_cfgAtualId) return;
-    if (!confirm('Excluir a configuração "' + _cfgAtualNome + '"?')) return;
+    if (!await f10Confirm('Excluir a configuração "' + _cfgAtualNome + '"?')) return;
     fetch('/api/rel_configs/' + _cfgAtualId, {method: 'DELETE'})
         .then(function(r){ return r.json(); })
         .then(function(data) {
@@ -1503,5 +1503,6 @@ function _cfgExcluir() {
 // Carrega lista — abre modal de abertura só quando não há resultados na tela
 _cfgCarregarLista({{ 'false' if gerando else 'true' }});
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

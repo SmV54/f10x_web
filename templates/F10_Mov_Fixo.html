@@ -851,7 +851,7 @@ function editarRegistro(id) {
 async function excluirRegistro(id) {
     const r    = LISTA_MAP[id];
     const desc = r ? `Verba ${String(r.cod_verba).padStart(4,'0')} — R$ ${formatValor(r.valor)}` : `ID ${id}`;
-    if (!confirm(`Inativar este movimento fixo?\n\n${desc}`)) return;
+    if (!await f10Confirm(`Inativar este movimento fixo?\n\n${desc}`)) return;
     try {
         const res = await fetch('/api/mov_fixo_excluir', {
             method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}),
@@ -1057,5 +1057,6 @@ function iniciarTour() {
     }).drive();
 }
 </script>
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>
