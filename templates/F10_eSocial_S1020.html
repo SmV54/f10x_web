@@ -281,9 +281,11 @@ tr:hover td { background: #f8fafc; }
                                 ▶ Enviar
                             </button>
                             {% endif %}
+                            {% if (r.data_cad or '0')[:6] >= '202606' %}
                             <button class="btn-acao btn-xml" onclick="baixarXml({{ r.id_esocial }})">
                                 ⬇ XML
                             </button>
+                            {% endif %}
                             {% if r._sit in ('P', 'G', 'X') %}
                             <button class="btn-excluir" id="btn-del-{{ r.id_esocial }}"
                                     onclick="apagarS1020({{ r.id_esocial }}, this)">
