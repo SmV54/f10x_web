@@ -30236,23 +30236,34 @@ def api_admin_xml_listar():
     prefix = f"{ano}/{anomes}/{cli}/{emp}"
 
     try:
-        # Lista o conteúdo da "pasta" e filtra por layout + etapas 1 e 4
+        # Lista o conteúdo da "pasta" e filtra por layout + etapas 1 e final
+        # Padrões aceitos (variam por layout):
+        #   Etapa 1:      _1_evento.xml | _1_eventos_cru.xml
+        #   Etapa final:  _4_resposta.xml | _5_resposta.xml
+        # (descarta _2_assinado, _3_lote, _4_soap_envio, _5_consulta_*, etc.)
+        import re as _re_xml
+        rx_e1    = _re_xml.compile(r'_1_eventos?(?:_cru)?\.xml$', _re_xml.IGNORECASE)
+        rx_final = _re_xml.compile(r'_[45]_resposta\.xml$',       _re_xml.IGNORECASE)
+
         items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
         arquivos = []
         for it in items:
             name = it.get("name") or ""
             if not name.upper().startswith(layout + "_"):
                 continue
-            # Aceita só _1_evento e _4_resposta
-            if "_1_evento.xml" in name or "_4_resposta.xml" in name:
-                etapa = "1 — Evento gerado" if "_1_evento.xml" in name else "4 — Resposta do servidor"
-                arquivos.append({
-                    "nome": name,
-                    "path": f"{prefix}/{name}",
-                    "etapa": etapa,
-                    "tamanho": it.get("metadata", {}).get("size") if it.get("metadata") else None,
-                    "atualizado": it.get("updated_at") or it.get("created_at"),
-                })
+            if rx_e1.search(name):
+                etapa = "1 — Evento gerado"
+            elif rx_final.search(name):
+                etapa = "Final — Resposta do servidor"
+            else:
+                continue
+            arquivos.append({
+                "nome": name,
+                "path": f"{prefix}/{name}",
+                "etapa": etapa,
+                "tamanho": it.get("metadata", {}).get("size") if it.get("metadata") else None,
+                "atualizado": it.get("updated_at") or it.get("created_at"),
+            })
         arquivos.sort(key=lambda a: a["nome"])
         return jsonify({"ok": True, "arquivos": arquivos, "prefixo": prefix})
     except Exception as ex:
