@@ -458,19 +458,16 @@ function onEmpresaChange() {
     inAno.disabled = false;
     selLay.disabled = false;
     btn.disabled = false;
-    // Default = anomes_atual da empresa
-    const am = opt.getAttribute('data-anomes');
-    if (am) inAno.value = am;
-    // Sobrescreve ano/mês e layout com o do último envio eSocial (se existir)
+    // Ano/mês = mês atual (sempre)
+    const hoje = new Date();
+    inAno.value = hoje.getFullYear() + '-' + String(hoje.getMonth() + 1).padStart(2, '0');
+    // Layout = último enviado pela empresa (se existir)
     return fetch('/api/admin_esocial_xml/ultimo_envio/' + empresaAtiva)
         .then(r => r.json())
         .then(d => {
-            if (!d.ok) return;
-            if (d.anomes) inAno.value = d.anomes;
-            if (d.layout) {
-                const match = [...selLay.options].find(o => o.value === d.layout);
-                if (match) selLay.value = d.layout;
-            }
+            if (!d.ok || !d.layout) return;
+            const match = [...selLay.options].find(o => o.value === d.layout);
+            if (match) selLay.value = d.layout;
         })
         .catch(() => { /* silencioso — mantém defaults */ });
 }
