@@ -269,7 +269,7 @@ tr:hover td { background: #f8fafc; }
                         {% endif %}
                     </td>
                     <td>
-                        <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;">
+                        <div style="display:flex; gap:5px; flex-wrap:nowrap; align-items:center; white-space:nowrap;">
                             {% if r._sit == 'W' %}
                             <button class="btn-acao btn-reconsultar" id="btn-env-{{ r.id_esocial }}"
                                     onclick="reconsultarS1020({{ r.id_esocial }}, this)">
