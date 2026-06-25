@@ -9963,6 +9963,7 @@ def api_esocial_s2220_enviar():
     try:
         xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -9971,6 +9972,7 @@ def api_esocial_s2220_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -9979,6 +9981,7 @@ def api_esocial_s2220_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -9987,6 +9990,7 @@ def api_esocial_s2220_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
@@ -9994,6 +9998,7 @@ def api_esocial_s2220_enviar():
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": str(e)})
 
     analise         = _analisar_resposta_envio(resp_envio)
@@ -10005,6 +10010,7 @@ def api_esocial_s2220_enviar():
             "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     agora = datetime.now()
@@ -15022,6 +15028,7 @@ def api_esocial_s1000_enviar():
     try:
         xml_str = _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, ctt_nome, ctt_cpf)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -15039,6 +15046,7 @@ def api_esocial_s1000_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -15047,6 +15055,7 @@ def api_esocial_s1000_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="1")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -15063,6 +15072,7 @@ def api_esocial_s1000_enviar():
             "observacao_erro": f"Erro no envio: {detalhe[:200]}",
             "data_grava": datetime.now().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}")
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
     _xml_save(f"{_pref}_4_resposta.xml", resp_envio)
@@ -15077,6 +15087,7 @@ def api_esocial_s1000_enviar():
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     supabase.table("tab_esocial").update({
@@ -15136,6 +15147,7 @@ def api_esocial_s1000_enviar():
     if aguardando:
         return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
                         "protocolo": protocolo_envio})
+    _xml_erro_save(_pref, 5, obs_erro)
     return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
 
 
@@ -16507,6 +16519,7 @@ def api_esocial_s1020_enviar():
     try:
         xml_str = _gerar_xml_s1020_evento(params, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -16515,6 +16528,7 @@ def api_esocial_s1020_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -16523,6 +16537,7 @@ def api_esocial_s1020_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -16531,6 +16546,7 @@ def api_esocial_s1020_enviar():
     try:
         lote_xml = _montar_lote_multi([xml_assinado], cnpj_emp, tpAmb, grupo="1")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -16547,6 +16563,7 @@ def api_esocial_s1020_enviar():
             "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
             "data_grava": datetime.now().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).execute()
+        _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}")
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
     _xml_save(f"{_pref}_4_resposta.xml", resp_envio)
@@ -16561,6 +16578,7 @@ def api_esocial_s1020_enviar():
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
         }).eq("id_esocial", int(id_reg)).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     supabase.table("tab_esocial").update({
@@ -16626,6 +16644,7 @@ def api_esocial_s1020_enviar():
     if aguardando:
         return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
                         "protocolo": protocolo_envio})
+    _xml_erro_save(_pref, 6, obs_erro)
     return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
 
 
@@ -16919,6 +16938,7 @@ def api_esocial_s2200_enviar():
     try:
         xml_str = _gerar_xml_s2200(func, empresa, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     # Salva XML gerado antes de qualquer processamento
@@ -16937,6 +16957,7 @@ def api_esocial_s2200_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura do evento: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura do evento: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -16945,6 +16966,7 @@ def api_esocial_s2200_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -16961,6 +16983,7 @@ def api_esocial_s2200_enviar():
     except Exception as e:
         detalhe = str(e)
         _xml_save(f"{_pref}_5_resposta.xml", detalhe)
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     # Salva resposta bruta para diagnóstico
@@ -17619,6 +17642,7 @@ def api_esocial_s2205_enviar():
     try:
         xml_str = _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -17627,6 +17651,7 @@ def api_esocial_s2205_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -17635,6 +17660,7 @@ def api_esocial_s2205_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -17642,6 +17668,7 @@ def api_esocial_s2205_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -17661,6 +17688,7 @@ def api_esocial_s2205_enviar():
             "hora_grava":      agora.strftime("%H%M"),
             "observacao_erro": detalhe[:295],
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -17675,6 +17703,7 @@ def api_esocial_s2205_enviar():
             "hora_grava":      agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     supabase.table("tab_esocial").update({
@@ -18148,6 +18177,7 @@ def api_esocial_s2206_enviar():
     try:
         xml_str = _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -18156,6 +18186,7 @@ def api_esocial_s2206_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -18164,6 +18195,7 @@ def api_esocial_s2206_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -18171,6 +18203,7 @@ def api_esocial_s2206_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -18190,6 +18223,7 @@ def api_esocial_s2206_enviar():
             "hora_grava": agora.strftime("%H%M"),
             "observacao_erro": detalhe[:295],
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -18204,6 +18238,7 @@ def api_esocial_s2206_enviar():
             "hora_grava": agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     supabase.table("tab_esocial").update({
@@ -19344,6 +19379,7 @@ def api_esocial_s1200_enviar():
     try:
         xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -19361,6 +19397,7 @@ def api_esocial_s1200_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -19369,6 +19406,7 @@ def api_esocial_s1200_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -19384,6 +19422,7 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         detalhe = str(e)
         _xml_save(f"{_pref}_5_resposta.xml", detalhe)
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -19398,6 +19437,7 @@ def api_esocial_s1200_enviar():
             "hora_grava":      agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     agora = datetime.now()
@@ -19870,6 +19910,7 @@ def api_esocial_s1210_enviar():
         xml_str = _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb,
                                    dtPgto, recibo_s1200, totais)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -19878,6 +19919,7 @@ def api_esocial_s1210_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -19886,6 +19928,7 @@ def api_esocial_s1210_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -19894,6 +19937,7 @@ def api_esocial_s1210_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -19909,6 +19953,7 @@ def api_esocial_s1210_enviar():
     except Exception as e:
         detalhe = str(e)
         _xml_save(f"{_pref}_5_resposta.xml", detalhe)
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -19923,6 +19968,7 @@ def api_esocial_s1210_enviar():
             "hora_grava":      agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
     agora = datetime.now()
@@ -20338,6 +20384,7 @@ def api_esocial_s1299_enviar():
         xml_str = _gerar_xml_s1299(empresa, ano_mes, ind_apuracao,
                                    evt_remun, evt_pgtos, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -20346,6 +20393,7 @@ def api_esocial_s1299_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -20354,6 +20402,7 @@ def api_esocial_s1299_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -20362,6 +20411,7 @@ def api_esocial_s1299_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -20379,6 +20429,7 @@ def api_esocial_s1299_enviar():
         _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         supabase.table("tab_esocial").update({"observacao_erro": detalhe[:295]})\
             .eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -20393,6 +20444,7 @@ def api_esocial_s1299_enviar():
             "hora_grava":      agora2.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.",
                         "detalhe": analise["erro"], "id_esocial": id_reg})
 
@@ -20774,6 +20826,7 @@ def api_esocial_s1298_enviar():
     try:
         xml_str = _gerar_xml_s1298(empresa, ano_mes, ind_apuracao, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -20782,6 +20835,7 @@ def api_esocial_s1298_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
         return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
 
     pfx_bytes = base64.b64decode(pfx_b64)
@@ -20790,6 +20844,7 @@ def api_esocial_s1298_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -20797,6 +20852,7 @@ def api_esocial_s1298_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -20813,6 +20869,7 @@ def api_esocial_s1298_enviar():
         _xml_save(f"{_pref}_5_resposta.xml", detalhe)
         supabase.table("tab_esocial").update({"observacao_erro": detalhe[:295]})\
             .eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -20827,6 +20884,7 @@ def api_esocial_s1298_enviar():
             "hora_grava":      agora2.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.",
                         "detalhe": analise["erro"], "id_esocial": id_reg})
 
@@ -21196,6 +21254,7 @@ def api_esocial_s3000_enviar():
     try:
         xml_str = _gerar_xml_s3000(recibo_excluir, layout, cpf_trab, empresa, tpAmb)
     except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
@@ -21213,6 +21272,7 @@ def api_esocial_s3000_enviar():
     try:
         xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
         return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
 
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
@@ -21221,6 +21281,7 @@ def api_esocial_s3000_enviar():
     try:
         lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
     except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
@@ -21234,6 +21295,7 @@ def api_esocial_s3000_enviar():
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
         return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": str(e)})
 
     _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
@@ -21241,6 +21303,7 @@ def api_esocial_s3000_enviar():
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
     if not protocolo_envio:
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio do S-3000.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio do S-3000.", "detalhe": analise["erro"]})
 
     # ── 9. Consultar resultado ─────────────────────────────
