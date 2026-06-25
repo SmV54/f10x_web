@@ -25576,10 +25576,10 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                               Paragraph("", st_info_hdr)]]
                 for vi in func["verbas_info"]:
                     info_rows.append([
-                        Paragraph(f"{vi['cod']:04d}", st_info_cod),
-                        Paragraph(vi["dsc"],          st_info_dsc),
-                        Paragraph(_fqtd(vi["qtd"], vi.get("unid","V")), st_info_cod),
-                        Paragraph(_fmt_brl(vi["val"]), st_info_val),
+                        Paragraph(vi["cod"],     st_info_cod),
+                        Paragraph(vi["dsc"],     st_info_dsc),
+                        Paragraph(vi["qtd_fmt"], st_info_cod),
+                        Paragraph(vi["val_fmt"], st_info_val),
                     ])
                 COLS_INFO = [COLS[0], COLS[1]+COLS[2], COLS[3], COLS[4]]
                 i_tbl = Table(info_rows, colWidths=COLS_INFO)
