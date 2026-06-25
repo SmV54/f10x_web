@@ -30265,6 +30265,8 @@ def api_admin_xml_listar():
             "service_env_mask":   _mask(_svc_raw),
             "anon_env_mask":      _mask(_anon_raw),
             "supabase_url":       SUPABASE_URL,
+            # Lista todas env vars começando com SUPABASE (só os nomes)
+            "env_keys_supabase":  sorted(k for k in os.environ if k.upper().startswith("SUPABASE")),
         }
         arquivos = []
         for it in items:

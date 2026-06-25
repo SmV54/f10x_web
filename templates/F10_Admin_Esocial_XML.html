@@ -463,6 +463,7 @@ function buscarArquivos() {
                       service_env_mask: ${dbg.service_env_mask || '(?)'}<br>
                       anon_env_mask: ${dbg.anon_env_mask || '(?)'}<br>
                       supabase_url: ${dbg.supabase_url || '(?)'}<br>
+                      env_keys_supabase: ${(dbg.env_keys_supabase || []).join(', ') || '(nenhuma)'}<br>
                       nomes: ${(dbg.todos_nomes || []).join(', ') || '(vazio)'}
                     </div>`;
                 lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">📭</span><span class="estado-vazio-texto">Nenhum XML encontrado</span><span class="estado-vazio-sub">${d.prefixo}/${layout}_*</span>${detalhes}</div>`;
