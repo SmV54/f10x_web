@@ -14721,16 +14721,19 @@ def esocial_s1000():
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    anomes_folha = str(session.get("anomes_atual") or "")
 
     rows = []
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("*")
-                .eq("id_empresa", id_empresa)
-                .eq("layout", "1000")
-                .order("data_cad", desc=True)
-                .order("hora_cad", desc=True)
-                .execute().data or [])
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1000"))
+        if anomes_folha.isdigit() and len(anomes_folha) == 6:
+            q = q.eq("ano_mes", int(anomes_folha))
+        rows = (q.order("data_cad", desc=True)
+                 .order("hora_cad", desc=True)
+                 .execute().data or [])
     except Exception:
         rows = []
 
@@ -15518,16 +15521,19 @@ def esocial_s1010():
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    anomes_folha = str(session.get("anomes_atual") or "")
 
     rows = []
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("*")
-                .eq("id_empresa", id_empresa)
-                .eq("layout", "1010")
-                .order("data_cad", desc=True)
-                .order("hora_cad", desc=True)
-                .execute().data or [])
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1010"))
+        if anomes_folha.isdigit() and len(anomes_folha) == 6:
+            q = q.eq("ano_mes", int(anomes_folha))
+        rows = (q.order("data_cad", desc=True)
+                 .order("hora_cad", desc=True)
+                 .execute().data or [])
     except Exception:
         rows = []
 
@@ -16198,16 +16204,19 @@ def esocial_s1020():
 
     id_empresa = _get_id_empresa()
     cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    anomes_folha = str(session.get("anomes_atual") or "")
 
     rows = []
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("*")
-                .eq("id_empresa", id_empresa)
-                .eq("layout", "1020")
-                .order("data_cad", desc=True)
-                .order("hora_cad", desc=True)
-                .execute().data or [])
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "1020"))
+        if anomes_folha.isdigit() and len(anomes_folha) == 6:
+            q = q.eq("ano_mes", int(anomes_folha))
+        rows = (q.order("data_cad", desc=True)
+                 .order("hora_cad", desc=True)
+                 .execute().data or [])
     except Exception:
         rows = []
 
