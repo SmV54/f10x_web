@@ -187,7 +187,12 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     padding: 2px 8px; border-radius: 6px; margin-top: 5px;
 }
 .arquivo-etapa.e1 { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-.arquivo-etapa.e4 { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.arquivo-etapa.e2 { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+.arquivo-etapa.e3 { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+.arquivo-etapa.e4 { background: #fefce8; color: #854d0e; border: 1px solid #fde68a; }
+.arquivo-etapa.e5 { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.arquivo-etapa.e6 { background: #ecfdf5; color: #047857; border: 1px solid #6ee7b7; }
+.arquivo-etapa.eX { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
 
 /* ── VISUALIZADOR XML ── */
 .viewer {
@@ -480,7 +485,8 @@ function renderArquivos(arquivos) {
     const lista = document.getElementById('listaArquivos');
     lista.innerHTML = `<div class="lista-arquivos-titulo">${arquivos.length} arquivo(s)</div>`;
     arquivos.forEach(a => {
-        const cls = a.etapa.startsWith('1') ? 'e1' : 'e4';
+        const n = a.etapa_num || 0;
+        const cls = (n >= 1 && n <= 6) ? ('e' + n) : 'eX';
         const div = document.createElement('div');
         div.className = 'arquivo-card';
         div.dataset.path = a.path;

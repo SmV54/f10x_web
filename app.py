@@ -30236,14 +30236,10 @@ def api_admin_xml_listar():
     prefix = f"{ano}/{anomes}/{cli}/{emp}"
 
     try:
-        # Lista o conteúdo da "pasta" e filtra por layout + etapas 1 e final
-        # Padrões aceitos (variam por layout):
-        #   Etapa 1:      _1_evento.xml | _1_eventos_cru.xml
-        #   Etapa final:  _4_resposta.xml | _5_resposta.xml
-        # (descarta _2_assinado, _3_lote, _4_soap_envio, _5_consulta_*, etc.)
+        # Lista todos os XMLs do layout. Extrai etapa do sufixo do nome
+        # (ex: "_1_evento.xml" → etapa 1; "_4_resposta.xml" → etapa 4).
         import re as _re_xml
-        rx_e1    = _re_xml.compile(r'_1_eventos?(?:_cru)?\.xml$', _re_xml.IGNORECASE)
-        rx_final = _re_xml.compile(r'_[45]_resposta\.xml$',       _re_xml.IGNORECASE)
+        rx_sufixo = _re_xml.compile(r'_(\d+)_([a-z0-9_]+)\.xml$', _re_xml.IGNORECASE)
 
         items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
         # Inspeção do ambiente
@@ -30273,19 +30269,25 @@ def api_admin_xml_listar():
             name = it.get("name") or ""
             if not name.upper().startswith(layout + "_"):
                 continue
-            if rx_e1.search(name):
-                etapa = "1 — Evento gerado"
-            elif rx_final.search(name):
-                etapa = "Final — Resposta do servidor"
-            else:
+            if not name.lower().endswith(".xml"):
                 continue
+            m = rx_sufixo.search(name)
+            if m:
+                etapa_num = int(m.group(1))
+                desc      = m.group(2).replace("_", " ")
+                etapa     = f"{etapa_num} — {desc[0].upper()}{desc[1:]}"
+            else:
+                etapa_num = 0
+                etapa     = "?"
             arquivos.append({
                 "nome": name,
                 "path": f"{prefix}/{name}",
                 "etapa": etapa,
+                "etapa_num": etapa_num,
                 "tamanho": it.get("metadata", {}).get("size") if it.get("metadata") else None,
                 "atualizado": it.get("updated_at") or it.get("created_at"),
             })
+        # Ordena por nome (que já contém timestamp + etapa em ordem)
         arquivos.sort(key=lambda a: a["nome"])
         return jsonify({"ok": True, "arquivos": arquivos, "prefixo": prefix, "debug": debug})
     except Exception as ex:
