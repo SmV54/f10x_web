@@ -30264,7 +30264,9 @@ def api_admin_xml_listar():
         # Cada remessa expõe etapa 1 (cru) e etapa 5 (resposta/consulta final).
         # Se houver múltiplos _5_* (várias consultas), prefere o de maior sequência.
         import re as _re_xml
-        rx_chave = _re_xml.compile(r'^(.+?)_(\d+)_([a-z0-9_]+)\.xml$', _re_xml.IGNORECASE)
+        # Greedy (.+) garante que o último _<digito>_<desc>.xml seja a etapa,
+        # não os números do meio do nome (ex.: S1010_202601_20260625_...).
+        rx_chave = _re_xml.compile(r'^(.+)_(\d+)_([a-z][a-z0-9_]*)\.xml$', _re_xml.IGNORECASE)
 
         items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
         # Inspeção do ambiente
