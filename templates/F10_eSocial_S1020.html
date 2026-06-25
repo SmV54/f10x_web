@@ -270,9 +270,6 @@ tr:hover td { background: #f8fafc; }
                     </td>
                     <td>
                         <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;">
-                            <button class="btn-acao btn-xml" onclick="baixarXml({{ r.id_esocial }})">
-                                ⬇ XML
-                            </button>
                             {% if r._sit == 'W' %}
                             <button class="btn-acao btn-reconsultar" id="btn-env-{{ r.id_esocial }}"
                                     onclick="reconsultarS1020({{ r.id_esocial }}, this)">
@@ -283,6 +280,11 @@ tr:hover td { background: #f8fafc; }
                                     onclick="enviarS1020({{ r.id_esocial }}, this)">
                                 ▶ Enviar
                             </button>
+                            {% endif %}
+                            <button class="btn-acao btn-xml" onclick="baixarXml({{ r.id_esocial }})">
+                                ⬇ XML
+                            </button>
+                            {% if r._sit in ('P', 'G', 'X') %}
                             <button class="btn-excluir" id="btn-del-{{ r.id_esocial }}"
                                     onclick="apagarS1020({{ r.id_esocial }}, this)">
                                 🗑 Apagar

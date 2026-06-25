@@ -349,15 +349,17 @@ tr:hover td { background: #f8fafc; }
                     </td>
                     <td>
                         <div style="display:flex; gap:5px; flex-wrap:wrap; align-items:center;">
-                            <button class="btn-acao btn-xml"
-                                    onclick="baixarXml({{ r.id_esocial }})">
-                                ⬇ XML
-                            </button>
                             {% if r._sit in ('P', 'G', 'W', 'X') %}
                             <button class="btn-acao btn-enviar" id="btn-env-{{ r.id_esocial }}"
                                     onclick="enviarS1000({{ r.id_esocial }}, this)">
                                 ▶ Enviar
                             </button>
+                            {% endif %}
+                            <button class="btn-acao btn-xml"
+                                    onclick="baixarXml({{ r.id_esocial }})">
+                                ⬇ XML
+                            </button>
+                            {% if r._sit in ('P', 'G', 'W', 'X') %}
                             <button class="btn-excluir" id="btn-del-{{ r.id_esocial }}"
                                     onclick="apagarS1000({{ r.id_esocial }}, this)"
                                     title="Apagar este registro localmente">
