@@ -427,10 +427,13 @@ function selecionarCliente(idCliente, nomeCliente) {
                     + `${e.id_empresa.toString().padStart(6,'0')} · ${e.razao_fmt}</option>`
                 ).join('');
             sel.disabled = false;
-            // Auto-seleciona se houver só uma empresa
+            // Foca o select (e tenta abri-lo) pra dar destaque visual
+            sel.focus();
+            try { if (sel.showPicker) sel.showPicker(); } catch (e) { /* ignora */ }
+            // Se houver só uma empresa, seleciona e já busca
             if (d.empresas.length === 1) {
                 sel.value = d.empresas[0].id_empresa;
-                onEmpresaChange();
+                onEmpresaChange().then(() => buscarArquivos());
             }
         })
         .catch(() => {
@@ -449,7 +452,7 @@ function onEmpresaChange() {
     if (!idEmp) {
         empresaAtiva = null;
         inAno.disabled = true; selLay.disabled = true; btn.disabled = true;
-        return;
+        return Promise.resolve();
     }
     empresaAtiva = parseInt(idEmp, 10);
     inAno.disabled = false;
@@ -458,15 +461,14 @@ function onEmpresaChange() {
     // Default = anomes_atual da empresa
     const am = opt.getAttribute('data-anomes');
     if (am) inAno.value = am;
-    // Tenta sobrescrever ano/mês e layout com o do último envio eSocial
-    fetch('/api/admin_esocial_xml/ultimo_envio/' + empresaAtiva)
+    // Sobrescreve ano/mês e layout com o do último envio eSocial (se existir)
+    return fetch('/api/admin_esocial_xml/ultimo_envio/' + empresaAtiva)
         .then(r => r.json())
         .then(d => {
             if (!d.ok) return;
             if (d.anomes) inAno.value = d.anomes;
             if (d.layout) {
-                const opts = [...selLay.options];
-                const match = opts.find(o => o.value === d.layout);
+                const match = [...selLay.options].find(o => o.value === d.layout);
                 if (match) selLay.value = d.layout;
             }
         })
