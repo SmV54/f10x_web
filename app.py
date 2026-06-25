@@ -166,6 +166,21 @@ def _xml_dir_rel(id_empresa, when=None, id_cliente=None):
             f"{str(id_cliente or 0).zfill(6)}/"
             f"{str(id_empresa).zfill(6)}")
 
+def _xml_erro_save(_pref, etapa, msg, exc=None):
+    """Grava um XML pequeno com a mensagem de erro do envio.
+    Permite rastrear no viewer onde o fluxo de envio parou.
+    etapa: número da etapa em que o erro aconteceu (2, 3, 4, 5...)."""
+    tipo  = f"\n  <tipo>{type(exc).__name__}</tipo>" if exc else ""
+    ts    = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    safe  = str(msg).replace("]]>", "]]&gt;")
+    xml   = (f'<?xml version="1.0" encoding="UTF-8"?>\n'
+             f'<erro etapa="{etapa}">\n'
+             f'  <msg><![CDATA[{safe}]]></msg>{tipo}\n'
+             f'  <ts>{ts}</ts>\n'
+             f'</erro>\n')
+    _xml_save(f"{_pref}_{etapa}_erro.xml", xml)
+
+
 def _xml_save(rel_path, content):
     """
     Sobe XML para o Supabase Storage (bucket 'esocial-xml').
@@ -15866,7 +15881,9 @@ def api_esocial_s1010_enviar():
         try:
             xml_str = _gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op, ini_valid, fim_valid, idx)
         except Exception as e:
-            return jsonify({"ok": False, "msg": f"Erro ao gerar XML rubrica {rub.get('cod_rubr')}: {e}"})
+            msg = f"Erro ao gerar XML rubrica {rub.get('cod_rubr')}: {e}"
+            _xml_erro_save(_pref, 1, msg, e)
+            return jsonify({"ok": False, "msg": msg})
         xmls_crus.append(xml_str)
 
     _xml_save(f"{_pref}_1_eventos_cru.xml", "\n".join(xmls_crus))
@@ -15875,8 +15892,9 @@ def api_esocial_s1010_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado."})
+        msg = "Certificado digital não configurado."
+        _xml_erro_save(_pref, 2, msg)
+        return jsonify({"ok": False, "msg": msg})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -15886,7 +15904,9 @@ def api_esocial_s1010_enviar():
         try:
             xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
         except Exception as e:
-            return jsonify({"ok": False, "msg": f"Erro na assinatura rubrica {rubricas[idx-1].get('cod_rubr')}: {e}"})
+            msg = f"Erro na assinatura rubrica {rubricas[idx-1].get('cod_rubr')}: {e}"
+            _xml_erro_save(_pref, 2, msg, e)
+            return jsonify({"ok": False, "msg": msg})
         xmls_assinados.append(xml_assinado)
 
     _xml_save(f"{_pref}_2_eventos_assinados.xml", "\n".join(xmls_assinados))
@@ -15895,7 +15915,9 @@ def api_esocial_s1010_enviar():
     try:
         lote_xml = _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1")
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+        msg = f"Erro ao montar lote: {e}"
+        _xml_erro_save(_pref, 3, msg, e)
+        return jsonify({"ok": False, "msg": msg})
 
     _xml_save(f"{_pref}_3_lote.xml", lote_xml)
 
@@ -15907,6 +15929,7 @@ def api_esocial_s1010_enviar():
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
         detalhe = str(e)
+        _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}", e)
         supabase.table("tab_esocial").update({
             "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
             "data_grava": datetime.now().strftime("%Y%m%d"),
