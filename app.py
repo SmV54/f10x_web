@@ -30259,10 +30259,12 @@ def api_admin_xml_listar():
     prefix = f"{ano}/{anomes}/{cli}/{emp}"
 
     try:
-        # Lista todos os XMLs do layout. Extrai etapa do sufixo do nome
-        # (ex: "_1_evento.xml" → etapa 1; "_4_resposta.xml" → etapa 4).
+        # Lista os XMLs do layout e agrupa por "chave de remessa".
+        # Chave = nome sem o sufixo _<etapa>_<desc>.xml.
+        # Cada remessa expõe etapa 1 (cru) e etapa 5 (resposta/consulta final).
+        # Se houver múltiplos _5_* (várias consultas), prefere o de maior sequência.
         import re as _re_xml
-        rx_sufixo = _re_xml.compile(r'_(\d+)_([a-z0-9_]+)\.xml$', _re_xml.IGNORECASE)
+        rx_chave = _re_xml.compile(r'^(.+?)_(\d+)_([a-z0-9_]+)\.xml$', _re_xml.IGNORECASE)
 
         items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
         # Inspeção do ambiente
@@ -30287,32 +30289,37 @@ def api_admin_xml_listar():
             # Lista todas env vars começando com SUPABASE (só os nomes)
             "env_keys_supabase":  sorted(k for k in os.environ if k.upper().startswith("SUPABASE")),
         }
-        arquivos = []
+        remessas = {}   # chave → {chave, etapa_1: {...}, etapa_5: {...}}
         for it in items:
             name = it.get("name") or ""
             if not name.upper().startswith(layout + "_"):
                 continue
             if not name.lower().endswith(".xml"):
                 continue
-            m = rx_sufixo.search(name)
-            if m:
-                etapa_num = int(m.group(1))
-                desc      = m.group(2).replace("_", " ")
-                etapa     = f"{etapa_num} — {desc[0].upper()}{desc[1:]}"
-            else:
-                etapa_num = 0
-                etapa     = "?"
-            arquivos.append({
-                "nome": name,
-                "path": f"{prefix}/{name}",
-                "etapa": etapa,
+            m = rx_chave.match(name)
+            if not m:
+                continue
+            chave     = m.group(1)
+            etapa_num = int(m.group(2))
+            desc      = m.group(3).replace("_", " ")
+            if etapa_num not in (1, 5):
+                continue
+            arq = {
+                "nome":      name,
+                "path":      f"{prefix}/{name}",
+                "etapa":     f"{etapa_num} — {desc[0].upper()}{desc[1:]}",
                 "etapa_num": etapa_num,
-                "tamanho": it.get("metadata", {}).get("size") if it.get("metadata") else None,
+                "tamanho":   it.get("metadata", {}).get("size") if it.get("metadata") else None,
                 "atualizado": it.get("updated_at") or it.get("created_at"),
-            })
-        # Ordena por nome (que já contém timestamp + etapa em ordem)
-        arquivos.sort(key=lambda a: a["nome"])
-        return jsonify({"ok": True, "arquivos": arquivos, "prefixo": prefix, "debug": debug})
+            }
+            r = remessas.setdefault(chave, {"chave": chave, "etapa_1": None, "etapa_5": None})
+            slot = "etapa_1" if etapa_num == 1 else "etapa_5"
+            # Para etapa 5, prefere o de nome "maior" (ex: _5_consulta_3 > _5_consulta_1)
+            if r[slot] is None or name > r[slot]["nome"]:
+                r[slot] = arq
+        # Lista ordenada (timestamp embutido na chave)
+        remessas_list = sorted(remessas.values(), key=lambda r: r["chave"])
+        return jsonify({"ok": True, "remessas": remessas_list, "prefixo": prefix, "debug": debug})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})
 

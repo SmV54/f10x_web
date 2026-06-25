@@ -171,16 +171,29 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     font-size: 11px; font-weight: 700; text-transform: uppercase;
     color: #64748b; letter-spacing: 0.06em; padding: 4px 6px 10px;
 }
-.arquivo-card {
-    padding: 10px 12px; border-radius: 8px; cursor: pointer;
+.remessa-card {
+    padding: 8px 10px; border-radius: 8px;
     border: 1px solid var(--border); margin-bottom: 6px;
-    transition: 0.12s; background: var(--surface);
+    background: var(--surface); transition: 0.12s;
 }
-.arquivo-card:hover { border-color: #c3d9f8; background: #f8fbff; }
-.arquivo-card.ativo { border-color: var(--accent); background: #eaf2fd; }
-.arquivo-nome {
-    font-family: var(--mono); font-size: 11px; font-weight: 500;
-    color: #0f172a; word-break: break-all; line-height: 1.4;
+.remessa-card:hover { border-color: #c3d9f8; }
+.remessa-chave {
+    font-family: var(--mono); font-size: 10px; font-weight: 500;
+    color: #475569; word-break: break-all; margin-bottom: 5px;
+}
+.remessa-btns {
+    display: flex; gap: 6px;
+}
+.remessa-btn {
+    flex: 1; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface);
+    font-size: 11px; font-weight: 600; font-family: var(--sans);
+    color: var(--text-sub); transition: 0.12s; text-align: center;
+}
+.remessa-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.remessa-btn.ativo { border-color: var(--accent); background: #eaf2fd; color: var(--accent); }
+.remessa-btn:disabled {
+    background: #f8fafc; color: #cbd5e1; cursor: not-allowed; border-color: #e2e8f0;
 }
 .arquivo-etapa {
     display: inline-block; font-size: 10px; font-weight: 700;
@@ -455,7 +468,7 @@ function buscarArquivos() {
                 lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">${d.msg || 'Erro'}</span></div>`;
                 return;
             }
-            if (!d.arquivos || d.arquivos.length === 0) {
+            if (!d.remessas || d.remessas.length === 0) {
                 const dbg = d.debug || {};
                 const detalhes = `
                     <div style="margin-top:14px;font-family:monospace;font-size:10px;color:#475569;text-align:left;background:#f1f5f9;padding:10px;border-radius:6px;max-width:340px;word-break:break-all;">
@@ -475,34 +488,44 @@ function buscarArquivos() {
                 lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">📭</span><span class="estado-vazio-texto">Nenhum XML encontrado</span><span class="estado-vazio-sub">${d.prefixo}/${layout}_*</span>${detalhes}</div>`;
                 return;
             }
-            renderArquivos(d.arquivos);
+            renderRemessas(d.remessas);
         })
         .catch(() => {
             lista.innerHTML = '<div class="estado-vazio"><span class="estado-vazio-icone">⚠️</span><span class="estado-vazio-texto">Falha na requisição</span></div>';
         });
 }
 
-function renderArquivos(arquivos) {
+function renderRemessas(remessas) {
     const lista = document.getElementById('listaArquivos');
-    lista.innerHTML = `<div class="lista-arquivos-titulo">${arquivos.length} arquivo(s)</div>`;
-    arquivos.forEach(a => {
-        const n = a.etapa_num || 0;
-        const ehErro = /_erro\.xml$/i.test(a.nome);
-        const cls = ehErro ? 'erro' : ((n >= 1 && n <= 6) ? ('e' + n) : 'eX');
+    lista.innerHTML = `<div class="lista-arquivos-titulo">${remessas.length} remessa(s)</div>`;
+    remessas.forEach(r => {
         const div = document.createElement('div');
-        div.className = 'arquivo-card';
-        div.dataset.path = a.path;
+        div.className = 'remessa-card';
         div.innerHTML = `
-            <div class="arquivo-nome">${a.nome}</div>
-            <span class="arquivo-etapa ${cls}">${a.etapa}</span>
+            <div class="remessa-chave">${r.chave}</div>
+            <div class="remessa-btns">
+                <button class="remessa-btn"
+                        ${r.etapa_1 ? `data-path="${r.etapa_1.path}"` : 'disabled'}>
+                    1 — Evento
+                </button>
+                <button class="remessa-btn"
+                        ${r.etapa_5 ? `data-path="${r.etapa_5.path}"` : 'disabled'}>
+                    5 — Resposta
+                </button>
+            </div>
         `;
-        div.onclick = () => abrirArquivo(a);
+        const [btn1, btn5] = div.querySelectorAll('.remessa-btn');
+        if (r.etapa_1) btn1.onclick = () => abrirArquivo(r.etapa_1);
+        if (r.etapa_5) btn5.onclick = () => abrirArquivo(r.etapa_5);
         lista.appendChild(div);
     });
 }
 
 function abrirArquivo(a) {
-    document.querySelectorAll('.arquivo-card').forEach(c => c.classList.remove('ativo'));
+    document.querySelectorAll('.remessa-btn').forEach(b => b.classList.remove('ativo'));
+    const btns = [...document.querySelectorAll('.remessa-btn')];
+    const btn = btns.find(b => b.dataset.path === a.path);
+    if (btn) btn.classList.add('ativo');
     const cards = [...document.querySelectorAll('.arquivo-card')];
     const card = cards.find(c => c.dataset.path === a.path);
     if (card) card.classList.add('ativo');
