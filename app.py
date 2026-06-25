@@ -15886,7 +15886,17 @@ def api_esocial_s1010_enviar():
             return jsonify({"ok": False, "msg": msg})
         xmls_crus.append(xml_str)
 
-    _xml_save(f"{_pref}_1_eventos_cru.xml", "\n".join(xmls_crus))
+    # Wrappa todos os eventos num único XML válido (sem múltiplas
+    # declarações <?xml?>) pra ficar legível no viewer.
+    import re as _re_s1010
+    _decl_re = _re_s1010.compile(r'^\s*<\?xml[^>]*\?>\s*')
+    _xml_save(
+        f"{_pref}_1_eventos_cru.xml",
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<remessa>\n'
+        + '\n'.join(_decl_re.sub('', x).rstrip() for x in xmls_crus)
+        + '\n</remessa>\n'
+    )
 
     # ── 5. Validar certificado e assinar ──────────────────
     pfx_b64   = empresa.get("cert_pfx_b64")
@@ -15909,7 +15919,13 @@ def api_esocial_s1010_enviar():
             return jsonify({"ok": False, "msg": msg})
         xmls_assinados.append(xml_assinado)
 
-    _xml_save(f"{_pref}_2_eventos_assinados.xml", "\n".join(xmls_assinados))
+    _xml_save(
+        f"{_pref}_2_eventos_assinados.xml",
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<remessa>\n'
+        + '\n'.join(_decl_re.sub('', x).rstrip() for x in xmls_assinados)
+        + '\n</remessa>\n'
+    )
 
     # ── 6. Montar lote com todos os eventos ──────────────
     try:

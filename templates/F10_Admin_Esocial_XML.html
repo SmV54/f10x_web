@@ -195,6 +195,13 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .remessa-btn:disabled {
     background: #f8fafc; color: #cbd5e1; cursor: not-allowed; border-color: #e2e8f0;
 }
+.btn-mostrar-todas {
+    width: 100%; margin-bottom: 8px; padding: 6px 10px;
+    border: 1px dashed var(--border); background: #f8fafc;
+    border-radius: 6px; font-size: 11px; color: #475569;
+    cursor: pointer; font-family: var(--sans); transition: 0.12s;
+}
+.btn-mostrar-todas:hover { border-color: var(--accent); color: var(--accent); background: #f0f6ff; }
 .arquivo-etapa {
     display: inline-block; font-size: 10px; font-weight: 700;
     padding: 2px 8px; border-radius: 6px; margin-top: 5px;
@@ -495,10 +502,37 @@ function buscarArquivos() {
         });
 }
 
+let _todasRemessas = [];
+let _mostrarTodas  = false;
+
 function renderRemessas(remessas) {
-    const lista = document.getElementById('listaArquivos');
-    lista.innerHTML = `<div class="lista-arquivos-titulo">${remessas.length} remessa(s)</div>`;
-    remessas.forEach(r => {
+    _todasRemessas = remessas || [];
+    _mostrarTodas  = false;
+    _renderListaRemessas();
+}
+
+function _renderListaRemessas() {
+    const lista  = document.getElementById('listaArquivos');
+    const total  = _todasRemessas.length;
+    const visiveis = _mostrarTodas ? _todasRemessas
+                                   : _todasRemessas.slice(-1);  // só a última
+
+    let html = `<div class="lista-arquivos-titulo">
+        ${total} remessa(s) ${(!_mostrarTodas && total > 1) ? '· última' : ''}
+    </div>`;
+
+    if (!_mostrarTodas && total > 1) {
+        html += `<button class="btn-mostrar-todas" onclick="_toggleTodasRemessas()">
+                    Mostrar todas as ${total} remessas
+                 </button>`;
+    } else if (_mostrarTodas && total > 1) {
+        html += `<button class="btn-mostrar-todas" onclick="_toggleTodasRemessas()">
+                    Mostrar só a última
+                 </button>`;
+    }
+    lista.innerHTML = html;
+
+    visiveis.forEach(r => {
         const div = document.createElement('div');
         div.className = 'remessa-card';
         div.innerHTML = `
@@ -519,6 +553,11 @@ function renderRemessas(remessas) {
         if (r.etapa_5) btn5.onclick = () => abrirArquivo(r.etapa_5);
         lista.appendChild(div);
     });
+}
+
+function _toggleTodasRemessas() {
+    _mostrarTodas = !_mostrarTodas;
+    _renderListaRemessas();
 }
 
 function abrirArquivo(a) {
