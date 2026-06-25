@@ -427,6 +427,11 @@ function selecionarCliente(idCliente, nomeCliente) {
                     + `${e.id_empresa.toString().padStart(6,'0')} · ${e.razao_fmt}</option>`
                 ).join('');
             sel.disabled = false;
+            // Auto-seleciona se houver só uma empresa
+            if (d.empresas.length === 1) {
+                sel.value = d.empresas[0].id_empresa;
+                onEmpresaChange();
+            }
         })
         .catch(() => {
             sel.innerHTML = '<option value="">Erro ao carregar</option>';
