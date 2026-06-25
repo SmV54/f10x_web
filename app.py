@@ -14730,7 +14730,7 @@ def esocial_s1000():
              .eq("id_empresa", id_empresa)
              .eq("layout", "1000"))
         if anomes_folha.isdigit() and len(anomes_folha) == 6:
-            q = q.eq("ano_mes", int(anomes_folha))
+            q = q.gte("data_cad", anomes_folha + "01").lte("data_cad", anomes_folha + "31")
         rows = (q.order("data_cad", desc=True)
                  .order("hora_cad", desc=True)
                  .execute().data or [])
@@ -15530,7 +15530,7 @@ def esocial_s1010():
              .eq("id_empresa", id_empresa)
              .eq("layout", "1010"))
         if anomes_folha.isdigit() and len(anomes_folha) == 6:
-            q = q.eq("ano_mes", int(anomes_folha))
+            q = q.gte("data_cad", anomes_folha + "01").lte("data_cad", anomes_folha + "31")
         rows = (q.order("data_cad", desc=True)
                  .order("hora_cad", desc=True)
                  .execute().data or [])
@@ -16213,7 +16213,7 @@ def esocial_s1020():
              .eq("id_empresa", id_empresa)
              .eq("layout", "1020"))
         if anomes_folha.isdigit() and len(anomes_folha) == 6:
-            q = q.eq("ano_mes", int(anomes_folha))
+            q = q.gte("data_cad", anomes_folha + "01").lte("data_cad", anomes_folha + "31")
         rows = (q.order("data_cad", desc=True)
                  .order("hora_cad", desc=True)
                  .execute().data or [])
