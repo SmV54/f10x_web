@@ -30250,6 +30250,34 @@ def api_admin_xml_empresas(id_cliente):
         return jsonify({"ok": False, "msg": str(ex)})
 
 
+@app.route("/api/admin_esocial_xml/ultimo_envio/<int:id_empresa>")
+def api_admin_xml_ultimo_envio(id_empresa):
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return jsonify({"ok": False}), 403
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("layout, ano_mes, data_grava, hora_grava")
+                .eq("id_empresa", id_empresa)
+                .not_.is_("data_grava", "null")
+                .order("data_grava", desc=True)
+                .order("hora_grava", desc=True)
+                .limit(1)
+                .execute().data or [])
+        if not rows:
+            return jsonify({"ok": True, "layout": None, "anomes": None})
+        row = rows[0]
+        layout = (row.get("layout") or "").strip()
+        if layout and not layout.upper().startswith("S"):
+            layout = f"S{layout}"
+        am = str(row.get("ano_mes") or "")
+        anomes = f"{am[:4]}-{am[4:]}" if len(am) == 6 and am.isdigit() else None
+        return jsonify({"ok": True, "layout": layout, "anomes": anomes})
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": str(ex)})
+
+
 @app.route("/api/admin_esocial_xml/listar")
 def api_admin_xml_listar():
     if not session.get("logado"):

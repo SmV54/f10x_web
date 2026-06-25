@@ -453,6 +453,19 @@ function onEmpresaChange() {
     // Default = anomes_atual da empresa
     const am = opt.getAttribute('data-anomes');
     if (am) inAno.value = am;
+    // Tenta sobrescrever ano/mês e layout com o do último envio eSocial
+    fetch('/api/admin_esocial_xml/ultimo_envio/' + empresaAtiva)
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) return;
+            if (d.anomes) inAno.value = d.anomes;
+            if (d.layout) {
+                const opts = [...selLay.options];
+                const match = opts.find(o => o.value === d.layout);
+                if (match) selLay.value = d.layout;
+            }
+        })
+        .catch(() => { /* silencioso — mantém defaults */ });
 }
 
 function buscarArquivos() {
