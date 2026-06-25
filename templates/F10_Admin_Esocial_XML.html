@@ -457,7 +457,12 @@ function buscarArquivos() {
                       prefixo: ${dbg.prefixo || '(?)'}<br>
                       layout:  ${dbg.layout_filtro || '(?)'}<br>
                       itens listados: ${dbg.qtd_itens_listados ?? '(?)'}<br>
-                      service_key: ${dbg.service_key_usada ? 'sim' : 'NÃO (usando anon)'}<br>
+                      service_key_usada: ${dbg.service_key_usada ? 'sim' : 'NÃO (usando anon)'}<br>
+                      service_env_existe: ${dbg.service_env_existe ? 'sim' : 'NÃO'}<br>
+                      service_env_len: ${dbg.service_env_len ?? '(?)'}<br>
+                      service_env_mask: ${dbg.service_env_mask || '(?)'}<br>
+                      anon_env_mask: ${dbg.anon_env_mask || '(?)'}<br>
+                      supabase_url: ${dbg.supabase_url || '(?)'}<br>
                       nomes: ${(dbg.todos_nomes || []).join(', ') || '(vazio)'}
                     </div>`;
                 lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">📭</span><span class="estado-vazio-texto">Nenhum XML encontrado</span><span class="estado-vazio-sub">${d.prefixo}/${layout}_*</span>${detalhes}</div>`;

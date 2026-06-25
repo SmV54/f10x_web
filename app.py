@@ -30246,12 +30246,25 @@ def api_admin_xml_listar():
         rx_final = _re_xml.compile(r'_[45]_resposta\.xml$',       _re_xml.IGNORECASE)
 
         items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
+        # Inspeção do ambiente
+        _svc_raw = os.getenv("SUPABASE_SERVICE_KEY") or ""
+        _anon_raw = SUPABASE_KEY or ""
+        def _mask(s):
+            s = (s or "").strip()
+            if not s: return "(vazio)"
+            if len(s) <= 16: return f"{s[:4]}…{s[-2:]} (len={len(s)})"
+            return f"{s[:8]}…{s[-6:]} (len={len(s)})"
         debug = {
             "prefixo":            prefix,
             "layout_filtro":      layout,
             "qtd_itens_listados": len(items),
             "todos_nomes":        [it.get("name") for it in items],
             "service_key_usada":  bool(SUPABASE_SERVICE_KEY),
+            "service_env_existe": "SUPABASE_SERVICE_KEY" in os.environ,
+            "service_env_len":    len(_svc_raw),
+            "service_env_mask":   _mask(_svc_raw),
+            "anon_env_mask":      _mask(_anon_raw),
+            "supabase_url":       SUPABASE_URL,
         }
         arquivos = []
         for it in items:
