@@ -28,6 +28,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; }
 .topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
 .topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; gap: 7px;
+    border-radius: 7px; padding: 3px 11px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700;
+    letter-spacing: 0.05em; white-space: nowrap;
+}
+.topo-folha-sit {
+    font-family: var(--sans); font-size: 9px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.85;
+}
+.sit-aberta, .sit-calculada, .sit-fechada, .sit-processada {
+    background: rgba(160,217,190,0.35); color: #111827;
+    border: 1.5px solid rgba(112,196,160,0.6);
+}
 .topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
 .topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
 .btn-voltar-topo {
@@ -242,7 +256,15 @@ tr:hover td { background: #f8fafc; }
         <div class="topo-empresa">{{ empresa_info }}</div>
         <div class="topo-cnpj">{{ cnpj_fmt }}</div>
     </div>
-    <div class="topo-titulo">🏢 eSocial S-1000 — Informações do Empregador</div>
+    <div class="topo-titulo">
+        🏢 Remessas eSocial: Layout S-1000 — Informações do Empregador
+        {% if folha_ativa %}
+        <span class="topo-folha-ativa {{ folha_ativa_sit_class }}">
+            &#128197; {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}
+            {% if folha_ativa_situacao %}<span class="topo-folha-sit">{{ folha_ativa_situacao }}</span>{% endif %}
+        </span>
+        {% endif %}
+    </div>
     <div style="display:flex; align-items:center; gap:16px;">
         <div>
             <div class="topo-logo">Folha10·Simples</div>
