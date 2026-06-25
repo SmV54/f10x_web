@@ -30246,6 +30246,13 @@ def api_admin_xml_listar():
         rx_final = _re_xml.compile(r'_[45]_resposta\.xml$',       _re_xml.IGNORECASE)
 
         items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
+        debug = {
+            "prefixo":            prefix,
+            "layout_filtro":      layout,
+            "qtd_itens_listados": len(items),
+            "todos_nomes":        [it.get("name") for it in items],
+            "service_key_usada":  bool(SUPABASE_SERVICE_KEY),
+        }
         arquivos = []
         for it in items:
             name = it.get("name") or ""
@@ -30265,7 +30272,7 @@ def api_admin_xml_listar():
                 "atualizado": it.get("updated_at") or it.get("created_at"),
             })
         arquivos.sort(key=lambda a: a["nome"])
-        return jsonify({"ok": True, "arquivos": arquivos, "prefixo": prefix})
+        return jsonify({"ok": True, "arquivos": arquivos, "prefixo": prefix, "debug": debug})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})
 

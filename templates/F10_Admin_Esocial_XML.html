@@ -450,7 +450,17 @@ function buscarArquivos() {
                 return;
             }
             if (!d.arquivos || d.arquivos.length === 0) {
-                lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">📭</span><span class="estado-vazio-texto">Nenhum XML encontrado</span><span class="estado-vazio-sub">${d.prefixo}/${layout}_*</span></div>`;
+                const dbg = d.debug || {};
+                const detalhes = `
+                    <div style="margin-top:14px;font-family:monospace;font-size:10px;color:#475569;text-align:left;background:#f1f5f9;padding:10px;border-radius:6px;max-width:340px;word-break:break-all;">
+                      <b>Debug:</b><br>
+                      prefixo: ${dbg.prefixo || '(?)'}<br>
+                      layout:  ${dbg.layout_filtro || '(?)'}<br>
+                      itens listados: ${dbg.qtd_itens_listados ?? '(?)'}<br>
+                      service_key: ${dbg.service_key_usada ? 'sim' : 'NÃO (usando anon)'}<br>
+                      nomes: ${(dbg.todos_nomes || []).join(', ') || '(vazio)'}
+                    </div>`;
+                lista.innerHTML = `<div class="estado-vazio"><span class="estado-vazio-icone">📭</span><span class="estado-vazio-texto">Nenhum XML encontrado</span><span class="estado-vazio-sub">${d.prefixo}/${layout}_*</span>${detalhes}</div>`;
                 return;
             }
             renderArquivos(d.arquivos);
