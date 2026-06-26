@@ -22110,6 +22110,31 @@ def _calc_irrf(base_centavos, tabela):
     return max(0, irrf), (aliq_ap, dedu_ap)
 
 
+def _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente=None):
+    """Mapa {matricula: valor_irrf_basetabela} lido de tab_total para uma folha.
+
+    valor_irrf_basetabela ja vem do calculo com INSS + dependentes deduzidos
+    (e regras especiais: metodo simplificado/completo, redutor Lei 15.270, etc.).
+    Use isto em contracheques/folhas para evitar recalcular e divergir do calculo oficial.
+    """
+    mapa = {}
+    try:
+        q = (supabase.table("tab_total")
+             .select("matricula, valor_irrf_basetabela")
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo_mov))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            m = int(r.get("matricula") or 0)
+            if m:
+                mapa[m] = int(r.get("valor_irrf_basetabela") or 0)
+    except Exception:
+        pass
+    return mapa
+
+
 def _dias_no_mes_total(anomes):
     """Retorna o número total de dias no mês de anomes (AAAAMM)."""
     try:
@@ -25064,6 +25089,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         except Exception:
             pass
 
+    # Base IRRF (ja deduzida de INSS + dependentes) lida do tab_total — fonte unica de verdade
+    irrf_basetabela = _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente)
+
     cc_groups = {}
     for mat in sorted(mov_data.keys()):
         fi = func_info.get(mat, {"nome":f"Matr. {mat:06d}","dtadm":"","sal":0,
@@ -25089,7 +25117,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         liquido  = tot_prov - tot_desc
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = max(0, base_inss - inss_val)
+        base_irrf = irrf_basetabela.get(mat, 0)
         base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
 
@@ -25415,6 +25443,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         except Exception:
             pass
 
+    # Base IRRF (ja deduzida de INSS + dependentes) lida do tab_total — fonte unica de verdade
+    irrf_basetabela = _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente)
+
     # ── MONTA POR CC ──────────────────────────────────────────────
     cc_groups = {}
     for mat in sorted(mov_data.keys()):
@@ -25443,7 +25474,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = max(0, base_inss - inss_val)
+        base_irrf = irrf_basetabela.get(mat, 0)
         base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
 
@@ -25994,6 +26025,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         except Exception:
             pass
 
+    # Base IRRF (ja deduzida de INSS + dependentes) lida do tab_total — fonte unica de verdade
+    irrf_basetabela = _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente)
+
     # ── Monta lista de funcionários com verbas ────────────
     all_funcs = []
     for mat in sorted(mov_data.keys()):
@@ -26020,7 +26054,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         liquido  = tot_prov - tot_desc
         inss_val  = agg.get(101,{}).get("val",0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
-        base_irrf = max(0, base_inss - inss_val)
+        base_irrf = irrf_basetabela.get(mat, 0)
         base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
         # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
