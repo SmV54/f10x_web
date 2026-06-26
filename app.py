@@ -766,6 +766,75 @@ def comprar_licenca():
     )
 
 # =========================================================
+# PIX — gera BR Code (copia-e-cola) e QR code PNG em base64
+# =========================================================
+PIX_CHAVE       = "08777252000133"
+PIX_RECEBEDOR   = "COMSIST COMPUTACAO E SISTEMAS"   # max 25, sem acento, maiusculo
+PIX_CIDADE      = "RECIFE"                          # max 15
+
+def _pix_tlv(id_, value):
+    return f"{id_}{len(value):02d}{value}"
+
+def _pix_crc16(payload):
+    crc = 0xFFFF
+    for ch in payload.encode("utf-8"):
+        crc ^= ch << 8
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
+            crc &= 0xFFFF
+    return f"{crc:04X}"
+
+def _pix_brcode(chave, valor_reais, nome, cidade, txid="***"):
+    gui  = _pix_tlv("00", "BR.GOV.BCB.PIX")
+    chv  = _pix_tlv("01", chave)
+    mai  = _pix_tlv("26", gui + chv)
+    adic = _pix_tlv("62", _pix_tlv("05", txid))
+    payload = (
+        _pix_tlv("00", "01")
+      + _pix_tlv("01", "12")              # 12 = com valor fixo
+      + mai
+      + _pix_tlv("52", "0000")            # MCC
+      + _pix_tlv("53", "986")             # BRL
+      + _pix_tlv("54", f"{valor_reais:.2f}")
+      + _pix_tlv("58", "BR")
+      + _pix_tlv("59", nome[:25])
+      + _pix_tlv("60", cidade[:15])
+      + adic
+      + "6304"
+    )
+    return payload + _pix_crc16(payload)
+
+@app.route("/api/pix_qr", methods=["POST"])
+def api_pix_qr():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada"}), 401
+    try:
+        import qrcode, base64
+        from io import BytesIO
+        data = request.get_json(silent=True) or {}
+        valor = float(data.get("valor") or 0)
+        if valor <= 0:
+            return jsonify({"ok": False, "msg": "Valor invalido"}), 400
+        id_cliente = session.get("id_cliente") or 0
+        import time
+        txid = f"LIC{int(id_cliente):06d}{int(time.time())}"[-25:]   # max 25 alfanumericos
+        brcode = _pix_brcode(PIX_CHAVE, valor, PIX_RECEBEDOR, PIX_CIDADE, txid)
+        img = qrcode.make(brcode)
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        png_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        return jsonify({
+            "ok":     True,
+            "brcode": brcode,
+            "qr_png": png_b64,
+            "txid":   txid,
+            "valor":  valor,
+        })
+    except Exception as e:
+        print(f"api_pix_qr: {e}")
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+# =========================================================
 # MENU — DEMOS DE UX
 # =========================================================
 @app.route("/menu_demo1")

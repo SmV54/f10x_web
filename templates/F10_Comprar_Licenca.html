@@ -139,6 +139,53 @@ body {
     font-family: 'IBM Plex Mono', monospace;
 }
 
+/* ── BLOCO PIX ── */
+.btn-pix {
+    margin-top: 14px;
+    background: #16a34a; color: #fff; border: 0;
+    padding: 10px 22px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.03em;
+    cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+    transition: 0.15s;
+}
+.btn-pix:hover { background: #15803d; }
+.pix-area {
+    margin-top: 16px;
+    background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px;
+    padding: 18px;
+    display: none;
+}
+.pix-area.show { display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap; }
+.pix-qr-box { background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; }
+.pix-qr-box img { display: block; width: 220px; height: 220px; }
+.pix-info { flex: 1; min-width: 260px; }
+.pix-info h4 {
+    font-size: 14px; font-weight: 700; color: #166534;
+    text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;
+}
+.pix-info p { font-size: 12px; color: #374151; line-height: 1.5; margin-bottom: 10px; }
+.pix-code-wrap { position: relative; }
+.pix-code {
+    width: 100%; min-height: 92px;
+    border: 1px solid #cbd5e1; border-radius: 6px;
+    padding: 8px 10px; padding-right: 90px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px;
+    background: #ffffff; color: #1e293b;
+    word-break: break-all; resize: vertical;
+}
+.btn-copy {
+    position: absolute; top: 6px; right: 6px;
+    background: #2a7de1; color: #fff; border: 0;
+    padding: 6px 10px; border-radius: 6px;
+    font-size: 11px; font-weight: 700; cursor: pointer;
+}
+.btn-copy:hover { background: #1d63b8; }
+.btn-copy.copiado { background: #16a34a; }
+.pix-recebedor {
+    font-size: 11px; color: #64748b; margin-top: 6px;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
 /* ── BLOCO CONTATO ── */
 .contato {
     background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
@@ -241,6 +288,26 @@ body {
       <button class="btn-calcular" id="btn_calc" disabled>Calcular</button>
 
       <div class="resumo" id="resumo" style="display:none;"></div>
+
+      <button class="btn-pix" id="btn_pix" style="display:none;">💠 Pagar com PIX</button>
+
+      <div class="pix-area" id="pix_area">
+        <div class="pix-qr-box">
+          <img id="pix_img" alt="QR Code PIX">
+        </div>
+        <div class="pix-info">
+          <h4>PIX — Copia e Cola</h4>
+          <p>Use o QR pelo app do seu banco, ou copie o código abaixo:</p>
+          <div class="pix-code-wrap">
+            <textarea class="pix-code" id="pix_code" readonly></textarea>
+            <button class="btn-copy" id="btn_copy" type="button">Copiar</button>
+          </div>
+          <div class="pix-recebedor">
+            Recebedor: COMSIST COMPUTAÇÃO E SISTEMAS<br>
+            Chave PIX (CNPJ): 08.777.252/0001-33
+          </div>
+        </div>
+      </div>
     </div>
 
   </div>
@@ -255,12 +322,18 @@ body {
   const DESC = { "1": 0, "3": 5, "6": 10, "12": 20 };
   const CLI_DESC = {{ cliente_per_desconto or 0 }};   // desconto personalizado do cliente (0-100)
 
-  const inpEmp = document.getElementById('inp_emp');
-  const inpFun = document.getElementById('inp_fun');
+  const inpEmp  = document.getElementById('inp_emp');
+  const inpFun  = document.getElementById('inp_fun');
   const hintEmp = document.getElementById('hint_emp');
   const hintFun = document.getElementById('hint_fun');
   const btnCalc = document.getElementById('btn_calc');
   const resumo  = document.getElementById('resumo');
+  const btnPix  = document.getElementById('btn_pix');
+  const pixArea = document.getElementById('pix_area');
+  const pixImg  = document.getElementById('pix_img');
+  const pixCode = document.getElementById('pix_code');
+  const btnCopy = document.getElementById('btn_copy');
+  let   totalCalculado = 0;   // em centavos
 
   const fmtBrl = (centavos) => 'R$ ' + (centavos / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
@@ -289,6 +362,8 @@ body {
 
     btnCalc.disabled = !ok;
     resumo.style.display = 'none';
+    btnPix.style.display = 'none';
+    pixArea.classList.remove('show');
     return ok;
   }
 
@@ -296,6 +371,8 @@ body {
     document.querySelectorAll('.periodo-grupo label').forEach(l => l.classList.remove('sel'));
     ev.target.closest('label').classList.add('sel');
     resumo.style.display = 'none';
+    btnPix.style.display = 'none';
+    pixArea.classList.remove('show');
   }
 
   function calcular() {
@@ -343,12 +420,67 @@ body {
 
     resumo.innerHTML = html;
     resumo.style.display = 'block';
+
+    totalCalculado = total;     // centavos
+    btnPix.style.display = 'inline-block';
+    pixArea.classList.remove('show');
+  }
+
+  async function gerarPix() {
+    if (totalCalculado <= 0) return;
+    btnPix.disabled = true;
+    btnPix.textContent = 'Gerando QR...';
+    try {
+      const valorReais = totalCalculado / 100;
+      const resp = await fetch('/api/pix_qr', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ valor: valorReais })
+      });
+      const data = await resp.json();
+      if (!data.ok) {
+        alert('Erro ao gerar PIX: ' + (data.msg || 'desconhecido'));
+      } else {
+        pixImg.src = 'data:image/png;base64,' + data.qr_png;
+        pixCode.value = data.brcode;
+        pixArea.classList.add('show');
+        pixArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    } catch (e) {
+      alert('Erro de rede ao gerar PIX: ' + e.message);
+    } finally {
+      btnPix.disabled = false;
+      btnPix.textContent = '💠 Pagar com PIX';
+    }
+  }
+
+  async function copiarCodigo() {
+    try {
+      await navigator.clipboard.writeText(pixCode.value);
+      btnCopy.textContent = '✓ Copiado!';
+      btnCopy.classList.add('copiado');
+      setTimeout(() => {
+        btnCopy.textContent = 'Copiar';
+        btnCopy.classList.remove('copiado');
+      }, 2000);
+    } catch (e) {
+      pixCode.select();
+      document.execCommand('copy');
+      btnCopy.textContent = '✓ Copiado!';
+      btnCopy.classList.add('copiado');
+      setTimeout(() => {
+        btnCopy.textContent = 'Copiar';
+        btnCopy.classList.remove('copiado');
+      }, 2000);
+    }
   }
 
   inpEmp.addEventListener('input', validar);
   inpFun.addEventListener('input', validar);
   document.querySelectorAll('input[name="periodo"]').forEach(r => r.addEventListener('change', selecionarPeriodo));
   btnCalc.addEventListener('click', calcular);
+  btnPix.addEventListener('click', gerarPix);
+  btnCopy.addEventListener('click', copiarCodigo);
 
   validar();
 })();
