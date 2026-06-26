@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Folha10 Simples — Adquirir / Renovar Licença</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: #f0f2f6;
+    color: #374151;
+    min-height: 100vh;
+}
+.pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── TOPO (padrão do projeto) ── */
+.topo {
+    background: #a0d9be;
+    border-bottom: 1px solid #70c4a0;
+    padding: 0 28px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0 32px;
+    min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; white-space: nowrap; }
+.topo-versao  { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #374151; letter-spacing: 0.03em; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; letter-spacing: 0.01em; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
+.topo-nome    { font-size: 11px; color: #374151; margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent;
+    border: 1px solid #70c4a0; color: #374151;
+    font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+/* ── CONTEÚDO ── */
+.conteudo {
+    max-width: 760px; width: 100%;
+    margin: 32px auto 0;
+    padding: 0 24px 48px;
+    flex: 1;
+}
+
+/* ── BLOCO LINHA (Licenca / Quantidade Atual) ── */
+.linha {
+    background: #ffffff; border: 1px solid #dde3ec; border-radius: 12px;
+    padding: 18px 22px; margin-bottom: 16px;
+    box-shadow: 0 2px 10px rgba(15,23,42,0.04);
+}
+.linha-titulo {
+    font-size: 13px; font-weight: 700;
+    margin-bottom: 12px; letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.linha-titulo.lic { color: #166534; }
+.linha-titulo.atu { color: #1e3a8a; }
+.linha-titulo.cmp { color: #92400e; }
+.linha-itens {
+    display: flex; flex-wrap: wrap; gap: 32px;
+}
+.item {
+    display: flex; flex-direction: column; gap: 2px;
+    width: 130px; flex-shrink: 0;
+    align-items: center; text-align: center;
+}
+.item-label {
+    font-size: 11px; font-weight: 600; color: #64748b;
+    text-transform: uppercase; letter-spacing: 0.05em;
+}
+.item-valor {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px; font-weight: 700; color: #0f172a;
+    line-height: 1.1;
+}
+.item-obs {
+    font-size: 10px; color: #94a3b8; margin-top: 2px;
+}
+
+/* ── FORMULARIO DE NOVA ASSINATURA ── */
+.form-row { display: flex; flex-wrap: wrap; gap: 28px; align-items: flex-start; margin-bottom: 14px; }
+.campo { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.campo label.l {
+    font-size: 11px; font-weight: 700; color: #374151;
+    text-transform: uppercase; letter-spacing: 0.05em;
+}
+.campo input[type=number] {
+    width: 110px; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 700;
+    text-align: center; color: #0f172a;
+    background: #f8fafc; outline: none;
+}
+.campo input[type=number]:focus { border-color: #2a7de1; background: #ffffff; }
+.campo .hint { font-size: 10px; color: #64748b; margin-top: 2px; text-align: center; line-height: 1.4; }
+.campo .hint.err { color: #dc2626; font-weight: 600; }
+
+.periodo-grupo { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.periodo-grupo .pl {
+    font-size: 11px; font-weight: 700; color: #374151;
+    text-transform: uppercase; letter-spacing: 0.05em; margin-right: 6px;
+}
+.periodo-grupo label {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 22px;
+    font-size: 12px; font-weight: 600; color: #1e293b; cursor: pointer;
+    background: #ffffff; transition: 0.15s;
+}
+.periodo-grupo label:hover { border-color: #2a7de1; }
+.periodo-grupo input[type=radio] { accent-color: #2a7de1; }
+.periodo-grupo label.sel { border-color: #2a7de1; background: #eff6ff; color: #1e3a8a; }
+
+.btn-calcular {
+    background: #2a7de1; color: #fff; border: 0;
+    padding: 10px 22px; border-radius: 8px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.03em;
+    cursor: pointer; font-family: 'IBM Plex Sans', sans-serif;
+    transition: 0.15s;
+}
+.btn-calcular:hover:not(:disabled) { background: #1d63b8; }
+.btn-calcular:disabled { background: #cbd5e1; color: #64748b; cursor: not-allowed; }
+
+.resumo {
+    margin-top: 16px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 14px 16px;
+    font-size: 13px;
+}
+.resumo .lin { display: flex; justify-content: space-between; padding: 3px 0; color: #374151; }
+.resumo .lin.subt { border-top: 1px dashed #cbd5e1; padding-top: 6px; margin-top: 4px; font-weight: 600; }
+.resumo .lin.desc { color: #166534; font-weight: 600; }
+.resumo .lin.tot  {
+    border-top: 2px solid #0f172a; margin-top: 8px; padding-top: 8px;
+    font-size: 17px; font-weight: 700; color: #0f172a;
+    font-family: 'IBM Plex Mono', monospace;
+}
+
+/* ── BLOCO CONTATO ── */
+.contato {
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
+    padding: 20px 24px;
+    text-align: center;
+}
+.contato h3 {
+    font-size: 15px; font-weight: 700; color: #1e3a8a;
+    margin-bottom: 6px;
+}
+.contato p {
+    font-size: 13px; color: #1e293b;
+}
+</style>
+</head>
+<body>
+<div class="pagina">
+
+  <!-- TOPO padrão -->
+  <div class="topo">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa_info }}</span>
+        <span class="topo-nome">{{ nome_cliente }}</span>
+    </div>
+    <div class="topo-titulo">Adquirir / Renovar Licença</div>
+    <div style="display:flex; align-items:center; gap:16px;">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;">
+            <div class="topo-logo">Folha10·Simples</div>
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+  </div>
+
+  <div class="conteudo">
+
+    <!-- LINHA 1 — Sua Licença Atual -->
+    <div class="linha">
+      <div class="linha-titulo lic">🔐 Sua Licença Atual</div>
+      <div class="linha-itens">
+        <div class="item">
+          <div class="item-label">Data limite</div>
+          <div class="item-valor">{{ licenca_fmt or '—' }}</div>
+        </div>
+        <div class="item">
+          <div class="item-label">Empresas</div>
+          <div class="item-valor">{{ licenca_qtd_empresas }}</div>
+        </div>
+        <div class="item">
+          <div class="item-label">Funcionários</div>
+          <div class="item-valor">{{ licenca_qtd_funcionarios }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LINHA 2 — Sua Quantidade Atual -->
+    <div class="linha">
+      <div class="linha-titulo atu">📊 Sua Quantidade Atual</div>
+      <div class="linha-itens">
+        <div class="item" aria-hidden="true"></div>   <!-- spacer p/ alinhar com 'Data limite' acima -->
+        <div class="item">
+          <div class="item-label">Empresas</div>
+          <div class="item-valor">{{ atual_qtd_empresas }}</div>
+        </div>
+        <div class="item">
+          <div class="item-label">Funcionários</div>
+          <div class="item-valor">{{ atual_qtd_funcionarios }}</div>
+          <div class="item-obs">ativos + afastados, sem demitidos</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LINHA 3 — Defina sua Nova Assinatura -->
+    <div class="linha">
+      <div class="linha-titulo cmp">🛒 Defina sua Nova Assinatura</div>
+
+      <div class="form-row">
+        <div class="campo">
+          <label class="l">Empresas</label>
+          <input type="number" id="inp_emp" min="0" value="{{ atual_qtd_empresas }}">
+          <div class="hint" id="hint_emp">mínimo: {{ atual_qtd_empresas }} (sua qtd. atual)</div>
+        </div>
+        <div class="campo">
+          <label class="l">Funcionários</label>
+          <input type="number" id="inp_fun" min="0" value="{{ atual_qtd_funcionarios }}">
+          <div class="hint" id="hint_fun">mínimo: {{ atual_qtd_funcionarios }} (sua qtd. atual)<br><i>cobrança inclui demitidos no mês</i></div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="periodo-grupo">
+          <span class="pl">Período:</span>
+          <label class="sel"><input type="radio" name="periodo" value="1" checked> 1 mês</label>
+          <label><input type="radio" name="periodo" value="3"> Trimestre (-5%)</label>
+          <label><input type="radio" name="periodo" value="6"> Semestre (-10%)</label>
+          <label><input type="radio" name="periodo" value="12"> 1 ano (-20%)</label>
+        </div>
+      </div>
+
+      <button class="btn-calcular" id="btn_calc" disabled>Calcular</button>
+
+      <div class="resumo" id="resumo" style="display:none;"></div>
+    </div>
+
+  </div>
+
+<script>
+(function() {
+  const PRECO_EMPRESA_MES = 5000;   // centavos
+  const PRECO_FUNC_MES    = 1280;   // centavos
+  const MIN_MENSAL        = 18000;  // centavos
+  const ATUAL_EMP = {{ atual_qtd_empresas }};
+  const ATUAL_FUN = {{ atual_qtd_funcionarios }};
+  const DESC = { "1": 0, "3": 5, "6": 10, "12": 20 };
+  const CLI_DESC = {{ cliente_per_desconto or 0 }};   // desconto personalizado do cliente (0-100)
+
+  const inpEmp = document.getElementById('inp_emp');
+  const inpFun = document.getElementById('inp_fun');
+  const hintEmp = document.getElementById('hint_emp');
+  const hintFun = document.getElementById('hint_fun');
+  const btnCalc = document.getElementById('btn_calc');
+  const resumo  = document.getElementById('resumo');
+
+  const fmtBrl = (centavos) => 'R$ ' + (centavos / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+
+  function validar() {
+    const emp = parseInt(inpEmp.value || '0', 10);
+    const fun = parseInt(inpFun.value || '0', 10);
+    let ok = true;
+
+    if (emp < ATUAL_EMP) {
+      hintEmp.classList.add('err');
+      hintEmp.innerHTML = `mínimo: ${ATUAL_EMP} (sua qtd. atual) — valor abaixo do permitido`;
+      ok = false;
+    } else {
+      hintEmp.classList.remove('err');
+      hintEmp.innerHTML = `mínimo: ${ATUAL_EMP} (sua qtd. atual)`;
+    }
+
+    if (fun < ATUAL_FUN) {
+      hintFun.classList.add('err');
+      hintFun.innerHTML = `mínimo: ${ATUAL_FUN} (sua qtd. atual) — valor abaixo do permitido<br><i>cobrança inclui demitidos no mês</i>`;
+      ok = false;
+    } else {
+      hintFun.classList.remove('err');
+      hintFun.innerHTML = `mínimo: ${ATUAL_FUN} (sua qtd. atual)<br><i>cobrança inclui demitidos no mês</i>`;
+    }
+
+    btnCalc.disabled = !ok;
+    resumo.style.display = 'none';
+    return ok;
+  }
+
+  function selecionarPeriodo(ev) {
+    document.querySelectorAll('.periodo-grupo label').forEach(l => l.classList.remove('sel'));
+    ev.target.closest('label').classList.add('sel');
+    resumo.style.display = 'none';
+  }
+
+  function calcular() {
+    if (!validar()) return;
+    const emp = parseInt(inpEmp.value || '0', 10);
+    const fun = parseInt(inpFun.value || '0', 10);
+    const periodo = document.querySelector('input[name="periodo"]:checked').value;
+    const meses = parseInt(periodo, 10);
+    const descPeriodoPct = DESC[periodo];
+
+    const valEmp = emp * PRECO_EMPRESA_MES;
+    const valFun = fun * PRECO_FUNC_MES;
+    const soma   = valEmp + valFun;
+    const aplicouMinimo = soma < MIN_MENSAL;
+    const mensal = Math.max(soma, MIN_MENSAL);
+    const subtotal = mensal * meses;
+
+    // Desconto cliente e desconto periodo aplicados ADITIVAMENTE (somam) sobre o subtotal
+    const descClienteVal = Math.round(subtotal * CLI_DESC      / 100);
+    const descPeriodoVal = Math.round(subtotal * descPeriodoPct / 100);
+    const total = Math.max(0, subtotal - descClienteVal - descPeriodoVal);
+
+    const periodoNome = {1:'1 mês', 3:'Trimestre (3 meses)', 6:'Semestre (6 meses)', 12:'1 ano (12 meses)'}[meses];
+    const temDesconto = descClienteVal > 0 || descPeriodoVal > 0;
+
+    let html = '';
+    html += `<div class="lin"><span>${emp} empresa(s) × R$ 50,00</span><span>${fmtBrl(valEmp)}</span></div>`;
+    html += `<div class="lin"><span>${fun} funcionário(s) × R$ 12,80</span><span>${fmtBrl(valFun)}</span></div>`;
+    html += `<div class="lin subt"><span>Soma mensal</span><span>${fmtBrl(soma)}</span></div>`;
+    if (aplicouMinimo) {
+      html += `<div class="lin"><span>Aplicado o mínimo mensal (R$ 180,00)</span><span>${fmtBrl(mensal)}</span></div>`;
+    }
+    if (temDesconto) {
+      html += `<div class="lin subt"><span>Subtotal ${periodoNome}</span><span>${fmtBrl(subtotal)}</span></div>`;
+      if (descClienteVal > 0) {
+        html += `<div class="lin desc"><span>Desconto Especial (${CLI_DESC}%)</span><span>− ${fmtBrl(descClienteVal)}</span></div>`;
+      }
+      if (descPeriodoVal > 0) {
+        html += `<div class="lin desc"><span>Desconto período (${descPeriodoPct}%)</span><span>− ${fmtBrl(descPeriodoVal)}</span></div>`;
+      }
+    } else if (meses > 1) {
+      html += `<div class="lin subt"><span>${periodoNome}</span><span>${fmtBrl(subtotal)}</span></div>`;
+    }
+    html += `<div class="lin tot"><span>TOTAL</span><span>${fmtBrl(total)}</span></div>`;
+
+    resumo.innerHTML = html;
+    resumo.style.display = 'block';
+  }
+
+  inpEmp.addEventListener('input', validar);
+  inpFun.addEventListener('input', validar);
+  document.querySelectorAll('input[name="periodo"]').forEach(r => r.addEventListener('change', selecionarPeriodo));
+  btnCalc.addEventListener('click', calcular);
+
+  validar();
+})();
+</script>
+</div>
+</body>
+</html>

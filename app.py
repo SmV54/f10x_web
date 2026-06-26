@@ -699,6 +699,73 @@ def menu():
     )
 
 # =========================================================
+# COMPRAR / RENOVAR LICENCA  — mostra qtd empresas e funcionarios
+# =========================================================
+@app.route("/comprar_licenca")
+def comprar_licenca():
+    if not session.get("logado"):
+        return redirect("/")
+    id_cliente = session.get("id_cliente")
+
+    # ── LIMITES CONTRATADOS (tab_cliente: data_limite, qtd_empresas, qtd_funcionarios, per_desconto) ──
+    licenca_fmt              = ""
+    licenca_qtd_empresas     = 0
+    licenca_qtd_funcionarios = 0
+    cliente_per_desconto     = 0   # 0 a 100; 0 = sem desconto especial
+    try:
+        rl = (supabase.table("tab_cliente")
+              .select("data_limite, qtd_empresas, qtd_funcionarios, per_desconto")
+              .eq("id_cliente", id_cliente)
+              .limit(1).execute())
+        row = (rl.data or [{}])[0]
+        dl  = row.get("data_limite") or ""
+        if dl and len(dl) >= 7:
+            licenca_fmt = f"{dl[5:7]}/{dl[:4]}"
+        licenca_qtd_empresas     = int(row.get("qtd_empresas")     or 0)
+        licenca_qtd_funcionarios = int(row.get("qtd_funcionarios") or 0)
+        cliente_per_desconto     = int(row.get("per_desconto")     or 0)
+    except Exception:
+        pass
+
+    # ── QUANTIDADE ATUAL (real, no banco) ──
+    # Empresas: tab_empresa nao tem campo situacao — todas as do cliente
+    atual_qtd_empresas = 0
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("id_empresa")
+                 .eq("id_cliente", id_cliente)
+                 .execute())
+        atual_qtd_empresas = len(r_emp.data or [])
+    except Exception:
+        pass
+
+    # Funcionarios: todos do cliente exceto demitidos (situacao != 'D')
+    # Inclui ativos e afastados (qualquer status que nao seja 'D').
+    atual_qtd_funcionarios = 0
+    try:
+        r_fun = (supabase.table("tab_cad")
+                 .select("matricula")
+                 .eq("id_cliente", id_cliente)
+                 .neq("situacao", "D")
+                 .execute())
+        atual_qtd_funcionarios = len(r_fun.data or [])
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_Comprar_Licenca.html",
+        versao=ler_versao(),
+        nome_cliente=session.get("nome", ""),
+        empresa_info=session.get("empresa_info", ""),
+        licenca_fmt=licenca_fmt,
+        licenca_qtd_empresas=licenca_qtd_empresas,
+        licenca_qtd_funcionarios=licenca_qtd_funcionarios,
+        cliente_per_desconto=cliente_per_desconto,
+        atual_qtd_empresas=atual_qtd_empresas,
+        atual_qtd_funcionarios=atual_qtd_funcionarios,
+    )
+
+# =========================================================
 # MENU — DEMOS DE UX
 # =========================================================
 @app.route("/menu_demo1")

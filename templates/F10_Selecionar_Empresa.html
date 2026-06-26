@@ -156,7 +156,7 @@ body {
         {% for emp in empresas %}
         <button class="empresa-btn" onclick="selecionar({{ emp.id_empresa }})">
             <div class="empresa-info">
-                <div class="empresa-nome">{{ emp.cnpj_fmt }} — {{ emp.nome }}</div>
+                <div class="empresa-nome">{{ emp.cnpj_fmt }} — {{ '%06d' | format(emp.id_empresa) }} — {{ emp.nome }}</div>
             </div>
             <span class="empresa-icone">&#8594;</span>
         </button>
