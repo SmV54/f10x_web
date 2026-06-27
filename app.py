@@ -1042,7 +1042,7 @@ def api_pix_qr():
         )
         if not ok_cus:
             print(f"api_pix_qr: erro Asaas customer: {info_cus}")
-            return jsonify({"ok": False, "msg": "Falha ao registrar cliente no Asaas. Tente novamente."}), 500
+            return jsonify({"ok": False, "msg": f"Asaas (customer): {info_cus}"}), 500
 
         # 2) Cria cobranca PIX com validade de 7 dias
         from datetime import date, timedelta as _td
