@@ -1042,13 +1042,16 @@ def api_pix_qr():
         )
         if not ok_cus:
             print(f"api_pix_qr: erro Asaas customer: {info_cus}")
-            return jsonify({"ok": False, "msg": f"Asaas (customer): {info_cus}"}), 500
+            return jsonify({"ok": False, "msg": "Falha ao registrar cliente no Asaas. Tente novamente."}), 500
 
         # 2) Cria cobranca PIX com validade de 7 dias
+        # ASAAS_VALOR_MINIMO: Asaas rejeita cobranca abaixo de R$ 5,00. Forca o piso
+        # silenciosamente (raro: so acontece quando per_desconto eh muito alto).
         from datetime import date, timedelta as _td
         due_date = (date.today() + _td(days=7)).isoformat()
+        valor_asaas = max(round(float(valor), 2), 5.00)
         ok_pay, payment_id, info_pay = _asaas_criar_cobranca_pix(
-            customer_id, valor, descricao_asaas, due_date, ext_ref
+            customer_id, valor_asaas, descricao_asaas, due_date, ext_ref
         )
         if not ok_pay:
             print(f"api_pix_qr: erro Asaas cobranca: {info_pay}")
