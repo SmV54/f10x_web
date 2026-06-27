@@ -520,13 +520,26 @@ body {
     }
     html += `<div class="lin tot"><span>TOTAL</span><span>${fmtBrl(total)}</span></div>`;
 
+    // Asaas exige minimo de R$ 5,00 por cobranca PIX. Avisa o usuario e bloqueia
+    // o botao se o total ficou abaixo (so acontece com desconto especial muito alto).
+    const MIN_ASAAS = 500; // centavos
+    if (total < MIN_ASAAS) {
+      html += `<div class="lin" style="margin-top:8px; color:#dc2626; font-weight:600; font-size:12px;">
+        ⚠ Valor mínimo aceito pelo PIX (Asaas): R$ 5,00. Ajuste a quantidade ou o período.
+      </div>`;
+    }
+
     resumo.innerHTML = html;
     resumo.style.display = 'block';
 
     totalCalculado = total;     // centavos
     // Guarda parametros usados pra enviar ao endpoint do PIX
     totalCalculado_meta = { empresas: emp, funcionarios: fun, meses: meses };
-    btnPix.style.display = 'inline-block';
+    if (total < MIN_ASAAS) {
+      btnPix.style.display = 'none';
+    } else {
+      btnPix.style.display = 'inline-block';
+    }
     pixArea.classList.remove('show');
   }
 
