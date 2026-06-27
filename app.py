@@ -308,6 +308,10 @@ ZAPI_TOKEN        = os.getenv("ZAPI_TOKEN", "").strip()
 ZAPI_CLIENT_TOKEN = os.getenv("ZAPI_CLIENT_TOKEN", "").strip()
 ZAPI_URL          = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/send-text"
 
+ASAAS_API_URL       = os.getenv("ASAAS_API_URL", "https://api.asaas.com/v3").strip().rstrip("/")
+ASAAS_API_KEY       = os.getenv("ASAAS_API_KEY", "").strip()
+ASAAS_WEBHOOK_TOKEN = os.getenv("ASAAS_WEBHOOK_TOKEN", "").strip()
+
 # =========================================================
 # CONSTANTES LOGIN
 # =========================================================
@@ -768,8 +772,8 @@ def comprar_licenca():
 # =========================================================
 # PIX — gera BR Code (copia-e-cola) e QR code PNG em base64
 # =========================================================
-PIX_CHAVE         = "08777252000133"
-PIX_RECEBEDOR     = "COMSIST COMPUTACAO E SISTEMAS"   # max 25, sem acento, maiusculo
+PIX_CHAVE         = "59a207ae-ade1-42fa-bf9f-f790aa78618e"  # chave aleatoria (EVP) do Banco Asaas
+PIX_RECEBEDOR     = "Comsist Computacao Ltda"         # max 25 chars (tag 59 BR Code), sem acento. Nome legal completo: "Comsist Computacao & Sistemas Ltda" (nao cabe).
 PIX_CIDADE        = "RECIFE"                          # max 15
 PIX_WA_NOTIF_TEL  = "81988182000"                     # WhatsApp p/ notificar intencao de compra
 
@@ -845,16 +849,16 @@ def _pix_brcode(chave, valor_reais, nome, cidade, txid="***", descricao=""):
     mai_content = gui + chv
     if descricao:
         # ATENCAO: tag 26 inteira nao pode passar de 99 chars (limite de length 2-digit).
-        # GUI(18) + chave PIX CNPJ(18) = 36 chars; sobra ~59 chars para descricao+TLV.
-        # Trunca a descricao para max 55 chars de conteudo (+4 do TLV = 59).
+        # GUI(18) + chave PIX EVP/UUID(40) = 58 chars; sobra ~41 chars para descricao+TLV.
+        # Trunca a descricao para max 37 chars de conteudo (+4 do TLV = 41).
         # Sem esse limite, bancos estritos (BB, Caixa) rejeitam com "Parametro Invalido".
-        desc_safe = descricao[:55]
+        desc_safe = descricao[:37]
         mai_content += _pix_tlv("02", desc_safe)
     mai  = _pix_tlv("26", mai_content)
     adic = _pix_tlv("62", _pix_tlv("05", txid))
     payload = (
         _pix_tlv("00", "01")
-      + _pix_tlv("01", "12")              # 12 = com valor fixo
+      + _pix_tlv("01", "11")              # 11 = QR estatico (reutilizavel). "12" dinamico exige cobranca registrada no PSP — Asaas rejeita com "Pagamento rejeitado pelo PSP do recebedor".
       + mai
       + _pix_tlv("52", "0000")            # MCC
       + _pix_tlv("53", "986")             # BRL
@@ -899,13 +903,89 @@ def api_zapi_status():
     conectada, info = _zapi_conectada()
     return jsonify({"conectada": conectada, "info": info})
 
+# =========================================================
+# ASAAS — integracao para gerar cobrancas PIX dinamicas
+# Diferente do BR Code estatico, a cobranca Asaas suporta descricao rica
+# que aparece no app do banco do pagador, e dispara webhook ao ser paga.
+# Docs: https://docs.asaas.com/reference
+# =========================================================
+def _asaas_request(method, path, json_body=None, params=None, timeout=20):
+    """Wrapper para chamadas HTTP a API Asaas. Retorna (ok, status, data_or_error)."""
+    if not ASAAS_API_KEY:
+        return False, 0, {"error": "ASAAS_API_KEY nao configurada no .env"}
+    url = f"{ASAAS_API_URL}{path}"
+    headers = {
+        "access_token": ASAAS_API_KEY,
+        "Content-Type": "application/json",
+        "User-Agent":   "Folha10-Simples/1.0",
+    }
+    try:
+        r = requests.request(method, url, headers=headers, json=json_body, params=params, timeout=timeout)
+        try:
+            data = r.json()
+        except Exception:
+            data = {"raw": r.text[:500]}
+        if r.status_code >= 400:
+            return False, r.status_code, data
+        return True, r.status_code, data
+    except Exception as e:
+        return False, 0, {"error": str(e)}
+
+def _asaas_obter_ou_criar_customer(id_cliente, nome, cpf, email=None, celular=None):
+    """Obtem ou cria customer Asaas idempotentemente via externalReference.
+    Retorna (ok, customer_id, info)."""
+    ext_ref = f"folha10_{id_cliente:06d}"
+    # 1) Tenta achar customer existente pela externalReference
+    ok, status, data = _asaas_request("GET", "/customers", params={"externalReference": ext_ref})
+    if ok:
+        lista = (data or {}).get("data") or []
+        if lista:
+            return True, lista[0].get("id"), {"reused": True}
+    # 2) Cria novo
+    cpf_num = re.sub(r"\D", "", cpf or "")
+    payload = {
+        "name":              (nome or "Cliente Folha10")[:100],
+        "cpfCnpj":           cpf_num,
+        "externalReference": ext_ref,
+    }
+    if email:
+        payload["email"] = email
+    if celular:
+        payload["mobilePhone"] = re.sub(r"\D", "", celular)
+    ok, status, data = _asaas_request("POST", "/customers", json_body=payload)
+    if not ok:
+        return False, None, {"erro": "Falha ao criar customer Asaas", "status": status, "detalhe": data}
+    return True, (data or {}).get("id"), {"created": True}
+
+def _asaas_criar_cobranca_pix(customer_id, valor, descricao, due_date, external_reference):
+    """Cria cobranca PIX no Asaas. Retorna (ok, payment_id, info_or_error).
+    due_date no formato 'YYYY-MM-DD' (validade do QR Code; Asaas exige)."""
+    payload = {
+        "customer":          customer_id,
+        "billingType":       "PIX",
+        "value":             round(float(valor), 2),
+        "dueDate":           due_date,
+        "description":       (descricao or "")[:500],
+        "externalReference": external_reference,
+    }
+    ok, status, data = _asaas_request("POST", "/payments", json_body=payload)
+    if not ok:
+        return False, None, {"erro": "Falha ao criar cobranca PIX", "status": status, "detalhe": data}
+    return True, (data or {}).get("id"), data
+
+def _asaas_get_pix_qrcode(payment_id):
+    """Retorna (ok, {encodedImage, payload, expirationDate} | error)."""
+    ok, status, data = _asaas_request("GET", f"/payments/{payment_id}/pixQrCode")
+    if not ok:
+        return False, {"erro": "Falha ao obter QR Code Asaas", "status": status, "detalhe": data}
+    return True, data
+
 @app.route("/api/pix_qr", methods=["POST"])
 def api_pix_qr():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada"}), 401
     try:
-        import qrcode, base64, time
-        from io import BytesIO
+        import time
         from datetime import datetime
         data = request.get_json(silent=True) or {}
         valor = float(data.get("valor") or 0)
@@ -917,52 +997,75 @@ def api_pix_qr():
         meses        = int(data.get("meses")        or 1)
         id_cliente   = int(session.get("id_cliente") or 0)
 
-        # Busca nome + data_limite do cliente
+        # Busca dados completos do cliente (precisamos de cpf, email, celular para criar customer Asaas)
         nome_cli = session.get("nome", "") or ""
         data_limite_atual = ""
+        cpf_cli = ""
+        email_cli = ""
+        celular_cli = ""
         try:
             r = (supabase.table("tab_cliente")
-                 .select("nome, data_limite")
+                 .select("nome, data_limite, cpf, email, celular")
                  .eq("id_cliente", id_cliente)
                  .limit(1).execute())
             row = (r.data or [{}])[0]
             if not nome_cli:
                 nome_cli = (row.get("nome") or "").strip()
             data_limite_atual = (row.get("data_limite") or "").strip()
+            cpf_cli     = (row.get("cpf") or "").strip()
+            email_cli   = (row.get("email") or "").strip()
+            celular_cli = (row.get("celular") or "").strip()
         except Exception:
             pass
 
-        # Nome do cliente: sem acento, uppercase, max 13 chars (formato pedido)
         nome_limpo = _strip_acentos(nome_cli).upper().strip()[:13]
         nova_dl    = _data_limite_somar_meses(data_limite_atual, meses)
         agora_str  = datetime.now().strftime("%d/%m/%Y %H:%M")
+        valor_brl  = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-        # Descricao do QR: CURTA (max ~55 chars para nao estourar tag 26 do BR Code).
-        # Bancos estritos (BB/Caixa) rejeitam se tag 26 inteira > 99 chars.
-        # GUI(18) + chave CNPJ(18) deixam so ~59 chars para a descricao.
-        # Formato: F10S-CCCCCC E=XXXX F=YYYYY ate MM/YYYY
-        descricao_qr = _strip_acentos(
-            f"F10S-{id_cliente:06d} E={empresas} F={funcionarios} ate {nova_dl}"
-        )[:55]
-
-        # Mensagem completa (vai no WhatsApp para o recebedor — sem limite estrito)
-        descricao_full = _strip_acentos(
-            f"Licenca Folha10: Cliente {id_cliente:06d}-{nome_limpo}"
-            f" em {agora_str}"
-            f" Empresas: {empresas}"
-            f" Funcionarios: {funcionarios}"
-            f" Nova Data Limite {nova_dl}"
+        # Descricao rica que vai aparecer no app do banco do pagador e no painel do Asaas.
+        # Com a cobranca dinamica (via API Asaas) nao temos os limites da tag 26 do BR Code.
+        descricao_asaas = _strip_acentos(
+            f"Licenca Folha10-Simples\n"
+            f"Cliente: {id_cliente:06d} - {nome_cli}\n"
+            f"Empresas: {empresas} | Funcionarios: {funcionarios}\n"
+            f"Periodo: {meses} mes(es) - Nova data limite: {nova_dl}\n"
+            f"Solicitado em: {agora_str}"
         )
 
-        txid = f"LIC{id_cliente:06d}{int(time.time())}"[-25:]
-        brcode = _pix_brcode(PIX_CHAVE, valor, PIX_RECEBEDOR, PIX_CIDADE, txid, descricao_qr)
-        img = qrcode.make(brcode)
-        buf = BytesIO()
-        img.save(buf, format="PNG")
-        png_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+        # externalReference: identifica a cobranca para webhook/reconciliacao
+        ext_ref = f"lic_{id_cliente:06d}_{int(time.time())}_E{empresas}_F{funcionarios}_M{meses}"
 
-        # ── Notificacao WhatsApp da intencao de compra (nao bloqueia se falhar) ──
-        valor_brl = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        # 1) Obtem ou cria customer Asaas para esse cliente Folha10
+        ok_cus, customer_id, info_cus = _asaas_obter_ou_criar_customer(
+            id_cliente, nome_cli, cpf_cli, email=email_cli, celular=celular_cli
+        )
+        if not ok_cus:
+            print(f"api_pix_qr: erro Asaas customer: {info_cus}")
+            return jsonify({"ok": False, "msg": "Falha ao registrar cliente no Asaas. Tente novamente."}), 500
+
+        # 2) Cria cobranca PIX com validade de 7 dias
+        from datetime import date, timedelta as _td
+        due_date = (date.today() + _td(days=7)).isoformat()
+        ok_pay, payment_id, info_pay = _asaas_criar_cobranca_pix(
+            customer_id, valor, descricao_asaas, due_date, ext_ref
+        )
+        if not ok_pay:
+            print(f"api_pix_qr: erro Asaas cobranca: {info_pay}")
+            return jsonify({"ok": False, "msg": "Falha ao gerar cobranca PIX no Asaas. Tente novamente."}), 500
+
+        # 3) Obtem QR Code da cobranca
+        ok_qr, info_qr = _asaas_get_pix_qrcode(payment_id)
+        if not ok_qr:
+            print(f"api_pix_qr: erro Asaas QR: {info_qr}")
+            return jsonify({"ok": False, "msg": "Falha ao gerar QR Code PIX. Tente novamente."}), 500
+
+        png_b64    = info_qr.get("encodedImage", "")
+        brcode     = info_qr.get("payload", "")
+        expira_em  = info_qr.get("expirationDate", "")
+        txid       = payment_id  # ID da cobranca Asaas vira nosso TXID de reconciliacao
+
+        # Mensagem completa (vai no WhatsApp e na tela)
         notif_msg = (
             f"*INTENCAO DE COMPRA - Folha10-Simples*\n\n"
             f"*Cliente:* {id_cliente:06d} - {nome_limpo}\n"
@@ -972,7 +1075,12 @@ def api_pix_qr():
             f"*Periodo:* {meses} mes(es)\n"
             f"*Nova Data Limite:* {nova_dl}\n"
             f"*Valor:* {valor_brl}\n"
-            f"*TXID:* {txid}"
+            f"*Cobranca Asaas:* {payment_id}"
+        )
+        descricao_full = _strip_acentos(
+            f"Licenca Folha10: Cliente {id_cliente:06d}-{nome_limpo}"
+            f" em {agora_str} Empresas: {empresas}"
+            f" Funcionarios: {funcionarios} Nova Data Limite {nova_dl}"
         )
         ok_wa, err_wa = _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, notif_msg)
         if not ok_wa:
@@ -997,13 +1105,16 @@ def api_pix_qr():
                 print(f"api_pix_qr: excecao no fallback de email: {ex_fb}")
 
         return jsonify({
-            "ok":        True,
-            "brcode":    brcode,
-            "qr_png":    png_b64,
-            "txid":      txid,
-            "valor":     valor,
-            "descricao": descricao_full,
-            "wa_ok":     ok_wa,
+            "ok":         True,
+            "brcode":     brcode,
+            "qr_png":     png_b64,
+            "txid":       txid,
+            "valor":      valor,
+            "descricao":  descricao_full,
+            "mensagem":   notif_msg,
+            "wa_ok":      ok_wa,
+            "expira_em":  expira_em,
+            "payment_id": payment_id,
         })
     except Exception as e:
         print(f"api_pix_qr: {e}")

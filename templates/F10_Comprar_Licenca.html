@@ -42,32 +42,107 @@ body {
 /* ── CONTEÚDO ── */
 .conteudo {
     max-width: 760px; width: 100%;
-    margin: 32px auto 0;
-    padding: 0 24px 48px;
+    margin: 20px auto 0;
+    padding: 0 24px 32px;
     flex: 1;
 }
 
 /* ── BLOCO LINHA (Licenca / Quantidade Atual) ── */
 .linha {
     background: #ffffff; border: 1px solid #dde3ec; border-radius: 12px;
-    padding: 18px 22px; margin-bottom: 16px;
+    padding: 14px 18px; margin-bottom: 14px;
     box-shadow: 0 2px 10px rgba(15,23,42,0.04);
 }
 .linha-titulo {
     font-size: 13px; font-weight: 700;
-    margin-bottom: 12px; letter-spacing: 0.04em;
+    margin-bottom: 10px; letter-spacing: 0.04em;
     text-transform: uppercase;
+    display: flex; align-items: center; gap: 12px;
+    min-height: 24px;
 }
 .linha-titulo.lic { color: #166534; }
 .linha-titulo.atu { color: #1e3a8a; }
 .linha-titulo.cmp { color: #92400e; }
+.titulo-badge {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px; font-weight: 700;
+    color: #166534; background: #dcfce7;
+    border: 1px solid #86efac; border-radius: 999px;
+    padding: 2px 10px; letter-spacing: 0.03em;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+/* Data de validade — em destaque no titulo do bloco unificado */
+.titulo-badge-data {
+    display: inline-flex; align-items: baseline; gap: 8px;
+    background: #166534; color: #fff;
+    border-radius: 999px;
+    padding: 5px 16px;
+    text-transform: none;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(22,101,52,0.25);
+}
+.titulo-badge-data .lbl {
+    font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+    text-transform: uppercase; opacity: 0.85;
+}
+.titulo-badge-data .val {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 16px; font-weight: 700; letter-spacing: 0.02em;
+}
+
+/* Tabela comparativa contratado x em uso */
+.tab-comparativo { width: 100%; border-collapse: collapse; margin-top: 4px; }
+.tab-comparativo th, .tab-comparativo td { padding: 8px 12px; }
+.tab-comparativo thead th {
+    font-size: 11px; font-weight: 600; color: #64748b;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: right;
+    padding-right: 36px;
+}
+.tab-comparativo thead th:first-child { border-bottom: 0; text-align: left; padding-right: 12px; }
+.tab-comparativo tbody th {
+    text-align: left;
+    font-size: 13px; font-weight: 600; color: #374151;
+    text-transform: none; letter-spacing: 0;
+    width: 50%;
+}
+.tab-comparativo tbody td {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 20px; font-weight: 700; color: #0f172a;
+    text-align: right;
+    padding-right: 36px;
+    width: 25%;
+    font-variant-numeric: tabular-nums;
+}
+.tab-comparativo tbody td.uso { color: #1e3a8a; }
+.tab-comparativo tbody tr + tr th,
+.tab-comparativo tbody tr + tr td { border-top: 1px dashed #e2e8f0; }
+.tab-comparativo .obs-celula {
+    display: block; font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 10px; font-weight: 400; color: #94a3b8;
+    margin-top: 2px;
+}
 .linha-itens {
-    display: flex; flex-wrap: wrap; gap: 32px;
+    display: flex; flex-wrap: wrap; gap: 18px;
+    justify-content: space-around;
 }
 .item {
     display: flex; flex-direction: column; gap: 2px;
-    width: 130px; flex-shrink: 0;
+    width: 100px; flex-shrink: 0;
     align-items: center; text-align: center;
+}
+
+/* Coloca os 2 primeiros blocos (Licenca Atual / Quantidade Atual) lado a lado */
+.linha-duo {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 14px;
+    margin-bottom: 14px;
+}
+.linha-duo .linha { margin-bottom: 0; }
+@media (max-width: 640px) {
+    .linha-duo { grid-template-columns: 1fr; }
 }
 .item-label {
     font-size: 11px; font-weight: 600; color: #64748b;
@@ -75,7 +150,7 @@ body {
 }
 .item-valor {
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 22px; font-weight: 700; color: #0f172a;
+    font-size: 19px; font-weight: 700; color: #0f172a;
     line-height: 1.1;
 }
 .item-obs {
@@ -186,6 +261,20 @@ body {
     font-family: 'IBM Plex Mono', monospace;
 }
 
+.pix-mensagem {
+    margin-top: 12px;
+    background: #ffffff; border: 1px solid #cbd5e1; border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px; color: #1e293b; line-height: 1.55;
+    white-space: pre-line;
+}
+.pix-mensagem .titulo {
+    font-size: 11px; font-weight: 700; color: #166534;
+    text-transform: uppercase; letter-spacing: 0.05em;
+    margin-bottom: 6px; display: block;
+}
+.pix-mensagem strong { color: #0f172a; }
+
 /* ── BLOCO CONTATO ── */
 .contato {
     background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px;
@@ -222,40 +311,39 @@ body {
 
   <div class="conteudo">
 
-    <!-- LINHA 1 — Sua Licença Atual -->
+    <!-- QUADRO ÚNICO — Licença contratada vs. uso atual -->
     <div class="linha">
-      <div class="linha-titulo lic">🔐 Sua Licença Atual</div>
-      <div class="linha-itens">
-        <div class="item">
-          <div class="item-label">Data limite</div>
-          <div class="item-valor">{{ licenca_fmt or '—' }}</div>
-        </div>
-        <div class="item">
-          <div class="item-label">Empresas</div>
-          <div class="item-valor">{{ licenca_qtd_empresas }}</div>
-        </div>
-        <div class="item">
-          <div class="item-label">Funcionários</div>
-          <div class="item-valor">{{ licenca_qtd_funcionarios }}</div>
-        </div>
+      <div class="linha-titulo lic">
+        <span>🔐 Sua Licença</span>
+        <span class="titulo-badge-data">
+          <span class="lbl">válida até</span>
+          <span class="val">{{ licenca_fmt or '—' }}</span>
+        </span>
       </div>
-    </div>
-
-    <!-- LINHA 2 — Sua Quantidade Atual -->
-    <div class="linha">
-      <div class="linha-titulo atu">📊 Sua Quantidade Atual</div>
-      <div class="linha-itens">
-        <div class="item" aria-hidden="true"></div>   <!-- spacer p/ alinhar com 'Data limite' acima -->
-        <div class="item">
-          <div class="item-label">Empresas</div>
-          <div class="item-valor">{{ atual_qtd_empresas }}</div>
-        </div>
-        <div class="item">
-          <div class="item-label">Funcionários</div>
-          <div class="item-valor">{{ atual_qtd_funcionarios }}</div>
-          <div class="item-obs">ativos + afastados, sem demitidos</div>
-        </div>
-      </div>
+      <table class="tab-comparativo">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Contratado</th>
+            <th>Em uso</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Empresas</th>
+            <td>{{ licenca_qtd_empresas }}</td>
+            <td class="uso">{{ atual_qtd_empresas }}</td>
+          </tr>
+          <tr>
+            <th>
+              Funcionários
+              <span class="obs-celula">ativos + afastados, sem demitidos</span>
+            </th>
+            <td>{{ licenca_qtd_funcionarios }}</td>
+            <td class="uso">{{ atual_qtd_funcionarios }}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
 
     <!-- LINHA 3 — Defina sua Nova Assinatura -->
@@ -303,8 +391,12 @@ body {
             <button class="btn-copy" id="btn_copy" type="button">Copiar</button>
           </div>
           <div class="pix-recebedor">
-            Recebedor: COMSIST COMPUTAÇÃO E SISTEMAS<br>
-            Chave PIX (CNPJ): 08.777.252/0001-33
+            Recebedor: Comsist Computação &amp; Sistemas Ltda<br>
+            Chave PIX (Asaas): 59a207ae-ade1-42fa-bf9f-f790aa78618e
+          </div>
+          <div class="pix-mensagem" id="pix_mensagem" style="display:none;">
+            <span class="titulo">📋 Mensagem que acompanha o PIX</span>
+            <span id="pix_mensagem_corpo"></span>
           </div>
         </div>
       </div>
@@ -333,6 +425,15 @@ body {
   const pixImg  = document.getElementById('pix_img');
   const pixCode = document.getElementById('pix_code');
   const btnCopy = document.getElementById('btn_copy');
+  const pixMsg      = document.getElementById('pix_mensagem');
+  const pixMsgCorpo = document.getElementById('pix_mensagem_corpo');
+
+  // Converte *texto* em <strong>texto</strong> e escapa o resto.
+  function formatarMensagem(txt) {
+    const esc = (txt || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return esc.replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>');
+  }
   let   totalCalculado = 0;          // em centavos
   let   totalCalculado_meta = { empresas: 0, funcionarios: 0, meses: 1 };
 
@@ -451,6 +552,12 @@ body {
       } else {
         pixImg.src = 'data:image/png;base64,' + data.qr_png;
         pixCode.value = data.brcode;
+        if (data.mensagem) {
+          pixMsgCorpo.innerHTML = formatarMensagem(data.mensagem);
+          pixMsg.style.display = 'block';
+        } else {
+          pixMsg.style.display = 'none';
+        }
         pixArea.classList.add('show');
         pixArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
