@@ -1042,7 +1042,7 @@ def api_pix_qr():
         )
         if not ok_cus:
             print(f"api_pix_qr: erro Asaas customer: {info_cus}")
-            return jsonify({"ok": False, "msg": "Falha ao registrar cliente no Asaas. Tente novamente."}), 500
+            return jsonify({"ok": False, "msg": f"Asaas (customer): {info_cus}"}), 500
 
         # 2) Cria cobranca PIX com validade de 7 dias
         # Frontend valida valor minimo do Asaas (R$ 5,00). Backend confia no que
@@ -1054,13 +1054,13 @@ def api_pix_qr():
         )
         if not ok_pay:
             print(f"api_pix_qr: erro Asaas cobranca: {info_pay}")
-            return jsonify({"ok": False, "msg": "Falha ao gerar cobranca PIX no Asaas. Tente novamente."}), 500
+            return jsonify({"ok": False, "msg": f"Asaas (cobranca): {info_pay}"}), 500
 
         # 3) Obtem QR Code da cobranca
         ok_qr, info_qr = _asaas_get_pix_qrcode(payment_id)
         if not ok_qr:
             print(f"api_pix_qr: erro Asaas QR: {info_qr}")
-            return jsonify({"ok": False, "msg": "Falha ao gerar QR Code PIX. Tente novamente."}), 500
+            return jsonify({"ok": False, "msg": f"Asaas (QR): {info_qr}"}), 500
 
         png_b64    = info_qr.get("encodedImage", "")
         brcode     = info_qr.get("payload", "")
