@@ -768,9 +768,64 @@ def comprar_licenca():
 # =========================================================
 # PIX — gera BR Code (copia-e-cola) e QR code PNG em base64
 # =========================================================
-PIX_CHAVE       = "08777252000133"
-PIX_RECEBEDOR   = "COMSIST COMPUTACAO E SISTEMAS"   # max 25, sem acento, maiusculo
-PIX_CIDADE      = "RECIFE"                          # max 15
+PIX_CHAVE         = "08777252000133"
+PIX_RECEBEDOR     = "COMSIST COMPUTACAO E SISTEMAS"   # max 25, sem acento, maiusculo
+PIX_CIDADE        = "RECIFE"                          # max 15
+PIX_WA_NOTIF_TEL  = "81988182000"                     # WhatsApp p/ notificar intencao de compra
+
+def _zapi_conectada():
+    """Verifica se a instancia Z-API esta conectada ao WhatsApp.
+    Retorna (conectada: bool, info: dict). info contem o JSON da Z-API ou {error}.
+    A Z-API aceita /send-text mesmo desconectada (retorna 200 + messageId),
+    mas as mensagens NAO sao entregues — por isso esta checagem previa eh necessaria.
+    """
+    try:
+        if not ZAPI_INSTANCE or not ZAPI_TOKEN or not ZAPI_CLIENT_TOKEN:
+            return False, {"error": "Z-API nao configurada"}
+        url = f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}/status"
+        r = requests.get(url, headers={"Client-Token": ZAPI_CLIENT_TOKEN}, timeout=10)
+        if r.status_code != 200:
+            return False, {"error": f"HTTP {r.status_code}", "body": r.text[:200]}
+        info = r.json()
+        connected = bool(info.get("connected") and info.get("smartphoneConnected", True))
+        return connected, info
+    except Exception as e:
+        return False, {"error": str(e)}
+
+def _enviar_whatsapp_texto(destinatario, mensagem):
+    """Envia mensagem de texto livre via Z-API. Retorna (ok, erro).
+    Verifica conexao antes de enviar para evitar 'envio fantasma' (Z-API
+    aceita /send-text desconectada e retorna 200 sem entregar a mensagem)."""
+    try:
+        if not ZAPI_INSTANCE or not ZAPI_TOKEN or not ZAPI_CLIENT_TOKEN:
+            return False, "Z-API nao configurada"
+
+        conectada, status_info = _zapi_conectada()
+        if not conectada:
+            err = status_info.get("error") or "instancia Z-API desconectada do WhatsApp"
+            print(f"[ZAPI/intencao] DESCONECTADA: {status_info}")
+            return False, (
+                f"WhatsApp indisponivel (instancia Z-API desconectada). "
+                f"Reconecte em https://app.z-api.io. Detalhe: {err}"
+            )
+
+        telefone = normalizar_telefone(destinatario)
+        headers = {
+            "Client-Token":  ZAPI_CLIENT_TOKEN,
+            "Content-Type":  "application/json",
+            "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        }
+        print(f"[ZAPI/intencao] URL: {ZAPI_URL}")
+        print(f"[ZAPI/intencao] Telefone: {telefone}")
+        r = requests.post(ZAPI_URL, headers=headers,
+                          json={"phone": telefone, "message": mensagem}, timeout=30)
+        print(f"[ZAPI/intencao] Status: {r.status_code} | Resposta: {r.text[:300]}")
+        if r.status_code not in (200, 201):
+            return False, f"HTTP {r.status_code}: {r.text[:200]}"
+        return True, ""
+    except Exception as e:
+        print(f"[ZAPI/intencao] Excecao: {e}")
+        return False, str(e)
 
 def _pix_tlv(id_, value):
     return f"{id_}{len(value):02d}{value}"
@@ -784,10 +839,18 @@ def _pix_crc16(payload):
             crc &= 0xFFFF
     return f"{crc:04X}"
 
-def _pix_brcode(chave, valor_reais, nome, cidade, txid="***"):
+def _pix_brcode(chave, valor_reais, nome, cidade, txid="***", descricao=""):
     gui  = _pix_tlv("00", "BR.GOV.BCB.PIX")
     chv  = _pix_tlv("01", chave)
-    mai  = _pix_tlv("26", gui + chv)
+    mai_content = gui + chv
+    if descricao:
+        # ATENCAO: tag 26 inteira nao pode passar de 99 chars (limite de length 2-digit).
+        # GUI(18) + chave PIX CNPJ(18) = 36 chars; sobra ~59 chars para descricao+TLV.
+        # Trunca a descricao para max 55 chars de conteudo (+4 do TLV = 59).
+        # Sem esse limite, bancos estritos (BB, Caixa) rejeitam com "Parametro Invalido".
+        desc_safe = descricao[:55]
+        mai_content += _pix_tlv("02", desc_safe)
+    mai  = _pix_tlv("26", mai_content)
     adic = _pix_tlv("62", _pix_tlv("05", txid))
     payload = (
         _pix_tlv("00", "01")
@@ -804,31 +867,143 @@ def _pix_brcode(chave, valor_reais, nome, cidade, txid="***"):
     )
     return payload + _pix_crc16(payload)
 
+def _strip_acentos(s):
+    """Remove acentos/cedilha e caracteres nao-ASCII (PIX nao aceita acento)."""
+    import unicodedata
+    return unicodedata.normalize("NFKD", s or "").encode("ASCII", "ignore").decode("ASCII")
+
+def _data_limite_somar_meses(data_limite_atual, meses):
+    """Soma N meses a uma data 'YYYY-MM' ou 'YYYY-MM-DD'. Retorna 'MM/YYYY'.
+    Se data_limite_atual estiver vazia, soma a partir do mes corrente.
+    """
+    from datetime import datetime
+    try:
+        if data_limite_atual and len(data_limite_atual) >= 7:
+            ano = int(data_limite_atual[:4])
+            mes = int(data_limite_atual[5:7])
+        else:
+            agora = datetime.now()
+            ano, mes = agora.year, agora.month
+        total = mes + int(meses)
+        novo_ano = ano + (total - 1) // 12
+        novo_mes = ((total - 1) % 12) + 1
+        return f"{novo_mes:02d}/{novo_ano:04d}"
+    except Exception:
+        return "??/????"
+
+@app.route("/api/zapi_status")
+def api_zapi_status():
+    """Endpoint de diagnostico — abre no navegador para ver se Z-API esta conectada."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada"}), 401
+    conectada, info = _zapi_conectada()
+    return jsonify({"conectada": conectada, "info": info})
+
 @app.route("/api/pix_qr", methods=["POST"])
 def api_pix_qr():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada"}), 401
     try:
-        import qrcode, base64
+        import qrcode, base64, time
         from io import BytesIO
+        from datetime import datetime
         data = request.get_json(silent=True) or {}
         valor = float(data.get("valor") or 0)
         if valor <= 0:
             return jsonify({"ok": False, "msg": "Valor invalido"}), 400
-        id_cliente = session.get("id_cliente") or 0
-        import time
-        txid = f"LIC{int(id_cliente):06d}{int(time.time())}"[-25:]   # max 25 alfanumericos
-        brcode = _pix_brcode(PIX_CHAVE, valor, PIX_RECEBEDOR, PIX_CIDADE, txid)
+
+        empresas     = int(data.get("empresas")     or 0)
+        funcionarios = int(data.get("funcionarios") or 0)
+        meses        = int(data.get("meses")        or 1)
+        id_cliente   = int(session.get("id_cliente") or 0)
+
+        # Busca nome + data_limite do cliente
+        nome_cli = session.get("nome", "") or ""
+        data_limite_atual = ""
+        try:
+            r = (supabase.table("tab_cliente")
+                 .select("nome, data_limite")
+                 .eq("id_cliente", id_cliente)
+                 .limit(1).execute())
+            row = (r.data or [{}])[0]
+            if not nome_cli:
+                nome_cli = (row.get("nome") or "").strip()
+            data_limite_atual = (row.get("data_limite") or "").strip()
+        except Exception:
+            pass
+
+        # Nome do cliente: sem acento, uppercase, max 13 chars (formato pedido)
+        nome_limpo = _strip_acentos(nome_cli).upper().strip()[:13]
+        nova_dl    = _data_limite_somar_meses(data_limite_atual, meses)
+        agora_str  = datetime.now().strftime("%d/%m/%Y %H:%M")
+
+        # Descricao do QR: CURTA (max ~55 chars para nao estourar tag 26 do BR Code).
+        # Bancos estritos (BB/Caixa) rejeitam se tag 26 inteira > 99 chars.
+        # GUI(18) + chave CNPJ(18) deixam so ~59 chars para a descricao.
+        # Formato: F10S-CCCCCC E=XXXX F=YYYYY ate MM/YYYY
+        descricao_qr = _strip_acentos(
+            f"F10S-{id_cliente:06d} E={empresas} F={funcionarios} ate {nova_dl}"
+        )[:55]
+
+        # Mensagem completa (vai no WhatsApp para o recebedor — sem limite estrito)
+        descricao_full = _strip_acentos(
+            f"Licenca Folha10: Cliente {id_cliente:06d}-{nome_limpo}"
+            f" em {agora_str}"
+            f" Empresas: {empresas}"
+            f" Funcionarios: {funcionarios}"
+            f" Nova Data Limite {nova_dl}"
+        )
+
+        txid = f"LIC{id_cliente:06d}{int(time.time())}"[-25:]
+        brcode = _pix_brcode(PIX_CHAVE, valor, PIX_RECEBEDOR, PIX_CIDADE, txid, descricao_qr)
         img = qrcode.make(brcode)
         buf = BytesIO()
         img.save(buf, format="PNG")
         png_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+        # ── Notificacao WhatsApp da intencao de compra (nao bloqueia se falhar) ──
+        valor_brl = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        notif_msg = (
+            f"*INTENCAO DE COMPRA - Folha10-Simples*\n\n"
+            f"*Cliente:* {id_cliente:06d} - {nome_limpo}\n"
+            f"*Solicitado em:* {agora_str}\n"
+            f"*Empresas:* {empresas}\n"
+            f"*Funcionarios:* {funcionarios}\n"
+            f"*Periodo:* {meses} mes(es)\n"
+            f"*Nova Data Limite:* {nova_dl}\n"
+            f"*Valor:* {valor_brl}\n"
+            f"*TXID:* {txid}"
+        )
+        ok_wa, err_wa = _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, notif_msg)
+        if not ok_wa:
+            print(f"api_pix_qr: aviso - WhatsApp nao enviado para {PIX_WA_NOTIF_TEL}: {err_wa}")
+            # Fallback: manda email para o suporte com o conteudo da intencao
+            # (silencioso pro cliente — ele nao sabe que o WhatsApp falhou)
+            try:
+                fb_assunto = "ZAPI DESCONECTADO - Folha10-Simples"
+                fb_corpo = (
+                    "ZAPI DESCONECTADO\n\n"
+                    f"O WhatsApp nao foi enviado para {PIX_WA_NOTIF_TEL}.\n"
+                    f"Motivo: {err_wa}\n\n"
+                    "--- Conteudo da intencao de compra (que seria enviada) ---\n\n"
+                    + notif_msg
+                )
+                ok_em, err_em = _enviar_email_texto(
+                    "sergiomoraesvieira@outlook.com", fb_assunto, fb_corpo
+                )
+                if not ok_em:
+                    print(f"api_pix_qr: tambem falhou ao enviar email de fallback: {err_em}")
+            except Exception as ex_fb:
+                print(f"api_pix_qr: excecao no fallback de email: {ex_fb}")
+
         return jsonify({
-            "ok":     True,
-            "brcode": brcode,
-            "qr_png": png_b64,
-            "txid":   txid,
-            "valor":  valor,
+            "ok":        True,
+            "brcode":    brcode,
+            "qr_png":    png_b64,
+            "txid":      txid,
+            "valor":     valor,
+            "descricao": descricao_full,
+            "wa_ok":     ok_wa,
         })
     except Exception as e:
         print(f"api_pix_qr: {e}")
@@ -4814,14 +4989,18 @@ def _validar_tudo_cad(documento, nome, celular, email, canal, verificar_duplicid
             "tipo_documento": tipo_doc, "documento_limpo": documento_limpo}
 
 def _enviar_email(destinatario, codigo, nome):
+    mensagem = f"Olá {nome},\n\nSeu código de verificação é:\n\n{codigo}\n\nEquipe Folha10 Simples"
+    return _enviar_email_texto(destinatario, "Folha10 Simples - Código", mensagem)
+
+def _enviar_email_texto(destinatario, assunto, corpo):
+    """Envia email simples (texto puro) com assunto e corpo livres. Retorna (ok, erro)."""
     try:
         if not EMAIL_REMETENTE or not EMAIL_SENHA_APP:
-            return False, "EMAIL_REMETENTE ou EMAIL_SENHA_APP não configurados"
+            return False, "EMAIL_REMETENTE/EMAIL_SENHA_APP nao configurados"
         msg = MIMEMultipart()
         msg["From"]    = EMAIL_REMETENTE
         msg["To"]      = destinatario
-        msg["Subject"] = "Folha10 Simples - Código"
-        corpo = f"Olá {nome},\n\nSeu código de verificação é:\n\n{codigo}\n\nEquipe Folha10 Simples"
+        msg["Subject"] = assunto
         msg.attach(MIMEText(corpo, "plain"))
         servidor = smtplib.SMTP(SMTP_SERVIDOR, SMTP_PORTA)
         servidor.starttls()
@@ -4830,31 +5009,13 @@ def _enviar_email(destinatario, codigo, nome):
         servidor.quit()
         return True, ""
     except Exception as e:
-        print("Erro ao enviar e-mail:", str(e))
+        print(f"Erro ao enviar email para {destinatario}: {e}")
         return False, str(e)
 
 def _enviar_whatsapp(destinatario, codigo, nome):
-    try:
-        if not ZAPI_INSTANCE or not ZAPI_TOKEN or not ZAPI_CLIENT_TOKEN:
-            return False, "Z-API não configurada"
-        telefone  = normalizar_telefone(destinatario)
-        mensagem  = f"Olá {nome},\n\nSeu código de verificação é:\n\n{codigo}\n\nEquipe Folha10 Simples"
-        headers   = {
-            "Client-Token":  ZAPI_CLIENT_TOKEN,
-            "Content-Type":  "application/json",
-            "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        }
-        print(f"[ZAPI] URL: {ZAPI_URL}")
-        print(f"[ZAPI] Telefone: {telefone}")
-        print(f"[ZAPI] Client-Token: {ZAPI_CLIENT_TOKEN[:8]}...")
-        r = requests.post(ZAPI_URL, headers=headers, json={"phone": telefone, "message": mensagem}, timeout=30)
-        print(f"[ZAPI] Status: {r.status_code} | Resposta: {r.text}")
-        if r.status_code not in (200, 201):
-            return False, r.text
-        return True, ""
-    except Exception as e:
-        print("Erro ao enviar WhatsApp:", str(e))
-        return False, str(e)
+    # Reaproveita _enviar_whatsapp_texto que ja faz verificacao de conexao Z-API.
+    mensagem = f"Olá {nome},\n\nSeu código de verificação é:\n\n{codigo}\n\nEquipe Folha10 Simples"
+    return _enviar_whatsapp_texto(destinatario, mensagem)
 
 # =========================================================
 # CADASTRO CLIENTE

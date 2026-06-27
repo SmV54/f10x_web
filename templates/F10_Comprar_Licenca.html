@@ -333,7 +333,8 @@ body {
   const pixImg  = document.getElementById('pix_img');
   const pixCode = document.getElementById('pix_code');
   const btnCopy = document.getElementById('btn_copy');
-  let   totalCalculado = 0;   // em centavos
+  let   totalCalculado = 0;          // em centavos
+  let   totalCalculado_meta = { empresas: 0, funcionarios: 0, meses: 1 };
 
   const fmtBrl = (centavos) => 'R$ ' + (centavos / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
@@ -422,6 +423,8 @@ body {
     resumo.style.display = 'block';
 
     totalCalculado = total;     // centavos
+    // Guarda parametros usados pra enviar ao endpoint do PIX
+    totalCalculado_meta = { empresas: emp, funcionarios: fun, meses: meses };
     btnPix.style.display = 'inline-block';
     pixArea.classList.remove('show');
   }
@@ -435,7 +438,12 @@ body {
       const resp = await fetch('/api/pix_qr', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ valor: valorReais })
+        body:    JSON.stringify({
+          valor:        valorReais,
+          empresas:     totalCalculado_meta.empresas,
+          funcionarios: totalCalculado_meta.funcionarios,
+          meses:        totalCalculado_meta.meses,
+        })
       });
       const data = await resp.json();
       if (!data.ok) {
