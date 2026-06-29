@@ -226,6 +226,36 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     </table>
   </div>
 
+  <!-- ── VERBAS INFORMATIVAS (cód > 9900 — não entram nos totais) ── -->
+  {% if informativas %}
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo" style="color:#7c3aed;">Verbas Informativas</div>
+      <div style="font-size:11px;color:#64748b">{{ informativas|length }} verba(s) — não entram nos totais</div>
+    </div>
+    <table class="tbl-verbas">
+      <thead>
+        <tr>
+          <th>Cód</th>
+          <th>Descrição</th>
+          <th class="num">Func.</th>
+          <th class="num">Valor Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for v in informativas %}
+        <tr>
+          <td class="cod">{{ v.cod }}</td>
+          <td class="dsc">{{ v.dsc }}</td>
+          <td class="n">{{ v.n_funcs }}</td>
+          <td class="val" style="color:#7c3aed;">{{ v.valor_fmt }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
   <!-- ── TOTALIZAÇÕES ── -->
   <div class="secao">
     <div class="secao-topo">

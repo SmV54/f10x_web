@@ -115,6 +115,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .btn-reabrir:hover    { background: #1e40af; }
 .btn-reabrir:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-menu {
+    background: #1d4ed8; border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center;
+}
+.btn-menu:hover { background: #1e40af; }
 
 .advertencia-fechada {
     background: #fff7ed; border: 2px solid #f97316;
@@ -237,11 +244,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
     <div id="resultado"></div>
     <div class="rodape">
+        <a class="btn-menu" id="btnVoltarMenu" href="/menu" style="display:none;">&#8592; Voltar ao Menu</a>
         <a class="btn-cancelar" id="btnCancelar" href="/menu">Cancelar</a>
         <button class="btn-reabrir" id="btnReabrir" onclick="clicarReabrir()">🔓 Reabrir Folha</button>
     </div>
     {% else %}
     <div class="aviso-aberta">&#10003; Esta folha já está Aberta.</div>
+    <div class="rodape" style="margin-top:14px;">
+        <a class="btn-menu" id="btnVoltarMenu" href="/menu">&#8592; Voltar ao Menu</a>
+    </div>
     {% endif %}
 
 </div>
@@ -268,6 +279,38 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 <script>
 const SITUACAO = '{{ situacao }}';
+
+let _voltarMenuTimer = null;
+let _voltarMenuInterval = null;
+const _voltarMenuTextoBase = '&#8592; Voltar ao Menu';
+
+function iniciarVoltarMenu(segundos = 10) {
+    const btn = document.getElementById('btnVoltarMenu');
+    if (!btn) { setTimeout(() => window.location.href = '/menu', segundos * 1000); return; }
+    btn.style.display = 'inline-flex';
+    let restante = segundos;
+    btn.innerHTML = `${_voltarMenuTextoBase} (${restante})`;
+    _voltarMenuInterval = setInterval(() => {
+        restante -= 1;
+        if (restante <= 0) {
+            clearInterval(_voltarMenuInterval);
+        } else {
+            btn.innerHTML = `${_voltarMenuTextoBase} (${restante})`;
+        }
+    }, 1000);
+    _voltarMenuTimer = setTimeout(() => {
+        window.location.href = '/menu';
+    }, segundos * 1000);
+    btn.addEventListener('click', () => {
+        if (_voltarMenuTimer) clearTimeout(_voltarMenuTimer);
+        if (_voltarMenuInterval) clearInterval(_voltarMenuInterval);
+    }, { once: true });
+}
+
+// Se a folha já está Aberta, mostra logo o botão com contagem regressiva
+if (SITUACAO !== 'C' && SITUACAO !== 'F') {
+    window.addEventListener('DOMContentLoaded', () => iniciarVoltarMenu(10));
+}
 
 function clicarReabrir() {
     if (SITUACAO === 'F') {
@@ -313,7 +356,8 @@ async function reabrir() {
             }
             btn.style.display = 'none';
             const bc = document.getElementById('btnCancelar');
-            if (bc) { bc.textContent = 'Voltar ao Menu'; }
+            if (bc) { bc.style.display = 'none'; }
+            iniciarVoltarMenu(10);
         } else {
             painel.innerHTML = `<div class="resultado-err"><strong>Erro:</strong> ${j.msg}</div>`;
             btn.disabled = false;

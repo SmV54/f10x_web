@@ -57,8 +57,7 @@
 
     /* ── INFO CARDS ── */
     .painel-info {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      display: flex;
       gap: 12px;
       margin-bottom: 14px;
     }
@@ -68,13 +67,18 @@
       border-radius: 12px;
       padding: 12px 15px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      flex: 1;
+      min-width: 0;
     }
+    .card-info--wide  { flex: 3; }
+    .card-info--small { flex: 0.7; }
     .card-info .rotulo {
       font-size: 11px; color: #6b7280;
       text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 3px;
     }
     .card-info .valor {
       font-size: 15px; font-weight: 700; color: #111827;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
 
     /* ── LAYOUT ── */
@@ -255,7 +259,7 @@
 
     @media (max-width: 960px) {
       .layout-principal { grid-template-columns: 1fr; }
-      .painel-info { grid-template-columns: 1fr; }
+      .painel-info { flex-direction: column; }
     }
 
     /* ── MODAL ALERTA ── */
@@ -343,16 +347,12 @@
         <div class="rotulo">Cliente</div>
         <div class="valor">{{ nome_cliente }}</div>
       </div>
-      <div class="card-info">
+      <div class="card-info card-info--wide">
         <div class="rotulo">Empresa</div>
         <div class="valor">{{ empresa_info or '—' }}</div>
       </div>
-      <div class="card-info">
-        <div class="rotulo">Folhas Cadastradas</div>
-        <div class="valor" id="totRegistros">{{ anomes_list|length }}</div>
-      </div>
       {% if limite_anomes and limite_anomes|length == 6 %}
-      <div class="card-info" style="border-color:#fde047;">
+      <div class="card-info card-info--small" style="border-color:#fde047;">
         <div class="rotulo">Limite do Plano</div>
         <div class="valor" style="color:#92400e;">{{ limite_anomes[4:6] }}/{{ limite_anomes[0:4] }}</div>
       </div>
@@ -874,7 +874,14 @@
         const anoMesSol = ano + mes;
         if (anoMesSol > LIMITE_ANOMES) {
           const lim = LIMITE_ANOMES.substring(4,6) + '/' + LIMITE_ANOMES.substring(0,4);
-          alerta('Limite do Plano', 'Sua data Limite Contratada é ' + lim + '.');
+          f10Confirm('Sua data Limite Contratada é até ' + lim + '.', {
+            titulo: 'Limite do Plano',
+            tipo: 'aviso',
+            okText: 'Renovar a Licença',
+            cancelText: 'Menu'
+          }).then(renovar => {
+            window.location.href = renovar ? '/comprar_licenca' : '/menu';
+          });
           return;
         }
       }

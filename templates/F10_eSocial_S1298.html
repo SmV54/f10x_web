@@ -68,20 +68,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .btn-enviar:hover:not(:disabled) { background: #ea6a00; border-color: #ea6a00; }
 .btn-enviar:disabled { opacity: .5; cursor: default; }
 
-/* ── BANNER PROGRESSO ── */
-.lote-banner {
-    display: none;
-    background: #0f172a; border: 1px solid #70c4a0; border-radius: 10px;
-    padding: 12px 18px; margin-top: 16px;
-    align-items: center; gap: 16px;
-}
-.lote-banner.ativo { display: flex; }
-.lote-info   { flex: 1; display: flex; flex-direction: column; gap: 4px; }
-.lote-titulo { font-size: 12px; font-weight: 700; color: #e8edf4; font-family: var(--mono); }
-.lote-detalhe{ font-size: 11px; color: #374151; font-family: var(--mono); }
-.lote-bar-wrap { width: 180px; background: #70c4a0; border-radius: 20px; height: 6px; overflow: hidden; flex-shrink: 0; }
-.lote-bar  { height: 6px; border-radius: 20px; background: #f97316; width: 0%; transition: width .4s ease; }
-.lote-pct  { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
+/* ── PROGRESSO INLINE (mesmo padrão do S-1200/S-1210) ── */
+.prog-wrap     { display: none; margin-top: 14px; }
+.prog-wrap.ativo { display: block; }
+.prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
+.prog-bar      { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-label    { font-size: 11px; color: #64748b; font-family: var(--mono); }
 
 /* ── TABELA HISTÓRICO ── */
 .tabela-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
@@ -186,14 +178,10 @@ tr:hover td { background: #f8fafc; }
       <span style="font-size:12px;color:#94a3b8;">O evento será gerado, assinado e transmitido imediatamente.</span>
     </div>
 
-    <!-- Progresso / Resultado -->
-    <div class="lote-banner" id="divProgresso">
-      <div class="lote-info">
-        <span class="lote-titulo" id="loteTitulo">Enviando…</span>
-        <span class="lote-detalhe" id="loteDetalhe"></span>
-      </div>
-      <div class="lote-bar-wrap"><div class="lote-bar" id="loteBar"></div></div>
-      <span class="lote-pct" id="lotePct">0%</span>
+    <!-- Progresso / Resultado (padrão S-1200) -->
+    <div class="prog-wrap" id="divProgresso">
+      <div class="prog-bar-wrap"><div class="prog-bar" id="progBar"></div></div>
+      <span class="prog-label" id="progLabel"></span>
     </div>
   </div>
 
@@ -349,24 +337,19 @@ async function enviarS1298(btn) {
   btn.disabled = true;
 
   const divProg = document.getElementById('divProgresso');
-  const bar     = document.getElementById('loteBar');
-  const pct     = document.getElementById('lotePct');
-  const titulo  = document.getElementById('loteTitulo');
-  const detalhe = document.getElementById('loteDetalhe');
+  const bar     = document.getElementById('progBar');
+  const lbl     = document.getElementById('progLabel');
 
   divProg.classList.add('ativo');
   bar.style.width      = '5%';
-  bar.style.background = '#f97316';
-  pct.textContent      = '5%';
-  titulo.textContent   = 'Iniciando…';
-  detalhe.textContent  = '';
+  bar.style.background = 'var(--accent)';
+  lbl.textContent      = 'Iniciando…';
 
   let etapaIdx = 0;
   const animTimer = setInterval(() => {
     if (etapaIdx < ETAPAS.length) {
-      bar.style.width    = ETAPAS[etapaIdx][0] + '%';
-      pct.textContent    = ETAPAS[etapaIdx][0] + '%';
-      titulo.textContent = ETAPAS[etapaIdx][1];
+      bar.style.width = ETAPAS[etapaIdx][0] + '%';
+      lbl.textContent = ETAPAS[etapaIdx][1];
       etapaIdx++;
     }
   }, 4000);
@@ -385,27 +368,23 @@ async function enviarS1298(btn) {
     clearInterval(animTimer);
 
     bar.style.width      = '100%';
-    pct.textContent      = '100%';
     bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
 
     if (data.ok) {
-      titulo.textContent  = 'Reabertura enviada com sucesso!';
-      detalhe.textContent = 'Recibo: ' + (data.nr_rec || '');
+      lbl.textContent = 'Enviado — Recibo: ' + (data.nr_rec || '');
       _adicionarHistorico(data.id_esocial, anoMesRaw, 'E', data.nr_rec || '');
       btn.disabled = false;
     } else if (data.aguardando) {
-      titulo.textContent  = 'Aguardando processamento…';
-      detalhe.textContent = data.msg;
+      lbl.textContent = data.msg || 'Aguardando processamento…';
       _adicionarHistorico(data.id_esocial, anoMesRaw, 'W', '');
       btn.disabled = false;
     } else {
-      titulo.textContent  = 'Erro no envio';
-      detalhe.textContent = data.msg || 'Erro desconhecido';
+      lbl.textContent = data.msg || 'Erro desconhecido';
       if (data.detalhe) {
         const det = document.createElement('div');
         det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
         det.textContent   = data.detalhe;
-        detalhe.parentNode.appendChild(det);
+        lbl.parentNode.appendChild(det);
       }
       btn.disabled = false;
     }
@@ -413,8 +392,7 @@ async function enviarS1298(btn) {
     clearInterval(animTimer);
     bar.style.background = '#ef4444';
     bar.style.width      = '100%';
-    titulo.textContent   = 'Falha de comunicação';
-    detalhe.textContent  = String(e);
+    lbl.textContent      = 'Falha de comunicação: ' + e;
     btn.disabled = false;
   }
 }

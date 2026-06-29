@@ -457,13 +457,6 @@ tr:hover td { background: #f8fafc; }
                     <input type="text" id="f-ctt-cpf" class="form-input mono" maxlength="14"
                            placeholder="000.000.000-00">
                 </div>
-                <div class="form-group form-col-full">
-                    <label class="form-label">Ambiente</label>
-                    <select id="f-tpamb" class="form-select">
-                        <option value="1">1 — Produção</option>
-                        <option value="2">2 — Homologação (Testes)</option>
-                    </select>
-                </div>
             </div>
 
             <!-- Revisão dados empresa -->
@@ -574,7 +567,6 @@ function abrirModal() {
     ['f-ini-valid','f-fim-valid','f-ctt-nome','f-ctt-cpf'].forEach(id => {
         document.getElementById(id).value = '';
     });
-    document.getElementById('f-tpamb').value = '1';
     document.getElementById('btn-gravar').className = 'btn-modal primario';
     document.getElementById('msg-modal').style.display = 'none';
     document.getElementById('modal-novo').classList.add('aberto');
@@ -593,7 +585,7 @@ function gravarS1000() {
     const fim  = document.getElementById('f-fim-valid').value.trim();
     const nome = document.getElementById('f-ctt-nome').value.trim();
     const cpf  = document.getElementById('f-ctt-cpf').value.replace(/\D/g,'');
-    const amb  = document.getElementById('f-tpamb').value;
+    const amb  = '1';  // Fixo Produção
     const btn  = document.getElementById('btn-gravar');
 
     if (!ini)             { showModalMsg('Informe o período de início de validade.', false); return; }

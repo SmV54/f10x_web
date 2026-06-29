@@ -146,6 +146,15 @@ tr:hover td { background: #f8fafc; }
 }
 .btn-enviar-todos:hover:not(:disabled) { background: #007a3d; border-color: #007a3d; }
 .btn-enviar-todos:disabled { opacity: .5; cursor: default; }
+.btn-enviar-selec {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid #2a7de1; background: #2a7de1; color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-selec:hover:not(:disabled) { background: #1e63c4; border-color: #1e63c4; }
+.btn-enviar-selec:disabled { opacity: .4; cursor: not-allowed; }
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #2a7de1; }
 
 /* ── BANNER LOTE ── */
 .lote-banner {
@@ -236,7 +245,7 @@ tr:hover td { background: #f8fafc; }
     <div class="filtros-sep"></div>
     <span class="filtros-label">Período:</span>
     <select class="filtros-select" id="selAnomes" onchange="aplicarFiltros()">
-      <option value="">Todos</option>
+      <option value="all" {% if f_anomes == 'all' %}selected{% endif %}>Todos</option>
       {% for p in periodos_disp %}
       <option value="{{ p.valor }}" {% if f_anomes == p.valor %}selected{% endif %}>{{ p.label }}</option>
       {% endfor %}
@@ -249,12 +258,6 @@ tr:hover td { background: #f8fafc; }
       <option value="{{ k }}" {% if f_tipo == k %}selected{% endif %}>{{ v }}</option>
       {% endfor %}
     </select>
-    <div class="filtros-sep"></div>
-    <span class="filtros-label">Ambiente:</span>
-    <select class="filtros-select" id="selAmbiente">
-      <option value="1">Produção</option>
-      <option value="2">Homologação</option>
-    </select>
   </div>
 
   <!-- Data de Pagamento -->
@@ -266,9 +269,12 @@ tr:hover td { background: #f8fafc; }
 
   {% set total_pendentes = contagens.P + contagens.X %}
   {% if total_pendentes > 0 %}
-  <div style="margin-bottom:12px;">
+  <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;">
     <button class="btn-enviar-todos" id="btnEnviarTodos" onclick="enviarTodos(this)">
       &#9654;&#9654; Enviar todas as pendentes ({{ total_pendentes }})
+    </button>
+    <button class="btn-enviar-selec" id="btnEnviarSelec" onclick="enviarSelecionados(this)" disabled>
+      &#9654; Enviar selecionados (<span id="contSelec">0</span>)
     </button>
   </div>
   {% endif %}
@@ -326,6 +332,9 @@ tr:hover td { background: #f8fafc; }
     <table>
       <thead>
         <tr>
+          <th style="width:32px;text-align:center;">
+            <input type="checkbox" class="row-check" id="chkTodos" onchange="_toggleTodos(this)" title="Selecionar todos">
+          </th>
           <th>Matrícula / Nome</th>
           <th>Período</th>
           <th>Tipo</th>
@@ -339,6 +348,11 @@ tr:hover td { background: #f8fafc; }
       <tbody>
         {% for r in rows %}
         <tr id="row-{{ r.id_esocial }}">
+          <td style="text-align:center;">
+            {% if r._sit in ('P', 'G', 'X') and r._s1200_enviado %}
+            <input type="checkbox" class="row-check" data-id="{{ r.id_esocial }}" onchange="_atualizarSelec()">
+            {% endif %}
+          </td>
           <td>
             <div class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</div>
             <div class="nome-cell" style="font-size:12px;margin-top:2px;">{{ r._nome }}</div>
@@ -388,7 +402,7 @@ tr:hover td { background: #f8fafc; }
           </td>
         </tr>
         <tr class="prog-row" id="prog-{{ r.id_esocial }}">
-          <td colspan="8" class="prog-cell">
+          <td colspan="9" class="prog-cell">
             <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
             <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
           </td>
@@ -425,7 +439,7 @@ tr:hover td { background: #f8fafc; }
       <li>Informe a <strong>Data de Pagamento</strong> (dtPgto) antes de enviar — é a data do crédito em conta.</li>
       <li>O sistema usa o valor líquido e as bases de INSS/IRRF do cálculo da folha.</li>
       <li>Registros em estado <strong>Aguardando</strong> foram enviados mas não processados — use <em>Re-consultar</em>.</li>
-      <li>Para homologação, selecione <strong>Homologação</strong> no seletor de Ambiente antes de enviar.</li>
+      <li>Todo envio é feito em <strong>Produção</strong>.</li>
     </ul>
   </div>
 
@@ -509,8 +523,7 @@ const ETAPAS = [
 ];
 
 function _getTpAmb() {
-  const sel = document.getElementById('selAmbiente');
-  return sel ? sel.value : '1';
+  return '1';  // Sempre Produção
 }
 
 function _getDtPgto() {
@@ -646,18 +659,53 @@ function cancelarLote(btn) {
   document.getElementById('avisoAbortado').style.display = 'block';
 }
 
+// ── Helpers de seleção ────────────────────────────────────
+function _checksLinha() {
+  return Array.from(document.querySelectorAll('input.row-check[data-id]'));
+}
+function _toggleTodos(master) {
+  _checksLinha().forEach(c => { if (!c.disabled) c.checked = master.checked; });
+  _atualizarSelec();
+}
+function _atualizarSelec() {
+  const checks = _checksLinha();
+  const sel    = checks.filter(c => c.checked);
+  const cont   = document.getElementById('contSelec');
+  const btn    = document.getElementById('btnEnviarSelec');
+  if (cont) cont.textContent = sel.length;
+  if (btn)  btn.disabled     = sel.length === 0;
+  const master = document.getElementById('chkTodos');
+  if (master) {
+    master.checked = checks.length > 0 && sel.length === checks.length;
+    master.indeterminate = sel.length > 0 && sel.length < checks.length;
+  }
+}
+
 async function enviarTodos(btnTodos) {
+  const btns = Array.from(document.querySelectorAll('button.btn-enviar:not(.reconsutar)'));
+  await _processarLote(btns, btnTodos);
+}
+
+async function enviarSelecionados(btnSelec) {
+  const ids  = _checksLinha().filter(c => c.checked).map(c => parseInt(c.dataset.id, 10));
+  const btns = ids.map(id => document.querySelector(`#acao-${id} button.btn-enviar:not(.reconsutar)`)).filter(Boolean);
+  await _processarLote(btns, btnSelec);
+}
+
+async function _processarLote(btns, btnDisparou) {
   const dtPgto = _getDtPgto();
   if (!dtPgto) {
     alert('Informe a Data de Pagamento antes de enviar.');
     return;
   }
-
-  const btns = Array.from(document.querySelectorAll('button.btn-enviar:not(.reconsutar)'));
   if (!btns.length) return;
 
   _loteAbortado = false;
-  btnTodos.disabled = true;
+  if (btnDisparou) btnDisparou.disabled = true;
+  const btnTodos = document.getElementById('btnEnviarTodos');
+  const btnSelec = document.getElementById('btnEnviarSelec');
+  if (btnTodos) btnTodos.disabled = true;
+  if (btnSelec) btnSelec.disabled = true;
   btns.forEach(b => b.disabled = true);
 
   const total     = btns.length;
@@ -729,6 +777,7 @@ async function enviarTodos(btnTodos) {
     detEl.textContent      = `${ok} enviados  ${aguard ? aguard + ' aguardando  ' : ''}${erro ? erro + ' com erro' : ''}`.trim();
     barEl.style.background = erro ? '#f97316' : '#00a651';
   }
+  _atualizarSelec();
 }
 
 function filtrarSit(sit) {

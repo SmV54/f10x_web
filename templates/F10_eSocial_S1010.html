@@ -446,13 +446,6 @@ tr:hover td { background: #f8fafc; }
                     <input type="month" id="f-fim-valid" class="form-input mono">
                     <span class="form-hint">Deixe em branco se sem prazo</span>
                 </div>
-                <div class="form-group form-col-full">
-                    <label class="form-label">Ambiente</label>
-                    <select id="f-tpamb" class="form-select">
-                        <option value="1">1 — Produção</option>
-                        <option value="2">2 — Homologação (Testes)</option>
-                    </select>
-                </div>
             </div>
 
             <!-- Seleção de rubricas -->
@@ -629,7 +622,6 @@ function abrirModal() {
     document.getElementById('f-tp-op').value = 'inclusao';
     document.getElementById('f-ini-valid').value = '';
     document.getElementById('f-fim-valid').value = '';
-    document.getElementById('f-tpamb').value = '1';
     document.getElementById('f-filtro-rub').value = '';
     document.getElementById('msg-modal').style.display = 'none';
     document.getElementById('btn-gravar').disabled = false;
@@ -650,7 +642,7 @@ function gravarS1010() {
     const tpOp = document.getElementById('f-tp-op').value;
     const ini  = document.getElementById('f-ini-valid').value.trim();
     const fim  = document.getElementById('f-fim-valid').value.trim();
-    const amb  = document.getElementById('f-tpamb').value;
+    const amb  = '1';  // Fixo Produção
     const btn  = document.getElementById('btn-gravar');
 
     if (!ini) { showModalMsg('Informe o período de início de validade.', false); return; }

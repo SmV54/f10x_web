@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — Verificação Folha10 × eSocial</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; gap: 10px; justify-content: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-cnpj    { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1200px; margin: 24px auto; padding: 0 24px 60px; }
+
+.resumo-upload {
+    margin-bottom: 14px; padding: 12px 16px; border-radius: 10px;
+    font-size: 12px; line-height: 1.6;
+}
+.resumo-ok  { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.resumo-err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+.resumo-err ul { margin: 4px 0 0 18px; }
+
+/* ── TABELA ── */
+.tabela-wrap {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: auto;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 8px 10px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .03em; color: #64748b; text-align: right; white-space: nowrap;
+}
+th.col-mat, th.col-nome { text-align: left; }
+th.grupo-h { background: #eaf2fd; color: #1d4ed8; }
+td {
+    padding: 8px 10px; border-bottom: 1px solid #f1f5f9;
+    font-size: 12px; color: var(--label); vertical-align: middle;
+    text-align: right; font-family: var(--mono);
+}
+td.col-mat { font-family: var(--mono); color: #64748b; text-align: left; }
+td.col-nome { font-family: var(--sans); text-align: left; font-weight: 500; color: #1e293b; }
+tr:hover td { background: #f8fafc; }
+.diff-pos { color: #15803d; font-weight: 700; }
+.diff-neg { color: #b91c1c; font-weight: 700; }
+.diff-zero { color: #94a3b8; }
+.diff-ok {
+    display: inline-block; background: #dcfce7; color: #15803d;
+    padding: 1px 8px; border-radius: 12px; font-size: 11px; font-weight: 700;
+    letter-spacing: .03em;
+}
+
+/* ── GRUPOS DE COLUNAS NA TABELA ── */
+th.grupo-inss { background: #dbeafe !important; color: #1d4ed8 !important; }
+th.grupo-fgts { background: #fed7aa !important; color: #9a3412 !important; }
+th.grupo-irrf { background: #bbf7d0 !important; color: #15803d !important; }
+td.grupo-inss, th.sub-inss { background: #eff6ff; }
+td.grupo-fgts, th.sub-fgts { background: #fff7ed; }
+td.grupo-irrf, th.sub-irrf { background: #f0fdf4; }
+.divisor-l { border-left: 3px solid #cbd5e1 !important; }
+tr:hover td.grupo-inss { background: #dbeafe; }
+tr:hover td.grupo-fgts { background: #fed7aa; }
+tr:hover td.grupo-irrf { background: #bbf7d0; }
+
+/* ── BOTÃO PDF ── */
+.barra-acoes {
+    display: flex; justify-content: flex-end; gap: 8px; margin-bottom: 12px;
+}
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    border: 1px solid #b91c1c; background: #fff; color: #b91c1c;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+    text-decoration: none;
+}
+.btn-pdf:hover { background: #b91c1c; color: #fff; }
+.sem-cad { background: #fef2f2 !important; }
+.sem-cad-marker {
+    font-size: 9px; background: #fee2e2; color: #991b1b;
+    padding: 1px 5px; border-radius: 4px; margin-left: 6px;
+    text-transform: uppercase; letter-spacing: .04em;
+}
+.linha-total td {
+    background: #f1f5f9; font-weight: 700; color: #1e293b;
+    border-top: 2px solid var(--border);
+}
+
+.vazio { text-align: center; padding: 36px 20px; color: #94a3b8; font-size: 14px; }
+.spinner {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 3px solid #e2e8f0; border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite;
+    display: inline-block; vertical-align: middle; margin-right: 8px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">{{ cnpj_fmt }}</div>
+  </div>
+  <div class="topo-titulo">
+    <span>⚖️</span>
+    Verificação Folha10 × eSocial
+    {% if anomes_atual|length == 6 %}
+    <span style="font-size:13px;font-weight:500;color:#374151;font-family:var(--mono);">
+      {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
+    </span>
+    {% endif %}
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <div class="topo-logo">Folha10·Simples</div>
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <div id="resumoUpload"></div>
+
+  <div id="containerTabela">
+    <div class="vazio"><span class="spinner"></span> Iniciando verificação…</div>
+  </div>
+
+</div>
+
+<script>
+function fmtBRL(centavos) {
+  const v = (centavos || 0) / 100;
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function classDiff(d) {
+  if (!d) return 'diff-zero';
+  return d > 0 ? 'diff-pos' : 'diff-neg';
+}
+
+function escHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function consultarGov() {
+  const resumo = document.getElementById('resumoUpload');
+  resumo.innerHTML = `<div class="resumo-upload resumo-ok"><span class="spinner"></span> Lendo retornos de S-1200/S-1210 do Storage e extraindo S-5001/5002/5003…</div>`;
+  try {
+    const r = await fetch('/api/esocial_verificacao/consultar', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) {
+      resumo.innerHTML = `<div class="resumo-upload resumo-err">⚠ ${escHtml(d.msg || 'Erro.')}</div>`;
+    } else {
+      let html = `<div class="resumo-upload resumo-ok">✅ <strong>${d.baixados}</strong> evento(s) S-5xxx extraído(s) de <strong>${d.consultados}</strong> arquivo(s) S-1200/S-1210.</div>`;
+      // Bloco de diagnóstico — só se não extraiu nada ou se há mensagens
+      if ((d.baixados === 0) || (d.total_erros ?? 0) > 0) {
+        let dbg = '<div class="resumo-upload resumo-err" style="font-size:11px;">';
+        dbg += '<strong>🔎 Diagnóstico:</strong>';
+        if (d.anomes_atual_session) {
+          dbg += `<div>Sessão: anomes=<code>${escHtml(d.anomes_atual_session)}</code>, id_cliente=<code>${escHtml(d.id_cliente)}</code>, id_empresa=<code>${escHtml(d.id_empresa)}</code></div>`;
+        }
+        if (d.diretorios && d.diretorios.length) {
+          dbg += `<div>Diretórios procurados:<ul>${d.diretorios.map(x=>`<li><code>${escHtml(x)}</code></li>`).join('')}</ul></div>`;
+        }
+        if (d.arquivos && d.arquivos.length) {
+          dbg += `<div>Arquivos lidos:<ul>${d.arquivos.map(a=>`<li>S-${escHtml(a.layout)} mat=${escHtml(a.matricula)} → <code>${escHtml(a.nome)}</code> (${a.eventos} evt*)</li>`).join('')}</ul></div>`;
+        }
+        if (d.todos_arquivos_dir) {
+          const lista = d.todos_arquivos_dir;
+          dbg += `<div>Total de XMLs no(s) diretório(s): ${lista.length}` +
+                 (lista.length && lista.length <= 30
+                    ? `<ul>${lista.map(x=>`<li><code>${escHtml(x)}</code></li>`).join('')}</ul>`
+                    : (lista.length > 30 ? ' (mostrando 30 primeiros)<ul>' + lista.slice(0,30).map(x=>`<li><code>${escHtml(x)}</code></li>`).join('') + '</ul>' : ''))
+                 + '</div>';
+        }
+        if (d.debug_tags && d.debug_tags.length) {
+          dbg += `<div>Tags <code>evt*</code> que apareceram nos arquivos lidos: ${d.debug_tags.map(t=>`<code>${escHtml(t)}</code>`).join(', ')}</div>`;
+        }
+        if (d.erros && d.erros.length) {
+          dbg += `<div>Mensagens:<ul>${d.erros.map(e=>`<li>${escHtml(e)}</li>`).join('')}</ul></div>`;
+        }
+        dbg += '</div>';
+        html += dbg;
+      }
+      resumo.innerHTML = html;
+    }
+  } catch (e) {
+    resumo.innerHTML = `<div class="resumo-upload resumo-err">Falha de comunicação: ${escHtml(e)}</div>`;
+  }
+  await comparar();
+}
+
+async function comparar() {
+  const cont = document.getElementById('containerTabela');
+  cont.innerHTML = `<div class="vazio"><span class="spinner"></span> Lendo XMLs e comparando…</div>`;
+  try {
+    const r = await fetch('/api/esocial_verificacao/comparar');
+    const d = await r.json();
+    if (!d.ok) {
+      cont.innerHTML = `<div class="vazio">⚠️ ${d.msg || 'Erro.'}</div>`;
+      return;
+    }
+    if (!d.linhas || !d.linhas.length) {
+      cont.innerHTML = `<div class="vazio">${d.msg || 'Sem dados.'}</div>`;
+      return;
+    }
+    cont.innerHTML = renderTabela(d);
+  } catch (e) {
+    cont.innerHTML = `<div class="vazio">Falha: ${e}</div>`;
+  }
+}
+
+function fmtDiff(d) {
+  if (!d) return '<span class="diff-ok">✓ OK</span>';
+  const sinal = d > 0 ? '+' : '';
+  return `<span class="${classDiff(d)}">${sinal}${fmtBRL(d)}</span>`;
+}
+
+function renderTabela(d) {
+  let html = `<div class="barra-acoes">
+    <a class="btn-pdf" href="/api/esocial_verificacao/pdf" target="_blank">📄 Baixar PDF</a>
+  </div>
+  <div class="tabela-wrap"><table>
+    <thead>
+      <tr>
+        <th rowspan="2" class="col-mat">Matr.</th>
+        <th rowspan="2" class="col-nome">Funcionário</th>
+        <th colspan="3" class="grupo-inss divisor-l">INSS Retido</th>
+        <th colspan="3" class="grupo-fgts divisor-l">FGTS</th>
+        <th colspan="3" class="grupo-irrf divisor-l">Base IRRF</th>
+      </tr>
+      <tr>
+        <th class="sub-inss divisor-l">Folha10</th><th class="sub-inss">eSocial</th><th class="sub-inss">Δ</th>
+        <th class="sub-fgts divisor-l">Folha10</th><th class="sub-fgts">eSocial</th><th class="sub-fgts">Δ</th>
+        <th class="sub-irrf divisor-l">Folha10</th><th class="sub-irrf">eSocial</th><th class="sub-irrf">Δ</th>
+      </tr>
+    </thead>
+    <tbody>`;
+  d.linhas.forEach(l => {
+    const mat = l.matricula ? String(l.matricula).padStart(6, '0') : '—';
+    html += `<tr${l.no_cadastro ? ' class="sem-cad"' : ''}>
+      <td class="col-mat">${mat}</td>
+      <td class="col-nome">${l.nome}${l.no_cadastro ? '<span class="sem-cad-marker">CPF '+l.cpf+' não no cadastro</span>' : ''}</td>
+      <td class="grupo-inss divisor-l">${fmtBRL(l.f10_inss)}</td>
+      <td class="grupo-inss">${fmtBRL(l.gov_inss)}</td>
+      <td class="grupo-inss">${fmtDiff(l.diff_inss)}</td>
+      <td class="grupo-fgts divisor-l">${fmtBRL(l.f10_fgts)}</td>
+      <td class="grupo-fgts">${fmtBRL(l.gov_fgts)}</td>
+      <td class="grupo-fgts">${fmtDiff(l.diff_fgts)}</td>
+      <td class="grupo-irrf divisor-l">${fmtBRL(l.f10_birrf)}</td>
+      <td class="grupo-irrf">${fmtBRL(l.gov_birrf)}</td>
+      <td class="grupo-irrf">${fmtDiff(l.diff_birrf)}</td>
+    </tr>`;
+  });
+  // Totais
+  const di = d.diffs || {};
+  let tF10_inss=0, tGov_inss=0, tF10_fgts=0, tGov_fgts=0, tF10_birrf=0, tGov_birrf=0;
+  d.linhas.forEach(l => {
+    tF10_inss  += l.f10_inss  || 0; tGov_inss  += l.gov_inss  || 0;
+    tF10_fgts  += l.f10_fgts  || 0; tGov_fgts  += l.gov_fgts  || 0;
+    tF10_birrf += l.f10_birrf || 0; tGov_birrf += l.gov_birrf || 0;
+  });
+  html += `<tr class="linha-total">
+    <td colspan="2" class="col-nome">TOTAIS (${d.total} trabalhador${d.total!==1?'es':''})</td>
+    <td class="grupo-inss divisor-l">${fmtBRL(tF10_inss)}</td>
+    <td class="grupo-inss">${fmtBRL(tGov_inss)}</td>
+    <td class="grupo-inss">${fmtDiff(di.inss||0)}</td>
+    <td class="grupo-fgts divisor-l">${fmtBRL(tF10_fgts)}</td>
+    <td class="grupo-fgts">${fmtBRL(tGov_fgts)}</td>
+    <td class="grupo-fgts">${fmtDiff(di.fgts||0)}</td>
+    <td class="grupo-irrf divisor-l">${fmtBRL(tF10_birrf)}</td>
+    <td class="grupo-irrf">${fmtBRL(tGov_birrf)}</td>
+    <td class="grupo-irrf">${fmtDiff(di.birrf||0)}</td>
+  </tr>`;
+  html += `</tbody></table></div>`;
+  return html;
+}
+
+// Ao abrir a tela, já busca os S-5xxx no eSocial e roda o comparativo
+window.addEventListener('DOMContentLoaded', consultarGov);
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

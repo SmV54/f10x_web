@@ -401,13 +401,6 @@ tr:hover td { background: #f8fafc; }
                            placeholder="Ex: 0007">
                     <span class="form-hint">4 dígitos conforme FPAS</span>
                 </div>
-                <div class="form-group form-col-full">
-                    <label class="form-label">Ambiente</label>
-                    <select id="f-tpamb" class="form-select">
-                        <option value="1">1 — Produção</option>
-                        <option value="2">2 — Homologação (Testes)</option>
-                    </select>
-                </div>
             </div>
 
             <div id="msg-modal" style="display:none; margin-top:12px;"></div>
@@ -474,7 +467,6 @@ function abrirModal() {
     document.getElementById('f-tp-lot').value    = '01';
     document.getElementById('f-fpas').value      = FPAS_EMPRESA || '';
     document.getElementById('f-cod-tercs').value = '';
-    document.getElementById('f-tpamb').value     = '1';
     document.getElementById('msg-modal').style.display = 'none';
     document.getElementById('btn-gravar').disabled = false;
     document.getElementById('btn-gravar').innerHTML = '💾 Gravar';
@@ -492,7 +484,7 @@ function gravarS1020() {
     const tpOp     = document.getElementById('f-tp-op').value;
     const ini      = document.getElementById('f-ini-valid').value.trim();
     const fim      = document.getElementById('f-fim-valid').value.trim();
-    const amb      = document.getElementById('f-tpamb').value;
+    const amb      = '1';  // Fixo Produção
     const codLot   = document.getElementById('f-cod-lot').value.trim();
     const tpLot    = document.getElementById('f-tp-lot').value;
     const fpas     = document.getElementById('f-fpas').value.trim();

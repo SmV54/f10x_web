@@ -128,7 +128,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     display: grid;
-    grid-template-columns: 1fr 1fr 130px 1.6fr auto;
+    grid-template-columns: 1.4fr 130px 110px 1.4fr auto;
     gap: 12px;
     align-items: end;
 }
@@ -281,7 +281,9 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 
 <div class="topo">
     <div class="topo-esq">
+        {% if is_admin %}
         <span class="badge-admin">🛡️ ADMIN</span>
+        {% endif %}
     </div>
     <div class="topo-centro">
         <div class="topo-titulo">Visualizar XML do eSocial</div>
@@ -295,9 +297,10 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     </div>
 </div>
 
-<div class="layout">
+<div class="layout" {% if not is_admin %}style="grid-template-columns: 1fr;"{% endif %}>
 
-    <!-- ── CLIENTES ── -->
+    {% if is_admin %}
+    <!-- ── CLIENTES (somente admin) ── -->
     <aside class="painel-clientes">
         <div class="painel-header">
             <div class="painel-header-titulo">Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span></div>
@@ -325,6 +328,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 
         <div class="total-clientes">{{ clientes | length }} cliente(s)</div>
     </aside>
+    {% endif %}
 
     <!-- ── DIREITO ── -->
     <main class="painel-direito">
@@ -342,9 +346,9 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                 <input type="month" class="filtro-input" id="inAnomes" disabled>
             </div>
             <div class="filtro-grupo">
-                <label class="filtro-label">&nbsp;</label>
-                <!-- spacer / alinhamento; deixei aqui pra Layout ficar mais largo -->
-                <span></span>
+                <label class="filtro-label">Matrícula</label>
+                <input type="text" class="filtro-input" id="inMatricula" placeholder="Todas"
+                       inputmode="numeric" oninput="filtrarPorMatricula()" autocomplete="off">
             </div>
             <div class="filtro-grupo">
                 <label class="filtro-label">Layout</label>
@@ -389,9 +393,14 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 let clienteAtivo = null;
 let empresaAtiva = null;
 let arquivoAtivoPath = null;
+const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+const ID_CLIENTE_SESSION = {{ id_cliente_atual or 0 }};
+const ID_EMPRESA_SESSION = {{ id_empresa_atual or 0 }};
 
 function filtrarClientes() {
-    const q = (document.getElementById('inputBusca').value || '').trim().toLowerCase();
+    const el = document.getElementById('inputBusca');
+    if (!el) return;
+    const q = (el.value || '').trim().toLowerCase();
     document.querySelectorAll('.cliente-card').forEach(card => {
         const nome = card.dataset.nome || '';
         card.style.display = (!q || nome.includes(q)) ? '' : 'none';
@@ -528,11 +537,25 @@ function renderRemessas(remessas) {
     _renderListaRemessas();
 }
 
+function _remessasFiltradas() {
+    const mat = (document.getElementById('inMatricula') || {}).value || '';
+    const matNum = mat.replace(/\D/g, '');
+    if (!matNum) return _todasRemessas;
+    // Compara matrícula como token entre underscores na chave (ex.: S1200_123_20260628_...)
+    const rx = new RegExp('(?:^|_)0*' + matNum + '_');
+    return _todasRemessas.filter(r => rx.test(r.chave));
+}
+
+function filtrarPorMatricula() {
+    _renderListaRemessas();
+}
+
 function _renderListaRemessas() {
     const lista  = document.getElementById('listaArquivos');
-    const total  = _todasRemessas.length;
-    const visiveis = _mostrarTodas ? _todasRemessas
-                                   : _todasRemessas.slice(-1);  // só a última
+    const fonte  = _remessasFiltradas();
+    const total  = fonte.length;
+    const visiveis = _mostrarTodas ? fonte
+                                   : fonte.slice(-1);  // só a última
 
     let html = `<div class="lista-arquivos-titulo">
         ${total} remessa(s) ${(!_mostrarTodas && total > 1) ? '· última' : ''}
@@ -669,6 +692,14 @@ function colorirXml(html) {
         .replace(/([a-zA-Z0-9:_\-]+)=&quot;([^&]*?)&quot;/g,
                  '<span class="xml-attr">$1</span>=<span class="xml-val">&quot;$2&quot;</span>');
 }
+
+// ── Auto-load para usuários não-admin ────────────────────
+// Seleciona automaticamente o cliente da sessão (não há painel de seleção).
+window.addEventListener('DOMContentLoaded', () => {
+    if (!IS_ADMIN && ID_CLIENTE_SESSION) {
+        selecionarCliente(ID_CLIENTE_SESSION, '');
+    }
+});
 </script>
 
 <script src="/static/f10_dialog.js"></script>

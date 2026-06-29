@@ -393,6 +393,7 @@ const FOLHA_PERIODO       = '{{ folha_ativa }}';
 const QTD_EMPRESAS        = {{ qtd_empresas }};
 const FOLHA_SIT_LABEL     = '{{ folha_ativa_situacao }}';
 const CPF_USUARIO         = '{{ cpf_usuario }}';
+const S1299_ENVIADO       = {{ 'true' if s1299_enviado else 'false' }};
 
 const modulos = {
 
@@ -604,24 +605,24 @@ const modulos = {
         titulo: 'eSocial', icone: '📃',
         secoes: [
             { nome: 'Tabelas', itens: [
-                { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '/esocial_s1000', ok: true },
-                { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '/esocial_s1005', ok: true },
-                { icone: '📑', nome: 'S-1010 Rubricas',             href: '/esocial_s1010', ok: true },
-                { icone: '💼', nome: 'S-1020 Lotações Tributárias', href: '/esocial_s1020', ok: true },
+                { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '/esocial_s1000', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '/esocial_s1005', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '📑', nome: 'S-1010 Rubricas',             href: '/esocial_s1010', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '💼', nome: 'S-1020 Lotações Tributárias', href: '/esocial_s1020', ok: true, bloqueioFolha: 'aberta' },
             ]},
             { nome: 'Eventos Não Periódicos', itens: [
-                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true },
-                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true },
-                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true },
+                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aberta' },
                 { icone: '🏥', nome: 'S-2230 Afastamento',            href: '#' },
                 { icone: '🚪', nome: 'S-2299 Desligamento',           href: '#' },
             ]},
             { nome: 'Eventos Periódicos', itens: [
-                { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true },
-                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '/esocial_s1210', ok: true },
-                { icone: '🔓', nome: 'S-1298 Reabertura',  href: '/esocial_s1298', ok: true },
-                { icone: '🔒', nome: 'S-1299 Fechamento',  href: '/esocial_s1299', ok: true },
-                { icone: '📃', nome: 'REINF',               href: '#' },
+                { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true, bloqueioFolha: 'fechada' },
+                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '/esocial_s1210', ok: true, bloqueioFolha: 'fechada' },
+                { icone: '🔓', nome: 'S-1298 Reabertura',  href: '/esocial_s1298', ok: true, bloqueioFolha: 'fechada' },
+                { icone: '🔒', nome: 'S-1299 Fechamento',  href: '/esocial_s1299', ok: true, bloqueioFolha: 'fechada' },
+                { icone: '⚖️', nome: 'Verificação Folha10 × eSocial', href: '/esocial_verificacao', ok: true, bloqueioFolha: 'fechada', requerS1299: true },
             ]},
             { nome: 'Exclusão de Eventos', itens: [
                 { icone: '🗑️', nome: 'S-3000 Exclusão',               href: '/esocial_s3000', ok: true },
@@ -785,7 +786,17 @@ function selecionarModulo(cardEl, id) {
             btn.onclick = () => selecionarSecao(i);
             navSecoes.appendChild(btn);
         });
-        selecionarSecao(0);
+        // Seção inicial padrão: 0; no eSocial, escolhe conforme o status da folha
+        let idxPadrao = 0;
+        if (id === 'esocial') {
+            if (FOLHA_SITUACAO === 'F') {
+                idxPadrao = secoes.findIndex(s => /^Eventos Periódicos$/i.test(s.nome));
+            } else if (FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X') {
+                idxPadrao = secoes.findIndex(s => /Não Periódicos/i.test(s.nome));
+            }
+            if (idxPadrao < 0) idxPadrao = 0;
+        }
+        selecionarSecao(idxPadrao);
     }
 
     navPanel.style.display = 'block';
@@ -805,16 +816,39 @@ function renderItens(itens) {
     Array.from(navItens.children).forEach(el => { if (el !== navAviso) el.remove(); });
 
     const folhaBloqueada  = FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F';
+    const folhaAberta     = FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X';
+    const folhaFechada    = FOLHA_SITUACAO === 'F';
     const colunaWrappers  = {};
 
     (itens || []).forEach(item => {
-        const bloqueado = item.bloqueioFolha && folhaBloqueada;
+        // bloqueioFolha:
+        //   true     → exige folha Aberta (bloqueia em C/F)  [retrocompat]
+        //   'aberta' → exige folha Aberta (bloqueia em C/F)
+        //   'fechada'→ exige folha Fechada (bloqueia em A/X/C)
+        // requerS1299 → exige que o S-1299 do período atual já tenha recibo
+        let bloqueado = false;
+        let motivoBloq = '';
+        if (item.bloqueioFolha === 'fechada') {
+            if (!folhaFechada) {
+                bloqueado = true;
+                motivoBloq = 'fechada';
+            }
+        } else if (item.bloqueioFolha === 'aberta' || item.bloqueioFolha === true) {
+            if (!folhaAberta) {
+                bloqueado = true;
+                motivoBloq = 'aberta';
+            }
+        }
+        if (!bloqueado && item.requerS1299 && !S1299_ENVIADO) {
+            bloqueado = true;
+            motivoBloq = 'pos_s1299';
+        }
         const a = document.createElement('a');
 
         if (bloqueado) {
             a.className = 'nav-item bloqueado';
             a.href = '#';
-            a.addEventListener('click', e => { e.preventDefault(); mostrarAvisoFolha(); });
+            a.addEventListener('click', e => { e.preventDefault(); mostrarAvisoFolha(motivoBloq); });
         } else if (item.ok && item.loading) {
             a.className = 'nav-item';
             a.href = '#';
@@ -880,9 +914,15 @@ function renderItens(itens) {
     });
 }
 
-function mostrarAvisoFolha() {
-    const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
-    navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — inclusão e alteração de funcionários só são permitidas com a folha <strong>Aberta</strong>.`;
+function mostrarAvisoFolha(motivo) {
+    const sitLbl = { A:'Aberta', X:'Aberta', P:'Processada', C:'Calculada', F:'Fechada' }[FOLHA_SITUACAO] || FOLHA_SITUACAO || '—';
+    if (motivo === 'pos_s1299') {
+        navAviso.innerHTML = `🔒 Esta opção fica disponível depois que o <strong>S-1299 do período atual</strong> for enviado e tiver recibo.`;
+    } else if (motivo === 'fechada') {
+        navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — eventos periódicos do eSocial só podem ser enviados com a folha <strong>Fechada</strong>.`;
+    } else {
+        navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — esta opção só está disponível com a folha <strong>Aberta</strong>.`;
+    }
     navAviso.style.display = 'block';
 }
 

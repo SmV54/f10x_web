@@ -145,6 +145,15 @@ tr:hover td { background: #f8fafc; }
 }
 .btn-enviar-todos:hover:not(:disabled) { background: #007a3d; border-color: #007a3d; }
 .btn-enviar-todos:disabled { opacity: .5; cursor: default; }
+.btn-enviar-selec {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid #2a7de1; background: #2a7de1; color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-selec:hover:not(:disabled) { background: #1e63c4; border-color: #1e63c4; }
+.btn-enviar-selec:disabled { opacity: .4; cursor: not-allowed; }
+.row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #2a7de1; }
 
 /* ── BANNER PROGRESSO EM LOTE ── */
 .lote-banner {
@@ -234,9 +243,12 @@ tr:hover td { background: #f8fafc; }
 
   {% set total_pendentes = contagens.P + contagens.X %}
   {% if total_pendentes > 0 %}
-  <div style="margin-bottom:12px;" id="secaoEnviarTodos">
+  <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;" id="secaoEnviarTodos">
     <button class="btn-enviar-todos" id="btnEnviarTodos" onclick="enviarTodos(this)">
       &#9654;&#9654; Enviar todas as remessas ({{ total_pendentes }})
+    </button>
+    <button class="btn-enviar-selec" id="btnEnviarSelec" onclick="enviarSelecionados(this)" disabled>
+      &#9654; Enviar selecionados (<span id="contSelec">0</span>)
     </button>
   </div>
   {% endif %}
@@ -296,6 +308,9 @@ tr:hover td { background: #f8fafc; }
     <table>
       <thead>
         <tr>
+          <th style="width:32px;text-align:center;">
+            <input type="checkbox" class="row-check" id="chkTodos" onchange="_toggleTodos(this)" title="Selecionar todos">
+          </th>
           <th>Matrícula / Nome</th>
           <th>Tipo</th>
           <th>Situação</th>
@@ -308,6 +323,11 @@ tr:hover td { background: #f8fafc; }
       <tbody>
         {% for r in rows %}
         <tr id="row-{{ r.id_esocial }}">
+          <td style="text-align:center;">
+            {% if r._sit in ('P', 'G', 'X') %}
+            <input type="checkbox" class="row-check" data-id="{{ r.id_esocial }}" onchange="_atualizarSelec()">
+            {% endif %}
+          </td>
           <td>
             <div class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</div>
             <div class="nome-cell" style="font-size:12px;margin-top:2px;">{{ r._nome }}</div>
@@ -347,7 +367,7 @@ tr:hover td { background: #f8fafc; }
         </tr>
         <!-- linha de progresso expandível -->
         <tr class="prog-row" id="prog-{{ r.id_esocial }}">
-          <td colspan="8" class="prog-cell">
+          <td colspan="9" class="prog-cell">
             <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
             <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
           </td>
@@ -385,7 +405,7 @@ tr:hover td { background: #f8fafc; }
       <li>O botão <strong>Enviar pendentes</strong> transmite um funcionário de cada vez, em sequência.</li>
       <li>O eSocial aceita no máximo <strong>50 eventos por lote</strong> — o sistema respeita esse limite automaticamente.</li>
       <li>Registros em estado <strong>Aguardando</strong> foram enviados mas ainda não processados — use <em>Re-consultar</em>.</li>
-      <li>Para homologação, selecione <strong>Homologação</strong> no seletor de Ambiente antes de enviar.</li>
+      <li>Todo envio é feito em <strong>Produção</strong>.</li>
     </ul>
   </div>
 
@@ -428,7 +448,7 @@ function iniciarTour() {
             element: '#secaoInfo',
             popover: {
                 title: 'Dicas Importantes',
-                description: 'O envio leva cerca de 30 segundos. Para homologação use o seletor de Ambiente. O S-1200 deve ser enviado antes do S-1210 (Pagamentos) do mesmo período.',
+                description: 'O envio leva cerca de 30 segundos. Todas as remessas são feitas em Produção. O S-1200 deve ser enviado antes do S-1210 (Pagamentos) do mesmo período.',
             }
         }] : []),
         {
@@ -462,11 +482,42 @@ const ETAPAS = [
 ];
 
 function _getTpAmb() {
-  const sel = document.getElementById('selAmbiente');
-  return sel ? sel.value : '1';
+  return '1';  // Sempre Produção
+}
+
+// Confirmação de pré-requisitos (S-1005/1010/1020/2200/2205/2206/2210/2220/2299).
+// True quando o usuário já confirmou nesta sessão de página → não pergunta de novo.
+let _prereqConfirmado = false;
+
+async function _confirmarPrereqS1200() {
+  if (_prereqConfirmado) return true;
+  try {
+    const r  = await fetch('/api/esocial_s1200_check_pendentes');
+    const cd = await r.json();
+    if (!cd.ok || !cd.total) {
+      _prereqConfirmado = true;
+      return true;
+    }
+    const ok = await f10Confirm(cd.msg, {
+      titulo:     'Remessas pendentes',
+      tipo:       'aviso',
+      okText:     'Enviar mesmo assim',
+      cancelText: 'Cancelar',
+    });
+    if (ok) _prereqConfirmado = true;
+    return ok;
+  } catch (e) {
+    return true;  // em caso de falha de rede, não bloqueia
+  }
 }
 
 async function _enviar(id, btn, suppressBanner) {
+  // Checagem de pré-requisitos antes de qualquer animação
+  if (!_prereqConfirmado) {
+    const ok = await _confirmarPrereqS1200();
+    if (!ok) { btn.disabled = false; return; }
+  }
+
   const progRow = document.getElementById('prog-' + id);
   const bar     = document.getElementById('bar-'  + id);
   const lbl     = document.getElementById('lbl-'  + id);
@@ -493,7 +544,7 @@ async function _enviar(id, btn, suppressBanner) {
     const r = await fetch('/api/esocial_s1200_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb }),
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, forcar: _prereqConfirmado }),
     });
     const data = await r.json();
 
@@ -588,12 +639,54 @@ function cancelarLote(btn) {
   document.getElementById('avisoAbortado').style.display = 'block';
 }
 
+// ── Helpers de seleção ────────────────────────────────────
+function _checksLinha() {
+  return Array.from(document.querySelectorAll('input.row-check[data-id]'));
+}
+function _toggleTodos(master) {
+  _checksLinha().forEach(c => { if (!c.disabled) c.checked = master.checked; });
+  _atualizarSelec();
+}
+function _atualizarSelec() {
+  const checks = _checksLinha();
+  const sel    = checks.filter(c => c.checked);
+  const cont   = document.getElementById('contSelec');
+  const btn    = document.getElementById('btnEnviarSelec');
+  if (cont) cont.textContent = sel.length;
+  if (btn)  btn.disabled     = sel.length === 0;
+  const master = document.getElementById('chkTodos');
+  if (master) {
+    master.checked = checks.length > 0 && sel.length === checks.length;
+    master.indeterminate = sel.length > 0 && sel.length < checks.length;
+  }
+}
+
 async function enviarTodos(btnTodos) {
   const btns = Array.from(document.querySelectorAll('button.btn-enviar:not(.reconsutar)'));
+  await _processarLote(btns, btnTodos);
+}
+
+async function enviarSelecionados(btnSelec) {
+  const ids  = _checksLinha().filter(c => c.checked).map(c => parseInt(c.dataset.id, 10));
+  const btns = ids.map(id => document.querySelector(`#acao-${id} button.btn-enviar:not(.reconsutar)`)).filter(Boolean);
+  await _processarLote(btns, btnSelec);
+}
+
+async function _processarLote(btns, btnDisparou) {
   if (!btns.length) return;
 
+  // Checagem única de pré-requisitos antes de iniciar o lote
+  if (!_prereqConfirmado) {
+    const ok = await _confirmarPrereqS1200();
+    if (!ok) return;
+  }
+
   _loteAbortado = false;
-  btnTodos.disabled = true;
+  if (btnDisparou) btnDisparou.disabled = true;
+  const btnTodos = document.getElementById('btnEnviarTodos');
+  const btnSelec = document.getElementById('btnEnviarSelec');
+  if (btnTodos) btnTodos.disabled = true;
+  if (btnSelec) btnSelec.disabled = true;
   btns.forEach(b => b.disabled = true);
 
   const total     = btns.length;
@@ -666,6 +759,7 @@ async function enviarTodos(btnTodos) {
     detEl.textContent      = `${ok} enviados  ${aguard ? aguard + ' aguardando  ' : ''}${erro ? erro + ' com erro' : ''}`.trim();
     barEl.style.background = erro ? '#f97316' : '#00a651';
   }
+  _atualizarSelec();
 }
 
 function filtrarSit(sit) {

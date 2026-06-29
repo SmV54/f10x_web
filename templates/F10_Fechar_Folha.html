@@ -97,7 +97,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                  border-radius: 8px; font-size: 13px; color: #991b1b; }
 #resultado { margin-bottom: 14px; }
 
-.rodape { display: flex; justify-content: flex-end; }
+.rodape { display: flex; justify-content: flex-end; gap: 10px; }
 .btn-fechar {
     background: #991b1b; border: none; color: white;
     font-size: 14px; font-family: var(--sans); font-weight: 600;
@@ -105,6 +105,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .btn-fechar:hover    { background: #7f1d1d; }
 .btn-fechar:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-menu {
+    background: #1d4ed8; border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center;
+}
+.btn-menu:hover { background: #1e40af; }
 </style>
 </head>
 <body>
@@ -160,15 +167,52 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     {% if situacao == 'C' %}
     <div id="resultado"></div>
     <div class="rodape">
+        <a class="btn-menu" id="btnVoltarMenu" href="/menu" style="display:none;">&#8592; Voltar ao Menu</a>
         <button class="btn-fechar" id="btnFechar" onclick="fechar()">🔒 Fechar Folha</button>
     </div>
     {% else %}
     <div class="aviso-fechada">&#10007; Apenas folhas com status <strong>&nbsp;Calculada&nbsp;</strong> podem ser fechadas.</div>
+    <div class="rodape" style="margin-top:14px;">
+        <a class="btn-menu" id="btnVoltarMenu" href="/menu">&#8592; Voltar ao Menu</a>
+    </div>
     {% endif %}
 
 </div>
 
 <script>
+const SITUACAO_INICIAL = '{{ situacao }}';
+let _voltarMenuTimer = null;
+let _voltarMenuInterval = null;
+const _voltarMenuTextoBase = '&#8592; Voltar ao Menu';
+
+function iniciarVoltarMenu(segundos = 10) {
+    const btn = document.getElementById('btnVoltarMenu');
+    if (!btn) { setTimeout(() => window.location.href = '/menu', segundos * 1000); return; }
+    btn.style.display = 'inline-flex';
+    let restante = segundos;
+    btn.innerHTML = `${_voltarMenuTextoBase} (${restante})`;
+    _voltarMenuInterval = setInterval(() => {
+        restante -= 1;
+        if (restante <= 0) {
+            clearInterval(_voltarMenuInterval);
+        } else {
+            btn.innerHTML = `${_voltarMenuTextoBase} (${restante})`;
+        }
+    }, 1000);
+    _voltarMenuTimer = setTimeout(() => {
+        window.location.href = '/menu';
+    }, segundos * 1000);
+    btn.addEventListener('click', () => {
+        if (_voltarMenuTimer) clearTimeout(_voltarMenuTimer);
+        if (_voltarMenuInterval) clearInterval(_voltarMenuInterval);
+    }, { once: true });
+}
+
+// Se a folha não é Calculada, mostra logo o botão com contagem regressiva
+if (SITUACAO_INICIAL !== 'C') {
+    window.addEventListener('DOMContentLoaded', () => iniciarVoltarMenu(10));
+}
+
 async function fechar() {
     const btn    = document.getElementById('btnFechar');
     const painel = document.getElementById('resultado');
@@ -191,6 +235,7 @@ async function fechar() {
                 bs.textContent = j.sit_label;
             }
             btn.style.display = 'none';
+            iniciarVoltarMenu(10);
         } else {
             painel.innerHTML = `<div class="resultado-err"><strong>Erro:</strong> ${j.msg}</div>`;
             btn.disabled = false;
