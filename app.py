@@ -23300,14 +23300,19 @@ def esocial_s3000():
         s = str(v or "").strip()
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
 
-    # Registros com recibo da folha ativa (exceto layout 3000)
+    # Registros com recibo da folha ativa (exceto layout 3000).
+    # S-1298 (Reabertura) e S-1299 (Fechamento) NAO podem ser excluidos via
+    # tela: o S-1298 mantem a folha aberta no gov e o S-1299 fecha o
+    # periodico; exclui-los rompe a sequencia logica do eSocial. A retificacao
+    # desses eventos e feita reenviando outro do mesmo tipo.
+    _LAYOUTS_NAO_EXCLUIVEIS = ("3000", "1298", "1299")
     elegiveis_raw = []
     if anomes_atual:
         try:
             rows = (supabase.table("tab_esocial")
                     .select("*")
                     .eq("id_empresa", id_empresa)
-                    .neq("layout", "3000")
+                    .not_.in_("layout", list(_LAYOUTS_NAO_EXCLUIVEIS))
                     .eq("ano_mes", int(anomes_atual))
                     .not_.is_("recibo", "null")
                     .neq("recibo", "")
@@ -23404,6 +23409,15 @@ def api_esocial_s3000_enviar():
 
     if not id_reg:
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    # S-1298 (Reabertura) e S-1299 (Fechamento) nao podem ser excluidos via
+    # S-3000 — romperia a sequencia logica do periodico.
+    if layout in ("1298", "1299"):
+        nome = "S-1298 (Reabertura)" if layout == "1298" else "S-1299 (Fechamento)"
+        return jsonify({"ok": False,
+            "msg": (f"{nome} nao pode ser excluido via S-3000. "
+                    "Reabertura/fechamento sao retificados reenviando outro "
+                    "evento do mesmo tipo.")})
 
     # ── 1. Registro na tab_esocial ─────────────────────────
     try:
