@@ -264,7 +264,7 @@ function renderTabela(d) {
         <th rowspan="2" class="col-nome">Funcionário</th>
         <th colspan="3" class="grupo-inss divisor-l">INSS Retido</th>
         <th colspan="3" class="grupo-fgts divisor-l">FGTS</th>
-        <th colspan="3" class="grupo-irrf divisor-l">Base IRRF</th>
+        <th colspan="3" class="grupo-irrf divisor-l">IRRF Retido</th>
       </tr>
       <tr>
         <th class="sub-inss divisor-l">Folha10</th><th class="sub-inss">eSocial</th><th class="sub-inss">Δ</th>
@@ -313,8 +313,11 @@ function renderTabela(d) {
   return html;
 }
 
-// Ao abrir a tela, já busca os S-5xxx no eSocial e roda o comparativo
-window.addEventListener('DOMContentLoaded', consultarGov);
+// Ao abrir a tela: só compara (lê a pasta /verificacao/ atual).
+// A funcao "comparar" do backend ja faz auto-refresh (chama consultar
+// internamente). Antes era consultarGov, mas isso limpava a pasta e podia
+// ressuscitar dados antigos se houver bug de cache do Flask.
+window.addEventListener('DOMContentLoaded', comparar);
 </script>
 <script src="/static/f10_dialog.js"></script>
 </body>

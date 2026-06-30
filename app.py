@@ -6641,6 +6641,10 @@ def cad_verba():
         .execute()
     )
 
+    # Verbas com cod_rubr < 1000 sao "do sistema" (id_cliente=0) e so podem
+    # ser alteradas pelo administrador F10 (CPF 15313921487).
+    is_admin_verbas = (str(session.get("cpf") or "") == CPF_ADMIN_F10)
+
     return render_template(
         "F10_Cad_Verba.html",
         versao=ler_versao(),
@@ -6652,7 +6656,8 @@ def cad_verba():
         inc_cp=inc_cp.data or [],
         inc_fgts=inc_fgts.data or [],
         inc_irrf=inc_irrf.data or [],
-        inc_pis=inc_pis.data or []
+        inc_pis=inc_pis.data or [],
+        is_admin_verbas=is_admin_verbas,
     )
 
 
@@ -6820,6 +6825,20 @@ def api_rubrica_editar():
 
     if not id_reg:
         return jsonify({"ok": False, "msg": "ID não informado"})
+
+    # Verbas do sistema (cod_rubr < 1000) so podem ser alteradas pelo admin F10.
+    try:
+        _v = (supabase.table("tab_rubrica")
+              .select("cod_rubr")
+              .eq("id", int(id_reg))
+              .limit(1).execute())
+        _cod = int((_v.data or [{}])[0].get("cod_rubr") or 0)
+        if _cod < 1000 and str(session.get("cpf") or "") != CPF_ADMIN_F10:
+            return jsonify({"ok": False,
+                "msg": (f"Verba {_cod:04d} e do sistema e so pode ser alterada "
+                        "pelo administrador F10.")})
+    except Exception:
+        pass
     if not dsc_rubr:
         return jsonify({"ok": False, "msg": "Nome da verba obrigatório"})
     if not tp_rubr:
@@ -6897,6 +6916,20 @@ def api_rubrica_desativar():
     if not id_reg:
         return jsonify({"ok": False, "msg": "ID não informado"})
 
+    # Verbas do sistema (cod_rubr < 1000) so podem ser desativadas pelo admin F10.
+    try:
+        _v = (supabase.table("tab_rubrica")
+              .select("cod_rubr")
+              .eq("id", int(id_reg))
+              .limit(1).execute())
+        _cod = int((_v.data or [{}])[0].get("cod_rubr") or 0)
+        if _cod < 1000 and str(session.get("cpf") or "") != CPF_ADMIN_F10:
+            return jsonify({"ok": False,
+                "msg": (f"Verba {_cod:04d} e do sistema e so pode ser desativada "
+                        "pelo administrador F10.")})
+    except Exception:
+        pass
+
     _info = supabase.table("tab_rubrica").select("cod_rubr,dsc_rubr") \
         .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
     _cod, _nome = 0, ""
@@ -6970,6 +7003,36 @@ _SIT_FOLHA_LABEL = {
     "F": "Fechada",
     "P": "Processada",
 }
+
+
+def _folha_aberta_no_esocial(id_empresa=None, ano_mes=None):
+    """True se a folha do período está Aberta no eSocial.
+
+    Regra: olha o ÚLTIMO evento entre S-1299 (fechamento) e S-1298 (reabertura)
+    com recibo no período. Se o último for S-1298 a folha está reaberta;
+    se for S-1299 está fechada; se não houver nenhum dos dois, está aberta."""
+    try:
+        ie = id_empresa or _get_id_empresa()
+        am = str(ano_mes or session.get("anomes_atual") or "").strip()
+        if not am or len(am) != 6:
+            return True
+        r = (supabase.table("tab_esocial")
+             .select("layout, data_grava, hora_grava")
+             .eq("id_empresa", ie)
+             .in_("layout", ["1298", "1299"])
+             .eq("ano_mes", int(am))
+             .not_.is_("recibo", "null")
+             .neq("recibo", "")
+             .order("data_grava", desc=True)
+             .order("hora_grava", desc=True)
+             .limit(1)
+             .execute())
+        if not r.data:
+            return True
+        # Aberta se o último evento foi S-1298 (reabertura); fechada se S-1299.
+        return str(r.data[0].get("layout") or "") == "1298"
+    except Exception:
+        return True
 
 
 def _validar_folha_para_envio_esocial(layout, ano_mes=None, folha_tipo="N"):
@@ -15171,8 +15234,13 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
 # =========================================================
 # eSocial S-1200 — GERADOR DE XML
 # =========================================================
-def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
-    """Gera string XML do S-1200 (Remuneração do Trabalhador - RGPS)."""
+def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
+                     rubr_map=None):
+    """Gera string XML do S-1200 (Remuneração do Trabalhador - RGPS).
+
+    rubr_map: mantido por compatibilidade, não usado. Gov exige <indApurIR>
+    em TODAS as rubricas (tentamos omitir nas retentoras/deduções e o gov
+    rejeitou com erro 'Campo de preenchimento obrigatório')."""
     import re
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
@@ -15222,7 +15290,22 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
 
     _am     = str(int(ano_mes)).zfill(6)
     per_apur = f"{_am[:4]}-{_am[4:6]}"
-    ind_apur = "2" if folha_tipo in ('1', 'A') else "1"
+    # ATENCAO: <indApuracao> (no ideEvento) e <indApurIR> (em itensRemun)
+    # sao campos DIFERENTES e tem enumeracoes diferentes no schema v_S_01_03_00.
+    #
+    # <indApuracao> (ideEvento): TS_indApuracao = {1, 2}
+    #   1 = Mensal (folha normal)
+    #   2 = Anual (13º salario)
+    #
+    # <indApurIR> (itensRemun): TS_indApurIR = {0, 1}
+    #   0 = Apuracao Mensal (segue indApuracao=1)
+    #   1 = Apuracao Anual (RRA — Rendimentos Recebidos Acumuladamente)
+    #
+    # Mandar indApurIR=1 em folha mensal faz o gov tratar tudo como RRA, e o
+    # S-5012 (IRRF) retorna com indExistInfo=2 (zerado) por conflito com o
+    # tpCR=056107 do S-1210.
+    ind_apuracao = "2" if folha_tipo in ('1', 'A') else "1"
+    ind_apur_ir  = "0"
 
     # Sufixo do codRubr conforme tipo de folha:
     #   F = Férias  → "-FER"   | demais (N/1/A/R) → "-FOL"
@@ -15234,6 +15317,10 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
         except Exception:
             return s
 
+    # <indApurIR> é OBRIGATÓRIO em todo <itensRemun> (gov rejeitou tentativa
+    # de omitir em rubricas com tpn_inc_irrf=9/N/31/41). Valor fixo "0" para
+    # apuracao mensal (igual ao sistema legado em prod) — usar "1" tornaria
+    # tudo RRA e zeraria o S-5012.
     itens_xml = ""
     for item in mov_items:
         cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
@@ -15245,7 +15332,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
               <codRubr>{x(_cod_fmt)}</codRubr>
               <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
               <vrRubr>{fmt_brl(val)}</vrRubr>
-              <indApurIR>{ind_apur}</indApurIR>
+              <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
 
     if not itens_xml.strip():
@@ -15255,7 +15342,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
               <codRubr>{x(_cod_fmt)}</codRubr>
               <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
               <vrRubr>0.00</vrRubr>
-              <indApurIR>{ind_apur}</indApurIR>
+              <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
 
     nis_trab = dg(func.get('nis') or func.get('pis') or '')
@@ -15268,7 +15355,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
   <evtRemun Id="{evt_id}">
     <ideEvento>
       <indRetif>1</indRetif>
-      <indApuracao>{ind_apur}</indApuracao>
+      <indApuracao>{ind_apuracao}</indApuracao>
       <perApur>{per_apur}</perApur>
       <tpAmb>{x(tpAmb)}</tpAmb>
       <procEmi>1</procEmi>
@@ -15282,7 +15369,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
       <cpfTrab>{x(cpf)}</cpfTrab>{nis_xml}
     </ideTrabalhador>
     <dmDev>
-      <ideDmDev>{per_apur}</ideDmDev>
+      <ideDmDev>{mat_es}00</ideDmDev>
       <codCateg>{x(codcateg)}</codCateg>
       <infoPerApur>
         <ideEstabLot>
@@ -15302,8 +15389,22 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1"):
 # =========================================================
 # eSocial S-1210 — GERADOR DE XML
 # =========================================================
-def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto, recibo_s1200, totais):
-    """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho)."""
+def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
+                     recibo_s1200, totais, mov_items=None, rubr_map=None,
+                     deps_irrf=None, vlr_ded_dep_cent=0):
+    """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho).
+
+    Dentro de <infoPgto> o schema v_S_01_03_00 é minimalista (so dtPgto,
+    tpPgto, perRef, ideDmDev, vrLiq + paisResidExt/infoPgtoExt opcionais —
+    NAO existe <detPgtoFl>). Mas <infoIRComplem> EXISTE como irmao de
+    <infoPgto> dentro de <ideBenef> e e usado para informar dependentes
+    de IRRF + codigo de receita 056107 + deducao de dependente — sem
+    esse bloco o gov nao retorna IR retido no S-5002.
+
+    deps_irrf: lista de dependentes IRRF do funcionario (dicts com
+        'cpfdep' e 'tpdep'). Vazio = sem dependentes.
+    vlr_ded_dep_cent: deducao por dependente em centavos (vem da tabela
+        legal IRRF vigente)."""
     import re
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
@@ -15326,17 +15427,54 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto, recibo_s
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf      = dg(func.get('cpf', '')).zfill(11)
-    codcateg = str(func.get('codcateg') or '101')
+    mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
 
     _am      = str(int(ano_mes)).zfill(6)
     per_apur = f"{_am[:4]}-{_am[4:6]}"
+    # ideDmDev: identificador unico do demonstrativo do trabalhador (S-1200)
+    # que o S-1210 referencia. Tem que ser DIFERENTE por trabalhador (usar
+    # so o per_apur deixa todos com mesmo ID, e o gov nao casa o pagamento
+    # com a remuneracao certa — zera o S-5012). Padrao do legado: matricula
+    # 6 digitos + "00" (ex.: matricula 1 -> "00000100").
+    ide_dm_dev = f"{mat_es}00"
 
     _TP_PGTO = {'N': '1', '1': '2', 'A': '2', 'F': '4', 'R': '3'}
     tp_pgto  = _TP_PGTO.get(str(folha_tipo), '1')
 
-    vr_total    = fmt_brl(totais.get('valor_liquido', 0))
-    vr_base_ins = fmt_brl(totais.get('valor_base_inss_comlimite', 0))
-    vr_base_irr = fmt_brl(totais.get('valor_irrf_basetabela', 0))
+    vr_total = fmt_brl(totais.get('valor_liquido', 0))
+
+    # ── infoIRComplem ───────────────────────────────────────────────────
+    # Bloco usado pelo gov para conciliar a retencao de IRRF no S-5002.
+    # Gera quando ha dependente IRRF cadastrado (depirrf='S').
+    deps_irrf = deps_irrf or []
+    info_ir_xml = ""
+    if deps_irrf:
+        info_dep_xml = ""
+        ded_depen_xml = ""
+        for _d in deps_irrf:
+            _cpfd = dg(_d.get("cpfdep") or "").zfill(11)
+            _tpd  = str(_d.get("tpdep") or "").strip().zfill(2)
+            if not _cpfd or not _tpd:
+                continue
+            info_dep_xml += f"""
+        <infoDep>
+          <cpfDep>{x(_cpfd)}</cpfDep>
+          <depIRRF>S</depIRRF>
+          <tpDep>{x(_tpd)}</tpDep>
+        </infoDep>"""
+            ded_depen_xml += f"""
+          <dedDepen>
+            <tpRend>11</tpRend>
+            <cpfDep>{x(_cpfd)}</cpfDep>
+            <vlrDedDep>{fmt_brl(vlr_ded_dep_cent)}</vlrDedDep>
+          </dedDepen>"""
+        if info_dep_xml or ded_depen_xml:
+            info_ir_xml = f"""
+      <infoIRComplem>{info_dep_xml}
+        <infoIRCR>
+          <tpCR>056107</tpCR>{ded_depen_xml}
+        </infoIRCR>
+      </infoIRComplem>"""
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtPgtos/v_S_01_03_00"
@@ -15360,9 +15498,9 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto, recibo_s
         <dtPgto>{x(dtPgto)}</dtPgto>
         <tpPgto>{x(tp_pgto)}</tpPgto>
         <perRef>{per_apur}</perRef>
-        <ideDmDev>{per_apur}</ideDmDev>
+        <ideDmDev>{ide_dm_dev}</ideDmDev>
         <vrLiq>{vr_total}</vrLiq>
-      </infoPgto>
+      </infoPgto>{info_ir_xml}
     </ideBenef>
   </evtPgtos>
 </eSocial>"""
@@ -15371,10 +15509,12 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto, recibo_s
 # =========================================================
 # eSocial S-3000 — GERADOR DE XML
 # =========================================================
-def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
+def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1",
+                     ano_mes=None, folha_tipo=None):
     """Gera string XML do S-3000 (Exclusão de Eventos).
     cpf_trab vazio = evento de empregador (S-1000, S-1005, etc.) — sem ideTrabalhador.
-    """
+    ano_mes + folha_tipo: obrigatórios ao excluir periódico (S-1200/1210/1295/1298/1299/1280/1270)
+        — o gov exige <ideFolhaPagto> dentro de <infoExclusao>."""
     from xml.sax.saxutils import escape as _esc
     from datetime import datetime as _dt
     import re
@@ -15390,8 +15530,47 @@ def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
-    ide_trab_xml = (f"\n      <ideTrabalhador>\n        <cpfTrab>{x(cpf_trab)}</cpfTrab>\n"
-                    f"      </ideTrabalhador>") if cpf_trab else ""
+    # Para periódicos (S-1200/1210/1299...) o gov exige nesta ORDEM dentro de
+    # <infoExclusao>:  tpEvento → nrRecEvt → ideTrabalhador → ideFolhaPagto.
+    # Para S-2xxx (não-periódicos com trabalhador): só <ideTrabalhador>.
+    # Para S-1xxx empregador (S-1000/1005/1010/1020): nada extra.
+    PERIODICOS = {"1200", "1210", "1270", "1280", "1295", "1298", "1299"}
+    tp_evt_num = str(tp_evento).strip()
+
+    ide_trab_xml = ""
+    if cpf_trab:
+        ide_trab_xml = (
+            f"\n      <ideTrabalhador>"
+            f"\n        <cpfTrab>{x(cpf_trab)}</cpfTrab>"
+            f"\n      </ideTrabalhador>"
+        )
+
+    ide_folha_xml = ""
+    if tp_evt_num in PERIODICOS:
+        if not ano_mes:
+            raise ValueError(
+                f"S-3000 para S-{tp_evt_num} exige ano_mes (periódico) — "
+                "passe ano_mes do registro original.")
+        _am = str(int(ano_mes)).zfill(6)
+        # 13º (folha_tipo 1/A) → perApur=YYYY; demais → YYYY-MM
+        eh_anual = str(folha_tipo or "").upper() in ("1", "A")
+        per_apur = _am[:4] if eh_anual else f"{_am[:4]}-{_am[4:6]}"
+        # S-1210 (Pagamentos) é o único periódico sem indApuracao no XSD do
+        # gov; os outros (S-1200/1270/1280/1295/1298/1299) exigem.
+        if tp_evt_num == "1210":
+            ide_folha_xml = (
+                f"\n      <ideFolhaPagto>"
+                f"\n        <perApur>{per_apur}</perApur>"
+                f"\n      </ideFolhaPagto>"
+            )
+        else:
+            ind_apur = "2" if eh_anual else "1"
+            ide_folha_xml = (
+                f"\n      <ideFolhaPagto>"
+                f"\n        <indApuracao>{ind_apur}</indApuracao>"
+                f"\n        <perApur>{per_apur}</perApur>"
+                f"\n      </ideFolhaPagto>"
+            )
 
     return f"""<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtExclusao/v_S_01_03_00">
   <evtExclusao Id="{evt_id}">
@@ -15405,8 +15584,8 @@ def _gerar_xml_s3000(recibo_excluir, tp_evento, cpf_trab, empresa, tpAmb="1"):
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
     <infoExclusao>
-      <tpEvento>S-{x(tp_evento)}</tpEvento>
-      <nrRecEvt>{x(recibo_excluir)}</nrRecEvt>{ide_trab_xml}
+      <tpEvento>S-{x(tp_evt_num)}</tpEvento>
+      <nrRecEvt>{x(recibo_excluir)}</nrRecEvt>{ide_trab_xml}{ide_folha_xml}
     </infoExclusao>
   </evtExclusao>
 </eSocial>"""
@@ -17595,6 +17774,7 @@ def esocial_s2200():
         contagens=contagens,
         total=len(rows),
         anomes_atual=anomes_atual,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
 
 
@@ -18363,6 +18543,7 @@ def esocial_s2205():
         rows=rows, total=len(rows),
         anomes_atual=anomes_atual,
         f_sit=f_sit, contagens=contagens,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
 
 
@@ -18904,6 +19085,7 @@ def esocial_s2206():
         rows=rows, total=len(rows),
         anomes_atual=anomes_atual,
         f_sit=f_sit, contagens=contagens,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
 
 
@@ -19872,7 +20054,8 @@ def api_esocial_gerador_criar():
     recibo_ref = (data.get("recibo_ref") or "").strip()
     rubricas   = data.get("rubricas", [])   # usado apenas para S-1010
 
-    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2220", "2230", "2299"}
+    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2220", "2230", "2299",
+                        "1200", "1210"}
     _LAYOUTS_VALIDOS = {"1000", "1005", "1010", "1020",
                         "2200", "2205", "2206", "2220", "2230", "2299",
                         "1200", "1210", "1298", "1299", "3000"}
@@ -20106,6 +20289,7 @@ def esocial_s1200():
         periodos_disp=periodos_disp,
         TP_FOLHA=_TP_FOLHA,
         anomes_atual=anomes_atual,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
 
 
@@ -20268,6 +20452,33 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar movimento: {e}"})
 
+    # 3b. Tabela de rubricas (precisa do tpn_inc_irrf para decidir se manda
+    # <indApurIR> em cada rubrica). Pagina pra cobrir cod_rubr > 1000.
+    rubr_map = {}
+    try:
+        _id_cli_rb = session.get("id_cliente")
+        for _cli in ([0] + ([_id_cli_rb] if _id_cli_rb else [])):
+            _offset = 0
+            while True:
+                _rr = (supabase.table("tab_rubrica")
+                       .select("cod_rubr,tp_rubr,tpn_inc_irrf")
+                       .eq("id_cliente", _cli)
+                       .range(_offset, _offset + 999)
+                       .execute())
+                _rows_rb = _rr.data or []
+                for _rb in _rows_rb:
+                    _cod = int(_rb.get("cod_rubr") or 0)
+                    if _cod:
+                        rubr_map[_cod] = {
+                            "tp":            str(_rb.get("tp_rubr") or "1"),
+                            "tpn_inc_irrf":  str(_rb.get("tpn_inc_irrf") or ""),
+                        }
+                if len(_rows_rb) < 1000:
+                    break
+                _offset += 1000
+    except Exception:
+        pass
+
     # 4. Empresa (cert validado depois do save do XML cru)
     try:
         r_emp = (supabase.table("tab_empresa")
@@ -20286,7 +20497,8 @@ def api_esocial_s1200_enviar():
              f"S1200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
-        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb)
+        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb,
+                                   rubr_map=rubr_map)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -20709,6 +20921,7 @@ def esocial_s1210():
         TP_FOLHA=_TP_FOLHA,
         dtpgto_default=dtpgto_default,
         anomes_atual=anomes_atual,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
 
 
@@ -20798,7 +21011,8 @@ def api_esocial_s1210_enviar():
     totais = {}
     try:
         _qt = (supabase.table("tab_total")
-               .select("valor_liquido, valor_base_inss_comlimite, valor_irrf_basetabela")
+               .select("valor_liquido, valor_base_inss_comlimite, valor_irrf_basetabela,"
+                       " valor_irrf_dependentes, qtd_irrf_dependentes")
                .eq("id_empresa", id_empresa)
                .eq("matricula", matricula)
                .eq("folha", int(ano_mes))
@@ -20806,6 +21020,74 @@ def api_esocial_s1210_enviar():
                .limit(1).execute())
         if _qt.data:
             totais = _qt.data[0]
+    except Exception:
+        pass
+
+    # 4a. Dependentes IRRF do funcionario (para <infoIRComplem> no S-1210)
+    deps_irrf = []
+    try:
+        _qd = (supabase.table("tab_dependentes")
+               .select("cpfdep, tpdep")
+               .eq("id_empresa", id_empresa)
+               .eq("matricula", int(matricula))
+               .eq("depirrf", "S")
+               .execute())
+        deps_irrf = [d for d in (_qd.data or [])
+                     if d.get("cpfdep") and d.get("tpdep") is not None]
+    except Exception:
+        deps_irrf = []
+
+    # Deducao por dependente (centavos): valor_irrf_dependentes / qtd_irrf_dependentes
+    _vlr_dep_tot = int(totais.get("valor_irrf_dependentes") or 0)
+    _qtd_dep     = int(totais.get("qtd_irrf_dependentes") or 0)
+    vlr_ded_dep_cent = (_vlr_dep_tot // _qtd_dep) if _qtd_dep > 0 else 0
+
+    # 4b. Movimento do trabalhador (rubricas) — vai virar <detPgtoFl> no XML
+    mov_items = []
+    try:
+        _qm = (supabase.table("tab_mov")
+               .select("cod_verba, valor")
+               .eq("id_empresa", id_empresa)
+               .eq("matricula", matricula)
+               .eq("folha", int(ano_mes))
+               .eq("folha_tipo", folha_tipo)
+               .eq("situacao", "A"))
+        _id_cliente = session.get("id_cliente")
+        if _id_cliente:
+            _qm = _qm.eq("id_cliente", _id_cliente)
+        _rows_mov = _qm.execute().data or []
+        _agg = {}
+        for _r in _rows_mov:
+            _c = str(_r.get("cod_verba") or "")
+            _v = int(_r.get("valor") or 0)
+            _agg[_c] = _agg.get(_c, 0) + _v
+        mov_items = [{"cod_verba": k, "valor": v} for k, v in _agg.items() if v != 0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar movimento: {e}"})
+
+    # 4c. Tabela de rubricas (precisa do tp_rubr para montar <detPgtoFl>)
+    rubr_map = {}
+    try:
+        _id_cli_rb = session.get("id_cliente")
+        for _cli in ([0] + ([_id_cli_rb] if _id_cli_rb else [])):
+            _offset = 0
+            while True:
+                _rr = (supabase.table("tab_rubrica")
+                       .select("cod_rubr,tp_rubr,dsc_rubr")
+                       .eq("id_cliente", _cli)
+                       .range(_offset, _offset + 999)
+                       .execute())
+                _rows_rb = _rr.data or []
+                for _rb in _rows_rb:
+                    _cod = int(_rb.get("cod_rubr") or 0)
+                    if _cod:
+                        rubr_map[_cod] = {
+                            "tp":  str(_rb.get("tp_rubr") or "1"),
+                            "dsc": str(_rb.get("dsc_rubr") or f"Verba {_cod:04d}"),
+                        }
+                if len(_rows_rb) < 1000:
+                    break
+                _offset += 1000
     except Exception:
         pass
 
@@ -20828,7 +21110,10 @@ def api_esocial_s1210_enviar():
 
     try:
         xml_str = _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb,
-                                   dtPgto, recibo_s1200, totais)
+                                   dtPgto, recibo_s1200, totais,
+                                   mov_items=mov_items, rubr_map=rubr_map,
+                                   deps_irrf=deps_irrf,
+                                   vlr_ded_dep_cent=vlr_ded_dep_cent)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -21196,6 +21481,31 @@ def esocial_s1299():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
 
+    # Pre-marca checkboxes "S-1200" e "S-1210" com base no que ja foi enviado
+    # ao gov na folha ativa — evita o erro 589 quando o usuario deixa o flag
+    # com valor incoerente com a realidade.
+    tem_s1200_enviado = False
+    tem_s1210_enviado = False
+    if anomes_atual:
+        anomes_tipo = str(session.get("anomes_tipo") or "N")
+        try:
+            for _lay, _attr in (("1200", "s1200"), ("1210", "s1210")):
+                _r = (supabase.table("tab_esocial")
+                      .select("id_esocial")
+                      .eq("id_empresa", id_empresa)
+                      .eq("layout", _lay)
+                      .eq("ano_mes", int(anomes_atual))
+                      .eq("folha_tipo", anomes_tipo)
+                      .not_.is_("recibo", "null")
+                      .neq("recibo", "")
+                      .limit(1).execute())
+                if _attr == "s1200":
+                    tem_s1200_enviado = bool(_r.data)
+                else:
+                    tem_s1210_enviado = bool(_r.data)
+        except Exception:
+            pass
+
     return render_template(
         "F10_eSocial_S1299.html",
         versao=ler_versao(),
@@ -21205,6 +21515,9 @@ def esocial_s1299():
         rows=rows,
         total=len(rows),
         anomes_atual=anomes_atual,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
+        tem_s1200_enviado=tem_s1200_enviado,
+        tem_s1210_enviado=tem_s1210_enviado,
     )
 
 
@@ -21299,6 +21612,48 @@ def api_esocial_s1299_enviar():
     else:
         evt_remun = "S" if evt_remun_raw == "S" else "N"
         evt_pgtos = "S" if evt_pgtos_raw == "S" else "N"
+
+    # Coerencia com o que ja foi enviado ao gov: se houver S-1200/S-1210 com
+    # recibo valido no periodo, evt_remun/evt_pgtos TEM que ser "S" — caso
+    # contrario o gov rejeita com erro 589.
+    def _tem_enviado(layout):
+        try:
+            _r = (supabase.table("tab_esocial")
+                  .select("id_esocial")
+                  .eq("id_empresa", id_empresa)
+                  .eq("layout", layout)
+                  .eq("ano_mes", int(ano_mes))
+                  .eq("folha_tipo", folha_tp)
+                  .not_.is_("recibo", "null")
+                  .neq("recibo", "")
+                  .limit(1).execute())
+            return bool(_r.data)
+        except Exception:
+            return False
+
+    if not sem_mov:
+        tem_1200 = _tem_enviado("1200")
+        tem_1210 = _tem_enviado("1210")
+        if evt_remun == "N" and tem_1200:
+            return jsonify({"ok": False,
+                "msg": ("Existem S-1200 enviados no periodo — marque "
+                        "'S-1200 Remuneracao' antes de enviar o S-1299.")})
+        if evt_pgtos == "N" and tem_1210:
+            return jsonify({"ok": False,
+                "msg": ("Existem S-1210 enviados no periodo — marque "
+                        "'S-1210 Pagamentos' antes de enviar o S-1299.")})
+        # Caso oposto: marcou "S" sem ter nada enviado → gov tambem rejeita
+        # com erro 589 ("preencha com Nao quando nao existir").
+        if evt_remun == "S" and not tem_1200:
+            return jsonify({"ok": False,
+                "msg": ("Nao ha S-1200 enviado/processado no periodo. "
+                        "Envie os S-1200 primeiro ou desmarque "
+                        "'S-1200 Remuneracao'.")})
+        if evt_pgtos == "S" and not tem_1210:
+            return jsonify({"ok": False,
+                "msg": ("Nao ha S-1210 enviado/processado no periodo. "
+                        "Envie os S-1210 primeiro ou desmarque "
+                        "'S-1210 Pagamentos'.")})
 
     # Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = datetime.now()
@@ -21695,20 +22050,20 @@ def _extrair_s5xxx_do_xml(xml_str):
     return out
 
 
-@app.route("/api/esocial_verificacao/consultar", methods=["POST"])
-def api_esocial_verificacao_consultar():
-    """Lê os XMLs de retorno do S-1200/S-1210 do período no Storage e extrai
-    os S-5001/5002/5003 embutidos (que o gov devolve junto com cada lote).
-    Para cada (layout, matricula) pega sempre o ÚLTIMO envio."""
-    if not session.get("logado"):
-        return jsonify({"ok": False, "msg": "Sessão expirada."})
-
-    id_empresa = _get_id_empresa()
-    id_cliente = session.get("id_cliente")
-
-    anomes_atual = str(session.get("anomes_atual") or "")
-    if not anomes_atual or len(anomes_atual) != 6:
-        return jsonify({"ok": False, "msg": "Folha ativa inválida."})
+def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
+    """Limpa a pasta verificacao/<periodo> e re-extrai os S-5xxx dos retornos
+    mais recentes de S-1200/S-1210 no Storage. Retorna dict com stats.
+    Helper compartilhado entre a rota /consultar e o /comparar (auto-refresh)."""
+    # Limpa verificacao/<period> antes de salvar novos S-5xxx
+    _pref_verif = _verif_path_rel(id_empresa, anomes_atual, id_cliente)
+    try:
+        _antigos = _supabase_storage.storage.from_(_ESOC_BUCKET).list(_pref_verif) or []
+        _paths_antigos = [f"{_pref_verif}/{it['name']}" for it in _antigos
+                          if (it.get("name") or "").lower().endswith(".xml")]
+        if _paths_antigos:
+            _supabase_storage.storage.from_(_ESOC_BUCKET).remove(_paths_antigos)
+    except Exception as _e:
+        print(f"[VERIF] aviso ao limpar pasta verificacao/: {_e}")
 
     # Diretórios candidatos no Storage: do próprio período + do data_grava de
     # cada envio S-1200/1210 (caso o envio tenha sido feito em outro mês).
@@ -21734,11 +22089,11 @@ def api_esocial_verificacao_consultar():
                 except Exception:
                     pass
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar tab_esocial: {e}"})
+        return {"ok": False, "msg": f"Erro ao buscar tab_esocial: {e}"}
 
     if not diretorios:
-        return jsonify({"ok": True, "baixados": 0, "consultados": 0,
-                        "erros": [], "msg": "Sem diretórios para procurar."})
+        return {"ok": True, "baixados": 0, "consultados": 0,
+                "erros": [], "msg": "Sem diretórios para procurar."}
 
     # Padrão: S{layout}_{matricula}_{YYYYMMDD}_{HHMMSS}_{etapa}_{desc}.xml
     import re as _re_v
@@ -21797,7 +22152,7 @@ def api_esocial_verificacao_consultar():
             }
 
     if not melhor:
-        return jsonify({
+        return {
             "ok": True, "baixados": 0, "consultados": 0,
             "total_erros": len(erros), "erros": erros[:50],
             "diretorios": sorted(diretorios),
@@ -21807,7 +22162,7 @@ def api_esocial_verificacao_consultar():
             "id_cliente": id_cliente,
             "msg": (f"Nenhum arquivo de retorno (_5_ ou _6_) de S-1200/S-1210 "
                     f"encontrado para {anomes_atual}."),
-        })
+        }
 
     # Lê e extrai S-5xxx de cada arquivo selecionado
     baixados = 0
@@ -21850,7 +22205,7 @@ def api_esocial_verificacao_consultar():
                f"Verificação: {len(arquivos_lidos)} arquivo(s) lido(s), "
                f"{baixados} S-5xxx extraídos.")
 
-    return jsonify({
+    return {
         "ok":          True,
         "consultados": len(arquivos_lidos),
         "baixados":    baixados,
@@ -21861,7 +22216,24 @@ def api_esocial_verificacao_consultar():
         "erros":       erros[:50],
         "msg":         (f"{baixados} evento(s) S-5xxx extraído(s) de "
                         f"{len(arquivos_lidos)} arquivo(s) S-1200/S-1210."),
-    })
+    }
+
+
+@app.route("/api/esocial_verificacao/consultar", methods=["POST"])
+def api_esocial_verificacao_consultar():
+    """Lê os XMLs de retorno do S-1200/S-1210 do período no Storage e extrai
+    os S-5001/5002/5003 embutidos (que o gov devolve junto com cada lote).
+    Para cada (layout, matricula) pega sempre o ÚLTIMO envio.
+    Limpa a pasta verificacao/ do período antes de salvar — evita somar
+    resultados de remessas antigas que foram retificadas/excluídas."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes_atual = str(session.get("anomes_atual") or "")
+    if not anomes_atual or len(anomes_atual) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa inválida."})
+    return jsonify(_atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual))
 
 
 # =========================================================
@@ -22011,49 +22383,122 @@ def _local_iter(xml_str):
 
 
 def _parse_s5001(xml_str):
-    """S-5001 — Bases INSS por Trabalhador. Soma vrCpSeg + vrDescSestSenat (INSS retido segurado)."""
+    """S-5001 — Bases INSS por Trabalhador (schema v_S_01_03_00).
+
+    Tags reais no XML do gov:
+    - <cpfTrab> = CPF do trabalhador
+    - <vrCpSeg> = contribuicao previdenciaria do segurado (INSS retido)
+    - <infoBaseCS> com <tpValor>11</tpValor><valor>X</valor> = base INSS
+    """
+    from lxml import etree
     out = {"cpf": "", "vr_inss_seg": 0, "vr_base_inss": 0, "per_apur": ""}
-    for tag, txt, _ in _local_iter(xml_str):
-        if tag == "cpfTrab" and not out["cpf"]:
-            out["cpf"] = txt
-        elif tag == "perApur" and not out["per_apur"]:
-            out["per_apur"] = txt
-        elif tag == "vrCpSeg":
-            out["vr_inss_seg"] += _para_centavos(txt)
-        elif tag == "vrDescSestSenat":
-            out["vr_inss_seg"] += _para_centavos(txt)
-        elif tag in ("vrBcCp00", "vrBcCp15", "vrBcCp20", "vrBcCp25"):
-            out["vr_base_inss"] += _para_centavos(txt)
+    try:
+        root = etree.fromstring(xml_str.encode("utf-8") if isinstance(xml_str, str) else xml_str)
+    except Exception:
+        return out
+    def ln(el): return el.tag.split("}")[-1]
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        name = ln(el)
+        if name == "cpfTrab" and not out["cpf"]:
+            out["cpf"] = (el.text or "").strip()
+        elif name == "perApur" and not out["per_apur"]:
+            out["per_apur"] = (el.text or "").strip()
+        elif name == "vrCpSeg":
+            out["vr_inss_seg"] += _para_centavos((el.text or "").strip())
+        elif name == "vrDescSestSenat":
+            out["vr_inss_seg"] += _para_centavos((el.text or "").strip())
+        elif name == "infoBaseCS":
+            tp = ""; val = ""
+            for ch in el:
+                if not isinstance(ch.tag, str): continue
+                cn = ln(ch)
+                if cn == "tpValor": tp = (ch.text or "").strip()
+                elif cn == "valor": val = (ch.text or "").strip()
+            if tp == "11":  # 11 = base normal de contribuicao
+                out["vr_base_inss"] += _para_centavos(val)
+        elif name in ("vrBcCp00", "vrBcCp15", "vrBcCp20", "vrBcCp25"):
+            # compat: schemas antigos
+            out["vr_base_inss"] += _para_centavos((el.text or "").strip())
     return out
 
 
 def _parse_s5002(xml_str):
-    """S-5002 — IRRF por Trabalhador. Soma vrIrrf e vrBcIrrf."""
+    """S-5002 — IRRF por Trabalhador (schema v_S_01_03_00).
+
+    Tags reais no XML do gov:
+    - <cpfBenef> = CPF do beneficiario (antes era <cpfTrab>)
+    - <infoIR> blocks com <tpInfoIR><valor>:
+        tpInfoIR=11 -> rendimentos tributaveis (base IRRF)
+        tpInfoIR=31 -> IRRF retido mensal
+        tpInfoIR=41 -> outras deducoes (INSS)
+        tpInfoIR=7900 -> outras categorias
+    """
+    from lxml import etree
     out = {"cpf": "", "vr_irrf": 0, "vr_base_irrf": 0, "per_apur": ""}
-    for tag, txt, _ in _local_iter(xml_str):
-        if tag == "cpfTrab" and not out["cpf"]:
-            out["cpf"] = txt
-        elif tag == "perApur" and not out["per_apur"]:
-            out["per_apur"] = txt
-        elif tag in ("vrIrrf", "vrIrrfDesc"):
-            out["vr_irrf"] += _para_centavos(txt)
-        elif tag in ("vrBcIrrf", "vrBaseIRRF"):
-            out["vr_base_irrf"] += _para_centavos(txt)
+    try:
+        root = etree.fromstring(xml_str.encode("utf-8") if isinstance(xml_str, str) else xml_str)
+    except Exception:
+        return out
+    def ln(el): return el.tag.split("}")[-1]
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        name = ln(el)
+        if name in ("cpfBenef", "cpfTrab") and not out["cpf"]:
+            out["cpf"] = (el.text or "").strip()
+        elif name == "perApur" and not out["per_apur"]:
+            out["per_apur"] = (el.text or "").strip()
+        elif name == "infoIR":
+            tp = ""; val = ""
+            for ch in el:
+                if not isinstance(ch.tag, str): continue
+                cn = ln(ch)
+                if cn == "tpInfoIR": tp = (ch.text or "").strip()
+                elif cn == "valor": val = (ch.text or "").strip()
+            if tp == "31":
+                out["vr_irrf"] += _para_centavos(val)
+            elif tp == "11":
+                out["vr_base_irrf"] += _para_centavos(val)
+        elif name in ("vrIrrf", "vrIrrfDesc"):
+            # compat: schemas antigos
+            out["vr_irrf"] += _para_centavos((el.text or "").strip())
+        elif name in ("vrBcIrrf", "vrBaseIRRF"):
+            out["vr_base_irrf"] += _para_centavos((el.text or "").strip())
     return out
 
 
 def _parse_s5003(xml_str):
-    """S-5003 — FGTS por Trabalhador. Soma dpsFGTS e baseFGTS."""
+    """S-5003 — FGTS por Trabalhador (schema v_S_01_03_00).
+
+    Tags reais no XML do gov:
+    - <cpfTrab> = CPF
+    - <dpsFGTS> = deposito FGTS (valor retido)
+    - <remFGTS> = remuneracao base do FGTS
+    """
+    from lxml import etree
     out = {"cpf": "", "vr_fgts": 0, "vr_base_fgts": 0, "per_apur": ""}
-    for tag, txt, _ in _local_iter(xml_str):
-        if tag == "cpfTrab" and not out["cpf"]:
-            out["cpf"] = txt
-        elif tag == "perApur" and not out["per_apur"]:
-            out["per_apur"] = txt
-        elif tag in ("dpsFGTS", "vrDpsFGTS", "vrFGTS"):
-            out["vr_fgts"] += _para_centavos(txt)
-        elif tag in ("baseCalc", "vrBaseFGTS", "baseFGTS"):
-            out["vr_base_fgts"] += _para_centavos(txt)
+    try:
+        root = etree.fromstring(xml_str.encode("utf-8") if isinstance(xml_str, str) else xml_str)
+    except Exception:
+        return out
+    def ln(el): return el.tag.split("}")[-1]
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        name = ln(el)
+        if name == "cpfTrab" and not out["cpf"]:
+            out["cpf"] = (el.text or "").strip()
+        elif name == "perApur" and not out["per_apur"]:
+            out["per_apur"] = (el.text or "").strip()
+        elif name in ("dpsFGTS", "vrDpsFGTS", "vrFGTS"):
+            out["vr_fgts"] += _para_centavos((el.text or "").strip())
+        elif name == "remFGTS":
+            out["vr_base_fgts"] += _para_centavos((el.text or "").strip())
+        elif name in ("baseCalc", "vrBaseFGTS", "baseFGTS"):
+            # compat: schemas antigos
+            out["vr_base_fgts"] += _para_centavos((el.text or "").strip())
     return out
 
 
@@ -22119,6 +22564,7 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
 
     mats = [cad_map[c]["matricula"] for c in cpfs if c in cad_map]
     tot_map = {}
+    irrf_ret_por_mat = {}
     if mats:
         try:
             tots = (supabase.table("tab_total")
@@ -22134,6 +22580,25 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
                 tot_map[t.get("matricula")] = t
         except Exception as e:
             return False, {"ok": False, "msg": f"Erro ao ler tab_total: {e}"}
+        # IRRF retido do Folha10: soma da rubrica 120 (IMPOSTO DE RENDA) do tab_mov.
+        # tab_total nao tem coluna direta de IRRF retido — vem como rubrica de
+        # desconto no movimento.
+        try:
+            movs = (supabase.table("tab_mov")
+                    .select("matricula, valor")
+                    .eq("id_empresa", id_empresa)
+                    .eq("folha", int(anomes_atual))
+                    .eq("folha_tipo", folha_tipo)
+                    .eq("cod_verba", 120)
+                    .eq("situacao", "A")
+                    .in_("matricula", mats)
+                    .execute().data or [])
+            for m in movs:
+                mat = m.get("matricula")
+                if mat is not None:
+                    irrf_ret_por_mat[mat] = irrf_ret_por_mat.get(mat, 0) + int(m.get("valor") or 0)
+        except Exception:
+            pass
 
     linhas = []
     for cpf, gov in sorted(por_cpf.items(),
@@ -22143,10 +22608,13 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
         tot = tot_map.get(mat, {}) if mat else {}
         f10_inss  = int(tot.get("valor_inss_retido") or 0)
         f10_fgts  = int(tot.get("valor_fgts") or 0)
-        f10_birrf = int(tot.get("valor_irrf_basetabela") or 0)
+        # Coluna "birrf" agora compara IRRF RETIDO (nao mais Base IRRF) — as
+        # bases tem semantica diferente entre gov (rendimentos brutos) e
+        # Folha10 (apos INSS+dependentes), entao sempre apareciam como diff.
+        f10_birrf = int(irrf_ret_por_mat.get(mat, 0))
         gov_inss  = int(gov.get("vr_inss_seg", 0))
         gov_fgts  = int(gov.get("vr_fgts", 0))
-        gov_birrf = int(gov.get("vr_base_irrf", 0))
+        gov_birrf = int(gov.get("vr_irrf", 0))
         linhas.append({
             "cpf":      cpf,
             "matricula": mat,
@@ -22185,6 +22653,14 @@ def api_esocial_verificacao_comparar():
     folha_tipo   = str(session.get("anomes_tipo") or "N")
     if not anomes_atual or len(anomes_atual) != 6:
         return jsonify({"ok": False, "msg": "Folha ativa inválida."})
+    # Auto-refresh DESABILITADO temporariamente — o Flask local do dev pode
+    # estar com codigo velho que extrai do arquivo errado, limpando a pasta
+    # e populando com dados antigos. Para reativar: descomente apos confirmar
+    # que o backend esta rodando o codigo atualizado.
+    # try:
+    #     _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
+    # except Exception as _e:
+    #     print(f"[VERIF] auto-refresh falhou: {_e}")
     ok, payload = _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo)
     return jsonify(payload)
 
@@ -22202,6 +22678,12 @@ def api_esocial_verificacao_pdf():
     folha_tipo   = str(session.get("anomes_tipo") or "N")
     if not anomes_atual or len(anomes_atual) != 6:
         return Response("Folha ativa inválida.", status=400, mimetype="text/plain")
+
+    # Auto-refresh desabilitado (ver comentario na rota /comparar acima).
+    # try:
+    #     _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
+    # except Exception as _e:
+    #     print(f"[VERIF PDF] auto-refresh falhou: {_e}")
 
     ok, payload = _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo)
     if not ok:
@@ -22261,9 +22743,9 @@ def api_esocial_verificacao_pdf():
         P("Funcionário", fn="Helvetica-Bold", fs=_FSH, align=0),
         P("INSS Retido", fn="Helvetica-Bold", fs=_FSH, align=1, col=colors.HexColor("#1d4ed8")),
         "", "",
-        P("FGTS",       fn="Helvetica-Bold", fs=_FSH, align=1, col=colors.HexColor("#9a3412")),
+        P("FGTS",        fn="Helvetica-Bold", fs=_FSH, align=1, col=colors.HexColor("#9a3412")),
         "", "",
-        P("Base IRRF",  fn="Helvetica-Bold", fs=_FSH, align=1, col=colors.HexColor("#15803d")),
+        P("IRRF Retido", fn="Helvetica-Bold", fs=_FSH, align=1, col=colors.HexColor("#15803d")),
         "", "",
     ]
     hdr2 = [
@@ -22467,6 +22949,7 @@ def esocial_s1298():
         rows=rows,
         total=len(rows),
         anomes_atual=anomes_atual,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
     )
 
 
@@ -22886,6 +23369,8 @@ def esocial_s3000():
         else:
             r["_sit"], r["_sit_label"], r["_sit_class"] = "X", "Com Erro",  "sit-erro"
 
+    folha_aberta_esocial = _folha_aberta_no_esocial(id_empresa, anomes_atual)
+
     return render_template(
         "F10_eSocial_S3000.html",
         versao=ler_versao(),
@@ -22895,6 +23380,7 @@ def esocial_s3000():
         por_layout=dict(por_layout),
         s3000_rows=s3000_rows,
         anomes_atual=anomes_atual,
+        folha_aberta_esocial=folha_aberta_esocial,
     )
 
 
@@ -22979,7 +23465,11 @@ def api_esocial_s3000_enviar():
              f"S3000_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
-        xml_str = _gerar_xml_s3000(recibo_excluir, layout, cpf_trab, empresa, tpAmb)
+        xml_str = _gerar_xml_s3000(
+            recibo_excluir, layout, cpf_trab, empresa, tpAmb,
+            ano_mes=es.get("ano_mes"),
+            folha_tipo=es.get("folha_tipo"),
+        )
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -24224,6 +24714,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             _categ_s         = str(l.get("codcateg", "")).strip()
             _categ_n         = int(_categ_s) if _categ_s.isdigit() else 0
             is_intermitente  = _categ_n == 111
+            # Categorias 700-799 = nao-empregado (contribuinte individual / socio
+            # / diretor sem vinculo). Recebe PRO-LABORE (verba 6) em vez de
+            # salario (verba 1), e nao tem FGTS.
+            is_nao_empregado = 700 <= _categ_n <= 799
+            _cod_sal_mes     = 6 if is_nao_empregado else 1
             is_domestico     = 700 <= _categ_n <= 799
             if is_intermitente:
                 formula = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
@@ -24249,7 +24744,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]))
             elems.append(etapa_tbl)
             if not is_intermitente:
-                mmVmm[1] = l["sal_mes"]
+                mmVmm[_cod_sal_mes] = l["sal_mes"]
 
             # ── etapa 2 — admissão no mês ────────────────
             dias_antes_admissao = 0
@@ -24387,7 +24882,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     st_etapa)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
             elif dias_trabalhados == 0:
-                mmVmm[1] = 0
+                mmVmm[_cod_sal_mes] = 0
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
@@ -24398,7 +24893,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elif dias_ferias_total >= 30:
                 # 30 dias de ferias = salario mensal completo pela convencao de 30 dias (CLT)
                 # Mes de 31 dias com 30 dias de ferias: o dia restante ja foi coberto nas ferias
-                mmVmm[1] = 0
+                mmVmm[_cod_sal_mes] = 0
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
@@ -24408,7 +24903,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 e4_tbl.setStyle(_st_e4_zero)
             elif dias_trabalhados < dias_mes:
                 sal_prop = int(l["sal_mes"] * dias_trabalhados / dias_mes)
-                mmVmm[1] = 0
+                mmVmm[_cod_sal_mes] = 0
                 mmVmm[2] = sal_prop
                 mmQmm[2] = dias_trabalhados
                 _st_op = ParagraphStyle("op4a", fontName="Helvetica", fontSize=7,
@@ -25497,10 +25992,15 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 mmVmm.pop(509, None)
 
             # ── totais (base limpa) ────────────────────────────────────────
+            # Rubricas com cod >= 9900 sao informativas (ex.: Vale Refeicao,
+            # Seguro de Vida) — vao no S-1200 mas nao impactam o liquido pago.
+            # Mesma convencao usada na geracao do contracheque (vbs_info).
             total_prov = int(sum(v for r, v in mmVmm.items()
-                                 if rubricas_info.get(r, {"tp":"1"})["tp"] == "1"))
+                                 if int(r) < 9900
+                                 and rubricas_info.get(r, {"tp":"1"})["tp"] == "1"))
             total_desc = int(sum(v for r, v in mmVmm.items()
-                                 if rubricas_info.get(r, {"tp":"1"})["tp"] != "1"))
+                                 if int(r) < 9900
+                                 and rubricas_info.get(r, {"tp":"1"})["tp"] != "1"))
 
             # ── ETAPA 0012 — Arredondamento (somente id_empresa=4) ───────────
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr
@@ -25594,11 +26094,17 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # Grava totais no tab_total
             try:
-                base_fgts_func = sum(
-                    val for cod, val in mmVmm.items()
-                    if rubricas_info.get(cod, {}).get("inc_fgts") == "11" and val > 0
-                )
-                fgts_func = (int(base_fgts_func) * 8) // 100
+                # Cat 700-799 (nao-empregado / CI / socio) nao tem FGTS,
+                # independentemente da incidencia configurada nas rubricas.
+                if is_nao_empregado:
+                    base_fgts_func = 0
+                    fgts_func = 0
+                else:
+                    base_fgts_func = sum(
+                        val for cod, val in mmVmm.items()
+                        if rubricas_info.get(cod, {}).get("inc_fgts") == "11" and val > 0
+                    )
+                    fgts_func = (int(base_fgts_func) * 8) // 100
                 base_inss_com = (min(int(base_inss), inss_teto)
                                  if inss_teto and int(base_inss) > inss_teto
                                  else int(base_inss))
@@ -25935,6 +26441,10 @@ def reabrir_folha():
     sit_map    = {"A": ("Aberta","sit-aberta"), "X": ("Aberta","sit-aberta"),
                   "C": ("Calculada","sit-calculada"), "F": ("Fechada","sit-fechada")}
     sit_label, sit_class = sit_map.get(situacao, ("",""))
+    # Folha fechada no eSocial (S-1299 enviado sem S-1298 posterior) nao
+    # pode ser reaberta aqui — exigiria S-1298 antes.
+    bloqueada_esocial = (situacao in ("C", "F")
+                         and not _folha_aberta_no_esocial(_get_id_empresa(), anomes))
     return render_template(
         "F10_Reabrir_Folha.html",
         versao=ler_versao(),
@@ -25945,6 +26455,7 @@ def reabrir_folha():
         situacao=situacao,
         sit_label=sit_label,
         sit_class=sit_class,
+        bloqueada_esocial=bloqueada_esocial,
     )
 
 
@@ -25959,6 +26470,16 @@ def api_folha_reabrir():
     sit         = str(session.get("anomes_situacao") or "")
     if sit == "A":
         return jsonify({"ok": False, "msg": "Folha já está Aberta."})
+    # Bloqueia reabertura local se a folha foi fechada no eSocial (S-1299
+    # enviado e nao seguido de S-1298). Reabrir aqui geraria divergencia
+    # com o gov — primeiro envie o S-1298 (Reabertura de Eventos Periodicos).
+    if not _folha_aberta_no_esocial(id_empresa, anomes):
+        return jsonify({
+            "ok": False,
+            "msg": ("Folha ja fechada no eSocial (S-1299 enviado). "
+                    "Antes de reabrir aqui, envie o S-1298 (Reabertura de "
+                    "Eventos Periodicos) no menu eSocial.")
+        })
     try:
         supabase.table("tab_anomes").update({"situacao": "A"}) \
             .eq("id_cliente", id_cliente) \
@@ -29255,6 +29776,9 @@ def calcular_folha_etapa1_pdf():
             _categ_s2    = str(l.get("codcateg", "")).strip()
             _categ_n2    = int(_categ_s2) if _categ_s2.isdigit() else 0
             is_intermitente = _categ_n2 == 111
+            # Cat 700-799 = nao-empregado → pro-labore (verba 6), sem FGTS.
+            is_nao_empregado = 700 <= _categ_n2 <= 799
+            _cod_sal_mes     = 6 if is_nao_empregado else 1
             is_domestico    = 700 <= _categ_n2 <= 799
             if is_intermitente:
                 formula_txt = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
@@ -29309,7 +29833,7 @@ def calcular_folha_etapa1_pdf():
             ]))
             elems.append(val_tbl)
             if not is_intermitente:
-                mmVmm[1] = l["sal_mes"]
+                mmVmm[_cod_sal_mes] = l["sal_mes"]
 
             # ── etapa 2 — admissão no mês ────────────────
             dias_antes_admissao = 0
@@ -29447,7 +29971,7 @@ def calcular_folha_etapa1_pdf():
                     st_etapa)]], colWidths=[16*cm])
                 e4_tbl.setStyle(_st_e4_zero2)
             elif dias_trabalhados == 0:
-                mmVmm[1] = 0
+                mmVmm[_cod_sal_mes] = 0
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
@@ -29458,7 +29982,7 @@ def calcular_folha_etapa1_pdf():
             elif dias_ferias_total >= 30:
                 # 30 dias de férias = salário mensal completo pela convenção de 30 dias (CLT)
                 # Mês de 31 dias com 30 dias de férias: o dia restante já foi coberto nas férias
-                mmVmm[1] = 0
+                mmVmm[_cod_sal_mes] = 0
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
@@ -29468,7 +29992,7 @@ def calcular_folha_etapa1_pdf():
                 e4_tbl.setStyle(_st_e4_zero2)
             elif dias_trabalhados < dias_mes:
                 sal_prop = int(l["sal_mes"] * dias_trabalhados / dias_mes)
-                mmVmm[1] = 0
+                mmVmm[_cod_sal_mes] = 0
                 mmVmm[2] = sal_prop
                 mmQmm[2] = dias_trabalhados
                 _st_op2 = ParagraphStyle("op4b", fontName="Helvetica", fontSize=7,
@@ -29616,14 +30140,22 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # Não filtra situacao: rubricas inativas que tenham movimento no período
     # também precisam ter nome correto. Quando há vários registros para o mesmo
     # cod_rubr (cliente específico + padrão id_cliente=0), o do cliente sobrescreve.
+    # Pagina em blocos: Supabase corta em 1000 linhas/chamada por padrão.
     rubr_map = {}
     for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
-        try:
-            r_rubr = (supabase.table("tab_rubrica")
-                      .select("cod_rubr,dsc_rubr,tp_rubr,tpn_inc_cp,tpn_inc_irrf,tpn_inc_fgts")
-                      .eq("id_cliente", cli_id)
-                      .execute())
-            for rb in (r_rubr.data or []):
+        offset = 0
+        page_sz = 1000
+        while True:
+            try:
+                r_rubr = (supabase.table("tab_rubrica")
+                          .select("cod_rubr,dsc_rubr,tp_rubr,tpn_inc_cp,tpn_inc_irrf,tpn_inc_fgts")
+                          .eq("id_cliente", cli_id)
+                          .range(offset, offset + page_sz - 1)
+                          .execute())
+                rows = r_rubr.data or []
+            except Exception:
+                rows = []
+            for rb in rows:
                 cod = int(rb.get("cod_rubr") or 0)
                 if not cod:
                     continue
@@ -29634,8 +30166,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                     "inc_irrf": str(rb.get("tpn_inc_irrf") or ""),
                     "inc_fgts": str(rb.get("tpn_inc_fgts") or ""),
                 }
-        except Exception:
-            pass
+            if len(rows) < page_sz:
+                break
+            offset += page_sz
     rubr_map.setdefault(101, {"dsc": "INSS",              "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
     rubr_map.setdefault(120, {"dsc": "IRRF",              "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
     rubr_map.setdefault(139, {"dsc": "FGTS Provisionado", "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
@@ -29962,7 +30495,7 @@ def resumo_folha_pdf():
 
     def _tbl_verbas(linhas_v, tp):
         cor_val = verde if tp == "1" else verm
-        dados   = [["Cód", "Descrição", "Func.", "Valor Total"]]
+        dados   = [["Cód", "Descrição", "QTD", "Valor Total"]]
         for v in linhas_v:
             dados.append([v["cod"], v["dsc"], str(v["n_funcs"]), _v(v["valor_fmt"])])
         t = Table(dados, colWidths=[1.2*cm, larg-4.4*cm, 1.4*cm, 3.8*cm])
@@ -30084,7 +30617,7 @@ def resumo_folha_pdf():
             ParagraphStyle("subinf", fontName="Helvetica", fontSize=7,
                            textColor=cinza, spaceAfter=4)))
         roxo = colors.HexColor("#7c3aed")
-        dados_inf = [["Cód", "Descrição", "Func.", "Valor Total"]]
+        dados_inf = [["Cód", "Descrição", "QTD", "Valor Total"]]
         for v in d["informativas"]:
             dados_inf.append([v["cod"], v["dsc"], str(v["n_funcs"]), _v(v["valor_fmt"])])
         t_inf = Table(dados_inf, colWidths=COLS_V)

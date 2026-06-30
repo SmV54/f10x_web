@@ -170,6 +170,7 @@ tr:hover td { background: #f8fafc; }
 .lote-bar  { height: 6px; border-radius: 20px; background: #00a651; width: 0%; transition: width .4s ease; }
 .lote-pct  { font-size: 12px; font-weight: 700; color: #2a7de1; font-family: var(--mono); min-width: 36px; text-align: right; }
 .btn-lote-cancelar {
+    display: none;
     background: transparent; border: 1px solid #ef4444; color: #ef4444;
     font-size: 11px; padding: 4px 12px; border-radius: 6px; cursor: pointer;
     font-family: var(--sans); white-space: nowrap; flex-shrink: 0;
@@ -698,8 +699,9 @@ async function _processarLote(btns, btnDisparou) {
   const btnCancel = document.getElementById('btnCancelarLote');
 
   banner.classList.add('ativo');
-  btnCancel.disabled    = false;
-  btnCancel.textContent = 'Cancelar';
+  btnCancel.disabled     = false;
+  btnCancel.textContent  = 'Cancelar';
+  btnCancel.style.display = 'inline-block';
 
   let ok = 0, erro = 0, aguard = 0, enviados = 0;
 
@@ -737,7 +739,8 @@ async function _processarLote(btns, btnDisparou) {
     }
   }
 
-  btnCancel.disabled = true;
+  btnCancel.disabled      = true;
+  btnCancel.style.display = 'none';
 
   if (_loteAbortado) {
     barEl.style.background = '#f97316';
@@ -760,6 +763,21 @@ async function _processarLote(btns, btnDisparou) {
     barEl.style.background = erro ? '#f97316' : '#00a651';
   }
   _atualizarSelec();
+
+  // Oferece o proximo passo do fluxo eSocial: S-1200 -> S-1210
+  if (!_loteAbortado && ok > 0) {
+    const ir = await f10Confirm(
+      `Remessa do S-1200 concluida (${ok} enviado${ok > 1 ? 's' : ''}).\n\n`
+      + 'Deseja enviar o S-1210 (Pagamentos) agora?',
+      {
+        titulo:     'Proximo passo',
+        tipo:       'sucesso',
+        okText:     'Sim, ir para S-1210',
+        cancelText: 'Depois',
+      }
+    );
+    if (ir) window.location.href = '/esocial_s1210';
+  }
 }
 
 function filtrarSit(sit) {
@@ -784,5 +802,17 @@ function aplicarFiltros() {
 }
 </script>
 <script src="/static/f10_dialog.js"></script>
+
+{% if not folha_aberta_esocial %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  f10Alert(
+    'Esta folha já está FECHADA no eSocial (S-1299 enviado com recibo). ' +
+    'Para enviar/alterar eventos é preciso primeiro enviar o S-1298 (Reabertura).',
+    { titulo: '⚠ Folha fechada no eSocial', tipo: 'aviso', okText: 'Voltar ao menu' }
+  ).then(() => { window.location.href = '/menu'; });
+});
+</script>
+{% endif %}
 </body>
 </html>

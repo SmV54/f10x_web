@@ -229,6 +229,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
     {% if situacao in ('C', 'F') %}
 
+    {% if bloqueada_esocial %}
+    <div class="advertencia-fechada" style="border-color:#dc2626;border-left-color:#b91c1c;background:#fef2f2;">
+        <div class="advertencia-fechada-titulo" style="color:#991b1b;">
+            <span class="advertencia-fechada-icone">🔒</span>
+            BLOQUEADA — Folha fechada no eSocial
+        </div>
+        <ul>
+            <li>O <strong>S-1299 (Fechamento)</strong> já foi enviado ao eSocial para este período.</li>
+            <li>Para reabrir aqui, primeiro envie o <strong>S-1298 (Reabertura de Eventos Periódicos)</strong> no menu eSocial.</li>
+            <li>Reabrir agora geraria divergência entre o sistema e o governo.</li>
+        </ul>
+    </div>
+    <div class="rodape">
+        <a class="btn-menu" href="/menu">&#8592; Voltar ao Menu</a>
+    </div>
+    {% else %}
     {% if situacao == 'F' %}
     <div class="advertencia-fechada">
         <div class="advertencia-fechada-titulo">
@@ -248,6 +264,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <a class="btn-cancelar" id="btnCancelar" href="/menu">Cancelar</a>
         <button class="btn-reabrir" id="btnReabrir" onclick="clicarReabrir()">🔓 Reabrir Folha</button>
     </div>
+    {% endif %}
     {% else %}
     <div class="aviso-aberta">&#10003; Esta folha já está Aberta.</div>
     <div class="rodape" style="margin-top:14px;">
@@ -329,9 +346,12 @@ function confirmarReabrir() {
     reabrir();
 }
 
-document.getElementById('modalFundo').addEventListener('click', function(e) {
-    if (e.target === this) fecharModal();
-});
+const _modalFundo = document.getElementById('modalFundo');
+if (_modalFundo) {
+    _modalFundo.addEventListener('click', function(e) {
+        if (e.target === this) fecharModal();
+    });
+}
 
 async function reabrir() {
     const btn    = document.getElementById('btnReabrir');

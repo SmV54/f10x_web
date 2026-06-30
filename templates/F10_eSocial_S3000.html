@@ -205,7 +205,7 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 <div class="conteudo">
 
   <div class="alerta" id="secaoAlerta">
-    <strong>Atenção:</strong> Só é possível excluir eventos da <strong>folha ativa</strong>. A operação não pode ser desfeita.
+    <strong>Atenção:</strong> Só é possível excluir eventos da folha ativa que esteja <strong>Aberta no eSocial</strong> (sem S-1299 enviado). A operação não pode ser desfeita.
   </div>
 
   {% if folha_ativa %}
@@ -308,14 +308,14 @@ function iniciarTour() {
             element: '.topo-titulo',
             popover: {
                 title: 'S-3000 — Exclusão de Eventos',
-                description: 'Este evento cancela um evento já transmitido ao eSocial (com recibo). Só é possível excluir eventos da folha ativa. A operação é irreversível — use com cuidado.',
+                description: 'Este evento cancela um evento já transmitido ao eSocial (com recibo). Só é possível excluir eventos da folha ativa Aberta no eSocial (sem S-1299 enviado — se fechada, envie S-1298 antes). A operação é irreversível — use com cuidado.',
             }
         },
         {
             element: '#secaoAlerta',
             popover: {
                 title: 'Atenção: Operação Irreversível',
-                description: 'A exclusão via S-3000 não pode ser desfeita. Só é possível excluir eventos que já foram enviados e têm recibo, e somente da folha ativa atual.',
+                description: 'A exclusão via S-3000 não pode ser desfeita. Só é possível excluir eventos que já foram enviados e têm recibo, e somente da folha ativa Aberta no eSocial (sem S-1299).',
             }
         },
         {
@@ -530,6 +530,18 @@ function escHtml(s) {
 </script>
 
 <script src="/static/f10_dialog.js"></script>
+
+{% if not folha_aberta_esocial %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  f10Alert(
+    'Esta folha já está FECHADA no eSocial (S-1299 enviado com recibo). ' +
+    'Para excluir eventos é preciso primeiro enviar o S-1298 (Reabertura).',
+    { titulo: '⚠ Folha fechada no eSocial', tipo: 'aviso', okText: 'Voltar ao menu' }
+  ).then(() => { window.location.href = '/menu'; });
+});
+</script>
+{% endif %}
 
 </body>
 </html>

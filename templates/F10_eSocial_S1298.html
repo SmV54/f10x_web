@@ -469,5 +469,17 @@ async function _reconsultar(id, btn) {
 }
 </script>
 <script src="/static/f10_dialog.js"></script>
+
+{% if folha_aberta_esocial %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  f10Alert(
+    'Esta folha já está ABERTA no eSocial (não há S-1299 ativo no período). ' +
+    'O S-1298 (Reabertura) só faz sentido depois que a folha foi fechada via S-1299.',
+    { titulo: '⚠ Folha já aberta no eSocial', tipo: 'aviso', okText: 'Voltar ao menu' }
+  ).then(() => { window.location.href = '/menu'; });
+});
+</script>
+{% endif %}
 </body>
 </html>

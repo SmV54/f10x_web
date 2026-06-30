@@ -907,5 +907,17 @@ function escHtml(s) {
 
 <script src="/static/f10_dialog.js"></script>
 
+{% if not folha_aberta_esocial %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  f10Alert(
+    'Esta folha já está FECHADA no eSocial (S-1299 enviado com recibo). ' +
+    'Para enviar/alterar eventos é preciso primeiro enviar o S-1298 (Reabertura).',
+    { titulo: '⚠ Folha fechada no eSocial', tipo: 'aviso', okText: 'Voltar ao menu' }
+  ).then(() => { window.location.href = '/menu'; });
+});
+</script>
+{% endif %}
+
 </body>
 </html>

@@ -740,8 +740,15 @@
 </div>
 
 <script>
+  // Captura qualquer erro JS na pagina e mostra um alert (em dev) — evita
+  // que o botao da caneta falhe silenciosamente.
+  window.addEventListener('error', function(e) {
+    console.error('[JS ERROR]', e.message, 'em', e.filename, ':', e.lineno);
+    try { alert('Erro JS: ' + e.message + ' (linha ' + e.lineno + ')'); } catch(_) {}
+  });
   const VERBAS_DATA   = {{ verbas_json | safe }};
-  const FOLHA_ABERTA  = {{ (folha_situacao in ('A', 'X')) | tojson }};
+  const FOLHA_ABERTA      = {{ (folha_situacao in ('A', 'X')) | tojson }};
+  const IS_ADMIN_VERBAS   = {{ (is_admin_verbas|default(false)) | tojson }};
 
   function iniParaTela(val) {
     if (!val) return '';
@@ -877,9 +884,24 @@
   }
 
   function editarVerba(id) {
-    if (!FOLHA_ABERTA) return;
+    console.log('[editarVerba] id=', id, ' FOLHA_ABERTA=', FOLHA_ABERTA,
+                ' IS_ADMIN_VERBAS=', IS_ADMIN_VERBAS);
+    if (!FOLHA_ABERTA) {
+      alert('A folha precisa estar Aberta para alterar verbas.');
+      return;
+    }
     const v = VERBAS_DATA.find(x => x.id === id);
-    if (!v) return;
+    if (!v) {
+      alert('Verba nao encontrada (id ' + id + ').');
+      return;
+    }
+    // Verbas do sistema (cod_rubr < 1000) so podem ser alteradas pelo admin
+    // (CPF 15313921487). Para os demais usuarios, sao somente leitura.
+    if (Number(v.cod_rubr) < 1000 && !IS_ADMIN_VERBAS) {
+      alert('Verba ' + String(v.cod_rubr).padStart(4, '0') + ' (' + v.dsc_rubr +
+            ') e do sistema. So pode ser alterada pelo administrador F10 (CPF 15313921487).');
+      return;
+    }
 
     document.getElementById('inpId').value        = id;
     document.getElementById('inpIdCliente').value = v.id_cliente ?? '';
@@ -957,7 +979,13 @@
 
   async function desativarVerba(id, nome) {
     if (!FOLHA_ABERTA) { mostrarErro('A folha precisa estar Aberta para desativar verbas.'); return; }
-    if (!await f10Confirm(`Desativar a verba "${nome}"?`)) return;
+    const v = VERBAS_DATA.find(x => x.id === id);
+    if (v && Number(v.cod_rubr) < 1000 && !IS_ADMIN_VERBAS) {
+      mostrarErro('Verba ' + String(v.cod_rubr).padStart(4, '0') + ' (' + v.dsc_rubr +
+                  ') e uma verba do sistema e nao pode ser desativada por este usuario.');
+      return;
+    }
+    if (!confirm(`Desativar a verba "${nome}"?`)) return;
     try {
       const r = await fetch('/api/rubrica/desativar', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -1346,7 +1374,6 @@
         <tbody>${rows}</tbody>
       </table>
       ${rodapePDF('Total: ' + dados.length + ' verba(s)')}
-    <script src="/static/f10_dialog.js"></script>
     </body></html>`;
 
     const w = window.open('', '_blank');
