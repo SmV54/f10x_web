@@ -8104,6 +8104,226 @@ def api_funcionario_incluir():
 
 
 # =========================================================
+# LIMPEZA DE FUNCIONARIO — apaga matricula em todas as tabelas
+# =========================================================
+# Tabelas que tem o campo `matricula` e devem ser limpas. tab_log NAO entra
+# (e o registro de auditoria e deve ser preservado).
+_LIMPEZA_TABELAS = (
+    "tab_mov", "tab_total", "tab_eventos", "tab_esocial",
+    "tab_dependentes", "tab_acidente", "tab_mov_fixo",
+)
+
+
+@app.route("/limpeza_funcionario")
+def limpeza_funcionario():
+    if not session.get("logado"):
+        return redirect("/")
+    if not session.get("id_empresa"):
+        return redirect("/selecionar_empresa")
+    return render_template(
+        "F10_Limpeza_Funcionario.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+    )
+
+
+@app.route("/api/limpeza/funcionarios")
+def api_limpeza_funcionarios():
+    """Lista funcionarios da empresa atual para a tela de limpeza."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
+    id_empresa = _get_id_empresa()
+    if not id_empresa:
+        return jsonify({"ok": False, "msg": "Empresa nao definida."}), 400
+    try:
+        rows = (supabase.table("tab_cad")
+                .select("matricula, nome, cpf, situacao, codcateg, dtadm")
+                .eq("id_empresa", id_empresa)
+                .order("matricula")
+                .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro: {e}"})
+    return jsonify({"ok": True, "funcionarios": rows})
+
+
+@app.route("/api/limpeza/validar/<int:matricula>")
+def api_limpeza_validar(matricula):
+    """Verifica se o funcionario pode ser limpo:
+       - Para cada S-2200 com recibo enviado, precisa existir um S-3000 com
+         recibo POSTERIOR (cancelando a admissao). Caso contrario, bloqueia.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
+    id_empresa = _get_id_empresa()
+    if not id_empresa:
+        return jsonify({"ok": False, "msg": "Empresa nao definida."}), 400
+
+    # Dados do funcionario
+    try:
+        r_func = (supabase.table("tab_cad")
+                  .select("matricula, nome, cpf")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionario nao encontrado."})
+        func = r_func.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro: {e}"})
+
+    # S-2200 enviados (com recibo, nao marcados EXCLUIDO) sem S-3000 posterior
+    try:
+        s2200 = (supabase.table("tab_esocial")
+                 .select("id_esocial, recibo, observacao_erro, data_grava, hora_grava")
+                 .eq("id_empresa", id_empresa)
+                 .eq("layout", "2200")
+                 .eq("matricula", matricula)
+                 .not_.is_("recibo", "null")
+                 .neq("recibo", "")
+                 .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro: {e}"})
+
+    s2200_pendentes = []
+    for s in s2200:
+        obs = (s.get("observacao_erro") or "").strip()
+        if obs == "EXCLUIDO":
+            continue
+        s2200_pendentes.append({
+            "id_esocial": s["id_esocial"],
+            "recibo":     s["recibo"],
+            "data_grava": s.get("data_grava"),
+            "hora_grava": s.get("hora_grava"),
+        })
+
+    pode_limpar = (len(s2200_pendentes) == 0)
+    msg = ""
+    if not pode_limpar:
+        recibos = ", ".join(s["recibo"][:25] for s in s2200_pendentes)
+        msg = (f"Bloqueado: existem {len(s2200_pendentes)} S-2200 enviado(s) sem "
+               f"exclusao via S-3000. Envie o S-3000 antes de limpar. "
+               f"Recibos pendentes: {recibos}.")
+
+    # Resumo de quantos registros serao apagados
+    try:
+        contagens = {}
+        for tbl in _LIMPEZA_TABELAS:
+            try:
+                rc = (supabase.table(tbl)
+                      .select("*", count="exact")
+                      .eq("id_empresa", id_empresa)
+                      .eq("matricula", matricula)
+                      .limit(1).execute())
+                contagens[tbl] = rc.count or 0
+            except Exception:
+                contagens[tbl] = 0
+        # tab_cad sempre tem 1 (o proprio cadastro)
+        contagens["tab_cad"] = 1
+    except Exception:
+        contagens = {}
+
+    return jsonify({
+        "ok":              True,
+        "pode_limpar":     pode_limpar,
+        "msg":             msg,
+        "func":            func,
+        "s2200_pendentes": s2200_pendentes,
+        "contagens":       contagens,
+    })
+
+
+@app.route("/api/limpeza/executar", methods=["POST"])
+def api_limpeza_executar():
+    """Apaga a matricula em todas as tabelas do _LIMPEZA_TABELAS + tab_cad.
+       Re-valida no backend (defesa) que nao ha S-2200 sem S-3000."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
+    id_empresa = _get_id_empresa()
+    if not id_empresa:
+        return jsonify({"ok": False, "msg": "Empresa nao definida."}), 400
+
+    data = request.get_json(force=True) or {}
+    try:
+        matricula = int(data.get("matricula") or 0)
+    except Exception:
+        matricula = 0
+    if not matricula:
+        return jsonify({"ok": False, "msg": "Matricula invalida."})
+    if str(data.get("confirmacao_final") or "") != "CONFIRMAR":
+        return jsonify({"ok": False, "msg": "Confirmacao final ausente."})
+
+    # Defesa em profundidade: re-valida S-2200 vs S-3000 mesmo que o front
+    # tenha pulado.
+    try:
+        s2200 = (supabase.table("tab_esocial")
+                 .select("recibo, observacao_erro")
+                 .eq("id_empresa", id_empresa)
+                 .eq("layout", "2200")
+                 .eq("matricula", matricula)
+                 .not_.is_("recibo", "null")
+                 .neq("recibo", "")
+                 .execute().data or [])
+        pendentes = [s for s in s2200
+                     if (s.get("observacao_erro") or "").strip() != "EXCLUIDO"]
+        if pendentes:
+            return jsonify({"ok": False,
+                "msg": (f"Bloqueado: ha {len(pendentes)} S-2200 enviado sem "
+                        "S-3000 posterior. Envie o S-3000 antes de limpar.")})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao validar S-2200: {e}"})
+
+    # Captura dados do funcionario para log antes de apagar
+    try:
+        r_func = (supabase.table("tab_cad")
+                  .select("nome, cpf")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionario nao encontrado."})
+        func_nome = (r_func.data[0].get("nome") or "").strip()
+        func_cpf  = (r_func.data[0].get("cpf")  or "").strip()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro: {e}"})
+
+    # Apaga em todas as tabelas relacionadas
+    resultados = {}
+    for tbl in _LIMPEZA_TABELAS:
+        try:
+            supabase.table(tbl).delete() \
+                .eq("id_empresa", id_empresa) \
+                .eq("matricula", matricula).execute()
+            resultados[tbl] = "ok"
+        except Exception as e:
+            resultados[tbl] = f"erro: {e}"
+    # tab_cad por ultimo (o cadastro principal)
+    try:
+        supabase.table("tab_cad").delete() \
+            .eq("id_empresa", id_empresa) \
+            .eq("matricula", matricula).execute()
+        resultados["tab_cad"] = "ok"
+    except Exception as e:
+        resultados["tab_cad"] = f"erro: {e}"
+
+    # Registra no tab_log (auditoria — NAO apaga)
+    obs_log = (f"LIMPEZA: matricula {matricula} ({func_nome} CPF {func_cpf}) "
+               f"apagada de: " + ", ".join(
+                   f"{t}={r}" for t, r in resultados.items()))
+    try:
+        gravar_log("LIMPEZA", obs_log[:500], matricula=matricula)
+    except Exception:
+        pass
+
+    return jsonify({
+        "ok":         True,
+        "msg":        f"Funcionario {matricula} ({func_nome}) limpo.",
+        "matricula":  matricula,
+        "resultados": resultados,
+    })
+
+
+# =========================================================
 # FICHA DE REGISTRO — TELA
 # =========================================================
 @app.route("/ficha_registro")

@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Limpar Funcionário</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --danger:    #dc2626;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 64px;
+    position: sticky; top: 0; z-index: 100;
+}
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-logo    { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao  { font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans);
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1080px; margin: 24px auto; padding: 0 24px 40px; }
+
+.aviso-grave {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border: 2px solid var(--danger); border-left: 8px solid var(--danger);
+    border-radius: 12px; padding: 18px 22px; margin-bottom: 22px;
+}
+.aviso-grave h2 {
+    font-size: 16px; font-weight: 700; color: #7f1d1d;
+    display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.aviso-grave p { font-size: 13px; color: #991b1b; line-height: 1.55; }
+.aviso-grave strong { color: #7f1d1d; }
+
+.bloco {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 16px;
+}
+.bloco-header { padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid var(--border); }
+.bloco-header h2 { font-size: 14px; font-weight: 600; color: var(--text-head); }
+.bloco-header p  { font-size: 11px; color: #64748b; margin-top: 2px; }
+.bloco-body { padding: 16px 20px; }
+
+.busca-wrap { position: relative; max-width: 380px; margin-bottom: 12px; }
+.busca-icone {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; color: #94a3b8; pointer-events: none;
+}
+.input-busca {
+    width: 100%; padding: 8px 10px 8px 30px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 13px;
+    background: var(--surface); color: var(--label); outline: none;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+
+table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+}
+thead th {
+    background: #f1f5f9; color: #475569; padding: 8px 10px; text-align: left;
+    font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--border);
+}
+tbody td {
+    padding: 8px 10px; border-bottom: 1px solid #f1f5f9;
+    color: var(--text-head);
+}
+tbody tr:hover { background: #f8fafc; }
+.col-mat  { width: 80px; font-family: var(--mono); font-weight: 600; color: #1d4ed8; }
+.col-sit  { width: 90px; }
+.col-acao { width: 130px; text-align: right; }
+
+.badge-sit {
+    display: inline-block; padding: 2px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.sit-A { background: #f0fdf4; color: #15803d; }
+.sit-D { background: #fef2f2; color: #991b1b; }
+.sit-X { background: #fef3c7; color: #92400e; }
+.sit-F { background: #f1f5f9; color: #475569; }
+
+.btn-limpar {
+    background: transparent; border: 1px solid var(--danger);
+    color: var(--danger); font-size: 11px; font-weight: 600;
+    padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s;
+}
+.btn-limpar:hover { background: var(--danger); color: white; }
+
+.vazio { padding: 32px 20px; text-align: center; color: #94a3b8; font-size: 13px; }
+
+/* ── Modal de confirmação ── */
+.modal-bg {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55); z-index: 999;
+    justify-content: center; align-items: center;
+}
+.modal-bg.ativo { display: flex; }
+.modal {
+    width: 540px; max-width: 92%; background: white;
+    border-radius: 16px; overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.modal-cab {
+    background: var(--danger); padding: 14px 22px;
+    color: white; font-weight: 700; font-size: 14px;
+    letter-spacing: 0.04em; display: flex; align-items: center; gap: 10px;
+}
+.modal-corpo { padding: 22px 26px; }
+.modal-titulo { font-size: 17px; font-weight: 700; color: #1e293b; margin-bottom: 10px; }
+.modal-texto { font-size: 13px; color: #374151; line-height: 1.65; }
+.modal-texto strong { color: var(--danger); }
+.modal-info-card {
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; margin-top: 12px; font-size: 12px;
+}
+.modal-info-card div { padding: 2px 0; }
+.modal-info-card .lbl { color: #64748b; }
+.modal-info-card .val { color: #1e293b; font-weight: 600; }
+.modal-resumo {
+    background: #fef9c3; border: 1px solid #facc15; border-radius: 8px;
+    padding: 10px 14px; margin-top: 12px; font-size: 12px; color: #854d0e;
+}
+.modal-rodape {
+    padding: 14px 22px; border-top: 1px solid var(--border);
+    background: #f8fafc; display: flex; justify-content: flex-end; gap: 10px;
+}
+.btn-cancel {
+    background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569;
+    font-size: 13px; font-weight: 600; padding: 9px 22px;
+    border-radius: 8px; cursor: pointer; font-family: var(--sans);
+}
+.btn-cancel:hover { background: #e2e8f0; }
+.btn-confirmar {
+    background: var(--danger); border: none; color: white;
+    font-size: 13px; font-weight: 700; padding: 9px 22px;
+    border-radius: 8px; cursor: pointer; font-family: var(--sans);
+}
+.btn-confirmar:hover { background: #b91c1c; }
+.btn-confirmar:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.passo { font-size: 11px; color: #94a3b8; letter-spacing: 0.1em; text-transform: uppercase; }
+
+.modal-input {
+    width: 100%; margin-top: 10px; padding: 9px 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: var(--mono); color: #1e293b;
+}
+.modal-input:focus { outline: none; border-color: var(--danger); box-shadow: 0 0 0 3px rgba(220,38,38,0.15); }
+
+.msg-final {
+    padding: 12px 16px; border-radius: 8px; font-size: 13px;
+    font-weight: 600; margin-top: 14px;
+}
+.msg-ok  { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.msg-err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">🧹 Limpar Funcionário</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="aviso-grave">
+        <h2>⚠️ Operação irreversível</h2>
+        <p>
+            Esta ferramenta <strong>apaga</strong> o cadastro do funcionário e <strong>todos os dados
+            associados</strong> (movimento, totais, eventos, dependentes, acidentes, mov. fixo, registros eSocial)
+            em todas as folhas. <strong>NÃO HÁ COMO DESFAZER.</strong>
+            <br><br>
+            Use apenas quando o cadastro foi feito por engano e o funcionário <strong>nunca foi enviado</strong> ao
+            eSocial (ou já teve o S-2200 corrigido via S-3000). Os recibos do eSocial ficam apenas no governo.
+        </p>
+    </div>
+
+    <div class="bloco">
+        <div class="bloco-header">
+            <h2>Funcionários da empresa</h2>
+            <p id="lblTotal">Carregando…</p>
+        </div>
+        <div class="bloco-body">
+            <div class="busca-wrap">
+                <span class="busca-icone">🔍</span>
+                <input class="input-busca" id="inputBusca" type="text"
+                       placeholder="Buscar por nome ou matrícula…"
+                       oninput="filtrar()" autocomplete="off">
+            </div>
+            <div id="tabelaContainer"><div class="vazio">Carregando…</div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Modal de confirmação (3 passos) ── -->
+<div id="modalBg" class="modal-bg">
+    <div class="modal">
+        <div class="modal-cab">
+            <span>⚠️ LIMPEZA DE FUNCIONÁRIO</span>
+            <span id="modalPasso" class="passo" style="margin-left:auto;">PASSO 1/3</span>
+        </div>
+        <div class="modal-corpo" id="modalCorpo">
+            <!-- preenchido por JS -->
+        </div>
+        <div class="modal-rodape" id="modalRodape">
+            <!-- preenchido por JS -->
+        </div>
+    </div>
+</div>
+
+<script>
+let _funcs = [];
+let _funcAtivo = null;  // funcionario sendo confirmado
+let _validacao = null;
+let _passo = 1;
+
+async function carregar() {
+    const cont = document.getElementById('tabelaContainer');
+    const lbl  = document.getElementById('lblTotal');
+    try {
+        const r = await fetch('/api/limpeza/funcionarios');
+        const d = await r.json();
+        if (!d.ok) {
+            cont.innerHTML = `<div class="vazio">⚠ ${d.msg || 'Erro'}</div>`;
+            lbl.textContent = '';
+            return;
+        }
+        _funcs = d.funcionarios || [];
+        lbl.textContent = `${_funcs.length} funcionário(s) no cadastro`;
+        renderTabela();
+    } catch (e) {
+        cont.innerHTML = `<div class="vazio">⚠ Falha de comunicacao: ${esc(String(e))}</div>`;
+    }
+}
+
+function renderTabela() {
+    const cont = document.getElementById('tabelaContainer');
+    const q = (document.getElementById('inputBusca').value || '').toLowerCase().trim();
+    const lista = _funcs.filter(f => {
+        if (!q) return true;
+        const nome = String(f.nome || '').toLowerCase();
+        const mat  = String(f.matricula || '');
+        return nome.includes(q) || mat.includes(q);
+    });
+    if (!lista.length) {
+        cont.innerHTML = '<div class="vazio">Nenhum funcionário encontrado.</div>';
+        return;
+    }
+    let html = `<table>
+        <thead><tr>
+            <th class="col-mat">Mat.</th>
+            <th>Nome</th>
+            <th class="col-sit">Situação</th>
+            <th>Categ.</th>
+            <th class="col-acao"></th>
+        </tr></thead>
+        <tbody>`;
+    for (const f of lista) {
+        const mat = String(f.matricula || '').padStart(6, '0');
+        const sit = f.situacao || '—';
+        const sitClass = 'sit-' + (sit === 'A' || sit === 'X' || sit === 'D' || sit === 'F' ? sit : 'F');
+        html += `<tr>
+            <td class="col-mat">${mat}</td>
+            <td>${esc(f.nome || '—')}</td>
+            <td class="col-sit"><span class="badge-sit ${sitClass}">${esc(sit)}</span></td>
+            <td>${esc(f.codcateg || '—')}</td>
+            <td class="col-acao"><button class="btn-limpar" onclick="iniciarLimpeza(${f.matricula})">🧹 Limpar</button></td>
+        </tr>`;
+    }
+    html += '</tbody></table>';
+    cont.innerHTML = html;
+}
+
+function filtrar() { renderTabela(); }
+
+function esc(s) {
+    return String(s ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+async function iniciarLimpeza(mat) {
+    try {
+        const r = await fetch('/api/limpeza/validar/' + mat);
+        const d = await r.json();
+        if (!d.ok) {
+            alert(d.msg || 'Erro na validacao.');
+            return;
+        }
+        _funcAtivo = d.func;
+        _validacao = d;
+        _passo = 1;
+        if (!d.pode_limpar) {
+            mostrarBloqueio(d);
+            return;
+        }
+        mostrarPasso();
+    } catch (e) {
+        alert('Falha de comunicacao: ' + e);
+    }
+}
+
+function mostrarBloqueio(d) {
+    document.getElementById('modalPasso').textContent = 'BLOQUEADO';
+    document.getElementById('modalCorpo').innerHTML = `
+        <div class="modal-titulo">🚫 Limpeza bloqueada</div>
+        <div class="modal-texto">
+            <strong>Esta matrícula tem registros enviados ao eSocial que ainda não foram excluídos (S-3000).</strong>
+            <br><br>
+            ${esc(d.msg || '')}
+            <br><br>
+            <span style="color:#64748b;">Envie o S-3000 antes de tentar limpar novamente.</span>
+        </div>`;
+    document.getElementById('modalRodape').innerHTML = `
+        <button class="btn-cancel" onclick="fecharModal()">Entendi</button>`;
+    document.getElementById('modalBg').classList.add('ativo');
+}
+
+function mostrarPasso() {
+    document.getElementById('modalPasso').textContent = `PASSO ${_passo}/3`;
+    document.getElementById('modalBg').classList.add('ativo');
+    const cont = document.getElementById('modalCorpo');
+    const rod  = document.getElementById('modalRodape');
+    const f    = _funcAtivo;
+    const c    = _validacao.contagens || {};
+    const matFmt = String(f.matricula || '').padStart(6, '0');
+
+    const infoCard = `
+        <div class="modal-info-card">
+            <div><span class="lbl">Matrícula:</span> <span class="val">${matFmt}</span></div>
+            <div><span class="lbl">Nome:</span> <span class="val">${esc(f.nome || '—')}</span></div>
+            <div><span class="lbl">CPF:</span> <span class="val">${esc(f.cpf || '—')}</span></div>
+        </div>`;
+
+    if (_passo === 1) {
+        cont.innerHTML = `
+            <div class="modal-titulo">Você tem certeza?</div>
+            <div class="modal-texto">
+                Vai apagar o cadastro do funcionário e <strong>todos os dados</strong> em todas as tabelas
+                (movimento, totais, dependentes, etc.). <strong>NÃO HÁ COMO DESFAZER.</strong>
+            </div>
+            ${infoCard}`;
+        rod.innerHTML = `
+            <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+            <button class="btn-confirmar" onclick="proximoPasso()">Sim, prosseguir →</button>`;
+    } else if (_passo === 2) {
+        const resumo = Object.entries(c).map(([t, n]) => `${t}: ${n}`).join('  ·  ');
+        cont.innerHTML = `
+            <div class="modal-titulo">Última chance antes da etapa final</div>
+            <div class="modal-texto">
+                Os seguintes registros serão removidos:
+            </div>
+            <div class="modal-resumo">${esc(resumo)}</div>
+            <div class="modal-texto" style="margin-top:10px;">
+                Após confirmar, será pedida uma confirmação textual final.
+            </div>
+            ${infoCard}`;
+        rod.innerHTML = `
+            <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+            <button class="btn-confirmar" onclick="proximoPasso()">Confirmar →</button>`;
+    } else if (_passo === 3) {
+        cont.innerHTML = `
+            <div class="modal-titulo">Digite <strong style="color:#dc2626;font-family:var(--mono);">CONFIRMAR</strong> para executar</div>
+            <div class="modal-texto">
+                Esta é a última etapa. A limpeza será executada quando você clicar em "Executar".
+                Não há como desfazer.
+            </div>
+            ${infoCard}
+            <input class="modal-input" id="inpConfirmar" type="text"
+                   autocomplete="off" placeholder="Digite CONFIRMAR"
+                   oninput="onConfirmarInput()" autofocus>
+            <div id="msgFinal"></div>`;
+        rod.innerHTML = `
+            <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+            <button class="btn-confirmar" id="btnExecutar" disabled
+                    onclick="executarLimpeza()">🧹 Executar limpeza</button>`;
+        setTimeout(() => { const i = document.getElementById('inpConfirmar'); if (i) i.focus(); }, 50);
+    }
+}
+
+function onConfirmarInput() {
+    const inp = document.getElementById('inpConfirmar');
+    const btn = document.getElementById('btnExecutar');
+    btn.disabled = (inp.value.trim() !== 'CONFIRMAR');
+}
+
+function proximoPasso() {
+    _passo++;
+    mostrarPasso();
+}
+
+async function executarLimpeza() {
+    const btn = document.getElementById('btnExecutar');
+    const msg = document.getElementById('msgFinal');
+    btn.disabled = true;
+    msg.innerHTML = '<div class="msg-final msg-ok">Executando…</div>';
+    try {
+        const r = await fetch('/api/limpeza/executar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matricula: _funcAtivo.matricula,
+                confirmacao_final: 'CONFIRMAR',
+            }),
+        });
+        const d = await r.json();
+        if (!d.ok) {
+            msg.innerHTML = `<div class="msg-final msg-err">⚠ ${esc(d.msg || 'Erro')}</div>`;
+            btn.disabled = false;
+            return;
+        }
+        msg.innerHTML = `<div class="msg-final msg-ok">✓ ${esc(d.msg || 'Limpo')}</div>`;
+        setTimeout(() => {
+            fecharModal();
+            carregar();
+        }, 1500);
+    } catch (e) {
+        msg.innerHTML = `<div class="msg-final msg-err">Falha: ${esc(String(e))}</div>`;
+        btn.disabled = false;
+    }
+}
+
+function fecharModal() {
+    document.getElementById('modalBg').classList.remove('ativo');
+    _funcAtivo = null;
+    _validacao = null;
+    _passo = 1;
+}
+
+document.getElementById('modalBg').addEventListener('click', function(e) {
+    if (e.target === this) fecharModal();
+});
+
+window.addEventListener('DOMContentLoaded', carregar);
+</script>
+</body>
+</html>
