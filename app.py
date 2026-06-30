@@ -673,6 +673,60 @@ def trocar_empresa():
 
 
 # =========================================================
+# LICENÇA — VERIFICAÇÃO DE LIMITES CONTRATUAIS
+# =========================================================
+def _estado_licenca(id_cliente):
+    """Retorna dict com limites contratuais do cliente e uso atual.
+
+    Chaves:
+      qtd_empresas, qtd_funcionarios      — limites em tab_cliente (0 = SEM licenca)
+      atual_empresas, atual_funcionarios  — contagens reais
+      sem_licenca                          — True se qtd_empresas ou qtd_funcionarios = 0
+      excedeu_empresas, excedeu_funcionarios — atual > limite (limite>0)
+
+    Funcionarios contam por id_cliente excluindo demitidos (situacao='D').
+    Empresas contam por id_cliente (sem filtro de status).
+    """
+    out = {"qtd_empresas": 0, "qtd_funcionarios": 0,
+           "atual_empresas": 0, "atual_funcionarios": 0,
+           "sem_licenca": True,
+           "excedeu_empresas": False, "excedeu_funcionarios": False}
+    if not id_cliente:
+        return out
+    try:
+        rl = (supabase.table("tab_cliente")
+              .select("qtd_empresas, qtd_funcionarios")
+              .eq("id_cliente", id_cliente)
+              .limit(1).execute())
+        row = (rl.data or [{}])[0]
+        out["qtd_empresas"]     = int(row.get("qtd_empresas") or 0)
+        out["qtd_funcionarios"] = int(row.get("qtd_funcionarios") or 0)
+    except Exception:
+        pass
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("id_empresa")
+                 .eq("id_cliente", id_cliente).execute())
+        out["atual_empresas"] = len(r_emp.data or [])
+    except Exception:
+        pass
+    try:
+        r_fun = (supabase.table("tab_cad")
+                 .select("matricula")
+                 .eq("id_cliente", id_cliente)
+                 .neq("situacao", "D").execute())
+        out["atual_funcionarios"] = len(r_fun.data or [])
+    except Exception:
+        pass
+    out["sem_licenca"] = (out["qtd_empresas"] == 0 or out["qtd_funcionarios"] == 0)
+    if out["qtd_empresas"] > 0:
+        out["excedeu_empresas"] = out["atual_empresas"] > out["qtd_empresas"]
+    if out["qtd_funcionarios"] > 0:
+        out["excedeu_funcionarios"] = out["atual_funcionarios"] > out["qtd_funcionarios"]
+    return out
+
+
+# =========================================================
 # MENU PRINCIPAL
 # =========================================================
 @app.route("/menu")
@@ -682,6 +736,11 @@ def menu():
     if not session.get("id_empresa"):
         return redirect("/selecionar_empresa")
     id_cliente = session.get("id_cliente")
+    # Bloqueia acesso ao menu se a licenca esta zerada (qtd_empresas=0 ou
+    # qtd_funcionarios=0 em tab_cliente). Redireciona para tela de comprar.
+    _lic = _estado_licenca(id_cliente)
+    if _lic["sem_licenca"]:
+        return redirect("/comprar_licenca?bloqueio=sem_licenca")
     qtd_empresas = len(_listar_empresas(id_cliente)) if id_cliente else 1
 
     # Data limite da licença (tab_cliente.data_limite, formato "YYYY-MM")
@@ -792,6 +851,7 @@ def comprar_licenca():
     except Exception:
         pass
 
+    bloqueio = request.args.get("bloqueio", "")
     return render_template(
         "F10_Comprar_Licenca.html",
         versao=ler_versao(),
@@ -803,6 +863,7 @@ def comprar_licenca():
         cliente_per_desconto=cliente_per_desconto,
         atual_qtd_empresas=atual_qtd_empresas,
         atual_qtd_funcionarios=atual_qtd_funcionarios,
+        bloqueio=bloqueio,
     )
 
 # =========================================================
@@ -5612,8 +5673,29 @@ def api_gravar_empresa():
         if not dados:
             return jsonify({"ok": False, "msg": "Dados não recebidos"})
 
-        dados["id_cliente"] = session.get("id_cliente", 1)
+        id_cliente_sess = session.get("id_cliente", 1)
+        dados["id_cliente"] = id_cliente_sess
         dados["tp_insc"] = "1"
+
+        # Se for empresa NOVA (CNPJ ainda nao cadastrado para este cliente),
+        # verifica limite da licenca.
+        cnpj_norm = so_numeros(str(dados.get("cnpj") or ""))
+        if cnpj_norm:
+            _ja_existe = (supabase.table("tab_empresa")
+                          .select("id_empresa")
+                          .eq("cnpj", cnpj_norm)
+                          .limit(1).execute().data or [])
+            if not _ja_existe:
+                _lic = _estado_licenca(id_cliente_sess)
+                if _lic["sem_licenca"]:
+                    return jsonify({"ok": False,
+                        "msg": ("Sua licenca esta zerada — nenhuma empresa pode "
+                                "ser cadastrada. Renove em Comprar Licenca.")})
+                if _lic["qtd_empresas"] > 0 and (_lic["atual_empresas"] + 1) > _lic["qtd_empresas"]:
+                    return jsonify({"ok": False,
+                        "msg": (f"Limite de empresas da licenca atingido "
+                                f"({_lic['atual_empresas']}/{_lic['qtd_empresas']}). "
+                                "Amplie a licenca antes de cadastrar mais.")})
 
         resposta = (
             supabase
@@ -7801,6 +7883,19 @@ def api_funcionario_incluir():
     d          = request.get_json() or {}
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
+
+    # Bloqueia se a licenca esta zerada ou se o novo funcionario excederia o
+    # limite contratado.
+    _lic = _estado_licenca(id_cliente)
+    if _lic["sem_licenca"]:
+        return jsonify({"ok": False,
+            "msg": ("Sua licenca esta zerada — nenhum funcionario pode ser "
+                    "cadastrado. Renove na tela de Comprar Licenca.")})
+    if _lic["qtd_funcionarios"] > 0 and (_lic["atual_funcionarios"] + 1) > _lic["qtd_funcionarios"]:
+        return jsonify({"ok": False,
+            "msg": (f"Limite de funcionarios da licenca atingido "
+                    f"({_lic['atual_funcionarios']}/{_lic['qtd_funcionarios']}). "
+                    "Amplie a licenca antes de cadastrar mais.")})
 
     cpf  = (d.get("cpf")  or "").strip()
     nome = (d.get("nome") or "").strip()
@@ -26261,6 +26356,26 @@ def calcular_folha_stream():
         bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": sit}, ensure_ascii=False)
         return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
 
+    # Bloqueia se a licenca esta zerada ou se as contagens atuais ja
+    # ultrapassaram o contratado.
+    _lic = _estado_licenca(session.get("id_cliente"))
+    _msg_lic = None
+    if _lic["sem_licenca"]:
+        _msg_lic = ("Sua licenca esta zerada — calculo nao permitido. "
+                    "Renove na tela de Comprar Licenca.")
+    elif _lic["excedeu_funcionarios"]:
+        _msg_lic = (f"Funcionarios cadastrados ({_lic['atual_funcionarios']}) "
+                    f"excedem o contratado ({_lic['qtd_funcionarios']}). "
+                    "Amplie a licenca antes de calcular.")
+    elif _lic["excedeu_empresas"]:
+        _msg_lic = (f"Empresas cadastradas ({_lic['atual_empresas']}) "
+                    f"excedem o contratado ({_lic['qtd_empresas']}). "
+                    "Amplie a licenca antes de calcular.")
+    if _msg_lic:
+        bloqueio = json.dumps({"tipo": "bloqueio", "msg": _msg_lic, "sit": sit},
+                              ensure_ascii=False)
+        return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
+
     anomes      = str(session.get("anomes_atual") or "")
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     id_empresa  = _get_id_empresa()
@@ -30277,7 +30392,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # ── Empresa (INSS patronal) ──
     try:
         r_emp = (supabase.table("tab_empresa")
-                 .select("ind_simples,risco,gps_fpas,gps_fpas_perc,"
+                 .select("ind_simples,class_trib,risco,gps_fpas,gps_fpas_perc,"
                          "gps_saleduc,gps_incra,gps_senai,gps_sesi,"
                          "gps_senac,gps_sesc,gps_sebrae,gps_dpc,gps_senar,"
                          "gps_sest,gps_senat,gps_sesco")
@@ -30288,6 +30403,11 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         emp = {}
 
     ind_simples = str(emp.get("ind_simples") or "N")
+    class_trib  = str(emp.get("class_trib")  or "01").zfill(2)
+    # Optante pelo Simples Nacional (classTrib 02) e MEI (classTrib 04) nao
+    # tem Contribuicao Patronal (20%) nem RAT. classTrib 03 (anexo IV) paga
+    # CP normalmente, entao nao entra aqui.
+    is_simples_ou_mei = (ind_simples == "S") or (class_trib in ("02", "04"))
     risco_grau  = int(emp.get("risco") or 0)   # 1=1% 2=2% 3=3%
     rat_pct     = float(risco_grau)             # % numérico direto
 
@@ -30323,41 +30443,46 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
 
     fpas_perc = float(emp.get("gps_fpas_perc") or 0)
 
-    # Contribuição patronal (20% — não se aplica ao Simples)
-    if ind_simples != "S":
+    # Contribuição Patronal (20%) e RAT — nao se aplicam a Simples Nacional
+    # nem MEI. Para esses regimes, a contribuicao e recolhida pela DAS, nao
+    # pela GPS.
+    if not is_simples_ou_mei:
         l = _linha_emp("Contribuição Patronal", 20.0)
         if l:
             inss_emp_linhas.append(l)
             inss_emp_total += l["val_c"]
 
-    # RAT ajustado = Grau de Risco × FAP
-    rat_ajustado = round(rat_pct * fap_fator, 4)
-    if risco_grau and fap_fator != 1.0:
-        rat_label = f"RAT — Grau {risco_grau} × FAP {fap_fator:.4f}"
-    elif risco_grau:
-        rat_label = f"RAT — Grau {risco_grau}"
-    else:
-        rat_label = "RAT"
-    l = _linha_emp(rat_label, rat_ajustado, dec=4)
-    if l:
-        inss_emp_linhas.append(l)
-        inss_emp_total += l["val_c"]
-
-    # Terceiros individuais — somam no total
-    terceiros = [
-        ("Salário Educação", "gps_saleduc"), ("INCRA",   "gps_incra"),
-        ("SENAI",         "gps_senai"),   ("SESI",    "gps_sesi"),
-        ("SENAC",         "gps_senac"),   ("SESC",    "gps_sesc"),
-        ("SEBRAE",        "gps_sebrae"),  ("DPC",     "gps_dpc"),
-        ("SENAR",         "gps_senar"),   ("SEST",    "gps_sest"),
-        ("SENAT",         "gps_senat"),   ("SESCOOP", "gps_sesco"),
-    ]
-    for label, campo in terceiros:
-        pct = float(emp.get(campo) or 0)
-        l = _linha_emp(label, pct)
+        # RAT ajustado = Grau de Risco × FAP
+        rat_ajustado = round(rat_pct * fap_fator, 4)
+        if risco_grau and fap_fator != 1.0:
+            rat_label = f"RAT — Grau {risco_grau} × FAP {fap_fator:.4f}"
+        elif risco_grau:
+            rat_label = f"RAT — Grau {risco_grau}"
+        else:
+            rat_label = "RAT"
+        l = _linha_emp(rat_label, rat_ajustado, dec=4)
         if l:
             inss_emp_linhas.append(l)
             inss_emp_total += l["val_c"]
+
+    # Terceiros individuais — somam no total. Para Simples Nacional e MEI,
+    # nenhum dos terceiros e devido pela GPS (todos sao recolhidos pela DAS),
+    # entao ignoramos o que estiver no cadastro.
+    if not is_simples_ou_mei:
+        terceiros = [
+            ("Salário Educação", "gps_saleduc"), ("INCRA",   "gps_incra"),
+            ("SENAI",         "gps_senai"),   ("SESI",    "gps_sesi"),
+            ("SENAC",         "gps_senac"),   ("SESC",    "gps_sesc"),
+            ("SEBRAE",        "gps_sebrae"),  ("DPC",     "gps_dpc"),
+            ("SENAR",         "gps_senar"),   ("SEST",    "gps_sest"),
+            ("SENAT",         "gps_senat"),   ("SESCOOP", "gps_sesco"),
+        ]
+        for label, campo in terceiros:
+            pct = float(emp.get(campo) or 0)
+            l = _linha_emp(label, pct)
+            if l:
+                inss_emp_linhas.append(l)
+                inss_emp_total += l["val_c"]
 
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else anomes
     tipo_desc  = {"N": "Normal", "F": "Férias", "R": "Rescisão"}.get(anomes_tipo, anomes_tipo)
@@ -30402,6 +30527,11 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "inss_emp_total":   _fmt_brl(inss_emp_total),
         "inss_emp_aliq":    _pct(inss_emp_total, base_inss),
         "ind_simples":      ind_simples,
+        "class_trib":       class_trib,
+        "is_simples_ou_mei": is_simples_ou_mei,
+        "regime_label": ("MEI" if class_trib == "04"
+                         else ("Simples Nacional" if is_simples_ou_mei
+                               else "Geral")),
         "gps_fpas":         str(emp.get("gps_fpas") or "—"),
     }
 
