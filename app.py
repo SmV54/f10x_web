@@ -32943,6 +32943,165 @@ def api_admin_xml_arquivo():
 
 
 # =========================================================
+# ADMINISTRADOR — Licença de Uso (data_limite, qtd_empresas, qtd_funcionarios)
+# =========================================================
+@app.route("/admin_licenca_uso")
+def admin_licenca_uso():
+    if not session.get("logado"):
+        return redirect("/")
+    if not _is_admin_f10():
+        return redirect("/menu")
+    try:
+        clientes = (supabase.table("tab_cliente")
+                    .select("id_cliente, nome, cpf")
+                    .order("nome")
+                    .execute().data or [])
+    except Exception:
+        clientes = []
+    return render_template(
+        "F10_Admin_Licenca_Uso.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        clientes=clientes,
+        is_admin=True,
+    )
+
+
+@app.route("/api/admin_licenca/<int:id_cliente>")
+def api_admin_licenca_get(id_cliente):
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if not _is_admin_f10():
+        return jsonify({"ok": False}), 403
+    try:
+        rc = (supabase.table("tab_cliente")
+              .select("id_cliente, nome, cpf, email, data_limite, "
+                      "qtd_empresas, qtd_funcionarios")
+              .eq("id_cliente", id_cliente)
+              .limit(1).execute())
+        if not rc.data:
+            return jsonify({"ok": False, "msg": "Cliente nao encontrado."})
+        cli = rc.data[0]
+        lic = _estado_licenca(id_cliente)
+        return jsonify({
+            "ok": True,
+            "cliente": {
+                "id_cliente":       cli.get("id_cliente"),
+                "nome":             cli.get("nome") or "",
+                "cpf":              cli.get("cpf")  or "",
+                "email":            cli.get("email") or "",
+                "data_limite":      cli.get("data_limite") or "",
+                "qtd_empresas":     int(cli.get("qtd_empresas")     or 0),
+                "qtd_funcionarios": int(cli.get("qtd_funcionarios") or 0),
+            },
+            "atual": {
+                "empresas":     lic["atual_empresas"],
+                "funcionarios": lic["atual_funcionarios"],
+            },
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro: {e}"})
+
+
+@app.route("/api/admin_licenca/gravar", methods=["POST"])
+def api_admin_licenca_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
+    if not _is_admin_f10():
+        return jsonify({"ok": False, "msg": "Acesso restrito ao admin F10."}), 403
+
+    data = request.get_json(force=True) or {}
+    try:
+        id_cliente       = int(data.get("id_cliente") or 0)
+        data_limite_nova = str(data.get("data_limite") or "").strip()
+        qtd_emp_nova     = int(data.get("qtd_empresas")     or 0)
+        qtd_fun_nova     = int(data.get("qtd_funcionarios") or 0)
+    except Exception:
+        return jsonify({"ok": False, "msg": "Dados invalidos."})
+
+    if not id_cliente:
+        return jsonify({"ok": False, "msg": "id_cliente nao informado."})
+
+    # Le valores antigos para o log/email
+    try:
+        rc = (supabase.table("tab_cliente")
+              .select("nome, cpf, email, data_limite, qtd_empresas, qtd_funcionarios")
+              .eq("id_cliente", id_cliente)
+              .limit(1).execute())
+        if not rc.data:
+            return jsonify({"ok": False, "msg": "Cliente nao encontrado."})
+        cli = rc.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler cliente: {e}"})
+
+    antigos = {
+        "data_limite":      cli.get("data_limite") or "",
+        "qtd_empresas":     int(cli.get("qtd_empresas") or 0),
+        "qtd_funcionarios": int(cli.get("qtd_funcionarios") or 0),
+    }
+    novos = {
+        "data_limite":      data_limite_nova,
+        "qtd_empresas":     qtd_emp_nova,
+        "qtd_funcionarios": qtd_fun_nova,
+    }
+
+    # Detecta o que mudou
+    mudancas = [k for k in antigos if str(antigos[k]) != str(novos[k])]
+    if not mudancas:
+        return jsonify({"ok": True, "msg": "Nada a alterar.", "mudancas": []})
+
+    # Atualiza tab_cliente
+    try:
+        supabase.table("tab_cliente").update(novos) \
+            .eq("id_cliente", id_cliente).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+
+    # Log interno
+    try:
+        gravar_log("LICENCA",
+                   f"Cliente id={id_cliente} ({cli.get('nome','')}): "
+                   + "; ".join(f"{k}: {antigos[k]} -> {novos[k]}" for k in mudancas))
+    except Exception:
+        pass
+
+    # WhatsApp para o admin F10 com antigos x novos
+    wa_dest    = "81988582000"
+    wa_enviado = False
+    wa_erro    = ""
+    try:
+        from datetime import datetime as _dt
+        agora_fmt = _dt.now().strftime("%d/%m/%Y %H:%M")
+        usuario   = session.get("nome") or session.get("cpf") or "?"
+        msg_wa = (
+            f"*Folha10 — Licenca alterada*\n\n"
+            f"Quando: {agora_fmt}\n"
+            f"Por: {usuario}\n\n"
+            f"Cliente: {cli.get('nome','')} (id={id_cliente})\n"
+            f"CPF: {cli.get('cpf','')}\n\n"
+            f"Alteracoes:\n"
+        )
+        for k in mudancas:
+            msg_wa += f"- {k}: {antigos[k]} -> {novos[k]}\n"
+        ok_wa, err_wa = _enviar_whatsapp_texto(wa_dest, msg_wa)
+        wa_enviado = bool(ok_wa)
+        wa_erro    = err_wa or ""
+        print(f"[admin_licenca] whatsapp ok={wa_enviado} dest={wa_dest} err={wa_erro!r}")
+    except Exception as e:
+        wa_erro = f"{type(e).__name__}: {e}"
+        print(f"[admin_licenca] excecao ao enviar whatsapp: {wa_erro}")
+
+    return jsonify({
+        "ok":            True,
+        "msg":           "Licenca gravada.",
+        "mudancas":      mudancas,
+        "wa_dest":       wa_dest,
+        "wa_enviado":    wa_enviado,
+        "wa_erro":       wa_erro,
+    })
+
+
+# =========================================================
 # ADMINISTRADOR — Importar do Folha 10 Antigo
 # =========================================================
 PASTA_BASES_F10 = r'C:\folha10\arquivos\bases'

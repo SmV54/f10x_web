@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Licença de Uso</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 72px;
+    position: sticky; top: 0; z-index: 100;
+}
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80;
+    border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    color: #dcfce7; letter-spacing: 0.14em; text-transform: uppercase;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 3px 10px rgba(0,0,0,0.35);
+}
+.topo-centro { text-align: center; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); }
+.topo-logo   { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+.layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+
+.painel-clientes {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--surface); overflow: hidden;
+}
+.painel-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+.painel-header-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b; margin-bottom: 10px;
+}
+.busca-wrap { position: relative; }
+.busca-icone {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    font-size: 13px; color: #94a3b8; pointer-events: none;
+}
+.input-busca {
+    width: 100%; padding: 7px 10px 7px 30px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 13px;
+    background: var(--surface); color: var(--label); outline: none;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.lista-clientes { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.cliente-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px; border-radius: 8px; cursor: pointer;
+    border: 1px solid transparent; margin-bottom: 4px;
+    transition: 0.12s;
+}
+.cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
+.cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.cliente-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.cliente-id { font-family: var(--mono); font-size: 10px; color: #94a3b8; letter-spacing: 0.04em; }
+.cliente-nome { font-size: 13px; font-weight: 500; color: var(--text-head); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cliente-card.ativo .cliente-nome { color: var(--accent); }
+.total-clientes { padding: 8px 14px; font-size: 11px; color: #94a3b8; border-top: 1px solid var(--border); background: #f8fafc; }
+.lista-vazia { padding: 24px; text-align: center; color: #94a3b8; font-size: 12px; }
+
+.painel-direito {
+    overflow-y: auto;
+    padding: 28px 36px;
+}
+.placeholder-tela {
+    text-align: center; padding: 80px 20px; color: #94a3b8;
+}
+.placeholder-tela .ico { font-size: 42px; opacity: 0.45; margin-bottom: 14px; }
+
+.card-licenca {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; max-width: 720px; margin: 0 auto;
+    box-shadow: 0 1px 3px rgba(15,23,42,0.04);
+}
+.card-titulo {
+    padding: 14px 22px; border-bottom: 1px solid var(--border);
+    background: #f8fafc; border-radius: 14px 14px 0 0;
+}
+.card-titulo h2 { font-size: 16px; font-weight: 600; color: var(--text-head); }
+.card-titulo p  { font-size: 12px; color: #64748b; margin-top: 3px; }
+.card-body { padding: 22px; }
+
+.linha {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 16px 24px;
+    margin-bottom: 16px;
+}
+.campo { display: flex; flex-direction: column; gap: 6px; }
+.campo-label {
+    font-size: 11px; font-weight: 700; color: #64748b;
+    text-transform: uppercase; letter-spacing: 0.05em;
+}
+.campo-info {
+    font-family: var(--mono); font-size: 14px; font-weight: 500;
+    color: var(--text-head);
+}
+.campo-input {
+    padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border);
+    font-size: 14px; font-family: var(--mono); color: var(--text-head);
+    background: var(--surface); outline: none; transition: 0.15s;
+}
+.campo-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+
+.atual-box {
+    display: inline-flex; align-items: baseline; gap: 8px;
+    font-size: 12px; color: #64748b;
+}
+.atual-box strong { color: var(--text-head); font-family: var(--mono); font-weight: 700; font-size: 13px; }
+
+.aviso-excedeu {
+    background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b;
+    padding: 4px 10px; border-radius: 6px; font-size: 11px; font-weight: 600;
+    display: inline-block;
+}
+
+.barra-acoes {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 22px; border-top: 1px solid var(--border);
+    background: #f8fafc; border-radius: 0 0 14px 14px;
+}
+.btn-gravar {
+    background: var(--accent); border: none; color: white;
+    font-size: 14px; font-weight: 600; padding: 10px 28px;
+    border-radius: 8px; cursor: pointer; transition: 0.15s;
+}
+.btn-gravar:hover { background: #1d4ed8; }
+.btn-gravar:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.msg { padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; margin-top: 12px; }
+.msg-ok  { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.msg-err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div>
+        <span class="badge-admin">🔑 LICENÇA</span>
+    </div>
+    <div class="topo-centro">
+        <div class="topo-titulo">Licença de Uso — Administrador</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="layout">
+
+    <aside class="painel-clientes">
+        <div class="painel-header">
+            <div class="painel-header-titulo">Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span></div>
+            <div class="busca-wrap">
+                <span class="busca-icone">🔍</span>
+                <input class="input-busca" id="inputBusca" type="text"
+                       placeholder="Buscar cliente…"
+                       oninput="filtrarClientes()" autocomplete="off">
+            </div>
+        </div>
+        <div class="lista-clientes" id="listaClientes">
+            {% for c in clientes %}
+            <div class="cliente-card"
+                 id="card-{{ c.id_cliente }}"
+                 data-nome="{{ (c.nome or '') | lower }}"
+                 onclick="selecionarCliente({{ c.id_cliente }})">
+                <div class="cliente-info">
+                    <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
+                    <span class="cliente-nome">{{ c.nome or '—' }}</span>
+                </div>
+            </div>
+            {% else %}
+            <div class="lista-vazia">Nenhum cliente cadastrado.</div>
+            {% endfor %}
+        </div>
+        <div class="total-clientes">{{ clientes | length }} cliente(s)</div>
+    </aside>
+
+    <main class="painel-direito">
+        <div id="conteudo">
+            <div class="placeholder-tela">
+                <div class="ico">🔑</div>
+                <div>Escolha um cliente para visualizar e editar a licença.</div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<script>
+let _clienteAtivo = null;
+
+function filtrarClientes() {
+    const q = (document.getElementById('inputBusca').value || '').toLowerCase().trim();
+    document.querySelectorAll('.cliente-card').forEach(c => {
+        const nome = c.dataset.nome || '';
+        c.style.display = (!q || nome.includes(q)) ? '' : 'none';
+    });
+}
+
+async function selecionarCliente(id) {
+    _clienteAtivo = id;
+    document.querySelectorAll('.cliente-card').forEach(c => c.classList.remove('ativo'));
+    const card = document.getElementById('card-' + id);
+    if (card) card.classList.add('ativo');
+
+    const cont = document.getElementById('conteudo');
+    cont.innerHTML = `<div class="placeholder-tela"><div class="ico">⏳</div><div>Carregando…</div></div>`;
+    try {
+        const r = await fetch('/api/admin_licenca/' + id);
+        const d = await r.json();
+        if (!d.ok) {
+            cont.innerHTML = `<div class="placeholder-tela"><div class="ico">⚠️</div><div>${d.msg || 'Erro'}</div></div>`;
+            return;
+        }
+        renderForm(d);
+    } catch (e) {
+        cont.innerHTML = `<div class="placeholder-tela"><div class="ico">⚠️</div><div>Falha de comunicacao.</div></div>`;
+    }
+}
+
+function renderForm(d) {
+    const c = d.cliente;
+    const a = d.atual;
+    const excEmp = (c.qtd_empresas     > 0 && a.empresas     > c.qtd_empresas);
+    const excFun = (c.qtd_funcionarios > 0 && a.funcionarios > c.qtd_funcionarios);
+
+    const cont = document.getElementById('conteudo');
+    cont.innerHTML = `
+        <div class="card-licenca">
+            <div class="card-titulo">
+                <h2>${esc(c.nome || '—')}</h2>
+                <p>CPF: ${esc(c.cpf || '—')} &nbsp;·&nbsp; Email: ${esc(c.email || '—')} &nbsp;·&nbsp; id_cliente=${c.id_cliente}</p>
+            </div>
+            <div class="card-body">
+                <div class="linha" style="grid-template-columns: 1fr;">
+                    <div class="campo">
+                        <span class="campo-label">Data Limite (Ano/Mês)</span>
+                        <input type="month" class="campo-input" id="inpDataLimite"
+                               value="${esc(c.data_limite || '')}"
+                               style="max-width:240px;">
+                        <span class="campo-info" style="font-size:11px;color:#64748b;">
+                            Acesso permitido até esse mês inclusive.
+                        </span>
+                    </div>
+                </div>
+                <div class="linha">
+                    <div class="campo">
+                        <span class="campo-label">Empresas</span>
+                        <div class="atual-box">
+                            Atual: <strong>${a.empresas}</strong> cadastrada(s)
+                            ${excEmp ? '<span class="aviso-excedeu">excedeu</span>' : ''}
+                        </div>
+                        <span class="campo-label" style="margin-top:6px;">Qtd. Contratada</span>
+                        <input type="number" min="0" step="1"
+                               class="campo-input" id="inpQtdEmp"
+                               value="${c.qtd_empresas}">
+                        <span class="campo-info" style="font-size:11px;color:#64748b;">
+                            0 = sem licença (bloqueia o menu).
+                        </span>
+                    </div>
+                    <div class="campo">
+                        <span class="campo-label">Funcionários</span>
+                        <div class="atual-box">
+                            Atual: <strong>${a.funcionarios}</strong> ativo(s)
+                            ${excFun ? '<span class="aviso-excedeu">excedeu</span>' : ''}
+                        </div>
+                        <span class="campo-label" style="margin-top:6px;">Qtd. Contratada</span>
+                        <input type="number" min="0" step="1"
+                               class="campo-input" id="inpQtdFun"
+                               value="${c.qtd_funcionarios}">
+                        <span class="campo-info" style="font-size:11px;color:#64748b;">
+                            0 = sem licença (bloqueia o menu).
+                        </span>
+                    </div>
+                </div>
+                <div id="msgRes"></div>
+            </div>
+            <div class="barra-acoes">
+                <button class="btn-gravar" id="btnGravar" onclick="gravar()">💾 Gravar</button>
+            </div>
+        </div>`;
+}
+
+function esc(s) {
+    return String(s ?? '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+async function gravar() {
+    if (!_clienteAtivo) return;
+    const btn = document.getElementById('btnGravar');
+    const msg = document.getElementById('msgRes');
+    btn.disabled = true;
+    msg.innerHTML = '<div class="msg msg-ok">Gravando…</div>';
+    try {
+        const payload = {
+            id_cliente:       _clienteAtivo,
+            data_limite:      document.getElementById('inpDataLimite').value || '',
+            qtd_empresas:     parseInt(document.getElementById('inpQtdEmp').value || '0', 10),
+            qtd_funcionarios: parseInt(document.getElementById('inpQtdFun').value || '0', 10),
+        };
+        const r = await fetch('/api/admin_licenca/gravar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const d = await r.json();
+        if (!d.ok) {
+            msg.innerHTML = `<div class="msg msg-err">${esc(d.msg || 'Erro')}</div>`;
+            btn.disabled = false;
+            return;
+        }
+        if ((d.mudancas || []).length === 0) {
+            msg.innerHTML = '<div class="msg msg-ok">Nada a alterar.</div>';
+        } else {
+            msg.innerHTML = '<div class="msg msg-ok">✓ Gravado.</div>';
+            setTimeout(() => selecionarCliente(_clienteAtivo), 1200);
+        }
+        btn.disabled = false;
+    } catch (e) {
+        msg.innerHTML = `<div class="msg msg-err">Falha de comunicacao: ${esc(String(e))}</div>`;
+        btn.disabled = false;
+    }
+}
+</script>
+
+</body>
+</html>
