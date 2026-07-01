@@ -5398,21 +5398,29 @@ def empresa():
 # =========================================================
 def listar_funcoes_total():
     try:
-        r = (
-            supabase
-            .table("tab_aux_funcao_total")
-            .select("id, cbo_codigo, cbo_nome, cbo_atividade")
-            .order("cbo_nome")
-            .execute()
-        )
         lista = []
-        for row in (r.data or []):
-            lista.append({
-                "id": row.get("id"),
-                "cbo": str(row.get("cbo_codigo", "")).strip(),
-                "nome_funcao": str(row.get("cbo_nome", "")).strip(),
-                "atividade": str(row.get("cbo_atividade", "")).strip()
-            })
+        page_size = 1000
+        offset = 0
+        while True:
+            r = (
+                supabase
+                .table("tab_aux_funcao_total")
+                .select("id, cbo_codigo, cbo_nome, cbo_atividade")
+                .order("cbo_nome")
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+            chunk = r.data or []
+            for row in chunk:
+                lista.append({
+                    "id": row.get("id"),
+                    "cbo": str(row.get("cbo_codigo", "")).strip(),
+                    "nome_funcao": str(row.get("cbo_nome", "")).strip(),
+                    "atividade": str(row.get("cbo_atividade", "")).strip()
+                })
+            if len(chunk) < page_size:
+                break
+            offset += page_size
         return lista
     except Exception as e:
         print("Erro em listar_funcoes_total:", str(e))

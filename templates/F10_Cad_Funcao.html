@@ -430,6 +430,25 @@
       background: #fafafa;
     }
 
+    /* ── Realce do campo Função selecionada ── */
+    #funcaoSelecionada.funcao-preenchida {
+      background: #ecfccb !important;
+      border: 2px solid #65a30d !important;
+      color: #14532d !important;
+      font-weight: 700;
+      box-shadow: 0 0 0 3px rgba(132,204,22,0.25);
+      animation: pulseFuncao 1.2s ease-out 1;
+    }
+
+    @keyframes pulseFuncao {
+      0%   { box-shadow: 0 0 0 0 rgba(132,204,22,0.65); transform: scale(1); }
+      50%  { box-shadow: 0 0 0 10px rgba(132,204,22,0);  transform: scale(1.01); }
+      100% { box-shadow: 0 0 0 3px rgba(132,204,22,0.25); transform: scale(1); }
+    }
+
+    /* Rodapé do form-area: some quando nao ha selecao */
+    .rodape-acoes.hidden { display: none; }
+
     @media (max-width: 1100px) {
       html, body {
         overflow: auto;
@@ -679,7 +698,7 @@
                 </div>
               </div>
 
-              <div class="rodape-acoes">
+              <div class="rodape-acoes hidden" id="rodapeGravar">
                 <button class="btn btn-gravar" type="button" onclick="gravarInclusao()">
                   <span class="icone-gravar">💾</span>
                   <span>Gravar Inclusão</span>
@@ -723,10 +742,18 @@
       var campoId = document.getElementById("idFuncaoSelecionada");
       var campoFuncao = document.getElementById("funcaoSelecionada");
       var campoNome = document.getElementById("nomeResumido");
+      var rodape = document.getElementById("rodapeGravar");
 
       if (campoId) campoId.value = id;
-      if (campoFuncao) campoFuncao.value = cbo + " - " + nome;
+      if (campoFuncao) {
+        campoFuncao.value = cbo + " - " + nome;
+        // Reinicia a animação de pulso a cada nova seleção
+        campoFuncao.classList.remove("funcao-preenchida");
+        void campoFuncao.offsetWidth;
+        campoFuncao.classList.add("funcao-preenchida");
+      }
       if (campoNome) campoNome.value = nome;
+      if (rodape) rodape.classList.remove("hidden");
     }
 
     var _ordemAtual = { col: 'nome', asc: true };
@@ -774,6 +801,7 @@
     async function gravarInclusao() {
       var campoId = document.getElementById("idFuncaoSelecionada");
       var campoNome = document.getElementById("nomeResumido");
+      var rodape = document.getElementById("rodapeGravar");
 
       var idfuncao = campoId ? campoId.value : "";
       var nomeResumido = campoNome ? (campoNome.value || "").trim() : "";
@@ -796,7 +824,7 @@
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
-            idfuncao_total: idfuncao,
+            id_funcao_total: idfuncao,
             nome_resumido: nomeResumido,
             abrangencia: abrangencia
           })
@@ -808,6 +836,9 @@
           alert(dados.msg || "Erro ao gravar.");
           return;
         }
+
+        // Sucesso: esconde o botao Gravar novamente
+        if (rodape) rodape.classList.add("hidden");
 
         const retorno = new URLSearchParams(window.location.search).get('retorno');
         if (retorno === 'funcionario') {
@@ -839,6 +870,15 @@
       var escolhidas = {{ funcoes_cli|length if funcoes_cli else 0 }};
       var resumo = document.getElementById("resumo-contadores");
       if (resumo) resumo.textContent = total + " disponíveis · " + escolhidas + " escolhidas";
+
+      // Se a pagina ja veio com uma funcao selecionada (ex: retorno do cad_funcionario), mostra o botao
+      var campoFuncao = document.getElementById("funcaoSelecionada");
+      var campoId = document.getElementById("idFuncaoSelecionada");
+      var rodape = document.getElementById("rodapeGravar");
+      if (campoFuncao && campoFuncao.value.trim() && campoId && campoId.value.trim()) {
+        campoFuncao.classList.add("funcao-preenchida");
+        if (rodape) rodape.classList.remove("hidden");
+      }
     });
   </script>
 <script src="/static/f10_dialog.js"></script>
