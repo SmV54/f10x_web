@@ -288,6 +288,28 @@ body {
     color: #7a4f00;
 }
 
+/* ── AVISO SIMPLES NA SEÇÃO TERCEIROS ────────────────── */
+.aviso-simples {
+    display: none;
+    background: #fef3c7;
+    color: #92400e;
+    border: 1px solid #f59e0b;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    margin-left: 12px;
+}
+#secao-terceiros.simples .aviso-simples {
+    display: inline-block;
+}
+#secao-terceiros.simples .quadro-terceiros {
+    opacity: 0.45;
+    pointer-events: none;
+    filter: grayscale(40%);
+}
+
 /* ── HINT ORIENTAÇÃO ─────────────────────────────────── */
 .msg-orientacao {
     position: fixed;
@@ -661,35 +683,6 @@ body {
                 </div>
             </div>
 
-            <div class="sep"></div>
-
-            <!-- encargos + botão -->
-            <div class="quadro-terceiros">
-                <div class="quadro-terceiros-header">
-                    <span class="quadro-terceiros-titulo">Contribuições Destinadas a Terceiros</span>
-                    <span class="quadro-terceiros-aviso">Percentuais pré-definidos pelo código FPAS</span>
-                    <button type="button" id="btnTerceiros" class="btn-terceiros" onclick="toggleEncargosManual()">
-                        ✎&nbsp; Alterar percentuais de terceiros manualmente
-                    </button>
-                </div>
-                <div class="quadro-terceiros-corpo">
-                    <div class="grid-encargos">
-                        <div class="campo campo-enc"><label>Sal. Educação</label><input type="text" id="sal_educ" readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>INCRA</label>       <input type="text" id="incra"    readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SENAI</label>       <input type="text" id="senai"    readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SESI</label>        <input type="text" id="sesi"     readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SENAC</label>       <input type="text" id="senac"    readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SESC</label>        <input type="text" id="sesc"     readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SEBRAE</label>      <input type="text" id="sebrae"   readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>DPC</label>         <input type="text" id="dpc"      readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SENAR</label>       <input type="text" id="senar"    readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SEST</label>        <input type="text" id="sest"     readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SENAT</label>       <input type="text" id="senat"    readonly placeholder="—"></div>
-                        <div class="campo campo-enc"><label>SESCOOP</label>     <input type="text" id="sescoop"  readonly placeholder="—"></div>
-                    </div>
-                </div>
-            </div>
-
         </div>
     </div>
 
@@ -749,14 +742,49 @@ body {
                 <div class="campo"><label>ISS (%)</label>               <input type="text" id="iss" placeholder="0,00" onfocus="showHint(this,'ISS — Imposto Sobre Serviços de Qualquer Natureza.\nInformar a alíquota do ISS aplicável à empresa conforme legislação municipal.\nValores de 0,00 a 5,00%. Obrigatório para empresas prestadoras de serviços.')" onblur="clearHint()"></div>
                 <div class="campo"><label>PIS (%)</label>               <input type="text" id="pis" placeholder="0,65" onfocus="showHint(this,'PIS — Programa de Integração Social.\nAlíquota padrão: 0,65% (regime cumulativo) ou 1,65% (regime não cumulativo).\nEmpresas do Simples Nacional estão dispensadas do recolhimento em separado.')" onblur="clearHint()"></div>
                 <div class="campo">
-                    <label>Simples Nacional</label>
-                    <select id="ind_simples" onfocus="showHint(this,'Simples Nacional — Regime tributário diferenciado instituído pela LC 123/2006.\nAplica-se a ME e EPP com receita bruta anual de até R$ 4,8 milhões.\nO enquadramento unifica o recolhimento de vários tributos em uma única guia (DAS).')" onblur="clearHint()">
-                        <option value=""></option>
+                    <label>Simples Nacional <span style="color:#ef4444;">*</span></label>
+                    <select id="ind_simples" required autocomplete="off" onchange="atualizarSimplesUI()" onfocus="showHint(this,'Simples Nacional — Regime tributário diferenciado instituído pela LC 123/2006.\nAplica-se a ME e EPP com receita bruta anual de até R$ 4,8 milhões.\nO enquadramento unifica o recolhimento de vários tributos em uma única guia (DAS).\n\nCAMPO OBRIGATÓRIO.')" onblur="clearHint()">
+                        <option value="" selected>— Selecione —</option>
                         <option value="S">Sim</option>
                         <option value="N">Não</option>
                     </select>
                 </div>
-                <div class="campo"><label>% Simples</label>             <input type="text" id="perc_simples" placeholder="—" onfocus="showHint(this,'% Simples — Alíquota efetiva do Simples Nacional.\nCalculada conforme o anexo e faixa de receita bruta acumulada dos últimos 12 meses.\nPreencher apenas para empresas optantes pelo Simples Nacional.')" onblur="clearHint()"></div>
+                <div class="campo" id="campoPercSimples" style="display:none;"><label>% Simples</label>             <input type="text" id="perc_simples" placeholder="—" onfocus="showHint(this,'% Simples — Alíquota efetiva do Simples Nacional.\nCalculada conforme o anexo e faixa de receita bruta acumulada dos últimos 12 meses.\nPreencher apenas para empresas optantes pelo Simples Nacional.')" onblur="clearHint()"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── CONTRIBUIÇÕES DESTINADAS A TERCEIROS ────── -->
+    <div class="secao" id="secao-terceiros">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#1a4a7a"></div>
+            <span class="secao-titulo">Contribuições Destinadas a Terceiros</span>
+            <span class="aviso-simples">⚠ Não precisa preencher — empresa optante pelo Simples Nacional</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="quadro-terceiros">
+                <div class="quadro-terceiros-header">
+                    <span class="quadro-terceiros-aviso">Percentuais pré-definidos pelo código FPAS</span>
+                    <button type="button" id="btnTerceiros" class="btn-terceiros" onclick="toggleEncargosManual()">
+                        ✎&nbsp; Alterar percentuais de terceiros manualmente
+                    </button>
+                </div>
+                <div class="quadro-terceiros-corpo">
+                    <div class="grid-encargos">
+                        <div class="campo campo-enc"><label>Sal. Educação</label><input type="text" id="sal_educ" readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>INCRA</label>       <input type="text" id="incra"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAI</label>       <input type="text" id="senai"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SESI</label>        <input type="text" id="sesi"     readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAC</label>       <input type="text" id="senac"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SESC</label>        <input type="text" id="sesc"     readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SEBRAE</label>      <input type="text" id="sebrae"   readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>DPC</label>         <input type="text" id="dpc"      readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAR</label>       <input type="text" id="senar"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SEST</label>        <input type="text" id="sest"     readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SENAT</label>       <input type="text" id="senat"    readonly placeholder="—"></div>
+                        <div class="campo campo-enc"><label>SESCOOP</label>     <input type="text" id="sescoop"  readonly placeholder="—"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1267,6 +1295,15 @@ async function gravarEmpresa(painel) {
     const v = (id) => (document.getElementById(id)?.value || '').trim();
     const n = (id) => { const x = v(id).replace(',','.'); return x === '' ? null : parseFloat(x); };
 
+    // Simples Nacional e campo obrigatorio.
+    const _indSimples = v('ind_simples');
+    if (_indSimples !== 'S' && _indSimples !== 'N') {
+        const el = document.getElementById('ind_simples');
+        if (el) { el.focus(); el.style.borderColor = '#ef4444'; el.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.2)'; }
+        alert('Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao).');
+        return;
+    }
+
     const dados = {
         cnpj:                   v('cnpj').replace(/\D/g,''),
         razaosocial:            document.getElementById('razaosocial')?.value.trim() || null,
@@ -1373,6 +1410,21 @@ function limparFormulario() {
 }
 
 /* ── RISCO AUTOMÁTICO POR CLASSIFICAÇÃO TRIBUTÁRIA ─────── */
+function atualizarSimplesUI() {
+    const ind    = (document.getElementById('ind_simples')?.value || '').trim();
+    const secao  = document.getElementById('secao-terceiros');
+    const campo  = document.getElementById('campoPercSimples');
+    const perc   = document.getElementById('perc_simples');
+    const eSim   = (ind === 'S');
+    if (secao) secao.classList.toggle('simples', eSim);
+    if (campo) campo.style.display = eSim ? '' : 'none';
+    // Se saiu do Simples, limpa a % pra nao ficar residuo escondido
+    if (!eSim && perc) perc.value = '';
+}
+
+// Alias antigo para compatibilidade com tour/driver.js
+function atualizarTerceirosSimples() { atualizarSimplesUI(); }
+
 function ajustarRisco() {
     const classTrib = document.getElementById('class_trib').value;
     const riscoEl   = document.getElementById('risco');
@@ -1462,6 +1514,7 @@ function preencherFormulario(d) {
     set('pis',         flt(d.pis));
     set('ind_simples', d.ind_simples || '');
     set('perc_simples', flt(d.perc_simples));
+    atualizarSimplesUI();
     // eSocial
     set('ind_coop',      d.es_ind_coop      || '');
     set('ind_constr',    d.es_ind_constr     || '');
