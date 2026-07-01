@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Cálculo Individual</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-logo    { font-family: var(--mono); font-size: 13px; font-weight: 500; color: #111827; }
+.topo-versao  { font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); text-decoration: none;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 880px; margin: 32px auto; padding: 0 24px 40px; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 22px 26px;
+}
+.card-titulo { font-size: 16px; font-weight: 600; color: #1e293b; margin-bottom: 6px; }
+.card-sub    { font-size: 13px; color: #64748b; margin-bottom: 18px; }
+
+.aviso-info {
+    background: #eff6ff; border: 1px solid #93c5fd; color: #1e3a8a;
+    padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.55;
+    margin-bottom: 18px;
+}
+.aviso-info strong { color: #1e3a8a; }
+
+.barra-busca {
+    display: grid; grid-template-columns: 1fr auto; gap: 10px;
+    align-items: center; margin-bottom: 10px;
+}
+.input-busca {
+    padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border);
+    font-size: 13px; outline: none; background: white;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.cont-sel {
+    font-size: 12px; color: var(--text-head); font-weight: 700;
+    padding: 6px 12px; background: #eaf2fd; border: 1px solid #c3d9f8;
+    border-radius: 8px;
+}
+
+.lista {
+    border: 1px solid var(--border); border-radius: 10px;
+    max-height: 360px; overflow-y: auto; background: white;
+}
+.linha {
+    display: grid; grid-template-columns: 36px 90px 1fr auto;
+    align-items: center; gap: 10px;
+    padding: 8px 12px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    font-size: 13px;
+}
+.linha:hover { background: #f8fafc; }
+.linha.checked { background: #eff6ff; }
+.linha input[type=radio] { cursor: pointer; width: 16px; height: 16px; }
+.col-mat { font-family: var(--mono); font-weight: 600; color: #1d4ed8; }
+.col-nome { color: var(--text-head); }
+.col-categ { font-size: 11px; color: #64748b; }
+.lista-vazia { padding: 22px; text-align: center; color: #94a3b8; font-size: 12px; }
+
+.linha-acoes {
+    display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px;
+}
+.btn-calc {
+    background: var(--accent); border: none; color: white;
+    font-size: 14px; font-weight: 600; padding: 10px 24px;
+    border-radius: 8px; cursor: pointer;
+}
+.btn-calc:hover { background: #1d4ed8; }
+.btn-calc:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.prog {
+    margin-top: 18px; padding: 16px 20px; background: #f8fafc;
+    border: 1px solid var(--border); border-radius: 10px; display: none;
+}
+.prog.ativo { display: block; }
+.prog-track { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.prog-fill {
+    height: 100%; background: linear-gradient(90deg, #16a34a, #22c55e);
+    width: 0%; transition: width 0.3s;
+}
+.prog-pct { font-size: 12px; font-weight: 700; color: var(--accent); margin-top: 6px; text-align: right; }
+.prog-func { font-size: 12px; color: #64748b; margin-top: 8px; }
+
+.msg-result {
+    margin-top: 14px; padding: 12px 16px; border-radius: 8px;
+    font-size: 13px; font-weight: 600;
+}
+.msg-ok  { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
+.msg-err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+.msg-result .acoes-pos { display: flex; gap: 10px; margin-top: 10px; }
+.btn-visualizar {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: white; border: 1px solid #16a34a; color: #15803d;
+    font-size: 12px; font-weight: 700; padding: 7px 14px;
+    border-radius: 8px; text-decoration: none; transition: 0.15s;
+}
+.btn-visualizar:hover { background: #15803d; color: white; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">🔁 Cálculo Individual</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <span class="topo-logo">Folha10·Simples</span>
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <a class="btn-voltar-topo" href="/menu">← Menu</a>
+    </div>
+</div>
+
+<div class="conteudo">
+    <div class="card">
+        <div class="card-titulo">Cálculo Individual</div>
+        <div class="card-sub">
+            Selecione <strong>um</strong> funcionário para calcular. A folha
+            <strong>{{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</strong>
+            continua no status atual — não é marcada como Calculada nem incrementa o contador de cálculos.
+        </div>
+
+        <div class="aviso-info">
+            ℹ Útil para conferir ou tirar dúvidas anteriores ao cálculo total.
+        </div>
+
+        <div class="barra-busca">
+            <input type="text" class="input-busca" id="inpBusca"
+                   placeholder="🔍  Buscar por nome ou matrícula…"
+                   oninput="filtrar()" autocomplete="off">
+            <span class="cont-sel" id="contSel">Nenhum selecionado</span>
+        </div>
+
+        <div class="lista" id="lista">
+            {% for f in funcionarios %}
+            <label class="linha" id="linha-{{ f.matricula }}"
+                   data-mat="{{ f.matricula }}"
+                   data-nome="{{ f.nome or '' }}"
+                   data-nome-l="{{ (f.nome or '') | lower }}"
+                   data-mat-l="{{ '%06d' % f.matricula }}">
+                <input type="radio" name="func" class="rd-func"
+                       data-mat="{{ f.matricula }}"
+                       data-nome="{{ f.nome or '' }}"
+                       onchange="onPick(this)">
+                <span class="col-mat">{{ '%06d' % f.matricula }}</span>
+                <span class="col-nome">{{ f.nome or '—' }}</span>
+                <span class="col-categ">{% if f.codcateg %}Cat. {{ f.codcateg }}{% endif %}</span>
+            </label>
+            {% else %}
+            <div class="lista-vazia">Nenhum funcionário ativo na empresa.</div>
+            {% endfor %}
+        </div>
+
+        <div class="linha-acoes">
+            <button class="btn-calc" id="btnCalc" onclick="iniciar()" disabled>
+                ▶ Calcular funcionário
+            </button>
+        </div>
+
+        <div class="prog" id="prog">
+            <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+            <div class="prog-pct" id="progPct">0%</div>
+            <div class="prog-func" id="progFunc">Preparando…</div>
+        </div>
+
+        <div id="msgResult"></div>
+    </div>
+</div>
+
+<script>
+let _matSel  = 0;
+let _nomeSel = '';
+
+function filtrar() {
+    const q = (document.getElementById('inpBusca').value || '').toLowerCase().trim();
+    document.querySelectorAll('#lista .linha').forEach(l => {
+        const nome = l.dataset.nomeL || '';
+        const mat  = l.dataset.matL  || '';
+        l.style.display = (!q || nome.includes(q) || mat.includes(q)) ? '' : 'none';
+    });
+}
+
+function onPick(rd) {
+    document.querySelectorAll('#lista .linha').forEach(l => l.classList.remove('checked'));
+    const lin = rd.closest('.linha');
+    if (lin) lin.classList.add('checked');
+    _matSel  = parseInt(rd.dataset.mat, 10) || 0;
+    _nomeSel = rd.dataset.nome || '';
+    document.getElementById('contSel').textContent =
+        _matSel ? `Selecionado: ${String(_matSel).padStart(6, '0')} — ${_nomeSel}` : 'Nenhum selecionado';
+    document.getElementById('btnCalc').disabled = (_matSel === 0);
+}
+
+let _src = null;
+
+function iniciar() {
+    if (!_matSel) return;
+    document.getElementById('btnCalc').disabled = true;
+    document.getElementById('msgResult').innerHTML = '';
+    const prog = document.getElementById('prog');
+    prog.classList.add('ativo');
+    document.getElementById('progFill').style.width = '0%';
+    document.getElementById('progPct').textContent  = '0%';
+    document.getElementById('progFunc').textContent = 'Iniciando…';
+
+    if (_src) { _src.close(); _src = null; }
+    _src = new EventSource('/api/calcular_folha_stream?matricula=' + _matSel);
+
+    _src.onmessage = function(e) {
+        let d = {};
+        try { d = JSON.parse(e.data); } catch (_) { return; }
+        if (d.tipo === 'func') {
+            document.getElementById('progFill').style.width = (d.pct || 0) + '%';
+            document.getElementById('progPct').textContent  = (d.pct || 0) + '%';
+            document.getElementById('progFunc').textContent = d.matr + ' — ' + (d.nome || '');
+        } else if (d.tipo === 'fim') {
+            _src.close(); _src = null;
+            document.getElementById('progFill').style.width = '100%';
+            document.getElementById('progPct').textContent  = '100%';
+            document.getElementById('progFunc').textContent = 'Concluído.';
+            const matFmt = String(_matSel).padStart(6, '0');
+            document.getElementById('msgResult').innerHTML =
+                '<div class="msg-result msg-ok">' +
+                '  ✓ Cálculo de ' + escHtml(matFmt) + ' &mdash; ' + escHtml(_nomeSel) +
+                '  concluído. A folha continua no status atual.' +
+                '  <div class="acoes-pos">' +
+                '    <a class="btn-visualizar" href="/visualizar_calculo?matricula=' + _matSel + '">' +
+                '      👁️ Visualizar Cálculo' +
+                '    </a>' +
+                '  </div>' +
+                '</div>';
+            document.getElementById('btnCalc').disabled = false;
+        } else if (d.tipo === 'erro') {
+            _src.close(); _src = null;
+            document.getElementById('msgResult').innerHTML =
+                '<div class="msg-result msg-err">⚠ ' + escHtml(d.msg || 'Erro') + '</div>';
+            document.getElementById('btnCalc').disabled = false;
+        } else if (d.tipo === 'bloqueio') {
+            _src.close(); _src = null;
+            document.getElementById('msgResult').innerHTML =
+                '<div class="msg-result msg-err">🚫 ' + escHtml(d.msg || 'Bloqueado') + '</div>';
+            document.getElementById('btnCalc').disabled = false;
+        } else if (d.tipo === 'aviso') {
+            document.getElementById('progFunc').textContent = 'Aviso: ' + (d.msg || '');
+        }
+    };
+
+    _src.onerror = function() {
+        if (_src) { _src.close(); _src = null; }
+        document.getElementById('msgResult').innerHTML =
+            '<div class="msg-result msg-err">Falha de comunicacao com o servidor.</div>';
+        document.getElementById('btnCalc').disabled = false;
+    };
+}
+
+function escHtml(s) {
+    return String(s ?? '')
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+</script>
+</body>
+</html>

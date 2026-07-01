@@ -391,6 +391,20 @@ async function visualizar() {
     }
 }
 
+// Quando chega da tela de Calculo Individual com ?matricula=N, marca o
+// checkbox correspondente e dispara a visualizacao automaticamente.
+window.addEventListener('DOMContentLoaded', function() {
+    const matIni = {{ matricula_inicial or 0 }};
+    if (!matIni) return;
+    const chk = document.getElementById('chk' + matIni);
+    if (!chk) return;
+    chk.checked = true;
+    const item = chk.closest('.func-item');
+    if (item) item.scrollIntoView({ block: 'nearest' });
+    atualizarTodos();
+    visualizar();
+});
+
 const TIPO_LABEL = { N: 'Folha Normal', F: 'Férias', R: 'Rescisão' };
 const TIPO_ORD   = { N: 0, F: 1, R: 2 };
 

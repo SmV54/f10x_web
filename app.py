@@ -5145,13 +5145,48 @@ def cliente_ja_cadastrado(cpf):
 def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
     cpf     = so_numeros(cpf)
     celular = so_numeros(celular)
+    # Detecta se ja existe para diferenciar cadastro NOVO de reinscricao.
+    ja_existia = False
+    try:
+        _r = (supabase.table("tab_cliente")
+              .select("id_cliente")
+              .eq("cpf", cpf)
+              .limit(1).execute())
+        ja_existia = bool(_r.data)
+    except Exception:
+        ja_existia = False
+
     payload = {
         "cpf": cpf, "nome": nome, "celular": celular, "email": email,
         "senha": senha, "qtd_empresas": 1, "qtd_funcionarios": 10,
         "data_limite": datetime.now().strftime("%Y-%m"),
         "tentativas_login": 0, "bloqueado_ate": None
     }
-    return supabase.table("tab_cliente").upsert(payload).execute()
+    resp = supabase.table("tab_cliente").upsert(payload).execute()
+
+    # Notifica o admin F10 por WhatsApp quando o cadastro for NOVO.
+    if not ja_existia:
+        try:
+            from datetime import datetime as _dt
+            cpf_fmt   = (f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+                         if len(cpf) == 11 else cpf)
+            cel_fmt   = (f"({celular[:2]}) {celular[2:7]}-{celular[7:]}"
+                         if len(celular) == 11 else celular)
+            agora_fmt = _dt.now().strftime("%d/%m/%Y %H:%M")
+            msg_wa = (
+                "*Folha10 — Novo cliente cadastrado*\n\n"
+                f"Quando: {agora_fmt}\n\n"
+                f"Nome: {nome}\n"
+                f"CPF: {cpf_fmt}\n"
+                f"Celular: {cel_fmt}\n"
+                f"Email: {email}\n"
+            )
+            ok_wa, err_wa = _enviar_whatsapp_texto("81988182000", msg_wa)
+            print(f"[novo_cliente] whatsapp ok={ok_wa} err={err_wa!r}")
+        except Exception as e:
+            print(f"[novo_cliente] excecao ao enviar whatsapp: {e}")
+
+    return resp
 
 def _validar_documento_cad(documento):
     documento = so_numeros(documento)
@@ -5687,6 +5722,12 @@ def api_alterar_empresa():
         dados = request.get_json()
         if not dados:
             return jsonify({"ok": False, "msg": "Dados não recebidos"})
+        # Simples Nacional e obrigatorio (defesa em profundidade)
+        _is = str(dados.get("ind_simples") or "").strip().upper()
+        if _is not in ("S", "N"):
+            return jsonify({"ok": False,
+                "msg": "Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao)."})
+        dados["ind_simples"] = _is
         dados.pop("cnpj",       None)
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
@@ -5712,6 +5753,13 @@ def api_gravar_empresa():
         dados = request.get_json()
         if not dados:
             return jsonify({"ok": False, "msg": "Dados não recebidos"})
+
+        # Simples Nacional e obrigatorio
+        _is = str(dados.get("ind_simples") or "").strip().upper()
+        if _is not in ("S", "N"):
+            return jsonify({"ok": False,
+                "msg": "Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao)."})
+        dados["ind_simples"] = _is
 
         id_cliente_sess = session.get("id_cliente", 1)
         dados["id_cliente"] = id_cliente_sess
@@ -26600,13 +26648,71 @@ def calcular_folha():
     )
 
 
+# =========================================================
+# Calcular Folha INDIVIDUAL — escolhe 1 funcionario, nao muda a folha
+# =========================================================
+@app.route("/calcular_folha_individual")
+def calcular_folha_individual():
+    if not session.get("logado"):
+        return redirect("/")
+    if not session.get("id_empresa"):
+        return redirect("/selecionar_empresa")
+    # So permite acessar com a folha Aberta (A ou X). C/F/P caem fora.
+    sit = str(session.get("anomes_situacao") or "")
+    if sit not in ("A", "X"):
+        return redirect("/menu")
+    id_empresa = _get_id_empresa()
+    funcionarios = []
+    try:
+        funcionarios = (supabase.table("tab_cad")
+                        .select("matricula, nome, codcateg, situacao")
+                        .eq("id_empresa", id_empresa)
+                        .neq("situacao", "D")
+                        .order("matricula")
+                        .execute().data or [])
+    except Exception:
+        pass
+    return render_template(
+        "F10_Calc_Folha_Individual.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=str(session.get("anomes_atual") or ""),
+        folha_tipo_ativa=str(session.get("anomes_tipo") or "N"),
+        folha_situacao=str(session.get("anomes_situacao") or ""),
+        funcionarios=funcionarios,
+    )
+
+
 @app.route("/api/calcular_folha_stream")
 def calcular_folha_stream():
     if not session.get("logado"):
         return Response("data: {}\n\n", mimetype="text/event-stream")
 
+    # Calculo INDIVIDUAL: ?matricula=N — calcula apenas um funcionario e NAO
+    # muda situacao da folha (continua Aberta). Vale tambem se a folha ja
+    # esta Calculada (C): permite recalcular um unico funcionario sem
+    # precisar reabrir a folha inteira.
+    try:
+        _mat_indiv = int(request.args.get("matricula") or 0)
+    except Exception:
+        _mat_indiv = 0
+    eh_individual = _mat_indiv > 0
+
     sit = _refresh_situacao_folha()
-    if sit not in ("A", "X"):
+    if eh_individual:
+        # No modo individual a folha PRECISA estar Aberta (A ou X). Bloqueia
+        # C/F/P igual ao calculo geral.
+        if sit not in ("A", "X"):
+            if sit == "P":
+                msg = "Folha em cálculo por outro usuário. Aguarde."
+            elif sit == "F":
+                msg = "Folha Fechada — reabra antes de calcular."
+            else:
+                msg = "Folha já está calculada — reabra para recalcular."
+            bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": sit}, ensure_ascii=False)
+            return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
+    elif sit not in ("A", "X"):
         if sit == "P":
             msg = "Folha em cálculo por outro usuário. Aguarde."
         elif sit == "F":
@@ -26644,23 +26750,35 @@ def calcular_folha_stream():
     empresa_nm  = session.get("empresa_info", "")
     cnpj_fmt    = _fmt_cnpj(session.get("cnpj_empresa", ""))
 
-    # Marca como "P" (Processando) para bloquear cálculo simultâneo
-    try:
-        supabase.table("tab_anomes").update({"situacao": "P"}) \
-            .eq("id_cliente", id_cliente) \
-            .eq("id_empresa", id_empresa) \
-            .eq("ano_mes", anomes) \
-            .eq("tipo", anomes_tipo) \
-            .execute()
-        session["anomes_situacao"] = "P"
-    except Exception:
-        pass
+    # Marca como "P" (Processando) para bloquear cálculo simultâneo —
+    # NAO se aplica ao calculo individual (folha continua como esta).
+    if not eh_individual:
+        try:
+            supabase.table("tab_anomes").update({"situacao": "P"}) \
+                .eq("id_cliente", id_cliente) \
+                .eq("id_empresa", id_empresa) \
+                .eq("ano_mes", anomes) \
+                .eq("tipo", anomes_tipo) \
+                .execute()
+            session["anomes_situacao"] = "P"
+        except Exception:
+            pass
 
     q = queue.Queue()
 
     def run():
         try:
             linhas = _calc_etapa1_dados(id_empresa)
+            # No modo individual, filtra para a matricula informada.
+            if eh_individual:
+                linhas = [l for l in (linhas or [])
+                          if int(l.get("matricula") or 0) == _mat_indiv]
+                if not linhas:
+                    q.put(json.dumps({"tipo": "erro",
+                        "msg": f"Matricula {_mat_indiv} nao encontrada nesta empresa."},
+                        ensure_ascii=False))
+                    q.put(None)
+                    return
             if not linhas or not anomes:
                 q.put(json.dumps({"tipo": "fim", "resumo":
                     {"total_funcs": 0, "funcs_com_afast": 0, "total_afast": 0, "ferias_futuras": 0}}))
@@ -26684,14 +26802,22 @@ def calcular_folha_stream():
 
             try:
                 tipo_desc = {"N": "Normal", "F": "Ferias", "R": "Rescisao"}.get(anomes_tipo, anomes_tipo)
-                obs_log = f"Calc folha {anomes} tipo:{tipo_desc} Qtd Funcionarios = {len(linhas)}"[:200]
+                if eh_individual:
+                    obs_log = (f"Calc INDIVIDUAL folha {anomes} tipo:{tipo_desc} "
+                               f"matricula={_mat_indiv}")[:200]
+                    menu_log = "CALC-INDIV"
+                else:
+                    obs_log = (f"Calc folha {anomes} tipo:{tipo_desc} "
+                               f"Qtd Funcionarios = {len(linhas)}")[:200]
+                    menu_log = "CALC-FOLHA"
                 supabase.table("tab_log").insert({
                     "id_cliente":      id_cliente,
                     "id_empresa":      id_empresa,
                     "cpf_usuario":     cpf_usuario,
-                    "menu":            "CALC-FOLHA",
+                    "menu":            menu_log,
                     "observacao":      obs_log,
                     "ano_mes":         int(anomes),
+                    "matricula":       _mat_indiv if eh_individual else None,
                     "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
                 }).execute()
             except Exception as e_log:
@@ -26699,27 +26825,30 @@ def calcular_folha_stream():
 
             _n_calc  = 0
             _dt_calc = datetime.now().strftime("%d/%m/%Y %H:%M")
-            try:
-                _r_an = (supabase.table("tab_anomes")
-                         .select("qtd_calculos")
-                         .eq("id_cliente", id_cliente)
-                         .eq("id_empresa", id_empresa)
-                         .eq("ano_mes",    int(anomes))
-                         .eq("tipo",       anomes_tipo)
-                         .execute().data or [])
-                _qtd_atual = int((_r_an[0].get("qtd_calculos") or 0) if _r_an else 0)
-                _n_calc    = _qtd_atual + 1
-                supabase.table("tab_anomes").update({
-                    "situacao":          "C",
-                    "data_hora_calculo": datetime.now().strftime("%Y%m%d %H%M%S"),
-                    "qtd_calculos":      _n_calc,
-                }).eq("id_cliente", id_cliente) \
-                  .eq("id_empresa", id_empresa) \
-                  .eq("ano_mes",    anomes) \
-                  .eq("tipo",       anomes_tipo) \
-                  .execute()
-            except Exception as e_sit:
-                q.put(json.dumps({"tipo": "aviso", "msg": f"Erro ao marcar calculada: {e_sit}"}, ensure_ascii=False))
+            # No modo individual, NAO muda a situacao da folha nem incrementa
+            # qtd_calculos — a folha continua como estava (A/X/C).
+            if not eh_individual:
+                try:
+                    _r_an = (supabase.table("tab_anomes")
+                             .select("qtd_calculos")
+                             .eq("id_cliente", id_cliente)
+                             .eq("id_empresa", id_empresa)
+                             .eq("ano_mes",    int(anomes))
+                             .eq("tipo",       anomes_tipo)
+                             .execute().data or [])
+                    _qtd_atual = int((_r_an[0].get("qtd_calculos") or 0) if _r_an else 0)
+                    _n_calc    = _qtd_atual + 1
+                    supabase.table("tab_anomes").update({
+                        "situacao":          "C",
+                        "data_hora_calculo": datetime.now().strftime("%Y%m%d %H%M%S"),
+                        "qtd_calculos":      _n_calc,
+                    }).eq("id_cliente", id_cliente) \
+                      .eq("id_empresa", id_empresa) \
+                      .eq("ano_mes",    anomes) \
+                      .eq("tipo",       anomes_tipo) \
+                      .execute()
+                except Exception as e_sit:
+                    q.put(json.dumps({"tipo": "aviso", "msg": f"Erro ao marcar calculada: {e_sit}"}, ensure_ascii=False))
 
             pasta = os.path.join("C:\\Folha10-Simples_Memoria",
                                  anomes[:4],
@@ -27287,6 +27416,12 @@ def visualizar_calculo():
                "C": ("Calculada","sit-calculada"), "F": ("Fechada","sit-fechada")}
     sit_st = str(session.get("anomes_situacao") or "")
     sit_label, sit_class = sit_map.get(sit_st, ("", ""))
+    # Permite chegar nesta tela ja com um funcionario pre-selecionado, vindo
+    # do Calculo Individual (?matricula=N) — auto-carrega a visualizacao.
+    try:
+        matricula_inicial = int(request.args.get("matricula") or 0)
+    except Exception:
+        matricula_inicial = 0
     return render_template(
         "F10_Visualizar_Calculo.html",
         versao=ler_versao(),
@@ -27296,6 +27431,7 @@ def visualizar_calculo():
         folha_sit_label=sit_label,
         folha_sit_class=sit_class,
         funcionarios=funcionarios,
+        matricula_inicial=matricula_inicial,
     )
 
 
