@@ -783,6 +783,35 @@ def menu():
     except Exception:
         pass
 
+    # Status do certificado digital A1 da empresa atual (para banner no menu)
+    cert_status       = "ok"     # ok | ausente | vence_em | vencido
+    cert_dias         = None
+    cert_validade_fmt = ""
+    try:
+        _cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+        if _cnpj_emp:
+            _rc = (supabase.table("tab_empresa")
+                   .select("cert_pfx_b64, cert_validade")
+                   .eq("cnpj", _cnpj_emp)
+                   .limit(1).execute())
+            _row = (_rc.data or [{}])[0]
+            _pfx = _row.get("cert_pfx_b64") or ""
+            _val = _row.get("cert_validade") or ""
+            if not _pfx:
+                cert_status = "ausente"
+            elif _val and len(_val) == 8:
+                from datetime import date as _date
+                _hoje = _date.today()
+                _v_dt = _date(int(_val[:4]), int(_val[4:6]), int(_val[6:8]))
+                cert_dias = (_v_dt - _hoje).days
+                cert_validade_fmt = f"{_val[6:8]}/{_val[4:6]}/{_val[:4]}"
+                if cert_dias < 0:
+                    cert_status = "vencido"
+                elif cert_dias <= 30:
+                    cert_status = "vence_em"
+    except Exception:
+        pass
+
     return render_template(
         "F10_Menu.html",
         versao=ler_versao(),
@@ -795,6 +824,9 @@ def menu():
         licenca_classe=licenca_classe,
         menu_numerado=_get_pref("menu_num", "S"),
         s1299_enviado=s1299_enviado,
+        cert_status=cert_status,
+        cert_dias=cert_dias,
+        cert_validade_fmt=cert_validade_fmt,
     )
 
 # =========================================================

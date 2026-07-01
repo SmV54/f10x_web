@@ -320,6 +320,41 @@ body.menu-numerado .nav-item::before {
 }
 #btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 #btnTour title { display: none; }
+
+/* ── BANNER CERTIFICADO A1 ─────────────────────────── */
+.banner-cert {
+    position: fixed; bottom: 128px; left: 24px; right: 24px;
+    max-width: 760px; z-index: 490;
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 16px;
+    border-radius: 10px;
+    font-size: 13px; line-height: 1.4;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.10);
+}
+.banner-cert.ausente {
+    background: #fef3c7; color: #78350f; border: 1px solid #f59e0b;
+}
+.banner-cert.vence   {
+    background: #fff7ed; color: #7c2d12; border: 1px solid #ea580c;
+}
+.banner-cert.vencido {
+    background: #fee2e2; color: #7f1d1d; border: 1px solid #dc2626;
+}
+.banner-cert .icone { font-size: 22px; line-height: 1; flex-shrink: 0; }
+.banner-cert .msg   { flex: 1 1 auto; }
+.banner-cert .msg strong { font-weight: 700; }
+.banner-cert .btn-cert {
+    background: #fff; color: inherit; border: 1px solid currentColor;
+    padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;
+    text-decoration: none; white-space: nowrap;
+    transition: 0.15s;
+}
+.banner-cert .btn-cert:hover { background: rgba(255,255,255,0.6); }
+.banner-cert .fechar {
+    background: transparent; border: none; color: inherit; opacity: 0.55;
+    cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1;
+}
+.banner-cert .fechar:hover { opacity: 1; }
 </style>
 </head>
 
@@ -530,7 +565,7 @@ const modulos = {
                 { icone: '▶️', nome: 'Calcular Folha',           href: '/calcular_folha',    ok: true },
                 { icone: '👁️', nome: 'Visualizar Cálculo',       href: '/visualizar_calculo', ok: true },
                 { icone: '📄', nome: 'Memória de Cálculo',        href: '/memoria_calculo',     ok: true },
-                { icone: '🔁', nome: 'Recalcular Funcionário',    href: '#' },
+                { icone: '🔁', nome: 'Cálculo Individual',         href: '/calcular_folha_individual', ok: true, bloqueioFolha: true },
                 { icone: '⚠️', nome: 'Verificar Inconsistências', href: '#' },
             ]},
             { nome: 'Adiantamento Quinzenal', itens: [
@@ -1106,6 +1141,41 @@ function iniciarTour() {
 }
 
 </script>
+
+{% if cert_status == 'ausente' %}
+<div class="banner-cert ausente" id="bannerCert">
+    <span class="icone">📄</span>
+    <span class="msg">
+        <strong>Certificado digital não cadastrado.</strong>
+        Para transmitir eventos ao eSocial (S-1000, S-1210, etc.) você precisa enviar um certificado
+        <strong>A1</strong> (arquivo .pfx / .p12 emitido em nome desta empresa). O certificado
+        <strong>A3</strong> (cartão/token) não é suportado.
+    </span>
+    <a class="btn-cert" href="/config_certificado">Enviar certificado</a>
+    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+</div>
+{% elif cert_status == 'vencido' %}
+<div class="banner-cert vencido" id="bannerCert">
+    <span class="icone">⛔</span>
+    <span class="msg">
+        <strong>Certificado A1 vencido</strong> em {{ cert_validade_fmt }}
+        ({{ (-cert_dias) if cert_dias is not none else 0 }} dia(s) atrás).
+        Envie um novo certificado A1 para voltar a transmitir ao eSocial.
+    </span>
+    <a class="btn-cert" href="/config_certificado">Ativar o Novo Certificado</a>
+    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+</div>
+{% elif cert_status == 'vence_em' %}
+<div class="banner-cert vence" id="bannerCert">
+    <span class="icone">⏳</span>
+    <span class="msg">
+        <strong>Seu certificado A1 vence em {{ cert_dias }} dia(s)</strong> ({{ cert_validade_fmt }}).
+        Providencie a renovação agora para não interromper o envio ao eSocial.
+    </span>
+    <a class="btn-cert" href="/config_certificado">Ativar o Novo Certificado</a>
+    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+</div>
+{% endif %}
 
 {% if licenca_fmt %}
 <span class="label-licenca {{ licenca_classe }}" title="Data limite da licença">
