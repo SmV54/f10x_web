@@ -237,7 +237,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     <div class="topo-titulo">Ficha de Registro</div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div>
-            <div class="topo-logo">Folha10·Simples</div>
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
         <button class="btn-voltar-topo" onclick="window.location.href='/select_funcionario?contexto=ficha'">&#8592; Voltar</button>

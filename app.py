@@ -39,17 +39,15 @@ if not SUPABASE_URL or not SUPABASE_KEY:
     raise Exception("Erro: SUPABASE_URL ou SUPABASE_KEY não definidos no .env")
 
 def ler_versao():
-    """Lê versão do arquivo versaoxxx.txt; converte YYYYMMDD-HHMM → DD-MM-YY HHhMM."""
+    """Lê versão do arquivo versaoxxx.txt; exibe como YYMMDD-HHMM (ano com 2 dígitos)."""
     import re
     try:
         caminho = os.path.join(os.path.dirname(__file__), "versaoxxx.txt")
         with open(caminho, "r", encoding="utf-8") as f:
             v = f.read().strip()
         if v:
-            m = re.match(r'^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})$', v)
-            if m:
-                aa, mm, dd, hh, mi = m.group(1)[2:], m.group(2), m.group(3), m.group(4), m.group(5)
-                return f"{dd}-{mm}-{aa} {hh}h{mi}"
+            if re.match(r'^\d{8}-\d{4}$', v):   # YYYYMMDD-HHMM -> YYMMDD-HHMM
+                return v[2:]
             return v
     except Exception:
         pass
@@ -827,6 +825,7 @@ def menu():
         cert_status=cert_status,
         cert_dias=cert_dias,
         cert_validade_fmt=cert_validade_fmt,
+        eh_admin_f10=(_is_admin_f10() or bool(session.get("cpf_admin_original"))),
     )
 
 # =========================================================
@@ -33059,6 +33058,31 @@ def api_recibo_ferias_pdf():
 # =========================================================
 CPF_ADMIN_F10 = '15313921487'
 
+
+def _fmt_data_cadastro(v):
+    """datahora_cadastro (ISO 'YYYY-MM-DDTHH:MM:SS...') -> 'dd/mm/aaaa'."""
+    if not v:
+        return "—"
+    s = str(v)[:10]
+    try:
+        a, m, d = s.split("-")
+        return f"{d}/{m}/{a}"
+    except Exception:
+        return s
+
+
+def _fmt_data_limite(v):
+    """data_limite ('YYYY-MM') -> 'mm/aaaa'."""
+    if not v:
+        return "—"
+    s = str(v)
+    try:
+        a, m = s[:7].split("-")
+        return f"{m}/{a}"
+    except Exception:
+        return s
+
+
 @app.route("/admin_clientes")
 def admin_clientes():
     if not session.get("logado"):
@@ -33067,16 +33091,32 @@ def admin_clientes():
         return redirect("/menu")
     try:
         clientes = (supabase.table("tab_cliente")
-                    .select("id_cliente, nome, cpf, email, data_limite")
+                    .select("id_cliente, nome, cpf, email, data_limite, "
+                            "datahora_cadastro, qtd_empresas, qtd_funcionarios")
                     .order("nome")
                     .execute().data or [])
+        # Empresas de todos os clientes -> conta atual + mapa empresa->cliente
         empresas_all = (supabase.table("tab_empresa")
-                        .select("id_cliente")
+                        .select("id_empresa, id_cliente")
                         .execute().data or [])
         from collections import Counter
         emp_count = Counter(e["id_cliente"] for e in empresas_all)
+        emp2cli = {e["id_empresa"]: e["id_cliente"] for e in empresas_all}
+        # Funcionarios atuais por cliente (via empresa -> cliente)
+        cads_all = (supabase.table("tab_cad")
+                    .select("id_empresa")
+                    .execute().data or [])
+        func_count = Counter()
+        for cad in cads_all:
+            cli = emp2cli.get(cad["id_empresa"])
+            if cli is not None:
+                func_count[cli] += 1
         for c in clientes:
-            c["qtd_empresas_real"] = emp_count.get(c["id_cliente"], 0)
+            cid = c["id_cliente"]
+            c["qtd_empresas_real"]     = emp_count.get(cid, 0)
+            c["qtd_funcionarios_real"] = func_count.get(cid, 0)
+            c["data_cadastro_fmt"]     = _fmt_data_cadastro(c.get("datahora_cadastro"))
+            c["data_limite_fmt"]       = _fmt_data_limite(c.get("data_limite"))
     except Exception:
         clientes = []
     return render_template(
@@ -33141,6 +33181,181 @@ _ADMIN_XML_LAYOUTS = [
 
 def _is_admin_f10():
     return str(session.get("cpf") or "") == CPF_ADMIN_F10
+
+
+def _pode_impersonar():
+    """Admin master pode impersonar. Se ja esta impersonando, o CPF original
+    do admin fica em session['cpf_admin_original']."""
+    return _is_admin_f10() or str(session.get("cpf_admin_original") or "") == CPF_ADMIN_F10
+
+
+@app.route("/api/impersonando_state")
+def api_impersonando_state():
+    """Endpoint leve consumido por f10_dialog.js em toda tela para injetar o
+    banner amarelo do modo admin quando o admin esta impersonando um cliente."""
+    return jsonify({
+        "ativo": bool(session.get("cpf_admin_original")),
+        "nome":  session.get("nome", ""),
+    })
+
+
+# =========================================================
+# ADMIN — Trocar Cliente (impersonar)
+# =========================================================
+@app.route("/trocar_cliente")
+def trocar_cliente():
+    if not session.get("logado"):
+        return redirect("/")
+    if not _pode_impersonar():
+        return redirect("/menu")
+    try:
+        clientes = (supabase.table("tab_cliente")
+                    .select("id_cliente, nome, cpf, email, data_limite, qtd_empresas, qtd_funcionarios")
+                    .order("nome")
+                    .execute().data or [])
+        empresas_all = (supabase.table("tab_empresa")
+                        .select("id_cliente")
+                        .execute().data or [])
+        from collections import Counter
+        emp_count = Counter(e["id_cliente"] for e in empresas_all)
+        for c in clientes:
+            c["qtd_empresas_real"] = emp_count.get(c["id_cliente"], 0)
+            c["cpf_fmt"] = (f"{c['cpf'][:3]}.{c['cpf'][3:6]}.{c['cpf'][6:9]}-{c['cpf'][9:]}"
+                            if c.get("cpf") and len(c["cpf"]) == 11 else c.get("cpf", ""))
+    except Exception:
+        clientes = []
+    cpf_atual = str(session.get("cpf") or "")
+    return render_template(
+        "F10_Trocar_Cliente.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        clientes=clientes,
+        cpf_atual=cpf_atual,
+        impersonando=bool(session.get("cpf_admin_original")),
+    )
+
+
+@app.route("/api/impersonar_cliente", methods=["POST"])
+def api_impersonar_cliente():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao invalida"}), 401
+    if not _pode_impersonar():
+        return jsonify({"ok": False, "msg": "Nao autorizado"}), 403
+    data = request.get_json() or {}
+    try:
+        id_cliente_alvo = int(data.get("id_cliente") or 0)
+    except Exception:
+        id_cliente_alvo = 0
+    if not id_cliente_alvo:
+        return jsonify({"ok": False, "msg": "Cliente invalido"})
+    try:
+        r = (supabase.table("tab_cliente")
+             .select("id_cliente, cpf, nome")
+             .eq("id_cliente", id_cliente_alvo)
+             .limit(1).execute())
+        row = (r.data or [None])[0]
+        if not row:
+            return jsonify({"ok": False, "msg": "Cliente nao encontrado"})
+
+        # Se o alvo for o proprio admin, apenas encerra impersonacao (se houver)
+        # e nao seta banner. Nao precisa registrar log de "impersonar admin".
+        if str(row.get("cpf") or "") == CPF_ADMIN_F10:
+            for k in ("cpf_admin_original", "nome_admin_original",
+                      "cnpj_empresa", "id_empresa",
+                      "anomes_atual", "anomes_tipo", "anomes_situacao"):
+                session.pop(k, None)
+            session["cpf"]          = row["cpf"]
+            session["nome"]         = row.get("nome", "")
+            session["id_cliente"]   = row["id_cliente"]
+            session["cliente_info"] = row.get("nome", "")
+            session["empresa_info"] = ""
+            return jsonify({"ok": True, "redirect": "/selecionar_empresa"})
+
+        # Guarda CPF original do admin (na primeira impersonacao apenas)
+        if not session.get("cpf_admin_original"):
+            session["cpf_admin_original"]  = session.get("cpf")
+            session["nome_admin_original"] = session.get("nome", "")
+
+        # Log de auditoria
+        try:
+            supabase.table("tab_log").insert({
+                "id_cliente":      row["id_cliente"],
+                "id_empresa":      None,
+                "cpf_usuario":     session.get("cpf_admin_original") or session.get("cpf") or "",
+                "menu":            "IMPERSONAR",
+                "observacao":      f"admin {session.get('cpf_admin_original','')} -> cliente {row['cpf']} ({row['nome']})"[:200],
+                "ano_mes":         None,
+                "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            }).execute()
+        except Exception:
+            pass
+
+        # Troca contexto para o cliente alvo, zerando empresa/anomes
+        session["cpf"]          = row["cpf"]
+        session["nome"]         = row.get("nome", "")
+        session["id_cliente"]   = row["id_cliente"]
+        session["cliente_info"] = row.get("nome", "")
+        session["empresa_info"] = ""
+        for k in ("cnpj_empresa", "id_empresa", "anomes_atual", "anomes_tipo", "anomes_situacao"):
+            session.pop(k, None)
+
+        return jsonify({"ok": True, "redirect": "/selecionar_empresa"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+@app.route("/parar_impersonar")
+def parar_impersonar():
+    if not session.get("logado"):
+        return redirect("/")
+    cpf_admin = session.get("cpf_admin_original")
+    if not cpf_admin:
+        return redirect("/menu")
+    try:
+        row = _cliente_por_cpf(cpf_admin)
+        if not row:
+            session.clear()
+            return redirect("/")
+        # Restaura sessao do admin
+        session["cpf"]          = row["cpf"]
+        session["nome"]         = row.get("nome", "")
+        session["id_cliente"]   = row["id_cliente"]
+        session["cliente_info"] = row.get("nome", "")
+        session["empresa_info"] = ""
+        for k in ("cnpj_empresa", "id_empresa", "anomes_atual", "anomes_tipo",
+                  "anomes_situacao", "cpf_admin_original", "nome_admin_original"):
+            session.pop(k, None)
+        # Log
+        try:
+            supabase.table("tab_log").insert({
+                "id_cliente":      row["id_cliente"],
+                "id_empresa":      None,
+                "cpf_usuario":     row["cpf"],
+                "menu":            "IMPERSONAR-FIM",
+                "observacao":      "admin encerrou impersonation",
+                "ano_mes":         None,
+                "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            }).execute()
+        except Exception:
+            pass
+        # Redireciona igual ao login: seleciona empresa se admin tem >1
+        empresas = _listar_empresas(row["id_cliente"])
+        if not empresas:
+            return redirect("/f10_cad_empresa")
+        if len(empresas) > 1:
+            return redirect("/selecionar_empresa")
+        emp = _primeira_empresa(row["id_cliente"])
+        session["empresa_info"]    = emp["nome"]
+        session["cnpj_empresa"]    = emp["cnpj"]
+        session["id_empresa"]      = emp["id_empresa"]
+        session["anomes_atual"]    = emp["anomes_atual"]
+        session["anomes_tipo"]     = emp["anomes_tipo"]
+        session["anomes_situacao"] = emp["anomes_situacao"]
+        return redirect("/menu")
+    except Exception:
+        session.clear()
+        return redirect("/")
 
 
 @app.route("/admin_esocial_xml")

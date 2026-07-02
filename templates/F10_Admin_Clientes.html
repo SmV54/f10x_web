@@ -88,17 +88,38 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
 .lista-clientes { flex: 1; overflow-y: auto; padding: 6px 8px; }
 .cliente-card {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 7px 12px; border-radius: 10px; cursor: pointer;
-    border: 1px solid transparent; transition: 0.13s; margin-bottom: 2px;
-    gap: 10px;
+    display: flex; flex-direction: column;
+    padding: 8px 12px; border-radius: 10px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 3px;
+    gap: 6px;
 }
 .cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
 .cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.cliente-linha1 {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
 .cliente-info {
     flex: 1; min-width: 0;
     display: flex; align-items: baseline; gap: 7px; overflow: hidden;
 }
+
+/* ── LINHA DE MÉTRICAS DO CARD ── */
+.cliente-metas {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 5px 6px;
+}
+.meta-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10.5px; font-weight: 600; color: #475569;
+    background: #f1f5f9; border: 1px solid #e2e8f0;
+    border-radius: 7px; padding: 2px 7px; white-space: nowrap;
+}
+.meta-chip .ic { font-size: 11px; filter: grayscale(0.1); }
+.meta-chip .par { font-family: var(--mono); font-size: 10.5px; color: #0f172a; font-weight: 500; }
+.meta-chip .par .atual { color: var(--accent); font-weight: 700; }
+.meta-chip.excede .par .atual { color: #dc2626; }
+.meta-chip.cadastro { color: #64748b; }
+.meta-chip.limite   { color: #92400e; background: #fffbeb; border-color: #fde68a; }
+.cliente-card.ativo .meta-chip { background: #fff; border-color: #c3d9f8; }
 .cliente-id {
     font-family: var(--mono); font-size: 11px; font-weight: 500;
     color: #64748b; white-space: nowrap; flex-shrink: 0;
@@ -217,7 +238,7 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
-            <span class="topo-logo">Folha10·Simples</span>
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
             <span class="topo-versao">Versão: {{ versao }}</span>
         </div>
         <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
@@ -242,15 +263,31 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                  id="card-{{ c.id_cliente }}"
                  data-nome="{{ (c.nome or '') | lower }}"
                  onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}', {{ c.qtd_empresas_real }})">
-                <div class="cliente-info">
-                    <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
-                    <span class="cliente-nome">{{ c.nome or '—' }}</span>
-                    <span class="cliente-cpf">{{ c.cpf or '' }}</span>
+                <div class="cliente-linha1">
+                    <div class="cliente-info">
+                        <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
+                        <span class="cliente-nome">{{ c.nome or '—' }}</span>
+                        <span class="cliente-cpf">{{ c.cpf or '' }}</span>
+                    </div>
                 </div>
-                <span class="badge-empresas {% if c.qtd_empresas_real == 0 %}badge-zero{% endif %}">
-                    {{ c.qtd_empresas_real }}
-                    {% if c.qtd_empresas_real == 1 %}empresa{% else %}empresas{% endif %}
-                </span>
+                <div class="cliente-metas">
+                    <span class="meta-chip cadastro" title="Data do cadastro">
+                        <span class="ic">🗓️</span> {{ c.data_cadastro_fmt }}
+                    </span>
+                    <span class="meta-chip {% if c.qtd_empresas and c.qtd_empresas_real > c.qtd_empresas %}excede{% endif %}"
+                          title="Empresas: atuais / contratadas">
+                        <span class="ic">🏢</span>
+                        <span class="par"><span class="atual">{{ c.qtd_empresas_real }}</span>/{{ c.qtd_empresas or 0 }}</span>
+                    </span>
+                    <span class="meta-chip {% if c.qtd_funcionarios and c.qtd_funcionarios_real > c.qtd_funcionarios %}excede{% endif %}"
+                          title="Funcionários: atuais / contratados">
+                        <span class="ic">👥</span>
+                        <span class="par"><span class="atual">{{ c.qtd_funcionarios_real }}</span>/{{ c.qtd_funcionarios or 0 }}</span>
+                    </span>
+                    <span class="meta-chip limite" title="Data limite da licença">
+                        <span class="ic">⏳</span> {{ c.data_limite_fmt }}
+                    </span>
+                </div>
             </div>
             {% else %}
             <div class="lista-vazia">Nenhum cliente cadastrado.</div>

@@ -33,6 +33,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     position: sticky; top: 0; z-index: 200;
 }
 .topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; white-space: nowrap; }
+.topo-logo-img { height: 37px; width: auto; display: block; }
 .topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; letter-spacing: 0.03em; margin-top: 2px; }
 .topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
                display: flex; align-items: center; justify-content: center; gap: 12px; }
@@ -81,11 +82,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .sit-fechada   { background: rgba(255,255,255,0.20); color: #111827; border: 2px solid rgba(255,255,255,0.5); }
 .sit-processada{ background: rgba(255,255,255,0.20); color: #111827; border: 2px solid rgba(255,255,255,0.5); }
 .btn-sair {
-    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
-    color: #111827; font-weight: 700; font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    margin-left: 8px; background: #fff; border: 1.5px solid #e11d48;
+    color: #e11d48; font-weight: 700; font-size: 13.5px; padding: 9px 22px; border-radius: 8px;
     cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(190,18,60,0.18);
 }
-.btn-sair:hover { border-color: var(--accent); color: var(--text-head); }
+.btn-sair:hover { background: #e11d48; border-color: #be123c; color: #fff; box-shadow: 0 3px 12px rgba(190,18,60,0.32); }
 
 /* ── CONTEÚDO ── */
 .conteudo { max-width: 1000px; margin: 48px auto; padding: 0 24px 80px; position: relative; }
@@ -375,9 +377,9 @@ body.menu-numerado .nav-item::before {
         {% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
-        <div style="display:flex;flex-direction:column;align-items:flex-start;">
-            <div class="topo-logo">Folha10·Simples</div>
-            <div class="topo-versao">Versão: {{ versao }}</div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img">
+            <span class="topo-versao">Versão {{ versao }}</span>
         </div>
         <button class="btn-sair" onclick="window.location.href='/logout'">Sair</button>
     </div>
@@ -393,12 +395,20 @@ body.menu-numerado .nav-item::before {
 
     <div class="modulos-grid" id="modulosGrid"></div>
 
-    {% if qtd_empresas > 1 %}
+    {% if qtd_empresas > 1 or eh_admin_f10 %}
     <div class="modulos-utils">
+      {% if qtd_empresas > 1 %}
       <div class="card-trocar-emp" onclick="window.location.href='/trocar_empresa'">
         <div class="trocar-icone">🔄</div>
         <div class="trocar-label">Trocar Empresa</div>
       </div>
+      {% endif %}
+      {% if eh_admin_f10 %}
+      <div class="card-trocar-emp" style="border-color:#f59e0b; background:#fef3c7;" onclick="window.location.href='/trocar_cliente'" title="Modo administrador — entrar como outro cliente sem senha">
+        <div class="trocar-icone">🎭</div>
+        <div class="trocar-label">Trocar Cliente</div>
+      </div>
+      {% endif %}
     </div>
     {% endif %}
 

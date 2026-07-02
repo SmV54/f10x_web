@@ -112,6 +112,52 @@
 .f10dlg-btn-ok-erro:hover,
 .f10dlg-btn-ok-perigo:hover { background: #b91c1c; }
 .f10dlg-btn:focus { outline: 2px solid #93c5fd; outline-offset: 1px; }
+
+/* =========================================================
+ * Padronização do botão "Voltar/Menu" do cabeçalho (.topo)
+ * Mesmo modelo do "Sair": fundo branco + fonte vermelha, inverte no hover.
+ * Também garante que o botão fique SEMPRE ao lado (nunca embaixo da versão).
+ * ========================================================= */
+.topo .btn-voltar-topo,
+.topo .btn-voltar,
+.topo .btn-menu,
+.topo .btn-voltar-menu {
+    background: #fff !important;
+    border: 1.5px solid #e11d48 !important;
+    color: #e11d48 !important;
+    font-weight: 700 !important;
+    font-size: 13.5px !important;
+    padding: 9px 22px !important;
+    border-radius: 8px !important;
+    box-shadow: 0 2px 8px rgba(190,18,60,0.18) !important;
+    text-decoration: none !important;
+    cursor: pointer !important;
+    transition: 0.15s !important;
+    white-space: nowrap !important;
+    line-height: 1.1 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+.topo .btn-voltar-topo:hover,
+.topo .btn-voltar:hover,
+.topo .btn-menu:hover,
+.topo .btn-voltar-menu:hover {
+    background: #e11d48 !important;
+    border-color: #be123c !important;
+    color: #fff !important;
+    box-shadow: 0 3px 12px rgba(190,18,60,0.32) !important;
+}
+/* Corrige telas onde o Voltar caía embaixo da versão (topo-dir empilhado)
+   e mantém o bloco alinhado à DIREITA da célula (não colar no título). */
+.topo .topo-dir { flex-direction: row !important; align-items: center !important; justify-content: flex-end !important; gap: 14px !important; }
+
+/* Versão: largura igualada à da logomarca — o tamanho da fonte é calculado
+   dinamicamente em JS (ver ajustarVersaoLargura), aqui só travamos espaçamento. */
+.topo .topo-versao {
+    letter-spacing: 0 !important;
+    white-space: nowrap !important;
+    line-height: 1.05 !important;
+}
 `;
   const style = document.createElement('style');
   style.id = 'f10-dialog-styles';
@@ -269,4 +315,124 @@
   window.alert = function (msg) {
     return window.f10Alert(msg);
   };
+})();
+
+/* =========================================================
+ * Modo Admin — banner amarelo global de impersonation
+ * Injeta um banner fixo no topo + tint amarelo suave no fundo
+ * em toda tela que carrega este script, quando /api/impersonando_state
+ * retornar ativo=true.
+ * ======================================================= */
+(function () {
+  if (window.__f10ImpInstalled) return;
+  window.__f10ImpInstalled = true;
+
+  function escapeHtml(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  function injetar(nome) {
+    if (!document.getElementById('f10-imp-style')) {
+      const s = document.createElement('style');
+      s.id = 'f10-imp-style';
+      s.textContent = `
+.f10-imp-banner {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: repeating-linear-gradient(45deg, #fde68a 0 12px, #fcd34d 12px 24px);
+    color: #78350f; padding: 6px 20px;
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    font-size: 13px; font-weight: 600;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+}
+.f10-imp-banner .f10-imp-icone { font-size: 18px; line-height: 1; }
+.f10-imp-banner a {
+    background: #fff; color: #78350f; padding: 3px 12px;
+    border: 1px solid #d97706; border-radius: 6px;
+    font-weight: 700; font-size: 12px; text-decoration: none;
+    margin-left: auto; white-space: nowrap;
+}
+.f10-imp-banner a:hover { background: #fef3c7; }
+body.f10-imp-tint {
+    background:
+      linear-gradient(180deg, rgba(251,191,36,0.10) 0%, rgba(251,191,36,0.04) 220px, rgba(251,191,36,0) 500px),
+      #fffbeb !important;
+}
+      `;
+      document.head.appendChild(s);
+    }
+    if (!document.querySelector('.f10-imp-banner')) {
+      const div = document.createElement('div');
+      div.className = 'f10-imp-banner';
+      div.innerHTML =
+        '<span class="f10-imp-icone">🎭</span>' +
+        '<span>MODO ADMIN — Você está processando como <strong>' + escapeHtml(nome) + '</strong>. Alterações são gravadas no cliente.</span>' +
+        '<a href="/parar_impersonar">Voltar ao Admin</a>';
+      document.body.insertBefore(div, document.body.firstChild);
+    }
+    document.body.classList.add('f10-imp-tint');
+    if (!document.body.style.paddingTop) {
+      document.body.style.paddingTop = '34px';
+    }
+  }
+
+  function checar() {
+    fetch('/api/impersonando_state', { credentials: 'same-origin' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && d.ativo) injetar(d.nome || ''); })
+      .catch(() => {});
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checar);
+  } else {
+    checar();
+  }
+})();
+
+/* =========================================================
+ * Ajuste dinâmico: fonte da "Versão" = largura da logomarca
+ * Mede a largura do logo (.topo-logo-img) e escala a fonte da
+ * .topo-versao para a linha da versão ficar com a MESMA largura
+ * horizontal — em qualquer tela e qualquer formato de versão.
+ * ======================================================= */
+(function () {
+  if (window.__f10VersaoFitInstalled) return;
+  window.__f10VersaoFitInstalled = true;
+
+  function ajustar() {
+    document.querySelectorAll('.topo').forEach(function (topo) {
+      var img = topo.querySelector('.topo-logo-img');
+      var ver = topo.querySelector('.topo-versao');
+      if (!img || !ver) return;
+      var larguraLogo = img.getBoundingClientRect().width;
+      if (!larguraLogo) return;                       // imagem ainda não carregou
+      // mede a versão a 10px e escala proporcionalmente (largura ∝ font-size)
+      ver.style.setProperty('font-size', '10px', 'important');
+      var atual = ver.scrollWidth || ver.getBoundingClientRect().width;
+      if (atual > 0) {
+        var alvo = 10 * (larguraLogo / atual);
+        alvo = Math.max(6, Math.min(alvo, 22));       // limites de segurança
+        ver.style.setProperty('font-size', alvo.toFixed(2) + 'px', 'important');
+      }
+    });
+  }
+
+  function agendar() {
+    ajustar();
+    document.querySelectorAll('.topo .topo-logo-img').forEach(function (img) {
+      if (!img.complete) img.addEventListener('load', ajustar);
+    });
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(ajustar);
+    window.addEventListener('load', ajustar);
+    window.addEventListener('resize', ajustar);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', agendar);
+  } else {
+    agendar();
+  }
 })();
