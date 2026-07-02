@@ -1023,6 +1023,22 @@ def _data_limite_somar_meses(data_limite_atual, meses):
     except Exception:
         return "??/????"
 
+def _data_limite_iso_somar_meses(data_limite_atual, meses):
+    """Igual a _data_limite_somar_meses, mas retorna 'YYYY-MM' (formato gravado
+    em tab_cliente.data_limite). Usado pelo webhook do Asaas ao creditar a licenca."""
+    from datetime import datetime
+    try:
+        if data_limite_atual and len(data_limite_atual) >= 7:
+            ano = int(data_limite_atual[:4]); mes = int(data_limite_atual[5:7])
+        else:
+            agora = datetime.now(); ano, mes = agora.year, agora.month
+        total = mes + int(meses)
+        novo_ano = ano + (total - 1) // 12
+        novo_mes = ((total - 1) % 12) + 1
+        return f"{novo_ano:04d}-{novo_mes:02d}"
+    except Exception:
+        return data_limite_atual or ""
+
 @app.route("/api/zapi_status")
 def api_zapi_status():
     """Endpoint de diagnostico — abre no navegador para ver se Z-API esta conectada."""
@@ -1248,6 +1264,108 @@ def api_pix_qr():
         })
     except Exception as e:
         print(f"api_pix_qr: {e}")
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+# =========================================================
+# WEBHOOK ASAAS — credita a licenca quando o PIX e pago
+# =========================================================
+# Configurar no painel do Asaas:
+#   URL:  https://folha10-simples.com.br/webhook/asaas
+#   Auth: mesmo valor de ASAAS_WEBHOOK_TOKEN no .env (Asaas envia no header
+#         'asaas-access-token' a cada notificacao).
+@app.route("/webhook/asaas", methods=["POST"])
+def webhook_asaas():
+    """Recebe notificacoes do Asaas. Em PAYMENT_RECEIVED/CONFIRMED de uma cobranca
+    de licenca (externalReference 'lic_NNNNNN_epoch_E#_F#_M#'), atualiza tab_cliente:
+    data_limite (+meses), qtd_empresas e qtd_funcionarios.
+    Idempotente por payment_id via marca em tab_log (menu='PAGAMENTO_ASAAS')."""
+    import re
+    from datetime import datetime
+
+    # 1) Autenticacao — Asaas envia o token configurado no painel neste header
+    token_recebido = request.headers.get("asaas-access-token", "")
+    if not ASAAS_WEBHOOK_TOKEN or token_recebido != ASAAS_WEBHOOK_TOKEN:
+        return jsonify({"ok": False, "msg": "unauthorized"}), 401
+
+    body      = request.get_json(silent=True) or {}
+    evento    = (body.get("event") or "").upper()
+    pagamento = body.get("payment") or {}
+    payment_id = str(pagamento.get("id") or "")
+    ext_ref    = str(pagamento.get("externalReference") or "")
+
+    # 2) So agimos quando o dinheiro entrou de fato
+    if evento not in ("PAYMENT_RECEIVED", "PAYMENT_CONFIRMED"):
+        return jsonify({"ok": True, "ignored": evento}), 200
+
+    # 3) So cobrancas de licenca geradas por nos (padrao lic_NNNNNN_epoch_E#_F#_M#)
+    m = re.match(r"^lic_(\d{6})_\d+_E(\d+)_F(\d+)_M(\d+)$", ext_ref)
+    if not m:
+        return jsonify({"ok": True, "ignored": "ext_ref"}), 200
+    id_cliente   = int(m.group(1))
+    empresas     = int(m.group(2))
+    funcionarios = int(m.group(3))
+    meses        = int(m.group(4))
+
+    try:
+        # 4) Idempotencia — se ja processamos esse payment_id, nao aplica de novo
+        if payment_id:
+            ja = (supabase.table("tab_log")
+                  .select("id_cliente")
+                  .eq("menu", "PAGAMENTO_ASAAS")
+                  .ilike("observacao", f"%{payment_id}%")
+                  .limit(1).execute())
+            if ja.data:
+                return jsonify({"ok": True, "duplicate": payment_id}), 200
+
+        # 5) Le data_limite atual e calcula a nova (YYYY-MM, formato do banco)
+        r = (supabase.table("tab_cliente")
+             .select("data_limite, cpf")
+             .eq("id_cliente", id_cliente).limit(1).execute())
+        row = (r.data or [{}])[0]
+        dl_atual = (row.get("data_limite") or "").strip()
+        nova_dl  = _data_limite_iso_somar_meses(dl_atual, meses)
+
+        # 6) Update — so mexe em qtd se veio valor > 0 (evita zerar licenca)
+        upd = {"data_limite": nova_dl}
+        if empresas > 0:
+            upd["qtd_empresas"] = empresas
+        if funcionarios > 0:
+            upd["qtd_funcionarios"] = funcionarios
+        supabase.table("tab_cliente").update(upd).eq("id_cliente", id_cliente).execute()
+
+        # 7) Marca de auditoria/idempotencia
+        valor = pagamento.get("value")
+        try:
+            supabase.table("tab_log").insert({
+                "id_cliente":      id_cliente,
+                "id_empresa":      None,
+                "cpf_usuario":     row.get("cpf") or "",
+                "menu":            "PAGAMENTO_ASAAS",
+                "observacao":      (f"Pagamento Asaas {payment_id} valor={valor} "
+                                    f"E{empresas} F{funcionarios} M{meses} "
+                                    f"nova_data_limite={nova_dl}")[:200],
+                "ano_mes":         None,
+                "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            }).execute()
+        except Exception as ex_log:
+            print(f"webhook_asaas: falha ao gravar marca em tab_log: {ex_log}")
+
+        # 8) Notifica o admin (best-effort, nunca quebra a resposta 200)
+        try:
+            msg = (f"*PAGAMENTO CONFIRMADO - Folha10-Simples*\n\n"
+                   f"*Cliente:* {id_cliente:06d}\n"
+                   f"*Empresas:* {empresas} | *Funcionarios:* {funcionarios}\n"
+                   f"*Periodo:* {meses} mes(es)\n"
+                   f"*Nova Data Limite:* {nova_dl}\n"
+                   f"*Cobranca Asaas:* {payment_id}")
+            _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg)
+        except Exception:
+            pass
+
+        return jsonify({"ok": True, "cliente": id_cliente, "data_limite": nova_dl}), 200
+    except Exception as e:
+        # 500 faz o Asaas re-tentar; a marca em tab_log evita credito duplicado.
+        print(f"webhook_asaas: erro ao processar {payment_id}: {e}")
         return jsonify({"ok": False, "msg": str(e)}), 500
 
 # =========================================================
