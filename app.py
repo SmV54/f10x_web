@@ -1318,8 +1318,9 @@ def webhook_asaas():
                 return jsonify({"ok": True, "duplicate": payment_id}), 200
 
         # 5) Le data_limite atual e calcula a nova (YYYY-MM, formato do banco)
+        #    Tambem trazemos nome/email/celular p/ notificar o cliente (passo 8).
         r = (supabase.table("tab_cliente")
-             .select("data_limite, cpf")
+             .select("data_limite, cpf, nome, email, celular")
              .eq("id_cliente", id_cliente).limit(1).execute())
         row = (r.data or [{}])[0]
         dl_atual = (row.get("data_limite") or "").strip()
@@ -1350,17 +1351,69 @@ def webhook_asaas():
         except Exception as ex_log:
             print(f"webhook_asaas: falha ao gravar marca em tab_log: {ex_log}")
 
-        # 8) Notifica o admin (best-effort, nunca quebra a resposta 200)
+        # 8) Notifica todos os interessados (best-effort — nada aqui pode quebrar
+        #    a resposta 200; se falhar, so registra no log).
+        nome_cli    = (row.get("nome") or "").strip()
+        email_cli   = (row.get("email") or "").strip()
+        celular_cli = re.sub(r"\D", "", (row.get("celular") or ""))
+        # 'valor' vem do Asaas em reais (float, ex: 149.90), nao em centavos.
         try:
-            msg = (f"*PAGAMENTO CONFIRMADO - Folha10-Simples*\n\n"
-                   f"*Cliente:* {id_cliente:06d}\n"
+            valor_brl = ("R$ " + f"{float(valor):,.2f}"
+                         ).replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            valor_brl = f"R$ {valor}"
+
+        # 8a) WhatsApp para o CLIENTE — confirmacao amigavel da compra
+        if celular_cli:
+            try:
+                msg_cli = (f"Ola {nome_cli or 'cliente'}! ✅\n\n"
+                           f"Recebemos a confirmacao do seu pagamento no Folha10-Simples.\n\n"
+                           f"*Valor:* {valor_brl}\n"
+                           f"*Empresas contratadas:* {empresas}\n"
+                           f"*Funcionarios:* {funcionarios}\n"
+                           f"*Periodo:* {meses} mes(es)\n"
+                           f"*Licenca valida ate:* {nova_dl}\n\n"
+                           f"Obrigado pela confianca!\nEquipe Folha10 Simples")
+                _enviar_whatsapp_texto(celular_cli, msg_cli)
+            except Exception as ex_wa_cli:
+                print(f"webhook_asaas: falha WhatsApp cliente {celular_cli}: {ex_wa_cli}")
+
+        # 8b) WhatsApp para o SUPORTE (81 98818-2000 = PIX_WA_NOTIF_TEL)
+        msg_adm = (f"*PAGAMENTO CONFIRMADO - Folha10-Simples*\n\n"
+                   f"*Cliente:* {id_cliente:06d} {nome_cli}\n"
+                   f"*Valor:* {valor_brl}\n"
                    f"*Empresas:* {empresas} | *Funcionarios:* {funcionarios}\n"
                    f"*Periodo:* {meses} mes(es)\n"
                    f"*Nova Data Limite:* {nova_dl}\n"
                    f"*Cobranca Asaas:* {payment_id}")
-            _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg)
-        except Exception:
-            pass
+        try:
+            _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg_adm)
+        except Exception as ex_wa_adm:
+            print(f"webhook_asaas: falha WhatsApp suporte: {ex_wa_adm}")
+
+        # 8c) E-mail para o administrador (sergiomoraesvieira@outlook.com)
+        try:
+            corpo_email = (
+                "Pagamento confirmado no Folha10-Simples.\n\n"
+                f"Cliente: {id_cliente:06d} - {nome_cli}\n"
+                f"CPF: {row.get('cpf') or ''}\n"
+                f"E-mail do cliente: {email_cli}\n"
+                f"Celular do cliente: {celular_cli}\n\n"
+                f"Valor pago: {valor_brl}\n"
+                f"Empresas contratadas: {empresas}\n"
+                f"Funcionarios: {funcionarios}\n"
+                f"Periodo: {meses} mes(es)\n"
+                f"Nova data limite da licenca: {nova_dl}\n\n"
+                f"Cobranca Asaas: {payment_id}\n"
+                f"Evento: {evento}"
+            )
+            _enviar_email_texto(
+                "sergiomoraesvieira@outlook.com",
+                f"[Folha10] Pagamento confirmado - Cliente {id_cliente:06d}",
+                corpo_email,
+            )
+        except Exception as ex_mail:
+            print(f"webhook_asaas: falha email admin: {ex_mail}")
 
         return jsonify({"ok": True, "cliente": id_cliente, "data_limite": nova_dl}), 200
     except Exception as e:
