@@ -903,7 +903,7 @@ def comprar_licenca():
 PIX_CHAVE         = "59a207ae-ade1-42fa-bf9f-f790aa78618e"  # chave aleatoria (EVP) do Banco Asaas
 PIX_RECEBEDOR     = "Comsist Computacao Ltda"         # max 25 chars (tag 59 BR Code), sem acento. Nome legal completo: "Comsist Computacao & Sistemas Ltda" (nao cabe).
 PIX_CIDADE        = "RECIFE"                          # max 15
-PIX_WA_NOTIF_TEL  = "81988182000"                     # WhatsApp p/ notificar intencao de compra
+PIX_WA_NOTIF_TEL  = "81988582000"                     # WhatsApp p/ notificar intencao de compra
 
 def _zapi_conectada():
     """Verifica se a instancia Z-API esta conectada ao WhatsApp.
@@ -1319,11 +1319,14 @@ def webhook_asaas():
 
         # 5) Le data_limite atual e calcula a nova (YYYY-MM, formato do banco)
         r = (supabase.table("tab_cliente")
-             .select("data_limite, cpf")
+             .select("data_limite, cpf, nome, email, celular")
              .eq("id_cliente", id_cliente).limit(1).execute())
         row = (r.data or [{}])[0]
-        dl_atual = (row.get("data_limite") or "").strip()
-        nova_dl  = _data_limite_iso_somar_meses(dl_atual, meses)
+        dl_atual    = (row.get("data_limite") or "").strip()
+        nova_dl     = _data_limite_iso_somar_meses(dl_atual, meses)
+        nome_cli    = (row.get("nome") or "").strip()
+        email_cli   = (row.get("email") or "").strip()
+        celular_cli = (row.get("celular") or "").strip()
 
         # 6) Update — so mexe em qtd se veio valor > 0 (evita zerar licenca)
         upd = {"data_limite": nova_dl}
@@ -1350,15 +1353,52 @@ def webhook_asaas():
         except Exception as ex_log:
             print(f"webhook_asaas: falha ao gravar marca em tab_log: {ex_log}")
 
-        # 8) Notifica o admin (best-effort, nunca quebra a resposta 200)
+        # 8) Notificacoes (best-effort, nunca quebram a resposta 200)
+        #    Nova data em formato amigavel MM/YYYY para o cliente.
         try:
-            msg = (f"*PAGAMENTO CONFIRMADO - Folha10-Simples*\n\n"
-                   f"*Cliente:* {id_cliente:06d}\n"
-                   f"*Empresas:* {empresas} | *Funcionarios:* {funcionarios}\n"
-                   f"*Periodo:* {meses} mes(es)\n"
-                   f"*Nova Data Limite:* {nova_dl}\n"
-                   f"*Cobranca Asaas:* {payment_id}")
-            _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg)
+            _p = (nova_dl or "").split("-")
+            nova_dl_br = f"{_p[1]}/{_p[0]}" if len(_p) >= 2 else nova_dl
+        except Exception:
+            nova_dl_br = nova_dl
+        valor = pagamento.get("value")
+
+        # 8.1) WhatsApp para o CLIENTE (confirmacao amigavel)
+        try:
+            if celular_cli:
+                msg_cli = (f"Ola{(' ' + nome_cli) if nome_cli else ''}! ✅\n\n"
+                           f"Recebemos o pagamento da sua licenca do *Folha10-Simples*.\n\n"
+                           f"*Validade atualizada ate:* {nova_dl_br}\n"
+                           f"*Empresas:* {empresas} | *Funcionarios:* {funcionarios}\n\n"
+                           f"Obrigado por usar o Folha10-Simples!")
+                _enviar_whatsapp_texto(celular_cli, msg_cli)
+        except Exception:
+            pass
+
+        # 8.2) WhatsApp para o admin (numero fixo de notificacao)
+        try:
+            msg_adm = (f"*PAGAMENTO CONFIRMADO - Folha10-Simples*\n\n"
+                       f"*Cliente:* {id_cliente:06d}{(' - ' + nome_cli) if nome_cli else ''}\n"
+                       f"*Empresas:* {empresas} | *Funcionarios:* {funcionarios}\n"
+                       f"*Periodo:* {meses} mes(es)\n"
+                       f"*Valor:* {valor}\n"
+                       f"*Nova Data Limite:* {nova_dl_br}\n"
+                       f"*Cobranca Asaas:* {payment_id}")
+            _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg_adm)
+        except Exception:
+            pass
+
+        # 8.3) E-mail para o admin
+        try:
+            corpo = (f"Pagamento confirmado no Folha10-Simples.\n\n"
+                     f"Cliente: {id_cliente:06d}{(' - ' + nome_cli) if nome_cli else ''}\n"
+                     f"Empresas: {empresas} | Funcionarios: {funcionarios}\n"
+                     f"Periodo: {meses} mes(es)\n"
+                     f"Valor: {valor}\n"
+                     f"Nova Data Limite: {nova_dl_br}\n"
+                     f"Cobranca Asaas: {payment_id}\n")
+            _enviar_email_texto("sergiomoraesvieira@outlook.com",
+                                f"Pagamento confirmado - Cliente {id_cliente:06d}",
+                                corpo)
         except Exception:
             pass
 
@@ -5298,7 +5338,7 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
                 f"Celular: {cel_fmt}\n"
                 f"Email: {email}\n"
             )
-            ok_wa, err_wa = _enviar_whatsapp_texto("81988182000", msg_wa)
+            ok_wa, err_wa = _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg_wa)
             print(f"[novo_cliente] whatsapp ok={ok_wa} err={err_wa!r}")
         except Exception as e:
             print(f"[novo_cliente] excecao ao enviar whatsapp: {e}")
@@ -33795,7 +33835,7 @@ def api_admin_licenca_gravar():
         pass
 
     # WhatsApp para o admin F10 com antigos x novos
-    wa_dest    = "81988582000"
+    wa_dest    = PIX_WA_NOTIF_TEL
     wa_enviado = False
     wa_erro    = ""
     try:
