@@ -1282,6 +1282,24 @@ def webhook_asaas():
     import re
     from datetime import datetime
 
+    # 0) DIAGNOSTICO SEGURO — nao expoe o segredo, so tamanho e fingerprint.
+    #    Permite comparar remotamente se o ASAAS_WEBHOOK_TOKEN do Render bate
+    #    com o esperado. Remover apos validar a integracao.
+    _body0 = request.get_json(silent=True) or {}
+    if (_body0.get("event") or "") == "DIAG_F10":
+        import hashlib
+        _t = ASAAS_WEBHOOK_TOKEN or ""
+        _th = request.headers.get("asaas-access-token", "") or ""
+        return jsonify({
+            "ok": True,
+            "token_set":     bool(_t),
+            "token_len":     len(_t),
+            "token_fp":      hashlib.sha256(_t.encode()).hexdigest()[:12] if _t else None,
+            "header_len":    len(_th),
+            "header_fp":     hashlib.sha256(_th.encode()).hexdigest()[:12] if _th else None,
+            "match":         (_t != "" and _t == _th),
+        }), 200
+
     # 1) Autenticacao — Asaas envia o token configurado no painel neste header
     token_recebido = request.headers.get("asaas-access-token", "")
     if not ASAAS_WEBHOOK_TOKEN or token_recebido != ASAAS_WEBHOOK_TOKEN:
