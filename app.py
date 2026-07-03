@@ -37515,6 +37515,7 @@ def api_admin_imp_executar():
     id_cliente = body.get('id_cliente')
     tabelas_s  = body.get('tabelas')     or []
     ini_valid  = int(body.get('ini_valid') or 202001)
+    parar_no_erro = bool(body.get('parar_no_erro'))
     if not nome_arq or not id_cliente or not tabelas_s:
         return jsonify({'ok': False, 'msg': 'Parâmetros incompletos'})
     # Rejeita paths absolutos e extensões inválidas (segurança)
@@ -37602,6 +37603,14 @@ def api_admin_imp_executar():
             except Exception as ex:
                 resultados.append({'tabela': tabela, 'descricao': tabela,
                                     'gravados': 0, 'erros': 1, 'log': [f'✗ Erro: {ex}']})
+                # Parada no primeiro erro (migração completa): marca as restantes
+                # como não executadas e interrompe o laço.
+                if parar_no_erro:
+                    for tabela_rest in tabelas_s[i + 1:]:
+                        resultados.append({'tabela': tabela_rest, 'descricao': tabela_rest,
+                                            'gravados': 0, 'erros': 0,
+                                            'log': ['⏭ Não executada — parada após erro na etapa anterior.']})
+                    break
 
         _import_jobs[job_id]['pct']       = 100
         _import_jobs[job_id]['step']      = total
@@ -37626,6 +37635,118 @@ def api_admin_imp_progresso():
     if not job:
         return jsonify({'ok': False, 'msg': 'Job não encontrado'})
     return jsonify({'ok': True, **job})
+
+
+# Mapa etapa -> tabelas-fonte candidatas no Access (para a revisão pré-migração).
+# A chave é a mesma usada em /executar (e no array ETAPAS do frontend).
+_IMP_ETAPAS_REVISAO = [
+    ('01', 'Empresa',              'tabempresas', ['tabempresas', 'tabempresa', 'tabemp']),
+    ('02', 'Filiais',              'tabfiliais',  ['tabfilial', 'tabfiliais', 'tab_filial', 'filiais', 'filial']),
+    ('03', 'Centros de custo',     'tabcc',       ['tabcc', 'tab_cc', 'tabcentrocusto', 'centrocusto', 'centros_custo', 'cc']),
+    ('04', 'Funções / Cargos',     'tabfuncao',   ['tabfuncao', 'tabfuncoes', 'tab_funcao', 'tabcargo', 'tabcargos', 'tab_cargo', 'funcoes', 'funcao', 'cargo', 'cargos']),
+    ('05', 'Rubricas / Verbas',    'tabverba',    ['tabverba']),
+    ('06', 'Funcionários',         'tabcad',      ['tabcad', 'tabfunc', 'tabfuncionario']),
+    ('07', 'Dependentes',          'tabdep',      ['tabdep', 'tabdependentes', 'tabdependente']),
+    ('08', 'Períodos (Ano/Mês)',   'tabfolhas',   ['tabfolhas', 'tabfolha']),
+    ('09', 'Movimentos',           'tabmov',      ['tabmov', 'tabmovimento', 'tabmovimentos']),
+    ('10', 'Totais de folha',      'tabtotal',    ['tabtotal', 'tabtotais', 'tab_total']),
+    ('11', 'Movimentos fixos',     'tabfix',      ['tabfix']),
+    ('12', 'Histórico eSocial',    'tabesocial',  ['tabesocial']),
+    ('13', 'Eventos (tab_eventos)', 'tabreg',     ['tabreg']),
+]
+
+
+@app.route('/api/admin_importar_f10/revisar', methods=['POST'])
+def api_admin_imp_revisar():
+    """Revisão pré-migração: varre TODOS os arquivos Access da pasta (a pasta contém
+    um único cliente) e, para cada etapa, verifica se a tabela-fonte existe e tem
+    registros. Retorna status por etapa (ok / vazia / fallback / ausente) + resumo.
+    Não grava nada — só leitura para o relatório de confirmação."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    try:
+        import pyodbc
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
+    if not os.path.isdir(PASTA_BASES_F10):
+        return jsonify({'ok': False, 'msg': f'Pasta não encontrada: {PASTA_BASES_F10}'})
+
+    arquivos = [f for f in sorted(os.listdir(PASTA_BASES_F10))
+                if f.lower().endswith(('.accdb', '.mdb'))]
+    if not arquivos:
+        return jsonify({'ok': False, 'msg': 'Nenhum arquivo .accdb/.mdb na pasta'})
+
+    # tabela_lower -> [{arquivo, qtd}, ...]
+    ocorrencias = {}
+    erros_arq = []
+    for fname in arquivos:
+        caminho = os.path.join(PASTA_BASES_F10, fname)
+        try:
+            conn = pyodbc.connect(
+                f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+            cur = conn.cursor()
+            # Materializa os nomes ANTES de contar: chamar cur.execute() enquanto se
+            # itera cur.tables() no MESMO cursor invalida o result-set das tabelas
+            # (comportamento do pyodbc) — era isso que fazia quase tudo dar "ausente".
+            nomes = [t.table_name for t in cur.tables(tableType='TABLE')
+                     if not t.table_name.startswith('MSys')]
+            for n in nomes:
+                try:
+                    cur.execute(f'SELECT COUNT(*) FROM [{n}]')
+                    qtd = int(cur.fetchone()[0] or 0)
+                except Exception:
+                    qtd = -1
+                ocorrencias.setdefault(n.lower(), []).append({'arquivo': fname, 'qtd': qtd})
+            conn.close()
+        except Exception as ex:
+            erros_arq.append({'arquivo': fname, 'erro': str(ex)[:200]})
+
+    def _somar(candidatos):
+        """Retorna (fonte_real, qtd_total, [arquivos]) do 1º candidato presente."""
+        for cand in candidatos:
+            if cand in ocorrencias:
+                qtd = sum(o['qtd'] for o in ocorrencias[cand] if o['qtd'] > 0)
+                arqs = sorted({o['arquivo'] for o in ocorrencias[cand] if o['qtd'] > 0})
+                return cand, qtd, arqs
+        return None, 0, []
+
+    itens = []
+    n_ok = n_aviso = n_bloqueio = 0
+    for num, nome, chave, candidatos in _IMP_ETAPAS_REVISAO:
+        fonte, qtd, arqs = _somar(candidatos)
+        usou_fallback = False
+        if fonte is None and chave == 'tabfiliais':
+            fonte, qtd, arqs = _somar(['tabempresas', 'tabempresa', 'tabemp'])
+            usou_fallback = fonte is not None
+
+        if fonte is None:
+            status, n_bloqueio = 'ausente', n_bloqueio + 1
+            msg = 'Tabela-fonte não encontrada em nenhum arquivo'
+        elif qtd <= 0:
+            status, n_aviso = 'vazia', n_aviso + 1
+            msg = f'[{fonte}] existe mas sem registros'
+        elif usou_fallback:
+            status, n_aviso = 'fallback', n_aviso + 1
+            msg = f'Sem tabfilial — usará [{fonte}]: {qtd} registro(s)'
+        else:
+            status, n_ok = 'ok', n_ok + 1
+            msg = f'[{fonte}] · {qtd} registro(s) em {len(arqs)} arquivo(s)'
+
+        itens.append({'num': num, 'nome': nome, 'chave': chave, 'fonte': fonte or '',
+                      'qtd': qtd, 'arquivos': arqs, 'status': status, 'msg': msg})
+
+    tabelas_encontradas = sorted(
+        [{'nome': nl,
+          'qtd': max((o['qtd'] for o in ocs), default=0),
+          'arquivos': sorted({o['arquivo'] for o in ocs})}
+         for nl, ocs in ocorrencias.items()],
+        key=lambda x: x['nome'])
+
+    return jsonify({
+        'ok': True, 'arquivos': arquivos, 'erros_arquivo': erros_arq, 'itens': itens,
+        'tabelas_encontradas': tabelas_encontradas,
+        'resumo': {'ok': n_ok, 'avisos': n_aviso, 'bloqueios': n_bloqueio, 'total': len(itens)},
+    })
 
 
 # =========================================================

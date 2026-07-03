@@ -51,10 +51,16 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 /* ── LAYOUT 5 COLUNAS ── */
 .layout {
     display: grid;
-    grid-template-columns: 240px 220px 280px 440px 1fr;
+    grid-template-columns: 210px 190px 300px 1fr;
     height: calc(100vh - 72px);
     overflow: hidden;
 }
+/* Coluna 4 = Verificação (painel central, logo após a 3 - Cliente).
+   Coluna 5 = Etapas a migrar (checkboxes + Iniciar) — só aparece após a verificação. */
+.layout.mostra-etapas { grid-template-columns: 210px 190px 300px 1fr 340px; }
+.painel-direito { order: 4; }
+#colEtapas      { order: 5; display: none; }
+.layout.mostra-etapas #colEtapas { display: flex; }
 
 /* ══ PAINÉIS LATERAIS (estilos comuns) ══ */
 .painel-lateral {
@@ -232,6 +238,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     font-size: 12px; font-weight: 700; text-transform: uppercase;
     letter-spacing: 0.05em; color: #475569;
     display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; row-gap: 4px;
 }
 .card-body { padding: 14px 16px; }
 .card-etapa {
@@ -479,24 +486,43 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
         <div class="painel-footer">{{ clientes | length }} cliente(s)</div>
     </aside>
 
-    <!-- ══ COL 4 — ETAPAS DE IMPORTAÇÃO ══ -->
-    <aside class="painel-lateral">
+    <!-- ══ COL 5 — ETAPAS A MIGRAR (só aparece após aprovar a verificação) ══ -->
+    <aside class="painel-lateral" id="colEtapas">
         <div class="painel-header">
-            <div class="etapa-label"><span class="etapa-num">4</span> Etapas</div>
-            <div class="painel-header-titulo">O que importar</div>
+            <div class="painel-header-row">
+                <div>
+                    <div class="etapa-label"><span class="etapa-num" style="background:#16a34a;">5</span> Etapas a migrar</div>
+                    <div class="painel-header-titulo">Marque o que importar</div>
+                </div>
+                <button class="btn-atualizar" id="btnMarcarTodos" onclick="toggleMarcarTodos()"
+                        title="Marcar / desmarcar todos"
+                        style="font-size:11px;padding:4px 10px;white-space:nowrap;">Marcar todos</button>
+            </div>
         </div>
-        <div class="painel-scroll" id="listaEtapas"></div>
-        <div class="painel-footer" id="totalEtapas"></div>
+        <div class="painel-scroll" id="migEtapasLista"></div>
+        <div class="painel-footer" style="padding:10px 12px;display:flex;flex-direction:column;gap:8px;text-align:left;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                <span class="form-label" style="font-size:10px;">Vigência inicial</span>
+                <input class="form-input" id="mcIniValid" type="text" value="202001" maxlength="6"
+                       placeholder="YYYYMM" style="width:96px;padding:5px 8px;">
+            </div>
+            <button class="btn-executar" id="btnConfirmarMigrar" onclick="confirmarMigracaoCompleta()"
+                    style="width:100%;padding:11px 0;font-size:14px;">▶ Iniciar</button>
+        </div>
     </aside>
 
-    <!-- ══ COL 5 — CONFIG / EXECUÇÃO ══ -->
+    <!-- ══ COL 4 — VERIFICAÇÃO (painel central) ══ -->
     <main class="painel-direito">
+        <div class="painel-header" style="flex-shrink:0;background:#f8fafc;">
+            <div class="etapa-label"><span class="etapa-num">4</span> Verificação</div>
+            <div class="painel-header-titulo">Revisar antes de migrar</div>
+        </div>
         <div class="painel-direito-corpo">
 
 <div class="estado-vazio" id="estadoVazio">
                 <span class="estado-vazio-icone">👈</span>
-                <span class="estado-vazio-texto">Selecione arquivo, cliente e etapa</span>
-                <span class="estado-vazio-sub">Colunas 1, 3 e 4</span>
+                <span class="estado-vazio-texto">Selecione arquivo e cliente</span>
+                <span class="estado-vazio-sub">Colunas 1 e 3 — a verificação aparece aqui</span>
             </div>
 
             <div id="selResumo" style="display:none;" class="sel-resumo">
@@ -509,6 +535,51 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                     <span class="sel-val" id="selCliNome">—</span>
                 </div>
             </div>
+
+            <!-- ══ ETAPA 4 — VERIFICAÇÃO (conteúdo direto no painel; o header está no topo do painel) ══ -->
+            <div id="cardMigracaoCompleta" style="display:none;">
+                <div class="aviso-warn" style="margin-bottom:12px;">
+                    <span style="font-size:16px;flex-shrink:0;">⚠️</span>
+                    <span><strong>Processar apenas localmente.</strong> Esta migração roda só na máquina local
+                    (Windows + Access) e <strong>grava direto no banco de produção</strong> (Supabase).
+                    Não há desfazer automático.</span>
+                </div>
+                <div class="sel-resumo" style="margin-bottom:12px;">
+                    <div class="sel-item">
+                        <span class="sel-label">Cliente:</span>
+                        <span class="sel-val" id="mcCliNome">—</span>
+                    </div>
+                </div>
+                <p style="font-size:12px;color:#64748b;line-height:1.6;margin-bottom:12px;">
+                    Verifica a tabela-fonte de cada uma das 13 etapas nos arquivos do Access.
+                    A <strong>migração (coluna 5)</strong> só é liberada depois que a verificação for autorizada.
+                </p>
+                <button class="btn-executar" id="btnRevisar" onclick="iniciarRevisao()">
+                    🔍 Executar verificação
+                </button>
+            </div>
+
+            <!-- ══ RESULTADO DA VERIFICAÇÃO + APROVAÇÃO ══ -->
+            <div class="card" id="cardRevisao" style="display:none;">
+                <div class="card-header">
+                    📋 Resultado da verificação
+                    <span id="revResumoBadge" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;white-space:nowrap;"></span>
+                </div>
+                <div class="card-body">
+                    <div id="revLista" style="max-height:38vh;overflow-y:auto;"></div>
+                    <div style="margin-top:14px;display:flex;gap:10px;">
+                        <button class="btn-voltar" style="flex:0 0 auto;padding:11px 20px;"
+                                onclick="cancelarRevisao()">Cancelar</button>
+                        <button class="btn-executar" style="flex:1;" id="btnAprovarVerif"
+                                onclick="aprovarVerificacao()">
+                            ▶ Autorizar migração
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- (Etapa 5 — Importação migrou para a COLUNA 5 #colEtapas, que só aparece
+                 após aprovar a verificação) -->
 
             <!-- Comparação de campos: Access ↔ destino -->
             <div class="card" id="cardComparacao" style="display:none;">
@@ -775,6 +846,7 @@ function _verificarPronto() {
     document.getElementById('btnAutorizar').style.display   = pronto ? 'flex'  : 'none';
     document.getElementById('btnIniciar').style.display     = 'none';
     document.getElementById('cardResultado').style.display  = 'none';
+    _atualizarMigracaoCompleta();
     if (!pronto) return;
 
     document.getElementById('selArqNome').textContent = arquivoAtivo;
@@ -791,6 +863,7 @@ function _resetDireito() {
     document.getElementById('btnAutorizar').style.display   = 'none';
     document.getElementById('btnIniciar').style.display     = 'none';
     document.getElementById('cardResultado').style.display  = 'none';
+    _atualizarMigracaoCompleta();
 }
 
 // ── Comparação de campos Access ↔ destino ──
@@ -1361,7 +1434,7 @@ function _atualizarBarra(pct, texto, etapaAtiva) {
     document.getElementById('progressoTexto').textContent = texto || '';
 }
 
-function _pollProgresso(jobId, tabelas, etapasSel) {
+function _pollProgresso(jobId, tabelas, etapasSel, onDone) {
     if (_pollTimer) clearTimeout(_pollTimer);
 
     const labelMap = {};
@@ -1400,7 +1473,7 @@ function _pollProgresso(jobId, tabelas, etapasSel) {
 
             if (d.done) {
                 _atualizarBarra(100, 'Concluído');
-                setTimeout(() => _finalizarImportacao(d.resultado), 400);
+                setTimeout(() => (onDone || _finalizarImportacao)(d.resultado), 400);
             } else {
                 const label    = labelMap[d.etapa] || d.etapa || 'Processando…';
                 const numAtual = numMap[d.etapa] || (step + 1);
@@ -1453,6 +1526,223 @@ function renderResultado(d) {
     }
 }
 
+// ═══════════════════════════════════════════════════════════
+// MIGRAÇÃO COMPLETA — revisão de todas as etapas + confirmação
+// ═══════════════════════════════════════════════════════════
+const REV_STATUS_META = {
+    ok:       { icone: '🟢', cor: '#166534', bg: '#f0fdf4', bd: '#86efac' },
+    vazia:    { icone: '🟡', cor: '#92400e', bg: '#fffbeb', bd: '#fde68a' },
+    fallback: { icone: '🟡', cor: '#92400e', bg: '#fffbeb', bd: '#fde68a' },
+    ausente:  { icone: '🔴', cor: '#991b1b', bg: '#fef2f2', bd: '#fca5a5' },
+    erro:     { icone: '🔴', cor: '#991b1b', bg: '#fef2f2', bd: '#fca5a5' },
+};
+let _revisaoItens = null;
+
+function _atualizarMigracaoCompleta() {
+    const mostra = !!(arquivoAtivo && clienteAtivo) && !bloqueioMultiCliente;
+    const card = document.getElementById('cardMigracaoCompleta');
+    if (card) card.style.display = mostra ? '' : 'none';
+    if (mostra) {
+        document.getElementById('mcCliNome').textContent = clienteNome || clienteAtivo;
+        document.getElementById('estadoVazio').style.display = 'none';
+    } else {
+        _resetFluxoMigracao();
+    }
+}
+
+function _resetFluxoMigracao() {
+    const rev = document.getElementById('cardRevisao');
+    if (rev) rev.style.display = 'none';
+    const layout = document.querySelector('.layout');
+    if (layout) layout.classList.remove('mostra-etapas');
+    const btnAp = document.getElementById('btnAprovarVerif');
+    if (btnAp) { btnAp.disabled = false; btnAp.innerHTML = '▶ Autorizar migração'; }
+}
+
+function iniciarRevisao() {
+    if (!arquivoAtivo || !clienteAtivo) return;
+    const btn = document.getElementById('btnRevisar');
+    btn.disabled  = true;
+    btn.innerHTML = '<div class="spinner" style="border-top-color:#fff;border-color:rgba(255,255,255,0.25);border-width:2.5px;"></div> Verificando etapas…';
+    _resetFluxoMigracao();
+
+    fetch('/api/admin_importar_f10/revisar', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({ id_cliente: clienteAtivo, arquivo: arquivoAtivo }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        btn.disabled  = false;
+        btn.innerHTML = '🔍 Executar verificação';
+        if (!d.ok) { mostrarToast('✗ Falha na revisão: ' + esc(d.msg), 'err'); return; }
+        renderRevisao(d);
+    })
+    .catch(ex => {
+        btn.disabled  = false;
+        btn.innerHTML = '🔍 Executar verificação';
+        mostrarToast('✗ Erro na revisão: ' + esc(String(ex)), 'err');
+    });
+}
+
+function renderRevisao(d) {
+    _revisaoItens = d.itens || [];
+    const card  = document.getElementById('cardRevisao');
+    const lista = document.getElementById('revLista');
+    const badge = document.getElementById('revResumoBadge');
+    const r     = d.resumo || {};
+
+    badge.innerHTML =
+        `<span style="color:#166534;">🟢 ${r.ok || 0} OK</span> · ` +
+        `<span style="color:#92400e;">🟡 ${r.avisos || 0}</span> · ` +
+        `<span style="color:#991b1b;">🔴 ${r.bloqueios || 0}</span>`;
+
+    let html = _revisaoItens.map(it => {
+        const m = REV_STATUS_META[it.status] || REV_STATUS_META.erro;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;margin-bottom:4px;background:${m.bg};border:1px solid ${m.bd};">
+            <span style="font-size:13px;">${m.icone}</span>
+            <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:${m.cor};flex-shrink:0;">${esc(it.num)}</span>
+            <span style="font-size:12px;font-weight:600;color:#0f172a;flex-shrink:0;width:140px;">${esc(it.nome)}</span>
+            <span style="font-size:11px;color:${m.cor};flex:1;min-width:0;">${esc(it.msg)}</span>
+        </div>`;
+    }).join('');
+
+    if (d.erros_arquivo && d.erros_arquivo.length) {
+        html += d.erros_arquivo.map(e =>
+            `<div style="font-size:11px;color:#ef4444;padding:4px 10px;">⚠ ${esc(e.arquivo)}: ${esc(e.erro)}</div>`
+        ).join('');
+    }
+    if (d.tabelas_encontradas && d.tabelas_encontradas.length) {
+        html += `<details style="margin-top:10px;">
+            <summary style="cursor:pointer;font-size:11px;color:#64748b;">🔎 Ver ${d.tabelas_encontradas.length} tabela(s) encontrada(s) nos arquivos</summary>
+            <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:5px;">${d.tabelas_encontradas.map(t =>
+                `<span style="font-family:var(--mono);font-size:10px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;">${esc(t.nome)} <span style="color:#94a3b8;">(${t.qtd})</span></span>`
+            ).join('')}</div>
+        </details>`;
+    }
+    html += `<div style="font-size:10px;color:#94a3b8;margin-top:8px;line-height:1.5;">
+        Contagem = linhas brutas na origem. O total efetivamente importado pode ser menor após os filtros de validação de cada etapa.
+    </div>`;
+    lista.innerHTML = html;
+
+    // Reseta a coluna 5 — só é liberada ao aprovar a verificação
+    document.querySelector('.layout').classList.remove('mostra-etapas');
+    const btnAp = document.getElementById('btnAprovarVerif');
+    btnAp.disabled = false; btnAp.innerHTML = '▶ Autorizar migração';
+
+    card.style.display = '';
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelarRevisao() {
+    _resetFluxoMigracao();
+    _revisaoItens = null;
+}
+
+function aprovarVerificacao() {
+    // Etapa 4 aprovada → libera a COLUNA 5 (Etapas a migrar)
+    const btn = document.getElementById('btnAprovarVerif');
+    btn.disabled  = true;
+    btn.innerHTML = '✔ Migração autorizada';
+    renderMigEtapas();
+    document.querySelector('.layout').classList.add('mostra-etapas');
+    const col = document.getElementById('colEtapas');
+    if (col) col.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'end' });
+}
+
+// ── Lista de etapas da Etapa 5 (Importação) + "Marcar todos" ──
+function renderMigEtapas() {
+    const el = document.getElementById('migEtapasLista');
+    if (!el) return;
+    el.innerHTML = ETAPAS.filter(e => e.implementado).map(e => `
+        <label style="display:flex;align-items:center;gap:8px;padding:4px 6px;border-radius:6px;cursor:pointer;">
+            <input type="checkbox" class="etapa-chk" id="chk-mig-${esc(e.num)}" value="${esc(e.tabela)}"
+                   checked onchange="_sincMarcarTodos()">
+            <span style="font-family:var(--mono);font-size:11px;font-weight:700;color:var(--accent);">${esc(e.num)}</span>
+            <span style="font-size:12px;color:#0f172a;">${esc(e.nome)}</span>
+        </label>`).join('');
+    _sincMarcarTodos();
+}
+
+function _migChecks() {
+    return ETAPAS.filter(e => e.implementado)
+        .map(e => document.getElementById('chk-mig-' + e.num))
+        .filter(Boolean);
+}
+
+function _sincMarcarTodos() {
+    const checks = _migChecks();
+    const todos = checks.length > 0 && checks.every(c => c.checked);
+    const btn = document.getElementById('btnMarcarTodos');
+    if (btn) btn.textContent = todos ? 'Desmarcar todos' : 'Marcar todos';
+}
+
+function toggleMarcarTodos() {
+    const checks = _migChecks();
+    const marcar = !(checks.length > 0 && checks.every(c => c.checked));
+    checks.forEach(c => { c.checked = marcar; });
+    _sincMarcarTodos();
+}
+
+function confirmarMigracaoCompleta() {
+    if (!arquivoAtivo || !clienteAtivo) return;
+    const sel = _migChecks().filter(c => c.checked);
+    if (!sel.length) { mostrarToast('Marque ao menos uma etapa para migrar.', 'aviso'); return; }
+    const bloqueios = (_revisaoItens || []).filter(x => x.status === 'ausente' || x.status === 'erro').length;
+    const msg = `Isto vai migrar ${sel.length} etapa(s) do cliente `
+        + `"${clienteNome || clienteAtivo}" em sequência.`
+        + (bloqueios ? `  Atenção: a verificação apontou ${bloqueios} etapa(s) com bloqueio (fonte ausente).` : '')
+        + `  Deseja realmente continuar?`;
+    window.f10Confirm(msg, { tipo: 'aviso', okText: 'Sim, migrar', cancelText: 'Cancelar' })
+        .then(ok => { if (ok) _rodarMigracaoCompleta(); });
+}
+
+function _rodarMigracaoCompleta() {
+    const ini_valid = (document.getElementById('mcIniValid').value || '202001').replace(/\D/g, '');
+    const etapasSel = ETAPAS.filter(e => {
+        const el = document.getElementById('chk-mig-' + e.num);
+        return el && el.checked;
+    });
+    const tabelas   = etapasSel.map(e => e.tabela);
+    if (!tabelas.length) { mostrarToast('Marque ao menos uma etapa.', 'aviso'); return; }
+
+    document.getElementById('cardRevisao').style.display = 'none';
+    document.querySelector('.layout').classList.remove('mostra-etapas');
+    document.getElementById('cardResultado').style.display = 'none';
+
+    document.getElementById('progressoEtapas').innerHTML = etapasSel.map(e =>
+        `<span class="progresso-etapa-chip" id="chip-${e.tabela}">${e.nome || e.tabela}</span>`
+    ).join('');
+    _atualizarBarra(0, 'Iniciando migração completa…');
+    document.getElementById('progressoWrap').classList.add('ativo');
+
+    fetch('/api/admin_importar_f10/executar', {
+        method : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body   : JSON.stringify({
+            arquivo      : arquivoAtivo,
+            id_cliente   : clienteAtivo,
+            tabelas      : tabelas,
+            ini_valid    : parseInt(ini_valid),
+            parar_no_erro: true,
+        }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (!d.ok) { _finalizarMigracaoCompleta(d); return; }
+        _pollProgresso(d.job_id, tabelas, etapasSel, _finalizarMigracaoCompleta);
+    })
+    .catch(ex => _finalizarMigracaoCompleta({ ok: false, msg: String(ex) }));
+}
+
+function _finalizarMigracaoCompleta(d) {
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+    document.getElementById('progressoWrap').classList.remove('ativo');
+    renderResultado(d);
+    _resetFluxoMigracao();
+    _atualizarMigracaoCompleta();
+}
+
 function filtrarClientes() {
     const t = document.getElementById('inputBusca').value.toLowerCase().trim();
     document.querySelectorAll('.cliente-card[data-nome]').forEach(c => {
@@ -1468,7 +1758,6 @@ function msgErro(msg) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    renderEtapas();
     carregarArquivos();
     carregarEmpresas();
 });
