@@ -1414,11 +1414,13 @@ def webhook_asaas():
                      f"Valor: {valor}\n"
                      f"Nova Data Limite: {nova_dl_br}\n"
                      f"Cobranca Asaas: {payment_id}\n")
-            _enviar_email_texto("sergiomoraesvieira@outlook.com",
+            ok_em, err_em = _enviar_email_texto("sergiomoraesvieira@outlook.com",
                                 f"Pagamento confirmado - Cliente {id_cliente:06d}",
                                 corpo)
-        except Exception:
-            pass
+            if not ok_em:
+                print(f"webhook_asaas: email admin NAO enviado (cliente {id_cliente:06d}): {err_em}")
+        except Exception as ex_em:
+            print(f"webhook_asaas: excecao ao enviar email admin (cliente {id_cliente:06d}): {ex_em}")
 
         return jsonify({"ok": True, "cliente": id_cliente, "data_limite": nova_dl}), 200
     except Exception as e:
