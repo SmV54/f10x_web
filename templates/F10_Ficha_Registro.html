@@ -144,6 +144,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .campo-valor.mono { font-family: var(--mono); font-size: 12px; }
 .campo-valor.vazio { color: #cbd5e1; font-style: italic; font-weight: 400; }
 .campo-valor.destaque { font-size: 14px; font-weight: 600; color: var(--green); }
+.campo-valor.uma-linha { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ── TABELAS DE EVENTOS ──────────────────────────────── */
 .ev-table { width:100%; border-collapse:collapse; font-size:12px; }
@@ -366,9 +367,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
                     <span class="campo-label">Regime de Jornada</span>
                     <span class="campo-valor">{{ funcionario._tpregjor }}</span>
                 </div>
-                <div class="campo-rel">
+                <div class="campo-rel" style="min-width:0;">
                     <span class="campo-label">Sindicato</span>
-                    <span class="campo-valor mono {% if not funcionario.cnpjsindcategprof %}vazio{% endif %}">
+                    <span class="campo-valor mono uma-linha {% if not funcionario.cnpjsindcategprof %}vazio{% endif %}"
+                          title="{{ funcionario._sind_linha if funcionario.cnpjsindcategprof else '' }}">
                         {{ funcionario._sind_linha if funcionario.cnpjsindcategprof else '—' }}
                     </span>
                 </div>

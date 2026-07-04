@@ -27620,7 +27620,7 @@ def api_visualizar_calculo_dados():
     id_cliente  = session.get("id_cliente")
     anomes      = str(session.get("anomes_atual") or "")
     folha_tipo  = str(session.get("anomes_tipo") or "N")
-    folha_tipo_mov = "N" if folha_tipo not in ("F", "R") else folha_tipo
+    folha_tipo_mov = folha_tipo if folha_tipo in ("F", "R", "A", "1") else "N"
 
     mats_param = request.args.get("matriculas", "")
     mats = [int(m) for m in mats_param.split(",") if m.strip().isdigit()]
@@ -27703,7 +27703,8 @@ def api_visualizar_calculo_dados():
                          "valor_irrf_dependentes, qtd_irrf_dependentes, "
                          "valor_total_proventos, valor_total_descontos, valor_liquido")
                  .eq("id_empresa", id_empresa)
-                 .eq("folha", int(anomes)))
+                 .eq("folha", int(anomes))
+                 .eq("folha_tipo", folha_tipo_mov))
         if id_cliente:
             q_tot = q_tot.eq("id_cliente", id_cliente)
         for reg in (q_tot.execute().data or []):
@@ -27713,7 +27714,8 @@ def api_visualizar_calculo_dados():
     except Exception:
         pass
 
-    # lê tab_mov do mês inteiro (todos os tipos de folha) e filtra em Python
+    # lê tab_mov apenas da folha ativa (folha_tipo_mov): cada tipo de folha
+    # (N / F / R / A-adiant.13 / 1-13º) é uma folha à parte, não misturar tipos.
     # (verbas 161-164 são exibidas separadamente após o subtotal — não incluí-las
     #  no cálculo de proventos/descontos, mas listá-las no card)
     mov_data = {}
@@ -27723,7 +27725,8 @@ def api_visualizar_calculo_dados():
              .select("matricula, cod_verba, qtd, valor, origem, folha_tipo")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
-             .eq("folha", int(anomes)))
+             .eq("folha", int(anomes))
+             .eq("folha_tipo", folha_tipo_mov))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
@@ -27911,7 +27914,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         raw = str(v or "").strip()
         dig = ''.join(c for c in raw if c.isdigit())
         return raw if (dig and dig.lstrip("0") and dig != _cnpj_dig) else ""
-    folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
     ano, mes = anomes[:4], anomes[4:6]
     meses_pt = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                 "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
@@ -28209,7 +28212,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     from datetime import datetime
 
     buf            = BytesIO()
-    folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
     agora          = datetime.now()
     ano, mes       = anomes[:4], anomes[4:6]
     meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
@@ -28825,7 +28828,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     tipo_lbl       = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
                       "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
     anomes_fmt     = f"{mes_nm.upper()}/{ano}"
-    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
     # ── Número e data do último cálculo (mesmo para todos os stubs) ──
     n_calc_folha = 0
@@ -29388,7 +29391,7 @@ def contracheque():
     mes_nm    = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
     tipo_lbl  = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
                  "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
-    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
     # Busca funcionários com movimento no período (para seletor)
     funcionarios = []
@@ -29469,7 +29472,7 @@ def contracheque_pdf():
                                         ano, anomes_pasta, f"{int(id_empresa):06d}")
             os.makedirs(pasta, exist_ok=True)
 
-            folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+            folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
             q = (supabase.table("tab_mov")
                  .select("matricula")
                  .eq("id_empresa", id_empresa)
@@ -29594,7 +29597,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                       "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
     mes_nm         = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
     anomes_fmt     = f"{mes_nm.upper()}/{ano}"
-    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
     def _fbrl(c, dec=2):
         return f"{c/100:,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -29975,7 +29978,7 @@ def recibo_adiantamento():
     mes_nm    = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
     tipo_lbl  = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
                  "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
-    folha_tipo_mov = "N" if anomes_tipo not in ("F","R") else anomes_tipo
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
     # Funcionários com adiantamento lançado nesta folha (verbas 161-164)
     funcionarios = []
@@ -30072,7 +30075,7 @@ def recibo_adiantamento_pdf():
                                         ano, anomes_pasta, f"{int(id_empresa):06d}")
             os.makedirs(pasta, exist_ok=True)
 
-            folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+            folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
             q = (supabase.table("tab_mov")
                  .select("matricula")
                  .eq("id_empresa", id_empresa)
@@ -38397,6 +38400,218 @@ def api_calcular_adiantamento():
         return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
                         "msg": f"{erros} erro(s) parciais."})
     return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar})
+
+
+# =========================================================
+# ADIANTAMENTO DO 13º SALÁRIO  (folha_tipo="A", verba 17)
+# Cálculo simples: 50% do salário. Sem INSS/IRRF. (periculosidade/avos: etapas futuras)
+# =========================================================
+VERBA_ADIANT_13 = 17
+
+
+def _sal_mes_adiant13(f):
+    """Salário mensal em centavos a partir de um registro de tab_cad.
+    Mensalista (undsalfixo≠'H'): vrsalfx. Horista ('H'): vrsalfx × qtdhrsmes."""
+    vr  = int(f.get("vrsalfx") or 0)
+    und = str(f.get("undsalfixo") or "M").upper()[:1]
+    if und == "H":
+        try:
+            return int(round(vr * float(f.get("qtdhrsmes") or 0)))
+        except Exception:
+            return 0
+    return vr
+
+
+@app.route("/calcular_adiantamento_13")
+def calcular_adiantamento_13():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    folha_tipo = str(session.get("anomes_tipo") or "").upper()[:1]
+
+    def _fmt_reais(cents):
+        try:
+            return "R$ {:,.2f}".format(int(cents) / 100).replace(",", "X").replace(".", ",").replace("X", ".")
+        except Exception:
+            return "—"
+
+    ctx = dict(
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo=folha_tipo,
+        tipo_ok=(folha_tipo == "A"),
+        erro_critico=None,
+        verba_usar=VERBA_ADIANT_13,
+        dsc_verba="",
+        funcionarios=[],
+        total_funcs=0,
+        total_com=0,
+        total_fmt="R$ 0,00",
+    )
+    if not anomes or folha_tipo != "A":
+        return render_template("F10_Calc_Adiantamento_13.html", **ctx)
+
+    # descrição da verba 17
+    try:
+        r_v = supabase.table("tab_rubrica").select("dsc_rubr").eq("cod_rubr", VERBA_ADIANT_13).limit(1).execute()
+        if r_v.data:
+            ctx["dsc_verba"] = r_v.data[0].get("dsc_rubr") or ""
+    except Exception:
+        pass
+
+    funcionarios = []
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao", "A")
+                 .order("nomer")
+                 .execute())
+        for f in (r_cad.data or []):
+            dtadm_raw = str(f.get("dtadm") or "")
+            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            if dtadm_anomes and dtadm_anomes > anomes:
+                continue
+            nome    = (f.get("nome") or f.get("nomer") or "").strip()
+            sal_mes = _sal_mes_adiant13(f)
+            valor   = sal_mes // 2          # 50% do salário
+            funcionarios.append({
+                "matricula":  f.get("matricula"),
+                "nome":       nome,
+                "sal_fmt":    _fmt_reais(sal_mes),
+                "valor_calc": valor,
+                "valor_fmt":  _fmt_reais(valor),
+            })
+    except Exception as e:
+        ctx["erro_critico"] = f"Erro ao carregar funcionários: {str(e)[:150]}"
+        return render_template("F10_Calc_Adiantamento_13.html", **ctx)
+
+    com = [f for f in funcionarios if f["valor_calc"] > 0]
+    ctx.update(
+        funcionarios=funcionarios,
+        total_funcs=len(funcionarios),
+        total_com=len(com),
+        total_fmt=_fmt_reais(sum(f["valor_calc"] for f in com)),
+    )
+    return render_template("F10_Calc_Adiantamento_13.html", **ctx)
+
+
+@app.route("/api/calcular_adiantamento_13", methods=["POST"])
+def api_calcular_adiantamento_13():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    folha_tipo = str(session.get("anomes_tipo") or "").upper()[:1]
+    if folha_tipo != "A":
+        return jsonify({"ok": False, "msg": "A folha ativa não é do tipo Adiantamento 13º (tipo A)."})
+
+    folha_int = int(anomes)
+
+    # limpa cálculo anterior desta folha (verba 17, origem calculada)
+    try:
+        (supabase.table("tab_mov").delete()
+         .eq("id_empresa", id_empresa)
+         .eq("folha",      folha_int)
+         .eq("folha_tipo", "A")
+         .eq("cod_verba",  VERBA_ADIANT_13)
+         .eq("origem",     "C")
+         .execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao limpar cálculo anterior: {str(e)[:200]}"})
+
+    # limpa totais anteriores (tab_total) desta folha de adiantamento 13
+    try:
+        q_delt = (supabase.table("tab_total").delete()
+                  .eq("id_empresa", id_empresa)
+                  .eq("folha",      folha_int)
+                  .eq("folha_tipo", "A"))
+        if id_cliente:
+            q_delt = q_delt.eq("id_cliente", id_cliente)
+        q_delt.execute()
+    except Exception:
+        pass
+
+    gravados = 0
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao", "A")
+                 .execute())
+        for f in (r_cad.data or []):
+            dtadm_raw = str(f.get("dtadm") or "")
+            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            if dtadm_anomes and dtadm_anomes > anomes:
+                continue
+            sal_mes = _sal_mes_adiant13(f)
+            valor   = sal_mes // 2          # 50% do salário
+            if valor <= 0:
+                continue
+            mat = f.get("matricula")
+            try:
+                supabase.table("tab_mov").insert({
+                    "id_cliente": id_cliente,
+                    "id_empresa": id_empresa,
+                    "situacao":   "A",
+                    "matricula":  int(mat),
+                    "folha":      folha_int,
+                    "folha_tipo": "A",
+                    "cod_verba":  VERBA_ADIANT_13,
+                    "qtd":        0,
+                    "valor":      valor,
+                    "lote":       0,
+                    "origem":     "C",
+                    "controle":   0,
+                    "os":         0,
+                }).execute()
+                gravados += 1
+            except Exception as e_ins:
+                return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
+
+            # Totais (tab_total): adiantamento não tem INSS/IRRF/FGTS → só proventos = valor
+            rec_total = {
+                "id_cliente":                id_cliente,
+                "id_empresa":                id_empresa,
+                "situacao":                  "A",
+                "matricula":                 int(mat),
+                "folha":                     folha_int,
+                "folha_tipo":                "A",
+                "valor_base_inss_semlimite": 0,
+                "valor_base_inss_comlimite": 0,
+                "valor_inss_retido":         0,
+                "valor_base_fgts":           0,
+                "valor_fgts":                0,
+                "valor_irrf_basetotal":      0,
+                "valor_irrf_basetabela":     0,
+                "valor_irrf_dependentes":    0,
+                "qtd_irrf_dependentes":      0,
+                "valor_salario":             int(sal_mes),
+                "valor_total_proventos":     int(valor),
+                "valor_total_descontos":     0,
+                "valor_liquido":             int(valor),
+                "os":                        0,
+                "controle":                  0,
+            }
+            try:
+                supabase.table("tab_total").insert(rec_total).execute()
+            except Exception:
+                # tenta sem a coluna situacao (pode não existir na tabela)
+                try:
+                    supabase.table("tab_total").insert(
+                        {k: v for k, v in rec_total.items() if k != "situacao"}).execute()
+                except Exception:
+                    pass
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+    return jsonify({"ok": True, "gravados": gravados, "verba": VERBA_ADIANT_13})
 
 
 # =========================================================
