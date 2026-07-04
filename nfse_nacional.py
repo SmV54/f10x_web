@@ -438,7 +438,8 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     pN = ParagraphStyle('n', parent=ss['Normal'], fontSize=8, leading=10)
     pB = ParagraphStyle('b', parent=pN, fontName='Helvetica-Bold')
     pSmall = ParagraphStyle('s', parent=pN, fontSize=7, leading=8.5, textColor=colors.HexColor('#475569'))
-    pTitulo = ParagraphStyle('t', parent=ss['Normal'], fontSize=13, fontName='Helvetica-Bold')
+    pTitulo = ParagraphStyle('t', parent=ss['Normal'], fontSize=12.5, fontName='Helvetica-Bold', leading=15)
+    pCenter = ParagraphStyle('c', parent=pSmall, alignment=1)
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14*mm, rightMargin=14*mm,
@@ -448,17 +449,36 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     AZUL = colors.HexColor('#1d4ed8'); CINZA = colors.HexColor('#f1f5f9')
     LINHA = colors.HexColor('#cbd5e1')
 
-    # Cabeçalho
-    cab = Table([[
-        Paragraph("NOTA FISCAL DE SERVIÇOS ELETRÔNICA<br/><font size=8 color='#475569'>NFS-e — Padrão Nacional · DANFSE</font>", pTitulo),
-        Paragraph(f"<b>Nº {numero}</b><br/>"
-                  f"<font size=8>Competência: {comp(dcompet)}<br/>"
-                  f"Emissão: {dt(dhproc)}<br/>"
-                  f"Município: {loc_emi}</font>", pN),
-    ]], colWidths=[112*mm, 70*mm])
+    # QR Code — consulta pública oficial da NFS-e pela chave (gov.br)
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+    from reportlab.graphics.shapes import Drawing
+    chave_d = re.sub(r"\D", "", str(chave or ""))
+    url_consulta = f"https://www.nfse.gov.br/consultapublica?tpc=1&chNFSe={chave_d}"
+    _qr = QrCodeWidget(url_consulta, barLevel='M')
+    _b = _qr.getBounds(); _qw = _b[2] - _b[0]; _qh = _b[3] - _b[1]
+    _SZ = 26 * mm
+    qr_draw = Drawing(_SZ, _SZ, transform=[_SZ / _qw, 0, 0, _SZ / _qh, 0, 0])
+    qr_draw.add(_qr)
+
+    # Cabeçalho: identificação (esq.) + QR (dir.)
+    ident = Table([
+        [Paragraph("NOTA FISCAL DE SERVIÇOS ELETRÔNICA — NFS-e", pTitulo)],
+        [Paragraph("<font size=8 color='#475569'>Documento Auxiliar da NFS-e (DANFSe) · Padrão Nacional</font>", pN)],
+        [Paragraph(f"<b>Número da NFS-e:</b> {numero}&nbsp;&nbsp;·&nbsp;&nbsp;"
+                   f"<b>Competência:</b> {comp(dcompet)}", pN)],
+        [Paragraph(f"<b>Emissão:</b> {dt(dhproc)}&nbsp;&nbsp;·&nbsp;&nbsp;"
+                   f"<b>Município gerador:</b> {loc_emi}", pN)],
+    ], colWidths=[150*mm])
+    ident.setStyle(TableStyle([('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
+        ('TOPPADDING',(0,0),(-1,-1),1),('BOTTOMPADDING',(0,0),(-1,-1),1),
+        ('BOTTOMPADDING',(0,1),(0,1),5)]))
+    qr_cell = Table([[qr_draw], [Paragraph("Consulta oficial<br/>gov.br", pCenter)]], colWidths=[30*mm])
+    qr_cell.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('TOPPADDING',(0,0),(-1,-1),0),('BOTTOMPADDING',(0,0),(-1,-1),0)]))
+    cab = Table([[ident, qr_cell]], colWidths=[150*mm, 32*mm])
     cab.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('BOX', (0,0), (-1,-1), 1, AZUL),
+        ('VALIGN', (0,0), (0,0), 'TOP'), ('VALIGN', (1,0), (1,0), 'MIDDLE'),
+        ('BOX', (0,0), (-1,-1), 1.2, AZUL),
         ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#eff6ff')),
         ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),
         ('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7),
@@ -466,8 +486,9 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     el.append(cab)
     el.append(Spacer(1, 3))
     # Chave de acesso
-    ch = Table([[Paragraph("<b>CHAVE DE ACESSO</b>", pSmall)],
-                [Paragraph(f"<font face='Courier' size=9>{_fmt_chave(chave)}</font>", pN)]],
+    ch = Table([[Paragraph("<b>CHAVE DE ACESSO DA NFS-e</b>  "
+                           "<font color='#64748b'>(consulte em www.nfse.gov.br/consultapublica)</font>", pSmall)],
+                [Paragraph(f"<font face='Courier' size=9.5>{_fmt_chave(chave)}</font>", pN)]],
                colWidths=[182*mm])
     ch.setStyle(TableStyle([('BOX',(0,0),(-1,-1),0.7,LINHA),('BACKGROUND',(0,0),(-1,-1),CINZA),
         ('LEFTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
