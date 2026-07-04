@@ -37988,6 +37988,273 @@ def _arquivo_nf():
     return candidatos[0]
 
 
+# =========================================================
+# NFS-e NACIONAL (Sefin/gov.br) — emissão do DPS
+# =========================================================
+# Dados fiscais do emitente (escritório COMSIST). O certificado A1 vem de
+# tab_empresa (id_empresa=9). Ver memória project_nfse_nacional.
+NFSE_EMITENTE = {
+    "cnpj":        "08777252000133",
+    "im":          "4142241",
+    "email":       "sergiomoraesvieira@outlook.com",
+    "cloc_emi":    "2611606",          # Recife (IBGE)
+    "op_simp_nac": "3",                # Optante ME/EPP
+    "reg_ap_sn":   "1",                # Apuração dos tributos pelo SN
+    "reg_esp":     "0",                # Nenhum regime especial
+    "ptrib_sn":    "2.00",             # % aproximado dos tributos (Simples) — Lei da Transparência
+    "id_empresa":  9,                  # linha do certificado A1 em tab_empresa
+    "serv_ctribnac": "010301",
+    "serv_ctribmun": "501",
+    "serv_nbs":      "115090000",      # 9 dígitos (omitido pelo módulo se != 9)
+}
+NFSE_URLS = {
+    2: "https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional/nfse",  # produção restrita
+    1: "https://sefin.nfse.gov.br/SefinNacional/nfse",                       # produção
+}
+
+
+def _nfse_cert_emitente():
+    """Retorna (pfx_bytes, senha) do certificado A1 do emitente (tab_empresa id=9)."""
+    r = (supabase.table("tab_empresa")
+         .select("cert_pfx_b64, cert_senha_enc")
+         .eq("id_empresa", NFSE_EMITENTE["id_empresa"]).limit(1).execute())
+    if not r.data:
+        raise ValueError("Empresa do emitente (id=9) não encontrada.")
+    row = r.data[0]
+    pfx_b64 = row.get("cert_pfx_b64"); senha_enc = row.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        raise ValueError("Certificado A1 do emitente não configurado.")
+    return base64.b64decode(pfx_b64), _cert_decrypt(senha_enc)
+
+
+def _nfse_cliente_por_cod(caminho, cod):
+    """Lê 1 cliente completo da TabCLI_NF pelo CodCLI (para montar o tomador)."""
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+    cur = conn.cursor()
+    cur.execute("""SELECT CodCLI, CNPJ_CPF, RazaoSocial, email, Endereco_Tipo, Endereco_Rua,
+                          Endereco_Numero, Endereco_Complemento, Endereco_Bairro,
+                          Endereco_Cidade, Endereco_UF, Endereco_CEP, ISS_Retido
+                   FROM TabCLI_NF WHERE CodCLI = ?""", int(cod))
+    row = cur.fetchone()
+    conn.close()
+    if not row:
+        return None
+    return {
+        "cod": row[0], "cnpj_cpf": str(row[1] or "").strip(),
+        "nome": str(row[2] or "").strip(), "email": str(row[3] or "").strip(),
+        "lgr": f"{str(row[4] or '').strip()} {str(row[5] or '').strip()}".strip(),
+        "nro": str(row[6] or "").strip(), "cpl": str(row[7] or "").strip(),
+        "bairro": str(row[8] or "").strip(), "ibge": str(row[9] or "").strip(),
+        "uf": str(row[10] or "").strip(), "cep": str(row[11] or "").strip(),
+        "iss_retido": (str(row[12] or "0").strip() not in ("0", "", "None")),
+    }
+
+
+def _nfse_ensure_log(caminho):
+    """Cria a tabela de log/contador no NF10.accdb se ainda não existir."""
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+    cur = conn.cursor()
+    existe = any(t.table_name.lower() == "tabnfse_log"
+                 for t in cur.tables(tableType='TABLE'))
+    if not existe:
+        cur.execute("""CREATE TABLE tabNFSe_Log (
+            Id AUTOINCREMENT PRIMARY KEY, Ambiente INTEGER, Serie TEXT(5), nDPS LONG,
+            CodCLI LONG, Competencia TEXT(7), Valor DOUBLE, ChaveAcesso TEXT(60),
+            idDps TEXT(60), Status TEXT(20), Mensagem MEMO, ArqXML TEXT(255),
+            DataHora TEXT(20))""")
+        conn.commit()
+    conn.close()
+
+
+def _nfse_next_ndps(caminho, ambiente, serie):
+    """Próximo número de DPS para (ambiente, série) = MAX(nDPS)+1 no log."""
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+    cur = conn.cursor()
+    cur.execute("SELECT MAX(nDPS) FROM tabNFSe_Log WHERE Ambiente=? AND Serie=?",
+                int(ambiente), str(serie))
+    row = cur.fetchone()
+    conn.close()
+    return int(row[0] or 0) + 1
+
+
+def _nfse_gravar_log(caminho, **kw):
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+    cur = conn.cursor()
+    cur.execute("""INSERT INTO tabNFSe_Log
+        (Ambiente, Serie, nDPS, CodCLI, Competencia, Valor, ChaveAcesso, idDps,
+         Status, Mensagem, ArqXML, DataHora)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        int(kw["ambiente"]), str(kw["serie"]), int(kw["ndps"]), int(kw["cod"]),
+        str(kw["competencia"]), float(kw["valor"]), str(kw.get("chave", "")),
+        str(kw.get("id_dps", "")), str(kw["status"]), str(kw.get("mensagem", ""))[:1000],
+        str(kw.get("arq_xml", "")), datetime.now().strftime("%Y%m%d %H%M%S"))
+    conn.commit()
+    conn.close()
+
+
+def _nfse_post(url, dps_b64, pfx_bytes, senha):
+    """POST do DPS (mTLS) no Sefin. Retorna (http_status, dict_json)."""
+    import tempfile, os as _os, json as _json
+    from cryptography.hazmat.primitives.serialization import (
+        pkcs12, Encoding, PrivateFormat, NoEncryption)
+    pk, cert, chain = pkcs12.load_key_and_certificates(pfx_bytes, senha.encode())
+    cf = tempfile.NamedTemporaryFile(delete=False, suffix=".cert.pem")
+    kf = tempfile.NamedTemporaryFile(delete=False, suffix=".key.pem")
+    try:
+        cf.write(cert.public_bytes(Encoding.PEM))
+        for ca in (chain or []):
+            cf.write(ca.public_bytes(Encoding.PEM))
+        cf.close()
+        kf.write(pk.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption()))
+        kf.close()
+        resp = requests.post(url, json={"dpsXmlGZipB64": dps_b64},
+                             cert=(cf.name, kf.name), verify=False, timeout=90,
+                             headers={"Content-Type": "application/json",
+                                      "Accept": "application/json"})
+        try:
+            return resp.status_code, resp.json()
+        except Exception:
+            return resp.status_code, {"erros": [{"Codigo": "HTTP",
+                                     "Descricao": f"Resposta não-JSON: {resp.text[:300]}"}]}
+    finally:
+        _os.unlink(cf.name); _os.unlink(kf.name)
+
+
+@app.route('/api/admin_nf/emitir', methods=['POST'])
+def api_admin_nf_emitir():
+    if not session.get('logado'):
+        return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return jsonify({'ok': False, 'msg': 'Acesso restrito.'}), 403
+    import nfse_nacional as nfx
+
+    data = request.get_json(force=True) or {}
+    cod = data.get('cod_cli')
+    competencia = str(data.get('competencia') or '').strip()          # MM/AAAA
+    discr = str(data.get('discriminacao') or '').strip()
+    ambiente = int(data.get('ambiente') or 2)                         # 2=restrita, 1=produção
+    try:
+        valor = float(str(data.get('valor') or '0').replace('.', '').replace(',', '.')) \
+            if (',' in str(data.get('valor'))) else float(data.get('valor') or 0)
+    except Exception:
+        valor = 0.0
+
+    if not cod:
+        return jsonify({'ok': False, 'msg': 'Cliente não informado.'})
+    if len(_re_digits(competencia)) not in (6,):
+        return jsonify({'ok': False, 'msg': 'Competência inválida (use MM/AAAA).'})
+    if valor <= 0:
+        return jsonify({'ok': False, 'msg': 'Valor da nota inválido.'})
+
+    caminho = _arquivo_nf()
+    if not caminho:
+        return jsonify({'ok': False, 'msg': 'Arquivo TABNF não encontrado.'})
+
+    cli = _nfse_cliente_por_cod(caminho, cod)
+    if not cli:
+        return jsonify({'ok': False, 'msg': f'Cliente {cod} não encontrado.'})
+    ins = _re_digits(cli['cnpj_cpf'])
+    if (not ins) or set(ins) <= {'0'} or set(ins) <= {'9'}:
+        return jsonify({'ok': False, 'msg': 'Cliente sem CNPJ/CPF válido — não pode emitir NFS-e.'})
+
+    try:
+        pfx_bytes, senha = _nfse_cert_emitente()
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Certificado do emitente: {ex}'})
+
+    _nfse_ensure_log(caminho)
+    serie = "1"
+    ndps = _nfse_next_ndps(caminho, ambiente, serie)
+
+    e = NFSE_EMITENTE
+    d = dict(
+        ambiente=ambiente, serie=serie, ndps=ndps, competencia=competencia,
+        ver_aplic="Folha10-1.0",
+        emit_cnpj=e["cnpj"], emit_im=e["im"], emit_email=e["email"],
+        emit_op_simp_nac=e["op_simp_nac"], emit_reg_ap_sn=e["reg_ap_sn"],
+        emit_reg_esp=e["reg_esp"], emit_ptrib_sn=e["ptrib_sn"], cloc_emi=e["cloc_emi"],
+        serv_ctribnac=e["serv_ctribnac"], serv_ctribmun=e["serv_ctribmun"],
+        serv_nbs=e["serv_nbs"], serv_local=e["cloc_emi"],
+        serv_desc=discr or f"Processamento da folha de pagamento - competencia {competencia}",
+        valor=valor, iss_retido=cli['iss_retido'],
+        tom_cnpj_cpf=cli['cnpj_cpf'], tom_nome=cli['nome'], tom_email=cli['email'],
+        tom_ibge=cli['ibge'], tom_cep=cli['cep'], tom_lgr=cli['lgr'],
+        tom_nro=cli['nro'], tom_cpl=cli['cpl'], tom_bairro=cli['bairro'],
+    )
+
+    try:
+        xml, iddps = nfx.montar_dps(d)
+        xml_ass = nfx.assinar_dps(xml, pfx_bytes, senha)
+        ok_xsd, erros_xsd = nfx.validar_xsd(xml_ass)
+        if not ok_xsd:
+            _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
+                             competencia=competencia, valor=valor, status='ERRO_XSD',
+                             mensagem="; ".join(erros_xsd[:5]))
+            return jsonify({'ok': False, 'msg': 'DPS reprovado na validação XSD.',
+                            'erros': erros_xsd[:5]})
+        b64 = nfx.compactar_gzip_b64(xml_ass)
+        status, resp = _nfse_post(NFSE_URLS.get(ambiente, NFSE_URLS[2]), b64, pfx_bytes, senha)
+    except Exception as ex:
+        _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
+                         competencia=competencia, valor=valor, status='ERRO',
+                         mensagem=str(ex)[:1000])
+        return jsonify({'ok': False, 'msg': f'Falha ao emitir: {ex}'})
+
+    erros = resp.get('erros') or resp.get('Erros') or []
+    if erros or status >= 400:
+        msgs = [f"{x.get('Codigo','')}: {x.get('Descricao','')}" for x in erros] or \
+               [f"HTTP {status}"]
+        _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
+                         competencia=competencia, valor=valor, status='REJEITADO',
+                         mensagem=" | ".join(msgs))
+        return jsonify({'ok': False, 'msg': 'NFS-e rejeitada pelo Sefin.', 'erros': msgs})
+
+    # ── Sucesso: grava XML e log ──
+    chave = resp.get('chaveAcesso', '')
+    id_dps = resp.get('idDps', '')
+    alertas = [f"{x.get('Codigo','')}: {x.get('Descricao','')}"
+               for x in (resp.get('alertas') or resp.get('Alertas') or [])]
+    arq = ''
+    try:
+        import gzip as _gz
+        nfse_xml = _gz.decompress(base64.b64decode(resp['nfseXmlGZipB64'])).decode('utf-8')
+        pasta_xml = os.path.join(os.path.dirname(caminho), "NFSe_XML")
+        os.makedirs(pasta_xml, exist_ok=True)
+        arq = os.path.join(pasta_xml, f"{chave or iddps}.xml")
+        with open(arq, "w", encoding="utf-8") as f:
+            f.write(nfse_xml)
+    except Exception:
+        pass
+
+    _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
+                     competencia=competencia, valor=valor, chave=chave, id_dps=id_dps,
+                     status='EMITIDA', mensagem=" | ".join(alertas), arq_xml=arq)
+    try:
+        supabase.table("tab_log").insert({
+            "id_cliente": None, "id_empresa": None,
+            "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_EMISSAO",
+            "observacao": f"NFS-e amb={ambiente} cod={cod} nDPS={ndps} chave={chave}"[:200],
+            "ano_mes": None, "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+        }).execute()
+    except Exception:
+        pass
+
+    return jsonify({'ok': True, 'chave': chave, 'id_dps': id_dps, 'ndps': ndps,
+                    'ambiente': ambiente, 'alertas': alertas, 'arquivo': os.path.basename(arq)})
+
+
+def _re_digits(v):
+    return re.sub(r"\D", "", str(v or ""))
+
+
 @app.route('/admin_nf')
 def admin_nf():
     if not session.get('logado'):

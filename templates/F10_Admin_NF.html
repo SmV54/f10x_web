@@ -299,15 +299,26 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                         <div class="preview-nf-texto" id="previewNFTexto">—</div>
                     </div>
 
-                    <div class="aviso-info" style="margin-top:16px;">
-                        <span style="font-size:16px;flex-shrink:0;">ℹ️</span>
-                        <span>Primeira etapa do módulo: seleção do cliente e dados da nota.
-                        A emissão da NFS-e (envio ao sistema nacional) será a próxima etapa.</span>
+                    <div class="form-row" style="margin-top:16px;">
+                        <label class="form-label">Ambiente de emissão</label>
+                        <div style="display:flex; gap:18px; align-items:center; margin-top:4px;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                                <input type="radio" name="ambiente" value="2" checked style="accent-color:var(--accent);">
+                                Produção Restrita (teste)
+                            </label>
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+                                <input type="radio" name="ambiente" value="1" style="accent-color:#dc2626;">
+                                Produção (nota real)
+                            </label>
+                        </div>
                     </div>
 
-                    <button class="btn-emitir" id="btnEmitir" style="margin-top:16px;" disabled>
-                        🧾 Emitir NFS-e — próxima etapa
+                    <button class="btn-emitir" id="btnEmitir" style="margin-top:16px;" disabled
+                            onclick="emitir()">
+                        🧾 Emitir NFS-e
                     </button>
+
+                    <div id="emitResultado" style="display:none; margin-top:16px;"></div>
                 </div>
             </div>
 
@@ -471,6 +482,75 @@ function selecionar(idx) {
     mascaraMesAno(document.getElementById('fDataProc'));
 
     atualizarPreview();
+
+    // Habilita o botão de emitir e limpa o resultado anterior.
+    document.getElementById('btnEmitir').disabled = false;
+    const rb = document.getElementById('emitResultado');
+    rb.style.display = 'none'; rb.innerHTML = '';
+}
+
+// Emite a NFS-e do cliente ativo (envia o DPS ao Sistema Nacional).
+function emitir() {
+    if (clienteAtivo == null) { alert('Selecione um cliente.'); return; }
+    const c = CLIENTES[clienteAtivo];
+    const ambiente = document.querySelector('input[name="ambiente"]:checked').value;
+    const valor = (document.getElementById('fValor').value || '').trim();
+    const competencia = (document.getElementById('fDataProc').value || '').trim();
+    const discr = (document.getElementById('previewNFTexto').textContent || '').trim();
+
+    if (!/^\d{2}\/\d{4}$/.test(competencia)) { alert('Informe a competência (MM/AAAA).'); return; }
+    if (!valor) { alert('Informe o valor da nota.'); return; }
+
+    if (ambiente === '1' &&
+        !confirm('ATENÇÃO: emissão em PRODUÇÃO — a nota terá valor fiscal.\n\nConfirma emitir a NFS-e real para ' + (c.nome || '') + '?')) {
+        return;
+    }
+
+    const btn = document.getElementById('btnEmitir');
+    const rb = document.getElementById('emitResultado');
+    btn.disabled = true;
+    const txtOrig = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner" style="border-top-color:#fff;"></span> Emitindo…';
+    rb.style.display = 'none'; rb.innerHTML = '';
+
+    fetch('/api/admin_nf/emitir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cod_cli: c.codigo, competencia, valor, discriminacao: discr, ambiente: Number(ambiente),
+        }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        rb.style.display = '';
+        if (d.ok) {
+            const amb = d.ambiente === 1 ? 'Produção' : 'Produção Restrita';
+            let al = (d.alertas && d.alertas.length)
+                ? `<div style="margin-top:8px;font-size:12px;color:#92400e;">Alertas: ${esc(d.alertas.join(' · '))}</div>` : '';
+            rb.innerHTML =
+                `<div class="preview-nf" style="background:#f0fdf4;border-color:#bbf7d0;">
+                   <div class="preview-nf-titulo" style="color:#15803d;">✅ NFS-e emitida (${esc(amb)})</div>
+                   <div class="preview-nf-texto" style="color:#14532d;">
+                     <div>Chave de acesso:</div>
+                     <div style="font-family:var(--mono);font-size:12px;word-break:break-all;">${esc(d.chave)}</div>
+                     <div style="margin-top:6px;font-size:12px;">nDPS ${esc(d.ndps)} · XML: ${esc(d.arquivo || '')}</div>
+                   </div>${al}
+                 </div>`;
+        } else {
+            const lst = (d.erros && d.erros.length)
+                ? '<ul style="margin:6px 0 0 18px;font-size:12px;">' + d.erros.map(e => `<li>${esc(e)}</li>`).join('') + '</ul>' : '';
+            rb.innerHTML =
+                `<div class="aviso-info" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">
+                   <span style="font-size:16px;flex-shrink:0;">⚠️</span>
+                   <span><b>${esc(d.msg || 'Falha na emissão.')}</b>${lst}</span>
+                 </div>`;
+        }
+    })
+    .catch(ex => {
+        rb.style.display = '';
+        rb.innerHTML = `<div class="aviso-info" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">Erro de comunicação: ${esc(String(ex))}</div>`;
+    })
+    .finally(() => { btn.disabled = false; btn.innerHTML = txtOrig; });
 }
 
 // Mês/ano atual no formato MM/AAAA (default da data de processamento).

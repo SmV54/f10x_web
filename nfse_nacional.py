@@ -159,8 +159,13 @@ def montar_dps(d):
         else:
             E(toma, "CNPJ", tom_ins.zfill(14))
         E(toma, "xNome", _txt(d.get("tom_nome") or "TOMADOR"))
-        # endereço nacional (só se tiver o mínimo: logradouro, número, bairro, IBGE, CEP)
-        if all(d.get(k) for k in ("tom_lgr", "tom_nro", "tom_bairro", "tom_ibge", "tom_cep")):
+        # Endereço do tomador:
+        #  - ISS retido pelo tomador → obrigatório informar na DPS (senão E0237);
+        #  - CPF → sem cadastro central, informamos;
+        #  - CNPJ não-retido → omitimos (o Sistema Nacional completa pelo cadastro da
+        #    Receita, evitando rejeição por CEP/município desatualizado, ex. E0240).
+        _tem_end = all(d.get(k) for k in ("tom_lgr", "tom_nro", "tom_bairro", "tom_ibge", "tom_cep"))
+        if _tem_end and (d.get("iss_retido") or len(tom_ins) == 11):
             end = E(toma, "end")
             endnac = E(end, "endNac")
             E(endnac, "cMun", so_digitos(d["tom_ibge"]).zfill(7))
