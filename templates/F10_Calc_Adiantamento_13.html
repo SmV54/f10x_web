@@ -172,7 +172,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 
 <div class="alerta alerta-aviso">
     <span class="alerta-icone">ℹ️</span>
-    <div>Cálculo simplificado: <strong>50% do salário</strong>, lançado na verba {{ verba_usar }}.
+    <div><strong>50% do salário</strong> (verba {{ verba_usar }}) + <strong>50% da periculosidade</strong> (verba 31, para quem tem periculosidade ativa).
     Sem INSS e sem IRRF. Recalcular substitui os valores anteriores desta folha.</div>
 </div>
 
@@ -190,7 +190,9 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                     <th>Mat.</th>
                     <th>Nome</th>
                     <th class="th-r">Salário</th>
-                    <th class="th-r">Adiantamento (50%)</th>
+                    <th class="th-r">Adiant. (50%)</th>
+                    <th class="th-r">Pericul. (50%)</th>
+                    <th class="th-r">Total</th>
                 </tr>
             </thead>
             <tbody>
@@ -199,7 +201,9 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                     <td class="td-mat">{{ '%04d' % f.matricula }}</td>
                     <td class="td-nome" title="{{ f.nome }}">{{ f.nome }}</td>
                     <td class="td-sal">{{ f.sal_fmt }}</td>
-                    <td class="td-val">{{ f.valor_fmt }}</td>
+                    <td class="td-sal">{{ f.valor_fmt }}</td>
+                    <td class="td-sal">{{ f.pericu_fmt }}</td>
+                    <td class="td-val">{{ f.total_fmt }}</td>
                 </tr>
                 {% endfor %}
             </tbody>

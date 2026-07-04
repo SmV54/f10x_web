@@ -38406,7 +38406,8 @@ def api_calcular_adiantamento():
 # ADIANTAMENTO DO 13º SALÁRIO  (folha_tipo="A", verba 17)
 # Cálculo simples: 50% do salário. Sem INSS/IRRF. (periculosidade/avos: etapas futuras)
 # =========================================================
-VERBA_ADIANT_13 = 17
+VERBA_ADIANT_13     = 17
+VERBA_PERICULOSIDADE = 31
 
 
 def _sal_mes_adiant13(f):
@@ -38420,6 +38421,18 @@ def _sal_mes_adiant13(f):
         except Exception:
             return 0
     return vr
+
+
+def _pericu_adiant13(sal_mes, ev):
+    """Periculosidade no adiantamento do 13º = 50% da periculosidade do mês.
+    ev = evento op1=41 (ou None); ref1 = percentual ×100 (3000 = 30,00%).
+    Periculosidade mensal = sal_mes × ref1/10000; adiantamento = metade disso."""
+    if not ev:
+        return 0
+    ref1 = int(ev.get("ref1") or 0)
+    if ref1 <= 0:
+        return 0
+    return int(sal_mes * ref1 / 10000) // 2
 
 
 @app.route("/calcular_adiantamento_13")
@@ -38462,6 +38475,13 @@ def calcular_adiantamento_13():
     except Exception:
         pass
 
+    # periculosidade ativa no mês (op1=41), por funcionário — entra a 50%
+    id_cliente = session.get("id_cliente")
+    try:
+        pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+    except Exception:
+        pericu_map = {}
+
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
@@ -38478,23 +38498,28 @@ def calcular_adiantamento_13():
             nome    = (f.get("nome") or f.get("nomer") or "").strip()
             sal_mes = _sal_mes_adiant13(f)
             valor   = sal_mes // 2          # 50% do salário
+            pericu  = _pericu_adiant13(sal_mes, pericu_map.get(int(f.get("matricula") or 0)))
+            total_f = valor + pericu
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
                 "sal_fmt":    _fmt_reais(sal_mes),
                 "valor_calc": valor,
                 "valor_fmt":  _fmt_reais(valor),
+                "pericu":     pericu,
+                "pericu_fmt": _fmt_reais(pericu) if pericu else "—",
+                "total_fmt":  _fmt_reais(total_f),
             })
     except Exception as e:
         ctx["erro_critico"] = f"Erro ao carregar funcionários: {str(e)[:150]}"
         return render_template("F10_Calc_Adiantamento_13.html", **ctx)
 
-    com = [f for f in funcionarios if f["valor_calc"] > 0]
+    com = [f for f in funcionarios if (f["valor_calc"] + f["pericu"]) > 0]
     ctx.update(
         funcionarios=funcionarios,
         total_funcs=len(funcionarios),
         total_com=len(com),
-        total_fmt=_fmt_reais(sum(f["valor_calc"] for f in com)),
+        total_fmt=_fmt_reais(sum(f["valor_calc"] + f["pericu"] for f in com)),
     )
     return render_template("F10_Calc_Adiantamento_13.html", **ctx)
 
@@ -38520,7 +38545,7 @@ def api_calcular_adiantamento_13():
          .eq("id_empresa", id_empresa)
          .eq("folha",      folha_int)
          .eq("folha_tipo", "A")
-         .eq("cod_verba",  VERBA_ADIANT_13)
+         .in_("cod_verba", [VERBA_ADIANT_13, VERBA_PERICULOSIDADE])
          .eq("origem",     "C")
          .execute())
     except Exception as e:
@@ -38538,6 +38563,12 @@ def api_calcular_adiantamento_13():
     except Exception:
         pass
 
+    # periculosidade ativa no mês (op1=41), por funcionário — entra a 50%
+    try:
+        pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+    except Exception:
+        pericu_map = {}
+
     gravados = 0
     try:
         r_cad = (supabase.table("tab_cad")
@@ -38554,7 +38585,8 @@ def api_calcular_adiantamento_13():
             valor   = sal_mes // 2          # 50% do salário
             if valor <= 0:
                 continue
-            mat = f.get("matricula")
+            mat    = f.get("matricula")
+            pericu = _pericu_adiant13(sal_mes, pericu_map.get(int(mat or 0)))
             try:
                 supabase.table("tab_mov").insert({
                     "id_cliente": id_cliente,
@@ -38575,7 +38607,29 @@ def api_calcular_adiantamento_13():
             except Exception as e_ins:
                 return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
 
-            # Totais (tab_total): adiantamento não tem INSS/IRRF/FGTS → só proventos = valor
+            # Periculosidade (verba 31), quando ativa — 50% da periculosidade do mês
+            if pericu > 0:
+                try:
+                    supabase.table("tab_mov").insert({
+                        "id_cliente": id_cliente,
+                        "id_empresa": id_empresa,
+                        "situacao":   "A",
+                        "matricula":  int(mat),
+                        "folha":      folha_int,
+                        "folha_tipo": "A",
+                        "cod_verba":  VERBA_PERICULOSIDADE,
+                        "qtd":        0,
+                        "valor":      pericu,
+                        "lote":       0,
+                        "origem":     "C",
+                        "controle":   0,
+                        "os":         0,
+                    }).execute()
+                except Exception as e_ins:
+                    return jsonify({"ok": False, "msg": f"Erro periculosidade mat {mat}: {str(e_ins)[:300]}"})
+
+            # Totais (tab_total): adiantamento sem INSS/IRRF/FGTS → proventos = adiant. + periculosidade
+            prov_total = valor + pericu
             rec_total = {
                 "id_cliente":                id_cliente,
                 "id_empresa":                id_empresa,
@@ -38593,9 +38647,9 @@ def api_calcular_adiantamento_13():
                 "valor_irrf_dependentes":    0,
                 "qtd_irrf_dependentes":      0,
                 "valor_salario":             int(sal_mes),
-                "valor_total_proventos":     int(valor),
+                "valor_total_proventos":     int(prov_total),
                 "valor_total_descontos":     0,
-                "valor_liquido":             int(valor),
+                "valor_liquido":             int(prov_total),
                 "os":                        0,
                 "controle":                  0,
             }

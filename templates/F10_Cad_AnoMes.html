@@ -462,15 +462,15 @@
             <label class="form-label">Tipo de Folha</label>
             <div class="grupo-radios" id="grupoTipo">
               <label class="radio-item">
-                <input type="radio" name="tipo" value="N" checked>
+                <input type="radio" name="tipo" value="N" checked onchange="preencherDatasDoMes()">
                 <span>Normal</span>
               </label>
               <label class="radio-item">
-                <input type="radio" name="tipo" value="1">
+                <input type="radio" name="tipo" value="1" onchange="preencherDatasDoMes()">
                 <span>13º Mês</span>
               </label>
               <label class="radio-item">
-                <input type="radio" name="tipo" value="A">
+                <input type="radio" name="tipo" value="A" onchange="preencherDatasDoMes()">
                 <span>Adiant. 13</span>
               </label>
             </div>
@@ -579,15 +579,29 @@
   function dateParaStr(d) {
     return d ? d.replace(/-/g, '') : '';
   }
-  // Preenche datas de falta com primeiro e último dia do mês
+  // Preenche datas de falta conforme o tipo de folha:
+  //  - Normal (N): primeiro e último dia do mês selecionado
+  //  - 13º Mês (1): ano inteiro (01/01 a 31/12)
+  //  - Adiant. 13 (A): 01/01 até o último dia do mês selecionado
   function preencherDatasDoMes() {
     if (modoAtual !== 'incluir') return;
     const ano = parseInt(document.getElementById('inpAno').value, 10);
     const mes = parseInt(document.getElementById('selMes').value, 10);
     if (!ano || ano < 2000 || ano > 2099 || !mes) return;
 
-    const primeiroDia = new Date(ano, mes - 1, 1);
-    const ultimoDia   = new Date(ano, mes, 0);       // dia 0 do mês seguinte = último do atual
+    const tipo = document.querySelector('input[name="tipo"]:checked')?.value || 'N';
+
+    let primeiroDia, ultimoDia;
+    if (tipo === '1') {
+      primeiroDia = new Date(ano, 0, 1);     // 01/01
+      ultimoDia   = new Date(ano, 11, 31);   // 31/12
+    } else if (tipo === 'A') {
+      primeiroDia = new Date(ano, 0, 1);     // 01/01
+      ultimoDia   = new Date(ano, mes, 0);   // último dia do mês selecionado
+    } else {
+      primeiroDia = new Date(ano, mes - 1, 1);
+      ultimoDia   = new Date(ano, mes, 0);   // dia 0 do mês seguinte = último do atual
+    }
 
     const pad = n => String(n).padStart(2, '0');
     const fmt = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
