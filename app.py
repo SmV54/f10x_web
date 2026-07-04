@@ -38052,6 +38052,31 @@ def _nfse_cliente_por_cod(caminho, cod):
     }
 
 
+_NFSE_CEP_CACHE = {}
+
+
+def _nfse_ibge_do_cep(cep):
+    """Código IBGE (7 díg.) do município do CEP, via ViaCEP. None se não resolver.
+    Usado porque a TabCLI_NF grava o NOME da cidade (não o código) em ~66% dos
+    clientes; o CEP é a fonte confiável do município (evita E0240)."""
+    d = re.sub(r"\D", "", str(cep or ""))
+    if len(d) != 8:
+        return None
+    if d in _NFSE_CEP_CACHE:
+        return _NFSE_CEP_CACHE[d]
+    ibge = None
+    try:
+        r = requests.get(f"https://viacep.com.br/ws/{d}/json/", timeout=12, verify=False)
+        j = r.json()
+        if not j.get("erro"):
+            cand = re.sub(r"\D", "", str(j.get("ibge") or ""))
+            ibge = cand if len(cand) == 7 else None
+    except Exception:
+        ibge = None
+    _NFSE_CEP_CACHE[d] = ibge
+    return ibge
+
+
 def _nfse_ensure_log(caminho):
     """Cria a tabela de log/contador no NF10.accdb se ainda não existir."""
     import pyodbc
@@ -38170,6 +38195,14 @@ def api_admin_nf_emitir():
     except Exception as ex:
         return jsonify({'ok': False, 'msg': f'Certificado do emitente: {ex}'})
 
+    # Município (IBGE) do tomador: derivado do CEP (fonte confiável), pois a
+    # TabCLI_NF grava o nome da cidade na maioria dos casos. Fallback: o valor
+    # gravado, se já for um código de 7 dígitos.
+    tom_ibge = _nfse_ibge_do_cep(cli['cep'])
+    if not tom_ibge:
+        _di = re.sub(r"\D", "", cli['ibge'])
+        tom_ibge = _di if len(_di) == 7 else ''
+
     _nfse_ensure_log(caminho)
     serie = "1"
     ndps = _nfse_next_ndps(caminho, ambiente, serie)
@@ -38186,7 +38219,7 @@ def api_admin_nf_emitir():
         serv_desc=discr or f"Processamento da folha de pagamento - competencia {competencia}",
         valor=valor, iss_retido=cli['iss_retido'],
         tom_cnpj_cpf=cli['cnpj_cpf'], tom_nome=cli['nome'], tom_email=cli['email'],
-        tom_ibge=cli['ibge'], tom_cep=cli['cep'], tom_lgr=cli['lgr'],
+        tom_ibge=tom_ibge, tom_cep=cli['cep'], tom_lgr=cli['lgr'],
         tom_nro=cli['nro'], tom_cpl=cli['cpl'], tom_bairro=cli['bairro'],
     )
 
