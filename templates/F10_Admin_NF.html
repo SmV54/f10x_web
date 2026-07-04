@@ -50,7 +50,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 /* ── LAYOUT 2 COLUNAS ── */
 .layout {
     display: grid;
-    grid-template-columns: 360px 1fr;
+    grid-template-columns: 400px 1fr;
     height: calc(100vh - 72px);
     overflow: hidden;
 }
@@ -108,11 +108,17 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
 .cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
 .cliente-info { flex: 1; min-width: 0; }
-.cliente-linha1 { display: flex; align-items: baseline; gap: 6px; }
+.cliente-linha1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .cliente-cod  { font-family: var(--mono); font-size: 10px; font-weight: 600; color: #64748b; flex-shrink: 0; }
-.cliente-nome { font-size: 12px; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cliente-nome { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cliente-card.ativo .cliente-nome { color: var(--accent); }
-.cliente-valor { font-family: var(--mono); font-size: 11px; color: #166534; margin-top: 1px; }
+.cliente-valor { font-family: var(--mono); font-size: 11px; color: #166534; flex-shrink: 0; white-space: nowrap; }
+
+/* Cliente sem CNPJ válido — não pode emitir NFS-e */
+.cliente-card.sem-cnpj .cliente-nome { color: #dc2626; }
+.cliente-card.sem-cnpj .cliente-cod  { color: #dc2626; }
+.cliente-card.sem-cnpj .cliente-valor { color: #dc2626; }
+.cliente-card.sem-cnpj.ativo { background: #fef2f2; border-color: #dc2626; }
 
 .painel-vazio {
     display: flex; flex-direction: column; align-items: center;
@@ -151,7 +157,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-row { display: flex; flex-direction: column; gap: 5px; }
 .form-row.full { grid-column: 1 / -1; }
-.form-label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; }
+.form-label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 .form-input {
     padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
     font-size: 14px; font-family: var(--mono); color: var(--label);
@@ -259,8 +265,8 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 
                     <div class="form-grid">
                         <div class="form-row full">
-                            <div style="display:flex; gap:12px; align-items:flex-start;">
-                                <div class="form-row" style="flex:0 0 auto;">
+                            <div style="display:flex; gap:16px; align-items:flex-start;">
+                                <div class="form-row" style="flex:0 0 185px; width:185px;">
                                     <label class="form-label">Valor da nota (R$)</label>
                                     <input class="form-input" id="fValor" type="text" placeholder="0,00" style="width:130px;">
                                     <span class="form-hint" id="hintValor">Sugerido a partir da tabNF.</span>
@@ -274,13 +280,17 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                                 </div>
                             </div>
                         </div>
-                        <div class="form-row" id="rowEmpresas">
-                            <label class="form-label">Qtd. empresas processadas</label>
-                            <input class="form-input" id="fEmpresas" type="text" placeholder="—" oninput="salvarMemoria()">
-                        </div>
-                        <div class="form-row" id="rowFuncionarios">
-                            <label class="form-label">Qtd. funcionários processados</label>
-                            <input class="form-input" id="fFuncionarios" type="text" placeholder="—" oninput="salvarMemoria()">
+                        <div class="form-row full">
+                            <div style="display:flex; gap:16px; align-items:flex-start;">
+                                <div class="form-row" id="rowEmpresas" style="flex:0 0 185px; width:185px;">
+                                    <label class="form-label">Qtd. empresas processadas</label>
+                                    <input class="form-input" id="fEmpresas" type="text" placeholder="—" style="width:130px;" oninput="salvarMemoria(); atualizarPreview()">
+                                </div>
+                                <div class="form-row" id="rowFuncionarios" style="flex:0 0 auto;">
+                                    <label class="form-label">Qtd. funcionários processados</label>
+                                    <input class="form-input" id="fFuncionarios" type="text" placeholder="—" style="width:130px;" oninput="salvarMemoria(); atualizarPreview()">
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -314,6 +324,12 @@ let clienteAtivo = null;
 let marcados = new Set();
 
 function toggleMarcado(idx, on) {
+    if (on && cnpjInvalido(CLIENTES[idx])) {
+        alert('Cliente sem CNPJ válido — não é possível emitir NFS-e para este cliente.');
+        marcados.delete(idx);
+        render();
+        return;
+    }
     if (on) marcados.add(idx); else marcados.delete(idx);
     if (on) selecionar(idx);   // ao marcar, já abre os dados do cliente (selecionar chama render)
     else render();
@@ -321,6 +337,16 @@ function toggleMarcado(idx, on) {
 
 function esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// Código do cliente com 6 dígitos (NNNNNN); só zero-pad quando for numérico.
+function padCod(c) {
+    const s = String(c || '').trim();
+    return /^\d+$/.test(s) ? s.padStart(6, '0') : s;
+}
+// CNPJ inválido → não pode emitir NFS-e: vazio, só zeros ou só noves.
+function cnpjInvalido(c) {
+    const d = String((c && c.cnpj) || '').replace(/\D/g, '');
+    return !d || /^0+$/.test(d) || /^9+$/.test(d);
 }
 function fmtBRL(v) {
     if (v === null || v === undefined || v === '') return '';
@@ -356,7 +382,9 @@ function render() {
     const el = document.getElementById('listaClientes');
     const termo = (document.getElementById('inputBusca').value || '').toLowerCase().trim();
     const lista = CLIENTES.filter(c => !termo ||
-        (c.nome||'').toLowerCase().includes(termo) || (c.codigo||'').toLowerCase().includes(termo));
+        (c.nome||'').toLowerCase().includes(termo) ||
+        (c.codigo||'').toLowerCase().includes(termo) ||
+        padCod(c.codigo).includes(termo));
 
     if (!CLIENTES.length) {
         el.innerHTML = '<div class="painel-vazio"><span class="painel-vazio-icone">🗂️</span><span class="painel-vazio-texto">Nenhum cliente na tabNF</span></div>';
@@ -369,15 +397,18 @@ function render() {
         el.innerHTML = lista.map((c) => {
             const idx = CLIENTES.indexOf(c);
             const valor = c.valor != null ? `R$ ${fmtBRL(c.valor)}` : '';
-            return `<div class="cliente-card${clienteAtivo===idx?' ativo':''}" onclick="selecionar(${idx})">
+            const semCnpj = cnpjInvalido(c);
+            return `<div class="cliente-card${clienteAtivo===idx?' ativo':''}${semCnpj?' sem-cnpj':''}"
+                         title="${semCnpj?'Sem CNPJ válido — não pode emitir NFS-e':''}"
+                         onclick="selecionar(${idx})">
                 <input type="checkbox" class="cli-chk" ${marcados.has(idx)?'checked':''}
                        onclick="event.stopPropagation()" onchange="toggleMarcado(${idx}, this.checked)">
                 <div class="cliente-info">
                     <div class="cliente-linha1">
-                        ${c.codigo ? `<span class="cliente-cod">${esc(c.codigo)}</span>` : ''}
+                        ${c.codigo ? `<span class="cliente-cod">${esc(padCod(c.codigo))}</span>` : ''}
                         <span class="cliente-nome">${esc(c.nome || '(sem nome)')}</span>
+                        ${valor ? `<span class="cliente-valor">${esc(valor)}</span>` : ''}
                     </div>
-                    ${valor ? `<div class="cliente-valor">${esc(valor)}</div>` : ''}
                 </div>
             </div>`;
         }).join('');
@@ -406,14 +437,18 @@ function salvarMemoria() {
 }
 
 function selecionar(idx) {
-    clienteAtivo = idx;
     const c = CLIENTES[idx];
+    if (cnpjInvalido(c)) {
+        alert('Cliente sem CNPJ válido — não é possível emitir NFS-e para este cliente.');
+        return;
+    }
+    clienteAtivo = idx;
     render();
 
     document.getElementById('estadoVazio').style.display = 'none';
     document.getElementById('cardNota').style.display = '';
 
-    document.getElementById('ncCod').textContent  = c.codigo || '—';
+    document.getElementById('ncCod').textContent  = c.codigo ? padCod(c.codigo) : '—';
     document.getElementById('ncNome').textContent = c.nome || '(sem nome)';
 
     // Valor: sempre da tabela TabCLI_NF (Servico_Valor, por cliente)
@@ -461,8 +496,17 @@ function atualizarPreview() {
     const temValor = (Number(c.valor) || 0) > 0;
     const conector = temValor ? 'no mês' : 'até o mês';
     const data = (document.getElementById('fDataProc').value || '').trim() || '__/____';
-    document.getElementById('previewNFTexto').textContent =
-        'Processamento da folha de pagamento ' + conector + ' ' + data;
+    let texto = 'Processamento da folha de pagamento ' + conector + ' ' + data;
+
+    // Quantidades informadas entram logo após o mês (só quando o campo estiver visível).
+    const nEmp  = parseInt((document.getElementById('fEmpresas').value || '').replace(/\D/g, ''), 10);
+    const nFunc = parseInt((document.getElementById('fFuncionarios').value || '').replace(/\D/g, ''), 10);
+    const partes = [];
+    if (Number.isFinite(nEmp)  && nEmp  > 0) partes.push(nEmp  + (nEmp  === 1 ? ' empresa'     : ' empresas'));
+    if (Number.isFinite(nFunc) && nFunc > 0) partes.push(nFunc + (nFunc === 1 ? ' funcionário' : ' funcionários'));
+    if (partes.length) texto += ', referente a ' + partes.join(' e ');
+
+    document.getElementById('previewNFTexto').textContent = texto;
     box.style.display = '';
 }
 

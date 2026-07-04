@@ -37899,6 +37899,7 @@ def _ler_clientes_nf(caminho):
     mapa = {
         'codigo':       pick('codigo', 'cod', 'id', 'codcli', 'cliente', 'codcliente'),
         'nome':         pick('nome', 'razaosocial', 'razao_social', 'nomecli', 'fantasia', 'cliente_nome'),
+        'cnpj':         pick('cnpj_cpf', 'cnpjcpf', 'cpf_cnpj', 'cpfcnpj', 'cnpj', 'cgc', 'inscricao', 'inscr'),
         'valor':        pick('servico_valor', 'servicovalor', 'valor', 'vlr', 'valornf', 'vlrnf', 'vl', 'preco'),
         'empresas':     pick('empresas', 'qtd_empresas', 'qtdempresas', 'nempresas', 'nemp'),
         'funcionarios': pick('funcionarios', 'qtd_funcionarios', 'qtdfuncionarios', 'nfunc', 'funcs'),
@@ -37939,6 +37940,7 @@ def _ler_clientes_nf(caminho):
         registros.append({
             'codigo':       str(r.get('codigo') or '').strip(),
             'nome':         str(r.get('nome') or '').strip(),
+            'cnpj':         str(r.get('cnpj') or '').strip(),
             'valor':        _num(r.get('valor')),
             'empresas':     _int(r.get('empresas')),
             'funcionarios': _int(r.get('funcionarios')),
