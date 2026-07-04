@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — NFS-e Emitidas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 72px;
+    position: sticky; top: 0; z-index: 100;
+}
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80; border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    color: #dcfce7; letter-spacing: 0.14em;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 3px 10px rgba(0,0,0,0.35);
+    white-space: nowrap; flex-shrink: 0;
+}
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap; text-decoration: none;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+.wrap { max-width: 1180px; margin: 0 auto; padding: 22px 24px 60px; }
+
+.barra {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.busca-wrap { position: relative; flex: 1; min-width: 220px; }
+.busca-icone { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #94a3b8; font-size: 13px; }
+.input-busca {
+    width: 100%; padding: 9px 12px 9px 30px; border-radius: 9px;
+    border: 1px solid var(--border); font-size: 13px; font-family: var(--sans);
+    background: var(--surface); outline: none; transition: 0.15s;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.filtros { display: flex; gap: 6px; }
+.chip {
+    font-size: 12px; font-weight: 600; padding: 7px 13px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: #475569; transition: 0.13s;
+}
+.chip.ativo { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-atualizar {
+    font-size: 12px; font-weight: 600; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--border); background: var(--surface); color: #475569;
+}
+.btn-atualizar:hover { border-color: var(--accent); color: var(--accent); }
+
+.card-tabela {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.tabela-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+    background: #f8fafc; text-align: left; padding: 10px 12px; font-size: 11px;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+tbody td { padding: 9px 12px; border-bottom: 1px solid #eef2f7; vertical-align: middle; }
+tbody tr:hover { background: #f8fbff; }
+.col-mono { font-family: var(--mono); font-size: 11px; color: #475569; }
+.col-chave { font-family: var(--mono); font-size: 10.5px; color: #64748b; word-break: break-all; max-width: 260px; }
+.col-valor { font-family: var(--mono); text-align: right; white-space: nowrap; color: #166534; }
+.col-cli { font-weight: 600; color: #0f172a; }
+
+.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.b-emitida  { background: #dcfce7; color: #15803d; }
+.b-rejeitada{ background: #fee2e2; color: #b91c1c; }
+.b-erro     { background: #fef3c7; color: #92400e; }
+.b-amb2 { background: #e0e7ff; color: #4338ca; }
+.b-amb1 { background: #fce7f3; color: #be185d; }
+
+.link-xml {
+    font-size: 12px; font-weight: 600; color: var(--accent); text-decoration: none;
+    border: 1px solid #c3d9f8; border-radius: 6px; padding: 3px 8px; white-space: nowrap;
+}
+.link-xml:hover { background: #eaf2fd; }
+
+.vazio { padding: 40px 20px; text-align: center; color: #94a3b8; }
+.vazio-icone { font-size: 34px; opacity: 0.45; }
+.rodape-cont { margin-top: 10px; font-size: 12px; color: #64748b; text-align: right; }
+.loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #64748b; font-size: 13px; }
+.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid #e2e8f0; border-top-color: var(--accent); animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.tot-cards { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.tot-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px; min-width: 120px; }
+.tot-num { font-size: 20px; font-weight: 700; color: var(--text-head); font-family: var(--mono); }
+.tot-lbl { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">NFS-e Emitidas — Consulta</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <a class="btn-voltar" href="/admin_nf">↪ Emissão</a>
+    </div>
+</div>
+
+<div class="wrap">
+
+    <div class="tot-cards" id="totCards"></div>
+
+    <div class="barra">
+        <div class="busca-wrap">
+            <span class="busca-icone">🔍</span>
+            <input class="input-busca" id="inputBusca" type="text"
+                   placeholder="Buscar por cliente, chave, competência…" oninput="render()" autocomplete="off">
+        </div>
+        <div class="filtros" id="filtros">
+            <div class="chip ativo" data-f="all" onclick="setFiltro(this)">Todas</div>
+            <div class="chip" data-f="EMITIDA" onclick="setFiltro(this)">Emitidas</div>
+            <div class="chip" data-f="REJEITADO" onclick="setFiltro(this)">Rejeitadas</div>
+            <div class="chip" data-f="restrita" onclick="setFiltro(this)">Restrita</div>
+            <div class="chip" data-f="producao" onclick="setFiltro(this)">Produção</div>
+        </div>
+        <button class="btn-atualizar" onclick="carregar()">↻ Atualizar</button>
+    </div>
+
+    <div class="card-tabela">
+        <div class="tabela-scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Data/Hora</th>
+                        <th>Amb.</th>
+                        <th>nDPS</th>
+                        <th>Cliente</th>
+                        <th>Compet.</th>
+                        <th style="text-align:right;">Valor</th>
+                        <th>Status</th>
+                        <th>Chave / Mensagem</th>
+                        <th>XML</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody">
+                    <tr><td colspan="9"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="rodape-cont" id="rodape"></div>
+</div>
+
+<script>
+let REGS = [];
+let filtro = 'all';
+
+function esc(s) {
+    return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtBRL(v) {
+    const n = Number(v); if (isNaN(n)) return '';
+    return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function carregar() {
+    const tb = document.getElementById('tbody');
+    tb.innerHTML = '<tr><td colspan="9"><div class="loading"><div class="spinner"></div> Carregando…</div></td></tr>';
+    fetch('/api/admin_nf/emitidas')
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) {
+                tb.innerHTML = `<tr><td colspan="9"><div class="vazio">${esc(d.msg || 'Erro ao carregar.')}</div></td></tr>`;
+                return;
+            }
+            REGS = d.registros || [];
+            render();
+        })
+        .catch(ex => {
+            tb.innerHTML = `<tr><td colspan="9"><div class="vazio">Falha: ${esc(String(ex))}</div></td></tr>`;
+        });
+}
+
+function setFiltro(el) {
+    filtro = el.getAttribute('data-f');
+    document.querySelectorAll('#filtros .chip').forEach(c => c.classList.remove('ativo'));
+    el.classList.add('ativo');
+    render();
+}
+
+function passaFiltro(r) {
+    if (filtro === 'all') return true;
+    if (filtro === 'restrita') return r.ambiente === 2;
+    if (filtro === 'producao') return r.ambiente === 1;
+    if (filtro === 'EMITIDA') return r.status === 'EMITIDA';
+    if (filtro === 'REJEITADO') return r.status === 'REJEITADO' || String(r.status).indexOf('ERRO') === 0;
+    return true;
+}
+
+function render() {
+    const termo = (document.getElementById('inputBusca').value || '').toLowerCase().trim();
+    const lista = REGS.filter(r => passaFiltro(r) && (!termo ||
+        (r.cliente||'').toLowerCase().includes(termo) ||
+        (r.chave||'').includes(termo) ||
+        String(r.cod||'').includes(termo) ||
+        (r.competencia||'').includes(termo)));
+
+    // totais
+    const emit = REGS.filter(r => r.status === 'EMITIDA');
+    const totVal = emit.reduce((s, r) => s + Number(r.valor||0), 0);
+    document.getElementById('totCards').innerHTML =
+        `<div class="tot-card"><div class="tot-num">${REGS.length}</div><div class="tot-lbl">Registros</div></div>
+         <div class="tot-card"><div class="tot-num">${emit.length}</div><div class="tot-lbl">Emitidas</div></div>
+         <div class="tot-card"><div class="tot-num">${REGS.length - emit.length}</div><div class="tot-lbl">Rejeitadas/Erro</div></div>
+         <div class="tot-card"><div class="tot-num" style="font-size:16px;">${fmtBRL(totVal)}</div><div class="tot-lbl">Total emitido</div></div>`;
+
+    const tb = document.getElementById('tbody');
+    if (!REGS.length) {
+        tb.innerHTML = `<tr><td colspan="9"><div class="vazio"><div class="vazio-icone">🧾</div><div style="margin-top:8px;">Nenhuma NFS-e emitida ainda.</div></div></td></tr>`;
+        document.getElementById('rodape').textContent = '';
+        return;
+    }
+    if (!lista.length) {
+        tb.innerHTML = `<tr><td colspan="9"><div class="vazio">Nenhum registro para este filtro.</div></td></tr>`;
+    } else {
+        tb.innerHTML = lista.map(r => {
+            const amb = r.ambiente === 1
+                ? '<span class="badge b-amb1">Prod.</span>'
+                : '<span class="badge b-amb2">Restrita</span>';
+            let stBadge;
+            if (r.status === 'EMITIDA') stBadge = '<span class="badge b-emitida">Emitida</span>';
+            else if (r.status === 'REJEITADO') stBadge = '<span class="badge b-rejeitada">Rejeitada</span>';
+            else stBadge = `<span class="badge b-erro">${esc(r.status)}</span>`;
+
+            const chaveOuMsg = r.status === 'EMITIDA'
+                ? `<span class="col-chave">${esc(r.chave)}</span>`
+                : `<span style="color:#b91c1c;font-size:12px;">${esc(r.mensagem)}</span>`;
+
+            const xml = (r.status === 'EMITIDA' && r.tem_xml)
+                ? `<a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank">ver</a>
+                   <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}&download=1" title="Baixar">⬇</a>`
+                : '—';
+
+            return `<tr>
+                <td class="col-mono">${esc(r.data_hora)}</td>
+                <td>${amb}</td>
+                <td class="col-mono">${esc(r.ndps)}</td>
+                <td class="col-cli">${esc(r.cliente || ('cód ' + r.cod))}<div class="col-mono">cód ${esc(r.cod)}</div></td>
+                <td class="col-mono">${esc(r.competencia)}</td>
+                <td class="col-valor">${fmtBRL(r.valor)}</td>
+                <td>${stBadge}</td>
+                <td>${chaveOuMsg}</td>
+                <td>${xml}</td>
+            </tr>`;
+        }).join('');
+    }
+    document.getElementById('rodape').textContent = `${lista.length} de ${REGS.length} registro(s)`;
+}
+
+document.addEventListener('DOMContentLoaded', carregar);
+</script>
+</body>
+</html>

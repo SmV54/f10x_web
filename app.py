@@ -38255,6 +38255,93 @@ def _re_digits(v):
     return re.sub(r"\D", "", str(v or ""))
 
 
+def _nfse_listar_emitidas(caminho):
+    """Lê o tabNFSe_Log e retorna a lista de emissões (mais recentes primeiro),
+    com o nome do cliente resolvido pela TabCLI_NF."""
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+    cur = conn.cursor()
+    if not any(t.table_name.lower() == "tabnfse_log"
+               for t in cur.tables(tableType='TABLE')):
+        conn.close()
+        return []
+    # mapa CodCLI -> RazaoSocial
+    nomes = {}
+    try:
+        cur.execute("SELECT CodCLI, RazaoSocial FROM TabCLI_NF")
+        for r in cur.fetchall():
+            nomes[int(r[0])] = str(r[1] or "").strip()
+    except Exception:
+        pass
+    cur.execute("""SELECT Id, Ambiente, Serie, nDPS, CodCLI, Competencia, Valor,
+                          ChaveAcesso, idDps, Status, Mensagem, ArqXML, DataHora
+                   FROM tabNFSe_Log ORDER BY Id DESC""")
+    regs = []
+    for r in cur.fetchall():
+        dh = str(r[12] or "")
+        if len(dh) >= 13:                      # 'YYYYMMDD HHMMSS' -> 'DD/MM/YYYY HH:MM'
+            dh = f"{dh[6:8]}/{dh[4:6]}/{dh[0:4]} {dh[9:11]}:{dh[11:13]}"
+        regs.append({
+            "id": r[0], "ambiente": r[1], "serie": r[2], "ndps": r[3],
+            "cod": r[4], "cliente": nomes.get(int(r[4] or 0), ""),
+            "competencia": r[5], "valor": float(r[6] or 0),
+            "chave": str(r[7] or ""), "id_dps": str(r[8] or ""),
+            "status": str(r[9] or ""), "mensagem": str(r[10] or ""),
+            "tem_xml": bool(r[11]), "data_hora": dh,
+        })
+    conn.close()
+    return regs
+
+
+@app.route('/api/admin_nf/emitidas')
+def api_admin_nf_emitidas():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return jsonify({'ok': False}), 403
+    caminho = _arquivo_nf()
+    if not caminho:
+        return jsonify({'ok': False, 'msg': 'Arquivo TABNF não encontrado.'})
+    try:
+        regs = _nfse_listar_emitidas(caminho)
+        return jsonify({'ok': True, 'registros': regs, 'total': len(regs)})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_nf/xml')
+def api_admin_nf_xml():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return jsonify({'ok': False}), 403
+    chave = _re_digits(request.args.get('chave', ''))
+    caminho = _arquivo_nf()
+    if not caminho or not chave:
+        return "Não encontrado", 404
+    arq = os.path.join(os.path.dirname(caminho), "NFSe_XML", f"{chave}.xml")
+    if not os.path.isfile(arq):
+        return "XML não encontrado para esta chave.", 404
+    with open(arq, "r", encoding="utf-8") as f:
+        conteudo = f.read()
+    baixar = request.args.get('download') == '1'
+    disp = 'attachment' if baixar else 'inline'
+    return Response(conteudo, mimetype='application/xml',
+                    headers={'Content-Disposition': f'{disp}; filename="NFSe_{chave}.xml"'})
+
+
+@app.route('/admin_nf_consulta')
+def admin_nf_consulta():
+    if not session.get('logado'):
+        return redirect('/')
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return redirect('/menu')
+    return render_template('F10_Admin_NF_Consulta.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''))
+
+
 @app.route('/admin_nf')
 def admin_nf():
     if not session.get('logado'):
