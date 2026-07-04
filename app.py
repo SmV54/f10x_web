@@ -38089,9 +38089,18 @@ def _nfse_ensure_log(caminho):
         cur.execute("""CREATE TABLE tabNFSe_Log (
             Id AUTOINCREMENT PRIMARY KEY, Ambiente INTEGER, Serie TEXT(5), nDPS LONG,
             CodCLI LONG, Competencia TEXT(7), Valor DOUBLE, ChaveAcesso TEXT(60),
-            idDps TEXT(60), Status TEXT(20), Mensagem MEMO, ArqXML TEXT(255),
-            DataHora TEXT(20))""")
+            idDps TEXT(60), NumNFSe LONG, Status TEXT(20), Mensagem MEMO,
+            ArqXML TEXT(255), DataHora TEXT(20))""")
         conn.commit()
+    else:
+        # garante a coluna NumNFSe em bases criadas antes (ignora se já existe)
+        cols = {c.column_name.lower() for c in cur.columns(table="tabNFSe_Log")}
+        if "numnfse" not in cols:
+            try:
+                cur.execute("ALTER TABLE tabNFSe_Log ADD COLUMN NumNFSe LONG")
+                conn.commit()
+            except Exception:
+                pass
     conn.close()
 
 
@@ -38115,11 +38124,12 @@ def _nfse_gravar_log(caminho, **kw):
     cur = conn.cursor()
     cur.execute("""INSERT INTO tabNFSe_Log
         (Ambiente, Serie, nDPS, CodCLI, Competencia, Valor, ChaveAcesso, idDps,
-         Status, Mensagem, ArqXML, DataHora)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+         NumNFSe, Status, Mensagem, ArqXML, DataHora)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         int(kw["ambiente"]), str(kw["serie"]), int(kw["ndps"]), int(kw["cod"]),
         str(kw["competencia"]), float(kw["valor"]), str(kw.get("chave", "")),
-        str(kw.get("id_dps", "")), str(kw["status"]), str(kw.get("mensagem", ""))[:1000],
+        str(kw.get("id_dps", "")), (int(kw["numero"]) if kw.get("numero") else None),
+        str(kw["status"]), str(kw.get("mensagem", ""))[:1000],
         str(kw.get("arq_xml", "")), datetime.now().strftime("%Y%m%d %H%M%S"))
     conn.commit()
     conn.close()
@@ -38256,9 +38266,16 @@ def api_admin_nf_emitir():
     alertas = [f"{x.get('Codigo','')}: {x.get('Descricao','')}"
                for x in (resp.get('alertas') or resp.get('Alertas') or [])]
     arq = ''
+    numero = None
     try:
         import gzip as _gz
+        from lxml import etree as _et
         nfse_xml = _gz.decompress(base64.b64decode(resp['nfseXmlGZipB64'])).decode('utf-8')
+        # número da NFS-e (nNFSe) — está dentro do XML da nota
+        _n = _et.fromstring(nfse_xml.encode('utf-8')).find(
+            ".//{http://www.sped.fazenda.gov.br/nfse}nNFSe")
+        if _n is not None and _n.text:
+            numero = re.sub(r"\D", "", _n.text) or None
         pasta_xml = os.path.join(os.path.dirname(caminho), "NFSe_XML")
         os.makedirs(pasta_xml, exist_ok=True)
         arq = os.path.join(pasta_xml, f"{chave or iddps}.xml")
@@ -38269,7 +38286,7 @@ def api_admin_nf_emitir():
 
     _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
                      competencia=competencia, valor=valor, chave=chave, id_dps=id_dps,
-                     status='EMITIDA', mensagem=" | ".join(alertas), arq_xml=arq)
+                     numero=numero, status='EMITIDA', mensagem=" | ".join(alertas), arq_xml=arq)
     try:
         supabase.table("tab_log").insert({
             "id_cliente": None, "id_empresa": None,
@@ -38281,7 +38298,8 @@ def api_admin_nf_emitir():
         pass
 
     return jsonify({'ok': True, 'chave': chave, 'id_dps': id_dps, 'ndps': ndps,
-                    'ambiente': ambiente, 'alertas': alertas, 'arquivo': os.path.basename(arq)})
+                    'numero': numero, 'ambiente': ambiente, 'alertas': alertas,
+                    'arquivo': os.path.basename(arq)})
 
 
 def _re_digits(v):
@@ -38307,8 +38325,11 @@ def _nfse_listar_emitidas(caminho):
             nomes[int(r[0])] = str(r[1] or "").strip()
     except Exception:
         pass
-    cur.execute("""SELECT Id, Ambiente, Serie, nDPS, CodCLI, Competencia, Valor,
-                          ChaveAcesso, idDps, Status, Mensagem, ArqXML, DataHora
+    tem_num = any(c.column_name.lower() == "numnfse"
+                  for c in cur.columns(table="tabNFSe_Log"))
+    col_num = "NumNFSe" if tem_num else "Null AS NumNFSe"
+    cur.execute(f"""SELECT Id, Ambiente, Serie, nDPS, CodCLI, Competencia, Valor,
+                          ChaveAcesso, idDps, Status, Mensagem, ArqXML, DataHora, {col_num}
                    FROM tabNFSe_Log ORDER BY Id DESC""")
     regs = []
     for r in cur.fetchall():
@@ -38322,6 +38343,7 @@ def _nfse_listar_emitidas(caminho):
             "chave": str(r[7] or ""), "id_dps": str(r[8] or ""),
             "status": str(r[9] or ""), "mensagem": str(r[10] or ""),
             "tem_xml": bool(r[11]), "data_hora": dh,
+            "numero": (r[13] if r[13] not in (None, "") else None),
         })
     conn.close()
     return regs

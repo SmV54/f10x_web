@@ -528,10 +528,14 @@ function emitir() {
             const amb = d.ambiente === 1 ? 'Produção' : 'Produção Restrita';
             let al = (d.alertas && d.alertas.length)
                 ? `<div style="margin-top:8px;font-size:12px;color:#92400e;">Alertas: ${esc(d.alertas.join(' · '))}</div>` : '';
+            const numHtml = d.numero
+                ? `<div style="font-size:22px;font-weight:700;color:#15803d;margin-bottom:6px;">NFS-e nº ${esc(d.numero)}</div>`
+                : '';
             rb.innerHTML =
                 `<div class="preview-nf" style="background:#f0fdf4;border-color:#bbf7d0;">
                    <div class="preview-nf-titulo" style="color:#15803d;">✅ NFS-e emitida (${esc(amb)})</div>
                    <div class="preview-nf-texto" style="color:#14532d;">
+                     ${numHtml}
                      <div>Chave de acesso:</div>
                      <div style="font-family:var(--mono);font-size:12px;word-break:break-all;">${esc(d.chave)}</div>
                      <div style="margin-top:6px;font-size:12px;">nDPS ${esc(d.ndps)} · XML: ${esc(d.arquivo || '')}</div>

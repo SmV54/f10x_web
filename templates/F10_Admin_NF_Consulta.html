@@ -157,7 +157,7 @@ tbody tr:hover { background: #f8fbff; }
                     <tr>
                         <th>Data/Hora</th>
                         <th>Amb.</th>
-                        <th>nDPS</th>
+                        <th>NFS-e nº</th>
                         <th>Cliente</th>
                         <th>Compet.</th>
                         <th style="text-align:right;">Valor</th>
@@ -268,7 +268,7 @@ function render() {
             return `<tr>
                 <td class="col-mono">${esc(r.data_hora)}</td>
                 <td>${amb}</td>
-                <td class="col-mono">${esc(r.ndps)}</td>
+                <td class="col-mono" style="font-weight:700;color:#0f172a;">${r.numero ? esc(r.numero) : '—'}</td>
                 <td class="col-cli">${esc(r.cliente || ('cód ' + r.cod))}<div class="col-mono">cód ${esc(r.cod)}</div></td>
                 <td class="col-mono">${esc(r.competencia)}</td>
                 <td class="col-valor">${fmtBRL(r.valor)}</td>
