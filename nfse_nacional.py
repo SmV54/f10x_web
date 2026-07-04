@@ -339,3 +339,195 @@ def compactar_gzip_b64(xml_str):
     raw = xml_str.encode("utf-8")
     comp = gzip.compress(raw)
     return base64.b64encode(comp).decode("ascii")
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# DANFSE — PDF auxiliar gerado a partir do XML da NFS-e
+# ─────────────────────────────────────────────────────────────────────────
+def _fmt_doc(d):
+    d = re.sub(r"\D", "", str(d or ""))
+    if len(d) == 14:
+        return f"{d[:2]}.{d[2:5]}.{d[5:8]}/{d[8:12]}-{d[12:]}"
+    if len(d) == 11:
+        return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}"
+    return d
+
+
+def _fmt_cep(c):
+    d = re.sub(r"\D", "", str(c or ""))
+    return f"{d[:5]}-{d[5:]}" if len(d) == 8 else (c or "")
+
+
+def _fmt_brl(v):
+    try:
+        n = float(v)
+    except Exception:
+        return str(v or "")
+    s = f"{n:,.2f}"
+    return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _fmt_chave(c):
+    d = re.sub(r"\D", "", str(c or ""))
+    return " ".join(d[i:i+4] for i in range(0, len(d), 4))
+
+
+def gerar_danfse_pdf(nfse_xml_str, chave=""):
+    """Gera o DANFSE (PDF auxiliar) a partir do XML da NFS-e. Retorna bytes do PDF."""
+    from lxml import etree
+    from io import BytesIO
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib import colors
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle, Paragraph,
+                                    Spacer)
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+    NS = NS_NFSE
+    root = etree.fromstring(nfse_xml_str.encode("utf-8")) \
+        if isinstance(nfse_xml_str, str) else etree.fromstring(nfse_xml_str)
+
+    def g(path):
+        el = root.find(path.replace("{}", "{%s}" % NS))
+        return (el.text or "").strip() if el is not None and el.text else ""
+
+    inf = "{}infNFSe"
+    numero  = g(f"{inf}/{{}}nNFSe")
+    dhproc  = g(f"{inf}/{{}}dhProc")
+    cstat   = g(f"{inf}/{{}}cStat")
+    loc_emi = g(f"{inf}/{{}}xLocEmi")
+    loc_inc = g(f"{inf}/{{}}xLocIncid")
+    xtrib   = g(f"{inf}/{{}}xTribNac")
+    # emitente/prestador
+    e_nome = g(f"{inf}/{{}}emit/{{}}xNome")
+    e_cnpj = g(f"{inf}/{{}}emit/{{}}CNPJ") or g(f"{inf}/{{}}emit/{{}}CPF")
+    e_im   = g(f"{inf}/{{}}emit/{{}}IM")
+    e_lgr  = g(f"{inf}/{{}}emit/{{}}enderNac/{{}}xLgr")
+    e_nro  = g(f"{inf}/{{}}emit/{{}}enderNac/{{}}nro")
+    e_cpl  = g(f"{inf}/{{}}emit/{{}}enderNac/{{}}xCpl")
+    e_bai  = g(f"{inf}/{{}}emit/{{}}enderNac/{{}}xBairro")
+    e_uf   = g(f"{inf}/{{}}emit/{{}}enderNac/{{}}UF")
+    e_cep  = g(f"{inf}/{{}}emit/{{}}enderNac/{{}}CEP")
+    e_mail = g(f"{inf}/{{}}emit/{{}}email")
+    # DPS (tomador, serviço, valores declarados)
+    dps = f"{inf}/{{}}DPS/{{}}infDPS"
+    dcompet = g(f"{dps}/{{}}dCompet")
+    t_nome = g(f"{dps}/{{}}toma/{{}}xNome")
+    t_cnpj = g(f"{dps}/{{}}toma/{{}}CNPJ")
+    t_cpf  = g(f"{dps}/{{}}toma/{{}}CPF")
+    t_doc  = t_cnpj or t_cpf
+    t_lgr  = g(f"{dps}/{{}}toma/{{}}end/{{}}xLgr")
+    t_nro  = g(f"{dps}/{{}}toma/{{}}end/{{}}nro")
+    t_cpl  = g(f"{dps}/{{}}toma/{{}}end/{{}}xCpl")
+    t_bai  = g(f"{dps}/{{}}toma/{{}}end/{{}}xBairro")
+    t_cep  = g(f"{dps}/{{}}toma/{{}}end/{{}}endNac/{{}}CEP")
+    t_mail = g(f"{dps}/{{}}toma/{{}}email")
+    desc   = g(f"{dps}/{{}}serv/{{}}cServ/{{}}xDescServ")
+    ctribnac = g(f"{dps}/{{}}serv/{{}}cServ/{{}}cTribNac")
+    vserv  = g(f"{dps}/{{}}serv/{{}}valores/{{}}vServPrest/{{}}vServ")
+    vliq   = g(f"{inf}/{{}}valores/{{}}vLiq") or vserv
+    ret    = g(f"{dps}/{{}}serv/{{}}valores/{{}}trib/{{}}tribMun/{{}}tpRetISSQN")
+    ptribsn = g(f"{dps}/{{}}serv/{{}}valores/{{}}trib/{{}}totTrib/{{}}pTotTribSN")
+
+    def dt(s):
+        return f"{s[8:10]}/{s[5:7]}/{s[0:4]} {s[11:16]}" if len(s) >= 16 else s
+    def comp(s):
+        return f"{s[5:7]}/{s[0:4]}" if len(s) >= 7 else s
+
+    ss = getSampleStyleSheet()
+    pN = ParagraphStyle('n', parent=ss['Normal'], fontSize=8, leading=10)
+    pB = ParagraphStyle('b', parent=pN, fontName='Helvetica-Bold')
+    pSmall = ParagraphStyle('s', parent=pN, fontSize=7, leading=8.5, textColor=colors.HexColor('#475569'))
+    pTitulo = ParagraphStyle('t', parent=ss['Normal'], fontSize=13, fontName='Helvetica-Bold')
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14*mm, rightMargin=14*mm,
+                            topMargin=12*mm, bottomMargin=12*mm,
+                            title=f"NFSe {numero}")
+    el = []
+    AZUL = colors.HexColor('#1d4ed8'); CINZA = colors.HexColor('#f1f5f9')
+    LINHA = colors.HexColor('#cbd5e1')
+
+    # Cabeçalho
+    cab = Table([[
+        Paragraph("NOTA FISCAL DE SERVIÇOS ELETRÔNICA<br/><font size=8 color='#475569'>NFS-e — Padrão Nacional · DANFSE</font>", pTitulo),
+        Paragraph(f"<b>Nº {numero}</b><br/>"
+                  f"<font size=8>Competência: {comp(dcompet)}<br/>"
+                  f"Emissão: {dt(dhproc)}<br/>"
+                  f"Município: {loc_emi}</font>", pN),
+    ]], colWidths=[112*mm, 70*mm])
+    cab.setStyle(TableStyle([
+        ('VALIGN', (0,0), (-1,-1), 'TOP'),
+        ('BOX', (0,0), (-1,-1), 1, AZUL),
+        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#eff6ff')),
+        ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),
+        ('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7),
+    ]))
+    el.append(cab)
+    el.append(Spacer(1, 3))
+    # Chave de acesso
+    ch = Table([[Paragraph("<b>CHAVE DE ACESSO</b>", pSmall)],
+                [Paragraph(f"<font face='Courier' size=9>{_fmt_chave(chave)}</font>", pN)]],
+               colWidths=[182*mm])
+    ch.setStyle(TableStyle([('BOX',(0,0),(-1,-1),0.7,LINHA),('BACKGROUND',(0,0),(-1,-1),CINZA),
+        ('LEFTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+    el.append(ch); el.append(Spacer(1, 6))
+
+    def bloco(titulo, linhas):
+        dados = [[Paragraph(f"<b>{titulo}</b>", pSmall)]]
+        for lab, val in linhas:
+            dados.append([Paragraph(f"<b>{lab}:</b> {val}", pN) if lab else Paragraph(val, pN)])
+        t = Table(dados, colWidths=[182*mm])
+        t.setStyle(TableStyle([
+            ('BOX',(0,0),(-1,-1),0.7,LINHA),
+            ('BACKGROUND',(0,0),(0,0),colors.HexColor('#e2e8f0')),
+            ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),
+            ('TOPPADDING',(0,0),(-1,-1),2.5),('BOTTOMPADDING',(0,0),(-1,-1),2.5),
+            ('TOPPADDING',(0,0),(0,0),4),('BOTTOMPADDING',(0,0),(0,0),4),
+        ]))
+        return t
+
+    e_end = f"{e_lgr}, {e_nro}" + (f" — {e_cpl}" if e_cpl else "") + \
+            f" · {e_bai} · {loc_emi}/{e_uf} · CEP {_fmt_cep(e_cep)}"
+    el.append(bloco("PRESTADOR DE SERVIÇOS", [
+        ("Nome/Razão social", e_nome), ("CNPJ", _fmt_doc(e_cnpj) + f"    Inscr. Municipal: {e_im}"),
+        ("Endereço", e_end), ("E-mail", e_mail),
+    ]))
+    el.append(Spacer(1, 5))
+    t_end = (f"{t_lgr}, {t_nro}" + (f" — {t_cpl}" if t_cpl else "") +
+             (f" · {t_bai}" if t_bai else "") + (f" · CEP {_fmt_cep(t_cep)}" if t_cep else "")) \
+            if t_lgr else "(endereço não informado)"
+    el.append(bloco("TOMADOR DE SERVIÇOS", [
+        ("Nome/Razão social", t_nome or "—"),
+        ("CPF/CNPJ", _fmt_doc(t_doc)),
+        ("Endereço", t_end), ("E-mail", t_mail or "—"),
+    ]))
+    el.append(Spacer(1, 5))
+    el.append(bloco("DISCRIMINAÇÃO DO SERVIÇO", [
+        ("", f"<b>{ctribnac} — {xtrib}</b>" if xtrib else ctribnac),
+        ("", desc),
+    ]))
+    el.append(Spacer(1, 5))
+
+    ret_txt = {"1": "Não retido", "2": "Retido pelo tomador", "3": "Retido pelo intermediário"}.get(ret, "—")
+    val = Table([
+        [Paragraph("<b>Valor do serviço</b>", pN), Paragraph(_fmt_brl(vserv), pN),
+         Paragraph("<b>Retenção do ISSQN</b>", pN), Paragraph(ret_txt, pN)],
+        [Paragraph("<b>Trib. aprox. (Simples)</b>", pN), Paragraph(f"{ptribsn}%" if ptribsn else "—", pN),
+         Paragraph("<b>VALOR LÍQUIDO</b>", pB), Paragraph(f"<b>{_fmt_brl(vliq)}</b>", pB)],
+    ], colWidths=[38*mm, 53*mm, 38*mm, 53*mm])
+    val.setStyle(TableStyle([
+        ('BOX',(0,0),(-1,-1),0.7,LINHA),('INNERGRID',(0,0),(-1,-1),0.4,LINHA),
+        ('BACKGROUND',(2,1),(3,1),colors.HexColor('#dcfce7')),
+        ('LEFTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
+    ]))
+    el.append(val)
+    el.append(Spacer(1, 8))
+    autoriz = "Autorizada" if cstat == "100" else f"Status {cstat}"
+    el.append(Paragraph(
+        f"<font size=7 color='#64748b'>Documento auxiliar da NFS-e ({autoriz}). "
+        f"Consulte a validade pela chave de acesso no portal nacional "
+        f"<b>www.nfse.gov.br</b>. Processado em {dt(dhproc)}.</font>", pSmall))
+
+    doc.build(el)
+    return buf.getvalue()

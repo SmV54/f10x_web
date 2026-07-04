@@ -38011,6 +38011,31 @@ NFSE_URLS = {
     2: "https://sefin.producaorestrita.nfse.gov.br/API/SefinNacional/nfse",  # produção restrita
     1: "https://sefin.nfse.gov.br/SefinNacional/nfse",                       # produção
 }
+# Pasta onde os PDFs (DANFSE) das notas são salvos automaticamente.
+PASTA_NF_PDF = r'C:\Dropbox\NFs'
+
+
+def _nfse_nome_pdf(numero, cod, nome_cli):
+    """Nome de arquivo do PDF: NFSe_<numero>_<cliente>.pdf (sanitizado)."""
+    import unicodedata
+    base = f"NFSe_{numero or 'DPS'}_{nome_cli or cod}"
+    base = unicodedata.normalize("NFKD", base).encode("ascii", "ignore").decode()
+    base = re.sub(r"[^A-Za-z0-9]+", "_", base).strip("_")
+    return (base[:80] or f"NFSe_{cod}") + ".pdf"
+
+
+def _nfse_salvar_pdf(nfse_xml, chave, numero, cod, nome_cli):
+    """Gera o DANFSE em PDF e salva em PASTA_NF_PDF. Retorna o caminho (ou '')."""
+    import nfse_nacional as nfx
+    try:
+        pdf = nfx.gerar_danfse_pdf(nfse_xml, chave)
+        os.makedirs(PASTA_NF_PDF, exist_ok=True)
+        caminho = os.path.join(PASTA_NF_PDF, _nfse_nome_pdf(numero, cod, nome_cli))
+        with open(caminho, "wb") as f:
+            f.write(pdf)
+        return caminho
+    except Exception:
+        return ""
 
 
 def _nfse_cert_emitente():
@@ -38267,6 +38292,7 @@ def api_admin_nf_emitir():
                for x in (resp.get('alertas') or resp.get('Alertas') or [])]
     arq = ''
     numero = None
+    nfse_xml = None
     try:
         import gzip as _gz
         from lxml import etree as _et
@@ -38284,6 +38310,11 @@ def api_admin_nf_emitir():
     except Exception:
         pass
 
+    # DANFSE em PDF salvo automaticamente em C:\Dropbox\NFs
+    pdf_arq = ''
+    if nfse_xml:
+        pdf_arq = _nfse_salvar_pdf(nfse_xml, chave, numero, cod, cli['nome'])
+
     _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
                      competencia=competencia, valor=valor, chave=chave, id_dps=id_dps,
                      numero=numero, status='EMITIDA', mensagem=" | ".join(alertas), arq_xml=arq)
@@ -38299,7 +38330,8 @@ def api_admin_nf_emitir():
 
     return jsonify({'ok': True, 'chave': chave, 'id_dps': id_dps, 'ndps': ndps,
                     'numero': numero, 'ambiente': ambiente, 'alertas': alertas,
-                    'arquivo': os.path.basename(arq)})
+                    'arquivo': os.path.basename(arq),
+                    'pdf': os.path.basename(pdf_arq) if pdf_arq else ''})
 
 
 def _re_digits(v):
@@ -38384,6 +38416,32 @@ def api_admin_nf_xml():
     disp = 'attachment' if baixar else 'inline'
     return Response(conteudo, mimetype='application/xml',
                     headers={'Content-Disposition': f'{disp}; filename="NFSe_{chave}.xml"'})
+
+
+@app.route('/api/admin_nf/pdf')
+def api_admin_nf_pdf():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return jsonify({'ok': False}), 403
+    import nfse_nacional as nfx
+    chave = _re_digits(request.args.get('chave', ''))
+    caminho = _arquivo_nf()
+    if not caminho or not chave:
+        return "Não encontrado", 404
+    arq_xml = os.path.join(os.path.dirname(caminho), "NFSe_XML", f"{chave}.xml")
+    if not os.path.isfile(arq_xml):
+        return "XML da NFS-e não encontrado para esta chave.", 404
+    try:
+        with open(arq_xml, "r", encoding="utf-8") as f:
+            nfse_xml = f.read()
+        pdf = nfx.gerar_danfse_pdf(nfse_xml, chave)
+    except Exception as ex:
+        return f"Falha ao gerar PDF: {ex}", 500
+    baixar = request.args.get('download') == '1'
+    disp = 'attachment' if baixar else 'inline'
+    return Response(pdf, mimetype='application/pdf',
+                    headers={'Content-Disposition': f'{disp}; filename="NFSe_{chave}.pdf"'})
 
 
 @app.route('/admin_nf_consulta')

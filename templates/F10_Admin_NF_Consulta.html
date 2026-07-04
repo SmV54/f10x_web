@@ -261,8 +261,8 @@ function render() {
                 : `<span style="color:#b91c1c;font-size:12px;">${esc(r.mensagem)}</span>`;
 
             const xml = (r.status === 'EMITIDA' && r.tem_xml)
-                ? `<a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank">ver</a>
-                   <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}&download=1" title="Baixar">⬇</a>`
+                ? `<a class="link-xml" href="/api/admin_nf/pdf?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Abrir DANFSE em PDF">PDF</a>
+                   <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Ver XML">XML</a>`
                 : '—';
 
             return `<tr>

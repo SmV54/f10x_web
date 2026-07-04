@@ -538,7 +538,11 @@ function emitir() {
                      ${numHtml}
                      <div>Chave de acesso:</div>
                      <div style="font-family:var(--mono);font-size:12px;word-break:break-all;">${esc(d.chave)}</div>
-                     <div style="margin-top:6px;font-size:12px;">nDPS ${esc(d.ndps)} · XML: ${esc(d.arquivo || '')}</div>
+                     <div style="margin-top:6px;font-size:12px;">nDPS ${esc(d.ndps)}${d.pdf ? ' · PDF salvo em C:\\Dropbox\\NFs\\' + esc(d.pdf) : ''}</div>
+                     <div style="margin-top:8px;">
+                       <a href="/api/admin_nf/pdf?chave=${encodeURIComponent(d.chave)}" target="_blank"
+                          style="font-size:12px;font-weight:700;color:#15803d;text-decoration:none;border:1px solid #86efac;border-radius:6px;padding:4px 10px;">📄 Abrir PDF (DANFSE)</a>
+                     </div>
                    </div>${al}
                  </div>`;
         } else {
