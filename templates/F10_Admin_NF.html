@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Emissão de NFS-e</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 24px; min-height: 72px;
+    position: sticky; top: 0; z-index: 100;
+}
+.badge-admin {
+    display: inline-flex; align-items: center; gap: 9px;
+    background: linear-gradient(135deg, #14532d 0%, #166534 50%, #15803d 100%);
+    border: 1.5px solid #4ade80; border-radius: 10px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 17px; font-weight: 700;
+    color: #dcfce7; letter-spacing: 0.14em;
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 3px 10px rgba(0,0,0,0.35);
+    white-space: nowrap; flex-shrink: 0;
+}
+.topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar {
+    background: transparent; border: 1px solid var(--navy-line); color: var(--text-sub);
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT 2 COLUNAS ── */
+.layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    height: calc(100vh - 72px);
+    overflow: hidden;
+}
+
+/* ══ COL 1 — CLIENTES ══ */
+.painel-lateral {
+    display: flex; flex-direction: column;
+    border-right: 1px solid var(--border);
+    background: var(--surface); overflow: hidden;
+}
+.painel-header {
+    padding: 12px 14px 10px; border-bottom: 1px solid var(--border);
+    background: #f8fafc; flex-shrink: 0;
+}
+.etapa-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--accent); margin-bottom: 4px;
+}
+.etapa-num {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 10px; font-weight: 800;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.painel-header-titulo {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #64748b;
+}
+.busca-wrap { position: relative; margin-top: 7px; }
+.busca-icone {
+    position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+    font-size: 12px; color: #94a3b8; pointer-events: none;
+}
+.input-busca {
+    width: 100%; padding: 6px 9px 6px 28px; border-radius: 8px;
+    border: 1px solid var(--border); font-size: 12px; font-family: var(--sans);
+    background: var(--surface); color: var(--label); outline: none; transition: 0.15s;
+}
+.input-busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.painel-scroll { flex: 1; overflow-y: auto; padding: 6px 8px; }
+.painel-scroll::-webkit-scrollbar { width: 5px; }
+.painel-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+.painel-footer {
+    padding: 7px 14px; border-top: 1px solid var(--border);
+    font-size: 11px; color: #64748b; text-align: right;
+    background: #f8fafc; flex-shrink: 0;
+}
+
+.cliente-card {
+    display: flex; align-items: center; gap: 9px;
+    padding: 5px 10px; border-radius: 8px; cursor: pointer;
+    border: 1px solid transparent; transition: 0.13s; margin-bottom: 1px;
+}
+.cli-chk { width: 15px; height: 15px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; }
+.cliente-card:hover { background: #f0f6ff; border-color: #c3d9f8; }
+.cliente-card.ativo { background: #eaf2fd; border-color: var(--accent); }
+.cliente-info { flex: 1; min-width: 0; }
+.cliente-linha1 { display: flex; align-items: baseline; gap: 6px; }
+.cliente-cod  { font-family: var(--mono); font-size: 10px; font-weight: 600; color: #64748b; flex-shrink: 0; }
+.cliente-nome { font-size: 12px; font-weight: 600; color: #0f172a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cliente-card.ativo .cliente-nome { color: var(--accent); }
+.cliente-valor { font-family: var(--mono); font-size: 11px; color: #166534; margin-top: 1px; }
+
+.painel-vazio {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 8px; padding: 30px 16px;
+    color: #94a3b8; text-align: center;
+}
+.painel-vazio-icone { font-size: 28px; opacity: 0.45; }
+.painel-vazio-texto { font-size: 12px; font-weight: 500; }
+
+/* ══ COL 2 — DADOS DA NOTA ══ */
+.painel-direito { display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
+.painel-direito-corpo { flex: 1; overflow-y: auto; padding: 20px 24px 40px; display: flex; flex-direction: column; gap: 16px; }
+.painel-direito-corpo::-webkit-scrollbar { width: 5px; }
+.painel-direito-corpo::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+
+.estado-vazio { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #94a3b8; }
+.estado-vazio-icone { font-size: 44px; opacity: 0.4; }
+.estado-vazio-texto { font-size: 15px; font-weight: 600; }
+.estado-vazio-sub   { font-size: 12px; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+.card-header {
+    padding: 10px 16px; background: #f8fafc; border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #475569; display: flex; align-items: center; gap: 8px;
+}
+.card-etapa {
+    width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff;
+    font-size: 10px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.card-body { padding: 16px; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row { display: flex; flex-direction: column; gap: 5px; }
+.form-row.full { grid-column: 1 / -1; }
+.form-label { font-size: 11px; font-weight: 600; color: #475569; text-transform: uppercase; letter-spacing: 0.04em; }
+.form-input {
+    padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px;
+    font-size: 14px; font-family: var(--mono); color: var(--label);
+    background: var(--surface); outline: none; transition: 0.15s; width: 100%;
+}
+.form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,0.12); }
+.form-input[readonly] { background: #f8fafc; color: #64748b; }
+.form-hint { font-size: 11px; color: #94a3b8; }
+
+.sel-cliente {
+    background: #f0f6ff; border: 1px solid #c3d9f8; border-radius: 10px;
+    padding: 12px 16px; display: flex; align-items: baseline; gap: 10px;
+}
+.sel-cliente .cod { font-family: var(--mono); font-size: 12px; color: #64748b; }
+.sel-cliente .nm  { font-size: 15px; font-weight: 700; color: #1e40af; }
+
+.aviso-info {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 10px 14px; font-size: 12px; color: #92400e; line-height: 1.5;
+}
+
+.btn-emitir {
+    width: 100%; padding: 13px 0; border-radius: 10px; border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 15px; font-weight: 700;
+    background: linear-gradient(135deg, #1d4ed8, #2563eb); color: #fff;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 2px 10px rgba(37,99,235,0.3); transition: 0.15s;
+}
+.btn-emitir:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
+
+.loading-inline { display: flex; align-items: center; gap: 8px; padding: 14px 10px; font-size: 13px; color: #64748b; }
+.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2.5px solid #e2e8f0; border-top-color: var(--accent); animation: spin 0.7s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.preview-nf {
+    margin-top: 16px; background: #f0fdf4; border: 1px solid #bbf7d0;
+    border-radius: 8px; padding: 12px 14px;
+}
+.preview-nf-titulo {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #15803d; margin-bottom: 5px;
+}
+.preview-nf-texto {
+    font-size: 14px; color: #14532d; line-height: 1.5; font-weight: 500;
+}
+
+.diag-bar {
+    font-size: 11px; color: #64748b; font-family: var(--mono);
+    background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    word-break: break-word;
+}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">Emissão de Nota Fiscal de Serviço (NFS-e)</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="layout">
+
+    <!-- ══ COL 1 — CLIENTES (tabNF) ══ -->
+    <aside class="painel-lateral">
+        <div class="painel-header">
+            <div class="etapa-label"><span class="etapa-num">1</span> Selecione o cliente</div>
+            <div class="painel-header-titulo">Clientes ativos — TabCLI_NF</div>
+            <div class="busca-wrap">
+                <span class="busca-icone">🔍</span>
+                <input class="input-busca" id="inputBusca" type="text" placeholder="Buscar…"
+                       oninput="filtrar()" autocomplete="off">
+            </div>
+        </div>
+        <div class="painel-scroll" id="listaClientes">
+            <div class="loading-inline"><div class="spinner"></div> Carregando…</div>
+        </div>
+        <div class="painel-footer" id="totalClientes"></div>
+    </aside>
+
+    <!-- ══ COL 2 — DADOS DA NOTA ══ -->
+    <main class="painel-direito">
+        <div class="painel-direito-corpo">
+
+            <div class="estado-vazio" id="estadoVazio">
+                <span class="estado-vazio-icone">🧾</span>
+                <span class="estado-vazio-texto">Selecione um cliente</span>
+                <span class="estado-vazio-sub">Coluna 1 — clientes da TabCLI_NF</span>
+            </div>
+
+            <div class="card" id="cardNota" style="display:none;">
+                <div class="card-header"><span class="card-etapa">2</span> Dados da nota fiscal</div>
+                <div class="card-body">
+                    <div class="sel-cliente" style="margin-bottom:16px;">
+                        <span class="cod" id="ncCod">—</span>
+                        <span class="nm" id="ncNome">—</span>
+                    </div>
+
+                    <div class="form-grid">
+                        <div class="form-row full">
+                            <div style="display:flex; gap:12px; align-items:flex-start;">
+                                <div class="form-row" style="flex:0 0 auto;">
+                                    <label class="form-label">Valor da nota (R$)</label>
+                                    <input class="form-input" id="fValor" type="text" placeholder="0,00" style="width:130px;">
+                                    <span class="form-hint" id="hintValor">Sugerido a partir da tabNF.</span>
+                                </div>
+                                <div class="form-row" style="flex:0 0 auto;">
+                                    <label class="form-label">Data do processamento</label>
+                                    <input class="form-input" id="fDataProc" type="text" placeholder="MM/AAAA"
+                                           inputmode="numeric" maxlength="7" style="width:130px;"
+                                           oninput="mascaraMesAno(this); salvarMemoria(); atualizarPreview()">
+                                    <span class="form-hint">Mantida para a próxima nota.</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-row" id="rowEmpresas">
+                            <label class="form-label">Qtd. empresas processadas</label>
+                            <input class="form-input" id="fEmpresas" type="text" placeholder="—" oninput="salvarMemoria()">
+                        </div>
+                        <div class="form-row" id="rowFuncionarios">
+                            <label class="form-label">Qtd. funcionários processados</label>
+                            <input class="form-input" id="fFuncionarios" type="text" placeholder="—" oninput="salvarMemoria()">
+                        </div>
+                    </div>
+
+                    <div class="preview-nf" id="previewNF" style="display:none;">
+                        <div class="preview-nf-titulo">Discriminação do serviço</div>
+                        <div class="preview-nf-texto" id="previewNFTexto">—</div>
+                    </div>
+
+                    <div class="aviso-info" style="margin-top:16px;">
+                        <span style="font-size:16px;flex-shrink:0;">ℹ️</span>
+                        <span>Primeira etapa do módulo: seleção do cliente e dados da nota.
+                        A emissão da NFS-e (envio ao sistema nacional) será a próxima etapa.</span>
+                    </div>
+
+                    <button class="btn-emitir" id="btnEmitir" style="margin-top:16px;" disabled>
+                        🧾 Emitir NFS-e — próxima etapa
+                    </button>
+                </div>
+            </div>
+
+            <div class="diag-bar" id="diagBar" style="display:none;"></div>
+
+        </div>
+    </main>
+
+</div>
+
+<script>
+let CLIENTES = [];
+let clienteAtivo = null;
+let marcados = new Set();
+
+function toggleMarcado(idx, on) {
+    if (on) marcados.add(idx); else marcados.delete(idx);
+    if (on) selecionar(idx);   // ao marcar, já abre os dados do cliente (selecionar chama render)
+    else render();
+}
+
+function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtBRL(v) {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    if (isNaN(n)) return '';
+    return n.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function carregar() {
+    const el = document.getElementById('listaClientes');
+    el.innerHTML = '<div class="loading-inline"><div class="spinner"></div> Carregando…</div>';
+    fetch('/api/admin_nf/clientes')
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) {
+                el.innerHTML = `<div style="padding:14px 10px;font-size:12px;color:#ef4444;line-height:1.5;">${esc(d.msg)}</div>`;
+                return;
+            }
+            CLIENTES = d.clientes || [];
+            // barra de diagnóstico: tabela + colunas detectadas
+            const diag = document.getElementById('diagBar');
+            const cols = d.colunas ? Object.entries(d.colunas).map(([k,v]) => `${k}→${v}`).join('  ·  ') : '';
+            diag.style.display = '';
+            diag.textContent = `Tabela [${d.tabela||'?'}] · ${d.total} cliente(s) · colunas: ${cols || '(nenhuma)'}`;
+            render();
+        })
+        .catch(ex => {
+            el.innerHTML = `<div style="padding:14px 10px;font-size:12px;color:#ef4444;">Falha ao comunicar com o servidor: ${esc(String(ex))}</div>`;
+        });
+}
+
+function render() {
+    const el = document.getElementById('listaClientes');
+    const termo = (document.getElementById('inputBusca').value || '').toLowerCase().trim();
+    const lista = CLIENTES.filter(c => !termo ||
+        (c.nome||'').toLowerCase().includes(termo) || (c.codigo||'').toLowerCase().includes(termo));
+
+    if (!CLIENTES.length) {
+        el.innerHTML = '<div class="painel-vazio"><span class="painel-vazio-icone">🗂️</span><span class="painel-vazio-texto">Nenhum cliente na tabNF</span></div>';
+        document.getElementById('totalClientes').textContent = '';
+        return;
+    }
+    if (!lista.length) {
+        el.innerHTML = '<div style="padding:20px 14px;font-size:12px;color:#94a3b8;">Nenhum cliente encontrado.</div>';
+    } else {
+        el.innerHTML = lista.map((c) => {
+            const idx = CLIENTES.indexOf(c);
+            const valor = c.valor != null ? `R$ ${fmtBRL(c.valor)}` : '';
+            return `<div class="cliente-card${clienteAtivo===idx?' ativo':''}" onclick="selecionar(${idx})">
+                <input type="checkbox" class="cli-chk" ${marcados.has(idx)?'checked':''}
+                       onclick="event.stopPropagation()" onchange="toggleMarcado(${idx}, this.checked)">
+                <div class="cliente-info">
+                    <div class="cliente-linha1">
+                        ${c.codigo ? `<span class="cliente-cod">${esc(c.codigo)}</span>` : ''}
+                        <span class="cliente-nome">${esc(c.nome || '(sem nome)')}</span>
+                    </div>
+                    ${valor ? `<div class="cliente-valor">${esc(valor)}</div>` : ''}
+                </div>
+            </div>`;
+        }).join('');
+    }
+    document.getElementById('totalClientes').textContent =
+        `${lista.length} de ${CLIENTES.length}` + (marcados.size ? ` · ${marcados.size} marcado(s)` : '');
+}
+
+function filtrar() { render(); }
+
+function lerMemoria() {
+    try {
+        return {
+            empresas:     localStorage.getItem('nf_empresas')     || '',
+            funcionarios: localStorage.getItem('nf_funcionarios') || '',
+            dataProc:     localStorage.getItem('nf_dataproc')     || '',
+        };
+    } catch (e) { return { empresas: '', funcionarios: '', dataProc: '' }; }
+}
+function salvarMemoria() {
+    try {
+        localStorage.setItem('nf_empresas',     document.getElementById('fEmpresas').value.trim());
+        localStorage.setItem('nf_funcionarios', document.getElementById('fFuncionarios').value.trim());
+        localStorage.setItem('nf_dataproc',     document.getElementById('fDataProc').value.trim());
+    } catch (e) {}
+}
+
+function selecionar(idx) {
+    clienteAtivo = idx;
+    const c = CLIENTES[idx];
+    render();
+
+    document.getElementById('estadoVazio').style.display = 'none';
+    document.getElementById('cardNota').style.display = '';
+
+    document.getElementById('ncCod').textContent  = c.codigo || '—';
+    document.getElementById('ncNome').textContent = c.nome || '(sem nome)';
+
+    // Valor: sempre da tabela TabCLI_NF (Servico_Valor, por cliente)
+    document.getElementById('fValor').value = c.valor != null ? fmtBRL(c.valor) : '';
+    document.getElementById('hintValor').textContent = (c.valor != null)
+        ? 'Valor da tabela TabCLI_NF (edite se necessário).'
+        : 'Sem valor na tabela para este cliente — informe manualmente.';
+
+    // Regra: se Servico_Valor > 0 (contratos antigos), empresas/funcionários não entram
+    //        no texto da NF → ocultar. Se estiver zerado/vazio, abrir esses campos.
+    const temValor = (Number(c.valor) || 0) > 0;
+    document.getElementById('rowEmpresas').style.display     = temValor ? 'none' : '';
+    document.getElementById('rowFuncionarios').style.display = temValor ? 'none' : '';
+
+    // Empresas / Funcionários / Data: mantidos da nota anterior (editáveis)
+    const mem = lerMemoria();
+    document.getElementById('fEmpresas').value     = mem.empresas     || (c.empresas != null ? c.empresas : '');
+    document.getElementById('fFuncionarios').value = mem.funcionarios || (c.funcionarios != null ? c.funcionarios : '');
+    document.getElementById('fDataProc').value     = mem.dataProc     || mesAnoAtual();
+    mascaraMesAno(document.getElementById('fDataProc'));
+
+    atualizarPreview();
+}
+
+// Mês/ano atual no formato MM/AAAA (default da data de processamento).
+function mesAnoAtual() {
+    const d = new Date();
+    return String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+// Máscara MM/AAAA — só dígitos, barra automática após os 2 primeiros.
+function mascaraMesAno(el) {
+    let v = (el.value || '').replace(/\D/g, '').slice(0, 6);
+    if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
+    el.value = v;
+}
+
+// Preview da discriminação da NF. O conector muda conforme o cliente ter valor:
+//   com valor (contrato antigo) → "no mês {X}"
+//   sem valor                   → "até o mês {X}"
+function atualizarPreview() {
+    const box = document.getElementById('previewNF');
+    const c = (clienteAtivo != null) ? CLIENTES[clienteAtivo] : null;
+    if (!c) { box.style.display = 'none'; return; }
+    const temValor = (Number(c.valor) || 0) > 0;
+    const conector = temValor ? 'no mês' : 'até o mês';
+    const data = (document.getElementById('fDataProc').value || '').trim() || '__/____';
+    document.getElementById('previewNFTexto').textContent =
+        'Processamento da folha de pagamento ' + conector + ' ' + data;
+    box.style.display = '';
+}
+
+document.addEventListener('DOMContentLoaded', carregar);
+</script>
+</body>
+</html>

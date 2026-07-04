@@ -33896,6 +33896,10 @@ def api_admin_licenca_gravar():
 PASTA_BASES_F10 = r'C:\folha10\arquivos\bases'
 _import_jobs = {}   # job_id → {pct, etapa, done, resultado}
 
+# ── Módulo NFS-e: local do Access com a tabela TABNF ──
+# Pode ser uma PASTA (procura o .accdb/.mdb que contém TABNF) ou um arquivo direto.
+PASTA_NF = r'C:\Dropbox\COMSIST\NF10'
+
 def _fmt_bytes(b):
     if b < 1024:       return f'{b} B'
     if b < 1_048_576:  return f'{b/1024:.0f} KB'
@@ -34889,6 +34893,114 @@ def _imp_verbas_f10(caminho, id_cliente, ini_valid):
             err += 1
             log.append(f"✗  {r.get('codigo')}  {ex}")
 
+    conn.close()
+    return grav, err, log
+
+
+def _imp_sindicatos_f10(caminho, id_cliente):
+    """Importa a tabela de sindicatos (tabsind, no FolhaFIX) para tab_aux_sindicatos.
+    Percentuais no Access já estão ×100 (20% = 2000, 20,50% = 2050), MESMO formato
+    do Supabase (telaParaBanco) → cópia direta. Reimporta limpo por cliente."""
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};'
+        )
+    except Exception as ex:
+        return 0, 1, [f'✗ Conexão com o arquivo: {ex}']
+
+    cur = conn.cursor()
+    log = []
+    grav = err = 0
+
+    tabs = {t.table_name.lower(): t.table_name
+            for t in cur.tables(tableType='TABLE') if not t.table_name.startswith('MSys')}
+    nome_tab = next((tabs[c] for c in ('tabsind', 'tabsindicato', 'tabsindicatos') if c in tabs), None)
+    if not nome_tab:
+        conn.close()
+        return 0, 1, [f'✗ Tabela de sindicatos (tabsind) não encontrada no FolhaFIX. '
+                      f'Tabelas: {", ".join(sorted(tabs))}']
+
+    try:
+        cur.execute(f"SELECT * FROM [{nome_tab}] WHERE situacao='A'")
+        cols = [d[0].lower() for d in cur.description]
+        rows = cur.fetchall()
+    except Exception as ex:
+        conn.close()
+        return 0, 1, [f'✗ Leitura de {nome_tab}: {ex}']
+
+    # Sindicato "NAO SINDICALIZADO / Ministério do Trabalho": comum a todos os clientes,
+    # já existe no cadastro. Não deve ser migrado nem removido.
+    CNPJ_SIND_COMUM = '37115367003500'
+
+    log.append(f'📋 {nome_tab}: {len(rows)} sindicato(s) ativo(s) lido(s)')
+    if not rows:
+        conn.close()
+        return 0, 0, log + ['⚠  Nenhum sindicato ativo — nada foi alterado no Supabase.']
+
+    # Reimporta limpo: remove sindicatos anteriores deste cliente, PRESERVANDO o comum.
+    try:
+        supabase.table('tab_aux_sindicatos').delete() \
+            .eq('id_cliente', id_cliente).neq('cnpj', CNPJ_SIND_COMUM).execute()
+        log.append(f'🗑  Sindicatos anteriores do cliente {id_cliente} removidos (exceto o comum)')
+    except Exception as ex:
+        log.append(f'⚠  Não foi possível limpar sindicatos anteriores: {ex}')
+
+    def _i(v):
+        try:
+            return int(v) if v not in (None, '') else None
+        except (ValueError, TypeError):
+            return None
+
+    def _s(v):
+        return (str(v).strip() or None) if v is not None else None
+
+    def _pct100(v):
+        # peradianta no Access é percentual INTEIRO (50 = 50%); Supabase guarda ×100
+        n = _i(v)
+        return n * 100 if n is not None else None
+
+    pulados = 0
+    for row in rows:
+        r = dict(zip(cols, row))
+        nome = (_s(r.get('nome')) or '')[:80]
+        cnpj = _s(r.get('cnpj'))
+        # pula o sindicato comum (já cadastrado, compartilhado por todos os clientes)
+        if (cnpj or '').replace('.', '').replace('/', '').replace('-', '') == CNPJ_SIND_COMUM:
+            pulados += 1
+            log.append(f'⏭  {nome}  (CNPJ comum — não migrado)')
+            continue
+        try:
+            payload = {
+                'id_cliente'                  : id_cliente,
+                'situacao'                    : 'A',
+                'nome_sindicato'              : nome,
+                'cnpj'                        : cnpj,
+                'cod_sindicato'               : _s(r.get('codigo')),
+                'mes_dissidio'                : _i(r.get('dissidio_mes')),
+                'dias_aviso_previo'           : _i(r.get('dias_aviso_previo')),
+                'meses_carencia_aviso_previo' : _i(r.get('meses_carencia_avisop')),
+                # adiantamento é % inteiro no Access → ×100 p/ o formato do Supabase
+                'per_adianta_mes'             : _pct100(r.get('peradianta')),
+                # demais percentuais já vêm ×100 no Access = formato do Supabase → cópia direta
+                'per_adnoturno'               : _i(r.get('peradicnot')),
+                'per_ferias_1_3'              : _i(r.get('perferias3')),
+                'per_insalubridade'           : _i(r.get('insalubridade')),
+                'per_periculosidade'          : _i(r.get('periculosidade')),
+            }
+            resp = supabase.table('tab_aux_sindicatos').insert(payload).execute()
+            if resp.data:
+                grav += 1
+                log.append(f"✓  {nome}  (CNPJ {payload['cnpj'] or '-'})")
+            else:
+                err += 1
+                log.append(f"✗  {nome}  sem retorno do Supabase (RLS ou constraint)")
+        except Exception as ex:
+            err += 1
+            log.append(f"✗  {nome}  {ex}")
+
+    if pulados:
+        log.append(f'ℹ  {pulados} sindicato(s) comum(ns) ignorado(s) (CNPJ {CNPJ_SIND_COMUM})')
     conn.close()
     return grav, err, log
 
@@ -37596,6 +37708,10 @@ def api_admin_imp_executar():
                     grav, err, log = _imp_movfix_f10(caminho, int(id_cliente))
                     resultados.append({'tabela': tabela, 'descricao': 'Movimentos Fixos',
                                         'gravados': grav, 'erros': err, 'log': log})
+                elif tl in ('tabsind', 'tabsindicato', 'tabsindicatos'):
+                    grav, err, log = _imp_sindicatos_f10(caminho, int(id_cliente))
+                    resultados.append({'tabela': tabela, 'descricao': 'Sindicatos',
+                                        'gravados': grav, 'erros': err, 'log': log})
                 else:
                     resultados.append({'tabela': tabela, 'descricao': tabela,
                                         'gravados': 0, 'erros': 0,
@@ -37653,6 +37769,7 @@ _IMP_ETAPAS_REVISAO = [
     ('11', 'Movimentos fixos',     'tabfix',      ['tabfix']),
     ('12', 'Histórico eSocial',    'tabesocial',  ['tabesocial']),
     ('13', 'Eventos (tab_eventos)', 'tabreg',     ['tabreg']),
+    ('14', 'Sindicatos',           'tabsind',     ['tabsind', 'tabsindicato', 'tabsindicatos']),
 ]
 
 
@@ -37747,6 +37864,157 @@ def api_admin_imp_revisar():
         'tabelas_encontradas': tabelas_encontradas,
         'resumo': {'ok': n_ok, 'avisos': n_aviso, 'bloqueios': n_bloqueio, 'total': len(itens)},
     })
+
+
+# =========================================================
+# ADMINISTRADOR — Emissão de NFS-e (lê clientes da tabNF no Access)
+# =========================================================
+def _ler_clientes_nf(caminho):
+    """Lê a tabela tabNF de um arquivo Access e retorna os clientes para NFS-e.
+    Detecção flexível de colunas (nomes variam entre bases).
+    Campos por cliente: codigo, nome, valor, empresas, funcionarios, mes."""
+    import pyodbc
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+    cur = conn.cursor()
+    tabelas = {t.table_name.lower(): t.table_name
+               for t in cur.tables(tableType='TABLE')
+               if not t.table_name.startswith('MSys')}
+    tabela = next((tabelas[c] for c in ('tabcli_nf', 'tabclinf', 'tabnf', 'tab_nf', 'nf',
+                                         'notasfiscais', 'tabnotafiscal', 'notafiscal')
+                   if c in tabelas), None)
+    if not tabela:
+        conn.close()
+        raise ValueError(f"Tabela TabCLI_NF não encontrada. Tabelas: {', '.join(sorted(tabelas))}")
+
+    cur.execute(f'SELECT * FROM [{tabela}] WHERE 1=0')
+    cols = {c[0].lower(): c[0] for c in cur.description}
+
+    def pick(*cands):
+        return next((cols[c] for c in cands if c in cols), None)
+
+    mapa = {
+        'codigo':       pick('codigo', 'cod', 'id', 'codcli', 'cliente', 'codcliente'),
+        'nome':         pick('nome', 'razaosocial', 'razao_social', 'nomecli', 'fantasia', 'cliente_nome'),
+        'valor':        pick('servico_valor', 'servicovalor', 'valor', 'vlr', 'valornf', 'vlrnf', 'vl', 'preco'),
+        'empresas':     pick('empresas', 'qtd_empresas', 'qtdempresas', 'nempresas', 'nemp'),
+        'funcionarios': pick('funcionarios', 'qtd_funcionarios', 'qtdfuncionarios', 'nfunc', 'funcs'),
+        'mes':          pick('mes', 'anomes', 'ano_mes', 'competencia', 'referencia'),
+    }
+    col_sit = pick('situacao', 'situ', 'status')
+    presentes = {k: v for k, v in mapa.items() if v}
+    if not presentes:
+        conn.close()
+        raise ValueError(f"Nenhuma coluna reconhecida em [{tabela}]. Colunas: {', '.join(sorted(cols))}")
+
+    chaves = list(presentes.keys())
+    sel_cols = [presentes[k] for k in chaves]
+    if col_sit:
+        sel_cols.append(col_sit)   # situacao vai como última coluna (só p/ filtrar)
+    sel_sql = ', '.join(f'[{c}]' for c in sel_cols)
+    cur.execute(f'SELECT {sel_sql} FROM [{tabela}]')
+
+    def _num(v):
+        # Servico_Valor vem em centavos no Access (827400 = R$ 8.274,00)
+        try:
+            return round(float(v) / 100.0, 2) if v not in (None, '') else None
+        except Exception:
+            return None
+
+    def _int(v):
+        try:
+            return int(float(v)) if v not in (None, '') else None
+        except Exception:
+            return None
+
+    registros = []
+    for row in cur.fetchall():
+        # ignora clientes com situacao = 'D' (excluído/desativado)
+        if col_sit and str(row[len(chaves)] or '').strip().upper() == 'D':
+            continue
+        r = {chaves[i]: row[i] for i in range(len(chaves))}
+        registros.append({
+            'codigo':       str(r.get('codigo') or '').strip(),
+            'nome':         str(r.get('nome') or '').strip(),
+            'valor':        _num(r.get('valor')),
+            'empresas':     _int(r.get('empresas')),
+            'funcionarios': _int(r.get('funcionarios')),
+            'mes':          str(r.get('mes') or '').strip(),
+        })
+    conn.close()
+    registros.sort(key=lambda x: (x['nome'] or x['codigo'] or '').lower())
+    return {'tabela': tabela, 'colunas': presentes, 'registros': registros}
+
+
+def _arquivo_nf():
+    """Resolve o arquivo Access que contém a TABNF a partir de PASTA_NF.
+    Aceita pasta (procura .accdb/.mdb, preferindo o que tem TABNF) ou arquivo direto.
+    Retorna o caminho ou None."""
+    p = PASTA_NF
+    candidatos = []
+    if p and os.path.isfile(p):
+        candidatos = [p]
+    elif p and os.path.isdir(p):
+        candidatos = [os.path.join(p, f) for f in sorted(os.listdir(p))
+                      if f.lower().endswith(('.accdb', '.mdb'))]
+    else:
+        for ext in ('.accdb', '.mdb'):
+            if p and os.path.isfile(p + ext):
+                candidatos.append(p + ext)
+    if not candidatos:
+        return None
+    if len(candidatos) == 1:
+        return candidatos[0]
+    # múltiplos arquivos: prefere o que realmente tem a tabela TABNF
+    try:
+        import pyodbc
+        for c in candidatos:
+            try:
+                conn = pyodbc.connect(f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={c};')
+                cur = conn.cursor()
+                nomes = {t.table_name.lower() for t in cur.tables(tableType='TABLE')}
+                conn.close()
+                if any(n in nomes for n in ('tabcli_nf', 'tabclinf', 'tabnf', 'tab_nf', 'nf')):
+                    return c
+            except Exception:
+                continue
+    except ImportError:
+        pass
+    return candidatos[0]
+
+
+@app.route('/admin_nf')
+def admin_nf():
+    if not session.get('logado'):
+        return redirect('/')
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return redirect('/menu')
+    return render_template('F10_Admin_NF.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''),
+                           pasta_nf=PASTA_NF)
+
+
+@app.route('/api/admin_nf/clientes')
+def api_admin_nf_clientes():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not PASTA_NF:
+        return jsonify({'ok': False, 'msg': 'Local do TABNF não configurado (PASTA_NF no app.py).'})
+    try:
+        import pyodbc  # noqa
+    except ImportError:
+        return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
+    caminho = _arquivo_nf()
+    if not caminho:
+        return jsonify({'ok': False, 'msg': f'Nenhum arquivo .accdb/.mdb encontrado em: {PASTA_NF}'})
+    try:
+        info = _ler_clientes_nf(caminho)
+        return jsonify({'ok': True, 'clientes': info['registros'], 'total': len(info['registros']),
+                        'tabela': info['tabela'], 'colunas': info['colunas'],
+                        'arquivo': os.path.basename(caminho)})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
 
 
 # =========================================================

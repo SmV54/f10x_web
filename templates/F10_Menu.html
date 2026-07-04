@@ -712,6 +712,9 @@ const modulos = {
             { nome: 'Migração', itens: [
                 { icone: '📦', nome: 'Importar do Folha 10 Antigo', href: '/admin_importar_f10', ok: true },
             ]},
+            { nome: 'Notas Fiscais', itens: [
+                { icone: '🧾', nome: 'Emitir NFS-e', href: '/admin_nf', ok: true },
+            ]},
             { nome: 'eSocial', itens: [
                 { icone: '📄', nome: 'Visualizar XML', href: '/admin_esocial_xml', ok: true },
             ]},
@@ -832,7 +835,7 @@ function selecionarModulo(cardEl, id) {
             const btn = document.createElement('button');
             btn.className = 'nav-secao-btn';
             btn.textContent = s.nome;
-            btn.onclick = () => selecionarSecao(i);
+            btn.onclick = () => clicarSecao(i);
             navSecoes.appendChild(btn);
         });
         // Seção inicial padrão: 0; no eSocial, escolhe conforme o status da folha
@@ -849,6 +852,30 @@ function selecionarModulo(cardEl, id) {
     }
 
     navPanel.style.display = 'block';
+}
+
+function itemBloqueado(item) {
+    const folhaAberta  = FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X';
+    const folhaFechada = FOLHA_SITUACAO === 'F';
+    if (item.bloqueioFolha === 'fechada' && !folhaFechada) return true;
+    if ((item.bloqueioFolha === 'aberta' || item.bloqueioFolha === true) && !folhaAberta) return true;
+    if (item.requerS1299 && !S1299_ENVIADO) return true;
+    return false;
+}
+
+// Clique numa seção (etapa 2). Se a seção tem um único item acionável,
+// dispara direto a tarefa sem exigir mais um clique. Com 2+ itens, mostra a lista.
+function clicarSecao(idx) {
+    const secao = (modulos[moduloAtivo].secoes || [])[idx];
+    const itens = (secao && secao.itens) || [];
+    if (itens.length === 1) {
+        const it = itens[0];
+        if (it.ok && !it.loading && it.href && it.href !== '#' && !itemBloqueado(it)) {
+            window.location.href = it.href;
+            return;
+        }
+    }
+    selecionarSecao(idx);
 }
 
 function selecionarSecao(idx) {
