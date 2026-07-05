@@ -262,7 +262,9 @@ function render() {
 
             const xml = (r.status === 'EMITIDA' && r.tem_xml)
                 ? `<a class="link-xml" href="/api/admin_nf/pdf?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Abrir DANFSE em PDF">PDF</a>
-                   <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Ver XML">XML</a>`
+                   <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Ver XML">XML</a>
+                   <a class="link-xml" href="#" style="color:#128C3E;font-weight:700;" title="Enviar DANFSE por WhatsApp"
+                      onclick="enviarWaConsulta('${esc(r.chave)}','${esc(String(r.cod))}',this);return false;">📲 WhatsApp</a>`
                 : '—';
 
             return `<tr>
@@ -279,6 +281,31 @@ function render() {
         }).join('');
     }
     document.getElementById('rodape').textContent = `${lista.length} de ${REGS.length} registro(s)`;
+}
+
+// Envia o DANFSe por WhatsApp para o Celular_Whatsapp do cliente (Z-API).
+function enviarWaConsulta(chave, cod, el) {
+    if (el && el.dataset.enviando === '1') return;
+    const orig = el ? el.innerHTML : '';
+    if (el) { el.dataset.enviando = '1'; el.innerHTML = '⏳ Enviando…'; el.style.pointerEvents = 'none'; }
+    fetch('/api/admin_nf/whatsapp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave: chave, cod_cli: cod }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (!el) return;
+        el.dataset.enviando = '';
+        if (d.ok) { el.innerHTML = '✅ Enviado'; el.style.color = '#15803d'; el.title = d.msg || ''; }
+        else {
+            el.innerHTML = '📲 WhatsApp'; el.style.pointerEvents = ''; el.title = d.msg || '';
+            alert(d.msg || 'Falha ao enviar por WhatsApp.');
+        }
+    })
+    .catch(ex => {
+        if (el) { el.dataset.enviando = ''; el.innerHTML = '📲 WhatsApp'; el.style.pointerEvents = ''; }
+        alert('Erro de comunicação: ' + String(ex));
+    });
 }
 
 document.addEventListener('DOMContentLoaded', carregar);

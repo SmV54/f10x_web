@@ -539,9 +539,13 @@ function emitir() {
                      <div>Chave de acesso:</div>
                      <div style="font-family:var(--mono);font-size:12px;word-break:break-all;">${esc(d.chave)}</div>
                      <div style="margin-top:6px;font-size:12px;">nDPS ${esc(d.ndps)}${d.pdf ? ' · PDF salvo em C:\\Dropbox\\NFs\\' + esc(d.pdf) : ''}</div>
-                     <div style="margin-top:8px;">
+                     <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                        <a href="/api/admin_nf/pdf?chave=${encodeURIComponent(d.chave)}" target="_blank"
                           style="font-size:12px;font-weight:700;color:#15803d;text-decoration:none;border:1px solid #86efac;border-radius:6px;padding:4px 10px;">📄 Abrir PDF (DANFSE)</a>
+                       <button type="button" id="btnWa"
+                          onclick="enviarWhatsApp('${esc(d.chave)}', '${esc(String(c.codigo))}', this)"
+                          style="font-size:12px;font-weight:700;color:#fff;background:#25D366;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;">📲 Enviar por WhatsApp</button>
+                       <span id="waMsg" style="font-size:12px;"></span>
                      </div>
                    </div>${al}
                  </div>`;
@@ -560,6 +564,31 @@ function emitir() {
         rb.innerHTML = `<div class="aviso-info" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">Erro de comunicação: ${esc(String(ex))}</div>`;
     })
     .finally(() => { btn.disabled = false; btn.innerHTML = txtOrig; });
+}
+
+// Envia o DANFSe por WhatsApp para o Celular_Whatsapp do cliente (Z-API).
+function enviarWhatsApp(chave, cod, btnEl) {
+    const msg = document.getElementById('waMsg');
+    const orig = btnEl ? btnEl.innerHTML : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '⏳ Enviando…'; }
+    if (msg) { msg.textContent = ''; msg.style.color = '#14532d'; }
+    fetch('/api/admin_nf/whatsapp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave: chave, cod_cli: cod }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (msg) {
+            msg.style.color = d.ok ? '#15803d' : '#991b1b';
+            msg.textContent = (d.ok ? '✅ ' : '⚠️ ') + (d.msg || (d.ok ? 'Enviado.' : 'Falha no envio.'));
+        }
+        if (btnEl && d.ok) { btnEl.style.background = '#86efac'; btnEl.innerHTML = '✅ Enviado'; }
+        else if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = orig; }
+    })
+    .catch(ex => {
+        if (msg) { msg.style.color = '#991b1b'; msg.textContent = '⚠️ Erro: ' + String(ex); }
+        if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = orig; }
+    });
 }
 
 // Mês/ano atual no formato MM/AAAA (default da data de processamento).

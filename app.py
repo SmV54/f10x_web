@@ -959,6 +959,40 @@ def _enviar_whatsapp_texto(destinatario, mensagem):
         print(f"[ZAPI/intencao] Excecao: {e}")
         return False, str(e)
 
+def _enviar_whatsapp_documento(destinatario, pdf_bytes, filename, caption=""):
+    """Envia um PDF como documento via Z-API (send-document/pdf), em base64.
+    Verifica a conexao antes (mesma logica de _enviar_whatsapp_texto).
+    Retorna (ok, erro)."""
+    try:
+        if not ZAPI_INSTANCE or not ZAPI_TOKEN or not ZAPI_CLIENT_TOKEN:
+            return False, "Z-API nao configurada"
+        conectada, status_info = _zapi_conectada()
+        if not conectada:
+            err = status_info.get("error") or "instancia Z-API desconectada do WhatsApp"
+            return False, (f"WhatsApp indisponivel (instancia Z-API desconectada). "
+                           f"Reconecte em https://app.z-api.io. Detalhe: {err}")
+        telefone = normalizar_telefone(destinatario)
+        b64 = base64.b64encode(pdf_bytes).decode("ascii")
+        url = (f"https://api.z-api.io/instances/{ZAPI_INSTANCE}/token/{ZAPI_TOKEN}"
+               f"/send-document/pdf")
+        headers = {
+            "Client-Token":  ZAPI_CLIENT_TOKEN,
+            "Content-Type":  "application/json",
+            "User-Agent":    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        }
+        payload = {"phone": telefone, "document": f"data:application/pdf;base64,{b64}",
+                   "fileName": filename}
+        if caption:
+            payload["caption"] = caption
+        r = requests.post(url, headers=headers, json=payload, timeout=60)
+        print(f"[ZAPI/doc] {telefone} status={r.status_code} resp={r.text[:200]}")
+        if r.status_code not in (200, 201):
+            return False, f"HTTP {r.status_code}: {r.text[:200]}"
+        return True, ""
+    except Exception as e:
+        print(f"[ZAPI/doc] Excecao: {e}")
+        return False, str(e)
+
 def _pix_tlv(id_, value):
     return f"{id_}{len(value):02d}{value}"
 
@@ -38081,6 +38115,23 @@ def _nfse_cliente_por_cod(caminho, cod):
     }
 
 
+def _nfse_celular_por_cod(caminho, cod):
+    """Retorna (Celular_Whatsapp, RazaoSocial) do cliente na TabCLI_NF pelo CodCLI."""
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+        cur = conn.cursor()
+        cur.execute("SELECT Celular_Whatsapp, RazaoSocial FROM TabCLI_NF WHERE CodCLI = ?", int(cod))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return "", ""
+        return str(row[0] or "").strip(), str(row[1] or "").strip()
+    except Exception:
+        return "", ""
+
+
 _NFSE_CEP_CACHE = {}
 
 
@@ -38526,6 +38577,68 @@ def api_admin_nf_pdf():
     disp = 'attachment' if baixar else 'inline'
     return Response(pdf, mimetype='application/pdf',
                     headers={'Content-Disposition': f'{disp}; filename="NFSe_{chave}.pdf"'})
+
+
+@app.route('/api/admin_nf/whatsapp', methods=['POST'])
+def api_admin_nf_whatsapp():
+    """Envia o DANFSe (PDF) para o Celular_Whatsapp do cliente via Z-API."""
+    if not session.get('logado'):
+        return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return jsonify({'ok': False, 'msg': 'Acesso restrito.'}), 403
+    import nfse_nacional as nfx
+    data = request.get_json(force=True) or {}
+    chave = _re_digits(data.get('chave', ''))
+    cod = data.get('cod_cli')
+    caminho = _arquivo_nf()
+    if not caminho or not chave or not cod:
+        return jsonify({'ok': False, 'msg': 'Dados insuficientes (chave/cliente).'})
+    arq_xml = os.path.join(os.path.dirname(caminho), "NFSe_XML", f"{chave}.xml")
+    if not os.path.isfile(arq_xml):
+        return jsonify({'ok': False, 'msg': 'XML da NFS-e não encontrado para esta chave.'})
+
+    celular, nome_cli = _nfse_celular_por_cod(caminho, cod)
+    cel_d = _re_digits(celular)
+    if (not cel_d) or set(cel_d) <= {'0'} or len(cel_d) < 10:
+        return jsonify({'ok': False, 'msg': 'Cliente sem Celular_Whatsapp válido na TabCLI_NF.'})
+
+    try:
+        with open(arq_xml, "r", encoding="utf-8") as f:
+            nfse_xml = f.read()
+        pdf = nfx.gerar_danfse_pdf(nfse_xml, chave)
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Falha ao gerar PDF: {ex}'})
+
+    numero = ''
+    try:
+        from lxml import etree as _et
+        _n = _et.fromstring(nfse_xml.encode('utf-8')).find(
+            ".//{http://www.sped.fazenda.gov.br/nfse}nNFSe")
+        if _n is not None and _n.text:
+            numero = re.sub(r"\D", "", _n.text)
+    except Exception:
+        pass
+
+    link = f"https://www.nfse.gov.br/consultapublica?tpc=1&chNFSe={chave}"
+    caption = ("Olá! Segue a sua Nota Fiscal de Serviço"
+               + (f" nº {numero}" if numero else "") + " emitida pela COMSIST.\n\n"
+               f"Consulta oficial (gov.br):\n{link}\n\n"
+               "Qualquer dúvida, estamos à disposição.")
+    filename = f"NFSe_{numero or chave}.pdf"
+
+    ok, err = _enviar_whatsapp_documento(cel_d, pdf, filename, caption)
+    try:
+        supabase.table("tab_log").insert({
+            "id_cliente": None, "id_empresa": None,
+            "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_WHATSAPP",
+            "observacao": f"NFS-e nº {numero} cod={cod} tel={cel_d} ok={ok} {('' if ok else err)}"[:200],
+            "ano_mes": None, "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+        }).execute()
+    except Exception:
+        pass
+    if not ok:
+        return jsonify({'ok': False, 'msg': f'Não foi possível enviar: {err}'})
+    return jsonify({'ok': True, 'msg': f'NFS-e enviada por WhatsApp para {nome_cli or cod} ({cel_d}).'})
 
 
 @app.route('/admin_nf_consulta')
