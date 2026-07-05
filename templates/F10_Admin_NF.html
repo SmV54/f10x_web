@@ -222,9 +222,28 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
             <span class="topo-versao">Versão: {{ versao }}</span>
         </div>
+        <button class="btn-voltar" onclick="abrirModalWa()">📲 Enviar NF por WhatsApp</button>
         <button class="btn-voltar" onclick="window.location.href='/admin_nf_consulta'">📋 Emitidas</button>
         <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
     </div>
+</div>
+
+<!-- ══ MODAL: enviar NF emitida por WhatsApp ══ -->
+<div id="modalWa" onclick="if(event.target===this)fecharModalWa()"
+     style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.55);
+            align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;">
+  <div style="background:#fff;border-radius:12px;max-width:780px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #e2e8f0;">
+      <div style="font-size:16px;font-weight:700;color:#0f172a;">📲 Enviar NF emitida por WhatsApp</div>
+      <button onclick="fecharModalWa()" style="border:none;background:transparent;font-size:20px;cursor:pointer;color:#64748b;">✕</button>
+    </div>
+    <div style="padding:14px 18px;">
+      <input id="waBusca" type="text" placeholder="🔍 Buscar por cliente, nº ou competência…" autocomplete="off"
+             oninput="renderModalWa()"
+             style="width:100%;padding:9px 12px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:10px;">
+      <div id="waLista" style="max-height:60vh;overflow:auto;"></div>
+    </div>
+  </div>
 </div>
 
 <div class="layout">
@@ -300,15 +319,15 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                         <div class="preview-nf-texto" id="previewNFTexto">—</div>
                     </div>
 
-                    <div class="form-row" style="margin-top:16px;">
+                    <div class="form-row" style="margin-top:16px; opacity:.6;">
                         <label class="form-label">Ambiente de emissão</label>
                         <div style="display:flex; gap:18px; align-items:center; margin-top:4px;">
-                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                <input type="radio" name="ambiente" value="2" style="accent-color:var(--accent);">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:not-allowed;">
+                                <input type="radio" name="ambiente" value="2" disabled style="accent-color:var(--accent);">
                                 Produção Restrita (teste)
                             </label>
-                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                <input type="radio" name="ambiente" value="1" checked style="accent-color:#dc2626;">
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:not-allowed;">
+                                <input type="radio" name="ambiente" value="1" checked disabled style="accent-color:#dc2626;">
                                 Produção (nota real)
                             </label>
                         </div>
@@ -579,6 +598,66 @@ function enviarWaAnterior(btnEl) {
     })
     .catch(ex => { if (msg) { msg.style.color = '#991b1b'; msg.textContent = '⚠️ Erro: ' + String(ex); } })
     .finally(() => { if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = orig; } });
+}
+
+// ── Modal "Enviar NF emitida por WhatsApp" ──
+function abrirModalWa() {
+    document.getElementById('modalWa').style.display = 'flex';
+    document.getElementById('waBusca').value = '';
+    document.getElementById('waLista').innerHTML =
+        '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:13px;">Carregando…</div>';
+    carregarEmitidas(renderModalWa);   // sempre busca a lista atualizada
+    setTimeout(() => { const b = document.getElementById('waBusca'); if (b) b.focus(); }, 60);
+}
+function fecharModalWa() { document.getElementById('modalWa').style.display = 'none'; }
+
+// Renderiza a lista de NFs emitidas no modal (filtrada pela busca).
+function renderModalWa() {
+    const cont = document.getElementById('waLista');
+    const termo = (document.getElementById('waBusca').value || '').toLowerCase().trim();
+    const base = (EMITIDAS || []).filter(r => r.status === 'EMITIDA' && r.tem_xml && r.chave);
+    const lista = base.filter(r => !termo ||
+        String(r.numero || '').includes(termo) ||
+        (r.cliente || '').toLowerCase().includes(termo) ||
+        String(r.cod || '').includes(termo) ||
+        (r.competencia || '').toLowerCase().includes(termo));
+    if (!lista.length) {
+        cont.innerHTML = '<div style="padding:18px;text-align:center;color:#94a3b8;font-size:13px;">Nenhuma NF emitida encontrada.</div>';
+        return;
+    }
+    cont.innerHTML = lista.slice(0, 300).map(r => {
+        const act = temWa(r.celular)
+            ? `<button onclick="waModalEnviar('${esc(r.chave)}','${esc(String(r.cod))}',this)"
+                 style="font-size:12px;font-weight:700;color:#fff;background:#25D366;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;white-space:nowrap;">📲 Enviar</button>`
+            : `<span title="Cliente sem Celular_Whatsapp na TabNF" style="font-size:11px;color:#cbd5e1;white-space:nowrap;">📲 s/ WhatsApp</span>`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #f1f5f9;">
+            <div style="flex:1;min-width:0;font-size:13px;">
+              <b>nº ${esc(r.numero || '—')}</b> · ${esc(r.cliente || ('cód ' + r.cod))}
+              <span style="color:#64748b;">· ${esc(r.competencia || '')} · ${fmtBRL(r.valor)}</span>
+              <div style="font-size:11px;color:#94a3b8;">${r.ambiente === 1 ? 'Produção' : 'Restrita'} · ${esc(r.data_hora || '')}</div>
+            </div>
+            ${act}
+            <span class="waRowMsg" style="font-size:11px;min-width:70px;text-align:right;"></span>
+          </div>`;
+    }).join('');
+}
+
+// Envia uma NF do modal por WhatsApp.
+function waModalEnviar(chave, cod, btn) {
+    const msg = btn.parentElement.querySelector('.waRowMsg');
+    const orig = btn.innerHTML;
+    btn.disabled = true; btn.innerHTML = '⏳…';
+    fetch('/api/admin_nf/whatsapp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave: chave, cod_cli: cod }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (msg) { msg.style.color = d.ok ? '#15803d' : '#991b1b'; msg.textContent = d.ok ? '✅ Enviado' : '⚠️ Falhou'; msg.title = d.msg || ''; }
+        if (d.ok) { btn.style.background = '#86efac'; btn.innerHTML = '✅ Enviado'; }
+        else { btn.disabled = false; btn.innerHTML = orig; alert(d.msg || 'Falha ao enviar por WhatsApp.'); }
+    })
+    .catch(ex => { btn.disabled = false; btn.innerHTML = orig; alert('Erro de comunicação: ' + String(ex)); });
 }
 
 // Emite a NFS-e do cliente ativo (envia o DPS ao Sistema Nacional).
