@@ -320,6 +320,16 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                     </button>
 
                     <div id="emitResultado" style="display:none; margin-top:16px;"></div>
+
+                    <div id="waAnteriorBox" style="display:none; margin-top:18px; padding-top:14px; border-top:1px dashed #cbd5e1;">
+                        <label class="form-label">Reenviar uma NF anterior deste cliente por WhatsApp</label>
+                        <div style="display:flex; gap:8px; align-items:center; margin-top:6px; flex-wrap:wrap;">
+                            <select id="selNfAnterior" class="form-input" style="min-width:300px; max-width:100%;"></select>
+                            <button type="button" id="btnWaAnterior" onclick="enviarWaAnterior(this)"
+                                    style="font-size:12px;font-weight:700;color:#fff;background:#25D366;border:none;border-radius:6px;padding:7px 12px;cursor:pointer;">📲 Enviar por WhatsApp</button>
+                            <span id="waAnteriorMsg" style="font-size:12px;"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -488,6 +498,61 @@ function selecionar(idx) {
     document.getElementById('btnEmitir').disabled = false;
     const rb = document.getElementById('emitResultado');
     rb.style.display = 'none'; rb.innerHTML = '';
+
+    // NFs anteriores deste cliente (para reenvio por WhatsApp).
+    if (EMITIDAS === null) carregarEmitidas(() => popularNfsAnteriores(c.codigo));
+    else popularNfsAnteriores(c.codigo);
+}
+
+// Cache das notas emitidas (lista completa; filtrada por cliente na hora).
+let EMITIDAS = null;
+function carregarEmitidas(cb) {
+    fetch('/api/admin_nf/emitidas')
+        .then(r => r.json())
+        .then(d => { EMITIDAS = (d && d.ok && Array.isArray(d.registros)) ? d.registros : []; if (cb) cb(); })
+        .catch(() => { EMITIDAS = []; if (cb) cb(); });
+}
+
+// Popula o seletor com as NFs EMITIDAS (com XML) do cliente informado.
+function popularNfsAnteriores(cod) {
+    const box = document.getElementById('waAnteriorBox');
+    const sel = document.getElementById('selNfAnterior');
+    const msg = document.getElementById('waAnteriorMsg');
+    if (msg) msg.textContent = '';
+    const lista = (EMITIDAS || [])
+        .filter(r => String(r.cod) === String(cod) && r.status === 'EMITIDA' && r.tem_xml && r.chave)
+        .sort((a, b) => (parseInt(b.numero || 0, 10) - parseInt(a.numero || 0, 10)));
+    if (!lista.length) { box.style.display = 'none'; sel.innerHTML = ''; return; }
+    sel.dataset.cod = String(cod);
+    sel.innerHTML = lista.map(r =>
+        `<option value="${esc(r.chave)}">nº ${esc(r.numero || '—')} · ${esc(r.competencia || '')} · ${esc(r.data_hora || '')} · ${fmtBRL(r.valor)}</option>`
+    ).join('');
+    box.style.display = '';
+}
+
+// Reenvia por WhatsApp a NF anterior selecionada no seletor.
+function enviarWaAnterior(btnEl) {
+    const sel = document.getElementById('selNfAnterior');
+    const msg = document.getElementById('waAnteriorMsg');
+    const chave = sel.value;
+    const cod = sel.dataset.cod;
+    if (!chave) { if (msg) { msg.style.color = '#991b1b'; msg.textContent = 'Selecione uma NF.'; } return; }
+    const orig = btnEl ? btnEl.innerHTML : '';
+    if (btnEl) { btnEl.disabled = true; btnEl.innerHTML = '⏳ Enviando…'; }
+    if (msg) { msg.style.color = '#14532d'; msg.textContent = ''; }
+    fetch('/api/admin_nf/whatsapp', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chave: chave, cod_cli: cod }),
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (msg) {
+            msg.style.color = d.ok ? '#15803d' : '#991b1b';
+            msg.textContent = (d.ok ? '✅ ' : '⚠️ ') + (d.msg || (d.ok ? 'Enviado.' : 'Falha no envio.'));
+        }
+    })
+    .catch(ex => { if (msg) { msg.style.color = '#991b1b'; msg.textContent = '⚠️ Erro: ' + String(ex); } })
+    .finally(() => { if (btnEl) { btnEl.disabled = false; btnEl.innerHTML = orig; } });
 }
 
 // Emite a NFS-e do cliente ativo (envia o DPS ao Sistema Nacional).
@@ -549,6 +614,8 @@ function emitir() {
                      </div>
                    </div>${al}
                  </div>`;
+            // Atualiza a lista de NFs anteriores (inclui a que acabou de emitir).
+            carregarEmitidas(() => { if (clienteAtivo != null) popularNfsAnteriores(CLIENTES[clienteAtivo].codigo); });
         } else {
             const lst = (d.erros && d.erros.length)
                 ? '<ul style="margin:6px 0 0 18px;font-size:12px;">' + d.erros.map(e => `<li>${esc(e)}</li>`).join('') + '</ul>' : '';
