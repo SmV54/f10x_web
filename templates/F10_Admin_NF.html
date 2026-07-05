@@ -304,11 +304,11 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                         <label class="form-label">Ambiente de emissão</label>
                         <div style="display:flex; gap:18px; align-items:center; margin-top:4px;">
                             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                <input type="radio" name="ambiente" value="2" checked style="accent-color:var(--accent);">
+                                <input type="radio" name="ambiente" value="2" style="accent-color:var(--accent);">
                                 Produção Restrita (teste)
                             </label>
                             <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-                                <input type="radio" name="ambiente" value="1" style="accent-color:#dc2626;">
+                                <input type="radio" name="ambiente" value="1" checked style="accent-color:#dc2626;">
                                 Produção (nota real)
                             </label>
                         </div>
@@ -587,12 +587,16 @@ function atualizarPreview() {
     const data = (document.getElementById('fDataProc').value || '').trim() || '__/____';
     let texto = 'Processamento da folha de pagamento ' + conector + ' ' + data;
 
-    // Quantidades informadas entram logo após o mês (só quando o campo estiver visível).
-    const nEmp  = parseInt((document.getElementById('fEmpresas').value || '').replace(/\D/g, ''), 10);
-    const nFunc = parseInt((document.getElementById('fFuncionarios').value || '').replace(/\D/g, ''), 10);
+    // Quantidades entram logo após o mês, MAS só quando o cliente NÃO tem valor
+    // pré-gravado. Com valor (contrato antigo) a discriminação não referencia
+    // empresas/funcionários — mesmo que os inputs ocultos ainda tenham resquício.
     const partes = [];
-    if (Number.isFinite(nEmp)  && nEmp  > 0) partes.push(nEmp  + (nEmp  === 1 ? ' empresa'     : ' empresas'));
-    if (Number.isFinite(nFunc) && nFunc > 0) partes.push(nFunc + (nFunc === 1 ? ' funcionário' : ' funcionários'));
+    if (!temValor) {
+        const nEmp  = parseInt((document.getElementById('fEmpresas').value || '').replace(/\D/g, ''), 10);
+        const nFunc = parseInt((document.getElementById('fFuncionarios').value || '').replace(/\D/g, ''), 10);
+        if (Number.isFinite(nEmp)  && nEmp  > 0) partes.push(nEmp  + (nEmp  === 1 ? ' empresa'     : ' empresas'));
+        if (Number.isFinite(nFunc) && nFunc > 0) partes.push(nFunc + (nFunc === 1 ? ' funcionário' : ' funcionários'));
+    }
     if (partes.length) texto += ', referente a ' + partes.join(' e ');
 
     document.getElementById('previewNFTexto').textContent = texto;

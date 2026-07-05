@@ -424,30 +424,102 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     t_mail = g(f"{dps}/{{}}toma/{{}}email")
     desc   = g(f"{dps}/{{}}serv/{{}}cServ/{{}}xDescServ")
     ctribnac = g(f"{dps}/{{}}serv/{{}}cServ/{{}}cTribNac")
-    vserv  = g(f"{dps}/{{}}serv/{{}}valores/{{}}vServPrest/{{}}vServ")
+    # OBS: <valores> fica sob infDPS (irmão de <serv>), não dentro de <serv>.
+    vserv  = g(f"{dps}/{{}}valores/{{}}vServPrest/{{}}vServ")
     vliq   = g(f"{inf}/{{}}valores/{{}}vLiq") or vserv
-    ret    = g(f"{dps}/{{}}serv/{{}}valores/{{}}trib/{{}}tribMun/{{}}tpRetISSQN")
-    ptribsn = g(f"{dps}/{{}}serv/{{}}valores/{{}}trib/{{}}totTrib/{{}}pTotTribSN")
+    ret    = g(f"{dps}/{{}}valores/{{}}trib/{{}}tribMun/{{}}tpRetISSQN")
+    ptribsn = g(f"{dps}/{{}}valores/{{}}trib/{{}}totTrib/{{}}pTotTribSN")
 
     def dt(s):
         return f"{s[8:10]}/{s[5:7]}/{s[0:4]} {s[11:16]}" if len(s) >= 16 else s
     def comp(s):
         return f"{s[5:7]}/{s[0:4]}" if len(s) >= 7 else s
 
+    # ── campos adicionais para o layout oficial DANFSe v1.0 ──
+    ndps     = g(f"{dps}/{{}}nDPS")
+    serie    = g(f"{dps}/{{}}serie")
+    dhemidps = g(f"{dps}/{{}}dhEmi")
+    e_fone   = g(f"{inf}/{{}}emit/{{}}fone")
+    ctribmun = g(f"{dps}/{{}}serv/{{}}cServ/{{}}cTribMun")
+    xtribmun = g(f"{inf}/{{}}xTribMun") or xtrib
+    cnbs     = g(f"{dps}/{{}}serv/{{}}cServ/{{}}cNBS")
+    loc_prest = g(f"{inf}/{{}}xLocPrestacao") or loc_emi
+    t_im     = g(f"{dps}/{{}}toma/{{}}IM")
+    opsimp   = g(f"{dps}/{{}}prest/{{}}regTrib/{{}}opSimpNac")
+    regapsn  = g(f"{dps}/{{}}prest/{{}}regTrib/{{}}regApTribSN")
+    regesp   = g(f"{dps}/{{}}prest/{{}}regTrib/{{}}regEspTrib")
+    tribissqn = g(f"{dps}/{{}}valores/{{}}trib/{{}}tribMun/{{}}tribISSQN")
+
+    from xml.sax.saxutils import escape as _xesc
+    def esc(x):
+        return _xesc(str(x if x not in (None, "") else "-"))
+    def dtsec(s):    # data + hora com segundos
+        return f"{s[8:10]}/{s[5:7]}/{s[0:4]} {s[11:19]}" if len(s) >= 19 else dt(s)
+    def data(s):     # só data dd/mm/aaaa
+        return f"{s[8:10]}/{s[5:7]}/{s[0:4]}" if len(s) >= 10 else s
+    def ctrib(c):    # 010301 -> 01.03.01
+        c = re.sub(r"\D", "", c or "")
+        return ".".join([c[0:2], c[2:4], c[4:6]]) if len(c) >= 6 else c
+
+    OPSIMP = {"1": "Não Optante",
+              "2": "Optante - Microempreendedor Individual (MEI)",
+              "3": "Optante - Microempresa ou Empresa de Pequeno Porte (ME/EPP)"}
+    REGAP  = {"1": "Regime de apuração dos tributos federais e municipal pelo Simples Nacional",
+              "2": "Regime de apuração dos tributos federais pelo SN e ISSQN por fora do SN",
+              "3": "Emitente da NFS-e não optante pelo Simples Nacional"}
+    REGESP = {"0": "Nenhum", "1": "Ato Cooperado", "2": "Estimativa",
+              "3": "Microempresa Municipal", "4": "Notário ou Registrador",
+              "5": "Profissional Autônomo", "6": "Sociedade de Profissionais"}
+    TRIBISS = {"1": "Operação Tributável", "2": "Exportação de Serviço",
+               "3": "Não Incidência", "4": "Imunidade",
+               "5": "Exigibilidade Suspensa por Decisão Judicial",
+               "6": "Exigibilidade Suspensa por Processo Administrativo"}
+    RETISS = {"1": "Não Retido", "2": "Retido pelo Tomador", "3": "Retido pelo Intermediário"}
+
     ss = getSampleStyleSheet()
-    pN = ParagraphStyle('n', parent=ss['Normal'], fontSize=8, leading=10)
-    pB = ParagraphStyle('b', parent=pN, fontName='Helvetica-Bold')
-    pSmall = ParagraphStyle('s', parent=pN, fontSize=7, leading=8.5, textColor=colors.HexColor('#475569'))
-    pTitulo = ParagraphStyle('t', parent=ss['Normal'], fontSize=12.5, fontName='Helvetica-Bold', leading=15)
-    pCenter = ParagraphStyle('c', parent=pSmall, alignment=1)
+    pFld  = ParagraphStyle('fld', parent=ss['Normal'], fontSize=7.5, leading=8.5)
+    pSec  = ParagraphStyle('sec', parent=ss['Normal'], fontSize=8.5, fontName='Helvetica-Bold', leading=10)
+    pSecC = ParagraphStyle('secc', parent=pSec, alignment=1)
+    pTit  = ParagraphStyle('tit', parent=ss['Normal'], fontSize=11, fontName='Helvetica-Bold', alignment=1, leading=13)
+    pSub  = ParagraphStyle('sub', parent=ss['Normal'], fontSize=8, alignment=1, leading=10)
+    pOrg  = ParagraphStyle('org', parent=ss['Normal'], fontSize=7.5, leading=9, alignment=2)
+    pLogo = ParagraphStyle('logo', parent=ss['Normal'], fontSize=22, fontName='Helvetica-Bold', leading=22)
+    pLogoSub = ParagraphStyle('logosub', parent=ss['Normal'], fontSize=5.6, leading=6.6, textColor=colors.HexColor('#0b7d3e'))
+    pQR   = ParagraphStyle('qr', parent=ss['Normal'], fontSize=5.8, leading=6.8, alignment=1, textColor=colors.HexColor('#333333'))
 
     buf = BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=14*mm, rightMargin=14*mm,
-                            topMargin=12*mm, bottomMargin=12*mm,
-                            title=f"NFSe {numero}")
+                            topMargin=8*mm, bottomMargin=8*mm, title=f"NFSe {numero}")
     el = []
-    AZUL = colors.HexColor('#1d4ed8'); CINZA = colors.HexColor('#f1f5f9')
-    LINHA = colors.HexColor('#cbd5e1')
+    W = 182 * mm
+    LINE = colors.black
+
+    def fld(label, value):
+        if label:
+            return Paragraph(f"<font size=6.5 color='#444444'><b>{esc(label)}</b></font><br/>"
+                             f"<font size=8>{esc(value)}</font>", pFld)
+        return Paragraph(f"<font size=8>{esc(value)}</font>", pFld)
+
+    def secbar(txt, centered=False):
+        t = Table([[Paragraph(esc(txt), pSecC if centered else pSec)]], colWidths=[W])
+        t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#d9d9d9')),
+            ('BOX',(0,0),(-1,-1),0.5,LINE),
+            ('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),
+            ('TOPPADDING',(0,0),(-1,-1),1.5),('BOTTOMPADDING',(0,0),(-1,-1),1.5)]))
+        return t
+
+    def block(titulo, rows, centered=False):
+        el.append(secbar(titulo, centered))
+        for r in rows:
+            cells = [fld(l, v) for (l, v) in r]
+            n = len(cells)
+            t = Table([cells], colWidths=[W / n] * n)
+            t.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),
+                ('BOX',(0,0),(-1,-1),0.5,LINE),
+                ('INNERGRID',(0,0),(-1,-1),0.3,colors.HexColor('#bfbfbf')),
+                ('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),
+                ('TOPPADDING',(0,0),(-1,-1),1.6),('BOTTOMPADDING',(0,0),(-1,-1),1.6)]))
+            el.append(t)
 
     # QR Code — consulta pública oficial da NFS-e pela chave (gov.br)
     from reportlab.graphics.barcode.qr import QrCodeWidget
@@ -456,99 +528,132 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     url_consulta = f"https://www.nfse.gov.br/consultapublica?tpc=1&chNFSe={chave_d}"
     _qr = QrCodeWidget(url_consulta, barLevel='M')
     _b = _qr.getBounds(); _qw = _b[2] - _b[0]; _qh = _b[3] - _b[1]
-    _SZ = 26 * mm
+    _SZ = 24 * mm
     qr_draw = Drawing(_SZ, _SZ, transform=[_SZ / _qw, 0, 0, _SZ / _qh, 0, 0])
     qr_draw.add(_qr)
 
-    # Cabeçalho: identificação (esq.) + QR (dir.)
-    ident = Table([
-        [Paragraph("NOTA FISCAL DE SERVIÇOS ELETRÔNICA — NFS-e", pTitulo)],
-        [Paragraph("<font size=8 color='#475569'>Documento Auxiliar da NFS-e (DANFSe) · Padrão Nacional</font>", pN)],
-        [Paragraph(f"<b>Número da NFS-e:</b> {numero}&nbsp;&nbsp;·&nbsp;&nbsp;"
-                   f"<b>Competência:</b> {comp(dcompet)}", pN)],
-        [Paragraph(f"<b>Emissão:</b> {dt(dhproc)}&nbsp;&nbsp;·&nbsp;&nbsp;"
-                   f"<b>Município gerador:</b> {loc_emi}", pN)],
-    ], colWidths=[150*mm])
-    ident.setStyle(TableStyle([('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
-        ('TOPPADDING',(0,0),(-1,-1),1),('BOTTOMPADDING',(0,0),(-1,-1),1),
-        ('BOTTOMPADDING',(0,1),(0,1),5)]))
-    qr_cell = Table([[qr_draw], [Paragraph("Consulta oficial<br/>gov.br", pCenter)]], colWidths=[30*mm])
-    qr_cell.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER'),('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+    # ── Cabeçalho: logo (texto) · título · órgão emissor ──
+    logo_cell = Table([[Paragraph("NFS<font color='#0b7d3e'>e</font>", pLogo)],
+                       [Paragraph("Nota Fiscal de<br/>Serviço eletrônica", pLogoSub)]],
+                      colWidths=[38*mm])
+    logo_cell.setStyle(TableStyle([('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
         ('TOPPADDING',(0,0),(-1,-1),0),('BOTTOMPADDING',(0,0),(-1,-1),0)]))
-    cab = Table([[ident, qr_cell]], colWidths=[150*mm, 32*mm])
-    cab.setStyle(TableStyle([
-        ('VALIGN', (0,0), (0,0), 'TOP'), ('VALIGN', (1,0), (1,0), 'MIDDLE'),
-        ('BOX', (0,0), (-1,-1), 1.2, AZUL),
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#eff6ff')),
-        ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),
-        ('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7),
-    ]))
-    el.append(cab)
-    el.append(Spacer(1, 3))
-    # Chave de acesso
-    ch = Table([[Paragraph("<b>CHAVE DE ACESSO DA NFS-e</b>  "
-                           "<font color='#64748b'>(consulte em www.nfse.gov.br/consultapublica)</font>", pSmall)],
-                [Paragraph(f"<font face='Courier' size=9.5>{_fmt_chave(chave)}</font>", pN)]],
-               colWidths=[182*mm])
-    ch.setStyle(TableStyle([('BOX',(0,0),(-1,-1),0.7,LINHA),('BACKGROUND',(0,0),(-1,-1),CINZA),
-        ('LEFTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
-    el.append(ch); el.append(Spacer(1, 6))
+    tit_cell = Table([[Paragraph("DANFSe v1.0", pTit)],
+                      [Paragraph("Documento Auxiliar da NFS-e", pSub)]], colWidths=[100*mm])
+    _mail_org = "faleconosco@recife.pe.gov.br" if "recife" in loc_emi.lower() else ""
+    org_cell = Paragraph(f"<b>Prefeitura do {esc(loc_emi)}</b><br/>Secretaria de Finanças"
+                         + (f"<br/>{_mail_org}" if _mail_org else ""), pOrg)
+    hdr = Table([[logo_cell, tit_cell, org_cell]], colWidths=[40*mm, 100*mm, 42*mm])
+    hdr.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('BOX',(0,0),(-1,-1),0.8,LINE),
+        ('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
+        ('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),3)]))
+    el.append(hdr)
 
-    def bloco(titulo, linhas):
-        dados = [[Paragraph(f"<b>{titulo}</b>", pSmall)]]
-        for lab, val in linhas:
-            dados.append([Paragraph(f"<b>{lab}:</b> {val}", pN) if lab else Paragraph(val, pN)])
-        t = Table(dados, colWidths=[182*mm])
-        t.setStyle(TableStyle([
-            ('BOX',(0,0),(-1,-1),0.7,LINHA),
-            ('BACKGROUND',(0,0),(0,0),colors.HexColor('#e2e8f0')),
-            ('LEFTPADDING',(0,0),(-1,-1),8),('RIGHTPADDING',(0,0),(-1,-1),8),
-            ('TOPPADDING',(0,0),(-1,-1),2.5),('BOTTOMPADDING',(0,0),(-1,-1),2.5),
-            ('TOPPADDING',(0,0),(0,0),4),('BOTTOMPADDING',(0,0),(0,0),4),
-        ]))
-        return t
+    # ── Identificação: chave + números (esq.) · QR (dir.) ──
+    idgrid = Table([
+        [fld("Número da NFS-e", numero), fld("Competência da NFS-e", data(dcompet)),
+         fld("Data e Hora da emissão da NFS-e", dtsec(dhproc))],
+        [fld("Número da DPS", ndps), fld("Série da DPS", serie),
+         fld("Data e Hora da emissão da DPS", dtsec(dhemidps))],
+    ], colWidths=[34*mm, 40*mm, 62*mm])
+    idgrid.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),
+        ('TOPPADDING',(0,0),(-1,-1),2),('BOTTOMPADDING',(0,0),(-1,-1),2)]))
+    left_col = Table([[Paragraph("<font size=6.5 color='#444444'><b>Chave de Acesso da NFS-e</b></font><br/>"
+                                 f"<font face='Courier' size=8.5>{esc(chave_d)}</font>", pFld)],
+                      [idgrid]], colWidths=[136*mm])
+    left_col.setStyle(TableStyle([('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),0),
+        ('TOPPADDING',(0,0),(0,0),3),('BOTTOMPADDING',(0,0),(0,0),3),
+        ('LINEBELOW',(0,0),(0,0),0.3,colors.HexColor('#bfbfbf')),
+        ('TOPPADDING',(0,1),(0,1),0),('BOTTOMPADDING',(0,1),(0,1),0)]))
+    qr_col = Table([[qr_draw],
+                    [Paragraph("A autenticidade desta NFS-e pode ser verificada pela leitura deste "
+                               "código QR ou pela consulta da chave de acesso no portal nacional da NFS-e", pQR)]],
+                   colWidths=[46*mm])
+    qr_col.setStyle(TableStyle([('ALIGN',(0,0),(-1,-1),'CENTER'),('VALIGN',(0,0),(0,0),'MIDDLE'),
+        ('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),
+        ('TOPPADDING',(0,0),(-1,-1),3),('BOTTOMPADDING',(0,0),(-1,-1),2)]))
+    ident = Table([[left_col, qr_col]], colWidths=[136*mm, 46*mm])
+    ident.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('BOX',(0,0),(-1,-1),0.8,LINE),('LINEBEFORE',(1,0),(1,0),0.5,LINE),
+        ('LEFTPADDING',(0,0),(-1,-1),0),('RIGHTPADDING',(0,0),(-1,-1),0),
+        ('TOPPADDING',(0,0),(-1,-1),0),('BOTTOMPADDING',(0,0),(-1,-1),0)]))
+    el.append(ident)
 
-    e_end = f"{e_lgr}, {e_nro}" + (f" — {e_cpl}" if e_cpl else "") + \
-            f" · {e_bai} · {loc_emi}/{e_uf} · CEP {_fmt_cep(e_cep)}"
-    el.append(bloco("PRESTADOR DE SERVIÇOS", [
-        ("Nome/Razão social", e_nome), ("CNPJ", _fmt_doc(e_cnpj) + f"    Inscr. Municipal: {e_im}"),
-        ("Endereço", e_end), ("E-mail", e_mail),
-    ]))
-    el.append(Spacer(1, 5))
-    t_end = (f"{t_lgr}, {t_nro}" + (f" — {t_cpl}" if t_cpl else "") +
-             (f" · {t_bai}" if t_bai else "") + (f" · CEP {_fmt_cep(t_cep)}" if t_cep else "")) \
-            if t_lgr else "(endereço não informado)"
-    el.append(bloco("TOMADOR DE SERVIÇOS", [
-        ("Nome/Razão social", t_nome or "—"),
-        ("CPF/CNPJ", _fmt_doc(t_doc)),
-        ("Endereço", t_end), ("E-mail", t_mail or "—"),
-    ]))
-    el.append(Spacer(1, 5))
-    el.append(bloco("DISCRIMINAÇÃO DO SERVIÇO", [
-        ("", f"<b>{ctribnac} — {xtrib}</b>" if xtrib else ctribnac),
-        ("", desc),
-    ]))
-    el.append(Spacer(1, 5))
+    # ── Emitente / Prestador ──
+    e_end = f"{e_lgr}, {e_nro}" + (f", {e_cpl}" if e_cpl else "") + (f", {e_bai}" if e_bai else "")
+    block("EMITENTE DA NFS-e — Prestador do Serviço", [
+        [("CNPJ / CPF / NIF", _fmt_doc(e_cnpj)), ("Inscrição Municipal", e_im), ("Telefone", e_fone)],
+        [("Nome / Nome Empresarial", e_nome)],
+        [("E-mail", e_mail)],
+        [("Endereço", e_end)],
+        [("Município", f"{loc_emi} - {e_uf}"), ("CEP", _fmt_cep(e_cep))],
+        [("Simples Nacional na Data de Competência", OPSIMP.get(opsimp, "-")),
+         ("Regime de Apuração Tributária pelo SN", REGAP.get(regapsn, "-"))],
+    ])
 
-    ret_txt = {"1": "Não retido", "2": "Retido pelo tomador", "3": "Retido pelo intermediário"}.get(ret, "—")
-    val = Table([
-        [Paragraph("<b>Valor do serviço</b>", pN), Paragraph(_fmt_brl(vserv), pN),
-         Paragraph("<b>Retenção do ISSQN</b>", pN), Paragraph(ret_txt, pN)],
-        [Paragraph("<b>Trib. aprox. (Simples)</b>", pN), Paragraph(f"{ptribsn}%" if ptribsn else "—", pN),
-         Paragraph("<b>VALOR LÍQUIDO</b>", pB), Paragraph(f"<b>{_fmt_brl(vliq)}</b>", pB)],
-    ], colWidths=[38*mm, 53*mm, 38*mm, 53*mm])
-    val.setStyle(TableStyle([
-        ('BOX',(0,0),(-1,-1),0.7,LINHA),('INNERGRID',(0,0),(-1,-1),0.4,LINHA),
-        ('BACKGROUND',(2,1),(3,1),colors.HexColor('#dcfce7')),
-        ('LEFTPADDING',(0,0),(-1,-1),8),('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4),
-    ]))
-    el.append(val)
-    el.append(Spacer(1, 8))
-    autoriz = "Autorizada" if cstat == "100" else f"Status {cstat}"
-    el.append(Paragraph(
-        f"<font size=7 color='#64748b'>Documento auxiliar da NFS-e ({autoriz}). "
-        f"Consulte a validade pela chave de acesso no portal nacional "
-        f"<b>www.nfse.gov.br</b>. Processado em {dt(dhproc)}.</font>", pSmall))
+    # ── Tomador ──
+    t_end = (f"{t_lgr}, {t_nro}" + (f", {t_cpl}" if t_cpl else "") + (f", {t_bai}" if t_bai else "")) \
+            if t_lgr else "-"
+    block("TOMADOR DO SERVIÇO", [
+        [("CNPJ / CPF / NIF", _fmt_doc(t_doc)), ("Inscrição Municipal", t_im or "-"), ("Telefone", "-")],
+        [("Nome / Nome Empresarial", t_nome or "-")],
+        [("E-mail", t_mail or "-")],
+        [("Endereço", t_end)],
+        [("Município", "-"), ("CEP", _fmt_cep(t_cep) if t_cep else "-")],
+    ])
+
+    # ── Intermediário (ausente) ──
+    el.append(secbar("INTERMEDIÁRIO DO SERVIÇO NÃO IDENTIFICADO NA NFS-e", centered=True))
+
+    # ── Serviço prestado ──
+    block("SERVIÇO PRESTADO", [
+        [("Código de Tributação Nacional", f"{ctrib(ctribnac)} - {xtrib}"),
+         ("Código de Tributação Municipal", f"{ctribmun} - {xtribmun}"),
+         ("Local da Prestação", f"{loc_prest} - {e_uf}"),
+         ("País da Prestação", "-")],
+        [("Descrição do Serviço", desc)],
+    ])
+
+    # ── Tributação Municipal ──
+    block("TRIBUTAÇÃO MUNICIPAL", [
+        [("Tributação do ISSQN", TRIBISS.get(tribissqn, "-")),
+         ("País Resultado da Prestação do Serviço", "-"),
+         ("Município de Incidência do ISSQN", f"{loc_inc} - {e_uf}" if loc_inc else "-"),
+         ("Regime Especial de Tributação", REGESP.get(regesp, "-"))],
+        [("Tipo de Imunidade", "-"), ("Suspensão da Exigibilidade do ISSQN", "Não"),
+         ("Número Processo Suspensão", "-"), ("Benefício Municipal", "-")],
+        [("Valor do Serviço", _fmt_brl(vserv)), ("Desconto Incondicionado", "-"),
+         ("Total Deduções/Reduções", "-"), ("Cálculo do BM", "-")],
+        [("BC ISSQN", "-"), ("Alíquota Aplicada", "-"),
+         ("Retenção do ISSQN", RETISS.get(ret, "-")), ("ISSQN Apurado", "-")],
+    ])
+
+    # ── Tributação Federal ──
+    block("TRIBUTAÇÃO FEDERAL", [
+        [("IRRF", "-"), ("Contribuição Previdenciária - Retida", "-"),
+         ("Contribuições Sociais - Retidas", "-"), ("Descrição Contrib. Sociais - Retidas", "-")],
+        [("PIS - Débito Apuração Própria", "-"), ("COFINS - Débito Apuração Própria", "-")],
+    ])
+
+    # ── Valor Total da NFS-e ──
+    block("VALOR TOTAL DA NFS-E", [
+        [("Valor do Serviço", _fmt_brl(vserv)), ("Desconto Condicionado", "-"),
+         ("Desconto Incondicionado", "-"), ("ISSQN Retido", "-")],
+        [("Total das Retenções Federais", "-"), ("PIS/COFINS - Débito Apur. Própria", "-"),
+         ("Valor Líquido da NFS-e", _fmt_brl(vliq))],
+    ])
+
+    # ── Totais aproximados dos tributos ──
+    block("TOTAIS APROXIMADOS DOS TRIBUTOS", [
+        [("Federais", "-"), ("Estaduais", "-"), ("Municipais", "-")],
+    ])
+
+    # ── Informações complementares ──
+    block("INFORMAÇÕES COMPLEMENTARES", [
+        [("", f"NBS: {cnbs}" if cnbs else "-")],
+    ])
 
     doc.build(el)
     return buf.getvalue()

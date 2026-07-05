@@ -33903,6 +33903,10 @@ _import_jobs = {}   # job_id → {pct, etapa, done, resultado}
 # Pode ser uma PASTA (procura o .accdb/.mdb que contém TABNF) ou um arquivo direto.
 PASTA_NF = r'C:\Dropbox\COMSIST\NF10'
 
+# Access de CONTROLE DE COBRANÇA (tabCOB2026) — fica em pasta PRÓPRIA, diferente
+# do PASTA_NF. Cada NFS-e emitida em produção grava 1 registro aqui.
+ARQUIVO_COBRANCA = r'C:\Dropbox\SERGIO\Sergio-Regina\000Comsist-COBRANÇA\Cobranca2026.accdb'
+
 def _fmt_bytes(b):
     if b < 1024:       return f'{b} B'
     if b < 1_048_576:  return f'{b/1024:.0f} KB'
@@ -38188,6 +38192,72 @@ def _nfse_post(url, dps_b64, pfx_bytes, senha):
         _os.unlink(cf.name); _os.unlink(kf.name)
 
 
+def _cobranca_arquivo(caminho_nf):
+    """Access da cobrança (tabCOB2026). Caminho FIXO (ARQUIVO_COBRANCA) — fica em
+    pasta própria, NÃO na mesma do NF10/PASTA_NF. caminho_nf é ignorado aqui."""
+    return ARQUIVO_COBRANCA
+
+
+def _cobranca_gravar(caminho_nf, cod, cli, ndps, valor):
+    """Grava 1 registro em tabCOB2026 (7 primeiros campos) por NFS-e emitida.
+
+    NF_Numero = PRÓXIMO da sequência PRÓPRIA do tabCOB2026 (MAX+1) — é a PK da
+    tabela e NÃO tem relação com o nDPS (que reinicia por ambiente/série).
+    Emissao_Data=hoje, dados do cliente vindos da TabCLI_NF (a mesma da emissão)
+    e Valor em centavos. Não pode derrubar a emissão já concluída — o chamador
+    trata a exceção.
+    Retorna (ok, detalhe): detalhe é o NF_Numero gravado ou o motivo da falha."""
+    import pyodbc
+    alvo = _cobranca_arquivo(caminho_nf)
+    if not os.path.isfile(alvo):
+        return False, f"Cobranca2026.accdb não encontrado: {alvo}"
+
+    # NomeComsist (apelido interno) = campo Contato da TabCLI_NF, em MAIÚSCULAS.
+    contato = ''
+    try:
+        c2 = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho_nf};')
+        cc = c2.cursor()
+        cc.execute("SELECT Contato FROM TabCLI_NF WHERE CodCLI = ?", int(cod))
+        rr = cc.fetchone()
+        c2.close()
+        if rr and rr[0] and str(rr[0]).strip() not in ('0', ''):
+            contato = str(rr[0]).strip().upper()[:30]
+    except Exception:
+        pass
+
+    emissao = datetime.now().strftime("%Y%m%d")
+    cnpj = _re_digits(cli.get('cnpj_cpf'))[:14]
+    razao = str(cli.get('nome') or '').strip()[:60]
+    valor_cent = int(round(float(valor) * 100))
+
+    conn = pyodbc.connect(
+        f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={alvo};')
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT MAX(NF_Numero) FROM tabCOB2026")
+        maxnf = cur.fetchone()[0]
+        prox = (int(re.sub(r"\D", "", str(maxnf))) if maxnf else 0) + 1
+        ultimo_erro = None
+        for _ in range(30):   # retenta se o NF_Numero já existir (PK duplicada)
+            nf_numero = str(prox).zfill(5)[:6]
+            try:
+                cur.execute(
+                    "INSERT INTO tabCOB2026 "
+                    "(NF_Numero, Emissao_Data, Cliente_CNPJ, Cliente_Codigo, "
+                    " Cliente_RazaoSocial, Cliente_NomeComsist, Valor) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    nf_numero, emissao, cnpj, int(cod), razao, contato, valor_cent)
+                conn.commit()
+                return True, nf_numero
+            except pyodbc.IntegrityError as ie:
+                ultimo_erro = str(ie)[:120]
+                prox += 1
+        return False, f"sem NF_Numero livre após 30 tentativas ({ultimo_erro})"
+    finally:
+        conn.close()
+
+
 @app.route('/api/admin_nf/emitir', methods=['POST'])
 def api_admin_nf_emitir():
     if not session.get('logado'):
@@ -38318,11 +38388,24 @@ def api_admin_nf_emitir():
     _nfse_gravar_log(caminho, ambiente=ambiente, serie=serie, ndps=ndps, cod=cod,
                      competencia=competencia, valor=valor, chave=chave, id_dps=id_dps,
                      numero=numero, status='EMITIDA', mensagem=" | ".join(alertas), arq_xml=arq)
+
+    # Registro de cobrança (tabCOB2026) — só para emissão em PRODUÇÃO (amb=1).
+    cob_nf = ''          # NF_Numero gravado (vazio se não gravou)
+    cob_status = ''      # diagnóstico p/ log/UI: 'OK nf=...' ou 'FALHA: motivo'
+    if ambiente == 1:
+        try:
+            ok_cob, det_cob = _cobranca_gravar(caminho, cod, cli, ndps, valor)
+            if ok_cob:
+                cob_nf, cob_status = det_cob, f'OK nf={det_cob}'
+            else:
+                cob_status = f'FALHA: {det_cob}'
+        except Exception as _ex:
+            cob_status = f'FALHA: {type(_ex).__name__}: {_ex}'[:200]
     try:
         supabase.table("tab_log").insert({
             "id_cliente": None, "id_empresa": None,
             "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_EMISSAO",
-            "observacao": f"NFS-e amb={ambiente} cod={cod} nDPS={ndps} chave={chave}"[:200],
+            "observacao": f"NFS-e amb={ambiente} cod={cod} nDPS={ndps} chave={chave} cob[{cob_status}]"[:200],
             "ano_mes": None, "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
         }).execute()
     except Exception:
@@ -38331,7 +38414,8 @@ def api_admin_nf_emitir():
     return jsonify({'ok': True, 'chave': chave, 'id_dps': id_dps, 'ndps': ndps,
                     'numero': numero, 'ambiente': ambiente, 'alertas': alertas,
                     'arquivo': os.path.basename(arq),
-                    'pdf': os.path.basename(pdf_arq) if pdf_arq else ''})
+                    'pdf': os.path.basename(pdf_arq) if pdf_arq else '',
+                    'cobranca': cob_nf, 'cobranca_status': cob_status})
 
 
 def _re_digits(v):
