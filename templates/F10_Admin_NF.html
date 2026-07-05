@@ -222,7 +222,6 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
             <span class="topo-versao">Versão: {{ versao }}</span>
         </div>
-        <button class="btn-voltar" onclick="abrirModalWa()">📲 Enviar NF por WhatsApp</button>
         <button class="btn-voltar" onclick="window.location.href='/admin_nf_consulta'">📋 Emitidas</button>
         <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
     </div>
@@ -268,6 +267,11 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     <!-- ══ COL 2 — DADOS DA NOTA ══ -->
     <main class="painel-direito">
         <div class="painel-direito-corpo">
+
+            <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+                <button type="button" onclick="abrirModalWa()"
+                        style="font-size:13px;font-weight:700;color:#fff;background:#25D366;border:none;border-radius:8px;padding:9px 16px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.12);">📲 Enviar NF por WhatsApp</button>
+            </div>
 
             <div class="estado-vazio" id="estadoVazio">
                 <span class="estado-vazio-icone">🧾</span>
@@ -319,19 +323,6 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                         <div class="preview-nf-texto" id="previewNFTexto">—</div>
                     </div>
 
-                    <div class="form-row" style="margin-top:16px; opacity:.6;">
-                        <label class="form-label">Ambiente de emissão</label>
-                        <div style="display:flex; gap:18px; align-items:center; margin-top:4px;">
-                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:not-allowed;">
-                                <input type="radio" name="ambiente" value="2" disabled style="accent-color:var(--accent);">
-                                Produção Restrita (teste)
-                            </label>
-                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:not-allowed;">
-                                <input type="radio" name="ambiente" value="1" checked disabled style="accent-color:#dc2626;">
-                                Produção (nota real)
-                            </label>
-                        </div>
-                    </div>
 
                     <button class="btn-emitir" id="btnEmitir" style="margin-top:16px;" disabled
                             onclick="emitir()">
@@ -664,7 +655,7 @@ function waModalEnviar(chave, cod, btn) {
 function emitir() {
     if (clienteAtivo == null) { alert('Selecione um cliente.'); return; }
     const c = CLIENTES[clienteAtivo];
-    const ambiente = document.querySelector('input[name="ambiente"]:checked').value;
+    const ambiente = '1';   // sempre Produção (bloco de ambiente removido da tela)
     const valor = (document.getElementById('fValor').value || '').trim();
     const competencia = (document.getElementById('fDataProc').value || '').trim();
     const discr = (document.getElementById('previewNFTexto').textContent || '').trim();
