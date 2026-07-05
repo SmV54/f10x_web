@@ -186,6 +186,11 @@ function fmtBRL(v) {
     const n = Number(v); if (isNaN(n)) return '';
     return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 }
+// Cliente tem WhatsApp válido? (Celular_Whatsapp da TabNF)
+function temWa(cel) {
+    const d = String(cel || '').replace(/\D/g, '');
+    return d.length >= 10 && !/^0+$/.test(d);
+}
 
 function carregar() {
     const tb = document.getElementById('tbody');
@@ -260,11 +265,14 @@ function render() {
                 ? `<span class="col-chave">${esc(r.chave)}</span>`
                 : `<span style="color:#b91c1c;font-size:12px;">${esc(r.mensagem)}</span>`;
 
+            const waAcao = temWa(r.celular)
+                ? `<a class="link-xml" href="#" style="color:#128C3E;font-weight:700;" title="Enviar DANFSE por WhatsApp"
+                      onclick="enviarWaConsulta('${esc(r.chave)}','${esc(String(r.cod))}',this);return false;">📲 WhatsApp</a>`
+                : `<span class="link-xml" style="color:#cbd5e1;cursor:not-allowed;" title="Cliente sem Celular_Whatsapp na TabNF">📲 s/ WhatsApp</span>`;
             const xml = (r.status === 'EMITIDA' && r.tem_xml)
                 ? `<a class="link-xml" href="/api/admin_nf/pdf?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Abrir DANFSE em PDF">PDF</a>
                    <a class="link-xml" href="/api/admin_nf/xml?chave=${encodeURIComponent(r.chave)}" target="_blank" title="Ver XML">XML</a>
-                   <a class="link-xml" href="#" style="color:#128C3E;font-weight:700;" title="Enviar DANFSE por WhatsApp"
-                      onclick="enviarWaConsulta('${esc(r.chave)}','${esc(String(r.cod))}',this);return false;">📲 WhatsApp</a>`
+                   ${waAcao}`
                 : '—';
 
             return `<tr>

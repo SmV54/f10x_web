@@ -37942,6 +37942,7 @@ def _ler_clientes_nf(caminho):
         'empresas':     pick('empresas', 'qtd_empresas', 'qtdempresas', 'nempresas', 'nemp'),
         'funcionarios': pick('funcionarios', 'qtd_funcionarios', 'qtdfuncionarios', 'nfunc', 'funcs'),
         'mes':          pick('mes', 'anomes', 'ano_mes', 'competencia', 'referencia'),
+        'celular':      pick('celular_whatsapp', 'celularwhatsapp', 'celular', 'whatsapp'),
     }
     col_sit = pick('situacao', 'situ', 'status')
     presentes = {k: v for k, v in mapa.items() if v}
@@ -37983,6 +37984,7 @@ def _ler_clientes_nf(caminho):
             'empresas':     _int(r.get('empresas')),
             'funcionarios': _int(r.get('funcionarios')),
             'mes':          str(r.get('mes') or '').strip(),
+            'celular':      str(r.get('celular') or '').strip(),
         })
     conn.close()
     registros.sort(key=lambda x: (x['nome'] or x['codigo'] or '').lower())
@@ -38484,12 +38486,14 @@ def _nfse_listar_emitidas(caminho):
                for t in cur.tables(tableType='TABLE')):
         conn.close()
         return []
-    # mapa CodCLI -> RazaoSocial
+    # mapas CodCLI -> RazaoSocial / Celular_Whatsapp
     nomes = {}
+    celulares = {}
     try:
-        cur.execute("SELECT CodCLI, RazaoSocial FROM TabCLI_NF")
+        cur.execute("SELECT CodCLI, RazaoSocial, Celular_Whatsapp FROM TabCLI_NF")
         for r in cur.fetchall():
             nomes[int(r[0])] = str(r[1] or "").strip()
+            celulares[int(r[0])] = str(r[2] or "").strip()
     except Exception:
         pass
     tem_num = any(c.column_name.lower() == "numnfse"
@@ -38506,6 +38510,7 @@ def _nfse_listar_emitidas(caminho):
         regs.append({
             "id": r[0], "ambiente": r[1], "serie": r[2], "ndps": r[3],
             "cod": r[4], "cliente": nomes.get(int(r[4] or 0), ""),
+            "celular": celulares.get(int(r[4] or 0), ""),
             "competencia": r[5], "valor": float(r[6] or 0),
             "chave": str(r[7] or ""), "id_dps": str(r[8] or ""),
             "status": str(r[9] or ""), "mensagem": str(r[10] or ""),

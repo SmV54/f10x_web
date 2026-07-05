@@ -360,6 +360,11 @@ function toggleMarcado(idx, on) {
 function esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+// Cliente tem WhatsApp válido? (Celular_Whatsapp da TabNF, >=10 dígitos e não só zeros)
+function temWa(cel) {
+    const d = String(cel || '').replace(/\D/g, '');
+    return d.length >= 10 && !/^0+$/.test(d);
+}
 // Código do cliente com 6 dígitos (NNNNNN); só zero-pad quando for numérico.
 function padCod(c) {
     const s = String(c || '').trim();
@@ -538,6 +543,17 @@ function popularNfsAnteriores(cod) {
         `<option value="${esc(r.chave)}">nº ${esc(r.numero || '—')} · ${esc(r.competencia || '')} · ${esc(r.data_hora || '')} · ${fmtBRL(r.valor)}</option>`
     ).join('');
     box.style.display = '';
+
+    // Bloqueia o envio se o cliente não tem Celular_Whatsapp na TabNF.
+    const cliObj = CLIENTES.find(x => String(x.codigo) === String(cod));
+    const btnWa = document.getElementById('btnWaAnterior');
+    if (cliObj && !temWa(cliObj.celular)) {
+        btnWa.disabled = true; btnWa.style.opacity = '0.5'; btnWa.style.cursor = 'not-allowed';
+        btnWa.title = 'Cliente sem Celular_Whatsapp na TabNF';
+        if (msg) { msg.style.color = '#b45309'; msg.textContent = '⚠️ Sem WhatsApp cadastrado na TabNF.'; }
+    } else {
+        btnWa.disabled = false; btnWa.style.opacity = ''; btnWa.style.cursor = 'pointer'; btnWa.title = '';
+    }
 }
 
 // Reenvia por WhatsApp a NF anterior selecionada no seletor.
@@ -606,6 +622,11 @@ function emitir() {
             const numHtml = d.numero
                 ? `<div style="font-size:22px;font-weight:700;color:#15803d;margin-bottom:6px;">NFS-e nº ${esc(d.numero)}</div>`
                 : '';
+            const waBtnHtml = temWa(c.celular)
+                ? `<button type="button" id="btnWa" onclick="enviarWhatsApp('${esc(d.chave)}', '${esc(String(c.codigo))}', this)"
+                     style="font-size:12px;font-weight:700;color:#fff;background:#25D366;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;">📲 Enviar por WhatsApp</button>`
+                : `<button type="button" disabled title="Cliente sem Celular_Whatsapp na TabNF"
+                     style="font-size:12px;font-weight:700;color:#94a3b8;background:#e2e8f0;border:none;border-radius:6px;padding:5px 12px;cursor:not-allowed;">📲 Sem WhatsApp na TabNF</button>`;
             rb.innerHTML =
                 `<div class="preview-nf" style="background:#f0fdf4;border-color:#bbf7d0;">
                    <div class="preview-nf-titulo" style="color:#15803d;">✅ NFS-e emitida (${esc(amb)})</div>
@@ -617,9 +638,7 @@ function emitir() {
                      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                        <a href="/api/admin_nf/pdf?chave=${encodeURIComponent(d.chave)}" target="_blank"
                           style="font-size:12px;font-weight:700;color:#15803d;text-decoration:none;border:1px solid #86efac;border-radius:6px;padding:4px 10px;">📄 Abrir PDF (DANFSE)</a>
-                       <button type="button" id="btnWa"
-                          onclick="enviarWhatsApp('${esc(d.chave)}', '${esc(String(c.codigo))}', this)"
-                          style="font-size:12px;font-weight:700;color:#fff;background:#25D366;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;">📲 Enviar por WhatsApp</button>
+                       ${waBtnHtml}
                        <span id="waMsg" style="font-size:12px;"></span>
                      </div>
                    </div>${al}
