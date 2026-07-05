@@ -437,6 +437,16 @@ function render() {
     }
     document.getElementById('totalClientes').textContent =
         `${lista.length} de ${CLIENTES.length}` + (marcados.size ? ` · ${marcados.size} marcado(s)` : '');
+
+    // Auto-seleção: quando o filtro retorna exatamente 1 cliente, marca/seleciona
+    // automaticamente (equivale a clicar no checkbox). Só com termo de busca ativo
+    // e CNPJ válido; a guarda (não ativo/não marcado) evita re-disparo no re-render.
+    if (termo && lista.length === 1) {
+        const uidx = CLIENTES.indexOf(lista[0]);
+        if (uidx >= 0 && uidx !== clienteAtivo && !marcados.has(uidx) && !cnpjInvalido(lista[0])) {
+            toggleMarcado(uidx, true);
+        }
+    }
 }
 
 function filtrar() { render(); }
