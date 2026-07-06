@@ -38783,14 +38783,20 @@ _COPIA_PLANO = [
 ]
 
 
-def _copia_fetch_all(tabela, filtros):
+_COPIA_TABS_MESES = {"tab_mov", "tab_total"}   # tabelas que o operador pode filtrar por mês
+
+
+def _copia_fetch_all(tabela, filtros, in_filtro=None):
     """Lê TODAS as linhas de uma tabela (paginando de 1000 em 1000) aplicando os
-    filtros de igualdade informados. Retorna lista de dicts."""
+    filtros de igualdade informados. `in_filtro`=(coluna, [valores]) aplica um IN
+    (usado para trazer só alguns meses de tab_mov/tab_total). Retorna lista de dicts."""
     linhas, ini, passo = [], 0, 1000
     while True:
         q = supabase.table(tabela).select("*")
         for col, val in filtros.items():
             q = q.eq(col, val)
+        if in_filtro:
+            q = q.in_(in_filtro[0], in_filtro[1])
         r = q.range(ini, ini + passo - 1).execute()
         lote = r.data or []
         linhas.extend(lote)
@@ -38810,9 +38816,11 @@ def _copia_insert_lotes(tabela, linhas, tam=500):
     return gravados
 
 
-def _copiar_base_para_teste(id_orig, id_emp_orig, job_id):
+def _copiar_base_para_teste(id_orig, id_emp_orig, job_id, meses=None):
     """Roda em thread: limpa o cliente de teste e copia a empresa escolhida,
-    remapeando as chaves seriais (id_empresa e FKs) para os novos valores."""
+    remapeando as chaves seriais (id_empresa e FKs) para os novos valores.
+    `meses` = lista de folhas (AAAAMM int) a copiar em tab_mov/tab_total; None
+    copia todos os meses; [] não copia nenhum mês dessas duas tabelas."""
     job = _copia_jobs[job_id]
     DEST = CLIENTE_TESTE_ID
     total_steps = 2 + len(_COPIA_PLANO)
@@ -38863,7 +38871,17 @@ def _copiar_base_para_teste(id_orig, id_emp_orig, job_id):
             filtros = {"id_cliente": id_orig}
             if escopo == "emp":
                 filtros["id_empresa"] = id_emp_orig
-            linhas = _copia_fetch_all(tab, filtros)
+
+            # tab_mov/tab_total: aplica o filtro de meses escolhido pelo operador
+            in_filtro = None
+            if tab in _COPIA_TABS_MESES and meses is not None:
+                if not meses:               # nenhum mês marcado -> não copia nada aqui
+                    resultados.append({"descricao": desc, "gravados": 0})
+                    _avanca(f'{desc}: 0 registro(s) (nenhum mês marcado)')
+                    continue
+                in_filtro = ("folha", meses)
+
+            linhas = _copia_fetch_all(tab, filtros, in_filtro)
 
             def _prep(orig):
                 """Devolve (old_pk, linha_preparada) — reescreve cliente/empresa/FKs."""
@@ -38959,6 +38977,26 @@ def api_admin_copiar_empresas(id_cliente):
         return jsonify({'ok': False, 'msg': str(ex)})
 
 
+@app.route('/api/admin_copiar_base/meses/<int:id_cliente>/<int:id_empresa>')
+def api_admin_copiar_meses(id_cliente, id_empresa):
+    """Lista os anos/meses (folhas) existentes da empresa, para o operador escolher
+    quais copiar em tab_mov/tab_total. Fonte: tab_anomes (registro de períodos)."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    try:
+        r = (supabase.table("tab_anomes")
+             .select("ano_mes")
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .execute())
+        vistos = sorted({str(x.get("ano_mes")) for x in (r.data or []) if x.get("ano_mes")},
+                        reverse=True)
+        meses = [{"folha": int(m), "label": f"{m[4:6]}/{m[0:4]}"}
+                 for m in vistos if len(m) >= 6 and m.isdigit()]
+        return jsonify({'ok': True, 'meses': meses})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
 @app.route('/api/admin_copiar_base/executar', methods=['POST'])
 def api_admin_copiar_executar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
@@ -38971,12 +39009,20 @@ def api_admin_copiar_executar():
     if int(id_orig) == CLIENTE_TESTE_ID:
         return jsonify({'ok': False, 'msg': 'A origem não pode ser o próprio cliente de teste'})
 
+    # meses a copiar em tab_mov/tab_total. Ausente/None => todos; lista => só esses.
+    meses = body.get('meses', None)
+    if meses is not None:
+        try:
+            meses = [int(m) for m in meses]
+        except (TypeError, ValueError):
+            return jsonify({'ok': False, 'msg': 'Lista de meses inválida'})
+
     job_id = uuid.uuid4().hex[:12]
     _copia_jobs[job_id] = {'pct': 0, 'etapa': '', 'step': 0,
                             'total_steps': 2 + len(_COPIA_PLANO),
                             'done': False, 'resultado': None}
     threading.Thread(target=_copiar_base_para_teste,
-                     args=(int(id_orig), int(id_emp), job_id), daemon=True).start()
+                     args=(int(id_orig), int(id_emp), job_id, meses), daemon=True).start()
     return jsonify({'ok': True, 'job_id': job_id})
 
 

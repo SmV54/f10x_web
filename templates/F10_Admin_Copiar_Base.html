@@ -42,6 +42,18 @@
               color: #374151; margin: 4px 0 16px; }
   .confirma input { margin-top: 2px; }
 
+  /* Lista de meses */
+  .meses-acoes { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .meses-acoes button { font-size: 12px; padding: 5px 10px; border: 1px solid #d1d5db;
+                        background: #fff; border-radius: 6px; cursor: pointer; color: #374151; }
+  .meses-acoes button:hover { background: #f3f4f6; }
+  .meses-box { max-height: 180px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px;
+               padding: 8px 10px; display: grid;
+               grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 4px 12px; }
+  .meses-box label { display: flex; align-items: center; gap: 6px; font-weight: 400;
+                     font-size: 13px; margin: 0; cursor: pointer; }
+  .meses-vazio { color: #9ca3af; font-size: 13px; }
+
   .btn-exec { width: 100%; background: #dc2626; color: #fff; border: none; border-radius: 9px;
               padding: 13px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
   .btn-exec:hover { background: #b91c1c; }
@@ -98,6 +110,17 @@
         <select id="selEmpresa" disabled><option value="">Selecione o cliente primeiro</option></select>
       </div>
 
+      <div class="campo" id="mesesCampo" style="display:none;">
+        <label>Meses a copiar <span class="mut" style="font-weight:400;">(apenas Movimentos e Totais)</span></label>
+        <div class="meses-acoes">
+          <button type="button" onclick="marcarMeses(true)">Marcar todos</button>
+          <button type="button" onclick="marcarMeses(false)">Desmarcar todos</button>
+          <span id="mesesResumo" class="mut"></span>
+        </div>
+        <div class="meses-box" id="mesesBox"></div>
+        <div class="mut" style="margin-top:5px;">As demais tabelas (cadastros, eSocial, eventos, etc.) são sempre copiadas por completo.</div>
+      </div>
+
       <label class="confirma">
         <input type="checkbox" id="chkConfirma">
         <span>Entendo que os dados atuais do cliente de teste (id {{ cliente_teste }}) serão
@@ -125,6 +148,7 @@ const selCliente = document.getElementById('selCliente');
 const selEmpresa = document.getElementById('selEmpresa');
 const chk        = document.getElementById('chkConfirma');
 const btn        = document.getElementById('btnExec');
+let MESES_DISPONIVEIS = [];
 
 // Carrega clientes
 fetch('/api/admin_copiar_base/clientes').then(r => r.json()).then(d => {
@@ -137,6 +161,8 @@ selCliente.addEventListener('change', () => {
   const id = selCliente.value;
   selEmpresa.innerHTML = '<option value="">Carregando…</option>';
   selEmpresa.disabled = true;
+  document.getElementById('mesesCampo').style.display = 'none';
+  MESES_DISPONIVEIS = [];
   avaliarBotao();
   if (!id) { selEmpresa.innerHTML = '<option value="">Selecione o cliente primeiro</option>'; return; }
   fetch('/api/admin_copiar_base/empresas/' + id).then(r => r.json()).then(d => {
@@ -150,10 +176,48 @@ selCliente.addEventListener('change', () => {
   });
 });
 
-selEmpresa.addEventListener('change', avaliarBotao);
+selEmpresa.addEventListener('change', () => {
+  avaliarBotao();
+  const idc = selCliente.value, ide = selEmpresa.value;
+  const campo = document.getElementById('mesesCampo');
+  if (!ide) { campo.style.display = 'none'; MESES_DISPONIVEIS = []; return; }
+  carregarMeses(idc, ide);
+});
 chk.addEventListener('change', avaliarBotao);
 function avaliarBotao() {
   btn.disabled = !(selCliente.value && selEmpresa.value && chk.checked);
+}
+
+// ── Lista de meses (tab_mov / tab_total) ──
+function carregarMeses(idCliente, idEmpresa) {
+  const campo = document.getElementById('mesesCampo');
+  const box   = document.getElementById('mesesBox');
+  MESES_DISPONIVEIS = [];
+  campo.style.display = 'block';
+  box.innerHTML = '<span class="meses-vazio">Carregando meses…</span>';
+  fetch(`/api/admin_copiar_base/meses/${idCliente}/${idEmpresa}`).then(r => r.json()).then(d => {
+    if (!d.ok) { box.innerHTML = '<span class="meses-vazio">Erro: ' + (d.msg || '') + '</span>'; return; }
+    MESES_DISPONIVEIS = d.meses || [];
+    if (!MESES_DISPONIVEIS.length) {
+      box.innerHTML = '<span class="meses-vazio">Sem períodos registrados — Movimentos/Totais serão copiados por completo.</span>';
+      atualizarResumo(); return;
+    }
+    box.innerHTML = MESES_DISPONIVEIS.map(m =>
+      `<label><input type="checkbox" class="mes-chk" value="${m.folha}" checked onchange="atualizarResumo()"> ${m.label}</label>`).join('');
+    atualizarResumo();
+  }).catch(e => { box.innerHTML = '<span class="meses-vazio">Erro ao carregar meses</span>'; });
+}
+function marcarMeses(estado) {
+  document.querySelectorAll('.mes-chk').forEach(c => c.checked = estado);
+  atualizarResumo();
+}
+function mesesMarcados() {
+  return Array.from(document.querySelectorAll('.mes-chk:checked')).map(c => Number(c.value));
+}
+function atualizarResumo() {
+  const el = document.getElementById('mesesResumo');
+  if (!MESES_DISPONIVEIS.length) { el.textContent = ''; return; }
+  el.textContent = `${mesesMarcados().length} de ${MESES_DISPONIVEIS.length} mês(es) marcado(s)`;
 }
 
 function executar() {
@@ -164,9 +228,13 @@ function executar() {
   wrap.style.display = 'block';
   setBarra(0, 'Iniciando…');
 
+  const payload = { id_cliente: Number(selCliente.value), id_empresa: Number(selEmpresa.value) };
+  // Só manda 'meses' quando há períodos listados; senão o backend copia tudo.
+  if (MESES_DISPONIVEIS.length) payload.meses = mesesMarcados();
+
   fetch('/api/admin_copiar_base/executar', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id_cliente: Number(selCliente.value), id_empresa: Number(selEmpresa.value) })
+    body: JSON.stringify(payload)
   }).then(r => r.json()).then(d => {
     if (!d.ok) { mostrarErro(d.msg || 'Falha ao iniciar'); return; }
     poll(d.job_id);
