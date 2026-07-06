@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Baixar Cópia do Supabase</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn-voltar:hover { background: #374151; }
+
+  .wrap { max-width: 680px; margin: 26px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+
+  .info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 10px;
+          padding: 14px 16px; font-size: 13.5px; line-height: 1.5; margin-bottom: 18px; }
+  .info b { color: #1e3a8a; }
+  .cam { font-family: 'IBM Plex Mono', ui-monospace, monospace; background: #f1f5f9;
+         padding: 2px 6px; border-radius: 5px; }
+
+  .btn-exec { width: 100%; background: #2563eb; color: #fff; border: none; border-radius: 9px;
+              padding: 13px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+  .btn-exec:hover { background: #1d4ed8; }
+  .btn-exec:disabled { background: #9dbef5; cursor: not-allowed; }
+
+  #progressoWrap { display: none; }
+  .barra { height: 14px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin: 8px 0; }
+  .barra-fill { height: 100%; width: 0%; background: #16a34a; transition: width .3s; }
+  .prog-linha { display: flex; justify-content: space-between; font-size: 13px; color: #374151; }
+
+  #resultado { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+  th { color: #6b7280; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 12px 14px; font-size: 14px; margin-bottom: 10px; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 12px 14px; font-size: 14px; }
+  .mut { color: #9ca3af; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">💾 Baixar Cópia do Supabase</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="info">
+      Baixa uma cópia completa do banco (um arquivo JSON por tabela) e grava em
+      <span class="cam">{{ pasta }}\<b>AAAAMMDD</b></span> (uma pasta por dia).
+      É <b>somente leitura</b> no Supabase — nada é alterado. Recurso <b>local</b>:
+      grava no disco da máquina onde o app está rodando.
+    </div>
+
+    <div class="card">
+      <button class="btn-exec" id="btnExec" onclick="executar()">Baixar cópia agora</button>
+    </div>
+
+    <div class="card" id="progressoWrap">
+      <div class="prog-linha"><span id="progressoEtapa">Iniciando…</span><span id="progressoPct">0%</span></div>
+      <div class="barra"><div class="barra-fill" id="progressoFill"></div></div>
+      <div class="mut">Não feche esta janela até concluir.</div>
+    </div>
+
+    <div class="card" id="resultado"></div>
+  </div>
+
+<script>
+const btn = document.getElementById('btnExec');
+
+function executar() {
+  btn.disabled = true;
+  document.getElementById('resultado').style.display = 'none';
+  document.getElementById('progressoWrap').style.display = 'block';
+  setBarra(0, 'Iniciando…');
+  fetch('/api/admin_backup_supabase/executar', { method: 'POST' })
+    .then(r => r.json()).then(d => {
+      if (!d.ok) { mostrarErro(d.msg || 'Falha ao iniciar'); return; }
+      poll(d.job_id);
+    }).catch(e => mostrarErro(String(e)));
+}
+
+function setBarra(pct, etapa) {
+  document.getElementById('progressoFill').style.width = pct + '%';
+  document.getElementById('progressoPct').textContent = pct + '%';
+  if (etapa != null) document.getElementById('progressoEtapa').textContent = etapa;
+}
+
+function poll(jobId) {
+  fetch('/api/admin_backup_supabase/progresso?job=' + jobId).then(r => r.json()).then(d => {
+    if (!d.ok) { mostrarErro(d.msg || 'Job não encontrado'); return; }
+    setBarra(d.pct || 0, d.etapa ? ('Baixando: ' + d.etapa) : '');
+    if (d.done) { finalizar(d.resultado); return; }
+    setTimeout(() => poll(jobId), 800);
+  }).catch(e => setTimeout(() => poll(jobId), 1500));
+}
+
+function finalizar(res) {
+  setBarra(100, 'Concluído');
+  const box = document.getElementById('resultado');
+  box.style.display = 'block';
+  btn.disabled = false;
+  if (!res || !res.ok) { mostrarErro((res && res.msg) || 'Erro desconhecido', box); return; }
+  const linhas = (res.itens || []).map(i =>
+    `<tr><td>${i.descricao}</td><td class="num">${i.gravados < 0 ? ('ERRO: ' + (i.erro || '')) : i.gravados}</td></tr>`).join('');
+  box.innerHTML =
+    `<div class="ok-box">✅ Cópia gravada em <span class="cam">${res.pasta}</span><br>
+       Total: <b>${res.total}</b> registro(s) em ${res.itens.length} tabela(s).</div>
+     <table><thead><tr><th>Tabela</th><th class="num">Registros</th></tr></thead><tbody>${linhas}</tbody></table>`;
+}
+
+function mostrarErro(msg, box) {
+  box = box || document.getElementById('resultado');
+  box.style.display = 'block';
+  btn.disabled = false;
+  box.innerHTML = `<div class="erro-box">❌ ${msg}</div>`;
+}
+</script>
+</body>
+</html>

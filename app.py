@@ -39053,6 +39053,94 @@ def api_admin_copiar_progresso():
 
 
 # =========================================================
+# ADMINISTRADOR — Baixar cópia (backup) do Supabase para disco local
+# =========================================================
+# Grava um JSON por tabela em C:\Folha10-Simples\CopiaBase\<AAAAMMDD>. Só leitura
+# no Supabase. É um recurso LOCAL (grava no disco da máquina onde o app roda).
+PASTA_COPIA_BASE = r'C:\Folha10-Simples\CopiaBase'
+_backup_jobs = {}   # job_id → {pct, etapa, done, resultado}
+
+_BACKUP_TABELAS = [
+    "tab_cliente", "tab_empresa", "tab_filial", "tab_cc", "tab_cad",
+    "tab_dependentes", "tab_mov", "tab_mov_fixo", "tab_total", "tab_esocial",
+    "tab_eventos", "tab_anomes", "tab_acidente", "tab_rubrica", "tab_funcao_cli",
+    "tab_aux_sindicatos", "tab_aux_horarios", "tab_aux_feriados", "tab_aux_fpas",
+    "tab_aux_funcao_total", "tab_tabela_cli", "tab_rel_gerador", "tab_log",
+    "tab_tabela_total", "tab_tabelas_legais", "tab_aux_cidades",
+]
+
+
+def _rodar_backup_supabase(job_id, carimbo):
+    """Roda em thread: baixa cada tabela do Supabase e grava um JSON por tabela
+    na pasta CopiaBase\\<carimbo>. Reaproveita _copia_fetch_all (paginação)."""
+    job = _backup_jobs[job_id]
+    total = len(_BACKUP_TABELAS)
+    resultados = []
+    try:
+        destino = os.path.join(PASTA_COPIA_BASE, carimbo)
+        os.makedirs(destino, exist_ok=True)
+        total_reg = 0
+        for i, tab in enumerate(_BACKUP_TABELAS):
+            job['pct'] = int(i / total * 100)
+            job['etapa'] = tab
+            try:
+                linhas = _copia_fetch_all(tab, {})
+                with open(os.path.join(destino, f"{tab}.json"), "w", encoding="utf-8") as f:
+                    json.dump(linhas, f, ensure_ascii=False, indent=1)
+                total_reg += len(linhas)
+                resultados.append({"descricao": tab, "gravados": len(linhas)})
+            except Exception as ex:
+                resultados.append({"descricao": tab, "gravados": -1,
+                                   "erro": str(ex)[:120]})
+        with open(os.path.join(destino, "_resumo.json"), "w", encoding="utf-8") as f:
+            json.dump({"gerado_em": carimbo, "total_registros": total_reg,
+                       "itens": resultados}, f, ensure_ascii=False, indent=1)
+        job['pct'] = 100
+        job['done'] = True
+        job['resultado'] = {"ok": True, "pasta": destino, "total": total_reg,
+                            "itens": resultados}
+    except Exception as ex:
+        job['pct'] = 100
+        job['done'] = True
+        job['resultado'] = {"ok": False,
+                            "msg": f"{type(ex).__name__}: {str(ex)[:200]}",
+                            "itens": resultados}
+
+
+@app.route('/admin_backup_supabase')
+def admin_backup_supabase():
+    if not session.get('logado'):
+        return redirect('/')
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return redirect('/menu')
+    return render_template('F10_Admin_Backup.html',
+                           versao=ler_versao(), nome=session.get('nome', ''),
+                           pasta=PASTA_COPIA_BASE)
+
+
+@app.route('/api/admin_backup_supabase/executar', methods=['POST'])
+def api_admin_backup_executar():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    carimbo = datetime.now().strftime('%Y%m%d')
+    job_id = uuid.uuid4().hex[:12]
+    _backup_jobs[job_id] = {'pct': 0, 'etapa': '', 'done': False, 'resultado': None,
+                            'total_steps': len(_BACKUP_TABELAS)}
+    threading.Thread(target=_rodar_backup_supabase, args=(job_id, carimbo), daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id})
+
+
+@app.route('/api/admin_backup_supabase/progresso')
+def api_admin_backup_progresso():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    job_id = request.args.get('job', '').strip()
+    job = _backup_jobs.get(job_id)
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
+
+
+# =========================================================
 # ADIANTAMENTO QUINZENAL
 # =========================================================
 @app.route("/informar_adiantamento")
