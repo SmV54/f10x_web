@@ -33940,6 +33940,10 @@ PASTA_NF = r'C:\Dropbox\COMSIST\NF10'
 # Access de CONTROLE DE COBRANÇA (tabCOB2026) — fica em pasta PRÓPRIA, diferente
 # do PASTA_NF. Cada NFS-e emitida em produção grava 1 registro aqui.
 ARQUIVO_COBRANCA = r'C:\Dropbox\SERGIO\Sergio-Regina\000Comsist-COBRANÇA\Cobranca2026.accdb'
+# Pasta que só existe na máquina do Sérgio. Se NÃO existir (ex.: máquina de um
+# funcionário), a cobrança não é gravada; em vez disso avisa por WhatsApp.
+PASTA_COBRANCA = r'C:\Dropbox\SERGIO\Sergio-Regina'
+WHATSAPP_AVISO_COBRANCA = '81988582000'
 
 def _fmt_bytes(b):
     if b < 1024:       return f'{b} B'
@@ -38374,7 +38378,7 @@ def api_admin_nf_emitir():
         emit_reg_esp=e["reg_esp"], emit_ptrib_sn=e["ptrib_sn"], cloc_emi=e["cloc_emi"],
         serv_ctribnac=e["serv_ctribnac"], serv_ctribmun=e["serv_ctribmun"],
         serv_nbs=e["serv_nbs"], serv_local=e["cloc_emi"],
-        serv_desc=discr or f"Processamento da folha de pagamento - competencia {competencia}",
+        serv_desc=discr or f"SERVIÇO DE PROCESSAMENTO DE DADOS DA FOLHA DE PAGAMENTO DO MES {competencia}",
         valor=valor, iss_retido=cli['iss_retido'],
         tom_cnpj_cpf=cli['cnpj_cpf'], tom_nome=cli['nome'], tom_email=cli['email'],
         tom_ibge=tom_ibge, tom_cep=cli['cep'], tom_lgr=cli['lgr'],
@@ -38446,14 +38450,35 @@ def api_admin_nf_emitir():
     cob_nf = ''          # NF_Numero gravado (vazio se não gravou)
     cob_status = ''      # diagnóstico p/ log/UI: 'OK nf=...' ou 'FALHA: motivo'
     if ambiente == 1:
-        try:
-            ok_cob, det_cob = _cobranca_gravar(caminho, cod, cli, ndps, valor)
-            if ok_cob:
-                cob_nf, cob_status = det_cob, f'OK nf={det_cob}'
-            else:
-                cob_status = f'FALHA: {det_cob}'
-        except Exception as _ex:
-            cob_status = f'FALHA: {type(_ex).__name__}: {_ex}'[:200]
+        # A pasta da cobrança só existe na máquina do Sérgio. Numa máquina de
+        # funcionário ela não está lá — então NÃO grava na tabCOB2026 e, em vez
+        # disso, avisa o Sérgio por WhatsApp com os dados da NF para ele lançar.
+        if not os.path.isdir(PASTA_COBRANCA):
+            try:
+                valor_fmt = f"{float(valor):,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                msg = ("*NFS-e emitida — cobrança pendente de lançamento*\n\n"
+                       f"Esta NF foi emitida em máquina sem a pasta da cobrança, "
+                       f"então NÃO foi gravada na tabCOB2026. Lance manualmente:\n\n"
+                       f"• Cliente: {cli.get('nome','')} (cód {cod})\n"
+                       f"• CNPJ/CPF: {cli.get('cnpj_cpf','')}\n"
+                       f"• Competência: {competencia}\n"
+                       f"• Valor: R$ {valor_fmt}\n"
+                       f"• NF nº: {numero}\n"
+                       f"• Chave: {chave}")
+                ok_w, err_w = _enviar_whatsapp_texto(WHATSAPP_AVISO_COBRANCA, msg)
+                cob_status = 'PASTA AUSENTE: avisado por WhatsApp' if ok_w \
+                    else f'PASTA AUSENTE: falha no WhatsApp: {err_w}'[:200]
+            except Exception as _ex:
+                cob_status = f'PASTA AUSENTE: erro no aviso: {type(_ex).__name__}: {_ex}'[:200]
+        else:
+            try:
+                ok_cob, det_cob = _cobranca_gravar(caminho, cod, cli, ndps, valor)
+                if ok_cob:
+                    cob_nf, cob_status = det_cob, f'OK nf={det_cob}'
+                else:
+                    cob_status = f'FALHA: {det_cob}'
+            except Exception as _ex:
+                cob_status = f'FALHA: {type(_ex).__name__}: {_ex}'[:200]
     try:
         supabase.table("tab_log").insert({
             "id_cliente": None, "id_empresa": None,

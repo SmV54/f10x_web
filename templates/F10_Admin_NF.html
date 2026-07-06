@@ -770,29 +770,13 @@ function mascaraMesAno(el) {
     el.value = v;
 }
 
-// Preview da discriminação da NF. O conector muda conforme o cliente ter valor:
-//   com valor (contrato antigo) → "no mês {X}"
-//   sem valor                   → "até o mês {X}"
+// Preview da discriminação da NF. Texto FIXO com a competência (MM/AAAA).
 function atualizarPreview() {
     const box = document.getElementById('previewNF');
     const c = (clienteAtivo != null) ? CLIENTES[clienteAtivo] : null;
     if (!c) { box.style.display = 'none'; return; }
-    const temValor = (Number(c.valor) || 0) > 0;
-    const conector = temValor ? 'no mês' : 'até o mês';
     const data = (document.getElementById('fDataProc').value || '').trim() || '__/____';
-    let texto = 'Processamento da folha de pagamento ' + conector + ' ' + data;
-
-    // Quantidades entram logo após o mês, MAS só quando o cliente NÃO tem valor
-    // pré-gravado. Com valor (contrato antigo) a discriminação não referencia
-    // empresas/funcionários — mesmo que os inputs ocultos ainda tenham resquício.
-    const partes = [];
-    if (!temValor) {
-        const nEmp  = parseInt((document.getElementById('fEmpresas').value || '').replace(/\D/g, ''), 10);
-        const nFunc = parseInt((document.getElementById('fFuncionarios').value || '').replace(/\D/g, ''), 10);
-        if (Number.isFinite(nEmp)  && nEmp  > 0) partes.push(nEmp  + (nEmp  === 1 ? ' empresa'     : ' empresas'));
-        if (Number.isFinite(nFunc) && nFunc > 0) partes.push(nFunc + (nFunc === 1 ? ' funcionário' : ' funcionários'));
-    }
-    if (partes.length) texto += ', referente a ' + partes.join(' e ');
+    const texto = 'SERVIÇO DE PROCESSAMENTO DE DADOS DA FOLHA DE PAGAMENTO DO MES ' + data;
 
     document.getElementById('previewNFTexto').textContent = texto;
     box.style.display = '';
