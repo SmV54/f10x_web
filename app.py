@@ -33945,6 +33945,28 @@ ARQUIVO_COBRANCA = r'C:\Dropbox\SERGIO\Sergio-Regina\000Comsist-COBRANÇA\Cobran
 PASTA_COBRANCA = r'C:\Dropbox\SERGIO\Sergio-Regina'
 WHATSAPP_AVISO_COBRANCA = '81988582000'
 
+def _checar_ambiente_access():
+    """Verifica se a máquina consegue ler arquivos Access (pyodbc + driver ODBC).
+    Retorna (True, '') se estiver tudo ok, ou (False, msg) com uma mensagem que já
+    orienta o PRÓXIMO PASSO — qual componente instalar. Usado nas telas de NFS-e e
+    importação Folha10, que rodam local e dependem do Access."""
+    try:
+        import pyodbc  # noqa
+    except ImportError:
+        return False, ('pyodbc não está instalado nesta máquina. No prompt, rode: '
+                       'pip install pyodbc  — e instale também o "Microsoft Access '
+                       'Database Engine 2016" (x64 se o Python for 64-bit).')
+    try:
+        tem_driver = any('Microsoft Access Driver' in d for d in pyodbc.drivers())
+    except Exception:
+        tem_driver = False
+    if not tem_driver:
+        return False, ('Falta o driver do Access nesta máquina. Instale o "Microsoft '
+                       'Access Database Engine 2016 Redistributable" (use a versão x64 '
+                       'se o Python for 64-bit; x86 se for 32-bit) e reinicie o app.')
+    return True, ''
+
+
 def _fmt_bytes(b):
     if b < 1024:       return f'{b} B'
     if b < 1_048_576:  return f'{b/1024:.0f} KB'
@@ -37683,10 +37705,9 @@ def api_admin_imp_executar():
     caminho = os.path.join(PASTA_BASES_F10, nome_arq)
     if not os.path.isfile(caminho):
         return jsonify({'ok': False, 'msg': f'Arquivo não encontrado em {PASTA_BASES_F10}'})
-    try:
-        import pyodbc  # noqa
-    except ImportError:
-        return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
+    ok_amb, msg_amb = _checar_ambiente_access()
+    if not ok_amb:
+        return jsonify({'ok': False, 'msg': msg_amb})
 
     job_id = uuid.uuid4().hex[:12]
     _import_jobs[job_id] = {'pct': 0, 'etapa': '', 'step': 0,
@@ -37826,12 +37847,12 @@ def api_admin_imp_revisar():
     Não grava nada — só leitura para o relatório de confirmação."""
     if not session.get('logado'): return jsonify({'ok': False}), 401
     if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
-    try:
-        import pyodbc
-    except ImportError:
-        return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
+    ok_amb, msg_amb = _checar_ambiente_access()
+    if not ok_amb:
+        return jsonify({'ok': False, 'msg': msg_amb})
     if not os.path.isdir(PASTA_BASES_F10):
         return jsonify({'ok': False, 'msg': f'Pasta não encontrada: {PASTA_BASES_F10}'})
+    import pyodbc
 
     arquivos = [f for f in sorted(os.listdir(PASTA_BASES_F10))
                 if f.lower().endswith(('.accdb', '.mdb'))]
@@ -38700,10 +38721,9 @@ def api_admin_nf_clientes():
     if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
     if not PASTA_NF:
         return jsonify({'ok': False, 'msg': 'Local do TABNF não configurado (PASTA_NF no app.py).'})
-    try:
-        import pyodbc  # noqa
-    except ImportError:
-        return jsonify({'ok': False, 'msg': 'pyodbc não disponível neste ambiente'})
+    ok_amb, msg_amb = _checar_ambiente_access()
+    if not ok_amb:
+        return jsonify({'ok': False, 'msg': msg_amb})
     caminho = _arquivo_nf()
     if not caminho:
         return jsonify({'ok': False, 'msg': f'Nenhum arquivo .accdb/.mdb encontrado em: {PASTA_NF}'})
