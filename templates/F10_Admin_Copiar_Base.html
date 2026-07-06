@@ -54,6 +54,17 @@
                      font-size: 13px; margin: 0; cursor: pointer; }
   .meses-vazio { color: #9ca3af; font-size: 13px; }
 
+  /* Listas de seleção (checklist de seleção única) */
+  .lista-sel { max-height: 190px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 8px; }
+  .lista-item { display: flex; align-items: center; gap: 9px; padding: 8px 12px; font-size: 13.5px;
+                cursor: pointer; border-bottom: 1px solid #f1f3f5; }
+  .lista-item:last-child { border-bottom: none; }
+  .lista-item:hover { background: #f8fafc; }
+  .lista-item.sel { background: #eff6ff; }
+  .lista-item input { margin: 0; flex: 0 0 auto; }
+  .lista-item .lid { font-variant-numeric: tabular-nums; color: #6b7280; font-weight: 600; }
+  .lista-vazio { color: #9ca3af; font-size: 13px; padding: 10px 12px; }
+
   .btn-exec { width: 100%; background: #dc2626; color: #fff; border: none; border-radius: 9px;
               padding: 13px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
   .btn-exec:hover { background: #b91c1c; }
@@ -102,12 +113,12 @@
     <div class="card">
       <h2>1 · Escolha a origem</h2>
       <div class="campo">
-        <label for="selCliente">Cliente de origem</label>
-        <select id="selCliente"><option value="">Carregando clientes...</option></select>
+        <label>Cliente de origem</label>
+        <div class="lista-sel" id="listaClientes"><div class="lista-vazio">Carregando clientes…</div></div>
       </div>
       <div class="campo">
-        <label for="selEmpresa">Empresa a copiar</label>
-        <select id="selEmpresa" disabled><option value="">Selecione o cliente primeiro</option></select>
+        <label>Empresa a copiar</label>
+        <div class="lista-sel" id="listaEmpresas"><div class="lista-vazio">Selecione o cliente primeiro</div></div>
       </div>
 
       <div class="campo" id="mesesCampo" style="display:none;">
@@ -139,47 +150,61 @@
 
 <script>
 const CLIENTE_TESTE = {{ cliente_teste }};
-const selCliente = document.getElementById('selCliente');
-const selEmpresa = document.getElementById('selEmpresa');
-const btn        = document.getElementById('btnExec');
+const btn = document.getElementById('btnExec');
+const listaClientes = document.getElementById('listaClientes');
+const listaEmpresas = document.getElementById('listaEmpresas');
 let MESES_DISPONIVEIS = [];
+let clienteSel = null, empresaSel = null;
 document.getElementById('btnAnoAtual').textContent = 'Só ' + new Date().getFullYear();
 
-// Carrega clientes
+const pad6 = n => String(n).padStart(6, '0');
+
+// Carrega a lista de clientes (checklist de seleção única)
 fetch('/api/admin_copiar_base/clientes').then(r => r.json()).then(d => {
-  if (!d.ok) { selCliente.innerHTML = '<option value="">Erro: ' + (d.msg || '') + '</option>'; return; }
-  selCliente.innerHTML = '<option value="">— selecione —</option>' +
-    d.clientes.map(c => `<option value="${c.id_cliente}">${c.id_cliente} · ${c.nome || '(sem nome)'}</option>`).join('');
+  if (!d.ok) { listaClientes.innerHTML = '<div class="lista-vazio">Erro: ' + (d.msg || '') + '</div>'; return; }
+  if (!d.clientes.length) { listaClientes.innerHTML = '<div class="lista-vazio">Nenhum cliente</div>'; return; }
+  listaClientes.innerHTML = d.clientes.map(c =>
+    `<label class="lista-item" data-id="${c.id_cliente}">
+       <input type="radio" name="cli">
+       <span class="lid">${pad6(c.id_cliente)}</span><span>${c.nome || '(sem nome)'}</span>
+     </label>`).join('');
+  listaClientes.querySelectorAll('.lista-item').forEach(it =>
+    it.addEventListener('click', () => selecionarCliente(Number(it.dataset.id), it)));
 });
 
-selCliente.addEventListener('change', () => {
-  const id = selCliente.value;
-  selEmpresa.innerHTML = '<option value="">Carregando…</option>';
-  selEmpresa.disabled = true;
+function selecionarCliente(id, itemEl) {
+  clienteSel = id; empresaSel = null;
+  listaClientes.querySelectorAll('.lista-item').forEach(x => x.classList.remove('sel'));
+  if (itemEl) { itemEl.classList.add('sel'); itemEl.querySelector('input').checked = true; }
   document.getElementById('mesesCampo').style.display = 'none';
   MESES_DISPONIVEIS = [];
   avaliarBotao();
-  if (!id) { selEmpresa.innerHTML = '<option value="">Selecione o cliente primeiro</option>'; return; }
+  listaEmpresas.innerHTML = '<div class="lista-vazio">Carregando empresas…</div>';
   fetch('/api/admin_copiar_base/empresas/' + id).then(r => r.json()).then(d => {
-    if (!d.ok || !d.empresas.length) {
-      selEmpresa.innerHTML = '<option value="">' + (d.ok ? 'Cliente sem empresas' : ('Erro: ' + d.msg)) + '</option>';
-      return;
-    }
-    selEmpresa.innerHTML = '<option value="">— selecione a empresa —</option>' +
-      d.empresas.map(e => `<option value="${e.id_empresa}">${e.nome}${e.cnpj ? ' · ' + e.cnpj : ''}</option>`).join('');
-    selEmpresa.disabled = false;
+    if (!d.ok) { listaEmpresas.innerHTML = '<div class="lista-vazio">Erro: ' + (d.msg || '') + '</div>'; return; }
+    if (!d.empresas.length) { listaEmpresas.innerHTML = '<div class="lista-vazio">Cliente sem empresas</div>'; return; }
+    listaEmpresas.innerHTML = d.empresas.map(e =>
+      `<label class="lista-item" data-id="${e.id_empresa}">
+         <input type="radio" name="emp">
+         <span class="lid">${pad6(e.id_empresa)}</span><span>${e.nome}${e.cnpj ? ' · ' + e.cnpj : ''}</span>
+       </label>`).join('');
+    const itens = listaEmpresas.querySelectorAll('.lista-item');
+    itens.forEach(it => it.addEventListener('click', () => selecionarEmpresa(Number(it.dataset.id), it)));
+    // Se o cliente só tem UMA empresa, já deixa selecionada
+    if (itens.length === 1) selecionarEmpresa(Number(itens[0].dataset.id), itens[0]);
   });
-});
+}
 
-selEmpresa.addEventListener('change', () => {
+function selecionarEmpresa(id, itemEl) {
+  empresaSel = id;
+  listaEmpresas.querySelectorAll('.lista-item').forEach(x => x.classList.remove('sel'));
+  if (itemEl) { itemEl.classList.add('sel'); itemEl.querySelector('input').checked = true; }
   avaliarBotao();
-  const idc = selCliente.value, ide = selEmpresa.value;
-  const campo = document.getElementById('mesesCampo');
-  if (!ide) { campo.style.display = 'none'; MESES_DISPONIVEIS = []; return; }
-  carregarMeses(idc, ide);
-});
+  carregarMeses(clienteSel, id);
+}
+
 function avaliarBotao() {
-  btn.disabled = !(selCliente.value && selEmpresa.value);
+  btn.disabled = !(clienteSel && empresaSel);
 }
 
 // ── Lista de meses (tab_mov / tab_total) ──
@@ -222,14 +247,14 @@ function atualizarResumo() {
 }
 
 function executar() {
+  if (!clienteSel || !empresaSel) return;
   btn.disabled = true;
-  selCliente.disabled = true; selEmpresa.disabled = true;
   document.getElementById('resultado').style.display = 'none';
   const wrap = document.getElementById('progressoWrap');
   wrap.style.display = 'block';
   setBarra(0, 'Iniciando…');
 
-  const payload = { id_cliente: Number(selCliente.value), id_empresa: Number(selEmpresa.value) };
+  const payload = { id_cliente: clienteSel, id_empresa: empresaSel };
   // Só manda 'meses' quando há períodos listados; senão o backend copia tudo.
   if (MESES_DISPONIVEIS.length) payload.meses = mesesMarcados();
 
