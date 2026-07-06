@@ -38783,7 +38783,13 @@ _COPIA_PLANO = [
 ]
 
 
-_COPIA_TABS_MESES = {"tab_mov", "tab_total"}   # tabelas que o operador pode filtrar por mês
+# Tabelas que o operador pode filtrar por mês -> (coluna de período, conversor do valor).
+# tab_mov/tab_total usam 'folha' (int AAAAMM); tab_esocial usa 'ano_mes' (texto "AAAAMM").
+_COPIA_FILTRO_MES = {
+    "tab_mov":     ("folha",   int),
+    "tab_total":   ("folha",   int),
+    "tab_esocial": ("ano_mes", str),
+}
 
 
 def _copia_fetch_all(tabela, filtros, in_filtro=None):
@@ -38872,14 +38878,15 @@ def _copiar_base_para_teste(id_orig, id_emp_orig, job_id, meses=None):
             if escopo == "emp":
                 filtros["id_empresa"] = id_emp_orig
 
-            # tab_mov/tab_total: aplica o filtro de meses escolhido pelo operador
+            # tab_mov/tab_total/tab_esocial: aplica o filtro de meses do operador
             in_filtro = None
-            if tab in _COPIA_TABS_MESES and meses is not None:
+            if tab in _COPIA_FILTRO_MES and meses is not None:
+                col, conv = _COPIA_FILTRO_MES[tab]
                 if not meses:               # nenhum mês marcado -> não copia nada aqui
                     resultados.append({"descricao": desc, "gravados": 0})
                     _avanca(f'{desc}: 0 registro(s) (nenhum mês marcado)')
                     continue
-                in_filtro = ("folha", meses)
+                in_filtro = (col, [conv(m) for m in meses])
 
             linhas = _copia_fetch_all(tab, filtros, in_filtro)
 

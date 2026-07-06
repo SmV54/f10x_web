@@ -111,14 +111,14 @@
       </div>
 
       <div class="campo" id="mesesCampo" style="display:none;">
-        <label>Meses a copiar <span class="mut" style="font-weight:400;">(apenas Movimentos e Totais)</span></label>
+        <label>Meses a copiar <span class="mut" style="font-weight:400;">(Movimentos, Totais e Histórico eSocial)</span></label>
         <div class="meses-acoes">
           <button type="button" onclick="marcarMeses(true)">Marcar todos</button>
           <button type="button" onclick="marcarMeses(false)">Desmarcar todos</button>
           <span id="mesesResumo" class="mut"></span>
         </div>
         <div class="meses-box" id="mesesBox"></div>
-        <div class="mut" style="margin-top:5px;">As demais tabelas (cadastros, eSocial, eventos, etc.) são sempre copiadas por completo.</div>
+        <div class="mut" style="margin-top:5px;">As demais tabelas (cadastros, dependentes, eventos, períodos, etc.) são sempre copiadas por completo.</div>
       </div>
 
       <label class="confirma">
@@ -199,7 +199,7 @@ function carregarMeses(idCliente, idEmpresa) {
     if (!d.ok) { box.innerHTML = '<span class="meses-vazio">Erro: ' + (d.msg || '') + '</span>'; return; }
     MESES_DISPONIVEIS = d.meses || [];
     if (!MESES_DISPONIVEIS.length) {
-      box.innerHTML = '<span class="meses-vazio">Sem períodos registrados — Movimentos/Totais serão copiados por completo.</span>';
+      box.innerHTML = '<span class="meses-vazio">Sem períodos registrados — Movimentos/Totais/eSocial serão copiados por completo.</span>';
       atualizarResumo(); return;
     }
     box.innerHTML = MESES_DISPONIVEIS.map(m =>
