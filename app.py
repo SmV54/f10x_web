@@ -38739,12 +38739,13 @@ def api_admin_nf_clientes():
 
 
 # =========================================================
-# ADMINISTRADOR — Copiar base de um cliente para o cliente de TESTE (id=6)
+# ADMINISTRADOR — Copiar base de um cliente para a BASE PARA TESTE (id=6)
 # =========================================================
-# O cliente id=6 é um cliente "aberto", só para testes. Esta rotina APAGA tudo
-# do cliente 6 (menos o registro dele em tab_cliente) e copia a base de UMA
-# empresa de outro cliente para dentro dele — assim dá para testar com dados
-# reais sem tocar na base do cliente verdadeiro.
+# O cliente id=6 é a BASE PARA TESTE. Esta rotina APAGA todos os dados-filhos
+# do cliente 6 e copia a base de UMA empresa de outro cliente para dentro dele —
+# assim dá para testar com dados reais sem tocar na base do cliente verdadeiro.
+# A empresa em si é REAPROVEITADA (UPDATE) para manter o mesmo id_empresa entre
+# cópias; a base de ORIGEM nunca é alterada (só leitura).
 CLIENTE_TESTE_ID = 6
 _copia_jobs = {}   # job_id → {pct, etapa, step, total_steps, done, resultado}
 
@@ -38823,10 +38824,10 @@ def _copia_insert_lotes(tabela, linhas, tam=500):
 
 
 def _copiar_base_para_teste(id_orig, id_emp_orig, job_id, meses=None):
-    """Roda em thread: limpa o cliente de teste e copia a empresa escolhida,
-    remapeando as chaves seriais (id_empresa e FKs) para os novos valores.
-    `meses` = lista de folhas (AAAAMM int) a copiar em tab_mov/tab_total; None
-    copia todos os meses; [] não copia nenhum mês dessas duas tabelas."""
+    """Roda em thread: limpa os dados-filhos da BASE PARA TESTE (id=6) e copia a
+    empresa escolhida (UPDATE na empresa p/ manter o id_empresa; a origem só é
+    lida). Remapeia chaves seriais (id_empresa e FKs). `meses` = folhas (AAAAMM)
+    a copiar em tab_mov/tab_total/tab_esocial; None = todos; [] = nenhum."""
     job = _copia_jobs[job_id]
     DEST = CLIENTE_TESTE_ID
     total_steps = 2 + len(_COPIA_PLANO)
@@ -38842,35 +38843,43 @@ def _copiar_base_para_teste(id_orig, id_emp_orig, job_id, meses=None):
         job['etapa'] = msg
 
     try:
-        # 1) LIMPAR tudo do cliente de teste (menos tab_cliente).
-        # Filhas primeiro, tab_empresa por último (caso haja FK restringindo).
-        job['etapa'] = 'Limpando o cliente de teste...'
-        tabs_limpar = [p[0] for p in _COPIA_PLANO] + ["tab_empresa"]
-        for t in tabs_limpar:
+        # 1) LIMPAR os dados-filhos da BASE PARA TESTE (a empresa é reaproveitada
+        # no passo 2, então NÃO entra na limpeza; tab_cliente também não).
+        job['etapa'] = 'Limpando a base para teste...'
+        for t in [p[0] for p in _COPIA_PLANO]:
             try:
                 supabase.table(t).delete().eq("id_cliente", DEST).execute()
             except Exception as ex:
                 job.setdefault('avisos', []).append(f"limpar {t}: {str(ex)[:120]}")
-        _avanca('Cliente de teste limpo')
+        _avanca('Base para teste limpa')
 
-        # 2) COPIAR a empresa escolhida (gera novo id_empresa)
+        # 2) EMPRESA — mantém UMA única empresa na base para teste: se já existir,
+        # faz UPDATE (preserva o id_empresa); senão, INSERT. Só leitura na origem.
         emp_rows = _copia_fetch_all("tab_empresa",
                                     {"id_cliente": id_orig, "id_empresa": id_emp_orig})
         if not emp_rows:
             raise RuntimeError("Empresa de origem não encontrada")
         emp = dict(emp_rows[0])
-        cnpj_emp = emp.get("cnpj")
         emp.pop("id_empresa", None)
         emp["id_cliente"] = DEST
-        res = supabase.table("tab_empresa").insert(emp).execute()
-        novo_emp = (res.data[0].get("id_empresa") if res.data else None)
+
+        existentes = _copia_fetch_all("tab_empresa", {"id_cliente": DEST})
+        if existentes:
+            novo_emp = existentes[0]["id_empresa"]
+            # remove empresas extras da base de teste (deve haver só uma)
+            for e in existentes[1:]:
+                supabase.table("tab_empresa").delete().eq("id_empresa", e["id_empresa"]).execute()
+            supabase.table("tab_empresa").update(emp).eq("id_empresa", novo_emp).execute()
+            _avanca(f'Empresa atualizada (id_empresa {novo_emp} reaproveitado)')
+        else:
+            res = supabase.table("tab_empresa").insert(emp).execute()
+            novo_emp = (res.data[0].get("id_empresa") if res.data else None)
+            if not novo_emp:
+                achou = _copia_fetch_all("tab_empresa", {"id_cliente": DEST, "cnpj": emp.get("cnpj")})
+                novo_emp = achou[-1]["id_empresa"] if achou else None
+            _avanca(f'Empresa criada (id_empresa {novo_emp})')
         if not novo_emp:
-            # fallback: relê pela CNPJ dentro do cliente de teste
-            achou = _copia_fetch_all("tab_empresa", {"id_cliente": DEST, "cnpj": cnpj_emp})
-            novo_emp = achou[-1]["id_empresa"] if achou else None
-        if not novo_emp:
-            raise RuntimeError("Não foi possível obter o novo id_empresa")
-        _avanca(f'Empresa copiada (novo id_empresa {novo_emp})')
+            raise RuntimeError("Não foi possível obter o id_empresa da base para teste")
 
         # 3) Demais tabelas conforme o plano
         for tab, desc, pk, escopo, id_emp_modo, map_key, remaps in _COPIA_PLANO:

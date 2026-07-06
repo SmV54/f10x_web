@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Copiar Base p/ Cliente Teste</title>
+<title>Copiar Base p/ BASE PARA TESTE</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
@@ -81,7 +81,7 @@
 <body>
   <div class="topo">
     <div><span class="badge-admin">🛡️ ADMIN</span></div>
-    <div class="topo-titulo">🧪 Copiar Base p/ Cliente de Teste</div>
+    <div class="topo-titulo">🧪 Copiar Base p/ BASE PARA TESTE (id {{ cliente_teste }})</div>
     <div class="topo-dir">
       <div style="display:flex;flex-direction:column;align-items:flex-end;">
         <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
@@ -93,9 +93,9 @@
 
   <div class="wrap">
     <div class="aviso">
-      Esta rotina <b>APAGA todos os dados do cliente de teste (id {{ cliente_teste }})</b> e substitui
-      pela base da empresa escolhida abaixo. O cadastro do cliente {{ cliente_teste }} em si é mantido —
-      só os dados (empresas, funcionários, movimentos, folha, etc.) são zerados e recopiados.
+      Esta rotina <b>APAGA todos os dados da BASE PARA TESTE (id {{ cliente_teste }})</b> e substitui
+      pela base da empresa escolhida abaixo. Só os dados (funcionários, movimentos, folha, etc.)
+      são recopiados — a empresa é reaproveitada e a base de ORIGEM <b>nunca é alterada</b>.
       Use para testar com dados reais sem tocar na base do cliente verdadeiro.
     </div>
 
@@ -115,20 +115,15 @@
         <div class="meses-acoes">
           <button type="button" onclick="marcarMeses(true)">Marcar todos</button>
           <button type="button" onclick="marcarMeses(false)">Desmarcar todos</button>
+          <button type="button" id="btnAnoAtual" onclick="marcarAnoAtual()">Só o ano atual</button>
           <span id="mesesResumo" class="mut"></span>
         </div>
         <div class="meses-box" id="mesesBox"></div>
         <div class="mut" style="margin-top:5px;">As demais tabelas (cadastros, dependentes, eventos, períodos, etc.) são sempre copiadas por completo.</div>
       </div>
 
-      <label class="confirma">
-        <input type="checkbox" id="chkConfirma">
-        <span>Entendo que os dados atuais do cliente de teste (id {{ cliente_teste }}) serão
-              <b>apagados</b> e substituídos.</span>
-      </label>
-
       <button class="btn-exec" id="btnExec" disabled onclick="executar()">
-        Apagar cliente {{ cliente_teste }} e copiar a base
+        Substituir a BASE PARA TESTE (id {{ cliente_teste }}) com esta base
       </button>
     </div>
 
@@ -146,9 +141,9 @@
 const CLIENTE_TESTE = {{ cliente_teste }};
 const selCliente = document.getElementById('selCliente');
 const selEmpresa = document.getElementById('selEmpresa');
-const chk        = document.getElementById('chkConfirma');
 const btn        = document.getElementById('btnExec');
 let MESES_DISPONIVEIS = [];
+document.getElementById('btnAnoAtual').textContent = 'Só ' + new Date().getFullYear();
 
 // Carrega clientes
 fetch('/api/admin_copiar_base/clientes').then(r => r.json()).then(d => {
@@ -183,9 +178,8 @@ selEmpresa.addEventListener('change', () => {
   if (!ide) { campo.style.display = 'none'; MESES_DISPONIVEIS = []; return; }
   carregarMeses(idc, ide);
 });
-chk.addEventListener('change', avaliarBotao);
 function avaliarBotao() {
-  btn.disabled = !(selCliente.value && selEmpresa.value && chk.checked);
+  btn.disabled = !(selCliente.value && selEmpresa.value);
 }
 
 // ── Lista de meses (tab_mov / tab_total) ──
@@ -211,6 +205,13 @@ function marcarMeses(estado) {
   document.querySelectorAll('.mes-chk').forEach(c => c.checked = estado);
   atualizarResumo();
 }
+function marcarAnoAtual() {
+  const ano = String(new Date().getFullYear());
+  document.querySelectorAll('.mes-chk').forEach(c => {
+    c.checked = String(c.value).slice(0, 4) === ano;
+  });
+  atualizarResumo();
+}
 function mesesMarcados() {
   return Array.from(document.querySelectorAll('.mes-chk:checked')).map(c => Number(c.value));
 }
@@ -222,7 +223,7 @@ function atualizarResumo() {
 
 function executar() {
   btn.disabled = true;
-  selCliente.disabled = true; selEmpresa.disabled = true; chk.disabled = true;
+  selCliente.disabled = true; selEmpresa.disabled = true;
   document.getElementById('resultado').style.display = 'none';
   const wrap = document.getElementById('progressoWrap');
   wrap.style.display = 'block';
@@ -266,8 +267,8 @@ function finalizar(res) {
   const avisos = (res.avisos && res.avisos.length)
     ? `<div class="mut" style="margin-top:8px;">Avisos: ${res.avisos.join(' · ')}</div>` : '';
   box.innerHTML =
-    `<div class="ok-box">✅ Base copiada para o cliente de teste (id ${CLIENTE_TESTE}).
-       Novo id_empresa: <b>${res.novo_id_empresa}</b> · Total: <b>${res.total}</b> registro(s).</div>
+    `<div class="ok-box">✅ Base copiada para a BASE PARA TESTE (id ${CLIENTE_TESTE}).
+       id_empresa: <b>${res.novo_id_empresa}</b> · Total: <b>${res.total}</b> registro(s).</div>
      <table><thead><tr><th>Tabela</th><th class="num">Gravados</th></tr></thead><tbody>${linhas}</tbody></table>
      ${avisos}
      <div style="margin-top:14px;"><button class="btn-voltar" onclick="location.reload()">Fazer outra cópia</button></div>`;
