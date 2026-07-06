@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Copiar Base p/ Cliente Teste</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  /* Cabeçalho */
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn-voltar:hover { background: #374151; }
+
+  .wrap { max-width: 720px; margin: 26px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; margin-bottom: 14px; color: #111827; display: flex;
+             align-items: center; gap: 8px; }
+
+  .aviso { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+           border-radius: 10px; padding: 14px 16px; font-size: 13.5px; line-height: 1.5;
+           margin-bottom: 18px; }
+  .aviso b { color: #7f1d1d; }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+  select { width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 8px;
+           font-size: 14px; background: #fff; color: #111827; }
+  select:disabled { background: #f3f4f6; color: #9ca3af; }
+  .campo { margin-bottom: 16px; }
+
+  .confirma { display: flex; align-items: flex-start; gap: 9px; font-size: 13px;
+              color: #374151; margin: 4px 0 16px; }
+  .confirma input { margin-top: 2px; }
+
+  .btn-exec { width: 100%; background: #dc2626; color: #fff; border: none; border-radius: 9px;
+              padding: 13px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+  .btn-exec:hover { background: #b91c1c; }
+  .btn-exec:disabled { background: #e5a3a3; cursor: not-allowed; }
+
+  /* Progresso */
+  #progressoWrap { display: none; }
+  .barra { height: 14px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin: 8px 0; }
+  .barra-fill { height: 100%; width: 0%; background: #16a34a; transition: width .3s; }
+  .prog-linha { display: flex; justify-content: space-between; font-size: 13px; color: #374151; }
+
+  /* Resultado */
+  #resultado { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+  th { color: #6b7280; font-weight: 600; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 12px 14px; font-size: 14px; margin-bottom: 10px; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 12px 14px; font-size: 14px; }
+  .mut { color: #9ca3af; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">🧪 Copiar Base p/ Cliente de Teste</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="aviso">
+      Esta rotina <b>APAGA todos os dados do cliente de teste (id {{ cliente_teste }})</b> e substitui
+      pela base da empresa escolhida abaixo. O cadastro do cliente {{ cliente_teste }} em si é mantido —
+      só os dados (empresas, funcionários, movimentos, folha, etc.) são zerados e recopiados.
+      Use para testar com dados reais sem tocar na base do cliente verdadeiro.
+    </div>
+
+    <div class="card">
+      <h2>1 · Escolha a origem</h2>
+      <div class="campo">
+        <label for="selCliente">Cliente de origem</label>
+        <select id="selCliente"><option value="">Carregando clientes...</option></select>
+      </div>
+      <div class="campo">
+        <label for="selEmpresa">Empresa a copiar</label>
+        <select id="selEmpresa" disabled><option value="">Selecione o cliente primeiro</option></select>
+      </div>
+
+      <label class="confirma">
+        <input type="checkbox" id="chkConfirma">
+        <span>Entendo que os dados atuais do cliente de teste (id {{ cliente_teste }}) serão
+              <b>apagados</b> e substituídos.</span>
+      </label>
+
+      <button class="btn-exec" id="btnExec" disabled onclick="executar()">
+        Apagar cliente {{ cliente_teste }} e copiar a base
+      </button>
+    </div>
+
+    <div class="card" id="progressoWrap">
+      <h2>Copiando…</h2>
+      <div class="prog-linha"><span id="progressoEtapa">Iniciando…</span><span id="progressoPct">0%</span></div>
+      <div class="barra"><div class="barra-fill" id="progressoFill"></div></div>
+      <div class="mut">Não feche esta janela até concluir.</div>
+    </div>
+
+    <div class="card" id="resultado"></div>
+  </div>
+
+<script>
+const CLIENTE_TESTE = {{ cliente_teste }};
+const selCliente = document.getElementById('selCliente');
+const selEmpresa = document.getElementById('selEmpresa');
+const chk        = document.getElementById('chkConfirma');
+const btn        = document.getElementById('btnExec');
+
+// Carrega clientes
+fetch('/api/admin_copiar_base/clientes').then(r => r.json()).then(d => {
+  if (!d.ok) { selCliente.innerHTML = '<option value="">Erro: ' + (d.msg || '') + '</option>'; return; }
+  selCliente.innerHTML = '<option value="">— selecione —</option>' +
+    d.clientes.map(c => `<option value="${c.id_cliente}">${c.id_cliente} · ${c.nome || '(sem nome)'}</option>`).join('');
+});
+
+selCliente.addEventListener('change', () => {
+  const id = selCliente.value;
+  selEmpresa.innerHTML = '<option value="">Carregando…</option>';
+  selEmpresa.disabled = true;
+  avaliarBotao();
+  if (!id) { selEmpresa.innerHTML = '<option value="">Selecione o cliente primeiro</option>'; return; }
+  fetch('/api/admin_copiar_base/empresas/' + id).then(r => r.json()).then(d => {
+    if (!d.ok || !d.empresas.length) {
+      selEmpresa.innerHTML = '<option value="">' + (d.ok ? 'Cliente sem empresas' : ('Erro: ' + d.msg)) + '</option>';
+      return;
+    }
+    selEmpresa.innerHTML = '<option value="">— selecione a empresa —</option>' +
+      d.empresas.map(e => `<option value="${e.id_empresa}">${e.nome}${e.cnpj ? ' · ' + e.cnpj : ''}</option>`).join('');
+    selEmpresa.disabled = false;
+  });
+});
+
+selEmpresa.addEventListener('change', avaliarBotao);
+chk.addEventListener('change', avaliarBotao);
+function avaliarBotao() {
+  btn.disabled = !(selCliente.value && selEmpresa.value && chk.checked);
+}
+
+function executar() {
+  btn.disabled = true;
+  selCliente.disabled = true; selEmpresa.disabled = true; chk.disabled = true;
+  document.getElementById('resultado').style.display = 'none';
+  const wrap = document.getElementById('progressoWrap');
+  wrap.style.display = 'block';
+  setBarra(0, 'Iniciando…');
+
+  fetch('/api/admin_copiar_base/executar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_cliente: Number(selCliente.value), id_empresa: Number(selEmpresa.value) })
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) { mostrarErro(d.msg || 'Falha ao iniciar'); return; }
+    poll(d.job_id);
+  }).catch(e => mostrarErro(String(e)));
+}
+
+function setBarra(pct, etapa) {
+  document.getElementById('progressoFill').style.width = pct + '%';
+  document.getElementById('progressoPct').textContent = pct + '%';
+  if (etapa != null) document.getElementById('progressoEtapa').textContent = etapa;
+}
+
+function poll(jobId) {
+  fetch('/api/admin_copiar_base/progresso?job=' + jobId).then(r => r.json()).then(d => {
+    if (!d.ok) { mostrarErro(d.msg || 'Job não encontrado'); return; }
+    setBarra(d.pct || 0, d.etapa || '');
+    if (d.done) { finalizar(d.resultado); return; }
+    setTimeout(() => poll(jobId), 900);
+  }).catch(e => setTimeout(() => poll(jobId), 1500));
+}
+
+function finalizar(res) {
+  setBarra(100, 'Concluído');
+  const box = document.getElementById('resultado');
+  box.style.display = 'block';
+  if (!res || !res.ok) { box.innerHTML = ''; mostrarErro((res && res.msg) || 'Erro desconhecido', box); return; }
+  const linhas = (res.itens || []).map(i =>
+    `<tr><td>${i.descricao}</td><td class="num">${i.gravados}</td></tr>`).join('');
+  const avisos = (res.avisos && res.avisos.length)
+    ? `<div class="mut" style="margin-top:8px;">Avisos: ${res.avisos.join(' · ')}</div>` : '';
+  box.innerHTML =
+    `<div class="ok-box">✅ Base copiada para o cliente de teste (id ${CLIENTE_TESTE}).
+       Novo id_empresa: <b>${res.novo_id_empresa}</b> · Total: <b>${res.total}</b> registro(s).</div>
+     <table><thead><tr><th>Tabela</th><th class="num">Gravados</th></tr></thead><tbody>${linhas}</tbody></table>
+     ${avisos}
+     <div style="margin-top:14px;"><button class="btn-voltar" onclick="location.reload()">Fazer outra cópia</button></div>`;
+}
+
+function mostrarErro(msg, box) {
+  box = box || document.getElementById('resultado');
+  box.style.display = 'block';
+  box.innerHTML = `<div class="erro-box">❌ ${msg}</div>
+     <div style="margin-top:12px;"><button class="btn-voltar" onclick="location.reload()">Tentar de novo</button></div>`;
+}
+</script>
+</body>
+</html>

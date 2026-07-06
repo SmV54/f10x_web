@@ -38739,6 +38739,258 @@ def api_admin_nf_clientes():
 
 
 # =========================================================
+# ADMINISTRADOR — Copiar base de um cliente para o cliente de TESTE (id=6)
+# =========================================================
+# O cliente id=6 é um cliente "aberto", só para testes. Esta rotina APAGA tudo
+# do cliente 6 (menos o registro dele em tab_cliente) e copia a base de UMA
+# empresa de outro cliente para dentro dele — assim dá para testar com dados
+# reais sem tocar na base do cliente verdadeiro.
+CLIENTE_TESTE_ID = 6
+_copia_jobs = {}   # job_id → {pct, etapa, step, total_steps, done, resultado}
+
+# Plano de cópia. Cada item descreve uma tabela a copiar do cliente origem:
+#   tabela, descrição,
+#   pk       = coluna serial (PK) a descartar antes do insert (o banco gera nova),
+#   escopo   = 'cli' (filtra só por id_cliente) | 'emp' (id_cliente + id_empresa),
+#   id_emp   = como setar id_empresa: 'novo' (id_empresa novo) | 'zero' (0) | None,
+#   map_key  = se preenchido, insere linha-a-linha e guarda de-para old_pk->new_pk
+#              (usado por outras tabelas que referenciam esta),
+#   remaps   = [(campo, map_key)] FKs a reescrever com de-paras já construídos.
+# ORDEM IMPORTA: tabelas referenciadas (funcao, filial, cc, sindicato, horario)
+# vêm ANTES de quem as referencia (tab_cad, tab_mov_fixo).
+_COPIA_PLANO = [
+    ("tab_rubrica",        "Rubricas / Verbas",  "id",         "cli", None,   None,      []),
+    ("tab_funcao_cli",     "Funções / Cargos",   "id",         "cli", None,   "funcao",  []),
+    ("tab_filial",         "Filiais",            "id",         "emp", "novo", "filial",  []),
+    ("tab_cc",             "Centros de custo",   "id",         "emp", "novo", "cc",      []),
+    ("tab_aux_sindicatos", "Sindicatos",         "id",         "cli", "novo", "sind",    []),
+    ("tab_aux_horarios",   "Horários",           "id_horario", "cli", "novo", "horario", []),
+    ("tab_tabela_cli",     "Preferências",       "id",         "cli", "novo", None,      []),
+    ("tab_rel_gerador",    "Config. relatórios", "id",         "cli", None,   None,      []),
+    ("tab_aux_feriados",   "Feriados",           "id",         "cli", "zero", None,      []),
+    ("tab_cad",            "Funcionários",       "id",         "emp", "novo", None,
+        [("id_tab_horario", "horario")]),
+    ("tab_dependentes",    "Dependentes",        "id",         "emp", "novo", None,      []),
+    ("tab_anomes",         "Períodos (Ano/Mês)", "id",         "emp", "novo", None,      []),
+    ("tab_mov",            "Movimentos",         "id",         "emp", "novo", None,      []),
+    ("tab_mov_fixo",       "Movimentos fixos",   "id",         "emp", "novo", None,
+        [("id_sindicato", "sind"), ("id_funcao", "funcao"),
+         ("id_centrocusto", "cc"), ("id_filial", "filial")]),
+    ("tab_total",          "Totais de folha",    "id",         "emp", "novo", None,      []),
+    ("tab_esocial",        "Histórico eSocial",  "id_esocial", "emp", "novo", None,      []),
+    ("tab_eventos",        "Eventos",            "id",         "emp", "novo", None,      []),
+    ("tab_acidente",       "Acidentes (CAT)",    "id",         "emp", "novo", None,      []),
+]
+
+
+def _copia_fetch_all(tabela, filtros):
+    """Lê TODAS as linhas de uma tabela (paginando de 1000 em 1000) aplicando os
+    filtros de igualdade informados. Retorna lista de dicts."""
+    linhas, ini, passo = [], 0, 1000
+    while True:
+        q = supabase.table(tabela).select("*")
+        for col, val in filtros.items():
+            q = q.eq(col, val)
+        r = q.range(ini, ini + passo - 1).execute()
+        lote = r.data or []
+        linhas.extend(lote)
+        if len(lote) < passo:
+            break
+        ini += passo
+    return linhas
+
+
+def _copia_insert_lotes(tabela, linhas, tam=500):
+    """Insere as linhas em lotes. Retorna quantos foram gravados."""
+    gravados = 0
+    for i in range(0, len(linhas), tam):
+        lote = linhas[i:i + tam]
+        supabase.table(tabela).insert(lote).execute()
+        gravados += len(lote)
+    return gravados
+
+
+def _copiar_base_para_teste(id_orig, id_emp_orig, job_id):
+    """Roda em thread: limpa o cliente de teste e copia a empresa escolhida,
+    remapeando as chaves seriais (id_empresa e FKs) para os novos valores."""
+    job = _copia_jobs[job_id]
+    DEST = CLIENTE_TESTE_ID
+    total_steps = 2 + len(_COPIA_PLANO)
+    step = 0
+    resultados = []
+    mapas = {}   # map_key -> {old_pk: new_pk}
+
+    def _avanca(msg):
+        nonlocal step
+        step += 1
+        job['step'] = step
+        job['pct'] = int(step / total_steps * 100)
+        job['etapa'] = msg
+
+    try:
+        # 1) LIMPAR tudo do cliente de teste (menos tab_cliente).
+        # Filhas primeiro, tab_empresa por último (caso haja FK restringindo).
+        job['etapa'] = 'Limpando o cliente de teste...'
+        tabs_limpar = [p[0] for p in _COPIA_PLANO] + ["tab_empresa"]
+        for t in tabs_limpar:
+            try:
+                supabase.table(t).delete().eq("id_cliente", DEST).execute()
+            except Exception as ex:
+                job.setdefault('avisos', []).append(f"limpar {t}: {str(ex)[:120]}")
+        _avanca('Cliente de teste limpo')
+
+        # 2) COPIAR a empresa escolhida (gera novo id_empresa)
+        emp_rows = _copia_fetch_all("tab_empresa",
+                                    {"id_cliente": id_orig, "id_empresa": id_emp_orig})
+        if not emp_rows:
+            raise RuntimeError("Empresa de origem não encontrada")
+        emp = dict(emp_rows[0])
+        cnpj_emp = emp.get("cnpj")
+        emp.pop("id_empresa", None)
+        emp["id_cliente"] = DEST
+        res = supabase.table("tab_empresa").insert(emp).execute()
+        novo_emp = (res.data[0].get("id_empresa") if res.data else None)
+        if not novo_emp:
+            # fallback: relê pela CNPJ dentro do cliente de teste
+            achou = _copia_fetch_all("tab_empresa", {"id_cliente": DEST, "cnpj": cnpj_emp})
+            novo_emp = achou[-1]["id_empresa"] if achou else None
+        if not novo_emp:
+            raise RuntimeError("Não foi possível obter o novo id_empresa")
+        _avanca(f'Empresa copiada (novo id_empresa {novo_emp})')
+
+        # 3) Demais tabelas conforme o plano
+        for tab, desc, pk, escopo, id_emp_modo, map_key, remaps in _COPIA_PLANO:
+            filtros = {"id_cliente": id_orig}
+            if escopo == "emp":
+                filtros["id_empresa"] = id_emp_orig
+            linhas = _copia_fetch_all(tab, filtros)
+
+            def _prep(orig):
+                """Devolve (old_pk, linha_preparada) — reescreve cliente/empresa/FKs."""
+                old = orig.get(pk)
+                r2 = dict(orig)
+                r2.pop(pk, None)
+                r2["id_cliente"] = DEST
+                if id_emp_modo == "novo" and "id_empresa" in r2:
+                    r2["id_empresa"] = novo_emp
+                elif id_emp_modo == "zero" and "id_empresa" in r2:
+                    r2["id_empresa"] = 0
+                for campo, mk in remaps:
+                    v = r2.get(campo)
+                    if v is not None and v in mapas.get(mk, {}):
+                        r2[campo] = mapas[mk][v]
+                return old, r2
+
+            if map_key:
+                # linha-a-linha para capturar o de-para old_pk -> new_pk
+                mp, n = {}, 0
+                for orig in linhas:
+                    old, r2 = _prep(orig)
+                    ins = supabase.table(tab).insert(r2).execute()
+                    new = ins.data[0].get(pk) if ins.data else None
+                    if old is not None and new is not None:
+                        mp[old] = new
+                    n += 1
+                mapas[map_key] = mp
+            else:
+                prep = [_prep(orig)[1] for orig in linhas]
+                n = _copia_insert_lotes(tab, prep) if prep else 0
+
+            resultados.append({"descricao": desc, "gravados": n})
+            _avanca(f'{desc}: {n} registro(s)')
+
+        job['pct'] = 100
+        job['done'] = True
+        job['resultado'] = {
+            "ok": True, "novo_id_empresa": novo_emp, "itens": resultados,
+            "total": sum(r["gravados"] for r in resultados),
+            "avisos": job.get('avisos', []),
+        }
+    except Exception as ex:
+        job['pct'] = 100
+        job['done'] = True
+        job['resultado'] = {"ok": False,
+                            "msg": f"{type(ex).__name__}: {str(ex)[:250]}",
+                            "itens": resultados}
+
+
+@app.route('/admin_copiar_base')
+def admin_copiar_base():
+    if not session.get('logado'):
+        return redirect('/')
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+        return redirect('/menu')
+    return render_template('F10_Admin_Copiar_Base.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''),
+                           cliente_teste=CLIENTE_TESTE_ID)
+
+
+@app.route('/api/admin_copiar_base/clientes')
+def api_admin_copiar_clientes():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    try:
+        r = (supabase.table("tab_cliente")
+             .select("id_cliente, nome, cpf")
+             .order("nome").execute())
+        # tira o próprio cliente de teste da lista de ORIGEM
+        clientes = [c for c in (r.data or []) if c.get("id_cliente") != CLIENTE_TESTE_ID]
+        return jsonify({'ok': True, 'clientes': clientes})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_copiar_base/empresas/<int:id_cliente>')
+def api_admin_copiar_empresas(id_cliente):
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    try:
+        r = (supabase.table("tab_empresa")
+             .select("id_empresa, cnpj, razaosocial, nome_fantasia")
+             .eq("id_cliente", id_cliente)
+             .order("razaosocial").execute())
+        empresas = [{"id_empresa": e.get("id_empresa"),
+                     "cnpj": e.get("cnpj", ""),
+                     "nome": e.get("razaosocial") or e.get("nome_fantasia") or "Empresa"}
+                    for e in (r.data or [])]
+        return jsonify({'ok': True, 'empresas': empresas})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_copiar_base/executar', methods=['POST'])
+def api_admin_copiar_executar():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    body = request.get_json(silent=True) or {}
+    id_orig = body.get('id_cliente')
+    id_emp  = body.get('id_empresa')
+    if not id_orig or not id_emp:
+        return jsonify({'ok': False, 'msg': 'Selecione o cliente e a empresa de origem'})
+    if int(id_orig) == CLIENTE_TESTE_ID:
+        return jsonify({'ok': False, 'msg': 'A origem não pode ser o próprio cliente de teste'})
+
+    job_id = uuid.uuid4().hex[:12]
+    _copia_jobs[job_id] = {'pct': 0, 'etapa': '', 'step': 0,
+                            'total_steps': 2 + len(_COPIA_PLANO),
+                            'done': False, 'resultado': None}
+    threading.Thread(target=_copiar_base_para_teste,
+                     args=(int(id_orig), int(id_emp), job_id), daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id})
+
+
+@app.route('/api/admin_copiar_base/progresso')
+def api_admin_copiar_progresso():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    job_id = request.args.get('job', '').strip()
+    job = _copia_jobs.get(job_id)
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
+
+
+# =========================================================
 # ADIANTAMENTO QUINZENAL
 # =========================================================
 @app.route("/informar_adiantamento")
