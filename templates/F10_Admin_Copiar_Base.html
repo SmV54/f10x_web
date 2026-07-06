@@ -134,7 +134,7 @@
       </div>
 
       <button class="btn-exec" id="btnExec" disabled onclick="executar()">
-        Substituir a BASE PARA TESTE (id {{ cliente_teste }}) com esta base
+        Substituir a Base para Teste (id={{ cliente_teste }}) por essa Base Escolhida
       </button>
     </div>
 
@@ -295,8 +295,7 @@ function finalizar(res) {
     `<div class="ok-box">✅ Base copiada para a BASE PARA TESTE (id ${CLIENTE_TESTE}).
        id_empresa: <b>${res.novo_id_empresa}</b> · Total: <b>${res.total}</b> registro(s).</div>
      <table><thead><tr><th>Tabela</th><th class="num">Gravados</th></tr></thead><tbody>${linhas}</tbody></table>
-     ${avisos}
-     <div style="margin-top:14px;"><button class="btn-voltar" onclick="location.reload()">Fazer outra cópia</button></div>`;
+     ${avisos}`;
 }
 
 function mostrarErro(msg, box) {
