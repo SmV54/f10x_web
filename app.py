@@ -39077,8 +39077,17 @@ def _rodar_backup_supabase(job_id, carimbo):
     total = len(_BACKUP_TABELAS)
     resultados = []
     try:
-        destino = os.path.join(PASTA_COPIA_BASE, carimbo)
+        # Recurso LOCAL: grava em C:\ e só funciona na máquina Windows. Se estiver
+        # rodando no servidor (Render/Linux), avisa em vez de criar pasta fantasma.
+        if os.name != 'nt':
+            raise RuntimeError(
+                "Backup LOCAL: grava em C:\\Folha10-Simples\\CopiaBase e só funciona "
+                "com o app rodando na SUA máquina Windows (endereço 127.0.0.1). "
+                "Pela URL do Render (servidor Linux) não é possível.")
+        destino = os.path.abspath(os.path.join(PASTA_COPIA_BASE, carimbo))
         os.makedirs(destino, exist_ok=True)
+        if not os.path.isdir(destino):
+            raise RuntimeError(f"Não foi possível criar a pasta: {destino}")
         total_reg = 0
         for i, tab in enumerate(_BACKUP_TABELAS):
             job['pct'] = int(i / total * 100)

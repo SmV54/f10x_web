@@ -73,7 +73,7 @@
       grava no disco da máquina onde o app está rodando.
     </div>
 
-    <div class="card">
+    <div class="card" id="cardBtn">
       <button class="btn-exec" id="btnExec" onclick="executar()">Baixar cópia agora</button>
     </div>
 
@@ -90,7 +90,8 @@
 const btn = document.getElementById('btnExec');
 
 function executar() {
-  btn.disabled = true;
+  // Esconde o botão ao iniciar; só volta reabrindo a tela pelo menu.
+  document.getElementById('cardBtn').style.display = 'none';
   document.getElementById('resultado').style.display = 'none';
   document.getElementById('progressoWrap').style.display = 'block';
   setBarra(0, 'Iniciando…');
@@ -120,7 +121,6 @@ function finalizar(res) {
   setBarra(100, 'Concluído');
   const box = document.getElementById('resultado');
   box.style.display = 'block';
-  btn.disabled = false;
   if (!res || !res.ok) { mostrarErro((res && res.msg) || 'Erro desconhecido', box); return; }
   const linhas = (res.itens || []).map(i =>
     `<tr><td>${i.descricao}</td><td class="num">${i.gravados < 0 ? ('ERRO: ' + (i.erro || '')) : i.gravados}</td></tr>`).join('');
@@ -133,8 +133,8 @@ function finalizar(res) {
 function mostrarErro(msg, box) {
   box = box || document.getElementById('resultado');
   box.style.display = 'block';
-  btn.disabled = false;
-  box.innerHTML = `<div class="erro-box">❌ ${msg}</div>`;
+  box.innerHTML = `<div class="erro-box">❌ ${msg}</div>
+     <div style="margin-top:12px;"><button class="btn-voltar" onclick="window.location.href='/admin_backup_supabase'">Voltar</button></div>`;
 }
 </script>
 </body>
