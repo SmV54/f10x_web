@@ -6045,12 +6045,12 @@ def cad_feriado():
     if not session.get("logado"):
         return redirect("/")
 
-    cpf_cliente = so_numeros(session.get("cpf", ""))
+    id_cliente = session.get("id_cliente")
     r = (
         supabase
         .table("tab_aux_feriados")
         .select("*")
-        .or_(f"id_cliente.eq.{cpf_cliente},id_cliente.is.null")
+        .or_(f"id_cliente.eq.{id_cliente},id_cliente.is.null")
         .order("dat_feriado")
         .execute()
     )
@@ -6119,7 +6119,7 @@ def api_feriado_incluir():
     tipo        = (data.get("tipo")        or "E").strip().upper()
     uf          = (data.get("uf") or None)
     cod_ibge    = data.get("cod_ibge")
-    cpf_cliente = so_numeros(session.get("cpf", ""))
+    id_cliente  = session.get("id_cliente")
 
     if not dat_feriado or len(dat_feriado) != 8:
         return jsonify({"ok": False, "msg": "Data inválida"})
@@ -6135,7 +6135,8 @@ def api_feriado_incluir():
             "tipo":        tipo,
             "uf":          uf,
             "cod_ibge":    cod_ibge,
-            "id_cliente":  cpf_cliente
+            "id_cliente":  id_cliente,
+            "id_empresa":  0
         }).execute()
         return jsonify({"ok": True})
     except Exception as e:
@@ -6149,13 +6150,13 @@ def api_feriado_nacionais():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão inválida"})
 
-    cpf_cliente = so_numeros(session.get("cpf", ""))
+    id_cliente = session.get("id_cliente")
 
     r = (
         supabase
         .table("tab_aux_feriados")
         .select("dat_feriado")
-        .eq("id_cliente", cpf_cliente)
+        .eq("id_cliente", id_cliente)
         .eq("tipo", "N")
         .execute()
     )
@@ -6173,7 +6174,8 @@ def api_feriado_nacionais():
                 "descricao":   desc,
                 "tipo":        "N",
                 "cod_ibge":    None,
-                "id_cliente":  cpf_cliente
+                "id_cliente":  id_cliente,
+                "id_empresa":  0
             }).execute()
             incluidos += 1
         except Exception as e:
@@ -6191,7 +6193,7 @@ def api_feriado_excluir():
 
     data        = request.get_json() or {}
     id_feriado  = data.get("id")
-    cpf_cliente = so_numeros(session.get("cpf", ""))
+    id_cliente  = session.get("id_cliente")
 
     if not id_feriado:
         return jsonify({"ok": False, "msg": "ID não informado"})
@@ -6199,7 +6201,7 @@ def api_feriado_excluir():
     try:
         supabase.table("tab_aux_feriados").delete() \
             .eq("id", id_feriado) \
-            .eq("id_cliente", cpf_cliente) \
+            .eq("id_cliente", id_cliente) \
             .execute()
         return jsonify({"ok": True})
     except Exception as e:

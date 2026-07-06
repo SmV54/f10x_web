@@ -28,3 +28,6 @@ Nada.txt
 
 # PDFs de memória de cálculo gerados em runtime
 Folha10-Simples_Memoria/
+
+# Backups locais do Supabase (contêm dados sensíveis: CPFs, salários)
+backup_supabase/
