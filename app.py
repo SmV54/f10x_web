@@ -25122,7 +25122,8 @@ def _pdf_num_pagina(canvas, doc):
 
 
 def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id_cliente=None, on_func=None, anomes_tipo="N", on_aviso=None):
-    """Grava um PDF individual por funcionário em C:\\Folha10-Simples_Memoria. Silencioso.
+    """Grava um PDF individual por funcionário (local no Windows / Supabase Storage
+    no Render, via _memoria_destino/_salvar_memoria_pdf). Silencioso.
     on_func(i, total, matricula, nome) é chamado antes de processar cada funcionário.
     on_aviso(msg) é chamado para erros não fatais (ex: falha no tab_total)."""
     def _aviso(msg):
@@ -25133,10 +25134,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
         return
 
     anomes_pasta = f"{anomes[:4]}-{anomes[4:6]}"
-    pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
-    try:
-        os.makedirs(pasta, exist_ok=True)
-    except Exception:
+    dest = _memoria_destino(anomes, id_empresa)   # local (Windows) ou Storage (Render)
+    if not dest.get("base"):
         return
 
     ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
@@ -25295,17 +25294,19 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     dt_ini_c = f"{anomes[:4]}{anomes[4:6]}01"
     dt_fim_c = f"{anomes[:4]}{anomes[4:6]}{_ultdia:02d}"
 
-    # Move PDFs anteriores para Memoria_Antiga antes de gerar novos
-    try:
-        pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
-                                    anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
-        pdfs = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf")]
-        if pdfs:
-            os.makedirs(pasta_antiga, exist_ok=True)
-            for pdf in pdfs:
-                shutil.move(os.path.join(pasta, pdf), os.path.join(pasta_antiga, pdf))
-    except Exception:
-        pass
+    # Move PDFs anteriores para Memoria_Antiga antes de gerar novos (só no disco local)
+    if dest["modo"] == "local":
+        try:
+            pasta = dest["base"]
+            pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
+                                        anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
+            pdfs = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf")]
+            if pdfs:
+                os.makedirs(pasta_antiga, exist_ok=True)
+                for pdf in pdfs:
+                    shutil.move(os.path.join(pasta, pdf), os.path.join(pasta_antiga, pdf))
+        except Exception:
+            pass
 
     # Apaga registros calculados anteriores desta folha antes de recalcular
     _limpar_folha_calculada(id_cliente, id_empresa, anomes, _folha_tipo_mov)
@@ -25329,7 +25330,6 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             on_func(idx, total_linhas, int(l["matricula"] or 0), l["nome"])
         matr    = int(l["matricula"] or 0)
         nome_f  = f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Folha_{anomes}_Matricula_{matr:06d}_em_{ts}.pdf"
-        caminho = os.path.join(pasta, nome_f)
         try:
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -25358,8 +25358,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 doc.build(elems,
                           onFirstPage=_pdf_num_pagina,
                           onLaterPages=_pdf_num_pagina)
-                with open(caminho, "wb") as fh:
-                    fh.write(buf.getvalue())
+                _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
                 continue
 
             mmVmm = {}
@@ -26836,8 +26835,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             doc.build(elems,
                       onFirstPage=_pdf_num_pagina,
                       onLaterPages=_pdf_num_pagina)
-            with open(caminho, "wb") as fh:
-                fh.write(buf.getvalue())
+            _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_loop:
             _aviso(f"[CALCULO ERRO] mat={matr} erro={e_loop}")
 
@@ -27112,16 +27110,12 @@ def calcular_folha_stream():
                 except Exception as e_sit:
                     q.put(json.dumps({"tipo": "aviso", "msg": f"Erro ao marcar calculada: {e_sit}"}, ensure_ascii=False))
 
-            pasta = os.path.join("C:\\Folha10-Simples_Memoria",
-                                 anomes[:4],
-                                 f"{anomes[:4]}-{anomes[4:6]}",
-                                 f"{int(id_empresa):06d}")
             resumo = {
                 "total_funcs":     total,
                 "funcs_com_afast": sum(1 for f in linhas if f.get("afast")),
                 "total_afast":     sum(len(f.get("afast", [])) for f in linhas),
                 "ferias_futuras":  _calc_ferias_futuras(id_empresa, anomes),
-                "pasta":           pasta,
+                "pasta":           _memoria_destino(anomes, id_empresa).get("label", ""),
                 "n_calculo":       _n_calc,
                 "data_calculo":    _dt_calc,
             }
@@ -30287,19 +30281,17 @@ def memoria_calculo():
     except Exception:
         pass
 
-    # descobre quais têm PDF gerado para a folha ativa
+    # descobre quais têm PDF gerado para a folha ativa (local ou Storage).
+    # Só as memórias da folha mensal (prefixo Folha10_Memoria_Empresa), não
+    # as de férias/adiantamento que ficam na mesma pasta.
     mats_com_pdf = set()
-    if len(anomes) == 6:
-        pasta = os.path.join("C:\\Folha10-Simples_Memoria",
-                             anomes[:4], f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-        if os.path.isdir(pasta):
-            for fname in os.listdir(pasta):
-                if "_Matricula_" in fname and fname.endswith(".pdf"):
-                    try:
-                        mat_str = fname.split("_Matricula_")[1].split("_")[0]
-                        mats_com_pdf.add(int(mat_str))
-                    except Exception:
-                        pass
+    for fname in _memoria_listar(anomes, id_empresa):
+        if (fname.startswith("Folha10_Memoria_Empresa") and "_Ferias_" not in fname
+                and "_Matricula_" in fname and fname.endswith(".pdf")):
+            try:
+                mats_com_pdf.add(int(fname.split("_Matricula_")[1].split("_")[0]))
+            except Exception:
+                pass
 
     for f in funcionarios:
         f["tem_pdf"] = f["matricula"] in mats_com_pdf
@@ -30321,24 +30313,23 @@ def memoria_calculo():
 def api_memoria_calculo_pdf(matricula):
     if not session.get("logado"):
         return "Sessão expirada", 401
-    import glob as _glob
     id_empresa = _get_id_empresa()
     anomes     = str(session.get("anomes_atual") or "")
     if len(anomes) != 6:
         return "Folha ativa não definida", 400
-    pasta = os.path.join("C:\\Folha10-Simples_Memoria",
-                         anomes[:4], f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-    if not os.path.isdir(pasta):
-        return "Pasta de memórias não encontrada", 404
-    padrao   = os.path.join(pasta, f"*_Matricula_{matricula:06d}_em_*.pdf")
-    arquivos = sorted(_glob.glob(padrao))
+    alvo = f"_Matricula_{matricula:06d}_em_"
+    arquivos = sorted(fn for fn in _memoria_listar(anomes, id_empresa)
+                      if fn.startswith("Folha10_Memoria_Empresa") and "_Ferias_" not in fn
+                      and alvo in fn and fn.endswith(".pdf"))
     if not arquivos:
         return "PDF não encontrado para esta matrícula", 404
-    arquivo = arquivos[-1]          # mais recente pelo nome (timestamp no final)
+    nome = arquivos[-1]          # mais recente pelo nome (timestamp no final)
+    data = _memoria_ler(anomes, id_empresa, nome)
+    if not data:
+        return "PDF não encontrado", 404
     from flask import send_file as _send_file
-    return _send_file(arquivo, mimetype="application/pdf",
-                      as_attachment=False,
-                      download_name=os.path.basename(arquivo))
+    return _send_file(io.BytesIO(data), mimetype="application/pdf",
+                      as_attachment=False, download_name=nome)
 
 
 @app.route("/memoria_ferias")
@@ -30382,17 +30373,12 @@ def memoria_ferias():
             pass
 
     mats_com_pdf = set()
-    if len(anomes) == 6:
-        pasta = os.path.join("C:\\Folha10-Simples_Memoria",
-                             anomes[:4], f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-        if os.path.isdir(pasta):
-            for fname in os.listdir(pasta):
-                if "_Ferias_" in fname and "_Matricula_" in fname and fname.endswith(".pdf"):
-                    try:
-                        mat_str = fname.split("_Matricula_")[1].split("_")[0]
-                        mats_com_pdf.add(int(mat_str))
-                    except Exception:
-                        pass
+    for fname in _memoria_listar(anomes, id_empresa):
+        if "_Ferias_" in fname and "_Matricula_" in fname and fname.endswith(".pdf"):
+            try:
+                mats_com_pdf.add(int(fname.split("_Matricula_")[1].split("_")[0]))
+            except Exception:
+                pass
 
     for f in funcionarios:
         f["tem_pdf"] = f["matricula"] in mats_com_pdf
@@ -30417,24 +30403,22 @@ def memoria_ferias():
 def api_memoria_ferias_pdf(matricula):
     if not session.get("logado"):
         return "Sessão expirada", 401
-    import glob as _glob
     id_empresa = _get_id_empresa()
     anomes     = str(session.get("anomes_atual") or "")
     if len(anomes) != 6:
         return "Folha ativa não definida", 400
-    pasta = os.path.join("C:\\Folha10-Simples_Memoria",
-                         anomes[:4], f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-    if not os.path.isdir(pasta):
-        return "Pasta de memórias não encontrada", 404
-    padrao   = os.path.join(pasta, f"*_Ferias_*_Matricula_{matricula:06d}_em_*.pdf")
-    arquivos = sorted(_glob.glob(padrao))
+    alvo = f"_Matricula_{matricula:06d}_em_"
+    arquivos = sorted(fn for fn in _memoria_listar(anomes, id_empresa)
+                      if "_Ferias_" in fn and alvo in fn and fn.endswith(".pdf"))
     if not arquivos:
         return "PDF de férias não encontrado para esta matrícula", 404
-    arquivo = max(arquivos, key=os.path.getmtime)
+    nome = arquivos[-1]          # mais recente pelo timestamp no nome (_em_)
+    data = _memoria_ler(anomes, id_empresa, nome)
+    if not data:
+        return "PDF de férias não encontrado", 404
     from flask import send_file as _send_file
-    resp = _send_file(arquivo, mimetype="application/pdf",
-                      as_attachment=False,
-                      download_name=os.path.basename(arquivo))
+    resp = _send_file(io.BytesIO(data), mimetype="application/pdf",
+                      as_attachment=False, download_name=nome)
     resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     resp.headers["Pragma"]  = "no-cache"
     resp.headers["Expires"] = "0"
@@ -30460,11 +30444,9 @@ def calcular_folha_etapa1_pdf():
     yyyy       = anomes[:4]
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}"
 
-    pasta = os.path.join("C:\\Folha10-Simples_Memoria", yyyy, f"{yyyy}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-    try:
-        os.makedirs(pasta, exist_ok=True)
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao criar pasta: {e}"})
+    dest = _memoria_destino(anomes, id_empresa)   # local (Windows) ou Storage (Render)
+    if not dest.get("base"):
+        return jsonify({"ok": False, "msg": "Não foi possível preparar o destino das memórias."})
 
     linhas = _calc_etapa1_dados(id_empresa)
     if not linhas:
@@ -30510,7 +30492,6 @@ def calcular_folha_etapa1_pdf():
     for l in linhas:
         matr   = int(l["matricula"] or 0)
         nome_f = f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Folha_{anomes}_Matricula_{matr:06d}.pdf"
-        caminho = os.path.join(pasta, nome_f)
 
         try:
             buf = io.BytesIO()
@@ -30555,8 +30536,7 @@ def calcular_folha_etapa1_pdf():
                 ]))
                 elems.append(msg_tbl)
                 doc.build(elems)
-                with open(caminho, "wb") as fh:
-                    fh.write(buf.getvalue())
+                _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
                 salvos.append(nome_f)
                 continue
 
@@ -30905,8 +30885,7 @@ def calcular_folha_etapa1_pdf():
                 st_rod))
 
             doc.build(elems)
-            with open(caminho, "wb") as fh:
-                fh.write(buf.getvalue())
+            _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
             salvos.append(nome_f)
 
         except Exception as e:
@@ -30914,7 +30893,7 @@ def calcular_folha_etapa1_pdf():
 
     return jsonify({
         "ok":    len(erros) == 0,
-        "pasta": pasta,
+        "pasta": dest.get("label", ""),
         "total": len(salvos),
         "salvos": salvos,
         "erros":  erros,
@@ -31697,10 +31676,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
         return
 
     anomes_pasta = f"{anomes[:4]}-{anomes[4:6]}"
-    pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
-    try:
-        os.makedirs(pasta, exist_ok=True)
-    except Exception:
+    dest = _memoria_destino(anomes, id_empresa)   # local (Windows) ou Storage (Render)
+    if not dest.get("base"):
         return
 
     ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
@@ -31720,30 +31697,31 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
     _st_op = ParagraphStyle("mf_op", fontName="Helvetica", fontSize=7,
                              alignment=1, textColor=colors.HexColor("#374151"))
 
-    try:
-        pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
-                                    anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
-        pdfs_ferias = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf") and "_Ferias_" in f]
-        if pdfs_ferias:
-            os.makedirs(pasta_antiga, exist_ok=True)
-            for pdf in pdfs_ferias:
-                src = os.path.join(pasta, pdf)
-                try:
-                    shutil.move(src, os.path.join(pasta_antiga, pdf))
-                except Exception:
+    if dest["modo"] == "local":   # arquivamento só no disco local
+        try:
+            pasta = dest["base"]
+            pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
+                                        anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
+            pdfs_ferias = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf") and "_Ferias_" in f]
+            if pdfs_ferias:
+                os.makedirs(pasta_antiga, exist_ok=True)
+                for pdf in pdfs_ferias:
+                    src = os.path.join(pasta, pdf)
                     try:
-                        os.remove(src)
+                        shutil.move(src, os.path.join(pasta_antiga, pdf))
                     except Exception:
-                        pass
-    except Exception:
-        pass
+                        try:
+                            os.remove(src)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     for r in resultados_brutos:
         mat  = int(r["matricula"])
         nome = r["nome"]
         nome_f  = (f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Ferias_{anomes}"
                    f"_Matricula_{mat:06d}_em_{ts}.pdf")
-        caminho = os.path.join(pasta, nome_f)
         try:
             sal_mes      = int(r["sal_mes"])
             dias         = int(r["dias"])
@@ -32205,8 +32183,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             elems.append(tot_tbl)
 
             doc.build(elems, onFirstPage=_draw_hdr_ferias, onLaterPages=_draw_hdr_ferias)
-            with open(caminho, "wb") as fh:
-                fh.write(buf.getvalue())
+            _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_pdf:
             print(f"[gerar_memoria_ferias] mat={mat} erro: {e_pdf}")
 
@@ -39847,6 +39824,96 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     return buf.getvalue()
 
 
+# Memórias de cálculo (folha, adiantamento, férias): pasta local no Windows,
+# espelhada no Supabase Storage quando roda no Render (Linux). Mesmo layout
+# de subpastas AAAA/AAAA-MM/EMPRESA; o tipo é distinguido pelo nome do arquivo.
+_MEM_PREFIXO = "memorias"   # prefixo dentro do bucket _ESOC_BUCKET
+
+
+def _memoria_subpasta(anomes, id_empresa):
+    return f"{anomes[:4]}/{anomes[:4]}-{anomes[4:6]}/{int(id_empresa):06d}"
+
+
+def _memoria_pasta_local(anomes, id_empresa):
+    return os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4],
+                        f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
+
+
+def _memoria_destino(anomes, id_empresa):
+    """Destino das memórias de cálculo.
+    Windows local (os.name=='nt') → C:\\Folha10-Simples_Memoria\\AAAA\\AAAA-MM\\EMP.
+    Render/Linux → Supabase Storage (bucket esocial-xml, prefixo memorias/...).
+    Retorna {"modo","base","label"} — base = onde gravar; label = p/ exibir."""
+    if os.name == "nt":
+        pasta = _memoria_pasta_local(anomes, id_empresa)
+        try:
+            os.makedirs(pasta, exist_ok=True)
+        except Exception:
+            return {"modo": "local", "base": "", "label": ""}
+        return {"modo": "local", "base": pasta, "label": pasta}
+    base = f"{_MEM_PREFIXO}/{_memoria_subpasta(anomes, id_empresa)}"
+    return {"modo": "storage", "base": base,
+            "label": f"Supabase Storage · {_ESOC_BUCKET}/{base}"}
+
+
+def _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
+    """Grava um PDF de memória no destino (local ou Storage). Retorna True/False."""
+    if not dest or not dest.get("base"):
+        return False
+    if dest["modo"] == "local":
+        try:
+            with open(os.path.join(dest["base"], nome_arq), "wb") as fh:
+                fh.write(pdf_bytes)
+            return True
+        except Exception:
+            return False
+    try:
+        _supabase_storage.storage.from_(_ESOC_BUCKET).upload(
+            path=f"{dest['base']}/{nome_arq}", file=pdf_bytes,
+            file_options={"content-type": "application/pdf", "upsert": "true"})
+        return True
+    except Exception as e:
+        print(f"[memoria] ERRO Storage '{dest['base']}/{nome_arq}': {e}")
+        return False
+
+
+def _memoria_listar(anomes, id_empresa):
+    """Nomes dos arquivos de memória existentes p/ a folha/empresa (local ou Storage)."""
+    if len(str(anomes)) != 6:
+        return []
+    if os.name == "nt":
+        pasta = _memoria_pasta_local(anomes, id_empresa)
+        try:
+            return os.listdir(pasta) if os.path.isdir(pasta) else []
+        except Exception:
+            return []
+    base = f"{_MEM_PREFIXO}/{_memoria_subpasta(anomes, id_empresa)}"
+    try:
+        st = _supabase_storage.storage.from_(_ESOC_BUCKET)
+        try:
+            itens = st.list(base, {"limit": 1000}) or []   # default do Storage é 100
+        except TypeError:
+            itens = st.list(base) or []
+        return [it.get("name") for it in itens if it.get("name")]
+    except Exception:
+        return []
+
+
+def _memoria_ler(anomes, id_empresa, nome_arq):
+    """Bytes de um PDF de memória (local ou Storage) ou None."""
+    if os.name == "nt":
+        try:
+            with open(os.path.join(_memoria_pasta_local(anomes, id_empresa), nome_arq), "rb") as fh:
+                return fh.read()
+        except Exception:
+            return None
+    base = f"{_MEM_PREFIXO}/{_memoria_subpasta(anomes, id_empresa)}"
+    try:
+        return _supabase_storage.storage.from_(_ESOC_BUCKET).download(f"{base}/{nome_arq}")
+    except Exception:
+        return None
+
+
 @app.route("/calcular_adiantamento_13")
 def calcular_adiantamento_13():
     if not session.get("logado"):
@@ -39857,7 +39924,7 @@ def calcular_adiantamento_13():
 
     def _fmt_reais(cents):
         try:
-            return "R$ {:,.2f}".format(int(cents) / 100).replace(",", "X").replace(".", ",").replace("X", ".")
+            return "{:,.2f}".format(int(cents) / 100).replace(",", "X").replace(".", ",").replace("X", ".")
         except Exception:
             return "—"
 
@@ -40013,12 +40080,8 @@ def api_calcular_adiantamento_13():
     empresa_nm = str(session.get("empresa_info") or "")
     usuario    = str(session.get("nome") or "")
     versao     = ler_versao()
-    pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4],
-                         f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-    try:
-        os.makedirs(pasta, exist_ok=True)
-    except Exception:
-        pasta = ""
+    # destino das memórias: Windows local → C:\ ; Render → Supabase Storage
+    dest = _memoria_destino(anomes, id_empresa)
     memorias = 0
 
     gravados = 0
@@ -40145,8 +40208,8 @@ def api_calcular_adiantamento_13():
                 except Exception:
                     pass
 
-            # Memória de cálculo — 1 PDF por funcionário (gravado no servidor)
-            if pasta:
+            # Memória de cálculo — 1 PDF por funcionário (local C:\ ou Storage)
+            if dest.get("base"):
                 try:
                     ev_p      = pericu_map.get(int(mat or 0))
                     ref1_p    = int(ev_p.get("ref1") or 0) if ev_p else 0
@@ -40156,20 +40219,17 @@ def api_calcular_adiantamento_13():
                         empresa_nm, anomes, int(mat or 0), nome_pdf, sal_mes, sal_hora_c,
                         perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                         medias_det, prov_total, usuario, versao)
-                    arq = os.path.join(
-                        pasta,
-                        f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
-                        f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
-                    with open(arq, "wb") as fh:
-                        fh.write(pdf_bytes)
-                    memorias += 1
+                    nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
+                                f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
+                    if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
+                        memorias += 1
                 except Exception:
                     pass
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
     return jsonify({"ok": True, "gravados": gravados, "verba": VERBA_ADIANT_13,
-                    "pasta": pasta, "memorias": memorias})
+                    "pasta": dest.get("label", ""), "memorias": memorias})
 
 
 @app.route("/api/calcular_adiantamento_13_stream")
@@ -40240,12 +40300,8 @@ def calcular_adiantamento_13_stream():
             except Exception:
                 pericu_map = {}
 
-            pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4],
-                                 f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
-            try:
-                os.makedirs(pasta, exist_ok=True)
-            except Exception:
-                pasta = ""
+            # destino das memórias: Windows local → C:\ ; Render → Supabase Storage
+            dest = _memoria_destino(anomes, id_empresa)
 
             r_cad = (supabase.table("tab_cad")
                      .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
@@ -40324,7 +40380,7 @@ def calcular_adiantamento_13_stream():
                     except Exception:
                         pass
 
-                if pasta:
+                if dest.get("base"):
                     try:
                         ev_p       = pericu_map.get(mat)
                         ref1_p     = int(ev_p.get("ref1") or 0) if ev_p else 0
@@ -40333,18 +40389,15 @@ def calcular_adiantamento_13_stream():
                             empresa_nm, anomes, mat, nome, sal_mes, sal_hora_c,
                             perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                             medias_det, prov_total, usuario, versao)
-                        arq = os.path.join(
-                            pasta,
-                            f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
-                            f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
-                        with open(arq, "wb") as fh:
-                            fh.write(pdf_bytes)
-                        memorias += 1
+                        nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
+                                    f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
+                        if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
+                            memorias += 1
                     except Exception:
                         pass
 
             _put({"tipo": "fim", "pct": 100, "resumo": {
-                "gravados": gravados, "verba": VERBA_ADIANT_13, "pasta": pasta,
+                "gravados": gravados, "verba": VERBA_ADIANT_13, "pasta": dest.get("label", ""),
                 "memorias": memorias, "total_funcs": total, "total_valor": total_val,
                 "perc": perc}})
         except Exception as e:
