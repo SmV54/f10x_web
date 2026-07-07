@@ -137,6 +137,8 @@ body {
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 14px; }
 .grid-6 { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px 14px; }
 .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 14px; }
+/* Tributação: Natureza Jurídica maior; ISS e PIS menores (col 1..6) */
+.grid-trib { display: grid; grid-template-columns: 1.8fr 1fr 0.6fr 0.6fr 1fr 1fr; gap: 8px 14px; }
 
 .grid-encargos-area {
     display: grid;
@@ -537,7 +539,8 @@ body {
     .grid-fpas    { grid-template-columns: repeat(2, 1fr); }
     .grid-4,
     .grid-5,
-    .grid-6       { grid-template-columns: repeat(3, 1fr); }
+    .grid-6,
+    .grid-trib    { grid-template-columns: repeat(3, 1fr); }
     .grid-encargos      { grid-template-columns: repeat(4, 1fr); }
     .grid-encargos-area { grid-template-columns: 1fr; }
     .bloco-btn-terceiros { padding-top: 0; }
@@ -551,7 +554,8 @@ body {
     .grid-fpas,
     .grid-4,
     .grid-5,
-    .grid-6 { grid-template-columns: 1fr; }
+    .grid-6,
+    .grid-trib { grid-template-columns: 1fr; }
     .grid-encargos { grid-template-columns: repeat(2, 1fr); }
     .container { padding: 0 12px 32px; gap: 10px; }
 }
@@ -693,7 +697,7 @@ body {
             <span class="secao-titulo">Tributação / Gerais</span>
         </div>
         <div class="secao-corpo">
-            <div class="grid-6">
+            <div class="grid-trib">
                 <div class="campo">
                     <label>Natureza Jurídica</label>
                     <select id="nat_juridica" onfocus="showHint(this,'natJurídica — Natureza jurídica da empresa conforme classificação do IBGE/RFB.\nUtilizada no eSocial para validar regras específicas de tributação e obrigações acessórias.\nConfira no Cartão do CNPJ.')" onblur="clearHint()">
@@ -750,6 +754,7 @@ body {
                     </select>
                 </div>
                 <div class="campo" id="campoPercSimples" style="display:none;"><label>% Simples</label>             <input type="text" id="perc_simples" placeholder="—" onfocus="showHint(this,'% Simples — Alíquota efetiva do Simples Nacional.\nCalculada conforme o anexo e faixa de receita bruta acumulada dos últimos 12 meses.\nPreencher apenas para empresas optantes pelo Simples Nacional.')" onblur="clearHint()"></div>
+                <div class="campo"><label>% Adiantamento 13º Salário</label>       <input type="text" id="perAdianta13" value="50" placeholder="50" maxlength="2" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onfocus="showHint(this,'% Adiantamento do 13º — Percentual pago como 1ª parcela (adiantamento) do 13º salário, aplicado sobre o salário e as médias das verbas variáveis.\nInforme um número inteiro entre 10 e 90. Padrão legal: 50%.')" onblur="clearHint()"></div>
             </div>
         </div>
     </div>
@@ -1304,7 +1309,17 @@ async function gravarEmpresa(painel) {
         return;
     }
 
+    // % Adiantamento do 13º: inteiro entre 10 e 90.
+    const _perAd13 = parseInt(v('perAdianta13'), 10);
+    if (isNaN(_perAd13) || _perAd13 < 10 || _perAd13 > 90) {
+        const el = document.getElementById('perAdianta13');
+        if (el) { el.focus(); _marcarErro(el); }
+        alert('O % de adiantamento do 13º deve ser um número inteiro entre 10 e 90.');
+        return;
+    }
+
     const dados = {
+        perAdianta13:           _perAd13,
         cnpj:                   v('cnpj').replace(/\D/g,''),
         razaosocial:            document.getElementById('razaosocial')?.value.trim() || null,
         nome_fantasia:          v('nome_fantasia') || null,
@@ -1514,6 +1529,7 @@ function preencherFormulario(d) {
     set('pis',         flt(d.pis));
     set('ind_simples', d.ind_simples || '');
     set('perc_simples', flt(d.perc_simples));
+    set('perAdianta13', d.perAdianta13 != null ? d.perAdianta13 : 50);
     atualizarSimplesUI();
     // eSocial
     set('ind_coop',      d.es_ind_coop      || '');

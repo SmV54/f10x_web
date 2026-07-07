@@ -82,7 +82,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .tabela-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 thead th {
-    background: #f1f5f9; padding: 9px 14px; font-size: 10px; font-weight: 600;
+    background: #f1f5f9; padding: 9px 10px; font-size: 10px; font-weight: 600;
     text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
     text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
 }
@@ -90,12 +90,13 @@ thead th.th-r { text-align: right; }
 tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
 tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: #fafbfc; }
-tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
+tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
 .td-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 58px; }
-.td-nome { font-weight: 500; max-width: 320px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.td-sal  { font-family: var(--mono); font-size: 12px; text-align: right; color: #374151; width: 130px; }
+.td-nome { font-weight: 500; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-sal  { font-family: var(--mono); font-size: 12px; text-align: right; color: #374151;
+           width: 108px; white-space: nowrap; }
 .td-val  { font-family: var(--mono); font-size: 13px; font-weight: 700; text-align: right;
-           color: #1d4ed8; width: 130px; }
+           color: #1d4ed8; width: 112px; white-space: nowrap; }
 
 /* ── RODAPÉ TABELA ── */
 .tabela-rodape {
@@ -116,6 +117,33 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 }
 .btn-calcular:hover    { background: #d97706; }
 .btn-calcular:disabled { background: #94a3b8; cursor: not-allowed; }
+
+/* ── PROGRESSO ── */
+.prog-section { padding: 26px 4px 6px; }
+.prog-track {
+    height: 10px; background: #e2e8f0; border-radius: 99px; overflow: hidden;
+    margin-bottom: 16px;
+}
+.prog-fill {
+    height: 100%; width: 0%; background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    border-radius: 99px; transition: width 0.4s ease;
+}
+.prog-pct {
+    font-family: var(--mono); font-size: 11px; color: #64748b;
+    text-align: right; margin-top: -14px; margin-bottom: 14px;
+}
+.prog-func {
+    font-size: 13px; color: #475569;
+    display: flex; align-items: center; gap: 10px; min-height: 22px;
+}
+.prog-func-matr { font-family: var(--mono); font-weight: 600; color: #1e293b; }
+.prog-func-nome { color: #374151; }
+.prog-spinner {
+    width: 14px; height: 14px; border: 2px solid #cbd5e1;
+    border-top-color: #f59e0b; border-radius: 50%;
+    animation: spin 0.7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── AVISO ── */
 .aviso-sem-folha {
@@ -172,7 +200,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 
 <div class="alerta alerta-aviso">
     <span class="alerta-icone">ℹ️</span>
-    <div><strong>50% do salário</strong> (verba {{ verba_usar }}) + <strong>50% da periculosidade</strong> (verba 31, para quem tem periculosidade ativa).
+    <div><strong>{{ perc_adianta13 }}% do salário</strong> (verba {{ verba_usar }}) + <strong>{{ perc_adianta13 }}% da periculosidade</strong> (verba 31, para quem tem periculosidade ativa).
     Sem INSS e sem IRRF. Recalcular substitui os valores anteriores desta folha.</div>
 </div>
 
@@ -190,8 +218,9 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                     <th>Mat.</th>
                     <th>Nome</th>
                     <th class="th-r">Salário</th>
-                    <th class="th-r">Adiant. (50%)</th>
-                    <th class="th-r">Pericul. (50%)</th>
+                    <th class="th-r">Adiant. ({{ perc_adianta13 }}%)</th>
+                    <th class="th-r">Pericul. ({{ perc_adianta13 }}%)</th>
+                    <th class="th-r">Médias ({{ perc_adianta13 }}%)</th>
                     <th class="th-r">Total</th>
                 </tr>
             </thead>
@@ -203,6 +232,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                     <td class="td-sal">{{ f.sal_fmt }}</td>
                     <td class="td-sal">{{ f.valor_fmt }}</td>
                     <td class="td-sal">{{ f.pericu_fmt }}</td>
+                    <td class="td-sal">{{ f.medias_fmt }}</td>
                     <td class="td-val">{{ f.total_fmt }}</td>
                 </tr>
                 {% endfor %}
@@ -216,6 +246,16 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
             <span class="rodape-label">Total:</span>
             <span class="rodape-valor">{{ total_fmt }}</span>
         </div>
+    </div>
+</div>
+
+<!-- PROGRESSO (durante o cálculo) -->
+<div id="sec-prog" class="prog-section" style="display:none;">
+    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+    <div class="prog-pct" id="progPct">0%</div>
+    <div class="prog-func" id="progFunc">
+        <div class="prog-spinner"></div>
+        <span>Preparando cálculo...</span>
     </div>
 </div>
 
@@ -234,39 +274,102 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 </div>
 
 <script>
+const PERC_ADIANT13 = {{ perc_adianta13 }};
+
 async function calcular() {
-    const btn = document.getElementById('btnCalc');
-    btn.disabled = true;
-    btn.textContent = 'Calculando…';
-    try {
-        const r = await fetch('/api/calcular_adiantamento_13', { method: 'POST' });
-        const d = await r.json();
+    // Confirma o percentual antes de iniciar o cálculo.
+    const ok = await f10Confirm(
+        `O adiantamento do 13º será calculado com o percentual de ${PERC_ADIANT13}% ` +
+        `sobre o salário, a periculosidade e as médias.\n\n` +
+        `Confirma este percentual de ${PERC_ADIANT13}% e deseja iniciar o cálculo?`,
+        {
+            titulo: `Percentual do adiantamento: ${PERC_ADIANT13}%`,
+            tipo: 'aviso',
+            okText: `Confirmar ${PERC_ADIANT13}% e calcular`,
+            cancelText: 'Cancelar',
+        }
+    );
+    if (!ok) {
         const el = document.getElementById('msgResultado');
         el.style.display = 'block';
-        if (d.ok) {
+        el.innerHTML = `<div class="alerta alerta-aviso">
+            <span class="alerta-icone">✋</span>
+            <div>
+                <strong>Cálculo cancelado.</strong> O percentual do adiantamento (${PERC_ADIANT13}%) é definido no
+                <strong>cadastro da empresa</strong>, no campo <strong>"% Adiantamento 13º Salário"</strong> (valor entre 10 e 90).
+                <br>Para alterá-lo, acesse <a href="/alterar_empresa" style="color:#1d4ed8;font-weight:600;">Alterar Empresa</a>,
+                mude o percentual, grave e volte a esta tela para calcular.
+            </div>
+        </div>`;
+        return;
+    }
+
+    // Inicia o cálculo com barra de acompanhamento (SSE), como na folha mensal.
+    const btn  = document.getElementById('btnCalc');
+    const prog = document.getElementById('sec-prog');
+    const el   = document.getElementById('msgResultado');
+    btn.style.display = 'none';
+    el.style.display  = 'none';
+    prog.style.display = 'block';
+    document.getElementById('progFill').style.width = '0%';
+    document.getElementById('progPct').textContent  = '0%';
+
+    let finalizado = false;
+    const src = new EventSource('/api/calcular_adiantamento_13_stream');
+
+    src.onmessage = function(ev) {
+        const d = JSON.parse(ev.data);
+        if (d.tipo === 'func') {
+            document.getElementById('progFill').style.width = d.pct + '%';
+            document.getElementById('progPct').textContent  = d.pct + '%';
+            document.getElementById('progFunc').innerHTML =
+                '<div class="prog-spinner"></div>' +
+                '<span class="prog-func-matr">' + d.matr + '</span>' +
+                '<span class="prog-func-nome">— ' + d.nome + '</span>';
+        } else if (d.tipo === 'fim') {
+            finalizado = true;
+            src.close();
+            document.getElementById('progFill').style.width = '100%';
+            document.getElementById('progPct').textContent  = '100%';
+            const r = d.resumo || {};
+            const memoriaHtml = (r.memorias > 0)
+                ? `<div style="margin-top:8px;font-size:13px;color:#475569;">
+                       📄 ${r.memorias} memória${r.memorias !== 1 ? 's' : ''} de cálculo gravada${r.memorias !== 1 ? 's' : ''} em:<br>
+                       <strong>${r.pasta}</strong>
+                   </div>`
+                : '';
+            prog.style.display = 'none';
+            el.style.display = 'block';
             el.innerHTML = `<div class="alerta alerta-ok">
                 <span class="alerta-icone">✅</span>
-                <div><strong>${d.gravados} adiantamento${d.gravados !== 1 ? 's' : ''} do 13º gravado${d.gravados !== 1 ? 's' : ''}</strong>
-                na verba ${d.verba} com sucesso.</div>
+                <div><strong>${r.gravados} adiantamento${r.gravados !== 1 ? 's' : ''} do 13º gravado${r.gravados !== 1 ? 's' : ''}</strong>
+                na verba ${r.verba} com sucesso.${memoriaHtml}</div>
             </div>`;
-            btn.style.display = 'none';
-        } else {
+        } else if (d.tipo === 'erro') {
+            finalizado = true;
+            src.close();
+            prog.style.display = 'none';
+            el.style.display = 'block';
             el.innerHTML = `<div class="alerta alerta-erro">
                 <span class="alerta-icone">❌</span>
                 <div><strong>Erro:</strong> ${d.msg || 'Falha ao gravar.'}</div>
             </div>`;
-            btn.disabled = false;
-            btn.textContent = '🎁 Calcular Adiantamento 13º';
+            btn.style.display = '';
         }
-    } catch(e) {
-        document.getElementById('msgResultado').innerHTML = `<div class="alerta alerta-erro">
+    };
+
+    src.onerror = function() {
+        if (finalizado) return;
+        finalizado = true;
+        src.close();
+        prog.style.display = 'none';
+        el.style.display = 'block';
+        el.innerHTML = `<div class="alerta alerta-erro">
             <span class="alerta-icone">❌</span>
             <div>Erro de comunicação com o servidor.</div>
         </div>`;
-        document.getElementById('msgResultado').style.display = 'block';
-        btn.disabled = false;
-        btn.textContent = '🎁 Calcular Adiantamento 13º';
-    }
+        btn.style.display = '';
+    };
 }
 </script>
 

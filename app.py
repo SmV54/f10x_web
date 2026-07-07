@@ -5888,6 +5888,23 @@ def api_fpas_codigo(cod_fpas):
 # =========================================================
 # API GRAVAR EMPRESA
 # =========================================================
+def _validar_per_adianta13(dados):
+    """Normaliza dados['perAdianta13'] para inteiro 10..90 (default 50).
+    Retorna uma msg de erro (str) se inválido, ou None se OK (e ajusta dados)."""
+    v = dados.get("perAdianta13")
+    if v is None or v == "":
+        dados["perAdianta13"] = 50
+        return None
+    try:
+        p = int(v)
+    except (TypeError, ValueError):
+        return "O % de adiantamento do 13º deve ser um número inteiro entre 10 e 90."
+    if p < 10 or p > 90:
+        return "O % de adiantamento do 13º deve estar entre 10 e 90."
+    dados["perAdianta13"] = p
+    return None
+
+
 @app.route("/alterar_empresa")
 def alterar_empresa():
     if not session.get("logado"):
@@ -5939,6 +5956,10 @@ def api_alterar_empresa():
             return jsonify({"ok": False,
                 "msg": "Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao)."})
         dados["ind_simples"] = _is
+        # % adiantamento do 13º: inteiro entre 10 e 90 (default 50)
+        _erro_p13 = _validar_per_adianta13(dados)
+        if _erro_p13:
+            return jsonify({"ok": False, "msg": _erro_p13})
         dados.pop("cnpj",       None)
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
@@ -5971,6 +5992,10 @@ def api_gravar_empresa():
             return jsonify({"ok": False,
                 "msg": "Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao)."})
         dados["ind_simples"] = _is
+        # % adiantamento do 13º: inteiro entre 10 e 90 (default 50)
+        _erro_p13 = _validar_per_adianta13(dados)
+        if _erro_p13:
+            return jsonify({"ok": False, "msg": _erro_p13})
 
         id_cliente_sess = session.get("id_cliente", 1)
         dados["id_cliente"] = id_cliente_sess
@@ -26821,6 +26846,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 def calcular_folha():
     if not session.get("logado"):
         return redirect("/")
+    # Ponto único de entrada: o botão "Calcular Folha" identifica o tipo da
+    # folha ativa e encaminha para o cálculo correto. Adiantamento do 13º
+    # (tipo A) tem tela própria (prévia + confirmação do percentual).
+    tp_folha = str(session.get("anomes_tipo") or "N").upper()[:1]
+    if tp_folha == "A":
+        return redirect("/calcular_adiantamento_13")
     n_calculo, data_calculo = 0, ""
     try:
         am     = str(session.get("anomes_atual") or "")
@@ -26913,6 +26944,24 @@ def calcular_folha_stream():
     eh_individual = _mat_indiv > 0
 
     sit = _refresh_situacao_folha()
+
+    # TRAVA (rede de segurança): a folha mensal não roda em folhas especiais.
+    # O ponto de entrada "Calcular Folha" já redireciona a folha tipo A para a
+    # tela do adiantamento; esta trava protege o acesso direto ao stream (ex.:
+    # cálculo individual). sit sentinela ("ESP") força a mensagem simples no
+    # front (evita o modal de "reabrir e recalcular" que aparece quando sit=='C').
+    tp_folha = str(session.get("anomes_tipo") or "N").upper()[:1]
+    if tp_folha == "A":
+        msg = ("Esta folha é de ADIANTAMENTO DO 13º SALÁRIO. Use o botão "
+               "\"Calcular Folha\" (menu Cálculo) — o sistema abre a tela do "
+               "adiantamento automaticamente.")
+        bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": "ESP"}, ensure_ascii=False)
+        return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
+    if tp_folha == "1":
+        msg = "O cálculo do 13º Salário ainda está em construção."
+        bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": "ESP"}, ensure_ascii=False)
+        return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
+
     if eh_individual:
         # No modo individual a folha PRECISA estar Aberta (A ou X). Bloqueia
         # C/F/P igual ao calculo geral.
@@ -39533,10 +39582,24 @@ def api_calcular_adiantamento():
 
 # =========================================================
 # ADIANTAMENTO DO 13º SALÁRIO  (folha_tipo="A", verba 17)
-# Cálculo simples: 50% do salário. Sem INSS/IRRF. (periculosidade/avos: etapas futuras)
+# Cálculo: perAdianta13% do salário (percentual por empresa, default 50).
+# Sem INSS/IRRF. (avos: etapa futura)
 # =========================================================
 VERBA_ADIANT_13     = 17
 VERBA_PERICULOSIDADE = 31
+
+
+def _get_per_adianta13(id_empresa):
+    """Percentual do adiantamento do 13º da empresa (inteiro 10..90, default 50)."""
+    try:
+        r = (supabase.table("tab_empresa")
+             .select("perAdianta13")
+             .eq("id_empresa", id_empresa)
+             .limit(1).execute())
+        p = int((r.data or [{}])[0].get("perAdianta13") or 50)
+    except Exception:
+        p = 50
+    return min(90, max(10, p))
 
 
 def _sal_mes_adiant13(f):
@@ -39552,16 +39615,236 @@ def _sal_mes_adiant13(f):
     return vr
 
 
-def _pericu_adiant13(sal_mes, ev):
-    """Periculosidade no adiantamento do 13º = 50% da periculosidade do mês.
+def _elegivel_adiant13(f):
+    """Elegível para 13º / adiantamento do 13º? Exclui o intermitente (categoria
+    111) e as categorias >= 700 (pró-labore / CI / sócio / diretor) — não têm 13º."""
+    try:
+        cat = int(str(f.get("codcateg") or "0").strip() or 0)
+    except (TypeError, ValueError):
+        cat = 0
+    return cat != 111 and cat < 700
+
+
+def _pericu_adiant13(sal_mes, ev, perc=50):
+    """Periculosidade no adiantamento do 13º = perc% da periculosidade do mês.
     ev = evento op1=41 (ou None); ref1 = percentual ×100 (3000 = 30,00%).
-    Periculosidade mensal = sal_mes × ref1/10000; adiantamento = metade disso."""
+    Periculosidade mensal = sal_mes × ref1/10000; adiantamento = perc% disso."""
     if not ev:
         return 0
     ref1 = int(ev.get("ref1") or 0)
     if ref1 <= 0:
         return 0
-    return int(sal_mes * ref1 / 10000) // 2
+    return int(sal_mes * ref1 / 10000) * perc // 100
+
+
+def _verbas_media_adiant13(id_cliente):
+    """Verbas (proventos) que entram na MÉDIA do adiantamento do 13º.
+    Critério: inc_adto13='S', tp_rubr='1'. Exclui a periculosidade (31), que já
+    é lançada à parte. Verba do cliente sobrepõe a global (id_cliente 0).
+    Retorna (cods:list[int], verbas_hora:set[int], desc_map:dict)."""
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr, unid_verba, tp_rubr, inc_adto13, dsc_rubr, id_cliente")
+             .in_("id_cliente", [0, id_cliente])
+             .execute())
+        rows = r.data or []
+    except Exception:
+        rows = []
+    # cliente-específico (id_cliente≠0) sobrepõe a verba global (0) de mesmo código
+    by_cod = {}
+    for row in sorted(rows, key=lambda x: 0 if int(x.get("id_cliente") or 0) == 0 else 1):
+        by_cod[int(row.get("cod_rubr") or 0)] = row
+    cods, horas, desc = [], set(), {}
+    for cod, row in by_cod.items():
+        if (str(row.get("inc_adto13") or "").upper() == "S"
+                and str(row.get("tp_rubr") or "") == "1"
+                and cod != VERBA_PERICULOSIDADE):
+            cods.append(cod)
+            if str(row.get("unid_verba") or "").upper() == "H":
+                horas.add(cod)
+            desc[cod] = (row.get("dsc_rubr") or "").strip()
+    return cods, horas, desc
+
+
+def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
+                     fi, ff, meses, perc, cods_media, verbas_hora, desc_map=None):
+    """Médias das verbas variáveis para o adiantamento do 13º de UM funcionário.
+    Somente folhas normais (tipo 'N') do ano corrente (fi..ff).
+    - Verba em hora: média das horas = soma_qtd/meses (qtd em minutos);
+      valor = (média_min/60) × sal_hora; depois × perc%.
+    - Verba em valor: soma_valor/meses; depois × perc%.
+    Retorna lista de detalhes (só val>0), ordenada por código:
+    [{cod, desc, unid, soma_val, soma_qtd, avg_min, base, val}]."""
+    desc_map = desc_map or {}
+    if not cods_media or meses <= 0:
+        return []
+    try:
+        r = (supabase.table("tab_mov")
+             .select("cod_verba, valor, qtd")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("matricula",  mat)
+             .eq("situacao",   "A")
+             .eq("folha_tipo", "N")
+             .in_("cod_verba", cods_media)
+             .gte("folha", fi)
+             .lte("folha", ff)
+             .execute())
+        rows = r.data or []
+    except Exception:
+        return []
+    soma_val, soma_qtd = {}, {}
+    for row in rows:
+        c = int(row.get("cod_verba") or 0)
+        soma_val[c] = soma_val.get(c, 0) + int(row.get("valor") or 0)
+        soma_qtd[c] = soma_qtd.get(c, 0) + int(row.get("qtd") or 0)
+    detalhe = []
+    for c in sorted(set(soma_val) | set(soma_qtd)):
+        if c in verbas_hora:
+            avg_min = soma_qtd.get(c, 0) / meses
+            base    = round(avg_min * sal_hora_c / 60)
+            unid    = "H"
+        else:
+            avg_min = 0
+            base    = round(soma_val.get(c, 0) / meses)
+            unid    = "V"
+        val = int(base) * perc // 100
+        if val > 0:
+            detalhe.append({
+                "cod":      c,
+                "desc":     desc_map.get(c, ""),
+                "unid":     unid,
+                "soma_val": soma_val.get(c, 0),
+                "soma_qtd": soma_qtd.get(c, 0),
+                "avg_min":  avg_min,
+                "base":     base,
+                "val":      val,
+            })
+    return detalhe
+
+
+def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
+                          perc, meses, valor, pericu, pericu_pct, pericu_mes,
+                          medias_detalhe, total, usuario, versao):
+    """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário)."""
+    def _hhmm(mins):
+        mins = int(round(mins))
+        return f"{mins // 60}h{mins % 60:02d}"
+
+    anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}"
+    st_empresa = ParagraphStyle("ae",  fontName="Helvetica-Bold", fontSize=12,
+                                alignment=TA_CENTER, spaceAfter=2)
+    st_titulo  = ParagraphStyle("at",  fontName="Helvetica-Bold", fontSize=9,
+                                alignment=TA_CENTER, spaceAfter=2)
+    st_sub     = ParagraphStyle("asb", fontName="Helvetica", fontSize=9,
+                                alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
+    st_etapa   = ParagraphStyle("aet", fontName="Helvetica-Bold", fontSize=8,
+                                spaceBefore=10, spaceAfter=4)
+    st_formula = ParagraphStyle("af",  fontName="Helvetica", fontSize=8,
+                                spaceAfter=6, textColor=colors.HexColor("#374151"))
+    st_rod     = ParagraphStyle("ar",  fontName="Helvetica", fontSize=7,
+                                alignment=TA_CENTER, textColor=colors.HexColor("#94a3b8"))
+    st_id      = ParagraphStyle("aid", fontName="Helvetica", fontSize=9, leading=11)
+    st_cell    = ParagraphStyle("ac",  fontName="Helvetica", fontSize=7.5,
+                                textColor=colors.HexColor("#374151"))
+    st_cellr   = ParagraphStyle("acr", parent=st_cell, alignment=TA_RIGHT)
+    st_cellb   = ParagraphStyle("acb", fontName="Helvetica-Bold", fontSize=7.5)
+    st_cellbr  = ParagraphStyle("acbr", parent=st_cellb, alignment=TA_RIGHT)
+    st_total   = ParagraphStyle("atot", fontName="Helvetica-Bold", fontSize=10,
+                                alignment=TA_RIGHT, spaceBefore=10)
+    linha_sep  = TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#e2e8f0")),
+                             ("TOPPADDING", (0, 0), (-1, -1), 0),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 6)])
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2.5*cm, rightMargin=2.5*cm,
+                            topMargin=2.5*cm, bottomMargin=2.5*cm)
+    e = []
+    e.append(Paragraph(empresa_nm, st_empresa))
+    e.append(Paragraph("MEMÓRIA DE CÁLCULO — ADIANTAMENTO DO 13º SALÁRIO", st_titulo))
+    e.append(Paragraph(f"Competência: {anomes_fmt}  ·  Percentual do adiantamento: {perc}%", st_sub))
+    e.append(Spacer(1, 0.1*cm))
+    e.append(Table([[""]], colWidths=[16*cm], style=linha_sep))
+
+    idt = Table([[Paragraph(f"<b>Matrícula:</b> {matr:06d}", st_id),
+                  Paragraph(f"<b>Nome:</b> {nome}", st_id)]], colWidths=[4*cm, 12*cm])
+    idt.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 3),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                             ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    e.append(idt)
+    e.append(Table([[""]], colWidths=[16*cm], style=linha_sep))
+
+    # ETAPA 1 — salário
+    e.append(Paragraph("ETAPA 0001 — ADIANTAMENTO SOBRE O SALÁRIO", st_etapa))
+    e.append(Paragraph(
+        f"Salário do mês {_fmt_brl(sal_mes)} × {perc}% = <b>{_fmt_brl(valor)}</b>  "
+        f"(verba {VERBA_ADIANT_13})", st_formula))
+
+    # ETAPA 2 — periculosidade
+    e.append(Paragraph("ETAPA 0002 — PERICULOSIDADE", st_etapa))
+    if pericu > 0:
+        pct_txt = f"{pericu_pct:.2f}".replace(".", ",")
+        e.append(Paragraph(
+            f"Periculosidade do mês (Salário × {pct_txt}%) = {_fmt_brl(pericu_mes)} × {perc}% "
+            f"= <b>{_fmt_brl(pericu)}</b>  (verba {VERBA_PERICULOSIDADE})", st_formula))
+    else:
+        e.append(Paragraph("Funcionário sem periculosidade ativa no mês.", st_formula))
+
+    # ETAPA 3 — médias das verbas variáveis
+    e.append(Paragraph(
+        f"ETAPA 0003 — MÉDIAS DAS VERBAS VARIÁVEIS (ano corrente · ÷ {meses} {'mês' if meses == 1 else 'meses'})",
+        st_etapa))
+    if medias_detalhe:
+        rows = [[Paragraph("<b>Verba</b>", st_cellb),
+                 Paragraph("<b>Descrição</b>", st_cellb),
+                 Paragraph("<b>Acumulado no ano</b>", st_cellbr),
+                 Paragraph("<b>Média mensal</b>", st_cellbr),
+                 Paragraph(f"<b>Valor ({perc}%)</b>", st_cellbr)]]
+        for d in medias_detalhe:
+            if d["unid"] == "H":
+                acum  = f"{_hhmm(d['soma_qtd'])} · {_fmt_brl(sal_hora_c)}/h"
+                media = f"{_hhmm(d['avg_min'])} × {_fmt_brl(sal_hora_c)} = {_fmt_brl(d['base'])}"
+            else:
+                acum  = _fmt_brl(d["soma_val"])
+                media = _fmt_brl(d["base"])
+            rows.append([
+                Paragraph(f"{d['cod']:04d}", st_cell),
+                Paragraph(d["desc"] or "", st_cell),
+                Paragraph(acum, st_cellr),
+                Paragraph(media, st_cellr),
+                Paragraph(_fmt_brl(d["val"]), st_cellr),
+            ])
+        med_tot = sum(d["val"] for d in medias_detalhe)
+        rows.append([Paragraph("", st_cell), Paragraph("<b>Total das médias</b>", st_cellb),
+                     Paragraph("", st_cell), Paragraph("", st_cell),
+                     Paragraph(f"<b>{_fmt_brl(med_tot)}</b>", st_cellbr)])
+        tbl = Table(rows, colWidths=[1.4*cm, 5.6*cm, 4.0*cm, 3.4*cm, 2.6*cm])
+        tbl.setStyle(TableStyle([
+            ("LINEBELOW",     (0, 0), (-1, 0), 0.6, colors.HexColor("#cbd5e1")),
+            ("LINEABOVE",     (0, -1), (-1, -1), 0.6, colors.HexColor("#cbd5e1")),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 2),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
+        ]))
+        e.append(tbl)
+    else:
+        e.append(Paragraph("Sem verbas variáveis lançadas no ano corrente.", st_formula))
+
+    # TOTAL
+    e.append(Paragraph(f"TOTAL DO ADIANTAMENTO = {_fmt_brl(total)}", st_total))
+
+    # rodapé
+    e.append(Spacer(1, 1*cm))
+    e.append(Paragraph(
+        f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}  |  Usuario: {usuario}  |  "
+        f"Folha10 Simples {versao}", st_rod))
+
+    doc.build(e)
+    return buf.getvalue()
 
 
 @app.route("/calcular_adiantamento_13")
@@ -39588,6 +39871,7 @@ def calcular_adiantamento_13():
         erro_critico=None,
         verba_usar=VERBA_ADIANT_13,
         dsc_verba="",
+        perc_adianta13=50,
         funcionarios=[],
         total_funcs=0,
         total_com=0,
@@ -39604,17 +39888,26 @@ def calcular_adiantamento_13():
     except Exception:
         pass
 
-    # periculosidade ativa no mês (op1=41), por funcionário — entra a 50%
+    # percentual do adiantamento do 13º (por empresa, default 50)
+    perc = _get_per_adianta13(id_empresa)
+    ctx["perc_adianta13"] = perc
+
+    # periculosidade ativa no mês (op1=41), por funcionário — entra a perc%
     id_cliente = session.get("id_cliente")
     try:
         pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
     except Exception:
         pericu_map = {}
 
+    # médias das verbas variáveis (inc_adto13='S') — ano corrente, ÷ mês da folha
+    cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
+    ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
+    fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
-                 .select("matricula, nome, nomer, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                 .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
                  .eq("id_empresa", id_empresa)
                  .eq("situacao", "A")
                  .order("nomer")
@@ -39624,11 +39917,21 @@ def calcular_adiantamento_13():
             dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
+            if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
+                continue
             nome    = (f.get("nome") or f.get("nomer") or "").strip()
+            mat_f   = int(f.get("matricula") or 0)
             sal_mes = _sal_mes_adiant13(f)
-            valor   = sal_mes // 2          # 50% do salário
-            pericu  = _pericu_adiant13(sal_mes, pericu_map.get(int(f.get("matricula") or 0)))
-            total_f = valor + pericu
+            valor   = sal_mes * perc // 100          # perc% do salário
+            pericu  = _pericu_adiant13(sal_mes, pericu_map.get(mat_f), perc)
+            vrsalfx = int(f.get("vrsalfx") or 0)
+            und     = str(f.get("undsalfixo") or "M").upper()[:1]
+            qhm     = int(f.get("qtdhrsmes") or 220) or 220
+            sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+            medias_det = _medias_adiant13(id_cliente, id_empresa, mat_f, sal_hora_c,
+                                          fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
+            medias_tot = sum(d["val"] for d in medias_det)
+            total_f = valor + pericu + medias_tot
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
@@ -39637,18 +39940,20 @@ def calcular_adiantamento_13():
                 "valor_fmt":  _fmt_reais(valor),
                 "pericu":     pericu,
                 "pericu_fmt": _fmt_reais(pericu) if pericu else "—",
+                "medias":     medias_tot,
+                "medias_fmt": _fmt_reais(medias_tot) if medias_tot else "—",
                 "total_fmt":  _fmt_reais(total_f),
             })
     except Exception as e:
         ctx["erro_critico"] = f"Erro ao carregar funcionários: {str(e)[:150]}"
         return render_template("F10_Calc_Adiantamento_13.html", **ctx)
 
-    com = [f for f in funcionarios if (f["valor_calc"] + f["pericu"]) > 0]
+    com = [f for f in funcionarios if (f["valor_calc"] + f["pericu"] + f["medias"]) > 0]
     ctx.update(
         funcionarios=funcionarios,
         total_funcs=len(funcionarios),
         total_com=len(com),
-        total_fmt=_fmt_reais(sum(f["valor_calc"] + f["pericu"] for f in com)),
+        total_fmt=_fmt_reais(sum(f["valor_calc"] + f["pericu"] + f["medias"] for f in com)),
     )
     return render_template("F10_Calc_Adiantamento_13.html", **ctx)
 
@@ -39667,14 +39972,20 @@ def api_calcular_adiantamento_13():
         return jsonify({"ok": False, "msg": "A folha ativa não é do tipo Adiantamento 13º (tipo A)."})
 
     folha_int = int(anomes)
+    perc = _get_per_adianta13(id_empresa)   # percentual do adiantamento do 13º (por empresa)
 
-    # limpa cálculo anterior desta folha (verba 17, origem calculada)
+    # médias das verbas variáveis (inc_adto13='S') — ano corrente, ÷ mês da folha
+    cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
+    ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
+    fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+
+    # limpa cálculo anterior desta folha (verba 17/31 + médias, origem calculada)
     try:
         (supabase.table("tab_mov").delete()
          .eq("id_empresa", id_empresa)
          .eq("folha",      folha_int)
          .eq("folha_tipo", "A")
-         .in_("cod_verba", [VERBA_ADIANT_13, VERBA_PERICULOSIDADE])
+         .in_("cod_verba", [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
          .eq("origem",     "C")
          .execute())
     except Exception as e:
@@ -39692,16 +40003,28 @@ def api_calcular_adiantamento_13():
     except Exception:
         pass
 
-    # periculosidade ativa no mês (op1=41), por funcionário — entra a 50%
+    # periculosidade ativa no mês (op1=41), por funcionário — entra a perc%
     try:
         pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
     except Exception:
         pericu_map = {}
 
+    # pasta das memórias de cálculo (1 PDF por funcionário), espelhando a folha normal
+    empresa_nm = str(session.get("empresa_info") or "")
+    usuario    = str(session.get("nome") or "")
+    versao     = ler_versao()
+    pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4],
+                         f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
+    try:
+        os.makedirs(pasta, exist_ok=True)
+    except Exception:
+        pasta = ""
+    memorias = 0
+
     gravados = 0
     try:
         r_cad = (supabase.table("tab_cad")
-                 .select("matricula, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                 .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
                  .eq("id_empresa", id_empresa)
                  .eq("situacao", "A")
                  .execute())
@@ -39710,12 +40033,21 @@ def api_calcular_adiantamento_13():
             dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
+            if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
+                continue
             sal_mes = _sal_mes_adiant13(f)
-            valor   = sal_mes // 2          # 50% do salário
+            valor   = sal_mes * perc // 100          # perc% do salário
             if valor <= 0:
                 continue
             mat    = f.get("matricula")
-            pericu = _pericu_adiant13(sal_mes, pericu_map.get(int(mat or 0)))
+            pericu = _pericu_adiant13(sal_mes, pericu_map.get(int(mat or 0)), perc)
+            vrsalfx = int(f.get("vrsalfx") or 0)
+            und     = str(f.get("undsalfixo") or "M").upper()[:1]
+            qhm     = int(f.get("qtdhrsmes") or 220) or 220
+            sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+            medias_det = _medias_adiant13(id_cliente, id_empresa, int(mat or 0), sal_hora_c,
+                                          fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
+            medias = {d["cod"]: d["val"] for d in medias_det}
             try:
                 supabase.table("tab_mov").insert({
                     "id_cliente": id_cliente,
@@ -39736,7 +40068,7 @@ def api_calcular_adiantamento_13():
             except Exception as e_ins:
                 return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
 
-            # Periculosidade (verba 31), quando ativa — 50% da periculosidade do mês
+            # Periculosidade (verba 31), quando ativa — perc% da periculosidade do mês
             if pericu > 0:
                 try:
                     supabase.table("tab_mov").insert({
@@ -39757,8 +40089,29 @@ def api_calcular_adiantamento_13():
                 except Exception as e_ins:
                     return jsonify({"ok": False, "msg": f"Erro periculosidade mat {mat}: {str(e_ins)[:300]}"})
 
-            # Totais (tab_total): adiantamento sem INSS/IRRF/FGTS → proventos = adiant. + periculosidade
-            prov_total = valor + pericu
+            # Médias das verbas variáveis (uma linha por verba, cada uma com seu código)
+            for cod_m, val_m in sorted(medias.items()):
+                try:
+                    supabase.table("tab_mov").insert({
+                        "id_cliente": id_cliente,
+                        "id_empresa": id_empresa,
+                        "situacao":   "A",
+                        "matricula":  int(mat),
+                        "folha":      folha_int,
+                        "folha_tipo": "A",
+                        "cod_verba":  cod_m,
+                        "qtd":        0,
+                        "valor":      val_m,
+                        "lote":       0,
+                        "origem":     "C",
+                        "controle":   0,
+                        "os":         0,
+                    }).execute()
+                except Exception as e_ins:
+                    return jsonify({"ok": False, "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
+
+            # Totais (tab_total): adiantamento sem INSS/IRRF/FGTS → proventos = adiant. + periculosidade + médias
+            prov_total = valor + pericu + sum(medias.values())
             rec_total = {
                 "id_cliente":                id_cliente,
                 "id_empresa":                id_empresa,
@@ -39791,10 +40144,226 @@ def api_calcular_adiantamento_13():
                         {k: v for k, v in rec_total.items() if k != "situacao"}).execute()
                 except Exception:
                     pass
+
+            # Memória de cálculo — 1 PDF por funcionário (gravado no servidor)
+            if pasta:
+                try:
+                    ev_p      = pericu_map.get(int(mat or 0))
+                    ref1_p    = int(ev_p.get("ref1") or 0) if ev_p else 0
+                    pericu_mes = int(sal_mes * ref1_p / 10000) if ref1_p > 0 else 0
+                    nome_pdf  = (f.get("nome") or f.get("nomer") or "").strip()
+                    pdf_bytes = _pdf_memoria_adiant13(
+                        empresa_nm, anomes, int(mat or 0), nome_pdf, sal_mes, sal_hora_c,
+                        perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
+                        medias_det, prov_total, usuario, versao)
+                    arq = os.path.join(
+                        pasta,
+                        f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
+                        f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
+                    with open(arq, "wb") as fh:
+                        fh.write(pdf_bytes)
+                    memorias += 1
+                except Exception:
+                    pass
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
-    return jsonify({"ok": True, "gravados": gravados, "verba": VERBA_ADIANT_13})
+    return jsonify({"ok": True, "gravados": gravados, "verba": VERBA_ADIANT_13,
+                    "pasta": pasta, "memorias": memorias})
+
+
+@app.route("/api/calcular_adiantamento_13_stream")
+def calcular_adiantamento_13_stream():
+    """Versão em streaming (SSE) do cálculo do adiantamento do 13º — emite
+    progresso por funcionário para a barra de acompanhamento na tela.
+    Mesma lógica de gravação de /api/calcular_adiantamento_13."""
+    if not session.get("logado"):
+        return Response("data: {}\n\n", mimetype="text/event-stream")
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    folha_tipo = str(session.get("anomes_tipo") or "").upper()[:1]
+    empresa_nm = str(session.get("empresa_info") or "")
+    usuario    = str(session.get("nome") or "")
+    versao     = ler_versao()
+
+    def _sse_erro(msg):
+        payload = json.dumps({"tipo": "erro", "msg": msg}, ensure_ascii=False)
+        return Response(f"data: {payload}\n\n", mimetype="text/event-stream")
+
+    if not anomes:
+        return _sse_erro("Nenhuma folha ativa.")
+    if folha_tipo != "A":
+        return _sse_erro("A folha ativa não é do tipo Adiantamento 13º (tipo A).")
+
+    folha_int  = int(anomes)
+    perc       = _get_per_adianta13(id_empresa)
+    cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
+    ano_folha  = int(anomes[:4]); mes_folha = int(anomes[4:6])
+    fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+
+    q = queue.Queue()
+
+    def _put(obj):
+        q.put(json.dumps(obj, ensure_ascii=False))
+
+    def _mov(mat, cod, valor):
+        return {"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                "matricula": int(mat), "folha": folha_int, "folha_tipo": "A",
+                "cod_verba": cod, "qtd": 0, "valor": valor, "lote": 0,
+                "origem": "C", "controle": 0, "os": 0}
+
+    def run():
+        try:
+            # limpa cálculo anterior (verba 17/31 + médias, origem calculada)
+            try:
+                (supabase.table("tab_mov").delete()
+                 .eq("id_empresa", id_empresa).eq("folha", folha_int).eq("folha_tipo", "A")
+                 .in_("cod_verba", [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
+                 .eq("origem", "C").execute())
+            except Exception as e:
+                _put({"tipo": "erro", "msg": f"Erro ao limpar cálculo anterior: {str(e)[:200]}"})
+                return
+            # limpa totais anteriores desta folha de adiantamento
+            try:
+                q_delt = (supabase.table("tab_total").delete()
+                          .eq("id_empresa", id_empresa).eq("folha", folha_int).eq("folha_tipo", "A"))
+                if id_cliente:
+                    q_delt = q_delt.eq("id_cliente", id_cliente)
+                q_delt.execute()
+            except Exception:
+                pass
+
+            try:
+                pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+            except Exception:
+                pericu_map = {}
+
+            pasta = os.path.join("C:\\Folha10-Simples_Memoria", anomes[:4],
+                                 f"{anomes[:4]}-{anomes[4:6]}", f"{int(id_empresa):06d}")
+            try:
+                os.makedirs(pasta, exist_ok=True)
+            except Exception:
+                pasta = ""
+
+            r_cad = (supabase.table("tab_cad")
+                     .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                     .eq("id_empresa", id_empresa).eq("situacao", "A").order("nomer").execute())
+            elegiveis = []
+            for f in (r_cad.data or []):
+                dtadm_raw = str(f.get("dtadm") or "")
+                dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+                if dtadm_anomes and dtadm_anomes > anomes:
+                    continue
+                if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
+                    continue
+                elegiveis.append(f)
+
+            total     = len(elegiveis)
+            gravados  = 0
+            memorias  = 0
+            total_val = 0
+            for idx, f in enumerate(elegiveis, start=1):
+                mat  = int(f.get("matricula") or 0)
+                nome = (f.get("nome") or f.get("nomer") or "").strip()
+                _put({"tipo": "func", "pct": int(idx / total * 100) if total else 100,
+                      "matr": f"{mat:06d}", "nome": nome})
+
+                sal_mes = _sal_mes_adiant13(f)
+                valor   = sal_mes * perc // 100
+                if valor <= 0:
+                    continue
+                pericu  = _pericu_adiant13(sal_mes, pericu_map.get(mat), perc)
+                vrsalfx = int(f.get("vrsalfx") or 0)
+                und     = str(f.get("undsalfixo") or "M").upper()[:1]
+                qhm     = int(f.get("qtdhrsmes") or 220) or 220
+                sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+                medias_det = _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
+                                              fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
+                medias = {d["cod"]: d["val"] for d in medias_det}
+
+                try:
+                    supabase.table("tab_mov").insert(_mov(mat, VERBA_ADIANT_13, valor)).execute()
+                    gravados += 1
+                except Exception as e_ins:
+                    _put({"tipo": "erro", "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
+                    return
+                if pericu > 0:
+                    try:
+                        supabase.table("tab_mov").insert(_mov(mat, VERBA_PERICULOSIDADE, pericu)).execute()
+                    except Exception as e_ins:
+                        _put({"tipo": "erro", "msg": f"Erro periculosidade mat {mat}: {str(e_ins)[:300]}"})
+                        return
+                for cod_m, val_m in sorted(medias.items()):
+                    try:
+                        supabase.table("tab_mov").insert(_mov(mat, cod_m, val_m)).execute()
+                    except Exception as e_ins:
+                        _put({"tipo": "erro", "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
+                        return
+
+                prov_total = valor + pericu + sum(medias.values())
+                total_val += prov_total
+                rec_total = {
+                    "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                    "matricula": int(mat), "folha": folha_int, "folha_tipo": "A",
+                    "valor_base_inss_semlimite": 0, "valor_base_inss_comlimite": 0,
+                    "valor_inss_retido": 0, "valor_base_fgts": 0, "valor_fgts": 0,
+                    "valor_irrf_basetotal": 0, "valor_irrf_basetabela": 0,
+                    "valor_irrf_dependentes": 0, "qtd_irrf_dependentes": 0,
+                    "valor_salario": int(sal_mes), "valor_total_proventos": int(prov_total),
+                    "valor_total_descontos": 0, "valor_liquido": int(prov_total),
+                    "os": 0, "controle": 0,
+                }
+                try:
+                    supabase.table("tab_total").insert(rec_total).execute()
+                except Exception:
+                    try:
+                        supabase.table("tab_total").insert(
+                            {k: v for k, v in rec_total.items() if k != "situacao"}).execute()
+                    except Exception:
+                        pass
+
+                if pasta:
+                    try:
+                        ev_p       = pericu_map.get(mat)
+                        ref1_p     = int(ev_p.get("ref1") or 0) if ev_p else 0
+                        pericu_mes = int(sal_mes * ref1_p / 10000) if ref1_p > 0 else 0
+                        pdf_bytes  = _pdf_memoria_adiant13(
+                            empresa_nm, anomes, mat, nome, sal_mes, sal_hora_c,
+                            perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
+                            medias_det, prov_total, usuario, versao)
+                        arq = os.path.join(
+                            pasta,
+                            f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
+                            f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
+                        with open(arq, "wb") as fh:
+                            fh.write(pdf_bytes)
+                        memorias += 1
+                    except Exception:
+                        pass
+
+            _put({"tipo": "fim", "pct": 100, "resumo": {
+                "gravados": gravados, "verba": VERBA_ADIANT_13, "pasta": pasta,
+                "memorias": memorias, "total_funcs": total, "total_valor": total_val,
+                "perc": perc}})
+        except Exception as e:
+            _put({"tipo": "erro", "msg": str(e)[:200]})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+
+    @stream_with_context
+    def generate():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {item}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 # =========================================================

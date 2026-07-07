@@ -304,10 +304,10 @@ input[type="password"]:focus {
         <button class="btn btn3" onclick="reenviarCodigo()">Reenviar código</button>
 
         <div id="senhaArea" style="display:none; margin-top:12px;">
-            <input type="password" id="senha" placeholder="Crie uma senha numérica de 6 dígitos" maxlength="6" autocomplete="off">
+            <input type="password" id="senha" placeholder="Crie uma senha numérica de 6 dígitos" maxlength="6" autocomplete="off" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
             <div id="erro_senha" class="linha-erro"></div>
 
-            <input type="password" id="senha2" placeholder="Confirme a senha" maxlength="6" autocomplete="off">
+            <input type="password" id="senha2" placeholder="Confirme a senha" maxlength="6" autocomplete="off" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')">
             <div id="erro_senha2" class="linha-erro"></div>
 
             <button class="btn btn1" onclick="finalizarCadastro()">Concluir cadastro</button>
