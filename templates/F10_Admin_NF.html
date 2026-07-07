@@ -298,7 +298,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                                 <div class="form-row" style="flex:0 0 auto;">
                                     <label class="form-label">Competência</label>
                                     <input class="form-input" id="fDataProc" type="text" placeholder="MM/AAAA"
-                                           inputmode="numeric" maxlength="7" style="width:130px;"
+                                           inputmode="numeric" maxlength="7" size="20" style="width:200px;"
                                            oninput="mascaraMesAno(this); salvarMemoria(); atualizarPreview()">
                                     <span class="form-hint">Mês do serviço (MM/AAAA) — não pode ser futuro.</span>
                                 </div>
@@ -319,8 +319,10 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                     </div>
 
                     <div class="preview-nf" id="previewNF" style="display:none;">
-                        <div class="preview-nf-titulo">Discriminação do serviço</div>
-                        <div class="preview-nf-texto" id="previewNFTexto">—</div>
+                        <div class="preview-nf-titulo">Discriminação do serviço <span style="font-weight:400;color:#64748b;">(editável)</span></div>
+                        <textarea class="preview-nf-texto" id="fDiscriminacao" rows="3" maxlength="2000"
+                                  oninput="discrManual = true;"
+                                  style="width:100%;box-sizing:border-box;resize:vertical;font-family:inherit;font-size:inherit;color:inherit;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 10px;">—</textarea>
                     </div>
 
 
@@ -520,6 +522,7 @@ function selecionar(idx) {
         (mem.dataProc && !competenciaFutura(mem.dataProc)) ? mem.dataProc : mesAnoAtual();
     mascaraMesAno(document.getElementById('fDataProc'));
 
+    discrManual = false;   // novo cliente → regenera a sugestão de discriminação
     atualizarPreview();
 
     // Habilita o botão de emitir e limpa o resultado anterior.
@@ -655,13 +658,16 @@ function waModalEnviar(chave, cod, btn) {
 }
 
 // Emite a NFS-e do cliente ativo (envia o DPS ao Sistema Nacional).
+let emitindoNF = false;   // trava de reentrada: emissão em andamento
+
 function emitir() {
+    if (emitindoNF) return;   // já está emitindo — ignora cliques enquanto não volta o retorno
     if (clienteAtivo == null) { alert('Selecione um cliente.'); return; }
     const c = CLIENTES[clienteAtivo];
     const ambiente = '1';   // sempre Produção (bloco de ambiente removido da tela)
     const valor = (document.getElementById('fValor').value || '').trim();
     const competencia = (document.getElementById('fDataProc').value || '').trim();
-    const discr = (document.getElementById('previewNFTexto').textContent || '').trim();
+    const discr = (document.getElementById('fDiscriminacao').value || '').trim();
 
     if (!/^\d{2}\/\d{4}$/.test(competencia)) { alert('Informe a competência (MM/AAAA).'); return; }
     if (competenciaFutura(competencia)) {
@@ -669,6 +675,7 @@ function emitir() {
         return;
     }
     if (!valor) { alert('Informe o valor da nota.'); return; }
+    if (!discr) { alert('Informe a discriminação do serviço.'); return; }
 
     if (ambiente === '1' &&
         !confirm('ATENÇÃO: emissão em PRODUÇÃO — a nota terá valor fiscal.\n\nConfirma emitir a NFS-e real para ' + (c.nome || '') + '?')) {
@@ -677,10 +684,13 @@ function emitir() {
 
     const btn = document.getElementById('btnEmitir');
     const rb = document.getElementById('emitResultado');
+    emitindoNF = true;
     btn.disabled = true;
     const txtOrig = btn.innerHTML;
-    btn.innerHTML = '<span class="spinner" style="border-top-color:#fff;"></span> Emitindo…';
-    rb.style.display = 'none'; rb.innerHTML = '';
+    btn.innerHTML = '<span class="spinner" style="border-top-color:#fff;"></span> Emitindo… aguarde';
+    rb.style.display = ''; rb.innerHTML =
+        '<div class="aviso-info" style="background:#eff6ff;border-color:#bfdbfe;color:#1e40af;">'
+        + '⏳ Enviando ao Sefin. Pode levar alguns segundos — <b>não clique de novo</b>.</div>';
 
     fetch('/api/admin_nf/emitir', {
         method: 'POST',
@@ -721,7 +731,20 @@ function emitir() {
                    </div>${al}
                  </div>`;
             // Atualiza a lista de NFs anteriores (inclui a que acabou de emitir).
-            carregarEmitidas(() => { if (clienteAtivo != null) popularNfsAnteriores(CLIENTES[clienteAtivo].codigo); });
+            carregarEmitidas();
+            // Emissão OK → limpa tudo e volta para a seleção de cliente. A confirmação
+            // (com PDF/WhatsApp) fica no lugar do "Selecione um cliente".
+            const ev = document.getElementById('estadoVazio');
+            ev.innerHTML = rb.innerHTML +
+                '<div style="margin-top:14px;font-size:13px;color:#64748b;">Selecione o próximo cliente para emitir outra nota.</div>';
+            clienteAtivo = null;
+            discrManual = false;
+            ['fValor', 'fEmpresas', 'fFuncionarios', 'fDiscriminacao'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            document.getElementById('cardNota').style.display = 'none';
+            ev.style.display = '';
+            render();
         } else {
             const lst = (d.erros && d.erros.length)
                 ? '<ul style="margin:6px 0 0 18px;font-size:12px;">' + d.erros.map(e => `<li>${esc(e)}</li>`).join('') + '</ul>' : '';
@@ -736,7 +759,7 @@ function emitir() {
         rb.style.display = '';
         rb.innerHTML = `<div class="aviso-info" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;">Erro de comunicação: ${esc(String(ex))}</div>`;
     })
-    .finally(() => { btn.disabled = false; btn.innerHTML = txtOrig; });
+    .finally(() => { emitindoNF = false; btn.disabled = false; btn.innerHTML = txtOrig; });
 }
 
 // Envia o DANFSe por WhatsApp para o Celular_Whatsapp do cliente (Z-API).
@@ -786,16 +809,19 @@ function mascaraMesAno(el) {
     el.value = v;
 }
 
-// Preview da discriminação da NF. Texto FIXO com a competência (MM/AAAA).
+// A discriminação foi editada manualmente? (não sobrescrever o texto automático)
+let discrManual = false;
+
+// Sugestão automática da discriminação. Só preenche enquanto o usuário não editar.
 function atualizarPreview() {
     const box = document.getElementById('previewNF');
+    const ta  = document.getElementById('fDiscriminacao');
     const c = (clienteAtivo != null) ? CLIENTES[clienteAtivo] : null;
     if (!c) { box.style.display = 'none'; return; }
-    const data = (document.getElementById('fDataProc').value || '').trim() || '__/____';
-    const texto = 'SERVIÇO DE PROCESSAMENTO DE DADOS DA FOLHA DE PAGAMENTO DO MES ' + data;
-
-    document.getElementById('previewNFTexto').textContent = texto;
     box.style.display = '';
+    if (discrManual) return;   // usuário alterou → mantém o texto dele
+    const data = (document.getElementById('fDataProc').value || '').trim() || '__/____';
+    ta.value = 'SERVIÇO DE PROCESSAMENTO DE DADOS DA FOLHA DE PAGAMENTO DO MES ' + data;
 }
 
 document.addEventListener('DOMContentLoaded', carregar);
