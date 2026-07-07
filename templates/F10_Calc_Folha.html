@@ -103,11 +103,11 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     font-size: 16px; flex-shrink: 0;
 }
 .resumo-grid {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px;
+    display: flex; gap: 12px; margin-bottom: 20px;
 }
 .resumo-item {
     background: #f8fafc; border: 1px solid var(--border); border-radius: 10px;
-    padding: 14px 16px;
+    padding: 14px 16px; min-width: 200px;
 }
 .resumo-item.warn { background: #fffbeb; border-color: #fbbf24; }
 .resumo-item.info { background: #eff6ff; border-color: #93c5fd; }
@@ -140,7 +140,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
 /* ── CARDS DE NAVEGAÇÃO PÓS-CÁLCULO ── */
 .nav-cards-wrap {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
     padding: 0 24px 24px;
 }
 .nav-card {
@@ -358,9 +358,6 @@ src.onerror = function() {
 function mostrarResumo(r) {
     document.getElementById('sec-prog').style.display = 'none';
     const sec = document.getElementById('sec-resumo');
-    const warnA = r.funcs_com_afast > 0 ? 'warn' : '';
-    const warnB = r.total_afast     > 0 ? 'warn' : '';
-    const infoF = r.ferias_futuras  > 0 ? 'info' : '';
     const calcInfoHtml = r.n_calculo > 0
         ? `<p class="resumo-calc-info">Cálculo n.º <strong>${r.n_calculo}</strong> — ${r.data_calculo}</p>`
         : '';
@@ -375,29 +372,20 @@ function mostrarResumo(r) {
                 <div class="resumo-num">${r.total_funcs}</div>
                 <div class="resumo-label">Funcionários calculados</div>
             </div>
-            <div class="resumo-item ${warnA}">
-                <div class="resumo-num">${r.funcs_com_afast}</div>
-                <div class="resumo-label">Com afastamento no mês</div>
-            </div>
-            <div class="resumo-item ${warnB}">
-                <div class="resumo-num">${r.total_afast}</div>
-                <div class="resumo-label">Registros de afastamento</div>
-            </div>
-            <div class="resumo-item ${infoF}">
-                <div class="resumo-num">${r.ferias_futuras}</div>
-                <div class="resumo-label">Férias futuras agendadas</div>
-            </div>
         </div>
-        <p class="resumo-aviso">
-            Memórias de cálculo gravadas em:<br>
-            <strong>${r.pasta}</strong>
-        </p>
         <div class="nav-cards-wrap" style="margin-top:32px;">
             <a href="/visualizar_calculo" class="nav-card">
                 <div class="nav-card-icone">👁️</div>
                 <div>
                     <div class="nav-card-titulo">Visualizar Cálculo</div>
                     <div class="nav-card-sub">Ver totais por funcionário</div>
+                </div>
+            </a>
+            <a href="/memoria_calculo" class="nav-card">
+                <div class="nav-card-icone">📄</div>
+                <div>
+                    <div class="nav-card-titulo">Memória de Cálculo</div>
+                    <div class="nav-card-sub">Ver memória por funcionário</div>
                 </div>
             </a>
             <a href="/relatorio_folha" class="nav-card">
@@ -491,7 +479,7 @@ function iniciarTour() {
             element: '#sec-resumo',
             popover: {
                 title: '✅ Resumo Final — após o cálculo',
-                description: 'Quando concluído, este painel exibe 4 indicadores: <strong>funcionários calculados</strong>, quantos têm afastamento, registros de afastamento e férias futuras agendadas. Também mostra a pasta onde as <strong>memórias de cálculo</strong> (PDF por funcionário) foram gravadas no servidor.',
+                description: 'Quando concluído, este painel mostra a quantidade de <strong>funcionários calculados</strong> e três atalhos: <strong>Visualizar Cálculo</strong>, <strong>Memória de Cálculo</strong> (PDF por funcionário) e <strong>Folha de Pagamento</strong>.',
                 side: 'top', align: 'center'
             }
         },

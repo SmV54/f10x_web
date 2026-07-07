@@ -296,11 +296,11 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
                                     <span class="form-hint" id="hintValor">Sugerido a partir da tabNF.</span>
                                 </div>
                                 <div class="form-row" style="flex:0 0 auto;">
-                                    <label class="form-label">Data do processamento</label>
+                                    <label class="form-label">Competência</label>
                                     <input class="form-input" id="fDataProc" type="text" placeholder="MM/AAAA"
                                            inputmode="numeric" maxlength="7" style="width:130px;"
                                            oninput="mascaraMesAno(this); salvarMemoria(); atualizarPreview()">
-                                    <span class="form-hint">Mantida para a próxima nota.</span>
+                                    <span class="form-hint">Mês do serviço (MM/AAAA) — não pode ser futuro.</span>
                                 </div>
                             </div>
                         </div>
@@ -514,7 +514,10 @@ function selecionar(idx) {
     const mem = lerMemoria();
     document.getElementById('fEmpresas').value     = mem.empresas     || (c.empresas != null ? c.empresas : '');
     document.getElementById('fFuncionarios').value = mem.funcionarios || (c.funcionarios != null ? c.funcionarios : '');
-    document.getElementById('fDataProc').value     = mem.dataProc     || mesAnoAtual();
+    // Competência (mês do serviço): nunca começar com um mês futuro (Sefin rejeita
+    // com E0015). Usa o último valor lembrado só se não for futuro; senão, mês atual.
+    document.getElementById('fDataProc').value     =
+        (mem.dataProc && !competenciaFutura(mem.dataProc)) ? mem.dataProc : mesAnoAtual();
     mascaraMesAno(document.getElementById('fDataProc'));
 
     atualizarPreview();
@@ -661,6 +664,10 @@ function emitir() {
     const discr = (document.getElementById('previewNFTexto').textContent || '').trim();
 
     if (!/^\d{2}\/\d{4}$/.test(competencia)) { alert('Informe a competência (MM/AAAA).'); return; }
+    if (competenciaFutura(competencia)) {
+        alert('A competência ' + competencia + ' está no futuro. A competência da NFS-e não pode ser posterior ao mês atual — use o mês atual ou anterior.');
+        return;
+    }
     if (!valor) { alert('Informe o valor da nota.'); return; }
 
     if (ambiente === '1' &&
@@ -757,10 +764,19 @@ function enviarWhatsApp(chave, cod, btnEl) {
     });
 }
 
-// Mês/ano atual no formato MM/AAAA (default da data de processamento).
+// Mês/ano atual no formato MM/AAAA (default da competência).
 function mesAnoAtual() {
     const d = new Date();
     return String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+// A competência (MM/AAAA) é um mês futuro em relação a hoje?
+function competenciaFutura(s) {
+    const m = /^(\d{2})\/(\d{4})$/.exec((s || '').trim());
+    if (!m) return false;
+    const cm = parseInt(m[1], 10), cy = parseInt(m[2], 10);
+    const d = new Date();
+    return (cy > d.getFullYear()) || (cy === d.getFullYear() && cm > (d.getMonth() + 1));
 }
 
 // Máscara MM/AAAA — só dígitos, barra automática após os 2 primeiros.

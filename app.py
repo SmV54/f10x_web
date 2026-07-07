@@ -25296,19 +25296,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     dt_ini_c = f"{anomes[:4]}{anomes[4:6]}01"
     dt_fim_c = f"{anomes[:4]}{anomes[4:6]}{_ultdia:02d}"
 
-    # Move PDFs anteriores para Memoria_Antiga antes de gerar novos (só no disco local)
-    if dest["modo"] == "local":
-        try:
-            pasta = dest["base"]
-            pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
-                                        anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
-            pdfs = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf")]
-            if pdfs:
-                os.makedirs(pasta_antiga, exist_ok=True)
-                for pdf in pdfs:
-                    shutil.move(os.path.join(pasta, pdf), os.path.join(pasta_antiga, pdf))
-        except Exception:
-            pass
+    # Mantém só a memória do último cálculo: apaga as memórias de FOLHA anteriores
+    # desta folha/empresa (não arquiva mais). Férias/adiantamento (mesma pasta)
+    # são preservados, pois têm outro nome de arquivo.
+    _memoria_apagar(anomes, id_empresa,
+                    remover_pred=lambda n: n.startswith("Folha10_Memoria_Empresa")
+                    and "_Ferias_" not in n and n.lower().endswith(".pdf"))
 
     # Apaga registros calculados anteriores desta folha antes de recalcular
     _limpar_folha_calculada(id_cliente, id_empresa, anomes, _folha_tipo_mov)
@@ -25420,7 +25413,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                           f"  —  {dias_antes_admissao} "
                           f"{'dia' if dias_antes_admissao == 1 else 'dias'} anteriores a admissao")
             else:
-                txt_e2 = "ETAPA 0002 - ADMISSAO NO MES DA FOLHA   Nao e o caso"
+                txt_e2 = "ETAPA 0002 - ADMISSAO NO MES DA FOLHA   Não é o caso"
             e2_adm = Table([[Paragraph(txt_e2, st_etapa)]], colWidths=[17*cm])
             e2_adm.setStyle(TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -25611,7 +25604,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
             else:
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL   Nao e o caso — mes completo trabalhado",
+                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL   Não é o caso — mês completo trabalhado",
                     st_etapa)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
             elems.append(e4_tbl)
@@ -31708,25 +31701,10 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
     _st_op = ParagraphStyle("mf_op", fontName="Helvetica", fontSize=7,
                              alignment=1, textColor=colors.HexColor("#374151"))
 
-    if dest["modo"] == "local":   # arquivamento só no disco local
-        try:
-            pasta = dest["base"]
-            pasta_antiga = os.path.join("C:\\Folha10-Simples_Memoria", "Memoria_Antiga",
-                                        anomes[:4], anomes_pasta, f"{int(id_empresa):06d}")
-            pdfs_ferias = [f for f in os.listdir(pasta) if f.lower().endswith(".pdf") and "_Ferias_" in f]
-            if pdfs_ferias:
-                os.makedirs(pasta_antiga, exist_ok=True)
-                for pdf in pdfs_ferias:
-                    src = os.path.join(pasta, pdf)
-                    try:
-                        shutil.move(src, os.path.join(pasta_antiga, pdf))
-                    except Exception:
-                        try:
-                            os.remove(src)
-                        except Exception:
-                            pass
-        except Exception:
-            pass
+    # Mantém só a memória do último cálculo: apaga as memórias de FÉRIAS
+    # anteriores desta folha/empresa (não arquiva mais).
+    _memoria_apagar(anomes, id_empresa,
+                    remover_pred=lambda n: "_Ferias_" in n and n.lower().endswith(".pdf"))
 
     for r in resultados_brutos:
         mat  = int(r["matricula"])
@@ -38398,6 +38376,18 @@ def api_admin_nf_emitir():
         return jsonify({'ok': False, 'msg': 'Cliente não informado.'})
     if len(_re_digits(competencia)) not in (6,):
         return jsonify({'ok': False, 'msg': 'Competência inválida (use MM/AAAA).'})
+    # A competência não pode ser um mês FUTURO — o Sefin rejeita com E0015
+    # ("data de competência não pode ser posterior à data de emissão / dhEmi").
+    # dCompet = 1º dia do mês da competência; dhEmi = agora.
+    _cd = _re_digits(competencia)
+    _cmes, _cano = int(_cd[:2]), int(_cd[2:])
+    _hoje = datetime.now(nfx.TZ_BR)
+    if not (1 <= _cmes <= 12):
+        return jsonify({'ok': False, 'msg': 'Competência inválida (mês deve ser 01–12).'})
+    if (_cano, _cmes) > (_hoje.year, _hoje.month):
+        return jsonify({'ok': False, 'msg': (
+            f'Competência {competencia} está no futuro. A competência da NFS-e não pode ser '
+            f'posterior ao mês da emissão ({_hoje.month:02d}/{_hoje.year}). Use o mês atual ou anterior.')})
     if valor <= 0:
         return jsonify({'ok': False, 'msg': 'Valor da nota inválido.'})
 
@@ -39931,6 +39921,31 @@ def _memoria_ler(anomes, id_empresa, nome_arq):
         return _supabase_storage.storage.from_(_ESOC_BUCKET).download(f"{base}/{nome_arq}")
     except Exception:
         return None
+
+
+def _memoria_apagar(anomes, id_empresa, remover_pred=None):
+    """Apaga memórias existentes da folha/empresa (local ou Storage). Mantém só o
+    último cálculo. remover_pred(nome)->bool seleciona quais apagar (default: todas).
+    Escopo por tipo (folha/férias/adiant) pelo nome, já que dividem a mesma pasta."""
+    if len(str(anomes)) != 6:
+        return
+    alvo = [n for n in _memoria_listar(anomes, id_empresa)
+            if (remover_pred(n) if remover_pred else True)]
+    if not alvo:
+        return
+    if not _memoria_usa_storage():
+        pasta = _memoria_pasta_local(anomes, id_empresa)
+        for n in alvo:
+            try:
+                os.remove(os.path.join(pasta, n))
+            except Exception:
+                pass
+    else:
+        base = f"{_MEM_PREFIXO}/{_memoria_subpasta(anomes, id_empresa)}"
+        try:
+            _supabase_storage.storage.from_(_ESOC_BUCKET).remove([f"{base}/{n}" for n in alvo])
+        except Exception:
+            pass
 
 
 @app.route("/calcular_adiantamento_13")
