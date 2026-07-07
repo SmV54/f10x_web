@@ -25065,9 +25065,10 @@ def _calc_ferias_futuras(id_empresa, anomes):
         return 0
 
 
-def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm):
+def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm, titulo_esq=False):
     """Cabeçalho padrão: CNPJ/empresa (esq) | competência (centro) | data (dir) + título abaixo.
-    page_width: largura útil da página (sem margens). Padrão 17cm = A4 retrato c/ margens 2cm."""
+    page_width: largura útil da página (sem margens). Padrão 17cm = A4 retrato c/ margens 2cm.
+    titulo_esq=True alinha o título totalmente à esquerda (mesma margem da 1ª linha)."""
     def xe(s):
         return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -25075,7 +25076,8 @@ def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm
     st_L  = ParagraphStyle("hc_l", fontName="Helvetica",      fontSize=8, leading=10)
     st_C  = ParagraphStyle("hc_c", fontName="Helvetica-Bold", fontSize=8, leading=10, alignment=TA_CENTER)
     st_R  = ParagraphStyle("hc_r", fontName="Helvetica",      fontSize=7, leading=10, alignment=TA_RIGHT)
-    st_T  = ParagraphStyle("hc_t", fontName="Helvetica-Bold", fontSize=8, leading=10, alignment=TA_CENTER)
+    st_T  = ParagraphStyle("hc_t", fontName="Helvetica-Bold", fontSize=8, leading=10,
+                           alignment=(0 if titulo_esq else TA_CENTER))   # 0 = TA_LEFT
 
     # Distribui: 58% empresa, 17% competência, 25% data
     col_e = page_width * 0.58
@@ -25337,9 +25339,18 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                     topMargin=1.5*cm, bottomMargin=1.5*cm)
             elems = []
 
-            titulo_mem = f"MEMORIA DE CALCULO — FOLHA DE PAGAMENTO — {matr:06d} — {l['nome']}"
-            elems.append(_pdf_cabecalho(titulo_mem, cnpj_fmt, empresa_nm,
-                                        f"{anomes[4:6]}/{anomes[:4]}"))
+            # Título numa única linha, à esquerda, com a competência embutida.
+            # Trunca o nome com "…" só se o conjunto estourar a largura útil.
+            from reportlab.pdfbase.pdfmetrics import stringWidth as _sw_tit
+            _pref_tit = (f"MEMORIA DE CALCULO — FOLHA DE PAGAMENTO — {anomes[4:6]}/{anomes[:4]}"
+                         f" — {matr:06d} — ")
+            _nm_tit = str(l['nome'] or "")
+            while _nm_tit and _sw_tit(_pref_tit + _nm_tit, "Helvetica-Bold", 8) > (17 * cm - 4):
+                _nm_tit = _nm_tit[:-1]
+            if _nm_tit != str(l['nome'] or ""):
+                _nm_tit = _nm_tit.rstrip() + "…"
+            titulo_mem = _pref_tit + _nm_tit
+            elems.append(_pdf_cabecalho(titulo_mem, cnpj_fmt, empresa_nm, titulo_esq=True))
             elems.append(Spacer(1, 0.4*cm))
 
             # ── guard: admissão após o mês ────────────────
@@ -39828,6 +39839,14 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
 # espelhada no Supabase Storage quando roda no Render (Linux). Mesmo layout
 # de subpastas AAAA/AAAA-MM/EMPRESA; o tipo é distinguido pelo nome do arquivo.
 _MEM_PREFIXO = "memorias"   # prefixo dentro do bucket _ESOC_BUCKET
+# Para TESTAR o caminho do Storage rodando local no Windows: defina MEMORIA_STORAGE=1.
+_MEM_FORCAR_STORAGE = os.environ.get("MEMORIA_STORAGE") == "1"
+
+
+def _memoria_usa_storage():
+    """True = grava/lê no Supabase Storage; False = disco local C:\\.
+    Storage no Render/Linux; local no Windows — exceto se MEMORIA_STORAGE=1 (teste)."""
+    return _MEM_FORCAR_STORAGE or os.name != "nt"
 
 
 def _memoria_subpasta(anomes, id_empresa):
@@ -39844,7 +39863,7 @@ def _memoria_destino(anomes, id_empresa):
     Windows local (os.name=='nt') → C:\\Folha10-Simples_Memoria\\AAAA\\AAAA-MM\\EMP.
     Render/Linux → Supabase Storage (bucket esocial-xml, prefixo memorias/...).
     Retorna {"modo","base","label"} — base = onde gravar; label = p/ exibir."""
-    if os.name == "nt":
+    if not _memoria_usa_storage():
         pasta = _memoria_pasta_local(anomes, id_empresa)
         try:
             os.makedirs(pasta, exist_ok=True)
@@ -39881,7 +39900,7 @@ def _memoria_listar(anomes, id_empresa):
     """Nomes dos arquivos de memória existentes p/ a folha/empresa (local ou Storage)."""
     if len(str(anomes)) != 6:
         return []
-    if os.name == "nt":
+    if not _memoria_usa_storage():
         pasta = _memoria_pasta_local(anomes, id_empresa)
         try:
             return os.listdir(pasta) if os.path.isdir(pasta) else []
@@ -39901,7 +39920,7 @@ def _memoria_listar(anomes, id_empresa):
 
 def _memoria_ler(anomes, id_empresa, nome_arq):
     """Bytes de um PDF de memória (local ou Storage) ou None."""
-    if os.name == "nt":
+    if not _memoria_usa_storage():
         try:
             with open(os.path.join(_memoria_pasta_local(anomes, id_empresa), nome_arq), "rb") as fh:
                 return fh.read()
