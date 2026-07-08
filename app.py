@@ -6025,6 +6025,547 @@ def cancelar_rescisao():
 
 
 # =========================================================
+# CÁLCULO DA RESCISÃO  (folha_tipo="R")
+# Espelha o cálculo de férias: médias da ficha financeira (inc_rescisao),
+# INSS/IRRF/FGTS, grava tab_mov/tab_total/tab_log e memória PDF detalhada.
+# Parte da rescisão JÁ REGISTRADA (situacao='D', datarescisao, motrescisao).
+# =========================================================
+# Códigos de verba (Folha10) usados na rescisão
+VR_SALDO       = 10    # SALDO DE SALARIO
+VR_13_PROP     = 12    # 13 SALARIO PROPORCIONAL
+VR_13_AVISO    = 13    # 13 SALARIO INDENIZADO (projeção do aviso)
+VR_FERIAS_PROP = 49    # FERIAS PROPORCIONAIS+1/3
+VR_FERIAS_AVISO= 44    # FERIAS RESCISAO AVISO PREVIO (+1/3)
+VR_AVISO_IND   = 61    # AVISO PREVIO (indenizado)
+VR_INSS        = 101   # INSS (saldo)
+VR_INSS_13     = 104   # INSS 13.SAL. RESC.
+VR_IRRF        = 120   # IRRF
+VR_IRRF_13     = 122   # IRRF 13.SAL
+
+# Verbas de rescisão que NÃO entram na média (são proventos/descontos próprios)
+_VERBAS_RESC_PROPRIAS = {10, 11, 12, 13, 14, 17, 18, 41, 42, 43, 44, 45, 46, 47, 48, 49,
+                         51, 60, 61, 62, 63, 64, 65, 66, 69, 94, 101, 102, 103, 104, 109,
+                         120, 121, 122, 133, 260, 333, 334, 366, 430, 490, 499, 502,
+                         551, 552, 560, 561, 562, 611, 612}
+
+# Regras por motivo de desligamento (Tabela 19 eSocial):
+#   (tem_13_prop, tem_ferias_prop, multa_fgts_pct)
+# Aviso prévio indenizado é definido pelo evento op1=9 (campotxt1='Indenizado'),
+# ajustado por motivo (acordo=50%). default = paga 13º/férias, sem multa.
+_MOTIVO_RESC = {
+    "01": (False, False, 0),   # com justa causa
+    "02": (True,  True,  40),  # sem justa causa (empregador)
+    "03": (True,  True,  40),  # antecipada contrato a termo — empregador
+    "04": (True,  True,  0),   # antecipada contrato a termo — empregado
+    "05": (True,  True,  20),  # culpa recíproca
+    "06": (True,  True,  0),   # término do contrato a termo
+    "07": (True,  True,  0),   # pedido do empregado
+    "10": (True,  True,  0),   # falecimento do empregado
+    "17": (True,  True,  40),  # rescisão indireta
+    "33": (True,  True,  20),  # acordo (484-A)
+}
+
+
+def _conta_avos_resc(dt_ini, dt_fim):
+    """Conta avos (meses) de dt_ini a dt_fim; cada mês com >=15 dias trabalhados
+    conta 1 avo (regra CLT do 13º e das férias)."""
+    if not dt_ini or not dt_fim or dt_fim < dt_ini:
+        return 0
+    avos, y, m = 0, dt_ini.year, dt_ini.month
+    while (y < dt_fim.year) or (y == dt_fim.year and m <= dt_fim.month):
+        ult = calendar.monthrange(y, m)[1]
+        d_ini = dt_ini.day if (y == dt_ini.year and m == dt_ini.month) else 1
+        d_fim = dt_fim.day if (y == dt_fim.year and m == dt_fim.month) else ult
+        if (d_fim - d_ini + 1) >= 15:
+            avos += 1
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return min(12, avos)
+
+
+def _inicio_aquisitivo_resc(dt_adm, dt_ref):
+    """Início do período aquisitivo de férias em curso na data dt_ref."""
+    from datetime import date as _d
+    anos = dt_ref.year - dt_adm.year
+    def _aniv(n):
+        try:
+            return dt_adm.replace(year=dt_adm.year + n)
+        except ValueError:
+            return dt_adm.replace(year=dt_adm.year + n, day=28)
+    aniv = _aniv(anos)
+    if aniv > dt_ref:
+        aniv = _aniv(anos - 1)
+    return aniv
+
+
+def _dparse(s):
+    """'YYYYMMDD' (int/str) -> date, ou None."""
+    from datetime import date as _d
+    s = str(s or "")
+    if len(s) == 8 and s.isdigit():
+        try:
+            return _d(int(s[:4]), int(s[4:6]), int(s[6:8]))
+        except Exception:
+            return None
+    return None
+
+
+@app.route("/calc_rescisao")
+def calc_rescisao():
+    """Tela do cálculo da rescisão — lista os desligados do mês da folha ativa."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    def_ini, def_fim = _mes_atual_intervalo() if len(anomes) != 6 else (None, None)
+    # desligados com datarescisao no mês da folha ativa
+    funcs = []
+    if len(anomes) == 6:
+        try:
+            r = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, situacao, datarescisao, motrescisao")
+                 .eq("id_empresa", id_empresa).eq("situacao", "D").order("matricula").execute())
+            for f in (r.data or []):
+                dr = str(f.get("datarescisao") or "")
+                if dr[:6] != anomes:
+                    continue
+                m = int(f.get("matricula") or 0)
+                funcs.append({
+                    "matricula": m, "mat_fmt": f"{m:06d}",
+                    "nome": (f.get("nome") or f.get("nomer") or "").strip(),
+                    "resc_data": f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 else "—",
+                    "motivo": str(f.get("motrescisao") or ""),
+                })
+        except Exception:
+            funcs = []
+    folha_situacao = _refresh_situacao_folha() if len(anomes) == 6 else ""
+    return render_template("F10_Calc_Rescisao.html", **_ctx_relatorio(),
+                           anomes_atual=anomes, funcs=funcs,
+                           folha_situacao=folha_situacao)
+
+
+@app.route("/api/calc_rescisao_calcular", methods=["POST"])
+def api_calc_rescisao_calcular():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    if str(session.get("anomes_situacao") or "") in ("C", "F"):
+        return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para calcular."})
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    tabela = _get_tabela_legais(anomes)
+    if not tabela:
+        return jsonify({"ok": False, "msg": "Tabela legal (INSS/IRRF) não encontrada para o período."})
+
+    folha_int  = int(anomes)
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+    dep_count    = _get_dep_irrf_count(id_empresa)
+    dep_irrf_ded = int(tabela.get("irrf_dep_dedu") or 0)
+
+    body = request.get_json(silent=True) or {}
+    filtro_mats = set(int(x) for x in (body.get("matriculas") or []) if str(x).isdigit())
+
+    # ── Desligados do mês da folha ativa ──
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, dtadm, datarescisao, motrescisao")
+                 .eq("id_empresa", id_empresa).eq("situacao", "D").execute())
+        demitidos = [c for c in (r_cad.data or [])
+                     if str(c.get("datarescisao") or "")[:6] == anomes
+                     and (not filtro_mats or int(c.get("matricula") or 0) in filtro_mats)]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"})
+    if not demitidos:
+        return jsonify({"ok": False, "msg": "Nenhum desligado no mês para calcular."})
+
+    # ── Verbas variáveis que entram na média (inc_rescisao) ──
+    try:
+        r_rub = (supabase.table("tab_rubrica")
+                 .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, inc_rescisao, tpr_inc_cp, tpr_inc_irrf, tpr_inc_fgts")
+                 .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").order("cod_rubr").execute())
+        rubrics = r_rub.data or []
+    except Exception:
+        rubrics = []
+    _INC_VALIDOS = {"MAP", "M12", "MAN", "S"}
+    _verbas_media = [int(r["cod_rubr"]) for r in rubrics
+                     if str(r.get("inc_rescisao") or "").upper() in _INC_VALIDOS
+                     and str(r.get("tp_rubr") or "") == "1"
+                     and int(r.get("cod_rubr") or 0) not in _VERBAS_RESC_PROPRIAS]
+    _verbas_horas = {int(r["cod_rubr"]) for r in rubrics
+                     if int(r.get("cod_rubr") or 0) in set(_verbas_media)
+                     and str(r.get("unid_verba") or "").upper() == "H"}
+    _rubr_desc = {int(r["cod_rubr"]): (r.get("dsc_rubr") or "").strip() for r in rubrics}
+
+    ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
+
+    def _media_variaveis(mat, sal_hora_c):
+        """Médias das verbas variáveis (12 meses) da ficha financeira → dict cod:valor,
+        + detalhes p/ memória. Base = últimos 12 meses antes do mês da folha."""
+        if not _verbas_media:
+            return {}, {}
+        t_fim = ano_folha * 12 + mes_folha - 2
+        if t_fim < 0: t_fim = 0
+        t_ini = t_fim - 11
+        fi = (t_ini // 12) * 100 + t_ini % 12 + 1
+        ff = (t_fim // 12) * 100 + t_fim % 12 + 1
+        por_mes, tot_val, tot_qtd = {}, {}, {}
+        try:
+            r_med = (supabase.table("tab_mov")
+                     .select("cod_verba, valor, qtd, folha")
+                     .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                     .eq("matricula", mat).eq("situacao", "A")
+                     .in_("cod_verba", _verbas_media)
+                     .gte("folha", fi).lte("folha", ff)
+                     .eq("folha_tipo", "N").execute())
+            for row in (r_med.data or []):
+                c = int(row.get("cod_verba") or 0)
+                por_mes.setdefault(c, {}).setdefault(int(row.get("folha") or 0), {"valor": 0, "qtd": 0})
+                por_mes[c][int(row.get("folha") or 0)]["valor"] += int(row.get("valor") or 0)
+                por_mes[c][int(row.get("folha") or 0)]["qtd"]   += int(row.get("qtd") or 0)
+                if c in _verbas_horas:
+                    tot_qtd[c] = tot_qtd.get(c, 0) + int(row.get("qtd") or 0)
+                else:
+                    tot_val[c] = tot_val.get(c, 0) + int(row.get("valor") or 0)
+        except Exception:
+            pass
+        medias = {}
+        det = []
+        for c in sorted(set(tot_val) | set(tot_qtd)):
+            if c in _verbas_horas:
+                avg_min = round(tot_qtd.get(c, 0) / 12)
+                val = round(avg_min * sal_hora_c / 60)
+            else:
+                avg_min = 0
+                val = round(tot_val.get(c, 0) / 12)
+            if val:
+                medias[c] = val
+                det.append({"cod": c, "dsc": _rubr_desc.get(c, f"Verba {c:04d}"),
+                            "tipo": "H" if c in _verbas_horas else "V",
+                            "fi": fi, "ff": ff, "avg_min": avg_min,
+                            "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
+                            "por_mes": sorted(por_mes.get(c, {}).items()), "val": val})
+        return medias, {"fi": fi, "ff": ff, "det": det}
+
+    from datetime import date as _date
+    resultados = []
+    for cad in demitidos:
+        mat = int(cad.get("matricula") or 0)
+        nome = (cad.get("nome") or cad.get("nomer") or "").strip()
+        vrsalfx = int(cad.get("vrsalfx") or 0)
+        qhm = int(cad.get("qtdhrsmes") or 220) or 220
+        und = (cad.get("undsalfixo") or "M").upper()[:1]
+        sal_mes = vrsalfx * qhm if und == "H" else vrsalfx
+        sal_hora_c = vrsalfx if und == "H" else (round(vrsalfx / qhm) if qhm else 0)
+
+        dt_resc = _dparse(cad.get("datarescisao"))
+        dt_adm  = _dparse(cad.get("dtadm"))
+        if not dt_resc:
+            continue
+        motivo = str(cad.get("motrescisao") or "").zfill(2)
+        tem_13, tem_fer, multa_pct = _MOTIVO_RESC.get(motivo, (True, True, 0))
+
+        # aviso prévio (op1=9)
+        aviso_ind, dias_aviso = False, 0
+        try:
+            r_av = (supabase.table("tab_eventos")
+                    .select("campotxt1, campotxt2, ref1, ref2, data1i")
+                    .eq("id_empresa", id_empresa).eq("matricula", mat).eq("op1", 9)
+                    .order("data1i", desc=True).limit(1).execute())
+            if r_av.data:
+                ev = r_av.data[0]
+                aviso_ind = str(ev.get("campotxt1") or "").strip().lower().startswith("inden")
+                dias_aviso = int(ev.get("ref1") or 0) + int(ev.get("ref2") or 0)
+        except Exception:
+            pass
+
+        # projeção do aviso indenizado (avança a data p/ avos)
+        dt_proj = dt_resc
+        if aviso_ind and dias_aviso > 0:
+            from datetime import timedelta as _td
+            dt_proj = dt_resc + _td(days=dias_aviso)
+
+        # ── Proventos ──
+        saldo = round(sal_mes * dt_resc.day / 30)
+        # aviso prévio indenizado (acordo=50%)
+        aviso_val = 0
+        if aviso_ind and dias_aviso > 0:
+            aviso_val = round(sal_mes * dias_aviso / 30)
+            if multa_pct == 20:   # acordo 484-A → aviso 50%
+                aviso_val = round(aviso_val / 2)
+        # médias variáveis
+        medias, medias_info = _media_variaveis(mat, sal_hora_c)
+        med_total = sum(medias.values())
+        base_media_mes = med_total  # médias sobre remuneração média mensal
+        # 13º proporcional (avos no ano + projeção) sobre salário + médias
+        ini_ano = _date(dt_proj.year, 1, 1)
+        if dt_adm and dt_adm > ini_ano:
+            ini_ano = dt_adm
+        avos_13 = _conta_avos_resc(ini_ano, dt_proj) if tem_13 else 0
+        d13 = round((sal_mes + base_media_mes) * avos_13 / 12) if avos_13 else 0
+        # férias proporcionais + 1/3 (avos do período aquisitivo em curso)
+        ini_aq = _inicio_aquisitivo_resc(dt_adm, dt_proj) if dt_adm else _date(dt_proj.year, 1, 1)
+        avos_fer = _conta_avos_resc(ini_aq, dt_proj) if tem_fer else 0
+        fer_base = round((sal_mes + base_media_mes) * avos_fer / 12) if avos_fer else 0
+        fer_prop = round(fer_base * 4 / 3)   # inclui 1/3
+
+        # ── Bases e impostos ──
+        # As médias são REFLEXO (entram no 13º e nas férias), não são pagas como
+        # linha própria. Saldo de salário incide INSS sobre o salário do período.
+        base_inss_saldo = saldo
+        inss_saldo, inss_saldo_det, _ = _calc_inss_progressivo(base_inss_saldo, tabela)
+        # INSS 13º (base separada)
+        inss_13, inss_13_det, _ = (_calc_inss_progressivo(d13, tabela) if d13 else (0, [], 0))
+        # IRRF: saldo (base saldo - inss_saldo - dep) ; 13º separado
+        ndep = dep_count.get(mat, 0); dep_total = ndep * dep_irrf_ded
+        base_irrf_saldo = max(0, base_inss_saldo - inss_saldo - dep_total)
+        irrf_saldo, irrf_saldo_info = _calc_irrf(base_irrf_saldo, tabela)
+        base_irrf_13 = max(0, d13 - inss_13)
+        irrf_13, irrf_13_info = (_calc_irrf(base_irrf_13, tabela) if d13 else (0, None))
+        # FGTS 8% sobre saldo + 13º + aviso indenizado (férias indenizadas não têm FGTS)
+        base_fgts = saldo + d13 + aviso_val
+        fgts_val = round(base_fgts * 8 / 100)
+
+        total_prov = saldo + aviso_val + d13 + fer_prop
+        total_desc = inss_saldo + inss_13 + irrf_saldo + irrf_13
+        liquido    = total_prov - total_desc
+
+        # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
+        try:
+            (supabase.table("tab_mov").delete()
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("folha", folha_int).eq("folha_tipo", "R").eq("origem", "C").execute())
+        except Exception:
+            pass
+        try:
+            (supabase.table("tab_total").delete()
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("folha", folha_int).eq("folha_tipo", "R").execute())
+        except Exception:
+            pass
+        base_mov = {"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                    "matricula": mat, "folha": folha_int, "folha_tipo": "R",
+                    "lote": 0, "origem": "C", "controle": 0, "os": 0}
+        recs = []
+        if saldo:     recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dt_resc.day, "valor": saldo})
+        if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
+        # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
+        if d13:       recs.append({**base_mov, "cod_verba": VR_13_PROP,      "qtd": avos_13,  "valor": d13})
+        if fer_prop:  recs.append({**base_mov, "cod_verba": VR_FERIAS_PROP,  "qtd": avos_fer, "valor": fer_prop})
+        if inss_saldo:recs.append({**base_mov, "cod_verba": VR_INSS,         "qtd": 0, "valor": inss_saldo})
+        if inss_13:   recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": inss_13})
+        if irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,         "qtd": 0, "valor": irrf_saldo})
+        if irrf_13:   recs.append({**base_mov, "cod_verba": VR_IRRF_13,      "qtd": 0, "valor": irrf_13})
+        if recs:
+            try:
+                supabase.table("tab_mov").insert(recs).execute()
+            except Exception as e_ins:
+                return jsonify({"ok": False, "msg": f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}"})
+        rec_tot = {
+            "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
+            "folha": folha_int, "folha_tipo": "R",
+            "valor_base_inss_semlimite": base_inss_saldo, "valor_base_inss_comlimite": base_inss_saldo,
+            "valor_inss_retido": inss_saldo + inss_13,
+            "valor_base_fgts": base_fgts, "valor_fgts": fgts_val,
+            "valor_irrf_basetotal": base_inss_saldo, "valor_irrf_basetabela": base_irrf_saldo,
+            "valor_irrf_dependentes": dep_total, "qtd_irrf_dependentes": ndep,
+            "valor_salario": sal_mes, "valor_total_proventos": total_prov,
+            "valor_total_descontos": total_desc, "valor_liquido": liquido,
+            "os": 0, "controle": 0,
+        }
+        try:
+            supabase.table("tab_total").insert(rec_tot).execute()
+        except Exception:
+            pass
+        gravar_log("CALC_RES",
+                   f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
+                   f"INSS={_fmt_brl(inss_saldo+inss_13)} IRRF={_fmt_brl(irrf_saldo+irrf_13)} Liq={_fmt_brl(liquido)}",
+                   matricula=mat)
+
+        multa_fgts = round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100)
+        resultados.append({
+            "matricula": mat, "mat_fmt": f"{mat:06d}", "nome": nome,
+            "calc_dhg": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "resc_data_fmt": dt_resc.strftime("%d/%m/%Y"),
+            "dt_proj_fmt": dt_proj.strftime("%d/%m/%Y"),
+            "motivo": motivo, "aviso_ind": aviso_ind, "dias_aviso": dias_aviso,
+            "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dt_resc.day,
+            "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
+            "avos_fer": avos_fer, "fer_base": fer_base, "fer_prop": fer_prop,
+            "med_total": med_total, "medias_info": medias_info,
+            "base_inss_saldo": base_inss_saldo, "inss_saldo": inss_saldo, "inss_saldo_det": inss_saldo_det,
+            "d13_base": d13, "inss_13": inss_13, "inss_13_det": inss_13_det,
+            "ndep": ndep, "dep_irrf_ded": dep_irrf_ded, "dep_total": dep_total,
+            "base_irrf_saldo": base_irrf_saldo, "irrf_saldo": irrf_saldo, "irrf_saldo_info": irrf_saldo_info,
+            "base_irrf_13": base_irrf_13, "irrf_13": irrf_13, "irrf_13_info": irrf_13_info,
+            "base_fgts": base_fgts, "fgts_val": fgts_val, "multa_pct": multa_pct, "multa_fgts": multa_fgts,
+            "total_prov": total_prov, "total_desc": total_desc, "liquido": liquido,
+            # formatados p/ a tela
+            "saldo_fmt": _fmt_brl(saldo), "d13_fmt": _fmt_brl(d13), "fer_fmt": _fmt_brl(fer_prop),
+            "aviso_fmt": _fmt_brl(aviso_val) if aviso_val else "—",
+            "med_fmt": _fmt_brl(med_total) if med_total else "—",
+            "inss_fmt": _fmt_brl(inss_saldo + inss_13), "irrf_fmt": _fmt_brl(irrf_saldo + irrf_13),
+            "fgts_fmt": _fmt_brl(fgts_val), "prov_fmt": _fmt_brl(total_prov),
+            "desc_fmt": _fmt_brl(total_desc), "liq_fmt": _fmt_brl(liquido),
+        })
+
+    try:
+        _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados)
+    except Exception as e_mem:
+        print(f"[gerar_memoria_rescisao] erro: {e_mem}")
+
+    # remove campos pesados do JSON (só resumo p/ a tela)
+    _CAMPOS_PDF = {"medias_info", "inss_saldo_det", "inss_13_det", "irrf_saldo_info", "irrf_13_info"}
+    web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
+    return jsonify({"ok": True, "resultados": web, "total": len(web)})
+
+
+def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados):
+    """PDF de memória de cálculo da rescisão por funcionário (detalhada)."""
+    if not resultados or len(anomes) != 6:
+        return
+    dest = _memoria_destino(anomes, id_empresa)
+    if not dest.get("base"):
+        return
+    ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+
+    st_etapa   = ParagraphStyle("mr_eta", fontName="Helvetica-Bold", fontSize=8,
+                                spaceBefore=10, spaceAfter=3)
+    st_det     = ParagraphStyle("mr_det", fontName="Helvetica", fontSize=8,
+                                leftIndent=10, textColor=colors.HexColor("#374151"))
+    st_tot     = ParagraphStyle("mr_tot", fontName="Helvetica-Bold", fontSize=9,
+                                spaceBefore=4)
+    _sz = TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
+                      ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                      ("TOPPADDING", (0, 0), (0, 0), 6),
+                      ("BOTTOMPADDING", (0, 0), (-1, -1), 3)])
+
+    _memoria_apagar(anomes, id_empresa,
+                    remover_pred=lambda n: "_Rescisao_" in n and n.lower().endswith(".pdf"))
+
+    def _B(c): return _fmt_brl(int(c or 0))
+    def _fmt_anomes(v):
+        s = str(v or "")
+        return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else "—"
+
+    def _etapa(titulo, linhas):
+        rows = [[Paragraph(titulo, st_etapa)]]
+        for ln in linhas:
+            rows.append([Paragraph(ln, st_det)])
+        t = Table(rows, colWidths=[17*cm]); t.setStyle(_sz)
+        return t
+
+    for r in resultados:
+        mat = int(r["matricula"]); nome = r["nome"]
+        nome_f = (f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Rescisao_{anomes}"
+                  f"_Matricula_{mat:06d}_em_{ts}.pdf")
+        try:
+            buf = io.BytesIO()
+            titulo_mem = f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — RESCISAO — {mat:06d} — {nome}"
+            _agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _emp = f"{cnpj_fmt} — {empresa_nm}"
+
+            def _hdr(canvas, doc, _t=titulo_mem, _a=_agora, _e=_emp):
+                _pdf_num_pagina(canvas, doc)
+                canvas.saveState()
+                xL = doc.leftMargin; xR = xL + 17*cm; y1 = A4[1] - 0.60*cm
+                canvas.setFont("Helvetica", 8); canvas.setFillColor(colors.HexColor("#374151"))
+                canvas.drawString(xL, y1, _e); canvas.drawRightString(xR, y1, f"Calculado em {_a}")
+                y2 = y1 - 0.50*cm
+                canvas.setFont("Helvetica-Bold", 8); canvas.drawCentredString(xL + 8.5*cm, y2, _t)
+                canvas.setStrokeColor(colors.HexColor("#374151")); canvas.setLineWidth(0.5)
+                canvas.line(xL, y2 - 0.28*cm, xR, y2 - 0.28*cm)
+                canvas.restoreState()
+
+            doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
+                                    topMargin=2.8*cm, bottomMargin=1.5*cm)
+            e = []
+            sal = int(r["sal_mes"])
+
+            # 0001 — Dados
+            aviso_txt = (f"Aviso prévio INDENIZADO ({r['dias_aviso']} dias)" if r["aviso_ind"]
+                         else "Sem aviso prévio indenizado")
+            e.append(_etapa("ETAPA 0001 - DADOS DA RESCISAO", [
+                f"Data da rescisão: {r['resc_data_fmt']}   Motivo: {r['motivo']}",
+                f"{aviso_txt}   Data projetada (avos): {r['dt_proj_fmt']}",
+                f"Salário mensal: {_B(sal)}",
+            ]))
+            # 0002 — Saldo de salário
+            e.append(_etapa("ETAPA 0002 - SALDO DE SALARIO", [
+                f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = <b>{_B(r['saldo'])}</b>",
+            ]))
+            # 0003 — Aviso prévio indenizado
+            if r["aviso_val"]:
+                e.append(_etapa("ETAPA 0003 - AVISO PREVIO INDENIZADO", [
+                    f"Salário {_B(sal)} × {r['dias_aviso']} dias / 30 = <b>{_B(r['aviso_val'])}</b>"
+                    + ("  (acordo 484-A: 50%)" if r["multa_pct"] == 20 else ""),
+                ]))
+            # 0004 — Médias
+            det = (r.get("medias_info") or {}).get("det") or []
+            mi = r.get("medias_info") or {}
+            lin_med = []
+            if det:
+                for d in det:
+                    per = f"{_fmt_anomes(mi.get('fi'))} a {_fmt_anomes(mi.get('ff'))}"
+                    if d["tipo"] == "H":
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} [{per}] — {d['avg_min']} min/mês → {_B(d['val'])}")
+                    else:
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} [{per}] — total {_B(d['total'])} /12 = {_B(d['val'])}")
+                lin_med.append(f"<b>Total das médias: {_B(r['med_total'])}</b>")
+            else:
+                lin_med.append("Sem verbas variáveis com incidência de rescisão no período.")
+            e.append(_etapa("ETAPA 0004 - MEDIAS DAS VERBAS VARIAVEIS (12 meses)", lin_med))
+            # 0005 — 13º proporcional
+            e.append(_etapa("ETAPA 0005 - 13o SALARIO PROPORCIONAL", [
+                f"(Salário {_B(sal)} + Médias {_B(r['med_total'])}) × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>"
+                if r["d13"] else "Sem 13º proporcional para este motivo.",
+            ]))
+            # 0006 — Férias proporcionais + 1/3
+            e.append(_etapa("ETAPA 0006 - FERIAS PROPORCIONAIS + 1/3", [
+                f"(Salário {_B(sal)} + Médias {_B(r['med_total'])}) × {r['avos_fer']}/12 = {_B(r['fer_base'])}   "
+                f"+ 1/3 = <b>{_B(r['fer_prop'])}</b>"
+                if r["fer_prop"] else "Sem férias proporcionais para este motivo.",
+            ]))
+            # 0007 — INSS
+            lin_inss = [f"Base saldo (saldo+médias): {_B(r['base_inss_saldo'])}"]
+            for fx in (r.get("inss_saldo_det") or []):
+                lim, pct, bf, vf = fx
+                lin_inss.append(f"  faixa até {_B(lim)} × {pct/100:.2f}% sobre {_B(bf)} = {_B(vf)}")
+            lin_inss.append(f"INSS saldo = <b>{_B(r['inss_saldo'])}</b>")
+            if r["inss_13"]:
+                lin_inss.append(f"INSS 13º (base {_B(r['d13_base'])}) = <b>{_B(r['inss_13'])}</b>")
+            e.append(_etapa("ETAPA 0007 - INSS", lin_inss))
+            # 0008 — IRRF
+            lin_irrf = [
+                f"Base saldo − INSS − dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
+                f"IRRF saldo = <b>{_B(r['irrf_saldo'])}</b>",
+            ]
+            if r["irrf_13"]:
+                lin_irrf.append(f"IRRF 13º (base {_B(r['base_irrf_13'])}) = <b>{_B(r['irrf_13'])}</b>")
+            e.append(_etapa("ETAPA 0008 - IRRF", lin_irrf))
+            # 0009 — FGTS + multa
+            lin_fgts = [f"Base FGTS (saldo+médias+13º+aviso) {_B(r['base_fgts'])} × 8% = <b>{_B(r['fgts_val'])}</b>"]
+            if r["multa_pct"]:
+                lin_fgts.append(f"Multa FGTS: {r['multa_pct']}% sobre o saldo de FGTS"
+                                + (f" = {_B(r['multa_fgts'])}" if r["multa_fgts"] else " (informe o saldo)"))
+            e.append(_etapa("ETAPA 0009 - FGTS", lin_fgts))
+            # Totais
+            e.append(Spacer(1, 4))
+            e.append(Paragraph(f"TOTAL PROVENTOS: {_B(r['total_prov'])}", st_tot))
+            e.append(Paragraph(f"<font color='#b91c1c'>TOTAL DESCONTOS: {_B(r['total_desc'])}</font>", st_tot))
+            e.append(Paragraph(f"LIQUIDO A RECEBER: {_B(r['liquido'])}", st_tot))
+
+            doc.build(e, onFirstPage=_hdr, onLaterPages=_hdr)
+            _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
+        except Exception as e_r:
+            print(f"[memoria_rescisao] mat={mat} erro: {e_r}")
+
+
+# =========================================================
 # CADASTRO - FUNÇÕES AUXILIARES
 # =========================================================
 def so_numeros(t):
