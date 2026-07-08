@@ -632,7 +632,8 @@ const CONTEXTOS = {
         subtitulo:     'Selecione o funcionário para registrar o aviso prévio',
         tituloCurto:   'Selecionar — Aviso Prévio',
         proximo:       '/cad_aviso_previo',
-        f_situacao:    'all',
+        f_situacao:    'A',          // só funcionários ativos (não mostra demitidos)
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
         maxSel:        1,
         msgMaxSel:     'O aviso prévio deve ser registrado para um funcionário por vez',
     },
@@ -653,6 +654,7 @@ const CONTEXTOS = {
         proximo:       '/cancelar_aviso_previo',
         apiUrl:        '/api/funcionarios_com_aviso_cancelavel',
         f_situacao:    'all',
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
         maxSel:        1,
         msgMaxSel:     'Cancele o aviso prévio de um funcionário por vez',
         msgVazio:      'Nenhum funcionário com aviso prévio registrado no mês da folha atual.',
@@ -697,6 +699,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Aplica filtro padrão do contexto
     const radio = document.querySelector(`input[name="f_situacao"][value="${ctx.f_situacao}"]`);
     if (radio) radio.checked = true;
+
+    // Contextos que dispensam o painel de Filtros (ex.: aviso prévio) — mostra
+    // só a lista. Os radios continuam no DOM (ocultos), então o filtro de
+    // situação definido em ctx.f_situacao continua valendo.
+    if (ctx.semFiltros) {
+        const fp = document.querySelector('.filtros-panel');
+        if (fp) fp.style.display = 'none';
+    }
 
     syncRescisaoDisponivel();
     carregarFuncionarios();
