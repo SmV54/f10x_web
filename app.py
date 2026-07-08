@@ -5601,6 +5601,220 @@ def cad_rescisao_ok():
 
 
 # =========================================================
+# CANCELAR RESCISÃO
+# Só permitido se o S-1299 do período NÃO estiver ativo — ou seja, não enviado,
+# ou enviado e depois EXCLUÍDO por um S-3000. Cancelar não gera evento eSocial;
+# apenas reverte o tab_cad e remove o S-2299 ainda pendente (não enviado).
+# =========================================================
+def _s1299_ativo(id_empresa, ano_mes, folha_tipo):
+    """True se há um S-1299 ATIVO (enviado com recibo e não excluído por S-3000)
+    para o período (ano_mes + folha_tipo). Bloqueia o cancelamento da rescisão."""
+    if not ano_mes:
+        return False
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("recibo, observacao_erro")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1299")
+                .eq("ano_mes", int(ano_mes))
+                .eq("folha_tipo", str(folha_tipo or "N"))
+                .not_.is_("recibo", "null")
+                .neq("recibo", "")
+                .execute().data or [])
+        for r in rows:
+            if (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO":
+                return True   # há um S-1299 vigente para o período
+        return False
+    except Exception:
+        return False
+
+
+def _periodo_rescisao(id_empresa, mat_int, datarescisao):
+    """(ano_mes, folha_tipo) do período da rescisão. Usa o S-2299 mais recente
+    do funcionário; se não houver, deriva da data de rescisão (folha_tipo 'N')."""
+    try:
+        r = (supabase.table("tab_esocial")
+             .select("ano_mes, folha_tipo")
+             .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+             .eq("layout", "2299")
+             .order("id_remessa", desc=True).limit(1).execute())
+        if r.data and r.data[0].get("ano_mes"):
+            return int(r.data[0]["ano_mes"]), str(r.data[0].get("folha_tipo") or "N")
+    except Exception:
+        pass
+    dr = str(datarescisao or "")
+    if len(dr) >= 6 and dr[:6].isdigit():
+        return int(dr[:6]), "N"
+    return None, "N"
+
+
+@app.route("/api/funcionarios_demitidos")
+def api_funcionarios_demitidos():
+    """Desligados cuja rescisão é do MÊS DA FOLHA ATUAL (só esses podem ser
+    cancelados). Rescisões de meses anteriores não são exibidas."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": True, "funcionarios": []})
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, dtadm, situacao, datarescisao")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao", "D")
+             .order("matricula")
+             .execute())
+        funcionarios = []
+        for f in (r.data or []):
+            dr = str(f.get("datarescisao") or "")
+            if dr[:6] != anomes:          # só rescisões do mês da folha ativa
+                continue
+            nome = (f.get("nome") or f.get("nomer") or "").strip()   # nome COMPLETO
+            resc = f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 and dr.isdigit() else ""
+            funcionarios.append({
+                "matricula": f.get("matricula"),
+                "nome":      nome,
+                "dtadm":     str(f.get("dtadm") or ""),
+                "situacao":  "D",
+                "resc_data": resc,
+            })
+        return jsonify({"ok": True, "funcionarios": funcionarios})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+
+@app.route("/cancelar_rescisao", methods=["GET", "POST"])
+def cancelar_rescisao():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    mat_raw = (request.args.get("mats") or request.args.get("mat") or "").strip()
+    mat_str = mat_raw.split(",")[0].strip()
+    if not mat_str.isdigit():
+        return redirect("/select_funcionario?contexto=cancelar_rescisao")
+    mat_int = int(mat_str)
+
+    # Funcionário + dados da rescisão
+    funcionario, datarescisao = None, ""
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, situacao, datarescisao, motrescisao")
+             .eq("id_empresa", id_empresa).eq("matricula", mat_int).limit(1).execute())
+        if r.data:
+            f = r.data[0]
+            datarescisao = str(f.get("datarescisao") or "")
+            resc = (f"{datarescisao[6:8]}/{datarescisao[4:6]}/{datarescisao[0:4]}"
+                    if len(datarescisao) == 8 and datarescisao.isdigit() else "")
+            funcionario = {
+                "matricula": mat_int,
+                "mat_fmt":   str(mat_int).zfill(6),
+                "nome":      (f.get("nomer") or f.get("nome") or "").strip(),
+                "situacao":  str(f.get("situacao") or ""),
+                "resc_data": resc,
+                "motivo":    str(f.get("motrescisao") or ""),
+            }
+    except Exception:
+        pass
+
+    # Período da rescisão e status do S-1299
+    periodo_am, periodo_tp = _periodo_rescisao(id_empresa, mat_int, datarescisao)
+    s1299 = _s1299_ativo(id_empresa, periodo_am, periodo_tp)
+
+    # Folha precisa estar Aberta (não Calculada/Fechada)
+    sit_folha    = _refresh_situacao_folha()
+    folha_aberta = sit_folha in ("A", "X")
+    folha_sit    = {"A": "Aberta", "X": "Aberta", "C": "Calculada",
+                    "F": "Fechada", "P": "Processando"}.get(sit_folha, sit_folha)
+
+    # Só cancela rescisão do MÊS ATUAL (a data da rescisão tem que cair na folha
+    # ativa). Rescisões de meses anteriores não podem ser canceladas.
+    anomes_atual = str(session.get("anomes_atual") or "")
+    mes_rescisao = (datarescisao[:6] if len(datarescisao) >= 6 and datarescisao[:6].isdigit()
+                    else (str(periodo_am) if periodo_am else ""))
+    mes_ok       = bool(anomes_atual) and mes_rescisao == anomes_atual
+
+    def _mmaa(am):
+        a = str(am or "")
+        return f"{a[4:6]}/{a[0:4]}" if len(a) == 6 else (a or "—")
+    folha_fmt    = _mmaa(anomes_atual)
+    mes_resc_fmt = _mmaa(mes_rescisao)
+
+    # Bloqueios (ordem de prioridade)
+    bloqueio = ""
+    if not funcionario:
+        bloqueio = "nao_encontrado"
+    elif funcionario.get("situacao") != "D":
+        bloqueio = "nao_demitido"
+    elif not folha_aberta:
+        bloqueio = "folha_fechada"
+    elif not mes_ok:
+        bloqueio = "mes_diferente"
+    elif s1299:
+        bloqueio = "s1299"
+
+    # ── POST: efetiva o cancelamento ──
+    if request.method == "POST":
+        if bloqueio:
+            return redirect(f"/cancelar_rescisao?mats={mat_int}")
+        # Reverte o cadastro para Ativo
+        try:
+            try:
+                (supabase.table("tab_cad")
+                 .update({"situacao": "A", "datarescisao": None, "motrescisao": None})
+                 .eq("id_empresa", id_empresa).eq("matricula", mat_int).execute())
+            except Exception:
+                (supabase.table("tab_cad").update({"situacao": "A"})
+                 .eq("id_empresa", id_empresa).eq("matricula", mat_int).execute())
+        except Exception as e:
+            gravar_log("RESCISAO-CANCEL-ERRO", str(e)[:200], matricula=mat_int)
+            return redirect(f"/cancelar_rescisao?mats={mat_int}&erro=1")
+        # Remove o S-2299 ainda PENDENTE (não enviado / não excluído)
+        try:
+            r2 = (supabase.table("tab_esocial")
+                  .select("id_esocial, recibo, observacao_erro")
+                  .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                  .eq("layout", "2299").execute().data or [])
+            for row in r2:
+                rec = (row.get("recibo") or "").strip()
+                obs = (row.get("observacao_erro") or "").strip().upper()
+                if not rec and obs != "EXCLUIDO":
+                    (supabase.table("tab_esocial").delete()
+                     .eq("id_esocial", row["id_esocial"]).execute())
+        except Exception:
+            pass
+        # Cancela também o AVISO PRÉVIO que originou a rescisão (op1=9 do mês
+        # atual ou do anterior — mesma janela usada na seleção de rescisão).
+        try:
+            _y, _m = int(anomes_atual[:4]), int(anomes_atual[4:6])
+            _prev  = (_y - 1) * 100 + 12 if _m == 1 else _y * 100 + (_m - 1)
+            (supabase.table("tab_eventos").delete()
+             .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+             .eq("op1", 9).in_("folha", [int(anomes_atual), _prev]).execute())
+        except Exception:
+            pass
+        gravar_log("RESCISAO-CANCEL",
+                   f"Rescisão + aviso prévio cancelados — {funcionario['nome']} "
+                   f"(resc. {funcionario['resc_data']})",
+                   matricula=mat_int)
+        return redirect(f"/cancelar_rescisao?mats={mat_int}&ok=1")
+
+    return render_template(
+        "F10_Cancelar_Rescisao.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        funcionario=funcionario,
+        bloqueio=bloqueio,
+        folha_sit=folha_sit,
+        folha_fmt=folha_fmt,
+        mes_resc_fmt=mes_resc_fmt,
+        ok=request.args.get("ok"),
+        erro=request.args.get("erro"),
+    )
+
+
+# =========================================================
 # CADASTRO - FUNÇÕES AUXILIARES
 # =========================================================
 def so_numeros(t):

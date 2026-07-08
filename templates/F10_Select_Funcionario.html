@@ -203,6 +203,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .badge-ativo    { display: inline-block; background: #f0fdf4; color: #166534; border: 1px solid #86efac; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
 .badge-demitido { display: inline-block; background: #fff1f2; color: #9f1239; border: 1px solid #fda4af; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
 .badge-aviso    { display: inline-block; background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.lc-data-col    { font-family: var(--mono); font-size: 12px; color: #334155; white-space: nowrap; }
 
 .lista-loading, .lista-vazio {
     padding: 28px; text-align: center; font-size: 12px; color: #94a3b8;
@@ -650,6 +651,19 @@ const CONTEXTOS = {
         msgMaxSel:     'A rescisão deve ser registrada para um funcionário por vez',
         msgVazio:      'Nenhum funcionário com aviso prévio registrado neste mês ou no mês anterior.',
     },
+    cancelar_rescisao: {
+        titulo:        'Cancelar Rescisão — Selecionar Funcionário',
+        subtitulo:     'Somente rescisões do mês da folha atual podem ser canceladas',
+        tituloCurto:   'Selecionar — Cancelar Rescisão',
+        proximo:       '/cancelar_rescisao',
+        apiUrl:        '/api/funcionarios_demitidos',
+        f_situacao:    'all',
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
+        colResc:       true,         // última coluna = data da rescisão ("Rescisão")
+        maxSel:        1,
+        msgMaxSel:     'Cancele a rescisão de um funcionário por vez',
+        msgVazio:      'Nenhuma rescisão do mês da folha atual para cancelar.',
+    },
     cancelar_aviso_previo: {
         titulo:        'Cancelar Aviso Prévio — Selecionar Funcionário',
         subtitulo:     'Somente funcionários com aviso prévio registrado no mês da folha atual são exibidos',
@@ -711,10 +725,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (fp) fp.style.display = 'none';
     }
 
-    // Contextos que exibem a data do aviso prévio na última coluna (ex.: rescisão)
-    if (ctx.colAviso) {
+    // Contextos que trocam a última coluna (Situação → data de um evento)
+    if (ctx.colAviso || ctx.colResc) {
         const lbl = document.getElementById('col-sit-label');
-        if (lbl) lbl.textContent = 'Aviso Prévio';
+        if (lbl) lbl.textContent = ctx.colAviso ? 'Aviso Prévio' : 'Data Rescisão';
     }
 
     syncRescisaoDisponivel();
@@ -1011,6 +1025,11 @@ function renderLista(lista) {
             sitCell = f.aviso_data
                 ? '<span class="badge-aviso" title="Data do aviso prévio">' + f.aviso_data + '</span>'
                 : '—';
+        } else if (ctx.colResc) {
+            // última coluna mostra a DATA da rescisão (contexto cancelar rescisão)
+            sitCell = f.resc_data
+                ? '<span class="lc-data-col" title="Data da rescisão">' + f.resc_data + '</span>'
+                : '<span class="lc-data-col">—</span>';
         } else {
             const sit = (f.situacao === 'A')
                 ? '<span class="badge-ativo">Ativo</span>'
