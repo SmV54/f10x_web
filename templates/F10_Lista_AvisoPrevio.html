@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Funcionários em Aviso Prévio</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 24px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+.topo-esq { display: flex; flex-direction: column; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #111827; }
+.topo-nome { font-size: 11px; color: #374151; margin-top: 2px; }
+.topo-centro { text-align: center; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; }
+.topo-badge { display: inline-block; margin-top: 4px; font-size: 11px;
+    background: #70c4a0; color: #374151; border-radius: 10px; padding: 2px 10px; }
+.topo-dir { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar-topo {
+    background: transparent; border: 1px solid #70c4a0; color: #374151;
+    font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+    transition: .15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+.container { max-width: 900px; margin: 24px auto; padding: 0 18px 40px; }
+.card {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden;
+}
+.card-header {
+    padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+.total-badge {
+    font-size: 12px; background: #fff7ed; color: #9a3412;
+    border: 1px solid #fdba74; border-radius: 8px; padding: 2px 10px; font-weight: 600;
+}
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    background: #eaf1fb; text-align: left; padding: 9px 16px;
+    font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee;
+    white-space: nowrap; font-weight: 600; letter-spacing: 0.3px;
+}
+thead th.r { text-align: center; }
+tbody td { padding: 6px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; width: 1%; }
+tbody td.c { text-align: center; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+.vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
+.card-total { padding: 8px 16px; font-size: 12px; color: #64748b; text-align: right; border-top: 1px solid #f1f5f9; }
+
+.rodape { margin-top: 16px; display: flex; justify-content: flex-end; align-items: center; }
+.btn-menu {
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; transition: .15s; text-decoration: none;
+    display: inline-flex; align-items: center;
+}
+.btn-menu:hover { background: #d1d5db; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-centro">
+        <div class="topo-titulo">Funcionários em Aviso Prévio</div>
+        <span class="topo-badge">Ativos com aviso prévio registrado</span>
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="container">
+    <div class="card">
+        <div class="card-header">
+            <h2>Funcionários em Aviso Prévio</h2>
+            <span class="total-badge">{{ funcs|length }} em aviso prévio</span>
+        </div>
+
+        {% if funcs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Matrícula</th>
+                    <th>Nome</th>
+                    <th class="r">Data do Aviso</th>
+                    <th class="r">Competência</th>
+                    <th class="r">Quem deu</th>
+                    <th class="r">Tipo</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in funcs %}
+                <tr>
+                    <td class="mat">{{ f.mat_fmt }}</td>
+                    <td>{{ f.nome }}</td>
+                    <td class="c">{{ f.data_fmt or '—' }}</td>
+                    <td class="c">{{ f.folha_fmt or '—' }}</td>
+                    <td class="c">{{ f.quem or '—' }}</td>
+                    <td class="c">{{ f.tipo or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="card-total">Total: {{ funcs|length }} funcionário(s) em aviso prévio</div>
+        {% else %}
+        <div class="vazio">Nenhum funcionário ativo em aviso prévio.</div>
+        {% endif %}
+    </div>
+
+    <div class="rodape">
+        <a class="btn-menu" href="/menu">Voltar ao Menu</a>
+    </div>
+</div>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

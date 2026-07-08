@@ -507,9 +507,12 @@ const modulos = {
                 { icone: '📊', nome: 'Relatório de Salários',  href: '/relatorios_config?rel=sal_aumento',            ok: true },
             ]},
             { nome: 'Rescisão', itens: [
+                // 1ª linha — Aviso Prévio
                 { icone: '📢', nome: 'Aviso Prévio',          href: '/select_funcionario?contexto=aviso_previo', ok: true },
                 { icone: '❌', nome: 'Cancelar Aviso Prévio', href: '/select_funcionario?contexto=cancelar_aviso_previo', ok: true },
-                { icone: '✍️', nome: 'Registrar Rescisão',    href: '/select_funcionario?contexto=rescisao',     ok: true },
+                { icone: '📄', nome: 'Listagem de Aviso Prévio', href: '/lista_aviso_previo', ok: true },
+                // 2ª linha — Rescisão
+                { icone: '✍️', nome: 'Registrar Rescisão',    href: '/select_funcionario?contexto=rescisao',     ok: true, quebraLinha: true },
                 { icone: '↩️', nome: 'Cancelar Rescisão',     href: '#' },
                 { icone: '🖩', nome: 'Calcular Rescisão',     href: '#' },
                 { icone: '📋', nome: 'TRCT',                  href: '#' },

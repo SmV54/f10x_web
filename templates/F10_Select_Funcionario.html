@@ -485,7 +485,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <div>Matríc.</div>
                     <div>Nome</div>
                     <div>Admissão</div>
-                    <div>Situação</div>
+                    <div id="col-sit-label">Situação</div>
                 </div>
                 <div class="lista-body" id="lista-body">
                     <div class="lista-loading">Carregando funcionários…</div>
@@ -639,13 +639,16 @@ const CONTEXTOS = {
     },
     rescisao: {
         titulo:        'Rescisão — Selecionar Funcionário',
-        subtitulo:     'Somente funcionários com aviso prévio registrado são exibidos',
+        subtitulo:     'Funcionários com aviso prévio registrado neste mês ou no mês anterior',
         tituloCurto:   'Selecionar — Rescisão',
         proximo:       '/cad_rescisao',
         apiUrl:        '/api/funcionarios_com_aviso',
         f_situacao:    'all',
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
+        colAviso:      true,         // última coluna = data do aviso prévio ("Aviso Prévio")
         maxSel:        1,
         msgMaxSel:     'A rescisão deve ser registrada para um funcionário por vez',
+        msgVazio:      'Nenhum funcionário com aviso prévio registrado neste mês ou no mês anterior.',
     },
     cancelar_aviso_previo: {
         titulo:        'Cancelar Aviso Prévio — Selecionar Funcionário',
@@ -706,6 +709,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ctx.semFiltros) {
         const fp = document.querySelector('.filtros-panel');
         if (fp) fp.style.display = 'none';
+    }
+
+    // Contextos que exibem a data do aviso prévio na última coluna (ex.: rescisão)
+    if (ctx.colAviso) {
+        const lbl = document.getElementById('col-sit-label');
+        if (lbl) lbl.textContent = 'Aviso Prévio';
     }
 
     syncRescisaoDisponivel();
@@ -996,18 +1005,27 @@ function renderLista(lista) {
 
     body.innerHTML = lista.map(f => {
         const sel = selectedMats.has(f.matricula);
-        const sit = (f.situacao === 'A')
-            ? '<span class="badge-ativo">Ativo</span>'
-            : '<span class="badge-demitido">Demitido</span>';
-        const aviso = f.aviso_previo
-            ? '<span class="badge-aviso" title="Funcionário em aviso prévio">Aviso Prévio</span>'
-            : '';
+        let sitCell;
+        if (ctx.colAviso) {
+            // última coluna mostra a DATA do aviso prévio (contexto rescisão)
+            sitCell = f.aviso_data
+                ? '<span class="badge-aviso" title="Data do aviso prévio">' + f.aviso_data + '</span>'
+                : '—';
+        } else {
+            const sit = (f.situacao === 'A')
+                ? '<span class="badge-ativo">Ativo</span>'
+                : '<span class="badge-demitido">Demitido</span>';
+            const aviso = f.aviso_previo
+                ? '<span class="badge-aviso" title="Funcionário em aviso prévio">Aviso Prévio</span>'
+                : '';
+            sitCell = sit + aviso;
+        }
         return `<div class="lista-row${sel?' selecionado':''}" data-mat="${f.matricula}" onclick="toggleRow(${f.matricula})">
             <div class="lc-check"><input type="checkbox" class="func-chk" value="${f.matricula}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="chkChange(this,${f.matricula})"></div>
             <div class="lc-mat">${String(f.matricula).padStart(6,'0')}</div>
             <div class="lc-nome" title="${f.nome||''}">${f.nome||'—'}</div>
             <div class="lc-adm">${fmtDataAdm(f.dtadm)}</div>
-            <div class="lc-sit">${sit}${aviso}</div>
+            <div class="lc-sit">${sitCell}</div>
         </div>`;
     }).join('');
 

@@ -5243,6 +5243,74 @@ def cancelar_aviso_previo():
     )
 
 
+@app.route("/lista_aviso_previo")
+def lista_aviso_previo():
+    """Listagem de funcionários atualmente em aviso prévio: todos com op1=9
+    (qualquer mês) que ainda estão ATIVOS (não desligados)."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+
+    # avisos (op1=9) por matrícula — pega o registro mais recente de cada
+    aviso_info = {}
+    try:
+        r = (supabase.table("tab_eventos")
+             .select("matricula, data1i, folha, campotxt1, campotxt2")
+             .eq("id_empresa", id_empresa).eq("op1", 9)
+             .order("data1i", desc=True).execute())
+        for row in (r.data or []):
+            m = row.get("matricula")
+            if m is None:
+                continue
+            m = int(m)
+            if m in aviso_info:
+                continue  # já pegou o mais recente (ordenado desc)
+            d = int(row.get("data1i") or 0)
+            data_fmt = ""
+            if d > 0:
+                s = f"{d:08d}"
+                data_fmt = f"{s[6:8]}/{s[4:6]}/{s[0:4]}"
+            fol = row.get("folha")
+            folha_fmt = ""
+            if fol:
+                fs = f"{int(fol):06d}"
+                if len(fs) == 6:
+                    folha_fmt = f"{fs[4:6]}/{fs[0:4]}"
+            aviso_info[m] = {
+                "data_fmt":  data_fmt,
+                "folha_fmt": folha_fmt,
+                "quem":      row.get("campotxt2") or "",
+                "tipo":      row.get("campotxt1") or "",
+            }
+    except Exception:
+        aviso_info = {}
+
+    funcs = []
+    if aviso_info:
+        try:
+            r = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, situacao")
+                 .eq("id_empresa", id_empresa).eq("situacao", "A")
+                 .in_("matricula", list(aviso_info.keys()))
+                 .order("nome").execute())
+            for f in (r.data or []):
+                m = int(f.get("matricula") or 0)
+                info = aviso_info.get(m, {})
+                funcs.append({
+                    "matricula": m,
+                    "mat_fmt":   f"{m:06d}",
+                    "nome":      (f.get("nomer") or f.get("nome") or "").strip(),
+                    "data_fmt":  info.get("data_fmt", ""),
+                    "folha_fmt": info.get("folha_fmt", ""),
+                    "quem":      info.get("quem", ""),
+                    "tipo":      info.get("tipo", ""),
+                })
+        except Exception:
+            funcs = []
+
+    return render_template("F10_Lista_AvisoPrevio.html", **_ctx_relatorio(), funcs=funcs)
+
+
 # =========================================================
 # RESCISÃO — API: funcionários com aviso prévio registrado
 # =========================================================
@@ -5251,14 +5319,35 @@ def api_funcionarios_com_aviso():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
     id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": True, "funcionarios": []})
+    # Aviso prévio "ativo" para rescisão = registrado neste mês OU no mês anterior
+    # (o aviso costuma durar ~30 dias e pode atravessar o mês). tab_eventos.folha
+    # guarda o mês em que o aviso foi registrado.
+    y, m = int(anomes[:4]), int(anomes[4:6])
+    prev = (y - 1) * 100 + 12 if m == 1 else y * 100 + (m - 1)
+    meses = [int(anomes), prev]
     try:
-        # Etapa 1: busca matrículas com op1=9 em tab_eventos
+        # Etapa 1: matrículas com op1=9 na folha atual ou anterior + data do aviso
         r_ev = (supabase.table("tab_eventos")
-                .select("matricula")
+                .select("matricula, data1i")
                 .eq("id_empresa", id_empresa)
                 .eq("op1", 9)
+                .in_("folha", meses)
+                .order("data1i", desc=True)
                 .execute())
-        mats = list({row["matricula"] for row in (r_ev.data or []) if row.get("matricula")})
+        data_por_mat = {}
+        for row in (r_ev.data or []):
+            mm = row.get("matricula")
+            if mm is None:
+                continue
+            mm = int(mm)
+            if mm in data_por_mat:
+                continue  # já pegou o aviso mais recente (order desc)
+            d = int(row.get("data1i") or 0)
+            data_por_mat[mm] = (f"{d:08d}"[6:8] + "/" + f"{d:08d}"[4:6] + "/" + f"{d:08d}"[0:4]) if d > 0 else ""
+        mats = list(data_por_mat.keys())
         if not mats:
             return jsonify({"ok": True, "funcionarios": []})
         # Etapa 2: busca tab_cad filtrando por essas matrículas + situacao='A'
@@ -5273,10 +5362,11 @@ def api_funcionarios_com_aviso():
         for f in (r.data or []):
             nome = (f.get("nomer") or f.get("nome") or "").strip()
             funcionarios.append({
-                "matricula": f.get("matricula"),
-                "nome":      nome,
-                "dtadm":     str(f.get("dtadm") or ""),
-                "situacao":  str(f.get("situacao") or ""),
+                "matricula":  f.get("matricula"),
+                "nome":       nome,
+                "dtadm":      str(f.get("dtadm") or ""),
+                "situacao":   str(f.get("situacao") or ""),
+                "aviso_data": data_por_mat.get(int(f.get("matricula") or 0), ""),
             })
         return jsonify({"ok": True, "funcionarios": funcionarios})
     except Exception as e:
