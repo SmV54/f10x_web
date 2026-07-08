@@ -5012,7 +5012,7 @@ def cad_aviso_previo2():
                 "campotxt3":  campotxt3,
             }).execute()
         except Exception as e:
-            gravar_log("AVISO-PREVIO-ERRO", str(e)[:200], matricula=mat_int)
+            gravar_log("AVISO-ERRO", str(e)[:200], matricula=mat_int)
             return redirect("/menu")
 
         gravar_log("AVISO-PREVIO", obs, matricula=mat_int)
@@ -5184,9 +5184,9 @@ def cancelar_aviso_previo():
              .eq("id_empresa", id_empresa).eq("matricula", mat_int)
              .eq("op1", 9).eq("folha", int(anomes)).execute())
         except Exception as e:
-            gravar_log("AVISO-PREVIO-CANCEL-ERRO", str(e)[:200], matricula=mat_int)
+            gravar_log("AVISO-CAN-ER", str(e)[:200], matricula=mat_int)
             return redirect(f"/cancelar_aviso_previo?mats={mat_int}&erro=1")
-        gravar_log("AVISO-PREVIO-CANCEL",
+        gravar_log("AVISO-CANCEL",
                    f"Aviso prévio cancelado (folha {anomes}): {nome_func}", matricula=mat_int)
         return redirect(f"/cancelar_aviso_previo?mats={mat_int}&ok=1")
 
@@ -5243,15 +5243,9 @@ def cancelar_aviso_previo():
     )
 
 
-@app.route("/lista_aviso_previo")
-def lista_aviso_previo():
-    """Listagem de funcionários atualmente em aviso prévio: todos com op1=9
-    (qualquer mês) que ainda estão ATIVOS (não desligados)."""
-    if not session.get("logado"):
-        return redirect("/")
-    id_empresa = _get_id_empresa()
-
-    # avisos (op1=9) por matrícula — pega o registro mais recente de cada
+def _lista_aviso_previo_dados(id_empresa):
+    """Funcionários ATIVOS com aviso prévio (op1=9, qualquer mês). Retorna lista
+    ordenada por nome, com data/competência/quem/tipo do aviso mais recente."""
     aviso_info = {}
     try:
         r = (supabase.table("tab_eventos")
@@ -5266,10 +5260,7 @@ def lista_aviso_previo():
             if m in aviso_info:
                 continue  # já pegou o mais recente (ordenado desc)
             d = int(row.get("data1i") or 0)
-            data_fmt = ""
-            if d > 0:
-                s = f"{d:08d}"
-                data_fmt = f"{s[6:8]}/{s[4:6]}/{s[0:4]}"
+            data_fmt = f"{d:08d}"[6:8] + "/" + f"{d:08d}"[4:6] + "/" + f"{d:08d}"[0:4] if d > 0 else ""
             fol = row.get("folha")
             folha_fmt = ""
             if fol:
@@ -5299,7 +5290,7 @@ def lista_aviso_previo():
                 funcs.append({
                     "matricula": m,
                     "mat_fmt":   f"{m:06d}",
-                    "nome":      (f.get("nomer") or f.get("nome") or "").strip(),
+                    "nome":      (f.get("nome") or f.get("nomer") or "").strip(),   # nome completo
                     "data_fmt":  info.get("data_fmt", ""),
                     "folha_fmt": info.get("folha_fmt", ""),
                     "quem":      info.get("quem", ""),
@@ -5307,8 +5298,227 @@ def lista_aviso_previo():
                 })
         except Exception:
             funcs = []
+    return funcs
 
+
+@app.route("/lista_aviso_previo")
+def lista_aviso_previo():
+    """Listagem de funcionários atualmente em aviso prévio: todos com op1=9
+    (qualquer mês) que ainda estão ATIVOS (não desligados)."""
+    if not session.get("logado"):
+        return redirect("/")
+    funcs = _lista_aviso_previo_dados(_get_id_empresa())
     return render_template("F10_Lista_AvisoPrevio.html", **_ctx_relatorio(), funcs=funcs)
+
+
+@app.route("/lista_aviso_previo_pdf")
+def lista_aviso_previo_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    id_empresa = _get_id_empresa()
+    funcs      = _lista_aviso_previo_dados(id_empresa)
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+    titulo     = "Funcionários em Aviso Prévio"
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    cab = ["Matrícula", "Nome", "Data do Aviso", "Competência", "Quem deu", "Tipo"]
+    tbl_data = [[P(h, fn="Helvetica-Bold") for h in cab]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    for f in funcs:
+        tbl_data.append([
+            P(f["mat_fmt"], fn="Courier"),
+            P(f["nome"]),
+            P(f.get("data_fmt") or "—", align=1),
+            P(f.get("folha_fmt") or "—", align=1),
+            P(f.get("quem") or "—", align=1),
+            P(f.get("tipo") or "—", align=1),
+        ])
+
+    tbl = Table(tbl_data, colWidths=[2.0*cm, 6.8*cm, 2.4*cm, 2.2*cm, 2.0*cm, 1.6*cm], repeatRows=1)
+    row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
+              for i in range(1, len(tbl_data))]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    total_linha = P(f"Total: {len(funcs)} funcionário(s) em aviso prévio", fn="Helvetica", fs=8,
+                    col=colors.HexColor("#64748b"), align=2)
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm), Spacer(1, 8), tbl,
+             Spacer(1, 6), total_linha]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="FuncionariosAvisoPrevio.pdf"'
+    return resp
+
+
+# =========================================================
+# LISTAGEM DOS DEMITIDOS (filtro por data de demissão)
+# =========================================================
+def _mes_atual_intervalo():
+    """(data_ini, data_fim) em YYYY-MM-DD: 1º ao último dia do mês da folha ativa
+    (ou do mês corrente se não houver folha)."""
+    import calendar
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) == 6 and anomes.isdigit():
+        y, m = int(anomes[:4]), int(anomes[4:6])
+    else:
+        now = datetime.now()
+        y, m = now.year, now.month
+    last = calendar.monthrange(y, m)[1]
+    return f"{y:04d}-{m:02d}-01", f"{y:04d}-{m:02d}-{last:02d}"
+
+
+def _lista_demitidos_dados(id_empresa, ini_int, fim_int):
+    """Desligados (situacao='D') com datarescisao no intervalo [ini_int, fim_int]
+    (YYYYMMDD int). Ordenado por data de demissão."""
+    funcs = []
+    try:
+        q = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, dtadm, datarescisao, motrescisao")
+             .eq("id_empresa", id_empresa).eq("situacao", "D"))
+        if ini_int:
+            q = q.gte("datarescisao", ini_int)
+        if fim_int:
+            q = q.lte("datarescisao", fim_int)
+        rows = q.order("datarescisao").execute().data or []
+        for f in rows:
+            dr = str(f.get("datarescisao") or "")
+            da = str(f.get("dtadm") or "")
+            m  = int(f.get("matricula") or 0)
+            funcs.append({
+                "matricula": m,
+                "mat_fmt":   f"{m:06d}",
+                "nome":      (f.get("nome") or f.get("nomer") or "").strip(),   # nome completo
+                "adm_fmt":   f"{da[6:8]}/{da[4:6]}/{da[0:4]}" if len(da) == 8 and da.isdigit() else "—",
+                "dem_fmt":   f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 and dr.isdigit() else "—",
+                "motivo":    str(f.get("motrescisao") or ""),
+            })
+    except Exception:
+        funcs = []
+    return funcs
+
+
+def _demitidos_intervalo_args():
+    """Lê data_ini/data_fim da query (default = mês atual) e retorna
+    (data_ini, data_fim, ini_int, fim_int)."""
+    def_ini, def_fim = _mes_atual_intervalo()
+    data_ini = request.args.get("data_ini") or def_ini
+    data_fim = request.args.get("data_fim") or def_fim
+    def _to_int(d):
+        d = (d or "").replace("-", "")
+        return int(d) if len(d) == 8 and d.isdigit() else None
+    return data_ini, data_fim, _to_int(data_ini), _to_int(data_fim)
+
+
+@app.route("/lista_demitidos")
+def lista_demitidos():
+    if not session.get("logado"):
+        return redirect("/")
+    data_ini, data_fim, ini_int, fim_int = _demitidos_intervalo_args()
+    funcs = _lista_demitidos_dados(_get_id_empresa(), ini_int, fim_int)
+    return render_template("F10_Lista_Demitidos.html", **_ctx_relatorio(),
+                           funcs=funcs, data_ini=data_ini, data_fim=data_fim)
+
+
+@app.route("/lista_demitidos_pdf")
+def lista_demitidos_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    id_empresa = _get_id_empresa()
+    data_ini, data_fim, ini_int, fim_int = _demitidos_intervalo_args()
+    funcs      = _lista_demitidos_dados(id_empresa, ini_int, fim_int)
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    def _br(d):
+        return f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d) == 10 else d
+    titulo = f"Demitidos — {_br(data_ini)} a {_br(data_fim)}"
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    cab = ["Matrícula", "Nome", "Admissão", "Demissão", "Motivo"]
+    tbl_data = [[P(h, fn="Helvetica-Bold") for h in cab]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    for f in funcs:
+        tbl_data.append([
+            P(f["mat_fmt"], fn="Courier"),
+            P(f["nome"]),
+            P(f.get("adm_fmt") or "—", align=1),
+            P(f.get("dem_fmt") or "—", align=1),
+            P(f.get("motivo") or "—", align=1),
+        ])
+
+    tbl = Table(tbl_data, colWidths=[2.2*cm, 7.6*cm, 2.6*cm, 2.6*cm, 2.0*cm], repeatRows=1)
+    row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
+              for i in range(1, len(tbl_data))]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    total_linha = P(f"Total: {len(funcs)} demitido(s)", fn="Helvetica", fs=8,
+                    col=colors.HexColor("#64748b"), align=2)
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm), Spacer(1, 8), tbl,
+             Spacer(1, 6), total_linha]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="Demitidos.pdf"'
+    return resp
 
 
 # =========================================================
@@ -5767,7 +5977,7 @@ def cancelar_rescisao():
                 (supabase.table("tab_cad").update({"situacao": "A"})
                  .eq("id_empresa", id_empresa).eq("matricula", mat_int).execute())
         except Exception as e:
-            gravar_log("RESCISAO-CANCEL-ERRO", str(e)[:200], matricula=mat_int)
+            gravar_log("RESC-CAN-ER", str(e)[:200], matricula=mat_int)
             return redirect(f"/cancelar_rescisao?mats={mat_int}&erro=1")
         # Remove o S-2299 ainda PENDENTE (não enviado / não excluído)
         try:
@@ -5793,7 +6003,7 @@ def cancelar_rescisao():
              .eq("op1", 9).in_("folha", [int(anomes_atual), _prev]).execute())
         except Exception:
             pass
-        gravar_log("RESCISAO-CANCEL",
+        gravar_log("RESC-CANCEL",
                    f"Rescisão + aviso prévio cancelados — {funcionario['nome']} "
                    f"(resc. {funcionario['resc_data']})",
                    matricula=mat_int)

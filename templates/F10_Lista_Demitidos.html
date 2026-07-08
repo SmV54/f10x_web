@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Folha10 Simples — Funcionários em Aviso Prévio</title>
+<title>Folha10 Simples — Demitidos</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
@@ -29,7 +29,26 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
 }
 .btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
 
-.container { max-width: 900px; margin: 24px auto; padding: 0 18px 40px; }
+.container { max-width: 880px; margin: 24px auto; padding: 0 18px 40px; }
+.filtros {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    padding: 16px 20px; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+}
+.filtro-grupo { display: flex; align-items: center; gap: 10px; }
+.filtro-label { font-size: 12px; font-weight: 600; color: #475569; white-space: nowrap; }
+.filtro-data {
+    height: 34px; border: 1px solid #d1d5db; border-radius: 8px; padding: 0 10px;
+    font-size: 13px; color: #334155; font-family: 'IBM Plex Sans', sans-serif;
+}
+.filtro-sep { font-size: 12px; color: #94a3b8; }
+.btn-filtrar {
+    margin-left: auto; height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #2563eb; color: white; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; transition: .15s;
+}
+.btn-filtrar:hover { background: #1d4ed8; }
+
 .card {
     background: white; border-radius: 12px; border: 1px solid #e5e7eb;
     box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden;
@@ -40,8 +59,8 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
 }
 .card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
 .total-badge {
-    font-size: 12px; background: #fff7ed; color: #9a3412;
-    border: 1px solid #fdba74; border-radius: 8px; padding: 2px 10px; font-weight: 600;
+    font-size: 12px; background: #fff1f2; color: #9f1239;
+    border: 1px solid #fda4af; border-radius: 8px; padding: 2px 10px; font-weight: 600;
 }
 table { width: 100%; border-collapse: collapse; }
 thead th {
@@ -49,10 +68,10 @@ thead th {
     font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee;
     white-space: nowrap; font-weight: 600; letter-spacing: 0.3px;
 }
-thead th.r { text-align: center; }
+thead th.c { text-align: center; }
 tbody td { padding: 6px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; width: 1%; }
-tbody td.c { text-align: center; white-space: nowrap; }
+tbody td.c { text-align: center; white-space: nowrap; font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #334155; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
@@ -75,7 +94,7 @@ tbody tr:hover { background: #f8fafc; }
 .btn-menu:hover { background: #d1d5db; }
 
 @media print {
-    .topo, .rodape { display: none !important; }
+    .topo, .filtros, .rodape { display: none !important; }
     body { background: white; }
     .container { max-width: 100%; margin: 0; padding: 0; }
     .card { border: none; box-shadow: none; }
@@ -90,8 +109,8 @@ tbody tr:hover { background: #f8fafc; }
         <span class="topo-nome">{{ nome }}</span>
     </div>
     <div class="topo-centro">
-        <div class="topo-titulo">Funcionários em Aviso Prévio</div>
-        <span class="topo-badge">Ativos com aviso prévio registrado</span>
+        <div class="topo-titulo">Listagem dos Demitidos</div>
+        <span class="topo-badge">Por data de demissão</span>
     </div>
     <div class="topo-dir">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
@@ -103,10 +122,23 @@ tbody tr:hover { background: #f8fafc; }
 </div>
 
 <div class="container">
+
+    <form method="get" action="/lista_demitidos">
+        <div class="filtros">
+            <div class="filtro-grupo">
+                <span class="filtro-label">Data da Demissão:</span>
+                <input type="date" name="data_ini" class="filtro-data" value="{{ data_ini }}">
+                <span class="filtro-sep">até</span>
+                <input type="date" name="data_fim" class="filtro-data" value="{{ data_fim }}">
+            </div>
+            <button type="submit" class="btn-filtrar">Atualizar a Lista</button>
+        </div>
+    </form>
+
     <div class="card">
         <div class="card-header">
-            <h2>Funcionários em Aviso Prévio</h2>
-            <span class="total-badge">{{ funcs|length }} em aviso prévio</span>
+            <h2>Demitidos</h2>
+            <span class="total-badge">{{ funcs|length }} demitido(s)</span>
         </div>
 
         {% if funcs %}
@@ -115,10 +147,9 @@ tbody tr:hover { background: #f8fafc; }
                 <tr>
                     <th>Matrícula</th>
                     <th>Nome</th>
-                    <th class="r">Data do Aviso</th>
-                    <th class="r">Competência</th>
-                    <th class="r">Quem deu</th>
-                    <th class="r">Tipo</th>
+                    <th class="c">Admissão</th>
+                    <th class="c">Demissão</th>
+                    <th class="c">Motivo</th>
                 </tr>
             </thead>
             <tbody>
@@ -126,24 +157,24 @@ tbody tr:hover { background: #f8fafc; }
                 <tr>
                     <td class="mat">{{ f.mat_fmt }}</td>
                     <td>{{ f.nome }}</td>
-                    <td class="c">{{ f.data_fmt or '—' }}</td>
-                    <td class="c">{{ f.folha_fmt or '—' }}</td>
-                    <td class="c">{{ f.quem or '—' }}</td>
-                    <td class="c">{{ f.tipo or '—' }}</td>
+                    <td class="c">{{ f.adm_fmt }}</td>
+                    <td class="c">{{ f.dem_fmt }}</td>
+                    <td class="c">{{ f.motivo or '—' }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
-        <div class="card-total">Total: {{ funcs|length }} funcionário(s) em aviso prévio</div>
+        <div class="card-total">Total: {{ funcs|length }} demitido(s) no período</div>
         {% else %}
-        <div class="vazio">Nenhum funcionário ativo em aviso prévio.</div>
+        <div class="vazio">Nenhum demitido no período informado.</div>
         {% endif %}
     </div>
 
     <div class="rodape">
-        <a class="btn-pdf" href="/lista_aviso_previo_pdf" target="_blank">&#128438; Imprimir em PDF</a>
+        <a class="btn-pdf" href="/lista_demitidos_pdf?data_ini={{ data_ini }}&data_fim={{ data_fim }}" target="_blank">&#128438; Imprimir em PDF</a>
         <a class="btn-menu" href="/menu">Voltar ao Menu</a>
     </div>
+
 </div>
 <script src="/static/f10_dialog.js"></script>
 </body>
