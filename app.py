@@ -30973,7 +30973,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         totais[cod]["valor"] += val
         totais[cod]["mats"].add(mat)
         rb_cod = rubr_map.get(cod, {})
-        if rb_cod.get("tp") == "1" and rb_cod.get("inc_fgts") == "11":
+        # inc_fgts: "11" = incide integral; "S" = adiantamento do 13º (verba 17).
+        if rb_cod.get("tp") == "1" and rb_cod.get("inc_fgts") in ("11", "S"):
             emp_fgts_base[mat] = emp_fgts_base.get(mat, 0) + val
         if cod == 139:
             emp_fgts139[mat] = emp_fgts139.get(mat, 0) + val
@@ -30998,7 +30999,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             total_prov += val
             if rb["inc_cp"]   == "11": base_inss += val
             if rb["inc_irrf"] == "11": base_irrf += val
-            if rb["inc_fgts"] == "11": base_fgts += val
+            if rb["inc_fgts"] in ("11", "S"): base_fgts += val
         else:
             descontos.append(linha)
             total_desc += val
@@ -31129,7 +31130,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                 inss_emp_total += l["val_c"]
 
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else anomes
-    tipo_desc  = {"N": "Normal", "F": "Férias", "R": "Rescisão"}.get(anomes_tipo, anomes_tipo)
+    tipo_desc  = {"N": "Normal", "F": "Férias", "R": "Rescisão",
+                  "A": "Adiant. 13º", "1": "13º Salário"}.get(anomes_tipo, anomes_tipo)
 
     return {
         "anomes_fmt":       anomes_fmt,
@@ -39701,9 +39703,75 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
     return detalhe
 
 
+def _inc_fgts_adiant13(id_cliente, cods):
+    """Mapa {cod_verba: codigo_incidencia_fgts (str, maiúsculo)} das rubricas
+    informadas. Verba do cliente (id_cliente≠0) sobrepõe a global (0).
+    A verba 17 (ADIANT.13.SALARIO) traz 'S' em tpn_inc_fgts; as demais que
+    incidem trazem '11' (incide integralmente)."""
+    cods = [int(c) for c in (cods or [])]
+    if not cods:
+        return {}
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr, tpn_inc_fgts, id_cliente")
+             .in_("id_cliente", [0, id_cliente])
+             .in_("cod_rubr", cods)
+             .execute())
+        rows = r.data or []
+    except Exception:
+        rows = []
+    inc = {}
+    for row in sorted(rows, key=lambda x: 0 if int(x.get("id_cliente") or 0) == 0 else 1):
+        inc[int(row.get("cod_rubr") or 0)] = str(row.get("tpn_inc_fgts") or "").strip().upper()
+    return inc
+
+
+def _aliq_fgts_adiant13(f):
+    """Alíquota de FGTS (%) do funcionário no adiantamento do 13º.
+    Menor aprendiz (codcateg 103) recolhe 2%; os demais, 8%."""
+    try:
+        cat = int(str(f.get("codcateg") or "0").strip() or 0)
+    except (TypeError, ValueError):
+        cat = 0
+    return 2 if cat == 103 else 8
+
+
+def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8):
+    """Base e valor do FGTS do adiantamento do 13º.
+    Base = soma dos proventos cujo tpn_inc_fgts indica incidência
+    ('S' = adiantamento do 13º; '11' = incide integralmente).
+    FGTS = aliq_fgts% da base (8% geral, 2% menor aprendiz).
+    Retorna (base_fgts, fgts) em centavos."""
+    base = sum(int(v) for cod, v in (verba_valores or {}).items()
+               if int(v) > 0 and inc_fgts.get(int(cod), "") in ("S", "11"))
+    return int(base), int(base) * int(aliq_fgts) // 100
+
+
+def _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes):
+    """Marca a folha de adiantamento do 13º (tipo 'A') como Calculada em
+    tab_anomes e incrementa qtd_calculos. Retorna o número do cálculo."""
+    n_calc = 1
+    try:
+        r = (supabase.table("tab_anomes").select("qtd_calculos")
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .eq("ano_mes", int(anomes)).eq("tipo", "A")
+             .execute().data or [])
+        n_calc = int((r[0].get("qtd_calculos") or 0) if r else 0) + 1
+        (supabase.table("tab_anomes").update({
+            "situacao":          "C",
+            "data_hora_calculo": datetime.now().strftime("%Y%m%d %H%M%S"),
+            "qtd_calculos":      n_calc,
+        }).eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+          .eq("ano_mes", anomes).eq("tipo", "A").execute())
+    except Exception:
+        pass
+    return n_calc
+
+
 def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                           perc, meses, valor, pericu, pericu_pct, pericu_mes,
-                          medias_detalhe, total, usuario, versao):
+                          medias_detalhe, total, usuario, versao,
+                          base_fgts=0, fgts_val=0, aliq_fgts=8):
     """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário)."""
     def _hhmm(mins):
         mins = int(round(mins))
@@ -39811,6 +39879,16 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         e.append(tbl)
     else:
         e.append(Paragraph("Sem verbas variáveis lançadas no ano corrente.", st_formula))
+
+    # ETAPA 4 — FGTS (aliq_fgts% sobre a base incidente; 2% para menor aprendiz)
+    e.append(Paragraph("ETAPA 0004 — FGTS", st_etapa))
+    if base_fgts > 0:
+        apr_txt = "  (menor aprendiz)" if int(aliq_fgts) == 2 else ""
+        e.append(Paragraph(
+            f"Base de incidência (adiantamento + periculosidade + médias) {_fmt_brl(base_fgts)} × {int(aliq_fgts)}% "
+            f"= <b>{_fmt_brl(fgts_val)}</b>{apr_txt}", st_formula))
+    else:
+        e.append(Paragraph("Sem base de incidência de FGTS neste adiantamento.", st_formula))
 
     # TOTAL
     e.append(Paragraph(f"TOTAL DO ADIANTAMENTO = {_fmt_brl(total)}", st_total))
@@ -39969,6 +40047,7 @@ def calcular_adiantamento_13():
         anomes_atual=anomes,
         folha_tipo=folha_tipo,
         tipo_ok=(folha_tipo == "A"),
+        folha_situacao=(_refresh_situacao_folha() if (anomes and folha_tipo == "A") else ""),
         erro_critico=None,
         verba_usar=VERBA_ADIANT_13,
         dsc_verba="",
@@ -40002,6 +40081,7 @@ def calcular_adiantamento_13():
 
     # médias das verbas variáveis (inc_adto13='S') — ano corrente, ÷ mês da folha
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
+    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
 
@@ -40033,6 +40113,10 @@ def calcular_adiantamento_13():
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
             medias_tot = sum(d["val"] for d in medias_det)
             total_f = valor + pericu + medias_tot
+            verba_valores = {VERBA_ADIANT_13: valor, VERBA_PERICULOSIDADE: pericu}
+            verba_valores.update({d["cod"]: d["val"] for d in medias_det})
+            aliq_fgts = _aliq_fgts_adiant13(f)
+            base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
@@ -40043,6 +40127,8 @@ def calcular_adiantamento_13():
                 "pericu_fmt": _fmt_reais(pericu) if pericu else "—",
                 "medias":     medias_tot,
                 "medias_fmt": _fmt_reais(medias_tot) if medias_tot else "—",
+                "fgts":       fgts_val,
+                "fgts_fmt":   _fmt_reais(fgts_val) if fgts_val else "—",
                 "total_fmt":  _fmt_reais(total_f),
             })
     except Exception as e:
@@ -40079,6 +40165,9 @@ def api_calcular_adiantamento_13():
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+
+    # incidência de FGTS por verba (verba 17='S'; periculosidade/médias='11')
+    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
 
     # limpa cálculo anterior desta folha (verba 17/31 + médias, origem calculada)
     try:
@@ -40207,8 +40296,13 @@ def api_calcular_adiantamento_13():
                 except Exception as e_ins:
                     return jsonify({"ok": False, "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
 
-            # Totais (tab_total): adiantamento sem INSS/IRRF/FGTS → proventos = adiant. + periculosidade + médias
+            # Totais (tab_total): adiantamento sem INSS/IRRF, COM FGTS (verba 17
+            # incide FGTS — tpn_inc_fgts='S'). Proventos = adiant. + pericul. + médias.
             prov_total = valor + pericu + sum(medias.values())
+            verba_valores = {VERBA_ADIANT_13: valor, VERBA_PERICULOSIDADE: pericu}
+            verba_valores.update(medias)
+            aliq_fgts = _aliq_fgts_adiant13(f)
+            base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
             rec_total = {
                 "id_cliente":                id_cliente,
                 "id_empresa":                id_empresa,
@@ -40219,8 +40313,8 @@ def api_calcular_adiantamento_13():
                 "valor_base_inss_semlimite": 0,
                 "valor_base_inss_comlimite": 0,
                 "valor_inss_retido":         0,
-                "valor_base_fgts":           0,
-                "valor_fgts":                0,
+                "valor_base_fgts":           int(base_fgts),
+                "valor_fgts":                int(fgts_val),
                 "valor_irrf_basetotal":      0,
                 "valor_irrf_basetabela":     0,
                 "valor_irrf_dependentes":    0,
@@ -40252,7 +40346,7 @@ def api_calcular_adiantamento_13():
                     pdf_bytes = _pdf_memoria_adiant13(
                         empresa_nm, anomes, int(mat or 0), nome_pdf, sal_mes, sal_hora_c,
                         perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
-                        medias_det, prov_total, usuario, versao)
+                        medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts)
                     nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
                                 f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
                     if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
@@ -40262,8 +40356,13 @@ def api_calcular_adiantamento_13():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
+    # marca a folha (tipo 'A') como Calculada em tab_anomes
+    n_calc = _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes)
+    session["anomes_situacao"] = "C"
+
     return jsonify({"ok": True, "gravados": gravados, "verba": VERBA_ADIANT_13,
-                    "pasta": dest.get("label", ""), "memorias": memorias})
+                    "pasta": dest.get("label", ""), "memorias": memorias,
+                    "n_calculo": n_calc})
 
 
 @app.route("/api/calcular_adiantamento_13_stream")
@@ -40291,9 +40390,24 @@ def calcular_adiantamento_13_stream():
     if folha_tipo != "A":
         return _sse_erro("A folha ativa não é do tipo Adiantamento 13º (tipo A).")
 
+    # Rede de segurança: só calcula com a folha Aberta (A/X). Se já está
+    # Calculada/Fechada/em cálculo, emite "bloqueio" — o front avisa e (para
+    # 'C') oferece reabrir e recalcular, como na folha mensal.
+    sit = _refresh_situacao_folha()
+    if sit not in ("A", "X"):
+        if sit == "P":
+            msg = "Folha em cálculo por outro usuário. Aguarde."
+        elif sit == "F":
+            msg = "Folha Fechada — reabra antes de calcular."
+        else:
+            msg = "Folha já está calculada."
+        payload = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": sit}, ensure_ascii=False)
+        return Response(f"data: {payload}\n\n", mimetype="text/event-stream")
+
     folha_int  = int(anomes)
     perc       = _get_per_adianta13(id_empresa)
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
+    inc_fgts   = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
     ano_folha  = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
 
@@ -40394,11 +40508,16 @@ def calcular_adiantamento_13_stream():
 
                 prov_total = valor + pericu + sum(medias.values())
                 total_val += prov_total
+                verba_valores = {VERBA_ADIANT_13: valor, VERBA_PERICULOSIDADE: pericu}
+                verba_valores.update(medias)
+                aliq_fgts = _aliq_fgts_adiant13(f)
+                base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
                 rec_total = {
                     "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                     "matricula": int(mat), "folha": folha_int, "folha_tipo": "A",
                     "valor_base_inss_semlimite": 0, "valor_base_inss_comlimite": 0,
-                    "valor_inss_retido": 0, "valor_base_fgts": 0, "valor_fgts": 0,
+                    "valor_inss_retido": 0,
+                    "valor_base_fgts": int(base_fgts), "valor_fgts": int(fgts_val),
                     "valor_irrf_basetotal": 0, "valor_irrf_basetabela": 0,
                     "valor_irrf_dependentes": 0, "qtd_irrf_dependentes": 0,
                     "valor_salario": int(sal_mes), "valor_total_proventos": int(prov_total),
@@ -40422,7 +40541,7 @@ def calcular_adiantamento_13_stream():
                         pdf_bytes  = _pdf_memoria_adiant13(
                             empresa_nm, anomes, mat, nome, sal_mes, sal_hora_c,
                             perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
-                            medias_det, prov_total, usuario, versao)
+                            medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts)
                         nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
                                     f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
@@ -40430,10 +40549,13 @@ def calcular_adiantamento_13_stream():
                     except Exception:
                         pass
 
+            # marca a folha (tipo 'A') como Calculada em tab_anomes
+            n_calc = _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes)
+
             _put({"tipo": "fim", "pct": 100, "resumo": {
                 "gravados": gravados, "verba": VERBA_ADIANT_13, "pasta": dest.get("label", ""),
                 "memorias": memorias, "total_funcs": total, "total_valor": total_val,
-                "perc": perc}})
+                "perc": perc, "n_calculo": n_calc}})
         except Exception as e:
             _put({"tipo": "erro", "msg": str(e)[:200]})
         finally:

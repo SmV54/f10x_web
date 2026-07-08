@@ -46,9 +46,19 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     background: #fff; color: #111827; border: 2px solid #86efac;
 }
 .badge-sem-folha { color: #991b1b; border-color: #fca5a5; }
+.badge-sit {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap; margin-left: 8px;
+    background: #fff; border: 2px solid #cbd5e1; color: #334155;
+    transition: border-color .25s, color .25s, background .25s;
+}
+.badge-sit-c { border-color: #86efac; color: #166534; background: #f0fdf4; }  /* Calculada */
+.badge-sit-a, .badge-sit-x { border-color: #fcd34d; color: #92400e; }         /* Aberta */
+.badge-sit-p { border-color: #93c5fd; color: #1e40af; }                        /* Calculando */
+.badge-sit-f { border-color: #cbd5e1; color: #64748b; }                        /* Fechada */
 
 /* ── CONTEÚDO ── */
-.conteudo { max-width: 820px; margin: 24px auto; padding: 0 20px 60px; }
+.conteudo { max-width: 960px; margin: 24px auto; padding: 0 20px 60px; }
 
 /* ── ALERTAS ── */
 .alerta {
@@ -82,21 +92,21 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .tabela-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 thead th {
-    background: #f1f5f9; padding: 9px 10px; font-size: 10px; font-weight: 600;
-    text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    background: #f1f5f9; padding: 9px 8px; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;
     text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
 }
 thead th.th-r { text-align: right; }
 tbody tr { border-bottom: 1px solid #f1f5f9; transition: background 0.1s; }
 tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: #fafbfc; }
-tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
-.td-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 58px; }
-.td-nome { font-weight: 500; max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
+.td-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 54px; }
+.td-nome { font-weight: 500; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .td-sal  { font-family: var(--mono); font-size: 12px; text-align: right; color: #374151;
-           width: 108px; white-space: nowrap; }
+           width: 92px; white-space: nowrap; }
 .td-val  { font-family: var(--mono); font-size: 13px; font-weight: 700; text-align: right;
-           color: #1d4ed8; width: 112px; white-space: nowrap; }
+           color: #1d4ed8; width: 100px; white-space: nowrap; }
 
 /* ── RODAPÉ TABELA ── */
 .tabela-rodape {
@@ -163,6 +173,9 @@ tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
         <span>Adiantamento do 13º Salário</span>
         {% if anomes_atual %}
         <span class="badge-folha-topo {% if not tipo_ok %}badge-sem-folha{% endif %}">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if tipo_ok %} · Adiant. 13º{% endif %}</span>
+        {% if tipo_ok %}
+        <span id="badgeSit" class="badge-sit badge-sit-{{ folha_situacao|lower or 'a' }}">{{ {'A':'Aberta','X':'Aberta','C':'Calculada','P':'Calculando','F':'Fechada'}.get(folha_situacao, 'Aberta') }}</span>
+        {% endif %}
         {% else %}
         <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
         {% endif %}
@@ -201,7 +214,7 @@ tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
 <div class="alerta alerta-aviso">
     <span class="alerta-icone">ℹ️</span>
     <div><strong>{{ perc_adianta13 }}% do salário</strong> (verba {{ verba_usar }}) + <strong>{{ perc_adianta13 }}% da periculosidade</strong> (verba 31, para quem tem periculosidade ativa).
-    Sem INSS e sem IRRF. Recalcular substitui os valores anteriores desta folha.</div>
+    Sem INSS e sem IRRF; com FGTS (8% sobre a base incidente). Recalcular substitui os valores anteriores desta folha.</div>
 </div>
 
 <!-- CARD: PRÉVIA -->
@@ -221,6 +234,7 @@ tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
                     <th class="th-r">Adiant. ({{ perc_adianta13 }}%)</th>
                     <th class="th-r">Pericul. ({{ perc_adianta13 }}%)</th>
                     <th class="th-r">Médias ({{ perc_adianta13 }}%)</th>
+                    <th class="th-r">FGTS</th>
                     <th class="th-r">Total</th>
                 </tr>
             </thead>
@@ -233,6 +247,7 @@ tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
                     <td class="td-sal">{{ f.valor_fmt }}</td>
                     <td class="td-sal">{{ f.pericu_fmt }}</td>
                     <td class="td-sal">{{ f.medias_fmt }}</td>
+                    <td class="td-sal">{{ f.fgts_fmt }}</td>
                     <td class="td-val">{{ f.total_fmt }}</td>
                 </tr>
                 {% endfor %}
@@ -275,8 +290,59 @@ tbody td { padding: 9px 10px; font-size: 12px; color: #1e293b; }
 
 <script>
 const PERC_ADIANT13 = {{ perc_adianta13 }};
+let folhaSituacao = '{{ folha_situacao }}';   // A/X=Aberta, C=Calculada, F=Fechada, P=Calculando
 
 async function calcular() {
+    // Folha Fechada: não recalcula sem reabrir primeiro.
+    if (folhaSituacao === 'F') {
+        const el = document.getElementById('msgResultado');
+        el.style.display = 'block';
+        el.innerHTML = `<div class="alerta alerta-erro">
+            <span class="alerta-icone">🔒</span>
+            <div><strong>Folha Fechada.</strong> Reabra a folha antes de calcular novamente.</div>
+        </div>`;
+        return;
+    }
+    // Folha já Calculada: avisa, pergunta se quer reabrir e recalcular (como na folha mensal).
+    if (folhaSituacao === 'C') {
+        const reabrir = await f10Confirm(
+            `Esta folha de adiantamento do 13º já foi calculada.\n\n` +
+            `Para calcular novamente é necessário reabri-la — os valores atuais serão ` +
+            `substituídos pelos novos resultados.\n\nDeseja reabrir e recalcular?`,
+            {
+                titulo: 'Folha já Calculada',
+                tipo: 'aviso',
+                okText: 'Reabrir e Recalcular',
+                cancelText: 'Cancelar',
+            }
+        );
+        if (!reabrir) return;
+        try {
+            const resp = await fetch('/api/folha/reabrir', { method: 'POST' });
+            const j = await resp.json();
+            if (!j.ok) {
+                const el = document.getElementById('msgResultado');
+                el.style.display = 'block';
+                el.innerHTML = `<div class="alerta alerta-erro">
+                    <span class="alerta-icone">❌</span>
+                    <div><strong>Não foi possível reabrir:</strong> ${j.msg || 'erro desconhecido.'}</div>
+                </div>`;
+                return;
+            }
+            folhaSituacao = 'A';
+            const bs = document.getElementById('badgeSit');
+            if (bs) { bs.textContent = 'Aberta'; bs.className = 'badge-sit badge-sit-a'; }
+        } catch (e) {
+            const el = document.getElementById('msgResultado');
+            el.style.display = 'block';
+            el.innerHTML = `<div class="alerta alerta-erro">
+                <span class="alerta-icone">❌</span>
+                <div>Erro de comunicação ao reabrir a folha.</div>
+            </div>`;
+            return;
+        }
+    }
+
     // Confirma o percentual antes de iniciar o cálculo.
     const ok = await f10Confirm(
         `O adiantamento do 13º será calculado com o percentual de ${PERC_ADIANT13}% ` +
@@ -314,6 +380,10 @@ async function calcular() {
     document.getElementById('progFill').style.width = '0%';
     document.getElementById('progPct').textContent  = '0%';
 
+    // marca o badge de situação como "Calculando" durante o processamento
+    const badgeSit = document.getElementById('badgeSit');
+    if (badgeSit) { badgeSit.textContent = 'Calculando'; badgeSit.className = 'badge-sit badge-sit-p'; }
+
     let finalizado = false;
     const src = new EventSource('/api/calcular_adiantamento_13_stream');
 
@@ -331,6 +401,9 @@ async function calcular() {
             src.close();
             document.getElementById('progFill').style.width = '100%';
             document.getElementById('progPct').textContent  = '100%';
+            // folha agora está Calculada — atualiza o badge na hora
+            folhaSituacao = 'C';
+            if (badgeSit) { badgeSit.textContent = 'Calculada'; badgeSit.className = 'badge-sit badge-sit-c'; }
             const r = d.resumo || {};
             const memoriaHtml = (r.memorias > 0)
                 ? `<div style="margin-top:8px;font-size:13px;color:#475569;">
@@ -345,9 +418,27 @@ async function calcular() {
                 <div><strong>${r.gravados} adiantamento${r.gravados !== 1 ? 's' : ''} do 13º gravado${r.gravados !== 1 ? 's' : ''}</strong>
                 na verba ${r.verba} com sucesso.${memoriaHtml}</div>
             </div>`;
+        } else if (d.tipo === 'bloqueio') {
+            // Rede de segurança do servidor: folha não estava Aberta.
+            finalizado = true;
+            src.close();
+            const fechada = (d.sit === 'F');
+            folhaSituacao = d.sit;
+            if (badgeSit) {
+                badgeSit.textContent = fechada ? 'Fechada' : 'Calculada';
+                badgeSit.className   = 'badge-sit badge-sit-' + (fechada ? 'f' : 'c');
+            }
+            prog.style.display = 'none';
+            el.style.display = 'block';
+            el.innerHTML = `<div class="alerta alerta-aviso">
+                <span class="alerta-icone">⚠️</span>
+                <div>${d.msg || 'Folha já calculada.'} Reabra a folha para recalcular.</div>
+            </div>`;
+            btn.style.display = '';
         } else if (d.tipo === 'erro') {
             finalizado = true;
             src.close();
+            if (badgeSit) { badgeSit.textContent = 'Aberta'; badgeSit.className = 'badge-sit badge-sit-a'; }
             prog.style.display = 'none';
             el.style.display = 'block';
             el.innerHTML = `<div class="alerta alerta-erro">
@@ -362,6 +453,7 @@ async function calcular() {
         if (finalizado) return;
         finalizado = true;
         src.close();
+        if (badgeSit) { badgeSit.textContent = 'Aberta'; badgeSit.className = 'badge-sit badge-sit-a'; }
         prog.style.display = 'none';
         el.style.display = 'block';
         el.innerHTML = `<div class="alerta alerta-erro">
