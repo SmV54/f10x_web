@@ -1910,6 +1910,34 @@ def relatorios_config():
     )
 
 
+def _aviso_previo_datas(id_empresa):
+    """{matrícula(int): 'DD/MM/AAAA'} das matrículas com aviso prévio (op1=9 em
+    tab_eventos), usando a data mais recente (data1i, YYYYMMDD). Valor '' quando
+    o registro não tem data. As chaves são apenas quem tem aviso registrado."""
+    out = {}
+    try:
+        r = (supabase.table("tab_eventos").select("matricula, data1i")
+             .eq("id_empresa", id_empresa).eq("op1", 9).execute())
+        raw = {}
+        for row in (r.data or []):
+            m = row.get("matricula")
+            if m is None:
+                continue
+            m = int(m)
+            d = int(row.get("data1i") or 0)
+            if d >= raw.get(m, 0):
+                raw[m] = d
+        for m, d in raw.items():
+            if d > 0:
+                s = f"{d:08d}"
+                out[m] = f"{s[6:8]}/{s[4:6]}/{s[0:4]}"
+            else:
+                out[m] = ""
+    except Exception:
+        pass
+    return out
+
+
 # =========================================================
 # RELATÓRIO DE SALÁRIOS — AUMENTOS
 # =========================================================
@@ -1934,6 +1962,16 @@ def rel_lista_funcionarios():
 
     for f in funcs:
         f["nome_fmt"] = (f.get("nomer") or f.get("nome") or "").strip()
+
+    # Aviso prévio (op1=9 em tab_eventos) — marca cada funcionário e a data.
+    aviso_datas = _aviso_previo_datas(id_empresa)
+    for f in funcs:
+        try:
+            m = int(f.get("matricula") or 0)
+        except (TypeError, ValueError):
+            m = 0
+        f["aviso_previo"]      = m in aviso_datas
+        f["aviso_previo_data"] = aviso_datas.get(m, "")
 
     return render_template(
         "F10_Rel_Lista_Funcionarios.html",
@@ -1986,14 +2024,26 @@ def rel_lista_funcionarios_pdf():
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
 
-    tbl_data = [[P("Matrícula", fn="Helvetica-Bold"), P("Nome", fn="Helvetica-Bold")]]
+    # Aviso prévio (op1=9): matrícula -> data 'DD/MM/AAAA'
+    aviso_datas = _aviso_previo_datas(id_empresa)
+    amber = colors.HexColor("#9a3412")
+
+    tbl_data = [[P("Matrícula", fn="Helvetica-Bold"),
+                 P("Nome", fn="Helvetica-Bold"),
+                 P("Aviso Prévio", fn="Helvetica-Bold")]]
     lt_gray  = colors.HexColor("#f8fafc")
     for f in funcs:
-        mat  = f"{int(f.get('matricula') or 0):06d}"
-        nome = (f.get("nomer") or f.get("nome") or "").strip()
-        tbl_data.append([P(mat, fn="Courier"), P(nome)])
+        mat_i = int(f.get("matricula") or 0)
+        mat   = f"{mat_i:06d}"
+        nome  = (f.get("nomer") or f.get("nome") or "").strip()
+        if mat_i in aviso_datas:
+            dt = aviso_datas.get(mat_i) or ""
+            aviso_cel = P(f"Sim — {dt}" if dt else "Sim", fn="Helvetica-Bold", col=amber)
+        else:
+            aviso_cel = P("—", col=colors.HexColor("#94a3b8"))
+        tbl_data.append([P(mat, fn="Courier"), P(nome), aviso_cel])
 
-    tbl = Table(tbl_data, colWidths=[3*cm, 14*cm], repeatRows=1)
+    tbl = Table(tbl_data, colWidths=[2.6*cm, 10.9*cm, 3.5*cm], repeatRows=1)
     row_bg = []
     for i in range(1, len(tbl_data)):
         bg = lt_gray if i % 2 == 0 else colors.white
@@ -5052,6 +5102,144 @@ def cad_aviso_previo2_ok():
         data_aviso_fmt=_fmt(data_aviso),
         data_fim_fmt=_fmt(data_fim),
         prazo=prazo,
+    )
+
+
+# =========================================================
+# CANCELAR AVISO PRÉVIO
+# Só é cancelável o aviso registrado no mês da folha ATUAL
+# (tab_eventos.folha == anomes_atual). Aviso prévio não tem
+# layout no eSocial — nada a desfazer lá.
+# =========================================================
+@app.route("/api/funcionarios_com_aviso_cancelavel")
+def api_funcionarios_com_aviso_cancelavel():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    if not anomes:
+        return jsonify({"ok": True, "funcionarios": []})
+    try:
+        # Matrículas com aviso prévio (op1=9) registrado NESTA folha (mês atual)
+        r_ev = (supabase.table("tab_eventos")
+                .select("matricula")
+                .eq("id_empresa", id_empresa)
+                .eq("op1", 9)
+                .eq("folha", int(anomes))
+                .execute())
+        mats = list({int(row["matricula"]) for row in (r_ev.data or [])
+                     if row.get("matricula") is not None})
+        if not mats:
+            return jsonify({"ok": True, "funcionarios": []})
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, dtadm, situacao, codcateg, cbofuncao")
+             .eq("id_empresa", id_empresa)
+             .in_("matricula", mats)
+             .order("matricula")
+             .execute())
+        funcionarios = []
+        for f in (r.data or []):
+            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            funcionarios.append({
+                "matricula": f.get("matricula"),
+                "nome":      nome,
+                "dtadm":     str(f.get("dtadm") or ""),
+                "situacao":  str(f.get("situacao") or ""),
+                "codcateg":  str(f.get("codcateg") or ""),
+                "cbofuncao": str(f.get("cbofuncao") or ""),
+            })
+        return jsonify({"ok": True, "funcionarios": funcionarios})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+
+@app.route("/cancelar_aviso_previo", methods=["GET", "POST"])
+def cancelar_aviso_previo():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    folha_fmt  = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""
+
+    mat_raw = (request.args.get("mats") or request.args.get("mat") or "").strip()
+    mat_str = mat_raw.split(",")[0].strip()
+    if not mat_str.isdigit():
+        return redirect("/select_funcionario?contexto=cancelar_aviso_previo")
+    mat_int = int(mat_str)
+
+    # ── POST: efetiva o cancelamento (deleta op1=9 do mês atual) ──
+    if request.method == "POST":
+        if not anomes:
+            return redirect("/menu")
+        nome_func = ""
+        try:
+            r_n = (supabase.table("tab_cad").select("nome, nomer")
+                   .eq("id_empresa", id_empresa).eq("matricula", mat_int).limit(1).execute())
+            if r_n.data:
+                nome_func = (r_n.data[0].get("nomer") or r_n.data[0].get("nome") or "").strip()
+        except Exception:
+            pass
+        try:
+            (supabase.table("tab_eventos").delete()
+             .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+             .eq("op1", 9).eq("folha", int(anomes)).execute())
+        except Exception as e:
+            gravar_log("AVISO-PREVIO-CANCEL-ERRO", str(e)[:200], matricula=mat_int)
+            return redirect(f"/cancelar_aviso_previo?mats={mat_int}&erro=1")
+        gravar_log("AVISO-PREVIO-CANCEL",
+                   f"Aviso prévio cancelado (folha {anomes}): {nome_func}", matricula=mat_int)
+        return redirect(f"/cancelar_aviso_previo?mats={mat_int}&ok=1")
+
+    # ── GET: funcionário + aviso cancelável (deste mês) ──
+    funcionario = None
+    try:
+        r = (supabase.table("tab_cad").select("matricula, nome, nomer, situacao")
+             .eq("id_empresa", id_empresa).eq("matricula", mat_int).limit(1).execute())
+        if r.data:
+            f = r.data[0]
+            funcionario = {
+                "matricula": mat_int,
+                "mat_fmt":   str(mat_int).zfill(6),
+                "nome":      (f.get("nomer") or f.get("nome") or "").strip(),
+                "situacao":  str(f.get("situacao") or ""),
+            }
+    except Exception:
+        pass
+
+    aviso = None
+    if anomes:
+        try:
+            r_ev = (supabase.table("tab_eventos")
+                    .select("data1i, campotxt1, campotxt2, campotxt3")
+                    .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                    .eq("op1", 9).eq("folha", int(anomes))
+                    .order("data1i", desc=True).limit(1).execute())
+            if r_ev.data:
+                ev = r_ev.data[0]
+                d = int(ev.get("data1i") or 0)
+                data_fmt = ""
+                if d > 0:
+                    s = f"{d:08d}"
+                    data_fmt = f"{s[6:8]}/{s[4:6]}/{s[0:4]}"
+                aviso = {
+                    "data_fmt": data_fmt,
+                    "tipo":     ev.get("campotxt1") or "",
+                    "quem":     ev.get("campotxt2") or "",
+                    "cond":     ev.get("campotxt3") or "",
+                }
+        except Exception:
+            aviso = None
+
+    return render_template(
+        "F10_Cancelar_AvisoPrevio.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        funcionario=funcionario,
+        aviso=aviso,
+        folha_fmt=folha_fmt,
+        ok=request.args.get("ok"),
+        erro=request.args.get("erro"),
     )
 
 
@@ -9634,16 +9822,35 @@ def api_funcionarios_lista():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    # Matrículas com aviso prévio registrado (op1=9 em tab_eventos).
+    aviso_mats = set()
+    try:
+        r_av = (supabase.table("tab_eventos")
+                .select("matricula")
+                .eq("id_empresa", id_empresa)
+                .eq("op1", 9)
+                .execute())
+        aviso_mats = {int(row["matricula"]) for row in (r_av.data or [])
+                      if row.get("matricula") is not None}
+    except Exception:
+        aviso_mats = set()
+
     funcionarios = []
     for f in rows:
         nome = (f.get("nomer") or f.get("nome") or "").strip()
+        situacao = str(f.get("situacao") or "")
+        try:
+            mat_int = int(f.get("matricula") or 0)
+        except (TypeError, ValueError):
+            mat_int = 0
         funcionarios.append({
             "matricula": f.get("matricula"),
             "nome":      nome,
             "dtadm":     str(f.get("dtadm") or ""),
-            "situacao":  str(f.get("situacao") or ""),
+            "situacao":  situacao,
             "codcateg":  str(f.get("codcateg") or ""),
             "cbofuncao": str(f.get("cbofuncao") or ""),
+            "aviso_previo": (mat_int in aviso_mats),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})

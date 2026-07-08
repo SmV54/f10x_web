@@ -169,7 +169,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     border-radius: 12px; overflow: hidden;
 }
 .lista-header {
-    display: grid; grid-template-columns: 32px 72px 1fr 110px 90px;
+    display: grid; grid-template-columns: 32px 54px 1fr 110px 116px;
     gap: 0 8px; background: #f1f5f9;
     border-bottom: 2px solid var(--border);
     padding: 8px 14px;
@@ -182,7 +182,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .lista-body::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 
 .lista-row {
-    display: grid; grid-template-columns: 32px 72px 1fr 110px 90px;
+    display: grid; grid-template-columns: 32px 54px 1fr 110px 116px;
     gap: 0 8px; padding: 3px 14px;
     border-bottom: 1px solid #f1f5f9;
     cursor: pointer; transition: background 0.1s; align-items: center;
@@ -198,10 +198,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .lc-mat  { font-family: var(--mono); font-size: 12px; color: #64748b; }
 .lc-nome { font-size: 13px; font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lc-adm  { font-size: 12px; color: #64748b; }
-.lc-sit  { }
+.lc-sit  { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
 
 .badge-ativo    { display: inline-block; background: #f0fdf4; color: #166534; border: 1px solid #86efac; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
 .badge-demitido { display: inline-block; background: #fff1f2; color: #9f1239; border: 1px solid #fda4af; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
+.badge-aviso    { display: inline-block; background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 
 .lista-loading, .lista-vazio {
     padding: 28px; text-align: center; font-size: 12px; color: #94a3b8;
@@ -645,6 +646,17 @@ const CONTEXTOS = {
         maxSel:        1,
         msgMaxSel:     'A rescisão deve ser registrada para um funcionário por vez',
     },
+    cancelar_aviso_previo: {
+        titulo:        'Cancelar Aviso Prévio — Selecionar Funcionário',
+        subtitulo:     'Somente funcionários com aviso prévio registrado no mês da folha atual são exibidos',
+        tituloCurto:   'Selecionar — Cancelar Aviso',
+        proximo:       '/cancelar_aviso_previo',
+        apiUrl:        '/api/funcionarios_com_aviso_cancelavel',
+        f_situacao:    'all',
+        maxSel:        1,
+        msgMaxSel:     'Cancele o aviso prévio de um funcionário por vez',
+        msgVazio:      'Nenhum funcionário com aviso prévio registrado no mês da folha atual.',
+    },
     insalub_pericu: {
         titulo:        'Insalubridade / Periculosidade — Selecionar Funcionário',
         subtitulo:     'Selecione o funcionário para incluir ou cancelar insalubridade / periculosidade',
@@ -706,7 +718,7 @@ async function carregarFuncionarios() {
         if (!d.ok) { body.innerHTML = `<div class="lista-vazio">Erro: ${d.msg}</div>`; return; }
         todosFunc = d.funcionarios || [];
         if (!todosFunc.length && ctx.apiUrl) {
-            body.innerHTML = '<div class="lista-vazio">Nenhum funcionário com acidente registrado na folha ativa sem recibo eSocial.</div>';
+            body.innerHTML = '<div class="lista-vazio">' + (ctx.msgVazio || 'Nenhum funcionário encontrado para esta ação.') + '</div>';
             return;
         }
         aplicarFiltros();
@@ -977,12 +989,15 @@ function renderLista(lista) {
         const sit = (f.situacao === 'A')
             ? '<span class="badge-ativo">Ativo</span>'
             : '<span class="badge-demitido">Demitido</span>';
+        const aviso = f.aviso_previo
+            ? '<span class="badge-aviso" title="Funcionário em aviso prévio">Aviso Prévio</span>'
+            : '';
         return `<div class="lista-row${sel?' selecionado':''}" data-mat="${f.matricula}" onclick="toggleRow(${f.matricula})">
             <div class="lc-check"><input type="checkbox" class="func-chk" value="${f.matricula}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="chkChange(this,${f.matricula})"></div>
             <div class="lc-mat">${String(f.matricula).padStart(6,'0')}</div>
             <div class="lc-nome" title="${f.nome||''}">${f.nome||'—'}</div>
             <div class="lc-adm">${fmtDataAdm(f.dtadm)}</div>
-            <div class="lc-sit">${sit}</div>
+            <div class="lc-sit">${sit}${aviso}</div>
         </div>`;
     }).join('');
 

@@ -70,11 +70,24 @@ thead th {
     white-space: nowrap; font-weight: 600; letter-spacing: 0.3px;
 }
 tbody td { padding: 4px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+/* coluna Matrícula: encolhe ao conteúdo (width:1%) para o Nome ficar logo ao lado,
+   liberando espaço à direita para outras informações (ex.: badge Aviso Prévio) */
+thead th:first-child, tbody td.mat { width: 1%; white-space: nowrap; padding-right: 10px; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
 .card-total { padding: 8px 16px; font-size: 12px; color: #64748b; text-align: right; border-top: 1px solid #f1f5f9; }
+.badge-aviso {
+    display: inline-block; margin-left: 8px; background: #fff7ed; color: #9a3412;
+    border: 1px solid #fdba74; border-radius: 4px; padding: 1px 7px;
+    font-size: 10px; font-weight: 700; white-space: nowrap; vertical-align: middle;
+}
+.aviso-atualizar {
+    background: #fffbeb; border: 1px solid #fcd34d; color: #92400e;
+    border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+}
 
 .rodape { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; }
 .btn-pdf {
@@ -145,12 +158,17 @@ tbody tr:hover { background: #f8fafc; }
                 <label class="radio-op"><input type="radio" name="classificacao" value="N" {% if classificacao == 'N' %}checked{% endif %}> Numérica</label>
             </div>
 
-            <button type="submit" class="btn-filtrar">Atualizar</button>
+            <button type="submit" class="btn-filtrar">Atualizar a Lista</button>
 
         </div>
     </form>
 
-    <div class="card">
+    <div id="aviso-atualizar" class="aviso-atualizar" style="display:none;">
+        <span>🔄</span>
+        <div>Os filtros foram alterados. Clique em <strong>Atualizar a Lista</strong> para exibir os funcionários da nova seleção.</div>
+    </div>
+
+    <div class="card" id="card-lista">
         <div class="card-header">
             <h2>Funcionários</h2>
         </div>
@@ -167,7 +185,7 @@ tbody tr:hover { background: #f8fafc; }
                 {% for f in funcs %}
                 <tr>
                     <td class="mat">{{ "%06d"|format(f.matricula) }}</td>
-                    <td>{{ f.nome_fmt }}</td>
+                    <td>{{ f.nome_fmt }}{% if f.aviso_previo %}<span class="badge-aviso" title="Funcionário com aviso prévio registrado">Aviso Prévio{% if f.aviso_previo_data %} · {{ f.aviso_previo_data }}{% endif %}</span>{% endif %}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -178,12 +196,31 @@ tbody tr:hover { background: #f8fafc; }
         {% endif %}
     </div>
 
-    <div class="rodape">
+    <div class="rodape" id="rodape-lista">
         <a class="btn-pdf" href="/rel_lista_funcionarios_pdf?situacao={{ situacao_filtro }}&classificacao={{ classificacao }}" target="_blank">&#128438; Imprimir em PDF</a>
         <a class="btn-menu" href="/menu">Voltar ao Menu</a>
     </div>
 
 </div>
 <script src="/static/f10_dialog.js"></script>
+<script>
+// Ao mudar qualquer filtro (situação/ordenação), esconde a lista atual até que
+// o usuário clique em "Atualizar a Lista" — evita ler a lista antiga como se
+// fosse da nova seleção.
+(function () {
+    const form   = document.querySelector('form[action="/rel_lista_funcionarios"]');
+    const card   = document.getElementById('card-lista');
+    const rodape = document.getElementById('rodape-lista');
+    const aviso  = document.getElementById('aviso-atualizar');
+    if (!form) return;
+    form.querySelectorAll('input[type="radio"]').forEach(function (r) {
+        r.addEventListener('change', function () {
+            if (card)   card.style.display   = 'none';
+            if (rodape) rodape.style.display = 'none';
+            if (aviso)  aviso.style.display  = 'flex';
+        });
+    });
+})();
+</script>
 </body>
 </html>

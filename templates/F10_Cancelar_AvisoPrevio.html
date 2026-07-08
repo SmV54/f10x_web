@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Cancelar Aviso Prévio</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:#a0d9be; --navy-line:#70c4a0; --accent:#2a7de1;
+    --text-head:#1e293b; --text-sub:#374151; --bg:#f0f2f6; --surface:#ffffff;
+    --border:#dde3ec; --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--sans); background:var(--bg); color:var(--text-sub); min-height:100vh; }
+.topo {
+    background:var(--navy); border-bottom:1px solid var(--navy-line);
+    padding:0 28px; display:grid; grid-template-columns:auto 1fr auto;
+    align-items:center; gap:0 32px; min-height:64px; position:sticky; top:0; z-index:10;
+}
+.topo-titulo  { font-size:15px; font-weight:600; color:var(--text-head); text-align:center; }
+.topo-empresa { font-size:15px; font-weight:600; color:#111827; }
+.topo-nome    { font-size:11px; color:var(--text-sub); margin-top:2px; }
+.topo-versao  { font-family:var(--mono); font-size:10px; font-weight:700; color:#374151; }
+.btn-voltar-topo {
+    margin-left:16px; background:transparent; border:1px solid var(--navy-line);
+    color:var(--text-sub); font-size:12px; padding:5px 12px; border-radius:6px;
+    cursor:pointer; font-family:var(--sans); transition:.15s; white-space:nowrap;
+}
+.btn-voltar-topo:hover { border-color:var(--accent); color:var(--text-head); }
+
+.conteudo { max-width:600px; margin:50px auto; padding:0 24px 60px; }
+.card {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:18px; padding:32px 32px; text-align:center;
+}
+.card.warn { border:2px solid #fcd34d; }
+.card.ok   { border:2px solid #86efac; }
+.card.err  { border:2px solid #fca5a5; }
+.ic { font-size:46px; margin-bottom:14px; }
+.tit { font-size:20px; font-weight:700; color:var(--text-head); margin-bottom:6px; }
+.tit.ok { color:#166534; }
+.desc { font-size:14px; color:#475569; margin-bottom:22px; line-height:1.6; }
+
+.resumo {
+    background:#f8fafc; border:1px solid var(--border); border-radius:12px;
+    margin-bottom:24px; text-align:left; overflow:hidden;
+}
+.ri { display:flex; justify-content:space-between; align-items:center; padding:10px 18px; border-bottom:1px solid #f1f5f9; }
+.ri:last-child { border-bottom:none; }
+.rl { font-size:12px; color:#64748b; }
+.rv { font-family:var(--mono); font-size:13px; font-weight:600; color:#1e293b; }
+.rv.txt { font-family:var(--sans); }
+
+.aviso-mes {
+    background:#fffbeb; border:1px solid #fcd34d; color:#92400e;
+    border-radius:10px; padding:10px 14px; font-size:12.5px; margin-bottom:22px; text-align:left;
+}
+.btns { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+.btn {
+    font-size:14px; font-family:var(--sans); font-weight:600; padding:11px 24px;
+    border-radius:8px; cursor:pointer; transition:.15s; text-decoration:none;
+    display:inline-flex; align-items:center; gap:8px; border:1px solid var(--border);
+}
+.btn-cancelar-ap { background:#dc2626; color:#fff; border:none; }
+.btn-cancelar-ap:hover { background:#b91c1c; }
+.btn-sec { background:var(--surface); color:#374151; }
+.btn-sec:hover { border-color:var(--accent); color:var(--accent); }
+.btn-menu { background:var(--accent); color:#fff; border:none; }
+.btn-menu:hover { background:#1a5fb8; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Cancelar Aviso Prévio</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+{% if ok %}
+    <div class="card ok">
+        <div class="ic">&#10003;</div>
+        <div class="tit ok">Aviso Prévio Cancelado</div>
+        <div class="desc">
+            O aviso prévio{% if funcionario %} de <strong>{{ funcionario.nome }}</strong> (matrícula {{ funcionario.mat_fmt }}){% endif %}
+            foi cancelado com sucesso.
+        </div>
+        <div class="btns">
+            <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_aviso_previo">Cancelar Outro</a>
+            <a class="btn btn-menu" href="/menu">&#8592; Menu</a>
+        </div>
+    </div>
+
+{% elif erro %}
+    <div class="card err">
+        <div class="ic">&#10060;</div>
+        <div class="tit">Não foi possível cancelar</div>
+        <div class="desc">Ocorreu um erro ao cancelar o aviso prévio. Tente novamente.</div>
+        <div class="btns">
+            <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_aviso_previo">Voltar</a>
+            <a class="btn btn-menu" href="/menu">&#8592; Menu</a>
+        </div>
+    </div>
+
+{% elif not aviso %}
+    <div class="card warn">
+        <div class="ic">&#9888;</div>
+        <div class="tit">Nenhum aviso prévio cancelável</div>
+        <div class="desc">
+            {% if funcionario %}<strong>{{ funcionario.nome }}</strong> (matrícula {{ funcionario.mat_fmt }}) não possui{% else %}Este funcionário não possui{% endif %}
+            aviso prévio registrado na folha atual{% if folha_fmt %} ({{ folha_fmt }}){% endif %}.
+            <br>O cancelamento só é permitido para avisos registrados no mês da folha em aberto.
+        </div>
+        <div class="btns">
+            <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_aviso_previo">Voltar</a>
+            <a class="btn btn-menu" href="/menu">&#8592; Menu</a>
+        </div>
+    </div>
+
+{% else %}
+    <div class="card warn">
+        <div class="ic">&#10060;</div>
+        <div class="tit">Confirmar Cancelamento</div>
+        <div class="desc">Você está prestes a <strong>cancelar</strong> o aviso prévio abaixo. Esta ação não pode ser desfeita.</div>
+
+        <div class="resumo">
+            <div class="ri">
+                <span class="rl">Matrícula</span>
+                <span class="rv">{{ funcionario.mat_fmt if funcionario else '—' }}</span>
+            </div>
+            <div class="ri">
+                <span class="rl">Nome</span>
+                <span class="rv txt">{{ funcionario.nome if funcionario else '—' }}</span>
+            </div>
+            <div class="ri">
+                <span class="rl">Data do Aviso</span>
+                <span class="rv">{{ aviso.data_fmt or '—' }}</span>
+            </div>
+            <div class="ri">
+                <span class="rl">Quem deu o Aviso</span>
+                <span class="rv txt">{{ aviso.quem or '—' }}</span>
+            </div>
+            <div class="ri">
+                <span class="rl">Tipo</span>
+                <span class="rv txt">{{ aviso.tipo or '—' }}</span>
+            </div>
+            {% if aviso.cond %}
+            <div class="ri">
+                <span class="rl">Condição Especial</span>
+                <span class="rv txt">{{ aviso.cond }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="aviso-mes">
+            &#128276; Só é cancelável o aviso prévio registrado no mês da folha atual{% if folha_fmt %} (<strong>{{ folha_fmt }}</strong>){% endif %}.
+        </div>
+
+        <form method="post" action="/cancelar_aviso_previo?mats={{ funcionario.matricula if funcionario else '' }}">
+            <div class="btns">
+                <button type="submit" class="btn btn-cancelar-ap">&#10060; Confirmar Cancelamento</button>
+                <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_aviso_previo">Voltar</a>
+                <a class="btn btn-menu" href="/menu">Menu</a>
+            </div>
+        </form>
+    </div>
+{% endif %}
+
+</div>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>
