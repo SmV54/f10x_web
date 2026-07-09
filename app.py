@@ -2669,6 +2669,9 @@ def rel_log_pdf():
     registros = []
     try:
         q = supabase.table("tab_log").select("*").eq("id_cliente", id_cliente)
+        # Logs de impersonação (admin entrando no cliente) só o admin pode ver.
+        if not _pode_impersonar():
+            q = q.neq("menu", "IMPERSONAR").neq("menu", "IMPERSONAR-FIM")
         if f_matricula:
             q = q.eq("matricula", int(f_matricula))
         if f_ano_mes:
@@ -5420,6 +5423,8 @@ def _lista_demitidos_dados(id_empresa, ini_int, fim_int):
                 "nome":      (f.get("nome") or f.get("nomer") or "").strip(),   # nome completo
                 "adm_fmt":   f"{da[6:8]}/{da[4:6]}/{da[0:4]}" if len(da) == 8 and da.isdigit() else "—",
                 "dem_fmt":   f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 and dr.isdigit() else "—",
+                "adm_raw":   da,
+                "dem_raw":   dr,
                 "motivo":    str(f.get("motrescisao") or ""),
             })
     except Exception:
@@ -6117,6 +6122,7 @@ def calc_rescisao():
     if not session.get("logado"):
         return redirect("/")
     id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
     anomes     = str(session.get("anomes_atual") or "")
     def_ini, def_fim = _mes_atual_intervalo() if len(anomes) != 6 else (None, None)
     # desligados com datarescisao no mês da folha ativa
@@ -6126,6 +6132,8 @@ def calc_rescisao():
             r = (supabase.table("tab_cad")
                  .select("matricula, nome, nomer, situacao, datarescisao, motrescisao")
                  .eq("id_empresa", id_empresa).eq("situacao", "D").order("matricula").execute())
+            # matrículas já calculadas (tab_total R) = "Calculada"; senão "Pendente"
+            calc_set = _rescisao_calculada_mats(id_empresa, id_cliente, int(anomes))
             for f in (r.data or []):
                 dr = str(f.get("datarescisao") or "")
                 if dr[:6] != anomes:
@@ -6136,13 +6144,16 @@ def calc_rescisao():
                     "nome": (f.get("nome") or f.get("nomer") or "").strip(),
                     "resc_data": f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 else "—",
                     "motivo": str(f.get("motrescisao") or ""),
+                    "calculado": m in calc_set,
                 })
         except Exception:
             funcs = []
     folha_situacao = _refresh_situacao_folha() if len(anomes) == 6 else ""
+    modo = request.args.get("modo")
     return render_template("F10_Calc_Rescisao.html", **_ctx_relatorio(),
                            anomes_atual=anomes, funcs=funcs,
-                           folha_situacao=folha_situacao)
+                           folha_situacao=folha_situacao,
+                           modo_trct=(modo == "trct"), modo_memoria=(modo == "memoria"))
 
 
 @app.route("/api/calc_rescisao_calcular", methods=["POST"])
@@ -6200,6 +6211,39 @@ def api_calc_rescisao_calcular():
                      if int(r.get("cod_rubr") or 0) in set(_verbas_media)
                      and str(r.get("unid_verba") or "").upper() == "H"}
     _rubr_desc = {int(r["cod_rubr"]): (r.get("dsc_rubr") or "").strip() for r in rubrics}
+    # Mapa completo p/ classificar as verbas MANUAIS (origem='M') lançadas na
+    # rescisão: tipo (1=provento/2=desconto) e incidências de rescisão (tpr_inc_*).
+    # Incidência: "11" incide (INSS/IRRF/FGTS); FGTS também aceita "S" (verba 17).
+    _rubr_full = {}
+    for r in rubrics:
+        c = int(r.get("cod_rubr") or 0)
+        if c:
+            _rubr_full[c] = {
+                "tp":   str(r.get("tp_rubr")      or "1"),
+                "unid": str(r.get("unid_verba")   or "V").upper()[:1],
+                "icp":  str(r.get("tpr_inc_cp")   or ""),
+                "iir":  str(r.get("tpr_inc_irrf") or ""),
+                "ift":  str(r.get("tpr_inc_fgts") or ""),
+            }
+
+    # Verbas manuais (origem='M') da rescisão do mês, por matrícula. Não são
+    # apagadas pelo recálculo; aqui entram nas bases (INSS/IRRF/FGTS) e totais.
+    manual_mov = {}
+    try:
+        q_man = (supabase.table("tab_mov")
+                 .select("id, matricula, cod_verba, valor, qtd")
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      folha_int)
+                 .eq("folha_tipo", "R")
+                 .eq("origem",     "M")
+                 .eq("situacao",   "A"))
+        if id_cliente:
+            q_man = q_man.eq("id_cliente", id_cliente)
+        for row in (q_man.execute().data or []):
+            m = int(row.get("matricula") or 0)
+            manual_mov.setdefault(m, []).append(row)
+    except Exception:
+        pass
 
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
 
@@ -6313,25 +6357,78 @@ def api_calc_rescisao_calcular():
         fer_base = round((sal_mes + base_media_mes) * avos_fer / 12) if avos_fer else 0
         fer_prop = round(fer_base * 4 / 3)   # inclui 1/3
 
+        # ── Verbas MANUAIS (origem='M') lançadas na rescisão ──
+        # Proventos entram nos totais e (conforme incidência) nas bases de
+        # INSS/IRRF/FGTS do saldo; descontos abatem o líquido.
+        # salário-hora / salário-dia p/ recalcular verbas H/D manuais
+        sal_hora_man = float(vrsalfx) if und == "H" else (round(vrsalfx / qhm, 4) if qhm else 0.0)
+        _dias_folha_man = _dias_no_mes_total(anomes) or 30
+        sal_dia_man = (sal_mes / _dias_folha_man) if _dias_folha_man else 0.0
+
+        man_prov = man_desc = add_inss = add_irrf = add_fgts = 0
+        manuais_det = []
+        for row in manual_mov.get(mat, []):
+            cod_m = int(row.get("cod_verba") or 0)
+            qtd_m = int(row.get("qtd") or 0)
+            ri_m = _rubr_full.get(cod_m, {"tp": "1", "unid": "V", "icp": "", "iir": "", "ift": ""})
+            unid_m = ri_m.get("unid", "V")
+            # verba H/D: valor = qtd × salário-hora/dia (ignora valor gravado, que
+            # pode estar defasado); demais usam o valor lançado.
+            if unid_m == "H" and qtd_m > 0:
+                val_m = int(round(qtd_m / 60 * sal_hora_man))
+                _hh, _mm = qtd_m // 60, qtd_m % 60
+                det_m = (f"{_hh:02d}h{_mm:02d} × {_fmt_brl(int(round(sal_hora_man)))}/h"
+                         f"  =  {_fmt_brl(val_m)}")
+            elif unid_m == "D" and qtd_m > 0:
+                val_m = int(round(qtd_m * sal_dia_man))
+                det_m = (f"{qtd_m} {'dia' if qtd_m == 1 else 'dias'} × "
+                         f"{_fmt_brl(int(round(sal_dia_man)))}/dia  =  {_fmt_brl(val_m)}")
+            else:
+                val_m = int(row.get("valor") or 0)
+                det_m = f"Valor lançado: {_fmt_brl(val_m)}" if val_m else ""
+            if not val_m:
+                continue
+            # persiste o valor corrigido no tab_mov (p/ TRCT/Visualizar lerem igual)
+            if val_m != int(row.get("valor") or 0) and row.get("id"):
+                try:
+                    supabase.table("tab_mov").update({"valor": val_m}).eq("id", row["id"]).execute()
+                except Exception:
+                    pass
+            eh_prov = str(ri_m["tp"]) == "1"
+            incs = []
+            if eh_prov:                               # provento
+                man_prov += val_m
+                if ri_m["icp"] == "11":              add_inss += val_m; incs.append("INSS")
+                if ri_m["iir"] == "11":              add_irrf += val_m; incs.append("IRRF")
+                if ri_m["ift"] in ("11", "S"):       add_fgts += val_m; incs.append("FGTS")
+            else:                                     # desconto
+                man_desc += val_m
+            manuais_det.append({"cod": cod_m, "dsc": _rubr_desc.get(cod_m, f"Verba {cod_m:04d}"),
+                                "tp": "P" if eh_prov else "D", "val": val_m,
+                                "unid": unid_m, "qtd": qtd_m, "det": det_m,
+                                "inc": "+".join(incs) if incs else "—"})
+
         # ── Bases e impostos ──
         # As médias são REFLEXO (entram no 13º e nas férias), não são pagas como
         # linha própria. Saldo de salário incide INSS sobre o salário do período.
-        base_inss_saldo = saldo
+        # Verbas manuais que incidem somam à base do saldo.
+        base_inss_saldo = saldo + add_inss
         inss_saldo, inss_saldo_det, _ = _calc_inss_progressivo(base_inss_saldo, tabela)
         # INSS 13º (base separada)
         inss_13, inss_13_det, _ = (_calc_inss_progressivo(d13, tabela) if d13 else (0, [], 0))
-        # IRRF: saldo (base saldo - inss_saldo - dep) ; 13º separado
+        # IRRF: base saldo (saldo + manuais c/ inc. IRRF) - inss_saldo - dep ; 13º separado
         ndep = dep_count.get(mat, 0); dep_total = ndep * dep_irrf_ded
-        base_irrf_saldo = max(0, base_inss_saldo - inss_saldo - dep_total)
+        base_irrf_saldo = max(0, saldo + add_irrf - inss_saldo - dep_total)
         irrf_saldo, irrf_saldo_info = _calc_irrf(base_irrf_saldo, tabela)
         base_irrf_13 = max(0, d13 - inss_13)
         irrf_13, irrf_13_info = (_calc_irrf(base_irrf_13, tabela) if d13 else (0, None))
-        # FGTS 8% sobre saldo + 13º + aviso indenizado (férias indenizadas não têm FGTS)
-        base_fgts = saldo + d13 + aviso_val
+        # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
+        # (férias indenizadas não têm FGTS)
+        base_fgts = saldo + d13 + aviso_val + add_fgts
         fgts_val = round(base_fgts * 8 / 100)
 
-        total_prov = saldo + aviso_val + d13 + fer_prop
-        total_desc = inss_saldo + inss_13 + irrf_saldo + irrf_13
+        total_prov = saldo + aviso_val + d13 + fer_prop + man_prov
+        total_desc = inss_saldo + inss_13 + irrf_saldo + irrf_13 + man_desc
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -6394,6 +6491,7 @@ def api_calc_rescisao_calcular():
             "dt_proj_fmt": dt_proj.strftime("%d/%m/%Y"),
             "motivo": motivo, "aviso_ind": aviso_ind, "dias_aviso": dias_aviso,
             "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dt_resc.day,
+            "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
             "avos_fer": avos_fer, "fer_base": fer_base, "fer_prop": fer_prop,
             "med_total": med_total, "medias_info": medias_info,
@@ -6403,6 +6501,8 @@ def api_calc_rescisao_calcular():
             "base_irrf_saldo": base_irrf_saldo, "irrf_saldo": irrf_saldo, "irrf_saldo_info": irrf_saldo_info,
             "base_irrf_13": base_irrf_13, "irrf_13": irrf_13, "irrf_13_info": irrf_13_info,
             "base_fgts": base_fgts, "fgts_val": fgts_val, "multa_pct": multa_pct, "multa_fgts": multa_fgts,
+            "man_prov": man_prov, "man_desc": man_desc, "manuais_det": manuais_det,
+            "add_inss": add_inss, "add_irrf": add_irrf, "add_fgts": add_fgts,
             "total_prov": total_prov, "total_desc": total_desc, "liquido": liquido,
             # formatados p/ a tela
             "saldo_fmt": _fmt_brl(saldo), "d13_fmt": _fmt_brl(d13), "fer_fmt": _fmt_brl(fer_prop),
@@ -6419,7 +6519,8 @@ def api_calc_rescisao_calcular():
         print(f"[gerar_memoria_rescisao] erro: {e_mem}")
 
     # remove campos pesados do JSON (só resumo p/ a tela)
-    _CAMPOS_PDF = {"medias_info", "inss_saldo_det", "inss_13_det", "irrf_saldo_info", "irrf_13_info"}
+    _CAMPOS_PDF = {"medias_info", "inss_saldo_det", "inss_13_det", "irrf_saldo_info", "irrf_13_info",
+                   "manuais_det"}
     web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
     return jsonify({"ok": True, "resultados": web, "total": len(web)})
 
@@ -6489,10 +6590,21 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             # 0001 — Dados
             aviso_txt = (f"Aviso prévio INDENIZADO ({r['dias_aviso']} dias)" if r["aviso_ind"]
                          else "Sem aviso prévio indenizado")
+            _und  = str(r.get("und_sal") or "M")
+            _qhm  = int(r.get("qtd_hrs_mes") or 220)
+            _shora = int(round(r.get("sal_hora") or 0))
+            if _und == "H":
+                lin_sal   = f"Salário cadastrado: {_B(_shora)}/hora (horista)"
+                lin_shora = (f"Salário-hora = {_B(_shora)}/hora  ·  "
+                             f"Salário mensal = {_B(_shora)} × {_qhm} h/mês = <b>{_B(sal)}</b>")
+            else:
+                lin_sal   = f"Salário cadastrado: {_B(sal)}/mês (mensalista)"
+                lin_shora = (f"Salário-hora = {_B(sal)} ÷ {_qhm} h/mês = <b>{_B(_shora)}/hora</b>")
             e.append(_etapa("ETAPA 0001 - DADOS DA RESCISAO", [
                 f"Data da rescisão: {r['resc_data_fmt']}   Motivo: {r['motivo']}",
                 f"{aviso_txt}   Data projetada (avos): {r['dt_proj_fmt']}",
-                f"Salário mensal: {_B(sal)}",
+                lin_sal,
+                lin_shora,
             ]))
             # 0002 — Saldo de salário
             e.append(_etapa("ETAPA 0002 - SALDO DE SALARIO", [
@@ -6530,8 +6642,25 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 f"+ 1/3 = <b>{_B(r['fer_prop'])}</b>"
                 if r["fer_prop"] else "Sem férias proporcionais para este motivo.",
             ]))
+            # 0006B — Verbas manuais lançadas
+            det_man = r.get("manuais_det") or []
+            if det_man:
+                lin_man = []
+                for d in det_man:
+                    sinal = "+" if d["tp"] == "P" else "−"
+                    tp_lbl = "Provento" if d["tp"] == "P" else "Desconto"
+                    lin_man.append(f"{d['cod']:04d} {d['dsc']} — {tp_lbl} {sinal}<b>{_B(d['val'])}</b>"
+                                   + (f"  (incide {d['inc']})" if d['tp'] == 'P' else ""))
+                    if d.get("det"):
+                        lin_man.append(f"      {d['det']}")
+                if r.get("man_prov"):
+                    lin_man.append(f"<b>Total proventos manuais: {_B(r['man_prov'])}</b>")
+                if r.get("man_desc"):
+                    lin_man.append(f"<b>Total descontos manuais: {_B(r['man_desc'])}</b>")
+                e.append(_etapa("ETAPA 0006B - VERBAS MANUAIS LANCADAS", lin_man))
             # 0007 — INSS
-            lin_inss = [f"Base saldo (saldo+médias): {_B(r['base_inss_saldo'])}"]
+            _base_lbl = "saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
+            lin_inss = [f"Base saldo ({_base_lbl}): {_B(r['base_inss_saldo'])}"]
             for fx in (r.get("inss_saldo_det") or []):
                 lim, pct, bf, vf = fx
                 lin_inss.append(f"  faixa até {_B(lim)} × {pct/100:.2f}% sobre {_B(bf)} = {_B(vf)}")
@@ -6540,15 +6669,17 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 lin_inss.append(f"INSS 13º (base {_B(r['d13_base'])}) = <b>{_B(r['inss_13'])}</b>")
             e.append(_etapa("ETAPA 0007 - INSS", lin_inss))
             # 0008 — IRRF
+            _irrf_base_lbl = "saldo" + (" + manuais c/ inc. IRRF" if r.get("add_irrf") else "")
             lin_irrf = [
-                f"Base saldo − INSS − dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
+                f"Base ({_irrf_base_lbl}) − INSS − dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
                 f"IRRF saldo = <b>{_B(r['irrf_saldo'])}</b>",
             ]
             if r["irrf_13"]:
                 lin_irrf.append(f"IRRF 13º (base {_B(r['base_irrf_13'])}) = <b>{_B(r['irrf_13'])}</b>")
             e.append(_etapa("ETAPA 0008 - IRRF", lin_irrf))
             # 0009 — FGTS + multa
-            lin_fgts = [f"Base FGTS (saldo+médias+13º+aviso) {_B(r['base_fgts'])} × 8% = <b>{_B(r['fgts_val'])}</b>"]
+            _fgts_lbl = "saldo+13º+aviso" + ("+manuais c/ inc. FGTS" if r.get("add_fgts") else "")
+            lin_fgts = [f"Base FGTS ({_fgts_lbl}) {_B(r['base_fgts'])} × 8% = <b>{_B(r['fgts_val'])}</b>"]
             if r["multa_pct"]:
                 lin_fgts.append(f"Multa FGTS: {r['multa_pct']}% sobre o saldo de FGTS"
                                 + (f" = {_B(r['multa_fgts'])}" if r["multa_fgts"] else " (informe o saldo)"))
@@ -6563,6 +6694,393 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_r:
             print(f"[memoria_rescisao] mat={mat} erro: {e_r}")
+
+
+# =========================================================
+# TRCT — Termo de Rescisão do Contrato de Trabalho
+# Réplica do formulário oficial (Portaria MTE nº 1.057/2012)
+# =========================================================
+_MOTIVO_DESC_RESC = {
+    "01": "Rescisão, com justa causa, por iniciativa do empregador",
+    "02": "Rescisão, sem justa causa, por iniciativa do empregador",
+    "03": "Rescisão antecipada do contrato a termo, por iniciativa do empregador",
+    "04": "Rescisão antecipada do contrato a termo, por iniciativa do empregado",
+    "05": "Rescisão por culpa recíproca",
+    "06": "Término do contrato por prazo determinado",
+    "07": "Rescisão do contrato de trabalho, a pedido do empregado",
+    "10": "Rescisão do contrato de trabalho por falecimento do empregado",
+    "17": "Rescisão indireta do contrato de trabalho",
+    "33": "Rescisão por acordo entre as partes (art. 484-A da CLT)",
+}
+
+# Verbas usadas na rescisão → (descrição p/ TRCT, "P"=provento / "D"=desconto)
+_TRCT_VERBAS = {
+    10:  ("Saldo de Salário",                        "P"),
+    11:  ("Horas Extras",                            "P"),
+    12:  ("13º Salário Proporcional",                "P"),
+    13:  ("13º Salário Indenizado (Aviso Prévio)",   "P"),
+    14:  ("13º Salário sobre o Aviso Prévio",        "P"),
+    17:  ("Férias Vencidas + 1/3",                   "P"),
+    44:  ("Férias sobre o Aviso Prévio + 1/3",       "P"),
+    49:  ("Férias Proporcionais + 1/3",              "P"),
+    61:  ("Aviso Prévio Indenizado",                 "P"),
+    101: ("INSS sobre o Saldo de Salário",           "D"),
+    104: ("INSS sobre o 13º Salário",                "D"),
+    120: ("IRRF sobre a Rescisão",                   "D"),
+    122: ("IRRF sobre o 13º Salário",                "D"),
+}
+
+
+def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, empresa_nm, cnpj_sess):
+    """Monta o PDF da TRCT (réplica do formulário oficial) e devolve os bytes."""
+    from io import BytesIO
+    from xml.sax.saxutils import escape as _esc
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    W = 18 * cm
+
+    def _d(v):
+        s = str(v or "")
+        return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if len(s) == 8 and s.isdigit() else "—"
+
+    def _cep(v):
+        d = "".join(c for c in str(v or "") if c.isdigit())
+        return f"{d[:5]}-{d[5:8]}" if len(d) == 8 else (str(v or "") or "—")
+
+    def _cpf(v):
+        c = "".join(ch for ch in str(v or "") if ch.isdigit())
+        return f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}" if len(c) == 11 else (str(v or "") or "—")
+
+    def _money(c):
+        return _fmt_brl(int(c or 0)).replace("R$ ", "")
+
+    st_cell = ParagraphStyle("cell", fontName="Helvetica", fontSize=8, leading=9.5)
+    st_th   = ParagraphStyle("th", fontName="Helvetica-Bold", fontSize=7.5, leading=9,
+                             textColor=colors.white)
+    st_td   = ParagraphStyle("td", fontName="Helvetica", fontSize=8, leading=9.5)
+    st_tdr  = ParagraphStyle("tdr", fontName="Helvetica", fontSize=8, leading=9.5, alignment=2)
+    st_tot  = ParagraphStyle("tot", fontName="Helvetica-Bold", fontSize=8.5, leading=10, alignment=2)
+
+    def cell(num, label, value):
+        v = _esc(str(value)) if (value not in (None, "", "—")) else "&nbsp;"
+        return Paragraph(
+            f'<font size="5.5" color="#6b7280">{num}&nbsp;&nbsp;{_esc(label)}</font>'
+            f'<br/><font size="8" color="#111827">{v}</font>', st_cell)
+
+    _GRID = [("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
+             ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+             ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+             ("VALIGN", (0, 0), (-1, -1), "TOP")]
+
+    def quadro(rows_spec, ncols=6):
+        colw = [W / ncols] * ncols
+        data, spans = [], []
+        for ri, row in enumerate(rows_spec):
+            cells, ci = [], 0
+            for (num, label, value, span) in row:
+                cells.append(cell(num, label, value))
+                if span > 1:
+                    spans.append(("SPAN", (ci, ri), (ci + span - 1, ri)))
+                    cells.extend([""] * (span - 1))
+                ci += span
+            while ci < ncols:
+                cells.append("")
+                ci += 1
+            data.append(cells)
+        t = Table(data, colWidths=colw)
+        t.setStyle(TableStyle(_GRID + spans))
+        return t
+
+    def secbar(txt):
+        t = Table([[Paragraph(f'<b>{_esc(txt)}</b>', st_th)]], colWidths=[W])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#334155")),
+                               ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                               ("TOPPADDING", (0, 0), (-1, -1), 3),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        return t
+
+    # ── Empregador ──
+    razao = emp.get("razaosocial") or emp.get("nome_fantasia") or empresa_nm or "—"
+    cnpj  = _fmt_cnpj(emp.get("cnpj") or cnpj_sess or "")
+    e_logr = emp.get("end_logradouro") or emp.get("logradouro") or ""
+    e_nr   = emp.get("end_nrlogr") or emp.get("nrlograd") or emp.get("nrlogr") or ""
+    e_cmp  = emp.get("end_complemento") or emp.get("complemento") or ""
+    e_end  = ", ".join([p for p in [e_logr, (f"nº {e_nr}" if e_nr else ""), e_cmp] if p]) or "—"
+    e_bairro = emp.get("end_bairro") or emp.get("bairro") or "—"
+    e_munic  = emp.get("end_cidade_nome") or emp.get("cidade_nome") or emp.get("cidade") or emp.get("municipio") or "—"
+    e_uf   = emp.get("end_uf") or emp.get("uf") or "—"
+    e_cep  = _cep(emp.get("end_cep") or emp.get("cep"))
+    e_cnae = emp.get("cnae") or emp.get("cnae_prep") or emp.get("cnae_preponderante") or "—"
+    e_fone = emp.get("telefone") or emp.get("fone") or emp.get("fone_princ") or "—"
+
+    q_emp = quadro([
+        [("01", "CNPJ / CAEPF", cnpj, 2), ("02", "Razão Social / Nome", razao, 4)],
+        [("03", "Endereço (Logradouro, nº e complemento)", e_end, 4), ("08", "CNAE Preponderante", e_cnae, 2)],
+        [("04", "Bairro / Distrito", e_bairro, 2), ("05", "Município", e_munic, 2),
+         ("06", "UF", e_uf, 1), ("07", "CEP", e_cep, 1)],
+    ])
+
+    # ── Trabalhador ──
+    w_nome  = (cad.get("nome") or cad.get("nomer") or "—").strip()
+    w_cpf   = _cpf(cad.get("cpf"))
+    w_nasc  = _d(cad.get("dtnascto"))
+    w_mae   = cad.get("nomemae") or "—"
+    w_pis   = (cad.get("nis") or cad.get("nit") or cad.get("pis") or cad.get("nrpis") or "—")
+    w_ctps  = (cad.get("nrctps") or cad.get("numctps") or "—")
+    w_logr  = cad.get("ender_dsclograd") or ""
+    w_nr    = cad.get("ender_nrlograd") or ""
+    w_cmp   = cad.get("ender_complemento") or ""
+    w_end   = ", ".join([p for p in [w_logr, (f"nº {w_nr}" if w_nr else ""), w_cmp] if p]) or "—"
+    w_bairro = cad.get("ender_bairro") or "—"
+    w_munic  = cad.get("ender_cidade_nome") or "—"
+    w_uf    = cad.get("ender_uf") or "—"
+    w_cep   = _cep(cad.get("ender_cep"))
+    w_categ = cad.get("codcateg") or "—"
+    w_cbo   = cad.get("cbofuncao") or "—"
+    w_cargo = cad.get("nmcargo") or "—"
+
+    q_trab = quadro([
+        [("09", "Nome do Trabalhador", w_nome, 4), ("10", "CPF", w_cpf, 2)],
+        [("11", "PIS / PASEP", w_pis, 2), ("12", "CTPS (nº / série / UF)", w_ctps, 2),
+         ("13", "Data de Nascimento", w_nasc, 2)],
+        [("14", "Nome da Mãe", w_mae, 4), ("15", "Categoria (eSocial)", w_categ, 2)],
+        [("16", "Endereço (Logradouro, nº e complemento)", w_end, 4), ("17", "Bairro / Distrito", w_bairro, 2)],
+        [("18", "Município", w_munic, 2), ("19", "UF", w_uf, 1), ("20", "CEP", w_cep, 1),
+         ("21", "CBO", w_cbo, 2)],
+        [("22", "Cargo / Função", w_cargo, 6)],
+    ])
+
+    # ── Contrato / Afastamento ──
+    motivo = str(cad.get("motrescisao") or "").zfill(2)
+    causa  = _MOTIVO_DESC_RESC.get(motivo, "—")
+    dt_aviso = "—"
+    if aviso_ev:
+        dt_aviso = _d(aviso_ev.get("data1i"))
+    # remuneração mensal
+    vrsalfx = int(cad.get("vrsalfx") or 0)
+    qhm = int(cad.get("qtdhrsmes") or 220) or 220
+    und = (cad.get("undsalfixo") or "M").upper()[:1]
+    sal_mes = vrsalfx * qhm if und == "H" else vrsalfx
+
+    q_ctr = quadro([
+        [("23", "Data de Admissão", _d(cad.get("dtadm")), 4),
+         ("24", "Data do Aviso Prévio", dt_aviso, 4),
+         ("25", "Data do Afastamento", _d(cad.get("datarescisao")), 4)],
+        [("26", "Código Motivo", motivo, 2), ("27", "Causa do Afastamento", causa, 8),
+         ("28", "Remuneração Mensal (R$)", _money(sal_mes), 2)],
+    ], ncols=12)
+
+    # ── Discriminação das verbas ──
+    def _desc_tipo(cod):
+        if cod in _TRCT_VERBAS:
+            return _TRCT_VERBAS[cod]
+        dsc = rubr_desc.get(cod) or f"Verba {cod:04d}"
+        tp  = "D" if str(rubr_tp.get(cod) or "1") != "1" else "P"
+        return (dsc, tp)
+
+    linhas = []
+    tot_prov = tot_desc = 0
+    for mv in sorted(movs, key=lambda m: int(m.get("cod_verba") or 0)):
+        cod = int(mv.get("cod_verba") or 0)
+        val = int(mv.get("valor") or 0)
+        qtd = int(mv.get("qtd") or 0)
+        if not val:
+            continue
+        dsc, tp = _desc_tipo(cod)
+        ref = ""
+        if qtd:
+            if cod == 10:
+                ref = f"{qtd} dias"
+            elif cod in (12, 49, 44):
+                ref = f"{qtd}/12"
+            elif cod == 61:
+                ref = f"{qtd} dias"
+            else:
+                ref = str(qtd)
+        if tp == "P":
+            tot_prov += val
+            linhas.append((cod, dsc, ref, _money(val), ""))
+        else:
+            tot_desc += val
+            linhas.append((cod, dsc, ref, "", _money(val)))
+    liquido = tot_prov - tot_desc
+
+    vh = [[Paragraph("Cód.", st_th), Paragraph("Discriminação das Verbas Rescisórias", st_th),
+           Paragraph("Referência", st_th), Paragraph("Valor a Pagar (R$)", st_th),
+           Paragraph("Valor a Deduzir (R$)", st_th)]]
+    for cod, dsc, ref, vp, vd in linhas:
+        vh.append([Paragraph(f"{cod:04d}", st_td), Paragraph(_esc(dsc), st_td),
+                   Paragraph(_esc(ref), st_td), Paragraph(vp, st_tdr), Paragraph(vd, st_tdr)])
+    vh.append([Paragraph("", st_td), Paragraph("<b>TOTAIS</b>", st_tot), Paragraph("", st_td),
+               Paragraph(_money(tot_prov), st_tot), Paragraph(_money(tot_desc), st_tot)])
+    vh.append([Paragraph("", st_td),
+               Paragraph("<b>LÍQUIDO A RECEBER (R$)</b>", st_tot), Paragraph("", st_td),
+               Paragraph(f"<b>{_money(liquido)}</b>", st_tot), Paragraph("", st_td)])
+    t_verbas = Table(vh, colWidths=[1.4*cm, 8.6*cm, 2.4*cm, 2.8*cm, 2.8*cm], repeatRows=1)
+    nrow = len(vh)
+    t_verbas.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#334155")),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#94a3b8")),
+        ("SPAN", (1, nrow - 1), (2, nrow - 1)),
+        ("LINEABOVE", (0, nrow - 2), (-1, nrow - 2), 0.8, colors.HexColor("#334155")),
+        ("BACKGROUND", (0, nrow - 2), (-1, -1), colors.HexColor("#eef2f7")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+
+    # ── FGTS ──
+    _, _, multa_pct = _MOTIVO_RESC.get(motivo, (True, True, 0))
+    base_fgts = int(tot.get("valor_base_fgts") or 0)
+    fgts_val  = int(tot.get("valor_fgts") or 0)
+    q_fgts = quadro([
+        [("29", "Base de Cálculo do FGTS Rescisório (R$)", _money(base_fgts), 2),
+         ("30", "FGTS incidente na Rescisão – 8% (R$)", _money(fgts_val), 2),
+         ("31", "% Multa Rescisória", (f"{multa_pct}%" if multa_pct else "—"), 2)],
+        [("32", "Observação", "O valor da multa rescisória sobre o saldo do FGTS "
+                              "é recolhido via GRRF, conforme extrato da Caixa.", 6)],
+    ])
+
+    # ── Assinaturas ──
+    _sig = ParagraphStyle("sig", fontName="Helvetica", fontSize=8, alignment=1, leading=10)
+    def _sigcell(txt):
+        return Paragraph("_______________________________________<br/>" + _esc(txt), _sig)
+    t_sig = Table([[_sigcell("Assinatura do Empregador"), _sigcell("Assinatura do Empregado")],
+                   [Spacer(1, 14), Spacer(1, 14)],
+                   [_sigcell("Assistência (Sindicato / SRTE), quando exigível"), Paragraph("", _sig)]],
+                  colWidths=[W/2, W/2])
+    t_sig.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 10),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                               ("ALIGN", (0, 0), (-1, -1), "CENTER")]))
+
+    # ── Documento ──
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.5*cm, rightMargin=1.5*cm,
+                            topMargin=1.4*cm, bottomMargin=1.4*cm, title="TRCT")
+    st_tit = ParagraphStyle("tit", fontName="Helvetica-Bold", fontSize=13, alignment=1, leading=15)
+    st_sub = ParagraphStyle("sub", fontName="Helvetica", fontSize=8, alignment=1,
+                            textColor=colors.HexColor("#6b7280"), leading=10, spaceAfter=6)
+    _ms = str(anomes)
+    ref_txt = f"{_ms[4:6]}/{_ms[:4]}" if len(_ms) == 6 else _ms
+
+    def _sec(txt):
+        return [Spacer(1, 6), secbar(txt)]
+
+    story = [
+        Paragraph("TERMO DE RESCISÃO DO CONTRATO DE TRABALHO", st_tit),
+        Paragraph(f"Réplica do formulário oficial — Portaria MTE nº 1.057/2012 &nbsp;·&nbsp; "
+                  f"Competência {ref_txt}", st_sub),
+        secbar("IDENTIFICAÇÃO DO EMPREGADOR"), q_emp,
+        *_sec("IDENTIFICAÇÃO DO TRABALHADOR"), q_trab,
+        *_sec("DADOS DO CONTRATO E DO AFASTAMENTO"), q_ctr,
+        *_sec("DISCRIMINAÇÃO DAS VERBAS RESCISÓRIAS"), Spacer(1, 2), t_verbas,
+        *_sec("FUNDO DE GARANTIA DO TEMPO DE SERVIÇO (FGTS)"), q_fgts,
+        Spacer(1, 18), t_sig,
+    ]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    return buf.getvalue()
+
+
+@app.route("/trct_pdf/<int:matricula>")
+def trct_pdf(matricula):
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return "Nenhuma folha ativa.", 400
+    folha_int = int(anomes)
+
+    # cadastro do trabalhador
+    try:
+        r_cad = (supabase.table("tab_cad").select("*")
+                 .eq("id_empresa", id_empresa).eq("matricula", matricula).limit(1).execute())
+        cad = r_cad.data[0] if r_cad.data else None
+    except Exception:
+        cad = None
+    if not cad:
+        return "Funcionário não encontrado.", 404
+
+    # empregador
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("id_empresa", id_empresa).limit(1).execute())
+        emp = r_emp.data[0] if r_emp.data else {}
+    except Exception:
+        emp = {}
+
+    # verbas da rescisão gravadas (folha_tipo R)
+    try:
+        q = (supabase.table("tab_mov").select("cod_verba, qtd, valor")
+             .eq("id_empresa", id_empresa).eq("matricula", matricula)
+             .eq("folha", folha_int).eq("folha_tipo", "R").eq("situacao", "A"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        movs = q.execute().data or []
+    except Exception:
+        movs = []
+    if not movs:
+        return ("Rescisão ainda não calculada para este funcionário nesta folha. "
+                "Calcule a rescisão antes de emitir a TRCT."), 400
+
+    # totais (FGTS)
+    try:
+        q_t = (supabase.table("tab_total")
+               .select("valor_base_fgts, valor_fgts, valor_total_proventos, "
+                       "valor_total_descontos, valor_liquido")
+               .eq("id_empresa", id_empresa).eq("matricula", matricula)
+               .eq("folha", folha_int).eq("folha_tipo", "R"))
+        if id_cliente:
+            q_t = q_t.eq("id_cliente", id_cliente)
+        tot = (q_t.execute().data or [{}])[0]
+    except Exception:
+        tot = {}
+    # tab_total R é o "selo" de calculada-e-em-dia. Sem ele, a rescisão está
+    # pendente (nunca calculada ou invalidada por lançamento manual posterior).
+    if not tot:
+        return ("Rescisão PENDENTE de cálculo para este funcionário (houve lançamento "
+                "de verba após o cálculo, ou ainda não foi calculada). Recalcule a "
+                "rescisão antes de emitir a TRCT."), 400
+
+    # descrições de rubricas (fallback p/ verbas fora do mapa padrão)
+    rubr_desc, rubr_tp = {}, {}
+    try:
+        r_rub = (supabase.table("tab_rubrica").select("cod_rubr, dsc_rubr, tp_rubr")
+                 .in_("id_cliente", [0, id_cliente]).execute())
+        for row in (r_rub.data or []):
+            c = int(row.get("cod_rubr") or 0)
+            rubr_desc[c] = (row.get("dsc_rubr") or "").strip()
+            rubr_tp[c]   = str(row.get("tp_rubr") or "1")
+    except Exception:
+        pass
+
+    # aviso prévio (data)
+    aviso_ev = None
+    try:
+        r_av = (supabase.table("tab_eventos").select("data1i, campotxt1")
+                .eq("id_empresa", id_empresa).eq("matricula", matricula).eq("op1", 9)
+                .order("data1i", desc=True).limit(1).execute())
+        aviso_ev = r_av.data[0] if r_av.data else None
+    except Exception:
+        pass
+
+    try:
+        pdf = _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev,
+                              str(session.get("empresa_info") or ""),
+                              str(session.get("cnpj_empresa") or ""))
+    except Exception as e_pdf:
+        return f"Erro ao gerar a TRCT: {e_pdf}", 500
+
+    from flask import make_response
+    resp = make_response(pdf)
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="TRCT_{matricula:06d}_{anomes}.pdf"'
+    return resp
 
 
 # =========================================================
@@ -10283,6 +10801,11 @@ def rel_log():
         try:
             q = supabase.table("tab_log").select("*").eq("id_cliente", id_cliente)
 
+            # Logs de impersonação só o admin pode ver (protege registros antigos
+            # que ficaram sob o id_cliente do cliente antes da correção).
+            if not _pode_impersonar():
+                q = q.neq("menu", "IMPERSONAR").neq("menu", "IMPERSONAR-FIM")
+
             if f_matricula:
                 q = q.eq("matricula", int(f_matricula))
 
@@ -12813,6 +13336,75 @@ def cad_mov():
     )
 
 
+@app.route("/cad_mov_rescisao")
+def cad_mov_rescisao():
+    """Lançamento de verbas da RESCISÃO (folha_tipo='R'): mesma tela do movimento,
+    mas força o tipo R e lista apenas os desligados do mês da folha ativa."""
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    # Desligados do mês da folha ativa (situacao='D' com datarescisao no anomes)
+    funcionarios = []
+    if len(anomes) == 6:
+        try:
+            r = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, situacao, datarescisao")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao", "D")
+                 .order("nomer")
+                 .execute())
+            for f in (r.data or []):
+                if str(f.get("datarescisao") or "")[:6] != anomes:
+                    continue
+                nome = (f.get("nomer") or f.get("nome") or "").strip()
+                funcionarios.append({
+                    "matricula": f.get("matricula"),
+                    "nome":      nome,
+                    "situacao":  f.get("situacao", "D"),
+                })
+        except Exception:
+            pass
+
+    # Verbas disponíveis para digitação (exclui is_nao_digitar)
+    verbas = []
+    try:
+        r_v = (supabase.table("tab_rubrica")
+               .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, id_cliente, is_nao_digitar")
+               .in_("id_cliente", [0, id_cliente])
+               .eq("situacao", "A")
+               .order("cod_rubr")
+               .execute())
+        vm = {}
+        for v in (r_v.data or []):
+            if v.get("is_nao_digitar"):
+                continue
+            cod = v.get("cod_rubr")
+            if cod not in vm or v.get("id_cliente") != 0:
+                vm[cod] = {
+                    "cod_rubr":   cod,
+                    "dsc_rubr":   v.get("dsc_rubr") or "",
+                    "tp_rubr":    v.get("tp_rubr") or "",
+                    "unid_verba": v.get("unid_verba") or "V",
+                }
+        verbas = sorted(vm.values(), key=lambda x: x["cod_rubr"])
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_Cad_Mov.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo_ativa="R",
+        funcionarios=funcionarios,
+        verbas=verbas,
+    )
+
+
 @app.route("/cad_mov_ferias")
 def cad_mov_ferias():
     if not session.get("logado"):
@@ -13021,6 +13613,78 @@ def api_tab_mov_listar():
     return jsonify({"ok": True, "registros": registros})
 
 
+def _invalidar_rescisao_calculada(id_empresa, id_cliente, folha_int, mats):
+    """Ao lançar/alterar/excluir verba manual numa rescisão já CALCULADA, o
+    cálculo fica desatualizado. Apaga as verbas calculadas (origem='C') e o
+    tab_total (folha_tipo='R') das matrículas que tinham cálculo, deixando a
+    rescisão 'pendente' (precisa recalcular para poder imprimir).
+    Retorna a lista de matrículas que estavam calculadas e foram invalidadas."""
+    try:
+        mats = [int(m) for m in mats if str(m).strip()]
+    except Exception:
+        mats = []
+    if not mats or not folha_int:
+        return []
+    calculadas = []
+    try:
+        q = (supabase.table("tab_total")
+             .select("matricula")
+             .eq("id_empresa", id_empresa)
+             .eq("folha", folha_int)
+             .eq("folha_tipo", "R")
+             .in_("matricula", mats))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        calculadas = list({int(r["matricula"]) for r in (q.execute().data or [])})
+    except Exception:
+        return []
+    if not calculadas:
+        return []
+    try:
+        dt = (supabase.table("tab_total").delete()
+              .eq("id_empresa", id_empresa).eq("folha", folha_int)
+              .eq("folha_tipo", "R").in_("matricula", calculadas))
+        if id_cliente:
+            dt = dt.eq("id_cliente", id_cliente)
+        dt.execute()
+    except Exception:
+        pass
+    try:
+        dm = (supabase.table("tab_mov").delete()
+              .eq("id_empresa", id_empresa).eq("folha", folha_int)
+              .eq("folha_tipo", "R").eq("origem", "C").in_("matricula", calculadas))
+        if id_cliente:
+            dm = dm.eq("id_cliente", id_cliente)
+        dm.execute()
+    except Exception:
+        pass
+    for m in calculadas:
+        gravar_log("RESC-INVALID",
+                   "Rescisão marcada como pendente após lançamento manual (precisa recalcular)",
+                   matricula=m)
+    return calculadas
+
+
+def _rescisao_calculada_mats(id_empresa, id_cliente, folha_int, mats=None):
+    """Conjunto de matrículas que têm rescisão CALCULADA (tab_total folha_tipo='R')
+    na folha. Se mats for informado, restringe a elas."""
+    if not folha_int:
+        return set()
+    try:
+        q = (supabase.table("tab_total")
+             .select("matricula")
+             .eq("id_empresa", id_empresa)
+             .eq("folha", folha_int)
+             .eq("folha_tipo", "R"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if mats:
+            q = q.in_("matricula", [int(m) for m in mats])
+        return {int(r["matricula"]) for r in (q.execute().data or [])}
+    except Exception:
+        return set()
+
+
 # =========================================================
 # MOVIMENTO — API: gravar
 # =========================================================
@@ -13082,7 +13746,8 @@ def api_tab_mov_gravar():
                 mat_e      = int(emp.get("matricula") or 0)
                 vrsalfx    = int(emp.get("vrsalfx")   or 0)
                 undsalfix  = (emp.get("undsalfixo") or "M").upper()
-                qtdhrsmes  = int(emp.get("qtdhrsmes") or 0)
+                # fallback 220h/mês quando o cadastro está zerado (igual ao cálculo)
+                qtdhrsmes  = int(emp.get("qtdhrsmes") or 0) or 220
                 if undsalfix == "H":
                     sal_hora_map[mat_e] = vrsalfx
                     sal_mes_e = vrsalfx * qtdhrsmes
@@ -13146,8 +13811,14 @@ def api_tab_mov_gravar():
 
     gravar_log("MOV-INC",
                f"verba={int(cod_verba):04d} mats={len(matriculas)} folha={folha_int}")
-    return jsonify({"ok": True, "msg": f"{inseridos} registro(s) gravado(s).",
-                    "inseridos": inseridos})
+    resp = {"ok": True, "msg": f"{inseridos} registro(s) gravado(s).", "inseridos": inseridos}
+    if folha_tipo == "R":
+        invalid = _invalidar_rescisao_calculada(id_empresa, id_cliente, folha_int, mats_int)
+        if invalid:
+            resp["recalcular"] = True
+            resp["msg"] += (" Atenção: a rescisão já estava calculada e foi marcada como "
+                            "PENDENTE — recalcule antes de imprimir.")
+    return jsonify(resp)
 
 
 # =========================================================
@@ -13173,7 +13844,7 @@ def api_tab_mov_alterar():
         return jsonify({"ok": False, "msg": "Informe quantidade ou valor."})
     try:
         r = (supabase.table("tab_mov")
-             .select("id, cod_verba, matricula")
+             .select("id, cod_verba, matricula, folha")
              .eq("id",         id_ev)
              .eq("id_empresa", id_empresa)
              .eq("id_cliente", id_cliente)
@@ -13184,6 +13855,7 @@ def api_tab_mov_alterar():
         rec       = r.data[0]
         cod_verba = rec.get("cod_verba")
         matricula = rec.get("matricula")
+        folha_rec = int(rec.get("folha") or 0)
 
         # Para verba H: recalcula valor = horas × sal_hora
         valor_gravar = valor
@@ -13208,7 +13880,7 @@ def api_tab_mov_alterar():
                         emp       = r_cad.data[0]
                         vrsalfx   = int(emp.get("vrsalfx")   or 0)
                         undsalfix = (emp.get("undsalfixo") or "M").upper()
-                        qtdhrsmes = int(emp.get("qtdhrsmes") or 0)
+                        qtdhrsmes = int(emp.get("qtdhrsmes") or 0) or 220
                         if undsalfix == "H":
                             sh = vrsalfx
                         else:
@@ -13223,7 +13895,13 @@ def api_tab_mov_alterar():
             "folha_tipo": folha_tipo,
         }).eq("id", id_ev).execute()
         gravar_log("MOV-ALT", f"id={id_ev} qtd={qtd} valor={valor_gravar}")
-        return jsonify({"ok": True, "msg": "Registro alterado com sucesso."})
+        resp = {"ok": True, "msg": "Registro alterado com sucesso."}
+        if folha_tipo == "R" and matricula:
+            if _invalidar_rescisao_calculada(id_empresa, id_cliente, folha_rec, [matricula]):
+                resp["recalcular"] = True
+                resp["msg"] += (" Atenção: a rescisão já estava calculada e foi marcada como "
+                                "PENDENTE — recalcule antes de imprimir.")
+        return jsonify(resp)
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
@@ -13244,16 +13922,26 @@ def api_tab_mov_excluir():
         return jsonify({"ok": False, "msg": "ID não informado."})
     try:
         r = (supabase.table("tab_mov")
-             .select("id")
+             .select("id, matricula, folha, folha_tipo")
              .eq("id",         id_ev)
              .eq("id_empresa", id_empresa)
              .eq("id_cliente", id_cliente)
              .execute())
         if not r.data:
             return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        rec       = r.data[0]
+        matricula = rec.get("matricula")
+        folha_rec = int(rec.get("folha") or 0)
+        ftipo_rec = str(rec.get("folha_tipo") or "N").upper()[:1]
         supabase.table("tab_mov").update({"situacao": "D"}).eq("id", id_ev).execute()
         gravar_log("MOV-EXCL", f"id={id_ev}")
-        return jsonify({"ok": True, "msg": "Registro excluído."})
+        resp = {"ok": True, "msg": "Registro excluído."}
+        if ftipo_rec == "R" and matricula:
+            if _invalidar_rescisao_calculada(id_empresa, id_cliente, folha_rec, [matricula]):
+                resp["recalcular"] = True
+                resp["msg"] += (" Atenção: a rescisão já estava calculada e foi marcada como "
+                                "PENDENTE — recalcule antes de imprimir.")
+        return jsonify(resp)
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
@@ -28931,9 +29619,32 @@ def visualizar_calculo():
     funcionarios = []
     try:
         linhas = _calc_etapa1_dados(id_empresa)
-        funcionarios = [{"matricula": int(l["matricula"]), "nome": l["nome"]} for l in (linhas or [])]
+        funcionarios = [{"matricula": int(l["matricula"]), "nome": l["nome"],
+                         "demitido": False} for l in (linhas or [])]
     except Exception:
         pass
+    # Inclui os demitidos do mês da folha (situacao='D' com datarescisao no mês)
+    # — não aparecem em _calc_etapa1_dados, mas precisam entrar na lista para
+    # visualizar a rescisão calculada.
+    try:
+        anomes = str(session.get("anomes_atual") or "")
+        if len(anomes) == 6 and anomes.isdigit():
+            _ano = int(anomes[:4]); _mes = int(anomes[4:6])
+            _ult = calendar.monthrange(_ano, _mes)[1]
+            ini_int = int(f"{_ano:04d}{_mes:02d}01")
+            fim_int = int(f"{_ano:04d}{_mes:02d}{_ult:02d}")
+            mats_existentes = {f["matricula"] for f in funcionarios}
+            for d in _lista_demitidos_dados(id_empresa, ini_int, fim_int):
+                if d["matricula"] not in mats_existentes:
+                    funcionarios.append({"matricula": d["matricula"],
+                                         "nome": d["nome"], "demitido": True})
+            funcionarios.sort(key=lambda f: f["matricula"])
+    except Exception:
+        pass
+    # Modo rescisão: lista apenas os demitidos do mês e auto-carrega os valores.
+    modo_rescisao = (request.args.get("modo") == "rescisao")
+    if modo_rescisao:
+        funcionarios = [f for f in funcionarios if f.get("demitido")]
     sit_map = {"A": ("Aberta","sit-aberta"), "X": ("Aberta","sit-aberta"),
                "C": ("Calculada","sit-calculada"), "F": ("Fechada","sit-fechada")}
     sit_st = str(session.get("anomes_situacao") or "")
@@ -28954,6 +29665,7 @@ def visualizar_calculo():
         folha_sit_class=sit_class,
         funcionarios=funcionarios,
         matricula_inicial=matricula_inicial,
+        modo_rescisao=modo_rescisao,
     )
 
 
@@ -29013,6 +29725,30 @@ def api_visualizar_calculo_dados():
             codcateg_map[mat] = str(l.get("codcateg") or "")
     except Exception:
         pass
+    # Demitidos não vêm de _calc_etapa1_dados (situação 'A'): busca salário do
+    # cadastro p/ as matrículas ainda ausentes, senão as verbas H saem com valor 0.
+    faltantes = [m for m in mats_set if m not in sal_hora_map]
+    if faltantes:
+        try:
+            r_dem = (supabase.table("tab_cad")
+                     .select("matricula, nome, nomer, dtadm, vrsalfx, undsalfixo, qtdhrsmes, codcateg")
+                     .eq("id_empresa", id_empresa).in_("matricula", faltantes).execute())
+            for f in (r_dem.data or []):
+                m = int(f.get("matricula") or 0)
+                vrsalfx = int(f.get("vrsalfx") or 0)
+                qhm = int(f.get("qtdhrsmes") or 0) or 220
+                und = (f.get("undsalfixo") or "M").upper()[:1]
+                if und == "H":
+                    sh = float(vrsalfx); sm = float(vrsalfx * qhm)
+                else:
+                    sh = round(vrsalfx / qhm, 4) if qhm else 0.0; sm = float(vrsalfx)
+                nomes.setdefault(m, (f.get("nomer") or f.get("nome") or "").strip())
+                dtadms.setdefault(m, str(f.get("dtadm") or ""))
+                sal_hora_map.setdefault(m, sh)
+                sal_mes_map.setdefault(m, sm)
+                codcateg_map.setdefault(m, str(f.get("codcateg") or ""))
+        except Exception:
+            pass
 
     # dias do mês da folha (para sal_dia das verbas D-type)
     try:
@@ -29037,6 +29773,32 @@ def api_visualizar_calculo_dados():
     except Exception:
         pass
 
+    # Demitidos do mês (situacao='D' com datarescisao no anomes): para eles a
+    # folha exibida é a de RESCISÃO (folha_tipo='R'), independente do tipo da
+    # folha ativa. Monta o tipo de folha alvo por matrícula e o conjunto de
+    # tipos a consultar em tab_total / tab_mov.
+    demitidos_mes  = set()
+    demissao_map   = {}   # {matricula: datarescisao YYYYMMDD}
+    try:
+        if len(anomes) == 6 and anomes.isdigit():
+            _ano_d = int(anomes[:4]); _mes_d = int(anomes[4:6])
+            _ult_d = calendar.monthrange(_ano_d, _mes_d)[1]
+            _ini_d = int(f"{_ano_d:04d}{_mes_d:02d}01")
+            _fim_d = int(f"{_ano_d:04d}{_mes_d:02d}{_ult_d:02d}")
+            for d in _lista_demitidos_dados(id_empresa, _ini_d, _fim_d):
+                m = d["matricula"]
+                if m in mats_set:
+                    demitidos_mes.add(m)
+                    demissao_map[m] = d.get("dem_raw") or ""
+                    # demitido não vem de _calc_etapa1_dados (situacao='A'):
+                    # preenche nome/admissão para o cabeçalho do card.
+                    nomes.setdefault(m, d.get("nome") or "")
+                    dtadms.setdefault(m, d.get("adm_raw") or "")
+    except Exception:
+        pass
+    tipo_por_mat = {m: ("R" if m in demitidos_mes else folha_tipo_mov) for m in mats_set}
+    tipos_query  = sorted(set(tipo_por_mat.values())) or [folha_tipo_mov]
+
     # lê tab_total do mês para os funcionários selecionados
     totais_data = {}
     try:
@@ -29049,17 +29811,18 @@ def api_visualizar_calculo_dados():
                          "valor_total_proventos, valor_total_descontos, valor_liquido")
                  .eq("id_empresa", id_empresa)
                  .eq("folha", int(anomes))
-                 .eq("folha_tipo", folha_tipo_mov))
+                 .in_("folha_tipo", tipos_query))
         if id_cliente:
             q_tot = q_tot.eq("id_cliente", id_cliente)
         for reg in (q_tot.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if mat in mats_set:
+            if mat in mats_set and str(reg.get("folha_tipo") or "N") == tipo_por_mat.get(mat):
                 totais_data.setdefault(mat, []).append(reg)
     except Exception:
         pass
 
-    # lê tab_mov apenas da folha ativa (folha_tipo_mov): cada tipo de folha
+    # lê tab_mov pelo tipo de folha alvo de cada funcionário (folha ativa em
+    # geral; RESCISÃO='R' para os demitidos do mês): cada tipo de folha
     # (N / F / R / A-adiant.13 / 1-13º) é uma folha à parte, não misturar tipos.
     # (verbas 161-164 são exibidas separadamente após o subtotal — não incluí-las
     #  no cálculo de proventos/descontos, mas listá-las no card)
@@ -29071,12 +29834,12 @@ def api_visualizar_calculo_dados():
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .eq("folha", int(anomes))
-             .eq("folha_tipo", folha_tipo_mov))
+             .in_("folha_tipo", tipos_query))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if mat in mats_set:
+            if mat in mats_set and str(reg.get("folha_tipo") or "N") == tipo_por_mat.get(mat):
                 mov_data.setdefault(mat, []).append(reg)
     except Exception as e_q:
         erro_query = str(e_q)
@@ -29234,6 +29997,8 @@ def api_visualizar_calculo_dados():
             "matricula":       mat,
             "nome":            nomes.get(mat, f"Matrícula {mat:06d}"),
             "dtadm":           _dt_br(dtadms.get(mat, "")),
+            "demitido":        mat in demitidos_mes,
+            "dtdemissao":      _dt_br(demissao_map.get(mat, "")),
             "is_intermitente": is_int,
             "sal_hora_fmt":    _fmt_brl(int(sh_emp)) if is_int and sh_emp else "",
             "info_extra":      " · ".join(info_partes),
@@ -31553,6 +32318,7 @@ def memoria_calculo():
     mats_com_pdf = set()
     for fname in _memoria_listar(anomes, id_empresa):
         if (fname.startswith("Folha10_Memoria_Empresa") and "_Ferias_" not in fname
+                and "_Rescisao_" not in fname
                 and "_Matricula_" in fname and fname.endswith(".pdf")):
             try:
                 mats_com_pdf.add(int(fname.split("_Matricula_")[1].split("_")[0]))
@@ -31586,9 +32352,42 @@ def api_memoria_calculo_pdf(matricula):
     alvo = f"_Matricula_{matricula:06d}_em_"
     arquivos = sorted(fn for fn in _memoria_listar(anomes, id_empresa)
                       if fn.startswith("Folha10_Memoria_Empresa") and "_Ferias_" not in fn
+                      and "_Rescisao_" not in fn
                       and alvo in fn and fn.endswith(".pdf"))
     if not arquivos:
         return "PDF não encontrado para esta matrícula", 404
+    nome = arquivos[-1]          # mais recente pelo nome (timestamp no final)
+    data = _memoria_ler(anomes, id_empresa, nome)
+    if not data:
+        return "PDF não encontrado", 404
+    from flask import send_file as _send_file
+    return _send_file(io.BytesIO(data), mimetype="application/pdf",
+                      as_attachment=False, download_name=nome)
+
+
+@app.route("/api/memoria_rescisao_pdf/<int:matricula>")
+def api_memoria_rescisao_pdf(matricula):
+    """Abre a memória de cálculo da RESCISÃO (folha_tipo R) do funcionário."""
+    if not session.get("logado"):
+        return "Sessão expirada", 401
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return "Folha ativa não definida", 400
+    # tab_total R = calculada-e-em-dia. Se foi invalidada por lançamento manual
+    # posterior (ou nunca calculada), bloqueia a memória (PDF pode estar obsoleto).
+    if not _rescisao_calculada_mats(id_empresa, id_cliente, int(anomes), [matricula]):
+        return ("Rescisão PENDENTE de cálculo para este funcionário (houve lançamento "
+                "de verba após o cálculo, ou ainda não foi calculada). Recalcule a "
+                "rescisão antes de abrir a memória."), 400
+    alvo = f"_Matricula_{matricula:06d}_em_"
+    arquivos = sorted(fn for fn in _memoria_listar(anomes, id_empresa)
+                      if fn.startswith("Folha10_Memoria_Empresa") and "_Rescisao_" in fn
+                      and alvo in fn and fn.endswith(".pdf"))
+    if not arquivos:
+        return ("Memória da rescisão não encontrada para esta matrícula. "
+                "Calcule a rescisão para gerar a memória."), 404
     nome = arquivos[-1]          # mais recente pelo nome (timestamp no final)
     data = _memoria_ler(anomes, id_empresa, nome)
     if not data:
@@ -34773,10 +35572,11 @@ def api_impersonar_cliente():
             session["cpf_admin_original"]  = session.get("cpf")
             session["nome_admin_original"] = session.get("nome", "")
 
-        # Log de auditoria
+        # Log de auditoria — grava no id_cliente=4 (conta do admin), nunca no
+        # cliente alvo, para que o cliente não veja o log de impersonação.
         try:
             supabase.table("tab_log").insert({
-                "id_cliente":      row["id_cliente"],
+                "id_cliente":      4,
                 "id_empresa":      None,
                 "cpf_usuario":     session.get("cpf_admin_original") or session.get("cpf") or "",
                 "menu":            "IMPERSONAR",
@@ -34822,10 +35622,10 @@ def parar_impersonar():
         for k in ("cnpj_empresa", "id_empresa", "anomes_atual", "anomes_tipo",
                   "anomes_situacao", "cpf_admin_original", "nome_admin_original"):
             session.pop(k, None)
-        # Log
+        # Log — grava no id_cliente=4 (conta do admin), nunca no cliente alvo.
         try:
             supabase.table("tab_log").insert({
-                "id_cliente":      row["id_cliente"],
+                "id_cliente":      4,
                 "id_empresa":      None,
                 "cpf_usuario":     row["cpf"],
                 "menu":            "IMPERSONAR-FIM",

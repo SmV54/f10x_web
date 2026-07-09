@@ -198,6 +198,9 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .msg-form { font-size: 12px; padding: 7px 12px; border-radius: 6px; display: none; }
 .msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
 .msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+.msg-warn { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.aviso-resc { max-width: 1100px; margin: 12px auto 0; padding: 10px 16px; border-radius: 8px;
+              background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; font-size: 13px; }
 
 /* ── TABELA ── */
 .tabela-card table { width: 100%; border-collapse: collapse; }
@@ -301,6 +304,10 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 </div>
 
 <div class="conteudo">
+
+    {% if folha_tipo_ativa == 'R' %}
+    <div class="aviso-resc">⚠️ <strong>Movimento da Rescisão.</strong> Ao incluir, alterar ou excluir uma verba de um funcionário cuja rescisão já foi <strong>calculada</strong>, ela será marcada como <strong>PENDENTE</strong> e precisará ser <strong>recalculada</strong> antes de emitir a TRCT ou a memória.</div>
+    {% endif %}
 
     <!-- CARD: Lançamento -->
     <div class="card">
@@ -573,9 +580,10 @@ function getEntradaValues() {
 function mostrarMsg(msg, tipo) {
     const el = document.getElementById('msg-form');
     el.textContent  = msg;
-    el.className    = 'msg-form '+(tipo==='ok'?'msg-ok':'msg-err');
+    const cls = tipo==='ok' ? 'msg-ok' : (tipo==='warn' ? 'msg-warn' : 'msg-err');
+    el.className    = 'msg-form '+cls;
     el.style.display = 'block';
-    setTimeout(()=>{ el.style.display='none'; }, 4500);
+    setTimeout(()=>{ el.style.display='none'; }, tipo==='warn' ? 8000 : 4500);
 }
 
 /* ── INCLUIR ── */
@@ -597,7 +605,7 @@ async function incluir() {
             }),
         });
         const d = await r.json();
-        if (d.ok) { mostrarMsg(d.msg,'ok'); resetarForm(); carregarLista(); }
+        if (d.ok) { mostrarMsg(d.msg, d.recalcular?'warn':'ok'); resetarForm(); carregarLista(); }
         else mostrarMsg(d.msg||'Erro ao gravar.','err');
     } catch { mostrarMsg('Erro de comunicação.','err'); }
     finally { btn.disabled=false; btn.textContent='✓ Incluir'; }
@@ -662,7 +670,7 @@ async function salvarAlteracao() {
             body: JSON.stringify({id:idEdicao, qtd:e.qtd, valor:e.valor, folha_tipo:FOLHA_TIPO_ATIVA}),
         });
         const d = await r.json();
-        if (d.ok) { mostrarMsg(d.msg,'ok'); cancelarEdicao(); carregarLista(); }
+        if (d.ok) { mostrarMsg(d.msg, d.recalcular?'warn':'ok'); cancelarEdicao(); carregarLista(); }
         else mostrarMsg(d.msg||'Erro.','err');
     } catch { mostrarMsg('Erro de comunicação.','err'); }
     finally { btn.disabled=false; }
@@ -692,7 +700,7 @@ async function excluirRegistro(id) {
                 body: JSON.stringify({id}),
             });
             const d = await res.json();
-            if (d.ok) carregarLista();
+            if (d.ok) { if (d.recalcular) mostrarMsg(d.msg,'warn'); carregarLista(); }
             else alert(d.msg||'Erro ao excluir.');
         } catch { alert('Erro de comunicação.'); }
     });
@@ -760,7 +768,7 @@ async function carregarLista() {
     const el = document.getElementById('lista-container');
     el.innerHTML = '<div class="vazio">Carregando…</div>';
     try {
-        const res = await fetch('/api/tab_mov_listar');
+        const res = await fetch('/api/tab_mov_listar?folha_tipo=' + encodeURIComponent(FOLHA_TIPO_ATIVA));
         const d   = await res.json();
         if (!d.ok) { el.innerHTML=`<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
         TODOS_REGISTROS = d.registros||[];

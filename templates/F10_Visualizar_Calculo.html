@@ -129,9 +129,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     background: var(--navy); padding: 10px 16px;
     display: flex; align-items: center; gap: 12px;
 }
-.func-card-mat    { font-family: var(--mono); font-size: 14px; font-weight: 600; color: #e8edf4; }
-.func-card-nome   { font-size: 14px; font-weight: 600; color: #e8edf4; }
-.func-card-detalhe { font-size: 11px; color: #374151; margin-top: 2px; }
+.func-card-mat    { font-family: var(--mono); font-size: 14px; font-weight: 600; color: #0f2e22; }
+.func-card-nome   { font-size: 15px; font-weight: 700; color: #0b3d2c; }
+.func-card-detalhe { font-size: 11px; color: #1f4a38; margin-top: 2px; }
+.func-card-data { font-size: 11px; font-weight: 500; color: #1f4a38; white-space: nowrap; }
+/* Marcador de demitido: largura fixa entre o código e o nome para que o
+   nome fique na mesma tabulação em todos os itens (ativo = espaço em branco). */
+.func-dem {
+    display: inline-block; width: 1.1em; text-align: center;
+    font-family: var(--mono); font-weight: 700; color: #b91c1c;
+    margin: 0 4px;
+}
 
 .verbas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .verbas-table th {
@@ -314,7 +322,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             {% for f in funcionarios %}
             <div class="func-item" data-nome="{{ f.nome|lower }}" data-mat="{{ '%06d' % f.matricula }}">
                 <input type="checkbox" id="chk{{ f.matricula }}" value="{{ f.matricula }}" onchange="atualizarTodos()">
-                <label for="chk{{ f.matricula }}"><span class="func-mat">{{ '%06d' % f.matricula }}</span> — {{ f.nome }}</label>
+                <label for="chk{{ f.matricula }}"><span class="func-mat">{{ '%06d' % f.matricula }}</span><span class="func-dem">{% if f.demitido %}D{% endif %}</span>— {{ f.nome }}</label>
             </div>
             {% else %}
             <div style="padding:16px;font-size:13px;color:var(--sub);">Nenhum funcionário ativo.</div>
@@ -391,9 +399,18 @@ async function visualizar() {
     }
 }
 
-// Quando chega da tela de Calculo Individual com ?matricula=N, marca o
-// checkbox correspondente e dispara a visualizacao automaticamente.
+// Modo rescisão (?modo=rescisao): seleciona todos os demitidos e já mostra.
+// Ou, vindo do Calculo Individual (?matricula=N): marca só aquele e visualiza.
+const MODO_RESCISAO = {{ 'true' if modo_rescisao else 'false' }};
 window.addEventListener('DOMContentLoaded', function() {
+    if (MODO_RESCISAO) {
+        const chks = document.querySelectorAll('.func-lista input[type=checkbox]');
+        if (!chks.length) return;
+        chks.forEach(c => c.checked = true);
+        atualizarTodos();
+        visualizar();
+        return;
+    }
     const matIni = {{ matricula_inicial or 0 }};
     if (!matIni) return;
     const chk = document.getElementById('chk' + matIni);
@@ -572,20 +589,33 @@ function renderResultados(data) {
         const card = document.createElement('div');
         card.className = 'func-card';
 
-        const detalhe = [func.dtadm ? `Admissão: ${func.dtadm}` : '', func.info_extra || '']
-                         .filter(Boolean).join(' · ');
+        const detalhe = [func.info_extra || ''].filter(Boolean).join(' · ');
+        const admData = func.dtadm
+            ? `<span class="func-card-data">Admissão: ${func.dtadm}</span>`
+            : '';
+        const demData = (func.demitido && func.dtdemissao)
+            ? `<span class="func-card-data">Demissão: ${func.dtdemissao}</span>`
+            : '';
+        const badgeDem = func.demitido
+            ? '<span class="badge-tipo badge-tipo-R">Demitido</span>'
+            : '';
         const badgeInterm = func.is_intermitente
             ? `<span class="badge-interm">Cat. 111 — Intermitente${func.sal_hora_fmt ? ' · Sal/h: R$ ' + func.sal_hora_fmt : ''}</span>`
             : '';
+        // Demitido usa a memória da RESCISÃO; ativo usa a memória mensal.
+        const memHref = (func.demitido ? '/api/memoria_rescisao_pdf/' : '/api/memoria_calculo_pdf/') + func.matricula;
         card.className = 'func-card detalhes-ocultos';
         card.innerHTML = `
             <div class="func-card-header" style="flex-direction:column;align-items:flex-start;gap:3px;">
                 <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;">
                     <span class="func-card-mat">${String(func.matricula).padStart(6,'0')}</span>
                     <span class="func-card-nome">${func.nome}</span>
+                    ${admData}
+                    ${badgeDem}
+                    ${demData}
                     ${badgeInterm}
                     <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
-                        <a href="/api/memoria_calculo_pdf/${func.matricula}" target="_blank"
+                        <a href="${memHref}" target="_blank"
                            style="display:inline-flex;align-items:center;gap:6px;
                                   background:#1e3a5f;color:#7dd3fc;border:none;border-radius:7px;
                                   font-size:12px;font-weight:600;padding:5px 12px;

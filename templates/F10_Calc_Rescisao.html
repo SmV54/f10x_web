@@ -36,6 +36,8 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
 table { width: 100%; border-collapse: collapse; }
 thead th { background: #eaf1fb; text-align: left; padding: 9px 14px; font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee; white-space: nowrap; font-weight: 600; }
 thead th.r { text-align: right; }
+thead th.c, tbody td.c { text-align: center; width: 34px; }
+tbody td.c input, thead th.c input { cursor: pointer; width: 16px; height: 16px; accent-color: #166534; }
 tbody td { padding: 6px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; }
 tbody td.r { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; white-space: nowrap; }
@@ -51,6 +53,15 @@ tbody tr:hover { background: #f8fafc; }
 .rodape { margin-top: 16px; display: flex; justify-content: flex-end; }
 .btn-menu { height: 36px; padding: 0 20px; border-radius: 8px; background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px; border: none; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
 .btn-menu:hover { background: #d1d5db; }
+.btn-trct { display: inline-flex; align-items: center; gap: 4px; background: #1e3a5f; color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; text-decoration: none; white-space: nowrap; transition: .15s; }
+.btn-trct:hover { background: #2a7de1; }
+.st-calc { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #dcfce7; color: #166534; }
+.st-pend { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #fef3c7; color: #92400e; }
+.st-bloq { display: inline-block; font-size: 11px; font-weight: 600; color: #b45309; white-space: nowrap; }
+.btn-visu-resc { display: inline-flex; align-items: center; gap: 8px; background: #166534; color: #fff; font-size: 14px; font-weight: 700; padding: 10px 20px; border-radius: 10px; text-decoration: none; transition: .15s; }
+.btn-visu-resc:hover { background: #14532d; }
+.btn-mem-resc { background: #1e3a5f; }
+.btn-mem-resc:hover { background: #2a7de1; }
 </style>
 </head>
 <body>
@@ -61,7 +72,7 @@ tbody tr:hover { background: #f8fafc; }
         <span class="topo-nome">{{ nome }}</span>
     </div>
     <div>
-        <div class="topo-titulo">Calcular Rescisão</div>
+        <div class="topo-titulo">{% if modo_trct %}TRCT - Emissão da Rescisão{% elif modo_memoria %}Memória de Cálculo da Rescisão{% else %}Calcular Rescisão{% endif %}</div>
         {% if anomes_atual %}<div style="text-align:center;"><span class="topo-badge">Folha {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span></div>{% endif %}
     </div>
     <div class="topo-dir">
@@ -75,28 +86,40 @@ tbody tr:hover { background: #f8fafc; }
 
 <div class="container">
 
-{% if folha_situacao in ('C','F') %}
+{% if folha_situacao in ('C','F') and not modo_trct and not modo_memoria %}
     <div class="alerta alerta-aviso"><span>⚠️</span><div>A folha está <strong>{{ 'Calculada' if folha_situacao=='C' else 'Fechada' }}</strong>. Reabra a folha para calcular a rescisão.</div></div>
 {% elif not funcs %}
     <div class="alerta alerta-aviso"><span>ℹ️</span><div>Nenhum funcionário desligado no mês da folha ativa. A rescisão precisa ser <strong>registrada</strong> primeiro (menu Rescisão → Registrar Rescisão).</div></div>
 {% else %}
+    {% if modo_trct %}
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>Emissão da <strong>TRCT</strong> (Termo de Rescisão do Contrato de Trabalho) dos <strong>{{ funcs|length }}</strong> desligado(s) do mês. Clique em <strong>📄 TRCT</strong> na linha do funcionário.<br>A rescisão precisa estar calculada.</div></div>
+    {% elif modo_memoria %}
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>Memória de cálculo detalhada da <strong>rescisão</strong> dos <strong>{{ funcs|length }}</strong> desligado(s) do mês. Clique em <strong>📄 Memória</strong> na linha do funcionário.<br>A rescisão precisa estar calculada.</div></div>
+    {% else %}
     <div class="alerta alerta-aviso"><span>ℹ️</span><div>Serão calculados <strong>{{ funcs|length }}</strong> desligado(s) do mês: saldo de salário, 13º proporcional, férias proporcionais + 1/3, aviso prévio indenizado, médias da ficha financeira, INSS/IRRF/FGTS. Gera memória de cálculo detalhada.</div></div>
+    {% endif %}
 
     <div class="card">
         <div class="card-header"><h2>Desligados do mês</h2><span class="total-badge">{{ funcs|length }}</span></div>
         <table>
-            <thead><tr><th>Matrícula</th><th>Nome</th><th>Data Rescisão</th><th>Motivo</th></tr></thead>
+            <thead><tr>{% if not modo_trct and not modo_memoria %}<th class="c"><input type="checkbox" id="chkAll" checked onchange="toggleTodos(this)"></th>{% endif %}<th>Matrícula</th><th>Nome</th><th>Data Rescisão</th><th>Motivo</th><th class="r">Status</th>
+                {% if modo_trct %}<th class="r">TRCT</th>{% elif modo_memoria %}<th class="r">Memória</th>{% endif %}</tr></thead>
             <tbody>
                 {% for f in funcs %}
-                <tr><td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{{ f.motivo }}</td></tr>
+                <tr>{% if not modo_trct and not modo_memoria %}<td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" checked></td>{% endif %}<td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{{ f.motivo }}</td>
+                    <td class="r">{% if f.calculado %}<span class="st-calc">Calculada</span>{% else %}<span class="st-pend">Pendente</span>{% endif %}</td>
+                    {% if modo_trct %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/trct_pdf/{{ f.matricula }}" target="_blank">📄 TRCT</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>
+                    {% elif modo_memoria %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/api/memoria_rescisao_pdf/{{ f.matricula }}" target="_blank">📄 Memória</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>{% endif %}</tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
+    {% if not modo_trct and not modo_memoria %}
     <div class="barra-acao">
         <button class="btn-calcular" id="btnCalc" onclick="calcular()">🖩 Calcular Rescisão</button>
     </div>
+    {% endif %}
 
     <div id="msg"></div>
 
@@ -108,10 +131,15 @@ tbody tr:hover { background: #f8fafc; }
                 <th class="r">Saldo</th><th class="r">13º</th><th class="r">Férias+1/3</th>
                 <th class="r">Aviso</th>
                 <th class="r">INSS</th><th class="r">IRRF</th><th class="r">FGTS</th><th class="r">Líquido</th>
+                <th class="r">TRCT</th><th class="r">Memória</th>
             </tr></thead>
             <tbody id="resBody"></tbody>
         </table>
         <div style="padding:8px 16px;font-size:12px;color:#475569;" id="resPasta"></div>
+        <div style="padding:0 16px 16px;display:flex;gap:12px;flex-wrap:wrap;">
+            <a class="btn-visu-resc" href="/visualizar_calculo?modo=rescisao">👁 Visualizar Rescisão</a>
+            <a class="btn-visu-resc btn-mem-resc" id="btnMemResc" href="/calc_rescisao?modo=memoria">📄 Memória de Cálculo</a>
+        </div>
     </div>
 
     <div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
@@ -120,14 +148,22 @@ tbody tr:hover { background: #f8fafc; }
 </div>
 
 <script>
+function toggleTodos(src) {
+    document.querySelectorAll('.chk-func').forEach(c => c.checked = src.checked);
+}
 async function calcular() {
     const btn = document.getElementById('btnCalc');
     const msg = document.getElementById('msg');
+    const mats = [...document.querySelectorAll('.chk-func:checked')].map(c => parseInt(c.value));
+    if (!mats.length) {
+        msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Selecione ao menos um funcionário para calcular.</div></div>`;
+        return;
+    }
     btn.disabled = true; btn.textContent = 'Calculando...';
     msg.innerHTML = '';
     try {
         const r = await fetch('/api/calc_rescisao_calcular', {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({matriculas: mats})
         });
         const d = await r.json();
         if (!d.ok) {
@@ -148,9 +184,18 @@ async function calcular() {
                 <td class="r">${f.irrf_fmt}</td>
                 <td class="r">${f.fgts_fmt}</td>
                 <td class="liq">${f.liq_fmt}</td>
+                <td class="r"><a class="btn-trct" href="/trct_pdf/${f.matricula}" target="_blank">📄 TRCT</a></td>
+                <td class="r"><a class="btn-trct" href="/api/memoria_rescisao_pdf/${f.matricula}" target="_blank">📄 Memória</a></td>
             </tr>`).join('');
         document.getElementById('resTotal').textContent = (d.total || 0) + ' calculado(s)';
         document.getElementById('resPasta').innerHTML = '📄 Memória de cálculo detalhada gerada por funcionário.';
+        // Botão Memória: 1 demitido abre o PDF direto; vários vão para a lista.
+        const memBtn = document.getElementById('btnMemResc');
+        const rs = d.resultados || [];
+        if (memBtn) {
+            if (rs.length === 1) { memBtn.href = '/api/memoria_rescisao_pdf/' + rs[0].matricula; memBtn.target = '_blank'; }
+            else { memBtn.href = '/calc_rescisao?modo=memoria'; memBtn.removeAttribute('target'); }
+        }
         document.getElementById('cardResult').style.display = 'block';
         msg.innerHTML = `<div class="alerta alerta-ok"><span>✅</span><div><strong>${d.total} rescisão(ões)</strong> calculada(s) e gravada(s).</div></div>`;
         btn.textContent = '🖩 Recalcular';
