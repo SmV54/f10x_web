@@ -17962,16 +17962,13 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     ind_apuracao = "2" if folha_tipo in ('1', 'A') else "1"
     ind_apur_ir  = "0"
 
-    # Sufixo do codRubr conforme tipo de folha:
-    #   F = Férias  → "-FER"   | demais (N/1/A/R) → "-FOL"
-    _sufixo_rubr = 'FER' if str(folha_tipo) == 'F' else 'FOL'
-    def _fmt_cod_rubr(c):
-        s = str(c or '').strip()
-        try:
-            return f"{int(s):04d}-{_sufixo_rubr}"
-        except Exception:
-            return s
-
+    # codRubr / ideTabRubr: convenção COMPROVADA como aceita pelo gov (XMLs do
+    # S-1010 com recibo) — codRubr = código CRU (como em tab_rubrica.cod_rubr,
+    # sem zero-padding e sem sufixo) e ideTabRubr = raiz do CNPJ (8 dígitos).
+    # ANTES gerava "0015-FOL"/"0015-FOL" (não casava com o S-1010) → 0 recibos.
+    # O sufixo -FOL/-FER é do DESKTOP, que reusa o mesmo código em contextos
+    # diferentes; o web usa códigos distintos, então não precisa de sufixo.
+    #
     # <indApurIR> é OBRIGATÓRIO em todo <itensRemun> (gov rejeitou tentativa
     # de omitir em rubricas com tpn_inc_irrf=9/N/31/41). Valor fixo "0" para
     # apuracao mensal (igual ao sistema legado em prod) — usar "1" tornaria
@@ -17981,21 +17978,19 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
         cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
         val = int(item.get('valor') or 0)
         if cod and val != 0:
-            _cod_fmt = _fmt_cod_rubr(cod)
             itens_xml += f"""
             <itensRemun>
-              <codRubr>{x(_cod_fmt)}</codRubr>
-              <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
+              <codRubr>{x(cod)}</codRubr>
+              <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
               <vrRubr>{fmt_brl(val)}</vrRubr>
               <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
 
     if not itens_xml.strip():
-        _cod_fmt = _fmt_cod_rubr(1)
         itens_xml = f"""
             <itensRemun>
-              <codRubr>{x(_cod_fmt)}</codRubr>
-              <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
+              <codRubr>1</codRubr>
+              <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
               <vrRubr>0.00</vrRubr>
               <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
@@ -21654,6 +21649,157 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
       </vinculo>
     </altContratual>
   </evtAltContratual>
+</eSocial>"""
+
+
+# =========================================================
+# eSocial S-2299 — GERADOR DE XML (Desligamento)
+# =========================================================
+def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
+                     mtv_deslig=None, dt_deslig=None,
+                     ind_pagto_api="N", dt_proj_fim_api=None,
+                     pens_alim="0", perc_aliment=None, vr_alim=None):
+    """Gera string XML do S-2299 (Desligamento).
+
+    Baseado em S-2299 REAL de produção (Folha10 Desktop): verbasResc usa
+    <detVerbas> (não <itensRemun>), direto sob <ideEstabLot>; ordem do
+    infoDeslig = mtvDeslig, dtDeslig, indPagtoAPI, [dtProjFimAPI], pensAlim,
+    [percAliment/vrAlim], verbasResc. Namespace v_S_01_03_00 (padrão do web).
+
+    Parâmetros:
+      func       linha de tab_cad: cpf, matricula, codcateg, centrocusto,
+                 datarescisao, motrescisao, nis/pis.
+      mov_items  verbas da rescisão (tab_mov folha_tipo='R'): cod_verba, valor.
+      mtv_deslig motivo (Tabela 19); default = func['motrescisao'].
+      dt_deslig  data do desligamento; default = func['datarescisao'].
+      ind_pagto_api  'S'/'N' — aviso prévio indenizado pago nesta rescisão.
+      dt_proj_fim_api  data projetada do fim do contrato (só se API='S').
+      pens_alim  '0' não há | '1' % | '2' valor | '3' ambos.
+
+    codRubr/ideTabRubr: convenção comprovada como ACEITA no web (XMLs do S-1010
+    com recibo) = codRubr CRU + ideTabRubr = raiz do CNPJ (ver bloco detVerbas).
+    Mesma convenção já aplicada no S-1200 (_gerar_xml_s1200).
+    """
+    import re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):  return re.sub(r'\D', '', str(v or ''))
+    def x(v):   return _esc(str(v or ''))
+    def fmt_brl(c):
+        try:    return f"{int(c) / 100:.2f}"
+        except Exception: return "0.00"
+    def fmt_d8(v):
+        s = dg(v)
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}" if len(s) >= 8 else ""
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    cpf    = dg(func.get('cpf', '')).zfill(11)
+    mat_es = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+
+    # motivo (Tabela 19) e data do desligamento (obrigatórios)
+    mtv = str(mtv_deslig if mtv_deslig is not None
+              else (func.get('motrescisao') or '')).strip().zfill(2)
+    if mtv in ('', '00'):
+        raise ValueError(
+            f"Funcionário {func.get('matricula')} sem motivo de desligamento "
+            "(motrescisao) — obrigatório no S-2299.")
+    dt_des = fmt_d8(dt_deslig) if dt_deslig else fmt_d8(func.get('datarescisao'))
+    if not dt_des:
+        raise ValueError(
+            f"Funcionário {func.get('matricula')} sem data de desligamento "
+            "(datarescisao) — obrigatória no S-2299.")
+
+    # aviso prévio indenizado
+    ind_api = str(ind_pagto_api or 'N').strip().upper()
+    if ind_api not in ('S', 'N'):
+        ind_api = 'N'
+    api_xml = ""
+    if ind_api == 'S' and dt_proj_fim_api:
+        api_xml = f"\n      <dtProjFimAPI>{fmt_d8(dt_proj_fim_api)}</dtProjFimAPI>"
+
+    # pensão alimentícia (0=não há, 1=%, 2=valor, 3=ambos)
+    pens = str(pens_alim or '0').strip()
+    pens_extra = ""
+    if pens in ('1', '3') and perc_aliment is not None:
+        pens_extra += f"\n      <percAliment>{x(perc_aliment)}</percAliment>"
+    if pens in ('2', '3') and vr_alim is not None:
+        pens_extra += f"\n      <vrAlim>{fmt_brl(vr_alim)}</vrAlim>"
+
+    # codLotacao = centrocusto do funcionário
+    cod_lotacao = str(func.get('centrocusto') or '').strip()
+    if not cod_lotacao:
+        raise ValueError(
+            f"Funcionário {func.get('matricula')} sem 'centrocusto' — "
+            "necessário para o codLotacao do S-2299.")
+
+    # infoAgNocivo só para empregados (categorias 1xx), igual ao S-1200
+    codcateg = str(func.get('codcateg') or '').strip()
+    info_ag_nocivo_xml = ("""
+              <infoAgNocivo>
+                <grauExp>1</grauExp>
+              </infoAgNocivo>""" if codcateg.startswith("1") else "")
+
+    # codRubr / ideTabRubr: convenção COMPROVADA como aceita no web (XMLs do
+    # S-1010 com recibo): codRubr = código CRU (como em tab_rubrica.cod_rubr,
+    # sem zero-padding e sem sufixo) e ideTabRubr = raiz do CNPJ (8 dígitos).
+    # (O desktop usa sufixo -FOL/-RES porque reusa o mesmo código em contextos
+    #  diferentes; o web usa códigos distintos por contexto, então não precisa.)
+    det_xml = ""
+    for item in mov_items:
+        cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
+        val = int(item.get('valor') or 0)
+        if cod and val != 0:
+            det_xml += f"""
+              <detVerbas>
+                <codRubr>{x(cod)}</codRubr>
+                <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+                <vrRubr>{fmt_brl(val)}</vrRubr>
+                <indApurIR>0</indApurIR>
+              </detVerbas>"""
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtDeslig/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtDeslig/v_S_01_03_00 evtDeslig_v_S_01_03_00.xsd">
+  <evtDeslig Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>{_verproc_str()}</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <ideVinculo>
+      <cpfTrab>{x(cpf)}</cpfTrab>
+      <matricula>{x(mat_es)}</matricula>
+    </ideVinculo>
+    <infoDeslig>
+      <mtvDeslig>{x(mtv)}</mtvDeslig>
+      <dtDeslig>{x(dt_des)}</dtDeslig>
+      <indPagtoAPI>{ind_api}</indPagtoAPI>{api_xml}
+      <pensAlim>{x(pens)}</pensAlim>{pens_extra}
+      <verbasResc>
+        <dmDev>
+          <ideDmDev>{mat_es}00</ideDmDev>
+          <infoPerApur>
+            <ideEstabLot>
+              <tpInsc>1</tpInsc>
+              <nrInsc>{x(cnpj_emp)}</nrInsc>
+              <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}{info_ag_nocivo_xml}
+            </ideEstabLot>
+          </infoPerApur>
+        </dmDev>
+      </verbasResc>
+    </infoDeslig>
+  </evtDeslig>
 </eSocial>"""
 
 
