@@ -6248,16 +6248,25 @@ def api_calc_rescisao_calcular():
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
 
     def _media_variaveis(mat, sal_hora_c):
-        """Médias das verbas variáveis (12 meses) da ficha financeira → dict cod:valor,
-        + detalhes p/ memória. Base = últimos 12 meses antes do mês da folha."""
+        """Médias das verbas variáveis da ficha financeira (tab_mov) para a rescisão.
+
+        Regra: a base é a soma dos últimos 11 meses + o mês da rescisão (12 folhas
+        terminando NO mês da rescisão, inclusive), dividida por 12 → média p/ FÉRIAS.
+        Para o 13º SALÁRIO só entram valores do ANO CORRENTE (folhas de janeiro do
+        ano da rescisão até o mês da rescisão), também dividida por 12.
+        Retorna (medias_fer, medias_13, info)."""
         if not _verbas_media:
-            return {}, {}
-        t_fim = ano_folha * 12 + mes_folha - 2
+            return {}, {}, {}
+        # janela de 12 folhas terminando NO mês da rescisão (inclui o próprio mês)
+        t_fim = ano_folha * 12 + mes_folha - 1
         if t_fim < 0: t_fim = 0
         t_ini = t_fim - 11
         fi = (t_ini // 12) * 100 + t_ini % 12 + 1
         ff = (t_fim // 12) * 100 + t_fim % 12 + 1
-        por_mes, tot_val, tot_qtd = {}, {}, {}
+        fi13 = ano_folha * 100 + 1          # janeiro do ano da rescisão
+        por_mes = {}
+        tot_val, tot_qtd     = {}, {}       # 12 meses → médias de férias
+        tot_val13, tot_qtd13 = {}, {}       # ano corrente → médias do 13º
         try:
             r_med = (supabase.table("tab_mov")
                      .select("cod_verba, valor, qtd, folha")
@@ -6267,33 +6276,49 @@ def api_calc_rescisao_calcular():
                      .gte("folha", fi).lte("folha", ff)
                      .eq("folha_tipo", "N").execute())
             for row in (r_med.data or []):
-                c = int(row.get("cod_verba") or 0)
-                por_mes.setdefault(c, {}).setdefault(int(row.get("folha") or 0), {"valor": 0, "qtd": 0})
-                por_mes[c][int(row.get("folha") or 0)]["valor"] += int(row.get("valor") or 0)
-                por_mes[c][int(row.get("folha") or 0)]["qtd"]   += int(row.get("qtd") or 0)
+                c   = int(row.get("cod_verba") or 0)
+                fol = int(row.get("folha") or 0)
+                v   = int(row.get("valor") or 0)
+                q   = int(row.get("qtd") or 0)
+                por_mes.setdefault(c, {}).setdefault(fol, {"valor": 0, "qtd": 0})
+                por_mes[c][fol]["valor"] += v
+                por_mes[c][fol]["qtd"]   += q
                 if c in _verbas_horas:
-                    tot_qtd[c] = tot_qtd.get(c, 0) + int(row.get("qtd") or 0)
+                    tot_qtd[c] = tot_qtd.get(c, 0) + q
+                    if fol >= fi13:
+                        tot_qtd13[c] = tot_qtd13.get(c, 0) + q
                 else:
-                    tot_val[c] = tot_val.get(c, 0) + int(row.get("valor") or 0)
+                    tot_val[c] = tot_val.get(c, 0) + v
+                    if fol >= fi13:
+                        tot_val13[c] = tot_val13.get(c, 0) + v
         except Exception:
             pass
-        medias = {}
+        medias_fer, medias_13 = {}, {}
         det = []
         for c in sorted(set(tot_val) | set(tot_qtd)):
             if c in _verbas_horas:
-                avg_min = round(tot_qtd.get(c, 0) / 12)
-                val = round(avg_min * sal_hora_c / 60)
+                avg_min   = round(tot_qtd.get(c, 0) / 12)
+                val_fer   = round(avg_min * sal_hora_c / 60)
+                avg_min13 = round(tot_qtd13.get(c, 0) / 12)
+                val_13    = round(avg_min13 * sal_hora_c / 60)
             else:
-                avg_min = 0
-                val = round(tot_val.get(c, 0) / 12)
-            if val:
-                medias[c] = val
+                avg_min = avg_min13 = 0
+                val_fer = round(tot_val.get(c, 0) / 12)
+                val_13  = round(tot_val13.get(c, 0) / 12)
+            if val_fer:
+                medias_fer[c] = val_fer
+            if val_13:
+                medias_13[c] = val_13
+            if val_fer or val_13:
                 det.append({"cod": c, "dsc": _rubr_desc.get(c, f"Verba {c:04d}"),
                             "tipo": "H" if c in _verbas_horas else "V",
-                            "fi": fi, "ff": ff, "avg_min": avg_min,
+                            "fi": fi, "ff": ff, "fi13": fi13,
+                            "avg_min": avg_min, "avg_min13": avg_min13,
                             "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
-                            "por_mes": sorted(por_mes.get(c, {}).items()), "val": val})
-        return medias, {"fi": fi, "ff": ff, "det": det}
+                            "total13": tot_val13.get(c, 0), "total_min13": tot_qtd13.get(c, 0),
+                            "por_mes": sorted(por_mes.get(c, {}).items()),
+                            "val": val_fer, "val_fer": val_fer, "val_13": val_13})
+        return medias_fer, medias_13, {"fi": fi, "ff": ff, "fi13": fi13, "det": det}
 
     from datetime import date as _date
     resultados = []
@@ -6341,20 +6366,22 @@ def api_calc_rescisao_calcular():
             aviso_val = round(sal_mes * dias_aviso / 30)
             if multa_pct == 20:   # acordo 484-A → aviso 50%
                 aviso_val = round(aviso_val / 2)
-        # médias variáveis
-        medias, medias_info = _media_variaveis(mat, sal_hora_c)
-        med_total = sum(medias.values())
-        base_media_mes = med_total  # médias sobre remuneração média mensal
-        # 13º proporcional (avos no ano + projeção) sobre salário + médias
+        # médias variáveis (férias = 12 meses; 13º = só ano corrente)
+        medias, medias_13, medias_info = _media_variaveis(mat, sal_hora_c)
+        med_total    = sum(medias.values())      # média p/ férias (últimos 11 + mês da rescisão ÷ 12)
+        med_total_13 = sum(medias_13.values())   # média p/ 13º (ano corrente ÷ 12)
+        base_media_fer = med_total
+        base_media_13  = med_total_13
+        # 13º proporcional (avos no ano + projeção) sobre salário + médias do ano corrente
         ini_ano = _date(dt_proj.year, 1, 1)
         if dt_adm and dt_adm > ini_ano:
             ini_ano = dt_adm
         avos_13 = _conta_avos_resc(ini_ano, dt_proj) if tem_13 else 0
-        d13 = round((sal_mes + base_media_mes) * avos_13 / 12) if avos_13 else 0
+        d13 = round((sal_mes + base_media_13) * avos_13 / 12) if avos_13 else 0
         # férias proporcionais + 1/3 (avos do período aquisitivo em curso)
         ini_aq = _inicio_aquisitivo_resc(dt_adm, dt_proj) if dt_adm else _date(dt_proj.year, 1, 1)
         avos_fer = _conta_avos_resc(ini_aq, dt_proj) if tem_fer else 0
-        fer_base = round((sal_mes + base_media_mes) * avos_fer / 12) if avos_fer else 0
+        fer_base = round((sal_mes + base_media_fer) * avos_fer / 12) if avos_fer else 0
         fer_prop = round(fer_base * 4 / 3)   # inclui 1/3
 
         # ── Verbas MANUAIS (origem='M') lançadas na rescisão ──
@@ -6494,7 +6521,7 @@ def api_calc_rescisao_calcular():
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
             "avos_fer": avos_fer, "fer_base": fer_base, "fer_prop": fer_prop,
-            "med_total": med_total, "medias_info": medias_info,
+            "med_total": med_total, "med_total_13": med_total_13, "medias_info": medias_info,
             "base_inss_saldo": base_inss_saldo, "inss_saldo": inss_saldo, "inss_saldo_det": inss_saldo_det,
             "d13_base": d13, "inss_13": inss_13, "inss_13_det": inss_13_det,
             "ndep": ndep, "dep_irrf_ded": dep_irrf_ded, "dep_total": dep_total,
@@ -6616,27 +6643,45 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     f"Salário {_B(sal)} × {r['dias_aviso']} dias / 30 = <b>{_B(r['aviso_val'])}</b>"
                     + ("  (acordo 484-A: 50%)" if r["multa_pct"] == 20 else ""),
                 ]))
-            # 0004 — Médias
+            # 0004 — Médias (férias = 11 meses + mês da rescisão ÷ 12; 13º = ano corrente ÷ 12)
             det = (r.get("medias_info") or {}).get("det") or []
             mi = r.get("medias_info") or {}
             lin_med = []
             if det:
+                per   = f"{_fmt_anomes(mi.get('fi'))} a {_fmt_anomes(mi.get('ff'))}"
+                per13 = f"{_fmt_anomes(mi.get('fi13'))} a {_fmt_anomes(mi.get('ff'))}"
+                lin_med.append(f"<b>Férias — base: últimos 11 meses + mês da rescisão ({per}) ÷ 12</b>")
                 for d in det:
-                    per = f"{_fmt_anomes(mi.get('fi'))} a {_fmt_anomes(mi.get('ff'))}"
+                    if not d.get("val_fer"):
+                        continue
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} [{per}] — {d['avg_min']} min/mês → {_B(d['val'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min']} min/mês → {_B(d['val_fer'])}")
                     else:
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} [{per}] — total {_B(d['total'])} /12 = {_B(d['val'])}")
-                lin_med.append(f"<b>Total das médias: {_B(r['med_total'])}</b>")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total'])} /12 = {_B(d['val_fer'])}")
+                lin_med.append(f"<b>Total das médias (férias): {_B(r['med_total'])}</b>")
+                lin_med.append("")
+                lin_med.append(f"<b>13º salário — base: valores do ano corrente ({per13}) ÷ 12</b>")
+                _tem13 = False
+                for d in det:
+                    if not d.get("val_13"):
+                        continue
+                    _tem13 = True
+                    if d["tipo"] == "H":
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min13']} min/mês → {_B(d['val_13'])}")
+                    else:
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total13'])} /12 = {_B(d['val_13'])}")
+                if not _tem13:
+                    lin_med.append("Sem valores de verbas variáveis no ano corrente.")
+                lin_med.append(f"<b>Total das médias (13º): {_B(r.get('med_total_13', 0))}</b>")
             else:
                 lin_med.append("Sem verbas variáveis com incidência de rescisão no período.")
-            e.append(_etapa("ETAPA 0004 - MEDIAS DAS VERBAS VARIAVEIS (12 meses)", lin_med))
-            # 0005 — 13º proporcional
+            e.append(_etapa("ETAPA 0004 - MEDIAS DAS VERBAS VARIAVEIS", lin_med))
+            # 0005 — 13º proporcional (médias do ano corrente)
             e.append(_etapa("ETAPA 0005 - 13o SALARIO PROPORCIONAL", [
-                f"(Salário {_B(sal)} + Médias {_B(r['med_total'])}) × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>"
+                f"(Salário {_B(sal)} + Médias {_B(r.get('med_total_13', 0))}) × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>"
                 if r["d13"] else "Sem 13º proporcional para este motivo.",
             ]))
-            # 0006 — Férias proporcionais + 1/3
+            # 0006 — Férias proporcionais + 1/3 (médias de 12 meses)
             e.append(_etapa("ETAPA 0006 - FERIAS PROPORCIONAIS + 1/3", [
                 f"(Salário {_B(sal)} + Médias {_B(r['med_total'])}) × {r['avos_fer']}/12 = {_B(r['fer_base'])}   "
                 f"+ 1/3 = <b>{_B(r['fer_prop'])}</b>"
