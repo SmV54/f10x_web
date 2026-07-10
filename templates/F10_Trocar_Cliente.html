@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trocar Cliente — Admin F10</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; }
+    html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; min-height: 100%; }
+
+    .topo {
+      background: #a0d9be; border-bottom: 1px solid #70c4a0;
+      padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+      align-items: center; gap: 0 32px; min-height: 64px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .topo-logo    { font-family: 'IBM Plex Mono', monospace; font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; white-space: nowrap; }
+    .topo-versao  { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #374151; letter-spacing: 0.03em; margin-top: 2px; }
+    .topo-titulo  { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; letter-spacing: 0.01em; display:flex; align-items:center; justify-content:center; gap:12px; }
+    .topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
+    .topo-nome    { font-size: 11px; color: #374151; margin-top: 2px; }
+    .btn-voltar-topo {
+      margin-left: 16px; background: transparent;
+      border: 1px solid #70c4a0; color: #374151;
+      font-size: 12px; padding: 5px 12px; border-radius: 6px;
+      cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; transition: 0.15s; white-space: nowrap;
+    }
+    .btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+    .badge-admin {
+      display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+      font-size: 12px; font-weight: 700; white-space: nowrap;
+      background: #fff; color: #78350f; border: 2px solid #f59e0b;
+    }
+
+    .container { max-width: 1200px; margin: 16px auto 24px; padding: 0 20px; }
+
+    .banner-info {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+      padding: 10px 16px; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 12px;
+      font-size: 12.5px; color: #1e3a8a; line-height: 1.5;
+    }
+    .banner-info .icone { font-size: 20px; }
+    .banner-info strong { color: #1e40af; }
+
+    .banner-impersonando {
+      background: #fef3c7; border: 1px solid #fcd34d; border-radius: 10px;
+      padding: 10px 16px; margin-bottom: 14px;
+      display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      font-size: 13px; color: #78350f;
+    }
+    .banner-impersonando .icone { font-size: 20px; }
+    .banner-impersonando a {
+      background: #fff; color: #78350f; border: 1px solid #d97706;
+      padding: 5px 12px; border-radius: 6px; font-weight: 700;
+      text-decoration: none; font-size: 12px; margin-left: auto;
+    }
+    .banner-impersonando a:hover { background: #fef3c7; }
+
+    .barra-topo {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .card-classif {
+      display: flex; align-items: center; gap: 10px;
+      background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: 7px 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    .card-classif-lbl { font-size: 12px; font-weight: 600; color: #475569; white-space: nowrap; }
+    .seg { display: inline-flex; background: #f1f5f9; border-radius: 8px; padding: 2px; }
+    .seg-btn {
+      border: none; background: transparent; color: #475569;
+      font-size: 12.5px; font-weight: 600; padding: 5px 14px; border-radius: 6px;
+      cursor: pointer; transition: 0.12s; white-space: nowrap;
+    }
+    .seg-btn:hover { color: #1e293b; }
+    .seg-btn.ativo { background: #a0d9be; color: #0f3d2a; box-shadow: 0 1px 2px rgba(0,0,0,0.08); }
+
+    .filtros { margin-bottom: 10px; flex: 1; min-width: 220px; }
+    .filtros input {
+      width: 100%; height: 38px; padding: 8px 12px;
+      border: 1px solid #cbd5e1; border-radius: 8px;
+      font-size: 14px; outline: none; background: white;
+    }
+    .filtros input:focus {
+      border-color: #93c5fd; box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    }
+
+    .lista {
+      background: white; border: 1px solid #e5e7eb; border-radius: 10px;
+      overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: #eaf1fb; color: #334155; font-size: 12px;
+      text-align: left; padding: 8px 12px; white-space: nowrap;
+      position: sticky; top: 0;
+    }
+    tbody td { font-size: 13px; padding: 6px 12px; border-bottom: 1px solid #eef2f7; }
+    tbody tr { cursor: pointer; transition: background 0.1s; }
+    tbody tr:hover { background: #f0f9ff; }
+    tbody tr.atual { background: #fef3c7; }
+    tbody tr.atual:hover { background: #fde68a; }
+
+    .badge-atual {
+      display: inline-block; padding: 2px 8px; border-radius: 999px;
+      font-size: 10px; font-weight: 700; background: #fbbf24; color: #78350f;
+      margin-left: 6px;
+    }
+    .col-num { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+    .col-cpf { font-family: 'IBM Plex Mono', monospace; font-size: 12px; }
+    .limite-venc { color: #dc2626; font-weight: 700; }
+
+    .vazio {
+      padding: 30px; text-align: center; color: #6b7280;
+      font-size: 14px; font-style: italic;
+    }
+  </style>
+</head>
+<body>
+
+<div class="topo">
+  <div style="display:flex; flex-direction:column; align-items:flex-start;">
+    <span class="topo-empresa">{{ empresa or 'Admin F10' }}</span>
+    <span class="topo-nome">{{ nome }}</span>
+  </div>
+  <div class="topo-titulo">
+    <span>Trocar Cliente</span>
+    <span class="badge-admin">🎭 MODO ADMIN</span>
+  </div>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <div style="display:flex; flex-direction:column; align-items:flex-start;">
+      <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+  </div>
+</div>
+
+<div class="container">
+
+  {% if impersonando %}
+  <div class="banner-impersonando">
+    <span class="icone">⚠</span>
+    <span>Você já está processando como outro cliente. Escolha um novo abaixo para trocar, ou <strong>encerre</strong> a impersonação para voltar ao admin.</span>
+    <a href="/parar_impersonar">Voltar ao Admin</a>
+  </div>
+  {% else %}
+  <div class="banner-info">
+    <span class="icone">💡</span>
+    <span>Clique num cliente para <strong>entrar como se fosse ele</strong>, sem precisar de senha. Você poderá visualizar e alterar dados como se estivesse logado como o cliente. Um log de auditoria é gravado.</span>
+  </div>
+  {% endif %}
+
+  <div class="barra-topo">
+    <div class="card-classif">
+      <span class="card-classif-lbl">Classificação:</span>
+      <div class="seg">
+        <button type="button" class="seg-btn ativo" data-modo="num" onclick="ordenar('num')">Numérica</button>
+        <button type="button" class="seg-btn" data-modo="alfa" onclick="ordenar('alfa')">Alfabética</button>
+      </div>
+    </div>
+    <div class="filtros">
+      <input type="text" id="pesquisa" placeholder="Pesquisar por nome, CPF ou e-mail..." oninput="filtrar()">
+    </div>
+  </div>
+
+  <div class="lista">
+    {% if clientes %}
+    <table>
+      <thead>
+        <tr>
+          <th style="width:60px;">ID</th>
+          <th>Nome</th>
+          <th style="width:140px;">CPF</th>
+          <th>E-mail</th>
+          <th style="width:100px;">Limite</th>
+          <th style="width:70px; text-align:right;">Empr.</th>
+        </tr>
+      </thead>
+      <tbody id="tbodyClientes">
+        {% for c in clientes %}
+        <tr
+          data-id="{{ c.id_cliente }}"
+          data-nome="{{ c.nome|lower }}"
+          data-cpf="{{ c.cpf }}"
+          data-email="{{ c.email|lower }}"
+          class="{% if c.cpf == cpf_atual %}atual{% endif %}"
+          onclick="impersonar({{ c.id_cliente }}, '{{ c.nome|e }}', '{{ c.cpf }}')">
+          <td class="col-num">{{ '%04d'|format(c.id_cliente) }}</td>
+          <td>
+            {{ c.nome }}
+            {% if c.cpf == cpf_atual %}<span class="badge-atual">VOCÊ</span>{% endif %}
+          </td>
+          <td class="col-cpf">{{ c.cpf_fmt }}</td>
+          <td>{{ c.email or '—' }}</td>
+          <td class="{% if c.limite_vencido %}limite-venc{% endif %}">{{ c.data_limite or '—' }}</td>
+          <td class="col-num">{{ c.qtd_empresas_real or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">Nenhum cliente encontrado.</div>
+    {% endif %}
+  </div>
+
+  <p style="margin-top:14px; font-size:11.5px; color:#6b7280;">
+    Total: {{ clientes|length }} cliente(s). <span id="rodapeOrdem">Ordenados por ID.</span>
+  </p>
+
+</div>
+
+<script>
+function ordenar(modo) {
+  const tbody = document.getElementById('tbodyClientes');
+  if (!tbody) return;
+  const linhas = Array.from(tbody.querySelectorAll('tr'));
+  linhas.sort(function(a, b) {
+    if (modo === 'alfa') {
+      return (a.getAttribute('data-nome') || '').localeCompare(
+             (b.getAttribute('data-nome') || ''), 'pt-BR');
+    }
+    return (parseInt(a.getAttribute('data-id'), 10) || 0) -
+           (parseInt(b.getAttribute('data-id'), 10) || 0);
+  });
+  linhas.forEach(function(tr) { tbody.appendChild(tr); });
+  document.querySelectorAll('.seg-btn').forEach(function(b) {
+    b.classList.toggle('ativo', b.getAttribute('data-modo') === modo);
+  });
+  const rodape = document.getElementById('rodapeOrdem');
+  if (rodape) rodape.textContent = (modo === 'alfa') ? 'Ordenados por nome.' : 'Ordenados por ID.';
+}
+
+function filtrar() {
+  const q = (document.getElementById('pesquisa').value || '').toLowerCase().trim();
+  const linhas = document.querySelectorAll('#tbodyClientes tr');
+  linhas.forEach(function(tr) {
+    const nome  = tr.getAttribute('data-nome')  || '';
+    const cpf   = tr.getAttribute('data-cpf')   || '';
+    const email = tr.getAttribute('data-email') || '';
+    const ok = !q || nome.indexOf(q) >= 0 || cpf.indexOf(q) >= 0 || email.indexOf(q) >= 0;
+    tr.style.display = ok ? '' : 'none';
+  });
+}
+
+const CPF_ADMIN = '15313921487';
+
+async function impersonar(id_cliente, nome, cpf) {
+  const cpfLimpo = (cpf || '').replace(/\D/g,'');
+  let msg;
+  if (cpfLimpo === CPF_ADMIN) {
+    msg = 'Voltar ao seu próprio cadastro (Admin F10)?';
+  } else {
+    msg = 'Entrar como "' + nome + '" (CPF ' + cpf + ')?\n\nVocê estará processando como esse cliente. Um banner vermelho ficará visível no topo do sistema até você encerrar.';
+  }
+  if (!confirm(msg)) {
+    return;
+  }
+  try {
+    const r = await fetch('/api/impersonar_cliente', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id_cliente: id_cliente })
+    });
+    const dados = await r.json();
+    if (!dados.ok) {
+      alert(dados.msg || 'Erro ao trocar cliente.');
+      return;
+    }
+    window.location.href = dados.redirect || '/menu';
+  } catch (e) {
+    alert('Erro de comunicação com o servidor.');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() { ordenar('num'); });
+</script>
+
+</body>
+</html>

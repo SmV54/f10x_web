@@ -35513,10 +35513,13 @@ def trocar_cliente():
                         .execute().data or [])
         from collections import Counter
         emp_count = Counter(e["id_cliente"] for e in empresas_all)
+        mes_atual = datetime.now().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mes atual
         for c in clientes:
             c["qtd_empresas_real"] = emp_count.get(c["id_cliente"], 0)
             c["cpf_fmt"] = (f"{c['cpf'][:3]}.{c['cpf'][3:6]}.{c['cpf'][6:9]}-{c['cpf'][9:]}"
                             if c.get("cpf") and len(c["cpf"]) == 11 else c.get("cpf", ""))
+            _dl = (c.get("data_limite") or "").strip()
+            c["limite_vencido"] = bool(_dl) and _dl < mes_atual
     except Exception:
         clientes = []
     cpf_atual = str(session.get("cpf") or "")
