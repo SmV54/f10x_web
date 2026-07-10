@@ -6293,6 +6293,25 @@ def api_calc_rescisao_calcular():
                         tot_val13[c] = tot_val13.get(c, 0) + v
         except Exception:
             pass
+        # "+ o mês da rescisão": verbas variáveis lançadas na PRÓPRIA folha da
+        # rescisão (folha_tipo='R', origem='M'). Não existe folha 'N' no mês do
+        # desligamento, então sem isto a parte "+ mês da rescisão" da regra ficaria
+        # vazia. Entram nas duas médias (rescisão é sempre do ano corrente → 13º).
+        for row in manual_mov.get(mat, []):
+            c = int(row.get("cod_verba") or 0)
+            if c not in _verbas_media:
+                continue
+            v = int(row.get("valor") or 0)
+            q = int(row.get("qtd") or 0)
+            por_mes.setdefault(c, {}).setdefault(ff, {"valor": 0, "qtd": 0})
+            por_mes[c][ff]["valor"] += v
+            por_mes[c][ff]["qtd"]   += q
+            if c in _verbas_horas:
+                tot_qtd[c]   = tot_qtd.get(c, 0) + q
+                tot_qtd13[c] = tot_qtd13.get(c, 0) + q
+            else:
+                tot_val[c]   = tot_val.get(c, 0) + v
+                tot_val13[c] = tot_val13.get(c, 0) + v
         medias_fer, medias_13 = {}, {}
         det = []
         for c in sorted(set(tot_val) | set(tot_qtd)):

@@ -161,6 +161,7 @@ async function calcular() {
     }
     btn.disabled = true; btn.textContent = 'Calculando...';
     msg.innerHTML = '';
+    document.getElementById('cardResult').style.display = 'none';   // esconde o Resultado enquanto (re)calcula
     try {
         const r = await fetch('/api/calc_rescisao_calcular', {
             method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({matriculas: mats})
