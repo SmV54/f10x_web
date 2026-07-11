@@ -79,9 +79,44 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     height: 36px; padding: 0 20px; border-radius: 8px;
     background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
     border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
-    font-family: var(--sans); white-space: nowrap;
+    font-family: var(--sans); white-space: nowrap; flex-shrink: 0;
 }
 .btn-pdf:hover { background: #b91c1c; }
+
+/* ── FILTRO POR LAYOUT (dropdown compacto) ── */
+.filtro-lay-label {
+    font-size: 11px; font-weight: 700; color: #475569;
+    text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; flex-shrink: 0;
+}
+.lay-dropdown { position: relative; }
+.lay-dropdown-btn {
+    display: inline-flex; align-items: center; gap: 8px; min-width: 150px;
+    height: 36px; padding: 0 12px; border-radius: 7px;
+    border: 1px solid #d1d5db; background: #f9fafb; color: var(--label);
+    font-size: 13px; font-weight: 600; font-family: var(--sans); cursor: pointer; transition: .13s;
+}
+.lay-dropdown-btn:hover { border-color: var(--accent); background: #fff; }
+.lay-dropdown-btn #layDropLabel { flex: 1; text-align: left; white-space: nowrap; }
+.lay-drop-caret { color: #94a3b8; font-size: 11px; }
+.lay-popover {
+    display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 40;
+    min-width: 240px; max-height: 340px; overflow-y: auto;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 8px;
+    flex-direction: column; gap: 2px;
+}
+.lay-popover.aberto { display: flex; }
+.lay-popover-sep { height: 1px; background: var(--border); margin: 4px 2px; }
+.lay-check {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    font-size: 12.5px; font-weight: 500; color: #334155; user-select: none;
+    padding: 6px 8px; border-radius: 6px; transition: .1s;
+}
+.lay-check:hover { background: #f1f5f9; }
+.lay-check input {
+    width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; margin: 0; flex-shrink: 0;
+}
+.lay-check-todos { font-weight: 700; color: #0f766e; }
 
 /* ── COUNTERS ── */
 .counters {
@@ -216,7 +251,8 @@ tr:hover td { background: #f8fafc; }
     </svg>
     eSocial — Fila de Remessas
     {% if periodo and periodo|length == 6 %}
-    <span style="font-size:13px;font-weight:400;color:#5eead4;">
+    <span style="font-family:var(--mono);font-size:12px;font-weight:700;color:#0f766e;
+                 background:#fff;border:1px solid #5eead4;border-radius:6px;padding:2px 9px;">
       {{ periodo[4:6] }}/{{ periodo[0:4] }}
     </span>
     {% endif %}
@@ -233,51 +269,46 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   <!-- ── FILTROS ── -->
-  <form id="secaoFiltros" method="GET" action="/esocial_fila" class="filtro-bar">
-    <input type="hidden" name="periodo"
-           value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
-    <div class="filtro-group">
-      <label>Período</label>
-      <div style="height:36px;display:flex;align-items:center;padding:0 12px;
-                  background:#f1f5f9;border:1px solid #d1d5db;border-radius:7px;
-                  font-family:var(--mono);font-size:14px;font-weight:600;color:#1e293b;">
-        {% if anomes_atual|length == 6 %}
-          {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
-        {% else %}—{% endif %}
+  {% set LAY_NOMES = {
+      '1000':'S-1000 Empregador','1005':'S-1005 Estabelecimentos','1010':'S-1010 Rubricas','1020':'S-1020 Lotações',
+      '2200':'S-2200 Admissão','2205':'S-2205 Alt. Cadastral','2206':'S-2206 Alt. Contrato',
+      '2210':'S-2210 CAT','2220':'S-2220 Saúde','2230':'S-2230 Afastamento','2299':'S-2299 Desligamento',
+      '1200':'S-1200 Remuneração','1210':'S-1210 Pagamentos','1298':'S-1298 Reabertura','1299':'S-1299 Fechamento'
+  } %}
+  {% set LAY_ORDER = ['2200','2205','2206','2210','2220','2230','2299','1200','1210','1298','1299','1000','1005','1010','1020'] %}
+  {% set layouts_presentes = rows | map(attribute='layout') | map('string') | list %}
+  <div id="secaoFiltros" class="filtro-bar">
+    <span class="filtro-lay-label">Layout:</span>
+    <div class="lay-dropdown">
+      <button type="button" class="lay-dropdown-btn" id="layDropBtn" onclick="toggleLayPopover(event)">
+        <span id="layDropLabel">Todos</span>
+        <span class="lay-drop-caret">&#9662;</span>
+      </button>
+      <div class="lay-popover" id="layPopover">
+        <label class="lay-check lay-check-todos" title="Mostrar todos os layouts">
+          <input type="radio" name="layFiltro" value="" checked onchange="escolherLayout()"><span>Todos</span>
+        </label>
+        <div class="lay-popover-sep"></div>
+        {% for code in LAY_ORDER %}{% if code in layouts_presentes %}
+        <label class="lay-check" title="{{ LAY_NOMES[code] }}">
+          <input type="radio" name="layFiltro" value="{{ code }}" onchange="escolherLayout()">
+          <span>{{ LAY_NOMES[code] }}</span>
+        </label>
+        {% endif %}{% endfor %}
       </div>
     </div>
-    <div class="filtro-group">
-      <label>Layout</label>
-      <select name="layout" class="filtro-select" style="width:180px;">
-        <option value="" {% if not f_layout %}selected{% endif %}>— Todos —</option>
-        <option value="2200" {% if f_layout=='2200' %}selected{% endif %}>S-2200 Admissão</option>
-        <option value="2205" {% if f_layout=='2205' %}selected{% endif %}>S-2205 Alt. Cadastral</option>
-        <option value="2206" {% if f_layout=='2206' %}selected{% endif %}>S-2206 Alt. Contrato</option>
-        <option value="2230" {% if f_layout=='2230' %}selected{% endif %}>S-2230 Afastamento</option>
-        <option value="2299" {% if f_layout=='2299' %}selected{% endif %}>S-2299 Desligamento</option>
-        <option value="1200" {% if f_layout=='1200' %}selected{% endif %}>S-1200 Remuneração</option>
-        <option value="1210" {% if f_layout=='1210' %}selected{% endif %}>S-1210 Pagamentos</option>
-        <option value="1298" {% if f_layout=='1298' %}selected{% endif %}>S-1298 Reabertura</option>
-        <option value="1299" {% if f_layout=='1299' %}selected{% endif %}>S-1299 Fechamento</option>
-      </select>
-    </div>
-    <button type="submit" class="btn-filtrar">&#128269; Filtrar</button>
-    <a class="btn-limpar" href="/esocial_fila">&#10006; Limpar</a>
-    <a class="btn-pdf" id="btnPdf" href="#" target="_blank" onclick="abrirPdf(event)">&#128438; Imprimir em PDF</a>
-  </form>
+    <a class="btn-pdf" id="btnPdf" href="#" target="_blank" onclick="abrirPdf(event)"
+       style="margin-left:auto;">&#128438; Imprimir em PDF</a>
+  </div>
 
-  <!-- ── COUNTERS ── -->
+  <!-- ── COUNTERS (recalculados ao vivo pelo filtro de layout) ── -->
   {% if rows %}
-  {% set cnt_e = rows | selectattr('_sit','equalto','E') | list | length %}
-  {% set cnt_w = rows | selectattr('_sit','equalto','W') | list | length %}
-  {% set cnt_x = rows | selectattr('_sit','equalto','X') | list | length %}
-  {% set cnt_o = total - cnt_e - cnt_w - cnt_x %}
-  <div class="counters">
-    <span class="counter-badge counter-total">Total: {{ total }}</span>
-    {% if cnt_e %}<span class="counter-badge counter-enviado">&#10003; Enviados: {{ cnt_e }}</span>{% endif %}
-    {% if cnt_w %}<span class="counter-badge counter-aguard">&#8987; Aguardando: {{ cnt_w }}</span>{% endif %}
-    {% if cnt_x %}<span class="counter-badge counter-erro">&#9888; Com Erro: {{ cnt_x }}</span>{% endif %}
-    {% if cnt_o %}<span class="counter-badge counter-outros">Outros: {{ cnt_o }}</span>{% endif %}
+  <div class="counters" id="counters">
+    <span class="counter-badge counter-total"   id="cntTotal">Total: {{ total }}</span>
+    <span class="counter-badge counter-enviado" id="cntE" style="display:none;">&#10003; Enviados: 0</span>
+    <span class="counter-badge counter-aguard"  id="cntW" style="display:none;">&#8987; Aguardando: 0</span>
+    <span class="counter-badge counter-erro"    id="cntX" style="display:none;">&#9888; Com Erro: 0</span>
+    <span class="counter-badge counter-outros"  id="cntO" style="display:none;">Outros: 0</span>
   </div>
   {% endif %}
 
@@ -298,7 +329,7 @@ tr:hover td { background: #f8fafc; }
       </thead>
       <tbody>
         {% for r in rows %}
-        <tr id="row-{{ r.id_esocial }}">
+        <tr id="row-{{ r.id_esocial }}" data-layout="{{ r.layout }}" data-sit="{{ r._sit }}">
 
           <td style="white-space:nowrap;">
             <span class="lay-badge lay-{{ r.layout }}">{{ r._lay_codigo }}</span>
@@ -370,7 +401,7 @@ tr:hover td { background: #f8fafc; }
           </td>
 
         </tr>
-        <tr class="prog-row" id="prog-{{ r.id_esocial }}">
+        <tr class="prog-row" id="prog-{{ r.id_esocial }}" data-layout="{{ r.layout }}">
           <td colspan="7" class="prog-cell">
             <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
             <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
@@ -392,12 +423,89 @@ tr:hover td { background: #f8fafc; }
 <button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
+const PERIODO_FILA = '{{ periodo }}';
+
+// Todos os códigos de layout presentes (radios com valor não vazio)
+function _layTodosCodes() {
+  return Array.from(document.querySelectorAll('input[name="layFiltro"]:not([value=""])')).map(r => r.value);
+}
+function _laySelecionado() {
+  const s = document.querySelector('input[name="layFiltro"]:checked');
+  return s ? s.value : '';
+}
+// Layouts a mostrar: "Todos" (valor vazio) → todos os códigos; senão o único escolhido
+function _layMarcados() {
+  const v = _laySelecionado();
+  return v === '' ? _layTodosCodes() : [v];
+}
+
+// Abre/fecha o painel de layouts
+function toggleLayPopover(e) {
+  e.stopPropagation();
+  document.getElementById('layPopover').classList.toggle('aberto');
+}
+document.addEventListener('click', e => {
+  const dd = document.querySelector('.lay-dropdown');
+  const pop = document.getElementById('layPopover');
+  if (dd && pop && !dd.contains(e.target)) pop.classList.remove('aberto');
+});
+
+// Rótulo do botão: Todos | S-XXXX
+function atualizarRotuloLayout() {
+  const el = document.getElementById('layDropLabel');
+  if (!el) return;
+  const v = _laySelecionado();
+  if (v === '') { el.textContent = 'Todos'; return; }
+  const sel  = document.querySelector('input[name="layFiltro"]:checked');
+  const span = sel ? sel.parentElement.querySelector('span') : null;
+  el.textContent = span ? span.textContent.split(' ')[0] : v;
+}
+
+// Escolha ÚNICA de layout → filtra, atualiza e FECHA o painel
+function escolherLayout() {
+  const marcados = _layMarcados();
+  document.querySelectorAll('tr[data-layout]').forEach(tr => {
+    const lay = tr.getAttribute('data-layout') || '';
+    tr.style.display = marcados.includes(lay) ? '' : 'none';
+  });
+  atualizarContadores(marcados);
+  atualizarRotuloLayout();
+  document.getElementById('layPopover').classList.remove('aberto');
+}
+
+// Recalcula os contadores considerando apenas os layouts marcados
+function atualizarContadores(marcados) {
+  if (!marcados) marcados = _layMarcados();
+  let tot = 0, e = 0, w = 0, x = 0;
+  document.querySelectorAll('tr[data-sit]').forEach(tr => {
+    if (!marcados.includes(tr.getAttribute('data-layout'))) return;
+    tot++;
+    const s = tr.getAttribute('data-sit');
+    if (s === 'E') e++; else if (s === 'W') w++; else if (s === 'X') x++;
+  });
+  const o = tot - e - w - x;
+  const t = document.getElementById('cntTotal');
+  if (t) t.textContent = 'Total: ' + tot;
+  const set = (id, txt, n) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = txt;
+    el.style.display = n > 0 ? '' : 'none';
+  };
+  set('cntE', '✓ Enviados: '   + e, e);
+  set('cntW', '⏳ Aguardando: ' + w, w);
+  set('cntX', '⚠ Com Erro: '   + x, x);
+  set('cntO', 'Outros: '            + o, o);
+}
+
+document.addEventListener('DOMContentLoaded', () => { atualizarContadores(); atualizarRotuloLayout(); });
+
 function abrirPdf(e) {
   e.preventDefault();
-  const periodo = document.querySelector('[name="periodo"]').value.replace('-','');
-  const layout  = document.querySelector('[name="layout"]').value;
-  let url = `/rel_esocial_fila_pdf?periodo=${periodo}`;
-  if (layout) url += `&layout=${layout}`;
+  const v = _laySelecionado();
+  let url = `/rel_esocial_fila_pdf?periodo=${PERIODO_FILA}`;
+  // "Todos" → relatório completo; senão passa o layout escolhido
+  if (v !== '') url += `&layout=${v}`;
   window.open(url, '_blank');
 }
 

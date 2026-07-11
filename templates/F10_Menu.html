@@ -228,6 +228,45 @@ body.menu-numerado .nav-item::before {
 .nav-item.acao-adiantamento:hover { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
 .grupo-coluna { display: flex; flex-direction: column; gap: 8px; }
 .nav-quebra   { width: 100%; height: 0; }
+
+/* ── DESTAQUE DE PENDÊNCIA DE ENVIO eSocial (mês/ano ativo) ── */
+/* Item do submenu com remessa pendente */
+.nav-item.tem-pendencia {
+    background: #fff7ed; border-color: #fdba74; color: #9a3412; font-weight: 700;
+}
+.nav-item.tem-pendencia:hover { background: #ffedd5; border-color: #f97316; color: #7c2d12; }
+.item-pend-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 18px; height: 18px; padding: 0 5px; margin-left: 2px;
+    background: #f97316; color: #fff; border-radius: 10px;
+    font-size: 10.5px; font-weight: 800; line-height: 1;
+}
+/* Linha (botão) da seção com alguma pendência */
+.nav-secao-btn.tem-pendencia {
+    color: #9a3412; font-weight: 700;
+}
+.nav-secao-btn.tem-pendencia::before { content: '● '; color: #f97316; }
+.secao-pend-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 17px; height: 17px; padding: 0 5px; margin-left: 6px;
+    background: #f97316; color: #fff; border-radius: 9px;
+    font-size: 10px; font-weight: 800; line-height: 1; vertical-align: middle;
+}
+/* Card principal eSocial com pendência de S-2200/S-2299 */
+.modulo-card.tem-pendencia {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 2px rgba(245,158,11,0.25), 0 4px 16px rgba(245,158,11,0.18);
+}
+.modulo-card.tem-pendencia .modulo-icone { background: #fff7ed; }
+.card-pend-badge {
+    position: absolute; top: -7px; right: -7px; z-index: 2;
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 20px; height: 20px; padding: 0 6px;
+    background: #f97316; color: #fff; border: 2px solid #fff; border-radius: 11px;
+    font-size: 11px; font-weight: 800; line-height: 1;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+.modulo-card { position: relative; }
 /* Cards de largura uniforme (usado na seção Rescisão) — alinha em grade */
 .nav-item.nav-fix { min-width: 232px; justify-content: flex-start; }
 
@@ -441,6 +480,17 @@ const QTD_EMPRESAS        = {{ qtd_empresas }};
 const FOLHA_SIT_LABEL     = '{{ folha_ativa_situacao }}';
 const CPF_USUARIO         = '{{ cpf_usuario }}';
 const S1299_ENVIADO       = {{ 'true' if s1299_enviado else 'false' }};
+// Pendências de envio eSocial por layout (só do mês/ano ativo): {"2200":3,...}
+const ESOCIAL_PEND        = {{ esocial_pend|tojson }};
+// layout eSocial a partir do href (/esocial_s2299 → "2299")
+function esocialLayoutDoHref(href) {
+    const m = (href || '').match(/\/esocial_s(\d{4})\b/);
+    return m ? m[1] : null;
+}
+function pendenciaDoItem(item) {
+    const l = esocialLayoutDoHref(item && item.href);
+    return l ? (ESOCIAL_PEND[l] || 0) : 0;
+}
 
 const modulos = {
 
@@ -668,7 +718,7 @@ const modulos = {
                 { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, bloqueioFolha: 'aberta' },
                 { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aberta' },
                 { icone: '🏥', nome: 'S-2230 Afastamento',            href: '#' },
-                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '#' },
+                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, bloqueioFolha: 'aberta' },
             ]},
             { nome: 'Eventos Periódicos', itens: [
                 { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true, bloqueioFolha: 'fechada' },
@@ -788,6 +838,19 @@ for (const id of ordem) {
         card.innerHTML = `<div class="modulo-icone">${m.icone}</div><div class="modulo-nome">${nomeCard}</div>`;
     }
 
+    // Card eSocial em destaque só se houver pendência de S-2200 ou S-2299 no mês ativo
+    if (id === 'esocial') {
+        const pTot = (ESOCIAL_PEND['2200'] || 0) + (ESOCIAL_PEND['2299'] || 0);
+        if (pTot > 0) {
+            card.classList.add('tem-pendencia');
+            const b = document.createElement('span');
+            b.className = 'card-pend-badge';
+            b.textContent = pTot;
+            b.title = pTot + ' remessa(s) de S-2200/S-2299 pendente(s) neste mês';
+            card.appendChild(b);
+        }
+    }
+
     if (m.href) {
         card.addEventListener('click', () => { window.location.href = m.href; });
     } else {
@@ -849,6 +912,15 @@ function selecionarModulo(cardEl, id) {
             const btn = document.createElement('button');
             btn.className = 'nav-secao-btn';
             btn.textContent = s.nome;
+            // Destaca a linha da seção se algum item tem remessa pendente no mês ativo
+            const pendSecao = (s.itens || []).reduce((acc, it) => acc + pendenciaDoItem(it), 0);
+            if (pendSecao > 0) {
+                btn.classList.add('tem-pendencia');
+                const b = document.createElement('span');
+                b.className = 'secao-pend-badge';
+                b.textContent = pendSecao;
+                btn.appendChild(b);
+            }
             btn.onclick = () => clicarSecao(i);
             navSecoes.appendChild(btn);
         });
@@ -983,6 +1055,17 @@ function renderItens(itens) {
         }
         if (item.classe) a.classList.add(item.classe);
         a.innerHTML = `<span>${item.icone}</span> ${item.nome}`;
+
+        // Item com remessa pendente no mês ativo → destaque + badge de contagem
+        const pendItem = pendenciaDoItem(item);
+        if (pendItem > 0) {
+            a.classList.add('tem-pendencia');
+            const b = document.createElement('span');
+            b.className = 'item-pend-badge';
+            b.textContent = pendItem;
+            b.title = pendItem + ' pendente(s) de envio neste mês';
+            a.appendChild(b);
+        }
 
         if (item.quebraLinha) {
             const br = document.createElement('div');

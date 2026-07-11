@@ -781,6 +781,28 @@ def menu():
     except Exception:
         pass
 
+    # Pendências de envio eSocial POR LAYOUT, apenas do mês/ano da folha ativa.
+    # Pendente = registro em tab_esocial sem recibo e não EXCLUÍDO (S-3000).
+    # Usado no menu para destacar os cards/linhas com remessa pendente.
+    esocial_pend = {}
+    try:
+        _am = str(session.get("anomes_atual") or "")
+        if _am and len(_am) == 6:
+            _rows_p = (supabase.table("tab_esocial")
+                       .select("layout, recibo, observacao_erro")
+                       .eq("id_empresa", session.get("id_empresa"))
+                       .eq("ano_mes", int(_am))
+                       .execute().data or [])
+            for _rp in _rows_p:
+                rec = (_rp.get("recibo") or "").strip()
+                obs = (_rp.get("observacao_erro") or "").strip().upper()
+                if not rec and obs != "EXCLUIDO":
+                    lay = str(_rp.get("layout") or "")
+                    if lay:
+                        esocial_pend[lay] = esocial_pend.get(lay, 0) + 1
+    except Exception:
+        esocial_pend = {}
+
     # Status do certificado digital A1 da empresa atual (para banner no menu)
     cert_status       = "ok"     # ok | ausente | vence_em | vencido
     cert_dias         = None
@@ -822,6 +844,7 @@ def menu():
         licenca_classe=licenca_classe,
         menu_numerado=_get_pref("menu_num", "S"),
         s1299_enviado=s1299_enviado,
+        esocial_pend=esocial_pend,
         cert_status=cert_status,
         cert_dias=cert_dias,
         cert_validade_fmt=cert_validade_fmt,
@@ -5643,28 +5666,8 @@ def cad_rescisao():
         obs = f"Rescisão: {nome_func}, demissão: {data_dem_fmt}, motivo: {motivo_codigo}"
         gravar_log("RESCISAO", obs, matricula=mat_int)
 
-        # Grava tab_esocial — S-2299 Desligamento
-        try:
-            from datetime import datetime as _dt
-            agora_es      = _dt.now()
-            id_cliente    = session.get("id_cliente")
-            anomes_am     = str(session.get("anomes_atual") or "")
-            anomes_tp     = str(session.get("anomes_tipo")  or "")
-            folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
-            supabase.table("tab_esocial").insert({
-                "id_cliente": id_cliente,
-                "id_empresa": id_empresa,
-                "data_cad":   agora_es.strftime("%Y%m%d"),
-                "hora_cad":   agora_es.strftime("%H%M"),
-                "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-                "ano_mes":    int(anomes_am) if anomes_am else None,
-                "folha_tipo": folha_tipo_es,
-                "layout":     "2299",
-                "matricula":  mat_int,
-                "codigo2":    0,
-            }).execute()
-        except Exception:
-            pass  # falha no eSocial não desfaz a rescisão
+        # O S-2299 (Desligamento) NÃO é gravado aqui: a gravação na tab_esocial
+        # acontece somente no CÁLCULO da rescisão (api_calc_rescisao_calcular).
 
         return redirect(f"/cad_rescisao_ok?mat={mat_int}&data_demissao={data_demissao_str}")
 
@@ -5842,6 +5845,49 @@ def _s1299_ativo(id_empresa, ano_mes, folha_tipo):
         return False
     except Exception:
         return False
+
+
+def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha_tipo_es):
+    """Grava (ou atualiza) o S-2299 (Desligamento) na tab_esocial no momento do
+    CÁLCULO da rescisão. Se já existe um S-2299 do funcionário ainda SEM recibo
+    (não enviado) e não EXCLUÍDO, apenas atualiza data/hora — não duplica o
+    registro. Só cria um novo quando não há nenhum pendente."""
+    from datetime import datetime as _dt
+    agora_es    = _dt.now()
+    ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
+    try:
+        existentes = (supabase.table("tab_esocial")
+                      .select("id_esocial, recibo, observacao_erro")
+                      .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                      .eq("layout", "2299").execute().data or [])
+    except Exception:
+        existentes = []
+    pendente = None
+    for row in existentes:
+        rec = (row.get("recibo") or "").strip()
+        obs = (row.get("observacao_erro") or "").strip().upper()
+        if not rec and obs != "EXCLUIDO":
+            pendente = row
+            break
+    campos = {
+        "data_cad":   agora_es.strftime("%Y%m%d"),
+        "hora_cad":   agora_es.strftime("%H%M"),
+        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+        "ano_mes":    ano_mes_int,
+        "folha_tipo": folha_tipo_es,
+    }
+    try:
+        if pendente:
+            (supabase.table("tab_esocial").update(campos)
+             .eq("id_esocial", pendente["id_esocial"]).execute())
+        else:
+            supabase.table("tab_esocial").insert({
+                "id_cliente": id_cliente, "id_empresa": id_empresa,
+                "layout": "2299", "matricula": mat_int, "codigo2": 0,
+                **campos,
+            }).execute()
+    except Exception:
+        pass  # falha no eSocial não desfaz o cálculo da rescisão
 
 
 def _periodo_rescisao(id_empresa, mat_int, datarescisao):
@@ -6528,6 +6574,10 @@ def api_calc_rescisao_calcular():
                    f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
                    f"INSS={_fmt_brl(inss_saldo+inss_13)} IRRF={_fmt_brl(irrf_saldo+irrf_13)} Liq={_fmt_brl(liquido)}",
                    matricula=mat)
+
+        # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no cálculo.
+        _folha_tipo_es = "1" if str(session.get("anomes_tipo") or "") in ("1", "A") else "N"
+        _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes, _folha_tipo_es)
 
         multa_fgts = round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100)
         resultados.append({
@@ -22208,6 +22258,424 @@ def api_esocial_s2206_reconsultar():
 
 
 # =========================================================
+# eSocial S-2299 — Desligamento (tela + envio + reconsulta)
+# =========================================================
+@app.route("/esocial_s2299")
+def esocial_s2299():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+    f_sit        = request.args.get("sit", "").strip().upper()
+
+    rows = []
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "2299")
+                .eq("ano_mes", int(anomes_atual))
+                .order("data_cad", desc=True)
+                .order("hora_cad", desc=True)
+                .execute().data or [])
+    except Exception:
+        pass
+
+    mats  = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad").select("matricula, nome")
+                      .eq("id_empresa", id_empresa).in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    _SIT_MAP = {
+        "E": ("Enviado",    "sit-enviado"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+    contagens = {k: 0 for k in _SIT_MAP}
+    for r in rows:
+        r["_nome"]        = nomes.get(r.get("matricula"), "—")
+        r["_datacad_fmt"] = _d8(r.get("data_cad"))
+        _hg = str(r.get("hora_grava") or "").strip()
+        _dg = str(r.get("data_grava") or "").strip()
+        if len(_dg) == 8 and len(_hg) >= 4:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]} {_hg[0:2]}:{_hg[2:4]}"
+        elif len(_dg) == 8:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]}"
+        else:
+            r["_envio_fmt"] = ""
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+        if recibo:                          s = "E"
+        elif obs.startswith("AGUARDANDO:"): s = "W"
+        elif obs:                           s = "X"
+        elif dgrava:                        s = "G"
+        else:                               s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT_MAP[s][0]
+        r["_sit_class"] = _SIT_MAP[s][1]
+        contagens[s] = contagens.get(s, 0) + 1
+
+    if f_sit:
+        rows = [r for r in rows if r["_sit"] == f_sit]
+
+    return render_template(
+        "F10_eSocial_S2299.html",
+        versao=ler_versao(),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        rows=rows, total=len(rows),
+        anomes_atual=anomes_atual,
+        f_sit=f_sit, contagens=contagens,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
+    )
+
+
+@app.route("/api/esocial_s2299_enviar", methods=["POST"])
+def api_esocial_s2299_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+    from datetime import timedelta as _td
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+
+    id_reg = data.get("id_esocial")
+    tpAmb  = str(data.get("tpAmb", "1")).strip()
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    ok_val, msg_val = _validar_folha_para_envio_esocial("2299")
+    if not ok_val:
+        return jsonify({"ok": False, "msg": msg_val})
+
+    # Lê o registro existente em tab_esocial
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", id_reg).eq("id_empresa", id_empresa)
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        reg_es    = r_es.data[0]
+        matricula = reg_es.get("matricula")
+        reg_anomes = reg_es.get("ano_mes")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    # Lê dados atuais do funcionário (demitido)
+    try:
+        r_func = (supabase.table("tab_cad").select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", int(matricula)).limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
+        func = r_func.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
+
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    # Verbas da rescisão (tab_mov folha_tipo='R') = detVerbas do S-2299
+    mov_items = []
+    try:
+        q_mov = (supabase.table("tab_mov")
+                 .select("cod_verba, valor")
+                 .eq("id_empresa", id_empresa)
+                 .eq("matricula", int(matricula))
+                 .eq("folha_tipo", "R").eq("situacao", "A"))
+        if id_cliente:
+            q_mov = q_mov.eq("id_cliente", id_cliente)
+        if reg_anomes:
+            q_mov = q_mov.eq("folha", int(reg_anomes))
+        mov_items = q_mov.execute().data or []
+    except Exception:
+        mov_items = []
+    if not mov_items:
+        return jsonify({"ok": False, "msg": "Rescisão sem verbas calculadas — calcule a rescisão antes de enviar o S-2299."})
+
+    # Aviso prévio indenizado (op1=9): indPagtoAPI='S' + dtProjFimAPI projetada
+    ind_api = "N"
+    dt_proj = None
+    dr = str(func.get("datarescisao") or "")
+    try:
+        r_av = (supabase.table("tab_eventos")
+                .select("campotxt1, ref1, ref2, data1i")
+                .eq("id_empresa", id_empresa).eq("matricula", int(matricula)).eq("op1", 9)
+                .order("data1i", desc=True).limit(1).execute())
+        if r_av.data:
+            ev = r_av.data[0]
+            if str(ev.get("campotxt1") or "").strip().lower().startswith("inden"):
+                ind_api = "S"
+                dias = int(ev.get("ref1") or 0) + int(ev.get("ref2") or 0)
+                if len(dr) == 8 and dias > 0:
+                    d0 = datetime.strptime(dr, "%Y%m%d").date()
+                    dt_proj = (d0 + _td(days=dias)).strftime("%Y%m%d")
+    except Exception:
+        pass
+
+    agora = datetime.now()
+
+    # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2299_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2299(func, mov_items, empresa, tpAmb,
+                                   mtv_deslig=None, dt_deslig=None,
+                                   ind_pagto_api=ind_api, dt_proj_fim_api=dt_proj,
+                                   pens_alim="0")   # pensão: tratada em etapa futura
+    except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── Validar certificado e assinar ──────────────────────
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
+
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
+    except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
+
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
+
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": detalhe[:295],
+        }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
+
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+
+    agora = datetime.now()
+    if not protocolo_envio:
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"
+            break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-2299 enviado: mat={matricula} nrRec={recibo_final} cd={cd_resp}",
+               matricula=int(matricula))
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "id_esocial": id_reg,
+        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+                else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
+    })
+
+
+@app.route("/api/esocial_s2299_reconsultar", methods=["POST"])
+def api_esocial_s2299_reconsultar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("observacao_erro, matricula")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa).limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        obs = (r_es.data[0].get("observacao_erro") or "")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    if not obs.startswith("AGUARDANDO:"):
+        return jsonify({"ok": False, "msg": "Registro não está aguardando."})
+
+    protocolo_envio = obs[len("AGUARDANDO:"):]
+
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+    _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar: {e}"
+            break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"[{cd_resp}] {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    ok = bool(recibo_final) and not obs_erro
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "msg": ("Ainda processando." if aguardando
+                else obs_erro or f"Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
 # eSocial — Fila Central de Remessas
 # =========================================================
 @app.route("/esocial_fila")
@@ -22391,6 +22859,8 @@ def rel_esocial_fila_pdf():
 
     periodo  = request.args.get("periodo", anomes_atual).replace("-", "")[:6]
     f_layout = request.args.get("layout", "").strip()
+    # 'layout' pode vir como lista separada por vírgula (checkboxes da tela)
+    _lay_list = [x for x in f_layout.split(",") if x] if f_layout else []
 
     rows = []
     if periodo and len(periodo) == 6:
@@ -22403,8 +22873,8 @@ def rel_esocial_fila_pdf():
                   .neq("layout", "3000")
                   .order("data_cad", desc=True)
                   .order("hora_cad", desc=True))
-            if f_layout:
-                q1 = q1.eq("layout", f_layout)
+            if _lay_list:
+                q1 = q1.in_("layout", _lay_list)
             r1 = q1.execute().data or []
 
             # 2) registros sem ano_mes criados no mês do período
@@ -22417,8 +22887,8 @@ def rel_esocial_fila_pdf():
                   .lte("data_cad", periodo + "31")
                   .order("data_cad", desc=True)
                   .order("hora_cad", desc=True))
-            if f_layout:
-                q2 = q2.eq("layout", f_layout)
+            if _lay_list:
+                q2 = q2.in_("layout", _lay_list)
             r2 = q2.execute().data or []
 
             seen = set()
@@ -35616,12 +36086,15 @@ def admin_clientes():
             cli = emp2cli.get(cad["id_empresa"])
             if cli is not None:
                 func_count[cli] += 1
+        mes_atual = datetime.now().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mês atual
         for c in clientes:
             cid = c["id_cliente"]
             c["qtd_empresas_real"]     = emp_count.get(cid, 0)
             c["qtd_funcionarios_real"] = func_count.get(cid, 0)
             c["data_cadastro_fmt"]     = _fmt_data_cadastro(c.get("datahora_cadastro"))
             c["data_limite_fmt"]       = _fmt_data_limite(c.get("data_limite"))
+            _dl = (c.get("data_limite") or "").strip()
+            c["limite_vencido"]        = bool(_dl) and _dl < mes_atual
     except Exception:
         clientes = []
     return render_template(
@@ -35649,6 +36122,7 @@ def api_admin_clientes_empresas(id_cliente):
             cads = (supabase.table("tab_cad")
                     .select("id_empresa")
                     .in_("id_empresa", ids)
+                    .neq("situacao", "D")   # exclui demitidos: so funcionarios ativos
                     .execute().data or [])
             from collections import Counter
             cont = Counter(c["id_empresa"] for c in cads)
@@ -35680,6 +36154,7 @@ _ADMIN_XML_LAYOUTS = [
     ("S2206", "S-2206 — Alteração de Contrato de Trabalho"),
     ("S2210", "S-2210 — CAT (Comunicação de Acidente)"),
     ("S2220", "S-2220 — Monitoramento da Saúde do Trabalhador"),
+    ("S2299", "S-2299 — Desligamento"),
     ("S3000", "S-3000 — Exclusão de Eventos"),
 ]
 
@@ -35715,7 +36190,8 @@ def trocar_cliente():
         return redirect("/menu")
     try:
         clientes = (supabase.table("tab_cliente")
-                    .select("id_cliente, nome, cpf, email, data_limite, qtd_empresas, qtd_funcionarios")
+                    .select("id_cliente, nome, cpf, email, data_limite, "
+                            "datahora_cadastro, qtd_empresas, qtd_funcionarios")
                     .order("nome")
                     .execute().data or [])
         empresas_all = (supabase.table("tab_empresa")
@@ -35730,6 +36206,8 @@ def trocar_cliente():
                             if c.get("cpf") and len(c["cpf"]) == 11 else c.get("cpf", ""))
             _dl = (c.get("data_limite") or "").strip()
             c["limite_vencido"] = bool(_dl) and _dl < mes_atual
+            c["data_cadastro_fmt"] = _fmt_data_cadastro(c.get("datahora_cadastro"))
+            c["data_cadastro_ord"] = str(c.get("datahora_cadastro") or "")
     except Exception:
         clientes = []
     cpf_atual = str(session.get("cpf") or "")

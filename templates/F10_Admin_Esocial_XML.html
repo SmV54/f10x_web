@@ -436,13 +436,14 @@ function selecionarCliente(idCliente, nomeCliente) {
                     + `${e.id_empresa.toString().padStart(6,'0')} · ${e.razao_fmt}</option>`
                 ).join('');
             sel.disabled = false;
-            // Foca o select (e tenta abri-lo) pra dar destaque visual
-            sel.focus();
-            try { if (sel.showPicker) sel.showPicker(); } catch (e) { /* ignora */ }
-            // Se houver só uma empresa, seleciona e já busca
             if (d.empresas.length === 1) {
+                // Uma única empresa: já deixa selecionada e busca (sem abrir o picker)
                 sel.value = d.empresas[0].id_empresa;
                 onEmpresaChange().then(() => buscarArquivos());
+            } else {
+                // Várias empresas: foca e abre o seletor pra escolha
+                sel.focus();
+                try { if (sel.showPicker) sel.showPicker(); } catch (e) { /* ignora */ }
             }
         })
         .catch(() => {

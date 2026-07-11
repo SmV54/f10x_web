@@ -158,7 +158,8 @@
       <span class="card-classif-lbl">Classificação:</span>
       <div class="seg">
         <button type="button" class="seg-btn ativo" data-modo="num" onclick="ordenar('num')">Numérica</button>
-        <button type="button" class="seg-btn" data-modo="alfa" onclick="ordenar('alfa')">Alfabética</button>
+        <button type="button" class="seg-btn" data-modo="alfa" onclick="ordenar('alfa')">Nome</button>
+        <button type="button" class="seg-btn" data-modo="cad" onclick="ordenar('cad')">Data Cadastro</button>
       </div>
     </div>
     <div class="filtros">
@@ -175,6 +176,7 @@
           <th>Nome</th>
           <th style="width:140px;">CPF</th>
           <th>E-mail</th>
+          <th style="width:110px;">Cadastro</th>
           <th style="width:100px;">Limite</th>
           <th style="width:70px; text-align:right;">Empr.</th>
         </tr>
@@ -186,6 +188,7 @@
           data-nome="{{ c.nome|lower }}"
           data-cpf="{{ c.cpf }}"
           data-email="{{ c.email|lower }}"
+          data-cad="{{ c.data_cadastro_ord }}"
           class="{% if c.cpf == cpf_atual %}atual{% endif %}"
           onclick="impersonar({{ c.id_cliente }}, '{{ c.nome|e }}', '{{ c.cpf }}')">
           <td class="col-num">{{ '%04d'|format(c.id_cliente) }}</td>
@@ -195,6 +198,7 @@
           </td>
           <td class="col-cpf">{{ c.cpf_fmt }}</td>
           <td>{{ c.email or '—' }}</td>
+          <td class="col-cpf">{{ c.data_cadastro_fmt }}</td>
           <td class="{% if c.limite_vencido %}limite-venc{% endif %}">{{ c.data_limite or '—' }}</td>
           <td class="col-num">{{ c.qtd_empresas_real or 0 }}</td>
         </tr>
@@ -222,6 +226,11 @@ function ordenar(modo) {
       return (a.getAttribute('data-nome') || '').localeCompare(
              (b.getAttribute('data-nome') || ''), 'pt-BR');
     }
+    if (modo === 'cad') {
+      // Data de cadastro, mais recentes primeiro (descendente)
+      return (b.getAttribute('data-cad') || '').localeCompare(
+             (a.getAttribute('data-cad') || ''));
+    }
     return (parseInt(a.getAttribute('data-id'), 10) || 0) -
            (parseInt(b.getAttribute('data-id'), 10) || 0);
   });
@@ -230,7 +239,10 @@ function ordenar(modo) {
     b.classList.toggle('ativo', b.getAttribute('data-modo') === modo);
   });
   const rodape = document.getElementById('rodapeOrdem');
-  if (rodape) rodape.textContent = (modo === 'alfa') ? 'Ordenados por nome.' : 'Ordenados por ID.';
+  const labels = { alfa: 'Ordenados por nome.',
+                   cad:  'Ordenados por data de cadastro (mais recentes primeiro).',
+                   num:  'Ordenados por ID.' };
+  if (rodape) rodape.textContent = labels[modo] || labels.num;
 }
 
 function filtrar() {
