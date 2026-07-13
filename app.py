@@ -31061,7 +31061,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     func_info = {}
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .execute())
@@ -31078,13 +31078,14 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "funcao": f"CBO {cbo}" if cbo else "—",
                 "cc":     str(f.get("centrocusto") or "000"),
                 "filial": str(f.get("filial")      or ""),
+                "cat":    int(f.get("codcateg")     or 0),
             }
     except Exception:
         pass
     if mov_data and not func_info:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx")
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,codcateg")
                   .eq("id_empresa", id_empresa)
                   .in_("matricula", list(mov_data.keys()))
                   .execute())
@@ -31099,6 +31100,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                     "funcao": "—",
                     "cc":     "000",
                     "filial": "",
+                    "cat":    int(f.get("codcateg") or 0),
                 }
         except Exception:
             pass
@@ -31149,8 +31151,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
-        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
-        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
+        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
+        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
 
         # Adiantamento Quinzenal (161-164) — bloco próprio acima das informativas
         adiant_list = []
@@ -31406,7 +31409,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         pass
 
     func_info = {}
-    _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial"
+    _cols_cad = "matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg"
     try:
         r = (supabase.table("tab_cad")
              .select(_cols_cad)
@@ -31428,6 +31431,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 "funcao": cargo,
                 "cc":     str(f.get("centrocusto") or "000"),
                 "filial": str(f.get("filial")      or ""),
+                "cat":    int(f.get("codcateg")     or 0),
             }
     except Exception:
         pass
@@ -31435,7 +31439,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     if mov_data and not func_info:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx")
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,codcateg")
                   .eq("id_empresa", id_empresa)
                   .in_("matricula", list(mov_data.keys()))
                   .execute())
@@ -31452,6 +31456,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     "funcao": "—",
                     "cc":     "000",
                     "filial": "",
+                    "cat":    int(f.get("codcateg") or 0),
                 }
         except Exception:
             pass
@@ -31506,8 +31511,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
-        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
-        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
+        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
+        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
 
         # Adiantamentos quinzenais (verbas 161-164) — linha acima das informativas
         adiant_list = []
@@ -32020,7 +32026,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     func_info = {}
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial")
+             .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,centrocusto,filial,codcateg")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .execute())
@@ -32037,6 +32043,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 "funcao": f"CBO {cbo}" if cbo else "—",
                 "cc":     str(f.get("centrocusto") or "000"),
                 "filial": str(f.get("filial")      or ""),
+                "cat":    int(f.get("codcateg")     or 0),
             }
     except Exception:
         pass
@@ -32086,8 +32093,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         inss_val  = agg.get(101,{}).get("val",0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
-        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"]=="11")
-        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * 8) // 100
+        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
+        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
         # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
         adiant_list = []
         for r_ad in adiant_data.get(mat, []):
