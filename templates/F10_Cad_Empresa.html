@@ -598,6 +598,24 @@ body {
 <div id="msgOrientacao" class="msg-orientacao"></div>
 <div class="container">
 
+{% if bloqueio_msg %}
+    <div class="secao" id="secao-bloqueio" style="border-left:4px solid #dc2626;">
+        <div class="secao-corpo" style="text-align:center;padding:36px 24px;">
+            <div style="font-size:44px;line-height:1;margin-bottom:12px;">🔒</div>
+            <div style="font-size:19px;font-weight:600;color:#b91c1c;margin-bottom:10px;">
+                Não é possível cadastrar uma nova empresa
+            </div>
+            <div style="color:var(--text-sub);max-width:640px;margin:0 auto 22px;line-height:1.55;">
+                {{ bloqueio_msg }}
+            </div>
+            <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+                <button class="btn btn-salvar" style="background:var(--accent);" onclick="window.location.href='/comprar_licenca'">Comprar / Ampliar Licença</button>
+                <button class="btn btn-limpar" onclick="window.location.href='/menu'">Voltar ao Menu</button>
+            </div>
+        </div>
+    </div>
+{% else %}
+
     <!-- ── IDENTIFICAÇÃO ──────────────────────────── -->
     <div class="secao" id="secao-id">
         <div class="secao-header">
@@ -983,10 +1001,13 @@ body {
         {% endif %}
     </div>
     <div id="resultadoValidacao"></div>
+{% endif %}
 
 </div>
 
+{% if not bloqueio_msg %}
 <button id="btnTour" onclick="iniciarTour()" title="Tour de orientação — clique para conhecer esta tela">?</button>
+{% endif %}
 
 <script>
 /* ── MÁSCARA CNPJ ──────────────────────────────────────── */
@@ -1573,10 +1594,12 @@ function preencherFormulario(d) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+{% if not bloqueio_msg %}
     await carregarListaFPAS();
     {% if modo|default('novo') == 'alterar' and empresa_dados %}
     preencherFormulario({{ empresa_dados | tojson }});
     {% endif %}
+{% endif %}
 });
 
 /* ── TOUR DRIVER.JS ── */

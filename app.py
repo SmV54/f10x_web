@@ -1526,10 +1526,10 @@ def _fmt_cnpj(cnpj_raw):
 
 # =========================================================
 # PREFERÊNCIAS DO CLIENTE — tab_tabela_cli num_tabela="1001"
-# Escopo: por cliente (id_empresa="0"). Para preferências
+# Escopo: por cliente (id_empresa=0). Para preferências
 # específicas de uma empresa, passar id_empresa explícito.
 # =========================================================
-def _get_pref(codigo, default=None, id_empresa="0"):
+def _get_pref(codigo, default=None, id_empresa=0):
     id_cliente = session.get("id_cliente")
     if id_cliente is None:
         return default
@@ -1564,7 +1564,7 @@ def _def_classificacao():
     return "A" if pref == "alfa" else "N"
 
 
-def _set_pref(codigo, texto, valor=None, id_empresa="0"):
+def _set_pref(codigo, texto, valor=None, id_empresa=0):
     """Retorna (ok: bool, msg: str). msg traz a exceção quando ok=False."""
     id_cliente = session.get("id_cliente")
     if id_cliente is None:
@@ -7537,13 +7537,27 @@ def empresa():
     if not session.get("logado"):
         return redirect("/")
 
+    # Bloqueia a ENTRADA no cadastro se a licenca ja atingiu o limite de
+    # empresas — evita o usuario preencher tudo para so avisar no final.
+    bloqueio_msg = None
+    _lic = _estado_licenca(session.get("id_cliente", 1))
+    if _lic["sem_licenca"]:
+        bloqueio_msg = ("Sua licenca esta zerada — nenhuma empresa pode ser "
+                        "cadastrada. Renove em Comprar Licenca para liberar o cadastro.")
+    elif _lic["qtd_empresas"] > 0 and _lic["atual_empresas"] >= _lic["qtd_empresas"]:
+        bloqueio_msg = (
+            f"Limite de empresas da sua licenca atingido: voce ja cadastrou "
+            f"{_lic['atual_empresas']} empresa(s) e sua licenca permite no maximo "
+            f"{_lic['qtd_empresas']}. Amplie a licenca para cadastrar mais empresas.")
+
     return render_template(
         "F10_Cad_Empresa.html",
         titulo_sistema="Folha10-Simples",
         titulo_tela="Cadastrar uma Nova Empresa",
         cliente_info=session.get("cliente_info", ""),
         empresa_info=session.get("empresa_info", ""),
-        versao=ler_versao()
+        versao=ler_versao(),
+        bloqueio_msg=bloqueio_msg,
     )
 
 # =========================================================
@@ -7876,30 +7890,37 @@ def api_gravar_empresa():
         dados["id_cliente"] = id_cliente_sess
         dados["tp_insc"] = "1"
 
-        # Se for empresa NOVA (CNPJ ainda nao cadastrado para este cliente),
-        # verifica limite da licenca.
+        # Este endpoint grava SEMPRE uma empresa NOVA (o front usa
+        # /api/alterar_empresa quando esta em modo de edicao). Se o CNPJ ja
+        # existir PARA ESTE CLIENTE, e cadastro duplicado -> orienta a alterar.
         cnpj_norm = so_numeros(str(dados.get("cnpj") or ""))
         if cnpj_norm:
             _ja_existe = (supabase.table("tab_empresa")
                           .select("id_empresa")
+                          .eq("id_cliente", id_cliente_sess)
                           .eq("cnpj", cnpj_norm)
                           .limit(1).execute().data or [])
-            if not _ja_existe:
-                _lic = _estado_licenca(id_cliente_sess)
-                if _lic["sem_licenca"]:
-                    return jsonify({"ok": False,
-                        "msg": ("Sua licenca esta zerada — nenhuma empresa pode "
-                                "ser cadastrada. Renove em Comprar Licenca.")})
-                if _lic["qtd_empresas"] > 0 and (_lic["atual_empresas"] + 1) > _lic["qtd_empresas"]:
-                    return jsonify({"ok": False,
-                        "msg": (f"Limite de empresas da licenca atingido "
-                                f"({_lic['atual_empresas']}/{_lic['qtd_empresas']}). "
-                                "Amplie a licenca antes de cadastrar mais.")})
+            if _ja_existe:
+                return jsonify({"ok": False,
+                    "msg": ("Esta empresa (CNPJ) ja esta cadastrada para este "
+                            "cliente. Use 'Alterar Esta Empresa' para edita-la.")})
+
+            _lic = _estado_licenca(id_cliente_sess)
+            if _lic["sem_licenca"]:
+                return jsonify({"ok": False,
+                    "msg": ("Sua licenca esta zerada — nenhuma empresa pode "
+                            "ser cadastrada. Renove em Comprar Licenca.")})
+            if _lic["qtd_empresas"] > 0 and (_lic["atual_empresas"] + 1) > _lic["qtd_empresas"]:
+                return jsonify({"ok": False,
+                    "msg": (f"Limite de empresas da licenca atingido: voce ja cadastrou "
+                            f"{_lic['atual_empresas']} empresa(s) e sua licenca permite no "
+                            f"maximo {_lic['qtd_empresas']}. Amplie a licenca antes de "
+                            "cadastrar mais.")})
 
         resposta = (
             supabase
             .table("tab_empresa")
-            .upsert(dados, on_conflict="cnpj")
+            .insert(dados)
             .execute()
         )
 
@@ -8180,7 +8201,7 @@ def api_vt_incluir():
     try:
         supabase.table("tab_tabela_cli").insert({
             "id_cliente": id_cliente,
-            "id_empresa": "0",
+            "id_empresa": 0,
             "num_tabela": "11",
             "codigo":     tipo,
             "texto":      descricao,
@@ -11381,6 +11402,281 @@ def cad_dep():
         func_nome=func_nome,
         tipos_dep=tipos_dep,
     )
+
+
+# =========================================================
+# PENSÃO ALIMENTÍCIA — TELA (Cadastro da Pensionista)
+# A pensionista e os dependentes vinculados à pensão precisam
+# estar cadastrados em tab_dependentes. Sem dependentes, a tela
+# bloqueia e orienta a cadastrá-los antes.
+# =========================================================
+@app.route("/cad_pensao")
+def cad_pensao():
+    if not session.get("logado"):
+        return redirect("/")
+    mats_raw = request.args.get("mats", "").strip()
+    mats = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()]
+    if len(mats) != 1:
+        return redirect("/select_funcionario?contexto=pensao")
+    matricula  = mats[0]
+    id_empresa = _get_id_empresa()
+    func_nome  = ""
+    try:
+        r = (supabase.table("tab_cad")
+             .select("nome, nomer")
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", matricula)
+             .limit(1)
+             .execute())
+        if r.data:
+            func_nome = (r.data[0].get("nomer") or r.data[0].get("nome") or "").strip()
+    except Exception:
+        pass
+    tipos_dep = []
+    try:
+        r = (supabase.table("tab_tabela_total")
+             .select("codigo, texto")
+             .eq("num_tabela", 7)
+             .neq("codigo", "DOC")
+             .order("codigo")
+             .execute())
+        tipos_dep = r.data or []
+    except Exception:
+        pass
+    return render_template(
+        "F10_Cad_Pensao.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        matricula=matricula,
+        func_nome=func_nome,
+        tipos_dep=tipos_dep,
+    )
+
+
+# =========================================================
+# PENSÃO ALIMENTÍCIA — TELA (Fórmulas)
+# Fórmulas ficam em tab_tabela_cli, num_tabela='7'.
+#   - id_cliente=0 + id_empresa='0'  → fórmula global (todos os clientes)
+#   - id_cliente=<cliente>           → fórmula própria do cliente
+# Mapeamento dos campos:
+#   codigo → número da fórmula (4 dígitos, ex.: "0001"), único por cliente e
+#            também não pode colidir com os números globais (id_cliente=0 e
+#            id_empresa='0', que ficam reservados para todos os clientes)
+#   texto  → nome da fórmula (campo livre digitado pelo usuário)
+#   texto2 → a própria fórmula (definição futura)
+# Fórmula NÃO tem vínculo com funcionário.
+#
+# Regra de imutabilidade: fórmulas globais (id_cliente=0 E id_empresa='0')
+# NÃO podem ser alteradas nem excluídas — só o admin/base as define. O cliente
+# pode criar/alterar/excluir as suas próprias.
+# =========================================================
+def _formula_e_global(row):
+    try:
+        emp = int(row.get("id_empresa") or 0)
+    except (TypeError, ValueError):
+        emp = -1
+    return int(row.get("id_cliente") or 0) == 0 and emp == 0
+
+
+def _proximo_numero_formula(id_cliente):
+    """Próximo número da fórmula p/ o cliente: max(números do cliente ∪ globais 0/0) + 1,
+    formatado com 4 dígitos. Reservas globais empurram o contador de todos."""
+    maior = 0
+    try:
+        r = (supabase.table("tab_tabela_cli")
+             .select("codigo")
+             .in_("id_cliente", [0, id_cliente])
+             .eq("num_tabela", "7")
+             .neq("codigo", "DOC")
+             .execute())
+        for row in (r.data or []):
+            cod = (row.get("codigo") or "").strip()
+            if cod.isdigit():
+                maior = max(maior, int(cod))
+    except Exception:
+        pass
+    return f"{maior + 1:04d}"
+
+
+@app.route("/pensao_formulas")
+def pensao_formulas():
+    if not session.get("logado"):
+        return redirect("/")
+    id_cliente = session.get("id_cliente")
+
+    formulas = []
+    try:
+        r = (supabase.table("tab_tabela_cli")
+             .select("id, id_cliente, id_empresa, codigo, texto, texto2")
+             .in_("id_cliente", [0, id_cliente])
+             .eq("num_tabela", "7")
+             .eq("situacao", "A")
+             .neq("codigo", "DOC")
+             .order("id_cliente")
+             .order("codigo")
+             .execute())
+        for row in (r.data or []):
+            formulas.append({
+                "id":       row.get("id"),
+                "numero":   (row.get("codigo") or "").strip(),
+                "nome":     (row.get("texto") or "").strip(),
+                "formula":  (row.get("texto2") or "").strip(),
+                "global":   _formula_e_global(row),
+            })
+    except Exception:
+        formulas = []
+
+    return render_template(
+        "F10_Pensao_Formulas.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        formulas=formulas,
+        proximo_numero=_proximo_numero_formula(id_cliente),
+    )
+
+
+# =========================================================
+# PENSÃO — FÓRMULAS — API: incluir (nova fórmula do cliente)
+# =========================================================
+@app.route("/api/pensao_formula/incluir", methods=["POST"])
+def api_pensao_formula_incluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida."})
+    id_cliente = session.get("id_cliente")
+    data = request.get_json() or {}
+    nome = (data.get("nome") or "").strip()
+
+    if not nome:
+        return jsonify({"ok": False, "msg": "Informe o nome da fórmula."})
+    if len(nome) > 30:
+        return jsonify({"ok": False, "msg": "O nome da fórmula deve ter no máximo 30 caracteres."})
+
+    formula = (data.get("formula") or "").strip() or None
+    numero = _proximo_numero_formula(id_cliente)
+    try:
+        supabase.table("tab_tabela_cli").insert({
+            "id_cliente": id_cliente,
+            "id_empresa": 0,
+            "num_tabela": "7",
+            "codigo":     numero,
+            "texto":      nome,
+            "texto2":     formula,
+            "situacao":   "A",
+        }).execute()
+        gravar_log("PENSAO", f"INC fórmula {numero}: {nome}")
+        return jsonify({"ok": True, "numero": numero})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# PENSÃO — FÓRMULAS — API: alterar (só do próprio cliente; global é bloqueada)
+# =========================================================
+@app.route("/api/pensao_formula/alterar", methods=["POST"])
+def api_pensao_formula_alterar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida."})
+    id_cliente = session.get("id_cliente")
+    data = request.get_json() or {}
+    id_reg = data.get("id")
+    nome = (data.get("nome") or "").strip()
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado."})
+    if not nome:
+        return jsonify({"ok": False, "msg": "Informe o nome da fórmula."})
+    if len(nome) > 30:
+        return jsonify({"ok": False, "msg": "O nome da fórmula deve ter no máximo 30 caracteres."})
+
+    try:
+        info = (supabase.table("tab_tabela_cli")
+                .select("id, id_cliente, id_empresa")
+                .eq("id", id_reg).limit(1).execute())
+        row = (info.data or [None])[0]
+        if not row:
+            return jsonify({"ok": False, "msg": "Fórmula não encontrada."})
+        if _formula_e_global(row):
+            return jsonify({"ok": False, "msg": "Fórmula global não pode ser alterada."})
+        formula = (data.get("formula") or "").strip() or None
+        supabase.table("tab_tabela_cli").update({"texto": nome, "texto2": formula}) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        gravar_log("PENSAO", f"ALT fórmula id={id_reg}: {nome}")
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# PENSÃO — FÓRMULAS — API: excluir (só do próprio cliente; global é bloqueada)
+# =========================================================
+@app.route("/api/pensao_formula/excluir", methods=["POST"])
+def api_pensao_formula_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida."})
+    id_cliente = session.get("id_cliente")
+    id_reg = (request.get_json() or {}).get("id")
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado."})
+    try:
+        info = (supabase.table("tab_tabela_cli")
+                .select("id, id_cliente, id_empresa, codigo, texto")
+                .eq("id", id_reg).limit(1).execute())
+        row = (info.data or [None])[0]
+        if not row:
+            return jsonify({"ok": False, "msg": "Fórmula não encontrada."})
+        if _formula_e_global(row):
+            return jsonify({"ok": False, "msg": "Fórmula global não pode ser excluída."})
+        supabase.table("tab_tabela_cli").update({"situacao": "D"}) \
+            .eq("id", id_reg).eq("id_cliente", id_cliente).execute()
+        gravar_log("PENSAO", f"EXC fórmula {row.get('codigo')}: {row.get('texto')}")
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# PENSÃO — FÓRMULAS — API: verbas p/ o construtor
+# Gerais (id_cliente=0 e cod_rubr<1000) + verbas do próprio cliente.
+# Dedup por cod_rubr, mantendo a validade (ini_valid) mais recente.
+# =========================================================
+@app.route("/api/pensao_formula/verbas")
+def api_pensao_formula_verbas():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida."})
+    id_cliente = session.get("id_cliente")
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr, dsc_rubr, tp_rubr, id_cliente, ini_valid")
+             .in_("id_cliente", [0, id_cliente])
+             .eq("situacao", "A")
+             .order("cod_rubr")
+             .execute())
+        melhores = {}
+        for row in (r.data or []):
+            cod = row.get("cod_rubr")
+            if cod is None:
+                continue
+            cod = int(cod)
+            cli = int(row.get("id_cliente") or 0)
+            # globais: só as gerais (< 1000); do cliente: todas
+            if cli == 0 and cod >= 1000:
+                continue
+            iv = int(row.get("ini_valid") or 0)
+            if cod not in melhores or iv >= melhores[cod]["_iv"]:
+                melhores[cod] = {
+                    "cod":  f"{cod:04d}",
+                    "desc": (row.get("dsc_rubr") or "").strip(),
+                    "tp":   str(row.get("tp_rubr") or ""),
+                    "_iv":  iv,
+                }
+        verbas = sorted(melhores.values(), key=lambda v: v["cod"])
+        for v in verbas:
+            v.pop("_iv", None)
+        return jsonify({"ok": True, "verbas": verbas})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
 
 
 # =========================================================
