@@ -428,7 +428,24 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     vserv  = g(f"{dps}/{{}}valores/{{}}vServPrest/{{}}vServ")
     vliq   = g(f"{inf}/{{}}valores/{{}}vLiq") or vserv
     ret    = g(f"{dps}/{{}}valores/{{}}trib/{{}}tribMun/{{}}tpRetISSQN")
+    paliq  = g(f"{dps}/{{}}valores/{{}}trib/{{}}tribMun/{{}}pAliq")
     ptribsn = g(f"{dps}/{{}}valores/{{}}trib/{{}}totTrib/{{}}pTotTribSN")
+
+    # ISSQN apurado a partir da alíquota informada no DPS (sem deduções → BC = vServ).
+    def _num(s):
+        try:
+            return float(str(s).replace(",", "."))
+        except Exception:
+            return 0.0
+    _bc_iss  = _num(vserv)
+    _paliq_f = _num(paliq)
+    _iss_val = round(_bc_iss * _paliq_f / 100.0, 2)
+    _tem_aliq = bool(paliq) and _paliq_f > 0
+    _aliq_txt = (f"{_paliq_f:.2f}".replace(".", ",") + "%") if _tem_aliq else "-"
+    _bc_txt   = _fmt_brl(_bc_iss) if _tem_aliq else "-"
+    _iss_txt  = _fmt_brl(_iss_val) if _tem_aliq else "-"
+    # ISS retido (tpRetISSQN=2 tomador, 3 intermediário) → valor destacado como retido.
+    _iss_ret_txt = _fmt_brl(_iss_val) if (_tem_aliq and str(ret) in ("2", "3")) else "-"
 
     def dt(s):
         return f"{s[8:10]}/{s[5:7]}/{s[0:4]} {s[11:16]}" if len(s) >= 16 else s
@@ -626,8 +643,8 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
          ("Número Processo Suspensão", "-"), ("Benefício Municipal", "-")],
         [("Valor do Serviço", _fmt_brl(vserv)), ("Desconto Incondicionado", "-"),
          ("Total Deduções/Reduções", "-"), ("Cálculo do BM", "-")],
-        [("BC ISSQN", "-"), ("Alíquota Aplicada", "-"),
-         ("Retenção do ISSQN", RETISS.get(ret, "-")), ("ISSQN Apurado", "-")],
+        [("BC ISSQN", _bc_txt), ("Alíquota Aplicada", _aliq_txt),
+         ("Retenção do ISSQN", RETISS.get(ret, "-")), ("ISSQN Apurado", _iss_txt)],
     ])
 
     # ── Tributação Federal ──
@@ -640,7 +657,7 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     # ── Valor Total da NFS-e ──
     block("VALOR TOTAL DA NFS-E", [
         [("Valor do Serviço", _fmt_brl(vserv)), ("Desconto Condicionado", "-"),
-         ("Desconto Incondicionado", "-"), ("ISSQN Retido", "-")],
+         ("Desconto Incondicionado", "-"), ("ISSQN Retido", _iss_ret_txt)],
         [("Total das Retenções Federais", "-"), ("PIS/COFINS - Débito Apur. Própria", "-"),
          ("Valor Líquido da NFS-e", _fmt_brl(vliq))],
     ])

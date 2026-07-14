@@ -11443,6 +11443,24 @@ def cad_pensao():
         tipos_dep = r.data or []
     except Exception:
         pass
+    # Fórmulas disponíveis (globais 0/0 + do cliente) para a etapa 2 do cadastro
+    formulas = []
+    try:
+        rf = (supabase.table("tab_tabela_cli")
+              .select("codigo, texto")
+              .in_("id_cliente", [0, session.get("id_cliente")])
+              .eq("num_tabela", "7")
+              .eq("situacao", "A")
+              .neq("codigo", "DOC")
+              .order("codigo")
+              .execute())
+        for row in (rf.data or []):
+            formulas.append({
+                "numero": (row.get("codigo") or "").strip(),
+                "nome":   (row.get("texto") or "").strip(),
+            })
+    except Exception:
+        formulas = []
     return render_template(
         "F10_Cad_Pensao.html",
         versao=ler_versao(),
@@ -11451,7 +11469,60 @@ def cad_pensao():
         matricula=matricula,
         func_nome=func_nome,
         tipos_dep=tipos_dep,
+        formulas=formulas,
     )
+
+
+# =========================================================
+# PENSÃO ALIMENTÍCIA — API: gravar vínculo (dependentes + fórmula)
+# Grava em tab_dependentes.vinculo_pa (int = número da fórmula):
+#   - dependentes selecionados  → vinculo_pa = número da fórmula escolhida
+#   - demais do mesmo funcionário → vinculo_pa = NULL (desvincula)
+# =========================================================
+@app.route("/api/pensao_gravar", methods=["POST"])
+def api_pensao_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    data       = request.get_json() or {}
+    try:
+        mat = int(data.get("matricula"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Matrícula inválida."})
+
+    sel_ids = [int(i) for i in (data.get("ids") or []) if str(i).strip().isdigit()]
+    num_str = str(data.get("num_formula") or "").strip()
+    if sel_ids and not num_str:
+        return jsonify({"ok": False, "msg": "Escolha a fórmula da pensão."})
+    num = int(num_str) if num_str.isdigit() else None
+
+    try:
+        r = (supabase.table("tab_dependentes")
+             .select("id")
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", mat)
+             .execute())
+        todos = [int(row["id"]) for row in (r.data or [])]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler dependentes: {str(e)[:200]}"})
+
+    sel = [i for i in sel_ids if i in todos]
+    nao = [i for i in todos if i not in sel]
+    try:
+        if sel:
+            (supabase.table("tab_dependentes")
+             .update({"vinculo_pa": num}).in_("id", sel).execute())
+        if nao:
+            (supabase.table("tab_dependentes")
+             .update({"vinculo_pa": None}).in_("id", nao).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}"})
+
+    try:
+        gravar_log("PENSAO", f"mat {mat}: fórmula {num} para {len(sel)} dependente(s)")
+    except Exception:
+        pass
+    return jsonify({"ok": True, "vinculados": len(sel), "num_formula": num})
 
 
 # =========================================================
@@ -41478,6 +41549,26 @@ def api_admin_nf_emitir():
     serie = "1"
     ndps = _nfse_next_ndps(caminho, ambiente, serie)
 
+    # Regra específica do cliente 000614: emitir com ISS RETIDO pelo tomador à
+    # alíquota de 5% (pAliq=5.00 → tpRetISSQN=2). Como a retenção exige o
+    # endereço do tomador no DPS (senão E0237), o endereço é fixado aqui para
+    # não depender do cadastro. Os demais clientes seguem o cadastro
+    # (ISS_Retido da TabCLI_NF) e a parametrização do município.
+    _iss_retido = cli['iss_retido']
+    _serv_aliquota = None
+    try:
+        if int(cod) == 614:
+            _iss_retido = True
+            _serv_aliquota = "5.00"
+            cli['lgr']    = "Rua Leão XIII"
+            cli['nro']    = "346"
+            cli['cpl']    = ""
+            cli['bairro'] = "Toto"
+            cli['cep']    = "50940230"
+            tom_ibge      = "2611606"      # Recife/PE
+    except Exception:
+        pass
+
     e = NFSE_EMITENTE
     d = dict(
         ambiente=ambiente, serie=serie, ndps=ndps, competencia=competencia,
@@ -41488,7 +41579,7 @@ def api_admin_nf_emitir():
         serv_ctribnac=e["serv_ctribnac"], serv_ctribmun=e["serv_ctribmun"],
         serv_nbs=e["serv_nbs"], serv_local=e["cloc_emi"],
         serv_desc=discr or f"SERVIÇO DE PROCESSAMENTO DE DADOS DA FOLHA DE PAGAMENTO DO MES {competencia}",
-        valor=valor, iss_retido=cli['iss_retido'],
+        valor=valor, iss_retido=_iss_retido, serv_aliquota=_serv_aliquota,
         tom_cnpj_cpf=cli['cnpj_cpf'], tom_nome=cli['nome'], tom_email=cli['email'],
         tom_ibge=tom_ibge, tom_cep=cli['cep'], tom_lgr=cli['lgr'],
         tom_nro=cli['nro'], tom_cpl=cli['cpl'], tom_bairro=cli['bairro'],
