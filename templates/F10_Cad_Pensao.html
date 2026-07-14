@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Cadastro de Pensionista</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height: 100%; overflow: hidden; }
+.pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── TOPO ── */
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome   { font-size: 11px; color: #374151; margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid #70c4a0;
+    color: #374151; font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+/* ── CONTAINER ── */
+.container {
+    max-width: 1400px; width: 100%; margin: 12px auto 0;
+    padding: 0 18px 14px; flex: 1 1 auto;
+    display: flex; flex-direction: column; min-height: 0;
+}
+
+/* ── INFO TOPO ── */
+.painel-info {
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr;
+    gap: 12px; margin-bottom: 12px; flex: 0 0 auto;
+}
+.card-info {
+    background: white; border-radius: 12px; padding: 10px 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05); border: 1px solid #e5e7eb;
+}
+.card-info .rotulo { font-size: 11px; color: #6b7280; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.4px; }
+.card-info .valor  { font-size: 15px; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── LAYOUT 2 COLUNAS ── */
+.layout-principal {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 20px; align-items: stretch; flex: 1 1 auto; min-height: 0;
+}
+/* Coluna esquerda: duas listas empilhadas (Responsável + Beneficiários) */
+.coluna-esq {
+    display: flex; flex-direction: column; gap: 16px; min-height: 0; overflow-y: auto;
+}
+.bloco {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    display: flex; flex-direction: column; min-height: 0;
+}
+.coluna-esq .bloco { flex: 0 0 auto; }
+.lista-dep input[type=radio] { width: 16px; height: 16px; cursor: pointer; accent-color: #2f9d4d; vertical-align: middle; }
+.bloco-header {
+    padding: 10px 16px 8px; background: #f8fafc;
+    border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; border-radius: 12px 12px 0 0;
+}
+.bloco-header h2 { margin: 0; font-size: 15px; color: #0f172a; }
+.bloco-header p  { margin: 2px 0 0; font-size: 11px; color: #64748b; }
+.bloco-body {
+    padding: 12px 16px; flex: 1 1 auto;
+    display: flex; flex-direction: column; min-height: 0; overflow-y: auto;
+}
+
+/* ── LISTA DE DEPENDENTES ── */
+.lista-dep {
+    border: 1px solid #dbe3ee; border-radius: 10px;
+    overflow-y: auto; background: white; flex: 0 0 auto; min-height: 0; max-height: 260px;
+}
+.lista-dep table { width: 100%; border-collapse: collapse; }
+.lista-dep thead th {
+    position: sticky; top: 0; background: #eaf1fb; z-index: 2;
+    text-align: left; padding: 5px 10px; font-size: 11px; color: #334155;
+    border-bottom: 1px solid #dbe3ee; white-space: nowrap;
+}
+.lista-dep td {
+    padding: 4px 10px; font-size: 12px; border-bottom: 1px solid #eef2f7;
+    vertical-align: middle;
+}
+.lista-dep tbody tr:hover { background: #f8fafc; cursor: pointer; }
+.lista-dep tbody tr.selecionado { background: #dbeafe; }
+.lista-dep td.col-chk, .lista-dep th.col-chk { width: 34px; text-align: center; padding-left: 8px; padding-right: 4px; }
+.lista-dep input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: #2f9d4d; vertical-align: middle; }
+.tag-pen { display: inline-block; padding: 1px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; background: #fae8ff; color: #86198f; }
+.vazio-dep { padding: 28px; text-align: center; font-size: 12px; color: #94a3b8; }
+
+/* ── AVISO BLOQUEIO (sem dependentes) ── */
+.bloqueio {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 14px; padding: 40px 24px; flex: 1 1 auto;
+}
+.bloqueio .icone { font-size: 46px; }
+.bloqueio h3 { margin: 0; font-size: 17px; color: #b45309; }
+.bloqueio p  { margin: 0; font-size: 13px; color: #64748b; max-width: 460px; line-height: 1.55; }
+.bloqueio .destaque { color: #0f172a; font-weight: 600; }
+
+/* ── PLACEHOLDER FORM (pendente campos tab_pensao) ── */
+.placeholder-form {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; gap: 12px; padding: 32px 20px; flex: 1 1 auto; color: #94a3b8;
+}
+/* Estado preenchido: conteúdo sobe para o topo do quadro */
+.placeholder-form.preenchido {
+    align-items: stretch; justify-content: flex-start; text-align: left;
+    gap: 0; padding: 16px 20px;
+}
+.placeholder-form .icone { font-size: 34px; }
+.placeholder-form .sel { font-size: 14px; color: #0f172a; font-weight: 700; }
+.placeholder-form .nota { font-size: 12px; max-width: 380px; line-height: 1.5; }
+
+/* Aviso do mês/ano em que o cálculo da pensão começa */
+.aviso-inicio {
+    margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;
+    background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+    font-size: 12px; line-height: 1.5; flex: 0 0 auto;
+}
+
+/* ── Botões ── */
+.btn {
+    height: 38px; border: none; border-radius: 9px; padding: 0 18px;
+    font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.15s;
+    display: inline-flex; align-items: center; gap: 7px; text-decoration: none;
+}
+.btn-primario {
+    background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%);
+    border: 1px solid #2f9d4d; color: white;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.btn-primario:hover { filter: brightness(1.04); }
+
+/* ── RODAPÉ ── */
+.rodape-final { display: flex; align-items: center; margin-top: 12px; flex: 0 0 auto; }
+.btn-voltar-menu {
+    height: 38px; background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%);
+    border: 1px solid #c7d2de; color: #0f172a; border-radius: 9px;
+    padding: 0 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.btn-voltar-menu:hover { filter: brightness(1.02); }
+
+@media (max-width: 1100px) {
+    html, body { overflow: auto; height: auto; }
+    .pagina { min-height: auto; }
+    .layout-principal { grid-template-columns: 1fr; }
+    .painel-info { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="pagina">
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Pensão Alimentícia — Cadastro de Pensionista</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="container">
+
+    <!-- Info topo -->
+    <div class="painel-info">
+        <div class="card-info">
+            <div class="rotulo">Funcionário</div>
+            <div class="valor" id="card-func">
+                {{ "%06d"|format(matricula) }} — {{ func_nome }}
+            </div>
+        </div>
+        <div class="card-info">
+            <div class="rotulo">Empresa</div>
+            <div class="valor">{{ empresa }}</div>
+        </div>
+        <div class="card-info">
+            <div class="rotulo">Modo</div>
+            <div class="valor">Cadastro de Pensionista</div>
+        </div>
+    </div>
+
+    <div class="layout-principal">
+
+        <!-- ── COLUNA ESQUERDA: duas listas ── -->
+        <div class="coluna-esq">
+
+            <!-- Lista 1: Responsável pelo recebimento (apenas 1) -->
+            <div class="bloco">
+                <div class="bloco-header">
+                    <h2>1 · Responsável pelo recebimento</h2>
+                    <p>Selecione <strong>um</strong> dependente que recebe a pensão.</p>
+                </div>
+                <div class="bloco-body">
+                    <div id="area-resp">
+                        <div class="lista-dep" style="max-height:190px;"><div class="vazio-dep">Carregando…</div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Lista 2: Beneficiários da pensão (um ou vários; nunca o responsável) -->
+            <div class="bloco">
+                <div class="bloco-header">
+                    <h2>2 · Beneficiários da pensão</h2>
+                    <p>Marque os beneficiários — pode incluir o responsável.</p>
+                </div>
+                <div class="bloco-body">
+                    <div id="area-benef">
+                        <div class="lista-dep" style="max-height:190px;"><div class="vazio-dep">Carregando…</div></div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /coluna-esq -->
+
+        <!-- ── COLUNA DIREITA: Fórmula ── -->
+        <div class="bloco">
+            <div class="bloco-header">
+                <h2>Fórmula da Pensão</h2>
+                <p>Escolha a fórmula que calcula a pensão dos beneficiários marcados</p>
+            </div>
+            <div class="bloco-body">
+                <div class="aviso-inicio" id="aviso-inicio" style="display:none;"></div>
+                <div class="placeholder-form" id="painel-pensionista">
+                    <div class="icone">⚖️</div>
+                    <div class="sel">Nenhum beneficiário selecionado</div>
+                    <div class="nota">Escolha o responsável e marque os beneficiários para escolher a fórmula.</div>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- /layout-principal -->
+
+    <div class="rodape-final">
+        <button class="btn-voltar-menu" onclick="window.location.href='/menu'">&#8592; Voltar ao Menu</button>
+    </div>
+
+</div><!-- /container -->
+
+<script>
+const MATRICULA  = {{ matricula }};
+const FUNC_LABEL = `{{ "%06d"|format(matricula) }} — {{ func_nome|e }}`;
+const TIPOS_DEP  = {
+    {% for t in tipos_dep %}'{{ t.codigo|int }}': '{{ t.texto|e }}',{% endfor %}
+};
+const FORMULAS = [
+    {% for f in formulas %}{ numero: '{{ f.numero|e }}', nome: '{{ f.nome|e }}' },{% endfor %}
+];
+const PENSAO = {{ pensao_atual|tojson }};   // pensão já cadastrada (ou null)
+const FOLHA_ATUAL = '{{ folha_atual }}';    // yyyymm da folha ativa
+
+let DEPS = [];                    // todos os dependentes do funcionário
+const selecionados = new Map();   // BENEFICIÁRIOS: id_dependente -> objeto
+let responsavelId = null;         // RESPONSÁVEL pelo recebimento (apenas 1)
+let formulaEscolhida = '';        // preserva a fórmula escolhida entre re-renders
+let valorPensao = '';             // valor fixo em R$ (fórmula 0001)
+let percPensao  = '';             // percentual do desconto (demais fórmulas)
+
+/* Troca de fórmula: guarda a escolha e re-renderiza (troca o campo Valor/%) */
+function onFormulaChange(v) { formulaEscolhida = v; atualizarPainel(); }
+
+function fmtNascto(v) {
+    if (!v || v.length !== 8) return '—';
+    return `${v.slice(6,8)}/${v.slice(4,6)}/${v.slice(0,4)}`;
+}
+/* yyyymm → mm/yyyy */
+function fmtAnomes(am) {
+    am = String(am || '');
+    return am.length === 6 ? `${am.slice(4,6)}/${am.slice(0,4)}` : '';
+}
+/* Aviso do mês/ano em que o cálculo da pensão começa */
+function atualizarAviso() {
+    const el = document.getElementById('aviso-inicio');
+    if (!el) return;
+    const jaExiste = !!(PENSAO && PENSAO.anomes_inicial);
+    const f = fmtAnomes(jaExiste ? PENSAO.anomes_inicial : FOLHA_ATUAL);
+    if (!f) { el.style.display = 'none'; return; }
+    el.innerHTML = jaExiste
+        ? `ℹ️ O cálculo desta pensão vale a partir de <strong>${f}</strong>. Não há edição — no futuro será possível excluir (se criada no mês atual) ou encerrar informando o mês final.`
+        : `ℹ️ O cálculo desta pensão passará a valer a partir de <strong>${f}</strong> (folha atual). Após gravada, não há edição.`;
+    el.style.display = '';
+}
+
+/* Número BR: aceita "1.500,00", "1500,5", "1500.50", "30" → Number (NaN se inválido) */
+function parseNum(s) {
+    if (s === null || s === undefined) return NaN;
+    s = String(s).trim();
+    if (!s) return NaN;
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');  // "," = decimal → tira milhar
+    return parseFloat(s);
+}
+/* Formata com 2 casas no padrão BR: 1500 → "1.500,00" */
+function fmt2(n) {
+    return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+/* onblur do campo Valor: digitação com 2 decimais INCORPORADAS.
+   150000 → 1.500,00 ; 50000 → 500,00 (digite os dígitos com os centavos). */
+function formatarValor(el) {
+    const digits = String(el.value).replace(/\D/g, '');   // só os dígitos
+    if (!digits) { el.value = ''; valorPensao = ''; return; }
+    const cent = parseInt(digits, 10);                    // centavos
+    el.value = fmt2(cent / 100); valorPensao = el.value;
+}
+/* onblur do campo Percentual: digitação com 2 decimais INCORPORADAS.
+   2500 → 25,00 ; 3050 → 30,50 ; máx 10000 → 100,00 (digite os dígitos com os centésimos). */
+function formatarPerc(el) {
+    const digits = String(el.value).replace(/\D/g, '');   // só os dígitos
+    if (!digits) { el.value = ''; percPensao = ''; return; }
+    let cent = parseInt(digits, 10);                       // valor ×100
+    if (cent > 10000) cent = 10000;                        // teto 100,00%
+    el.value = fmt2(cent / 100); percPensao = el.value;
+}
+
+/* ── Carregar dependentes; bloquear se vazio ─────────────── */
+async function carregarLista() {
+    try {
+        const r = await fetch(`/api/dependentes_lista?mat=${MATRICULA}`);
+        const d = await r.json();
+        if (!d.ok) { erroListas(`Erro: ${d.msg}`); return; }
+        if (!d.dependentes.length) { mostrarBloqueio(); return; }
+        DEPS = d.dependentes;
+        // Pré-carrega a pensão já gravada (tab_pensao), se houver.
+        responsavelId = null;
+        selecionados.clear();
+        if (PENSAO) {
+            responsavelId = PENSAO.responsavel || null;
+            (PENSAO.beneficiarios || []).forEach(id => {
+                const dep = DEPS.find(x => x.id === id);
+                if (dep) selecionados.set(dep.id, dep);
+            });
+            formulaEscolhida = PENSAO.formula || '';
+            if (PENSAO.valor != null) valorPensao = fmt2(PENSAO.valor);
+            if (PENSAO.perc  != null) percPensao  = fmt2(PENSAO.perc);
+        }
+        atualizarAviso();
+        renderListas();
+        atualizarPainel();
+    } catch(e) {
+        erroListas('Erro ao carregar.');
+    }
+}
+
+function erroListas(txt) {
+    const box = `<div class="lista-dep" style="max-height:190px;"><div class="vazio-dep">${txt}</div></div>`;
+    document.getElementById('area-resp').innerHTML = box;
+    document.getElementById('area-benef').innerHTML = box;
+}
+
+/* ── Monta uma tabela de dependentes (linhas já prontas) ──── */
+function tabela(rows) {
+    return `<div class="lista-dep" style="max-height:190px;">
+        <table>
+          <thead><tr><th class="col-chk"></th><th>Nome</th><th>Tipo</th><th>Nasc.</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>`;
+}
+function celulasDep(dep) {
+    return `<td>${dep.nome || '—'}</td>
+            <td style="font-size:11px;">${TIPOS_DEP[String(dep.tpdep)] || dep.tpdep || '—'}</td>
+            <td style="font-family:'IBM Plex Mono',monospace;font-size:11px;">${fmtNascto(dep.dtnascto)}</td>`;
+}
+
+/* ── Renderiza as duas listas (responsável + beneficiários) ── */
+function renderListas() {
+    // Lista 1 — responsável (radio, 1 só)
+    const resp = DEPS.map(dep => `
+        <tr data-id="${dep.id}" onclick="selResponsavel(${dep.id})" class="${dep.id === responsavelId ? 'selecionado' : ''}">
+            <td class="col-chk"><input type="radio" name="resp" ${dep.id === responsavelId ? 'checked' : ''}
+                 onclick="event.stopPropagation(); selResponsavel(${dep.id})"></td>
+            ${celulasDep(dep)}
+        </tr>`).join('');
+    document.getElementById('area-resp').innerHTML = tabela(resp);
+
+    // Lista 2 — beneficiários (checkbox); o responsável também pode ser beneficiário
+    const benef = DEPS.length
+        ? DEPS.map(dep => `
+            <tr data-id="${dep.id}" onclick="toggleRow(${dep.id})" class="${selecionados.has(dep.id) ? 'selecionado' : ''}">
+                <td class="col-chk"><input type="checkbox" class="chk-dep" value="${dep.id}" ${selecionados.has(dep.id) ? 'checked' : ''}
+                     onclick="event.stopPropagation()"
+                     onchange='toggleDep(${JSON.stringify(dep)}, this.checked)'></td>
+                ${celulasDep(dep)}
+            </tr>`).join('')
+        : `<tr><td colspan="4"><div class="vazio-dep">Nenhum outro dependente para ser beneficiário.</div></td></tr>`;
+    document.getElementById('area-benef').innerHTML = tabela(benef);
+}
+
+/* ── Escolhe o responsável (pode também ser beneficiário) ─── */
+function selResponsavel(id) {
+    responsavelId = id;   // permanece na lista 2; pode acumular os dois papéis
+    renderListas();
+    atualizarPainel();
+}
+
+/* ── Sem dependentes: bloqueia e orienta ─────────────────── */
+function mostrarBloqueio() {
+    document.getElementById('area-resp').innerHTML = `
+        <div class="bloqueio">
+            <div class="icone">👨‍👩‍👧</div>
+            <h3>Nenhum dependente cadastrado</h3>
+            <p>Para cadastrar a pensionista é preciso, <span class="destaque">antes</span>, ter os
+               dependentes cadastrados — tanto a <span class="destaque">esposa</span> (pensionista)
+               quanto os <span class="destaque">filhos</span> vinculados à pensão.</p>
+            <a class="btn btn-primario" href="/cad_dep?mats=${MATRICULA}">👨‍👩‍👧 Cadastrar Dependentes</a>
+        </div>`;
+    document.getElementById('area-benef').innerHTML =
+        `<div class="lista-dep" style="max-height:190px;"><div class="vazio-dep">—</div></div>`;
+    document.getElementById('painel-pensionista').innerHTML = `
+        <div class="icone">🔒</div>
+        <div class="sel">Cadastro indisponível</div>
+        <div class="nota">Cadastre os dependentes deste funcionário para liberar o cadastro da pensionista.</div>`;
+}
+
+/* ── Clique na linha alterna o checkbox (lista de beneficiários) ── */
+function toggleRow(id) {
+    const c = document.querySelector(`#area-benef .chk-dep[value="${id}"]`);
+    if (!c) return;
+    c.checked = !c.checked;
+    c.dispatchEvent(new Event('change'));
+}
+
+/* ── Marcar/desmarcar um beneficiário ─────────────────────── */
+function toggleDep(dep, checked) {
+    if (checked) selecionados.set(dep.id, dep);
+    else         selecionados.delete(dep.id);
+    const row = document.querySelector(`#area-benef tr[data-id="${dep.id}"]`);
+    if (row) row.classList.toggle('selecionado', checked);
+    atualizarPainel();
+}
+
+/* ── Painel da direita reflete os dependentes marcados ───── */
+function atualizarPainel() {
+    const painel = document.getElementById('painel-pensionista');
+    if (selecionados.size === 0) {
+        painel.classList.remove('preenchido');
+        painel.innerHTML = `
+            <div class="icone">⚖️</div>
+            <div class="sel">Nenhum beneficiário selecionado</div>
+            <div class="nota">Marque, na lista de beneficiários, quem recebe a pensão para escolher a fórmula.</div>`;
+        return;
+    }
+    painel.classList.add('preenchido');
+    const itens = [...selecionados.values()].map(dep => `
+        <li style="margin-bottom:4px;">
+            <strong>${dep.nome || '—'}</strong>
+            <span style="color:#64748b;">· ${TIPOS_DEP[String(dep.tpdep)] || dep.tpdep || '—'}
+            · ${fmtNascto(dep.dtnascto)}</span>
+        </li>`).join('');
+
+    // Fórmula/valor/percentual já vêm pré-carregados de PENSAO (tab_pensao) no load.
+    const preselect = formulaEscolhida;
+
+    let seletor;
+    if (FORMULAS.length) {
+        const opcoes = FORMULAS.map(f =>
+            `<option value="${f.numero}" ${f.numero === preselect ? 'selected' : ''}>${f.numero} — ${f.nome}</option>`
+        ).join('');
+        // Campo condicional: Percentual (à ESQUERDA); Valor (à DIREITA).
+        // Só um aparece por vez; campos pequenos (números curtos).
+        const estLbl = 'display:block;font-size:12px;font-weight:600;color:#374151;margin:14px 0 6px;';
+        const estInp = 'width:130px;max-width:100%;height:38px;border:1px solid #cbd5e1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff;box-sizing:border-box;text-align:right;';
+        let campoVP = '';
+        if (preselect === '0001') {
+            campoVP = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">
+                    <div></div>
+                    <div>
+                        <label style="${estLbl}">Valor da pensão (R$)</label>
+                        <input id="inp-valor" type="text" inputmode="decimal"
+                               value="${valorPensao}" placeholder="0,00"
+                               oninput="valorPensao=this.value" onblur="formatarValor(this)" style="${estInp}">
+                    </div>
+                </div>`;
+        } else if (preselect) {
+            campoVP = `
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:end;">
+                    <div>
+                        <label style="${estLbl}">Percentual do desconto (%)</label>
+                        <input id="inp-perc" type="text" inputmode="decimal"
+                               value="${percPensao}" placeholder="0,00"
+                               oninput="percPensao=this.value" onblur="formatarPerc(this)" style="${estInp}">
+                    </div>
+                    <div></div>
+                </div>`;
+        }
+        // O botão Gravar só aparece depois de uma fórmula escolhida.
+        const botao = preselect ? `
+            <div style="margin-top:16px;">
+                <button class="btn btn-primario" onclick="gravarPensao()">💾 Gravar Pensão</button>
+            </div>` : '';
+        seletor = `
+            <label style="${estLbl}">Fórmula de cálculo da pensão</label>
+            <select id="sel-formula" onchange="onFormulaChange(this.value)"
+                    style="width:100%;height:38px;border:1px solid #cbd5e1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff;">
+                <option value="">— escolha a fórmula —</option>${opcoes}
+            </select>
+            ${campoVP}
+            ${botao}`;
+    } else {
+        seletor = `
+            <div class="nota" style="margin-top:14px;text-align:left;color:#b45309;">
+                Nenhuma fórmula cadastrada. Cadastre em <strong>Pensão → Fórmulas</strong> antes de gravar.
+            </div>`;
+    }
+
+    // Resumo do responsável escolhido (lista 1)
+    const respDep = DEPS.find(d => d.id === responsavelId);
+    const respHtml = respDep
+        ? `<div style="font-size:12px;color:#0f172a;margin-bottom:8px;">
+             <span style="color:#64748b;">Responsável pelo recebimento:</span> <strong>${respDep.nome || '—'}</strong></div>`
+        : `<div style="font-size:12px;color:#b45309;margin-bottom:8px;">⚠ Escolha o responsável pelo recebimento (lista 1).</div>`;
+
+    painel.innerHTML = `
+        <div style="width:100%;text-align:left;">
+            ${respHtml}
+            <div class="sel" style="margin-bottom:8px;">Beneficiários da pensão (${selecionados.size})</div>
+            <ul style="margin:0;padding-left:18px;font-size:13px;color:#0f172a;">${itens}</ul>
+            ${seletor}
+            <div id="pensao-msg" class="nota" style="margin-top:10px;text-align:left;"></div>
+        </div>`;
+}
+
+/* ── Grava o vínculo dos dependentes com a fórmula escolhida ── */
+async function gravarPensao() {
+    const msg = document.getElementById('pensao-msg');
+    const sel = document.getElementById('sel-formula');
+    const num = sel ? sel.value : '';
+    if (selecionados.size > 0 && !responsavelId) {
+        msg.style.color = '#b91c1c';
+        msg.textContent = 'Selecione o responsável pelo recebimento (lista 1).';
+        return;
+    }
+    if (selecionados.size > 0 && !num) {
+        msg.style.color = '#b91c1c';
+        msg.textContent = 'Escolha a fórmula da pensão antes de gravar.';
+        return;
+    }
+    // Campo condicional: 0001 exige Valor (R$); demais exigem Percentual (%).
+    const ehFixa = num === '0001';
+    let valor = null, perc = null;
+    if (selecionados.size > 0 && num) {
+        if (ehFixa) {
+            valor = parseNum(valorPensao);
+            if (!(valor > 0)) { msg.style.color = '#b91c1c'; msg.textContent = 'Informe o valor da pensão.'; return; }
+        } else {
+            perc = parseNum(percPensao);
+            if (!(perc > 0)) { msg.style.color = '#b91c1c'; msg.textContent = 'Informe o percentual do desconto.'; return; }
+            if (perc > 100) { msg.style.color = '#b91c1c'; msg.textContent = 'O percentual não pode ser maior que 100%.'; return; }
+        }
+    }
+    const ids = [...selecionados.keys()];
+    msg.style.color = '#64748b';
+    msg.textContent = 'Gravando…';
+    try {
+        const r = await fetch('/api/pensao_gravar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matricula: MATRICULA, ids, num_formula: num, valor, perc, responsavel: responsavelId }),
+        });
+        const d = await r.json();
+        if (!d.ok) { msg.style.color = '#b91c1c'; msg.textContent = 'Erro: ' + (d.msg || 'falha'); return; }
+        // O estado em memória (responsável, beneficiários, valor/%) já reflete o salvo.
+        formulaEscolhida = num;
+        msg.style.color = '#15803d';
+        msg.textContent = `✓ Pensão gravada — ${d.vinculados} dependente(s) na fórmula ${String(d.num_formula).padStart(4,'0')}.`;
+    } catch (e) {
+        msg.style.color = '#b91c1c';
+        msg.textContent = 'Falha de rede ao gravar.';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', carregarLista);
+</script>
+
+</div><!-- /pagina -->
+</body>
+</html>

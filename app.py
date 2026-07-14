@@ -11461,6 +11461,32 @@ def cad_pensao():
             })
     except Exception:
         formulas = []
+    # Pensão ativa já cadastrada (para pré-preencher a tela)
+    pensao_atual = None
+    try:
+        rp = (supabase.table("tab_pensao").select("*")
+              .eq("id_empresa", id_empresa).eq("matricula", matricula).eq("situacao", "A")
+              .order("id", desc=True).limit(1).execute())
+        if rp.data:
+            p = rp.data[0]
+            benef = [p.get(f"dep_benef{i+1}") for i in range(9)]
+            benef = [b for b in benef if b]
+            codigo = None
+            if p.get("formula"):
+                rc = (supabase.table("tab_tabela_cli").select("codigo")
+                      .eq("id", p["formula"]).limit(1).execute())
+                if rc.data:
+                    codigo = (rc.data[0].get("codigo") or "").strip()
+            pensao_atual = {
+                "responsavel":    p.get("dep_responsavel"),
+                "beneficiarios":  benef,
+                "formula":        codigo,
+                "anomes_inicial": p.get("anomes_inicial"),
+                "valor": (p["valor_fixo"] / 100.0) if p.get("valor_fixo") is not None else None,
+                "perc":  (p["percentual"] / 100.0) if p.get("percentual") is not None else None,
+            }
+    except Exception:
+        pensao_atual = None
     return render_template(
         "F10_Cad_Pensao.html",
         versao=ler_versao(),
@@ -11470,20 +11496,26 @@ def cad_pensao():
         func_nome=func_nome,
         tipos_dep=tipos_dep,
         formulas=formulas,
+        pensao_atual=pensao_atual,
+        folha_atual=str(session.get("anomes_atual") or ""),
     )
 
 
 # =========================================================
-# PENSÃO ALIMENTÍCIA — API: gravar vínculo (dependentes + fórmula)
-# Grava em tab_dependentes.vinculo_pa (int = número da fórmula):
-#   - dependentes selecionados  → vinculo_pa = número da fórmula escolhida
-#   - demais do mesmo funcionário → vinculo_pa = NULL (desvincula)
+# PENSÃO ALIMENTÍCIA — API: gravar a pensão (tab_pensao)
+# Grava 1 registro por funcionário (upsert por matrícula/empresa, situacao='A'):
+#   dep_responsavel = id do dependente responsável pelo recebimento
+#   dep_benef1..9   = ids dos dependentes beneficiários (até 9)
+#   formula         = id da fórmula em tab_tabela_cli
+#   valor_fixo      = centavos (fórmula 0001) | percentual = ×100 (demais)
+# Também registra em tab_log (via gravar_log).
 # =========================================================
 @app.route("/api/pensao_gravar", methods=["POST"])
 def api_pensao_gravar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
     id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
     data       = request.get_json() or {}
     try:
         mat = int(data.get("matricula"))
@@ -11492,37 +11524,110 @@ def api_pensao_gravar():
 
     sel_ids = [int(i) for i in (data.get("ids") or []) if str(i).strip().isdigit()]
     num_str = str(data.get("num_formula") or "").strip()
-    if sel_ids and not num_str:
-        return jsonify({"ok": False, "msg": "Escolha a fórmula da pensão."})
     num = int(num_str) if num_str.isdigit() else None
 
+    def _num(x):
+        try:
+            return float(str(x).replace(",", "."))
+        except (TypeError, ValueError):
+            return None
+
+    # Pensão ativa já existente do funcionário (para atualizar ou desativar).
     try:
-        r = (supabase.table("tab_dependentes")
-             .select("id")
-             .eq("id_empresa", id_empresa)
-             .eq("matricula", mat)
-             .execute())
-        todos = [int(row["id"]) for row in (r.data or [])]
+        rp = (supabase.table("tab_pensao").select("id")
+              .eq("id_empresa", id_empresa).eq("matricula", mat).eq("situacao", "A")
+              .order("id", desc=True).limit(1).execute())
+        pensao_id = rp.data[0]["id"] if rp.data else None
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler pensão: {str(e)[:200]}"})
+
+    # Sem beneficiários → desativa a pensão existente e sai.
+    if not sel_ids:
+        if pensao_id:
+            supabase.table("tab_pensao").update({"situacao": "D"}).eq("id", pensao_id).execute()
+            gravar_log("PENSAO", f"mat {mat}: pensão desativada", matricula=mat)
+        return jsonify({"ok": True, "vinculados": 0, "num_formula": None})
+
+    if not num:
+        return jsonify({"ok": False, "msg": "Escolha a fórmula da pensão."})
+    if len(sel_ids) > 9:
+        return jsonify({"ok": False, "msg": "No máximo 9 beneficiários por pensão."})
+
+    try:
+        resp_id = int(data.get("responsavel"))
+    except (TypeError, ValueError):
+        resp_id = None
+    if not resp_id:
+        return jsonify({"ok": False, "msg": "Selecione o responsável pelo recebimento."})
+
+    # 0001 = valor fixo (R$ → centavos); demais = percentual (% → ×100, máx 10000).
+    eh_fixa = (num == 1)
+    valor = _num(data.get("valor"))
+    perc  = _num(data.get("perc"))
+    valor_fixo = percentual = None
+    if eh_fixa:
+        if not (valor and valor > 0):
+            return jsonify({"ok": False, "msg": "Informe o valor da pensão."})
+        valor_fixo = int(round(valor * 100))
+    else:
+        if not (perc and 0 < perc <= 100):
+            return jsonify({"ok": False, "msg": "Informe um percentual de desconto entre 0 e 100."})
+        percentual = int(round(perc * 100))
+
+    # Responsável e beneficiários têm que pertencer ao funcionário.
+    try:
+        rd = (supabase.table("tab_dependentes").select("id")
+              .eq("id_empresa", id_empresa).eq("matricula", mat).execute())
+        todos = {int(row["id"]) for row in (rd.data or [])}
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao ler dependentes: {str(e)[:200]}"})
+    if resp_id not in todos:
+        return jsonify({"ok": False, "msg": "Responsável inválido."})
+    benef = [i for i in sel_ids if i in todos]
+    if not benef:
+        return jsonify({"ok": False, "msg": "Nenhum beneficiário válido."})
 
-    sel = [i for i in sel_ids if i in todos]
-    nao = [i for i in todos if i not in sel]
+    # Fórmula: converte o número (codigo) no id da linha em tab_tabela_cli.
     try:
-        if sel:
-            (supabase.table("tab_dependentes")
-             .update({"vinculo_pa": num}).in_("id", sel).execute())
-        if nao:
-            (supabase.table("tab_dependentes")
-             .update({"vinculo_pa": None}).in_("id", nao).execute())
+        rf = (supabase.table("tab_tabela_cli").select("id")
+              .in_("id_cliente", [0, id_cliente]).eq("num_tabela", "7")
+              .eq("codigo", f"{num:04d}").eq("situacao", "A")
+              .order("id_cliente", desc=True).limit(1).execute())
+        formula_id = rf.data[0]["id"] if rf.data else None
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}"})
+        return jsonify({"ok": False, "msg": f"Erro ao ler fórmula: {str(e)[:200]}"})
+    if not formula_id:
+        return jsonify({"ok": False, "msg": "Fórmula não encontrada."})
+
+    payload = {
+        "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+        "matricula": mat, "dep_responsavel": resp_id, "formula": formula_id,
+        "valor_fixo": valor_fixo, "percentual": percentual,
+    }
+    for i in range(9):
+        payload[f"dep_benef{i+1}"] = benef[i] if i < len(benef) else None
 
     try:
-        gravar_log("PENSAO", f"mat {mat}: fórmula {num} para {len(sel)} dependente(s)")
+        if pensao_id:
+            # Sem edição de vigência: preserva anomes_inicial já gravado.
+            supabase.table("tab_pensao").update(payload).eq("id", pensao_id).execute()
+        else:
+            # anomes_inicial = folha atual (yyyymm) — fixado na criação da pensão.
+            _am = str(session.get("anomes_atual") or "")
+            payload["anomes_inicial"] = int(_am) if (len(_am) == 6 and _am.isdigit()) else None
+            ins = supabase.table("tab_pensao").insert(payload).execute()
+            pensao_id = (ins.data or [{}])[0].get("id")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar pensão: {str(e)[:200]}"})
+
+    try:
+        _det = f"R$ {valor:.2f}" if eh_fixa else f"{perc:.2f}%"
+        gravar_log("PENSAO",
+                   f"mat {mat}: fórmula {num:04d} ({_det}) resp={resp_id} benef={benef}",
+                   matricula=mat)
     except Exception:
         pass
-    return jsonify({"ok": True, "vinculados": len(sel), "num_formula": num})
+    return jsonify({"ok": True, "vinculados": len(benef), "num_formula": num})
 
 
 # =========================================================
@@ -27968,6 +28073,127 @@ def _calc_irrf(base_centavos, tabela):
     return max(0, irrf), (aliq_ap, dedu_ap)
 
 
+# =========================================================
+# PENSÃO ALIMENTÍCIA — cálculo na folha (fim, com recálculo do IRRF)
+# =========================================================
+def _pensao_avaliar_formula(texto2, total_prov, total_desc, liquido, mmVmm):
+    """Avalia a fórmula (texto2): termos de 5 chars = sinal(+/-) + código(4).
+    Códigos: TT01=proventos, TT02=descontos, TLIQ=líquido, 4 dígitos=verba (mmVmm).
+    Todos os valores em centavos. Retorna (base, termos), onde termos é uma lista
+    de {code, sign, val} para detalhar a composição da base na memória."""
+    s = str(texto2 or "")
+    base = 0
+    termos = []
+    for i in range(0, len(s), 5):
+        term = s[i:i + 5]
+        if len(term) < 5:
+            break
+        sign = -1 if term[0] == "-" else 1
+        code = term[1:5]
+        if   code == "TT01": val = total_prov
+        elif code == "TT02": val = total_desc
+        elif code == "TLIQ": val = liquido
+        elif code.isdigit(): val = int(mmVmm.get(int(code), 0))
+        else:                val = 0
+        base += sign * val
+        termos.append({"code": code, "sign": sign, "val": int(val)})
+    return int(base), termos
+
+
+def _pensao_label_termo(code, rubricas_info):
+    """Rótulo legível de um termo da fórmula para a memória de cálculo."""
+    if code == "TT01": return "Total Proventos"
+    if code == "TT02": return "Total Descontos"
+    if code == "TLIQ": return "Liquido"
+    if str(code).isdigit():
+        dsc = (rubricas_info.get(int(code)) or {}).get("dsc") or ""
+        return f"{code}-{dsc}".rstrip("-")
+    return str(code)
+
+
+def _pensao_valor(p, total_prov, total_desc, liquido, mmVmm):
+    """Valor da pensão (centavos) para 1 registro tab_pensao.
+    Retorna (valor, base, tipo, termos) — tipo 'fixo' | 'perc'."""
+    if p.get("valor_fixo"):
+        return int(p["valor_fixo"]), None, "fixo", []
+    perc = int(p.get("percentual") or 0)
+    base, termos = _pensao_avaliar_formula(p.get("formula_texto2"), total_prov, total_desc, liquido, mmVmm)
+    val = ((base * perc + 5000) // 10000) if base > 0 and perc > 0 else 0
+    return int(val), base, "perc", termos
+
+
+def _irrf_2metodos(base_bruta, inss_val, dep_irrf_total, irrf_desc_simpl, deducao_extra, tabela):
+    """IRRF pelos 2 métodos (completo/simplificado) com dedução extra (pensão)
+    abatendo em AMBOS; aplica o redutor e escolhe o menor. Retorna dict."""
+    base_bruta = int(base_bruta)
+    base_comp  = max(0, base_bruta - inss_val - dep_irrf_total - deducao_extra)
+    irrf_comp, det_comp   = _calc_irrf(base_comp, tabela)
+    base_simpl = max(0, base_bruta - irrf_desc_simpl - deducao_extra)
+    irrf_simpl, det_simpl = _calc_irrf(base_simpl, tabela)
+    if irrf_simpl <= irrf_comp:
+        base, irrf, det, metodo = base_simpl, irrf_simpl, det_simpl, "S"
+    else:
+        base, irrf, det, metodo = base_comp, irrf_comp, det_comp, "C"
+    redutor, irrf_pre = 0, irrf
+    if tabela:
+        ra, rb = tabela.get("irrf_redutor_a"), tabela.get("irrf_redutor_b")
+        ri, rf = tabela.get("irrf_redutor_ini"), tabela.get("irrf_redutor_fim")
+        if ra and rb and ri and rf and int(ri) <= base_bruta <= int(rf):
+            rc = (int(ra) * 1000000 - int(rb) * base_bruta + 500000) // 1000000
+            redutor = max(0, min(rc, irrf_pre))
+            irrf = irrf_pre - redutor
+    return {"base": base, "irrf": irrf, "metodo": metodo, "det": det, "redutor": redutor,
+            "base_comp": base_comp, "irrf_comp": irrf_comp,
+            "base_simpl": base_simpl, "irrf_simpl": irrf_simpl}
+
+
+def _get_pensoes_por_mat(id_empresa, anomes):
+    """{matricula: [pensões ativas e vigentes na folha]} para o cálculo.
+    Vigência: anomes_inicial <= anomes e (anomes_final nulo ou >= anomes).
+    Cada item traz a fórmula (codigo/texto2) já resolvida. Ordenado por id
+    (1ª pensão → rubrica 281 ... até 284)."""
+    out = {}
+    try:
+        r = (supabase.table("tab_pensao").select("*")
+             .eq("id_empresa", id_empresa).eq("situacao", "A").execute())
+        rows = r.data or []
+    except Exception:
+        return out
+    if not rows:
+        return out
+    fids = {row.get("formula") for row in rows if row.get("formula")}
+    formulas = {}
+    if fids:
+        try:
+            rf = (supabase.table("tab_tabela_cli").select("id, codigo, texto2")
+                  .in_("id", list(fids)).execute())
+            for f in (rf.data or []):
+                formulas[f["id"]] = {"codigo": (f.get("codigo") or "").strip(),
+                                     "texto2": (f.get("texto2") or "").strip()}
+        except Exception:
+            pass
+    an = int(anomes)
+    for row in rows:
+        ini, fim = row.get("anomes_inicial"), row.get("anomes_final")
+        if ini and int(ini) > an:
+            continue
+        if fim and int(fim) < an:
+            continue
+        mat = int(row.get("matricula") or 0)
+        f = formulas.get(row.get("formula"), {})
+        out.setdefault(mat, []).append({
+            "id":              row.get("id"),
+            "valor_fixo":      row.get("valor_fixo"),
+            "percentual":      row.get("percentual"),
+            "formula_codigo":  f.get("codigo"),
+            "formula_texto2":  f.get("texto2"),
+            "dep_responsavel": row.get("dep_responsavel"),
+        })
+    for mat in out:
+        out[mat].sort(key=lambda x: x["id"] or 0)
+    return out
+
+
 def _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente=None):
     """Mapa {matricula: valor_irrf_basetabela} lido de tab_total para uma folha.
 
@@ -28163,6 +28389,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     tabela_legais   = _get_tabela_legais(anomes)
     dep_irrf_count    = _get_dep_irrf_count(id_empresa)
     dep_todos_por_mat = _get_dep_todos_por_empresa(id_empresa)
+    _pensoes_por_mat  = _get_pensoes_por_mat(id_empresa, anomes)
 
     # Pré-busca: tipo e descrição de cada rubrica {cod: {tp, dsc, inc_cp}}
     rubricas_info = {}
@@ -29656,6 +29883,89 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             total_desc = int(sum(v for r, v in mmVmm.items()
                                  if int(r) < 9900
                                  and rubricas_info.get(r, {"tp":"1"})["tp"] != "1"))
+
+            # ── ETAPA 0013 — PENSÃO ALIMENTÍCIA (recalcula o IRRF) ───────────
+            # A folha já está calculada (inclusive IRRF #1). Agora calcula a(s)
+            # pensão(ões), lança verbas 281..284 (desconto) e RECALCULA o IRRF
+            # abatendo a pensão da base (em qualquer método).
+            _pensoes = _pensoes_por_mat.get(matr, [])
+            if _pensoes:
+                _prov1 = int(total_prov); _desc1 = int(total_desc); _liq1 = _prov1 - _desc1
+                _pen_total = 0
+                # Estilos da tabela de detalhe — valores em Courier (monoespaçado)
+                _st_pl  = ParagraphStyle("pen_l",  fontName="Helvetica",      fontSize=7.5, alignment=0, textColor=colors.HexColor("#374151"))
+                _st_pv  = ParagraphStyle("pen_v",  fontName="Courier",        fontSize=7.5, alignment=2, textColor=colors.HexColor("#374151"))
+                _st_plb = ParagraphStyle("pen_lb", fontName="Helvetica-Bold", fontSize=7.5, alignment=0, textColor=colors.HexColor("#111827"))
+                _st_pvb = ParagraphStyle("pen_vb", fontName="Courier-Bold",   fontSize=7.5, alignment=2, textColor=colors.HexColor("#111827"))
+                _st_phd = ParagraphStyle("pen_hd", fontName="Helvetica-Bold", fontSize=8,   alignment=0, textColor=colors.HexColor("#1e3d5c"))
+                _pen_rows = []; _span_rows = []
+                def _prow(lbl, val=None, lst=None, vst=None):
+                    _pen_rows.append([Paragraph(lbl, lst or _st_pl),
+                                      Paragraph("" if val is None else _fmt_brl(val), vst or _st_pv)])
+                def _pspan(lbl):
+                    _span_rows.append(len(_pen_rows))
+                    _pen_rows.append([Paragraph(lbl, _st_phd), ""])
+                for _idx, _p in enumerate(_pensoes[:4]):
+                    _rub = 281 + _idx
+                    _pval, _pbase, _ptipo, _ptermos = _pensao_valor(_p, _prov1, _desc1, _liq1, mmVmm)
+                    if _pval <= 0:
+                        continue
+                    mmVmm[_rub] = mmVmm.get(_rub, 0) + _pval
+                    rubricas_info.setdefault(_rub, {"tp": "2", "dsc": f"PENSAO ALIMENTICIA {_idx+1}", "unid": "V"})
+                    _pen_total += _pval
+                    if _ptipo == "fixo":
+                        _prow(f"Verba {_rub:04d} - Pensao {_idx+1} (valor fixo)", _pval, _st_plb, _st_pvb)
+                    else:
+                        _pperc = int(_p.get("percentual") or 0)
+                        _ptxt  = f"{_pperc/100:.2f}".replace(".", ",")
+                        # Fórmula legível: rótulos dos termos com o sinal (ex.: + Total Proventos - 0101-INSS)
+                        _fx = " ".join(("+ " if _t["sign"] > 0 else "- ")
+                                       + _pensao_label_termo(_t["code"], rubricas_info)
+                                       for _t in _ptermos)
+                        _pspan(f"Verba {_rub:04d} - Pensao {_idx+1} - Formula {_p.get('formula_codigo') or ''} "
+                               f"({_fx}) - {_ptxt}%")
+                        # Verbas que compoem a base (soma/subtrai) — nao imprime zeradas
+                        for _t in _ptermos:
+                            if _t["val"] == 0:
+                                continue
+                            _sig = "(+)" if _t["sign"] > 0 else "(-)"
+                            _prow(f"    {_sig} {_pensao_label_termo(_t['code'], rubricas_info)}", _t["val"])
+                        _prow("    = Base de calculo", _pbase, _st_plb, _st_pvb)
+                        _prow(f"    Pensao = Base x {_ptxt}%", _pval, _st_plb, _st_pvb)
+                if _pen_total > 0:
+                    _irrf2 = _irrf_2metodos(base_irrf_bruta, inss_val, dep_irrf_total,
+                                            irrf_desc_simpl, _pen_total, tabela_legais)
+                    _irrf_ant = int(irrf_val)
+                    irrf_val  = _irrf2["irrf"]
+                    base_irrf = _irrf2["base"]
+                    mmVmm[120] = irrf_val
+                    # Recalcula os totais com a pensão + novo IRRF
+                    total_prov = int(sum(v for r, v in mmVmm.items()
+                                         if int(r) < 9900
+                                         and rubricas_info.get(r, {"tp":"1"})["tp"] == "1"))
+                    total_desc = int(sum(v for r, v in mmVmm.items()
+                                         if int(r) < 9900
+                                         and rubricas_info.get(r, {"tp":"1"})["tp"] != "1"))
+                    _prow("Total Pensao (desconto)", _pen_total, _st_plb, _st_pvb)
+                    _prow("IRRF antes da pensao", _irrf_ant)
+                    _prow(f"IRRF apos a pensao (metodo {_irrf2['metodo']})", irrf_val, _st_plb, _st_pvb)
+
+                    _all_rows = [[Paragraph("ETAPA 0013 - PENSAO ALIMENTICIA", st_etapa), ""]] + _pen_rows
+                    _pen_sty = [
+                        ("SPAN",         (0, 0), (1, 0)),
+                        ("LEFTPADDING",  (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING",   (0, 0), (0, 0),  10),
+                        ("BOTTOMPADDING",(0, 0), (0, 0),   3),
+                        ("TOPPADDING",   (0, 1), (-1, -1), 1),
+                        ("BOTTOMPADDING",(0, 1), (-1, -1), 1),
+                    ]
+                    for _sr in _span_rows:
+                        _pen_sty.append(("SPAN", (0, _sr + 1), (1, _sr + 1)))
+                        _pen_sty.append(("TOPPADDING", (0, _sr + 1), (1, _sr + 1), 5))
+                    _pen_tbl = Table(_all_rows, colWidths=[8.5*cm, 3*cm])
+                    _pen_tbl.setStyle(TableStyle(_pen_sty))
+                    elems.append(_pen_tbl)
 
             # ── ETAPA 0012 — Arredondamento (somente id_empresa=4) ───────────
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr

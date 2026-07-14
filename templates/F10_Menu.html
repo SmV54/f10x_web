@@ -516,6 +516,10 @@ const modulos = {
                 { icone: '🏢', nome: 'Filiais',               href: '/cad_filial',    ok: true },
                 { icone: '🏙️', nome: 'Cidades',              href: '#' },
             ]},
+            { nome: 'Pensão Alimentícia', semAtalho: true, itens: [
+                { icone: '⚖️', nome: 'Cadastro da Pensionista', href: '/select_funcionario?contexto=pensao', ok: true },
+                { icone: '🧮', nome: 'Fórmulas',                 href: '/pensao_formulas',                    ok: true },
+            ]},
             { nome: 'Empresa', itens: [
                 { icone: '🏢', nome: 'Nova Empresa',          href: '/f10_cad_empresa', ok: true },
                 { icone: '✏️', nome: 'Alterar Esta Empresa',  href: '/alterar_empresa', ok: true, navLoading: true },
@@ -954,7 +958,9 @@ function itemBloqueado(item) {
 function clicarSecao(idx) {
     const secao = (modulos[moduloAtivo].secoes || [])[idx];
     const itens = (secao && secao.itens) || [];
-    if (itens.length === 1) {
+    // Seções marcadas com semAtalho sempre mostram a lista (submenu),
+    // mesmo com um único item — reservam espaço para futuras opções.
+    if (itens.length === 1 && !(secao && secao.semAtalho)) {
         const it = itens[0];
         if (it.ok && !it.loading && it.href && it.href !== '#' && !itemBloqueado(it)) {
             window.location.href = it.href;

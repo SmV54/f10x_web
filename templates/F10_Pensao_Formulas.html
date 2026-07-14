@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Pensão Alimentícia · Fórmulas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height: 100%; }
+.pagina { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* ── TOPO ── */
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome   { font-size: 11px; color: #374151; margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid #70c4a0;
+    color: #374151; font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+/* ── CONTAINER ── */
+.container { max-width: 1100px; width: 100%; margin: 18px auto 0; padding: 0 18px 20px; flex: 1 1 auto; display: flex; flex-direction: column; }
+
+.bloco {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column;
+}
+.bloco-header {
+    padding: 12px 18px; background: #f8fafc; border-bottom: 1px solid #e5e7eb;
+    border-radius: 12px 12px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.bloco-header h2 { margin: 0; font-size: 15px; color: #0f172a; }
+.bloco-header p  { margin: 2px 0 0; font-size: 11px; color: #64748b; }
+.bloco-body { padding: 14px 18px; }
+
+/* ── BOTÕES ── */
+.btn {
+    height: 36px; border: none; border-radius: 9px; padding: 0 16px;
+    font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.15s;
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+}
+.btn-nova {
+    background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%);
+    border: 1px solid #2f9d4d; color: white;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+}
+.btn-nova:hover { filter: brightness(1.04); }
+
+/* ── TABELA ── */
+.tbl-formulas { width: 100%; border-collapse: collapse; }
+.tbl-formulas thead th {
+    text-align: left; padding: 9px 12px; font-size: 11px; color: #334155;
+    background: #eaf1fb; border-bottom: 1px solid #dbe3ee; white-space: nowrap;
+    text-transform: uppercase; letter-spacing: 0.4px;
+}
+.tbl-formulas td {
+    padding: 10px 12px; font-size: 13px; border-bottom: 1px solid #eef2f7; vertical-align: middle;
+}
+.tbl-formulas tbody tr:hover { background: #f8fafc; }
+.col-num  { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #0f172a; width: 90px; }
+.col-nome { font-weight: 600; color: #1e293b; }
+.col-form { color: #475569; font-family: 'IBM Plex Mono', monospace; font-size: 12px; word-break: break-all; }
+.col-acoes { width: 110px; text-align: right; white-space: nowrap; }
+.badge-global {
+    display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 4px;
+    font-size: 9px; font-weight: 700; background: #e0f2fe; color: #0369a1;
+    text-transform: uppercase; letter-spacing: 0.5px; vertical-align: middle;
+}
+.sem-form { color: #cbd5e1; }
+.btn-acao { background: none; border: none; cursor: pointer; padding: 4px 6px; border-radius: 6px; font-size: 14px; transition: background 0.1s; }
+.btn-acao:hover { background: #eef2f7; }
+.btn-acao.excluir:hover { background: #fee2e2; }
+.lock { color: #94a3b8; font-size: 14px; }
+.vazio {
+    padding: 40px 24px; text-align: center; color: #94a3b8; font-size: 13px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+.vazio .icone { font-size: 40px; }
+
+/* ── RODAPÉ ── */
+.rodape-final { display: flex; align-items: center; margin-top: 14px; }
+.btn-voltar-menu {
+    height: 38px; background: linear-gradient(180deg, #eef2f7 0%, #dce4ee 100%);
+    border: 1px solid #c7d2de; color: #0f172a; border-radius: 9px;
+    padding: 0 18px; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.btn-voltar-menu:hover { filter: brightness(1.02); }
+
+/* ── MODAL ── */
+.modal-bg {
+    display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.45);
+    z-index: 1000; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-bg.aberto { display: flex; }
+.modal {
+    background: white; border-radius: 14px; width: 100%; max-width: 680px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.25); overflow: hidden;
+    max-height: 92vh; display: flex; flex-direction: column;
+}
+.modal-header { padding: 14px 20px; border-bottom: 1px solid #e5e7eb; flex: 0 0 auto; }
+.modal-header h3 { margin: 0; font-size: 16px; color: #0f172a; }
+.modal-body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.campo label { display: block; font-size: 11px; color: #475569; margin-bottom: 5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+.campo input {
+    width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 8px;
+    font-size: 14px; outline: none; background: white; font-family: inherit;
+}
+.campo input:focus { border-color: #2a7de1; box-shadow: 0 0 0 3px rgba(42,125,225,0.1); }
+.campo input:read-only { background: #f1f5f9; color: #64748b; font-family: 'IBM Plex Mono', monospace; max-width: 120px; }
+.campo .dica { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.grid-num-nome { display: grid; grid-template-columns: 130px 1fr; gap: 14px; }
+
+/* ── CONSTRUTOR ── */
+.builder { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+.builder-head { padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #334155; }
+.builder-body { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.seg-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.seg-rotulo { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.4px; min-width: 74px; }
+.seg { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
+.seg button {
+    border: none; background: white; padding: 7px 14px; font-size: 12.5px; font-weight: 700;
+    color: #475569; cursor: pointer; transition: 0.12s;
+}
+.seg button + button { border-left: 1px solid #cbd5e1; }
+.seg button.ativo-mais  { background: #16a34a; color: white; }
+.seg button.ativo-menos { background: #dc2626; color: white; }
+.seg button.ativo-tipo  { background: #2a7de1; color: white; }
+
+/* Totais */
+.totais { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip-total {
+    border: 1px solid #cbd5e1; background: white; border-radius: 8px; padding: 8px 12px;
+    font-size: 12.5px; font-weight: 600; color: #1e293b; cursor: pointer; transition: 0.12s;
+    display: inline-flex; align-items: center; gap: 8px;
+}
+.chip-total:hover { border-color: #2a7de1; background: #f0f7ff; }
+.chip-total.sel { border-color: #2a7de1; background: #dbeafe; }
+.chip-total .cod { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #64748b; }
+
+/* Selecionado + Incluir */
+.sel-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 10px; border-top: 1px dashed #e5e7eb; }
+.sel-chip { font-size: 12.5px; color: #0f172a; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sel-chip .ph { color: #94a3b8; font-weight: 400; }
+.sel-chip .cod { font-family: 'IBM Plex Mono', monospace; font-weight: 700; }
+.sel-tag { background: #eef2f7; border: 1px solid #d7dee8; border-radius: 6px; padding: 2px 8px; display: inline-flex; align-items: center; gap: 5px; }
+.btn-incluir {
+    margin-left: auto; height: 34px; border: 1px solid #2f9d4d; border-radius: 8px;
+    background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%); color: white;
+    font-size: 12.5px; font-weight: 700; padding: 0 14px; cursor: pointer; transition: 0.12s;
+}
+.btn-incluir:hover:not(:disabled) { filter: brightness(1.04); }
+.btn-incluir:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Verbas */
+.verba-busca { width: 100%; padding: 8px 11px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px; outline: none; }
+.verba-busca:focus { border-color: #2a7de1; box-shadow: 0 0 0 3px rgba(42,125,225,0.1); }
+.verba-lista { border: 1px solid #e5e7eb; border-radius: 8px; max-height: 190px; overflow-y: auto; margin-top: 8px; }
+.verba-item {
+    display: flex; align-items: center; gap: 10px; padding: 7px 11px; cursor: pointer;
+    border-bottom: 1px solid #f1f5f9; font-size: 12.5px;
+}
+.verba-item:hover { background: #f0f7ff; }
+.verba-item.sel { background: #dbeafe; }
+.verba-item.sel .cod::before { content: '✓ '; color: #2563eb; font-weight: 700; }
+.verba-item .cod { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #0f172a; min-width: 46px; }
+.verba-item .desc { color: #475569; flex: 1 1 auto; }
+.verba-item .tp { font-size: 9px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+.tp-1 { background: #dcfce7; color: #166534; }
+.tp-2 { background: #fee2e2; color: #991b1b; }
+.verba-vazio { padding: 16px; text-align: center; color: #94a3b8; font-size: 12px; }
+
+/* Termos da fórmula */
+.termos { border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+.termos-head { padding: 8px 12px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; font-size: 12px; font-weight: 700; color: #334155; display: flex; justify-content: space-between; align-items: center; }
+.termos-lista { max-height: 170px; overflow-y: auto; }
+.termo {
+    display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid #f1f5f9; font-size: 13px;
+}
+.termo .sinal { font-family: 'IBM Plex Mono', monospace; font-weight: 700; width: 20px; text-align: center; border-radius: 5px; }
+.termo .sinal.mais  { color: #16a34a; }
+.termo .sinal.menos { color: #dc2626; }
+.termo .tcod { font-family: 'IBM Plex Mono', monospace; font-weight: 600; color: #0f172a; min-width: 48px; }
+.termo .tlabel { color: #475569; flex: 1 1 auto; }
+.termo-vazio { padding: 18px; text-align: center; color: #94a3b8; font-size: 12px; }
+.preview { padding: 9px 12px; background: #0f172a; color: #86efac; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; border-radius: 8px; word-break: break-all; min-height: 20px; }
+.preview .ph { color: #64748b; }
+
+.modal-footer { padding: 14px 20px; border-top: 1px solid #e5e7eb; display: flex; justify-content: flex-end; gap: 10px; flex: 0 0 auto; }
+.btn-cancelar { background: #eef2f7; border: 1px solid #c7d2de; color: #334155; }
+.btn-cancelar:hover { filter: brightness(0.98); }
+.btn-salvar { background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%); border: 1px solid #2f9d4d; color: white; }
+.btn-salvar:hover { filter: brightness(1.04); }
+
+/* ── TOAST ── */
+#toast {
+    display: none; position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 11px 22px; border-radius: 10px; font-size: 13px; font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 440px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+</style>
+</head>
+<body>
+<div class="pagina">
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Pensão Alimentícia — Fórmulas</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="bloco">
+        <div class="bloco-header">
+            <div>
+                <h2>Fórmulas Cadastradas</h2>
+                <p>Fórmulas de cálculo da pensão alimentícia — não têm vínculo com funcionário</p>
+            </div>
+            <button class="btn btn-nova" onclick="abrirNova()">＋ Nova Fórmula</button>
+        </div>
+        <div class="bloco-body">
+            {% if formulas %}
+            <table class="tbl-formulas">
+                <thead>
+                    <tr>
+                        <th>Número</th>
+                        <th>Nome da Fórmula</th>
+                        <th>Fórmula</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in formulas %}
+                    <tr>
+                        <td class="col-num">{{ f.numero }}</td>
+                        <td class="col-nome">
+                            {{ f.nome or '—' }}
+                            {% if f.global %}<span class="badge-global">Global</span>{% endif %}
+                        </td>
+                        <td class="col-form">
+                            {% if f.formula %}{{ f.formula }}{% else %}<span class="sem-form">— a definir —</span>{% endif %}
+                        </td>
+                        <td class="col-acoes">
+                            {% if f.global %}
+                                <span class="lock" title="Fórmula global — não pode ser alterada nem excluída">🔒</span>
+                            {% else %}
+                                <button class="btn-acao" title="Editar"
+                                    onclick="abrirEditar({{ f.id }}, '{{ f.numero }}', {{ f.nome|tojson }}, {{ f.formula|tojson }})">✏️</button>
+                                <button class="btn-acao excluir" title="Excluir"
+                                    onclick="excluirFormula({{ f.id }}, {{ f.nome|tojson }})">🗑</button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <div class="vazio">
+                <div class="icone">🧮</div>
+                <div>Nenhuma fórmula cadastrada ainda.</div>
+                <button class="btn btn-nova" onclick="abrirNova()">＋ Nova Fórmula</button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="rodape-final">
+        <button class="btn-voltar-menu" onclick="window.location.href='/menu'">&#8592; Voltar ao Menu</button>
+    </div>
+
+</div><!-- /container -->
+
+<!-- ── MODAL Nova / Editar ── -->
+<div class="modal-bg" id="modal-bg">
+    <div class="modal">
+        <div class="modal-header">
+            <h3 id="modal-titulo">Nova Fórmula</h3>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="f-id" value="">
+            <div class="grid-num-nome">
+                <div class="campo">
+                    <label>Número</label>
+                    <input type="text" id="f-numero" readonly>
+                </div>
+                <div class="campo">
+                    <label>Nome da Fórmula</label>
+                    <input type="text" id="f-nome" maxlength="30" placeholder="Ex.: Proventos − Impostos" autocomplete="off">
+                    <div class="dica">Máximo 30 caracteres</div>
+                </div>
+            </div>
+
+            <!-- Construtor -->
+            <div class="builder">
+                <div class="builder-head">Montar a fórmula</div>
+                <div class="builder-body">
+                    <div class="seg-linha">
+                        <span class="seg-rotulo">1. Tipo</span>
+                        <div class="seg" id="seg-tipo">
+                            <button type="button" data-tipo="total" class="ativo-tipo" onclick="setTipo('total')">Total</button>
+                            <button type="button" data-tipo="verba" onclick="setTipo('verba')">Verba</button>
+                        </div>
+                        <span class="dica">Total: um por vez. Verba: pode marcar várias (todas com a mesma operação).</span>
+                    </div>
+
+                    <!-- Totais -->
+                    <div id="painel-total" class="totais">
+                        <div class="chip-total" data-code="TT01" onclick="selecionarTotal('TT01','Total Proventos')"><span class="cod">TT01</span> Total Proventos</div>
+                        <div class="chip-total" data-code="TT02" onclick="selecionarTotal('TT02','Total Descontos')"><span class="cod">TT02</span> Total Descontos</div>
+                        <div class="chip-total" data-code="TLIQ" onclick="selecionarTotal('TLIQ','Líquido')"><span class="cod">TLIQ</span> Líquido</div>
+                    </div>
+
+                    <!-- Verbas -->
+                    <div id="painel-verba" style="display:none;">
+                        <input type="text" class="verba-busca" id="verba-busca" placeholder="Buscar verba por código ou descrição…" oninput="filtrarVerbas()" autocomplete="off">
+                        <div class="verba-lista" id="verba-lista"><div class="verba-vazio">Carregando verbas…</div></div>
+                    </div>
+
+                    <!-- Selecionado + Operação + Incluir -->
+                    <div class="sel-linha" id="sel-linha">
+                        <span class="seg-rotulo">2. Operação</span>
+                        <div class="seg" id="seg-op">
+                            <button type="button" data-op="+" class="ativo-mais" onclick="setOp('+')">＋ Somar</button>
+                            <button type="button" data-op="-" onclick="setOp('-')">－ Subtrair</button>
+                        </div>
+                        <span class="sel-chip" id="sel-chip"><span class="ph">selecione um item acima</span></span>
+                        <button type="button" class="btn-incluir" id="btn-incluir" onclick="incluirPendente()" disabled>＋ Incluir na fórmula</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Termos -->
+            <div class="termos">
+                <div class="termos-head">
+                    <span>Termos da fórmula</span>
+                    <span id="termos-contagem" style="font-weight:400;color:#94a3b8;"></span>
+                </div>
+                <div class="termos-lista" id="termos-lista">
+                    <div class="termo-vazio">Nenhum termo — monte a fórmula acima.</div>
+                </div>
+            </div>
+            <div>
+                <label style="display:block;font-size:11px;color:#475569;margin-bottom:5px;font-weight:700;text-transform:uppercase;letter-spacing:0.4px;">Prévia (como será gravada)</label>
+                <div class="preview" id="preview"><span class="ph">— vazia —</span></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-cancelar" onclick="fecharModal()">Cancelar</button>
+            <button class="btn btn-salvar" onclick="salvarFormula()">💾 Gravar</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+</div><!-- /pagina -->
+
+<script>
+const PROXIMO_NUMERO = '{{ proximo_numero }}';
+const TOTAIS = { 'TT01': 'Total Proventos', 'TT02': 'Total Descontos', 'TLIQ': 'Líquido' };
+
+let VERBAS = [];               // [{cod, desc, tp}]
+let VERBA_MAP = {};            // cod -> desc
+let opAtual = '+';
+let termos = [];               // [{op, code, label}]
+let pendentes = [];            // itens escolhidos, aguardando operação + Incluir (verba: vários; total: 1)
+
+/* ── Carregar verbas (uma vez) ── */
+async function carregarVerbas() {
+    try {
+        const r = await fetch('/api/pensao_formula/verbas');
+        const d = await r.json();
+        if (d.ok) {
+            VERBAS = d.verbas || [];
+            VERBA_MAP = {};
+            VERBAS.forEach(v => VERBA_MAP[v.cod] = v.desc);
+        }
+    } catch(e) { /* silencioso */ }
+}
+
+/* ── Operação / Tipo ── */
+function setOp(op) {
+    opAtual = op;
+    document.querySelectorAll('#seg-op button').forEach(b => {
+        b.classList.remove('ativo-mais', 'ativo-menos');
+        if (b.dataset.op === op) b.classList.add(op === '+' ? 'ativo-mais' : 'ativo-menos');
+    });
+}
+function setTipo(tipo) {
+    document.querySelectorAll('#seg-tipo button').forEach(b => b.classList.toggle('ativo-tipo', b.dataset.tipo === tipo));
+    document.getElementById('painel-total').style.display = (tipo === 'total') ? '' : 'none';
+    document.getElementById('painel-verba').style.display = (tipo === 'verba') ? '' : 'none';
+    limparPendente();
+    if (tipo === 'verba') { document.getElementById('verba-busca').value = ''; renderVerbas(''); setTimeout(() => document.getElementById('verba-busca').focus(), 30); }
+}
+
+/* ── Seleção do item → fica pendente até Incluir ──
+   Total: único (substitui). Verba: múltipla (alterna cada clique). ── */
+function selCodes() { return new Set(pendentes.map(p => p.code)); }
+
+function selecionarTotal(code, label) {
+    pendentes = [{ code, label }];
+    document.querySelectorAll('.chip-total').forEach(c => c.classList.toggle('sel', c.dataset.code === code));
+    renderPendentes();
+}
+function toggleVerba(code, label) {
+    const i = pendentes.findIndex(p => p.code === code);
+    if (i >= 0) pendentes.splice(i, 1);
+    else pendentes.push({ code, label });
+    const sel = selCodes();
+    document.querySelectorAll('.verba-item').forEach(el => el.classList.toggle('sel', sel.has(el.dataset.cod)));
+    renderPendentes();
+}
+function renderPendentes() {
+    const chip = document.getElementById('sel-chip');
+    if (!pendentes.length) {
+        chip.innerHTML = '<span class="ph">selecione um item acima</span>';
+        document.getElementById('btn-incluir').disabled = true;
+    } else {
+        chip.innerHTML = pendentes.map(p =>
+            `<span class="sel-tag"><span class="cod">${p.code}</span> ${p.label || ''}</span>`).join('');
+        document.getElementById('btn-incluir').disabled = false;
+    }
+}
+function limparPendente() {
+    pendentes = [];
+    document.querySelectorAll('.chip-total').forEach(c => c.classList.remove('sel'));
+    document.querySelectorAll('.verba-item').forEach(el => el.classList.remove('sel'));
+    renderPendentes();
+}
+function incluirPendente() {
+    if (!pendentes.length) return;
+    pendentes.forEach(p => addTermo(opAtual, p.code, p.label));
+    limparPendente();
+}
+
+/* ── Verbas: render + filtro ── */
+function renderVerbas(termo) {
+    const lista = document.getElementById('verba-lista');
+    const t = (termo || '').toLowerCase();
+    const filtradas = VERBAS.filter(v => !t || v.cod.includes(t) || v.desc.toLowerCase().includes(t)).slice(0, 300);
+    if (!filtradas.length) { lista.innerHTML = '<div class="verba-vazio">Nenhuma verba encontrada.</div>'; return; }
+    const sel = selCodes();
+    lista.innerHTML = filtradas.map(v => `
+        <div class="verba-item ${sel.has(v.cod) ? 'sel' : ''}" data-cod="${v.cod}">
+            <span class="cod">${v.cod}</span>
+            <span class="desc">${v.desc}</span>
+            <span class="tp tp-${v.tp}">${v.tp === '1' ? 'PROV' : 'DESC'}</span>
+        </div>`).join('');
+}
+function filtrarVerbas() { renderVerbas(document.getElementById('verba-busca').value); }
+
+// clique numa verba → alterna na seleção (múltipla; entra na fórmula ao Incluir)
+document.addEventListener('click', e => {
+    const item = e.target.closest('.verba-item');
+    if (item) toggleVerba(item.dataset.cod, VERBA_MAP[item.dataset.cod] || '');
+});
+
+/* ── Termos ── */
+function addTermo(op, code, label) {
+    termos.push({ op, code, label });
+    renderTermos();
+}
+function removeTermo(idx) { termos.splice(idx, 1); renderTermos(); }
+
+function renderTermos() {
+    const lista = document.getElementById('termos-lista');
+    if (!termos.length) {
+        lista.innerHTML = '<div class="termo-vazio">Nenhum termo — monte a fórmula acima.</div>';
+    } else {
+        lista.innerHTML = termos.map((t, i) => `
+            <div class="termo">
+                <span class="sinal ${t.op === '+' ? 'mais' : 'menos'}">${t.op === '+' ? '+' : '−'}</span>
+                <span class="tcod">${t.code}</span>
+                <span class="tlabel">${t.label || ''}</span>
+                <button class="btn-acao excluir" title="Remover" onclick="removeTermo(${i})">🗑</button>
+            </div>`).join('');
+    }
+    document.getElementById('termos-contagem').textContent = termos.length ? `${termos.length} termo(s)` : '';
+    const str = construirString();
+    const prev = document.getElementById('preview');
+    prev.innerHTML = str ? str : '<span class="ph">— vazia —</span>';
+}
+
+function construirString() { return termos.map(t => t.op + t.code).join(''); }
+
+/* ── Parse (edição): fatia em blocos de 5 (sinal + 4) ── */
+function parseFormula(str) {
+    const out = [];
+    const s = (str || '').trim();
+    for (let i = 0; i + 5 <= s.length; i += 5) {
+        const op = s[i];
+        const code = s.substr(i + 1, 4);
+        if (op !== '+' && op !== '-') continue;
+        const label = TOTAIS[code] || VERBA_MAP[code] || '';
+        out.push({ op, code, label });
+    }
+    return out;
+}
+
+/* ── Abrir modal ── */
+function abrirNova() {
+    document.getElementById('modal-titulo').textContent = 'Nova Fórmula';
+    document.getElementById('f-id').value     = '';
+    document.getElementById('f-numero').value = PROXIMO_NUMERO;
+    document.getElementById('f-nome').value   = '';
+    termos = []; setOp('+'); setTipo('total'); renderTermos();
+    document.getElementById('modal-bg').classList.add('aberto');
+    setTimeout(() => document.getElementById('f-nome').focus(), 50);
+}
+function abrirEditar(id, numero, nome, formula) {
+    document.getElementById('modal-titulo').textContent = 'Editar Fórmula';
+    document.getElementById('f-id').value     = id;
+    document.getElementById('f-numero').value = numero;
+    document.getElementById('f-nome').value   = nome || '';
+    termos = parseFormula(formula); setOp('+'); setTipo('total'); renderTermos();
+    document.getElementById('modal-bg').classList.add('aberto');
+    setTimeout(() => document.getElementById('f-nome').focus(), 50);
+}
+function fecharModal() { document.getElementById('modal-bg').classList.remove('aberto'); }
+
+/* ── Gravar ── */
+async function salvarFormula() {
+    const id      = document.getElementById('f-id').value;
+    const nome    = document.getElementById('f-nome').value.trim();
+    const formula = construirString();
+    if (!nome) { showToast('Informe o nome da fórmula.', 'erro'); return; }
+
+    const url  = id ? '/api/pensao_formula/alterar' : '/api/pensao_formula/incluir';
+    const body = id ? { id: parseInt(id), nome, formula } : { nome, formula };
+    try {
+        const r = await fetch(url, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const d = await r.json();
+        if (!d.ok) { showToast(d.msg || 'Erro ao gravar.', 'erro'); return; }
+        showToast(id ? 'Fórmula alterada.' : `Fórmula ${d.numero} criada.`, 'ok');
+        setTimeout(() => window.location.reload(), 700);
+    } catch(e) { showToast('Erro de conexão.', 'erro'); }
+}
+
+async function excluirFormula(id, nome) {
+    if (!await f10Confirm(`Confirma excluir a fórmula "${nome}"?`)) return;
+    try {
+        const r = await fetch('/api/pensao_formula/excluir', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+        });
+        const d = await r.json();
+        if (!d.ok) { showToast(d.msg || 'Erro ao excluir.', 'erro'); return; }
+        showToast('Fórmula excluída.', 'ok');
+        setTimeout(() => window.location.reload(), 700);
+    } catch(e) { showToast('Erro de conexão.', 'erro'); }
+}
+
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 3500);
+}
+
+document.getElementById('modal-bg').addEventListener('click', e => { if (e.target.id === 'modal-bg') fecharModal(); });
+document.addEventListener('DOMContentLoaded', carregarVerbas);
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

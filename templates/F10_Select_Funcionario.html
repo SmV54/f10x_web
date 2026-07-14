@@ -195,6 +195,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 .lc-check { display: flex; align-items: center; justify-content: center; }
 .lc-check input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+/* Modo de seleção única (autoAvancar): sem checkboxes, clique na linha já avança */
+body.sel-unico .func-chk { display: none; }
+body.sel-unico .lista-row { cursor: pointer; }
 .lc-mat  { font-family: var(--mono); font-size: 12px; color: #64748b; }
 .lc-nome { font-size: 13px; font-weight: 500; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lc-adm  { font-size: 12px; color: #64748b; }
@@ -589,7 +592,9 @@ const CONTEXTOS = {
         subtitulo:     'Selecione um funcionário para cadastrar os dependentes',
         tituloCurto:   'Selecionar — Dependentes',
         proximo:       '/cad_dep',
-        f_situacao:    'all',
+        f_situacao:    'A',           // só ativos — não mostra demitidos
+        semFiltros:    true,          // esconde o painel de Filtros — só a lista
+        ocultarSelMassa: true,        // remove marcar/desmarcar todos (seleção de 1 por vez)
         maxSel:        1,
         msgMaxSel:     'Para Cadastrar DEPENDENTES, Selecione Apenas 1 Funcionário',
     },
@@ -696,6 +701,17 @@ const CONTEXTOS = {
         maxSel:        1,
         msgMaxSel:     'Selecione apenas 1 funcionário por vez',
     },
+    pensao: {
+        titulo:        'Pensão Alimentícia — Selecionar Funcionário',
+        subtitulo:     'Clique no funcionário para cadastrar a pensionista (deve estar entre os dependentes)',
+        tituloCurto:   'Selecionar — Pensão Alimentícia',
+        proximo:       '/cad_pensao',
+        f_situacao:    'A',          // só funcionários ativos (não mostra demitidos)
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
+        maxSel:        1,
+        autoAvancar:   true,         // 1 clique no funcionário já avança para a próxima etapa
+        msgMaxSel:     'Para cadastrar a pensionista, selecione apenas 1 funcionário',
+    },
 };
 
 const ctx = CONTEXTOS[CONTEXTO] || {
@@ -723,6 +739,31 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ctx.semFiltros) {
         const fp = document.querySelector('.filtros-panel');
         if (fp) fp.style.display = 'none';
+    }
+
+    // Contextos de seleção única com avanço direto (ex.: pensão): esconde os
+    // controles de marcar/desmarcar todos, a contagem e o botão de continuar —
+    // um clique no funcionário já avança para a próxima etapa.
+    if (ctx.autoAvancar) {
+        document.body.classList.add('sel-unico');
+        const esconder = [
+            document.querySelector('.sel-todos-label'),
+            document.getElementById('btn-sel-visiveis'),
+            document.querySelector('.btn-desmarcar'),
+            document.getElementById('contagem'),
+            document.getElementById('btn-continuar'),
+        ];
+        esconder.forEach(el => { if (el) el.style.display = 'none'; });
+    }
+
+    // Contextos de seleção de 1 por vez (ex.: dependentes): esconde os controles
+    // de marcar/desmarcar todos e "selecionar visíveis" — não fazem sentido p/ 1.
+    if (ctx.ocultarSelMassa) {
+        [
+            document.querySelector('.sel-todos-label'),
+            document.getElementById('btn-sel-visiveis'),
+            document.querySelector('.btn-desmarcar'),
+        ].forEach(el => { if (el) el.style.display = 'none'; });
     }
 
     // Contextos que trocam a última coluna (Situação → data de um evento)
@@ -1049,7 +1090,8 @@ function renderLista(lista) {
     }).join('');
 
     // Botão "Selecionar visíveis": aparece quando busca tem texto e há 2+ resultados
-    if (btnSel) btnSel.style.display = (busca && lista.length > 1) ? '' : 'none';
+    // (nunca no modo de seleção única com avanço direto)
+    if (btnSel) btnSel.style.display = (!ctx.autoAvancar && busca && lista.length > 1) ? '' : 'none';
 
     atualizarContagem();
 }
@@ -1077,12 +1119,20 @@ function applyRowState(mat) {
 }
 
 function toggleRow(mat) {
+    // Seleção única com avanço direto: 1 clique seleciona e já avança
+    if (ctx.autoAvancar) {
+        selectedMats.clear();
+        selectedMats.add(mat);
+        continuar();
+        return;
+    }
     if (selectedMats.has(mat)) selectedMats.delete(mat);
     else selectedMats.add(mat);
     applyRowState(mat);
 }
 
 function chkChange(chk, mat) {
+    if (ctx.autoAvancar) { toggleRow(mat); return; }
     if (chk.checked) selectedMats.add(mat);
     else selectedMats.delete(mat);
     applyRowState(mat);
