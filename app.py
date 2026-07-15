@@ -9066,12 +9066,18 @@ def api_rubrica_incluir():
     if not tp_rubr:
         return jsonify({"ok": False, "msg": "Tipo da verba obrigatório"})
 
+    # Verbas do sistema (cod_rubr < 1000) sao gravadas com id_cliente = 0.
+    try:
+        id_cliente_grava = 0 if int(cod_rubr) < 1000 else id_cliente
+    except (TypeError, ValueError):
+        id_cliente_grava = id_cliente
+
     # Verifica duplicidade (mesmo cod_rubr + ini_valid para o cliente)
     dup = (
         supabase
         .table("tab_rubrica")
         .select("id")
-        .eq("id_cliente", id_cliente)
+        .eq("id_cliente", id_cliente_grava)
         .eq("cod_rubr", cod_rubr)
         .eq("ini_valid", ini_valid)
         .execute()
@@ -9080,7 +9086,7 @@ def api_rubrica_incluir():
         return jsonify({"ok": False, "msg": f'Verba {cod_rubr} já existe para essa competência'})
 
     campos = {
-        "id_cliente":        id_cliente,
+        "id_cliente":        id_cliente_grava,
         "situacao":          "A",
         "cod_rubr":          cod_rubr,
         "ini_valid":         ini_valid,
@@ -28597,11 +28603,15 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             _categ_n         = int(_categ_s) if _categ_s.isdigit() else 0
             is_intermitente  = _categ_n == 111
             # Categorias 700-799 = nao-empregado (contribuinte individual / socio
-            # / diretor sem vinculo). Recebe PRO-LABORE (verba 6) em vez de
-            # salario (verba 1), e nao tem FGTS.
+            # / diretor sem vinculo). Recebe PRO-LABORE em vez de salario, e nao
+            # tem FGTS. Verba do salario varia por categoria (ver _verba_salario):
+            # 901→7 (bolsa estagio), 721→6, 722→8, 723→14, demais 700-799→6, else 1.
             is_nao_empregado = 700 <= _categ_n <= 799
-            _cod_sal_mes     = 6 if is_nao_empregado else 1
+            _cod_sal_mes     = _verba_salario(_categ_n)
             is_domestico     = 700 <= _categ_n <= 799
+            # Estagiario (Cat. 901): bolsa sem vinculo (Lei 11.788) — SEM FGTS e
+            # SEM INSS; apenas IRRF incide sobre a bolsa.
+            is_estagiario    = _categ_n == 901
             if is_intermitente:
                 formula = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
                            f"  Salário calculado via Verba 003 (lançamento manual).")
@@ -29456,7 +29466,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(e9c_tbl)
 
             # ── base INSS ─────────────────────────────────────
-            base_inss = sum(
+            # Estagiario (Cat. 901) nao tem INSS: base zero, ignora incidencias.
+            base_inss = 0 if is_estagiario else sum(
                 val for cod, val in mmVmm.items()
                 if rubricas_info.get(cod, {}).get("inc_cp") == "11" and val > 0
             )
@@ -29483,7 +29494,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # ── etapa 10 — INSS ───────────────────────────────
             _base_inss_cons = int(base_inss) + _fer_inss_base   # base consolidada (folha + ferias)
-            if is_domestico:
+            if is_estagiario:
+                _inss_total = 0          # estagiario nao recolhe INSS
+                inss_det    = []
+                inss_teto   = 0
+            elif is_domestico:
                 _inss_total = (_base_inss_cons * 11) // 100
                 inss_det    = []
                 inss_teto   = 0
@@ -30059,9 +30074,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # Grava totais no tab_total
             try:
-                # Cat 700-799 (nao-empregado / CI / socio) nao tem FGTS,
-                # independentemente da incidencia configurada nas rubricas.
-                if is_nao_empregado:
+                # Cat 700-799 (nao-empregado / CI / socio) e Cat 901 (estagiario)
+                # nao tem FGTS, independentemente da incidencia das rubricas.
+                if is_nao_empregado or is_estagiario:
                     base_fgts_func = 0
                     fgts_func = 0
                 else:
@@ -33976,9 +33991,10 @@ def calcular_folha_etapa1_pdf():
             _categ_s2    = str(l.get("codcateg", "")).strip()
             _categ_n2    = int(_categ_s2) if _categ_s2.isdigit() else 0
             is_intermitente = _categ_n2 == 111
-            # Cat 700-799 = nao-empregado → pro-labore (verba 6), sem FGTS.
+            # Cat 700-799 = nao-empregado → pro-labore, sem FGTS. Verba do salario
+            # por categoria: 901→7, 721→6, 722→8, 723→14, demais 700-799→6, else 1.
             is_nao_empregado = 700 <= _categ_n2 <= 799
-            _cod_sal_mes     = 6 if is_nao_empregado else 1
+            _cod_sal_mes     = _verba_salario(_categ_n2)
             is_domestico    = 700 <= _categ_n2 <= 799
             if is_intermitente:
                 formula_txt = (f"Intermitente (Cat. 111) — Salário Hora cadastrado: {l['sal_hora_fmt']}/h."
@@ -43051,6 +43067,25 @@ def _sal_mes_adiant13(f):
         except Exception:
             return 0
     return vr
+
+
+def _verba_salario(categ_n):
+    """Verba do 'salário' (remuneração base) conforme a categoria eSocial.
+       901 (estagiário) → 7 (bolsa estágio);
+       721 → 6, 722 → 8, 723 → 14 (pró-labore específico por tipo de sócio);
+       demais 700-799 (não-empregado / CI / diretor) → 6 (pró-labore);
+       empregado geral → 1 (salário)."""
+    if categ_n == 901:
+        return 7
+    if categ_n == 721:
+        return 6
+    if categ_n == 722:
+        return 8
+    if categ_n == 723:
+        return 14
+    if 700 <= categ_n <= 799:
+        return 6
+    return 1
 
 
 def _elegivel_adiant13(f):
