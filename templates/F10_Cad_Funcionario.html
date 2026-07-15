@@ -1533,6 +1533,38 @@ function preencherFormulario(d) {
     sv('Aprend_cnpjPrat',d.aprend_cnpjprat);
     ajustarContrato(); ajustarAdmissao(); ajustarAprendiz(); ajustarImigrante();
     ajustarBolsaEstagio();
+    travarCategoriaS2200(d.s2200_ativo);
+}
+
+/* Categoria eSocial só pode mudar se o S-2200 ainda não foi enviado (ou foi
+   enviado e anulado por S-3000). Com S-2200 ativo, trava o campo. */
+function travarCategoriaS2200(ativo) {
+    const sel = document.getElementById('codCateg');
+    if (!sel) return;
+    const box = sel.closest('.campo');
+    const tagExist = box ? box.querySelector('.lock-s2200') : null;
+    if (ativo) {
+        sel.disabled = true;
+        sel.style.background = 'var(--read-bg)';
+        sel.style.color = 'var(--read-text)';
+        sel.title = 'Categoria travada: S-2200 já enviado. Anule via S-3000 para alterar.';
+        if (box && !tagExist) {
+            const lbl = box.querySelector('label');
+            if (lbl) {
+                const tag = document.createElement('span');
+                tag.className = 'lock-s2200';
+                tag.textContent = ' 🔒 S-2200 enviado';
+                tag.style.cssText = 'font-size:10px;color:#b45309;font-weight:700;';
+                lbl.appendChild(tag);
+            }
+        }
+    } else {
+        sel.disabled = false;
+        sel.style.background = '';
+        sel.style.color = '';
+        sel.title = '';
+        if (tagExist) tagExist.remove();
+    }
 }
 
 /* ── VERIFICAÇÃO ONLINE (onblur) ────────────────────────── */

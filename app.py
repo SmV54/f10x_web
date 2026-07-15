@@ -9789,6 +9789,30 @@ def api_sindicatos():
 # =========================================================
 # FUNCIONÁRIOS — API BUSCAR
 # =========================================================
+def _s2200_ativo(id_empresa, matricula):
+    """True se existe S-2200 ENVIADO (com recibo) e ainda NAO anulado por S-3000
+    (observacao_erro != 'EXCLUIDO') para o funcionario. Nesse caso a categoria
+    eSocial (codCateg) do cadastro NAO pode ser alterada — o eSocial nao aceita
+    troca de categoria com admissao ativa; e preciso anular via S-3000 antes."""
+    if matricula in (None, ""):
+        return False
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("recibo, observacao_erro")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "2200")
+                .eq("matricula", int(matricula))
+                .not_.is_("recibo", "null")
+                .neq("recibo", "")
+                .execute().data or [])
+    except Exception:
+        return False
+    for s in rows:
+        if (s.get("observacao_erro") or "").strip().upper() != "EXCLUIDO":
+            return True
+    return False
+
+
 @app.route("/api/funcionario/buscar")
 def api_funcionario_buscar():
     if not session.get("logado"):
@@ -9807,7 +9831,10 @@ def api_funcionario_buscar():
         r = q.execute()
         if not r.data:
             return jsonify({"ok": False, "msg": "Funcionário não encontrado"})
-        return jsonify({"ok": True, "data": r.data[0]})
+        row = r.data[0]
+        # Trava da categoria eSocial: S-2200 enviado e nao anulado por S-3000
+        row["s2200_ativo"] = _s2200_ativo(id_empresa, row.get("matricula"))
+        return jsonify({"ok": True, "data": row})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
@@ -9925,6 +9952,26 @@ def api_funcionario_alterar():
         v = sv(payload_key)
         if v is not None:
             campos[db_col] = v
+
+    # Bloqueio: a categoria eSocial (codCateg) só pode mudar se o S-2200 ainda
+    # NÃO foi enviado, ou se foi enviado e anulado por S-3000. Com S-2200 ativo
+    # a categoria fica travada — o eSocial não aceita troca de categoria com a
+    # admissão vigente. Defesa no backend (a tela também desabilita o campo).
+    novo_categ = (campos.get("codcateg") or "").strip()
+    try:
+        _cur = (supabase.table("tab_cad")
+                .select("codcateg, matricula")
+                .eq("id", func_id).eq("id_empresa", id_empresa)
+                .limit(1).execute().data or [])
+    except Exception:
+        _cur = []
+    if _cur:
+        _cat_atual = str(_cur[0].get("codcateg") or "").strip()
+        if novo_categ != _cat_atual and _s2200_ativo(id_empresa, _cur[0].get("matricula")):
+            return jsonify({"ok": False, "msg":
+                "Categoria eSocial não pode ser alterada: o S-2200 deste "
+                "funcionário já foi enviado. Para trocar a categoria, anule "
+                "antes o S-2200 (envio do S-3000)."})
 
     # Monta observação com campos alterados
     _labels = {
