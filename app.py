@@ -12,7 +12,14 @@ import hashlib
 import random
 import smtplib
 import requests
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
+
+
+def _agora_brasilia():
+    """Horário de Brasília (UTC-3, sem horário de verão desde 2019),
+    independente do fuso do servidor (Render roda em UTC). Retorna
+    datetime naive representando a hora-relógio de Brasília."""
+    return (datetime.now(timezone.utc) - timedelta(hours=3)).replace(tzinfo=None)
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import Flask, render_template, request, redirect, session, jsonify, send_file, Response, stream_with_context
@@ -470,7 +477,7 @@ def fazer_login():
 
     # Atualiza último login e reseta tentativas
     supabase.table("tab_cliente").update({
-        "datahora_ultimo_login": datetime.now().isoformat(),
+        "datahora_ultimo_login": _agora_brasilia().isoformat(),
         "tentativas_login": 0,
         "bloqueado_ate": None
     }).eq("cpf", cpf).execute()
@@ -36747,6 +36754,19 @@ def _fmt_data_cadastro(v):
         return s
 
 
+def _fmt_datahora(v):
+    """datahora ISO 'YYYY-MM-DDTHH:MM:SS...' -> 'dd/mm/aaaa hh:mm'."""
+    if not v:
+        return "—"
+    s = str(v)
+    try:
+        a, m, d = s[:10].split("-")
+        hhmm = s[11:16] if len(s) >= 16 else ""
+        return f"{d}/{m}/{a} {hhmm}".strip()
+    except Exception:
+        return s
+
+
 def _fmt_data_limite(v):
     """data_limite ('YYYY-MM') -> 'mm/aaaa'."""
     if not v:
@@ -36768,7 +36788,8 @@ def admin_clientes():
     try:
         clientes = (supabase.table("tab_cliente")
                     .select("id_cliente, nome, cpf, email, data_limite, "
-                            "datahora_cadastro, qtd_empresas, qtd_funcionarios")
+                            "datahora_cadastro, datahora_ultimo_login, "
+                            "qtd_empresas, qtd_funcionarios")
                     .order("nome")
                     .execute().data or [])
         # Empresas de todos os clientes -> conta atual + mapa empresa->cliente
@@ -36793,6 +36814,7 @@ def admin_clientes():
             c["qtd_empresas_real"]     = emp_count.get(cid, 0)
             c["qtd_funcionarios_real"] = func_count.get(cid, 0)
             c["data_cadastro_fmt"]     = _fmt_data_cadastro(c.get("datahora_cadastro"))
+            c["ultimo_login_fmt"]      = _fmt_datahora(c.get("datahora_ultimo_login"))
             c["data_limite_fmt"]       = _fmt_data_limite(c.get("data_limite"))
             _dl = (c.get("data_limite") or "").strip()
             c["limite_vencido"]        = bool(_dl) and _dl < mes_atual

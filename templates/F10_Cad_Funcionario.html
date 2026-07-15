@@ -89,7 +89,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 .grid-ident {
     display: grid;
-    grid-template-columns: 110px 200px 140px 120px 1fr;
+    grid-template-columns: 1fr 115px 170px 170px 115px;
     gap: 8px 14px;
 }
 .grid-nome {
@@ -415,6 +415,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
         <div class="secao-corpo">
             <div class="grid-ident">
+                <div class="campo">
+                    <label>Categoria eSocial</label>
+                    <select id="codCateg" onchange="ajustarBolsaEstagio(); ajustarPrefixoMatricula()"
+                            onfocus="showHint(this,'codCateg — Código da categoria conforme Tabela 01 do eSocial.\nExemplos: 101 – Empregado geral | 103 – Aprendiz | 104 – Doméstico')" onblur="clearHint()">
+                        <option value="">Selecione…</option>
+                        {% for cat in categorias %}
+                        <option value="{{ cat.codigo }}">{{ cat.codigo }} — {{ cat.texto }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
                 <div class="campo campo-mono">
                     <label>Matrícula</label>
                     <input type="text" id="matricula" maxlength="6" placeholder="000001"
@@ -451,16 +461,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="text" id="filial" value="{{ filial }}" readonly
                            style="background:var(--read-bg);color:var(--read-text);">
                     {% endif %}
-                </div>
-                <div class="campo">
-                    <label>Categoria eSocial</label>
-                    <select id="codCateg"
-                            onfocus="showHint(this,'codCateg — Código da categoria conforme Tabela 01 do eSocial.\nExemplos: 101 – Empregado geral | 103 – Aprendiz | 104 – Doméstico')" onblur="clearHint()">
-                        <option value="">Selecione…</option>
-                        {% for cat in categorias %}
-                        <option value="{{ cat.codigo }}">{{ cat.codigo }} — {{ cat.texto }}</option>
-                        {% endfor %}
-                    </select>
                 </div>
             </div>
             <div class="grid-nome">
@@ -573,7 +573,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <div class="secao-corpo">
             <div class="{% if modo == 'alteracao' %}grid-contrato-top-alt{% else %}grid-contrato-top{% endif %}">
                 <div class="campo campo-mono">
-                    <label>Salário (R$)</label>
+                    <label id="lbl-salario">Salário (R$)</label>
                     <input type="text" id="vrSalFx" placeholder="0,00"
                            oninput="apenasNumeros(this,10)"
                            onfocus="limparSalario(this); showHint(this,'Digite apenas os dígitos. Ex: 150000 = R$ 1.500,00')"
@@ -1380,6 +1380,33 @@ function ajustarContrato() {
     bloco.style.display = (tp === '2') ? '' : 'none';
 }
 
+function ajustarBolsaEstagio() {
+    const cat = document.getElementById('codCateg').value;
+    const lbl = document.getElementById('lbl-salario');
+    if (!lbl) return;
+    if (cat === '901')                              lbl.textContent = 'Bolsa Estágio (R$)';
+    else if (['721','722','723'].includes(cat))     lbl.textContent = 'Pró-labore (R$)';
+    else                                            lbl.textContent = 'Salário (R$)';
+}
+
+function ajustarPrefixoMatricula() {
+    const cat = document.getElementById('codCateg').value;
+    const mat = document.getElementById('matricula');
+    if (!mat || mat.readOnly) return;   // não mexe em modo alteração
+    let prefixo = '';
+    if (cat === '901')                          prefixo = '8';
+    else if (['721','722','723'].includes(cat)) prefixo = '9';
+    if (!prefixo) return;
+    let v = mat.value.replace(/\D/g, '');
+    if (v.startsWith(prefixo)) return;          // já tem o prefixo
+    v = (prefixo + v).substring(0, 6);
+    mat.value = v;
+    sincMatriculaES(mat);
+    _showCheckMsg(mat, prefixo === '8'
+        ? 'Estagiário (901): matrícula iniciada com 8 automaticamente.'
+        : 'Pró-labore (' + cat + '): matrícula iniciada com 9 automaticamente.', 'ok');
+}
+
 function ajustarAdmissao() {
     const tp = document.getElementById('tpAdmissao').value;
     document.getElementById('bloco-transf').style.display =
@@ -1505,6 +1532,7 @@ function preencherFormulario(d) {
     sv('Aprend_tpInsc',  d.aprend_tpinsc);
     sv('Aprend_cnpjPrat',d.aprend_cnpjprat);
     ajustarContrato(); ajustarAdmissao(); ajustarAprendiz(); ajustarImigrante();
+    ajustarBolsaEstagio();
 }
 
 /* ── VERIFICAÇÃO ONLINE (onblur) ────────────────────────── */

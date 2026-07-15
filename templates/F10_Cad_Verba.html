@@ -1113,16 +1113,38 @@
     }
   });
 
+  // Toast flutuante fixo — sempre visível, independente da rolagem. O botão
+  // Gravar fica no fim de um formulário longo; a mensagem inline no topo passava
+  // despercebida por quem estava com a tela rolada para baixo.
+  function _toast(msg, ok) {
+    let t = document.getElementById('_toastFixo');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = '_toastFixo';
+      t.style.cssText = 'position:fixed;top:78px;left:50%;transform:translateX(-50%);' +
+        'z-index:3000;padding:13px 26px;border-radius:10px;font-size:14px;font-weight:700;' +
+        'color:#fff;box-shadow:0 8px 28px rgba(0,0,0,0.22);display:none;max-width:90vw;text-align:center;';
+      document.body.appendChild(t);
+    }
+    t.textContent = (ok ? '✔ ' : '✖ ') + msg;
+    t.style.background = ok ? '#16a34a' : '#dc2626';
+    t.style.display = 'block';
+    clearTimeout(t._tmr);
+    t._tmr = setTimeout(() => { t.style.display = 'none'; }, 3500);
+  }
+
   function mostrarOk(msg) {
     const el = document.getElementById('msgOk');
     el.textContent = '✔ ' + msg; el.style.display = 'block';
     document.getElementById('msgErro').style.display = 'none';
     setTimeout(() => { el.style.display = 'none'; }, 3000);
+    _toast(msg, true);
   }
   function mostrarErro(msg) {
     const el = document.getElementById('msgErro');
     el.textContent = '✖ ' + msg; el.style.display = 'block';
     document.getElementById('msgOk').style.display = 'none';
+    _toast(msg, false);
   }
 
   async function gravarVerba() {
@@ -1150,9 +1172,17 @@
     }
 
     const codNum = parseInt(cod, 10);
-    if (!id && (codNum < 1000 || codNum > 9999)) {
-      mostrarErro('Código deve estar entre 1000 e 9999 para verbas do cliente.');
-      return;
+    if (!id) {
+      // Admin F10 pode criar verbas do sistema (código < 1000); o cliente comum
+      // fica restrito à faixa 1000–9999.
+      const okRange = IS_ADMIN_VERBAS ? (codNum >= 1 && codNum <= 9999)
+                                      : (codNum >= 1000 && codNum <= 9999);
+      if (!okRange) {
+        mostrarErro(IS_ADMIN_VERBAS
+          ? 'Código deve estar entre 1 e 9999.'
+          : 'Código deve estar entre 1000 e 9999 para verbas do cliente.');
+        return;
+      }
     }
 
     const strOuNull = elId => {
@@ -1216,14 +1246,31 @@
       });
       const d = await r.json();
       if (d.ok) {
-        mostrarOk(editando ? `"${nome}" atualizada!` : `"${nome}" incluída!`);
-        setTimeout(() => location.reload(), 1500);
+        // Guarda a confirmação para exibir APÓS o reload — a lista já mostra a
+        // verba nova e o formulário volta limpo (Modo: Inclusão), deixando claro
+        // que gravou. O toast aparece por cima, sempre visível.
+        sessionStorage.setItem('verbaSalvaMsg',
+          editando ? `Verba "${nome}" atualizada com sucesso!`
+                   : `Verba "${nome}" incluída com sucesso!`);
+        location.reload();
       } else { mostrarErro(d.msg || 'Erro ao gravar.'); }
     } catch(e) { mostrarErro('Erro de comunicação.'); }
   }
 
   // Ao carregar a página já preenche o mês atual
   document.getElementById('inpIniValid').value = mesAtual();
+
+  // Admin F10 pode criar verbas do sistema (código < 1000) — libera o mínimo do
+  // campo para não travar o spinner/validação do input numérico.
+  if (IS_ADMIN_VERBAS) {
+    document.getElementById('inpCod').min = 1;
+  }
+
+  // Confirmação de gravação carregada do fluxo anterior (após o reload)
+  (function() {
+    const _msg = sessionStorage.getItem('verbaSalvaMsg');
+    if (_msg) { sessionStorage.removeItem('verbaSalvaMsg'); _toast(_msg, true); }
+  })();
 
   // Bloqueia todo o formulário quando a folha não está Aberta
   if (!FOLHA_ABERTA) {

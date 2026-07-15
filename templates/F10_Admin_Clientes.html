@@ -19,7 +19,7 @@
     --mono: 'IBM Plex Mono', monospace;
     --sans: 'IBM Plex Sans', sans-serif;
     /* Colunas da lista de clientes (usadas no cabeçalho e nos cards) */
-    --grid-cli: minmax(0, 1fr) 104px 84px 100px 92px;
+    --grid-cli: minmax(0, 1fr) 104px 148px 84px 100px 92px;
 }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: var(--sans); background: var(--bg); color: var(--label); }
@@ -56,7 +56,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 /* ── LAYOUT DOIS PAINÉIS ── */
 .layout {
     display: grid;
-    grid-template-columns: 700px 1fr;
+    grid-template-columns: 880px 1fr;
     height: calc(100vh - 72px);
     overflow: hidden;
 }
@@ -261,6 +261,7 @@ tbody tr:hover td { background: #f8fafc; }
 tbody td { padding: 10px 16px; font-size: 13px; color: var(--label); vertical-align: middle; }
 tbody td.col-num { text-align: center; }
 tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.emp-id { font-family: var(--mono); font-size: 11px; font-weight: 700; color: #2563eb; margin-right: 8px; }
 .pill-func {
     display: inline-block; font-size: 12px; font-weight: 700;
     padding: 2px 11px; border-radius: 10px; white-space: nowrap;
@@ -331,6 +332,10 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                             <input type="radio" name="ordenar" value="cad" checked onchange="ordenarClientes('cad')">
                             <span>Data Cadastro</span>
                         </label>
+                        <label class="check-item">
+                            <input type="radio" name="ordenar" value="acesso" onchange="ordenarClientes('acesso')">
+                            <span>Último Acesso</span>
+                        </label>
                     </div>
                 </div>
                 <div class="controle-card">
@@ -352,6 +357,7 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
         <div class="lista-header">
             <span>Cliente</span>
             <span>Data Cadastro</span>
+            <span>Último Acesso</span>
             <span>Empresas</span>
             <span>Funcionários</span>
             <span>Data Limite</span>
@@ -364,6 +370,7 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                  data-nome="{{ (c.nome or '') | lower }}"
                  data-id="{{ c.id_cliente }}"
                  data-cad="{{ c.datahora_cadastro or '' }}"
+                 data-acesso="{{ c.datahora_ultimo_login or '' }}"
                  onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}', {{ c.qtd_empresas_real }})">
                 <div class="cliente-info">
                     <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
@@ -371,6 +378,9 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                 </div>
                 <span class="meta-chip cadastro" title="Data do cadastro">
                     <span class="ic">🗓️</span> {{ c.data_cadastro_fmt }}
+                </span>
+                <span class="meta-chip cadastro" title="Data do último acesso ao sistema">
+                    <span class="ic">🕑</span> {{ c.ultimo_login_fmt }}
                 </span>
                 <span class="meta-chip {% if c.qtd_empresas and c.qtd_empresas_real > c.qtd_empresas %}excede{% endif %}"
                       title="Empresas: atuais / contratadas">
@@ -466,9 +476,10 @@ function renderEmpresas(empresas) {
         const pill = e.qtd_funcionarios > 0
             ? `<span class="pill-func tem">${e.qtd_funcionarios}</span>`
             : `<span class="pill-func zero">0</span>`;
+        const idEmp = String(e.id_empresa ?? '').padStart(4, '0');
         return `
             <tr>
-                <td>${escHtml(e.razao_fmt)}</td>
+                <td><span class="emp-id">${idEmp}</span>${escHtml(e.razao_fmt)}</td>
                 <td class="col-cnpj">${escHtml(e.cnpj_fmt || '—')}</td>
                 <td class="col-num">${pill}</td>
             </tr>`;
@@ -501,6 +512,14 @@ function ordenarClientes(modo) {
         if (modo === 'cad') {
             // Data de cadastro, mais recentes primeiro (decrescente)
             return (b.dataset.cad || '').localeCompare(a.dataset.cad || '');
+        }
+        if (modo === 'acesso') {
+            // Último acesso, mais recentes primeiro; quem nunca acessou vai ao fim
+            const va = a.dataset.acesso || '', vb = b.dataset.acesso || '';
+            if (!va && !vb) return 0;
+            if (!va) return 1;
+            if (!vb) return -1;
+            return vb.localeCompare(va);
         }
         return (parseInt(a.dataset.id, 10) || 0) - (parseInt(b.dataset.id, 10) || 0);
     });
