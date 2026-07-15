@@ -33992,7 +33992,7 @@ def calcular_folha_etapa1_pdf():
             _categ_n2    = int(_categ_s2) if _categ_s2.isdigit() else 0
             is_intermitente = _categ_n2 == 111
             # Cat 700-799 = nao-empregado → pro-labore, sem FGTS. Verba do salario
-            # por categoria: 901→7, 721→6, 722→8, 723→14, demais 700-799→6, else 1.
+            # por categoria: 901→7, 721→6, 722→16, 723→86, demais 700-799→6, else 1.
             is_nao_empregado = 700 <= _categ_n2 <= 799
             _cod_sal_mes     = _verba_salario(_categ_n2)
             is_domestico    = 700 <= _categ_n2 <= 799
@@ -43072,7 +43072,7 @@ def _sal_mes_adiant13(f):
 def _verba_salario(categ_n):
     """Verba do 'salário' (remuneração base) conforme a categoria eSocial.
        901 (estagiário) → 7 (bolsa estágio);
-       721 → 6, 722 → 8, 723 → 14 (pró-labore específico por tipo de sócio);
+       721 → 6, 722 → 16, 723 → 86 (pró-labore específico por tipo de sócio);
        demais 700-799 (não-empregado / CI / diretor) → 6 (pró-labore);
        empregado geral → 1 (salário)."""
     if categ_n == 901:
@@ -43080,9 +43080,9 @@ def _verba_salario(categ_n):
     if categ_n == 721:
         return 6
     if categ_n == 722:
-        return 8
+        return 16
     if categ_n == 723:
-        return 14
+        return 86
     if 700 <= categ_n <= 799:
         return 6
     return 1
