@@ -87,6 +87,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .grid-6  { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px 14px; }
 .grid-7  { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px 14px; }
 
+/* Estágio (eSocial S-2300 / infoEstagio) — só aparece para categoria 901.
+   Apenas os campos obrigatórios do eSocial. */
+.grid-estagio-dados { display: grid; grid-template-columns: 220px 240px 160px 1fr; gap: 8px 14px; }
+.grid-estagio-inst  { display: grid; grid-template-columns: 1.4fr 1.4fr 90px 120px 160px 60px; gap: 8px 14px; }
+.sub-estagio {
+    font-size: 11px; font-weight: 700; color: #64748b;
+    margin: 16px 0 6px; text-transform: uppercase; letter-spacing: .5px;
+    border-top: 1px dashed var(--linha, #e2e8f0); padding-top: 12px;
+}
+.sub-estagio:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
 .grid-ident {
     display: grid;
     grid-template-columns: 1fr 115px 170px 170px 115px;
@@ -656,6 +667,78 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label>Objeto Determinante</label>
                     <input type="text" id="objDet" maxlength="120" placeholder="Obra, serviço, safra… (obrigatório se tipo 3)"
                            onfocus="showHint(this,'Objeto do contrato por prazo determinado.\nObrigatório e exclusivo se tpContr = 3.')" onblur="clearHint()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── ESTÁGIO (eSocial S-2300) — só categoria 901 ──── -->
+    <div class="secao" id="secao-estagio" style="display:none">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#7c3aed"></div>
+            <span class="secao-titulo">Estágio — dados do eSocial (S-2300)</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-estagio-dados">
+                <div class="campo">
+                    <label>Natureza do Estágio</label>
+                    <select id="natEstagio"
+                            onfocus="showHint(this,'O — Obrigatório (previsto no projeto pedagógico)\nN — Não obrigatório')" onblur="clearHint()">
+                        <option value="">—</option>
+                        <option value="O">O — Obrigatório</option>
+                        <option value="N">N — Não obrigatório</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>Nível do Estágio</label>
+                    <select id="nivEstagio"
+                            onfocus="showHint(this,'Nível de ensino do estagiário conforme Tabela do eSocial.')" onblur="clearHint()">
+                        <option value="">—</option>
+                        <option value="1">1 — Fundamental</option>
+                        <option value="2">2 — Médio</option>
+                        <option value="3">3 — Formação profissional</option>
+                        <option value="4">4 — Superior</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>Dt. Prev. Término</label>
+                    <input type="text" id="dtPrevTerm" maxlength="10" placeholder="DD/MM/AAAA"
+                           oninput="mascaraData(this)"
+                           onfocus="showHint(this,'Data prevista para o término do estágio.')" onblur="clearHint()">
+                </div>
+                <div class="campo"></div>
+            </div>
+
+            <!-- Instituição de Ensino (obrigatória no eSocial) -->
+            <div class="sub-estagio">Instituição de Ensino</div>
+            <div class="grid-estagio-inst">
+                <div class="campo">
+                    <label>Nome / Razão Social</label>
+                    <input type="text" id="est_instNome" maxlength="100" placeholder="Nome da instituição de ensino"
+                           onfocus="showHint(this,'Nome/razão social da instituição de ensino.')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>Logradouro</label>
+                    <input type="text" id="est_instLograd" maxlength="80" placeholder="Rua / Av."
+                           onfocus="showHint(this,'Logradouro da instituição de ensino.')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>Número</label>
+                    <input type="text" id="est_instNr" maxlength="10" placeholder="Nº">
+                </div>
+                <div class="campo campo-mono">
+                    <label>CEP</label>
+                    <input type="text" id="est_instCep" maxlength="9" placeholder="00000-000"
+                           oninput="mascaraCEP(this)">
+                </div>
+                <div class="campo">
+                    <label>Cód. Município (IBGE)</label>
+                    <input type="text" id="est_instMunic" maxlength="7" placeholder="Ex: 3550308"
+                           onfocus="showHint(this,'Código IBGE do município (7 dígitos).')" onblur="clearHint()">
+                </div>
+                <div class="campo">
+                    <label>UF</label>
+                    <input type="text" id="est_instUf" maxlength="2" placeholder="SP" style="text-transform:uppercase">
                 </div>
             </div>
         </div>
@@ -1387,6 +1470,14 @@ function ajustarBolsaEstagio() {
     if (cat === '901')                              lbl.textContent = 'Bolsa Estágio (R$)';
     else if (['721','722','723'].includes(cat))     lbl.textContent = 'Pró-labore (R$)';
     else                                            lbl.textContent = 'Salário (R$)';
+    ajustarEstagio();
+}
+
+/* Seção Estágio (S-2300) só aparece para a categoria 901 (estagiário). */
+function ajustarEstagio() {
+    const cat = document.getElementById('codCateg').value;
+    const sec = document.getElementById('secao-estagio');
+    if (sec) sec.style.display = (cat === '901') ? '' : 'none';
 }
 
 function ajustarPrefixoMatricula() {
