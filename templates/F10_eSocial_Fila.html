@@ -189,6 +189,13 @@ tr:hover td { background: #f8fafc; }
 .btn-reconsultar:hover { background: #fef3c7; }
 .btn-reconsultar:disabled { opacity: .5; cursor: not-allowed; }
 
+.btn-verxml {
+    font-size: 11px; padding: 3px 10px; border-radius: 6px;
+    background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe;
+    text-decoration: none; font-weight: 600; transition: .12s; white-space: nowrap;
+}
+.btn-verxml:hover { background: #ede9fe; }
+
 .btn-ir {
     font-size: 11px; padding: 3px 10px; border-radius: 6px;
     background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd;
@@ -273,9 +280,10 @@ tr:hover td { background: #f8fafc; }
       '1000':'S-1000 Empregador','1005':'S-1005 Estabelecimentos','1010':'S-1010 Rubricas','1020':'S-1020 Lotações',
       '2200':'S-2200 Admissão','2205':'S-2205 Alt. Cadastral','2206':'S-2206 Alt. Contrato',
       '2210':'S-2210 CAT','2220':'S-2220 Saúde','2230':'S-2230 Afastamento','2299':'S-2299 Desligamento',
+      '2300':'S-2300 Início TSVE','2399':'S-2399 Término TSVE',
       '1200':'S-1200 Remuneração','1210':'S-1210 Pagamentos','1298':'S-1298 Reabertura','1299':'S-1299 Fechamento'
   } %}
-  {% set LAY_ORDER = ['2200','2205','2206','2210','2220','2230','2299','1200','1210','1298','1299','1000','1005','1010','1020'] %}
+  {% set LAY_ORDER = ['2200','2205','2206','2210','2220','2230','2299','2300','2399','1200','1210','1298','1299','1000','1005','1010','1020'] %}
   {% set layouts_presentes = rows | map(attribute='layout') | map('string') | list %}
   <div id="secaoFiltros" class="filtro-bar">
     <span class="filtro-lay-label">Layout:</span>
@@ -376,7 +384,7 @@ tr:hover td { background: #f8fafc; }
               <button class="btn-reconsultar"
                       onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-              {% if r.layout in ('1010', '2200', '2220', '1200', '1298', '1299') %}
+              {% if r.layout in ('1010', '2200', '2220', '2300', '2399', '1200', '1298', '1299') %}
               <button class="btn-ir"
                       data-id="{{ r.id_esocial }}"
                       data-layout="{{ r.layout }}"
@@ -396,6 +404,10 @@ tr:hover td { background: #f8fafc; }
                       data-nome="{{ r._nome }}"
                       data-lay="{{ r._lay_codigo }}"
                       onclick="_excluir(this)">&#10005; Excluir</button>
+              {% endif %}
+              {% if r.layout in ('2200', '2300', '2399') %}
+              <a class="btn-verxml" href="/api/esocial_xml_ver?id={{ r.id_esocial }}" target="_blank"
+                 title="Abrir o XML do evento (1_evento) numa nova aba">&#128196; Ver XML</a>
               {% endif %}
             </div>
           </td>
@@ -590,6 +602,8 @@ async function _enviarFila(btn) {
   const APIS = {
     '1010': '/api/esocial_s1010_enviar',
     '2200': '/api/esocial_s2200_enviar',
+    '2300': '/api/esocial_s2300_enviar',
+    '2399': '/api/esocial_s2399_enviar',
     '2220': '/api/esocial_s2220_enviar',
     '1200': '/api/esocial_s1200_enviar',
     '1298': '/api/esocial_s1298_enviar',

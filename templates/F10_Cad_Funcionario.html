@@ -429,7 +429,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Categoria eSocial</label>
                     <select id="codCateg" onchange="ajustarBolsaEstagio(); ajustarPrefixoMatricula()"
-                            onfocus="showHint(this,'codCateg — Código da categoria conforme Tabela 01 do eSocial.\nExemplos: 101 – Empregado geral | 103 – Aprendiz | 104 – Doméstico')" onblur="clearHint()">
+                            onfocus="showHint(this,'Categoria do trabalhador conforme a Tabela 01 do eSocial — define quais eventos e encargos se aplicam.\nEx.: 101 – Empregado geral | 103 – Aprendiz | 104 – Doméstico | 901 – Estagiário | 721/722/723 – Diretor/pró-labore.\nEstagiário e pró-labore ajustam o rótulo do salário e o prefixo da matrícula (8 ou 9).')" onblur="clearHint()">
                         <option value="">Selecione…</option>
                         {% for cat in categorias %}
                         <option value="{{ cat.codigo }}">{{ cat.codigo }} — {{ cat.texto }}</option>
@@ -440,18 +440,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label>Matrícula</label>
                     <input type="text" id="matricula" maxlength="6" placeholder="000001"
                            oninput="apenasNumeros(this,6); sincMatriculaES(this);"
-                           onblur="formatarMatricula(this); checkMatricula(this);"
+                           onfocus="hintMatricula(this)"
+                           onblur="clearHint(); formatarMatricula(this); checkMatricula(this);"
                            {% if modo == 'alteracao' %}readonly style="background:var(--read-bg);color:var(--read-text);"{% endif %}>
                 </div>
                 <div class="campo">
                     <label>Matrícula eSocial</label>
                     <input type="text" id="matricula_eS" maxlength="30" placeholder="Preenchida automaticamente"
-                           onfocus="showHint(this,'Preenchida igual à Matrícula na inclusão.\nPode ser alterada se necessário.')" onblur="clearHint()">
+                           onfocus="showHint(this,'Matrícula que identifica o trabalhador nos eventos do eSocial.\nUse quando o funcionário JÁ tem cadastro no eSocial (feito por outro sistema): informe aqui a matrícula que já existe lá.\nNão é “matrícula social” — não tem relação com NIS/programas sociais.\nEm inclusões novas, vem igual à Matrícula.')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>CPF</label>
                     <input type="text" id="cpf" maxlength="14" placeholder="000.000.000-00"
-                           oninput="mascaraCPF(this)" onblur="validarCPF(this); checkCPF(this);">
+                           oninput="mascaraCPF(this)"
+                           onfocus="showHint(this,'CPF do trabalhador — é a identificação principal no eSocial.\nO sistema valida os dígitos e checa se já existe cadastro ativo na empresa.')"
+                           onblur="clearHint(); validarCPF(this); checkCPF(this);">
                 </div>
                 <div class="campo campo-mono">
                     <label>Filial</label>
@@ -480,20 +483,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="text" id="nome" maxlength="70" placeholder="Nome completo do funcionário"
                            style="text-transform:uppercase"
                            oninput="this.value=this.value.toUpperCase()"
-                           onblur="preencherNomeR()">
+                           onfocus="showHint(this,'Nome civil completo, sem abreviações — exatamente como consta no documento.\nÉ o nome enviado ao eSocial; precisa bater com a base da Receita (CPF).')"
+                           onblur="clearHint(); preencherNomeR()">
                 </div>
                 <div class="campo">
                     <label>Nome nos Relatórios</label>
                     <input type="text" id="nomeR" maxlength="30" placeholder="Nome abreviado (30 car.)"
                            style="text-transform:uppercase"
                            oninput="this.value=this.value.toUpperCase()"
-                           onfocus="showHint(this,'Nome curto usado nos relatórios e contracheques.\nMáximo 30 caracteres.')" onblur="clearHint()">
+                           onfocus="showHint(this,'Nome abreviado que aparece nos relatórios e contracheques (espaço menor).\nPreenchido automaticamente a partir do Nome Completo, mas você pode ajustar.\nMáximo 30 caracteres.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Nome da Mãe</label>
                     <input type="text" id="nomeMae" maxlength="70" placeholder="Nome completo da mãe"
                            style="text-transform:uppercase"
-                           oninput="this.value=this.value.toUpperCase()">
+                           oninput="this.value=this.value.toUpperCase()"
+                           onfocus="showHint(this,'Nome completo da mãe do trabalhador.\nUsado na qualificação cadastral do eSocial (bate com a base da Receita).')" onblur="clearHint()">
                 </div>
             </div>
         </div>
@@ -509,7 +514,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="grid-7">
                 <div class="campo">
                     <label>Sexo</label>
-                    <select id="sexo">
+                    <select id="sexo"
+                            onfocus="showHint(this,'Sexo do trabalhador conforme registro civil.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="M">M — Masculino</option>
                         <option value="F">F — Feminino</option>
@@ -517,7 +523,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Raça / Cor</label>
-                    <select id="racaCor">
+                    <select id="racaCor"
+                            onfocus="showHint(this,'Autodeclaração de raça/cor do trabalhador (Tabela 13 do eSocial).\nUse 6 – Não Informada quando não houver a declaração.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="1">1 — Branca</option>
                         <option value="2">2 — Preta</option>
@@ -529,7 +536,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Estado Civil</label>
-                    <select id="estCiv">
+                    <select id="estCiv"
+                            onfocus="showHint(this,'Estado civil atual do trabalhador.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="1">1 — Solteiro</option>
                         <option value="2">2 — Casado</option>
@@ -540,7 +548,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Grau de Instrução</label>
-                    <select id="grauInstr">
+                    <select id="grauInstr"
+                            onfocus="showHint(this,'Maior nível de escolaridade já concluído (Tabela 09 do eSocial).')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="01">01 — Analfabeto</option>
                         <option value="02">02 — Até 5º ano incompleto</option>
@@ -559,7 +568,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>Dt. Nascimento</label>
                     <input type="text" id="dtNascto" maxlength="10" placeholder="DD/MM/AAAA"
-                           oninput="mascaraData(this)" onblur="validarData(this)">
+                           oninput="mascaraData(this)"
+                           onfocus="showHint(this,'Data de nascimento no formato DD/MM/AAAA.\nDeve coincidir com a base da Receita (CPF), senão o eSocial rejeita.')"
+                           onblur="clearHint(); validarData(this)">
                 </div>
                 <div class="campo">
                     <label>País Nascimento</label>
@@ -587,14 +598,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label id="lbl-salario">Salário (R$)</label>
                     <input type="text" id="vrSalFx" placeholder="0,00"
                            oninput="apenasNumeros(this,10)"
-                           onfocus="limparSalario(this); showHint(this,'Digite apenas os dígitos. Ex: 150000 = R$ 1.500,00')"
+                           onfocus="limparSalario(this); showHint(this,'Valor da remuneração base do trabalhador.\nDigite só os dígitos, com os centavos — o sistema formata sozinho. Ex.: 150000 vira R$ 1.500,00.\nO rótulo muda conforme a categoria (Salário, Bolsa Estágio ou Pró-labore).')"
                            onblur="formatarSalario(this); clearHint()"
                            {% if modo == 'alteracao' %}readonly style="background:var(--read-bg);color:var(--read-text);"{% endif %}>
                 </div>
                 <div class="campo">
                     <label>Unidade</label>
                     <select id="UndSalFixo"
-                            onfocus="showHint(this,'M = Mensal | H = Por hora | D = Por dia')" onblur="clearHint()">
+                            onfocus="showHint(this,'Unidade a que o valor do salário se refere.\nM – Mensal (mais comum) | H – Por hora | D – Por dia.')" onblur="clearHint()">
                         <option value="M">M — Mensal</option>
                         <option value="H">H — Hora</option>
                         <option value="D">D — Dia</option>
@@ -602,7 +613,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Tipo de Contrato</label>
-                    <select id="tpContr" onchange="ajustarContrato()">
+                    <select id="tpContr" onchange="ajustarContrato()"
+                            onfocus="showHint(this,'Prazo do contrato de trabalho.\n1 – Indeterminado (sem data de fim, o caso comum).\n2 – Determinado por prazo (abre os campos de término e cláusula).\n3 – Determinado por fato/obra (abre o campo Objeto Determinante).')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="1">1 — Prazo indeterminado</option>
                         <option value="2">2 — Prazo determinado (dias)</option>
@@ -612,7 +624,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Função</label>
                     <div class="campo-com-acao">
-                        <select id="CBOFuncao">
+                        <select id="CBOFuncao"
+                                onfocus="showHint(this,'Função do trabalhador, vinculada a um código CBO.\nÉ o cargo/função enviado ao eSocial. Não achou? Use “+ Nova Função” ao lado.')" onblur="clearHint()">
                             <option value="">Selecione…</option>
                             {% for f in funcoes %}
                             <option value="{{ f.cbo }}">{{ f.cbo }} — {{ f.nome }}</option>
@@ -692,7 +705,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Nível do Estágio</label>
                     <select id="nivEstagio"
-                            onfocus="showHint(this,'Nível de ensino do estagiário conforme Tabela do eSocial.')" onblur="clearHint()">
+                            onfocus="showHint(this,'Nível de ensino que o estagiário está cursando (Tabela do eSocial).\n1 – Fundamental | 2 – Médio | 3 – Formação profissional | 4 – Superior.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="1">1 — Fundamental</option>
                         <option value="2">2 — Médio</option>
@@ -704,7 +717,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label>Dt. Prev. Término</label>
                     <input type="text" id="dtPrevTerm" maxlength="10" placeholder="DD/MM/AAAA"
                            oninput="mascaraData(this)"
-                           onfocus="showHint(this,'Data prevista para o término do estágio.')" onblur="clearHint()">
+                           onfocus="showHint(this,'Data prevista para o término do estágio (DD/MM/AAAA), conforme o termo de compromisso.')" onblur="clearHint()">
                 </div>
                 <div class="campo"></div>
             </div>
@@ -715,30 +728,33 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Nome / Razão Social</label>
                     <input type="text" id="est_instNome" maxlength="100" placeholder="Nome da instituição de ensino"
-                           onfocus="showHint(this,'Nome/razão social da instituição de ensino.')" onblur="clearHint()">
+                           onfocus="showHint(this,'Nome ou razão social da instituição de ensino onde o estagiário estuda.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Logradouro</label>
                     <input type="text" id="est_instLograd" maxlength="80" placeholder="Rua / Av."
-                           onfocus="showHint(this,'Logradouro da instituição de ensino.')" onblur="clearHint()">
+                           onfocus="showHint(this,'Logradouro (rua, avenida…) do endereço da instituição de ensino.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Número</label>
-                    <input type="text" id="est_instNr" maxlength="10" placeholder="Nº">
+                    <input type="text" id="est_instNr" maxlength="10" placeholder="Nº"
+                           onfocus="showHint(this,'Número do endereço da instituição. Use S/N quando não houver.')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>CEP</label>
                     <input type="text" id="est_instCep" maxlength="9" placeholder="00000-000"
-                           oninput="mascaraCEP(this)">
+                           oninput="mascaraCEP(this)"
+                           onfocus="showHint(this,'CEP da instituição de ensino.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Cód. Município (IBGE)</label>
                     <input type="text" id="est_instMunic" maxlength="7" placeholder="Ex: 3550308"
-                           onfocus="showHint(this,'Código IBGE do município (7 dígitos).')" onblur="clearHint()">
+                           onfocus="showHint(this,'Código IBGE do município da instituição — 7 dígitos (ex.: 3550308 = São Paulo/SP).')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>UF</label>
-                    <input type="text" id="est_instUf" maxlength="2" placeholder="SP" style="text-transform:uppercase">
+                    <input type="text" id="est_instUf" maxlength="2" placeholder="SP" style="text-transform:uppercase"
+                           onfocus="showHint(this,'Sigla do estado (UF) da instituição de ensino. Ex.: SP.')" onblur="clearHint()">
                 </div>
             </div>
         </div>
@@ -756,11 +772,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label>Dt. Admissão</label>
                     <input type="text" id="dtAdm" maxlength="10" placeholder="DD/MM/AAAA"
                            oninput="mascaraData(this); if(this.value.length===10) validarDtAdm(this);"
-                           onblur="validarDtAdm(this)">
+                           onfocus="showHint(this,'Data de início do vínculo (DD/MM/AAAA).\nPara estagiário/pró-labore (S-2300) é a data de início do TSVE.')"
+                           onblur="clearHint(); validarDtAdm(this)">
                 </div>
                 <div class="campo">
                     <label>Tipo de Admissão</label>
-                    <select id="tpAdmissao" onchange="ajustarAdmissao()">
+                    <select id="tpAdmissao" onchange="ajustarAdmissao()"
+                            onfocus="showHint(this,'Como o trabalhador entrou na empresa.\n1 – Admissão normal (o caso comum). Os tipos de transferência (2, 3, 4, 7) abrem os campos da empresa anterior.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="1" selected>1 — Admissão</option>
                         <option value="2">2 — Transf. mesmo grupo econômico</option>
@@ -772,7 +790,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Indicador de Admissão</label>
-                    <select id="indAdmissao">
+                    <select id="indAdmissao"
+                            onfocus="showHint(this,'Origem da admissão.\n1 – Normal (o caso comum) | 2 – Decorrente de ação fiscal | 3 – Por decisão judicial.')" onblur="clearHint()">
                         <option value="1">1 — Normal</option>
                         <option value="2">2 — Decorrente de ação fiscal</option>
                         <option value="3">3 — Decisão judicial</option>
@@ -788,7 +807,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 <div class="campo">
                     <label>Regime de Jornada</label>
-                    <select id="tpRegJor">
+                    <select id="tpRegJor"
+                            onfocus="showHint(this,'Regime de jornada conforme a CLT.\n1 – Submetido a horário (o mais comum) | 2 – Atividade externa | 3 – Cargo de gestão | 4 – Teletrabalho.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option value="1" selected>1 — Submetido a horário (CLT)</option>
                         <option value="2">2 — Atividade externa (art. 62 I)</option>
@@ -799,7 +819,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Sindicato</label>
                     <div class="campo-com-acao">
-                        <select id="cnpjSindCategProf">
+                        <select id="cnpjSindCategProf"
+                                onfocus="showHint(this,'Sindicato da categoria profissional do trabalhador.\nDefine convenção coletiva, piso e descontos. Não achou? Use “+ Novo Sindicato” ao lado.')" onblur="clearHint()">
                             {% if sindicatos|length != 1 %}
                             <option value="">Selecione…</option>
                             {% endif %}
@@ -820,21 +841,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>Dt. Transferência</label>
                     <input type="text" id="dtTransf" maxlength="10" placeholder="DD/MM/AAAA"
-                           oninput="mascaraData(this)">
+                           oninput="mascaraData(this)"
+                           onfocus="showHint(this,'Data em que o trabalhador foi transferido da empresa anterior (DD/MM/AAAA).\nSó se aplica aos tipos de admissão por transferência.')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>CNPJ Empresa Anterior</label>
                     <input type="text" id="cnpjTransf" maxlength="14" placeholder="00000000000000"
-                           oninput="apenasNumeros(this,14)">
+                           oninput="apenasNumeros(this,14)"
+                           onfocus="showHint(this,'CNPJ da empresa de onde o trabalhador veio (só dígitos).\nSó se aplica aos tipos de admissão por transferência.')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>Matrícula Anterior</label>
                     <input type="text" id="matriculaTransf" maxlength="6" placeholder="000001"
-                           oninput="apenasNumeros(this,6)">
+                           oninput="apenasNumeros(this,6)"
+                           onfocus="showHint(this,'Matrícula que o trabalhador tinha na empresa anterior.\nSó se aplica aos tipos de admissão por transferência.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Nº Processo Trabalhista</label>
-                    <input type="text" id="nrProcTrab" maxlength="20" placeholder="Apenas se decisão judicial">
+                    <input type="text" id="nrProcTrab" maxlength="20" placeholder="Apenas se decisão judicial"
+                           onfocus="showHint(this,'Número do processo judicial que determinou a admissão.\nPreencha apenas quando o Indicador de Admissão for 3 – Decisão judicial.')" onblur="clearHint()">
                 </div>
             </div>
 
@@ -858,7 +883,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <div class="campo campo-mono">
                         <label>Número de Inscrição</label>
                         <input type="text" id="tomador_nrInsc" maxlength="14" placeholder="Número de inscrição do tomador"
-                               oninput="apenasNumeros(this,14)">
+                               oninput="apenasNumeros(this,14)"
+                               onfocus="showHint(this,'Número da inscrição do tomador de serviços (CNPJ, CAEPF ou CNO), conforme o tipo escolhido ao lado.\nPreencha só quando houver tomador (cessão de mão de obra).')" onblur="clearHint()">
                     </div>
                 </div>
             </div>
@@ -885,7 +911,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                             {{ centros_custo[0].nomecc }}
                         </div>
                         {% elif centros_custo %}
-                        <select id="centrocusto">
+                        <select id="centrocusto"
+                                onfocus="showHint(this,'Centro de custo onde o trabalhador é alocado — usado para ratear a folha por setor/obra.')" onblur="clearHint()">
                             <option value="">— Selecione —</option>
                             {% for cc in centros_custo %}
                             <option value="{{ cc.codigo_cc }}">{{ cc.codigo_cc }} — {{ cc.nomecc }}</option>
@@ -898,7 +925,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </div>
                     <div class="campo">
                         <label>Tipo de Inscrição</label>
-                        <select id="lt_tpInsc">
+                        <select id="lt_tpInsc"
+                                onfocus="showHint(this,'Tipo de inscrição do local de trabalho.\n1 – CNPJ | 3 – CAEPF | 4 – CNO. Normalmente é o CNPJ da própria empresa.')" onblur="clearHint()">
                             <option value="">—</option>
                             <option value="1" {% if empresa_lt_tpInsc == "1" %}selected{% endif %}>1 — CNPJ</option>
                             <option value="3" {% if empresa_lt_tpInsc == "3" %}selected{% endif %}>3 — CAEPF</option>
@@ -909,7 +937,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                         <label>Número de Inscrição</label>
                         <input type="text" id="lt_nrInsc" maxlength="14"
                                value="{{ empresa_lt_nrInsc }}"
-                               placeholder="CNPJ da empresa">
+                               placeholder="CNPJ da empresa"
+                               onfocus="showHint(this,'Número de inscrição do local de trabalho (o CNPJ da empresa, por padrão).')" onblur="clearHint()">
                     </div>
                 </div>
             </div>
@@ -926,7 +955,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <div class="campo campo-mono campo-centro">
                         <label>Hs. Semana</label>
                         <input type="text" id="qtdHrsSem" maxlength="2" value="44"
-                               oninput="apenasNumeros(this,2)">
+                               oninput="apenasNumeros(this,2)"
+                               onfocus="showHint(this,'Carga horária semanal contratada. Padrão CLT: 44 horas.')" onblur="clearHint()">
                     </div>
                     <div class="campo campo-mono campo-centro">
                         <label>Hs. Mensais</label>
@@ -936,7 +966,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </div>
                     <div class="campo">
                         <label>Tipo de Jornada</label>
-                        <select id="tpJornada">
+                        <select id="tpJornada"
+                                onfocus="showHint(this,'Formato da escala de trabalho (Tabela do eSocial).\nSe não se encaixar em nenhum específico, use 9 – Demais tipos.')" onblur="clearHint()">
                             <option value="">—</option>
                             <option value="2">2 — 12x36</option>
                             <option value="3">3 — Fixo / folga variável</option>
@@ -959,7 +990,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </div>
                     <div class="campo">
                         <label>Hor. Noturno</label>
-                        <select id="horNoturno">
+                        <select id="horNoturno"
+                                onfocus="showHint(this,'O trabalhador cumpre jornada em horário noturno (entre 22h e 5h)?\nDefine o direito ao adicional noturno.')" onblur="clearHint()">
                             <option value="">—</option>
                             <option value="S">S — Sim</option>
                             <option value="N" selected>N — Não</option>
@@ -967,7 +999,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </div>
                     <div class="campo">
                         <label>Horário</label>
-                        <select id="id_tab_Horario">
+                        <select id="id_tab_Horario"
+                                onfocus="hintHorario(this)" onchange="hintHorario(this)" onblur="clearHint()">
                             <option value="">Selecione…</option>
                             {% for h in horarios %}
                             <option value="{{ h.id }}">{{ h.id_fmt }} — {{ h.nome }}</option>
@@ -994,34 +1027,42 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>CEP</label>
                     <input type="text" id="ender_cep" maxlength="9" placeholder="00000-000"
-                           oninput="mascaraCEP(this)" onblur="buscarCEP(this)">
+                           oninput="mascaraCEP(this)"
+                           onfocus="showHint(this,'CEP da residência do trabalhador.\nAo sair do campo, o sistema tenta preencher logradouro, bairro, município e UF automaticamente.')"
+                           onblur="clearHint(); buscarCEP(this)">
                 </div>
                 <div class="campo">
                     <label>Logradouro</label>
-                    <input type="text" id="ender_dscLograd" maxlength="100" placeholder="Rua, Av., Travessa…">
+                    <input type="text" id="ender_dscLograd" maxlength="100" placeholder="Rua, Av., Travessa…"
+                           onfocus="showHint(this,'Nome da rua, avenida, travessa etc. da residência.\nPreenchido automaticamente pelo CEP, mas você pode ajustar.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Número</label>
-                    <input type="text" id="ender_nrLograd" maxlength="10" placeholder="S/N">
+                    <input type="text" id="ender_nrLograd" maxlength="10" placeholder="S/N"
+                           onfocus="showHint(this,'Número da residência. Use S/N quando não houver número.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>Complemento</label>
-                    <input type="text" id="ender_complemento" maxlength="30" placeholder="Apto, Bloco…">
+                    <input type="text" id="ender_complemento" maxlength="30" placeholder="Apto, Bloco…"
+                           onfocus="showHint(this,'Complemento do endereço (apartamento, bloco, casa, fundos…). Opcional.')" onblur="clearHint()">
                 </div>
             </div>
             <div class="grid-end2">
                 <div class="campo">
                     <label>Bairro</label>
-                    <input type="text" id="ender_bairro" maxlength="90" placeholder="Bairro">
+                    <input type="text" id="ender_bairro" maxlength="90" placeholder="Bairro"
+                           onfocus="showHint(this,'Bairro da residência. Preenchido automaticamente pelo CEP, mas você pode ajustar.')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>Cód. IBGE Município</label>
                     <input type="text" id="ender_codMunic" maxlength="7" placeholder="0000000"
-                           oninput="apenasNumeros(this,7)">
+                           oninput="apenasNumeros(this,7)"
+                           onfocus="showHint(this,'Código IBGE do município da residência — 7 dígitos.\nPreenchido automaticamente pelo CEP.')" onblur="clearHint()">
                 </div>
                 <div class="campo">
                     <label>UF</label>
-                    <select id="ender_uf">
+                    <select id="ender_uf"
+                            onfocus="showHint(this,'Estado (UF) da residência. Preenchido automaticamente pelo CEP.')" onblur="clearHint()">
                         <option value="">—</option>
                         <option>AC</option><option>AL</option><option>AM</option><option>AP</option>
                         <option>BA</option><option>CE</option><option>DF</option><option>ES</option>
@@ -1046,7 +1087,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="grid-banco">
                 <div class="campo">
                     <label>Banco</label>
-                    <select id="banco_Numero">
+                    <select id="banco_Numero"
+                            onfocus="showHint(this,'Banco onde o salário é depositado.\nUse 000 – Pagamento em Caixa quando o pagamento não for por conta bancária.')" onblur="clearHint()">
                         <option value="000">000 — Pagamento em Caixa</option>
                         <option value="001">001 — Banco do Brasil</option>
                         <option value="033">033 — Santander</option>
@@ -1063,20 +1105,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>Agência</label>
                     <input type="text" id="banco_Agencia" maxlength="4" placeholder="0000"
-                           oninput="apenasNumeros(this,4)">
+                           oninput="apenasNumeros(this,4)"
+                           onfocus="showHint(this,'Número da agência, sem o dígito verificador (esse vai no campo ao lado).')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>DV Agência</label>
-                    <input type="text" id="banco_AgenciaDV" maxlength="1" placeholder="0">
+                    <input type="text" id="banco_AgenciaDV" maxlength="1" placeholder="0"
+                           onfocus="showHint(this,'Dígito verificador da agência. Deixe em branco se a agência não tiver.')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>Conta (12 dígitos)</label>
                     <input type="text" id="banco_Conta" maxlength="12" placeholder="000000000000"
-                           oninput="apenasNumeros(this,12)">
+                           oninput="apenasNumeros(this,12)"
+                           onfocus="showHint(this,'Número da conta, sem o dígito verificador (esse vai no campo ao lado).')" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>DV Conta</label>
-                    <input type="text" id="banco_ContaDV" maxlength="1" placeholder="0">
+                    <input type="text" id="banco_ContaDV" maxlength="1" placeholder="0"
+                           onfocus="showHint(this,'Dígito verificador da conta.')" onblur="clearHint()">
                 </div>
             </div>
         </div>
@@ -1096,7 +1142,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="grid-3">
                 <div class="campo">
                     <label>É Estrangeiro?</label>
-                    <select id="ind_Imigrante" onchange="ajustarImigrante()">
+                    <select id="ind_Imigrante" onchange="ajustarImigrante()"
+                            onfocus="showHint(this,'Marque Sim se o trabalhador é imigrante — isso libera Tempo de Residência e Condição de Ingresso.')" onblur="clearHint()">
                         <option value="N">N — Não</option>
                         <option value="S">S — Sim</option>
                     </select>
@@ -1183,7 +1230,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="grid-aprend">
                 <div class="campo">
                     <label>Tipo Aprendiz</label>
-                    <select id="indAprend" onchange="ajustarAprendiz()">
+                    <select id="indAprend" onchange="ajustarAprendiz()"
+                            onfocus="showHint(this,'Indica se o trabalhador é menor aprendiz e como foi contratado.\n1 – Direta (a própria empresa qualifica) | 2 – Indireta (via entidade). Libera os campos de CNPJ abaixo.')" onblur="clearHint()">
                         <option value="0">0 — Não é aprendiz</option>
                         <option value="1">1 — Contratação direta</option>
                         <option value="2">2 — Contratação indireta</option>
@@ -1215,7 +1263,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
     <!-- ── AÇÕES ───────────────────────────────────────── -->
     <div class="acoes">
-        <button class="btn btn-salvar" onclick="salvarFuncionario()">
+        <button class="btn btn-salvar" id="btnSalvar" onclick="salvarFuncionario()">
             <svg class="ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M13 2H4L2 4v10h12V4l-1-2z"/><rect x="5" y="9" width="6" height="5"/><rect x="5" y="2" width="5" height="3"/>
             </svg>
@@ -1493,9 +1541,29 @@ function ajustarPrefixoMatricula() {
     v = (prefixo + v).substring(0, 6);
     mat.value = v;
     sincMatriculaES(mat);
-    _showCheckMsg(mat, prefixo === '8'
-        ? 'Estagiário (901): matrícula iniciada com 8 automaticamente.'
-        : 'Pró-labore (' + cat + '): matrícula iniciada com 9 automaticamente.', 'ok');
+}
+
+/* Balão de ajuda da Matrícula — texto adapta-se à categoria (prefixo 8/9). */
+function hintMatricula(el) {
+    const cat = document.getElementById('codCateg').value;
+    let msg = 'Número que identifica o funcionário na empresa — 6 dígitos, completados com zeros à esquerda.\n'
+            + 'É copiada automaticamente para a Matrícula eSocial.';
+    if (cat === '901') {
+        msg += '\nEstagiário (901): começa com 8 — o sistema já coloca esse dígito na frente.';
+    } else if (['721','722','723'].includes(cat)) {
+        msg += '\nPró-labore (' + cat + '): começa com 9 — o sistema já coloca esse dígito na frente.';
+    }
+    showHint(el, msg);
+}
+
+/* Resumo de cada horário (id -> texto), vindo do backend. */
+const HORARIOS_RESUMO = {{ horarios_resumo_json|safe }};
+
+/* Balão com o resumo do horário selecionado (dias, faixas e total semanal). */
+function hintHorario(el) {
+    const base = 'Tabela de horário (entrada, saída e intervalos) aplicada ao trabalhador — base do cálculo de horas e faltas.';
+    const resumo = HORARIOS_RESUMO[el.value];
+    showHint(el, resumo ? (base + '\n\n' + resumo) : base);
 }
 
 function ajustarAdmissao() {
@@ -1582,6 +1650,15 @@ function preencherFormulario(d) {
     sv('dtTerm',        toDMY(d.dtterm));
     sv('ClauAssec',     d.clausassec);
     sv('objDet',        d.objdet);
+    sv('natEstagio',    d.est_natestagio);
+    sv('nivEstagio',    d.est_nivestagio);
+    sv('dtPrevTerm',    toDMY(d.est_dtprevterm));
+    sv('est_instNome',  d.est_inst_nome);
+    sv('est_instLograd',d.est_inst_lograd);
+    sv('est_instNr',    d.est_inst_nr);
+    sv('est_instCep',   d.est_inst_cep ? d.est_inst_cep.replace(/^(\d{5})(\d{3})$/,'$1-$2') : '');
+    sv('est_instMunic', d.est_inst_munic);
+    sv('est_instUf',    d.est_inst_uf);
     sv('tpRegJor',      d.tpregjor);
     sv('cnpjSindCategProf', d.cnpjsindcategprof);
     sv('tomador_tpInsc', d.tomador_tpinsc);
@@ -1868,6 +1945,15 @@ async function salvarFuncionario() {
         dtTerm:           toYMD(gv('dtTerm')),
         ClauAssec:        gv('ClauAssec'),
         objDet:           gv('objDet'),
+        natEstagio:       gv('natEstagio'),
+        nivEstagio:       gv('nivEstagio'),
+        dtPrevTerm:       toYMD(gv('dtPrevTerm')),
+        est_instNome:     gv('est_instNome'),
+        est_instLograd:   gv('est_instLograd'),
+        est_instNr:       gv('est_instNr'),
+        est_instCep:      soNum(gv('est_instCep')),
+        est_instMunic:    gv('est_instMunic'),
+        est_instUf:       gv('est_instUf'),
         dtAdm:            toYMD(gv('dtAdm')),
         tpAdmissao:       gv('tpAdmissao'),
         indAdmissao:      gv('indAdmissao'),
@@ -1934,11 +2020,21 @@ async function salvarFuncionario() {
         const json = await res.json();
         if (json.ok) {
             const acao = MODO === 'alteracao' ? 'alterado' : 'gravado';
+            // Desabilita o botão Salvar para evitar gravação dupla
+            const btnSalvar = document.getElementById('btnSalvar');
+            if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '0.5'; btnSalvar.style.cursor = 'not-allowed'; }
             painel.innerHTML = `<div class="resultado-ok"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg>Funcionário ${acao} com sucesso!</div>`;
             if (MODO === 'inclusao') {
-                limparFormulario();
                 funcionarioId = null;
-                await carregarProximaMatricula();
+                painel.innerHTML += `
+                    <div style="display:flex;gap:10px;margin-top:10px;">
+                        <button class="btn btn-salvar" onclick="window.location.reload()">
+                            &#43; Cadastrar outro Funcionário
+                        </button>
+                        <button class="btn btn-voltar" onclick="window.location.href='/menu'">
+                            &#8592; Voltar Menu
+                        </button>
+                    </div>`;
             } else {
                 painel.innerHTML += `
                     <div style="display:flex;gap:10px;margin-top:10px;">
@@ -1950,6 +2046,7 @@ async function salvarFuncionario() {
                         </button>
                     </div>`;
             }
+            painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
         } else {
             painel.innerHTML = `<div class="resultado-erro"><strong>Erro ao gravar:</strong> ${json.msg}</div>`;
         }

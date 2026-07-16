@@ -293,7 +293,7 @@ body.menu-numerado .nav-item::before {
 
 /* ── BOTÃO PREFERÊNCIAS FIXO (canto superior direito, abaixo do cabeçalho) ── */
 .card-pref {
-    position: fixed; top: 76px; right: 24px; z-index: 500;
+    position: fixed; top: 104px; right: 24px; z-index: 500;
     display: inline-flex; align-items: center; gap: 8px;
     padding: 5px 12px 5px 5px; border-radius: 22px; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border);
@@ -723,6 +723,8 @@ const modulos = {
                 { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aberta' },
                 { icone: '🏥', nome: 'S-2230 Afastamento',            href: '#' },
                 { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '🎓', nome: 'S-2300 Início TSVE (Estagiário)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '🏁', nome: 'S-2399 Término TSVE (Estag./Diretor)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aberta' },
             ]},
             { nome: 'Eventos Periódicos', itens: [
                 { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true, bloqueioFolha: 'fechada' },

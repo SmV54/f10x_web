@@ -5854,19 +5854,27 @@ def _s1299_ativo(id_empresa, ano_mes, folha_tipo):
         return False
 
 
-def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha_tipo_es):
-    """Grava (ou atualiza) o S-2299 (Desligamento) na tab_esocial no momento do
-    CÁLCULO da rescisão. Se já existe um S-2299 do funcionário ainda SEM recibo
-    (não enviado) e não EXCLUÍDO, apenas atualiza data/hora — não duplica o
-    registro. Só cria um novo quando não há nenhum pendente."""
+def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha_tipo_es,
+                               codcateg=None):
+    """Grava (ou atualiza) o evento de término na tab_esocial no momento do
+    CÁLCULO da rescisão. Empregado (S-2200) → layout S-2299; não-empregado /
+    TSVE (721/722/723/901, ligado ao S-2300) → layout S-2399. Se já existe um
+    registro do funcionário ainda SEM recibo (não enviado) e não EXCLUÍDO,
+    apenas atualiza data/hora — não duplica. Só cria um novo quando não há
+    nenhum pendente."""
     from datetime import datetime as _dt
+    try:
+        _categ_n = int(str(codcateg or "0").strip())
+    except (ValueError, TypeError):
+        _categ_n = 0
+    layout = "2399" if _categ_n in (721, 722, 723, 901) else "2299"
     agora_es    = _dt.now()
     ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
     try:
         existentes = (supabase.table("tab_esocial")
                       .select("id_esocial, recibo, observacao_erro")
                       .eq("id_empresa", id_empresa).eq("matricula", mat_int)
-                      .eq("layout", "2299").execute().data or [])
+                      .eq("layout", layout).execute().data or [])
     except Exception:
         existentes = []
     pendente = None
@@ -5890,7 +5898,7 @@ def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha
         else:
             supabase.table("tab_esocial").insert({
                 "id_cliente": id_cliente, "id_empresa": id_empresa,
-                "layout": "2299", "matricula": mat_int, "codigo2": 0,
+                "layout": layout, "matricula": mat_int, "codigo2": 0,
                 **campos,
             }).execute()
     except Exception:
@@ -6584,7 +6592,8 @@ def api_calc_rescisao_calcular():
 
         # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no cálculo.
         _folha_tipo_es = "1" if str(session.get("anomes_tipo") or "") in ("1", "A") else "N"
-        _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes, _folha_tipo_es)
+        _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes, _folha_tipo_es,
+                                   codcateg=cad.get("codcateg"))
 
         multa_fgts = round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100)
         resultados.append({
@@ -9047,6 +9056,48 @@ def _horas_dia(valor):
     return max(0.0, (tempos[-1] - tempos[0]) / 60.0)
 
 
+def _segmentos_horario(valor):
+    """Extrai os pares HH:MM–HH:MM de um valor de horário (ex.: '0800120013001800')."""
+    raw  = str(valor or "")
+    nums = [raw[i:i + 4] for i in range(0, len(raw) - 3, 4) if raw[i:i + 4].isdigit()]
+    segs = []
+    for j in range(0, len(nums) - 1, 2):
+        segs.append(f"{nums[j][:2]}:{nums[j][2:4]}–{nums[j + 1][:2]}:{nums[j + 1][2:4]}")
+    return segs
+
+
+def _horas_fmt(horas):
+    """Formata horas decimais em '8h' ou '8h48'."""
+    total_min = int(round(horas * 60))
+    hh, mm = divmod(total_min, 60)
+    return f"{hh}h{mm:02d}" if mm else f"{hh}h"
+
+
+def _resumo_horario(row):
+    """Gera um resumo legível do horário para exibir na tela de cadastro."""
+    dias = [("2a", "Seg"), ("3a", "Ter"), ("4a", "Qua"), ("5a", "Qui"),
+            ("6a", "Sex"), ("sab", "Sáb"), ("dom", "Dom")]
+    descr, total = [], 0.0
+    for key, lbl in dias:
+        val  = row.get(f"horas_{key}")
+        segs = _segmentos_horario(val)
+        h    = _horas_dia(val)
+        total += h
+        descr.append((lbl, " / ".join(segs) if segs else "folga", h))
+    # agrupa dias consecutivos com a mesma jornada
+    grupos = []
+    for lbl, s, h in descr:
+        if grupos and grupos[-1][1] == s:
+            grupos[-1][0].append(lbl)
+        else:
+            grupos.append(([lbl], s, h))
+    partes = []
+    for labels, s, h in grupos:
+        faixa = labels[0] if len(labels) == 1 else f"{labels[0]}–{labels[-1]}"
+        partes.append(f"{faixa}: folga" if s == "folga" else f"{faixa}: {s} ({_horas_fmt(h)})")
+    return " · ".join(partes) + f" · Total: {_horas_fmt(total)}/sem"
+
+
 # =========================================================
 # VERBAS — API INCLUIR
 # =========================================================
@@ -9902,6 +9953,15 @@ def api_funcionario_alterar():
         "dtTerm":            "datarescisao",
         "ClauAssec":         "clausassec",
         "objDet":            "objdet",
+        "natEstagio":        "est_natestagio",
+        "nivEstagio":        "est_nivestagio",
+        "dtPrevTerm":        "est_dtprevterm",
+        "est_instNome":      "est_inst_nome",
+        "est_instLograd":    "est_inst_lograd",
+        "est_instNr":        "est_inst_nr",
+        "est_instCep":       "est_inst_cep",
+        "est_instMunic":     "est_inst_munic",
+        "est_instUf":        "est_inst_uf",
         "lt_tpInsc":         "lt_tpinsc",
         "lt_nrInsc":         "lt_nrinsc",
         "qtdHrsSem":         "qtdhrssem",
@@ -9981,6 +10041,9 @@ def api_funcionario_alterar():
         "paisnac":"PaisNac","dtadm":"DtAdm","tpadmissao":"TpAdm",
         "indadmissao":"IndAdm","tpcontr":"TpContr","datarescisao":"DtRescisao",
         "clausassec":"ClauAssec","objdet":"ObjDet","tpregjor":"RegJor",
+        "est_natestagio":"NatEstag","est_nivestagio":"NivEstag","est_dtprevterm":"DtPrevTerm",
+        "est_inst_nome":"InstNome","est_inst_lograd":"InstLogr","est_inst_nr":"InstNr",
+        "est_inst_cep":"InstCEP","est_inst_munic":"InstMunic","est_inst_uf":"InstUF",
         "cbofuncao":"CBO","cnpjsindcategprof":"Sind","undsalfixo":"UndSal",
         "lt_tpinsc":"LtTp","lt_nrinsc":"LtNr","qtdhrssem":"HrSem",
         "qtdhrsmes":"HrMes","tpjornada":"TpJorn","tmpparc":"TmpParc",
@@ -10044,8 +10107,16 @@ def api_funcionario_alterar():
         mat = int(mat_raw) if mat_raw else None
         gravar_log("FUNCIONARIO", obs, matricula=mat)
 
-        # Gera pendências eSocial se houve alteração relevante
-        if mat and (precisa_2205 or precisa_2206):
+        # Gera pendências eSocial se houve alteração relevante.
+        # TSVE / não-empregado (721/722/723/901) NÃO usa S-2205/S-2206 (são
+        # eventos de empregado). A alteração deles seria via S-2306, ainda não
+        # implementado — por ora não gera evento (melhor nada que evento errado).
+        try:
+            _categ_alt = int((campos.get("codcateg") or "0"))
+        except (ValueError, TypeError):
+            _categ_alt = 0
+        _eh_tsve = _categ_alt in (721, 722, 723, 901)
+        if mat and not _eh_tsve and (precisa_2205 or precisa_2206):
             _agora   = datetime.now()
             _anomes  = str(session.get("anomes_atual") or "")
             _id_cli  = session.get("id_cliente")
@@ -10264,6 +10335,15 @@ def api_funcionario_incluir():
         "dtTerm":            "datarescisao",
         "ClauAssec":         "clausassec",
         "objDet":            "objdet",
+        "natEstagio":        "est_natestagio",
+        "nivEstagio":        "est_nivestagio",
+        "dtPrevTerm":        "est_dtprevterm",
+        "est_instNome":      "est_inst_nome",
+        "est_instLograd":    "est_inst_lograd",
+        "est_instNr":        "est_inst_nr",
+        "est_instCep":       "est_inst_cep",
+        "est_instMunic":     "est_inst_munic",
+        "est_instUf":        "est_inst_uf",
         "lt_tpInsc":         "lt_tpinsc",
         "lt_nrInsc":         "lt_nrinsc",
         "qtdHrsSem":         "qtdhrssem",
@@ -10331,12 +10411,18 @@ def api_funcionario_incluir():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
-    # Registra remessa eSocial S-2200
+    # Registra remessa eSocial: empregado → S-2200; não-empregado
+    # (TSVE 721/722/723/901) → S-2300 (evtTSVInicio).
     try:
         agora       = datetime.now()
         anomes_tp   = str(session.get("anomes_tipo")   or "")
         anomes_am   = str(session.get("anomes_atual")  or "")
         folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
+        try:
+            _categ_es = int((d.get("codCateg") or "0").strip())
+        except (ValueError, TypeError):
+            _categ_es = 0
+        layout_es = "2300" if _categ_es in (721, 722, 723, 901) else "2200"
         supabase.table("tab_esocial").insert({
             "id_cliente": id_cliente,
             "id_empresa": id_empresa,
@@ -10345,7 +10431,7 @@ def api_funcionario_incluir():
             "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
             "ano_mes":    int(anomes_am) if anomes_am else None,
             "folha_tipo": folha_tipo_es,
-            "layout":     "2200",
+            "layout":     layout_es,
             "matricula":  mat,
             "codigo2":    0,
         }).execute()
@@ -11299,26 +11385,31 @@ def cad_funcionario():
     except Exception:
         pass
 
-    # Horários do cliente
+    # Horários do cliente (+ horários de sistema id_cliente=0)
     horarios = []
+    horarios_resumo = {}
     try:
         r = (
             supabase
             .table("tab_aux_horarios")
-            .select("id_horario, nome_horario")
-            .eq("id_cliente", id_cliente)
+            .select("id_horario, nome_horario, horas_2a, horas_3a, horas_4a, "
+                    "horas_5a, horas_6a, horas_sab, horas_dom")
+            .in_("id_cliente", [id_cliente, 0])
             .eq("situacao", "A")
             .order("nome_horario")
             .execute()
         )
-        horarios = [
-            {"id":     row.get("id_horario", ""),
-             "id_fmt": str(row.get("id_horario") or "").zfill(6),
-             "nome":   row.get("nome_horario", "")}
-            for row in (r.data or [])
-        ]
+        for row in (r.data or []):
+            hid = row.get("id_horario", "")
+            horarios.append({
+                "id":     hid,
+                "id_fmt": str(hid or "").zfill(6),
+                "nome":   row.get("nome_horario", ""),
+            })
+            horarios_resumo[str(hid)] = _resumo_horario(row)
     except Exception:
         pass
+    horarios_resumo_json = json.dumps(horarios_resumo, ensure_ascii=False)
 
     # Categorias eSocial (Tabela 01)
     categorias = []
@@ -11350,6 +11441,7 @@ def cad_funcionario():
         funcoes=funcoes,
         sindicatos=sindicatos,
         horarios=horarios,
+        horarios_resumo_json=horarios_resumo_json,
         categorias=categorias,
         centros_custo=centros_custo,
         filiais_func=filiais_func,
@@ -18468,6 +18560,192 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
 </eSocial>"""
 
 
+def _gerar_xml_s2300(func, empresa, tpAmb="1"):
+    """Gera string XML do S-2300 (evtTSVInicio — Início de TSVE / não-empregado).
+
+    Categorias tratadas: 721/722/723 (contribuinte individual / diretor) e
+    901 (estagiário). O bloco <infoEstagiario> só é emitido para 901.
+    Estrutura baseada no schema evtTSVInicio v_S_01_03_00. Os campos de
+    estágio vêm das colunas est_* / nat/niv/dtprevterm de tab_cad."""
+    import re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):
+        return re.sub(r'\D', '', str(v or ''))
+
+    def fmt_d8(v):
+        s = str(int(v)).zfill(8) if isinstance(v, int) else str(v or '').strip()
+        return f"{s[:4]}-{s[4:6]}-{s[6:]}" if len(s) == 8 and s.isdigit() else ''
+
+    def fmt_sal(centavos):
+        try:
+            return f"{int(centavos) / 100:.2f}"
+        except Exception:
+            return "0.00"
+
+    def x(v):
+        return _esc(str(v or ''))
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    cpf       = dg(func.get('cpf', ''))
+    nome      = func.get('nome', '')
+    sexo      = func.get('sexo', 'M') or 'M'
+    racacor   = str(func.get('racacor') or '6')
+    estciv    = str(func.get('estciv') or '9')
+    grauinstr = str(func.get('grauinstr') or '07').zfill(2)
+    dtnascto  = fmt_d8(func.get('dtnascto'))
+
+    cep       = dg(func.get('ender_cep', ''))
+    dsclograd = func.get('ender_dsclograd', '') or ''
+    nrlograd  = func.get('ender_nrlograd', '') or 'S/N'
+    compl     = func.get('ender_complemento', '') or ''
+    bairro    = func.get('ender_bairro', '') or ''
+    codmunic  = str(func.get('ender_codmunic') or '')
+    uf        = func.get('ender_uf', '') or ''
+
+    dtinicio  = fmt_d8(func.get('dtadm'))
+    mat_es    = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    codcateg  = str(func.get('codcateg') or '901')
+    cbo       = str(func.get('cbofuncao') or '')
+
+    # Nome do cargo pelo CBO (mesmo lookup do S-2200)
+    nmcargo = str(func.get('nmcargo') or '').strip()
+    if not nmcargo and cbo:
+        try:
+            _rc = supabase.table("tab_aux_funcao_total").select("cbo_nome")\
+                          .eq("cbo_codigo", cbo).limit(1).execute()
+            if _rc.data:
+                nmcargo = str(_rc.data[0].get('cbo_nome') or '').strip()
+        except Exception:
+            pass
+    if not nmcargo:
+        nmcargo = f"CBO {cbo}" if cbo else "Estagiário"
+
+    vrsalfx     = fmt_sal(func.get('vrsalfx') or 0)
+    _und_map    = {'H':'1','D':'2','S':'3','Q':'4','M':'5','T':'6','N':'7'}
+    _und_raw    = str(func.get('undsalfixo', '5') or '5')
+    undsalfixo  = _und_map.get(_und_raw.upper(), _und_raw)
+
+    is_estagiario = codcateg == '901'
+
+    # Blocos opcionais do trabalhador (iguais ao S-2200)
+    compl_xml   = f"\n          <complemento>{x(compl)}</complemento>" if compl else ''
+    bairro_xml  = f"\n          <bairro>{x(bairro)}</bairro>" if bairro else ''
+
+    tem_def = any(func.get(c) == 'S' for c in
+                  ['deffisica', 'defvisual', 'defauditiva', 'defmental', 'defintelectual'])
+    bloco_def = ''
+    if tem_def:
+        bloco_def = f"""
+      <infoDeficiencia>
+        <defFisica>{x(func.get('deffisica','N'))}</defFisica>
+        <defVisual>{x(func.get('defvisual','N'))}</defVisual>
+        <defAuditiva>{x(func.get('defauditiva','N'))}</defAuditiva>
+        <defMental>{x(func.get('defmental','N'))}</defMental>
+        <defIntelectual>{x(func.get('defintelectual','N'))}</defIntelectual>
+        <reabReadap>N</reabReadap>
+        <infoCota>{x(func.get('infocota','N'))}</infoCota>
+      </infoDeficiencia>"""
+
+    # ── infoComplementares ──────────────────────────────────
+    # cargoFuncao é comum. Para 901 sai <infoEstagiario>; para
+    # 721/722/723 sai <remuneracao> (bolsa do estagiário vai no
+    # S-1200/S-1210 mensal, não aqui).
+    cargo_xml = (f"\n        <cargoFuncao>"
+                 f"\n          <nmCargo>{x(nmcargo)}</nmCargo>"
+                 f"\n          <CBOCargo>{x(cbo)}</CBOCargo>"
+                 f"\n        </cargoFuncao>")
+
+    if is_estagiario:
+        natestagio = str(func.get('est_natestagio') or 'N')
+        nivestagio = str(func.get('est_nivestagio') or '')
+        dtprevterm = fmt_d8(func.get('est_dtprevterm'))
+        inst_nome  = func.get('est_inst_nome', '') or ''
+        inst_logr  = func.get('est_inst_lograd', '') or ''
+        inst_nr    = func.get('est_inst_nr', '') or ''
+        inst_cep   = dg(func.get('est_inst_cep', ''))
+        inst_munic = str(func.get('est_inst_munic') or '')
+        inst_uf    = func.get('est_inst_uf', '') or ''
+
+        inst_nr_xml  = f"\n            <nrLograd>{x(inst_nr)}</nrLograd>" if inst_nr else ''
+        inst_cep_xml = f"\n            <cep>{x(inst_cep)}</cep>" if inst_cep else ''
+
+        complementares_xml = (
+            f"{cargo_xml}"
+            f"\n        <infoEstagiario>"
+            f"\n          <natEstagio>{x(natestagio)}</natEstagio>"
+            f"\n          <nivEstagio>{x(nivestagio)}</nivEstagio>"
+            f"\n          <dtPrevTerm>{x(dtprevterm)}</dtPrevTerm>"
+            f"\n          <instEnsino>"
+            f"\n            <nmRazao>{x(inst_nome)}</nmRazao>"
+            f"\n            <dscLograd>{x(inst_logr)}</dscLograd>{inst_nr_xml}{inst_cep_xml}"
+            f"\n            <codMunic>{x(inst_munic)}</codMunic>"
+            f"\n            <uf>{x(inst_uf)}</uf>"
+            f"\n          </instEnsino>"
+            f"\n        </infoEstagiario>")
+    else:
+        complementares_xml = (
+            f"{cargo_xml}"
+            f"\n        <remuneracao>"
+            f"\n          <vrSalFx>{x(vrsalfx)}</vrSalFx>"
+            f"\n          <undSalFixo>{x(undsalfixo)}</undSalFixo>"
+            f"\n        </remuneracao>")
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTSVInicio/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtTSVInicio/v_S_01_03_00 evtTSVInicio_v_S_01_03_00.xsd">
+  <evtTSVInicio Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>{_verproc_str()}</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <trabalhador>
+      <cpfTrab>{x(cpf)}</cpfTrab>
+      <nmTrab>{x(nome)}</nmTrab>
+      <sexo>{x(sexo)}</sexo>
+      <racaCor>{x(racacor)}</racaCor>
+      <estCiv>{x(estciv)}</estCiv>
+      <grauInstr>{x(grauinstr)}</grauInstr>
+      <nascimento>
+        <dtNascto>{x(dtnascto)}</dtNascto>
+        <paisNascto>105</paisNascto>
+        <paisNac>105</paisNac>
+      </nascimento>
+      <endereco>
+        <brasil>
+          <tpLograd>R</tpLograd>
+          <dscLograd>{x(dsclograd)}</dscLograd>
+          <nrLograd>{x(nrlograd)}</nrLograd>{compl_xml}{bairro_xml}
+          <cep>{x(cep)}</cep>
+          <codMunic>{x(codmunic)}</codMunic>
+          <uf>{x(uf)}</uf>
+        </brasil>
+      </endereco>{bloco_def}
+    </trabalhador>
+    <infoTSVInicio>
+      <cadIni>N</cadIni>
+      <natAtividade>1</natAtividade>
+      <dtInicio>{x(dtinicio)}</dtInicio>
+      <codCateg>{x(codcateg)}</codCateg>
+      <infoComplementares>{complementares_xml}
+      </infoComplementares>
+    </infoTSVInicio>
+  </evtTSVInicio>
+</eSocial>"""
+
+
 # =========================================================
 # eSocial S-1200 — GERADOR DE XML
 # =========================================================
@@ -21544,6 +21822,513 @@ def api_esocial_s2200_reconsutar():
 
 
 # =========================================================
+# eSocial S-2300 (evtTSVInicio) — API: baixar XML
+# =========================================================
+@app.route("/api/esocial_s2300_xml")
+def api_esocial_s2300_xml():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from flask import Response
+
+    id_empresa = _get_id_empresa()
+    id_reg = request.args.get("id", "").strip()
+    tpAmb  = request.args.get("tpAmb", "1").strip()
+
+    if not id_reg or not id_reg.isdigit():
+        return Response("ID inválido.", status=400, mimetype="text/plain")
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "2300")
+                .limit(1)
+                .execute())
+        if not r_es.data:
+            return Response("Registro não encontrado.", status=404, mimetype="text/plain")
+        es = r_es.data[0]
+    except Exception as e:
+        return Response(str(e), status=500, mimetype="text/plain")
+
+    matricula = es.get("matricula")
+    if not matricula:
+        return Response("Matrícula não associada ao registro.", status=400, mimetype="text/plain")
+
+    try:
+        r_func = (supabase.table("tab_cad")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1)
+                  .execute())
+        if not r_func.data:
+            return Response("Funcionário não encontrado.", status=404, mimetype="text/plain")
+        func = r_func.data[0]
+    except Exception as e:
+        return Response(str(e), status=500, mimetype="text/plain")
+
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("*")
+                 .eq("cnpj", cnpj_emp)
+                 .limit(1)
+                 .execute())
+        empresa = r_emp.data[0] if r_emp.data else {"cnpj": cnpj_emp}
+    except Exception:
+        empresa = {"cnpj": cnpj_emp}
+
+    xml_str = _gerar_xml_s2300(func, empresa, tpAmb)
+
+    try:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+    except Exception:
+        pass
+
+    mat_fmt = str(matricula).zfill(6)
+    fname = f"S2300_{mat_fmt}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+
+    return Response(
+        xml_str,
+        mimetype="application/xml; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
+
+
+# =========================================================
+# eSocial S-2300 (evtTSVInicio) — API: gerar + assinar + enviar + consultar
+# =========================================================
+@app.route("/api/esocial_s2300_enviar", methods=["POST"])
+def api_esocial_s2300_enviar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    ok_val, msg_val = _validar_folha_para_envio_esocial("2300")
+    if not ok_val:
+        return jsonify({"ok": False, "msg": msg_val})
+
+    # ── 1. Registro na tab_esocial ────────────────────────
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "2300")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-2300 não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    matricula = es.get("matricula")
+
+    # ── 2. Dados do funcionário ───────────────────────────
+    try:
+        r_func = (supabase.table("tab_cad")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
+        func = r_func.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
+
+    # ── 3. Dados da empresa ───────────────────────────────
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("*")
+                 .eq("cnpj", cnpj_emp)
+                 .limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    # ── 4. Gerar XML cru e salvar ASAP ────────────────────
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2300_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2300(func, empresa, tpAmb)
+    except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 5. Validar certificado e assinar ──────────────────
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura do evento: {e}")
+        return jsonify({"ok": False, "msg": f"Erro na assinatura do evento: {e}"})
+
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
+
+    # ── 6. Montar lote ────────────────────────────────────
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
+    except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
+
+    # ── 7. Enviar ao eSocial ──────────────────────────────
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
+
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
+
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    nr_rec          = analise["nr_rec"]
+    protocolo_envio = nr_rec
+    if not nr_rec:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava":      agora.strftime("%Y%m%d"),
+            "hora_grava":      agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False,
+                        "msg": "eSocial recusou o envio.",
+                        "detalhe": analise["erro"]})
+
+    agora = datetime.now()
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    # ── 8. Aguardar e consultar resultado (até 3×) ───────
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+    dh_proc      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(nr_rec)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta ao eSocial: {e}"
+            break
+
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar resposta da consulta: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        dh_proc = resultado.get("dhProcessamento", "") or dh_proc
+
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            dh_proc = ev0.get("dh", "") or dh_proc
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else (
+                    ev0.get("dscResp") or resultado.get("descResposta", ""))
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+
+    # ── 9. Atualiza tab_esocial com resultado final ───────
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-2300 enviado: mat={matricula} nrRec={recibo_final} cd={cd_resp}",
+               matricula=matricula)
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+
+    _cpf_raw = so_numeros(str(func.get("cpf") or ""))
+    _cpf_fmt = (f"{_cpf_raw[:3]}.{_cpf_raw[3:6]}.{_cpf_raw[6:9]}-{_cpf_raw[9:]}"
+                if len(_cpf_raw) == 11 else _cpf_raw)
+    _dtadm_raw = str(func.get("dtadm") or "")
+    _dtadm_fmt = (f"{_dtadm_raw[6:]}/{_dtadm_raw[4:6]}/{_dtadm_raw[:4]}"
+                  if len(_dtadm_raw) == 8 and _dtadm_raw.isdigit() else _dtadm_raw)
+
+    _msg_ok = f"Enviado com sucesso. Recibo: {recibo_final}"
+    _msg_ag = "eSocial ainda está processando. Use 'Re-consultar' em alguns instantes."
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "msg":        (_msg_ag if aguardando else obs_erro or _msg_ok),
+        "protocolo": protocolo_envio,
+        "dh_proc":   dh_proc,
+        "func_nome": func.get("nome", ""),
+        "func_cpf":  _cpf_fmt,
+        "func_mat":  str(matricula).zfill(6),
+        "func_dtadm": _dtadm_fmt,
+        "emp_nome":  empresa.get("razaosocial") or empresa.get("nome_fantasia", ""),
+        "emp_cnpj":  _fmt_cnpj(so_numeros(empresa.get("cnpj", ""))),
+    })
+
+
+# =========================================================
+# eSocial S-2300 (evtTSVInicio) — API: re-consultar protocolo pendente
+# =========================================================
+@app.route("/api/esocial_s2300_reconsultar", methods=["POST"])
+def api_esocial_s2300_reconsultar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("matricula, observacao_erro")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    obs = (es.get("observacao_erro") or "").strip()
+    if not obs.startswith("AGUARDANDO:"):
+        return jsonify({"ok": False, "msg": "Registro não está no estado Aguardando."})
+
+    protocolo_envio = obs[len("AGUARDANDO:"):]
+    matricula       = es.get("matricula")
+
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    tpAmb = str(data.get("tpAmb", "1"))
+    _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2300_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+    dh_proc      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+
+        _xml_save(f"{_pref}_reconsulta_{tentativa+1}.xml", resp_cons)
+
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar resposta: {e}"
+            break
+
+        cd_resp = resultado.get("cdResposta", "")
+        dh_proc = resultado.get("dhProcessamento", "") or dh_proc
+
+        if cd_resp in ("101", "202"):
+            continue
+
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            dh_proc = ev0.get("dh", "") or dh_proc
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"[{cd_resp}] {resultado.get('descResposta','')}"
+        break
+
+    aguardando = not recibo_final and not obs_erro and cd_resp in ("101", "202")
+
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = None
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    _msg_ag = "eSocial ainda está processando. Tente novamente em alguns instantes."
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "msg":        (_msg_ag if aguardando else obs_erro or f"Recibo: {recibo_final}"),
+        "protocolo":  protocolo_envio,
+        "dh_proc":    dh_proc,
+    })
+
+
+# =========================================================
+# eSocial — API: VER o XML do evento (1_evento) inline no navegador
+# Regenera o XML na hora a partir do cadastro (funciona antes de enviar).
+# Suporta eventos por trabalhador: S-2200 (admissão) e S-2300 (TSVE).
+# =========================================================
+@app.route("/api/esocial_xml_ver")
+def api_esocial_xml_ver():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from flask import Response
+
+    id_empresa = _get_id_empresa()
+    id_reg = request.args.get("id", "").strip()
+    tpAmb  = request.args.get("tpAmb", "1").strip()
+
+    if not id_reg or not id_reg.isdigit():
+        return Response("ID inválido.", status=400, mimetype="text/plain; charset=utf-8")
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .limit(1).execute())
+        if not r_es.data:
+            return Response("Registro não encontrado.", status=404, mimetype="text/plain; charset=utf-8")
+        es = r_es.data[0]
+    except Exception as e:
+        return Response(str(e), status=500, mimetype="text/plain; charset=utf-8")
+
+    layout    = str(es.get("layout") or "")
+    matricula = es.get("matricula")
+
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {"cnpj": cnpj_emp}
+    except Exception:
+        empresa = {"cnpj": cnpj_emp}
+
+    func = {}
+    if matricula:
+        try:
+            r_func = (supabase.table("tab_cad").select("*")
+                      .eq("id_empresa", id_empresa).eq("matricula", matricula)
+                      .limit(1).execute())
+            func = r_func.data[0] if r_func.data else {}
+        except Exception:
+            func = {}
+
+    try:
+        if layout == "2300":
+            xml_str = _gerar_xml_s2300(func, empresa, tpAmb)
+        elif layout == "2200":
+            xml_str = _gerar_xml_s2200(func, empresa, tpAmb)
+        elif layout == "2399":
+            # verbas rescisórias (opcionais) para o detVerbas
+            mov_items = []
+            try:
+                q_mov = (supabase.table("tab_mov").select("cod_verba, valor")
+                         .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                         .eq("folha_tipo", "R").eq("situacao", "A"))
+                if es.get("ano_mes"):
+                    q_mov = q_mov.eq("folha", int(es.get("ano_mes")))
+                mov_items = q_mov.execute().data or []
+            except Exception:
+                mov_items = []
+            xml_str = _gerar_xml_s2399(func, mov_items, empresa, tpAmb)
+        else:
+            return Response(
+                f"Visualização de XML ainda não disponível para o layout S-{layout}.",
+                status=400, mimetype="text/plain; charset=utf-8")
+    except Exception as e:
+        return Response(f"Erro ao gerar XML: {e}", status=500, mimetype="text/plain; charset=utf-8")
+
+    # inline (sem Content-Disposition) — o navegador renderiza a árvore XML
+    return Response(xml_str, mimetype="application/xml; charset=utf-8")
+
+
+# =========================================================
 # eSocial S-2205 — GERADOR DE XML
 # =========================================================
 def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
@@ -22385,6 +23170,135 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
 </eSocial>"""
 
 
+def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
+                     mtv_deslig=None, dt_term=None,
+                     pens_alim="0", perc_aliment=None, vr_alim=None):
+    """Gera string XML do S-2399 (evtTSVTermino — Término de TSVE / não-empregado).
+
+    É o PAR do S-2299 (que é para empregado, ligado ao S-2200). Aqui o vínculo
+    é sem emprego, ligado ao S-2300: categorias 721/722/723 (diretor / CI) e
+    901 (estagiário). Estrutura: ideTrabSemVinculo + infoTSVTermino.
+
+    Parâmetros (espelham o S-2299):
+      func       linha de tab_cad (cpf, matricula, codcateg, datarescisao,
+                 motrescisao, centrocusto).
+      mov_items  verbas rescisórias (tab_mov folha_tipo='R'); se vazio, o grupo
+                 verbasResc é OMITIDO (caso comum do estagiário).
+      mtv_deslig motivo do término; default = func['motrescisao']. Só é emitido
+                 se houver valor — obrigatório p/ diretor/dirigente; para
+                 estagiário normalmente não se aplica.
+      pens_alim  '0' não há | '1' % | '2' valor | '3' ambos.
+
+    A VALIDAR contra o XSD (o retorno do gov aponta o erro exato):
+      (a) nome/uso de <mtvDesligTSV> e <pensaoAlim>;
+      (b) se <verbasResc>/<dmDev> exige <codCateg>;
+      (c) ordem dentro de <infoTSVTermino>.
+    """
+    import re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):  return re.sub(r'\D', '', str(v or ''))
+    def x(v):   return _esc(str(v or ''))
+    def fmt_brl(c):
+        try:    return f"{int(c) / 100:.2f}"
+        except Exception: return "0.00"
+    def fmt_d8(v):
+        s = dg(v)
+        return f"{s[:4]}-{s[4:6]}-{s[6:8]}" if len(s) >= 8 else ""
+
+    cnpj_emp  = dg(empresa.get('cnpj', ''))
+    cnpj_raiz = cnpj_emp[:8]
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    cpf      = dg(func.get('cpf', '')).zfill(11)
+    mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    codcateg = str(func.get('codcateg') or '901').strip()
+
+    # data de término (obrigatória)
+    dt_ter = fmt_d8(dt_term) if dt_term else fmt_d8(func.get('datarescisao'))
+    if not dt_ter:
+        raise ValueError(
+            f"Trabalhador {func.get('matricula')} sem data de término "
+            "(datarescisao) — obrigatória no S-2399.")
+
+    # motivo do término (Tabela 20) — condicional; só emite se houver
+    mtv = str(mtv_deslig if mtv_deslig is not None
+              else (func.get('motrescisao') or '')).strip()
+    mtv_xml = (f"\n      <mtvDesligTSV>{x(mtv.zfill(2))}</mtvDesligTSV>"
+               if mtv and mtv not in ('0', '00') else "")
+
+    # pensão alimentícia — só emite se houver (0 = não há)
+    pens = str(pens_alim or '0').strip()
+    pens_xml = ""
+    if pens and pens != '0':
+        pens_extra = ""
+        if pens in ('1', '3') and perc_aliment is not None:
+            pens_extra += f"\n        <percAliment>{x(perc_aliment)}</percAliment>"
+        if pens in ('2', '3') and vr_alim is not None:
+            pens_extra += f"\n        <vrAlim>{fmt_brl(vr_alim)}</vrAlim>"
+        pens_xml = f"\n      <pensaoAlim>{x(pens)}</pensaoAlim>{pens_extra}"
+
+    # verbas rescisórias — detVerbas sob ideEstabLot (como no S-2299); opcional
+    det_xml = ""
+    for item in (mov_items or []):
+        cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
+        val = int(item.get('valor') or 0)
+        if cod and val != 0:
+            det_xml += f"""
+                <detVerbas>
+                  <codRubr>{x(cod)}</codRubr>
+                  <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+                  <vrRubr>{fmt_brl(val)}</vrRubr>
+                  <indApurIR>0</indApurIR>
+                </detVerbas>"""
+
+    verbas_xml = ""
+    if det_xml.strip():
+        cod_lotacao = str(func.get('centrocusto') or '').strip()
+        verbas_xml = f"""
+      <verbasResc>
+        <dmDev>
+          <ideDmDev>{mat_es}00</ideDmDev>
+          <codCateg>{x(codcateg)}</codCateg>
+          <infoPerApur>
+            <ideEstabLot>
+              <tpInsc>1</tpInsc>
+              <nrInsc>{x(cnpj_emp)}</nrInsc>
+              <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}
+            </ideEstabLot>
+          </infoPerApur>
+        </dmDev>
+      </verbasResc>"""
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTSVTermino/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtTSVTermino/v_S_01_03_00 evtTSVTermino_v_S_01_03_00.xsd">
+  <evtTSVTermino Id="{evt_id}">
+    <ideEvento>
+      <indRetif>1</indRetif>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>{_verproc_str()}</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <ideTrabSemVinculo>
+      <cpfTrab>{x(cpf)}</cpfTrab>
+      <matricula>{x(mat_es)}</matricula>
+      <codCateg>{x(codcateg)}</codCateg>
+    </ideTrabSemVinculo>
+    <infoTSVTermino>
+      <dtTerm>{x(dt_ter)}</dtTerm>{mtv_xml}{pens_xml}{verbas_xml}
+    </infoTSVTermino>
+  </evtTSVTermino>
+</eSocial>"""
+
+
 # =========================================================
 # eSocial S-2206 — Tela
 # =========================================================
@@ -23108,6 +24022,208 @@ def api_esocial_s2299_enviar():
     })
 
 
+@app.route("/api/esocial_s2399_enviar", methods=["POST"])
+def api_esocial_s2399_enviar():
+    """Envia o S-2399 (evtTSVTermino) — término de TSVE (721/722/723/901).
+    Espelha o S-2299, mas as verbas rescisórias são OPCIONAIS (estagiário
+    normalmente não tem) e não há o bloco de aviso prévio indenizado."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+
+    id_reg = data.get("id_esocial")
+    tpAmb  = str(data.get("tpAmb", "1")).strip()
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    ok_val, msg_val = _validar_folha_para_envio_esocial("2399")
+    if not ok_val:
+        return jsonify({"ok": False, "msg": msg_val})
+
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", id_reg).eq("id_empresa", id_empresa)
+                .eq("layout", "2399").limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-2399 não encontrado."})
+        reg_es     = r_es.data[0]
+        matricula  = reg_es.get("matricula")
+        reg_anomes = reg_es.get("ano_mes")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    try:
+        r_func = (supabase.table("tab_cad").select("*")
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", int(matricula)).limit(1).execute())
+        if not r_func.data:
+            return jsonify({"ok": False, "msg": "Funcionário não encontrado."})
+        func = r_func.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
+
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    # Verbas rescisórias (tab_mov folha_tipo='R') — OPCIONAIS no S-2399
+    mov_items = []
+    try:
+        q_mov = (supabase.table("tab_mov").select("cod_verba, valor")
+                 .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                 .eq("folha_tipo", "R").eq("situacao", "A"))
+        if id_cliente:
+            q_mov = q_mov.eq("id_cliente", id_cliente)
+        if reg_anomes:
+            q_mov = q_mov.eq("folha", int(reg_anomes))
+        mov_items = q_mov.execute().data or []
+    except Exception:
+        mov_items = []
+
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S2399_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+
+    try:
+        xml_str = _gerar_xml_s2399(func, mov_items, empresa, tpAmb,
+                                   mtv_deslig=None, dt_term=None, pens_alim="0")
+    except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
+
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
+    except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
+
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
+
+    agora = datetime.now()
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        detalhe = str(e)
+        _xml_save(f"{_pref}_5_resposta.xml", detalhe)
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": detalhe[:295],
+        }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": detalhe})
+
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
+
+    analise         = _analisar_resposta_envio(resp_envio)
+    protocolo_envio = analise["nr_rec"]
+
+    agora = datetime.now()
+    if not protocolo_envio:
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"),
+            "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"),
+        "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for tentativa in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"
+            break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL",
+               f"S-2399 enviado: mat={matricula} nrRec={recibo_final} cd={cd_resp}",
+               matricula=int(matricula))
+
+    ok = bool(recibo_final) and not obs_erro and not aguardando
+    return jsonify({
+        "ok":         ok,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "cd_resp":    cd_resp,
+        "id_esocial": id_reg,
+        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+                else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
+    })
+
+
 @app.route("/api/esocial_s2299_reconsultar", methods=["POST"])
 def api_esocial_s2299_reconsultar():
     if not session.get("logado"):
@@ -23286,6 +24402,8 @@ def esocial_fila():
         "2220": ("S-2220", "Saúde",         "/cad_exame_med",    True),
         "2230": ("S-2230", "Afastamento",   "/cad_afastamento",  True),
         "2299": ("S-2299", "Desligamento",  "#",                 True),
+        "2300": ("S-2300", "Início TSVE",   "/esocial_fila",     True),
+        "2399": ("S-2399", "Término TSVE",  "/esocial_fila",     True),
     }
     _SIT = {
         "E": ("Enviado",    "sit-enviado"),
