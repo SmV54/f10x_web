@@ -31,3 +31,35 @@ Folha10-Simples_Memoria/
 
 # Backups locais do Supabase (contêm dados sensíveis: CPFs, salários)
 backup_supabase/
+
+# Bancos Access (grandes; não versionar)
+*.ACCDB
+
+# Scripts avulsos / uso pontual (migração, inspeção, comparação — não fazem
+# parte do app). Listados por nome de propósito, para não esconder por engano
+# arquivos legítimos futuros com nome parecido.
+CopiaBase/
+__compara_xml/
+SR_Coral.vb
+__baixar_xml_compara.py
+__inspecionar_deps.py
+__inspecionar_esocial_fila.py
+__inspecionar_rubricas.py
+__inspecionar_s1010.py
+__inspecionar_tab_tabela.py
+__inspecionar_tabesocial.py
+__inspecionar_tabtotal.py
+__testar_gerador_s1210.py
+_backup_supabase.py
+_migrar_estagio_s2300.py
+_migrar_feriados.py
+comparar_rubricas.py
+gerar_comparativo.py
+inserir_verbas_faltantes.py
+preencher_incidencias.py
+reimportar_supabase.py
+relatorio_espelho_coral.py
+supabase_para_access.py
+add_colunas_estagio_s2300.sql
+atualizar_situacao_rubrica.sql
+inserir_verba_0086_igual_0016.sql
