@@ -90,6 +90,7 @@ tbody td {
 }
 tbody tr:hover { background: #f8fafc; }
 .col-mat  { width: 80px; font-family: var(--mono); font-weight: 600; color: #1d4ed8; }
+.col-adm  { width: 110px; font-family: var(--mono); white-space: nowrap; }
 .col-sit  { width: 90px; }
 .col-acao { width: 130px; text-align: right; }
 
@@ -177,6 +178,38 @@ tbody tr:hover { background: #f8fafc; }
 }
 .msg-ok  { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
 .msg-err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+
+/* ── Spinner de progresso ── */
+@keyframes girar { to { transform: rotate(360deg); } }
+.spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 4px solid #e2e8f0; border-top-color: var(--danger);
+    animation: girar 0.8s linear infinite;
+}
+.spinner-verde { border-top-color: #16a34a; }
+.progresso {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 14px; padding: 26px 0 18px;
+}
+.progresso-txt   { font-size: 14px; font-weight: 600; color: #1e293b; }
+.progresso-sub   { font-size: 12px; color: #64748b; text-align: center; }
+
+/* ── Tela de sucesso ── */
+.ok-wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px 0 8px; }
+.ok-icone {
+    width: 56px; height: 56px; border-radius: 50%;
+    background: #f0fdf4; border: 2px solid #16a34a; color: #16a34a;
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+}
+.ok-titulo { font-size: 17px; font-weight: 700; color: #15803d; }
+.ok-texto  { font-size: 13px; color: #374151; text-align: center; line-height: 1.6; }
+.modal-cab.ok { background: #16a34a; }
+.btn-menu {
+    background: #16a34a; border: none; color: white;
+    font-size: 13px; font-weight: 700; padding: 9px 22px;
+    border-radius: 8px; cursor: pointer; font-family: var(--sans);
+}
+.btn-menu:hover { background: #15803d; }
 </style>
 </head>
 <body>
@@ -199,20 +232,23 @@ tbody tr:hover { background: #f8fafc; }
 <div class="conteudo">
 
     <div class="aviso-grave">
-        <h2>⚠️ Operação irreversível</h2>
+        <h2>⚠️ A limpeza é DEFINITIVA e IRREVERSÍVEL</h2>
         <p>
-            Esta ferramenta <strong>apaga</strong> o cadastro do funcionário e <strong>todos os dados
-            associados</strong> (movimento, totais, eventos, dependentes, acidentes, mov. fixo, registros eSocial)
-            em todas as folhas. <strong>NÃO HÁ COMO DESFAZER.</strong>
+            Esta ferramenta <strong>apaga em definitivo</strong> o cadastro do funcionário e
+            <strong>todos os dados associados</strong> (movimento, totais, eventos, dependentes,
+            acidentes, mov. fixo, pensão alimentícia e registros eSocial) em todas as folhas.
+            <strong>NÃO HÁ COMO DESFAZER — não existe backup nem "cancelar" depois de executar.</strong>
             <br><br>
-            Use apenas quando o cadastro foi feito por engano e o funcionário <strong>nunca foi enviado</strong> ao
-            eSocial (ou já teve o S-2200 corrigido via S-3000). Os recibos do eSocial ficam apenas no governo.
+            Use apenas quando o cadastro foi feito por engano. Só é permitida para
+            <strong>admitidos no mês da folha ativa</strong> e para quem <strong>não tem nenhum evento
+            enviado</strong> ao eSocial (ou cujos eventos já foram excluídos via S-3000).
+            Os recibos do eSocial ficam apenas no governo.
         </p>
     </div>
 
     <div class="bloco">
         <div class="bloco-header">
-            <h2>Funcionários da empresa</h2>
+            <h2>Funcionários que podem ser limpos</h2>
             <p id="lblTotal">Carregando…</p>
         </div>
         <div class="bloco-body">
@@ -248,6 +284,7 @@ let _funcs = [];
 let _funcAtivo = null;  // funcionario sendo confirmado
 let _validacao = null;
 let _passo = 1;
+let _processando = false;  // trava o modal enquanto a limpeza roda
 
 async function carregar() {
     const cont = document.getElementById('tabelaContainer');
@@ -261,7 +298,10 @@ async function carregar() {
             return;
         }
         _funcs = d.funcionarios || [];
-        lbl.textContent = `${_funcs.length} funcionário(s) no cadastro`;
+        const fa = String(d.folha_ativa || '');
+        const faFmt = fa.length === 6 ? `${fa.slice(4,6)}/${fa.slice(0,4)}` : '—';
+        lbl.textContent = `${_funcs.length} admitido(s) em ${faFmt} (folha ativa). `
+                        + `Só aparecem aqui os admitidos no mês da folha ativa.`;
         renderTabela();
     } catch (e) {
         cont.innerHTML = `<div class="vazio">⚠ Falha de comunicacao: ${esc(String(e))}</div>`;
@@ -278,13 +318,17 @@ function renderTabela() {
         return nome.includes(q) || mat.includes(q);
     });
     if (!lista.length) {
-        cont.innerHTML = '<div class="vazio">Nenhum funcionário encontrado.</div>';
+        cont.innerHTML = q
+            ? '<div class="vazio">Nenhum funcionário encontrado com esse filtro.</div>'
+            : '<div class="vazio">Nenhum funcionário admitido no mês da folha ativa.<br>'
+              + 'A limpeza só é permitida para admitidos no mês da folha ativa.</div>';
         return;
     }
     let html = `<table>
         <thead><tr>
             <th class="col-mat">Mat.</th>
-            <th>Nome</th>
+            <th>Nome completo</th>
+            <th class="col-adm">Admissão</th>
             <th class="col-sit">Situação</th>
             <th>Categ.</th>
             <th class="col-acao"></th>
@@ -297,6 +341,7 @@ function renderTabela() {
         html += `<tr>
             <td class="col-mat">${mat}</td>
             <td>${esc(f.nome || '—')}</td>
+            <td class="col-adm">${fmtData(f.dtadm)}</td>
             <td class="col-sit"><span class="badge-sit ${sitClass}">${esc(sit)}</span></td>
             <td>${esc(f.codcateg || '—')}</td>
             <td class="col-acao"><button class="btn-limpar" onclick="iniciarLimpeza(${f.matricula})">🧹 Limpar</button></td>
@@ -307,6 +352,12 @@ function renderTabela() {
 }
 
 function filtrar() { renderTabela(); }
+
+function fmtData(v) {
+    const s = String(v || '').padStart(8, '0');   // dtadm = int YYYYMMDD
+    if (s.length !== 8 || s === '00000000') return '—';
+    return `${s.slice(6,8)}/${s.slice(4,6)}/${s.slice(0,4)}`;
+}
 
 function esc(s) {
     return String(s ?? '')
@@ -340,11 +391,9 @@ function mostrarBloqueio(d) {
     document.getElementById('modalCorpo').innerHTML = `
         <div class="modal-titulo">🚫 Limpeza bloqueada</div>
         <div class="modal-texto">
-            <strong>Esta matrícula tem registros enviados ao eSocial que ainda não foram excluídos (S-3000).</strong>
+            <strong>Este funcionário não pode ser limpo.</strong>
             <br><br>
             ${esc(d.msg || '')}
-            <br><br>
-            <span style="color:#64748b;">Envie o S-3000 antes de tentar limpar novamente.</span>
         </div>`;
     document.getElementById('modalRodape').innerHTML = `
         <button class="btn-cancel" onclick="fecharModal()">Entendi</button>`;
@@ -371,8 +420,10 @@ function mostrarPasso() {
         cont.innerHTML = `
             <div class="modal-titulo">Você tem certeza?</div>
             <div class="modal-texto">
+                Esta operação é <strong>DEFINITIVA e IRREVERSÍVEL</strong>.
                 Vai apagar o cadastro do funcionário e <strong>todos os dados</strong> em todas as tabelas
-                (movimento, totais, dependentes, etc.). <strong>NÃO HÁ COMO DESFAZER.</strong>
+                (movimento, totais, dependentes, pensão, eSocial, etc.), em todas as folhas.
+                <strong>NÃO HÁ COMO DESFAZER.</strong>
             </div>
             ${infoCard}`;
         rod.innerHTML = `
@@ -383,10 +434,12 @@ function mostrarPasso() {
         cont.innerHTML = `
             <div class="modal-titulo">Última chance antes da etapa final</div>
             <div class="modal-texto">
-                Os seguintes registros serão removidos:
+                Os seguintes registros serão <strong>apagados em definitivo</strong>:
             </div>
             <div class="modal-resumo">${esc(resumo)}</div>
             <div class="modal-texto" style="margin-top:10px;">
+                Reforçando: a limpeza é <strong>DEFINITIVA e IRREVERSÍVEL</strong>. Estes dados
+                não poderão ser recuperados depois.
                 Após confirmar, será pedida uma confirmação textual final.
             </div>
             ${infoCard}`;
@@ -397,14 +450,14 @@ function mostrarPasso() {
         cont.innerHTML = `
             <div class="modal-titulo">Digite <strong style="color:#dc2626;font-family:var(--mono);">CONFIRMAR</strong> para executar</div>
             <div class="modal-texto">
-                Esta é a última etapa. A limpeza será executada quando você clicar em "Executar".
-                Não há como desfazer.
+                Esta é a última etapa. Ao clicar em "Executar", o funcionário e todos os seus dados
+                serão apagados <strong>em definitivo</strong>. Esta ação é
+                <strong>IRREVERSÍVEL</strong> e não poderá ser desfeita por ninguém.
             </div>
             ${infoCard}
             <input class="modal-input" id="inpConfirmar" type="text"
                    autocomplete="off" placeholder="Digite CONFIRMAR"
-                   oninput="onConfirmarInput()" autofocus>
-            <div id="msgFinal"></div>`;
+                   oninput="onConfirmarInput()" autofocus>`;
         rod.innerHTML = `
             <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
             <button class="btn-confirmar" id="btnExecutar" disabled
@@ -425,37 +478,96 @@ function proximoPasso() {
 }
 
 async function executarLimpeza() {
-    const btn = document.getElementById('btnExecutar');
-    const msg = document.getElementById('msgFinal');
-    btn.disabled = true;
-    msg.innerHTML = '<div class="msg-final msg-ok">Executando…</div>';
+    const cont = document.getElementById('modalCorpo');
+    const rod  = document.getElementById('modalRodape');
+    const f    = _funcAtivo;
+    const matFmt = String(f.matricula || '').padStart(6, '0');
+
+    // Estado "processando": spinner, sem botoes e sem fechar por clique fora.
+    _processando = true;
+    document.getElementById('modalPasso').textContent = 'PROCESSANDO';
+    rod.innerHTML = '';
+    cont.innerHTML = `
+        <div class="progresso">
+            <div class="spinner"></div>
+            <div class="progresso-txt">Limpando funcionário…</div>
+            <div class="progresso-sub">
+                Apagando ${esc(matFmt)} — ${esc(f.nome || '')}<br>
+                Não feche nem atualize esta página.
+            </div>
+        </div>`;
+
     try {
         const r = await fetch('/api/limpeza/executar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                matricula: _funcAtivo.matricula,
+                matricula: f.matricula,
                 confirmacao_final: 'CONFIRMAR',
             }),
         });
         const d = await r.json();
+        _processando = false;
+
         if (!d.ok) {
-            msg.innerHTML = `<div class="msg-final msg-err">⚠ ${esc(d.msg || 'Erro')}</div>`;
-            btn.disabled = false;
+            document.getElementById('modalPasso').textContent = 'ERRO';
+            cont.innerHTML = `
+                <div class="modal-titulo">Não foi possível limpar</div>
+                <div class="msg-final msg-err">⚠ ${esc(d.msg || 'Erro')}</div>`;
+            rod.innerHTML = `<button class="btn-cancel" onclick="fecharERecarregar()">Fechar</button>`;
             return;
         }
-        msg.innerHTML = `<div class="msg-final msg-ok">✓ ${esc(d.msg || 'Limpo')}</div>`;
-        setTimeout(() => {
-            fecharModal();
-            carregar();
-        }, 1500);
+        mostrarSucesso(d, matFmt);
     } catch (e) {
-        msg.innerHTML = `<div class="msg-final msg-err">Falha: ${esc(String(e))}</div>`;
-        btn.disabled = false;
+        _processando = false;
+        document.getElementById('modalPasso').textContent = 'ERRO';
+        cont.innerHTML = `
+            <div class="modal-titulo">Falha de comunicação</div>
+            <div class="msg-final msg-err">${esc(String(e))}</div>
+            <div class="modal-texto" style="margin-top:10px;">
+                A limpeza pode ou não ter sido concluída. Confira a lista antes de tentar de novo.
+            </div>`;
+        rod.innerHTML = `<button class="btn-cancel" onclick="fecharModal()">Fechar</button>`;
     }
 }
 
+function mostrarSucesso(d, matFmt) {
+    const cab  = document.querySelector('.modal-cab');
+    const cont = document.getElementById('modalCorpo');
+    const rod  = document.getElementById('modalRodape');
+
+    cab.classList.add('ok');
+    cab.querySelector('span').textContent = '✓ LIMPEZA CONCLUÍDA';
+    document.getElementById('modalPasso').textContent = 'CONCLUÍDO';
+
+    // Ja foi — o aviso de "definitiva/irreversivel" nao faz mais sentido aqui.
+    const banner = document.querySelector('.aviso-grave');
+    if (banner) banner.style.display = 'none';
+
+    cont.innerHTML = `
+        <div class="ok-wrap">
+            <div class="ok-icone">✓</div>
+            <div class="ok-titulo">Limpeza realizada</div>
+            <div class="ok-texto">
+                O funcionário <strong>${esc(matFmt)} — ${esc((_funcAtivo && _funcAtivo.nome) || '')}</strong>
+                e todos os seus dados foram removidos do sistema.
+                <br><br>
+                Voltando ao menu…
+            </div>
+        </div>`;
+    rod.innerHTML = `<button class="btn-menu" onclick="irMenu()">↪ Voltar ao menu</button>`;
+    setTimeout(irMenu, 2600);
+}
+
+function irMenu() { window.location.href = '/menu'; }
+
+function fecharERecarregar() { fecharModal(); carregar(); }
+
 function fecharModal() {
+    if (_processando) return;   // nao fecha no meio da limpeza
+    const cab = document.querySelector('.modal-cab');
+    cab.classList.remove('ok');
+    cab.querySelector('span').textContent = '⚠️ LIMPEZA DE FUNCIONÁRIO';
     document.getElementById('modalBg').classList.remove('ativo');
     _funcAtivo = null;
     _validacao = null;

@@ -152,11 +152,15 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: top; }
 .col-mat     { width: 80px;  font-family: var(--mono); text-align: center; }
 .col-anomes  { width: 80px;  font-family: var(--mono); text-align: center; }
 .col-cpf     { width: 130px; font-family: var(--mono); font-size: 11px; }
-.col-obs     { max-width: 500px; }
+.col-obs     { max-width: 660px; }
 
+/* Ate 2 linhas: o texto inteiro aparece sem reticencias. So corta (com "…")
+   se passar disso — ai o texto completo continua no title e no PDF. */
 .obs-texto {
-    display: block; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; max-width: 480px; cursor: default;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+    overflow: hidden; text-overflow: ellipsis;
+    white-space: normal; overflow-wrap: anywhere;
+    max-width: 640px; cursor: default; line-height: 1.45;
 }
 .badge-menu {
     display: inline-block; padding: 2px 8px; border-radius: 5px;

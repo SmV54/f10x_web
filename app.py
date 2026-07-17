@@ -1982,7 +1982,7 @@ def rel_lista_funcionarios():
     order_col = "nome" if classificacao == "A" else "matricula"
 
     try:
-        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao") \
+        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao, dtadm") \
             .eq("id_empresa", id_empresa).order(order_col)
         if situacao_filtro != "T":
             q = q.eq("situacao", situacao_filtro)
@@ -1991,17 +1991,10 @@ def rel_lista_funcionarios():
         funcs = []
 
     for f in funcs:
-        f["nome_fmt"] = (f.get("nomer") or f.get("nome") or "").strip()
-
-    # Aviso prévio (op1=9 em tab_eventos) — marca cada funcionário e a data.
-    aviso_datas = _aviso_previo_datas(id_empresa)
-    for f in funcs:
-        try:
-            m = int(f.get("matricula") or 0)
-        except (TypeError, ValueError):
-            m = 0
-        f["aviso_previo"]      = m in aviso_datas
-        f["aviso_previo_data"] = aviso_datas.get(m, "")
+        # Nome completo (tab_cad.nome); cai no abreviado so se o completo faltar.
+        f["nome_fmt"]  = (f.get("nome") or f.get("nomer") or "").strip()
+        _adm = str(f.get("dtadm") or "").zfill(8)
+        f["dtadm_fmt"] = _fmt_dt(_adm) if _adm != "00000000" else "—"
 
     return render_template(
         "F10_Rel_Lista_Funcionarios.html",
@@ -2030,7 +2023,7 @@ def rel_lista_funcionarios_pdf():
 
     order_col = "nome" if classificacao == "A" else "matricula"
     try:
-        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao") \
+        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao, dtadm") \
             .eq("id_empresa", id_empresa).order(order_col)
         if situacao_filtro != "T":
             q = q.eq("situacao", situacao_filtro)
@@ -2054,26 +2047,20 @@ def rel_lista_funcionarios_pdf():
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
 
-    # Aviso prévio (op1=9): matrícula -> data 'DD/MM/AAAA'
-    aviso_datas = _aviso_previo_datas(id_empresa)
-    amber = colors.HexColor("#9a3412")
-
     tbl_data = [[P("Matrícula", fn="Helvetica-Bold"),
-                 P("Nome", fn="Helvetica-Bold"),
-                 P("Aviso Prévio", fn="Helvetica-Bold")]]
+                 P("Nome completo", fn="Helvetica-Bold"),
+                 P("Admissão", fn="Helvetica-Bold", align=1)]]
     lt_gray  = colors.HexColor("#f8fafc")
     for f in funcs:
         mat_i = int(f.get("matricula") or 0)
         mat   = f"{mat_i:06d}"
-        nome  = (f.get("nomer") or f.get("nome") or "").strip()
-        if mat_i in aviso_datas:
-            dt = aviso_datas.get(mat_i) or ""
-            aviso_cel = P(f"Sim — {dt}" if dt else "Sim", fn="Helvetica-Bold", col=amber)
-        else:
-            aviso_cel = P("—", col=colors.HexColor("#94a3b8"))
-        tbl_data.append([P(mat, fn="Courier"), P(nome), aviso_cel])
+        nome  = (f.get("nome") or f.get("nomer") or "").strip()
+        _adm  = str(f.get("dtadm") or "").zfill(8)
+        adm   = _fmt_dt(_adm) if _adm != "00000000" else "—"
+        tbl_data.append([P(mat, fn="Courier"), P(nome),
+                         P(adm, fn="Courier", align=1)])
 
-    tbl = Table(tbl_data, colWidths=[2.6*cm, 10.9*cm, 3.5*cm], repeatRows=1)
+    tbl = Table(tbl_data, colWidths=[2.6*cm, 11.0*cm, 3.4*cm], repeatRows=1)
     row_bg = []
     for i in range(1, len(tbl_data)):
         bg = lt_gray if i % 2 == 0 else colors.white
@@ -2092,8 +2079,8 @@ def rel_lista_funcionarios_pdf():
 
     total_linha = P(f"Total: {len(funcs)} funcionário(s)", fn="Helvetica", fs=8,
                     col=colors.HexColor("#64748b"), align=2)
-    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm), Spacer(1, 8), tbl,
-             Spacer(1, 6), total_linha]
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 6), total_linha]
     doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
     buf.seek(0)
 
@@ -2737,9 +2724,10 @@ def rel_log_pdf():
     rows = []
     for reg in registros:
         mat = str(reg.get("matricula") or "").zfill(6) if reg.get("matricula") else "—"
+        # Sem corte: a celula do PDF e um Paragraph, que quebra linha sozinho.
         rows.append([_fdt(reg.get("data_hora_grava")), reg.get("menu") or "—",
                      mat, _fam(reg.get("ano_mes")), _fcpf(reg.get("cpf_usuario")),
-                     (reg.get("observacao") or "")[:80]])
+                     (reg.get("observacao") or "")])
 
     return _pdf_tabela("Log de Operações",
                        ["Data/Hora", "Módulo", "Mat.", "Mês/Ano", "CPF", "Operação"],
@@ -5401,8 +5389,8 @@ def lista_aviso_previo_pdf():
 
     total_linha = P(f"Total: {len(funcs)} funcionário(s) em aviso prévio", fn="Helvetica", fs=8,
                     col=colors.HexColor("#64748b"), align=2)
-    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm), Spacer(1, 8), tbl,
-             Spacer(1, 6), total_linha]
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 6), total_linha]
     doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
     buf.seek(0)
 
@@ -5544,8 +5532,8 @@ def lista_demitidos_pdf():
 
     total_linha = P(f"Total: {len(funcs)} demitido(s)", fn="Helvetica", fs=8,
                     col=colors.HexColor("#64748b"), align=2)
-    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm), Spacer(1, 8), tbl,
-             Spacer(1, 6), total_linha]
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 6), total_linha]
     doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
     buf.seek(0)
 
@@ -10478,8 +10466,87 @@ def api_funcionario_incluir():
 # (e o registro de auditoria e deve ser preservado).
 _LIMPEZA_TABELAS = (
     "tab_mov", "tab_total", "tab_eventos", "tab_esocial",
-    "tab_dependentes", "tab_acidente", "tab_mov_fixo",
+    "tab_dependentes", "tab_acidente", "tab_mov_fixo", "tab_pensao",
 )
+
+# O proprio S-3000 grava uma linha com matricula e recibo (ver envio do S-3000).
+# Se ele entrasse na regra de "layout com recibo ativo", excluir o S-2200
+# passaria a bloquear a limpeza para sempre — o inverso da regra.
+_LIMPEZA_LAYOUTS_IGNORAR = ("3000",)
+
+
+def _limpeza_regras(id_cliente, id_empresa, matricula):
+    """Regras de bloqueio da limpeza. Fonte unica para validar e executar.
+       Devolve (pode_limpar, msg, detalhes)."""
+    detalhes = {"eventos_ativos": [], "dtadm": None, "folha_ativa": None}
+
+    # --- Regra 1: admissao tem que ser no mes da folha ativa ---
+    folha = str(session.get("anomes_atual") or "").strip()
+    detalhes["folha_ativa"] = folha
+    if not folha or len(folha) != 6:
+        return False, "Folha ativa nao definida. Abra uma folha antes de limpar.", detalhes
+    try:
+        r = (supabase.table("tab_cad")
+             .select("dtadm")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", matricula)
+             .limit(1).execute())
+        if not r.data:
+            return False, "Funcionario nao encontrado.", detalhes
+        dtadm = int(r.data[0].get("dtadm") or 0)
+    except Exception as e:
+        return False, f"Erro ao ler admissao: {e}", detalhes
+
+    detalhes["dtadm"] = dtadm
+    if not dtadm:
+        return False, "Funcionario sem data de admissao. Limpeza bloqueada.", detalhes
+    if (dtadm // 100) != int(folha):
+        d = str(dtadm).zfill(8)
+        return False, (
+            f"Bloqueado: a limpeza so vale para admitidos no mes da folha ativa "
+            f"({folha[4:6]}/{folha[0:4]}). Este funcionario foi admitido em "
+            f"{d[6:8]}/{d[4:6]}/{d[0:4]}."), detalhes
+
+    # --- Regra 2: nenhum evento eSocial com recibo ativo ---
+    # "Ativo" = tem recibo e nao foi anulado por S-3000 (observacao_erro=EXCLUIDO).
+    try:
+        evs = (supabase.table("tab_esocial")
+               .select("id_esocial, layout, recibo, observacao_erro, data_grava, hora_grava")
+               .eq("id_cliente", id_cliente)
+               .eq("id_empresa", id_empresa)
+               .eq("matricula", matricula)
+               .not_.is_("recibo", "null").neq("recibo", "")
+               .execute().data or [])
+    except Exception as e:
+        return False, f"Erro ao validar eSocial: {e}", detalhes
+
+    ativos = []
+    for s in evs:
+        if str(s.get("layout") or "") in _LIMPEZA_LAYOUTS_IGNORAR:
+            continue
+        if (s.get("observacao_erro") or "").strip().upper() == "EXCLUIDO":
+            continue  # anulado por S-3000 — nao bloqueia
+        ativos.append({
+            "id_esocial": s["id_esocial"],
+            "layout":     s.get("layout"),
+            "recibo":     s.get("recibo"),
+            "data_grava": s.get("data_grava"),
+            "hora_grava": s.get("hora_grava"),
+        })
+    detalhes["eventos_ativos"] = ativos
+
+    if ativos:
+        lst = ", ".join(f"S-{a['layout']}" for a in ativos)
+        tem_2200 = any(a["layout"] == "2200" for a in ativos)
+        msg = (f"Bloqueado: existem {len(ativos)} evento(s) eSocial enviado(s) e "
+               f"ainda nao excluido(s) via S-3000 ({lst}). "
+               f"Envie o S-3000 de cada um antes de limpar.")
+        if tem_2200:
+            msg += " O S-2200 (admissao) esta ativo — comece por ele."
+        return False, msg, detalhes
+
+    return True, "", detalhes
 
 
 @app.route("/limpeza_funcionario")
@@ -10498,39 +10565,55 @@ def limpeza_funcionario():
 
 @app.route("/api/limpeza/funcionarios")
 def api_limpeza_funcionarios():
-    """Lista funcionarios da empresa atual para a tela de limpeza."""
+    """Lista funcionarios elegiveis a limpeza: admitidos no mes da folha ativa."""
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
     id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
     if not id_empresa:
         return jsonify({"ok": False, "msg": "Empresa nao definida."}), 400
+    if not id_cliente:
+        return jsonify({"ok": False, "msg": "Cliente nao definido."}), 400
+
+    folha = str(session.get("anomes_atual") or "").strip()
+    if len(folha) != 6:
+        return jsonify({"ok": False,
+                        "msg": "Folha ativa nao definida. Abra uma folha antes de limpar."})
+    # Admitidos no mes da folha ativa: dtadm (int YYYYMMDD) entre AAAAMM01 e AAAAMM31
     try:
         rows = (supabase.table("tab_cad")
                 .select("matricula, nome, cpf, situacao, codcateg, dtadm")
+                .eq("id_cliente", id_cliente)
                 .eq("id_empresa", id_empresa)
+                .gte("dtadm", int(folha + "01"))
+                .lte("dtadm", int(folha + "31"))
                 .order("matricula")
                 .execute().data or [])
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro: {e}"})
-    return jsonify({"ok": True, "funcionarios": rows})
+    return jsonify({"ok": True, "funcionarios": rows, "folha_ativa": folha})
 
 
 @app.route("/api/limpeza/validar/<int:matricula>")
 def api_limpeza_validar(matricula):
-    """Verifica se o funcionario pode ser limpo:
-       - Para cada S-2200 com recibo enviado, precisa existir um S-3000 com
-         recibo POSTERIOR (cancelando a admissao). Caso contrario, bloqueia.
+    """Verifica se o funcionario pode ser limpo (ver _limpeza_regras):
+       - admissao no mes da folha ativa;
+       - nenhum evento eSocial com recibo ativo (sem S-3000).
     """
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
     id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
     if not id_empresa:
         return jsonify({"ok": False, "msg": "Empresa nao definida."}), 400
+    if not id_cliente:
+        return jsonify({"ok": False, "msg": "Cliente nao definido."}), 400
 
     # Dados do funcionario
     try:
         r_func = (supabase.table("tab_cad")
-                  .select("matricula, nome, cpf")
+                  .select("matricula, nome, cpf, dtadm")
+                  .eq("id_cliente", id_cliente)
                   .eq("id_empresa", id_empresa)
                   .eq("matricula", matricula)
                   .limit(1).execute())
@@ -10540,63 +10623,31 @@ def api_limpeza_validar(matricula):
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro: {e}"})
 
-    # S-2200 enviados (com recibo, nao marcados EXCLUIDO) sem S-3000 posterior
-    try:
-        s2200 = (supabase.table("tab_esocial")
-                 .select("id_esocial, recibo, observacao_erro, data_grava, hora_grava")
-                 .eq("id_empresa", id_empresa)
-                 .eq("layout", "2200")
-                 .eq("matricula", matricula)
-                 .not_.is_("recibo", "null")
-                 .neq("recibo", "")
-                 .execute().data or [])
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro: {e}"})
-
-    s2200_pendentes = []
-    for s in s2200:
-        obs = (s.get("observacao_erro") or "").strip()
-        if obs == "EXCLUIDO":
-            continue
-        s2200_pendentes.append({
-            "id_esocial": s["id_esocial"],
-            "recibo":     s["recibo"],
-            "data_grava": s.get("data_grava"),
-            "hora_grava": s.get("hora_grava"),
-        })
-
-    pode_limpar = (len(s2200_pendentes) == 0)
-    msg = ""
-    if not pode_limpar:
-        recibos = ", ".join(s["recibo"][:25] for s in s2200_pendentes)
-        msg = (f"Bloqueado: existem {len(s2200_pendentes)} S-2200 enviado(s) sem "
-               f"exclusao via S-3000. Envie o S-3000 antes de limpar. "
-               f"Recibos pendentes: {recibos}.")
+    pode_limpar, msg, detalhes = _limpeza_regras(id_cliente, id_empresa, matricula)
 
     # Resumo de quantos registros serao apagados
-    try:
-        contagens = {}
-        for tbl in _LIMPEZA_TABELAS:
-            try:
-                rc = (supabase.table(tbl)
-                      .select("*", count="exact")
-                      .eq("id_empresa", id_empresa)
-                      .eq("matricula", matricula)
-                      .limit(1).execute())
-                contagens[tbl] = rc.count or 0
-            except Exception:
-                contagens[tbl] = 0
-        # tab_cad sempre tem 1 (o proprio cadastro)
-        contagens["tab_cad"] = 1
-    except Exception:
-        contagens = {}
+    contagens = {}
+    for tbl in _LIMPEZA_TABELAS:
+        try:
+            rc = (supabase.table(tbl)
+                  .select("*", count="exact")
+                  .eq("id_cliente", id_cliente)
+                  .eq("id_empresa", id_empresa)
+                  .eq("matricula", matricula)
+                  .limit(1).execute())
+            contagens[tbl] = rc.count or 0
+        except Exception:
+            contagens[tbl] = 0
+    # tab_cad sempre tem 1 (o proprio cadastro)
+    contagens["tab_cad"] = 1
 
     return jsonify({
         "ok":              True,
         "pode_limpar":     pode_limpar,
         "msg":             msg,
         "func":            func,
-        "s2200_pendentes": s2200_pendentes,
+        "eventos_ativos":  detalhes.get("eventos_ativos", []),
+        "folha_ativa":     detalhes.get("folha_ativa"),
         "contagens":       contagens,
     })
 
@@ -10608,8 +10659,11 @@ def api_limpeza_executar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
     id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
     if not id_empresa:
         return jsonify({"ok": False, "msg": "Empresa nao definida."}), 400
+    if not id_cliente:
+        return jsonify({"ok": False, "msg": "Cliente nao definido."}), 400
 
     data = request.get_json(force=True) or {}
     try:
@@ -10621,30 +10675,16 @@ def api_limpeza_executar():
     if str(data.get("confirmacao_final") or "") != "CONFIRMAR":
         return jsonify({"ok": False, "msg": "Confirmacao final ausente."})
 
-    # Defesa em profundidade: re-valida S-2200 vs S-3000 mesmo que o front
-    # tenha pulado.
-    try:
-        s2200 = (supabase.table("tab_esocial")
-                 .select("recibo, observacao_erro")
-                 .eq("id_empresa", id_empresa)
-                 .eq("layout", "2200")
-                 .eq("matricula", matricula)
-                 .not_.is_("recibo", "null")
-                 .neq("recibo", "")
-                 .execute().data or [])
-        pendentes = [s for s in s2200
-                     if (s.get("observacao_erro") or "").strip() != "EXCLUIDO"]
-        if pendentes:
-            return jsonify({"ok": False,
-                "msg": (f"Bloqueado: ha {len(pendentes)} S-2200 enviado sem "
-                        "S-3000 posterior. Envie o S-3000 antes de limpar.")})
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao validar S-2200: {e}"})
+    # Defesa em profundidade: re-valida as mesmas regras do front.
+    pode_limpar, msg_bloq, _det = _limpeza_regras(id_cliente, id_empresa, matricula)
+    if not pode_limpar:
+        return jsonify({"ok": False, "msg": msg_bloq})
 
     # Captura dados do funcionario para log antes de apagar
     try:
         r_func = (supabase.table("tab_cad")
                   .select("nome, cpf")
+                  .eq("id_cliente", id_cliente)
                   .eq("id_empresa", id_empresa)
                   .eq("matricula", matricula)
                   .limit(1).execute())
@@ -10655,11 +10695,37 @@ def api_limpeza_executar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro: {e}"})
 
-    # Apaga em todas as tabelas relacionadas
+    # Guarda: o delete filtra por id_cliente+id_empresa+matricula. Se alguma
+    # linha da matricula tiver id_cliente divergente/nulo, ela NAO seria
+    # apagada e ficaria orfa. Nesse caso aborta sem apagar nada, em vez de
+    # fazer uma limpeza pela metade.
+    orfas = {}
+    for tbl in _LIMPEZA_TABELAS + ("tab_cad",):
+        try:
+            c_emp = (supabase.table(tbl).select("*", count="exact")
+                     .eq("id_empresa", id_empresa).eq("matricula", matricula)
+                     .limit(1).execute().count or 0)
+            c_cli = (supabase.table(tbl).select("*", count="exact")
+                     .eq("id_cliente", id_cliente)
+                     .eq("id_empresa", id_empresa).eq("matricula", matricula)
+                     .limit(1).execute().count or 0)
+            if c_emp != c_cli:
+                orfas[tbl] = c_emp - c_cli
+        except Exception:
+            pass
+    if orfas:
+        det = ", ".join(f"{t}: {n} linha(s)" for t, n in orfas.items())
+        return jsonify({"ok": False, "msg": (
+            "Abortado por seguranca: ha linhas desta matricula com id_cliente "
+            f"divergente ou nulo ({det}). Nada foi apagado. "
+            "Corrija o id_cliente dessas linhas antes de limpar.")})
+
+    # Apaga em todas as tabelas relacionadas (sempre id_cliente+id_empresa+matricula)
     resultados = {}
     for tbl in _LIMPEZA_TABELAS:
         try:
             supabase.table(tbl).delete() \
+                .eq("id_cliente", id_cliente) \
                 .eq("id_empresa", id_empresa) \
                 .eq("matricula", matricula).execute()
             resultados[tbl] = "ok"
@@ -10668,20 +10734,34 @@ def api_limpeza_executar():
     # tab_cad por ultimo (o cadastro principal)
     try:
         supabase.table("tab_cad").delete() \
+            .eq("id_cliente", id_cliente) \
             .eq("id_empresa", id_empresa) \
             .eq("matricula", matricula).execute()
         resultados["tab_cad"] = "ok"
     except Exception as e:
         resultados["tab_cad"] = f"erro: {e}"
 
-    # Registra no tab_log (auditoria — NAO apaga)
-    obs_log = (f"LIMPEZA: matricula {matricula} ({func_nome} CPF {func_cpf}) "
-               f"apagada de: " + ", ".join(
-                   f"{t}={r}" for t, r in resultados.items()))
+    # Registra no tab_log (auditoria — NAO apaga).
+    # matricula=0 de proposito: a matricula deixou de existir e pode ser
+    # reaproveitada por outro funcionario; vincular o log a ela apontaria
+    # para a pessoa errada. O numero fica no texto.
     try:
-        gravar_log("LIMPEZA", obs_log[:500], matricula=matricula)
+        _c = so_numeros(func_cpf)
+        cpf_fmt = f"{_c[:3]}.{_c[3:6]}.{_c[6:9]}-{_c[9:]}" if len(_c) == 11 else (func_cpf or "—")
+        # Sem a folha no texto: ela ja vai na coluna ano_mes do proprio log, e
+        # aqui colada em "apagada" dava a impressao de que a folha e que foi apagada.
+        obs_log = (f"LIMPEZA de funcionario: matricula {str(matricula).zfill(6)} — "
+                   f"{func_nome} — CPF {cpf_fmt} — admitido em "
+                   f"{_fmt_dt(str(_det.get('dtadm') or '').zfill(8))}.")
+        # Nome de tabela nao entra no log (o usuario nao tem como entender).
+        # A excecao e uma falha: ai a limpeza ficou pela metade e alguem
+        # precisa saber exatamente onde, para poder consertar.
+        erros = [f"{t} ({r})" for t, r in resultados.items() if r != "ok"]
+        if erros:
+            obs_log += " ATENCAO — falhou em: " + "; ".join(erros)
+        gravar_log("LIMPEZA", obs_log[:500], matricula=0)
     except Exception:
-        pass
+        pass  # o log nunca pode derrubar a resposta de uma limpeza ja feita
 
     return jsonify({
         "ok":         True,
@@ -29466,10 +29546,13 @@ def _calc_ferias_futuras(id_empresa, anomes):
         return 0
 
 
-def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm, titulo_esq=False):
+def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm,
+                   titulo_esq=False, data_label="Calculado em"):
     """Cabeçalho padrão: CNPJ/empresa (esq) | competência (centro) | data (dir) + título abaixo.
     page_width: largura útil da página (sem margens). Padrão 17cm = A4 retrato c/ margens 2cm.
-    titulo_esq=True alinha o título totalmente à esquerda (mesma margem da 1ª linha)."""
+    titulo_esq=True alinha o título totalmente à esquerda (mesma margem da 1ª linha).
+    data_label: rótulo antes da data/hora. "Calculado em" p/ relatórios de cálculo,
+    "Emitido em" p/ listagens (que só são emitidas, não calculadas)."""
     def xe(s):
         return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -29496,7 +29579,7 @@ def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm
         _nm = (_nm.rstrip()[:-3] if len(_nm) > 3 else _nm) + "..."
     hdr = Table(
         [
-            [Paragraph(f"{xe(cnpj_fmt)} — {xe(_nm)}", st_L), cel_comp, Paragraph(f"Calculado em {agora}", st_R)],
+            [Paragraph(f"{xe(cnpj_fmt)} — {xe(_nm)}", st_L), cel_comp, Paragraph(f"{data_label} {agora}", st_R)],
             [Paragraph(xe(titulo), st_T), "", ""],
         ],
         colWidths=[col_e, col_c, col_d])

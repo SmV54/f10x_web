@@ -499,11 +499,14 @@ const modulos = {
         bloqueioFolha: true,
         msgBloqueio: 'cadastros bloqueados. Reabra a folha para continuar.',
         secoes: [
+            // nav-fix: itens empilhados (quebraLinha) precisam de largura igual,
+            // senao a coluna fica com as bordas irregulares. Mesmo padrao da Rescisao.
             { nome: 'Funcionário', itens: [
-                { icone: '👤', nome: 'Incluir Funcionário',  href: '/cad_funcionario',                ok: true },
-                { icone: '✏️', nome: 'Alterar Funcionário',  href: '/cad_funcionario?modo=alteracao', ok: true },
-                { icone: '👨‍👩‍👧', nome: 'Dependentes',        href: '/select_funcionario?contexto=dep',    ok: true, quebraLinha: true },
-                { icone: '📄', nome: 'Ficha de Registro',    href: '/select_funcionario?contexto=ficha', ok: true, quebraLinha: true },
+                { icone: '👤', nome: 'Incluir Funcionário',  href: '/cad_funcionario',                   ok: true, classe: 'nav-fix' },
+                { icone: '✏️', nome: 'Alterar Funcionário',  href: '/cad_funcionario?modo=alteracao',    ok: true, classe: 'nav-fix' },
+                { icone: '👨‍👩‍👧', nome: 'Dependentes',        href: '/select_funcionario?contexto=dep',    ok: true, classe: 'nav-fix', quebraLinha: true },
+                { icone: '📄', nome: 'Ficha de Registro',    href: '/select_funcionario?contexto=ficha', ok: true, classe: 'nav-fix', quebraLinha: true },
+                { icone: '🧹', nome: 'Limpar Funcionário',   href: '/limpeza_funcionario',               ok: true, classe: 'nav-fix', quebraLinha: true },
             ]},
             { nome: 'Tabelas Auxiliares', itens: [
                 { icone: '💼', nome: 'Funções / Cargos',     href: '/cad_funcao',    ok: true },
@@ -656,12 +659,13 @@ const modulos = {
     relatorios: {
         titulo: 'Relatórios', icone: '🖨️',
         secoes: (() => {
+            // nav-fix: ver comentario na secao Funcionario (Cadastros).
             const secCadastros = { nome: 'Cadastros', itens: [
-                { icone: '👥', nome: 'Lista de Funcionários', href: '/rel_lista_funcionarios',              ok: true },
-                { icone: '💼', nome: 'Funções / Cargos',      href: '/relatorios_config?rel=funcoes',       ok: true },
-                { icone: '📑', nome: 'Rubricas (Verbas)',      href: '/relatorios_config?rel=verbas',        ok: true },
-                { icone: '👨‍👩‍👧', nome: 'Dependentes',         href: '/relatorios_config?rel=dependentes',   ok: true },
-                { icone: '📄', nome: 'Ficha de Registro',      href: '/select_funcionario?contexto=ficha',   ok: true, quebraLinha: true },
+                { icone: '👥', nome: 'Lista de Funcionários', href: '/rel_lista_funcionarios',              ok: true, classe: 'nav-fix' },
+                { icone: '💼', nome: 'Funções / Cargos',      href: '/relatorios_config?rel=funcoes',       ok: true, classe: 'nav-fix' },
+                { icone: '📑', nome: 'Rubricas (Verbas)',      href: '/relatorios_config?rel=verbas',        ok: true, classe: 'nav-fix' },
+                { icone: '👨‍👩‍👧', nome: 'Dependentes',         href: '/relatorios_config?rel=dependentes',   ok: true, classe: 'nav-fix' },
+                { icone: '📄', nome: 'Ficha de Registro',      href: '/select_funcionario?contexto=ficha',   ok: true, classe: 'nav-fix', quebraLinha: true },
             ]};
             const secEventos = { nome: 'Eventos', itens: [
                 { icone: '🏖️', nome: 'Listagem de Férias', href: '/relatorios_config?rel=ferias_func', ok: true },
@@ -759,9 +763,6 @@ const modulos = {
             { nome: 'Dados', itens: [
                 { icone: '💾', nome: 'Backup',         href: '#' },
                 { icone: '📤', nome: 'Exportar Dados', href: '#' },
-            ]},
-            { nome: 'Limpeza', itens: [
-                { icone: '🧹', nome: 'Limpar Funcionário', href: '/limpeza_funcionario', ok: true },
             ]}
         ]
     },

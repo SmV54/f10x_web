@@ -74,6 +74,8 @@ tbody td { padding: 4px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9;
    liberando espaço à direita para outras informações (ex.: badge Aviso Prévio) */
 thead th:first-child, tbody td.mat { width: 1%; white-space: nowrap; padding-right: 10px; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; }
+th.col-adm, td.col-adm { width: 1%; white-space: nowrap; text-align: center; }
+tbody td.col-adm { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #475569; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
@@ -178,14 +180,16 @@ tbody tr:hover { background: #f8fafc; }
             <thead>
                 <tr>
                     <th>Matrícula</th>
-                    <th>Nome</th>
+                    <th>Nome completo</th>
+                    <th class="col-adm">Admissão</th>
                 </tr>
             </thead>
             <tbody>
                 {% for f in funcs %}
                 <tr>
                     <td class="mat">{{ "%06d"|format(f.matricula) }}</td>
-                    <td>{{ f.nome_fmt }}{% if f.aviso_previo %}<span class="badge-aviso" title="Funcionário com aviso prévio registrado">Aviso Prévio{% if f.aviso_previo_data %} · {{ f.aviso_previo_data }}{% endif %}</span>{% endif %}</td>
+                    <td>{{ f.nome_fmt }}</td>
+                    <td class="col-adm">{{ f.dtadm_fmt }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
