@@ -7464,10 +7464,6 @@ def lead_petshop():
     Rota PÚBLICA de propósito — o visitante do anúncio não tem login."""
     data = request.get_json(silent=True) or request.form or {}
 
-    # honeypot anti-bot: campo oculto que humano não preenche
-    if (data.get("empresa_site") or "").strip():
-        return jsonify({"ok": True})  # finge sucesso e ignora o bot
-
     nome     = (data.get("nome") or "").strip()
     empresa  = (data.get("petshop") or data.get("empresa") or "").strip()
     whatsapp = so_numeros(data.get("whatsapp") or "")
