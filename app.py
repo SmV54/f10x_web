@@ -7445,30 +7445,51 @@ def lead_petshop():
     tel   = normalizar_telefone(whatsapp)
     agora = datetime.now().isoformat(timespec="seconds")
 
-    # dispara o WhatsApp de boas-vindas (a pessoa autorizou no formulário)
-    zap_ok, zap_det = _enviar_whatsapp_texto(tel, _msg_boasvindas_lead(nome, empresa))
+    lead = {
+        "nicho": "petshop",
+        "nome": nome,
+        "empresa": empresa,
+        "whatsapp": tel,
+        "email": email,
+        "optin": optin,
+        "origem": "landing_petshop",
+        "status": "novo",
+        "whatsapp_ok": False,
+        "datahora": agora,
+        "user_agent": (request.headers.get("User-Agent") or "")[:300],
+    }
 
-    # grava o lead (não perde o contato mesmo se a Z-API falhar)
-    try:
-        supabase.table("tab_lead").insert({
-            "nicho": "petshop",
-            "nome": nome,
-            "empresa": empresa,
-            "whatsapp": tel,
-            "email": email,
-            "optin": optin,
-            "origem": "landing_petshop",
-            "status": "novo",
-            "whatsapp_ok": zap_ok,
-            "whatsapp_detalhe": (zap_det or "")[:300],
-            "datahora": agora,
-            "user_agent": (request.headers.get("User-Agent") or "")[:300],
-        }).execute()
-    except Exception as e:
-        # se a tabela ainda não existe, não perde o lead: registra no log do servidor
-        print(f"[LEAD/petshop] ERRO ao gravar no Supabase (a tabela tab_lead existe?): {e}")
-        print(f"[LEAD/petshop] Lead recebido -> nome={nome} | empresa={empresa} | "
-              f"tel={tel} | email={email} | whatsapp_ok={zap_ok}")
+    # 1) GRAVA O LEAD PRIMEIRO — é a parte crítica. Faz a gravação antes do WhatsApp
+    #    para não deixar a conexão do Supabase ociosa durante um envio lento (era o que
+    #    fazia o insert falhar em silêncio). Tenta 2x; se ainda falhar, guarda em arquivo.
+    lead_id = None
+    for tentativa in (1, 2):
+        try:
+            resp = supabase.table("tab_lead").insert(lead).execute()
+            lead_id = (resp.data or [{}])[0].get("id")
+            break
+        except Exception as e:
+            print(f"[LEAD/petshop] falha ao gravar (tentativa {tentativa}): {e}")
+    if lead_id is None:
+        # fallback: nunca perde o contato, mesmo que o Supabase esteja fora
+        try:
+            fb = os.path.join(os.path.dirname(__file__), "leads_fallback.csv")
+            with open(fb, "a", encoding="utf-8") as f:
+                f.write(f"{agora}\t{nome}\t{empresa}\t{tel}\t{email}\n")
+            print(f"[LEAD/petshop] lead salvo no fallback CSV: {nome} | {tel}")
+        except Exception as e:
+            print(f"[LEAD/petshop] ERRO ate no fallback: {e} | {nome}|{tel}|{email}")
+
+    # 2) só então dispara o WhatsApp de boas-vindas (secundário) e marca o resultado
+    zap_ok, zap_det = _enviar_whatsapp_texto(tel, _msg_boasvindas_lead(nome, empresa))
+    if lead_id is not None:
+        try:
+            supabase.table("tab_lead").update({
+                "whatsapp_ok": zap_ok,
+                "whatsapp_detalhe": (zap_det or "")[:300],
+            }).eq("id", lead_id).execute()
+        except Exception as e:
+            print(f"[LEAD/petshop] nao atualizou whatsapp_ok: {e}")
 
     return jsonify({"ok": True})
 
