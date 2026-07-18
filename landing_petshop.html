@@ -453,8 +453,10 @@
 
         <div class="form-ok">
           <div class="big"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></div>
-          <h3>Recebemos seu cadastro! 🐾</h3>
-          <p>Em instantes você recebe uma mensagem no WhatsApp para ativar seu teste grátis. Fique de olho no celular.</p>
+          <h3>Show! Falta só 1 passo 🐾</h3>
+          <p>Recebemos seus dados e já te mandamos um WhatsApp. Agora é só criar seu acesso para liberar o teste grátis de julho — leva menos de 1 minuto.</p>
+          <a id="btnCadastro" class="btn btn-primary btn-lg" href="/cadastro" style="margin-top:20px; text-decoration:none;">Criar meu acesso agora →</a>
+          <p class="lgpd" style="margin-top:12px">Prefere fazer depois? Sem problema — o link também foi pro seu WhatsApp.</p>
         </div>
       </form>
     </div>
@@ -514,6 +516,14 @@
       .then(function(r){ return r.json().catch(function(){ return {ok:r.ok}; }); })
       .then(function(res){
         if(res && res.ok){
+          // pré-preenche o cadastro com o que a pessoa já digitou (só falta o CPF lá)
+          var qs = new URLSearchParams({
+            nome: payload.nome || '',
+            cel: payload.whatsapp || '',
+            email: payload.email || ''
+          });
+          var b = document.getElementById('btnCadastro');
+          if(b){ b.href = '/cadastro?' + qs.toString(); }
           f.classList.add('sent');
           document.getElementById('cadastro').scrollIntoView({behavior:'smooth', block:'center'});
         } else {

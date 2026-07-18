@@ -749,6 +749,22 @@ function registrarEventos() {
 
 registrarEventos();
 atualizarBotaoEnviar(false);
+
+// Pré-preenchimento vindo da landing (/petshop): nome, cel e email na querystring.
+// A pessoa só precisa completar o CPF (e o código de verificação).
+function prefillDaLanding() {
+    const p = new URLSearchParams(window.location.search);
+    const nome  = p.get("nome");
+    const cel   = p.get("cel");
+    const email = p.get("email");
+    if (!nome && !cel && !email) return;
+    if (nome)  { el("nome").value = nome; normalizarNome(); }
+    if (cel)   { el("celular").value = cel; formatarCelular(); }
+    if (email) { el("email").value = email; }
+    el("cpf").focus();          // leva o cursor direto pro campo que falta
+    prevalidarSilencioso();     // valida o que já veio preenchido
+}
+prefillDaLanding();
 </script>
 
 <script src="/static/f10_dialog.js"></script>

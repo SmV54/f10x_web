@@ -7405,8 +7405,8 @@ def _msg_boasvindas_lead(nome, empresa):
     return (
         f"Olá {primeiro}! 🐾\n\n"
         f"Recebemos o seu cadastro{loja_txt} no Folha10-Simples — que bom ter você por aqui!\n\n"
-        f"Seu teste grátis de julho/2026 já está liberado. Para começar, é só acessar:\n"
-        f"www.folha10-simples.com.br\n\n"
+        f"Falta só criar seu acesso para liberar o teste grátis de julho/2026 — leva menos de 1 minuto:\n"
+        f"www.folha10-simples.com.br/cadastro\n\n"
         f"Qualquer dúvida, pode responder esta mensagem que a gente te ajuda.\n"
         f"Equipe Folha10-Simples"
     )
