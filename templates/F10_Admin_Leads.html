@@ -58,14 +58,14 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--l
 .tabela-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;
     box-shadow:0 2px 10px rgba(16,24,38,.06)}
 .scroll{overflow-x:auto}
-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:820px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:1000px}
 thead th{background:#f8fafc;text-align:left;padding:12px 14px;font-size:11px;font-weight:700;
     text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid var(--border);white-space:nowrap}
 tbody td{padding:12px 14px;border-bottom:1px solid #eef2f7;vertical-align:middle}
 tbody tr:hover{background:#f8fbff}
 tbody tr:last-child td{border-bottom:none}
-.nome{font-weight:600;color:var(--text-head)}
-.empresa{color:var(--text-sub)}
+.nome{font-weight:600;color:var(--text-head);white-space:nowrap;min-width:180px}
+.empresa{color:var(--text-sub);white-space:nowrap;min-width:180px}
 .data{font-family:var(--mono);font-size:12px;color:#64748b;white-space:nowrap}
 .email{color:#475569}
 .badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
@@ -75,6 +75,12 @@ tbody tr:last-child td{border-bottom:none}
 .btn-zap{display:inline-flex;align-items:center;gap:6px;background:#25d366;color:#fff;text-decoration:none;
     font-weight:700;font-size:12.5px;padding:7px 13px;border-radius:8px;white-space:nowrap;transition:.15s}
 .btn-zap:hover{background:#1eb355}
+.acoes{display:flex;gap:8px;align-items:center;white-space:nowrap}
+.btn-del{display:inline-flex;align-items:center;gap:5px;background:#fff;color:#b91c1c;
+    border:1px solid #f3c2c2;font-family:var(--sans);font-weight:700;font-size:12.5px;
+    padding:6px 11px;border-radius:8px;cursor:pointer;transition:.15s}
+.btn-del:hover{background:#fdecec;border-color:#e88}
+.btn-del:disabled{opacity:.5;cursor:default}
 
 /* vazio */
 .vazio{padding:48px 28px;text-align:center;color:#64748b}
@@ -120,12 +126,12 @@ tbody tr:last-child td{border-bottom:none}
             <thead>
                 <tr>
                     <th>Data</th><th>Nome</th><th>Pet-shop</th><th>WhatsApp</th>
-                    <th>E-mail</th><th>Nicho</th><th>Status</th><th></th>
+                    <th>E-mail</th><th>Nicho</th><th>Status</th><th>Ações</th>
                 </tr>
             </thead>
             <tbody>
             {% for L in leads %}
-                <tr>
+                <tr data-id="{{ L.id }}">
                     <td class="data">{{ L.datahora_fmt }}</td>
                     <td class="nome">{{ L.nome }}</td>
                     <td class="empresa">{{ L.empresa }}</td>
@@ -136,7 +142,10 @@ tbody tr:last-child td{border-bottom:none}
                         {% if L.whatsapp_ok %}<span class="badge ok">✓ enviado</span>
                         {% else %}<span class="badge no">✕ falhou</span>{% endif %}
                     </td>
-                    <td><a class="btn-zap" href="https://wa.me/{{ L.whatsapp }}" target="_blank" rel="noopener">💬 WhatsApp</a></td>
+                    <td class="acoes">
+                        <a class="btn-zap" href="https://wa.me/{{ L.whatsapp }}" target="_blank" rel="noopener">💬 WhatsApp</a>
+                        <button class="btn-del" onclick="excluirLead(this, {{ L.id }})" title="Excluir este lead">🗑️ Excluir</button>
+                    </td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -176,6 +185,39 @@ function filtrar(){
     linhas.forEach(function(tr){
         tr.style.display = tr.textContent.toLowerCase().indexOf(q) > -1 ? '' : 'none';
     });
+}
+
+function excluirLead(btn, id){
+    var tr = btn.closest('tr');
+    var celNome = tr ? tr.querySelector('.nome') : null;
+    var nome = celNome ? celNome.textContent : ('#' + id);
+    if(!confirm('Excluir o lead "' + nome + '"?\n\nEsta ação não pode ser desfeita.')) return;
+    btn.disabled = true; btn.textContent = 'Excluindo...';
+    fetch('/api/admin_leads/excluir', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({id: id})
+    })
+    .then(function(r){ return r.json().catch(function(){ return {ok:false}; }); })
+    .then(function(res){
+        if(res && res.ok){
+            tr.style.transition = 'opacity .3s';
+            tr.style.opacity = '0';
+            setTimeout(function(){ tr.remove(); atualizarTotal(); }, 300);
+        } else {
+            btn.disabled = false; btn.textContent = '🗑️ Excluir';
+            alert((res && res.msg) || 'Não foi possível excluir. Tente de novo.');
+        }
+    })
+    .catch(function(){
+        btn.disabled = false; btn.textContent = '🗑️ Excluir';
+        alert('Sem conexão no momento. Tente de novo.');
+    });
+}
+
+function atualizarTotal(){
+    var n = document.querySelectorAll('#tabela tbody tr').length;
+    var el = document.querySelector('.stat .n');   // 1º stat = "Leads captados"
+    if(el) el.textContent = n;
 }
 </script>
 

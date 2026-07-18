@@ -38268,6 +38268,29 @@ def admin_leads():
     )
 
 
+@app.route("/api/admin_leads/excluir", methods=["POST"])
+def api_admin_leads_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return jsonify({"ok": False}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        lead_id = int(data.get("id"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "id inválido"}), 400
+    try:
+        key = os.getenv("SUPABASE_SERVICE_KEY") or SUPABASE_KEY
+        headers = {"apikey": key, "Authorization": f"Bearer {key}"}
+        r = requests.delete(f"{SUPABASE_URL}/rest/v1/tab_lead?id=eq.{lead_id}",
+                            headers=headers, timeout=15)
+        if r.status_code in (200, 204):
+            return jsonify({"ok": True})
+        return jsonify({"ok": False, "msg": f"HTTP {r.status_code}: {r.text[:150]}"}), 500
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)}), 500
+
+
 # =========================================================
 # ADMINISTRADOR — Visualizar XML do eSocial (Supabase Storage)
 # =========================================================
