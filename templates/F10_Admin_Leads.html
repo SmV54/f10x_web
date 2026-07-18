@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Leads</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+    --navy:#a0d9be; --navy-line:#70c4a0; --accent:#2a7de1;
+    --coral:#f26b4e; --green:#16a34a;
+    --text-head:#1e293b; --text-sub:#374151;
+    --bg:#f0f2f6; --surface:#ffffff; --border:#dde3ec; --label:#374151;
+    --mono:'IBM Plex Mono', monospace; --sans:'IBM Plex Sans', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--label)}
+
+/* topo padrão admin */
+.topo{background:var(--navy);border-bottom:1px solid var(--navy-line);padding:0 28px;
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:0 24px;
+    min-height:72px;position:sticky;top:0;z-index:100}
+.badge-admin{display:inline-flex;align-items:center;gap:9px;
+    background:linear-gradient(135deg,#14532d 0%,#166534 50%,#15803d 100%);
+    border:1.5px solid #4ade80;border-radius:10px;padding:8px 20px;
+    font-family:var(--mono);font-size:17px;font-weight:700;color:#dcfce7;
+    letter-spacing:.14em;text-transform:uppercase;
+    box-shadow:0 0 0 3px rgba(74,222,128,.2),0 3px 10px rgba(0,0,0,.35);white-space:nowrap}
+.topo-centro{text-align:center}
+.topo-titulo{font-size:16px;font-weight:600;color:var(--text-head)}
+.topo-versao{font-size:10px;font-weight:700;color:#374151}
+.btn-voltar{background:transparent;border:1px solid var(--navy-line);color:var(--text-sub);
+    font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);
+    transition:.15s;white-space:nowrap}
+.btn-voltar:hover{border-color:var(--accent);color:var(--text-head)}
+
+.wrap{max-width:1180px;margin:0 auto;padding:22px 28px 60px}
+
+/* stats */
+.stats{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:14px 20px;min-width:150px;box-shadow:0 2px 6px rgba(16,24,38,.05)}
+.stat .n{font-size:26px;font-weight:700;color:var(--text-head);font-variant-numeric:tabular-nums}
+.stat .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-top:2px}
+.stat.coral{border-color:var(--coral)} .stat.coral .n{color:var(--coral)}
+.stat.green{border-color:var(--green)} .stat.green .n{color:var(--green)}
+
+/* busca */
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.busca{position:relative;flex:1;min-width:220px;max-width:380px}
+.busca input{width:100%;padding:9px 12px 9px 34px;border-radius:9px;border:1px solid var(--border);
+    font-size:14px;font-family:var(--sans);background:var(--surface);color:var(--label);outline:none;transition:.15s}
+.busca input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(42,125,225,.12)}
+.busca .ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#94a3b8;pointer-events:none}
+.hint{font-size:12px;color:#64748b}
+
+/* tabela */
+.tabela-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;
+    box-shadow:0 2px 10px rgba(16,24,38,.06)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:820px}
+thead th{background:#f8fafc;text-align:left;padding:12px 14px;font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.05em;color:#64748b;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody td{padding:12px 14px;border-bottom:1px solid #eef2f7;vertical-align:middle}
+tbody tr:hover{background:#f8fbff}
+tbody tr:last-child td{border-bottom:none}
+.nome{font-weight:600;color:var(--text-head)}
+.empresa{color:var(--text-sub)}
+.data{font-family:var(--mono);font-size:12px;color:#64748b;white-space:nowrap}
+.email{color:#475569}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+.badge.ok{background:#e7f6ec;color:#166534}
+.badge.no{background:#fdece9;color:#b91c1c}
+.badge.nicho{background:#eef4ff;color:#1d4ed8;font-family:var(--mono);letter-spacing:.03em}
+.btn-zap{display:inline-flex;align-items:center;gap:6px;background:#25d366;color:#fff;text-decoration:none;
+    font-weight:700;font-size:12.5px;padding:7px 13px;border-radius:8px;white-space:nowrap;transition:.15s}
+.btn-zap:hover{background:#1eb355}
+
+/* vazio */
+.vazio{padding:48px 28px;text-align:center;color:#64748b}
+.vazio h3{color:var(--text-head);font-size:18px;margin-bottom:8px}
+.vazio code{background:#0f172a;color:#e2e8f0;display:block;text-align:left;padding:16px 18px;border-radius:10px;
+    font-family:var(--mono);font-size:12.5px;line-height:1.6;margin-top:16px;overflow-x:auto;white-space:pre}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq"><span class="badge-admin">🐾 LEADS</span></div>
+    <div class="topo-centro"><div class="topo-titulo">Leads Pet-Shop</div></div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="wrap">
+
+    <div class="stats">
+        <div class="stat"><div class="n">{{ total }}</div><div class="l">Leads captados</div></div>
+        <div class="stat green"><div class="n">{{ zap_ok }}</div><div class="l">WhatsApp enviado</div></div>
+        <div class="stat coral"><div class="n">{{ total - zap_ok }}</div><div class="l">Falha no envio</div></div>
+    </div>
+
+    {% if leads %}
+    <div class="toolbar">
+        <div class="busca">
+            <span class="ic">🔍</span>
+            <input id="busca" type="text" placeholder="Buscar por nome, pet-shop, WhatsApp ou e-mail..." oninput="filtrar()">
+        </div>
+        <span class="hint">Mostrando os {{ total }} mais recentes. A landing está em <b>/petshop</b>.</span>
+    </div>
+
+    <div class="tabela-wrap">
+      <div class="scroll">
+        <table id="tabela">
+            <thead>
+                <tr>
+                    <th>Data</th><th>Nome</th><th>Pet-shop</th><th>WhatsApp</th>
+                    <th>E-mail</th><th>Nicho</th><th>Status</th><th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for L in leads %}
+                <tr>
+                    <td class="data">{{ L.datahora_fmt }}</td>
+                    <td class="nome">{{ L.nome }}</td>
+                    <td class="empresa">{{ L.empresa }}</td>
+                    <td class="data">{{ L.whatsapp }}</td>
+                    <td class="email">{{ L.email }}</td>
+                    <td><span class="badge nicho">{{ L.nicho }}</span></td>
+                    <td>
+                        {% if L.whatsapp_ok %}<span class="badge ok">✓ enviado</span>
+                        {% else %}<span class="badge no">✕ falhou</span>{% endif %}
+                    </td>
+                    <td><a class="btn-zap" href="https://wa.me/{{ L.whatsapp }}" target="_blank" rel="noopener">💬 WhatsApp</a></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+      </div>
+    </div>
+    {% else %}
+    <div class="tabela-wrap">
+        <div class="vazio">
+            <h3>Nenhum lead ainda 🐾</h3>
+            <p>Assim que alguém preencher o formulário da landing (<b>/petshop</b>), aparece aqui.</p>
+            <p style="margin-top:14px">Se você <b>ainda não criou a tabela</b> no Supabase, rode este SQL no editor SQL:</p>
+            <code>create table if not exists tab_lead (
+  id               bigint generated always as identity primary key,
+  nicho            text,
+  nome             text,
+  empresa          text,
+  whatsapp         text,
+  email            text,
+  optin            boolean default false,
+  origem           text,
+  status           text default 'novo',
+  whatsapp_ok      boolean default false,
+  whatsapp_detalhe text,
+  user_agent       text,
+  datahora         timestamptz default now()
+);</code>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function filtrar(){
+    var q = (document.getElementById('busca').value || '').toLowerCase();
+    var linhas = document.querySelectorAll('#tabela tbody tr');
+    linhas.forEach(function(tr){
+        tr.style.display = tr.textContent.toLowerCase().indexOf(q) > -1 ? '' : 'none';
+    });
+}
+</script>
+
+</body>
+</html>

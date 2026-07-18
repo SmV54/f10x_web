@@ -7395,6 +7395,84 @@ def cadastro():
     return render_template("Cadastro_Cliente.html", versao=versao)
 
 # =========================================================
+# LANDING PET-SHOP — página pública de captação + recebimento de leads
+# (destino de posts/anúncios; o gerenciamento dos leads fica no ADMIN)
+# =========================================================
+def _msg_boasvindas_lead(nome, empresa):
+    primeiro = (nome or "").strip().split(" ")[0] if (nome or "").strip() else "Olá"
+    loja = (empresa or "").strip()
+    loja_txt = f" do {loja}" if loja else ""
+    return (
+        f"Olá {primeiro}! 🐾\n\n"
+        f"Recebemos o seu cadastro{loja_txt} no Folha10-Simples — que bom ter você por aqui!\n\n"
+        f"Seu teste grátis de julho/2026 já está liberado. Para começar, é só acessar:\n"
+        f"www.folha10-simples.com.br\n\n"
+        f"Qualquer dúvida, pode responder esta mensagem que a gente te ajuda.\n"
+        f"Equipe Folha10-Simples"
+    )
+
+
+@app.route("/petshop")
+def landing_petshop():
+    """Landing page pública de captação (nicho pet-shop). Serve o HTML pronto.
+    É o link para colar no Status/Instagram/grupos ou usar como destino de anúncio."""
+    caminho = os.path.join(os.path.dirname(__file__), "landing_petshop.html")
+    return send_file(caminho)
+
+
+@app.route("/lead_petshop", methods=["POST"])
+def lead_petshop():
+    """Recebe o formulário da landing: valida, dispara o WhatsApp de boas-vindas
+    (opt-in já dado no formulário) e grava o lead em tab_lead para o admin ver.
+    Rota PÚBLICA de propósito — o visitante do anúncio não tem login."""
+    data = request.get_json(silent=True) or request.form or {}
+
+    # honeypot anti-bot: campo oculto que humano não preenche
+    if (data.get("empresa_site") or "").strip():
+        return jsonify({"ok": True})  # finge sucesso e ignora o bot
+
+    nome     = (data.get("nome") or "").strip()
+    empresa  = (data.get("petshop") or data.get("empresa") or "").strip()
+    whatsapp = so_numeros(data.get("whatsapp") or "")
+    email    = (data.get("email") or "").strip()
+    optin    = bool(data.get("optin"))
+
+    if not nome or not empresa or len(whatsapp) < 10 or "@" not in email:
+        return jsonify({"ok": False, "msg": "Preencha nome, pet-shop, WhatsApp e e-mail válidos."}), 400
+    if not optin:
+        return jsonify({"ok": False, "msg": "É preciso autorizar o contato para continuar."}), 400
+
+    tel   = normalizar_telefone(whatsapp)
+    agora = datetime.now().isoformat(timespec="seconds")
+
+    # dispara o WhatsApp de boas-vindas (a pessoa autorizou no formulário)
+    zap_ok, zap_det = _enviar_whatsapp_texto(tel, _msg_boasvindas_lead(nome, empresa))
+
+    # grava o lead (não perde o contato mesmo se a Z-API falhar)
+    try:
+        supabase.table("tab_lead").insert({
+            "nicho": "petshop",
+            "nome": nome,
+            "empresa": empresa,
+            "whatsapp": tel,
+            "email": email,
+            "optin": optin,
+            "origem": "landing_petshop",
+            "status": "novo",
+            "whatsapp_ok": zap_ok,
+            "whatsapp_detalhe": (zap_det or "")[:300],
+            "datahora": agora,
+            "user_agent": (request.headers.get("User-Agent") or "")[:300],
+        }).execute()
+    except Exception as e:
+        # se a tabela ainda não existe, não perde o lead: registra no log do servidor
+        print(f"[LEAD/petshop] ERRO ao gravar no Supabase (a tabela tab_lead existe?): {e}")
+        print(f"[LEAD/petshop] Lead recebido -> nome={nome} | empresa={empresa} | "
+              f"tel={tel} | email={email} | whatsapp_ok={zap_ok}")
+
+    return jsonify({"ok": True})
+
+# =========================================================
 # CADASTRO - API PREVALIDAR
 # =========================================================
 @app.route("/prevalidar", methods=["POST"])
@@ -38106,6 +38184,39 @@ def api_admin_clientes_empresas(id_cliente):
         return jsonify({"ok": True, "empresas": empresas})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})
+
+
+# =========================================================
+# ADMINISTRADOR — Leads captados pelas landings (pet-shop e futuros nichos)
+# =========================================================
+@app.route("/admin_leads")
+def admin_leads():
+    if not session.get("logado"):
+        return redirect("/")
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return redirect("/menu")
+    try:
+        leads = (supabase.table("tab_lead")
+                 .select("id, nicho, nome, empresa, whatsapp, email, origem, "
+                         "status, whatsapp_ok, datahora")
+                 .order("id", desc=True)
+                 .limit(500)
+                 .execute().data or [])
+    except Exception as e:
+        print(f"[ADMIN/leads] erro ao ler tab_lead (a tabela existe?): {e}")
+        leads = []
+    total = len(leads)
+    zap_ok = sum(1 for L in leads if L.get("whatsapp_ok"))
+    for L in leads:
+        L["datahora_fmt"] = _fmt_datahora(L.get("datahora"))
+    return render_template(
+        "F10_Admin_Leads.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        leads=leads,
+        total=total,
+        zap_ok=zap_ok,
+    )
 
 
 # =========================================================

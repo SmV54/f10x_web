@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folha10-Simples · Folha de pagamento para pet-shops</title>
+<meta name="description" content="Folha de pagamento, eSocial e holerite para pet-shops — banhistas, tosadores, veterinários e atendentes. 100% na web. Teste grátis em julho de 2026.">
+<style>
+  :root{
+    --ink:#101826; --text:#334155; --muted:#64748b; --faint:#94a3b8;
+    --line:#e6ebf2; --line-strong:#d3dbe6;
+    --bg:#ffffff; --surface:#ffffff; --surface-2:#f6f8fb; --surface-3:#eef2f8;
+    --blue:#2a7de1; --blue-ink:#1f63b8;
+    --coral:#f26b4e; --coral-ink:#d5502f; --coral-soft:#fff1ec;
+    --green:#16a34a; --green-soft:#e7f6ec;
+    --shadow: 0 1px 2px rgba(16,24,38,.04), 0 8px 28px -12px rgba(16,24,38,.16);
+    --shadow-lg: 0 30px 60px -28px rgba(16,24,38,.32);
+    --r: 16px; --r-sm: 11px;
+    --maxw: 1120px;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#f1f5f9; --text:#c3ccd9; --muted:#93a1b5; --faint:#6b7a91;
+      --line:#222f42; --line-strong:#2c3a50;
+      --bg:#0c1220; --surface:#111a2b; --surface-2:#0f1728; --surface-3:#16223a;
+      --blue:#549bf0; --blue-ink:#7db4f4;
+      --coral:#fb8563; --coral-ink:#fda183; --coral-soft:#241612;
+      --green:#3ec77e; --green-soft:#12241a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 34px -14px rgba(0,0,0,.6);
+      --shadow-lg: 0 34px 70px -30px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="light"]{
+    --ink:#101826; --text:#334155; --muted:#64748b; --faint:#94a3b8;
+    --line:#e6ebf2; --line-strong:#d3dbe6;
+    --bg:#ffffff; --surface:#ffffff; --surface-2:#f6f8fb; --surface-3:#eef2f8;
+    --blue:#2a7de1; --blue-ink:#1f63b8;
+    --coral:#f26b4e; --coral-ink:#d5502f; --coral-soft:#fff1ec;
+    --green:#16a34a; --green-soft:#e7f6ec;
+  }
+  :root[data-theme="dark"]{
+    --ink:#f1f5f9; --text:#c3ccd9; --muted:#93a1b5; --faint:#6b7a91;
+    --line:#222f42; --line-strong:#2c3a50;
+    --bg:#0c1220; --surface:#111a2b; --surface-2:#0f1728; --surface-3:#16223a;
+    --blue:#549bf0; --blue-ink:#7db4f4;
+    --coral:#fb8563; --coral-ink:#fda183; --coral-soft:#241612;
+    --green:#3ec77e; --green-soft:#12241a;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans); font-size:17px; line-height:1.6;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  img{max-width:100%}
+  a{color:var(--blue); text-decoration:none}
+  h1,h2,h3{color:var(--ink); margin:0; line-height:1.1; letter-spacing:-.02em; text-wrap:balance}
+  p{margin:0}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .eyebrow{
+    font-size:12.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--coral-ink); display:inline-flex; align-items:center; gap:8px;
+  }
+  .paw{width:1em; height:1em; flex:none; fill:currentColor}
+
+  /* ---------- top bar ---------- */
+  header.bar{
+    position:sticky; top:0; z-index:50;
+    background:color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter:saturate(150%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar-inner{display:flex; align-items:center; justify-content:space-between; height:64px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:800; color:var(--ink); letter-spacing:-.02em; font-size:18px}
+  .brand .mark{
+    width:34px; height:34px; border-radius:10px; flex:none;
+    background:linear-gradient(135deg, var(--blue), var(--blue-ink));
+    display:grid; place-items:center; color:#fff; box-shadow:var(--shadow);
+  }
+  .brand .mark svg{width:19px; height:19px; fill:#fff}
+  .brand small{font-weight:600; color:var(--coral-ink); font-size:12px; letter-spacing:.04em; margin-left:-2px}
+  .bar .cta-mini{display:none}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:9px;
+    font-family:inherit; font-size:16px; font-weight:700; letter-spacing:-.01em;
+    padding:14px 22px; border-radius:12px; border:1px solid transparent; cursor:pointer;
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease; white-space:nowrap;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--coral); color:#fff; box-shadow:0 10px 24px -12px var(--coral)}
+  .btn-primary:hover{background:var(--coral-ink)}
+  .btn-ghost{background:transparent; color:var(--ink); border-color:var(--line-strong)}
+  .btn-ghost:hover{border-color:var(--blue); color:var(--blue)}
+  .btn-lg{padding:17px 30px; font-size:17.5px}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative; overflow:hidden}
+  .hero::before{
+    content:""; position:absolute; inset:0; z-index:-1;
+    background:
+      radial-gradient(60% 55% at 88% 8%, color-mix(in srgb, var(--coral) 15%, transparent), transparent 70%),
+      radial-gradient(55% 50% at 6% 92%, color-mix(in srgb, var(--blue) 13%, transparent), transparent 72%);
+  }
+  .hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:56px; align-items:center; padding:72px 0 84px}
+  .hero h1{font-size:clamp(34px, 5vw, 56px); font-weight:850; margin:18px 0 20px}
+  .hero h1 .accent{color:var(--coral)}
+  .hero .lead{font-size:clamp(17px,1.6vw,20px); color:var(--text); max-width:33ch}
+  .hero-cta{display:flex; flex-wrap:wrap; gap:14px; margin:30px 0 18px}
+  .trust{display:flex; align-items:center; gap:9px; color:var(--muted); font-size:15px; font-weight:600}
+  .trust svg{width:18px; height:18px; fill:var(--green); flex:none}
+
+  /* holerite mock */
+  .payslip{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+    box-shadow:var(--shadow-lg); overflow:hidden; position:relative;
+  }
+  .payslip .ps-head{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:16px 20px; background:linear-gradient(135deg, var(--blue), var(--blue-ink)); color:#fff;
+  }
+  .payslip .ps-head .co{display:flex; align-items:center; gap:11px; font-weight:800; letter-spacing:-.01em}
+  .payslip .ps-head .co .av{width:34px;height:34px;border-radius:9px;background:rgba(255,255,255,.18);display:grid;place-items:center}
+  .payslip .ps-head .co .av svg{width:19px;height:19px;fill:#fff}
+  .payslip .ps-head .tag{font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; opacity:.85}
+  .ps-emp{padding:15px 20px 6px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px dashed var(--line-strong)}
+  .ps-emp .n{font-weight:800; color:var(--ink); font-size:16px}
+  .ps-emp .r{font-size:13px; color:var(--muted)}
+  .ps-rows{padding:6px 20px 4px}
+  .ps-row{display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); font-size:14.5px}
+  .ps-row .d{color:var(--text)}
+  .ps-row .v{font-variant-numeric:tabular-nums; font-weight:700; color:var(--ink)}
+  .ps-row .v.neg{color:var(--coral-ink); font-weight:600}
+  .ps-row .v.pos{color:var(--green)}
+  .ps-total{display:flex; align-items:center; justify-content:space-between; padding:15px 20px; background:var(--surface-2); border-top:1px solid var(--line)}
+  .ps-total .d{font-weight:700; color:var(--ink)}
+  .ps-total .v{font-variant-numeric:tabular-nums; font-weight:850; color:var(--ink); font-size:22px; letter-spacing:-.02em}
+  .ps-chip{
+    position:absolute; right:16px; bottom:-14px; background:var(--green); color:#fff;
+    font-size:13px; font-weight:700; padding:9px 14px; border-radius:999px;
+    display:flex; align-items:center; gap:8px; box-shadow:0 12px 24px -10px var(--green);
+  }
+  .ps-chip svg{width:16px;height:16px;fill:#fff}
+
+  /* ---------- generic section ---------- */
+  section{padding:76px 0}
+  .sec-head{max-width:56ch; margin-bottom:44px}
+  .sec-head h2{font-size:clamp(26px,3.4vw,38px); font-weight:800; margin:14px 0 12px}
+  .sec-head p{font-size:18px; color:var(--muted)}
+  .band-soft{background:var(--surface-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+
+  /* pain cards */
+  .cards{display:grid; grid-template-columns:repeat(2,1fr); gap:20px}
+  .card{
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+    padding:26px; box-shadow:var(--shadow); transition:transform .18s ease, box-shadow .2s ease;
+  }
+  .card:hover{transform:translateY(-3px); box-shadow:var(--shadow-lg)}
+  .card .ic{
+    width:46px; height:46px; border-radius:12px; display:grid; place-items:center; margin-bottom:16px;
+    background:var(--coral-soft); color:var(--coral-ink);
+  }
+  .card .ic svg{width:24px; height:24px; fill:currentColor}
+  .card h3{font-size:19px; font-weight:800; margin-bottom:8px}
+  .card p{color:var(--muted); font-size:15.5px}
+
+  /* steps */
+  .steps{display:grid; grid-template-columns:repeat(3,1fr); gap:24px; counter-reset:step}
+  .step{position:relative; padding-top:8px}
+  .step .num{
+    counter-increment:step; font-variant-numeric:tabular-nums;
+    width:42px; height:42px; border-radius:11px; display:grid; place-items:center;
+    font-weight:850; font-size:19px; color:#fff; background:linear-gradient(135deg,var(--blue),var(--blue-ink));
+    box-shadow:var(--shadow); margin-bottom:16px;
+  }
+  .step .num::before{content:counter(step)}
+  .step h3{font-size:18px; font-weight:800; margin-bottom:7px}
+  .step p{color:var(--muted); font-size:15.5px}
+
+  /* feature list */
+  .feats{display:grid; grid-template-columns:repeat(3,1fr); gap:16px 28px}
+  .feat{display:flex; gap:13px; align-items:flex-start; padding:14px 0; border-top:1px solid var(--line)}
+  .feat .ck{width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;background:var(--green-soft);color:var(--green)}
+  .feat .ck svg{width:15px;height:15px;fill:currentColor}
+  .feat b{color:var(--ink); font-weight:700; display:block; font-size:15.5px}
+  .feat span{color:var(--muted); font-size:14px}
+
+  /* offer band */
+  .offer{background:linear-gradient(135deg, var(--coral), var(--coral-ink)); color:#fff; border-radius:24px; padding:52px; position:relative; overflow:hidden; box-shadow:var(--shadow-lg)}
+  .offer::after{content:""; position:absolute; right:-40px; top:-40px; width:260px; height:260px; border-radius:50%; background:rgba(255,255,255,.10)}
+  .offer .eyebrow{color:rgba(255,255,255,.85)}
+  .offer h2{color:#fff; font-size:clamp(26px,3.6vw,40px); font-weight:850; margin:14px 0 12px; max-width:20ch}
+  .offer p{color:rgba(255,255,255,.92); font-size:18px; max-width:52ch; margin-bottom:26px}
+  .offer .btn-primary{background:#fff; color:var(--coral-ink); box-shadow:0 14px 30px -12px rgba(0,0,0,.4)}
+  .offer .btn-primary:hover{background:#fff5f2}
+
+  /* form */
+  .signup{display:grid; grid-template-columns:.9fr 1.1fr; gap:48px; align-items:start}
+  .signup .pitch h2{font-size:clamp(26px,3.4vw,38px); font-weight:850; margin:14px 0 14px}
+  .signup .pitch p{color:var(--muted); font-size:17px; margin-bottom:22px}
+  .signup ul{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px}
+  .signup ul li{display:flex; gap:11px; align-items:center; color:var(--text); font-weight:600; font-size:15.5px}
+  .signup ul li svg{width:20px;height:20px;fill:var(--green);flex:none}
+  .form-card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r); padding:30px; box-shadow:var(--shadow-lg)}
+  .form-card h3{font-size:21px; font-weight:850; margin-bottom:4px}
+  .form-card .sub{color:var(--muted); font-size:14.5px; margin-bottom:22px}
+  .field{margin-bottom:15px}
+  .field label{display:block; font-size:13.5px; font-weight:700; color:var(--ink); margin-bottom:6px}
+  .field input{
+    width:100%; font-family:inherit; font-size:16px; color:var(--ink);
+    padding:13px 14px; border-radius:11px; border:1px solid var(--line-strong); background:var(--surface-2);
+    transition:border .15s ease, box-shadow .15s ease;
+  }
+  .field input::placeholder{color:var(--faint)}
+  .field input:focus{outline:none; border-color:var(--blue); box-shadow:0 0 0 3px color-mix(in srgb, var(--blue) 22%, transparent); background:var(--surface)}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .consent{display:flex; gap:11px; align-items:flex-start; margin:6px 0 20px; padding:13px; background:var(--surface-2); border:1px solid var(--line); border-radius:11px}
+  .consent input{width:19px;height:19px;flex:none;margin-top:2px;accent-color:var(--coral)}
+  .consent label{font-size:13px; color:var(--muted); line-height:1.5}
+  .form-card .btn-primary{width:100%; margin-top:2px}
+  .lgpd{font-size:12px; color:var(--faint); text-align:center; margin-top:14px}
+  .hp{position:absolute !important; left:-9999px !important; width:1px; height:1px; overflow:hidden}
+  .form-ok{display:none; text-align:center; padding:26px 6px}
+  .form-ok .big{width:60px;height:60px;border-radius:50%;background:var(--green-soft);color:var(--green);display:grid;place-items:center;margin:0 auto 16px}
+  .form-ok .big svg{width:32px;height:32px;fill:currentColor}
+  .form-ok h3{margin-bottom:8px}
+  .form-ok p{color:var(--muted); font-size:15px}
+  form.sent .form-fields{display:none}
+  form.sent .form-ok{display:block}
+
+  /* footer */
+  footer{border-top:1px solid var(--line); padding:44px 0; background:var(--surface-2)}
+  .foot{display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap}
+  .foot .brand{font-size:16px}
+  .foot .links{display:flex; gap:22px; flex-wrap:wrap; color:var(--muted); font-size:14px}
+  .foot .fine{color:var(--faint); font-size:13px; margin-top:14px; max-width:70ch}
+
+  /* reveal */
+  .reveal{opacity:0; transform:translateY(16px); transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1; transform:none}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    .reveal{opacity:1; transform:none; transition:none}
+    .card:hover{transform:none}
+  }
+
+  @media (max-width: 900px){
+    .hero-grid{grid-template-columns:1fr; gap:40px; padding:52px 0 60px}
+    .hero .lead{max-width:none}
+    .steps{grid-template-columns:1fr}
+    .feats{grid-template-columns:1fr 1fr}
+    .signup{grid-template-columns:1fr; gap:32px}
+    .bar .cta-mini{display:inline-flex}
+    .offer{padding:38px 28px}
+  }
+  @media (max-width: 560px){
+    body{font-size:16px}
+    .cards{grid-template-columns:1fr}
+    .feats{grid-template-columns:1fr}
+    .two{grid-template-columns:1fr}
+    .wrap{padding:0 18px}
+    .hero-cta .btn{flex:1}
+  }
+</style>
+</head>
+<body>
+
+<!-- svg defs: reusable paw -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="paw" viewBox="0 0 24 24">
+    <ellipse cx="6" cy="10" rx="2.1" ry="2.7"/><ellipse cx="10.4" cy="6.6" rx="2.1" ry="2.8"/>
+    <ellipse cx="15.2" cy="6.6" rx="2.1" ry="2.8"/><ellipse cx="19" cy="10.4" rx="2.1" ry="2.7"/>
+    <path d="M12.4 12.2c2.6 0 4.7 1.7 5.4 3.8.6 1.8-.7 3.4-2.6 3.4-1 0-1.8-.4-2.8-.4s-1.8.4-2.8.4c-1.9 0-3.2-1.6-2.6-3.4.7-2.1 2.8-3.8 5.4-3.8z"/>
+  </symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <div class="brand">
+      <span class="mark"><svg><use href="#paw"/></svg></span>
+      Folha10<small>Simples</small>
+    </div>
+    <a href="#cadastro" class="btn btn-primary cta-mini">Testar grátis</a>
+    <a href="#cadastro" class="btn btn-ghost" style="display:none">.</a>
+  </div>
+</header>
+
+<main>
+  <!-- HERO -->
+  <section class="hero" style="padding-top:0">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="eyebrow"><svg class="paw"><use href="#paw"/></svg> Folha de pagamento para pet-shops</span>
+        <h1>Menos papelada.<br>Mais tempo com <span class="accent">os bichos.</span></h1>
+        <p class="lead">O Folha10-Simples cuida da folha, do eSocial e dos holerites da sua equipe — banhistas, tosadores, veterinários e atendentes — direto do navegador. Sem instalar nada.</p>
+        <div class="hero-cta">
+          <a href="#cadastro" class="btn btn-primary btn-lg">Testar grátis em julho</a>
+          <a href="#como" class="btn btn-ghost btn-lg">Ver como funciona</a>
+        </div>
+        <div class="trust">
+          <svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>
+          Processe julho/2026 sem custo e sem compromisso.
+        </div>
+      </div>
+
+      <!-- holerite mock -->
+      <div class="payslip reveal">
+        <div class="ps-head">
+          <div class="co"><span class="av"><svg><use href="#paw"/></svg></span> Pet Shop Amigo Fiel</div>
+          <span class="tag">Holerite · Jul/2026</span>
+        </div>
+        <div class="ps-emp">
+          <div><div class="n">Ana Beatriz Souza</div><div class="r">Tosadora · Admissão 03/2024</div></div>
+        </div>
+        <div class="ps-rows">
+          <div class="ps-row"><span class="d">Salário base</span><span class="v">R$ 1.640,00</span></div>
+          <div class="ps-row"><span class="d">Comissão banho &amp; tosa</span><span class="v pos">+ R$ 512,30</span></div>
+          <div class="ps-row"><span class="d">INSS</span><span class="v neg">− R$ 168,20</span></div>
+          <div class="ps-row"><span class="d">FGTS (depósito)</span><span class="v">R$ 172,18</span></div>
+        </div>
+        <div class="ps-total"><span class="d">Líquido a receber</span><span class="v">R$ 1.984,10</span></div>
+        <div class="ps-chip"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg> Enviado no WhatsApp</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAIN / VALUE -->
+  <section class="band-soft">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow"><svg class="paw"><use href="#paw"/></svg> Feito pra sua rotina</span>
+        <h2>Você abriu um pet-shop pra cuidar de animais — não pra virar contador.</h2>
+        <p>O Folha10-Simples resolve a parte chata da folha, do jeito que um pet-shop precisa.</p>
+      </div>
+      <div class="cards">
+        <div class="card reveal">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 2 4 6v6c0 5 3.4 8.5 8 10 4.6-1.5 8-5 8-10V6l-8-4zm-1 13-3-3 1.4-1.4L11 12.2l4.6-4.6L17 9l-6 6z"/></svg></div>
+          <h3>Comissão de banho &amp; tosa</h3>
+          <p>Calcula automático sobre os serviços do mês. Chega de planilha e de conta na calculadora.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5L14 3.5zM8 13h8v2H8v-2zm0 4h8v2H8v-2z"/></svg></div>
+          <h3>eSocial sem susto</h3>
+          <p>Admissão, férias, afastamento e desligamento enviados certinho ao governo, na hora certa.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M17 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-5 19a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM17 17H7V5h10v12z"/></svg></div>
+          <h3>Holerite no WhatsApp</h3>
+          <p>Sua equipe recebe o contracheque em PDF direto no celular, no mesmo instante em que você fecha a folha.</p>
+        </div>
+        <div class="card reveal">
+          <div class="ic"><svg viewBox="0 0 24 24"><path d="M7 2h2v2h6V2h2v2h2a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2V2zm12 8H5v9h14v-9z"/></svg></div>
+          <h3>Férias, 13º e rescisão</h3>
+          <p>O sistema faz as contas, a memória de cálculo e a papelada. Você só confere e assina.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section id="como">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow"><svg class="paw"><use href="#paw"/></svg> Como funciona</span>
+        <h2>Da bagunça à folha pronta em três passos.</h2>
+      </div>
+      <div class="steps">
+        <div class="step reveal"><div class="num"></div><h3>Cadastre seu pet-shop</h3><p>Empresa e equipe em poucos minutos. Tudo online, sem instalar programa nenhum.</p></div>
+        <div class="step reveal"><div class="num"></div><h3>Lance o mês</h3><p>Salários, comissões de banho &amp; tosa, horas extras e faltas. A tela é simples de verdade.</p></div>
+        <div class="step reveal"><div class="num"></div><h3>Calcule e pronto</h3><p>Folha calculada, holerites gerados, eSocial enviado e contracheques no WhatsApp da equipe.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES -->
+  <section class="band-soft">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow"><svg class="paw"><use href="#paw"/></svg> Tudo incluído</span>
+        <h2>Uma folha completa, sem complicação.</h2>
+      </div>
+      <div class="feats">
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span><div><b>Cálculo automático</b><span>INSS, IRRF, FGTS e tabelas legais sempre atualizados.</span></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span><div><b>eSocial completo</b><span>Eventos enviados direto pelo sistema, com acompanhamento.</span></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span><div><b>Holerite em PDF + WhatsApp</b><span>Contracheque bonito, entregue no celular da equipe.</span></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span><div><b>Férias, 13º e rescisão</b><span>Com memória de cálculo e recibos oficiais.</span></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span><div><b>Pagamento por CNAB &amp; PIX</b><span>Gere o arquivo do banco e pague a equipe de uma vez.</span></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></span><div><b>100% na web</b><span>Acesse do computador da loja ou do celular, onde estiver.</span></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OFFER -->
+  <section>
+    <div class="wrap">
+      <div class="offer reveal">
+        <span class="eyebrow"><svg class="paw" style="fill:#fff"><use href="#paw"/></svg> Oferta de lançamento</span>
+        <h2>Julho de 2026 é por nossa conta.</h2>
+        <p>Faça o cadastro e processe o mês inteiro grátis — sem cartão de crédito, sem fidelidade e sem compromisso. Se gostar, continua. Simples assim.</p>
+        <a href="#cadastro" class="btn btn-primary btn-lg">Quero meu mês grátis</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- SIGNUP -->
+  <section id="cadastro" class="band-soft">
+    <div class="wrap signup">
+      <div class="pitch reveal">
+        <span class="eyebrow"><svg class="paw"><use href="#paw"/></svg> Comece agora</span>
+        <h2>Teste com o seu pet-shop hoje.</h2>
+        <p>Preencha os dados e a gente te ajuda a dar os primeiros passos pelo WhatsApp. Leva menos tempo do que um banho e tosa.</p>
+        <ul>
+          <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg> Sem custo em julho/2026</li>
+          <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg> Sem cartão de crédito</li>
+          <li><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg> Suporte de gente de verdade</li>
+        </ul>
+      </div>
+
+      <form class="form-card reveal" id="leadForm" novalidate>
+        <div class="form-fields">
+          <h3>Criar meu acesso grátis</h3>
+          <p class="sub">Preencha e comece a usar em minutos.</p>
+          <div class="field">
+            <label for="nome">Seu nome</label>
+            <input id="nome" name="nome" type="text" placeholder="Como podemos te chamar?" required>
+          </div>
+          <div class="field">
+            <label for="petshop">Nome do pet-shop</label>
+            <input id="petshop" name="petshop" type="text" placeholder="Ex.: Pet Shop Amigo Fiel" required>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="whats">WhatsApp (com DDD)</label>
+              <input id="whats" name="whatsapp" type="tel" inputmode="numeric" placeholder="(11) 99999-9999" required>
+            </div>
+            <div class="field">
+              <label for="email">E-mail</label>
+              <input id="email" name="email" type="email" placeholder="voce@petshop.com.br" required>
+            </div>
+          </div>
+          <div class="consent">
+            <input id="optin" name="optin" type="checkbox" required>
+            <label for="optin">Autorizo o Folha10-Simples a entrar em contato comigo por <b>WhatsApp</b> e e-mail para ativar meu teste e tirar dúvidas. Posso pedir o descadastro quando quiser.</label>
+          </div>
+          <div class="hp" aria-hidden="true"><label>Não preencha este campo<input type="text" name="empresa_site" tabindex="-1" autocomplete="off"></label></div>
+          <button type="submit" class="btn btn-primary btn-lg">Começar meu teste grátis</button>
+          <p class="lgpd">Seus dados são usados só para o seu atendimento, conforme a LGPD.</p>
+        </div>
+
+        <div class="form-ok">
+          <div class="big"><svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg></div>
+          <h3>Recebemos seu cadastro! 🐾</h3>
+          <p>Em instantes você recebe uma mensagem no WhatsApp para ativar seu teste grátis. Fique de olho no celular.</p>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="brand">
+        <span class="mark"><svg><use href="#paw"/></svg></span>
+        Folha10<small>Simples</small>
+      </div>
+      <div class="links">
+        <a href="https://www.folha10-simples.com.br">folha10-simples.com.br</a>
+        <a href="#como">Como funciona</a>
+        <a href="#cadastro">Testar grátis</a>
+      </div>
+    </div>
+    <p class="fine">© 2026 Folha10-Simples · Folha de pagamento na web para pequenos negócios. Enviamos mensagens apenas a quem se cadastra e autoriza o contato. Para não receber mais, é só responder “SAIR”.</p>
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal (respeita prefers-reduced-motion via CSS)
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if(!('IntersectionObserver' in window)){ els.forEach(function(e){e.classList.add('in')}); return; }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, {threshold:.12, rootMargin:'0px 0px -40px 0px'});
+    els.forEach(function(e){ io.observe(e); });
+  })();
+
+  // Form: máscara leve do WhatsApp + estado de sucesso
+  (function(){
+    var w = document.getElementById('whats');
+    if(w){ w.addEventListener('input', function(){
+      var d = this.value.replace(/\D/g,'').slice(0,11);
+      if(d.length>6) this.value = '('+d.slice(0,2)+') '+d.slice(2,7)+'-'+d.slice(7);
+      else if(d.length>2) this.value = '('+d.slice(0,2)+') '+d.slice(2);
+      else this.value = d;
+    }); }
+
+    var f = document.getElementById('leadForm');
+    f.addEventListener('submit', function(ev){
+      ev.preventDefault();
+      if(!f.checkValidity()){ f.reportValidity(); return; }
+      var btn = f.querySelector('button[type=submit]');
+      var txtOrig = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Enviando...';
+      var payload = Object.fromEntries(new FormData(f));
+      fetch('/lead_petshop', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      })
+      .then(function(r){ return r.json().catch(function(){ return {ok:r.ok}; }); })
+      .then(function(res){
+        if(res && res.ok){
+          f.classList.add('sent');
+          document.getElementById('cadastro').scrollIntoView({behavior:'smooth', block:'center'});
+        } else {
+          btn.disabled=false; btn.textContent=txtOrig;
+          alert((res && res.msg) || 'Não foi possível enviar agora. Tente de novo.');
+        }
+      })
+      .catch(function(){
+        btn.disabled=false; btn.textContent=txtOrig;
+        alert('Sem conexão no momento. Tente novamente em instantes.');
+      });
+    });
+  })();
+</script>
+
+</body>
+</html>
