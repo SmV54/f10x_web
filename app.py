@@ -7398,6 +7398,43 @@ def cadastro():
 # LANDING PET-SHOP — página pública de captação + recebimento de leads
 # (destino de posts/anúncios; o gerenciamento dos leads fica no ADMIN)
 # =========================================================
+def _inserir_lead_rest(lead):
+    """Insere o lead via REST direta (conexão nova a cada chamada) em vez do cliente
+    supabase compartilhado — evita falha silenciosa por conexão ociosa/'dormida' do
+    pool. Em produção (Linux) o SSL valida normalmente. Retorna (id|None, erro)."""
+    try:
+        key = os.getenv("SUPABASE_SERVICE_KEY") or SUPABASE_KEY
+        headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        }
+        r = requests.post(f"{SUPABASE_URL}/rest/v1/tab_lead",
+                          headers=headers, json=lead, timeout=15)
+        if r.status_code in (200, 201):
+            data = r.json() or []
+            return (data[0].get("id") if data else None), ""
+        return None, f"HTTP {r.status_code}: {r.text[:200]}"
+    except Exception as e:
+        return None, str(e)
+
+
+def _atualizar_lead_rest(lead_id, campos):
+    """Atualiza campos de um lead (ex.: whatsapp_ok) via REST direta."""
+    try:
+        key = os.getenv("SUPABASE_SERVICE_KEY") or SUPABASE_KEY
+        headers = {
+            "apikey": key,
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+        }
+        requests.patch(f"{SUPABASE_URL}/rest/v1/tab_lead?id=eq.{lead_id}",
+                       headers=headers, json=campos, timeout=15)
+    except Exception as e:
+        print(f"[LEAD/petshop] update REST falhou: {e}")
+
+
 def _msg_boasvindas_lead(nome, empresa):
     primeiro = (nome or "").strip().split(" ")[0] if (nome or "").strip() else "Olá"
     loja = (empresa or "").strip()
@@ -7464,12 +7501,10 @@ def lead_petshop():
     #    fazia o insert falhar em silêncio). Tenta 2x; se ainda falhar, guarda em arquivo.
     lead_id = None
     for tentativa in (1, 2):
-        try:
-            resp = supabase.table("tab_lead").insert(lead).execute()
-            lead_id = (resp.data or [{}])[0].get("id")
+        lead_id, erro_insert = _inserir_lead_rest(lead)
+        if lead_id is not None:
             break
-        except Exception as e:
-            print(f"[LEAD/petshop] falha ao gravar (tentativa {tentativa}): {e}")
+        print(f"[LEAD/petshop] insert REST falhou (tentativa {tentativa}): {erro_insert}")
     if lead_id is None:
         # fallback: nunca perde o contato, mesmo que o Supabase esteja fora
         try:
@@ -7483,13 +7518,10 @@ def lead_petshop():
     # 2) só então dispara o WhatsApp de boas-vindas (secundário) e marca o resultado
     zap_ok, zap_det = _enviar_whatsapp_texto(tel, _msg_boasvindas_lead(nome, empresa))
     if lead_id is not None:
-        try:
-            supabase.table("tab_lead").update({
-                "whatsapp_ok": zap_ok,
-                "whatsapp_detalhe": (zap_det or "")[:300],
-            }).eq("id", lead_id).execute()
-        except Exception as e:
-            print(f"[LEAD/petshop] nao atualizou whatsapp_ok: {e}")
+        _atualizar_lead_rest(lead_id, {
+            "whatsapp_ok": zap_ok,
+            "whatsapp_detalhe": (zap_det or "")[:300],
+        })
 
     return jsonify({"ok": True})
 
