@@ -314,6 +314,50 @@ def _cert_info(pfx_bytes, senha_str):
         "validade_fmt": validade_fmt,
     }
 
+
+def _aplicar_cert_esocial(empresa):
+    """Resolve o certificado EFETIVO usado para assinar/transmitir ao eSocial.
+
+    Trata o caso de o cliente transmitir com certificado de TERCEIROS via
+    procuração eletrônica (escritório/contador). Muta o dict `empresa` in-place:
+
+      • cert_modo == 'procuracao' + id_procurador válido  → injeta o cert do
+        procurador em cert_pfx_b64/cert_senha_enc e define o transmissor
+        (_tra_tpinsc/_tra_nrinsc) com a inscrição do procurador (CNPJ=1 ou CPF=2).
+      • qualquer outro caso  → mantém o cert próprio e transmissor = próprio
+        empregador (tpInsc=1, CNPJ da empresa). Comportamento 100% atual.
+
+    Sempre define empresa["_tra_tpinsc"] e empresa["_tra_nrinsc"], consumidos por
+    _montar_lote/_montar_lote_multi para preencher o <ideTransmissor> do lote.
+    Retorna o próprio dict (para encadear). Nunca lança — em falha, cai no fallback.
+    """
+    cnpj_emp_raw = re.sub(r"\D", "", empresa.get("cnpj") or "")
+    modo = (empresa.get("cert_modo") or "proprio").strip().lower()
+
+    if modo == "procuracao" and empresa.get("id_procurador"):
+        try:
+            proc = (supabase.table("tab_procurador").select("*")
+                    .eq("id_procurador", int(empresa["id_procurador"]))
+                    .limit(1).execute().data or [None])[0]
+        except Exception:
+            proc = None
+        if proc and proc.get("cert_pfx_b64"):
+            empresa["cert_pfx_b64"]  = proc.get("cert_pfx_b64")
+            empresa["cert_senha_enc"] = proc.get("cert_senha_enc")
+            if proc.get("cert_validade"):
+                empresa["cert_validade"] = proc.get("cert_validade")
+            tra_nr = re.sub(r"\D", "", proc.get("nrinsc") or "")
+            # tpInsc do transmissor: 1=CNPJ (14) / 2=CPF (11); usa o gravado se houver
+            empresa["_tra_tpinsc"] = str(proc.get("tpinsc")
+                                         or ("2" if len(tra_nr) == 11 else "1"))
+            empresa["_tra_nrinsc"] = tra_nr
+            return empresa
+
+    # Fallback: certificado próprio, transmissor = próprio empregador (atual)
+    empresa["_tra_tpinsc"] = "1"
+    empresa["_tra_nrinsc"] = cnpj_emp_raw
+    return empresa
+
 # =========================================================
 # CONFIG CADASTRO / EMAIL / WHATSAPP
 # =========================================================
@@ -13920,6 +13964,7 @@ def api_esocial_s2220_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 6. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -13939,7 +13984,8 @@ def api_esocial_s2220_enviar():
 
     # ── 7. Montar lote e enviar ───────────────────────────
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -18093,11 +18139,15 @@ def _assinar_xml(xml_str, pfx_bytes, senha_str):
     return etree.tostring(signed_root, encoding="unicode", xml_declaration=False)
 
 
-def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2"):
+def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2",
+                 tra_tpinsc=None, tra_nrinsc=None):
     """Monta o lote eSocial com um único evento.
     xml_evento_assinado é o eSocial completo já assinado (evtAdmissao + Signature dentro de eSocial).
     O lote NÃO é assinado — autenticação via mTLS.
     grupo: "1"=Tabelas, "2"=Não-periódicos, "3"=Periódicos
+    tra_tpinsc/tra_nrinsc: inscrição do TRANSMISSOR (<ideTransmissor>). Quando None,
+    assume o próprio empregador (tpInsc=1, CNPJ) — comportamento atual. Preencher com a
+    inscrição do procurador quando a empresa transmite via procuração eletrônica.
     """
     from lxml import etree
 
@@ -18122,8 +18172,9 @@ def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, gru
     etree.SubElement(ide_emp, f"{{{NS_LOTE}}}nrInsc").text = cnpj_raiz
 
     ide_tra = etree.SubElement(env, f"{{{NS_LOTE}}}ideTransmissor")
-    etree.SubElement(ide_tra, f"{{{NS_LOTE}}}tpInsc").text = "1"
-    etree.SubElement(ide_tra, f"{{{NS_LOTE}}}nrInsc").text = re.sub(r"\D", "", cnpj_emp)
+    etree.SubElement(ide_tra, f"{{{NS_LOTE}}}tpInsc").text = str(tra_tpinsc or "1")
+    etree.SubElement(ide_tra, f"{{{NS_LOTE}}}nrInsc").text = (
+        re.sub(r"\D", "", tra_nrinsc) if tra_nrinsc else re.sub(r"\D", "", cnpj_emp))
 
     eventos = etree.SubElement(env, f"{{{NS_LOTE}}}eventos")
     ev_wrap = etree.SubElement(eventos, f"{{{NS_LOTE}}}evento")
@@ -19724,6 +19775,7 @@ def api_esocial_s1000_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 4. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -19743,7 +19795,8 @@ def api_esocial_s1000_enviar():
 
     # ── 6. Montar lote (S-1000 = Grupo 1 — Tabelas) ───────
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="1")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="1")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -19943,6 +19996,7 @@ def api_esocial_s1000_excluir():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 4. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -19959,7 +20013,8 @@ def api_esocial_s1000_excluir():
 
     # ── 6. Montar lote (grupo 1 — tabelas) ────────────────
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="1")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="1")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
 
@@ -20164,8 +20219,10 @@ def _gerar_xml_s1020_evento(lotacao, empresa, tpAmb, tp_op, ini_valid, fim_valid
 </eSocial>"""
 
 
-def _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1"):
-    """Monta lote eSocial com múltiplos eventos assinados."""
+def _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1",
+                       tra_tpinsc=None, tra_nrinsc=None):
+    """Monta lote eSocial com múltiplos eventos assinados.
+    tra_tpinsc/tra_nrinsc: inscrição do TRANSMISSOR; None = próprio empregador (atual)."""
     from lxml import etree as _et
 
     cnpj_raiz = re.sub(r"\D", "", cnpj_emp)[:8]
@@ -20178,8 +20235,9 @@ def _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1"):
     _et.SubElement(ide_emp, f"{{{NS_LOTE}}}nrInsc").text = cnpj_raiz
 
     ide_tra = _et.SubElement(env, f"{{{NS_LOTE}}}ideTransmissor")
-    _et.SubElement(ide_tra, f"{{{NS_LOTE}}}tpInsc").text = "1"
-    _et.SubElement(ide_tra, f"{{{NS_LOTE}}}nrInsc").text = re.sub(r"\D", "", cnpj_emp)
+    _et.SubElement(ide_tra, f"{{{NS_LOTE}}}tpInsc").text = str(tra_tpinsc or "1")
+    _et.SubElement(ide_tra, f"{{{NS_LOTE}}}nrInsc").text = (
+        re.sub(r"\D", "", tra_nrinsc) if tra_nrinsc else re.sub(r"\D", "", cnpj_emp))
 
     eventos_el = _et.SubElement(env, f"{{{NS_LOTE}}}eventos")
     for xml_assinado in xmls_assinados:
@@ -20608,6 +20666,7 @@ def api_esocial_s1010_enviar():
     )
 
     # ── 5. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -20638,7 +20697,8 @@ def api_esocial_s1010_enviar():
 
     # ── 6. Montar lote com todos os eventos ──────────────
     try:
-        lote_xml = _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1")
+        lote_xml = _montar_lote_multi(xmls_assinados, cnpj_emp, tpAmb, grupo="1",
+                                      tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
     except Exception as e:
         msg = f"Erro ao montar lote: {e}"
         _xml_erro_save(_pref, 3, msg, e)
@@ -21229,6 +21289,7 @@ def api_esocial_s1020_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 4. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -21248,7 +21309,8 @@ def api_esocial_s1020_enviar():
 
     # ── 5. Montar lote ────────────────────────────────────
     try:
-        lote_xml = _montar_lote_multi([xml_assinado], cnpj_emp, tpAmb, grupo="1")
+        lote_xml = _montar_lote_multi([xml_assinado], cnpj_emp, tpAmb, grupo="1",
+                                      tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -21654,6 +21716,7 @@ def api_esocial_s2200_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 5. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -21673,7 +21736,8 @@ def api_esocial_s2200_enviar():
 
     # ── 6. Montar lote ────────────────────────────────────
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -21930,6 +21994,7 @@ def api_esocial_s2200_reconsutar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -22186,6 +22251,7 @@ def api_esocial_s2300_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 5. Validar certificado e assinar ──────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -22205,7 +22271,8 @@ def api_esocial_s2300_enviar():
 
     # ── 6. Montar lote ────────────────────────────────────
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -22375,6 +22442,7 @@ def api_esocial_s2300_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -22869,6 +22937,7 @@ def api_esocial_s2205_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── Validar certificado e assinar ──────────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -22887,7 +22956,8 @@ def api_esocial_s2205_enviar():
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="2")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -23031,6 +23101,7 @@ def api_esocial_s2205_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -23689,6 +23760,7 @@ def api_esocial_s2206_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── Validar certificado e assinar ──────────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -23707,7 +23779,8 @@ def api_esocial_s2206_enviar():
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="2")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -23850,6 +23923,7 @@ def api_esocial_s2206_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -24110,6 +24184,7 @@ def api_esocial_s2299_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── Validar certificado e assinar ──────────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -24128,7 +24203,8 @@ def api_esocial_s2299_enviar():
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="2")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -24312,6 +24388,7 @@ def api_esocial_s2399_enviar():
 
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -24330,7 +24407,8 @@ def api_esocial_s2399_enviar():
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="2")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="2")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -24470,6 +24548,7 @@ def api_esocial_s2299_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -24992,6 +25071,7 @@ def api_esocial_reconsultar_generico():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -25634,6 +25714,7 @@ def api_esocial_s1200_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # 6. Validar certificado e assinar
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -25653,7 +25734,8 @@ def api_esocial_s1200_enviar():
 
     # 7. Montar lote  (S-1200 = Grupo 3 — Periódicos)
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="3")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -25800,7 +25882,7 @@ def api_esocial_s1200_reconsultar():
 
     try:
         r_emp = (supabase.table("tab_empresa")
-                 .select("cert_pfx_b64, cert_senha_enc")
+                 .select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
         if not r_emp.data:
             return jsonify({"ok": False, "msg": "Empresa não encontrada."})
@@ -25808,6 +25890,7 @@ def api_esocial_s1200_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    _aplicar_cert_esocial(emp)
     pfx_bytes = base64.b64decode(emp.get("cert_pfx_b64") or "")
     senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
@@ -26249,6 +26332,7 @@ def api_esocial_s1210_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # 7. Validar certificado e assinar
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -26268,7 +26352,8 @@ def api_esocial_s1210_enviar():
 
     # 8. Montar lote (Grupo 3 — Periódicos)
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="3")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -26409,7 +26494,7 @@ def api_esocial_s1210_reconsultar():
 
     try:
         r_emp = (supabase.table("tab_empresa")
-                 .select("cert_pfx_b64, cert_senha_enc")
+                 .select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
         if not r_emp.data:
             return jsonify({"ok": False, "msg": "Empresa não encontrada."})
@@ -26417,6 +26502,7 @@ def api_esocial_s1210_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    _aplicar_cert_esocial(emp)
     pfx_bytes = base64.b64decode(emp.get("cert_pfx_b64") or "")
     senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
@@ -26798,6 +26884,7 @@ def api_esocial_s1299_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # Validar certificado e assinar
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -26817,7 +26904,8 @@ def api_esocial_s1299_enviar():
 
     # Montar lote (S-1299 = Grupo 3 — Periódicos)
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="3")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -26961,7 +27049,7 @@ def api_esocial_s1299_reconsultar():
 
     try:
         r_emp = (supabase.table("tab_empresa")
-                 .select("cert_pfx_b64, cert_senha_enc")
+                 .select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
         if not r_emp.data:
             return jsonify({"ok": False, "msg": "Empresa não encontrada."})
@@ -26969,6 +27057,7 @@ def api_esocial_s1299_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    _aplicar_cert_esocial(emp)
     pfx_bytes = base64.b64decode(emp.get("cert_pfx_b64") or "")
     senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
@@ -28170,6 +28259,7 @@ def api_esocial_s1298_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # Validar certificado e assinar
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -28188,7 +28278,8 @@ def api_esocial_s1298_enviar():
     _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
 
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="3")
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"), grupo="3")
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -28330,7 +28421,7 @@ def api_esocial_s1298_reconsultar():
 
     try:
         r_emp = (supabase.table("tab_empresa")
-                 .select("cert_pfx_b64, cert_senha_enc")
+                 .select("*")
                  .eq("cnpj", cnpj_emp).limit(1).execute())
         if not r_emp.data:
             return jsonify({"ok": False, "msg": "Empresa não encontrada."})
@@ -28338,6 +28429,7 @@ def api_esocial_s1298_reconsultar():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    _aplicar_cert_esocial(emp)
     pfx_bytes = base64.b64decode(emp.get("cert_pfx_b64") or "")
     senha_str = _cert_decrypt(emp.get("cert_senha_enc") or "")
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
@@ -28619,6 +28711,7 @@ def api_esocial_s3000_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     # ── 5. Validar certificado e assinar ───────────────────
+    _aplicar_cert_esocial(empresa)
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -28638,7 +28731,8 @@ def api_esocial_s3000_enviar():
 
     # ── 7. Montar lote ─────────────────────────────────────
     try:
-        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str)
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
     except Exception as e:
         _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
@@ -28886,6 +28980,191 @@ def api_certificado_remover():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
 
+    return jsonify({"ok": True})
+
+
+# =========================================================
+# PROCURADOR — certificado de TERCEIROS (procuração eletrônica)
+# Tela de importação + APIs. O cert do procurador (escritório/contador)
+# pode ser reutilizado por várias empresas do mesmo cliente.
+# =========================================================
+def _proc_fmt_insc(nr, tp):
+    """Formata a inscrição do procurador (CNPJ=1 / CPF=2)."""
+    nr = re.sub(r"\D", "", nr or "")
+    if str(tp) == "1" and len(nr) == 14:
+        return _fmt_cnpj(nr)
+    if len(nr) == 11:
+        return f"{nr[:3]}.{nr[3:6]}.{nr[6:9]}-{nr[9:]}"
+    return nr or "—"
+
+
+@app.route("/config_procurador")
+def config_procurador():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_cliente = session.get("id_cliente")
+    procuradores = []
+    try:
+        r = (supabase.table("tab_procurador").select("*")
+             .eq("id_cliente", id_cliente).order("nome").execute())
+        from datetime import date as _date
+        hoje = _date.today()
+        for d in (r.data or []):
+            v = d.get("cert_validade") or ""
+            dias = None; venc = False; alerta = False; val_fmt = ""
+            if len(v) == 8:
+                try:
+                    vd = _date(int(v[:4]), int(v[4:6]), int(v[6:8]))
+                    dias = (vd - hoje).days
+                    venc = dias < 0
+                    alerta = 0 <= dias <= 30
+                    val_fmt = f"{v[6:8]}/{v[4:6]}/{v[:4]}"
+                except Exception:
+                    pass
+            tp = str(d.get("tpinsc") or "1")
+            procuradores.append({
+                "id":           d.get("id_procurador"),
+                "nome":         d.get("nome") or d.get("cert_titular") or "",
+                "titular":      d.get("cert_titular") or "",
+                "tipo":         "CNPJ" if tp == "1" else "CPF",
+                "insc_fmt":     _proc_fmt_insc(d.get("nrinsc"), tp),
+                "validade_fmt": val_fmt,
+                "dias":         dias,
+                "vencido":      venc,
+                "alerta":       alerta,
+            })
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_Config_Procurador.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        procuradores=procuradores,
+    )
+
+
+@app.route("/api/procurador_listar")
+def api_procurador_listar():
+    """Lista os procuradores do cliente (para o seletor no cadastro da empresa)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_cliente = session.get("id_cliente")
+    out = []
+    try:
+        r = (supabase.table("tab_procurador")
+             .select("id_procurador, nome, tpinsc, nrinsc, cert_titular, cert_validade")
+             .eq("id_cliente", id_cliente).order("nome").execute())
+        for d in (r.data or []):
+            tp = str(d.get("tpinsc") or "1")
+            out.append({
+                "id":       d.get("id_procurador"),
+                "nome":     d.get("nome") or d.get("cert_titular") or "",
+                "tipo":     "CNPJ" if tp == "1" else "CPF",
+                "insc_fmt": _proc_fmt_insc(d.get("nrinsc"), tp),
+                "validade": d.get("cert_validade") or "",
+            })
+    except Exception:
+        pass
+    return jsonify({"ok": True, "procuradores": out})
+
+
+@app.route("/api/procurador_salvar", methods=["POST"])
+def api_procurador_salvar():
+    """Importa o .pfx de um procurador (terceiro). tpInsc/nrInsc derivados do próprio cert."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_cliente = session.get("id_cliente")
+    pfx_file   = request.files.get("pfx_file")
+    senha      = request.form.get("pfx_senha", "").strip()
+    nome       = (request.form.get("nome") or "").strip()
+
+    if not pfx_file or pfx_file.filename == "":
+        return jsonify({"ok": False, "msg": "Nenhum arquivo .pfx selecionado."})
+    if not senha:
+        return jsonify({"ok": False, "msg": "Senha do certificado não informada."})
+
+    pfx_bytes = pfx_file.read()
+    if len(pfx_bytes) < 20:
+        return jsonify({"ok": False, "msg": "Arquivo inválido ou vazio."})
+
+    try:
+        info = _cert_info(pfx_bytes, senha)
+    except ValueError as e:
+        return jsonify({"ok": False, "msg": str(e)})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao processar certificado: {e}"})
+
+    # A inscrição do transmissor é a do TITULAR do certificado do procurador
+    nr = re.sub(r"\D", "", info.get("cnpj") or "")
+    if len(nr) not in (11, 14):
+        return jsonify({"ok": False, "msg": ("Não foi possível extrair CNPJ/CPF do "
+                        "certificado do procurador. Verifique o arquivo.")})
+    tp = "2" if len(nr) == 11 else "1"
+
+    reg = {
+        "id_cliente":     id_cliente,
+        "nome":           nome or info.get("titular") or "",
+        "tpinsc":         tp,
+        "nrinsc":         nr,
+        "cert_pfx_b64":   base64.b64encode(pfx_bytes).decode(),
+        "cert_senha_enc": _cert_encrypt(senha),
+        "cert_titular":   info.get("titular") or "",
+        "cert_validade":  info.get("validade") or "",
+        "ativo":          True,
+    }
+    agora = datetime.now()
+    reg["data_grava"] = agora.strftime("%Y%m%d")
+    reg["hora_grava"] = agora.strftime("%H%M")
+
+    try:
+        resp = supabase.table("tab_procurador").insert(reg).execute()
+        novo_id = (resp.data or [{}])[0].get("id_procurador")
+        gravar_log("CERT", f"Procurador cadastrado: {reg['nome']} ({nr}) "
+                           f"val:{info.get('validade_fmt')}")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    return jsonify({
+        "ok":       True,
+        "id":       novo_id,
+        "titular":  info.get("titular"),
+        "tipo":     "CNPJ" if tp == "1" else "CPF",
+        "insc_fmt": _proc_fmt_insc(nr, tp),
+        "validade": info.get("validade_fmt"),
+    })
+
+
+@app.route("/api/procurador_remover", methods=["POST"])
+def api_procurador_remover():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_cliente = session.get("id_cliente")
+    data = request.get_json(force=True) or {}
+    pid  = data.get("id")
+    if not pid:
+        return jsonify({"ok": False, "msg": "Procurador não informado."})
+    try:
+        # Não deixa remover se alguma empresa ainda transmite por este procurador
+        em_uso = (supabase.table("tab_empresa")
+                  .select("razaosocial")
+                  .eq("id_cliente", id_cliente)
+                  .eq("id_procurador", int(pid))
+                  .eq("cert_modo", "procuracao")
+                  .limit(1).execute().data or [])
+        if em_uso:
+            nm = em_uso[0].get("razaosocial") or "uma empresa"
+            return jsonify({"ok": False,
+                "msg": (f"Este procurador está em uso por {nm}. Altere o modo de "
+                        "transmissão dessa empresa antes de remover.")})
+        supabase.table("tab_procurador").delete() \
+            .eq("id_procurador", int(pid)).eq("id_cliente", id_cliente).execute()
+        gravar_log("CERT", f"Procurador removido id={pid}")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
     return jsonify({"ok": True})
 
 

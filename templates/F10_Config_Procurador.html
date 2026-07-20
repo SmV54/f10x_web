@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10·Simples — Certificado de Procurador</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; }
+.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
+.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap;
+    text-decoration: none; display: inline-block;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 700px; margin: 40px auto; padding: 0 24px 80px; }
+
+/* ── CARD GENÉRICO ── */
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px 28px; margin-bottom: 20px;
+}
+.card-titulo {
+    font-size: 14px; font-weight: 700; color: #1e293b;
+    margin-bottom: 18px; display: flex; align-items: center; gap: 8px;
+    padding-bottom: 12px; border-bottom: 1px solid #f1f5f9;
+}
+
+/* ── LISTA DE PROCURADORES ── */
+.proc-item {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 0; border-bottom: 1px solid #f1f5f9;
+}
+.proc-item:last-child { border-bottom: none; }
+.proc-info { flex: 1; min-width: 0; }
+.proc-nome { font-size: 14px; font-weight: 600; color: #1e293b; }
+.proc-sub  { font-size: 12px; color: #64748b; font-family: var(--mono); margin-top: 2px; }
+.badge-validade {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.val-ok      { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.val-alerta  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.val-vencido { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.btn-remover-mini {
+    background: none; border: 1px solid #fca5a5; color: #991b1b;
+    font-size: 12px; font-weight: 600; font-family: var(--sans);
+    padding: 5px 12px; border-radius: 7px; cursor: pointer; transition: .13s; white-space: nowrap;
+}
+.btn-remover-mini:hover { background: #fee2e2; }
+.vazio { font-size: 13px; color: #94a3b8; padding: 8px 0; }
+
+/* ── CAMPO TEXTO ── */
+.campo-grupo { margin-top: 16px; }
+.campo-label { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 6px; display: block; }
+.campo-txt {
+    width: 100%; padding: 9px 12px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-family: var(--sans);
+    color: #1e293b; outline: none; transition: .13s;
+}
+.campo-txt:focus { border-color: var(--accent); }
+
+/* ── UPLOAD ── */
+.drop-area {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 28px 20px; text-align: center; cursor: pointer;
+    transition: .15s; background: #f8fafc; position: relative;
+}
+.drop-area:hover, .drop-area.dragover { border-color: var(--accent); background: #eaf2fd; }
+.drop-area input[type="file"] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.drop-icone   { font-size: 32px; margin-bottom: 8px; }
+.drop-txt     { font-size: 13px; font-weight: 600; color: #475569; }
+.drop-subtxt  { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.drop-arquivo { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 6px;
+                display: none; font-family: var(--mono); }
+
+/* ── CAMPO SENHA ── */
+.campo-senha-wrap { position: relative; }
+.campo-senha-wrap input {
+    width: 100%; padding: 9px 40px 9px 12px; border: 1.5px solid var(--border);
+    border-radius: 8px; font-size: 14px; font-family: var(--mono);
+    color: #1e293b; outline: none; transition: .13s;
+}
+.campo-senha-wrap input:focus { border-color: var(--accent); }
+.toggle-senha {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; color: #94a3b8;
+    font-size: 15px; padding: 4px; line-height: 1;
+}
+
+/* ── BOTÃO PRINCIPAL ── */
+.btn-salvar {
+    margin-top: 20px; width: 100%; padding: 11px;
+    background: var(--accent); border: none; color: #fff;
+    font-size: 14px; font-weight: 700; font-family: var(--sans);
+    border-radius: 9px; cursor: pointer; transition: .13s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn-salvar:hover   { background: #1a6cd4; }
+.btn-salvar:disabled{ background: #94a3b8; cursor: default; }
+
+/* ── RESULTADO ── */
+.resultado {
+    display: none; margin-top: 16px; border-radius: 10px; padding: 14px 16px;
+    font-size: 13px; font-weight: 500;
+}
+.resultado.ok    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.resultado.erro  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+.resultado-detalhe { font-size: 12px; margin-top: 6px; font-family: var(--mono); color: inherit; opacity: .85; }
+
+/* ── INFO BOX ── */
+.info-box {
+    background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 10px;
+    padding: 14px 18px; font-size: 12px; color: #1d4ed8; line-height: 1.8;
+}
+.info-box strong { font-weight: 700; }
+.info-box ul { padding-left: 18px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+  <div>
+    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-cnpj">Procuração eletrônica</div>
+  </div>
+  <div class="topo-titulo">🤝 Certificado de Procurador (Terceiros)</div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <div>
+      <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+      <div class="topo-versao">Versão: {{ versao }}</div>
+    </div>
+    <a class="btn-voltar-topo" href="/menu">&#8592; Voltar</a>
+  </div>
+</div>
+
+<div class="conteudo">
+
+  <!-- ── Procuradores cadastrados ── -->
+  <div class="card">
+    <div class="card-titulo">🤝 Procuradores cadastrados</div>
+    {% if procuradores %}
+      {% for p in procuradores %}
+      <div class="proc-item" data-id="{{ p.id }}">
+        <div class="proc-info">
+          <div class="proc-nome">{{ p.nome }}</div>
+          <div class="proc-sub">{{ p.tipo }}: {{ p.insc_fmt }}
+            {% if p.validade_fmt %}&nbsp;·&nbsp;val. {{ p.validade_fmt }}{% endif %}
+          </div>
+        </div>
+        <div>
+          {% if p.validade_fmt %}
+            {% if p.vencido %}
+              <span class="badge-validade val-vencido">⚠ VENCIDO</span>
+            {% elif p.alerta %}
+              <span class="badge-validade val-alerta">⚡ {{ p.dias }} dias</span>
+            {% else %}
+              <span class="badge-validade val-ok">✓ {{ p.dias }} dias</span>
+            {% endif %}
+          {% endif %}
+        </div>
+        <button class="btn-remover-mini" onclick="removerProc({{ p.id }})">🗑 Remover</button>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="vazio">Nenhum procurador cadastrado ainda. Importe o certificado abaixo.</div>
+    {% endif %}
+  </div>
+
+  <!-- ── Importar novo procurador ── -->
+  <div class="card">
+    <div class="card-titulo">📤 Importar certificado do procurador</div>
+
+    <div class="campo-grupo">
+      <label class="campo-label" for="procNome">Identificação (apelido) — opcional</label>
+      <input type="text" id="procNome" class="campo-txt"
+             placeholder="Ex.: Contabilidade Silva &amp; Cia" maxlength="80">
+    </div>
+
+    <div class="campo-grupo">
+      <label class="campo-label">Arquivo do certificado</label>
+      <div class="drop-area" id="dropArea">
+        <input type="file" id="pfxFile" accept=".pfx,.p12" onchange="arquivoSelecionado(this)">
+        <div class="drop-icone">📁</div>
+        <div class="drop-txt">Clique ou arraste o arquivo .pfx do procurador</div>
+        <div class="drop-subtxt">Certificado A1 (CNPJ do escritório ou CPF do contador)</div>
+        <div class="drop-arquivo" id="dropArquivo"></div>
+      </div>
+    </div>
+
+    <div class="campo-grupo">
+      <label class="campo-label" for="pfxSenha">Senha do certificado</label>
+      <div class="campo-senha-wrap">
+        <input type="password" id="pfxSenha" placeholder="Digite a senha do .pfx"
+               autocomplete="current-password">
+        <button type="button" class="toggle-senha" onclick="toggleSenha()" title="Mostrar/ocultar">👁</button>
+      </div>
+    </div>
+
+    <button class="btn-salvar" id="btnSalvar" onclick="salvarProc()" disabled>
+      <span id="btnTxt">🤝 Validar e Importar</span>
+    </button>
+
+    <div class="resultado" id="resultado">
+      <div id="resultadoMsg"></div>
+      <div class="resultado-detalhe" id="resultadoDetalhe"></div>
+    </div>
+  </div>
+
+  <!-- ── Informações ── -->
+  <div class="info-box">
+    <strong>Sobre a procuração eletrônica no eSocial</strong>
+    <ul style="margin-top:6px;">
+      <li>Use quando um <strong>terceiro</strong> (escritório/contador) transmite o eSocial em nome dos seus clientes, com <strong>procuração eletrônica</strong> registrada no portal do eSocial.</li>
+      <li>O <strong>CNPJ/CPF do transmissor</strong> é lido automaticamente do próprio certificado importado.</li>
+      <li>Depois de importar aqui, vá em <strong>Cadastro da Empresa</strong> e escolha o modo <em>“Procuração de terceiros”</em>, selecionando este procurador.</li>
+      <li>Um mesmo certificado atende <strong>várias empresas</strong> do cliente.</li>
+      <li>O arquivo é armazenado criptografado; a senha não fica visível nem em logs.</li>
+    </ul>
+  </div>
+
+</div>
+
+<script>
+let _arquivoSelecionado = null;
+const dropArea = document.getElementById('dropArea');
+
+dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.classList.add('dragover'); });
+dropArea.addEventListener('dragleave', () => dropArea.classList.remove('dragover'));
+dropArea.addEventListener('drop', e => {
+    e.preventDefault();
+    dropArea.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) registrarArquivo(file);
+});
+
+function arquivoSelecionado(input) {
+    if (input.files[0]) registrarArquivo(input.files[0]);
+}
+
+function registrarArquivo(file) {
+    _arquivoSelecionado = file;
+    const el = document.getElementById('dropArquivo');
+    el.textContent = '📎 ' + file.name;
+    el.style.display = 'block';
+    document.querySelector('#dropArea .drop-txt').textContent = 'Arquivo selecionado:';
+    atualizarBotao();
+}
+
+function atualizarBotao() {
+    const temArq = _arquivoSelecionado !== null;
+    const temSen = document.getElementById('pfxSenha').value.trim().length > 0;
+    const btn    = document.getElementById('btnSalvar');
+    btn.disabled = !(temArq && temSen);
+    btn.style.opacity = btn.disabled ? '0.5' : '1';
+}
+
+const inpSenha = document.getElementById('pfxSenha');
+inpSenha.addEventListener('input',  atualizarBotao);
+inpSenha.addEventListener('change', atualizarBotao);
+
+function toggleSenha() {
+    const inp = document.getElementById('pfxSenha');
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+function mostrarResultado(ok, msg, detalhe) {
+    const resDiv = document.getElementById('resultado');
+    const resMsg = document.getElementById('resultadoMsg');
+    const resDet = document.getElementById('resultadoDetalhe');
+    resDiv.className = 'resultado ' + (ok ? 'ok' : 'erro');
+    resDiv.style.display = 'block';
+    resMsg.textContent = (ok ? '✅ ' : '❌ ') + msg;
+    resDet.textContent = detalhe || '';
+    resDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function salvarProc() {
+    const btn   = document.getElementById('btnSalvar');
+    const senha = document.getElementById('pfxSenha').value.trim();
+    const nome  = document.getElementById('procNome').value.trim();
+
+    if (!_arquivoSelecionado) { mostrarResultado(false, 'Selecione o arquivo .pfx antes de continuar.', ''); return; }
+    if (!senha)               { mostrarResultado(false, 'Informe a senha do certificado.', ''); return; }
+
+    btn.disabled = true;
+    btn.style.opacity = '0.6';
+    document.getElementById('btnTxt').textContent = '⏳ Validando…';
+    document.getElementById('resultado').style.display = 'none';
+
+    const fd = new FormData();
+    fd.append('pfx_file', _arquivoSelecionado);
+    fd.append('pfx_senha', senha);
+    fd.append('nome', nome);
+
+    try {
+        const r = await fetch('/api/procurador_salvar', { method: 'POST', body: fd });
+        let data;
+        try { data = await r.json(); }
+        catch (_) {
+            mostrarResultado(false, `Erro inesperado do servidor (HTTP ${r.status}).`,
+                             'Verifique se a tabela tab_procurador foi criada no Supabase.');
+            document.getElementById('btnTxt').textContent = '🤝 Validar e Importar';
+            btn.disabled = false; atualizarBotao();
+            return;
+        }
+        if (data.ok) {
+            mostrarResultado(true, 'Procurador importado com sucesso!',
+                `${data.titular}  |  ${data.tipo}: ${data.insc_fmt}  |  Válido até: ${data.validade}`);
+            setTimeout(() => location.reload(), 1800);
+        } else {
+            mostrarResultado(false, data.msg || 'Erro desconhecido.', '');
+        }
+    } catch(e) {
+        mostrarResultado(false, 'Não foi possível conectar ao servidor.', String(e));
+    }
+
+    document.getElementById('btnTxt').textContent = '🤝 Validar e Importar';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    atualizarBotao();
+}
+
+async function removerProc(id) {
+    if (!await f10Confirm('Remover este procurador? As empresas que usam este certificado precisarão ser reconfiguradas.')) return;
+    const r    = await fetch('/api/procurador_remover', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+    });
+    const data = await r.json();
+    if (data.ok) location.reload();
+    else alert('Erro: ' + data.msg);
+}
+</script>
+
+<script src="/static/f10_dialog.js"></script>
+
+</body>
+</html>

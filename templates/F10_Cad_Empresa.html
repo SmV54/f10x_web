@@ -874,6 +874,39 @@ body {
         </div>
     </div>
 
+    <!-- ── Transmissão eSocial (certificado / procuração) ─── -->
+    <div class="secao" id="secao-transm">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#0ea5e9"></div>
+            <span class="secao-titulo">Transmissão do eSocial</span>
+        </div>
+        <div class="secao-corpo">
+            <div class="grid-6">
+                <div class="campo">
+                    <label>Modo de transmissão</label>
+                    <select id="cert_modo" onchange="atualizarModoTransm()"
+                            onfocus="showHint(this,'Como esta empresa transmite ao eSocial.\nPróprio: usa o certificado A1 da própria empresa.\nProcuração de terceiros: usa o certificado de um escritório/contador com procuração eletrônica registrada no eSocial. O CNPJ/CPF do transmissor sai do certificado do procurador.')" onblur="clearHint()">
+                        <option value="proprio">Certificado próprio</option>
+                        <option value="procuracao">Procuração de terceiros</option>
+                    </select>
+                </div>
+                <div class="campo" id="campoProcurador" style="grid-column: span 3; display:none;">
+                    <label>Procurador (escritório/contador)</label>
+                    <select id="id_procurador"
+                            onfocus="showHint(this,'Selecione o procurador cujo certificado será usado para assinar e transmitir. Cadastre novos procuradores em Certificado de Procurador.')" onblur="clearHint()">
+                        <option value="">— selecione —</option>
+                    </select>
+                </div>
+                <div class="campo" id="campoProcuradorLink" style="grid-column: span 2; display:none; align-self:end;">
+                    <a href="/config_procurador" target="_blank"
+                       style="font-size:12px;color:#2a7de1;text-decoration:none;font-weight:600;">
+                       ＋ Importar / gerenciar procuradores
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- ── CNAB 240 — CONTA PAGADORA DE SALÁRIO ────── -->
     <div class="secao">
         <div class="secao-cnab-toggle" onclick="toggleCNAB()">
@@ -1340,6 +1373,14 @@ async function gravarEmpresa(painel) {
         return;
     }
 
+    // Procuração exige procurador selecionado
+    if (v('cert_modo') === 'procuracao' && !v('id_procurador')) {
+        const el = document.getElementById('id_procurador');
+        if (el) { el.focus(); _marcarErro(el); }
+        alert('No modo "Procuração de terceiros", selecione o procurador. Cadastre um em Certificado de Procurador se a lista estiver vazia.');
+        return;
+    }
+
     const dados = {
         perAdianta13:           _perAd13,
         cnpj:                   v('cnpj').replace(/\D/g,''),
@@ -1389,6 +1430,15 @@ async function gravarEmpresa(painel) {
         cnab_segb_obrigatorio:  v('cnab_segb_obrig')      || null,
         cnab_dv_posicao:        v('cnab_dv_posicao')      || null,
     };
+    // Transmissão eSocial (próprio × procuração) — envia apenas em modo opt-in
+    // (procuração agora, OU empresa que já estava em procuração e voltou a próprio),
+    // evitando erro de "coluna inexistente" para quem ainda não rodou a migração.
+    const _modoT = v('cert_modo') || 'proprio';
+    if (_modoT === 'procuracao' || window._origCertModo === 'procuracao') {
+        dados.cert_modo     = _modoT;
+        dados.id_procurador = (_modoT === 'procuracao' && v('id_procurador'))
+                                ? parseInt(v('id_procurador'), 10) : null;
+    }
     const url = window._modoAlterar ? '/api/alterar_empresa' : '/api/gravar_empresa';
     try {
         const r = await fetch(url, {
@@ -1509,6 +1559,38 @@ function clearHint() {
 /* ── MODO ALTERAR — pré-preenchimento ──────────────────── */
 window._modoAlterar = {{ 'true' if modo|default('novo') == 'alterar' else 'false' }};
 
+/* ── Transmissão eSocial: próprio × procuração ── */
+let _procuradoresCarregados = false;
+
+function atualizarModoTransm() {
+    const modo = (document.getElementById('cert_modo')?.value) || 'proprio';
+    const mostra = modo === 'procuracao';
+    const cp = document.getElementById('campoProcurador');
+    const cl = document.getElementById('campoProcuradorLink');
+    if (cp) cp.style.display = mostra ? '' : 'none';
+    if (cl) cl.style.display = mostra ? '' : 'none';
+    if (mostra) carregarProcuradores();
+}
+
+async function carregarProcuradores(selecionarId) {
+    const sel = document.getElementById('id_procurador');
+    if (!sel) return;
+    try {
+        const r = await fetch('/api/procurador_listar');
+        const j = await r.json();
+        const atual = selecionarId != null ? String(selecionarId) : sel.value;
+        sel.innerHTML = '<option value="">— selecione —</option>';
+        (j.procuradores || []).forEach(p => {
+            const opt = document.createElement('option');
+            opt.value = p.id;
+            opt.textContent = `${p.nome} (${p.tipo}: ${p.insc_fmt})`;
+            sel.appendChild(opt);
+        });
+        if (atual) sel.value = atual;
+        _procuradoresCarregados = true;
+    } catch (e) { /* silencioso — lista fica vazia */ }
+}
+
 function preencherFormulario(d) {
     const set = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
     const flt = (v) => v != null ? String(v).replace('.', ',') : '';
@@ -1560,6 +1642,13 @@ function preencherFormulario(d) {
     set('ind_porte',     d.es_ind_porte      || '');
     set('ind_ponto',     d.es_ind_ponto      || '');
     set('pis_pasep',     d.es_pis_pasep      || '');
+    // Transmissão eSocial (próprio × procuração)
+    window._origCertModo = d.cert_modo || 'proprio';
+    set('cert_modo', d.cert_modo || 'proprio');
+    if ((d.cert_modo || 'proprio') === 'procuracao') {
+        carregarProcuradores(d.id_procurador);
+    }
+    atualizarModoTransm();
     // CNAB
     if (d.banco_codigo) {
         set('cnab_banco',       d.banco_codigo);
