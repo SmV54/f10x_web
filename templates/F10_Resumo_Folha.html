@@ -306,15 +306,47 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     </div>
   </div>
 
+  <!-- ── INSS CONTRIBUINTES INDIVIDUAIS (codCateg 700-799) ── -->
+  {% if tem_ci %}
+  <div class="secao">
+    <div class="secao-topo">
+      <div class="secao-titulo secao-titulo-inss">Resumo INSS — Diretores e Contribuintes Individuais</div>
+      <div style="font-size:11px;color:#64748b">Categorias 700–799 · {{ n_ci }} pessoa{{ 's' if n_ci != 1 }}</div>
+    </div>
+    <div class="trib-grid">
+      <div class="trib-item">
+        <div class="trib-label">Base de Cálculo</div>
+        <div class="trib-valor">{{ base_inss_ci }}</div>
+        <div class="trib-aliq">pró-labore com incidência CP</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">INSS Retido (rubrica 0102)</div>
+        <div class="trib-valor">{{ inss_ci_val }}</div>
+        <div class="trib-aliq">11% até o teto</div>
+      </div>
+      <div class="trib-item">
+        <div class="trib-label">Alíquota Efetiva Média</div>
+        <div class="trib-valor">{{ inss_ci_aliq }}%</div>
+        <div class="trib-aliq">INSS ÷ base × 100</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ── INSS EMPRESA ── -->
   <div class="secao">
     <div class="secao-topo">
       <div class="secao-titulo secao-titulo-inss">Resumo INSS — Empresa (GPS)</div>
-      <div style="font-size:11px;color:#64748b">FPAS {{ gps_fpas }}{% if ind_simples == 'S' %} · Simples Nacional — contribuição patronal substituída{% endif %}</div>
+      <div style="font-size:11px;color:#64748b">FPAS {{ gps_fpas }}{% if is_simples_ou_mei %} · {{ regime_label }} — contribuição patronal substituída{% endif %}</div>
     </div>
 
     <div style="padding:4px 20px 0">
       <div style="font-size:11px;color:#64748b;margin-bottom:6px">Base de cálculo: <strong style="color:#1e293b;font-family:'IBM Plex Mono',monospace">{{ base_inss_emp }}</strong></div>
+      {% if is_simples_ou_mei %}
+      <div style="font-size:11px;color:#64748b;margin-bottom:6px">
+        {{ regime_label }}: contribuição patronal (20%), RAT e terceiros são recolhidos pelo DAS — nada a recolher em GPS.
+      </div>
+      {% endif %}
     </div>
 
     <table class="tbl-verbas">

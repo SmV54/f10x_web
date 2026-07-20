@@ -36046,6 +36046,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                 break
             offset += page_sz
     rubr_map.setdefault(101, {"dsc": "INSS",              "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
+    rubr_map.setdefault(102, {"dsc": "INSS CONT.INDIVIDUAL", "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
     rubr_map.setdefault(120, {"dsc": "IRRF",              "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
     rubr_map.setdefault(139, {"dsc": "FGTS Provisionado", "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
 
@@ -36066,6 +36067,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     todas_mats = set()
     emp_fgts_base = {}   # {matricula: base FGTS em centavos}
     emp_fgts139   = {}   # {matricula: valor rubrica 139 em centavos}
+    emp_base_cp   = {}   # {matricula: base INSS (inc_cp=11) em centavos}
+    emp_inss      = {}   # {matricula: INSS retido (rubrica 101) em centavos}
+    emp_inss102   = {}   # {matricula: INSS pró-labore (rubrica 102) em centavos}
     for rec in mov_rows:
         cod = int(rec.get("cod_verba") or 0)
         val = int(rec.get("valor")     or 0)
@@ -36079,8 +36083,16 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         # inc_fgts: "11" = incide integral; "S" = adiantamento do 13º (verba 17).
         if rb_cod.get("tp") == "1" and rb_cod.get("inc_fgts") in ("11", "S"):
             emp_fgts_base[mat] = emp_fgts_base.get(mat, 0) + val
+        if rb_cod.get("tp") == "1" and rb_cod.get("inc_cp") == "11":
+            emp_base_cp[mat] = emp_base_cp.get(mat, 0) + val
         if cod == 139:
             emp_fgts139[mat] = emp_fgts139.get(mat, 0) + val
+        # 101 = INSS do empregado; 102 = INSS do contribuinte individual
+        # (pró-labore). Cada um alimenta o seu quadro.
+        if cod == 101:
+            emp_inss[mat] = emp_inss.get(mat, 0) + val
+        if cod == 102:
+            emp_inss102[mat] = emp_inss102.get(mat, 0) + val
 
     proventos = []
     descontos = []
@@ -36112,20 +36124,39 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     irrf_val = totais.get(120, {}).get("valor", 0)
     fgts_val = totais.get(139, {}).get("valor", 0)
 
-    # ── Split FGTS 8% (geral) / 2% (Menor Aprendiz codCateg=103) ──
+    # ── Split por categoria: Menor Aprendiz (103) e Contribuintes
+    #    Individuais / diretores (700-799, pró-labore) ──
     mats_aprendiz = set()
+    mats_ci       = set()
     if todas_mats:
         try:
-            r_cat = (supabase.table("tab_CAD")
-                     .select("matricula,codCateg")
+            r_cat = (supabase.table("tab_cad")
+                     .select("matricula,codcateg")
                      .eq("id_empresa", id_empresa)
                      .in_("matricula", list(todas_mats))
                      .execute())
             for row in (r_cat.data or []):
-                if str(row.get("codCateg") or "") == "103":
+                cat = str(row.get("codcateg") or "").strip()
+                if cat == "103":
                     mats_aprendiz.add(row.get("matricula"))
-        except Exception:
-            pass
+                if cat.isdigit() and 700 <= int(cat) <= 799:
+                    mats_ci.add(row.get("matricula"))
+        except Exception as e:
+            print(f"[resumo_folha] falha ao ler categorias em tab_cad: {e}")
+
+    # Rede de segurança: quem tem a rubrica 102 é CI mesmo que o codcateg
+    # esteja em branco no cadastro.
+    mats_ci |= set(emp_inss102.keys())
+
+    # O quadro "INSS — Empregado" soma só categorias < 700. O que for CI
+    # (diretor/sócio, pró-labore) sai para o quadro próprio.
+    base_inss_ci = sum(v for m, v in emp_base_cp.items() if m in mats_ci)
+    # O retido do CI vem da rubrica 102 (INSS Cont. Individual); a 101, se
+    # houver, também é dele e sai do quadro do empregado.
+    inss_ci_101  = sum(v for m, v in emp_inss.items()    if m in mats_ci)
+    inss_ci_val  = sum(emp_inss102.values()) + inss_ci_101
+    base_inss   -= base_inss_ci
+    inss_val    -= inss_ci_101
 
     base_fgts_8 = sum(v for mat, v in emp_fgts_base.items() if mat not in mats_aprendiz)
     base_fgts_2 = sum(v for mat, v in emp_fgts_base.items() if mat in mats_aprendiz)
@@ -36140,22 +36171,27 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # ── Empresa (INSS patronal) ──
     try:
         r_emp = (supabase.table("tab_empresa")
-                 .select("ind_simples,class_trib,risco,gps_fpas,gps_fpas_perc,"
+                 .select("ind_simples,es08_classtributaria,risco,gps_fpas,gps_fpas_perc,"
                          "gps_saleduc,gps_incra,gps_senai,gps_sesi,"
                          "gps_senac,gps_sesc,gps_sebrae,gps_dpc,gps_senar,"
                          "gps_sest,gps_senat,gps_sesco")
                  .eq("id_empresa", id_empresa)
                  .limit(1).execute())
         emp = r_emp.data[0] if r_emp.data else {}
-    except Exception:
+    except Exception as e:
+        # Nao engolir calado: se o select quebrar, a empresa vira "Geral" e o
+        # patronal aparece indevidamente (foi o que acontecia com class_trib).
+        print(f"[resumo_folha] falha ao ler tab_empresa {id_empresa}: {e}")
         emp = {}
 
-    ind_simples = str(emp.get("ind_simples") or "N")
-    class_trib  = str(emp.get("class_trib")  or "01").zfill(2)
-    # Optante pelo Simples Nacional (classTrib 02) e MEI (classTrib 04) nao
-    # tem Contribuicao Patronal (20%) nem RAT. classTrib 03 (anexo IV) paga
-    # CP normalmente, entao nao entra aqui.
-    is_simples_ou_mei = (ind_simples == "S") or (class_trib in ("02", "04"))
+    ind_simples = str(emp.get("ind_simples") or "N").upper()
+    # A classificacao tributaria do eSocial fica em es08_classtributaria
+    # (nao existe coluna class_trib em tab_empresa).
+    class_trib  = str(emp.get("es08_classtributaria") or "").zfill(2)
+    # Optante pelo Simples Nacional (campo obrigatorio do cadastro) e MEI
+    # (classTrib 04) tem a contribuicao patronal, o RAT e os terceiros
+    # recolhidos pelo DAS — nada em GPS.
+    is_simples_ou_mei = (ind_simples == "S") or (class_trib == "04")
     risco_grau  = int(emp.get("risco") or 0)   # 1=1% 2=2% 3=3%
     rat_pct     = float(risco_grau)             # % numérico direto
 
@@ -36174,11 +36210,15 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         except Exception:
             fap_fator = 1.0
 
-    def _linha_emp(label, pct_float, dec=2):
+    # Base da parte patronal: a CP de 20% incide também sobre o pró-labore dos
+    # contribuintes individuais; RAT e terceiros, só sobre empregados.
+    base_cp_patronal = base_inss + base_inss_ci
+
+    def _linha_emp(label, pct_float, dec=2, base=None):
         """Monta linha do passo a passo. pct_float em % (ex: 1.5 = 1,5%). dec = casas decimais exibidas."""
         if not pct_float:
             return None
-        val_c = round(base_inss * pct_float / 100)
+        val_c = round((base_inss if base is None else base) * pct_float / 100)
         return {
             "label": label,
             "pct":   f"{pct_float:.{dec}f}".replace(".", ",") + "%",
@@ -36195,7 +36235,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # nem MEI. Para esses regimes, a contribuicao e recolhida pela DAS, nao
     # pela GPS.
     if not is_simples_ou_mei:
-        l = _linha_emp("Contribuição Patronal", 20.0)
+        l = _linha_emp("Contribuição Patronal", 20.0, base=base_cp_patronal)
         if l:
             inss_emp_linhas.append(l)
             inss_emp_total += l["val_c"]
@@ -36232,6 +36272,17 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                 inss_emp_linhas.append(l)
                 inss_emp_total += l["val_c"]
 
+    # Simples Nacional / MEI: CP, RAT e terceiros sao substituidos pelo DAS,
+    # entao a parte patronal em GPS e zero. Mostramos uma linha explicita em
+    # vez de deixar a tabela vazia (parecia falta de cadastro).
+    if is_simples_ou_mei:
+        inss_emp_linhas.append({
+            "label": "Empresa pelo Simples",
+            "pct":   "0,00%",
+            "val":   _fmt_brl(0),
+            "val_c": 0,
+        })
+
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else anomes
     tipo_desc  = {"N": "Normal", "F": "Férias", "R": "Rescisão",
                   "A": "Adiant. 13º", "1": "13º Salário"}.get(anomes_tipo, anomes_tipo)
@@ -36257,6 +36308,12 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "base_inss":        _fmt_brl(base_inss),
         "inss_val":         _fmt_brl(inss_val),
         "inss_aliq":        _pct(inss_val, base_inss),
+        # INSS — Contribuintes Individuais (codCateg 700-799)
+        "tem_ci":           len(mats_ci) > 0,
+        "n_ci":             len(mats_ci),
+        "base_inss_ci":     _fmt_brl(base_inss_ci),
+        "inss_ci_val":      _fmt_brl(inss_ci_val),
+        "inss_ci_aliq":     _pct(inss_ci_val, base_inss_ci),
         "base_irrf":        _fmt_brl(base_irrf),
         "irrf_val":         _fmt_brl(irrf_val),
         "irrf_aliq":        _pct(irrf_val, base_irrf),
@@ -36271,10 +36328,10 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "fgts2_dif_fmt":    _fmt_brl(abs(fgts139_2 - fgts2_calc)),
         "fgts_total_calc":  _fmt_brl(fgts8_calc + fgts2_calc),
         # INSS Empresa
-        "base_inss_emp":    _fmt_brl(base_inss),
+        "base_inss_emp":    _fmt_brl(base_cp_patronal),
         "inss_emp_linhas":  inss_emp_linhas,
         "inss_emp_total":   _fmt_brl(inss_emp_total),
-        "inss_emp_aliq":    _pct(inss_emp_total, base_inss),
+        "inss_emp_aliq":    _pct(inss_emp_total, base_cp_patronal),
         "ind_simples":      ind_simples,
         "class_trib":       class_trib,
         "is_simples_ou_mei": is_simples_ou_mei,
@@ -36540,11 +36597,26 @@ def resumo_folha_pdf():
         "ALÍQUOTA EFETIVA MÉDIA", d["inss_aliq"] + "%", "INSS ÷ base × 100",
     ))
 
+    # INSS — Diretores e Contribuintes Individuais (codCateg 700-799)
+    if d.get("tem_ci"):
+        elems.append(Paragraph(
+            "RESUMO INSS — DIRETORES E CONTRIBUINTES INDIVIDUAIS", st_secao))
+        elems.append(Paragraph(
+            f"<font size=7 color='#64748b'>Categorias 700–799  ·  {d['n_ci']} pessoa(s)</font>",
+            ParagraphStyle("subci", fontName="Helvetica", fontSize=7,
+                           textColor=cinza, spaceAfter=4)))
+        elems.append(_tbl_trio(
+            "BASE DE CÁLCULO", _v(d["base_inss_ci"]), "pró-labore com incidência CP",
+            "INSS RETIDO (0102)", _v(d["inss_ci_val"]), "11% até o teto",
+            "ALÍQUOTA EFETIVA MÉDIA", d["inss_ci_aliq"] + "%", "INSS ÷ base × 100",
+        ))
+
     # INSS — Empresa (GPS)
     titulo_emp = "RESUMO INSS — EMPRESA (GPS)"
     sub_emp    = f"FPAS {d['gps_fpas']}"
-    if d.get("ind_simples") == "S":
-        sub_emp += "  ·  Simples Nacional — contribuição patronal substituída"
+    if d.get("is_simples_ou_mei"):
+        sub_emp += (f"  ·  {d['regime_label']} — contribuição patronal, RAT e "
+                    f"terceiros recolhidos pelo DAS; nada a recolher em GPS")
     elems.append(Paragraph(titulo_emp, st_secao))
     elems.append(Paragraph(
         f"<font size=7 color='#64748b'>{sub_emp}</font>",
