@@ -516,10 +516,8 @@ function selecionar(idx) {
     const mem = lerMemoria();
     document.getElementById('fEmpresas').value     = mem.empresas     || (c.empresas != null ? c.empresas : '');
     document.getElementById('fFuncionarios').value = mem.funcionarios || (c.funcionarios != null ? c.funcionarios : '');
-    // Competência (mês do serviço): nunca começar com um mês futuro (Sefin rejeita
-    // com E0015). Usa o último valor lembrado só se não for futuro; senão, mês atual.
-    document.getElementById('fDataProc').value     =
-        (mem.dataProc && !competenciaFutura(mem.dataProc)) ? mem.dataProc : mesAnoAtual();
+    // Competência (mês do serviço): último valor lembrado, mesmo que seja mês futuro.
+    document.getElementById('fDataProc').value     = mem.dataProc || mesAnoAtual();
     mascaraMesAno(document.getElementById('fDataProc'));
 
     discrManual = false;   // novo cliente → regenera a sugestão de discriminação
@@ -670,10 +668,9 @@ function emitir() {
     const discr = (document.getElementById('fDiscriminacao').value || '').trim();
 
     if (!/^\d{2}\/\d{4}$/.test(competencia)) { alert('Informe a competência (MM/AAAA).'); return; }
-    if (competenciaFutura(competencia)) {
-        alert('A competência ' + competencia + ' está no futuro. A competência da NFS-e não pode ser posterior ao mês atual — use o mês atual ou anterior.');
-        return;
-    }
+    // Competência futura é permitida: ela vale para o TEXTO da discriminação.
+    // O dCompet do XML sai com o mês de hoje (o backend ajusta), senão o Sefin
+    // recusa com E0015 (competência posterior à data de emissão).
     if (!valor) { alert('Informe o valor da nota.'); return; }
     if (!discr) { alert('Informe a discriminação do serviço.'); return; }
 
@@ -793,14 +790,6 @@ function mesAnoAtual() {
     return String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
 }
 
-// A competência (MM/AAAA) é um mês futuro em relação a hoje?
-function competenciaFutura(s) {
-    const m = /^(\d{2})\/(\d{4})$/.exec((s || '').trim());
-    if (!m) return false;
-    const cm = parseInt(m[1], 10), cy = parseInt(m[2], 10);
-    const d = new Date();
-    return (cy > d.getFullYear()) || (cy === d.getFullYear() && cm > (d.getMonth() + 1));
-}
 
 // Máscara MM/AAAA — só dígitos, barra automática após os 2 primeiros.
 function mascaraMesAno(el) {

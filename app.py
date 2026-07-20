@@ -43636,18 +43636,17 @@ def api_admin_nf_emitir():
         return jsonify({'ok': False, 'msg': 'Cliente não informado.'})
     if len(_re_digits(competencia)) not in (6,):
         return jsonify({'ok': False, 'msg': 'Competência inválida (use MM/AAAA).'})
-    # A competência não pode ser um mês FUTURO — o Sefin rejeita com E0015
+    # A competência digitada na tela é do SERVIÇO — pode ser um mês à frente
+    # (folha contratada adiantado) e vai no texto da discriminação.
+    # Já o dCompet do XML não pode ser futuro: o Sefin rejeita com E0015
     # ("data de competência não pode ser posterior à data de emissão / dhEmi").
-    # dCompet = 1º dia do mês da competência; dhEmi = agora.
+    # Por isso o dCompet é SEMPRE o mês de hoje; só a descrição fala do mês do serviço.
     _cd = _re_digits(competencia)
-    _cmes, _cano = int(_cd[:2]), int(_cd[2:])
-    _hoje = datetime.now(nfx.TZ_BR)
+    _cmes = int(_cd[:2])
     if not (1 <= _cmes <= 12):
         return jsonify({'ok': False, 'msg': 'Competência inválida (mês deve ser 01–12).'})
-    if (_cano, _cmes) > (_hoje.year, _hoje.month):
-        return jsonify({'ok': False, 'msg': (
-            f'Competência {competencia} está no futuro. A competência da NFS-e não pode ser '
-            f'posterior ao mês da emissão ({_hoje.month:02d}/{_hoje.year}). Use o mês atual ou anterior.')})
+    _hoje = datetime.now(nfx.TZ_BR)
+    competencia_xml = f'{_hoje.month:02d}/{_hoje.year}'
     if valor <= 0:
         return jsonify({'ok': False, 'msg': 'Valor da nota inválido.'})
 
@@ -43701,7 +43700,7 @@ def api_admin_nf_emitir():
 
     e = NFSE_EMITENTE
     d = dict(
-        ambiente=ambiente, serie=serie, ndps=ndps, competencia=competencia,
+        ambiente=ambiente, serie=serie, ndps=ndps, competencia=competencia_xml,
         ver_aplic="Folha10-1.0",
         emit_cnpj=e["cnpj"], emit_im=e["im"], emit_email=e["email"],
         emit_op_simp_nac=e["op_simp_nac"], emit_reg_ap_sn=e["reg_ap_sn"],
