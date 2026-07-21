@@ -31586,11 +31586,22 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             # ── ETAPA 0011B — DESCONTO DE ADIANTAMENTO QUINZENAL (verba 160) ──
             # Soma os valores das verbas 161-164 lançadas previamente e gera a
             # verba 160 como desconto único na folha.
+            # As 161-164 sao apenas o registro do adiantamento pago: quem desconta
+            # e a 160. Se estiverem lancadas no movimento com origem 'M' elas
+            # entram em mmVmm pela ETAPA 0009 e, somadas a 160, descontam o
+            # adiantamento duas vezes. Tira as quatro da base do calculo.
+            _adiant_dup = 0
+            for _cv_ad in (161, 162, 163, 164):
+                _adiant_dup += int(mmVmm.pop(_cv_ad, 0) or 0)
+
             _adiant_v = int(_adiant_por_mat.get(matr, 0))
             if _adiant_v > 0:
                 mmVmm[160] = mmVmm.get(160, 0) + _adiant_v
                 _ad_linha = (f"Adiantamento Quinzenal (verbas 161-164): {_fmt_brl(_adiant_v)}"
                              f"  →  V160 (desconto) = {_fmt_brl(_adiant_v)}")
+                if _adiant_dup > 0:
+                    _ad_linha += (f"   ·   V161-164 lançadas no movimento "
+                                  f"({_fmt_brl(_adiant_dup)}) não descontam de novo")
                 _ad_tbl = Table([
                     [Paragraph("ETAPA 0011B - DESCONTO DE ADIANTAMENTO QUINZENAL", st_etapa)],
                     [Paragraph(_ad_linha, st_detalhe)],
