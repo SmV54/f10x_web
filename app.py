@@ -29211,12 +29211,38 @@ def _calc_dsr_mes(anomes):
         return 22, 4   # fallback conservador
 
 
+# Dias de trabalho considerados na escala 12x36 para o DSR: 15 nos meses
+# normais e 14 em fevereiro (nao varia entre mes de 30 e 31 dias).
+def _dsr_dias_escala(anomes):
+    try:
+        return 14 if int(str(anomes)[4:6]) == 2 else 15
+    except Exception:
+        return 15
+
+
+def _ids_horario_escala(id_cliente):
+    """id_horario dos horarios de escala 12x36 (do sistema e do cliente)."""
+    ids = set()
+    try:
+        r = (supabase.table("tab_aux_horarios")
+             .select("id_horario, nome_horario")
+             .in_("id_cliente", [0] + ([id_cliente] if id_cliente else []))
+             .ilike("nome_horario", "%12x36%")
+             .execute())
+        for row in (r.data or []):
+            if row.get("id_horario"):
+                ids.add(int(row["id_horario"]))
+    except Exception:
+        pass
+    return ids
+
+
 def _calc_etapa1_dados(id_empresa):
     """Busca funcionários e calcula salário hora (Etapa 1)."""
     linhas = []
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, dtadm, codcateg, dtnascto")
+             .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, dtadm, codcateg, dtnascto, id_tab_horario")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .order("matricula")
@@ -29250,6 +29276,7 @@ def _calc_etapa1_dados(id_empresa):
                 "dtadm":        str(f.get("dtadm")    or ""),
                 "codcateg":     str(f.get("codcateg") or ""),
                 "dtnascto":     str(f.get("dtnascto") or ""),
+                "id_horario":   int(f.get("id_tab_horario") or 0),
             })
     except Exception:
         pass
@@ -30088,6 +30115,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     }
     except Exception:
         pass
+    # Horarios de escala 12x36 — mudam so o divisor do DSR (ETAPA 0009C)
+    escala_ids = _ids_horario_escala(id_cliente)
+
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V"})
     rubricas_info.setdefault(101, {"tp": "2", "dsc": "INSS", "unid": "V", "inc_cp": "", "inc_irrf": ""})
@@ -31102,6 +31132,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]
             _cods_dsr    = {cod for _, cod, _ in DSR_ORIGENS}
             _du_dsr, _dias_dsr = _calc_dsr_mes(anomes)
+            # Escala 12x36: o divisor sai da escala (15 dias; 14 em fevereiro)
+            # em vez dos dias uteis do calendario. O multiplicador continua
+            # sendo domingos + feriados.
+            _e_escala = int(l.get("id_horario") or 0) in escala_ids
+            if _e_escala:
+                _du_dsr = _dsr_dias_escala(anomes)
+            _txt_div = ("Dias da escala 12x36" if _e_escala else "Dias úteis")
             _linhas_dsr  = []
             for _flag, _cod_dsr, _nome_dsr in DSR_ORIGENS:
                 _base_dsr = int(sum(
@@ -31124,7 +31161,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     mmVmm[_cod_dsr] = _val_dsr
                     _linhas_dsr.append(
                         f"{_nome_dsr}: base {_fmt_brl(_base_dsr)}"
-                        f"   ×   Domingos+Feriados ({_dias_dsr}) ÷ Dias úteis ({_du_dsr})"
+                        f"   ×   Domingos+Feriados ({_dias_dsr}) ÷ {_txt_div} ({_du_dsr})"
                         f"   =   V{_cod_dsr:04d}: {_fmt_brl(_val_dsr)}")
 
             _st_e9c_zero = TableStyle([
