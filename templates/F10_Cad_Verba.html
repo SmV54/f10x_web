@@ -654,6 +654,7 @@
               <label class="chk-item"><input type="checkbox" id="chkEmpInterno">    16 - É um Empréstimo Interno</label>
               <label class="chk-item"><input type="checkbox" id="chkPeriodo">       17 - É um Feriado</label>
               <label class="chk-item"><input type="checkbox" id="chkSobreaviso">    18 - É Hora Sobreaviso</label>
+              <label class="chk-item"><input type="checkbox" id="chkHoraExtra">     19 - É uma Hora Extra?</label>
             </div>
           </div>
 
@@ -783,6 +784,7 @@
     ['chkEmpInterno',  'is_emprestimo_interno'],
     ['chkPeriodo',     'is_periodo'],
     ['chkSobreaviso',  'is_hora_sobreaviso'],
+    ['chkHoraExtra',   'is_hora_extra'],
   ];
 
   // Tipos de folha compatíveis com cada select de incidência por evento
@@ -1466,6 +1468,7 @@
     ['is_emprestimo_interno','16 — Empréstimo Interno'],
     ['is_periodo',           '17 — Feriado'],
     ['is_hora_sobreaviso',   '18 — Hora Sobreaviso'],
+    ['is_hora_extra',        '19 — Hora Extra'],
   ];
 
   function abrirSelecaoCompleta() {

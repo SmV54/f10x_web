@@ -1936,7 +1936,8 @@ def rel_verbas():
                 "is_nao_digitar,is_sal_maternidade,is_adto_13sal,is_comissao,is_gratificacao,"
                 "is_insalubridade,is_periculosidade,is_gorjeta,is_dsr,is_sal_familia,"
                 "is_adic_noturno,is_relativo_13sal,is_verba_ferias,is_emprestimo_consig,"
-                "is_plano_saude,is_emprestimo_interno,is_periodo,is_hora_sobreaviso")
+                "is_plano_saude,is_emprestimo_interno,is_periodo,is_hora_sobreaviso,"
+                "is_hora_extra")
         .in_("id_cliente", [0, id_cliente])
         .eq("situacao", "A")
         .order("cod_rubr")
@@ -9163,6 +9164,7 @@ IS_FIELD_NUM = [
     ("is_emprestimo_interno", "16"),
     ("is_periodo",            "17"),
     ("is_hora_sobreaviso",    "18"),
+    ("is_hora_extra",         "19"),
 ]
 
 def gravar_log(menu, observacao, ano_mes=None, matricula=None):
@@ -9321,7 +9323,8 @@ def api_rubrica_incluir():
               "is_periculosidade", "is_gorjeta", "is_dsr", "is_sal_familia",
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
-              "is_periodo", "is_hora_sobreaviso", "percentual", "verbas_somabase"]:
+              "is_periodo", "is_hora_sobreaviso", "is_hora_extra",
+              "percentual", "verbas_somabase"]:
         v = data.get(f)
         if v is not None:
             campos[f] = v
@@ -9394,7 +9397,8 @@ def api_rubrica_editar():
               "is_periculosidade", "is_gorjeta", "is_dsr", "is_sal_familia",
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
-              "is_periodo", "is_hora_sobreaviso", "percentual", "verbas_somabase"]:
+              "is_periodo", "is_hora_sobreaviso", "is_hora_extra",
+              "percentual", "verbas_somabase"]:
         campos[f] = data.get(f)
 
     # Busca estado atual para detectar o que mudou
@@ -30063,7 +30067,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     try:
         for cli_id in ([0] + ([id_cliente] if id_cliente else [])):
             r_rub = (supabase.table("tab_rubrica")
-                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts, is_adic_noturno, percentual, verbas_somabase")
+                     .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpn_inc_fgts, is_adic_noturno, is_hora_extra, is_comissao, percentual, verbas_somabase")
                      .eq("id_cliente", cli_id)
                      .execute())
             for row in (r_rub.data or []):
@@ -30077,6 +30081,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         "inc_fgts":        str(row.get("tpn_inc_fgts")   or ""),
                         "unid":            str(row.get("unid_verba")     or "V"),
                         "is_adic_noturno": bool(row.get("is_adic_noturno")),
+                        "is_hora_extra":   bool(row.get("is_hora_extra")),
+                        "is_comissao":     bool(row.get("is_comissao")),
                         "percentual":      row.get("percentual"),
                         "verbas_somabase": str(row.get("verbas_somabase") or "").strip(),
                     }
@@ -31081,47 +31087,65 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     e9b_tbl.setStyle(_st_e9b_zero)
                 elems.append(e9b_tbl)
 
-            # ── ETAPA 0009C — DSR Adicional Noturno → verba 0026 ─────────
-            base_noturno = int(sum(
-                v for cod, v in mmVmm.items()
-                if rubricas_info.get(cod, {}).get("is_adic_noturno") and v > 0
-            ))
+            # ── ETAPA 0009C — REPOUSO REMUNERADO (DSR) ───────────────────
+            # Cada origem marcada em "Outras Informações" do cadastro da verba
+            # gera o repouso remunerado numa verba propria (Lei 605/49):
+            #    19 - Hora Extra        → V0025
+            #    11 - Adicional Noturno → V0026
+            #    04 - Comissão          → V0027
+            # Formula: base / dias uteis x (domingos + feriados), via _calc_dsr_mes.
+            # Verba de destino digitada manualmente no movimento e sempre mantida.
+            DSR_ORIGENS = [
+                ("is_hora_extra",   25, "Horas Extras"),
+                ("is_adic_noturno", 26, "Adicional Noturno"),
+                ("is_comissao",     27, "Comissões"),
+            ]
+            _cods_dsr    = {cod for _, cod, _ in DSR_ORIGENS}
+            _du_dsr, _dias_dsr = _calc_dsr_mes(anomes)
+            _linhas_dsr  = []
+            for _flag, _cod_dsr, _nome_dsr in DSR_ORIGENS:
+                _base_dsr = int(sum(
+                    v for cod, v in mmVmm.items()
+                    if cod not in _cods_dsr
+                    and rubricas_info.get(cod, {}).get(_flag) and v > 0
+                ))
+                if _base_dsr <= 0:
+                    continue
+                _val_dsr    = int(_base_dsr * _dias_dsr / _du_dsr) if _du_dsr else 0
+                _man_dsr    = next((r for r in mov_func
+                                    if int(r.get("cod_verba") or 0) == _cod_dsr), None)
+                if _man_dsr:
+                    _linhas_dsr.append(
+                        f"{_nome_dsr}: base {_fmt_brl(_base_dsr)}"
+                        f"   DSR calculado: {_fmt_brl(_val_dsr)}"
+                        f"   *** V{_cod_dsr:04d} digitada manualmente "
+                        f"({_fmt_brl(int(_man_dsr.get('valor') or 0))}) — valor manual mantido ***")
+                else:
+                    mmVmm[_cod_dsr] = _val_dsr
+                    _linhas_dsr.append(
+                        f"{_nome_dsr}: base {_fmt_brl(_base_dsr)}"
+                        f"   ×   Domingos+Feriados ({_dias_dsr}) ÷ Dias úteis ({_du_dsr})"
+                        f"   =   V{_cod_dsr:04d}: {_fmt_brl(_val_dsr)}")
+
             _st_e9c_zero = TableStyle([
                 ("LEFTPADDING",  (0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),0),
                 ("TOPPADDING",   (0,0),(0,0),8),   ("BOTTOMPADDING",(0,0),(0,0),4),
             ])
-            if base_noturno > 0:
-                _domingos, _dias_uteis = _domingos_e_uteis(anomes)
-                _dsr_noturno = int(base_noturno * _domingos / _dias_uteis) if _dias_uteis else 0
-                _v26_manual  = next((r for r in mov_func if int(r.get("cod_verba") or 0) == 26), None)
-                if _v26_manual:
-                    _v26_mantido = int(_v26_manual.get("valor") or 0)
-                    _e9c_txt = (f"Base Adic.Noturno: {_fmt_brl(base_noturno)}"
-                                f"   Domingos: {_domingos}   Dias úteis: {_dias_uteis}"
-                                f"   DSR calculado: {_fmt_brl(_dsr_noturno)}"
-                                f"   *** Verba 0026 digitada manualmente ({_fmt_brl(_v26_mantido)}) — valor manual mantido ***")
-                    e9c_tbl = Table([
-                        [Paragraph("ETAPA 0009C - DSR ADICIONAL NOTURNO → V0026 (Repouso Remunerado)", st_etapa)],
-                        [Paragraph(_e9c_txt, st_detalhe)],
-                    ], colWidths=[17*cm])
-                else:
-                    mmVmm[26] = _dsr_noturno
-                    _e9c_txt = (f"Base Adic.Noturno: {_fmt_brl(base_noturno)}"
-                                f"   ×   Domingos ({_domingos}) ÷ Dias úteis ({_dias_uteis})"
-                                f"   =   V0026 DSR: {_fmt_brl(_dsr_noturno)}")
-                    e9c_tbl = Table([
-                        [Paragraph("ETAPA 0009C - DSR ADICIONAL NOTURNO → V0026 (Repouso Remunerado)", st_etapa)],
-                        [Paragraph(_e9c_txt, st_detalhe)],
-                    ], colWidths=[17*cm])
+            if _linhas_dsr:
+                _e9c_linhas = [[Paragraph(
+                    "ETAPA 0009C - REPOUSO REMUNERADO (DSR) → V0025 Hora Extra · "
+                    "V0026 Adic.Noturno · V0027 Comissões", st_etapa)]]
+                _e9c_linhas += [[Paragraph(t, st_detalhe)] for t in _linhas_dsr]
+                e9c_tbl = Table(_e9c_linhas, colWidths=[17*cm])
                 e9c_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),0),
                     ("TOPPADDING",    (0,0),(0,0),10),  ("BOTTOMPADDING",(0,0),(0,0),2),
-                    ("TOPPADDING",    (0,1),(0,1),0),   ("BOTTOMPADDING",(0,1),(0,1),4),
+                    ("TOPPADDING",    (0,1),(-1,-1),0), ("BOTTOMPADDING",(0,1),(-1,-1),4),
                 ]))
             else:
                 e9c_tbl = Table([[Paragraph(
-                    "ETAPA 0009C - DSR ADICIONAL NOTURNO → V0026"
-                    "   Não aplicável — sem verbas com Adic.Noturno lançadas.",
+                    "ETAPA 0009C - REPOUSO REMUNERADO (DSR)"
+                    "   Não aplicável — sem verbas de Hora Extra, Adic.Noturno ou Comissão lançadas.",
                     st_etapa)]], colWidths=[17*cm])
                 e9c_tbl.setStyle(_st_e9c_zero)
             elems.append(e9c_tbl)
