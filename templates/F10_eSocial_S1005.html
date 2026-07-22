@@ -5,68 +5,56 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha10·Simples — eSocial S-1005</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
-<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
-:root {
-    --navy: #a0d9be; --navy-line: #70c4a0; --accent: #2a7de1;
-    --text-head: #1e293b; --text-sub: #374151;
-    --bg: #f0f2f6; --surface: #ffffff; --border: #dde3ec; --label: #374151;
-    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--sans); background: var(--bg); color: var(--label); }
-.topo {
-    background: var(--navy); border-bottom: 1px solid var(--navy-line);
-    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
-    align-items: center; gap: 0 32px; min-height: 64px;
-    position: sticky; top: 0; z-index: 10;
-}
-.topo-logo   { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: .04em; }
-.topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
-.topo-titulo { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; display: flex; align-items: center; gap: 10px; justify-content: center; }
-.topo-empresa{ font-size: 15px; font-weight: 600; color: #111827; }
-.topo-cnpj   { font-size: 10px; color: var(--text-sub); margin-top: 2px; font-family: var(--mono); }
-.btn-voltar-topo {
-    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
-    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
-    cursor: pointer; font-family: var(--sans); transition: .15s; white-space: nowrap; text-decoration: none; display: inline-block;
-}
-.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
-.conteudo { max-width: 860px; margin: 40px auto; padding: 0 24px 80px; }
-.card-dev {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
-    padding: 48px 40px; text-align: center; box-shadow: 0 2px 12px rgba(0,0,0,.06);
-}
-.card-dev .icone { font-size: 48px; margin-bottom: 16px; }
-.card-dev h1 { font-size: 22px; font-weight: 700; color: #0f172a; margin-bottom: 8px; }
-.card-dev .subtitulo { font-size: 14px; color: #64748b; margin-bottom: 24px; line-height: 1.6; max-width: 520px; margin-left: auto; margin-right: auto; }
-.badge-dev { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 20px; padding: 4px 16px; font-size: 12px; font-weight: 700; }
-.info-box {
-    margin-top: 32px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 12px;
-    padding: 20px 24px; text-align: left;
-}
-.info-box h3 { font-size: 13px; font-weight: 700; color: #0369a1; margin-bottom: 10px; }
-.info-box ul { padding-left: 18px; }
-.info-box li { font-size: 13px; color: #0c4a6e; line-height: 1.8; }
-.dados-empresa {
-    margin-top: 24px; background: #f8faff; border: 1px solid #c7d8f8; border-radius: 12px;
-    padding: 20px 24px; text-align: left;
-}
-.dados-empresa h3 { font-size: 13px; font-weight: 700; color: #1e40af; margin-bottom: 12px; }
-.dado-linha { display: flex; gap: 12px; margin-bottom: 8px; align-items: baseline; }
-.dado-label { font-size: 11px; font-weight: 700; color: #64748b; min-width: 140px; text-transform: uppercase; letter-spacing: .03em; }
-.dado-valor { font-size: 13px; color: #1e293b; font-family: var(--mono); }
-#btnTour {
-    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
-    width: 44px; height: 44px; border-radius: 50%;
-    background: #0d9488; color: #fff; border: none;
-    font-size: 20px; font-weight: 700; cursor: pointer;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
-    align-items: center; justify-content: center; font-family: var(--sans);
-    transition: background 0.15s;
-}
-#btnTour:hover { background: #0f766e; }
+:root{--navy:#a0d9be;--navy-line:#70c4a0;--accent:#2a7de1;--green:#16a34a;
+--text-head:#1e293b;--text-sub:#374151;--bg:#f0f2f6;--surface:#fff;--border:#dde3ec;
+--mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--sans);background:var(--bg);color:var(--text-sub);}
+.topo{background:var(--navy);border-bottom:1px solid var(--navy-line);padding:0 28px;
+display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:0 32px;min-height:64px;position:sticky;top:0;z-index:10;}
+.topo-versao{font-family:var(--mono);font-size:10px;font-weight:700;color:#374151;margin-top:2px;}
+.topo-titulo{font-size:15px;font-weight:600;color:var(--text-head);text-align:center;}
+.topo-empresa{font-size:15px;font-weight:600;color:#111827;}
+.topo-cnpj{font-size:10px;color:var(--text-sub);margin-top:2px;font-family:var(--mono);}
+.btn-voltar-topo{margin-left:16px;background:transparent;border:1px solid var(--navy-line);color:var(--text-sub);
+font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);text-decoration:none;display:inline-block;}
+.btn-voltar-topo:hover{border-color:var(--accent);color:var(--text-head);}
+.conteudo{max-width:1000px;margin:28px auto;padding:0 24px 80px;}
+.dados-empresa{background:#f8faff;border:1px solid #c7d8f8;border-radius:12px;padding:16px 20px;margin-bottom:20px;}
+.dados-empresa h3{font-size:12px;font-weight:700;color:#1e40af;margin-bottom:10px;text-transform:uppercase;letter-spacing:.03em;}
+.dado-grid{display:flex;gap:28px;flex-wrap:wrap;}
+.dado-item{display:flex;flex-direction:column;gap:2px;}
+.dado-label{font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.03em;}
+.dado-valor{font-size:13px;color:#1e293b;font-family:var(--mono);}
+.barra-topo{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;flex-wrap:wrap;}
+.barra-titulo{font-size:15px;font-weight:700;color:#0f172a;}
+.barra-sub{font-size:12px;color:#64748b;margin-top:2px;}
+.btn-novo{background:var(--accent);color:#fff;border:none;font-size:13px;font-weight:600;padding:9px 18px;border-radius:9px;cursor:pointer;font-family:var(--sans);}
+.btn-novo:hover{filter:brightness(1.08);}
+.btn-novo:disabled{background:#cbd5e1;cursor:not-allowed;}
+.tabela-wrap{background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
+table{border-collapse:collapse;width:100%;font-size:13px;}
+thead th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);white-space:nowrap;}
+tbody td{padding:9px 14px;border-bottom:1px solid #f1f5f9;vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+.mono{font-family:var(--mono);}
+.sit-badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;}
+.sit-pendente{background:#f1f5f9;color:#475569;}.sit-gerado{background:#dbeafe;color:#1e40af;}
+.sit-enviado{background:#dcfce7;color:#166534;}.sit-erro{background:#fee2e2;color:#991b1b;}
+.sit-aguardando{background:#fef3c7;color:#92400e;}.sit-excluido{background:#e2e8f0;color:#64748b;}
+.btn-acao{border:1px solid #e2e8f0;background:#fff;font-size:12px;padding:5px 11px;border-radius:7px;cursor:pointer;font-family:var(--sans);white-space:nowrap;}
+.btn-enviar{border-color:#86efac;color:#166534;background:#f0fdf4;}
+.btn-enviar:hover{background:var(--green);color:#fff;}
+.btn-excluir{border-color:#fecaca;color:#b91c1c;background:#fef2f2;}
+.btn-excluir:hover{background:#dc2626;color:#fff;}
+.vazio{padding:36px;text-align:center;color:#94a3b8;font-size:13px;}
+.recibo-cell{font-family:var(--mono);font-size:12px;color:#166534;}
+.erro-cell{font-size:11px;color:#b91c1c;max-width:320px;line-height:1.4;}
+#msg{display:none;margin-top:16px;padding:11px 16px;border-radius:10px;font-size:13px;line-height:1.5;}
+.info-box{margin-top:22px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px 20px;}
+.info-box h3{font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;}
+.info-box li{font-size:12px;color:#0c4a6e;line-height:1.7;margin-left:16px;}
 </style>
 </head>
 <body>
@@ -75,10 +63,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="topo-empresa">{{ empresa_info }}</div>
         <div class="topo-cnpj">{{ cnpj_fmt }}</div>
     </div>
-    <div class="topo-titulo">🏭 eSocial S-1005 — Tabela de Estabelecimentos</div>
-    <div style="display:flex; align-items:center; gap:16px;">
+    <div class="topo-titulo">🏭 eSocial S-1005 — Estabelecimentos</div>
+    <div style="display:flex;align-items:center;gap:16px;">
         <div>
-            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
         <a href="/menu" class="btn-voltar-topo">&#8592; Voltar</a>
@@ -86,138 +74,112 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 </div>
 
 <div class="conteudo">
-    <div class="card-dev" id="cardDev">
-        <div class="icone">🏭</div>
-        <h1>S-1005 · Tabela de Estabelecimentos</h1>
-        <div class="subtitulo">
-            Informa ao eSocial o estabelecimento do empregador. Sem filiais cadastradas,
-            o evento é montado com os dados da própria empresa (matriz).
-        </div>
 
-        <div class="dados-empresa" id="dadosEmpresa">
-            <h3>Dados que serão enviados (estabelecimento = matriz):</h3>
-            <div class="dado-linha">
-                <span class="dado-label">Empresa</span>
-                <span class="dado-valor">{{ empresa_info }}</span>
-            </div>
-            <div class="dado-linha">
-                <span class="dado-label">CNPJ (estabelec.)</span>
-                <span class="dado-valor">{{ cnpj_fmt }}</span>
-            </div>
-            <div class="dado-linha">
-                <span class="dado-label">CNAE preponderante</span>
-                <span class="dado-valor">{{ cnae_empresa or '⚠ não cadastrado' }}</span>
-            </div>
-            <div class="dado-linha">
-                <span class="dado-label">Início de validade</span>
-                <span class="dado-valor">{{ ini_valid_fmt }}</span>
-            </div>
-        </div>
-
-        <div style="margin-top:28px;">
-            <button id="btnEnviar" onclick="gerarEnviar()"
-                style="background:#16a34a;color:#fff;border:none;font-size:14px;font-weight:600;
-                       padding:12px 26px;border-radius:10px;cursor:pointer;font-family:var(--sans);">
-                📤 Gerar e Enviar S-1005 ao eSocial
-            </button>
-            <div id="spin" style="display:none;margin-top:12px;font-size:13px;color:#64748b;">
-                Transmitindo ao eSocial… (pode levar alguns segundos)
-            </div>
-            <div id="resultado" style="display:none;margin-top:18px;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.5;text-align:left;"></div>
-        </div>
-
-        <div class="info-box" id="infoBox">
-            <h3>Observações</h3>
-            <ul>
-                <li>Na versão S-1.0 do eSocial, o RAT/FAP é derivado automaticamente do CNAE — só se informa em caso de decisão judicial.</li>
-                <li>Requer a folha ativa <b>Aberta</b> e o <b>S-1000</b> (Empregador) já enviado.</li>
-                <li>Tem filiais? Cada estabelecimento precisa do seu próprio S-1005 — avise o suporte.</li>
-            </ul>
+    <div class="dados-empresa">
+        <h3>Dados do estabelecimento (matriz) que serão enviados</h3>
+        <div class="dado-grid">
+            <div class="dado-item"><span class="dado-label">CNPJ</span><span class="dado-valor">{{ cnpj_fmt }}</span></div>
+            <div class="dado-item"><span class="dado-label">CNAE preponderante</span><span class="dado-valor">{{ cnae_empresa or '⚠ não cadastrado' }}</span></div>
+            <div class="dado-item"><span class="dado-label">Início de validade</span><span class="dado-valor">{{ ini_valid_fmt }}</span></div>
         </div>
     </div>
+
+    <div class="barra-topo">
+        <div>
+            <div class="barra-titulo">Remessas S-1005</div>
+            <div class="barra-sub">{{ total }} remessa{{ 's' if total != 1 else '' }} · Grupo 1 — Tabelas do Empregador</div>
+        </div>
+        <button class="btn-novo" id="btnNova" onclick="novaRemessa()"
+                {% if not cnae_empresa %}disabled title="Cadastre o CNAE da empresa primeiro"{% endif %}>
+            ＋ Nova Remessa
+        </button>
+    </div>
+
+    <div class="tabela-wrap">
+        <table>
+            <thead>
+                <tr><th>#</th><th>Cad.</th><th>Situação</th><th>Recibo / Info</th><th>Ações</th></tr>
+            </thead>
+            <tbody>
+            {% if rows %}
+                {% for r in rows %}
+                <tr id="row-{{ r.id_esocial }}">
+                    <td class="mono">{{ r.id_esocial }}</td>
+                    <td class="mono">{{ r._datacad_fmt or '—' }}</td>
+                    <td><span class="sit-badge {{ r._sit_class }}">{{ r._sit_label }}</span></td>
+                    <td>
+                        {% if r.get('recibo') %}<div class="recibo-cell">{{ r.recibo }}</div>
+                        {% elif r._sit == 'X' %}<div class="erro-cell">{{ ((r.get('observacao_erro') or '').split('|')[-1])[:160] }}</div>
+                        {% elif r._sit == 'W' %}<span style="color:#92400e;font-size:12px;">Aguardando…</span>
+                        {% else %}<span style="color:#94a3b8;">—</span>{% endif %}
+                    </td>
+                    <td>
+                        <div style="display:flex;gap:6px;flex-wrap:nowrap;">
+                        {% if r._sit in ('P','G','X') %}
+                            <button class="btn-acao btn-enviar" onclick="enviar({{ r.id_esocial }},this)">▶ Enviar</button>
+                            <button class="btn-acao btn-excluir" onclick="excluir({{ r.id_esocial }},this)">🗑 Apagar</button>
+                        {% elif r._sit == 'E' %}<span style="color:#166534;font-size:11px;font-weight:600;">✓ Enviado</span>
+                        {% elif r._sit == 'W' %}<span style="color:#92400e;font-size:11px;">Processando</span>
+                        {% elif r._sit == 'D' %}<span style="color:#94a3b8;font-size:11px;">Excluído</span>{% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="5" class="vazio">Nenhuma remessa S-1005 nesta competência. Clique em <b>＋ Nova Remessa</b> para gerar.</td></tr>
+            {% endif %}
+            </tbody>
+        </table>
+    </div>
+
+    <div id="msg"></div>
+
+    <div class="info-box">
+        <h3>Observações</h3>
+        <ul>
+            <li>Sem filiais, o S-1005 é montado com os dados da própria empresa (matriz): CNPJ + CNAE.</li>
+            <li>Na versão S-1.0, o RAT/FAP é derivado do CNAE pelo governo — só se informa em caso de decisão judicial.</li>
+            <li>Requer a folha <b>Aberta</b> e o <b>S-1000</b> (Empregador) já enviado.</li>
+        </ul>
+    </div>
 </div>
-<button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
-async function gerarEnviar() {
-    const btn = document.getElementById('btnEnviar');
-    const spin = document.getElementById('spin');
-    const res = document.getElementById('resultado');
-    if (!await f10Confirm('Gerar e transmitir o S-1005 do estabelecimento ao eSocial?')) return;
-    btn.disabled = true; spin.style.display = 'block'; res.style.display = 'none';
-    function mostra(ok, msg) {
-        res.style.display = 'block';
-        res.style.background = ok ? '#ecfdf5' : '#fef2f2';
-        res.style.border = '1px solid ' + (ok ? '#a7f3d0' : '#fecaca');
-        res.style.color = ok ? '#065f46' : '#991b1b';
-        res.innerHTML = (ok ? '✓ ' : '⛔ ') + msg;
-    }
-    try {
-        // 1) cria/reusa a pendência
-        let r = await fetch('/api/esocial_s1005_criar', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
-        let d = await r.json();
-        if (!d.ok) { mostra(false, d.msg || 'Falha ao criar a pendência.'); return; }
-        // 2) envia
-        r = await fetch('/api/esocial_s1005_enviar', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({id_esocial: d.id_esocial, tpAmb:'1'})
-        });
-        d = await r.json();
-        mostra(!!d.ok, d.msg || (d.ok ? 'Enviado.' : 'Falha no envio.'));
-    } catch(e) {
-        mostra(false, 'Falha: ' + e);
-    } finally {
-        btn.disabled = false; spin.style.display = 'none';
-    }
+function _msg(ok,txt){
+    const m=document.getElementById('msg');
+    m.style.display='block';
+    m.style.background=ok?'#ecfdf5':'#fef2f2';
+    m.style.border='1px solid '+(ok?'#a7f3d0':'#fecaca');
+    m.style.color=ok?'#065f46':'#991b1b';
+    m.innerHTML=(ok?'✓ ':'⛔ ')+txt;
 }
-
-function iniciarTour() {
-    const passos = [
-        {
-            element: '.topo-titulo',
-            popover: {
-                title: 'S-1005 — Tabela de Estabelecimentos',
-                description: 'Este evento informa ao eSocial os estabelecimentos do empregador (matriz e filiais), com endereço, CNAE e alíquota RAT. É parte do Grupo 1 — Tabelas do Empregador.',
-            }
-        },
-        {
-            element: '#cardDev',
-            popover: {
-                title: 'Gerar e Enviar',
-                description: 'Sem filiais, o S-1005 é montado com os dados da própria empresa (matriz). Clique no botão para gerar e transmitir o evento ao eSocial.',
-            }
-        },
-        ...(!!document.querySelector('#dadosEmpresa') ? [{
-            element: '#dadosEmpresa',
-            popover: {
-                title: 'Dados da Empresa',
-                description: 'Estes são os dados do cadastro que serão utilizados para preencher o S-1005: empresa, CNPJ e endereço do estabelecimento.',
-            }
-        }] : []),
-        ...(!!document.querySelector('#infoBox') ? [{
-            element: '#infoBox',
-            popover: {
-                title: 'Conteúdo do Evento',
-                description: 'O S-1005 deve incluir CNPJ, endereço completo, CNAE da atividade principal, alíquota RAT (Risco Ambiental do Trabalho) e o período de validade das informações.',
-            }
-        }] : []),
-        {
-            element: '#btnTour',
-            popover: {
-                title: 'Tour concluído!',
-                description: 'Clique aqui sempre que precisar rever o funcionamento desta tela.',
-            }
-        },
-    ];
-    window.driver.js.driver({
-        animate: true,
-        showProgress: true,
-        progressText: '{{current}} de {{total}}',
-        nextBtnText: 'Próximo →',
-        prevBtnText: '← Anterior',
-        doneBtnText: 'Concluir ✓',
-        steps: passos,
-    }).drive();
+async function novaRemessa(){
+    const b=document.getElementById('btnNova'); b.disabled=true;
+    try{
+        const r=await fetch('/api/esocial_s1005_criar',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        const d=await r.json();
+        if(!d.ok){_msg(false,d.msg||'Falha ao gerar.');b.disabled=false;return;}
+        location.reload();
+    }catch(e){_msg(false,'Falha: '+e);b.disabled=false;}
+}
+async function enviar(id,btn){
+    if(!await f10Confirm('Transmitir esta remessa S-1005 ao eSocial?'))return;
+    btn.disabled=true;btn.textContent='Enviando…';
+    try{
+        const r=await fetch('/api/esocial_s1005_enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id_esocial:id,tpAmb:'1'})});
+        const d=await r.json();
+        _msg(!!d.ok,d.msg||(d.ok?'Enviado.':'Falha.'));
+        setTimeout(()=>location.reload(),1500);
+    }catch(e){_msg(false,'Falha: '+e);btn.disabled=false;btn.textContent='▶ Enviar';}
+}
+async function excluir(id,btn){
+    if(!await f10Confirm('Apagar esta remessa pendente?'))return;
+    btn.disabled=true;
+    try{
+        const r=await fetch('/api/esocial_excluir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id_esocial:id})});
+        const d=await r.json();
+        if(d.ok){location.reload();}else{_msg(false,d.msg||'Falha ao apagar.');btn.disabled=false;}
+    }catch(e){_msg(false,'Falha: '+e);btn.disabled=false;}
 }
 </script>
 <script src="/static/f10_dialog.js"></script>

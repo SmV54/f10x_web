@@ -20633,6 +20633,44 @@ def esocial_s1005():
     ctx["cnae_empresa"]     = so_numeros(empresa.get("cnae", "")) or ""
     _am = str(session.get("anomes_atual") or "")
     ctx["ini_valid_fmt"]    = f"{_am[4:6]}/{_am[:4]}" if len(_am) == 6 else "—"
+
+    # Lista de remessas S-1005 (mesmo padrão das outras telas de tabela)
+    id_empresa = _get_id_empresa()
+    rows = []
+    try:
+        q = (supabase.table("tab_esocial").select("*")
+             .eq("id_empresa", id_empresa).eq("layout", "1005"))
+        if _am.isdigit() and len(_am) == 6:
+            q = q.gte("data_cad", _am + "01").lte("data_cad", _am + "31")
+        rows = (q.order("data_cad", desc=True).order("hora_cad", desc=True).execute().data or [])
+    except Exception:
+        rows = []
+
+    _SIT = {"E": ("Enviado", "sit-enviado"), "D": ("Excluído", "sit-excluido"),
+            "X": ("Com Erro", "sit-erro"), "W": ("Aguardando", "sit-aguardando"),
+            "G": ("Gerado", "sit-gerado"), "P": ("Pendente", "sit-pendente")}
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    for r in rows:
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+        if recibo and obs == "EXCLUIDO":       s = "D"
+        elif recibo:                            s = "E"
+        elif obs.startswith("AGUARDANDO:"):     s = "W"
+        elif obs:                               s = "X"
+        elif dgrava:                            s = "G"
+        else:                                   s = "P"
+        r["_sit"]         = s
+        r["_sit_label"]   = _SIT[s][0]
+        r["_sit_class"]   = _SIT[s][1]
+        r["_datacad_fmt"] = _d8(r.get("data_cad"))
+
+    ctx["rows"]  = rows
+    ctx["total"] = len(rows)
     return render_template("F10_eSocial_S1005.html", **ctx)
 
 
