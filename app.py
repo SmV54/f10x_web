@@ -5900,7 +5900,9 @@ def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha
         _categ_n = int(str(codcateg or "0").strip())
     except (ValueError, TypeError):
         _categ_n = 0
-    layout = "2399" if _categ_n in (721, 722, 723, 901) else "2299"
+    # TSVE / não-empregado = categoria >= 700 (CI, sócio, diretor, estagiário,
+    # bolsista etc.) → S-2399. Empregado (< 700) → S-2299.
+    layout = "2399" if _categ_n >= 700 else "2299"
     agora_es    = _dt.now()
     ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
     try:
@@ -10278,7 +10280,7 @@ def api_funcionario_alterar():
             _categ_alt = int((campos.get("codcateg") or "0"))
         except (ValueError, TypeError):
             _categ_alt = 0
-        _eh_tsve = _categ_alt in (721, 722, 723, 901)
+        _eh_tsve = _categ_alt >= 700   # TSVE / não-empregado (CI, sócio, diretor, estagiário…)
         if mat and not _eh_tsve and (precisa_2205 or precisa_2206):
             _agora   = datetime.now()
             _anomes  = str(session.get("anomes_atual") or "")
@@ -10585,7 +10587,9 @@ def api_funcionario_incluir():
             _categ_es = int((d.get("codCateg") or "0").strip())
         except (ValueError, TypeError):
             _categ_es = 0
-        layout_es = "2300" if _categ_es in (721, 722, 723, 901) else "2200"
+        # TSVE / não-empregado = categoria >= 700 (CI, sócio, diretor, estagiário,
+        # bolsista etc.) → S-2300. Empregado (< 700) → S-2200.
+        layout_es = "2300" if _categ_es >= 700 else "2200"
         supabase.table("tab_esocial").insert({
             "id_cliente": id_cliente,
             "id_empresa": id_empresa,
@@ -19490,9 +19494,9 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
     </trabalhador>
     <infoTSVInicio>
       <cadIni>N</cadIni>
-      <natAtividade>1</natAtividade>
-      <dtInicio>{x(dtinicio)}</dtInicio>
       <codCateg>{x(codcateg)}</codCateg>
+      <dtInicio>{x(dtinicio)}</dtInicio>
+      <natAtividade>1</natAtividade>
       <infoComplementares>{complementares_xml}
       </infoComplementares>
     </infoTSVInicio>
@@ -25758,10 +25762,10 @@ def api_esocial_gerador_criar():
     recibo_ref = (data.get("recibo_ref") or "").strip()
     rubricas   = data.get("rubricas", [])   # usado apenas para S-1010
 
-    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2220", "2230", "2299",
+    _LAYOUTS_FUNC    = {"2200", "2205", "2206", "2220", "2230", "2299", "2300",
                         "1200", "1210"}
     _LAYOUTS_VALIDOS = {"1000", "1005", "1010", "1020",
-                        "2200", "2205", "2206", "2220", "2230", "2299",
+                        "2200", "2205", "2206", "2220", "2230", "2299", "2300",
                         "1200", "1210", "1298", "1299", "3000"}
 
     if layout not in _LAYOUTS_VALIDOS:
@@ -25769,6 +25773,24 @@ def api_esocial_gerador_criar():
 
     if layout in _LAYOUTS_FUNC and not matricula:
         return jsonify({"ok": False, "msg": "Funcionário é obrigatório para este layout."})
+
+    # Coerência categoria × evento: S-2200 é só empregado (categoria < 700);
+    # S-2300 é só TSVE / não-empregado (categoria >= 700). Evita gerar o evento
+    # errado (ex.: um S-2200 para um diretor 722).
+    if layout in ("2200", "2300") and matricula:
+        try:
+            _rc = (supabase.table("tab_cad").select("codcateg")
+                   .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                   .limit(1).execute())
+            _cat = int(str((_rc.data or [{}])[0].get("codcateg") or "0").strip() or "0")
+        except Exception:
+            _cat = 0
+        if layout == "2200" and _cat >= 700:
+            return jsonify({"ok": False, "msg": f"Categoria {_cat} é trabalhador sem "
+                            "vínculo (TSVE). Use o S-2300, não o S-2200."})
+        if layout == "2300" and 0 < _cat < 700:
+            return jsonify({"ok": False, "msg": f"Categoria {_cat} é empregado. "
+                            "Use o S-2200, não o S-2300."})
 
     if layout == "1010" and not rubricas:
         return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica para o S-1010."})

@@ -439,10 +439,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>Matrícula</label>
                     <input type="text" id="matricula" maxlength="6" placeholder="000001"
+                           {% if modo == 'alteracao' %}
+                           readonly style="background:var(--read-bg);color:var(--read-text);cursor:pointer;"
+                           title="A matrícula é a chave do funcionário e não pode ser alterada"
+                           onclick="avisoMatricula()"
+                           {% else %}
                            oninput="apenasNumeros(this,6); sincMatriculaES(this);"
                            onfocus="hintMatricula(this)"
                            onblur="clearHint(); formatarMatricula(this); checkMatricula(this);"
-                           {% if modo == 'alteracao' %}readonly style="background:var(--read-bg);color:var(--read-text);"{% endif %}>
+                           {% endif %}>
                 </div>
                 <div class="campo">
                     <label>Matrícula eSocial</label>
@@ -597,10 +602,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label id="lbl-salario">Salário (R$)</label>
                     <input type="text" id="vrSalFx" placeholder="0,00"
+                           {% if modo == 'alteracao' %}
+                           readonly style="background:var(--read-bg);color:var(--read-text);cursor:pointer;"
+                           title="Clique para ver como alterar o salário"
+                           onclick="avisoAlteracaoSalario()"
+                           {% else %}
                            oninput="apenasNumeros(this,10)"
                            onfocus="limparSalario(this); showHint(this,'Valor da remuneração base do trabalhador.\nDigite só os dígitos, com os centavos — o sistema formata sozinho. Ex.: 150000 vira R$ 1.500,00.\nO rótulo muda conforme a categoria (Salário, Bolsa Estágio ou Pró-labore).')"
                            onblur="formatarSalario(this); clearHint()"
-                           {% if modo == 'alteracao' %}readonly style="background:var(--read-bg);color:var(--read-text);"{% endif %}>
+                           {% endif %}>
                 </div>
                 <div class="campo">
                     <label>Unidade</label>
@@ -1364,6 +1374,35 @@ function formatarSalario(campo) {
 
 function limparSalario(campo) {
     campo.value = campo.value.replace(/\./g, '').replace(',', '');
+}
+
+// No modo alteração a matrícula é somente leitura: é a chave do funcionário e não
+// pode ser alterada. Ao clicar, apenas explica o motivo (não há caminho alternativo).
+function avisoMatricula() {
+    f10Alert(
+        'A matrícula é a chave que identifica o funcionário e não pode ser alterada ' +
+        'após o cadastro.\n\nSe foi digitada errada na inclusão, exclua o funcionário ' +
+        'e cadastre-o novamente com a matrícula correta.',
+        { tipo: 'info', titulo: 'Matrícula' }
+    );
+}
+
+// No modo alteração o salário é somente leitura: ao clicar, oferece o caminho
+// correto (Eventuais → Alteração de Salário), que registra histórico e gera o S-2206.
+async function avisoAlteracaoSalario() {
+    const mat = (document.getElementById('matricula')?.value || '').replace(/\D/g, '');
+    const ir = await f10Confirm(
+        'O salário de um funcionário já cadastrado não é alterado por aqui.\n\n' +
+        'Use o menu Eventuais → Salários → Alteração de Salário. Esse caminho registra ' +
+        'o histórico do reajuste e gera o evento do eSocial (S-2206).\n\n' +
+        'Deseja ir para a Alteração de Salário agora?',
+        { tipo: 'info', titulo: 'Alteração de Salário',
+          okText: 'Ir para Alteração de Salário', cancelText: 'Fechar' }
+    );
+    if (ir) {
+        window.location.href = mat ? ('/cad_aumento?mats=' + mat)
+                                   : '/select_funcionario?contexto=aumento';
+    }
 }
 
 function mascaraCPF(campo) {
