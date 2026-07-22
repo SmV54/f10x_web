@@ -18688,6 +18688,7 @@ def _montar_lote(xml_evento_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, gru
 
 _ES_BASE_PROD_ENV  = "https://webservices.envio.esocial.gov.br"
 _ES_BASE_PROD_CONS = "https://webservices.consulta.esocial.gov.br"
+_ES_BASE_PROD_DWN  = "https://webservices.download.esocial.gov.br"  # consulta ids + download
 _ES_BASE_HOMOL     = "https://webservices.producaorestrita.esocial.gov.br"
 _ES_PATH_ENV  = "/servicos/empregador/enviarloteeventos/WsEnviarLoteEventos.svc"
 _ES_PATH_CONS = "/servicos/empregador/consultarloteeventos/WsConsultarLoteEventos.svc"
@@ -18740,8 +18741,8 @@ def _soap_consultar(protocolo):
 # Webservices de CONSULTA aos eventos retornados pelo gov (S-5xxx)
 # Usados pela tela "Verificação Folha10 × eSocial"
 # =========================================================
-_ES_PATH_CONS_IDE = "/servicos/empregador/consultaridentificadoreseventos/WsConsultarIdentificadoresEventos.svc"
-_ES_PATH_DOWNLOAD = "/servicos/empregador/downloadeventos/WsDownloadEventos.svc"
+_ES_PATH_CONS_IDE = "/servicos/empregador/dwlcirurgico/WsConsultarIdentificadoresEventos.svc"
+_ES_PATH_DOWNLOAD = "/servicos/empregador/dwlcirurgico/WsSolicitarDownloadEventos.svc"
 
 _NS_SVC_CIE_TRAB  = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/trabalhador/v1_0_0"
 _NS_SVC_CIE_EMP   = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/empregador/v1_0_0"
@@ -25788,7 +25789,8 @@ def api_esocial_consulta_tabela():
 
     cnpj_raiz = re.sub(r"\D", "", cnpj_emp)[:8]
     soap = _soap_consultar_ide_tab(cnpj_raiz, tp_evt)
-    base_url = _ES_BASE_PROD_CONS if tpAmb == "1" else _ES_BASE_HOMOL
+    # Consulta de identificadores fica no host de DOWNLOAD (dwlcirurgico), não no de consulta de lote.
+    base_url = _ES_BASE_PROD_DWN if tpAmb == "1" else _ES_BASE_HOMOL
     url = base_url + _ES_PATH_CONS_IDE
 
     try:
