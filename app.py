@@ -19389,6 +19389,21 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
     _und_raw    = str(func.get('undsalfixo', '5') or '5')
     undsalfixo  = _und_map.get(_und_raw.upper(), _und_raw)
 
+    # Local de trabalho (estabelecimento) — obrigatório no S-2300 (grupo localTrabGeral).
+    lt_tpinsc = str(func.get('lt_tpinsc') or '1')
+    lt_nrinsc = dg(func.get('lt_nrinsc') or '') or cnpj_emp
+    localtrab_xml = (f"\n      <localTrabGeral>"
+                     f"\n        <tpInsc>{x(lt_tpinsc)}</tpInsc>"
+                     f"\n        <nrInsc>{x(lt_nrinsc)}</nrInsc>"
+                     f"\n      </localTrabGeral>")
+
+    # natAtividade: só é permitida/obrigatória em algumas categorias (201, 202, 401,
+    # 731, 734, 738). É PROIBIDA para 721/722/771/901 e outras — por isso só emitimos
+    # nas categorias que exigem.
+    _cat_int = int(codcateg) if str(codcateg).isdigit() else 0
+    _nat_ativ_xml = (f"\n      <natAtividade>{x(func.get('natatividade') or '1')}</natAtividade>"
+                     if _cat_int in (201, 202, 401, 731, 734, 738) else "")
+
     is_estagiario = codcateg == '901'
 
     # Blocos opcionais do trabalhador (iguais ao S-2200)
@@ -19494,11 +19509,11 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
     </trabalhador>
     <infoTSVInicio>
       <cadIni>N</cadIni>
+      <matricula>{x(mat_es)}</matricula>
       <codCateg>{x(codcateg)}</codCateg>
-      <dtInicio>{x(dtinicio)}</dtInicio>
-      <natAtividade>1</natAtividade>
+      <dtInicio>{x(dtinicio)}</dtInicio>{_nat_ativ_xml}
       <infoComplementares>{complementares_xml}
-      </infoComplementares>
+      </infoComplementares>{localtrab_xml}
     </infoTSVInicio>
   </evtTSVInicio>
 </eSocial>"""
