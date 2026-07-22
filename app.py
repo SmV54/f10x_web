@@ -18803,14 +18803,18 @@ def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur):
     )
 
 
-# Consulta de eventos de TABELA (S-1000, S-1005, S-1010, S-1020, S-1070)
-_NS_SVC_CIE_TAB = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/tabela/v1_0_0"
+# Consulta de eventos de TABELA (S-1000, S-1005, S-1010, S-1020, S-1070).
+# Namespace do serviço é UNIFICADO (sem o segmento /tabela) — as 3 variantes
+# (Tabela/Empregador/Trabalhador) partilham o mesmo contrato WCF. (Ref.: ACBr)
+_NS_SVC_CIE_TAB = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/v1_0_0"
 _SA_CIE_TAB     = _NS_SVC_CIE_TAB + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTabela"
 
 
 def _soap_consultar_ide_tab(cnpj_raiz, tp_evt):
     """SOAP: ConsultarIdentificadoresEventosTabela — lista os eventos de tabela
-    (S-1000/S-1005/S-1010/S-1020) já transmitidos ao eSocial pelo empregador."""
+    (S-1000/S-1005/S-1010/S-1020) já transmitidos ao eSocial pelo empregador.
+    Estrutura conforme ACBr: <ConsultarIdentificadoresEventosTabela>
+    <consultaEventosTabela><eSocial>…</eSocial></consultaEventosTabela>."""
     body_xml = (
         f'<eSocial xmlns="http://www.esocial.gov.br/schema/consulta/identificadores-eventos/tabela/v1_0_0">'
         f"<consultaIdentificadoresEvts>"
@@ -18820,11 +18824,11 @@ def _soap_consultar_ide_tab(cnpj_raiz, tp_evt):
         f"</eSocial>"
     )
     return (
-        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_CIE_TAB}">'
+        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:v1="{_NS_SVC_CIE_TAB}">'
         f"<soapenv:Header/><soapenv:Body>"
-        f"<ser:ConsultarIdentificadoresEventosTabela><ser:consulta>"
+        f"<v1:ConsultarIdentificadoresEventosTabela><v1:consultaEventosTabela>"
         f"{body_xml}"
-        f"</ser:consulta></ser:ConsultarIdentificadoresEventosTabela>"
+        f"</v1:consultaEventosTabela></v1:ConsultarIdentificadoresEventosTabela>"
         f"</soapenv:Body></soapenv:Envelope>"
     )
 
