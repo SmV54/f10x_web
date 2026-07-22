@@ -20632,6 +20632,228 @@ def esocial_s1005():
     ctx["endereco_empresa"] = end or "—"
     return render_template("F10_eSocial_S1005.html", **ctx)
 
+
+# =========================================================
+# eSocial S-1005 — GERADOR DE XML (evtTabEstab)
+# =========================================================
+def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao"):
+    """Gera o XML do S-1005 (evtTabEstab) para o estabelecimento.
+
+    Empresa sem filiais → usa os dados da própria empresa (matriz): CNPJ
+    completo + CNAE preponderante. Na versão S-1.0 o dadosEstab exige apenas
+    <cnaePrep>; RAT/FAP (aliqGilrat) são derivados do CNAE pelo governo e só
+    são informados em caso de divergência por decisão judicial.
+    tp_op: 'inclusao' ou 'alteracao'. ini_valid: 'YYYY-MM'."""
+    import re as _re
+    from xml.sax.saxutils import escape as _esc
+    from datetime import datetime as _dt
+
+    def dg(v):
+        return _re.sub(r'\D', '', str(v or ''))
+
+    def x(v):
+        return _esc(str(v or ''))
+
+    cnpj_full = dg(empresa.get('cnpj', ''))       # estabelecimento = próprio CNPJ (14)
+    cnpj_raiz = cnpj_full[:8]
+    cnae      = dg(empresa.get('cnae', ''))
+    _now      = _dt.now()
+    evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTabEstab/v_S_01_03_00"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtTabEstab/v_S_01_03_00 evtTabEstab_v_S_01_03_00.xsd">
+  <evtTabEstab Id="{evt_id}">
+    <ideEvento>
+      <tpAmb>{x(tpAmb)}</tpAmb>
+      <procEmi>1</procEmi>
+      <verProc>{_verproc_str()}</verProc>
+    </ideEvento>
+    <ideEmpregador>
+      <tpInsc>1</tpInsc>
+      <nrInsc>{x(cnpj_raiz)}</nrInsc>
+    </ideEmpregador>
+    <infoEstab>
+      <{tp_op}>
+        <ideEstab>
+          <tpInsc>1</tpInsc>
+          <nrInsc>{x(cnpj_full)}</nrInsc>
+          <iniValid>{x(ini_valid)}</iniValid>
+        </ideEstab>
+        <dadosEstab>
+          <cnaePrep>{x(cnae)}</cnaePrep>
+        </dadosEstab>
+      </{tp_op}>
+    </infoEstab>
+  </evtTabEstab>
+</eSocial>"""
+
+
+@app.route("/api/esocial_s1005_enviar", methods=["POST"])
+def api_esocial_s1005_enviar():
+    """Gera, assina e transmite o S-1005 (evtTabEstab) a partir da pendência da fila."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    ok_val, msg_val = _validar_folha_para_envio_esocial("1005")
+    if not ok_val:
+        return jsonify({"ok": False, "msg": msg_val})
+
+    # ── 1. Pendência na tab_esocial ───────────────────────
+    try:
+        r_es = (supabase.table("tab_esocial").select("*")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1005")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro S-1005 não encontrado."})
+        es = r_es.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
+
+    # iniValid = competência do registro (ano_mes) → 'YYYY-MM'
+    am = str(es.get("ano_mes") or "")
+    if len(am) != 6:
+        am = str(session.get("anomes_atual") or "")
+    if len(am) != 6:
+        return jsonify({"ok": False, "msg": "Competência (iniValid) não determinada."})
+    ini_valid = f"{am[:4]}-{am[4:6]}"
+    tp_op = "inclusao" if str(es.get("operacao") or "I") == "I" else "alteracao"
+
+    # ── 2. Empresa ────────────────────────────────────────
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    if not so_numeros(empresa.get("cnae", "")):
+        return jsonify({"ok": False, "msg": "Empresa sem CNAE cadastrado — preencha o CNAE antes de enviar o S-1005."})
+
+    # ── 3. Gerar XML cru e salvar ─────────────────────────
+    _now2 = datetime.now()
+    _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
+             f"S1005_{am}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+    try:
+        xml_str = _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op)
+    except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    # ── 4. Certificado + assinatura ───────────────────────
+    _aplicar_cert_esocial(empresa)
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
+        return jsonify({"ok": False, "msg": f"Erro na assinatura: {e}"})
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
+
+    # ── 5. Montar lote (grupo 1 = Tabelas) ────────────────
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str, grupo="1",
+                                tra_tpinsc=empresa.get("_tra_tpinsc"), tra_nrinsc=empresa.get("_tra_nrinsc"))
+    except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
+        return jsonify({"ok": False, "msg": f"Erro ao montar lote: {e}"})
+    _xml_save(f"{_pref}_3_lote.xml", lote_xml)
+
+    # ── 6. Enviar ─────────────────────────────────────────
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    soap_env = _soap_enviar(lote_xml)
+    _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
+    try:
+        resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        _xml_save(f"{_pref}_5_resposta.xml", str(e))
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
+        return jsonify({"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": str(e)})
+    _xml_save(f"{_pref}_5_resposta.xml", resp_envio)
+
+    analise = _analisar_resposta_envio(resp_envio)
+    nr_rec  = analise["nr_rec"]
+    if not nr_rec:
+        agora = datetime.now()
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+
+    agora = datetime.now()
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    # ── 7. Consultar resultado (até 3×) ───────────────────
+    recibo_final = obs_erro = cd_resp = ""
+    for _ in range(3):
+        time.sleep(10)
+        try:
+            resp_cons = _http_post_cert(url_consulta, _soap_consultar(nr_rec),
+                                        pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta ao eSocial: {e}"; break
+        _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar consulta: {e}"; break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else (ev0.get("dscResp") or resultado.get("descResposta", ""))
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{nr_rec}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    gravar_log("ESOCIAL", f"S-1005 enviado: nrRec={recibo_final} cd={cd_resp}")
+
+    if obs_erro:
+        return jsonify({"ok": False, "msg": f"eSocial retornou erro: {obs_erro}"})
+    if aguardando:
+        return jsonify({"ok": True, "msg": f"S-1005 enviado. Aguardando processamento. Protocolo: {nr_rec}"})
+    return jsonify({"ok": True, "msg": f"S-1005 transmitido com sucesso. Recibo: {recibo_final}"})
+
+
 # =========================================================
 # eSocial S-1010 — GERADOR DE XML (um evento por rubrica)
 # =========================================================
