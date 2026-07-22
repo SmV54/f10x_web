@@ -88,38 +88,50 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 <div class="conteudo">
     <div class="card-dev" id="cardDev">
         <div class="icone">🏭</div>
-        <h1>S-1005 · Tabela de Estabelecimentos e Obras de Construção Civil</h1>
+        <h1>S-1005 · Tabela de Estabelecimentos</h1>
         <div class="subtitulo">
-            Este evento informa ao eSocial os estabelecimentos do empregador.
-            Os dados serão montados a partir das informações já cadastradas na empresa.
+            Informa ao eSocial o estabelecimento do empregador. Sem filiais cadastradas,
+            o evento é montado com os dados da própria empresa (matriz).
         </div>
-        <span class="badge-dev">🚧 Em desenvolvimento</span>
 
         <div class="dados-empresa" id="dadosEmpresa">
-            <h3>Dados da empresa que serão utilizados:</h3>
+            <h3>Dados que serão enviados (estabelecimento = matriz):</h3>
             <div class="dado-linha">
                 <span class="dado-label">Empresa</span>
                 <span class="dado-valor">{{ empresa_info }}</span>
             </div>
             <div class="dado-linha">
-                <span class="dado-label">CNPJ</span>
+                <span class="dado-label">CNPJ (estabelec.)</span>
                 <span class="dado-valor">{{ cnpj_fmt }}</span>
             </div>
             <div class="dado-linha">
-                <span class="dado-label">Endereço</span>
-                <span class="dado-valor">{{ endereco_empresa or '—' }}</span>
+                <span class="dado-label">CNAE preponderante</span>
+                <span class="dado-valor">{{ cnae_empresa or '⚠ não cadastrado' }}</span>
+            </div>
+            <div class="dado-linha">
+                <span class="dado-label">Início de validade</span>
+                <span class="dado-valor">{{ ini_valid_fmt }}</span>
             </div>
         </div>
 
+        <div style="margin-top:28px;">
+            <button id="btnEnviar" onclick="gerarEnviar()"
+                style="background:#16a34a;color:#fff;border:none;font-size:14px;font-weight:600;
+                       padding:12px 26px;border-radius:10px;cursor:pointer;font-family:var(--sans);">
+                📤 Gerar e Enviar S-1005 ao eSocial
+            </button>
+            <div id="spin" style="display:none;margin-top:12px;font-size:13px;color:#64748b;">
+                Transmitindo ao eSocial… (pode levar alguns segundos)
+            </div>
+            <div id="resultado" style="display:none;margin-top:18px;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.5;text-align:left;"></div>
+        </div>
+
         <div class="info-box" id="infoBox">
-            <h3>O que será informado neste evento:</h3>
+            <h3>Observações</h3>
             <ul>
-                <li>CNPJ do estabelecimento (matriz ou filial)</li>
-                <li>Endereço completo do estabelecimento</li>
-                <li>CNAE da atividade principal</li>
-                <li>Alíquota RAT (Risco Ambiental do Trabalho)</li>
-                <li>Indicativo de obra de construção civil (se aplicável)</li>
-                <li>Período de validade das informações</li>
+                <li>Na versão S-1.0 do eSocial, o RAT/FAP é derivado automaticamente do CNAE — só se informa em caso de decisão judicial.</li>
+                <li>Requer a folha ativa <b>Aberta</b> e o <b>S-1000</b> (Empregador) já enviado.</li>
+                <li>Tem filiais? Cada estabelecimento precisa do seu próprio S-1005 — avise o suporte.</li>
             </ul>
         </div>
     </div>
@@ -127,6 +139,38 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 <button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
+async function gerarEnviar() {
+    const btn = document.getElementById('btnEnviar');
+    const spin = document.getElementById('spin');
+    const res = document.getElementById('resultado');
+    if (!await f10Confirm('Gerar e transmitir o S-1005 do estabelecimento ao eSocial?')) return;
+    btn.disabled = true; spin.style.display = 'block'; res.style.display = 'none';
+    function mostra(ok, msg) {
+        res.style.display = 'block';
+        res.style.background = ok ? '#ecfdf5' : '#fef2f2';
+        res.style.border = '1px solid ' + (ok ? '#a7f3d0' : '#fecaca');
+        res.style.color = ok ? '#065f46' : '#991b1b';
+        res.innerHTML = (ok ? '✓ ' : '⛔ ') + msg;
+    }
+    try {
+        // 1) cria/reusa a pendência
+        let r = await fetch('/api/esocial_s1005_criar', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        let d = await r.json();
+        if (!d.ok) { mostra(false, d.msg || 'Falha ao criar a pendência.'); return; }
+        // 2) envia
+        r = await fetch('/api/esocial_s1005_enviar', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id_esocial: d.id_esocial, tpAmb:'1'})
+        });
+        d = await r.json();
+        mostra(!!d.ok, d.msg || (d.ok ? 'Enviado.' : 'Falha no envio.'));
+    } catch(e) {
+        mostra(false, 'Falha: ' + e);
+    } finally {
+        btn.disabled = false; spin.style.display = 'none';
+    }
+}
+
 function iniciarTour() {
     const passos = [
         {
@@ -139,8 +183,8 @@ function iniciarTour() {
         {
             element: '#cardDev',
             popover: {
-                title: 'Em Desenvolvimento',
-                description: 'Esta tela está em desenvolvimento. Os dados do estabelecimento serão montados automaticamente a partir do cadastro da empresa assim que o evento estiver disponível.',
+                title: 'Gerar e Enviar',
+                description: 'Sem filiais, o S-1005 é montado com os dados da própria empresa (matriz). Clique no botão para gerar e transmitir o evento ao eSocial.',
             }
         },
         ...(!!document.querySelector('#dadosEmpresa') ? [{

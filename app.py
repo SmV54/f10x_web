@@ -20617,10 +20617,10 @@ def api_esocial_s1000_excluir():
 def esocial_s1005():
     if not session.get("logado"): return redirect("/")
     ctx = _ctx_esocial()
-    # Endereço da empresa cadastrada
+    # Endereço + dados da empresa cadastrada (usados no S-1005)
     empresa = {}
     try:
-        r = supabase.table("tab_empresa").select("logradouro,nrlograd,bairro,uf,cep")\
+        r = supabase.table("tab_empresa").select("logradouro,nrlograd,bairro,uf,cep,cnae")\
             .eq("id_empresa", _get_id_empresa()).limit(1).execute()
         empresa = r.data[0] if r.data else {}
     except Exception:
@@ -20630,6 +20630,9 @@ def esocial_s1005():
         empresa.get("bairro"), empresa.get("uf"),
     ]))
     ctx["endereco_empresa"] = end or "—"
+    ctx["cnae_empresa"]     = so_numeros(empresa.get("cnae", "")) or ""
+    _am = str(session.get("anomes_atual") or "")
+    ctx["ini_valid_fmt"]    = f"{_am[4:6]}/{_am[:4]}" if len(_am) == 6 else "—"
     return render_template("F10_eSocial_S1005.html", **ctx)
 
 
@@ -20688,6 +20691,45 @@ def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao"):
     </infoEstab>
   </evtTabEstab>
 </eSocial>"""
+
+
+@app.route("/api/esocial_s1005_criar", methods=["POST"])
+def api_esocial_s1005_criar():
+    """Reusa (ou cria) a pendência S-1005 do estabelecimento na competência ativa
+    e devolve o id_esocial — usado pela tela do S-1005 antes de enviar."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa inválida."})
+
+    # Reusa uma pendência ainda não enviada (sem recibo) da mesma competência
+    try:
+        r = (supabase.table("tab_esocial")
+             .select("id_esocial,recibo,observacao_erro")
+             .eq("id_empresa", id_empresa).eq("layout", "1005").eq("ano_mes", int(anomes))
+             .order("id_esocial", desc=True).limit(1).execute())
+        for row in (r.data or []):
+            recibo = (row.get("recibo") or "").strip()
+            obs    = (row.get("observacao_erro") or "").strip()
+            if not recibo and obs != "EXCLUIDO":
+                return jsonify({"ok": True, "id_esocial": row["id_esocial"], "reused": True})
+    except Exception:
+        pass
+
+    agora = datetime.now()
+    try:
+        res = supabase.table("tab_esocial").insert({
+            "id_cliente": id_cliente, "id_empresa": id_empresa,
+            "data_cad":   agora.strftime("%Y%m%d"), "hora_cad": agora.strftime("%H%M"),
+            "id_remessa": agora.strftime("%Y%m%d%H%M%S"), "ano_mes": int(anomes),
+            "folha_tipo": "N", "layout": "1005", "codigo2": 0, "operacao": "I",
+        }).execute()
+        return jsonify({"ok": True, "id_esocial": res.data[0]["id_esocial"], "reused": False})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao criar pendência: {e}"})
 
 
 @app.route("/api/esocial_s1005_enviar", methods=["POST"])
