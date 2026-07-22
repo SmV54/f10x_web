@@ -6562,8 +6562,12 @@ def api_calc_rescisao_calcular():
         ndep = dep_count.get(mat, 0); dep_total = ndep * dep_irrf_ded
         base_irrf_saldo = max(0, saldo + add_irrf - inss_saldo - dep_total)
         irrf_saldo, irrf_saldo_info = _calc_irrf(base_irrf_saldo, tabela)
+        # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
+        irrf_saldo, _red_saldo, _isento_saldo = _irrf_isencao_redutor(
+            saldo + add_irrf, irrf_saldo, tabela)
         base_irrf_13 = max(0, d13 - inss_13)
         irrf_13, irrf_13_info = (_calc_irrf(base_irrf_13, tabela) if d13 else (0, None))
+        irrf_13, _red_13, _isento_13 = _irrf_isencao_redutor(d13, irrf_13, tabela)
         # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
         # (férias indenizadas não têm FGTS)
         base_fgts = saldo + d13 + aviso_val + add_fgts
@@ -6646,7 +6650,9 @@ def api_calc_rescisao_calcular():
             "d13_base": d13, "inss_13": inss_13, "inss_13_det": inss_13_det,
             "ndep": ndep, "dep_irrf_ded": dep_irrf_ded, "dep_total": dep_total,
             "base_irrf_saldo": base_irrf_saldo, "irrf_saldo": irrf_saldo, "irrf_saldo_info": irrf_saldo_info,
+            "red_saldo": _red_saldo, "isento_saldo": _isento_saldo,
             "base_irrf_13": base_irrf_13, "irrf_13": irrf_13, "irrf_13_info": irrf_13_info,
+            "red_13": _red_13, "isento_13": _isento_13,
             "base_fgts": base_fgts, "fgts_val": fgts_val, "multa_pct": multa_pct, "multa_fgts": multa_fgts,
             "man_prov": man_prov, "man_desc": man_desc, "manuais_det": manuais_det,
             "add_inss": add_inss, "add_irrf": add_irrf, "add_fgts": add_fgts,
@@ -6839,8 +6845,16 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 f"Base ({_irrf_base_lbl}) − INSS − dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
                 f"IRRF saldo = <b>{_B(r['irrf_saldo'])}</b>",
             ]
-            if r["irrf_13"]:
+            if r.get("isento_saldo"):
+                lin_irrf.append("Saldo isento — rendimento até R$ 5.000,00 (Lei 15.270/2025)")
+            elif r.get("red_saldo"):
+                lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao saldo (−{_B(r['red_saldo'])})")
+            if r["irrf_13"] or r.get("isento_13"):
                 lin_irrf.append(f"IRRF 13º (base {_B(r['base_irrf_13'])}) = <b>{_B(r['irrf_13'])}</b>")
+                if r.get("isento_13"):
+                    lin_irrf.append("13º isento — rendimento até R$ 5.000,00 (Lei 15.270/2025)")
+                elif r.get("red_13"):
+                    lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao 13º (−{_B(r['red_13'])})")
             e.append(_etapa("ETAPA 0008 - IRRF", lin_irrf))
             # 0009 — FGTS + multa
             _fgts_lbl = "saldo+13º+aviso" + ("+manuais c/ inc. FGTS" if r.get("add_fgts") else "")
@@ -30779,16 +30793,52 @@ def _irrf_2metodos(base_bruta, inss_val, dep_irrf_total, irrf_desc_simpl, deduca
     else:
         base, irrf, det, metodo = base_comp, irrf_comp, det_comp, "C"
     redutor, irrf_pre = 0, irrf
+    isento_5k = False
     if tabela:
         ra, rb = tabela.get("irrf_redutor_a"), tabela.get("irrf_redutor_b")
         ri, rf = tabela.get("irrf_redutor_ini"), tabela.get("irrf_redutor_fim")
-        if ra and rb and ri and rf and int(ri) <= base_bruta <= int(rf):
-            rc = (int(ra) * 1000000 - int(rb) * base_bruta + 500000) // 1000000
-            redutor = max(0, min(rc, irrf_pre))
-            irrf = irrf_pre - redutor
+        if ra and rb and ri and rf:
+            _ri, _rf = int(ri), int(rf)
+            # Isenção total até o piso do redutor (R$ 5.000,00 = ri - 1), Lei 15.270/2025
+            if base_bruta <= _ri - 1:
+                isento_5k = True
+                redutor   = irrf_pre
+                irrf      = 0
+            elif _ri <= base_bruta <= _rf:
+                rc = (int(ra) * 1000000 - int(rb) * base_bruta + 500000) // 1000000
+                redutor = max(0, min(rc, irrf_pre))
+                irrf = irrf_pre - redutor
     return {"base": base, "irrf": irrf, "metodo": metodo, "det": det, "redutor": redutor,
+            "isento_5k": isento_5k,
             "base_comp": base_comp, "irrf_comp": irrf_comp,
             "base_simpl": base_simpl, "irrf_simpl": irrf_simpl}
+
+
+def _irrf_isencao_redutor(base_bruta, irrf_pre, tabela):
+    """Aplica sobre um IRRF já calculado a isenção total (rendimento tributável
+    até R$ 5.000,00) e o redutor parcial (R$ 5.000,01 – R$ 7.350,00) da
+    Lei 15.270/2025. Usado em férias, 13º e rescisão — mesma regra da folha
+    mensal (o piso da isenção é irrf_redutor_ini - 1).
+
+    base_bruta = rendimento tributável BRUTO da parcela (para enquadrar na faixa);
+    irrf_pre   = IRRF já apurado pela tabela.
+    Retorna (irrf_final, redutor, isento)."""
+    base_bruta = int(base_bruta)
+    irrf_pre   = int(irrf_pre)
+    if not tabela or irrf_pre <= 0:
+        return irrf_pre, 0, False
+    ra, rb = tabela.get("irrf_redutor_a"), tabela.get("irrf_redutor_b")
+    ri, rf = tabela.get("irrf_redutor_ini"), tabela.get("irrf_redutor_fim")
+    if not (ra and rb and ri and rf):
+        return irrf_pre, 0, False
+    _ri, _rf = int(ri), int(rf)
+    if base_bruta <= _ri - 1:
+        return 0, irrf_pre, True                 # isenção total até R$ 5.000,00
+    if _ri <= base_bruta <= _rf:
+        rc = (int(ra) * 1000000 - int(rb) * base_bruta + 500000) // 1000000
+        redutor = max(0, min(rc, irrf_pre))
+        return irrf_pre - redutor, redutor, False
+    return irrf_pre, 0, False
 
 
 def _get_pensoes_por_mat(id_empresa, anomes):
@@ -32318,9 +32368,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 irrf_det    = irrf_det_comp
                 irrf_metodo = "C"
 
-            # Redutor Lei 15.270/2025 (vigência jan/2026): R$ 5.000,01 – R$ 7.350,00
+            # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01 – R$ 7.350,00
+            # (Lei 15.270/2025, vigência jan/2026). O piso da isenção é ri - 1.
             redutor_val          = 0
             irrf_val_pre_redutor = irrf_val
+            _isento_5k           = False
             _redutor_a = _redutor_b = _redutor_ini = _redutor_fim = None
             if tabela_legais:
                 _redutor_a   = tabela_legais.get("irrf_redutor_a")
@@ -32330,7 +32382,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 if _redutor_a and _redutor_b and _redutor_ini and _redutor_fim:
                     _ra, _rb = int(_redutor_a), int(_redutor_b)
                     _ri, _rf = int(_redutor_ini), int(_redutor_fim)
-                    if _ri <= int(base_irrf_bruta) <= _rf:
+                    if int(base_irrf_bruta) <= _ri - 1:
+                        # Rendimento até R$ 5.000,00 → isento (imposto zerado)
+                        _isento_5k  = True
+                        redutor_val = irrf_val_pre_redutor
+                        irrf_val    = 0
+                    elif _ri <= int(base_irrf_bruta) <= _rf:
                         _rc = (_ra * 1000000 - _rb * int(base_irrf_bruta) + 500000) // 1000000
                         redutor_val = max(0, min(_rc, irrf_val_pre_redutor))
                         irrf_val    = irrf_val_pre_redutor - redutor_val
@@ -32371,8 +32428,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     txt = "Isento" if det is None else _fmt_brl(val)
                     return Paragraph(txt, _st_win if chosen else _st_val)
 
-                # Linha "IRRF calculado" = pre-redutor; ajusta label se houver redutor
-                _lbl_irrf_calc = "IRRF calculado (antes do redutor)" if redutor_val > 0 else "IRRF calculado"
+                # Linha "IRRF calculado" = pre-redutor; ajusta label conforme o caso
+                _lbl_irrf_calc = ("IRRF calculado (antes da isencao)" if _isento_5k
+                                  else "IRRF calculado (antes do redutor)" if redutor_val > 0
+                                  else "IRRF calculado")
                 comp_rows = [
                     [Paragraph("", _st_lbl),
                      Paragraph("Desc. Simplificado", _st_hwin if simpl_chosen else _st_hdr),
@@ -32399,17 +32458,26 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                      _irrf_cell(irrf_val_simpl, irrf_det_simpl, simpl_chosen),
                      _irrf_cell(irrf_val_comp,  irrf_det_comp,  not simpl_chosen)],
                 ]
-                # Linhas do redutor Lei 15.270/2025 (apenas quando aplicável)
+                # Linhas do redutor/isenção Lei 15.270/2025 (apenas quando aplicável)
                 _comp_extra_style = []
                 if redutor_val > 0:
                     _ra_d  = int(_redutor_a)
                     _rb_d  = int(_redutor_b)
                     _rb_fmt = f"0,{_rb_d:06d}".rstrip('0')  # ex: "0,133145"
-                    _formula_txt = (f"(-) Redutor Lei 15.270/2025: "
-                                    f"{_fmt_brl(_ra_d)} - ({_rb_fmt} x {_fmt_brl(int(base_irrf_bruta))})"
-                                    f" = {_fmt_brl(redutor_val)}")
-                    _irrf_s_final = max(0, irrf_val_simpl - redutor_val) if irrf_det_simpl else 0
-                    _irrf_c_final = max(0, irrf_val_comp  - redutor_val) if irrf_det_comp  else 0
+                    if _isento_5k:
+                        _teto_isento = _fmt_brl(int(_redutor_ini) - 1)  # R$ 5.000,00
+                        _formula_txt = (f"(-) Isencao Lei 15.270/2025 "
+                                        f"(rendimento ate {_teto_isento}) = {_fmt_brl(redutor_val)}")
+                        _irrf_s_final = 0
+                        _irrf_c_final = 0
+                        _lbl_final    = "= IRRF isento"
+                    else:
+                        _formula_txt = (f"(-) Redutor Lei 15.270/2025: "
+                                        f"{_fmt_brl(_ra_d)} - ({_rb_fmt} x {_fmt_brl(int(base_irrf_bruta))})"
+                                        f" = {_fmt_brl(redutor_val)}")
+                        _irrf_s_final = max(0, irrf_val_simpl - redutor_val) if irrf_det_simpl else 0
+                        _irrf_c_final = max(0, irrf_val_comp  - redutor_val) if irrf_det_comp  else 0
+                        _lbl_final    = "= IRRF liquido (apos redutor)"
                     _row_redutor  = len(comp_rows)
                     comp_rows.append([
                         Paragraph(_formula_txt, _st_lbl),
@@ -32417,7 +32485,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         Paragraph(_fmt_brl(redutor_val), _st_val),
                     ])
                     comp_rows.append([
-                        Paragraph("= IRRF liquido (apos redutor)", _st_lbl),
+                        Paragraph(_lbl_final, _st_lbl),
                         Paragraph(_fmt_brl(_irrf_s_final), _st_win if simpl_chosen else _st_val),
                         Paragraph(_fmt_brl(_irrf_c_final), _st_win if not simpl_chosen else _st_val),
                     ])
@@ -32442,7 +32510,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("LINEAFTER",    (0, 0), (0, -1), 0.3, colors.HexColor("#cbd5e1")),
                     ("LINEAFTER",    (1, 0), (1, -1), 0.3, colors.HexColor("#cbd5e1")),
                 ] + _comp_extra_style))
-                _titulo_redutor = "   Redutor Lei 15.270/2025 aplicado" if redutor_val > 0 else ""
+                _titulo_redutor = ("   Isencao Lei 15.270/2025 aplicada" if _isento_5k
+                                   else "   Redutor Lei 15.270/2025 aplicado" if redutor_val > 0
+                                   else "")
                 e11_tbl = Table([
                     [Paragraph(f"ETAPA 0011 - RUBRICA 0120-IRRF (Desconto)   Metodo: {met_label} (mais favoravel){_titulo_redutor}", st_etapa)],
                     [comp_tbl],
@@ -37926,6 +37996,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             base_irrf    = int(r["base_irrf"])
             irrf_val     = int(r["irrf_val"])
             irrf_info    = r.get("irrf_info")
+            irrf_redutor = int(r.get("irrf_redutor") or 0)
+            irrf_isento  = bool(r.get("irrf_isento"))
             total_prov   = int(r["total_prov"])
             total_desc   = int(r["total_desc"])
             liquido      = int(r["liquido"])
@@ -38303,6 +38375,10 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                                             fontSize=7, alignment=2,
                                             textColor=colors.HexColor("#374151"))
                 _aliq11f, _dedu11f = irrf_info
+                _irrf_pre_fer = irrf_val + irrf_redutor   # antes da isenção/redutor
+                _lbl_calc_fer = ("IRRF calculado (antes da isencao)" if irrf_isento
+                                 else "IRRF calculado (antes do redutor)" if irrf_redutor
+                                 else "IRRF calculado")
                 irrf11f_rows = [
                     [Paragraph("Base INSS/IRRF (Sal.Ferias + 1/3 + Medias)", _st_lbl11f),
                      Paragraph(_fmt_brl(base_calc), _st_val11f)],
@@ -38318,9 +38394,23 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                         f"Aliquota / Parcela a deduzir: {_aliq11f/100:g}% / {_fmt_brl(_dedu11f)}",
                         _st_lbl11f),
                      Paragraph("", _st_val11f)],
-                    [Paragraph("IRRF calculado", _st_lbl11f),
-                     Paragraph(_fmt_brl(irrf_val), _st_val11f)],
+                    [Paragraph(_lbl_calc_fer, _st_lbl11f),
+                     Paragraph(_fmt_brl(_irrf_pre_fer), _st_val11f)],
                 ]
+                if irrf_isento:
+                    irrf11f_rows.append(
+                        [Paragraph("(-) Isencao Lei 15.270/2025 (rendimento ate R$ 5.000,00)", _st_lbl11f),
+                         Paragraph(_fmt_brl(irrf_redutor), _st_val11f)])
+                    irrf11f_rows.append(
+                        [Paragraph("= IRRF isento", _st_lbl11f),
+                         Paragraph(_fmt_brl(irrf_val), _st_val11f)])
+                elif irrf_redutor:
+                    irrf11f_rows.append(
+                        [Paragraph("(-) Redutor Lei 15.270/2025", _st_lbl11f),
+                         Paragraph(_fmt_brl(irrf_redutor), _st_val11f)])
+                    irrf11f_rows.append(
+                        [Paragraph("= IRRF liquido (apos redutor)", _st_lbl11f),
+                         Paragraph(_fmt_brl(irrf_val), _st_val11f)])
                 irrf11f_det = Table(irrf11f_rows, colWidths=[13*cm, 4*cm])
                 irrf11f_det.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 3),
@@ -38688,6 +38778,8 @@ def api_calc_ferias_calcular():
         dep_total      = ndep * dep_irrf_ded
         base_irrf      = max(0, base_calc - inss_val - dep_total)
         irrf_val, irrf_info = _calc_irrf(base_irrf, tabela)
+        # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
+        irrf_val, _red_fer, _isento_fer = _irrf_isencao_redutor(base_calc, irrf_val, tabela)
 
         liquido = base_calc - inss_val - irrf_val + abono_val + terco_abono
 
@@ -38835,6 +38927,8 @@ def api_calc_ferias_calcular():
             "base_irrf":      base_irrf,
             "irrf_val":       irrf_val,
             "irrf_info":      irrf_info,
+            "irrf_redutor":   _red_fer,
+            "irrf_isento":    _isento_fer,
             "total_prov":     total_prov,
             "total_desc":     total_desc,
             "liquido":        liquido,
@@ -39323,6 +39417,8 @@ def api_recibo_ferias_pdf():
         dep_total      = ndep * dep_irrf_ded
         base_irrf      = max(0, base_calc - inss_val - dep_total)
         irrf_val, _    = _calc_irrf(base_irrf, tabela)
+        # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
+        irrf_val, _red_fer, _isento_fer = _irrf_isencao_redutor(base_calc, irrf_val, tabela)
         liquido        = base_calc - inss_val - irrf_val + abono_val + terco_abono
 
         data1i_fmt = _f8(ev.get("data1i"))
