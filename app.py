@@ -19512,8 +19512,8 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
       <matricula>{x(mat_es)}</matricula>
       <codCateg>{x(codcateg)}</codCateg>
       <dtInicio>{x(dtinicio)}</dtInicio>{_nat_ativ_xml}
-      <infoComplementares>{complementares_xml}
-      </infoComplementares>{localtrab_xml}
+      <infoComplementares>{complementares_xml}{localtrab_xml}
+      </infoComplementares>
     </infoTSVInicio>
   </evtTSVInicio>
 </eSocial>"""
