@@ -500,16 +500,30 @@ async function processar() {
         return;
     }
 
+    var novoSalEl = document.getElementById('novo_sal');
+    var semSalarioAnterior = (typeof SAL_ATUAL_CENTS !== 'undefined' && SAL_ATUAL_CENTS === 0);
+    var novoSalCents = novoSalEl ? Math.round(parseCur(novoSalEl.value) * 100) : 0;
+
     var percRaw = document.getElementById('percentual').value.replace(',', '.');
     var percentual = parseFloat(percRaw);
-    if (isNaN(percentual) || percentual === 0) {
-        alert('Informe o percentual de reajuste (deve ser diferente de zero).'); return;
-    }
-    if (percentual < 0) {
-        if (!await f10Confirm(`Atenção: o percentual informado é ${percentual.toFixed(2).replace('.', ',')}%.\nIsso representa uma REDUÇÃO salarial. Deseja continuar?`)) return;
-    }
-    if (percentual > 30) {
-        if (!await f10Confirm(`Atenção: o percentual de reajuste informado é ${percentual.toFixed(2).replace('.', ',')}%.\nUm aumento acima de 30% é incomum. Deseja continuar?`)) return;
+
+    if (semSalarioAnterior) {
+        // Funcionário sem salário anterior (cadastrado com salário 0): não há como
+        // calcular percentual — aceita o novo salário informado direto (em R$).
+        if (!novoSalCents || novoSalCents <= 0) {
+            alert('Este funcionário não tem salário anterior cadastrado.\nInforme o novo salário direto (em R$).'); return;
+        }
+        percentual = 0;  // o servidor usará o novo salário direto
+    } else {
+        if (isNaN(percentual) || percentual === 0) {
+            alert('Informe o percentual de reajuste (deve ser diferente de zero).'); return;
+        }
+        if (percentual < 0) {
+            if (!await f10Confirm(`Atenção: o percentual informado é ${percentual.toFixed(2).replace('.', ',')}%.\nIsso representa uma REDUÇÃO salarial. Deseja continuar?`)) return;
+        }
+        if (percentual > 30) {
+            if (!await f10Confirm(`Atenção: o percentual de reajuste informado é ${percentual.toFixed(2).replace('.', ',')}%.\nUm aumento acima de 30% é incomum. Deseja continuar?`)) return;
+        }
     }
 
     var tipo   = document.querySelector('input[name="tipo"]:checked').value;
@@ -527,6 +541,7 @@ async function processar() {
     p.set('mats',        MATS);
     p.set('vigencia',    vigencia.replace(/-/g, '').slice(0, 6));  // YYYYMMDD → YYYYMM
     p.set('percentual',  percentual.toFixed(2));
+    if (semSalarioAnterior && novoSalCents > 0) p.set('novo_sal', novoSalCents);
     p.set('tipo',        tipo);
     p.set('motivo',      motivo);
     p.set('gravar',      gravar);

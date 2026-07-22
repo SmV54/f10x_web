@@ -9,3 +9,4 @@ signxml
 lxml
 qrcode
 pillow
+openpyxl

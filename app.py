@@ -14400,6 +14400,488 @@ def cad_mov_rescisao():
     )
 
 
+# =========================================================
+# IMPORTAÇÃO DE EMPRÉSTIMOS CONSIGNADOS → tab_mov
+# Planilha mensal (govBR/Dataprev) com os contratos de consignado.
+# Regras: CNPJ raiz da planilha = CNPJ da empresa; func por matrícula
+# conferindo CPF; verbas 700..749 (1 por contrato, ordem = dataInicio);
+# demitido em mês anterior é rejeitado; no mês ativo grava com aviso.
+# =========================================================
+CONSIG_VERBA_INI = 700
+CONSIG_VERBA_FIM = 749
+
+
+def _consig_mmyyyy_to_yyyymm(v):
+    """'07/2026' → '202607'. Retorna '' se não reconhecer."""
+    s = str(v or "").strip()
+    if len(s) == 7 and s[2] == "/":
+        return s[3:7] + s[0:2]
+    if len(s) == 6 and s.isdigit():   # já veio YYYYMM
+        return s
+    return ""
+
+
+def _consig_dtcontrato_key(v):
+    """'10/04/2026' → '20260410' (ordenável). Fallback: string original."""
+    s = str(v or "").strip()
+    if len(s) == 10 and s[2] == "/" and s[5] == "/":
+        return s[6:10] + s[3:5] + s[0:2]
+    return s
+
+
+def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
+    """Lê a planilha e devolve o resultado do processamento (sem gravar).
+    Retorna dict: {abort, abort_msg, competencia_planilha, linhas, resumo,
+    has_error, para_gravar}."""
+    import openpyxl  # import tardio: dependência só desta feature
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+    ws = wb.active
+    # Lê tudo de uma vez: iter_rows é o caminho rápido do modo read_only.
+    # (acesso aleatório ws.cell(r,c) em read_only reparseia e é lentíssimo).
+    todas = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not todas:
+        return {"abort": True, "abort_msg": "A planilha está vazia."}
+    header = todas[0]
+    col = {str(h).strip(): i for i, h in enumerate(header) if h is not None}
+
+    obrig = ["numeroInscricaoEmpregador", "cpf", "matricula", "contrato",
+             "ifConcessora.codigo", "dataInicioContrato",
+             "competenciaInicioDesconto", "competenciaFimDesconto",
+             "totalParcelas", "valorParcela"]
+    faltando = [c for c in obrig if c not in col]
+    if faltando:
+        return {"abort": True,
+                "abort_msg": "Planilha fora do layout esperado. Colunas ausentes: "
+                             + ", ".join(faltando)}
+
+    def cel(rowt, nome):
+        i = col.get(nome)
+        return rowt[i] if (i is not None and i < len(rowt)) else None
+
+    # ── Regra 1: CNPJ raiz (8) da planilha × CNPJ da empresa ──
+    cnpj_emp8 = "".join(ch for ch in str(cnpj_empresa or "") if ch.isdigit())[:8]
+    raizes = set()
+    linhas_brutas = []   # (num_linha_xls, rowtuple)
+    for offset, rowt in enumerate(todas[1:]):
+        mat_raw = cel(rowt, "matricula")
+        contrato = cel(rowt, "contrato")
+        if mat_raw in (None, "") and contrato in (None, ""):
+            continue  # linha vazia
+        cnpj_pl = "".join(ch for ch in str(cel(rowt, "numeroInscricaoEmpregador") or "") if ch.isdigit())
+        if cnpj_pl:
+            raizes.add(cnpj_pl[:8].zfill(8))
+        linhas_brutas.append((offset + 2, rowt))
+
+    if not linhas_brutas:
+        return {"abort": True, "abort_msg": "A planilha não contém registros."}
+
+    # Todas as raízes têm que ser iguais ao CNPJ da empresa
+    raizes_dif = {x for x in raizes if x != cnpj_emp8.zfill(8)}
+    if raizes_dif:
+        return {"abort": True,
+                "abort_msg": f"CNPJ da planilha ({', '.join(sorted(raizes))}) é diferente "
+                             f"do CNPJ da empresa ativa ({cnpj_emp8}). Importação cancelada."}
+
+    competencia_pl = _consig_mmyyyy_to_yyyymm(cel(linhas_brutas[0][1], "competencia")) \
+        if "competencia" in col else ""
+
+    # ── Carrega funcionários da empresa (matricula → dados) ──
+    cadastro = {}
+    try:
+        rc = (supabase.table("tab_cad")
+              .select("matricula, cpf, nome, nomer, situacao, datarescisao")
+              .eq("id_cliente", id_cliente)
+              .eq("id_empresa", id_empresa)
+              .execute())
+        for f in (rc.data or []):
+            try:
+                cadastro[int(f.get("matricula"))] = f
+            except (TypeError, ValueError):
+                pass
+    except Exception:
+        pass
+
+    # ── Monta as linhas processadas ──
+    linhas = []          # cada item = dict com dados + status
+    por_matricula = {}   # matricula(int) → lista de índices em `linhas`
+    for (r, rowt) in linhas_brutas:
+        mat_raw = cel(rowt, "matricula")
+        contrato = cel(rowt, "contrato")
+        try:
+            mat = int(str(mat_raw).strip())
+        except (TypeError, ValueError):
+            mat = None
+        cpf_pl = "".join(ch for ch in str(cel(rowt, "cpf") or "") if ch.isdigit()).zfill(11)
+        if_cod = str(cel(rowt, "ifConcessora.codigo") or "").strip()[:3]
+        if_desc = str(cel(rowt, "ifConcessora.descricao") or "").strip()
+        contrato_s = str(contrato or "").strip()
+        vparc = cel(rowt, "valorParcela")
+        try:
+            valor_cent = int(round(float(vparc) * 100)) if vparc not in (None, "") else 0
+        except (TypeError, ValueError):
+            valor_cent = 0
+        _ptot_raw = cel(rowt, "totalParcelas")
+        try:
+            ptotal = int(_ptot_raw) if _ptot_raw not in (None, "") else 0
+        except (TypeError, ValueError):
+            ptotal = 0
+        comp_ini = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaInicioDesconto"))
+        datafinal = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaFimDesconto"))
+        # parcelaatual = meses (comp_ini → anomes) + 1  (Opção A)
+        parcatual = 0
+        if len(comp_ini) == 6 and len(anomes) == 6:
+            diff = (int(anomes[:4]) - int(comp_ini[:4])) * 12 + \
+                   (int(anomes[4:6]) - int(comp_ini[4:6]))
+            parcatual = max(1, diff + 1)
+
+        item = {
+            "linha_xls": r,
+            "matricula": mat,
+            "cpf_planilha": cpf_pl,
+            "nome": "",
+            "if_codigo": if_cod,
+            "if_desc": if_desc,
+            "contrato": contrato_s,
+            "valor_centavos": valor_cent,
+            "parcela_atual": parcatual,
+            "parcelas_total": ptotal,
+            "data_final": datafinal,
+            "dt_contrato_key": _consig_dtcontrato_key(cel(rowt, "dataInicioContrato")),
+            "cod_verba": None,
+            "status": "ok",       # ok | erro | aviso | rejeitado
+            "mensagem": "",
+        }
+
+        # ── Regra 2: localizar por matrícula, conferir CPF ──
+        cad = cadastro.get(mat) if mat is not None else None
+        if mat is None:
+            item["status"] = "erro"; item["mensagem"] = "Matrícula inválida na planilha."
+        elif cad is None:
+            item["status"] = "erro"; item["mensagem"] = f"Matrícula {mat} não encontrada no cadastro."
+        else:
+            item["nome"] = (cad.get("nomer") or cad.get("nome") or "").strip()
+            cpf_cad = "".join(ch for ch in str(cad.get("cpf") or "") if ch.isdigit()).zfill(11)
+            if cpf_cad != cpf_pl:
+                item["status"] = "erro"
+                item["mensagem"] = f"CPF diverge: planilha {cpf_pl} × cadastro {cpf_cad}."
+            else:
+                dtresc = str(cad.get("datarescisao") or "").strip()
+                if dtresc and dtresc[:6] < anomes:
+                    # ── Regra 5: demitido em mês anterior → rejeitado (não é erro) ──
+                    item["status"] = "rejeitado"
+                    item["mensagem"] = f"Demitido em {dtresc[4:6]}/{dtresc[:4]} — não importado."
+                elif dtresc and dtresc[:6] == anomes:
+                    # ── Regra 6: demitido no mês ativo → grava com aviso ──
+                    item["status"] = "aviso"
+                    item["mensagem"] = f"Demitido neste mês ({dtresc[6:8]}/{dtresc[4:6]}) — importado."
+
+        linhas.append(item)
+        if mat is not None:
+            por_matricula.setdefault(mat, []).append(len(linhas) - 1)
+
+    # ── Regra 3: atribui verbas 700..749 por funcionário (ordem = dataInicio) ──
+    for mat, idxs in por_matricula.items():
+        # ordena os contratos do funcionário pela data de início do contrato
+        idxs_ord = sorted(idxs, key=lambda i: linhas[i]["dt_contrato_key"])
+        verba = CONSIG_VERBA_INI
+        for i in idxs_ord:
+            it = linhas[i]
+            if it["status"] == "erro":
+                continue  # linha com erro não recebe verba
+            if it["status"] == "rejeitado":
+                continue  # demitido mês anterior não entra
+            if verba > CONSIG_VERBA_FIM:
+                # ── Regra 6b: estouro do 749 = erro grave ──
+                it["status"] = "erro"
+                it["mensagem"] = (f"Funcionário excedeu o limite de "
+                                  f"{CONSIG_VERBA_FIM - CONSIG_VERBA_INI + 1} empréstimos "
+                                  f"(verba {CONSIG_VERBA_FIM}). Erro grave — contate o suporte.")
+                continue
+            it["cod_verba"] = verba
+            verba += 1
+
+    # ── Resumo ──
+    n_ok      = sum(1 for it in linhas if it["status"] == "ok")
+    n_aviso   = sum(1 for it in linhas if it["status"] == "aviso")
+    n_rejeit  = sum(1 for it in linhas if it["status"] == "rejeitado")
+    n_erro    = sum(1 for it in linhas if it["status"] == "erro")
+    para_gravar = [it for it in linhas if it["status"] in ("ok", "aviso") and it["cod_verba"]]
+    funcs_gravar = len({it["matricula"] for it in para_gravar})
+
+    # Já existem lançamentos 700..749 nesta folha? (serão apagados)
+    ja_existe = 0
+    try:
+        rq = (supabase.table("tab_mov")
+              .select("id", count="exact")
+              .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+              .eq("folha", int(anomes)).eq("folha_tipo", "N")
+              .gte("cod_verba", CONSIG_VERBA_INI).lte("cod_verba", CONSIG_VERBA_FIM)
+              .execute())
+        ja_existe = rq.count or 0
+    except Exception:
+        ja_existe = 0
+
+    return {
+        "abort": False,
+        "competencia_planilha": competencia_pl,
+        "linhas": linhas,
+        "has_error": n_erro > 0,
+        "para_gravar": para_gravar,
+        "resumo": {
+            "total": len(linhas), "ok": n_ok, "aviso": n_aviso,
+            "rejeitado": n_rejeit, "erro": n_erro,
+            "lancamentos": len(para_gravar), "funcionarios": funcs_gravar,
+            "ja_existentes": ja_existe,
+        },
+    }
+
+
+@app.route("/consignado_importar")
+def consignado_importar():
+    """Tela de importação da planilha de empréstimos consignados."""
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template(
+        "F10_Consignado_Importar.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=str(session.get("anomes_atual") or ""),
+    )
+
+
+@app.route("/api/consignado/preview", methods=["POST"])
+def api_consignado_preview():
+    """Recebe o .xlsx, valida e devolve a prévia (sem gravar)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if str(session.get("anomes_tipo") or "N") not in ("N", ""):
+        return jsonify({"ok": False, "msg": "A folha ativa não é Normal. "
+                        "Abra a folha Normal antes de importar consignados."})
+    f = request.files.get("arquivo")
+    if not f or not f.filename.lower().endswith(".xlsx"):
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx."})
+    try:
+        res = _consig_processar(f.read(), session.get("id_cliente"),
+                                _get_id_empresa(), anomes,
+                                session.get("cnpj_empresa", ""))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a planilha: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "abort": True, "msg": res["abort_msg"]})
+    # remove a chave interna de ordenação antes de enviar ao front
+    for it in res["linhas"]:
+        it.pop("dt_contrato_key", None)
+    return jsonify({
+        "ok": True,
+        "anomes": anomes,
+        "competencia_planilha": res["competencia_planilha"],
+        "has_error": res["has_error"],
+        "resumo": res["resumo"],
+        "linhas": res["linhas"],
+    })
+
+
+@app.route("/api/consignado/importar", methods=["POST"])
+def api_consignado_importar():
+    """Grava os consignados no tab_mov (apaga 700..749 da folha antes)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if str(session.get("anomes_tipo") or "N") not in ("N", ""):
+        return jsonify({"ok": False, "msg": "A folha ativa não é Normal."})
+    f = request.files.get("arquivo")
+    if not f or not f.filename.lower().endswith(".xlsx"):
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx."})
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    folha_int  = int(anomes)
+    try:
+        res = _consig_processar(f.read(), id_cliente, id_empresa, anomes,
+                                session.get("cnpj_empresa", ""))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a planilha: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "msg": res["abort_msg"]})
+    if res["has_error"]:
+        # Regra 7: não permite importar com erro
+        return jsonify({"ok": False, "msg": "Existem erros na planilha. Corrija antes de importar."})
+
+    registros = []
+    for it in res["para_gravar"]:
+        registros.append({
+            "id_cliente":    id_cliente,
+            "id_empresa":    id_empresa,
+            "situacao":      "A",
+            "matricula":     int(it["matricula"]),
+            "folha":         folha_int,
+            "folha_tipo":    "N",
+            "cod_verba":     it["cod_verba"],
+            "qtd":           0,
+            "valor":         it["valor_centavos"],
+            "lote":          0,
+            "origem":        "M",
+            "controle":      0,
+            "os":            0,
+            "instfinanc":    it["if_codigo"] or None,
+            "nrdoc":         it["contrato"] or None,
+            "parcelaatual":  it["parcela_atual"] or None,
+            "parcelastotal": it["parcelas_total"] or None,
+            "datafinal":     it["data_final"] or None,
+        })
+    if not registros:
+        return jsonify({"ok": False, "msg": "Nenhum lançamento válido para importar."})
+
+    try:
+        # Apaga os consignados (700..749) já existentes nesta folha
+        (supabase.table("tab_mov").delete()
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("folha", folha_int).eq("folha_tipo", "N")
+         .gte("cod_verba", CONSIG_VERBA_INI).lte("cod_verba", CONSIG_VERBA_FIM)
+         .execute())
+        # Insere em lotes
+        for i in range(0, len(registros), 500):
+            supabase.table("tab_mov").insert(registros[i:i + 500]).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}"})
+
+    n_func = len({r["matricula"] for r in registros})
+    # Regra 8: grava tab_log só quando houve importação
+    gravar_log("MOV-CONS",
+               f"Importados {len(registros)} consignado(s) de {n_func} funcionário(s) "
+               f"(verbas {CONSIG_VERBA_INI}-{CONSIG_VERBA_FIM}) na folha {anomes}.",
+               ano_mes=anomes)
+    return jsonify({"ok": True,
+                    "msg": f"{len(registros)} lançamento(s) de consignado importado(s) "
+                           f"para {n_func} funcionário(s).",
+                    "n_lancamentos": len(registros), "n_funcionarios": n_func})
+
+
+def _consig_brl(cent):
+    """Centavos (int) → '1.234,56'."""
+    s = f"{(cent or 0)/100:,.2f}"          # 1,234.56
+    return s.replace(",", "§").replace(".", ",").replace("§", ".")
+
+
+@app.route("/api/consignado/pdf", methods=["POST"])
+def api_consignado_pdf():
+    """Gera o PDF da prévia da importação (mesmo arquivo enviado ao /preview)."""
+    if not session.get("logado"):
+        return redirect("/")
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    f = request.files.get("arquivo")
+    if not f or not f.filename.lower().endswith(".xlsx"):
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx."})
+    try:
+        res = _consig_processar(f.read(), session.get("id_cliente"),
+                                _get_id_empresa(), anomes,
+                                session.get("cnpj_empresa", ""))
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a planilha: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "msg": res["abort_msg"]})
+
+    from io import BytesIO
+    from flask import make_response
+    from reportlab.lib.pagesizes import landscape as rl_landscape
+
+    ST_LABEL = {"ok": "OK", "aviso": "Aviso", "rejeitado": "Rejeitado", "erro": "Erro"}
+    ordem = {"erro": 0, "aviso": 1, "ok": 2, "rejeitado": 3}
+    linhas = sorted(res["linhas"], key=lambda it: (ordem.get(it["status"], 9), it["linha_xls"]))
+
+    # Cores por status — mesmas da tela (vermelho = erro)
+    ROWCOL = {"erro": "#b91c1c", "aviso": "#92400e", "rejeitado": "#94a3b8", "ok": "#1f2937"}
+    ROWBG  = {"erro": "#fef2f2", "aviso": "#fffbeb", "rejeitado": "#f8fafc"}
+
+    def P(txt, fs=7, align=0, col="#1f2937", bold=False):
+        st = ParagraphStyle("x", fontName="Helvetica-Bold" if bold else "Helvetica",
+                            fontSize=fs, alignment=align, textColor=colors.HexColor(col), leading=fs + 2)
+        s = ("" if txt is None else str(txt)).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return Paragraph(s, st)
+
+    headers = ["Lin.", "Matríc.", "Funcionário", "Verba", "Instituição", "Contrato",
+               "Parc.", "Valor", "Até", "Status", "Observação"]
+    larguras = [1.0, 1.6, 4.2, 1.1, 3.8, 3.0, 1.4, 1.9, 1.4, 1.7, 3.6]  # cm (paisagem)
+
+    tbl_data = [[P(h, bold=True) for h in headers]]
+    estilos_bg = []
+    for i, it in enumerate(linhas, start=1):
+        stt = it["status"]
+        c = ROWCOL.get(stt, "#1f2937")
+        parc = f'{it["parcela_atual"] or "-"}/{it["parcelas_total"] or "-"}'
+        df = it["data_final"]
+        df = f"{df[4:6]}/{df[:4]}" if len(df) == 6 else "—"
+        inst = it["if_codigo"] + ((" · " + it["if_desc"]) if it["if_desc"] else "")
+        tbl_data.append([
+            P(it["linha_xls"], col=c),
+            P(it["matricula"] if it["matricula"] is not None else "—", col=c),
+            P(it["nome"] or "—", col=c),
+            P(it["cod_verba"] or "—", col=c),
+            P(inst, col=c),
+            P(it["contrato"] or "—", col=c),
+            P(parc, col=c, align=1),
+            P(_consig_brl(it["valor_centavos"]), col=c, align=2),
+            P(df, col=c, align=1),
+            P(ST_LABEL.get(stt, stt), col=c, bold=(stt != "ok")),
+            P(it["mensagem"] or "", col=c),
+        ])
+        if stt in ROWBG:
+            estilos_bg.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor(ROWBG[stt])))
+
+    pagesize = rl_landscape(A4)
+    page_w   = pagesize[0] - 4 * cm
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=pagesize, leftMargin=2 * cm, rightMargin=2 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm)
+    tbl = Table(tbl_data, colWidths=[w * cm for w in larguras], repeatRows=1)
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#eef2f7")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + estilos_bg))
+
+    R = res["resumo"]
+    comp_pl = res["competencia_planilha"]
+    comp_pl_fmt = f"{comp_pl[4:6]}/{comp_pl[:4]}" if len(comp_pl) == 6 else "—"
+    subtitulo = (f"Folha: {anomes[4:6]}/{anomes[:4]}   ·   Competência da planilha: {comp_pl_fmt}   ·   "
+                 f"Total: {R['total']}   ·   A importar: {R['lancamentos']}   ·   "
+                 f"Avisos: {R['aviso']}   ·   Rejeitados: {R['rejeitado']}   ·   Erros: {R['erro']}   ·   "
+                 f"Funcionários: {R['funcionarios']}")
+    notas = ("Prévia — nada foi gravado. Verbas 700–749 = empréstimos consignados. "
+             "Rejeitado = demitido em mês anterior. Aviso = demitido no mês da folha. "
+             "A importação é bloqueada enquanto houver erros.")
+
+    story = [_pdf_cabecalho("Prévia — Importação de Consignados",
+                            _fmt_cnpj(session.get("cnpj_empresa", "")),
+                            str(session.get("empresa_info") or ""),
+                            page_width=page_w, data_label="Emitido em")]
+    story += [Spacer(1, 4), P(subtitulo, fs=8, col="#64748b")]
+    story += [Spacer(1, 8), tbl, Spacer(1, 6),
+              P(f"Total: {len(linhas)} registro(s)", fs=7, col="#64748b", align=2)]
+    story += [Spacer(1, 4), P(notas, fs=7, col="#64748b")]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="PreviaConsignados.pdf"'
+    return resp
+
+
 @app.route("/cad_mov_ferias")
 def cad_mov_ferias():
     if not session.get("logado"):
@@ -16326,6 +16808,9 @@ def rel_aumento():
     mats_raw     = request.args.get("mats", "").strip()
     mats_lista   = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()] if mats_raw else []
     nao_ficha    = request.args.get("nao_ficha", "N").upper().strip() == "S"
+    # Novo salário informado direto (centavos) — usado quando o funcionário não tem
+    # salário anterior (admitido com salário 0), pois não há como aplicar percentual sobre 0.
+    novo_sal_direto = int(request.args.get("novo_sal", "0") or 0)
 
     # Validação mínima
     if len(vigencia_raw) != 6 or not vigencia_raw.isdigit():
@@ -16424,6 +16909,13 @@ def rel_aumento():
         sal_at   = f.get("vrsalfx") or 0
 
         sal_novo, prop, meses, perc_ap = _calcular(sal_at, dtadm)
+        # Sem salário anterior (salário 0): usa o novo salário informado direto —
+        # não há como reajustar 0 por percentual.
+        if novo_sal_direto > 0 and sal_at == 0:
+            sal_novo = novo_sal_direto
+            perc_ap  = 0.0
+            prop     = 1.0
+            meses    = 12
         diff     = sal_novo - sal_at
 
         if gravar_flag:
