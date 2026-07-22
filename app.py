@@ -18802,6 +18802,32 @@ def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur):
     )
 
 
+# Consulta de eventos de TABELA (S-1000, S-1005, S-1010, S-1020, S-1070)
+_NS_SVC_CIE_TAB = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/tabela/v1_0_0"
+_SA_CIE_TAB     = _NS_SVC_CIE_TAB + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTabela"
+
+
+def _soap_consultar_ide_tab(cnpj_raiz, tp_evt):
+    """SOAP: ConsultarIdentificadoresEventosTabela — lista os eventos de tabela
+    (S-1000/S-1005/S-1010/S-1020) já transmitidos ao eSocial pelo empregador."""
+    body_xml = (
+        f'<eSocial xmlns="http://www.esocial.gov.br/schema/consulta/identificadores-eventos/tabela/v1_0_0">'
+        f"<consultaIdentificadoresEvts>"
+        f"<ideEmpregador><tpInsc>1</tpInsc><nrInsc>{cnpj_raiz}</nrInsc></ideEmpregador>"
+        f"<consultaEvtsTabela><tpEvt>{tp_evt}</tpEvt></consultaEvtsTabela>"
+        f"</consultaIdentificadoresEvts>"
+        f"</eSocial>"
+    )
+    return (
+        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_CIE_TAB}">'
+        f"<soapenv:Header/><soapenv:Body>"
+        f"<ser:ConsultarIdentificadoresEventosTabela><ser:consulta>"
+        f"{body_xml}"
+        f"</ser:consulta></ser:ConsultarIdentificadoresEventosTabela>"
+        f"</soapenv:Body></soapenv:Envelope>"
+    )
+
+
 def _soap_download_evt(cnpj_raiz, ids):
     """SOAP: SolicitarDownloadEventosPorId. Max 40 IDs por chamada (limite do gov)."""
     ids_xml = "".join(f"<id>{i}</id>" for i in ids[:40])
@@ -25698,6 +25724,92 @@ def esocial_gerador():
         rubricas_lista=rubricas_lista,
         anomes_atual=anomes_atual,
     )
+
+
+# =========================================================
+# eSocial — CONSULTAS: identificadores de eventos de TABELA
+# =========================================================
+@app.route("/esocial_consulta")
+def esocial_consulta():
+    """Tela de consulta ao eSocial: lista os eventos de tabela (S-1000/S-1005/
+    S-1010/S-1020) já transmitidos pelo empregador."""
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template(
+        "F10_eSocial_Consulta.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        anomes_atual=str(session.get("anomes_atual") or ""),
+    )
+
+
+@app.route("/api/esocial_consulta_tabela", methods=["POST"])
+def api_esocial_consulta_tabela():
+    """Chama ConsultarIdentificadoresEventosTabela no eSocial (só leitura) e
+    devolve os eventos de tabela já transmitidos para o tpEvt informado."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    data   = request.get_json(force=True) or {}
+    tp_evt = str(data.get("tp_evt", "S-1005")).strip().upper()
+    tpAmb  = str(data.get("tpAmb", "1"))
+
+    _TAB_VALIDOS = {"S-1000", "S-1005", "S-1010", "S-1020", "S-1070"}
+    if tp_evt not in _TAB_VALIDOS:
+        return jsonify({"ok": False, "msg": f"Evento de tabela inválido: {tp_evt}"})
+
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    if not cnpj_emp:
+        return jsonify({"ok": False, "msg": "Empresa sem CNPJ na sessão."})
+
+    # Empresa + certificado (resolve procuração se houver)
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    _aplicar_cert_esocial(empresa)
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+    try:
+        pfx_bytes = base64.b64decode(pfx_b64)
+        senha_str = _cert_decrypt(senha_enc)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o certificado: {str(e)[:150]}"})
+
+    cnpj_raiz = re.sub(r"\D", "", cnpj_emp)[:8]
+    soap = _soap_consultar_ide_tab(cnpj_raiz, tp_evt)
+    base_url = _ES_BASE_PROD_CONS if tpAmb == "1" else _ES_BASE_HOMOL
+    url = base_url + _ES_PATH_CONS_IDE
+
+    try:
+        resp = _http_post_cert(url, soap, pfx_bytes, senha_str, _SA_CIE_TAB)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao consultar o eSocial: {str(e)[:300]}"})
+
+    parsed = _parse_ide_response(resp)
+    if parsed.get("erro"):
+        return jsonify({"ok": False, "msg": parsed["erro"], "status": parsed.get("status", {})})
+
+    gravar_log("ESOCIAL-C",
+               f"Consulta {tp_evt} eSocial: {len(parsed.get('ids', []))} evento(s)")
+    return jsonify({
+        "ok":      True,
+        "tp_evt":  tp_evt,
+        "ambiente": "Produção" if tpAmb == "1" else "Produção Restrita",
+        "status":  parsed.get("status", {}),
+        "eventos": parsed.get("ids", []),
+        "total":   len(parsed.get("ids", [])),
+    })
 
 
 # =========================================================
