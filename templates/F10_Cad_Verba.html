@@ -522,7 +522,7 @@
               </select></div>
               <div><select class="form-input-inc" id="inpN_irrf" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
-                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+                {% for c in inc_irrf %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
               </select></div>
               <div><select class="form-input-inc" id="inpN_pis" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
@@ -541,7 +541,7 @@
               </select></div>
               <div><select class="form-input-inc" id="inpR_irrf" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
-                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+                {% for c in inc_irrf %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
               </select></div>
               <div><select class="form-input-inc" id="inpR_pis" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
@@ -560,7 +560,7 @@
               </select></div>
               <div><select class="form-input-inc" id="inpF_irrf" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
-                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+                {% for c in inc_irrf %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
               </select></div>
               <div><select class="form-input-inc" id="inpF_pis" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
@@ -579,7 +579,7 @@
               </select></div>
               <div><select class="form-input-inc" id="inp1_irrf" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
-                {% for c in inc_cp %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
+                {% for c in inc_irrf %}<option value="{{ c.codigo }}">{{ c.codigo }} — {{ c.texto }}</option>{% endfor %}
               </select></div>
               <div><select class="form-input-inc" id="inp1_pis" disabled style="height:26px;padding:2px 4px;">
                 <option value="">--</option>
@@ -1439,9 +1439,9 @@
 
   // ── LISTAGEM COMPLETA ──────────────────────────────────
   const INC_CP_MAP   = Object.fromEntries({{ inc_cp | tojson | safe }}.map(n => [n.codigo, n.texto]));
-  // FGTS/IRRF/PIS usam os mesmos códigos do INSS (inc_cp)
+  // FGTS/PIS ainda reusam INSS (inc_cp); IRRF usa sua propria tabela (inc_irrf, num_tabela=103)
   const INC_FGTS_MAP = INC_CP_MAP;
-  const INC_IRRF_MAP = INC_CP_MAP;
+  const INC_IRRF_MAP = Object.fromEntries({{ inc_irrf | tojson | safe }}.map(n => [n.codigo, n.texto]));
   const INC_PIS_MAP  = INC_CP_MAP;
 
   const INC_EV_LABEL = {
