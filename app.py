@@ -25539,7 +25539,9 @@ def esocial_fila():
 
     _LAY = {
         "1000": ("S-1000", "Empregador",    "/esocial_s1000",    False),
+        "1005": ("S-1005", "Estab./Obras",  "/esocial_s1005",    False),
         "1010": ("S-1010", "Rubricas",      "/esocial_s1010",    False),
+        "1020": ("S-1020", "Lotações",      "/esocial_s1020",    False),
         "1200": ("S-1200", "Remuneração",   "/esocial_s1200",    False),
         "1210": ("S-1210", "Pagamentos",    "/esocial_s1210",    False),
         "1298": ("S-1298", "Reabertura",    "/esocial_s1298",    False),

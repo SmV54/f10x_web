@@ -384,7 +384,7 @@ tr:hover td { background: #f8fafc; }
               <button class="btn-reconsultar"
                       onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-              {% if r.layout in ('1005', '1010', '2200', '2220', '2300', '2399', '1200', '1298', '1299') %}
+              {% if r.layout in ('1005', '1010', '1020', '2200', '2220', '2300', '2399', '1200', '1298', '1299') %}
               <button class="btn-ir"
                       data-id="{{ r.id_esocial }}"
                       data-layout="{{ r.layout }}"
@@ -602,6 +602,7 @@ async function _enviarFila(btn) {
   const APIS = {
     '1005': '/api/esocial_s1005_enviar',
     '1010': '/api/esocial_s1010_enviar',
+    '1020': '/api/esocial_s1020_enviar',
     '2200': '/api/esocial_s2200_enviar',
     '2300': '/api/esocial_s2300_enviar',
     '2399': '/api/esocial_s2399_enviar',
