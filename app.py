@@ -22158,9 +22158,13 @@ def _s1020_enviar_impl():
                 break
 
     def _obs_upd(msg):
+        # Coluna observacao_erro é varchar(300): capar o TOTAL para não estourar
+        # (erro do eSocial pode ser longo → APIError 22001 value too long).
+        msg = str(msg or "")
         if _params_raw:
-            return f"{_params_raw}|{msg[:200]}"
-        return msg[:295]
+            avail = max(0, 300 - len(_params_raw) - 1)  # 1 = separador '|'
+            return f"{_params_raw}|{msg[:avail]}"[:300]
+        return msg[:300]
 
     ini_valid = params.get("ini", "")
     fim_valid = params.get("fim", "")
@@ -22262,7 +22266,10 @@ def _s1020_enviar_impl():
             "hora_grava":      agora.strftime("%H%M"),
         }).eq("id_esocial", int(id_reg)).execute()
         _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
-        return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
+        _det = str(analise.get("erro") or "").strip()
+        return jsonify({"ok": False,
+                        "msg": f"eSocial recusou o envio: {_det}" if _det else "eSocial recusou o envio.",
+                        "detalhe": _det})
 
     # Protocolo obtido: grava AGUARDANDO já com o protocolo ANTES de qualquer
     # espera. Assim, mesmo que o gateway estoure o tempo durante a consulta, o
