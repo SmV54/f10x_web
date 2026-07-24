@@ -392,7 +392,7 @@ tr:hover td { background: #f8fafc; }
                 <div class="form-group">
                     <label class="form-label">FPAS *</label>
                     <input type="text" id="f-fpas" class="form-input mono" maxlength="4"
-                           placeholder="Ex: 604">
+                           placeholder="Ex: 604" onchange="atualizarTercsPorFpas()">
                     <span class="form-hint">Código da tabela FPAS</span>
                 </div>
                 <div class="form-group">
@@ -457,7 +457,22 @@ function iniciarTour() {
     }).drive();
 }
 
-const FPAS_EMPRESA = "{{ fpas_empresa }}";
+const FPAS_EMPRESA     = "{{ fpas_empresa }}";
+const CODTERCS_EMPRESA = "{{ cod_tercs_empresa }}";
+
+// Atualiza o Código de Terceiros conforme o FPAS digitado (tabela tab_aux_fpas)
+async function atualizarTercsPorFpas() {
+    const cod = document.getElementById('f-fpas').value.trim();
+    if (!cod) return;
+    try {
+        const r = await fetch('/api/fpas/' + encodeURIComponent(cod));
+        const j = await r.json();
+        if (j.ok && j.dados && j.dados.cod_terceiros) {
+            document.getElementById('f-cod-tercs').value =
+                String(j.dados.cod_terceiros).trim().padStart(4, '0');
+        }
+    } catch (e) { /* silencioso: mantém o valor atual */ }
+}
 
 function abrirModal() {
     document.getElementById('f-tp-op').value    = 'inclusao';
@@ -466,7 +481,7 @@ function abrirModal() {
     document.getElementById('f-cod-lot').value   = '01';
     document.getElementById('f-tp-lot').value    = '01';
     document.getElementById('f-fpas').value      = FPAS_EMPRESA || '';
-    document.getElementById('f-cod-tercs').value = '';
+    document.getElementById('f-cod-tercs').value = CODTERCS_EMPRESA || '';
     document.getElementById('msg-modal').style.display = 'none';
     document.getElementById('btn-gravar').disabled = false;
     document.getElementById('btn-gravar').innerHTML = '💾 Gravar';

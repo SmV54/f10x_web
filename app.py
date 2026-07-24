@@ -21840,8 +21840,9 @@ def esocial_s1020():
     except Exception:
         rows = []
 
-    # FPAS da empresa para pré-preencher o modal
+    # FPAS + Código de Terceiros da empresa para pré-preencher o modal
     fpas_empresa = ""
+    cod_tercs_empresa = ""
     try:
         r_emp = (supabase.table("tab_empresa").select("gps_fpas")
                  .eq("id_empresa", id_empresa).limit(1).execute())
@@ -21849,6 +21850,15 @@ def esocial_s1020():
             fpas_empresa = str(r_emp.data[0].get("gps_fpas") or "")
     except Exception:
         pass
+    # Código de terceiros é derivado do FPAS (tab_aux_fpas), formatado em 4 dígitos.
+    if fpas_empresa:
+        try:
+            r_f = (supabase.table("tab_aux_fpas").select("cod_terceiros")
+                   .eq("cod_fpas", int(fpas_empresa)).limit(1).execute())
+            if r_f.data:
+                cod_tercs_empresa = str(r_f.data[0].get("cod_terceiros") or "").strip().zfill(4)
+        except Exception:
+            pass
 
     import json as _json
 
@@ -21927,6 +21937,7 @@ def esocial_s1020():
         rows=rows,
         total=len(rows),
         fpas_empresa=fpas_empresa,
+        cod_tercs_empresa=cod_tercs_empresa,
     )
 
 
