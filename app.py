@@ -19639,14 +19639,16 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     ind_apuracao = "2" if folha_tipo in ('1', 'A') else "1"
     ind_apur_ir  = "0"
 
-    # <indSimples> (Indicador de Contribuição Substituída) — OBRIGATÓRIO em
-    # remunPerApur para empregador do Simples Nacional com contribuição
-    # previdenciária substituída: classTrib 01 (substituída integralmente) e
-    # classTrib 03 (parcialmente substituída). Ausente = erro [1] do eSocial
-    # "Campo de preenchimento obrigatório: Indicador de Contribuição Substituída".
-    # Para 02 (não substituída), 04 (MEI) e não-Simples o campo NÃO é enviado.
+    # <indSimples> (Indicador de Contribuição Substituída) — informado APENAS
+    # quando a classTrib do empregador (S-1000) é 03 (Simples com contribuição
+    # previdenciária PARCIALMENTE substituída). Regras do eSocial:
+    #   - classTrib 03: OBRIGATÓRIO. Ausente = erro [1] "Campo de preenchimento
+    #     obrigatório". Valor 2 (parcialmente substituída) — aceito em prod.
+    #   - classTrib 01 (integralmente substituída), 02, 04 (MEI) e não-Simples:
+    #     o campo NÃO PODE existir. Presente = erro [2] "O campo não pode ser
+    #     preenchido". (A substituição integral já vem do classTrib no S-1000.)
     class_trib = str(empresa.get('es08_classtributaria') or '').strip().zfill(2)
-    ind_simples_val = {'01': '1', '03': '2'}.get(class_trib, '')
+    ind_simples_val = '2' if class_trib == '03' else ''
     ind_simples_xml = (f"\n            <indSimples>{ind_simples_val}</indSimples>"
                        if ind_simples_val else "")
 
