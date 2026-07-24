@@ -19567,7 +19567,7 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
 # eSocial S-1200 — GERADOR DE XML
 # =========================================================
 def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
-                     rubr_map=None):
+                     rubr_map=None, ind_retif="1", nr_recibo_retif=""):
     """Gera string XML do S-1200 (Remuneração do Trabalhador - RGPS).
 
     rubr_map: mantido por compatibilidade, não usado. Gov exige <indApurIR>
@@ -19657,6 +19657,13 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     # O sufixo -FOL/-FER é do DESKTOP, que reusa o mesmo código em contextos
     # diferentes; o web usa códigos distintos, então não precisa de sufixo.
     #
+    # Retificação: indRetif=2 exige <nrRecibo> do evento original logo após.
+    # indRetif=1 (original) não leva nrRecibo.
+    ind_retif_s   = "2" if str(ind_retif) == "2" else "1"
+    _nr_rec       = re.sub(r'\s', '', str(nr_recibo_retif or ''))
+    nr_recibo_xml = (f"\n      <nrRecibo>{x(_nr_rec)}</nrRecibo>"
+                     if ind_retif_s == "2" and _nr_rec else "")
+
     # <indApurIR> é OBRIGATÓRIO em todo <itensRemun> (gov rejeitou tentativa
     # de omitir em rubricas com tpn_inc_irrf=9/N/31/41). Valor fixo "0" para
     # apuracao mensal (igual ao sistema legado em prod) — usar "1" tornaria
@@ -19692,7 +19699,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
          xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtRemun/v_S_01_03_00 evtRemun_v_S_01_03_00.xsd">
   <evtRemun Id="{evt_id}">
     <ideEvento>
-      <indRetif>1</indRetif>
+      <indRetif>{ind_retif_s}</indRetif>{nr_recibo_xml}
       <indApuracao>{ind_apuracao}</indApuracao>
       <perApur>{per_apur}</perApur>
       <tpAmb>{x(tpAmb)}</tpAmb>
@@ -26839,6 +26846,18 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # 4b. Retificação: se o registro JÁ tem recibo, este envio é uma RETIFICAÇÃO
+    # (indRetif=2) referenciando o recibo original. O gov não aceita reenviar o
+    # mesmo evento como original (erro [106] duplicidade); a única forma de
+    # corrigir um S-1200 já aceito é retificar (ou excluir por S-3000). Exige o
+    # período REABERTO no eSocial (S-1298) — a folha reaberta permite retificar.
+    _recibo_existente = (es.get("recibo") or "").strip()
+    _ind_retif  = "2" if _recibo_existente else "1"
+    _retif_flag = bool(data.get("retificar"))
+    if _retif_flag and not _recibo_existente:
+        return jsonify({"ok": False, "msg": ("Não há recibo original para retificar. "
+                                             "Envie o S-1200 como evento original primeiro.")})
+
     # 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = datetime.now()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
@@ -26846,7 +26865,8 @@ def api_esocial_s1200_enviar():
 
     try:
         xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb,
-                                   rubr_map=rubr_map)
+                                   rubr_map=rubr_map,
+                                   ind_retif=_ind_retif, nr_recibo_retif=_recibo_existente)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -26911,60 +26931,58 @@ def api_esocial_s1200_enviar():
         _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
+    # Grava AGUARDANDO com o protocolo ANTES de esperar (envio assíncrono, evita
+    # 502 no Render). NÃO apaga o recibo aqui — em RETIFICAÇÃO o registro já tem o
+    # recibo original e perdê-lo quebraria a referência (foi o que travou antes).
     agora = datetime.now()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
+        "observacao_erro": f"AGUARDANDO:{protocolo_envio}",
     }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
-    # 9. Consultar resultado (até 3×)
+    # 9. Consulta rápida (1 tentativa curta)
     recibo_final = ""
     obs_erro     = ""
     cd_resp      = ""
     dh_proc      = ""
 
-    for tentativa in range(3):
-        time.sleep(10)
+    time.sleep(8)
+    try:
         soap_cons = _soap_consultar(protocolo_envio)
-        try:
-            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
-        except Exception as e:
-            obs_erro = f"Erro na consulta: {e}"
-            break
-
+        resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
         _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
-
-        try:
-            resultado = _extrair_resultado_consulta(resp_cons)
-        except Exception as e:
-            obs_erro = f"Erro ao analisar consulta: {e}"
-            break
-
+        resultado = _extrair_resultado_consulta(resp_cons)
         cd_resp = resultado.get("cdResposta", "")
         dh_proc = resultado.get("dhProcessamento", "") or dh_proc
+        if cd_resp not in ("101", "202"):
+            if resultado["eventos"]:
+                ev0 = resultado["eventos"][0]
+                recibo_final = ev0.get("nrRec", "")
+                dh_proc = ev0.get("dh", "") or dh_proc
+                if ev0.get("cdResp", "") not in ("", "201"):
+                    ocorrs = ev0.get("ocorrs", [])
+                    obs_erro = " · ".join(ocorrs) if ocorrs else (
+                        ev0.get("dscResp") or resultado.get("descResposta", ""))
+            elif not recibo_final:
+                obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+    except Exception:
+        # Falha/timeout na consulta não perde o envio: já está AGUARDANDO.
+        pass
 
-        if cd_resp in ("101", "202"):
-            continue
+    aguardando = (not recibo_final and not obs_erro)
 
-        if resultado["eventos"]:
-            ev0 = resultado["eventos"][0]
-            recibo_final = ev0.get("nrRec", "")
-            dh_proc = ev0.get("dh", "") or dh_proc
-            if ev0.get("cdResp", "") not in ("", "201"):
-                ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else (
-                    ev0.get("dscResp") or resultado.get("descResposta", ""))
-        elif not recibo_final:
-            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
-        break
-
-    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
-
-    upd = {"recibo": recibo_final}
-    if aguardando:
-        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    # Só grava recibo em caso de SUCESSO. Em aguardando/erro PRESERVA o recibo
+    # existente (essencial na retificação — nunca apagar o original). Retificação
+    # bem-sucedida guarda o recibo anterior em recibo_ref e grava o novo.
+    if not aguardando and not obs_erro and recibo_final:
+        upd = {"recibo": recibo_final, "observacao_erro": ""}
+        if _ind_retif == "2" and _recibo_existente and recibo_final != _recibo_existente:
+            upd["recibo_ref"] = _recibo_existente
     elif obs_erro:
-        upd["observacao_erro"] = obs_erro[:295]
+        upd = {"observacao_erro": obs_erro[:295]}
+    else:
+        upd = {"observacao_erro": f"AGUARDANDO:{protocolo_envio}"}
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 

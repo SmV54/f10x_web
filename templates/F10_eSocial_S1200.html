@@ -360,7 +360,13 @@ tr:hover td { background: #f8fafc; }
               &#8635; Re-consultar
             </button>
             {% elif r._sit == 'E' %}
-            <span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>
+            <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
+              <span style="color:#166534;font-size:11px;font-weight:600;">&#10003; Enviado</span>
+              <button class="btn-enviar reenviar" onclick="_retificar({{ r.id_esocial }}, this)"
+                      title="Reenviar como RETIFICAÇÃO (indRetif=2), corrigindo o evento já aceito no eSocial. Exige a folha reaberta (S-1298) e a folha local FECHADA.">
+                &#9998; Retificar
+              </button>
+            </div>
             {% elif r._sit == 'D' %}
             <span style="color:#94a3b8;font-size:11px;font-style:italic;">Excluído</span>
             {% endif %}
@@ -512,7 +518,17 @@ async function _confirmarPrereqS1200() {
   }
 }
 
-async function _enviar(id, btn, suppressBanner) {
+async function _retificar(id, btn) {
+  const ok = await f10Confirm(
+    'RETIFICAR o S-1200 deste trabalhador?\n\n' +
+    'O evento já aceito no eSocial será CORRIGIDO (indRetif=2), reenviando os dados ATUAIS da folha ' +
+    '(ex.: indSimples conforme a classificação tributária atual da empresa).\n\n' +
+    'Requer o período REABERTO no eSocial (S-1298). Deseja continuar?');
+  if (!ok) return;
+  return _enviar(id, btn, false, true);
+}
+
+async function _enviar(id, btn, suppressBanner, retificar) {
   // Checagem de pré-requisitos antes de qualquer animação
   if (!_prereqConfirmado) {
     const ok = await _confirmarPrereqS1200();
@@ -545,7 +561,7 @@ async function _enviar(id, btn, suppressBanner) {
     const r = await fetch('/api/esocial_s1200_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, forcar: _prereqConfirmado }),
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, forcar: _prereqConfirmado, retificar: !!retificar }),
     });
     const data = await r.json();
 
