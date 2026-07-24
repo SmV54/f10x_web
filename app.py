@@ -26541,7 +26541,11 @@ def esocial_s1200():
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
 
     def _fmt_anomes(v):
-        s = str(int(v)).zfill(6) if v else ""
+        # 'all' (ver todas) e valores não-numéricos não têm formatação MM/AAAA.
+        try:
+            s = str(int(v)).zfill(6)
+        except (ValueError, TypeError):
+            return ""
         return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else str(v or "")
 
     _TP_FOLHA = {"N": "Normal", "1": "13º Sal.", "A": "Adiant. 13º", "F": "Férias", "R": "Rescisão"}
@@ -27094,11 +27098,12 @@ def esocial_s1210():
     f_tipo       = request.args.get("tipo", "")
 
     # Default: mostra somente a folha ativa. Use anomes='all' para ver todas.
+    _anomes_auto = False
     if not f_anomes and anomes_atual and len(anomes_atual) == 6:
         f_anomes = anomes_atual
+        _anomes_auto = True
 
-    rows = []
-    try:
+    def _consultar_1210(anomes_filtro):
         q = (supabase.table("tab_esocial")
              .select("*")
              .eq("id_empresa", id_empresa)
@@ -27106,11 +27111,21 @@ def esocial_s1210():
              .order("ano_mes", desc=True)
              .order("data_cad", desc=True)
              .order("hora_cad", desc=True))
-        if f_anomes and f_anomes != "all":
-            q = q.eq("ano_mes", int(f_anomes))
+        if anomes_filtro and anomes_filtro != "all":
+            q = q.eq("ano_mes", int(anomes_filtro))
         if f_tipo:
             q = q.eq("folha_tipo", f_tipo)
-        rows = q.execute().data or []
+        return q.execute().data or []
+
+    rows = []
+    try:
+        rows = _consultar_1210(f_anomes)
+        # Se o filtro veio da folha ativa (auto) e não trouxe nada, mostra TODOS
+        # os períodos — evita a tela aparecer vazia (sem o botão Enviar) quando o
+        # S-1210 existe em competência diferente da folha ativa da sessão.
+        if not rows and _anomes_auto:
+            rows = _consultar_1210("all")
+            f_anomes = "all"
     except Exception:
         rows = []
 
@@ -27157,7 +27172,11 @@ def esocial_s1210():
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
 
     def _fmt_anomes(v):
-        s = str(int(v)).zfill(6) if v else ""
+        # 'all' (ver todas) e valores não-numéricos não têm formatação MM/AAAA.
+        try:
+            s = str(int(v)).zfill(6)
+        except (ValueError, TypeError):
+            return ""
         return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else str(v or "")
 
     _TP_FOLHA = {"N": "Normal", "1": "13º Sal.", "A": "Adiant. 13º", "F": "Férias", "R": "Rescisão"}

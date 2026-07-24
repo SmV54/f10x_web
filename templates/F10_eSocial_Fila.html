@@ -393,7 +393,7 @@ tr:hover td { background: #f8fafc; }
                       data-laycod="{{ r._lay_codigo }}"
                       onclick="_enviarFila(this)">&#9654; Enviar para eSocial</button>
               {% else %}
-              <a class="btn-ir" href="{{ r._lay_href }}{% if r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Abrir formulário</a>
+              <a class="btn-ir" href="{{ r._lay_href }}{% if r.ano_mes %}?anomes={{ r.ano_mes }}{% if r.matricula %}&mat={{ r.matricula }}{% endif %}{% elif r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Abrir formulário</a>
               {% endif %}
               {% elif r._sit == 'E' %}
               <span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>
