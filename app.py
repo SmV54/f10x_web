@@ -21043,6 +21043,14 @@ def _gerar_xml_s1020_evento(lotacao, empresa, tpAmb, tp_op, ini_valid, fim_valid
     fpas      = str(lotacao.get('fpas')       or '').strip()
     cod_tercs = str(lotacao.get('codTercs')   or '0000').strip()
 
+    # Regra eSocial (erro 247): para classificação tributária 01, 02, 03 ou 04
+    # (Simples Nacional / MEI), os Terceiros são recolhidos pela DAS, não pela
+    # GPS — o codTercs TEM que ser 0000, independente do que o FPAS sugeriria.
+    class_trib = str(empresa.get('es08_classtributaria')
+                     or empresa.get('class_trib') or '').strip().zfill(2)
+    if class_trib in ('01', '02', '03', '04'):
+        cod_tercs = '0000'
+
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
 
     # tpInsc/nrInsc em dadosLotacao só se a lotação for de TERCEIRO
@@ -21843,15 +21851,21 @@ def esocial_s1020():
     # FPAS + Código de Terceiros da empresa para pré-preencher o modal
     fpas_empresa = ""
     cod_tercs_empresa = ""
+    class_trib_empresa = ""
     try:
-        r_emp = (supabase.table("tab_empresa").select("gps_fpas")
+        r_emp = (supabase.table("tab_empresa").select("gps_fpas,es08_classtributaria")
                  .eq("id_empresa", id_empresa).limit(1).execute())
         if r_emp.data:
             fpas_empresa = str(r_emp.data[0].get("gps_fpas") or "")
+            class_trib_empresa = str(r_emp.data[0].get("es08_classtributaria") or "").strip().zfill(2)
     except Exception:
         pass
     # Código de terceiros é derivado do FPAS (tab_aux_fpas), formatado em 4 dígitos.
-    if fpas_empresa:
+    # Exceto Simples Nacional / MEI (classTrib 01-04): Terceiros vão pela DAS,
+    # então o codTercs TEM que ser 0000 (erro 247 do eSocial).
+    if class_trib_empresa in ('01', '02', '03', '04'):
+        cod_tercs_empresa = '0000'
+    elif fpas_empresa:
         try:
             r_f = (supabase.table("tab_aux_fpas").select("cod_terceiros")
                    .eq("cod_fpas", int(fpas_empresa)).limit(1).execute())
