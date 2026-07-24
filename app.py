@@ -19639,6 +19639,17 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     ind_apuracao = "2" if folha_tipo in ('1', 'A') else "1"
     ind_apur_ir  = "0"
 
+    # <indSimples> (Indicador de Contribuição Substituída) — OBRIGATÓRIO em
+    # remunPerApur para empregador do Simples Nacional com contribuição
+    # previdenciária substituída: classTrib 01 (substituída integralmente) e
+    # classTrib 03 (parcialmente substituída). Ausente = erro [1] do eSocial
+    # "Campo de preenchimento obrigatório: Indicador de Contribuição Substituída".
+    # Para 02 (não substituída), 04 (MEI) e não-Simples o campo NÃO é enviado.
+    class_trib = str(empresa.get('es08_classtributaria') or '').strip().zfill(2)
+    ind_simples_val = {'01': '1', '03': '2'}.get(class_trib, '')
+    ind_simples_xml = (f"\n            <indSimples>{ind_simples_val}</indSimples>"
+                       if ind_simples_val else "")
+
     # codRubr / ideTabRubr: convenção COMPROVADA como aceita pelo gov (XMLs do
     # S-1010 com recibo) — codRubr = código CRU (como em tab_rubrica.cod_rubr,
     # sem zero-padding e sem sufixo) e ideTabRubr = raiz do CNPJ (8 dígitos).
@@ -19704,7 +19715,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
           <nrInsc>{x(cnpj_emp)}</nrInsc>
           <codLotacao>{x(cod_lotacao)}</codLotacao>
           <remunPerApur>
-            <matricula>{x(mat_es)}</matricula>{itens_xml}{info_ag_nocivo_xml}
+            <matricula>{x(mat_es)}</matricula>{ind_simples_xml}{itens_xml}{info_ag_nocivo_xml}
           </remunPerApur>
         </ideEstabLot>
       </infoPerApur>
