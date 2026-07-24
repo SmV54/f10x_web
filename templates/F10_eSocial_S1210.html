@@ -350,7 +350,7 @@ tr:hover td { background: #f8fafc; }
         {% for r in rows %}
         <tr id="row-{{ r.id_esocial }}">
           <td style="text-align:center;">
-            {% if r._sit in ('P', 'G', 'X') and r._s1200_enviado %}
+            {% if r._sit in ('P', 'G', 'X') %}
             <input type="checkbox" class="row-check" data-id="{{ r.id_esocial }}" onchange="_atualizarSelec()">
             {% endif %}
           </td>
@@ -382,13 +382,13 @@ tr:hover td { background: #f8fafc; }
           </td>
           <td id="acao-{{ r.id_esocial }}">
             {% if r._sit in ('P', 'G', 'X') %}
-              {% if r._s1200_enviado %}
               <button class="btn-enviar {% if r._sit != 'P' %}reenviar{% endif %}"
-                      onclick="_enviar({{ r.id_esocial }}, this)">
+                      onclick="_enviar({{ r.id_esocial }}, this)"
+                      {% if not r._s1200_enviado %}title="O S-1200 desta competência não foi detectado como enviado — envie-o antes; caso contrário o eSocial pode recusar o S-1210."{% endif %}>
                 &#9654; {% if r._sit == 'P' %}Enviar{% else %}Reenviar{% endif %}
               </button>
-              {% else %}
-              <span style="color:#94a3b8;font-size:11px;font-style:italic;">Aguarda S-1200</span>
+              {% if not r._s1200_enviado %}
+              <span style="color:#9a3412;font-size:10px;font-style:italic;" title="S-1200 não detectado como enviado">&#9888; S-1200?</span>
               {% endif %}
             {% elif r._sit == 'W' %}
             <button class="btn-enviar reconsutar"

@@ -27141,9 +27141,16 @@ def esocial_s1210():
                          .execute().data or [])
             for s in _s12_rows:
                 _k = (s.get("matricula"), s.get("ano_mes"), str(s.get("folha_tipo") or "N"))
-                s1200_map[_k] = s
-    except Exception:
-        pass
+                # só sobrescreve com um S-1200 que tenha recibo — evita que um
+                # registro sem recibo (retentativa antiga) apague a marca de
+                # enviado de um duplicado com recibo na mesma chave.
+                if _k not in s1200_map or (s.get("recibo") or "").strip():
+                    s1200_map[_k] = s
+    except Exception as e:
+        # Não engolir calado: se esta consulta falhar, TODAS as linhas ficam
+        # sem a marca "S-1200 enviado". O botão de envio não depende mais disso
+        # (só exibe aviso), mas registramos para diagnóstico.
+        print(f"[esocial_s1210] falha ao montar s1200_map: {e}")
 
     def _d8(v):
         s = str(v or "").strip()
