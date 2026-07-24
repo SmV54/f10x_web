@@ -9625,12 +9625,11 @@ def _validar_folha_para_envio_esocial(layout, ano_mes=None, folha_tipo="N"):
         except Exception as e:
             return (False, f"Erro ao validar status da folha: {e}")
     else:
-        sit = _refresh_situacao_folha()
-        if sit not in ("A", "X"):
-            am = str(session.get("anomes_atual") or "")
-            fmt = f"{am[4:6]}/{am[0:4]}" if len(am) == 6 else am
-            lbl = _SIT_FOLHA_LABEL.get(sit, sit or "indefinida")
-            return (False, f"Eventos não periódicos só podem ser enviados com folha ABERTA. Folha atual {fmt} está {lbl}.")
+        # Eventos não periódicos (tabelas S-1000..S-1099 e S-2xxx) podem ser
+        # enviados independentemente do status da folha atual. A trava de
+        # "folha ABERTA" foi removida a pedido (tabelas eSocial não dependem
+        # do fechamento da folha do período).
+        pass
 
     return (True, "")
 
