@@ -20480,7 +20480,7 @@ def api_esocial_s1000_deletar():
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
 
     try:
-        r_es = (supabase.table("tab_esocial").select("recibo")
+        r_es = (supabase.table("tab_esocial").select("recibo, observacao_erro")
                 .eq("id_esocial", int(id_reg))
                 .eq("id_empresa", id_empresa)
                 .eq("layout", "1000")
@@ -20490,6 +20490,9 @@ def api_esocial_s1000_deletar():
         if (r_es.data[0].get("recibo") or "").strip():
             return jsonify({"ok": False,
                             "msg": "Registro já foi enviado ao eSocial. Use 'Excluir via S-3000'."})
+        if (r_es.data[0].get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
+            return jsonify({"ok": False,
+                            "msg": "Remessa aguardando processamento no eSocial — use Re-consultar antes de excluir."})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao verificar registro: {e}"})
 
@@ -21819,7 +21822,7 @@ def api_esocial_s1010_deletar():
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
 
     try:
-        r_es = (supabase.table("tab_esocial").select("recibo")
+        r_es = (supabase.table("tab_esocial").select("recibo, observacao_erro")
                 .eq("id_esocial", int(id_reg))
                 .eq("id_empresa", id_empresa)
                 .eq("layout", "1010")
@@ -21829,6 +21832,9 @@ def api_esocial_s1010_deletar():
         if (r_es.data[0].get("recibo") or "").strip():
             return jsonify({"ok": False,
                             "msg": "Registro já enviado ao eSocial. Não é possível apagar localmente."})
+        if (r_es.data[0].get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
+            return jsonify({"ok": False,
+                            "msg": "Remessa aguardando processamento no eSocial — use Re-consultar antes de excluir."})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao verificar: {e}"})
 
@@ -22382,7 +22388,7 @@ def api_esocial_s1020_deletar():
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
 
     try:
-        r_es = (supabase.table("tab_esocial").select("recibo")
+        r_es = (supabase.table("tab_esocial").select("recibo, observacao_erro")
                 .eq("id_esocial", int(id_reg))
                 .eq("id_empresa", id_empresa)
                 .eq("layout", "1020")
@@ -22392,6 +22398,9 @@ def api_esocial_s1020_deletar():
         if (r_es.data[0].get("recibo") or "").strip():
             return jsonify({"ok": False,
                             "msg": "Registro já enviado ao eSocial. Não é possível apagar localmente."})
+        if (r_es.data[0].get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
+            return jsonify({"ok": False,
+                            "msg": "Remessa aguardando processamento no eSocial — use Re-consultar antes de excluir."})
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao verificar: {e}"})
 
@@ -26463,7 +26472,7 @@ def api_esocial_excluir():
 
     try:
         rows = (supabase.table("tab_esocial")
-                .select("id_esocial, recibo, layout, matricula")
+                .select("id_esocial, recibo, layout, matricula, observacao_erro")
                 .eq("id_esocial", id_esocial)
                 .eq("id_empresa", id_empresa)
                 .execute().data or [])
@@ -26475,6 +26484,13 @@ def api_esocial_excluir():
         recibo = (r.get("recibo") or "").strip()
         if recibo:
             return jsonify({"ok": False, "msg": "Remessa já possui recibo — não pode ser excluída."})
+        # Trava adicional: remessa em AGUARDANDO já foi TRANSMITIDA ao eSocial
+        # (protocolo obtido, cd=201). O evento pode já ter sido aceito lá; excluir
+        # aqui perde o vínculo e o recibo, e o evento continua no eSocial — foi o
+        # que gerou o travamento do fechamento. Force o Re-consultar antes.
+        if (r.get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
+            return jsonify({"ok": False, "msg": ("Remessa aguardando processamento no eSocial — pode "
+                                                 "já ter sido aceita. Clique em Re-consultar antes de excluir.")})
 
         supabase.table("tab_esocial").delete().eq("id_esocial", id_esocial).execute()
 
