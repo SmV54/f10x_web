@@ -27302,6 +27302,24 @@ def esocial_s1210():
 # =========================================================
 @app.route("/api/esocial_s1210_enviar", methods=["POST"])
 def api_esocial_s1210_enviar():
+    # Wrapper de diagnóstico: garante resposta JSON com o ERRO REAL. O handler
+    # global devolvia só "Erro inesperado:" (sem detalhe) para exceções sem
+    # mensagem — ex.: InvalidToken do certificado (cert cifrado com outra chave).
+    try:
+        return _s1210_enviar_impl()
+    except Exception as _e:
+        import traceback as _tb
+        _det = _tb.format_exc()
+        try:
+            app.logger.error("S-1210 enviar falhou:\n%s", _det)
+        except Exception:
+            pass
+        return jsonify({"ok": False,
+                        "msg": f"Falha no envio do S-1210: {_e.__class__.__name__}: {_e}",
+                        "traceback": _det})
+
+
+def _s1210_enviar_impl():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
