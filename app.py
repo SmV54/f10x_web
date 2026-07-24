@@ -22058,6 +22058,23 @@ def api_esocial_s1020_xml():
 # =========================================================
 @app.route("/api/esocial_s1020_enviar", methods=["POST"])
 def api_esocial_s1020_enviar():
+    # Wrapper de diagnóstico: garante resposta JSON mesmo em erro inesperado
+    # (evita a página HTML 500 que quebra o fetch da Fila com "Unexpected token '<'").
+    try:
+        return _s1020_enviar_impl()
+    except Exception as _e:
+        import traceback as _tb
+        _det = _tb.format_exc()
+        try:
+            app.logger.error("S-1020 enviar falhou:\n%s", _det)
+        except Exception:
+            pass
+        return jsonify({"ok": False,
+                        "msg": f"Erro interno no envio S-1020: {_e}",
+                        "traceback": _det[-2000:]})
+
+
+def _s1020_enviar_impl():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 

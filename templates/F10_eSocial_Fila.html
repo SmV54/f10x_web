@@ -650,10 +650,11 @@ async function _enviarFila(btn) {
         `<button class="btn-excluir" data-id="${newId}" data-nome="${nome.replace(/"/g,"'")}" data-lay="${laycod}" onclick="_excluir(this)">&#10005; Excluir</button>` +
         `</div>`;
     } else {
+      if (data.traceback) { console.error('Traceback envio eSocial:\n' + data.traceback); }
       lbl.textContent = data.msg || 'Erro ao enviar.';
       sit.className   = 'sit-badge sit-erro';
       sit.textContent = 'Com Erro';
-      rec.innerHTML   = `<span class="res-erro" title="${(data.msg||'').replace(/"/g,"'")}">${(data.msg||'Erro').slice(0,60)}</span>`;
+      rec.innerHTML   = `<span class="res-erro" title="${((data.traceback||data.msg||'')).replace(/"/g,"'").slice(0,400)}">${(data.msg||'Erro').slice(0,60)}</span>`;
       btn.disabled    = false;
       btn.textContent = '▶ Enviar para eSocial';
     }
