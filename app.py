@@ -22264,71 +22264,63 @@ def _s1020_enviar_impl():
         _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
+    # Protocolo obtido: grava AGUARDANDO já com o protocolo ANTES de qualquer
+    # espera. Assim, mesmo que o gateway estoure o tempo durante a consulta, o
+    # registro fica "Aguardando" e o botão Re-consultar recupera o recibo.
     supabase.table("tab_esocial").update({
+        "observacao_erro": _obs_upd(f"AGUARDANDO:{protocolo_envio}"),
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
     }).eq("id_esocial", int(id_reg)).execute()
 
-    # ── 8. Consultar resultado (até 3 tentativas) ─────────
+    # ── 8. Consulta rápida (1 tentativa curta) ────────────
+    # O eSocial processa o lote de forma ASSÍNCRONA. Não bloquear 30s (estoura o
+    # worker do Render → HTML 502). Uma tentativa curta resolve o caso comum
+    # (lote pequeno já processado); se ainda estiver em processamento, mantém
+    # AGUARDANDO e o usuário clica em Re-consultar.
     recibo_final = ""
     obs_erro     = ""
     cd_resp      = ""
 
-    for tentativa in range(3):
-        time.sleep(10)
+    time.sleep(8)
+    try:
         soap_cons = _soap_consultar(protocolo_envio)
-        try:
-            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
-        except Exception as e:
-            obs_erro = f"Erro na consulta: {e}"
-            break
-
-        _xml_save(f"{_pref}_5_consulta_{tentativa+1}.xml", resp_cons)
-
-        try:
-            resultado = _extrair_resultado_consulta(resp_cons)
-        except Exception as e:
-            obs_erro = f"Erro ao analisar consulta: {e}"
-            break
-
+        resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        _xml_save(f"{_pref}_5_consulta_1.xml", resp_cons)
+        resultado = _extrair_resultado_consulta(resp_cons)
         cd_resp = resultado.get("cdResposta", "")
-        if cd_resp in ("101", "202"):
-            continue
+        if cd_resp not in ("101", "202"):
+            if resultado["eventos"]:
+                ev0 = resultado["eventos"][0]
+                recibo_final = ev0.get("nrRec", "")
+                if ev0.get("cdResp", "") not in ("", "201"):
+                    ocorrs = ev0.get("ocorrs", [])
+                    obs_erro = " · ".join(ocorrs) if ocorrs else (
+                        ev0.get("dscResp") or resultado.get("descResposta", ""))
+            # cd_resp 201 sem nrRec individual → protocolo é o recibo
+            if cd_resp == "201" and not recibo_final and not obs_erro:
+                recibo_final = protocolo_envio
+            elif not recibo_final and not obs_erro:
+                obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+    except Exception:
+        # Falha/timeout na consulta não perde o envio: já está AGUARDANDO.
+        pass
 
-        if resultado["eventos"]:
-            ev0 = resultado["eventos"][0]
-            recibo_final = ev0.get("nrRec", "")
-            if ev0.get("cdResp", "") not in ("", "201"):
-                ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else (
-                    ev0.get("dscResp") or resultado.get("descResposta", ""))
-        # cd_resp 201 sem nrRec individual → protocolo é o recibo
-        if cd_resp == "201" and not recibo_final and not obs_erro:
-            recibo_final = protocolo_envio
-        elif not recibo_final and not obs_erro:
-            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
-        break
-
-    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
-
-    upd = {"recibo": recibo_final}
-    if aguardando:
-        upd["observacao_erro"] = _obs_upd(f"AGUARDANDO:{protocolo_envio}")
-    elif obs_erro:
-        upd["observacao_erro"] = _obs_upd(obs_erro)
-    else:
-        upd["observacao_erro"] = _params_raw
-    supabase.table("tab_esocial").update(upd)\
-        .eq("id_esocial", int(id_reg)).execute()
-
-    if recibo_final and not obs_erro and not aguardando:
+    if recibo_final and not obs_erro:
+        supabase.table("tab_esocial").update({
+            "recibo": recibo_final, "observacao_erro": _params_raw,
+        }).eq("id_esocial", int(id_reg)).execute()
         return jsonify({"ok": True, "recibo": recibo_final,
                         "msg": f"S-1020 enviado com sucesso. Recibo: {recibo_final}"})
-    if aguardando:
-        return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
-                        "protocolo": protocolo_envio})
-    _xml_erro_save(_pref, 6, obs_erro)
-    return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
+    if obs_erro:
+        supabase.table("tab_esocial").update({
+            "observacao_erro": _obs_upd(obs_erro),
+        }).eq("id_esocial", int(id_reg)).execute()
+        _xml_erro_save(_pref, 6, obs_erro)
+        return jsonify({"ok": False, "msg": obs_erro})
+    # Ainda em processamento: registro já está como AGUARDANDO no banco.
+    return jsonify({"ok": True, "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
+                    "protocolo": protocolo_envio})
 
 
 # =========================================================
@@ -26005,8 +25997,10 @@ def api_esocial_reconsultar_generico():
     obs_erro     = ""
     cd_resp      = ""
 
-    for tentativa in range(3):
-        time.sleep(10)
+    # 2 tentativas curtas (16s máx) para não estourar o timeout do gateway.
+    # Se ainda estiver processando, mantém AGUARDANDO e o usuário clica de novo.
+    for tentativa in range(2):
+        time.sleep(8)
         soap_cons = _soap_consultar(protocolo_envio)
         try:
             resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
