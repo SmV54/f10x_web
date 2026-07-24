@@ -20987,8 +20987,18 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     nat_rubr  = str(rubrica.get('es03_nat_rubr') or '').strip()
     tp_rubr   = str(rubrica.get('tp_rubr') or '1').strip()
     def _inc(v): s = str(v or '').strip(); return s.zfill(2) if s.isdigit() else '00'
+    def _inc_irrf_cod(v):
+        # Tabela 21 (IRRF) NÃO tem o código '00' — o "não incide" é '09'.
+        # Dados legados guardam 'N'/'S' ou default '00' (ex.: verba 102 INSS CI);
+        # tudo que não for um código válido de 2 dígitos vira '09' → evita erro
+        # [1352] "Código de incidência tributária da rubrica para o IRRF inválido".
+        s = str(v or '').strip()
+        if s.isdigit():
+            c = s.zfill(2)
+            return '09' if c == '00' else c
+        return '09'
     inc_cp    = _inc(rubrica.get('tpn_inc_cp'))
-    inc_irrf  = _inc(rubrica.get('tpn_inc_irrf'))
+    inc_irrf  = _inc_irrf_cod(rubrica.get('tpn_inc_irrf'))
     inc_fgts  = _inc(rubrica.get('tpn_inc_fgts'))
     inc_sind  = _inc(rubrica.get('tpn_inc_pis'))
 
