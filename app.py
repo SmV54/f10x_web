@@ -27550,54 +27550,50 @@ def api_esocial_s1210_enviar():
         _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
+    # Grava AGUARDANDO com o protocolo ANTES de esperar. O eSocial processa o
+    # lote de forma ASSÍNCRONA; não bloquear 30s (estoura o worker do Render →
+    # HTML 502). Uma consulta curta resolve o caso comum; senão fica AGUARDANDO
+    # e o usuário clica em Re-consultar. Mesmo padrão do S-1010/S-1020.
     agora = datetime.now()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
+        "observacao_erro": f"AGUARDANDO:{protocolo_envio}",
     }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
-    # 10. Consultar resultado (até 3×)
+    # 10. Consulta rápida (1 tentativa curta)
     recibo_final = ""
     obs_erro     = ""
     cd_resp      = ""
 
-    for tentativa in range(3):
-        time.sleep(10)
+    time.sleep(8)
+    try:
         soap_cons = _soap_consultar(protocolo_envio)
-        try:
-            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
-        except Exception as e:
-            obs_erro = f"Erro na consulta: {e}"
-            break
-
+        resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
         _xml_save(f"{_pref}_6_resultado_consulta.xml", resp_cons)
-
-        try:
-            resultado = _extrair_resultado_consulta(resp_cons)
-        except Exception as e:
-            obs_erro = f"Erro ao analisar consulta: {e}"
-            break
-
+        resultado = _extrair_resultado_consulta(resp_cons)
         cd_resp = resultado.get("cdResposta", "")
-        if cd_resp in ("101", "202"):
-            continue
+        if cd_resp not in ("101", "202"):
+            if resultado["eventos"]:
+                ev0 = resultado["eventos"][0]
+                recibo_final = ev0.get("nrRec", "")
+                if ev0.get("cdResp", "") not in ("", "201"):
+                    ocorrs = ev0.get("ocorrs", [])
+                    obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+            elif not recibo_final:
+                obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
+    except Exception:
+        # Falha/timeout na consulta não perde o envio: já está AGUARDANDO.
+        pass
 
-        if resultado["eventos"]:
-            ev0 = resultado["eventos"][0]
-            recibo_final = ev0.get("nrRec", "")
-            if ev0.get("cdResp", "") not in ("", "201"):
-                ocorrs = ev0.get("ocorrs", [])
-                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
-        elif not recibo_final:
-            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta','')}"
-        break
-
-    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    aguardando = (not recibo_final and not obs_erro)
     upd = {"recibo": recibo_final}
     if aguardando:
         upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
     elif obs_erro:
         upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""   # sucesso: limpa o AGUARDANDO gravado antes
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
