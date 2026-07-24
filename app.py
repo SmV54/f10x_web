@@ -26266,6 +26266,15 @@ def api_esocial_gerador_criar():
     if layout not in _LAYOUTS_VALIDOS:
         return jsonify({"ok": False, "msg": f"Layout inválido: {layout}"})
 
+    # S-1020 exige dados da lotação (FPAS, Cód. Terceiros e código da lotação)
+    # que o Gerador não coleta — o código de terceiros (ex.: 0079) não é
+    # derivável do cadastro da empresa (gps_cod_pagto é o código de pagamento
+    # da GPS, não o codTercs). Direciona para a tela própria do S-1020.
+    if layout == "1020":
+        return jsonify({"ok": False, "msg": ("O S-1020 (Lotações Tributárias) deve ser criado pela tela própria, "
+                                             "onde você informa FPAS, Código de Terceiros e o código da lotação. "
+                                             "Acesse eSocial → S-1020 → Nova Remessa.")})
+
     if layout in _LAYOUTS_FUNC and not matricula:
         return jsonify({"ok": False, "msg": "Funcionário é obrigatório para este layout."})
 
