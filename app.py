@@ -22164,6 +22164,13 @@ def _s1020_enviar_impl():
     if not ini_valid:
         return jsonify({"ok": False, "msg": "Parâmetros não encontrados. Recrie o registro."})
 
+    # Trava defensiva: sem FPAS/Terceiros o XML sairia com <fpas> vazio e o
+    # eSocial rejeita (erro [17] TS_fpas). Registro órfão (gravado sem PARAMS)
+    # não pode ser reenviado — precisa ser recriado pela tela do S-1020.
+    if not str(params.get("fpas") or "").strip() or not str(params.get("codTercs") or "").strip():
+        return jsonify({"ok": False, "msg": ("Parâmetros da lotação ausentes (FPAS/Código de Terceiros). "
+                                             "Exclua esta remessa e crie uma nova pela tela do S-1020.")})
+
     # ── 2. Empresa (cert validado depois do save do XML cru) ──
     try:
         r_emp = (supabase.table("tab_empresa").select("*")
