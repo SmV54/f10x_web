@@ -26336,6 +26336,67 @@ def api_esocial_gerador_criar():
     if layout == "1010" and not rubricas:
         return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica para o S-1010."})
 
+    # S-1010 pelo Gerador: grava UMA LINHA POR RUBRICA no MESMO formato da tela
+    # própria (PARAMS com cod_rubr + dsc_rubr). O envio (api_esocial_s1010_enviar)
+    # lê params["cod_rubr"] (singular) e reconsulta a tab_rubrica; o formato
+    # antigo {"rubricas":[...]} gerava "Parâmetros não encontrados. Recrie o
+    # registro." porque não tinha o campo cod_rubr.
+    if layout == "1010":
+        agora = datetime.now()
+        ano_mes_val = int(anomes_atual) if anomes_atual and len(anomes_atual) == 6 else None
+        ini_valid   = f"{anomes_atual[:4]}-{anomes_atual[4:6]}" if len(anomes_atual) == 6 else ""
+        try:
+            rubricas_int = [int(c) for c in rubricas]
+        except Exception:
+            return jsonify({"ok": False, "msg": "Códigos de rubrica inválidos."})
+
+        # descrições das rubricas (para o dsc_rubr do PARAMS)
+        try:
+            _rr = (supabase.table("tab_rubrica").select("cod_rubr,dsc_rubr")
+                   .in_("id_cliente", [0, id_cliente])
+                   .in_("cod_rubr", rubricas_int).execute().data or [])
+            _dsc = {int(x["cod_rubr"]): str(x.get("dsc_rubr") or "").strip() for x in _rr}
+        except Exception:
+            _dsc = {}
+
+        ids_criados = []
+        for cod in rubricas_int:
+            p_json = _json_g.dumps({
+                "ini": ini_valid, "fim": "", "tpAmb": "1",
+                "cod_rubr": cod, "dsc_rubr": _dsc.get(cod, ""),
+            }, ensure_ascii=False)
+            ins = {
+                "id_cliente":      id_cliente,
+                "id_empresa":      id_empresa,
+                "data_cad":        agora.strftime("%Y%m%d"),
+                "hora_cad":        agora.strftime("%H%M"),
+                "id_remessa":      agora.strftime("%Y%m%d%H%M%S"),
+                "folha_tipo":      "N",
+                "layout":          "1010",
+                "codigo2":         0,
+                "operacao":        operacao,
+                "recibo_ref":      recibo_ref or None,
+                "observacao_erro": f"PARAMS:{p_json}",
+            }
+            if ano_mes_val:
+                ins["ano_mes"] = ano_mes_val
+            try:
+                res = supabase.table("tab_esocial").insert(ins).execute()
+                if res.data:
+                    ids_criados.append(res.data[0]["id_esocial"])
+            except Exception as e:
+                return jsonify({"ok": False, "msg": f"Erro ao criar rubrica {cod}: {e}"})
+
+        gravar_log("ESOCIAL",
+                   f"Remessa S-1010 criada pelo Gerador: {len(ids_criados)} rubrica(s) {rubricas_int}")
+        return jsonify({
+            "ok":           True,
+            "layout":       "1010",
+            "qtd_rubricas": len(ids_criados),
+            "ids":          ids_criados,
+            "msg":          f"S-1010: {len(ids_criados)} rubrica(s) criada(s) com sucesso.",
+        })
+
     agora = datetime.now()
     try:
         ano_mes_val = int(anomes_atual) if anomes_atual and len(anomes_atual) == 6 else None
@@ -26358,18 +26419,7 @@ def api_esocial_gerador_criar():
         if matricula:
             ins["matricula"] = int(matricula)
 
-        # S-1010: grava PARAMS com as rubricas selecionadas
-        if layout == "1010":
-            try:
-                rubricas_int = [int(c) for c in rubricas]
-            except Exception:
-                return jsonify({"ok": False, "msg": "Códigos de rubrica inválidos."})
-            params = _json_g.dumps(
-                {"ini": ini_valid, "fim": "", "tpAmb": "1", "rubricas": rubricas_int},
-                ensure_ascii=False
-            )
-            ins["observacao_erro"] = f"PARAMS:{params}"
-
+        # (S-1010 é tratado acima, uma linha por rubrica — não cai aqui.)
         res = supabase.table("tab_esocial").insert(ins).execute()
         id_reg = res.data[0]["id_esocial"]
     except Exception as e:
