@@ -21045,6 +21045,16 @@ def _gerar_xml_s1020_evento(lotacao, empresa, tpAmb, tp_op, ini_valid, fim_valid
 
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
 
+    # tpInsc/nrInsc em dadosLotacao só se a lotação for de TERCEIRO
+    # (tpLotacao != '01') e houver inscrição informada. Para tpLotacao='01'
+    # (própria empresa) esses campos NÃO devem ser enviados.
+    _nr_insc_lot = dg(lotacao.get('nrInsc') or '')
+    _tp_insc_lot = str(lotacao.get('tpInsc') or ('1' if len(_nr_insc_lot) == 14 else '2')).strip()
+    insc_lot_xml = ''
+    if tp_lot != '01' and _nr_insc_lot:
+        insc_lot_xml = (f"\n          <tpInsc>{x(_tp_insc_lot)}</tpInsc>"
+                        f"\n          <nrInsc>{x(_nr_insc_lot)}</nrInsc>")
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTabLotacao/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -21066,14 +21076,12 @@ def _gerar_xml_s1020_evento(lotacao, empresa, tpAmb, tp_op, ini_valid, fim_valid
           <iniValid>{x(ini_valid)}</iniValid>{fim_valid_xml}
         </ideLotacao>
         <dadosLotacao>
-          <tpLotacao>{x(tp_lot)}</tpLotacao>
-          <tpInsc>1</tpInsc>
-          <nrInsc>{x(cnpj_emp)}</nrInsc>
+          <tpLotacao>{x(tp_lot)}</tpLotacao>{insc_lot_xml}
+          <fpasLotacao>
+            <fpas>{x(fpas)}</fpas>
+            <codTercs>{x(cod_tercs)}</codTercs>
+          </fpasLotacao>
         </dadosLotacao>
-        <fpas>
-          <fpas>{x(fpas)}</fpas>
-          <codTercs>{x(cod_tercs)}</codTercs>
-        </fpas>
       </{tp_op}>
     </infoLotacao>
   </evtTabLotacao>
