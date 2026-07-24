@@ -27262,6 +27262,20 @@ def esocial_s1210():
     except Exception:
         pass
 
+    # Diagnóstico exibido só quando a lista está vazia: revela o que o servidor
+    # realmente enxerga (id_empresa da sessão × quantos S-1210 existem para ela).
+    _diag = ""
+    if not rows:
+        try:
+            _all_emp = (supabase.table("tab_esocial").select("ano_mes")
+                        .eq("id_empresa", id_empresa).eq("layout", "1210")
+                        .execute().data or [])
+            _periods = sorted({str(x.get("ano_mes")) for x in _all_emp})
+            _diag = (f"[diag] id_empresa={id_empresa} · folha_ativa={anomes_atual or '—'} "
+                     f"· f_tipo={f_tipo or '—'} · S-1210 desta empresa={len(_all_emp)} {_periods}")
+        except Exception as e:
+            _diag = f"[diag] id_empresa={id_empresa} · erro contagem: {e}"
+
     return render_template(
         "F10_eSocial_S1210.html",
         versao=ler_versao(),
@@ -27269,6 +27283,7 @@ def esocial_s1210():
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
         rows=rows,
+        diag=_diag,
         f_sit=f_sit, f_anomes=f_anomes,
         f_anomes_fmt=_fmt_anomes(f_anomes) if f_anomes else "",
         f_tipo=f_tipo,
