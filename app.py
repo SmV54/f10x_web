@@ -22069,8 +22069,21 @@ def api_esocial_s1020_enviar():
             app.logger.error("S-1020 enviar falhou:\n%s", _det)
         except Exception:
             pass
+        # Monta uma mensagem auto-suficiente para a tela: tipo da excecao +
+        # arquivo:linha do frame mais profundo (str(_e) pode vir vazio).
+        _where = ""
+        try:
+            _frames = _tb.extract_tb(_e.__traceback__)
+            if _frames:
+                _f = _frames[-1]
+                _fn = str(_f.filename).replace("\\", "/").split("/")[-1]
+                _where = f" · {_fn}:{_f.lineno} em {_f.name}()"
+        except Exception:
+            pass
+        _tipo = type(_e).__name__
+        _txt  = f"{_tipo}: {_e}".rstrip(": ").strip()
         return jsonify({"ok": False,
-                        "msg": f"Erro interno no envio S-1020: {_e}",
+                        "msg": f"Erro interno no envio S-1020: {_txt}{_where}",
                         "traceback": _det[-2000:]})
 
 
