@@ -21479,10 +21479,14 @@ def api_esocial_s1010_enviar():
                 break
 
     def _obs_upd(msg):
-        """Grava erro/status preservando o bloco PARAMS."""
+        """Grava erro/status preservando o bloco PARAMS.
+        Coluna observacao_erro é varchar(300): capar o TOTAL para não estourar
+        (erro do eSocial pode ser longo → APIError 22001 value too long)."""
+        msg = str(msg or "")
         if _params_raw:
-            return f"{_params_raw}|{msg[:200]}"
-        return msg[:295]
+            avail = max(0, 300 - len(_params_raw) - 1)  # 1 = separador '|'
+            return f"{_params_raw}|{msg[:avail]}"[:300]
+        return msg[:300]
 
     ini_valid    = params.get("ini", "")
     fim_valid    = params.get("fim", "")
