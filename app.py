@@ -504,7 +504,10 @@ def fazer_login():
 
     row = _cliente_por_cpf(cpf)
     if row is None:
-        return jsonify({"ok": False, "msg": "Dados inválidos"})
+        # CPF válido, mas sem cadastro: propõe criar conta já com o CPF preenchido
+        return jsonify({"ok": False, "nao_cadastrado": True,
+                        "cpf": cpf,
+                        "msg": "CPF não cadastrado."})
 
     seg = _segundos_bloqueio(row)
     if seg > 0:
@@ -556,6 +559,30 @@ def fazer_login():
     session["anomes_tipo"]     = empresa["anomes_tipo"]
     session["anomes_situacao"] = empresa["anomes_situacao"]
     return jsonify({"ok": True, "redirect": "/menu"})
+
+# =========================================================
+# LOGIN - VERIFICA SE O CPF JÁ TEM CADASTRO
+# Chamado ao sair do campo CPF na tela de login. Se o CPF for
+# válido e não existir em tab_cliente, a tela propõe "Criar Conta".
+# =========================================================
+@app.route("/verificar_cpf_login", methods=["POST"])
+def verificar_cpf_login():
+    data = request.get_json() or {}
+    cpf  = somente_numeros(data.get("cpf", ""))
+
+    # CPF de teste: mesma exceção do login
+    _eh_cpf_teste = (cpf == "11111111111")
+    if len(cpf) != 11 or (not _eh_cpf_teste and not validar_cpf(cpf)):
+        return jsonify({"ok": True, "valido": False, "existe": False})
+
+    try:
+        existe = _cliente_por_cpf(cpf) is not None
+    except Exception as e:
+        print("Erro em verificar_cpf_login:", str(e))
+        # Em caso de falha na consulta não atrapalha o login
+        return jsonify({"ok": True, "valido": True, "existe": True})
+
+    return jsonify({"ok": True, "valido": True, "existe": existe, "cpf": cpf})
 
 # =========================================================
 # LOGOUT
@@ -792,8 +819,12 @@ def menu():
         return redirect("/comprar_licenca?bloqueio=sem_licenca")
     qtd_empresas = len(_listar_empresas(id_cliente)) if id_cliente else 1
 
+    # Limites contratados (ja lidos em _estado_licenca) para o label da licenca
+    licenca_qtd_empresas     = int(_lic.get("qtd_empresas")     or 0)
+    licenca_qtd_funcionarios = int(_lic.get("qtd_funcionarios") or 0)
+
     # Data limite da licença (tab_cliente.data_limite, formato "YYYY-MM")
-    licenca_fmt = ""
+    licenca_fmt    = ""
     licenca_classe = ""
     try:
         rl = (supabase.table("tab_cliente")
@@ -893,6 +924,10 @@ def menu():
         qtd_empresas=qtd_empresas,
         licenca_fmt=licenca_fmt,
         licenca_classe=licenca_classe,
+        licenca_qtd_empresas=licenca_qtd_empresas,
+        licenca_qtd_funcionarios=licenca_qtd_funcionarios,
+        avisos=_avisos_do_cliente(id_cliente),
+        passos=_primeiros_passos(id_cliente, session.get("id_empresa")),
         menu_numerado=_get_pref("menu_num", "S"),
         s1299_enviado=s1299_enviado,
         esocial_pend=esocial_pend,
@@ -8121,7 +8156,30 @@ def api_gravar_empresa():
 
         id_empresa = resposta.data[0].get("id_empresa")
         print(f"=== Empresa gravada id={id_empresa} cnpj={dados.get('cnpj')} ===")
-        return jsonify({"ok": True, "id_empresa": id_empresa})
+
+        # Condução do cliente novo: já deixa a empresa pronta para uso —
+        # cria o CC 001, abre a folha do mês corrente e carrega na sessão.
+        nome_empresa = (dados.get("razaosocial") or dados.get("nome_fantasia")
+                        or "Empresa")
+        _criar_cc_padrao(id_cliente_sess, id_empresa)
+        ano_mes = _abrir_folha_inicial(id_cliente_sess, id_empresa)
+
+        session["empresa_info"]    = nome_empresa
+        session["cnpj_empresa"]    = cnpj_norm
+        session["id_empresa"]      = id_empresa
+        session["anomes_atual"]    = ano_mes
+        session["anomes_tipo"]     = "N" if ano_mes else ""
+        session["anomes_situacao"] = "A" if ano_mes else ""
+
+        folha_fmt = f"{ano_mes[4:6]}/{ano_mes[:4]}" if ano_mes else ""
+        return jsonify({
+            "ok": True,
+            "id_empresa":   id_empresa,
+            "nome_empresa": nome_empresa,
+            "folha_aberta": folha_fmt,
+            "cc_padrao":    f"{CC_PADRAO_CODIGO} - {CC_PADRAO_NOME}",
+            "proximo":      "/cad_funcao",
+        })
 
     except Exception as e:
         print("Erro /api/gravar_empresa:", str(e))
@@ -9753,6 +9811,196 @@ def api_tabela_legal():
         return jsonify({"ok": True, "tabela": tabela, "proximo_inicio": proximo_inicio})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# CONDUÇÃO DO CLIENTE NOVO — "Primeiros passos"
+# 1) empresa  2) funções  3) centro de custo  4) funcionários
+# Ao cadastrar a empresa o sistema ja cria o CC 001 e abre a folha
+# do mes corrente, para o cliente nunca ficar travado nesses dois.
+# =========================================================
+CC_PADRAO_CODIGO = "001"
+CC_PADRAO_NOME   = "Centro de Custo Único"
+
+
+def _criar_cc_padrao(id_cliente, id_empresa):
+    """Cria o 001 - Centro de Custo Único se a empresa ainda nao tiver
+    nenhum CC. Silencioso: nunca derruba o cadastro da empresa."""
+    try:
+        ja = (supabase.table("tab_cc")
+              .select("id")
+              .eq("id_empresa", id_empresa)
+              .limit(1).execute().data or [])
+        if ja:
+            return False
+        supabase.table("tab_cc").insert({
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "situacao":   "A",
+            "codigo_cc":  CC_PADRAO_CODIGO,
+            "nomecc":     CC_PADRAO_NOME,
+        }).execute()
+        return True
+    except Exception as e:
+        print(f"[PASSOS] _criar_cc_padrao: {e}")
+        return False
+
+
+def _abrir_folha_inicial(id_cliente, id_empresa):
+    """Abre a folha Normal do mes corrente para a empresa recem-cadastrada.
+    Respeita a data_limite da licenca. Retorna o ano_mes aberto ou ""."""
+    ano_mes = _agora_brasilia().strftime("%Y%m")
+    try:
+        dl = ((supabase.table("tab_cliente")
+               .select("data_limite")
+               .eq("id_cliente", id_cliente)
+               .limit(1).execute().data or [{}])[0].get("data_limite") or "")
+        if dl and len(dl) == 7 and ano_mes > (dl[:4] + dl[5:7]):
+            return ""                      # mes corrente ja passou da licenca
+    except Exception:
+        pass
+    try:
+        ja = (supabase.table("tab_anomes")
+              .select("ano_mes")
+              .eq("id_empresa", id_empresa)
+              .eq("ano_mes", ano_mes)
+              .eq("tipo", "N")
+              .limit(1).execute().data or [])
+        if not ja:
+            supabase.table("tab_anomes").insert({
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "ano_mes":    ano_mes,
+                "tipo":       "N",
+                "situacao":   "A",
+            }).execute()
+        supabase.table("tab_empresa").update({
+            "anomes_atual": ano_mes,
+            "anomes_tipo":  "N",
+        }).eq("id_empresa", id_empresa).execute()
+        return ano_mes
+    except Exception as e:
+        print(f"[PASSOS] _abrir_folha_inicial: {e}")
+        return ""
+
+
+def _primeiros_passos(id_cliente, id_empresa):
+    """Estado dos 4 passos da empresa ativa. O painel so existe enquanto a
+    empresa nao tiver nenhum funcionario — depois disso o cliente ja esta
+    rodando e ele nao volta a aparecer."""
+    vazio = {"pendente": False, "feitos": 0, "total": 4, "passos": []}
+    if not id_cliente or not id_empresa:
+        return vazio
+
+    # Passo 4 primeiro: com funcionario cadastrado, nao ha o que conduzir.
+    try:
+        qtd_funcionarios = len(supabase.table("tab_cad")
+                               .select("id")
+                               .eq("id_empresa", id_empresa)
+                               .neq("situacao", "D")
+                               .limit(1).execute().data or [])
+    except Exception:
+        return vazio
+    if qtd_funcionarios:
+        return vazio
+
+    empresa_nome = session.get("empresa_info") or "Empresa cadastrada"
+
+    try:
+        funcoes = (supabase.table("tab_funcao_cli")
+                   .select("id")
+                   .eq("id_cliente", id_cliente)
+                   .eq("situacao", "A")
+                   .execute().data or [])
+    except Exception:
+        funcoes = []
+
+    try:
+        ccs = (supabase.table("tab_cc")
+               .select("codigo_cc, nomecc")
+               .eq("id_empresa", id_empresa)
+               .eq("situacao", "A")
+               .execute().data or [])
+    except Exception:
+        ccs = []
+
+    # CC resolvido: cliente respondeu a pergunta, ou ja mexeu nos centros
+    cc_resp = _get_pref("cc_resp", "", id_empresa=id_empresa)
+    cc_mexido = len(ccs) > 1 or (len(ccs) == 1 and
+                                 (ccs[0].get("nomecc") or "").strip() != CC_PADRAO_NOME)
+    cc_ok = bool(cc_resp) or cc_mexido
+    if len(ccs) > 1:
+        cc_det = f"{len(ccs)} centros de custo"
+    elif cc_ok:
+        cc_det = (ccs[0].get("nomecc") if ccs else "") or "Definido"
+    else:
+        cc_det = "Criamos o 001 para você — confirme se é assim mesmo"
+
+    passos = [
+        {"n": 1, "titulo": "Cadastrar a empresa",
+         "detalhe": empresa_nome, "feito": True,
+         "href": "/f10_cad_empresa", "btn": "Ver"},
+        {"n": 2, "titulo": "Escolher as funções",
+         "detalhe": (f"{len(funcoes)} função(ões)" if funcoes
+                     else "Motorista, vendedor, auxiliar..."),
+         "feito": bool(funcoes), "href": "/cad_funcao", "btn": "Escolher"},
+        {"n": 3, "titulo": "Centro de custo",
+         "detalhe": cc_det, "feito": cc_ok,
+         "href": "/passo_cc", "btn": "Definir"},
+        {"n": 4, "titulo": "Cadastrar os funcionários",
+         "detalhe": "Nenhum funcionário ainda", "feito": False,
+         "href": "/cad_funcionario", "btn": "Começar"},
+    ]
+    return {"pendente": True, "feitos": sum(1 for p in passos if p["feito"]),
+            "total": len(passos), "passos": passos}
+
+
+@app.route("/passo_cc")
+def passo_cc():
+    """Pergunta curta: a empresa usa centro de custo?"""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = session.get("id_empresa")
+    if not id_empresa:
+        return redirect("/selecionar_empresa")
+    try:
+        ccs = (supabase.table("tab_cc")
+               .select("codigo_cc, nomecc")
+               .eq("id_empresa", id_empresa)
+               .eq("situacao", "A")
+               .order("codigo_cc")
+               .execute().data or [])
+    except Exception:
+        ccs = []
+    return render_template(
+        "F10_Passo_CC.html",
+        versao=ler_versao(),
+        nome_cliente=session.get("nome", ""),
+        empresa_info=session.get("empresa_info", ""),
+        centros=ccs,
+        cc_padrao_nome=CC_PADRAO_NOME,
+    )
+
+
+@app.route("/api/passo_cc", methods=["POST"])
+def api_passo_cc():
+    """Grava a resposta ('N' = tudo junto / 'S' = separa por CC)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+    if not id_empresa:
+        return jsonify({"ok": False, "msg": "Empresa não selecionada"})
+
+    resp = str((request.get_json(silent=True) or {}).get("usa_cc") or "N").upper()[:1]
+    if resp not in ("S", "N"):
+        resp = "N"
+
+    _criar_cc_padrao(id_cliente, id_empresa)      # garante o 001
+    ok, msg = _set_pref("cc_resp", resp, id_empresa=id_empresa)
+    if not ok:
+        return jsonify({"ok": False, "msg": msg})
+    return jsonify({"ok": True, "redirect": "/cad_cc" if resp == "S" else "/cad_funcionario"})
 
 
 # =========================================================
@@ -40001,6 +40249,333 @@ def api_admin_leads_excluir():
         return jsonify({"ok": False, "msg": f"HTTP {r.status_code}: {r.text[:150]}"}), 500
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+# =========================================================
+# ADMINISTRADOR — QUADRO DE AVISOS (tab_aviso / tab_aviso_lido)
+# Avisos publicados no menu principal dos clientes, com janela de
+# publicacao (dh_inicio/dh_fim) e destino (todos ou selecionados).
+# =========================================================
+def _aviso_dh(data_br, hora, fim=False):
+    """'25/07/2026' + '09:00' -> '2026-07-25T09:00:00'. Sem hora usa
+    00:00 (inicio) ou 23:59 (fim). Retorna "" se a data for invalida."""
+    s = (data_br or "").strip()
+    if not s:
+        return ""
+    try:
+        if "/" in s:
+            d, m, a = s.split("/")
+        else:                                  # input type=date manda yyyy-mm-dd
+            a, m, d = s.split("-")
+        a, m, d = a.zfill(4), m.zfill(2), d.zfill(2)
+        datetime(int(a), int(m), int(d))       # valida
+    except Exception:
+        return ""
+    h = (hora or "").strip() or ("23:59" if fim else "00:00")
+    if len(h) == 5 and h[2] == ":":
+        return f"{a}-{m}-{d}T{h}:00"
+    return f"{a}-{m}-{d}T" + ("23:59:00" if fim else "00:00:00")
+
+
+def _aviso_dh_curto(v):
+    """timestamp ISO -> 'dd/mm hh:mm' (formato usado no quadro do menu)."""
+    s = str(v or "")
+    if len(s) < 16:
+        return ""
+    return f"{s[8:10]}/{s[5:7]} {s[11:16]}"
+
+
+def _aviso_situacao(av, agora_iso):
+    """VIGENTE / AGENDADO / ENCERRADO a partir da janela e do campo ativo."""
+    if str(av.get("ativo") or "S") != "S":
+        return "ENCERRADO"
+    ini = str(av.get("dh_inicio") or "")[:16]
+    fim = str(av.get("dh_fim")    or "")[:16]
+    ag  = agora_iso[:16]
+    if ini and ag < ini:
+        return "AGENDADO"
+    if fim and ag > fim:
+        return "ENCERRADO"
+    return "VIGENTE"
+
+
+def _avisos_do_cliente(id_cliente):
+    """Avisos que devem aparecer no menu deste cliente agora: ativos,
+    dentro da janela, do destino certo e ainda nao lidos (fixado sempre)."""
+    if not id_cliente:
+        return []
+    agora = _agora_brasilia().strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        rows = (supabase.table("tab_aviso")
+                .select("id_aviso, titulo, mensagem, tipo, dh_inicio, dh_fim, "
+                        "destino, id_clientes, fixado, link_url, link_texto")
+                .eq("ativo", "S")
+                .lte("dh_inicio", agora)
+                .gte("dh_fim",    agora)
+                .order("fixado", desc=True)
+                .order("dh_inicio", desc=True)
+                .execute().data or [])
+    except Exception as e:
+        print(f"[AVISOS] erro ao ler tab_aviso (a tabela existe?): {e}")
+        return []
+
+    # Filtra pelo destino
+    alvo = []
+    for av in rows:
+        if str(av.get("destino") or "T") == "T":
+            alvo.append(av)
+            continue
+        ids = [x.strip() for x in str(av.get("id_clientes") or "").split(",") if x.strip()]
+        if str(id_cliente) in ids:
+            alvo.append(av)
+    if not alvo:
+        return []
+
+    # Remove os que este cliente ja marcou como lidos (fixado nunca some)
+    try:
+        lidos = (supabase.table("tab_aviso_lido")
+                 .select("id_aviso")
+                 .eq("id_cliente", id_cliente)
+                 .execute().data or [])
+        ja_lidos = {int(x["id_aviso"]) for x in lidos}
+    except Exception:
+        ja_lidos = set()
+
+    out = []
+    for av in alvo:
+        fixado = str(av.get("fixado") or "N")
+        if fixado != "S" and int(av.get("id_aviso") or 0) in ja_lidos:
+            continue
+        out.append({
+            "id":        av.get("id_aviso"),
+            "tipo":      str(av.get("tipo") or "I"),
+            "titulo":    av.get("titulo") or "",
+            "mensagem":  av.get("mensagem") or "",
+            "inicio":    _aviso_dh_curto(av.get("dh_inicio")),
+            "fim":       _aviso_dh_curto(av.get("dh_fim")),
+            "link_url":   av.get("link_url")   or "",
+            "link_texto": av.get("link_texto") or "",
+            "fixado":     fixado,
+        })
+    return out
+
+
+@app.route("/aviso_lido", methods=["POST"])
+def aviso_lido():
+    """Cliente clicou em 'Entendi' no quadro de avisos do menu."""
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    data = request.get_json(silent=True) or {}
+    try:
+        id_aviso = int(data.get("id_aviso"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "id inválido"}), 400
+    id_cliente = session.get("id_cliente")
+    if not id_cliente:
+        return jsonify({"ok": False}), 400
+    try:
+        supabase.table("tab_aviso_lido").insert({
+            "id_aviso":   id_aviso,
+            "id_cliente": id_cliente,
+            "cpf":        str(session.get("cpf") or "")[:11],
+            "datahora":   _agora_brasilia().isoformat(timespec="seconds"),
+        }).execute()
+    except Exception as e:
+        # Ja lido (unique) nao e erro para quem clicou
+        print(f"[AVISOS] aviso_lido: {e}")
+    return jsonify({"ok": True})
+
+
+@app.route("/admin_avisos")
+def admin_avisos():
+    if not session.get("logado"):
+        return redirect("/")
+    if not _is_admin_f10():
+        return redirect("/menu")
+
+    agora_iso = _agora_brasilia().strftime("%Y-%m-%dT%H:%M:%S")
+    try:
+        avisos = (supabase.table("tab_aviso")
+                  .select("*")
+                  .order("id_aviso", desc=True)
+                  .limit(300)
+                  .execute().data or [])
+    except Exception as e:
+        print(f"[ADMIN avisos] erro ao ler tab_aviso (rodou o _criar_tab_aviso.sql?): {e}")
+        avisos = []
+
+    # Contagem de leituras por aviso
+    leituras = {}
+    try:
+        for L in (supabase.table("tab_aviso_lido").select("id_aviso").execute().data or []):
+            k = int(L.get("id_aviso") or 0)
+            leituras[k] = leituras.get(k, 0) + 1
+    except Exception:
+        pass
+
+    # Clientes para a seleção de destino. "Ativo" = licença não zerada e
+    # data_limite ainda não vencida — a lista abre só com esses.
+    anomes_hoje = _agora_brasilia().strftime("%Y%m")
+    try:
+        clientes = (supabase.table("tab_cliente")
+                    .select("id_cliente, nome, cpf, data_limite, "
+                            "qtd_empresas, qtd_funcionarios")
+                    .order("nome")
+                    .execute().data or [])
+    except Exception:
+        clientes = []
+    qtd_ativos = 0
+    for c in clientes:
+        dl = str(c.get("data_limite") or "")
+        c["lic_fmt"] = f"{dl[5:7]}/{dl[:4]}" if len(dl) >= 7 else "—"
+        sem_lic = not (int(c.get("qtd_empresas") or 0) and int(c.get("qtd_funcionarios") or 0))
+        vencida = bool(len(dl) >= 7 and (dl[:4] + dl[5:7]) < anomes_hoje)
+        c["ativo"]     = "N" if (sem_lic or vencida) else "S"
+        c["motivo"]    = "sem licença" if sem_lic else ("vencida " + c["lic_fmt"] if vencida else "")
+        qtd_ativos += 1 if c["ativo"] == "S" else 0
+
+    # id_cliente -> nome, para escrever o destino do aviso por extenso
+    nome_por_id = {str(c.get("id_cliente")): (c.get("nome") or "").strip()
+                   for c in clientes}
+
+    for av in avisos:
+        av["situacao"]   = _aviso_situacao(av, agora_iso)
+        av["ini_fmt"]    = _fmt_datahora(av.get("dh_inicio"))
+        av["fim_fmt"]    = _fmt_datahora(av.get("dh_fim"))
+        av["lidos"]      = leituras.get(int(av.get("id_aviso") or 0), 0)
+        if str(av.get("destino") or "T") == "T":
+            av["destino_fmt"] = "Todos os clientes"
+        else:
+            ids = [x.strip() for x in str(av.get("id_clientes") or "").split(",") if x.strip()]
+            nomes = [nome_por_id.get(i, f"cliente {i}") for i in ids]
+            if not nomes:
+                av["destino_fmt"] = "Nenhum cliente selecionado"
+            elif len(nomes) == 1:
+                av["destino_fmt"] = f"Aviso para {nomes[0]}"
+            elif len(nomes) <= 3:
+                av["destino_fmt"] = "Aviso para " + ", ".join(nomes)
+            else:
+                av["destino_fmt"] = (f"Aviso para {len(nomes)} clientes: "
+                                     + ", ".join(nomes[:3]) + f" e mais {len(nomes) - 3}")
+
+    vigentes = sum(1 for a in avisos if a["situacao"] == "VIGENTE")
+    agendados = sum(1 for a in avisos if a["situacao"] == "AGENDADO")
+
+    return render_template(
+        "F10_Admin_Avisos.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        avisos=avisos,
+        clientes=clientes,
+        qtd_ativos=qtd_ativos,
+        total=len(avisos),
+        vigentes=vigentes,
+        agendados=agendados,
+    )
+
+
+@app.route("/api/admin_avisos/salvar", methods=["POST"])
+def api_admin_avisos_salvar():
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if not _is_admin_f10():
+        return jsonify({"ok": False}), 403
+
+    d = request.get_json(silent=True) or {}
+    titulo   = (d.get("titulo")   or "").strip()[:120]
+    mensagem = (d.get("mensagem") or "").strip()
+    tipo     = (d.get("tipo")     or "I").strip().upper()[:1]
+    destino  = (d.get("destino")  or "T").strip().upper()[:1]
+    fixado   = "S" if d.get("fixado") else "N"
+
+    dh_inicio = _aviso_dh(d.get("data_inicio"), d.get("hora_inicio"), fim=False)
+    dh_fim    = _aviso_dh(d.get("data_fim"),    d.get("hora_fim"),    fim=True)
+
+    erros = {}
+    if not titulo:            erros["titulo"]   = "Informe o título"
+    if not mensagem:          erros["mensagem"] = "Informe a mensagem"
+    if tipo not in ("I","A","U"):   tipo = "I"
+    if destino not in ("T","S"):    destino = "T"
+    if not dh_inicio:         erros["data_inicio"] = "Data de início inválida"
+    if not dh_fim:            erros["data_fim"]    = "Data de fim inválida"
+    if dh_inicio and dh_fim and dh_fim < dh_inicio:
+        erros["data_fim"] = "O fim não pode ser antes do início"
+
+    ids_sel = [str(int(x)) for x in (d.get("clientes") or []) if str(x).strip().isdigit()]
+    if destino == "S" and not ids_sel:
+        erros["clientes"] = "Selecione ao menos um cliente"
+    if erros:
+        return jsonify({"ok": False, "erros": erros})
+
+    reg = {
+        "titulo":     titulo,
+        "mensagem":   mensagem,
+        "tipo":       tipo,
+        "dh_inicio":  dh_inicio,
+        "dh_fim":     dh_fim,
+        "destino":    destino,
+        "id_clientes": ",".join(ids_sel) if destino == "S" else None,
+        "fixado":     fixado,
+        "link_url":   (d.get("link_url")   or "").strip()[:200] or None,
+        "link_texto": (d.get("link_texto") or "").strip()[:40]  or None,
+        "ativo":      "S",
+    }
+
+    try:
+        id_aviso = int(d.get("id_aviso") or 0)
+    except (TypeError, ValueError):
+        id_aviso = 0
+
+    try:
+        if id_aviso > 0:
+            supabase.table("tab_aviso").update(reg).eq("id_aviso", id_aviso).execute()
+            msg = "Aviso alterado."
+        else:
+            reg["criado_por"] = str(session.get("cpf") or "")[:11]
+            reg["criado_em"]  = _agora_brasilia().isoformat(timespec="seconds")
+            supabase.table("tab_aviso").insert(reg).execute()
+            msg = "Aviso publicado."
+        return jsonify({"ok": True, "msg": msg})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]}), 500
+
+
+@app.route("/api/admin_avisos/encerrar", methods=["POST"])
+def api_admin_avisos_encerrar():
+    """Tira o aviso do ar sem apagar (ativo='N')."""
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if not _is_admin_f10():
+        return jsonify({"ok": False}), 403
+    d = request.get_json(silent=True) or {}
+    try:
+        id_aviso = int(d.get("id_aviso"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "id inválido"}), 400
+    try:
+        supabase.table("tab_aviso").update({"ativo": "N"}).eq("id_aviso", id_aviso).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]}), 500
+
+
+@app.route("/api/admin_avisos/excluir", methods=["POST"])
+def api_admin_avisos_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if not _is_admin_f10():
+        return jsonify({"ok": False}), 403
+    d = request.get_json(silent=True) or {}
+    try:
+        id_aviso = int(d.get("id_aviso"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "id inválido"}), 400
+    try:
+        supabase.table("tab_aviso_lido").delete().eq("id_aviso", id_aviso).execute()
+        supabase.table("tab_aviso").delete().eq("id_aviso", id_aviso).execute()
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]}), 500
 
 
 # =========================================================

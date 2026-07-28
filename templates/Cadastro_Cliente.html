@@ -757,11 +757,14 @@ function prefillDaLanding() {
     const nome  = p.get("nome");
     const cel   = p.get("cel");
     const email = p.get("email");
-    if (!nome && !cel && !email) return;
+    const cpf   = p.get("cpf");     // vem do login, quando o CPF não tem cadastro
+    if (!nome && !cel && !email && !cpf) return;
     if (nome)  { el("nome").value = nome; normalizarNome(); }
     if (cel)   { el("celular").value = cel; formatarCelular(); }
     if (email) { el("email").value = email; }
-    el("cpf").focus();          // leva o cursor direto pro campo que falta
+    if (cpf)   { el("cpf").value = cpf; formatarDocumento(); }
+    // leva o cursor direto pro primeiro campo que falta
+    el(cpf ? "nome" : "cpf").focus();
     prevalidarSilencioso();     // valida o que já veio preenchido
 }
 prefillDaLanding();

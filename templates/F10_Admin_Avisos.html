@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Quadro de Avisos</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+    --navy:#a0d9be; --navy-line:#70c4a0; --accent:#2a7de1;
+    --coral:#f26b4e; --green:#16a34a;
+    --text-head:#1e293b; --text-sub:#374151;
+    --bg:#f0f2f6; --surface:#ffffff; --border:#dde3ec; --label:#374151;
+    --mono:'IBM Plex Mono', monospace; --sans:'IBM Plex Sans', sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--sans);background:var(--bg);color:var(--label)}
+
+/* topo padrão admin */
+.topo{background:var(--navy);border-bottom:1px solid var(--navy-line);padding:0 28px;
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:0 24px;
+    min-height:72px;position:sticky;top:0;z-index:100}
+.badge-admin{display:inline-flex;align-items:center;gap:9px;
+    background:linear-gradient(135deg,#14532d 0%,#166534 50%,#15803d 100%);
+    border:1.5px solid #4ade80;border-radius:10px;padding:8px 20px;
+    font-family:var(--mono);font-size:17px;font-weight:700;color:#dcfce7;
+    letter-spacing:.14em;text-transform:uppercase;
+    box-shadow:0 0 0 3px rgba(74,222,128,.2),0 3px 10px rgba(0,0,0,.35);white-space:nowrap}
+.topo-centro{text-align:center}
+.topo-titulo{font-size:16px;font-weight:600;color:var(--text-head)}
+.topo-versao{font-size:10px;font-weight:700;color:#374151}
+.btn-voltar{background:transparent;border:1px solid var(--navy-line);color:var(--text-sub);
+    font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);
+    transition:.15s;white-space:nowrap}
+.btn-voltar:hover{border-color:var(--accent);color:var(--text-head)}
+
+.wrap{max-width:1200px;margin:0 auto;padding:22px 28px 60px}
+
+/* stats */
+.stats{display:flex;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:14px 20px;min-width:150px;box-shadow:0 2px 6px rgba(16,24,38,.05)}
+.stat .n{font-size:26px;font-weight:700;color:var(--text-head);font-variant-numeric:tabular-nums}
+.stat .l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b;margin-top:2px}
+.stat.green{border-color:var(--green)} .stat.green .n{color:var(--green)}
+.stat.coral{border-color:var(--coral)} .stat.coral .n{color:var(--coral)}
+
+.toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.btn-novo{background:var(--accent);border:none;color:#fff;font-family:var(--sans);
+    font-size:13.5px;font-weight:700;padding:10px 18px;border-radius:9px;cursor:pointer;transition:.15s}
+.btn-novo:hover{background:#1e63b8}
+.filtros{display:flex;gap:16px;align-items:center;font-size:13px}
+.filtros label{display:flex;align-items:center;gap:6px;cursor:pointer}
+
+/* lista */
+.lista{display:flex;flex-direction:column;gap:10px}
+.av{background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--border);
+    border-radius:12px;padding:14px 18px;box-shadow:0 2px 8px rgba(16,24,38,.05);
+    display:flex;gap:14px;align-items:flex-start}
+.av.tipo-I{border-left-color:var(--accent)}
+.av.tipo-A{border-left-color:#f59e0b}
+.av.tipo-U{border-left-color:#dc2626}
+.av.encerrado{opacity:.62}
+.av-corpo{flex:1 1 auto;min-width:0}
+.av-linha1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.av-titulo{font-size:14.5px;font-weight:700;color:var(--text-head)}
+.sit{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.sit.VIGENTE{background:#dcfce7;color:#166534}
+.sit.AGENDADO{background:#e6f0fb;color:#1d4ed8}
+.sit.ENCERRADO{background:#f1f5f9;color:#64748b}
+.tag-fix{background:#fef3c7;color:#92400e;padding:2px 9px;border-radius:999px;
+    font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.av-msg{font-size:12.5px;color:var(--text-sub);line-height:1.5;margin-top:4px}
+.av-meta{font-family:var(--mono);font-size:11px;color:#64748b;margin-top:7px;
+    display:flex;gap:14px;flex-wrap:wrap}
+.av-acoes{display:flex;gap:8px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end}
+.btn-a{background:#fff;border:1px solid var(--border);color:var(--text-sub);font-family:var(--sans);
+    font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;cursor:pointer;
+    white-space:nowrap;transition:.15s}
+.btn-a:hover{border-color:var(--accent);color:var(--accent)}
+.btn-a.del{color:#b91c1c;border-color:#f3c2c2}
+.btn-a.del:hover{background:#fdecec;border-color:#e88;color:#b91c1c}
+
+/* vazio */
+.vazio{padding:44px 28px;text-align:center;color:#64748b;background:var(--surface);
+    border:1px solid var(--border);border-radius:14px}
+.vazio h3{color:var(--text-head);font-size:17px;margin-bottom:8px}
+.vazio code{background:#0f172a;color:#e2e8f0;display:block;text-align:left;padding:14px 16px;
+    border-radius:10px;font-family:var(--mono);font-size:12px;line-height:1.6;margin-top:14px;
+    overflow-x:auto;white-space:pre}
+
+/* modal do formulário */
+.ov{display:none;position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:900;
+    justify-content:center;align-items:flex-start;overflow-y:auto;padding:28px 16px}
+.ov.ativo{display:flex}
+.form-box{background:var(--surface);border-radius:14px;width:100%;max-width:640px;
+    box-shadow:0 20px 60px rgba(0,0,0,.32);overflow:hidden}
+.form-topo{background:#f8fafc;border-bottom:1px solid var(--border);padding:14px 20px;
+    display:flex;align-items:center;justify-content:space-between}
+.form-topo h2{font-size:15.5px;color:var(--text-head)}
+.fechar{background:none;border:none;font-size:20px;color:#94a3b8;cursor:pointer;line-height:1}
+.fechar:hover{color:var(--text-head)}
+.form-body{padding:18px 20px;display:flex;flex-direction:column;gap:13px}
+.campo{display:flex;flex-direction:column;gap:5px}
+.campo > label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
+input[type=text],input[type=date],input[type=time],textarea,select{
+    border:1px solid var(--border);border-radius:9px;padding:9px 11px;font-size:13.5px;
+    font-family:var(--sans);color:var(--label);background:#fff;outline:none;transition:.15s;width:100%}
+input:focus,textarea:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(42,125,225,.12)}
+textarea{resize:vertical;min-height:82px;line-height:1.5}
+.linha{display:flex;gap:12px;flex-wrap:wrap}
+.linha > .campo{flex:1;min-width:140px}
+.radios{display:flex;gap:16px;flex-wrap:wrap;font-size:13.5px}
+.radios label{display:flex;align-items:center;gap:6px;cursor:pointer}
+.check{display:flex;align-items:center;gap:8px;font-size:13.5px;cursor:pointer}
+.erro{font-size:11px;color:#dc2626;min-height:13px}
+.form-rodape{border-top:1px solid var(--border);padding:14px 20px;display:flex;
+    justify-content:space-between;align-items:center;gap:12px;background:#f8fafc}
+.msg-form{font-size:12.5px;font-weight:600}
+.msg-form.erro-txt{color:#dc2626} .msg-form.ok-txt{color:var(--green)}
+.btns{display:flex;gap:10px}
+.btn-cancel{background:#fff;border:1px solid var(--border);color:var(--text-sub);
+    font-family:var(--sans);font-size:13px;font-weight:600;padding:9px 16px;border-radius:9px;cursor:pointer}
+.btn-cancel:hover{border-color:#94a3b8}
+.btn-pub{background:var(--accent);border:none;color:#fff;font-family:var(--sans);
+    font-size:13px;font-weight:700;padding:9px 20px;border-radius:9px;cursor:pointer}
+.btn-pub:hover{background:#1e63b8}
+.btn-pub:disabled{opacity:.6;cursor:default}
+
+/* seleção de clientes */
+.cli-box{border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.cli-busca{border:none;border-bottom:1px solid var(--border);border-radius:0}
+.cli-busca:focus{box-shadow:none;border-color:var(--border);border-bottom-color:var(--accent)}
+.cli-filtro{display:flex;gap:16px;padding:8px 12px;background:#f8fafc;
+    border-bottom:1px solid var(--border);font-size:12px}
+.cli-filtro label{display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--text-sub)}
+.cli-lista{max-height:190px;overflow-y:auto;background:#fff}
+.cli-item.inativo .cli-id, .cli-item.inativo span{color:#94a3b8}
+.cli-tag{margin-left:auto;background:#fee2e2;color:#991b1b;border-radius:999px;
+    padding:1px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.cli-item{display:flex;align-items:center;gap:9px;padding:7px 12px;font-size:13px;
+    border-bottom:1px solid #f1f5f9;cursor:pointer}
+.cli-item:hover{background:#f8fbff}
+.cli-item:last-child{border-bottom:none}
+.cli-id{font-family:var(--mono);font-size:11.5px;color:#64748b}
+.cli-rodape{padding:7px 12px;background:#f8fafc;border-top:1px solid var(--border);
+    font-size:11.5px;color:#64748b;display:flex;justify-content:space-between;align-items:center}
+.link-mini{background:none;border:none;color:var(--accent);font-size:11.5px;font-weight:600;
+    cursor:pointer;font-family:var(--sans)}
+.link-mini:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div><span class="badge-admin">📢 AVISOS</span></div>
+    <div class="topo-centro"><div class="topo-titulo">Quadro de Avisos — Menu dos Clientes</div></div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+</div>
+
+<div class="wrap">
+
+    <div class="stats">
+        <div class="stat green"><div class="n">{{ vigentes }}</div><div class="l">No ar agora</div></div>
+        <div class="stat"><div class="n">{{ agendados }}</div><div class="l">Agendados</div></div>
+        <div class="stat coral"><div class="n">{{ total }}</div><div class="l">Total de avisos</div></div>
+    </div>
+
+    <div class="toolbar">
+        <button class="btn-novo" onclick="abrirForm()">+ Novo Aviso</button>
+        <div class="filtros">
+            <label><input type="radio" name="filtro" value="V" checked onchange="filtrar()"> Vigentes e agendados</label>
+            <label><input type="radio" name="filtro" value="T" onchange="filtrar()"> Todos</label>
+        </div>
+    </div>
+
+    {% if avisos %}
+    <div class="lista" id="lista">
+        {% for a in avisos %}
+        <div class="av tipo-{{ a.tipo }}{% if a.situacao == 'ENCERRADO' %} encerrado{% endif %}"
+             data-sit="{{ a.situacao }}"
+             data-aviso='{{ {
+                "id_aviso": a.id_aviso, "titulo": a.titulo, "mensagem": a.mensagem,
+                "tipo": a.tipo, "dh_inicio": a.dh_inicio, "dh_fim": a.dh_fim,
+                "destino": a.destino, "id_clientes": a.id_clientes or "",
+                "fixado": a.fixado, "link_url": a.link_url or "",
+                "link_texto": a.link_texto or ""
+             }|tojson }}'>
+            <div class="av-corpo">
+                <div class="av-linha1">
+                    <span class="sit {{ a.situacao }}">{{ a.situacao }}</span>
+                    <span class="av-titulo">
+                        {% if a.tipo == 'U' %}🔴{% elif a.tipo == 'A' %}⚠️{% else %}ℹ️{% endif %}
+                        {{ a.titulo }}
+                    </span>
+                    {% if a.fixado == 'S' %}<span class="tag-fix">fixado</span>{% endif %}
+                </div>
+                <div class="av-msg">{{ a.mensagem }}</div>
+                <div class="av-meta">
+                    <span>{{ a.ini_fmt }} → {{ a.fim_fmt }}</span>
+                    <span>{{ a.destino_fmt }}</span>
+                    <span>{{ a.lidos }} leram</span>
+                    {% if a.link_url %}<span>🔗 {{ a.link_url }}</span>{% endif %}
+                </div>
+            </div>
+            <div class="av-acoes">
+                <button class="btn-a" onclick="editar(this)">Editar</button>
+                {% if a.situacao == 'VIGENTE' or a.situacao == 'AGENDADO' %}
+                <button class="btn-a" onclick="encerrar({{ a.id_aviso }})">Encerrar agora</button>
+                {% endif %}
+                <button class="btn-a del" onclick="excluir({{ a.id_aviso }})">Excluir</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="vazio">
+        <h3>Nenhum aviso cadastrado</h3>
+        <p>Clique em <b>+ Novo Aviso</b> para publicar o primeiro no menu dos clientes.</p>
+        <p style="margin-top:14px;font-size:12.5px;">Se der erro ao salvar, rode antes no Supabase → SQL Editor o arquivo <b>_criar_tab_aviso.sql</b> (cria <b>tab_aviso</b> e <b>tab_aviso_lido</b>).</p>
+    </div>
+    {% endif %}
+
+</div>
+
+<!-- ─────────── FORMULÁRIO ─────────── -->
+<div class="ov" id="ov">
+  <div class="form-box">
+
+    <div class="form-topo">
+        <h2 id="formTitulo">Novo Aviso</h2>
+        <button class="fechar" onclick="fecharForm()">✕</button>
+    </div>
+
+    <div class="form-body">
+        <input type="hidden" id="id_aviso" value="0">
+
+        <div class="campo">
+            <label for="titulo">Título</label>
+            <input type="text" id="titulo" maxlength="120" placeholder="Ex.: eSocial fora do ar dia 28/07">
+            <div class="erro" id="erro_titulo"></div>
+        </div>
+
+        <div class="campo">
+            <label for="mensagem">Mensagem</label>
+            <textarea id="mensagem" placeholder="Texto que o cliente vê no quadro do menu."></textarea>
+            <div class="erro" id="erro_mensagem"></div>
+        </div>
+
+        <div class="campo">
+            <label>Tipo</label>
+            <div class="radios">
+                <label><input type="radio" name="tipo" value="I" checked> ℹ️ Informativo</label>
+                <label><input type="radio" name="tipo" value="A"> ⚠️ Atenção</label>
+                <label><input type="radio" name="tipo" value="U"> 🔴 Urgente</label>
+            </div>
+        </div>
+
+        <div class="linha">
+            <div class="campo">
+                <label for="data_inicio">Início da publicação</label>
+                <input type="date" id="data_inicio">
+                <div class="erro" id="erro_data_inicio"></div>
+            </div>
+            <div class="campo" style="max-width:130px">
+                <label for="hora_inicio">Hora</label>
+                <input type="time" id="hora_inicio" value="08:00">
+            </div>
+            <div class="campo">
+                <label for="data_fim">Fim da publicação</label>
+                <input type="date" id="data_fim">
+                <div class="erro" id="erro_data_fim"></div>
+            </div>
+            <div class="campo" style="max-width:130px">
+                <label for="hora_fim">Hora</label>
+                <input type="time" id="hora_fim" value="23:59">
+            </div>
+        </div>
+
+        <label class="check">
+            <input type="checkbox" id="fixado">
+            Fixar no topo (o cliente não consegue dispensar com o botão "Entendi")
+        </label>
+
+        <div class="campo">
+            <label>Destino</label>
+            <div class="radios">
+                <label><input type="radio" name="destino" value="T" checked onchange="mudouDestino()"> Todos os clientes</label>
+                <label><input type="radio" name="destino" value="S" onchange="mudouDestino()"> Selecionar clientes</label>
+            </div>
+            <div class="erro" id="erro_clientes"></div>
+        </div>
+
+        <div class="cli-box" id="cliBox" style="display:none;">
+            <div class="cli-filtro">
+                <label><input type="radio" name="fcli" value="A" checked onchange="filtrarClientes()">
+                    Somente ativos ({{ qtd_ativos }})</label>
+                <label><input type="radio" name="fcli" value="T" onchange="filtrarClientes()">
+                    Todos ({{ clientes|length }})</label>
+            </div>
+            <input type="text" class="cli-busca" id="cliBusca" placeholder="🔍 buscar por nome, código ou CPF" oninput="filtrarClientes()">
+            <div class="cli-lista" id="cliLista">
+                {% for c in clientes %}
+                <label class="cli-item{% if c.ativo == 'N' %} inativo{% endif %}"
+                       data-ativo="{{ c.ativo }}"
+                       data-busca="{{ (c.nome or '')|lower }} {{ c.cpf or '' }} {{ '%06d'|format(c.id_cliente or 0) }}">
+                    <input type="checkbox" class="cli-chk" value="{{ c.id_cliente }}" onchange="contarClientes()">
+                    <span class="cli-id">{{ '%06d'|format(c.id_cliente or 0) }}</span>
+                    <span>{{ c.nome or '—' }}</span>
+                    {% if c.motivo %}<span class="cli-tag">{{ c.motivo }}</span>{% endif %}
+                </label>
+                {% endfor %}
+            </div>
+            <div class="cli-rodape">
+                <span id="cliContador">0 selecionados</span>
+                <span>
+                    <button class="link-mini" onclick="marcarTodos(true)">marcar todos</button> ·
+                    <button class="link-mini" onclick="marcarTodos(false)">limpar</button>
+                </span>
+            </div>
+        </div>
+
+        <div class="linha">
+            <div class="campo">
+                <label for="link_url">Link no aviso (opcional)</label>
+                <input type="text" id="link_url" maxlength="200" placeholder="/importar_consignado">
+            </div>
+            <div class="campo">
+                <label for="link_texto">Texto do botão</label>
+                <input type="text" id="link_texto" maxlength="40" placeholder="Ver a tela">
+            </div>
+        </div>
+    </div>
+
+    <div class="form-rodape">
+        <span class="msg-form" id="msgForm"></span>
+        <span class="btns">
+            <button class="btn-cancel" onclick="fecharForm()">Cancelar</button>
+            <button class="btn-pub" id="btnPub" onclick="salvar()">Publicar</button>
+        </span>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function el(id){ return document.getElementById(id); }
+
+function hoje(){
+    const d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+
+function limparErros(){
+    ["titulo","mensagem","data_inicio","data_fim","clientes"].forEach(k => {
+        const e = el("erro_" + k); if(e) e.innerText = "";
+    });
+    el("msgForm").innerText = "";
+    el("msgForm").className = "msg-form";
+}
+
+function abrirForm(){
+    limparErros();
+    el("formTitulo").innerText = "Novo Aviso";
+    el("id_aviso").value = "0";
+    el("titulo").value = "";
+    el("mensagem").value = "";
+    el("link_url").value = "";
+    el("link_texto").value = "";
+    el("fixado").checked = false;
+    document.querySelector('input[name=tipo][value=I]').checked = true;
+    document.querySelector('input[name=destino][value=T]').checked = true;
+    el("data_inicio").value = hoje();
+    el("hora_inicio").value = "08:00";
+    el("data_fim").value = "";
+    el("hora_fim").value = "23:59";
+    marcarTodos(false);
+    mudouDestino();
+    el("btnPub").innerText = "Publicar";
+    el("ov").classList.add("ativo");
+    el("titulo").focus();
+}
+
+function fecharForm(){ el("ov").classList.remove("ativo"); }
+
+function editar(btn){
+    limparErros();
+    const a = JSON.parse(btn.closest(".av").dataset.aviso);
+    el("formTitulo").innerText = "Editar Aviso";
+    el("id_aviso").value  = a.id_aviso;
+    el("titulo").value    = a.titulo || "";
+    el("mensagem").value  = a.mensagem || "";
+    el("link_url").value  = a.link_url || "";
+    el("link_texto").value= a.link_texto || "";
+    el("fixado").checked  = (a.fixado === "S");
+    document.querySelector('input[name=tipo][value=' + (a.tipo || "I") + ']').checked = true;
+    document.querySelector('input[name=destino][value=' + (a.destino || "T") + ']').checked = true;
+
+    const ini = (a.dh_inicio || "").toString();
+    const fim = (a.dh_fim    || "").toString();
+    el("data_inicio").value = ini.slice(0,10);
+    el("hora_inicio").value = ini.slice(11,16) || "08:00";
+    el("data_fim").value    = fim.slice(0,10);
+    el("hora_fim").value    = fim.slice(11,16) || "23:59";
+
+    const ids = (a.id_clientes || "").split(",").map(s => s.trim()).filter(Boolean);
+    document.querySelectorAll(".cli-chk").forEach(c => { c.checked = ids.includes(c.value); });
+    contarClientes();
+    mudouDestino();
+    el("btnPub").innerText = "Salvar";
+    el("ov").classList.add("ativo");
+    el("titulo").focus();
+}
+
+function mudouDestino(){
+    const s = document.querySelector('input[name=destino]:checked').value === "S";
+    el("cliBox").style.display = s ? "block" : "none";
+}
+
+function filtrarClientes(){
+    const t = (el("cliBusca").value || "").toLowerCase().trim();
+    const f = document.querySelector('input[name=fcli]:checked').value;
+    document.querySelectorAll(".cli-item").forEach(it => {
+        const chk = it.querySelector(".cli-chk");
+        // Quem já está marcado nunca some, mesmo com a licença vencida
+        const passaFiltro = (f === "T" || it.dataset.ativo === "S" || chk.checked);
+        const passaBusca  = (!t || it.dataset.busca.includes(t));
+        it.style.display = (passaFiltro && passaBusca) ? "flex" : "none";
+    });
+}
+
+function marcarTodos(v){
+    document.querySelectorAll(".cli-item").forEach(it => {
+        if(it.style.display !== "none"){ it.querySelector(".cli-chk").checked = v; }
+    });
+    contarClientes();
+}
+
+function contarClientes(){
+    const n = document.querySelectorAll(".cli-chk:checked").length;
+    el("cliContador").innerText = n + (n === 1 ? " selecionado" : " selecionados");
+}
+
+async function salvar(){
+    limparErros();
+    const dados = {
+        id_aviso:    el("id_aviso").value,
+        titulo:      el("titulo").value,
+        mensagem:    el("mensagem").value,
+        tipo:        document.querySelector('input[name=tipo]:checked').value,
+        destino:     document.querySelector('input[name=destino]:checked').value,
+        fixado:      el("fixado").checked,
+        data_inicio: el("data_inicio").value,
+        hora_inicio: el("hora_inicio").value,
+        data_fim:    el("data_fim").value,
+        hora_fim:    el("hora_fim").value,
+        link_url:    el("link_url").value,
+        link_texto:  el("link_texto").value,
+        clientes:    Array.from(document.querySelectorAll(".cli-chk:checked")).map(c => c.value)
+    };
+
+    el("btnPub").disabled = true;
+    try {
+        const r = await fetch("/api/admin_avisos/salvar", {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body: JSON.stringify(dados)
+        });
+        const d = await r.json();
+
+        if(!d.ok){
+            if(d.erros){
+                Object.keys(d.erros).forEach(k => {
+                    const e = el("erro_" + k); if(e) e.innerText = d.erros[k];
+                });
+                el("msgForm").innerText = "Verifique os campos destacados.";
+                el("msgForm").className = "msg-form erro-txt";
+            } else {
+                el("msgForm").innerText = d.msg || "Não foi possível salvar.";
+                el("msgForm").className = "msg-form erro-txt";
+            }
+            return;
+        }
+
+        el("msgForm").innerText = d.msg || "Salvo.";
+        el("msgForm").className = "msg-form ok-txt";
+        setTimeout(() => window.location.reload(), 500);
+    } catch(e){
+        el("msgForm").innerText = "Erro de conexão: " + e.message;
+        el("msgForm").className = "msg-form erro-txt";
+    } finally {
+        el("btnPub").disabled = false;
+    }
+}
+
+async function encerrar(id){
+    if(!confirm("Tirar este aviso do ar agora?\n\nEle deixa de aparecer no menu dos clientes, mas continua na lista.")) return;
+    const r = await fetch("/api/admin_avisos/encerrar", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ id_aviso: id })
+    });
+    const d = await r.json();
+    if(d.ok) window.location.reload(); else alert(d.msg || "Erro ao encerrar.");
+}
+
+async function excluir(id){
+    if(!confirm("Excluir este aviso definitivamente?\n\nAs marcações de leitura dele também serão apagadas.")) return;
+    const r = await fetch("/api/admin_avisos/excluir", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ id_aviso: id })
+    });
+    const d = await r.json();
+    if(d.ok) window.location.reload(); else alert(d.msg || "Erro ao excluir.");
+}
+
+function filtrar(){
+    const f = document.querySelector('input[name=filtro]:checked').value;
+    document.querySelectorAll(".av").forEach(av => {
+        const enc = av.dataset.sit === "ENCERRADO";
+        av.style.display = (f === "T" || !enc) ? "flex" : "none";
+    });
+}
+
+filtrar();
+contarClientes();
+</script>
+
+<script src="/static/f10_dialog.js"></script>
+
+</body>
+</html>

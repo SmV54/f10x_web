@@ -203,6 +203,37 @@ input:focus {
 .modal-box button:hover {
     background: #1d4ed8;
 }
+
+/* MODAL - CPF SEM CADASTRO */
+.modal-box .modal-titulo {
+    font-size: 17px;
+    color: #1e3a8a;
+    font-weight: 700;
+    margin: 0 0 8px 0;
+}
+.modal-box .modal-cpf {
+    font-size: 14px;
+    color: #111827;
+    font-weight: 700;
+    margin: 0 0 14px 0;
+}
+.modal-botoes {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+}
+.modal-botoes button {
+    width: auto;
+    flex: 1;
+    padding: 0 10px;
+}
+.modal-botoes .btn-secundario {
+    background: #e5e7eb;
+    color: #111827;
+}
+.modal-botoes .btn-secundario:hover {
+    background: #d1d5db;
+}
 </style>
 </head>
 
@@ -212,6 +243,18 @@ input:focus {
     <div class="modal-box">
         <p id="modalTexto"></p>
         <button onclick="modalOk()">OK</button>
+    </div>
+</div>
+
+<div class="modal-overlay" id="modalConta">
+    <div class="modal-box">
+        <p class="modal-titulo">CPF ainda não cadastrado</p>
+        <p class="modal-cpf" id="modalContaCpf"></p>
+        <p>Deseja criar a sua conta agora?</p>
+        <div class="modal-botoes">
+            <button class="btn-secundario" onclick="fecharModalConta()">Agora não</button>
+            <button onclick="irCriarConta()">Criar Conta</button>
+        </div>
     </div>
 </div>
 
@@ -325,6 +368,12 @@ async function fazerLogin(){
                 msg("Login bloqueado. Aguarde alguns minutos.", "erro");
                 return;
             }
+            if(data.nao_cadastrado){
+                msg("CPF ainda não cadastrado.", "erro");
+                el("cpf").classList.add("input-erro");
+                abrirModalConta(data.cpf || soNumeros(el("cpf").value));
+                return;
+            }
             msg(data.msg || "Erro no login", "erro");
             el("senha").classList.add("input-erro");
             return;
@@ -344,11 +393,87 @@ function limpar(){
     el("cpf").value = "";
     el("senha").value = "";
     el("manter").checked = false;
+    _cpfRecusado = "";
     limparErros();
     msg("", "");
 }
 
-el("cpf").addEventListener("input", formatarCPF);
+el("cpf").addEventListener("input", () => {
+    formatarCPF();
+    limparErroCpf();          // ao corrigir, some o aviso
+});
+
+// =========================================================
+// CPF: aviso de inválido / proposta de criar conta na saída do campo
+// =========================================================
+let _cpfNovo     = "";   // CPF que será levado para a tela de cadastro
+let _cpfRecusado = "";   // CPF em que a pessoa já respondeu "Agora não"
+
+function abrirModalConta(cpf){
+    _cpfNovo = soNumeros(cpf);
+    el("modalContaCpf").innerText = el("cpf").value || _cpfNovo;
+    el("modalConta").classList.add("ativo");
+}
+
+function fecharModalConta(){
+    _cpfRecusado = _cpfNovo;      // não pergunta de novo para o mesmo CPF
+    el("modalConta").classList.remove("ativo");
+    el("cpf").focus();
+}
+
+function irCriarConta(){
+    window.location.href = "/cadastro?cpf=" + encodeURIComponent(_cpfNovo);
+}
+
+function limparErroCpf(){
+    el("cpf").classList.remove("input-erro");
+    el("erro_cpf").innerText = "";
+}
+
+function erroCpf(texto){
+    el("cpf").classList.add("input-erro");
+    el("erro_cpf").innerText = texto;
+}
+
+async function verificarCpf(){
+    const cpf = soNumeros(el("cpf").value);
+
+    limparErroCpf();
+
+    if(cpf.length === 0) return;              // campo vazio: não reclama
+
+    if(cpf.length < 11){                       // digitou pouca coisa
+        erroCpf("CPF incompleto");
+        return;
+    }
+
+    if(cpf === _cpfRecusado) return;           // já perguntou e a pessoa recusou
+
+    try {
+        const resp = await fetch("/verificar_cpf_login", {
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body: JSON.stringify({ cpf: cpf })
+        });
+        if(!resp.ok) return;
+
+        const data = await resp.json();
+
+        if(!data.valido){                      // CPF errado: avisa na hora
+            erroCpf("CPF inválido");
+            return;
+        }
+
+        if(!data.existe){                      // certo, mas sem cadastro
+            msg("", "");
+            abrirModalConta(cpf);
+        }
+    } catch(e) {
+        // silencioso: se a verificação falhar, o login segue normalmente
+    }
+}
+
+el("cpf").addEventListener("blur", verificarCpf);
 
 let _modalRedirect = "";
 

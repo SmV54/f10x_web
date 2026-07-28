@@ -406,6 +406,36 @@ body {
     color: #15803d;
 }
 
+/* ── CARTÃO PÓS-GRAVAÇÃO (condução do cliente novo) ───── */
+.pos-grav {
+    background: #f0fdf4; border: 1px solid #86efac; border-radius: 12px;
+    padding: 16px 20px;
+}
+.pos-grav-tit {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 14px; font-weight: 700; color: #15803d;
+}
+.pos-grav-emp {
+    font-size: 13px; font-weight: 700; color: #14532d;
+    margin: 6px 0 0 28px;
+}
+.pos-grav-lista {
+    margin: 8px 0 0 46px; padding: 0; font-size: 12.5px; color: #166534; line-height: 1.7;
+}
+.pos-grav-prox {
+    margin-top: 14px; padding-top: 12px; border-top: 1px solid #bbf7d0;
+    font-size: 12.5px; color: #14532d; line-height: 1.6;
+}
+.pos-grav-btns { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.pos-btn {
+    background: #15803d; border: none; color: #fff; font-family: inherit;
+    font-size: 13px; font-weight: 700; padding: 10px 20px; border-radius: 9px;
+    cursor: pointer; transition: .15s;
+}
+.pos-btn:hover { background: #166534; }
+.pos-btn.leve { background: #fff; color: #15803d; border: 1px solid #86efac; }
+.pos-btn.leve:hover { background: #dcfce7; }
+
 .resultado-erro {
     padding: 10px 16px;
     background: #fef2f2;
@@ -1452,12 +1482,35 @@ async function gravarEmpresa(painel) {
                 window.location.href = '/menu';
                 return;
             }
+            // Cliente novo: em vez de parar no "gravada com sucesso", já mostra
+            // o que o sistema preparou sozinho e conduz para o próximo passo.
+            const _folha = j.folha_aberta
+                ? `<li>Folha de <b>${j.folha_aberta}</b> aberta e pronta para lançamentos</li>` : '';
+            const _cc = j.cc_padrao
+                ? `<li>Centro de custo <b>${j.cc_padrao}</b> criado (dá para trocar depois)</li>` : '';
             painel.innerHTML = `
-                <div class="resultado-ok">
-                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/>
-                    </svg>
-                    Empresa gravada com sucesso! (id: ${j.id_empresa})
+                <div class="pos-grav">
+                    <div class="pos-grav-tit">
+                        <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/>
+                        </svg>
+                        Empresa gravada com sucesso!
+                    </div>
+                    <div class="pos-grav-emp">${j.nome_empresa || ''}</div>
+                    <ul class="pos-grav-lista">${_folha}${_cc}</ul>
+                    <div class="pos-grav-prox">
+                        <b>Próximo passo:</b> escolher as funções que a sua empresa usa
+                        (motorista, vendedor, auxiliar…). Elas são pedidas no cadastro
+                        de cada funcionário.
+                    </div>
+                    <div class="pos-grav-btns">
+                        <button type="button" class="pos-btn" onclick="window.location.href='${j.proximo || '/cad_funcao'}'">
+                            Continuar → Funções
+                        </button>
+                        <button type="button" class="pos-btn leve" onclick="window.location.href='/menu'">
+                            Ir ao menu
+                        </button>
+                    </div>
                 </div>`;
         } else {
             painel.innerHTML = `<div class="resultado-erro"><strong>Erro ao gravar:</strong> ${j.msg}</div>`;
