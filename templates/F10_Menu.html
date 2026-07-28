@@ -50,6 +50,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .label-licenca.lic-ok     { background: #dcfce7; color: #166534; border-color: #86efac; }
 .label-licenca.lic-alerta { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.label-licenca .lic-qtd   { font-weight: 800; }
 
 /* ── CARD COMPRAR LICENÇA (canto inferior esquerdo, abaixo do label) ── */
 .card-comprar-licenca {
@@ -434,6 +435,9 @@ body.menu-numerado .nav-item::before {
 
 <div class="conteudo">
 
+    {# PRIMEIROS PASSOS (cliente novo) — PARA DESFAZER: apague só esta linha #}
+    {% include "_primeiros_passos.html" %}
+
     <div class="modulos-grid" id="modulosGrid"></div>
 
     {% if qtd_empresas > 1 or eh_admin_f10 %}
@@ -452,6 +456,9 @@ body.menu-numerado .nav-item::before {
       {% endif %}
     </div>
     {% endif %}
+
+    {# QUADRO DE AVISOS (maquete) — PARA DESFAZER: apague só esta linha #}
+    {% include "_avisos_mural.html" %}
 
     <div class="nav-panel" id="navPanel">
         <div class="nav-header">
@@ -497,7 +504,7 @@ const modulos = {
     cadastros: {
         titulo: 'Cadastros', icone: '🗄️',
         bloqueioFolha: true,
-        msgBloqueio: 'cadastros bloqueados. Reabra a folha para continuar.',
+        msgBloqueio: 'cadastros bloqueados. Reabra a folha para continuar. Só o cadastro de <strong>Nova Empresa</strong> continua liberado.',
         secoes: [
             // nav-fix: itens empilhados (quebraLinha) precisam de largura igual,
             // senao a coluna fica com as bordas irregulares. Mesmo padrao da Rescisao.
@@ -524,7 +531,9 @@ const modulos = {
                 { icone: '🧮', nome: 'Fórmulas',                 href: '/pensao_formulas',                    ok: true },
             ]},
             { nome: 'Empresa', itens: [
-                { icone: '🏢', nome: 'Nova Empresa',          href: '/f10_cad_empresa', ok: true },
+                // Exceção ao bloqueio da folha Calculada/Fechada: cadastrar uma
+                // nova empresa não mexe na folha atual, então fica sempre liberado.
+                { icone: '🏢', nome: 'Nova Empresa',          href: '/f10_cad_empresa', ok: true, permiteFolhaBloqueada: true },
                 { icone: '✏️', nome: 'Alterar Esta Empresa',  href: '/alterar_empresa', ok: true, navLoading: true },
             ]}
         ]
@@ -779,6 +788,9 @@ const modulos = {
                 { icone: '🏢', nome: 'Lista de Clientes', href: '/admin_clientes', ok: true },
                 { icone: '🔑', nome: 'Licença de Uso',    href: '/admin_licenca_uso', ok: true },
             ]},
+            { nome: 'Comunicação', itens: [
+                { icone: '📢', nome: 'Quadro de Avisos', href: '/admin_avisos', ok: true },
+            ]},
             { nome: 'Marketing', itens: [
                 { icone: '🐾', nome: 'Leads Pet-Shop', href: '/admin_leads', ok: true },
             ]},
@@ -878,6 +890,11 @@ grid.style.gridTemplateColumns = `repeat(${ordem.length}, 1fr)`;
 // ── Navegação em 3 etapas ──
 let moduloAtivo = null;
 let secaoAtiva  = null;
+// Seções realmente renderizadas no painel. Normalmente é modulos[moduloAtivo].secoes,
+// mas com a folha bloqueada o módulo pode exibir só as seções de exceção.
+let secoesAtivas = [];
+// Quando true, o aviso de folha bloqueada continua visível ao trocar de seção.
+let avisoPersistente = false;
 
 const navPanel  = document.getElementById('navPanel');
 const navSecoes = document.getElementById('navSecoes');
@@ -907,16 +924,27 @@ function selecionarModulo(cardEl, id) {
     navItens.innerHTML  = '';
     navItens.appendChild(navAviso);
 
+    avisoPersistente = false;
+    let secoes = m.secoes || [];
+
     if (m.bloqueioFolha && folhaBloqueada) {
         navPanel.style.display = 'block';
         const sit = FOLHA_SITUACAO === 'C' ? 'Calculada' : 'Fechada';
         const msg = m.msgBloqueio || `bloqueado. Reabra a folha para continuar.`;
         navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — ${msg}`;
         navAviso.style.display = 'block';
-        return;
-    }
 
-    const secoes = m.secoes || [];
+        // Exceção: itens marcados com permiteFolhaBloqueada continuam liberados
+        // mesmo com a folha Calculada/Fechada (ex.: cadastrar uma Nova Empresa).
+        const secoesLivres = secoes
+            .map(s => Object.assign({}, s, { itens: (s.itens || []).filter(it => it.permiteFolhaBloqueada) }))
+            .filter(s => s.itens.length > 0);
+        if (secoesLivres.length === 0) { secoesAtivas = []; return; }
+
+        avisoPersistente = true;
+        secoes = secoesLivres;
+    }
+    secoesAtivas = secoes;
     if (secoes.length === 0) {
         const d = document.createElement('div');
         d.className = 'nav-vazio';
@@ -967,7 +995,7 @@ function itemBloqueado(item) {
 // Clique numa seção (etapa 2). Se a seção tem um único item acionável,
 // dispara direto a tarefa sem exigir mais um clique. Com 2+ itens, mostra a lista.
 function clicarSecao(idx) {
-    const secao = (modulos[moduloAtivo].secoes || [])[idx];
+    const secao = secoesAtivas[idx];
     const itens = (secao && secao.itens) || [];
     // Seções marcadas com semAtalho sempre mostram a lista (submenu),
     // mesmo com um único item — reservam espaço para futuras opções.
@@ -983,10 +1011,10 @@ function clicarSecao(idx) {
 
 function selecionarSecao(idx) {
     secaoAtiva = idx;
-    navAviso.style.display = 'none';
+    if (!avisoPersistente) navAviso.style.display = 'none';
     document.querySelectorAll('.nav-secao-btn').forEach((b, i) => b.classList.toggle('ativo', i === idx));
 
-    const secao = (modulos[moduloAtivo].secoes || [])[idx];
+    const secao = secoesAtivas[idx];
     renderItens(secao ? secao.itens : []);
 }
 
@@ -1329,8 +1357,12 @@ function iniciarTour() {
 {% endif %}
 
 {% if licenca_fmt %}
-<span class="label-licenca {{ licenca_classe }}" title="Data limite da licença">
-  🔐 Licença Folha10-Simples até {{ licenca_fmt }}
+<span class="label-licenca {{ licenca_classe }}" title="Data limite e limites contratados da licença">
+  🔐 Licença Folha10-Simples até {{ licenca_fmt }} para até
+  <span class="lic-qtd">{{ licenca_qtd_empresas|default(0) }}</span>
+  empresa{{ '' if licenca_qtd_empresas|default(0) == 1 else 's' }} com total de
+  <span class="lic-qtd">{{ licenca_qtd_funcionarios|default(0) }}</span>
+  Funcionário{{ '' if licenca_qtd_funcionarios|default(0) == 1 else 's' }}
 </span>
 <a class="card-comprar-licenca" href="/comprar_licenca" title="Adquira ou renove sua licença">
   💳 Adquira ou renove sua licença →
