@@ -1,0 +1,188 @@
+{# =====================================================================
+   QUADRO DE AVISOS do menu principal (Opção A — abaixo dos cards)
+   ---------------------------------------------------------------------
+   Alimentado por "avisos", montado em _avisos_do_cliente() no app.py
+   a partir de tab_aviso / tab_aviso_lido. Publicação em /admin_avisos.
+
+   PARA DESFAZER: apague a linha {% include "_avisos_mural.html" %}
+   do F10_Menu.html. O CSS do menu nao foi alterado — tudo daqui e
+   prefixado .mural-.
+   ===================================================================== #}
+
+{% set avisos_mural = avisos if avisos is defined else [] %}
+
+{% if avisos_mural %}
+<style>
+/* ── QUADRO DE AVISOS (tudo prefixado .mural- para nao colidir) ── */
+.mural {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; margin-top: 22px;
+    box-shadow: 0 2px 10px rgba(15,23,42,0.06);
+    font-family: var(--sans); overflow: hidden;
+}
+.mural-topo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; cursor: pointer; user-select: none;
+    border-bottom: 1px solid var(--border); background: #f8fafc;
+}
+.mural-topo:hover { background: #f1f5f9; }
+.mural-titulo {
+    font-size: 13px; font-weight: 700; color: var(--text-head);
+    letter-spacing: 0.01em; display: flex; align-items: center; gap: 8px;
+}
+.mural-badge {
+    background: #dc2626; color: #fff; border-radius: 11px;
+    padding: 1px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em;
+}
+.mural-badge.zero { display: none; }
+.mural-toggle {
+    margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--accent);
+    display: flex; align-items: center; gap: 5px;
+}
+.mural-corpo { display: block; }
+.mural.fechado .mural-corpo { display: none; }
+.mural.fechado .mural-topo  { border-bottom: none; }
+
+.mural-item {
+    display: flex; gap: 12px; padding: 13px 16px;
+    border-left: 4px solid transparent; border-bottom: 1px solid #eef2f7;
+}
+.mural-item:last-child { border-bottom: none; }
+.mural-item.tipo-I { border-left-color: #2a7de1; background: #f7fbff; }
+.mural-item.tipo-A { border-left-color: #f59e0b; background: #fffbf3; }
+.mural-item.tipo-U { border-left-color: #dc2626; background: #fff6f6; }
+.mural-item.lido   { opacity: 0.55; }
+
+.mural-icone { font-size: 19px; line-height: 1.2; flex-shrink: 0; }
+.mural-texto { flex: 1 1 auto; min-width: 0; }
+.mural-item-titulo {
+    font-size: 13.5px; font-weight: 700; color: var(--text-head);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.mural-novo {
+    background: #dc2626; color: #fff; border-radius: 10px;
+    padding: 1px 7px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase;
+}
+.mural-fixado {
+    background: #e6f0fb; color: var(--accent); border-radius: 10px;
+    padding: 1px 7px; font-size: 9.5px; font-weight: 700;
+    letter-spacing: 0.05em; text-transform: uppercase;
+}
+.mural-msg   { font-size: 12.5px; color: var(--text-sub); line-height: 1.5; margin-top: 3px; }
+.mural-datas { font-family: var(--mono); font-size: 10.5px; color: #64748b; margin-top: 6px; }
+.mural-acoes { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.mural-btn {
+    background: #fff; border: 1px solid var(--border); color: var(--text-sub);
+    font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+    padding: 5px 12px; border-radius: 7px; cursor: pointer;
+    white-space: nowrap; text-decoration: none; transition: 0.15s;
+}
+.mural-btn:hover { border-color: var(--accent); color: var(--accent); }
+.mural-btn.principal { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+.mural-btn.principal:hover { background: var(--accent); color: #fff; }
+.mural-vazio {
+    padding: 14px 16px; font-size: 12.5px; color: #64748b; text-align: center;
+}
+@media (max-width: 700px) {
+    .mural-item  { flex-wrap: wrap; }
+    .mural-acoes { width: 100%; justify-content: flex-end; }
+}
+</style>
+
+<div class="mural" id="mural">
+
+    <div class="mural-topo" onclick="muralToggle()">
+        <span class="mural-titulo">
+            &#128226; Avisos
+            <span class="mural-badge" id="muralBadge">0 novos</span>
+        </span>
+        <span class="mural-toggle" id="muralToggleTxt">ocultar &#9650;</span>
+    </div>
+
+    <div class="mural-corpo" id="muralCorpo">
+        {% for a in avisos_mural %}
+        <div class="mural-item tipo-{{ a.tipo }}" id="mural-item-{{ a.id }}" data-aviso="{{ a.id }}"
+             data-fixado="{{ a.fixado }}">
+            <span class="mural-icone">
+                {% if a.tipo == 'U' %}&#128308;{% elif a.tipo == 'A' %}&#9888;&#65039;{% else %}&#8505;&#65039;{% endif %}
+            </span>
+            <span class="mural-texto">
+                <span class="mural-item-titulo">
+                    {{ a.titulo }}
+                    {% if a.fixado == 'S' %}<span class="mural-fixado">fixado</span>{% endif %}
+                    <span class="mural-novo" id="mural-novo-{{ a.id }}">novo</span>
+                </span>
+                <div class="mural-msg">{{ a.mensagem }}</div>
+                <div class="mural-datas">Publicado {{ a.inicio }} &middot; ate {{ a.fim }}</div>
+            </span>
+            <span class="mural-acoes">
+                {% if a.link_url %}
+                <a class="mural-btn principal" href="{{ a.link_url }}">{{ a.link_texto or 'Abrir' }}</a>
+                {% endif %}
+                {% if a.fixado != 'S' %}
+                <button class="mural-btn" onclick="muralEntendi({{ a.id }})">Entendi</button>
+                {% endif %}
+            </span>
+        </div>
+        {% endfor %}
+        <div class="mural-vazio" id="muralVazio" style="display:none;">
+            Nenhum aviso novo. &#128077;
+        </div>
+    </div>
+
+</div>
+
+<script>
+// "Entendi" grava uma linha em tab_aviso_lido (rota /aviso_lido) — o aviso
+// nao volta a aparecer para este cliente. O colapso do quadro fica so no
+// navegador (localStorage).
+(function(){
+    const KEY_ABERT = "f10_avisos_aberto";
+
+    window.muralEntendi = function(id){
+        const it = document.getElementById("mural-item-" + id);
+        if(it){ it.style.display = "none"; }
+        muralAtualizar();
+        fetch("/aviso_lido", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({ id_aviso: id })
+        }).catch(() => {});
+    };
+
+    window.muralToggle = function(){
+        const m = document.getElementById("mural");
+        m.classList.toggle("fechado");
+        const fechado = m.classList.contains("fechado");
+        document.getElementById("muralToggleTxt").innerHTML =
+            fechado ? "mostrar &#9660;" : "ocultar &#9650;";
+        try { localStorage.setItem(KEY_ABERT, fechado ? "N" : "S"); } catch(e){}
+    };
+
+    function muralAtualizar(){
+        const itens = document.querySelectorAll(".mural-item");
+        let visiveis = 0, novos = 0;
+        itens.forEach(it => {
+            if(it.style.display !== "none"){
+                visiveis++;
+                if(it.dataset.fixado !== "S") novos++;
+            }
+        });
+        const badge = document.getElementById("muralBadge");
+        badge.innerText = novos + (novos === 1 ? " novo" : " novos");
+        badge.classList.toggle("zero", novos === 0);
+        document.getElementById("muralVazio").style.display = visiveis ? "none" : "block";
+        // Sem nenhum aviso visivel, some com o quadro inteiro
+        if(visiveis === 0){ document.getElementById("mural").style.display = "none"; }
+    }
+
+    // Estado inicial: respeita o colapso escolhido da ultima vez
+    if(localStorage.getItem(KEY_ABERT) === "N"){
+        document.getElementById("mural").classList.add("fechado");
+        document.getElementById("muralToggleTxt").innerHTML = "mostrar &#9660;";
+    }
+    muralAtualizar();
+})();
+</script>
+{% endif %}
