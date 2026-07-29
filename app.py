@@ -90,6 +90,43 @@ def no_bfcache(response):
         response.headers["Pragma"] = "no-cache"
     return response
 
+# ── PRESENCA — quem esta usando o sistema agora ──────────────────────
+# Carimba tab_cliente.datahora_ultima_atividade a cada clique do cliente
+# logado. Alimenta o "Online agora" da Lista de Clientes (Admin).
+# O freio de 1 gravacao por minuto e essencial: sem ele seria um UPDATE
+# no Supabase a cada tela aberta por qualquer cliente.
+PRESENCA_INTERVALO_S = 60     # grava no maximo 1x por minuto por sessao
+PRESENCA_ONLINE_S    = 300    # 5 min sem clicar -> deixa de estar online
+
+@app.before_request
+def _marcar_presenca():
+    if request.endpoint == "static":
+        return
+    if not session.get("logado"):
+        return
+    # Admin impersonando um cliente e o admin navegando, nao o cliente.
+    if session.get("cpf_admin_original"):
+        return
+    cpf = str(session.get("cpf") or "")
+    if not cpf:
+        return
+
+    agora = _agora_brasilia()
+    ultimo = session.get("presenca_gravada_em")
+    if ultimo:
+        try:
+            if (agora - datetime.fromisoformat(ultimo)).total_seconds() < PRESENCA_INTERVALO_S:
+                return
+        except Exception:
+            pass
+    session["presenca_gravada_em"] = agora.isoformat()
+    try:
+        supabase.table("tab_cliente").update({
+            "datahora_ultima_atividade": agora.isoformat()
+        }).eq("cpf", cpf).execute()
+    except Exception:
+        pass      # presenca nunca pode derrubar a requisicao do cliente
+
 @app.context_processor
 def inject_folha_ativa():
     am = str(session.get("anomes_atual") or "")
@@ -177,7 +214,7 @@ def _xml_dir_rel(id_empresa, when=None, id_cliente=None):
     id_cliente: se não fornecido, busca em session['id_cliente'].
                 Cai para '000000' se nenhum estiver disponível.
     """
-    when = when or datetime.now()
+    when = when or _agora_brasilia()
     if id_cliente is None:
         try:
             id_cliente = session.get("id_cliente")
@@ -192,7 +229,7 @@ def _xml_erro_save(_pref, etapa, msg, exc=None):
     Permite rastrear no viewer onde o fluxo de envio parou.
     etapa: número da etapa em que o erro aconteceu (2, 3, 4, 5...)."""
     tipo  = f"\n  <tipo>{type(exc).__name__}</tipo>" if exc else ""
-    ts    = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+    ts    = _agora_brasilia().strftime("%Y-%m-%dT%H:%M:%S")
     safe  = str(msg).replace("]]>", "]]&gt;")
     xml   = (f'<?xml version="1.0" encoding="UTF-8"?>\n'
              f'<erro etapa="{etapa}">\n'
@@ -404,7 +441,12 @@ def _segundos_bloqueio(row):
         return 0
     try:
         ate = datetime.fromisoformat(bloqueado_ate)
-        restante = (ate - datetime.now()).total_seconds()
+        restante = (ate - _agora_brasilia()).total_seconds()
+        # Trava de seguranca: o bloqueio nunca pode passar de
+        # TEMPO_BLOQUEIO_MINUTOS. Sem isso, um bloqueado_ate gravado em UTC
+        # (antes de o sistema passar a usar a hora de Brasilia) ficaria 3h no
+        # futuro e prenderia o cliente fora do sistema por todo esse tempo.
+        restante = min(restante, TEMPO_BLOQUEIO_MINUTOS * 60)
         return max(0, int(restante))
     except Exception:
         return 0
@@ -413,7 +455,7 @@ def _registrar_tentativa(cpf, row):
     tentativas = (row.get("tentativas_login") or 0) + 1
     bloqueado_ate = None
     if tentativas >= MAX_TENTATIVAS_LOGIN:
-        bloqueado_ate = (datetime.now() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).isoformat()
+        bloqueado_ate = (_agora_brasilia() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).isoformat()
     supabase.table("tab_cliente").update({
         "tentativas_login": tentativas,
         "bloqueado_ate":    bloqueado_ate
@@ -1157,7 +1199,7 @@ def _data_limite_somar_meses(data_limite_atual, meses):
             ano = int(data_limite_atual[:4])
             mes = int(data_limite_atual[5:7])
         else:
-            agora = datetime.now()
+            agora = _agora_brasilia()
             ano, mes = agora.year, agora.month
         total = mes + int(meses)
         novo_ano = ano + (total - 1) // 12
@@ -1174,7 +1216,7 @@ def _data_limite_iso_somar_meses(data_limite_atual, meses):
         if data_limite_atual and len(data_limite_atual) >= 7:
             ano = int(data_limite_atual[:4]); mes = int(data_limite_atual[5:7])
         else:
-            agora = datetime.now(); ano, mes = agora.year, agora.month
+            agora = _agora_brasilia(); ano, mes = agora.year, agora.month
         total = mes + int(meses)
         novo_ano = ano + (total - 1) // 12
         novo_mes = ((total - 1) % 12) + 1
@@ -1307,7 +1349,7 @@ def api_pix_qr():
 
         nome_limpo = _strip_acentos(nome_cli).upper().strip()[:13]
         nova_dl    = _data_limite_somar_meses(data_limite_atual, meses)
-        agora_str  = datetime.now().strftime("%d/%m/%Y %H:%M")
+        agora_str  = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
         valor_brl  = f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
         # Descricao rica que vai aparecer no app do banco do pagador e no painel do Asaas.
@@ -1509,7 +1551,7 @@ def webhook_asaas():
                                     f"E{empresas} F{funcionarios} M{meses} "
                                     f"nova_data_limite={nova_dl}")[:200],
                 "ano_mes":         None,
-                "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+                "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             }).execute()
         except Exception as ex_log:
             print(f"webhook_asaas: falha ao gravar marca em tab_log: {ex_log}")
@@ -3257,7 +3299,7 @@ def rel_ficha_financeira():
 
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
-    ano_atual  = datetime.now().year
+    ano_atual  = _agora_brasilia().year
     MESES      = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
 
     def ff_fmt(centavos):
@@ -3493,7 +3535,7 @@ def rel_ficha_financeira_pdf():
 
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
-    ano_atual  = datetime.now().year
+    ano_atual  = _agora_brasilia().year
     MESES_ABR  = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"]
 
     def ff_fmt(centavos):
@@ -3792,7 +3834,7 @@ def rel_ficha_financeira_pdf():
     from reportlab.lib.enums import TA_CENTER, TA_RIGHT
     W_hdr = page[0] - 3 * cm
     col_hdr = [W_hdr * 0.45, W_hdr * 0.10, W_hdr * 0.45]
-    agora_hdr = datetime.now().strftime("%d/%m/%Y %H:%M")
+    agora_hdr = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
     st_hL = ParagraphStyle("hL", fontName="Helvetica",      fontSize=8, leading=10)
     st_hR = ParagraphStyle("hR", fontName="Helvetica",      fontSize=8, leading=10, alignment=TA_RIGHT)
     st_hT = ParagraphStyle("hT", fontName="Helvetica-Bold", fontSize=9, leading=11, alignment=TA_CENTER)
@@ -3829,10 +3871,10 @@ def gerador_relatorio():
 
     id_empresa  = _get_id_empresa()
     id_cliente  = session.get("id_cliente")
-    ano_atual   = datetime.now().year
+    ano_atual   = _agora_brasilia().year
     _anomes     = str(session.get("anomes_atual") or "")
     _ano_folha  = int(_anomes[:4]) if len(_anomes) >= 4 else ano_atual
-    _mes_folha  = int(_anomes[4:6]) if len(_anomes) >= 6 else datetime.now().month
+    _mes_folha  = int(_anomes[4:6]) if len(_anomes) >= 6 else _agora_brasilia().month
 
     CAD_CAMPOS = [
         # (key, label, db_col, tipo)  — tipo: txt | data | val
@@ -4296,7 +4338,7 @@ def gerador_relatorio_pdf():
 
     mat_raw       = request.args.get("mat",           "").strip()
     sit           = request.args.get("sit",           "A")
-    ano           = int(request.args.get("ano", datetime.now().year) or datetime.now().year)
+    ano           = int(request.args.get("ano", _agora_brasilia().year) or _agora_brasilia().year)
     mes_ini       = int(request.args.get("mes_ini", 1)  or 1)
     mes_fim       = int(request.args.get("mes_fim", 12) or 12)
     anomes_ini    = int(f"{ano}{mes_ini:02d}")
@@ -4691,7 +4733,7 @@ def api_gerador_verbas_usadas():
         return jsonify({"ok": False})
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
-    ano     = int(request.args.get("ano",     datetime.now().year)  or datetime.now().year)
+    ano     = int(request.args.get("ano",     _agora_brasilia().year)  or _agora_brasilia().year)
     mes_ini = int(request.args.get("mes_ini", 1)  or 1)
     mes_fim = int(request.args.get("mes_fim", 12) or 12)
     todas   = request.args.get("todas", "0") == "1"
@@ -5492,7 +5534,7 @@ def _mes_atual_intervalo():
     if len(anomes) == 6 and anomes.isdigit():
         y, m = int(anomes[:4]), int(anomes[4:6])
     else:
-        now = datetime.now()
+        now = _agora_brasilia()
         y, m = now.year, now.month
     last = calendar.monthrange(y, m)[1]
     return f"{y:04d}-{m:02d}-01", f"{y:04d}-{m:02d}-{last:02d}"
@@ -6672,7 +6714,7 @@ def api_calc_rescisao_calcular():
         multa_fgts = round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100)
         resultados.append({
             "matricula": mat, "mat_fmt": f"{mat:06d}", "nome": nome,
-            "calc_dhg": datetime.now().strftime("%d/%m/%Y %H:%M"),
+            "calc_dhg": _agora_brasilia().strftime("%d/%m/%Y %H:%M"),
             "resc_data_fmt": dt_resc.strftime("%d/%m/%Y"),
             "dt_proj_fmt": dt_proj.strftime("%d/%m/%Y"),
             "motivo": motivo, "aviso_ind": aviso_ind, "dias_aviso": dias_aviso,
@@ -6720,7 +6762,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
     dest = _memoria_destino(anomes, id_empresa)
     if not dest.get("base"):
         return
-    ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+    ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
     st_etapa   = ParagraphStyle("mr_eta", fontName="Helvetica-Bold", fontSize=8,
                                 spaceBefore=10, spaceAfter=3)
@@ -6755,7 +6797,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
         try:
             buf = io.BytesIO()
             titulo_mem = f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — RESCISAO — {mat:06d} — {nome}"
-            _agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _agora = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
             _emp = f"{cnpj_fmt} — {empresa_nm}"
 
             def _hdr(canvas, doc, _t=titulo_mem, _a=_agora, _e=_emp):
@@ -7310,7 +7352,7 @@ def normalizar_telefone(t):
     return t
 
 def codigo_expirado(datahora_geracao):
-    return datetime.now() > datahora_geracao + timedelta(minutes=5)
+    return _agora_brasilia() > datahora_geracao + timedelta(minutes=5)
 
 def cliente_ja_cadastrado(cpf):
     try:
@@ -7345,7 +7387,7 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
     payload = {
         "cpf": cpf, "nome": nome, "celular": celular, "email": email,
         "senha": senha, "qtd_empresas": 1, "qtd_funcionarios": 10,
-        "data_limite": datetime.now().strftime("%Y-%m"),
+        "data_limite": _agora_brasilia().strftime("%Y-%m"),
         "tentativas_login": 0, "bloqueado_ate": None
     }
     resp = supabase.table("tab_cliente").upsert(payload).execute()
@@ -7572,7 +7614,7 @@ def lead_petshop():
         return jsonify({"ok": False, "msg": "É preciso autorizar o contato para continuar."}), 400
 
     tel   = normalizar_telefone(whatsapp)
-    agora = datetime.now().isoformat(timespec="seconds")
+    agora = _agora_brasilia().isoformat(timespec="seconds")
 
     lead = {
         "nicho": "petshop",
@@ -7660,7 +7702,7 @@ def validar():
 
     codigos_gerados[documento_limpo] = {
         "codigo": codigo, "nome": nome, "celular": celular,
-        "email": email, "gerado_em": datetime.now(), "canal": canal
+        "email": email, "gerado_em": _agora_brasilia(), "canal": canal
     }
 
     print("Código gerado para", documento_limpo, "=", codigo)
@@ -8225,7 +8267,7 @@ def cad_feriado():
         .order("dat_feriado")
         .execute()
     )
-    hoje_str = datetime.now().strftime("%Y%m%d")
+    hoje_str = _agora_brasilia().strftime("%Y%m%d")
     feriados = []
     for row in (r.data or []):
         dat = row.get("dat_feriado", "")
@@ -9250,7 +9292,7 @@ def gravar_log(menu, observacao, ano_mes=None, matricula=None):
             "menu":            menu[:12],
             "observacao":      observacao,
             "ano_mes":         ano_mes or session.get("anomes_atual"),
-            "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
         }
         if matricula is not None:
             rec["matricula"] = matricula
@@ -10543,7 +10585,7 @@ def api_funcionario_alterar():
             _categ_alt = 0
         _eh_tsve = _categ_alt >= 700   # TSVE / não-empregado (CI, sócio, diretor, estagiário…)
         if mat and not _eh_tsve and (precisa_2205 or precisa_2206):
-            _agora   = datetime.now()
+            _agora   = _agora_brasilia()
             _anomes  = str(session.get("anomes_atual") or "")
             _id_cli  = session.get("id_cliente")
             _ts      = _agora.strftime("%Y%m%d%H%M%S")
@@ -10840,7 +10882,7 @@ def api_funcionario_incluir():
     # Registra remessa eSocial: empregado → S-2200; não-empregado
     # (TSVE 721/722/723/901) → S-2300 (evtTSVInicio).
     try:
-        agora       = datetime.now()
+        agora       = _agora_brasilia()
         anomes_tp   = str(session.get("anomes_tipo")   or "")
         anomes_am   = str(session.get("anomes_atual")  or "")
         folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
@@ -13320,7 +13362,7 @@ def api_ferias_gravar():
 
             # Remessa eSocial S-2230 — só grava se ainda não existe para esse mês
             try:
-                agora_es      = datetime.now()
+                agora_es      = _agora_brasilia()
                 anomes_tp     = str(session.get("anomes_tipo") or "")
                 folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
                 ano_mes_int   = int(anomes_am) if anomes_am else None
@@ -13474,7 +13516,7 @@ def api_afastamento_gravar():
             # Remessa eSocial S-2230
             es_ok = False
             try:
-                agora_es      = datetime.now()
+                agora_es      = _agora_brasilia()
                 anomes_tp     = str(session.get("anomes_tipo") or "")
                 folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
                 base_es = {
@@ -13750,7 +13792,7 @@ def api_exame_med_gravar():
 
     # Remessa eSocial S-2220
     try:
-        agora_es = datetime.now()
+        agora_es = _agora_brasilia()
         supabase.table("tab_esocial").insert({
             "id_cliente": id_cliente,
             "id_empresa": id_empresa,
@@ -13937,7 +13979,7 @@ def api_exame_med_alterar():
             "menu":            "EXAME-ALT",
             "observacao":      f"id:{id_ev} proc={cod_procedimento} data={dt_exame} med={nome_medico[:30]} CRM={crm}/{uf_crm}"[:200],
             "ano_mes":         int(anomes_log) if anomes_log else None,
-            "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             "matricula":       mat_int,
         }).execute()
         if not r_log.data:
@@ -14016,7 +14058,7 @@ def api_exame_med_excluir():
             "menu":            "EXAME-EXCL",
             "observacao":      f"id:{id_ev} dt:{_fmt_dt(dt)} proc:{proc}"[:200],
             "ano_mes":         int(anomes_log) if anomes_log else None,
-            "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             "matricula":       mat_int,
         }).execute()
         if not r_log.data:
@@ -14152,7 +14194,7 @@ def api_esocial_s2220_xml():
 
     xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
     mat     = es.get("matricula", "")
-    fname   = f"S2220_{mat}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname   = f"S2220_{mat}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
     return Response(xml_str, mimetype="application/xml; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
@@ -14220,7 +14262,7 @@ def api_esocial_s2220_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2220_{es.get('matricula')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -14271,7 +14313,7 @@ def api_esocial_s2220_enviar():
     nr_rec          = analise["nr_rec"]
     protocolo_envio = nr_rec
     if not nr_rec:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
@@ -14279,7 +14321,7 @@ def api_esocial_s2220_enviar():
         _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
     }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
@@ -15877,7 +15919,7 @@ def api_acidente_gravar():
         except (ValueError, TypeError):
             del row["hrstrab"]
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     row["data_cad"]    = agora.strftime("%Y%m%d")
     row["hora_cad"]    = agora.strftime("%H%M")
     row["dt_gravacao"] = agora.strftime("%Y%m%d %H%M")
@@ -16158,7 +16200,7 @@ def api_acidente_alterar():
         except (ValueError, TypeError):
             row["hrstrab"] = None
 
-    row["dt_gravacao"] = datetime.now().strftime("%Y%m%d %H%M")
+    row["dt_gravacao"] = _agora_brasilia().strftime("%Y%m%d %H%M")
 
     try:
         supabase.table("tab_acidente").update(row).eq("id", id_ac).execute()
@@ -17216,7 +17258,7 @@ def rel_aumento():
 
                 # Gera pendência S-2206 (alteração salarial)
                 try:
-                    _agora_es = datetime.now()
+                    _agora_es = _agora_brasilia()
                     _anomes   = str(session.get("anomes_atual") or "")
                     _ts_es    = _agora_es.strftime("%Y%m%d%H%M%S")
                     supabase.table("tab_esocial").insert({
@@ -17960,7 +18002,7 @@ def cad_fap():
     except Exception:
         pass
 
-    ano_atual = str(datetime.now().year)
+    ano_atual = str(_agora_brasilia().year)
     return render_template(
         "F10_Cad_FAP.html",
         versao=ler_versao(),
@@ -18457,7 +18499,7 @@ def api_mov_fixo_gravar():
     if mes_rescisao not in ("T","P"):             return jsonify({"ok": False, "msg": "Valor inválido para 'Mês de Rescisão'."})
 
     from datetime import datetime
-    agora = datetime.now()
+    agora = _agora_brasilia()
 
     def _int(v): return int(v) if v else None
     def _str(v): return str(v).strip() or None if v else None
@@ -18586,7 +18628,7 @@ def api_mov_fixo_alterar():
         "se_afastado":         se_afastado,
         "mes_admissao":        mes_admissao,
         "mes_rescisao":        mes_rescisao,
-        "dt_gravacao":         datetime.now().strftime("%Y%m%d %H%M"),
+        "dt_gravacao":         _agora_brasilia().strftime("%Y%m%d %H%M"),
     }
 
     try:
@@ -20423,7 +20465,7 @@ def api_esocial_s1000_gravar():
         "tpAmb": tpAmb,
     }, ensure_ascii=False)
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     try:
         r = supabase.table("tab_esocial").insert({
             "id_cliente":      id_cliente,
@@ -20506,7 +20548,7 @@ def api_esocial_s1000_xml():
     xml_str = _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, ctt_nome, ctt_cpf)
 
     try:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
             "hora_grava": agora.strftime("%H%M"),
@@ -20514,7 +20556,7 @@ def api_esocial_s1000_xml():
     except Exception:
         pass
 
-    fname = f"S1000_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S1000_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
     return Response(
         xml_str,
         mimetype="application/xml; charset=utf-8",
@@ -20589,7 +20631,7 @@ def api_esocial_s1000_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 3. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1000_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -20640,7 +20682,7 @@ def api_esocial_s1000_enviar():
         detalhe = str(e)
         supabase.table("tab_esocial").update({
             "observacao_erro": f"Erro no envio: {detalhe[:200]}",
-            "data_grava": datetime.now().strftime("%Y%m%d"),
+            "data_grava": _agora_brasilia().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
         _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}")
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
@@ -20650,7 +20692,7 @@ def api_esocial_s1000_enviar():
     # ── 8. Analisar resposta do envio ─────────────────────
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "observacao_erro": analise["erro"][:295],
@@ -20814,7 +20856,7 @@ def api_esocial_s1000_excluir():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 3. Gerar XML S-3000 cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S3000_S1000_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -20886,7 +20928,7 @@ def api_esocial_s1000_excluir():
     if recibo_excl and not obs_err:
         supabase.table("tab_esocial").update({
             "observacao_erro": "EXCLUIDO",
-            "data_grava":      datetime.now().strftime("%Y%m%d"),
+            "data_grava":      _agora_brasilia().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": True, "msg": f"S-1000 excluído com sucesso. Recibo S-3000: {recibo_excl}"})
 
@@ -21041,7 +21083,7 @@ def api_esocial_s1005_criar():
     except Exception:
         pass
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     try:
         res = supabase.table("tab_esocial").insert({
             "id_cliente": id_cliente, "id_empresa": id_empresa,
@@ -21111,7 +21153,7 @@ def api_esocial_s1005_enviar():
         return jsonify({"ok": False, "msg": "Empresa sem CNAE cadastrado — preencha o CNAE antes de enviar o S-1005."})
 
     # ── 3. Gerar XML cru e salvar ─────────────────────────
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1005_{am}_{_now2.strftime('%Y%m%d_%H%M%S')}")
     try:
@@ -21161,14 +21203,14 @@ def api_esocial_s1005_enviar():
     analise = _analisar_resposta_envio(resp_envio)
     nr_rec  = analise["nr_rec"]
     if not nr_rec:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
             "observacao_erro": analise["erro"][:295],
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]})
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
     }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
@@ -21561,7 +21603,7 @@ def api_esocial_s1010_gravar():
 
     ano_mes = ini_valid.replace("-", "")
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     ids_criados = []
     for v in verbas:
         try:
@@ -21674,7 +21716,7 @@ def api_esocial_s1010_xml():
     combined = "\n<!-- ======== PRÓXIMO EVENTO ======== -->\n".join(xmls)
 
     try:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
             "hora_grava": agora.strftime("%H%M"),
@@ -21682,7 +21724,7 @@ def api_esocial_s1010_xml():
     except Exception:
         pass
 
-    fname = f"S1010_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S1010_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
     return Response(
         combined,
         mimetype="application/xml; charset=utf-8",
@@ -21801,7 +21843,7 @@ def api_esocial_s1010_enviar():
     # ── 4. Gerar XML cru de cada rubrica e salvar ASAP ───
     # (salvar antes do cert/assinatura/envio garante cópia pra debug
     #  mesmo se algo falhar nas etapas seguintes)
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1010_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -21879,7 +21921,7 @@ def api_esocial_s1010_enviar():
         _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}", e)
         supabase.table("tab_esocial").update({
             "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
-            "data_grava": datetime.now().strftime("%Y%m%d"),
+            "data_grava": _agora_brasilia().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).execute()
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
 
@@ -21888,7 +21930,7 @@ def api_esocial_s1010_enviar():
     # ── 8. Analisar resposta ──────────────────────────────
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "observacao_erro": _obs_upd(analise["erro"]),
@@ -22280,7 +22322,7 @@ def api_esocial_s1020_gravar():
         "codTercs":   cod_tercs,
     }, ensure_ascii=False)
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     try:
         r = supabase.table("tab_esocial").insert({
             "id_empresa":      id_empresa,
@@ -22355,7 +22397,7 @@ def api_esocial_s1020_xml():
     xml_str = _gerar_xml_s1020_evento(params, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1)
 
     try:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
             "hora_grava": agora.strftime("%H%M"),
@@ -22363,7 +22405,7 @@ def api_esocial_s1020_xml():
     except Exception:
         pass
 
-    fname = f"S1020_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S1020_{ini_valid.replace('-','')}_{tp_op[:3].upper()}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
     return Response(
         xml_str,
         mimetype="application/xml; charset=utf-8",
@@ -22496,7 +22538,7 @@ def _s1020_enviar_impl():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 3. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1020_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -22547,7 +22589,7 @@ def _s1020_enviar_impl():
         detalhe = str(e)
         supabase.table("tab_esocial").update({
             "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
-            "data_grava": datetime.now().strftime("%Y%m%d"),
+            "data_grava": _agora_brasilia().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).execute()
         _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}")
         return jsonify({"ok": False, "msg": f"Erro no envio: {detalhe}"})
@@ -22557,7 +22599,7 @@ def _s1020_enviar_impl():
     # ── 7. Analisar resposta ──────────────────────────────
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "observacao_erro": _obs_upd(analise["erro"]),
@@ -22837,7 +22879,7 @@ def api_esocial_s2200_xml():
     xml_str = _gerar_xml_s2200(func, empresa, tpAmb)
 
     try:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
             "hora_grava": agora.strftime("%H%M"),
@@ -22846,7 +22888,7 @@ def api_esocial_s2200_xml():
         pass
 
     mat_fmt = str(matricula).zfill(6)
-    fname = f"S2200_{mat_fmt}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S2200_{mat_fmt}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
 
     return Response(
         xml_str,
@@ -22920,7 +22962,7 @@ def api_esocial_s2200_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 4. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -22985,7 +23027,7 @@ def api_esocial_s2200_enviar():
     protocolo_envio = nr_rec   # protocoloEnvio (≠ nrRecibo)
     if not nr_rec:
         # Salva o erro no banco para referência futura
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
@@ -22996,7 +23038,7 @@ def api_esocial_s2200_enviar():
                         "detalhe": analise["erro"]})
 
     # Grava data_grava (recibo só após consulta — protocoloEnvio não é recibo)
-    agora = datetime.now()
+    agora = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
@@ -23225,7 +23267,7 @@ def api_esocial_s2200_reconsutar():
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
 
     # Prefixo para salvar XML de re-consulta
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -23373,7 +23415,7 @@ def api_esocial_s2300_xml():
     xml_str = _gerar_xml_s2300(func, empresa, tpAmb)
 
     try:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
             "hora_grava": agora.strftime("%H%M"),
@@ -23382,7 +23424,7 @@ def api_esocial_s2300_xml():
         pass
 
     mat_fmt = str(matricula).zfill(6)
-    fname = f"S2300_{mat_fmt}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S2300_{mat_fmt}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
 
     return Response(
         xml_str,
@@ -23456,7 +23498,7 @@ def api_esocial_s2300_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 4. Gerar XML cru e salvar ASAP ────────────────────
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2300_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -23516,7 +23558,7 @@ def api_esocial_s2300_enviar():
     nr_rec          = analise["nr_rec"]
     protocolo_envio = nr_rec
     if not nr_rec:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
@@ -23526,7 +23568,7 @@ def api_esocial_s2300_enviar():
                         "msg": "eSocial recusou o envio.",
                         "detalhe": analise["erro"]})
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
@@ -23672,7 +23714,7 @@ def api_esocial_s2300_reconsultar():
     tpAmb = str(data.get("tpAmb", "1"))
     _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
 
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2300_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -24115,7 +24157,7 @@ def api_esocial_s2205_enviar():
         reg_es   = r_es.data[0]
         matricula = reg_es.get("matricula")
         dc = str(reg_es.get("data_cad") or "")
-        dt_alteracao = f"{dc[:4]}-{dc[4:6]}-{dc[6:8]}" if len(dc) == 8 else datetime.now().strftime("%Y-%m-%d")
+        dt_alteracao = f"{dc[:4]}-{dc[4:6]}-{dc[6:8]}" if len(dc) == 8 else _agora_brasilia().strftime("%Y-%m-%d")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
 
@@ -24139,10 +24181,10 @@ def api_esocial_s2205_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
 
     # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2205_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -24205,7 +24247,7 @@ def api_esocial_s2205_enviar():
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "data_grava":      agora.strftime("%Y%m%d"),
@@ -24938,7 +24980,7 @@ def api_esocial_s2206_enviar():
         reg_es    = r_es.data[0]
         matricula = reg_es.get("matricula")
         dc = str(reg_es.get("data_cad") or "")
-        dt_alteracao = f"{dc[:4]}-{dc[4:6]}-{dc[6:8]}" if len(dc) == 8 else datetime.now().strftime("%Y-%m-%d")
+        dt_alteracao = f"{dc[:4]}-{dc[4:6]}-{dc[6:8]}" if len(dc) == 8 else _agora_brasilia().strftime("%Y-%m-%d")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
 
@@ -24962,10 +25004,10 @@ def api_esocial_s2206_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
 
     # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2206_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -25028,7 +25070,7 @@ def api_esocial_s2206_enviar():
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
@@ -25383,10 +25425,10 @@ def api_esocial_s2299_enviar():
     except Exception:
         pass
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
 
     # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2299_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -25452,7 +25494,7 @@ def api_esocial_s2299_enviar():
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
@@ -25593,7 +25635,7 @@ def api_esocial_s2399_enviar():
     except Exception:
         mov_items = []
 
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S2399_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -25637,7 +25679,7 @@ def api_esocial_s2399_enviar():
     soap_env = _soap_enviar(lote_xml)
     _xml_save(f"{_pref}_4_soap_envio.xml", soap_env)
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     try:
         resp_envio = _http_post_cert(url_envio, soap_env, pfx_bytes, senha_str, _SA_ENVIAR)
     except Exception as e:
@@ -25656,7 +25698,7 @@ def api_esocial_s2399_enviar():
     analise         = _analisar_resposta_envio(resp_envio)
     protocolo_envio = analise["nr_rec"]
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
             "data_grava": agora.strftime("%Y%m%d"),
@@ -26195,7 +26237,7 @@ def rel_esocial_fila_pdf():
     _rm       = 2*cm
     _ph       = page[1]          # altura da página (landscape)
     _pw       = page[0]
-    _agora    = datetime.now().strftime("%d/%m/%Y %H:%M")
+    _agora    = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
     _titulo_h = titulo
     _emp_h    = f"{cnpj_fmt} — {empresa_nm}"
 
@@ -26619,7 +26661,7 @@ def api_esocial_gerador_criar():
     # antigo {"rubricas":[...]} gerava "Parâmetros não encontrados. Recrie o
     # registro." porque não tinha o campo cod_rubr.
     if layout == "1010":
-        agora = datetime.now()
+        agora = _agora_brasilia()
         ano_mes_val = int(anomes_atual) if anomes_atual and len(anomes_atual) == 6 else None
         ini_valid   = f"{anomes_atual[:4]}-{anomes_atual[4:6]}" if len(anomes_atual) == 6 else ""
         try:
@@ -26674,7 +26716,7 @@ def api_esocial_gerador_criar():
             "msg":          f"S-1010: {len(ids_criados)} rubrica(s) criada(s) com sucesso.",
         })
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
     try:
         ano_mes_val = int(anomes_atual) if anomes_atual and len(anomes_atual) == 6 else None
         ini_valid = f"{anomes_atual[:4]}-{anomes_atual[4:6]}" if len(anomes_atual) == 6 else ""
@@ -27109,7 +27151,7 @@ def api_esocial_s1200_enviar():
                                              "Envie o S-1200 como evento original primeiro.")})
 
     # 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -27172,7 +27214,7 @@ def api_esocial_s1200_enviar():
     protocolo_envio = analise["nr_rec"]
 
     if not protocolo_envio:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
@@ -27184,7 +27226,7 @@ def api_esocial_s1200_enviar():
     # Grava AGUARDANDO com o protocolo ANTES de esperar (envio assíncrono, evita
     # 502 no Render). NÃO apaga o recibo aqui — em RETIFICAÇÃO o registro já tem o
     # recibo original e perdê-lo quebraria a referência (foi o que travou antes).
-    agora = datetime.now()
+    agora = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
@@ -27778,7 +27820,7 @@ def _s1210_enviar_impl():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # 6. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1210_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -27843,7 +27885,7 @@ def _s1210_enviar_impl():
     protocolo_envio = analise["nr_rec"]
 
     if not protocolo_envio:
-        agora = datetime.now()
+        agora = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
@@ -27856,7 +27898,7 @@ def _s1210_enviar_impl():
     # lote de forma ASSÍNCRONA; não bloquear 30s (estoura o worker do Render →
     # HTML 502). Uma consulta curta resolve o caso comum; senão fica AGUARDANDO
     # e o usuário clica em Re-consultar. Mesmo padrão do S-1010/S-1020.
-    agora = datetime.now()
+    agora = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora.strftime("%Y%m%d"),
         "hora_grava": agora.strftime("%H%M"),
@@ -28236,7 +28278,7 @@ def api_esocial_s1299_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # Reutiliza registro existente ou cria novo
-    agora = datetime.now()
+    agora = _agora_brasilia()
     sem_mov_flag = 1 if ind_exist_info == "N" else 0
     folha_tp     = "1" if ind_apuracao == "2" else "N"
     id_cliente   = session.get("id_cliente")
@@ -28329,7 +28371,7 @@ def api_esocial_s1299_enviar():
                         "'S-1210 Pagamentos'.")})
 
     # Gerar XML cru e salvar ASAP (antes de cert/assinatura)
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1299_{ano_mes}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -28393,7 +28435,7 @@ def api_esocial_s1299_enviar():
     protocolo_envio = analise["nr_rec"]
 
     if not protocolo_envio:
-        agora2 = datetime.now()
+        agora2 = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava":      agora2.strftime("%Y%m%d"),
             "hora_grava":      agora2.strftime("%H%M"),
@@ -28403,7 +28445,7 @@ def api_esocial_s1299_enviar():
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.",
                         "detalhe": analise["erro"], "id_esocial": id_reg})
 
-    agora2 = datetime.now()
+    agora2 = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora2.strftime("%Y%m%d"),
         "hora_grava": agora2.strftime("%H%M"),
@@ -29523,7 +29565,7 @@ def api_esocial_verificacao_pdf():
 
     titulo_h = f"Verificação Folha10 × eSocial — {periodo_fmt}"
     emp_h    = f"{cnpj_fmt} — {empresa_nm}"
-    agora    = datetime.now().strftime("%d/%m/%Y %H:%M")
+    agora    = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
     _pw, _ph = page
 
     def _header(canvas, doc):
@@ -29665,7 +29707,7 @@ def api_esocial_s1298_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # (cert validado depois do save do XML cru)
-    agora      = datetime.now()
+    agora      = _agora_brasilia()
     folha_tp   = "1" if ind_apuracao == "2" else "N"
     id_cliente = session.get("id_cliente")
     try:
@@ -29705,7 +29747,7 @@ def api_esocial_s1298_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao criar/atualizar registro: {e}"})
 
     # Gerar XML cru e salvar ASAP (antes de cert/assinatura)
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1298_{ano_mes}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -29766,7 +29808,7 @@ def api_esocial_s1298_enviar():
     protocolo_envio = analise["nr_rec"]
 
     if not protocolo_envio:
-        agora2 = datetime.now()
+        agora2 = _agora_brasilia()
         supabase.table("tab_esocial").update({
             "data_grava":      agora2.strftime("%Y%m%d"),
             "hora_grava":      agora2.strftime("%H%M"),
@@ -29776,7 +29818,7 @@ def api_esocial_s1298_enviar():
         return jsonify({"ok": False, "msg": "eSocial recusou o envio.",
                         "detalhe": analise["erro"], "id_esocial": id_reg})
 
-    agora2 = datetime.now()
+    agora2 = _agora_brasilia()
     supabase.table("tab_esocial").update({
         "data_grava": agora2.strftime("%Y%m%d"),
         "hora_grava": agora2.strftime("%H%M"),
@@ -30153,7 +30195,7 @@ def api_esocial_s3000_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
     # ── 4. Gerar XML S-3000 cru e salvar ASAP (antes de cert/assinatura) ──
-    _now2 = datetime.now()
+    _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S3000_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
@@ -30262,7 +30304,7 @@ def api_esocial_s3000_enviar():
     aguardando = not recibo_final and not obs_erro and cd_resp in ("101", "202")
 
     # ── 10. Atualizar banco ────────────────────────────────
-    agora         = datetime.now()
+    agora         = _agora_brasilia()
     anomes_tp     = str(session.get("anomes_tipo") or "")
     folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
 
@@ -30575,7 +30617,7 @@ def api_procurador_salvar():
         "cert_validade":  info.get("validade") or "",
         "ativo":          True,
     }
-    agora = datetime.now()
+    agora = _agora_brasilia()
     reg["data_grava"] = agora.strftime("%Y%m%d")
     reg["hora_grava"] = agora.strftime("%H%M")
 
@@ -31484,7 +31526,7 @@ def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm
     def xe(s):
         return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-    agora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    agora = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
     st_L  = ParagraphStyle("hc_l", fontName="Helvetica",      fontSize=8, leading=10)
     st_C  = ParagraphStyle("hc_c", fontName="Helvetica-Bold", fontSize=8, leading=10, alignment=TA_CENTER)
     st_R  = ParagraphStyle("hc_r", fontName="Helvetica",      fontSize=7, leading=10, alignment=TA_RIGHT)
@@ -31552,7 +31594,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     if not dest.get("base"):
         return
 
-    ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+    ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
     st_etapa   = ParagraphStyle("me_eta",  fontName="Helvetica", fontSize=8,
                                 spaceBefore=10, spaceAfter=3, leftIndent=0)
@@ -33372,7 +33414,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 print(f"[tab_esocial S-1200/1210 SKIP] mat={matr} sem verbas/totais no mês {anomes}")
             else:
                 try:
-                    agora_es = datetime.now()
+                    agora_es = _agora_brasilia()
                     supabase.table("tab_esocial").insert([
                         {
                             "id_cliente": id_cliente,
@@ -33648,13 +33690,13 @@ def calcular_folha_stream():
                     "observacao":      obs_log,
                     "ano_mes":         int(anomes),
                     "matricula":       _mat_indiv if eh_individual else None,
-                    "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+                    "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
                 }).execute()
             except Exception as e_log:
                 q.put(json.dumps({"tipo": "aviso", "msg": f"tab_log erro: {e_log}"}, ensure_ascii=False))
 
             _n_calc  = 0
-            _dt_calc = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _dt_calc = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
             # No modo individual, NAO muda a situacao da folha nem incrementa
             # qtd_calculos — a folha continua como estava (A/X/C).
             if not eh_individual:
@@ -33670,7 +33712,7 @@ def calcular_folha_stream():
                     _n_calc    = _qtd_atual + 1
                     supabase.table("tab_anomes").update({
                         "situacao":          "C",
-                        "data_hora_calculo": datetime.now().strftime("%Y%m%d %H%M%S"),
+                        "data_hora_calculo": _agora_brasilia().strftime("%Y%m%d %H%M%S"),
                         "qtd_calculos":      _n_calc,
                     }).eq("id_cliente", id_cliente) \
                       .eq("id_empresa", id_empresa) \
@@ -34025,7 +34067,7 @@ def _gerar_nverbas_pdf(verbas_sel, rows, totais, empresa_nm, folha_fmt, tipo_lab
 
     buf   = BytesIO()
     page  = landscape(A4)
-    agora = datetime.now()
+    agora = _agora_brasilia()
     doc   = SimpleDocTemplate(buf, pagesize=page,
                               leftMargin=1.5*cm, rightMargin=1.5*cm,
                               topMargin=2.0*cm, bottomMargin=1.5*cm)
@@ -34942,7 +34984,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     buf            = BytesIO()
     folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
-    agora          = datetime.now()
+    agora          = _agora_brasilia()
     ano, mes       = anomes[:4], anomes[4:6]
     meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                       "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
@@ -35552,7 +35594,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     buf            = BytesIO()
     W_page, H_page = A4
-    agora          = datetime.now()
+    agora          = _agora_brasilia()
     ano, mes       = anomes[:4], anomes[4:6]
     meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                       "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
@@ -36199,7 +36241,7 @@ def contracheque_pdf():
     salvar_ind = request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
     if salvar_ind:
         try:
-            ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+            ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
             cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
             anomes_pasta = f"{ano}-{mes}"
             pasta        = os.path.join("C:\\Folha10-Simples_Contracheque",
@@ -36286,7 +36328,7 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
     # Grava automaticamente no disco
     try:
         import logging as _log
-        ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+        ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
         anomes_pasta = f"{ano}-{mes}"
         pasta_sv     = os.path.join("C:\\Folha10-Simples_Contracheque",
                                     ano, anomes_pasta, f"{int(id_empresa):06d}")
@@ -36325,7 +36367,7 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     buf            = BytesIO()
     W_page, H_page = A4
-    agora          = datetime.now()
+    agora          = _agora_brasilia()
     ano, mes       = anomes[:4], anomes[4:6]
     meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                       "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
@@ -36802,7 +36844,7 @@ def recibo_adiantamento_pdf():
     salvar_ind = request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
     if salvar_ind:
         try:
-            ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+            ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
             cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
             anomes_pasta = f"{ano}-{mes}"
             pasta        = os.path.join("C:\\Folha10-Simples_ReciboAdiantamento",
@@ -36891,7 +36933,7 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
     # Grava automaticamente no disco
     try:
         import logging as _log
-        ts           = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+        ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
         anomes_pasta = f"{ano}-{mes}"
         pasta_sv     = os.path.join("C:\\Folha10-Simples_ReciboAdiantamento",
                                     ano, anomes_pasta, f"{int(id_empresa):06d}")
@@ -37168,7 +37210,7 @@ def calcular_folha_etapa1_pdf():
 
     salvos = []
     erros  = []
-    agora        = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    agora        = _agora_brasilia().strftime("%d/%m/%Y %H:%M:%S")
     id_cliente   = session.get("id_cliente")
     afastamentos = _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=id_cliente)
     ferias       = _calc_etapa2_ferias(id_empresa, anomes)
@@ -37964,7 +38006,7 @@ def resumo_folha_pdf():
 
     # ── ReportLab ──
     buf  = io.BytesIO()
-    agora = datetime.now()
+    agora = _agora_brasilia()
 
     azul   = colors.HexColor("#0b1f3a")
     cinza  = colors.HexColor("#64748b")
@@ -38444,7 +38486,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
     if not dest.get("base"):
         return
 
-    ts = datetime.now().strftime("%Y%m%d_as_%H%M%S")
+    ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
     st_etapa   = ParagraphStyle("mf_eta",  fontName="Helvetica", fontSize=8,
                                 spaceBefore=10, spaceAfter=3, leftIndent=0)
@@ -38502,7 +38544,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
 
             buf = io.BytesIO()
             titulo_mem  = f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — FERIAS — {mat:06d} — {nome}"
-            _agora_hf   = datetime.now().strftime("%d/%m/%Y %H:%M")
+            _agora_hf   = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
             _emp_hf     = f"{cnpj_fmt} — {empresa_nm}"
 
             def _draw_hdr_ferias(canvas, doc,
@@ -39392,7 +39434,7 @@ def api_calc_ferias_calcular():
                    f"INSS={_fmt_brl(inss_val)} IRRF={_fmt_brl(irrf_val)} Liq={_fmt_brl(liquido)}",
                    matricula=mat)
 
-        calc_dhg_now = datetime.now().strftime("%d/%m/%Y %H:%M")
+        calc_dhg_now = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
         resultados.append({
             "matricula":      mat,
             "mat_fmt":        str(mat).zfill(6),
@@ -40029,7 +40071,7 @@ def api_recibo_ferias_pdf():
         story.append(Spacer(1, 20))
 
         # ── ASSINATURAS ───────────────────────────────────────────
-        agora_fmt = datetime.now().strftime("%d/%m/%Y")
+        agora_fmt = _agora_brasilia().strftime("%d/%m/%Y")
         ass_tbl = Table([
             ["_" * 38, "", "_" * 38],
             [Paragraph(nome, st_ass), "",
@@ -40102,6 +40144,20 @@ def _fmt_datahora(v):
         return s
 
 
+def _esta_online(v):
+    """True se datahora_ultima_atividade e recente (PRESENCA_ONLINE_S).
+    O carimbo vem do _marcar_presenca(), sempre em hora de Brasilia."""
+    if not v:
+        return False
+    try:
+        ult = datetime.fromisoformat(str(v).replace("Z", "")[:26])
+        if ult.tzinfo is not None:
+            ult = ult.replace(tzinfo=None)
+        return (_agora_brasilia() - ult).total_seconds() <= PRESENCA_ONLINE_S
+    except Exception:
+        return False
+
+
 def _fmt_data_limite(v):
     """data_limite ('YYYY-MM') -> 'mm/aaaa'."""
     if not v:
@@ -40121,12 +40177,21 @@ def admin_clientes():
     if str(session.get("cpf") or "") != CPF_ADMIN_F10:
         return redirect("/menu")
     try:
-        clientes = (supabase.table("tab_cliente")
-                    .select("id_cliente, nome, cpf, email, data_limite, "
-                            "datahora_cadastro, datahora_ultimo_login, "
-                            "qtd_empresas, qtd_funcionarios")
-                    .order("nome")
-                    .execute().data or [])
+        _cols = ("id_cliente, nome, cpf, email, data_limite, "
+                 "datahora_cadastro, datahora_ultimo_login, "
+                 "qtd_empresas, qtd_funcionarios")
+        try:
+            clientes = (supabase.table("tab_cliente")
+                        .select(_cols + ", datahora_ultima_atividade")
+                        .order("nome")
+                        .execute().data or [])
+        except Exception:
+            # Coluna datahora_ultima_atividade ainda nao criada no banco:
+            # a lista continua funcionando, so sem a bolinha de online.
+            clientes = (supabase.table("tab_cliente")
+                        .select(_cols)
+                        .order("nome")
+                        .execute().data or [])
         # Empresas de todos os clientes -> conta atual + mapa empresa->cliente
         empresas_all = (supabase.table("tab_empresa")
                         .select("id_empresa, id_cliente")
@@ -40143,7 +40208,7 @@ def admin_clientes():
             cli = emp2cli.get(cad["id_empresa"])
             if cli is not None:
                 func_count[cli] += 1
-        mes_atual = datetime.now().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mês atual
+        mes_atual = _agora_brasilia().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mês atual
         for c in clientes:
             cid = c["id_cliente"]
             c["qtd_empresas_real"]     = emp_count.get(cid, 0)
@@ -40151,6 +40216,10 @@ def admin_clientes():
             c["data_cadastro_fmt"]     = _fmt_data_cadastro(c.get("datahora_cadastro"))
             c["ultimo_login_fmt"]      = _fmt_datahora(c.get("datahora_ultimo_login"))
             c["data_limite_fmt"]       = _fmt_data_limite(c.get("data_limite"))
+            # O proprio admin nunca conta como "online": ele esta sempre na
+            # tela, e acender a si mesmo so atrapalha a leitura da lista.
+            c["online"] = (str(c.get("cpf") or "") != CPF_ADMIN_F10
+                           and _esta_online(c.get("datahora_ultima_atividade")))
             _dl = (c.get("data_limite") or "").strip()
             c["limite_vencido"]        = bool(_dl) and _dl < mes_atual
     except Exception:
@@ -40161,6 +40230,29 @@ def admin_clientes():
         nome=session.get("nome", ""),
         clientes=clientes,
     )
+
+
+@app.route("/api/admin_online")
+def api_admin_online():
+    """IDs dos clientes que estao usando o sistema agora. A Lista de
+    Clientes chama de tempos em tempos para acender/apagar a bolinha
+    verde sem recarregar a tela."""
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        return jsonify({"ok": False}), 403
+    try:
+        limite = (_agora_brasilia() - timedelta(seconds=PRESENCA_ONLINE_S)).isoformat()
+        rows = (supabase.table("tab_cliente")
+                .select("id_cliente, cpf")
+                .gte("datahora_ultima_atividade", limite)
+                .execute().data or [])
+        # Fora o proprio admin: ele esta sempre com a tela aberta.
+        ids = [r["id_cliente"] for r in rows
+               if str(r.get("cpf") or "") != CPF_ADMIN_F10]
+        return jsonify({"ok": True, "ids": ids})
+    except Exception as e:
+        return jsonify({"ok": False, "erro": str(e)}), 500
 
 
 @app.route("/api/admin_clientes/<int:id_cliente>")
@@ -40640,7 +40732,7 @@ def trocar_cliente():
                         .execute().data or [])
         from collections import Counter
         emp_count = Counter(e["id_cliente"] for e in empresas_all)
-        mes_atual = datetime.now().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mes atual
+        mes_atual = _agora_brasilia().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mes atual
         for c in clientes:
             c["qtd_empresas_real"] = emp_count.get(c["id_cliente"], 0)
             c["cpf_fmt"] = (f"{c['cpf'][:3]}.{c['cpf'][3:6]}.{c['cpf'][6:9]}-{c['cpf'][9:]}"
@@ -40714,7 +40806,7 @@ def api_impersonar_cliente():
                 "menu":            "IMPERSONAR",
                 "observacao":      f"admin {session.get('cpf_admin_original','')} -> cliente {row['cpf']} ({row['nome']})"[:200],
                 "ano_mes":         None,
-                "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+                "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             }).execute()
         except Exception:
             pass
@@ -40763,7 +40855,7 @@ def parar_impersonar():
                 "menu":            "IMPERSONAR-FIM",
                 "observacao":      "admin encerrou impersonation",
                 "ano_mes":         None,
-                "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+                "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             }).execute()
         except Exception:
             pass
@@ -43738,7 +43830,7 @@ def _imp_movfix_f10(caminho, id_cliente):
     except Exception:
         pass
 
-    agora = datetime.now()
+    agora = _agora_brasilia()
 
     for arq in arqs_func:
         nome_arq = os.path.basename(arq)
@@ -45450,7 +45542,7 @@ def _nfse_gravar_log(caminho, **kw):
         str(kw["competencia"]), float(kw["valor"]), str(kw.get("chave", "")),
         str(kw.get("id_dps", "")), (int(kw["numero"]) if kw.get("numero") else None),
         str(kw["status"]), str(kw.get("mensagem", ""))[:1000],
-        str(kw.get("arq_xml", "")), datetime.now().strftime("%Y%m%d %H%M%S"))
+        str(kw.get("arq_xml", "")), _agora_brasilia().strftime("%Y%m%d %H%M%S"))
     conn.commit()
     conn.close()
 
@@ -45517,7 +45609,7 @@ def _cobranca_gravar(caminho_nf, cod, cli, ndps, valor):
     except Exception:
         pass
 
-    emissao = datetime.now().strftime("%Y%m%d")
+    emissao = _agora_brasilia().strftime("%Y%m%d")
     cnpj = _re_digits(cli.get('cnpj_cpf'))[:14]
     razao = str(cli.get('nome') or '').strip()[:60]
     valor_cent = int(round(float(valor) * 100))
@@ -45749,7 +45841,7 @@ def api_admin_nf_emitir():
             "id_cliente": None, "id_empresa": None,
             "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_EMISSAO",
             "observacao": f"NFS-e amb={ambiente} cod={cod} nDPS={ndps} chave={chave} cob[{cob_status}]"[:200],
-            "ano_mes": None, "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            "ano_mes": None, "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
         }).execute()
     except Exception:
         pass
@@ -45927,7 +46019,7 @@ def api_admin_nf_whatsapp():
             "id_cliente": None, "id_empresa": None,
             "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_WHATSAPP",
             "observacao": f"NFS-e nº {numero} cod={cod} tel={cel_d} ok={ok} {('' if ok else err)}"[:200],
-            "ano_mes": None, "data_hora_grava": datetime.now().strftime("%Y%m%d %H%M"),
+            "ano_mes": None, "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
         }).execute()
     except Exception:
         pass
@@ -46373,7 +46465,7 @@ def admin_backup_supabase():
 def api_admin_backup_executar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
     if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
-    carimbo = datetime.now().strftime('%Y%m%d')
+    carimbo = _agora_brasilia().strftime('%Y%m%d')
     job_id = uuid.uuid4().hex[:12]
     _backup_jobs[job_id] = {'pct': 0, 'etapa': '', 'done': False, 'resultado': None,
                             'total_steps': len(_BACKUP_TABELAS)}
@@ -46991,7 +47083,7 @@ def _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes):
         n_calc = int((r[0].get("qtd_calculos") or 0) if r else 0) + 1
         (supabase.table("tab_anomes").update({
             "situacao":          "C",
-            "data_hora_calculo": datetime.now().strftime("%Y%m%d %H%M%S"),
+            "data_hora_calculo": _agora_brasilia().strftime("%Y%m%d %H%M%S"),
             "qtd_calculos":      n_calc,
         }).eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
           .eq("ano_mes", anomes).eq("tipo", "A").execute())
@@ -47128,7 +47220,7 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     # rodapé
     e.append(Spacer(1, 1*cm))
     e.append(Paragraph(
-        f"Gerado em {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}  |  Usuario: {usuario}  |  "
+        f"Gerado em {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')}  |  Usuario: {usuario}  |  "
         f"Folha10 Simples {versao}", st_rod))
 
     doc.build(e)

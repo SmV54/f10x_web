@@ -186,6 +186,47 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     flex-shrink: 1; min-width: 225px;
 }
 .cliente-card.ativo .cliente-nome { color: var(--accent); }
+
+/* ── ONLINE AGORA — selo ao lado do nome (nao ocupa coluna do grid) ── */
+.ponto-online {
+    display: none; align-items: center; gap: 5px; flex-shrink: 0;
+    align-self: center; padding: 1px 8px 1px 6px; border-radius: 9px;
+    font-size: 9.5px; font-weight: 800; letter-spacing: 0.04em;
+    text-transform: uppercase; color: #14532d;
+    background: #dcfce7; border: 1px solid #4ade80;
+}
+.ponto-online::before {
+    content: ""; width: 7px; height: 7px; border-radius: 50%;
+    background: #16a34a; flex-shrink: 0;
+    animation: pulsa-online 1.6s ease-in-out infinite;
+}
+.cliente-card.online .ponto-online { display: inline-flex; }
+.cliente-card.online .cliente-nome { color: #15803d; }
+.cliente-card.online.ativo .cliente-nome { color: var(--accent); }
+/* O selo rouba largura da 1a coluna: o nome pode encolher mais nessa linha */
+.cliente-card.online .cliente-nome { min-width: 120px; }
+/* Fundo verde claro na linha de quem esta usando agora (perde para os
+   avisos de amarelo/vermelho, que sao mais graves) */
+.cliente-card.online:not(.ativo):not(.sem-empresa):not(.limite-vencido) {
+    background: #f0fdf4; border-color: #bbf7d0;
+}
+@keyframes pulsa-online {
+    0%, 100% { opacity: 1;   transform: scale(1); }
+    50%      { opacity: 0.45; transform: scale(0.85); }
+}
+.contador-online {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; color: #15803d;
+    background: #f0fdf4; border: 1px solid #86efac;
+    border-radius: 10px; padding: 1px 9px; margin-left: 8px;
+}
+.contador-online .bolinha {
+    width: 7px; height: 7px; border-radius: 50%; background: #22c55e;
+}
+.contador-online { cursor: pointer; user-select: none; }
+.contador-online:hover { filter: brightness(0.97); }
+.contador-online.zero { color: #94a3b8; background: #f8fafc; border-color: #e2e8f0; }
+.contador-online.zero .bolinha { background: #cbd5e1; }
 .cliente-cpf {
     font-family: var(--mono); font-size: 11px; color: #94a3b8;
     white-space: nowrap; flex-shrink: 0;
@@ -311,7 +352,7 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
     <!-- ── PAINEL ESQUERDO — CLIENTES ── -->
     <aside class="painel-clientes">
         <div class="painel-header">
-            <div class="painel-header-titulo">Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span></div>
+            <div class="painel-header-titulo">Clientes <span style="font-weight:400;color:#94a3b8;text-transform:none;letter-spacing:0;">({{ clientes | length }})</span><span class="contador-online zero" id="contadorOnline" title="Clientes usando o sistema agora — clique para ver só eles" onclick="alternarSoOnline()"><span class="bolinha"></span><span id="qtdOnline">0</span> online</span></div>
             <div class="busca-wrap">
                 <span class="busca-icone">🔍</span>
                 <input class="input-busca" id="inputBusca" type="text" placeholder="Buscar cliente…" oninput="filtrarClientes()" autocomplete="off">
@@ -349,6 +390,10 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                             <input type="checkbox" id="chkSemEmpresa" onchange="filtrarClientes()">
                             <span>Só com 0 Empresas</span>
                         </label>
+                        <label class="check-item">
+                            <input type="checkbox" id="chkOnline" onchange="filtrarClientes()">
+                            <span>Só quem está Online</span>
+                        </label>
                     </div>
                 </div>
             </div>
@@ -365,7 +410,7 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
 
         <div class="lista-clientes" id="listaClientes">
             {% for c in clientes %}
-            <div class="cliente-card{% if c.qtd_empresas_real == 0 %} sem-empresa{% endif %}{% if c.limite_vencido %} limite-vencido{% endif %}"
+            <div class="cliente-card{% if c.qtd_empresas_real == 0 %} sem-empresa{% endif %}{% if c.limite_vencido %} limite-vencido{% endif %}{% if c.online %} online{% endif %}"
                  id="card-{{ c.id_cliente }}"
                  data-nome="{{ (c.nome or '') | lower }}"
                  data-id="{{ c.id_cliente }}"
@@ -374,6 +419,7 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                  onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}', {{ c.qtd_empresas_real }})">
                 <div class="cliente-info">
                     <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
+                    <span class="ponto-online" title="Está usando o sistema agora">Online</span>
                     <span class="cliente-nome">{{ c.nome or '—' }}</span>
                 </div>
                 <span class="meta-chip cadastro" title="Data do cadastro">
@@ -526,12 +572,26 @@ function ordenarClientes(modo) {
     cards.forEach(function(c) { lista.appendChild(c); });
     const radio = document.querySelector('input[name="ordenar"][value="' + modo + '"]');
     if (radio) radio.checked = true;
+    priorizarOnline();
+}
+
+// Quem esta usando o sistema agora vai para o topo, seja qual for a
+// ordenacao escolhida. Sem isso o cliente online fica perdido no meio da
+// lista (a ordenacao padrao e por data de cadastro) e o selo passa batido.
+function priorizarOnline() {
+    const lista = document.getElementById('listaClientes');
+    if (!lista) return;
+    const online = Array.from(lista.querySelectorAll('.cliente-card.online'));
+    for (let i = online.length - 1; i >= 0; i--) {
+        lista.insertBefore(online[i], lista.firstChild);
+    }
 }
 
 function filtrarClientes() {
     const termo = document.getElementById('inputBusca').value.toLowerCase().trim();
     const soVencida    = (document.getElementById('chkVencida')    || {}).checked;
     const soSemEmpresa = (document.getElementById('chkSemEmpresa') || {}).checked;
+    const soOnline     = (document.getElementById('chkOnline')     || {}).checked;
     let visiveis = 0;
     document.querySelectorAll('.cliente-card[data-nome]').forEach(card => {
         const nome = card.dataset.nome || '';
@@ -539,7 +599,8 @@ function filtrarClientes() {
         // cada checkbox marcado é uma restrição adicional (AND)
         const okVencida    = !soVencida    || card.classList.contains('limite-vencido');
         const okSemEmpresa = !soSemEmpresa || card.classList.contains('sem-empresa');
-        const mostra = okNome && okVencida && okSemEmpresa;
+        const okOnline     = !soOnline     || card.classList.contains('online');
+        const mostra = okNome && okVencida && okSemEmpresa && okOnline;
         card.style.display = mostra ? '' : 'none';
         if (mostra) visiveis++;
     });
@@ -551,8 +612,39 @@ function escHtml(str) {
     return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── ONLINE AGORA ──────────────────────────────────────────────────
+// A tela fica aberta o dia todo, entao a bolinha se atualiza sozinha:
+// so os IDs online vem do servidor, sem recarregar a lista.
+function alternarSoOnline() {
+    const chk = document.getElementById('chkOnline');
+    if (!chk) return;
+    chk.checked = !chk.checked;
+    filtrarClientes();
+}
+
+function atualizarOnline() {
+    fetch('/api/admin_online')
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok) return;
+            const online = new Set(d.ids || []);
+            document.querySelectorAll('.cliente-card[data-id]').forEach(card => {
+                card.classList.toggle('online', online.has(parseInt(card.dataset.id, 10)));
+            });
+            const chip = document.getElementById('contadorOnline');
+            document.getElementById('qtdOnline').textContent = online.size;
+            chip.classList.toggle('zero', online.size === 0);
+            priorizarOnline();      // quem entrou agora sobe para o topo
+        })
+        .catch(() => {});   // rede oscilou: mantem o que esta na tela
+}
+
 // Ordenação padrão: Data de cadastro (mais recentes primeiro)
-document.addEventListener('DOMContentLoaded', function() { ordenarClientes('cad'); });
+document.addEventListener('DOMContentLoaded', function() {
+    ordenarClientes('cad');
+    atualizarOnline();
+    setInterval(atualizarOnline, 30000);
+});
 </script>
 <script src="/static/f10_dialog.js"></script>
 </body>
