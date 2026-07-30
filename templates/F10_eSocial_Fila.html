@@ -138,11 +138,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .tabela-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border);
                background: var(--surface); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { background: #f8fafc; padding: 10px 12px; text-align: left;
+th { background: #f8fafc; padding: 10px 7px; text-align: left;
      font-size: 11px; font-weight: 700; color: #475569;
      text-transform: uppercase; letter-spacing: .04em;
      border-bottom: 1px solid var(--border); white-space: nowrap; }
-td { padding: 9px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+td { padding: 9px 7px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+th:first-child, td:first-child { padding-left: 12px; }
+th:last-child,  td:last-child  { padding-right: 12px; }
+/* Nome longo encolhe com reticências em vez de empurrar a coluna Ações */
+.nome-trunc {
+    display: inline-block; max-width: 190px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom;
+    font-weight: 600; font-size: 13px;
+}
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #f8fafc; }
 .data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
@@ -178,6 +186,24 @@ tr:hover td { background: #f8fafc; }
 .sit-gerado     { background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; }
 .sit-pendente   { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }
 
+/* ── TIPO DA FOLHA (S-1200 / S-1210) ── */
+.folha-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.folha-N { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; }
+.folha-F { background: #ecfeff; color: #155e75; border: 1px solid #a5f3fc; }
+.folha-1 { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.folha-A { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; }
+.folha-R { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+/* Recibo/erro: largura fixa com reticências — o texto completo fica no title.
+   Sem isso um erro longo do gov sozinho joga a coluna Ações para fora da tela. */
+.cel-recibo { max-width: 175px; }
+.res-ok, .res-erro {
+    display: block; max-width: 175px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+}
 .res-ok   { font-family: var(--mono); font-size: 11px; color: #166534; }
 .res-erro { font-size: 11px; color: #991b1b; }
 
@@ -327,6 +353,8 @@ tr:hover td { background: #f8fafc; }
       <thead>
         <tr>
           <th>Layout / Funcionário</th>
+          <th>Folha</th>
+          <th>Tipo</th>
           <th>Operação</th>
           <th>Situação</th>
           <th>Cadastro</th>
@@ -344,7 +372,7 @@ tr:hover td { background: #f8fafc; }
             {% if r.matricula %}
             <span style="font-weight:600;font-size:13px;margin-left:6px;">{{ '%06d' % (r.matricula or 0) }}</span>
             <span style="color:#e2e8f0;margin:0 3px;">·</span>
-            <span style="font-weight:600;font-size:13px;">{{ r._nome }}</span>
+            <span class="nome-trunc" title="{{ r._nome }}">{{ r._nome }}</span>
             {% elif r._verba_cod %}
             <span style="font-family:var(--mono);font-weight:700;font-size:13px;margin-left:6px;color:#70c4a0;">{{ r._verba_cod }}</span>
             {% if r._verba_dsc %}<span style="font-size:12px;color:#475569;margin-left:5px;">{{ r._verba_dsc }}</span>{% endif %}
@@ -353,11 +381,23 @@ tr:hover td { background: #f8fafc; }
             {% endif %}
           </td>
 
+          <!-- Folha / Tipo — preenchidos só no S-1200 e S-1210 -->
+          <td class="data-cell" style="white-space:nowrap;">
+            {% if r._folha_fmt %}{{ r._folha_fmt }}{% else %}—{% endif %}
+          </td>
+          <td style="white-space:nowrap;">
+            {% if r._folha_tipo_label %}
+            <span class="folha-badge folha-{{ r._folha_tipo }}">{{ r._folha_tipo_label }}</span>
+            {% else %}
+            <span style="color:#94a3b8;font-size:12px;">—</span>
+            {% endif %}
+          </td>
+
           <td>
             {% if r._operacao == 'A' %}
-            <span style="display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe;">Alteração</span>
+            <span class="op-badge op-badge-a" title="Alteração">Alt.</span>
             {% else %}
-            <span style="display:inline-block;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;background:#f0fdfa;color:#0d9488;border:1px solid #99f6e4;">Inclusão</span>
+            <span class="op-badge op-badge-i" title="Inclusão">Inc.</span>
             {% endif %}
           </td>
 
@@ -368,11 +408,11 @@ tr:hover td { background: #f8fafc; }
           <td class="data-cell">{{ r._datacad_fmt or "—" }}</td>
           <td class="data-cell">{{ r._envio_fmt or "—" }}</td>
 
-          <td id="rec-{{ r.id_esocial }}" style="max-width:220px;">
+          <td id="rec-{{ r.id_esocial }}" class="cel-recibo">
             {% if r.recibo %}
-              <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:32] }}</span>
+              <span class="res-ok" title="{{ r.recibo }}">{{ r.recibo }}</span>
             {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
-              <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
+              <span class="res-erro" title="{{ r.observacao_erro }}">{{ r.observacao_erro }}</span>
             {% else %}
               <span style="color:#94a3b8;font-size:12px;">—</span>
             {% endif %}
@@ -382,7 +422,8 @@ tr:hover td { background: #f8fafc; }
             <div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">
               {% if r._sit == 'W' %}
               <button class="btn-reconsultar"
-                      onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Re-consultar</button>
+                      title="Re-consultar o protocolo no eSocial"
+                      onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
               {% if r.layout in ('1005', '1010', '1020', '2200', '2220', '2300', '2399', '1200', '1210', '1298', '1299') %}
               <button class="btn-ir"
@@ -391,9 +432,11 @@ tr:hover td { background: #f8fafc; }
                       data-anomes="{{ r.ano_mes or '' }}"
                       data-nome="{{ r._nome }}"
                       data-laycod="{{ r._lay_codigo }}"
-                      onclick="_enviarFila(this)">&#9654; Enviar para eSocial</button>
+                      title="Enviar esta remessa para o eSocial"
+                      onclick="_enviarFila(this)">&#9654; Enviar</button>
               {% else %}
-              <a class="btn-ir" href="{{ r._lay_href }}{% if r.ano_mes %}?anomes={{ r.ano_mes }}{% if r.matricula %}&mat={{ r.matricula }}{% endif %}{% elif r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Abrir formulário</a>
+              <a class="btn-ir" title="Abrir o formulário deste evento"
+                 href="{{ r._lay_href }}{% if r.ano_mes %}?anomes={{ r.ano_mes }}{% if r.matricula %}&mat={{ r.matricula }}{% endif %}{% elif r.matricula %}?mat={{ r.matricula }}{% endif %}">&#8599; Abrir</a>
               {% endif %}
               {% elif r._sit == 'E' %}
               <span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>
@@ -414,7 +457,7 @@ tr:hover td { background: #f8fafc; }
 
         </tr>
         <tr class="prog-row" id="prog-{{ r.id_esocial }}" data-layout="{{ r.layout }}">
-          <td colspan="7" class="prog-cell">
+          <td colspan="9" class="prog-cell">
             <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
             <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
           </td>
@@ -647,7 +690,7 @@ async function _enviarFila(btn) {
       sit.textContent = 'Aguardando';
       acao.innerHTML  =
         `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;">` +
-        `<button class="btn-reconsultar" onclick="_reconsultar(${newId}, this)">&#8635; Re-consultar</button>` +
+        `<button class="btn-reconsultar" onclick="_reconsultar(${newId}, this)">&#8635; Consultar</button>` +
         `<button class="btn-excluir" data-id="${newId}" data-nome="${nome.replace(/"/g,"'")}" data-lay="${laycod}" onclick="_excluir(this)">&#10005; Excluir</button>` +
         `</div>`;
     } else {
@@ -657,7 +700,7 @@ async function _enviarFila(btn) {
       sit.textContent = 'Com Erro';
       rec.innerHTML   = `<span class="res-erro" title="${((data.traceback||data.msg||'')).replace(/"/g,"'").slice(0,400)}">${(data.msg||'Erro').slice(0,60)}</span>`;
       btn.disabled    = false;
-      btn.textContent = '▶ Enviar para eSocial';
+      btn.textContent = '▶ Enviar';
     }
   } catch(e) {
     clearInterval(animTimer);
@@ -665,7 +708,7 @@ async function _enviarFila(btn) {
     bar.style.background = '#ef4444';
     lbl.textContent      = 'Falha de comunicação: ' + e;
     btn.disabled    = false;
-    btn.textContent = '▶ Enviar para eSocial';
+    btn.textContent = '▶ Enviar';
   }
 }
 
@@ -696,7 +739,7 @@ function iniciarTour() {
             element: '#secaoTabela',
             popover: {
                 title: 'Tabela de Remessas',
-                description: 'Cada linha é uma remessa. A coluna Situação mostra o status atual; a coluna Recibo/Erro mostra o protocolo retornado pelo eSocial ou a mensagem de erro. Use as ações para Enviar, Re-consultar ou Excluir.',
+                description: 'Cada linha é uma remessa. A coluna Situação mostra o status atual; a coluna Recibo/Erro mostra o protocolo retornado pelo eSocial ou a mensagem de erro. As colunas Folha e Tipo aparecem nos eventos de remuneração (S-1200 e S-1210). Use as ações para Enviar, Consultar ou Excluir.',
             }
         }] : []),
         {
@@ -738,7 +781,7 @@ async function _reconsultar(id, btn) {
       acao.innerHTML  = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>`;
     } else if (data.aguardando) {
       btn.disabled    = false;
-      btn.textContent = '↻ Re-consultar';
+      btn.textContent = '↻ Consultar';
     } else {
       sit.className   = 'sit-badge sit-erro';
       sit.textContent = 'Com Erro';
@@ -747,7 +790,7 @@ async function _reconsultar(id, btn) {
     }
   } catch(e) {
     btn.disabled    = false;
-    btn.textContent = '↻ Re-consultar';
+    btn.textContent = '↻ Consultar';
     alert('Erro: ' + e);
   }
 }

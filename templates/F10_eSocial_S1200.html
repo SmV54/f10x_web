@@ -313,6 +313,7 @@ tr:hover td { background: #f8fafc; }
             <input type="checkbox" class="row-check" id="chkTodos" onchange="_toggleTodos(this)" title="Selecionar todos">
           </th>
           <th>Matrícula / Nome</th>
+          <th>Folha</th>
           <th>Tipo</th>
           <th>Situação</th>
           <th>Data Cadastro</th>
@@ -333,6 +334,7 @@ tr:hover td { background: #f8fafc; }
             <div class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</div>
             <div class="nome-cell" style="font-size:12px;margin-top:2px;">{{ r._nome }}</div>
           </td>
+          <td class="data-cell">{{ r._periodo or "—" }}</td>
           <td style="font-size:12px;white-space:nowrap;">{{ r._tipo_label }}</td>
           <td>
             <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>

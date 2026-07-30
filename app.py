@@ -19856,9 +19856,125 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
 # =========================================================
 # eSocial S-1200 — GERADOR DE XML
 # =========================================================
+# ideDmDev — identificador do demonstrativo dentro do S-1200. Precisa ser ÚNICO
+# por trabalhador dentro do evento, e o S-1210 referencia exatamente este valor.
+# Padrão do legado: matrícula 6 dígitos + sufixo de 2. "00" (folha normal) é o
+# que já estava em produção — NÃO mudar, senão os S-1210 antigos deixam de casar.
+_IDE_DMDEV_SUF = {"N": "00", "A": "13", "1": "14", "F": "02", "R": "03"}
+
+
+def _ide_dm_dev(mat_es, folha_tipo):
+    return f"{mat_es}{_IDE_DMDEV_SUF.get(str(folha_tipo or 'N').upper(), '00')}"
+
+
+# Folhas que viajam JUNTAS numa remessa só (mesma competência, mesmo trabalhador):
+# a folha normal e o adiantamento do 13º. A ordem importa — a primeira encontrada
+# define <indApuracao>/<perApur> do evento, que são campos do ideEvento e valem
+# para o evento inteiro.
+_TIPOS_FOLHA_JUNTAS = ("N", "A")
+
+
+def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
+    """Verbas de uma folha, agregadas por cod_verba. [] se a folha não tem nada."""
+    try:
+        q = (supabase.table("tab_mov")
+             .select("cod_verba, valor")
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", matricula)
+             .eq("folha", int(ano_mes))
+             .eq("folha_tipo", folha_tipo)
+             .eq("situacao", "A"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        agg = {}
+        for r in (q.execute().data or []):
+            c = str(r.get("cod_verba") or "")
+            agg[c] = agg.get(c, 0) + int(r.get("valor") or 0)
+        return [{"cod_verba": k, "valor": v} for k, v in agg.items() if v != 0]
+    except Exception as e:
+        print(f"[_mov_agregado_folha] mat={matricula} {ano_mes}/{folha_tipo} erro: {e}")
+        return []
+
+
+def _folhas_da_remessa(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
+    """Folhas que entram na MESMA remessa do trabalhador nesta competência.
+
+    Retorna [{"folha_tipo": ..., "mov_items": [...]}, ...]. Se a remessa é de uma
+    folha que não se agrupa (férias, rescisão, 13º final), devolve só ela.
+    """
+    ft = str(folha_tipo or "N").upper()
+    if ft not in _TIPOS_FOLHA_JUNTAS:
+        return [{"folha_tipo": ft,
+                 "mov_items": _mov_agregado_folha(id_empresa, id_cliente,
+                                                  matricula, ano_mes, ft)}]
+    saida = []
+    for t in _TIPOS_FOLHA_JUNTAS:
+        itens = _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, t)
+        if itens:
+            saida.append({"folha_tipo": t, "mov_items": itens})
+    # Nenhuma das duas tem movimento: mantém a folha do registro (dmDev zerado).
+    return saida or [{"folha_tipo": ft, "mov_items": []}]
+
+
+def _recibo_s1200_anterior(id_empresa, matricula, ano_mes, folha_tipo,
+                           id_esocial_atual=None, layout="1200"):
+    """Recibo de um S-1200/S-1210 JÁ ACEITO para o mesmo trabalhador e a mesma
+    competência, vindo de OUTRA linha da tab_esocial.
+
+    Existe porque cada cálculo da folha cria uma remessa nova, sem recibo. Se o
+    evento anterior foi aceito pelo gov, reenviar como original dá erro [106]
+    (duplicidade: mesmo CPF + mesmo período) — o certo é retificar (indRetif=2)
+    apontando o recibo do evento original.
+
+    Ignora remessas já excluídas por S-3000 (observacao_erro='EXCLUIDO'): esse
+    recibo não vale mais e o reenvio volta a ser evento original.
+    """
+    ft = str(folha_tipo or "N").upper()
+    tipos = list(_TIPOS_FOLHA_JUNTAS) if ft in _TIPOS_FOLHA_JUNTAS else [ft]
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, folha_tipo, recibo, observacao_erro,"
+                        " data_cad, hora_cad")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", layout)
+                .eq("matricula", matricula)
+                .eq("ano_mes", int(ano_mes))
+                .in_("folha_tipo", tipos)
+                .not_.is_("recibo", "null")
+                .neq("recibo", "")
+                .execute().data or [])
+    except Exception as e:
+        print(f"[_recibo_s1200_anterior] mat={matricula} {ano_mes} erro: {e}")
+        return ""
+
+    cands = [r for r in rows
+             if (r.get("recibo") or "").strip()
+             and (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+             and (id_esocial_atual is None
+                  or int(r.get("id_esocial") or 0) != int(id_esocial_atual))]
+    if not cands:
+        return ""
+    # Mais recente primeiro; entre eles, prefere o da mesma folha.
+    cands.sort(key=lambda r: (str(r.get("data_cad") or ""),
+                              str(r.get("hora_cad") or "")), reverse=True)
+    mesmo_tipo = [r for r in cands if str(r.get("folha_tipo") or "").upper() == ft]
+    return ((mesmo_tipo or cands)[0].get("recibo") or "").strip()
+
+
 def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
-                     rubr_map=None, ind_retif="1", nr_recibo_retif=""):
+                     rubr_map=None, ind_retif="1", nr_recibo_retif="",
+                     dmdevs=None):
     """Gera string XML do S-1200 (Remuneração do Trabalhador - RGPS).
+
+    dmdevs: lista de demonstrativos do MESMO trabalhador na MESMA competência,
+    cada um {"folha_tipo": "N"|"A"|..., "mov_items": [...]}. O evtRemun aceita
+    vários <dmDev> — é assim que a folha normal e o adiantamento do 13º do mesmo
+    mês viajam numa remessa só, cada um com seu ideDmDev. Quando não informado,
+    monta um único dmDev com (folha_tipo, mov_items) — comportamento antigo.
+
+    ATENÇÃO: <indApuracao>/<perApur> ficam no ideEvento, ou seja, valem para o
+    evento INTEIRO. Por isso todos os dmdevs têm que ser da mesma apuração —
+    mensal (N/F/R) OU anual (1/A). Misturar mensal com anual exige 2 remessas.
 
     rubr_map: mantido por compatibilidade, não usado. Gov exige <indApurIR>
     em TODAS as rubricas (tentamos omitir nas retentoras/deduções e o gov
@@ -19910,8 +20026,13 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
             "preencha o campo Centro de Custo em tab_cad antes de enviar o S-1200."
         )
 
-    _am     = str(int(ano_mes)).zfill(6)
-    per_apur = f"{_am[:4]}-{_am[4:6]}"
+    # perApur acompanha o indApuracao: apuração ANUAL (13º e adiantamento do 13º,
+    # folha_tipo '1'/'A') leva SÓ O ANO; mensal leva AAAA-MM. Mandar AAAA-MM com
+    # indApuracao=2 fere o schema. Igual ao Folha10 Desktop (SR_eSocial_2022.vb
+    # linhas 319-324) e aos XMLs aceitos em produção (perApur 2022 no 13º/2022).
+    _am      = str(int(ano_mes)).zfill(6)
+    _eh_anual = str(folha_tipo or "").upper() in ("1", "A")
+    per_apur = _am[:4] if _eh_anual else f"{_am[:4]}-{_am[4:6]}"
     # ATENCAO: <indApuracao> (no ideEvento) e <indApurIR> (em itensRemun)
     # sao campos DIFERENTES e tem enumeracoes diferentes no schema v_S_01_03_00.
     #
@@ -19942,12 +20063,31 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     ind_simples_xml = (f"\n            <indSimples>{ind_simples_val}</indSimples>"
                        if ind_simples_val else "")
 
-    # codRubr / ideTabRubr: convenção COMPROVADA como aceita pelo gov (XMLs do
-    # S-1010 com recibo) — codRubr = código CRU (como em tab_rubrica.cod_rubr,
-    # sem zero-padding e sem sufixo) e ideTabRubr = raiz do CNPJ (8 dígitos).
-    # ANTES gerava "0015-FOL"/"0015-FOL" (não casava com o S-1010) → 0 recibos.
-    # O sufixo -FOL/-FER é do DESKTOP, que reusa o mesmo código em contextos
-    # diferentes; o web usa códigos distintos, então não precisa de sufixo.
+    # codRubr / ideTabRubr: formato "NNNN-XXX" — 4 dígitos + traço + origem da
+    # folha (FOL = folha, FER = férias). É assim que a tabela de rubricas do
+    # empregador está registrada no eSocial (S-1010 gerado pelo Folha10 Desktop),
+    # e o par (codRubr, ideTabRubr) do S-1200 TEM que casar exatamente com ela.
+    #
+    # HISTÓRICO — não voltar a "código cru": em 10/07/2026 (commit 48aa4fc) isso
+    # foi trocado por codRubr cru + ideTabRubr = raiz do CNPJ, por leitura errada
+    # de XMLs do S-1010. Resultado em produção (30/07/2026): erro [269] "Rubrica
+    # de código '1' e Identificador de tabela '08777252' não existe no cadastro
+    # do empregador para o período '2026-07'" em TODOS os itensRemun. Com o
+    # sufixo, os S-1200 de junho/2026 receberam recibo normalmente.
+    #
+    # Sufixo do codRubr conforme tipo de folha. O S-1010 do Desktop registra cada
+    # verba QUATRO vezes — "-FOL", "-FER", "-RES" e "-13S" (confirmado nos XMLs de
+    # produção) — e o S-1200 tem que apontar para a variante do contexto:
+    #   F = Férias           → "-FER"
+    #   1 = 13º / A = Adiant. do 13º → "-13S"  (apuração ANUAL, indApuracao=2)
+    #   demais (N/R)         → "-FOL"
+    def _fmt_cod_rubr(c, ftipo):
+        sufixo = {'F': 'FER', '1': '13S', 'A': '13S'}.get(str(ftipo), 'FOL')
+        s = str(c or '').strip()
+        try:
+            return f"{int(s):04d}-{sufixo}"
+        except Exception:
+            return s
     #
     # Retificação: indRetif=2 exige <nrRecibo> do evento original logo após.
     # indRetif=1 (original) não leva nrRecibo.
@@ -19960,27 +20100,52 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     # de omitir em rubricas com tpn_inc_irrf=9/N/31/41). Valor fixo "0" para
     # apuracao mensal (igual ao sistema legado em prod) — usar "1" tornaria
     # tudo RRA e zeraria o S-5012.
-    itens_xml = ""
-    for item in mov_items:
-        cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
-        val = int(item.get('valor') or 0)
-        if cod and val != 0:
-            itens_xml += f"""
+    if not dmdevs:
+        dmdevs = [{"folha_tipo": folha_tipo, "mov_items": mov_items}]
+
+    def _itens_xml(itens, ftipo):
+        out = ""
+        for item in itens or []:
+            cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
+            val = int(item.get('valor') or 0)
+            if cod and val != 0:
+                _cod_fmt = _fmt_cod_rubr(cod, ftipo)
+                out += f"""
             <itensRemun>
-              <codRubr>{x(cod)}</codRubr>
-              <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+              <codRubr>{x(_cod_fmt)}</codRubr>
+              <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
               <vrRubr>{fmt_brl(val)}</vrRubr>
               <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
-
-    if not itens_xml.strip():
-        itens_xml = f"""
+        if not out.strip():
+            _cod_fmt = _fmt_cod_rubr(1, ftipo)
+            out = f"""
             <itensRemun>
-              <codRubr>1</codRubr>
-              <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+              <codRubr>{x(_cod_fmt)}</codRubr>
+              <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
               <vrRubr>0.00</vrRubr>
               <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
+        return out
+
+    dmdev_xml = ""
+    for _dm in dmdevs:
+        _ft  = str(_dm.get("folha_tipo") or folha_tipo or "N").upper()
+        dmdev_xml += f"""
+    <dmDev>
+      <ideDmDev>{_ide_dm_dev(mat_es, _ft)}</ideDmDev>
+      <codCateg>{x(codcateg)}</codCateg>
+      <infoPerApur>
+        <ideEstabLot>
+          <tpInsc>1</tpInsc>
+          <nrInsc>{x(cnpj_emp)}</nrInsc>
+          <codLotacao>{x(cod_lotacao)}</codLotacao>
+          <remunPerApur>
+            <matricula>{x(mat_es)}</matricula>{ind_simples_xml}{_itens_xml(_dm.get("mov_items"), _ft)}{info_ag_nocivo_xml}
+          </remunPerApur>
+        </ideEstabLot>
+      </infoPerApur>
+    </dmDev>"""
 
     nis_trab = dg(func.get('nis') or func.get('pis') or '')
     nis_xml  = f"\n      <nisTrab>{x(nis_trab)}</nisTrab>" if nis_trab else ""
@@ -20004,21 +20169,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     </ideEmpregador>
     <ideTrabalhador>
       <cpfTrab>{x(cpf)}</cpfTrab>{nis_xml}
-    </ideTrabalhador>
-    <dmDev>
-      <ideDmDev>{mat_es}00</ideDmDev>
-      <codCateg>{x(codcateg)}</codCateg>
-      <infoPerApur>
-        <ideEstabLot>
-          <tpInsc>1</tpInsc>
-          <nrInsc>{x(cnpj_emp)}</nrInsc>
-          <codLotacao>{x(cod_lotacao)}</codLotacao>
-          <remunPerApur>
-            <matricula>{x(mat_es)}</matricula>{ind_simples_xml}{itens_xml}{info_ag_nocivo_xml}
-          </remunPerApur>
-        </ideEstabLot>
-      </infoPerApur>
-    </dmDev>
+    </ideTrabalhador>{dmdev_xml}
   </evtRemun>
 </eSocial>"""
 
@@ -20028,8 +20179,16 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
 # =========================================================
 def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
                      recibo_s1200, totais, mov_items=None, rubr_map=None,
-                     deps_irrf=None, vlr_ded_dep_cent=0):
+                     deps_irrf=None, vlr_ded_dep_cent=0, pgtos=None,
+                     ind_retif="1", nr_recibo_retif=""):
     """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho).
+
+    pgtos: lista de pagamentos do MESMO trabalhador na MESMA competência, cada um
+    {"folha_tipo": "N"|"A"|..., "valor_liquido": centavos}. Vira um <infoPgto> por
+    item, cada um apontando para o ideDmDev do seu demonstrativo no S-1200 — é
+    assim que a folha normal e o adiantamento do 13º do mesmo mês vão num evento
+    só (o gov recusa 2 evtPgtos com mesmo CPF + mesmo perApur, erro [106]).
+    Quando não informado, monta um único infoPgto a partir de (folha_tipo, totais).
 
     Dentro de <infoPgto> o schema v_S_01_03_00 é minimalista (so dtPgto,
     tpPgto, perRef, ideDmDev, vrLiq + paisResidExt/infoPgtoExt opcionais —
@@ -20066,19 +20225,47 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     cpf      = dg(func.get('cpf', '')).zfill(11)
     mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
 
+    # <perApur> do ideEvento é SEMPRE a competência do pagamento (AAAA-MM), mesmo
+    # no 13º. Quem muda é o <perRef> do infoPgto: ele identifica o demonstrativo
+    # pago e, na apuração ANUAL (13º / adiantamento do 13º), vale só o ANO.
+    # Confirmado em XML de produção do Desktop: perApur 2022-12 com dois infoPgto,
+    # um perRef 2022-12 (folha mensal) e outro perRef 2022 (13º).
     _am      = str(int(ano_mes)).zfill(6)
     per_apur = f"{_am[:4]}-{_am[4:6]}"
-    # ideDmDev: identificador unico do demonstrativo do trabalhador (S-1200)
-    # que o S-1210 referencia. Tem que ser DIFERENTE por trabalhador (usar
-    # so o per_apur deixa todos com mesmo ID, e o gov nao casa o pagamento
-    # com a remuneracao certa — zera o S-5012). Padrao do legado: matricula
-    # 6 digitos + "00" (ex.: matricula 1 -> "00000100").
-    ide_dm_dev = f"{mat_es}00"
 
-    _TP_PGTO = {'N': '1', '1': '2', 'A': '2', 'F': '4', 'R': '3'}
-    tp_pgto  = _TP_PGTO.get(str(folha_tipo), '1')
+    # tpPgto identifica a ORIGEM do demonstrativo pago, não o tipo da folha:
+    #   1 = pagamento apurado em S-1200  (folha mensal, férias, 13º e adiantamento)
+    #   2 = apurado em S-2299 (desligamento) | 3 = apurado em S-2399 (TSVE)
+    # Produção do Desktop: o pagamento do 13º (perRef=AAAA) vai com tpPgto=1.
+    # F='4' e R='3' foram MANTIDOS como estavam (fora do escopo desta correção) —
+    # mas são suspeitos: férias também é apurada em S-1200 (deveria ser 1) e
+    # rescisão é apurada em S-2299 (deveria ser 2). Revisar antes de usar.
+    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '4', 'R': '3'}
 
-    vr_total = fmt_brl(totais.get('valor_liquido', 0))
+    # Retificação (mesma regra do S-1200): reenviar um evtPgtos já aceito como
+    # original dá erro [106]. indRetif=2 exige o <nrRecibo> do evento original.
+    _ind_retif_s   = "2" if str(ind_retif) == "2" else "1"
+    _nr_rec_lp     = re.sub(r'\s', '', str(nr_recibo_retif or ''))
+    _nr_recibo_xml = (f"\n      <nrRecibo>{x(_nr_rec_lp)}</nrRecibo>"
+                      if _ind_retif_s == "2" and _nr_rec_lp else "")
+
+    if not pgtos:
+        pgtos = [{"folha_tipo": folha_tipo,
+                  "valor_liquido": (totais or {}).get('valor_liquido', 0)}]
+
+    # ideDmDev: identificador do demonstrativo do trabalhador no S-1200 que este
+    # pagamento referencia — tem que casar EXATAMENTE com o ideDmDev de lá.
+    info_pgto_xml = ""
+    for _pg in pgtos:
+        _ft = str(_pg.get("folha_tipo") or folha_tipo or "N").upper()
+        info_pgto_xml += f"""
+      <infoPgto>
+        <dtPgto>{x(dtPgto)}</dtPgto>
+        <tpPgto>{x(_TP_PGTO.get(_ft, '1'))}</tpPgto>
+        <perRef>{_am[:4] if _ft in ('1', 'A') else per_apur}</perRef>
+        <ideDmDev>{_ide_dm_dev(mat_es, _ft)}</ideDmDev>
+        <vrLiq>{fmt_brl(_pg.get('valor_liquido', 0))}</vrLiq>
+      </infoPgto>"""
 
     # ── infoIRComplem ───────────────────────────────────────────────────
     # Bloco usado pelo gov para conciliar a retencao de IRRF no S-5002.
@@ -20119,7 +20306,7 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
          xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtPgtos/v_S_01_03_00 evtPgtos_v_S_01_03_00.xsd">
   <evtPgtos Id="{evt_id}">
     <ideEvento>
-      <indRetif>1</indRetif>
+      <indRetif>{_ind_retif_s}</indRetif>{_nr_recibo_xml}
       <perApur>{per_apur}</perApur>
       <tpAmb>{x(tpAmb)}</tpAmb>
       <procEmi>1</procEmi>
@@ -20130,14 +20317,7 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
     <ideBenef>
-      <cpfBenef>{x(cpf)}</cpfBenef>
-      <infoPgto>
-        <dtPgto>{x(dtPgto)}</dtPgto>
-        <tpPgto>{x(tp_pgto)}</tpPgto>
-        <perRef>{per_apur}</perRef>
-        <ideDmDev>{ide_dm_dev}</ideDmDev>
-        <vrLiq>{vr_total}</vrLiq>
-      </infoPgto>{info_ir_xml}
+      <cpfBenef>{x(cpf)}</cpfBenef>{info_pgto_xml}{info_ir_xml}
     </ideBenef>
   </evtPgtos>
 </eSocial>"""
@@ -25960,6 +26140,10 @@ def esocial_fila():
         "G": ("Gerado",     "sit-gerado"),
         "P": ("Pendente",   "sit-pendente"),
     }
+    _TP_FOLHA_FILA = {
+        "N": "Normal", "F": "Férias", "1": "13º Sal.",
+        "A": "Adiant. 13º", "R": "Rescisão",
+    }
 
     def _d8_fila(v):
         s = str(v or "").strip()
@@ -26025,6 +26209,19 @@ def esocial_fila():
             r["_periodo_fmt"] = f"{am_s[4:6]}/{am_s[0:4]}" if len(am_s) == 6 else str(am)
         else:
             r["_periodo_fmt"] = ""
+
+        # Colunas Folha / Tipo — só fazem sentido nos eventos de remuneração,
+        # onde a mesma competência pode ter folhas diferentes (normal, férias,
+        # 13º, adiantamento do 13º, rescisão).
+        if lay in ("1200", "1210"):
+            r["_folha_fmt"]  = r["_periodo_fmt"]
+            _ft              = str(r.get("folha_tipo") or "N").upper()
+            r["_folha_tipo"] = _ft
+            r["_folha_tipo_label"] = _TP_FOLHA_FILA.get(_ft, _ft)
+        else:
+            r["_folha_fmt"]  = ""
+            r["_folha_tipo"] = ""
+            r["_folha_tipo_label"] = ""
 
     return render_template(
         "F10_eSocial_Fila.html",
@@ -26126,6 +26323,8 @@ def rel_esocial_fila_pdf():
         "3000": ("S-3000", "Exclusão"),
     }
     _SIT_LBL = {"E": "Enviado", "X": "Com Erro", "W": "Aguardando", "G": "Gerado", "P": "Pendente"}
+    _TP_FOLHA_PDF = {"N": "Normal", "F": "Férias", "1": "13º Sal.",
+                     "A": "Adiant. 13º", "R": "Rescisão"}
 
     def _d8(v):
         s = str(v or "").strip()
@@ -26169,6 +26368,15 @@ def rel_esocial_fila_pdf():
         else:
             r["_periodo_fmt"] = ""
 
+        # Folha / Tipo — só nos eventos de remuneração (mesma regra da tela)
+        if lay in ("1200", "1210"):
+            r["_folha_fmt"]        = r["_periodo_fmt"]
+            _ft                    = str(r.get("folha_tipo") or "N").upper()
+            r["_folha_tipo_label"] = _TP_FOLHA_PDF.get(_ft, _ft)
+        else:
+            r["_folha_fmt"]        = ""
+            r["_folha_tipo_label"] = ""
+
     periodo_fmt = f"{periodo[4:6]}/{periodo[0:4]}" if len(periodo) == 6 else periodo
     lay_desc    = _LAY.get(f_layout, (f"S-{f_layout}", ""))[0] if f_layout else "Todos os layouts"
     titulo      = f"Fila de Remessas eSocial — {periodo_fmt}  ·  {lay_desc}"
@@ -26191,6 +26399,8 @@ def rel_esocial_fila_pdf():
     hdr = [
         P("Layout", fn="Helvetica-Bold", fs=_FS_HDR),
         P("Matrícula · Funcionário / Período", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Folha", fn="Helvetica-Bold", fs=_FS_HDR),
+        P("Tipo", fn="Helvetica-Bold", fs=_FS_HDR),
         P("Situação", fn="Helvetica-Bold", fs=_FS_HDR),
         P("Cadastro", fn="Helvetica-Bold", fs=_FS_HDR),
         P("Envio", fn="Helvetica-Bold", fs=_FS_HDR),
@@ -26205,6 +26415,8 @@ def rel_esocial_fila_pdf():
         tbl_data.append([
             P(lay_txt),
             P(func, fn="Helvetica-Bold"),
+            P(r["_folha_fmt"] or "—", col=C_SUB),
+            P(r["_folha_tipo_label"] or "—", col=C_SUB),
             P(r["_sit_label"], col=C_SUB),
             P(r["_datacad"], col=C_SUB),
             P(r["_envio"], col=C_SUB),
@@ -26212,7 +26424,7 @@ def rel_esocial_fila_pdf():
         ])
 
     # colunas somam 25.7cm (largura útil em landscape)
-    col_w = [3.2*cm, 10.0*cm, 2.3*cm, 1.9*cm, 2.8*cm, 5.5*cm]
+    col_w = [3.2*cm, 7.4*cm, 1.6*cm, 2.0*cm, 2.3*cm, 1.9*cm, 2.8*cm, 4.5*cm]
 
     tbl = Table(tbl_data, colWidths=col_w, repeatRows=1)
     row_bg = []
@@ -27075,29 +27287,13 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
-    # 3. Itens de movimento (remuneração do período)
-    mov_items = []
-    try:
-        _qm = (supabase.table("tab_mov")
-               .select("cod_verba, valor")
-               .eq("id_empresa", id_empresa)
-               .eq("matricula", matricula)
-               .eq("folha", int(ano_mes))
-               .eq("folha_tipo", folha_tipo)
-               .eq("situacao", "A"))
-        _id_cliente = session.get("id_cliente")
-        if _id_cliente:
-            _qm = _qm.eq("id_cliente", _id_cliente)
-        _rows_mov = _qm.execute().data or []
-        # Agrega por cod_verba
-        _agg = {}
-        for _r in _rows_mov:
-            _c = str(_r.get("cod_verba") or "")
-            _v = int(_r.get("valor") or 0)
-            _agg[_c] = _agg.get(_c, 0) + _v
-        mov_items = [{"cod_verba": k, "valor": v} for k, v in _agg.items() if v != 0]
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar movimento: {e}"})
+    # 3. Movimento do período — UMA remessa pode levar mais de uma folha
+    # (folha normal + adiantamento do 13º), cada uma no seu <dmDev>.
+    _dmdevs = _folhas_da_remessa(id_empresa, session.get("id_cliente"),
+                                 matricula, ano_mes, folha_tipo)
+    # A 1ª folha da lista manda no indApuracao/perApur do evento.
+    folha_tipo_evt = _dmdevs[0]["folha_tipo"]
+    mov_items      = _dmdevs[0]["mov_items"]
 
     # 3b. Tabela de rubricas (precisa do tpn_inc_irrf para decidir se manda
     # <indApurIR> em cada rubrica). Pagina pra cobrir cod_rubr > 1000.
@@ -27138,17 +27334,30 @@ def api_esocial_s1200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
-    # 4b. Retificação: se o registro JÁ tem recibo, este envio é uma RETIFICAÇÃO
-    # (indRetif=2) referenciando o recibo original. O gov não aceita reenviar o
-    # mesmo evento como original (erro [106] duplicidade); a única forma de
-    # corrigir um S-1200 já aceito é retificar (ou excluir por S-3000). Exige o
-    # período REABERTO no eSocial (S-1298) — a folha reaberta permite retificar.
+    # 4b. Retificação: se JÁ existe um S-1200 aceito para este trabalhador nesta
+    # competência, o envio é uma RETIFICAÇÃO (indRetif=2) referenciando o recibo
+    # original. O gov não aceita reenviar o mesmo evento como original (erro [106]
+    # duplicidade); a única forma de corrigir um S-1200 aceito é retificar (ou
+    # excluir por S-3000). Exige o período REABERTO no eSocial (S-1298).
+    #
+    # O recibo pode não estar NESTA linha: cada cálculo da folha cria uma remessa
+    # nova, sem recibo. Por isso, quando a linha não tem recibo, procura o da
+    # remessa anterior da mesma competência (era o furo que gerava o [106]).
     _recibo_existente = (es.get("recibo") or "").strip()
+    _recibo_de_outra_linha = ""
+    if not _recibo_existente:
+        _recibo_existente = _recibo_s1200_anterior(
+            id_empresa, matricula, ano_mes, folha_tipo_evt,
+            id_esocial_atual=int(id_reg), layout="1200")
+        _recibo_de_outra_linha = _recibo_existente
     _ind_retif  = "2" if _recibo_existente else "1"
     _retif_flag = bool(data.get("retificar"))
     if _retif_flag and not _recibo_existente:
         return jsonify({"ok": False, "msg": ("Não há recibo original para retificar. "
                                              "Envie o S-1200 como evento original primeiro.")})
+    if _recibo_de_outra_linha:
+        print(f"[S-1200] mat={matricula} {ano_mes}: retificando remessa anterior "
+              f"(recibo {_recibo_de_outra_linha})")
 
     # 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = _agora_brasilia()
@@ -27156,8 +27365,8 @@ def api_esocial_s1200_enviar():
              f"S1200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
-        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb,
-                                   rubr_map=rubr_map,
+        xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo_evt, tpAmb,
+                                   rubr_map=rubr_map, dmdevs=_dmdevs,
                                    ind_retif=_ind_retif, nr_recibo_retif=_recibo_existente)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
@@ -27278,8 +27487,24 @@ def api_esocial_s1200_enviar():
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
+    # Este envio levou mais de uma folha (normal + adiantamento do 13º). As
+    # remessas das OUTRAS folhas já foram transmitidas dentro deste mesmo evento —
+    # marca todas com o mesmo resultado para ninguém reenviar e tomar [106].
+    if len(_dmdevs) > 1:
+        _outros = [d["folha_tipo"] for d in _dmdevs if d["folha_tipo"] != folha_tipo]
+        if _outros:
+            try:
+                (supabase.table("tab_esocial").update(upd)
+                 .eq("id_empresa", id_empresa).eq("layout", "1200")
+                 .eq("matricula", matricula).eq("ano_mes", int(ano_mes))
+                 .in_("folha_tipo", _outros).execute())
+            except Exception as e:
+                print(f"[S-1200 irmãs] falha ao marcar {_outros}: {e}")
+
     gravar_log("ESOCIAL",
-               f"S-1200 enviado: mat={matricula} anomes={ano_mes} nrRec={recibo_final} cd={cd_resp}",
+               f"S-1200 enviado: mat={matricula} anomes={ano_mes} "
+               f"folhas={'+'.join(d['folha_tipo'] for d in _dmdevs)} "
+               f"nrRec={recibo_final} cd={cd_resp}",
                matricula=matricula)
 
     ok = bool(recibo_final) and not obs_erro and not aguardando
@@ -27723,21 +27948,37 @@ def _s1210_enviar_impl():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
-    # 4. Totais do período
-    totais = {}
+    # 4. Totais do período — um <infoPgto> por folha paga na competência
+    # (normal + adiantamento do 13º), espelhando os <dmDev> do S-1200.
+    _tot_por_folha = {}
     try:
         _qt = (supabase.table("tab_total")
-               .select("valor_liquido, valor_base_inss_comlimite, valor_irrf_basetabela,"
-                       " valor_irrf_dependentes, qtd_irrf_dependentes")
+               .select("folha_tipo, valor_liquido, valor_base_inss_comlimite,"
+                       " valor_irrf_basetabela, valor_irrf_dependentes,"
+                       " qtd_irrf_dependentes")
                .eq("id_empresa", id_empresa)
                .eq("matricula", matricula)
                .eq("folha", int(ano_mes))
-               .eq("folha_tipo", folha_tipo)
-               .limit(1).execute())
-        if _qt.data:
-            totais = _qt.data[0]
+               .execute())
+        for _t in (_qt.data or []):
+            _tot_por_folha[str(_t.get("folha_tipo") or "N").upper()] = _t
     except Exception:
         pass
+
+    _ft_row = str(folha_tipo or "N").upper()
+    if _ft_row in _TIPOS_FOLHA_JUNTAS:
+        _tipos_pgto = [t for t in _TIPOS_FOLHA_JUNTAS
+                       if int((_tot_por_folha.get(t) or {}).get("valor_liquido") or 0) != 0]
+    else:
+        _tipos_pgto = []
+    if not _tipos_pgto:
+        _tipos_pgto = [_ft_row]
+
+    # Os dados de IRRF (dependentes/base) vêm da folha do próprio registro.
+    totais = _tot_por_folha.get(_ft_row, {})
+    _pgtos = [{"folha_tipo": t,
+               "valor_liquido": int((_tot_por_folha.get(t) or {}).get("valor_liquido") or 0)}
+              for t in _tipos_pgto]
 
     # 4a. Dependentes IRRF do funcionario (para <infoIRComplem> no S-1210)
     deps_irrf = []
@@ -27819,17 +28060,32 @@ def _s1210_enviar_impl():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # 5b. Retificação — mesma regra do S-1200: se já existe um evtPgtos aceito
+    # para este CPF nesta competência, reenviar como original dá [106].
+    _recibo_lp_existente = (es.get("recibo") or "").strip()
+    if not _recibo_lp_existente:
+        _recibo_lp_existente = _recibo_s1200_anterior(
+            id_empresa, matricula, ano_mes, _tipos_pgto[0],
+            id_esocial_atual=int(id_reg), layout="1210")
+        if _recibo_lp_existente:
+            print(f"[S-1210] mat={matricula} {ano_mes}: retificando remessa "
+                  f"anterior (recibo {_recibo_lp_existente})")
+    _ind_retif_lp = "2" if _recibo_lp_existente else "1"
+
     # 6. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1210_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
-        xml_str = _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb,
+        xml_str = _gerar_xml_s1210(func, empresa, ano_mes, _tipos_pgto[0], tpAmb,
                                    dtPgto, recibo_s1200, totais,
                                    mov_items=mov_items, rubr_map=rubr_map,
                                    deps_irrf=deps_irrf,
-                                   vlr_ded_dep_cent=vlr_ded_dep_cent)
+                                   vlr_ded_dep_cent=vlr_ded_dep_cent,
+                                   pgtos=_pgtos,
+                                   ind_retif=_ind_retif_lp,
+                                   nr_recibo_retif=_recibo_lp_existente)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -27938,11 +28194,28 @@ def _s1210_enviar_impl():
         upd["observacao_erro"] = obs_erro[:295]
     else:
         upd["observacao_erro"] = ""   # sucesso: limpa o AGUARDANDO gravado antes
+        if (_ind_retif_lp == "2" and _recibo_lp_existente
+                and recibo_final and recibo_final != _recibo_lp_existente):
+            upd["recibo_ref"] = _recibo_lp_existente
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
+    # Mesmo caso do S-1200: os pagamentos das outras folhas foram nesta mesma
+    # remessa, então as remessas delas ficam com o mesmo resultado.
+    if len(_pgtos) > 1:
+        _outros = [t for t in _tipos_pgto if t != _ft_row]
+        if _outros:
+            try:
+                (supabase.table("tab_esocial").update(upd)
+                 .eq("id_empresa", id_empresa).eq("layout", "1210")
+                 .eq("matricula", matricula).eq("ano_mes", int(ano_mes))
+                 .in_("folha_tipo", _outros).execute())
+            except Exception as e:
+                print(f"[S-1210 irmãs] falha ao marcar {_outros}: {e}")
+
     gravar_log("ESOCIAL",
-               f"S-1210 enviado: mat={matricula} anomes={ano_mes} nrRec={recibo_final} cd={cd_resp}",
+               f"S-1210 enviado: mat={matricula} anomes={ano_mes} "
+               f"folhas={'+'.join(_tipos_pgto)} nrRec={recibo_final} cd={cd_resp}",
                matricula=matricula)
 
     ok = bool(recibo_final) and not obs_erro and not aguardando
@@ -28088,8 +28361,9 @@ def _gerar_xml_s1299(empresa, ano_mes, ind_apuracao, evt_remun, evt_pgtos, tpAmb
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
+    # indApuracao=2 (anual/13º) exige perApur só com o ANO — mesma regra do S-1200.
     _am      = str(int(ano_mes)).zfill(6)
-    per_apur = f"{_am[:4]}-{_am[4:6]}"
+    per_apur = _am[:4] if str(ind_apuracao) == "2" else f"{_am[:4]}-{_am[4:6]}"
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtFechaEvPer/v_S_01_03_00"
@@ -28642,8 +28916,9 @@ def _gerar_xml_s1298(empresa, ano_mes, ind_apuracao, tpAmb="1"):
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
+    # indApuracao=2 (anual/13º) exige perApur só com o ANO — mesma regra do S-1200.
     _am      = str(int(ano_mes)).zfill(6)
-    per_apur = f"{_am[:4]}-{_am[4:6]}"
+    per_apur = _am[:4] if str(ind_apuracao) == "2" else f"{_am[:4]}-{_am[4:6]}"
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtReabreEvPer/v_S_01_03_00"
@@ -32529,6 +32804,16 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                       + (f" × {mult_h:g} ({pct_h}%)" if pct_h else "")
                                       + f"  =  {_fmt_brl(valor_calc)}")
                         txt_qtd = (f"   {obs_sb_h}   |{obs_calc_h}" if obs_sb_h else obs_calc_h)
+                        # Persiste o valor calculado no lançamento — sem isto a
+                        # memória mostrava a hora extra com o acréscimo (× 1,5) mas
+                        # o tab_mov seguia com o valor digitado, e holerite, totais
+                        # e eSocial saíam sem o percentual. Mesma regra dos ramos
+                        # da verba 89 e das verbas em Dias.
+                        if valor_calc > 0 and valor_calc != valor and reg.get("id"):
+                            try:
+                                supabase.table("tab_mov").update({"valor": valor_calc}).eq("id", reg["id"]).execute()
+                            except Exception:
+                                pass
                     # Verbas em Dias: valor = qtd × salário-dia × (1 + percentual/100)
                     elif unid == "D" and qtd > 0:
                         pct_d  = ri.get("percentual") or 0
@@ -47092,6 +47377,68 @@ def _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes):
     return n_calc
 
 
+def _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, matriculas):
+    """Cria as pendências S-1200 e S-1210 (tab_esocial) da folha de Adiantamento
+    do 13º — folha_tipo 'A'.
+
+    A folha MENSAL já fazia isso dentro de _salvar_memorias_etapa1 (~app.py:33436);
+    o adiantamento tem rotas próprias de cálculo e ficava sem nenhuma remessa —
+    nada aparecia na Fila nem nas telas /esocial_s1200 e /esocial_s1210.
+
+    Idempotente: recalcular o adiantamento não duplica as remessas. Só insere o
+    que ainda não existe para (empresa, ano_mes, folha_tipo 'A', layout, matrícula),
+    preservando o que já foi enviado/tem recibo.
+
+    Retorna a quantidade de linhas criadas.
+    """
+    mats = sorted({int(m) for m in (matriculas or []) if str(m or "").strip()})
+    if not mats:
+        return 0
+
+    ano_mes_int = int(anomes)
+    ja_tem = set()
+    try:
+        for r in (supabase.table("tab_esocial")
+                  .select("layout, matricula")
+                  .eq("id_empresa", id_empresa)
+                  .eq("ano_mes", ano_mes_int)
+                  .eq("folha_tipo", "A")
+                  .in_("layout", ["1200", "1210"])
+                  .in_("matricula", mats)
+                  .execute().data or []):
+            ja_tem.add((str(r.get("layout") or ""), int(r.get("matricula") or 0)))
+    except Exception as e:
+        print(f"[tab_esocial adiant13 SELECT] erro: {e}")
+        return 0
+
+    agora_es = _agora_brasilia()
+    novos = [
+        {
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "data_cad":   agora_es.strftime("%Y%m%d"),
+            "hora_cad":   agora_es.strftime("%H%M"),
+            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+            "ano_mes":    ano_mes_int,
+            "folha_tipo": "A",
+            "layout":     lay,
+            "matricula":  mat,
+            "codigo2":    0,
+        }
+        for mat in mats
+        for lay in ("1200", "1210")
+        if (lay, mat) not in ja_tem
+    ]
+    if not novos:
+        return 0
+    try:
+        supabase.table("tab_esocial").insert(novos).execute()
+    except Exception as e:
+        print(f"[tab_esocial adiant13 INSERT] erro: {e}")
+        return 0
+    return len(novos)
+
+
 def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                           perc, meses, valor, pericu, pericu_pct, pericu_mes,
                           medias_detalhe, total, usuario, versao,
@@ -47532,6 +47879,7 @@ def api_calcular_adiantamento_13():
     memorias = 0
 
     gravados = 0
+    mats_es  = []          # matrículas que geram remessa S-1200/S-1210
     try:
         r_cad = (supabase.table("tab_cad")
                  .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
@@ -47660,6 +48008,9 @@ def api_calcular_adiantamento_13():
                 except Exception:
                     pass
 
+            if int(prov_total) > 0:
+                mats_es.append(int(mat))
+
             # Memória de cálculo — 1 PDF por funcionário (local C:\ ou Storage)
             if dest.get("base"):
                 try:
@@ -47680,13 +48031,17 @@ def api_calcular_adiantamento_13():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
+    # Remessas do eSocial (S-1200 + S-1210) — a folha mensal já criava, o
+    # adiantamento não criava nenhuma.
+    n_esocial = _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, mats_es)
+
     # marca a folha (tipo 'A') como Calculada em tab_anomes
     n_calc = _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes)
     session["anomes_situacao"] = "C"
 
     return jsonify({"ok": True, "gravados": gravados, "verba": VERBA_ADIANT_13,
                     "pasta": dest.get("label", ""), "memorias": memorias,
-                    "n_calculo": n_calc})
+                    "esocial": n_esocial, "n_calculo": n_calc})
 
 
 @app.route("/api/calcular_adiantamento_13_stream")
@@ -47792,6 +48147,7 @@ def calcular_adiantamento_13_stream():
             gravados  = 0
             memorias  = 0
             total_val = 0
+            mats_es   = []          # matrículas que geram remessa S-1200/S-1210
             for idx, f in enumerate(elegiveis, start=1):
                 mat  = int(f.get("matricula") or 0)
                 nome = (f.get("nome") or f.get("nomer") or "").strip()
@@ -47873,13 +48229,20 @@ def calcular_adiantamento_13_stream():
                     except Exception:
                         pass
 
+                if int(prov_total) > 0:
+                    mats_es.append(mat)
+
+            # Remessas do eSocial (S-1200 + S-1210) — a folha mensal já criava,
+            # o adiantamento não criava nenhuma.
+            n_esocial = _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, mats_es)
+
             # marca a folha (tipo 'A') como Calculada em tab_anomes
             n_calc = _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes)
 
             _put({"tipo": "fim", "pct": 100, "resumo": {
                 "gravados": gravados, "verba": VERBA_ADIANT_13, "pasta": dest.get("label", ""),
                 "memorias": memorias, "total_funcs": total, "total_valor": total_val,
-                "perc": perc, "n_calculo": n_calc}})
+                "perc": perc, "esocial": n_esocial, "n_calculo": n_calc}})
         except Exception as e:
             _put({"tipo": "erro", "msg": str(e)[:200]})
         finally:
