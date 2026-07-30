@@ -31195,6 +31195,12 @@ def _dias_no_mes(di_raw, df_raw, dt_ini_c, dt_fim_c):
         return None
 
 
+# Insuficiência de saldo — o líquido da folha nunca é negativo.
+# 551 (provento) cobre o que faltou no mês; 552 (desconto) devolve no mês seguinte.
+VERBA_INSUF_SALDO = 551
+VERBA_INSUF_DESC  = 552
+
+
 def _calc_etapa2_ferias(id_empresa, anomes):
     """Dict {matricula: [lista de férias]} com op1=3 sobrepostos ao mês anomes."""
     if not anomes or len(anomes) != 6:
@@ -31972,6 +31978,35 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
         pass
     rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
                                    "unid": "V", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
+
+    # ── Pré-carga da INSUFICIÊNCIA DE SALDO do mês anterior (verba 551) ───────
+    # O líquido nunca sai negativo: o que faltar vira 551 (provento) e no mês
+    # seguinte volta como 552 (desconto). Aqui carregamos o 551 do mês passado
+    # para descontar agora. Mesma mecânica da 501/509 do arredondamento.
+    _insuf_prev551 = {}
+    try:
+        _in_y, _in_m = int(anomes) // 100, int(anomes) % 100
+        _prev_insuf  = (_in_y - 1) * 100 + 12 if _in_m == 1 else _in_y * 100 + (_in_m - 1)
+        _q_in = (supabase.table("tab_mov")
+                 .select("matricula, valor")
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      _prev_insuf)
+                 .eq("folha_tipo", "N")
+                 .eq("cod_verba",  VERBA_INSUF_SALDO)
+                 .eq("situacao",   "A"))
+        if id_cliente:
+            _q_in = _q_in.eq("id_cliente", id_cliente)
+        for _r in (_q_in.execute().data or []):
+            _m = int(_r.get("matricula") or 0)
+            _insuf_prev551[_m] = _insuf_prev551.get(_m, 0) + int(_r.get("valor") or 0)
+    except Exception as e:
+        print(f"[insuficiencia saldo] falha ao ler 551 de {anomes}: {e}")
+    rubricas_info.setdefault(VERBA_INSUF_SALDO,
+                             {"tp": "1", "dsc": "INSUFICIENCIA SALDO", "unid": "V",
+                              "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
+    rubricas_info.setdefault(VERBA_INSUF_DESC,
+                             {"tp": "2", "dsc": "DESCONTO INSUFICIENCIA DE SALDO", "unid": "V",
+                              "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
 
     def _enquadra_mov_fixo(rec, func_data):
         """Retorna (True, motivo_str) ou (False, '') conforme enquadramento."""
@@ -33588,6 +33623,53 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, -1),(0, -1),  4),
                 ]))
                 elems.append(_arred_tbl)
+
+            # ── ETAPA 0014 — INSUFICIÊNCIA DE SALDO (líquido nunca negativo) ──
+            # 1) devolve o que foi coberto no mês passado: 552 (desconto)
+            # 2) se o líquido ficar negativo, cobre com a 551 (provento) e o
+            #    líquido fecha em zero — a diferença volta no mês seguinte.
+            # As duas verbas não têm incidência (INSS/IRRF/FGTS = N), por isso
+            # entram no fim, depois de todas as bases já calculadas.
+            # Só folha NORMAL: em férias e rescisão o acerto é outro.
+            if _folha_tipo_mov == "N":
+                _ins_linhas = []
+                _v552_val = int(_insuf_prev551.get(matr, 0) or 0)
+                if _v552_val > 0:
+                    mmVmm[VERBA_INSUF_DESC] = mmVmm.get(VERBA_INSUF_DESC, 0) + _v552_val
+                    total_desc += _v552_val
+                    _ins_linhas.append(
+                        f"V552 Desc.Insuf.Saldo do mes anterior: -{_fmt_brl(_v552_val)}")
+
+                _liq_ins = total_prov - total_desc
+                if _liq_ins < 0:
+                    _v551_val = -_liq_ins
+                    mmVmm[VERBA_INSUF_SALDO] = mmVmm.get(VERBA_INSUF_SALDO, 0) + _v551_val
+                    total_prov += _v551_val
+                    _ins_linhas.append(
+                        f"Liquido apurado: {_fmt_brl(_liq_ins)}  (negativo)")
+                    _ins_linhas.append(
+                        f"V551 Insuficiencia de Saldo: +{_fmt_brl(_v551_val)}"
+                        f"   ->   Liquido final: {_fmt_brl(0)}")
+                    _ins_linhas.append(
+                        "Este valor sera descontado na verba 552 na proxima folha.")
+                elif _v552_val > 0:
+                    _ins_linhas.append(f"Liquido final: {_fmt_brl(_liq_ins)}")
+
+                if _ins_linhas:
+                    _ins_tbl = Table([
+                        [Paragraph("ETAPA 0014 - INSUFICIENCIA DE SALDO", st_etapa)],
+                        *[[Paragraph(ln, st_detalhe)] for ln in _ins_linhas],
+                    ], colWidths=[17*cm])
+                    _ins_tbl.setStyle(TableStyle([
+                        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                        ("TOPPADDING",    (0, 0), (0, 0),   10),
+                        ("BOTTOMPADDING", (0, 0), (0, 0),   2),
+                        ("TOPPADDING",    (0, 1), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, -1),(0, -1),  4),
+                    ]))
+                    elems.append(_ins_tbl)
+
             st_tot_lbl = ParagraphStyle("tot_l", fontName="Helvetica-Bold", fontSize=9,
                                         alignment=2, textColor=colors.HexColor("#111827"))
             st_tot_val = ParagraphStyle("tot_v", fontName="Helvetica-Bold", fontSize=9,
@@ -46898,6 +46980,31 @@ def api_adiantamento_limpar():
 # =========================================================
 # CALCULAR ADIANTAMENTO
 # =========================================================
+def _mats_ferias_quinzena(id_empresa, anomes):
+    """Matrículas de férias na 1ª QUINZENA (dias 01–15) da competência.
+
+    Quem está de férias na quinzena não recebe adiantamento quinzenal — não há
+    quinzena trabalhada a adiantar. O corte é no dia 15, e não "qualquer férias
+    no mês", de propósito: quem volta de férias no dia 03 trabalhou a quinzena
+    quase inteira e continua tendo direito.
+
+    Reaproveita _calc_etapa2_ferias (op1=3 sobreposto ao mês) e refina o
+    intervalo. Registros com data 99999999 (sem gozo marcado) já saem de lá.
+    """
+    if not anomes or len(anomes) != 6:
+        return set()
+    ini_q, fim_q = f"{anomes}01", f"{anomes}15"
+    out = set()
+    for mat, evs in (_calc_etapa2_ferias(id_empresa, anomes) or {}).items():
+        for ev in evs:
+            di = _norm_data8(ev.get("data1i") or "")
+            df = _norm_data8(ev.get("data1f") or "")
+            if di and di <= fim_q and (not df or df >= ini_q):
+                out.add(int(mat))
+                break
+    return out
+
+
 @app.route("/calcular_adiantamento")
 def calcular_adiantamento():
     if not session.get("logado"):
@@ -46927,6 +47034,7 @@ def calcular_adiantamento():
         dsc_verba="",
         funcionarios=[],
         sem_adiantamento=0,
+        em_ferias_count=0,
         total_com=0,
         total_funcs=0,
         total_fmt="R$ 0,00",
@@ -46981,6 +47089,7 @@ def calcular_adiantamento():
         pass
 
     # Funcionários ativos
+    mats_ferias  = _mats_ferias_quinzena(id_empresa, anomes)
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
@@ -46999,7 +47108,11 @@ def calcular_adiantamento():
             per_ind   = f.get("per_adianta")
             val_fixo  = f.get("valor_adianta")
 
-            if val_fixo is not None:
+            # De férias na quinzena: aparece na lista, mas sem valor a adiantar.
+            if int(f.get("matricula") or 0) in mats_ferias:
+                valor_calc = None
+                modo_desc  = "Em férias"
+            elif val_fixo is not None:
                 valor_calc = int(val_fixo)
                 modo_desc  = "Valor fixo"
             elif per_ind is not None:
@@ -47018,6 +47131,7 @@ def calcular_adiantamento():
                 "vrsalfx":    vrsalfx,
                 "sal_fmt":    _fmt_reais(vrsalfx),
                 "modo_desc":  modo_desc,
+                "em_ferias":  int(f.get("matricula") or 0) in mats_ferias,
                 "valor_calc": valor_calc,
                 "valor_fmt":  _fmt_reais(valor_calc) if valor_calc is not None else "—",
             })
@@ -47027,7 +47141,9 @@ def calcular_adiantamento():
 
     com_adianta   = [f for f in funcionarios if f["valor_calc"] is not None]
     total_cents   = sum(f["valor_calc"] for f in com_adianta)
-    sem_count     = len(funcionarios) - len(com_adianta)
+    ferias_count  = sum(1 for f in funcionarios if f["em_ferias"])
+    # "sem configuração" não inclui quem está de férias — são motivos diferentes
+    sem_count     = len(funcionarios) - len(com_adianta) - ferias_count
 
     ctx.update(
         aviso_verba=bool(verbas_ocupadas),
@@ -47036,6 +47152,7 @@ def calcular_adiantamento():
         dsc_verba=dsc_verba,
         funcionarios=funcionarios,
         sem_adiantamento=sem_count,
+        em_ferias_count=ferias_count,
         total_com=len(com_adianta),
         total_funcs=len(funcionarios),
         total_fmt=_fmt_reais(total_cents),
@@ -47090,8 +47207,10 @@ def api_calcular_adiantamento():
         return jsonify({"ok": False, "msg": "Todas as verbas (161–164) já utilizadas nesta folha."})
 
     # Funcionários e cálculo
-    gravados = 0
-    erros    = 0
+    gravados    = 0
+    erros       = 0
+    pulou_ferias = 0
+    mats_ferias  = _mats_ferias_quinzena(id_empresa, anomes)
     try:
         r_cad = (supabase.table("tab_cad")
                  .select("matricula, vrsalfx, dtadm, per_adianta, valor_adianta")
@@ -47102,6 +47221,10 @@ def api_calcular_adiantamento():
             dtadm_raw = str(f.get("dtadm") or "")
             dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
             if dtadm_anomes and dtadm_anomes > anomes:
+                continue
+            # Férias na 1ª quinzena → sem adiantamento quinzenal
+            if int(f.get("matricula") or 0) in mats_ferias:
+                pulou_ferias += 1
                 continue
             vrsalfx  = f.get("vrsalfx") or 0
             per_ind  = f.get("per_adianta")
@@ -47144,10 +47267,15 @@ def api_calcular_adiantamento():
 
     if erros and not gravados:
         return jsonify({"ok": False, "msg": f"{erros} erro(s) ao gravar. Nenhum adiantamento foi salvo."})
+    _msg_fer = (f" {pulou_ferias} funcionário(s) de férias na quinzena ficaram de fora."
+                if pulou_ferias else "")
     if erros:
         return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
-                        "msg": f"{erros} erro(s) parciais."})
-    return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar})
+                        "ferias": pulou_ferias,
+                        "msg": f"{erros} erro(s) parciais.{_msg_fer}"})
+    return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
+                    "ferias": pulou_ferias,
+                    "msg": _msg_fer.strip() or None})
 
 
 # =========================================================

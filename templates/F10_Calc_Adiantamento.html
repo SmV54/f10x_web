@@ -195,6 +195,17 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 </div>
 {% endif %}
 
+{% if em_ferias_count %}
+<div class="alerta alerta-aviso">
+    <span class="alerta-icone">🏖️</span>
+    <div>
+        <strong>{{ em_ferias_count }} funcionário{{ 's' if em_ferias_count != 1 else '' }}</strong>
+        de férias na 1ª quinzena {{ 'ficarão' if em_ferias_count != 1 else 'ficará' }} de fora —
+        não há quinzena trabalhada a adiantar.
+    </div>
+</div>
+{% endif %}
+
 <!-- CARD: PRÉVIA -->
 <div class="card">
     <div class="card-titulo">
@@ -223,7 +234,9 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                     <td class="td-sal">{{ f.sal_fmt }}</td>
                     <td class="td-modo">{{ f.modo_desc }}</td>
                     <td class="td-val {% if f.valor_calc is none %}sem{% endif %}">
-                        {{ f.valor_fmt if f.valor_calc is not none else 'sem config.' }}
+                        {% if f.valor_calc is not none %}{{ f.valor_fmt }}
+                        {%- elif f.em_ferias %}em férias
+                        {%- else %}sem config.{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
