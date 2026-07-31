@@ -6776,10 +6776,26 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
         return
     ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
+    # Mesmos 3 níveis da memória da folha mensal (ver _MEM_COD_AUX): 0 pt a
+    # ETAPA, 14 pt o sub-passo com o código da rotina auxiliar, 28 pt o dado.
     st_etapa   = ParagraphStyle("mr_eta", fontName="Helvetica-Bold", fontSize=8,
-                                spaceBefore=10, spaceAfter=3)
+                                spaceBefore=11, spaceAfter=4,
+                                textColor=colors.HexColor("#1e293b"),
+                                backColor=colors.HexColor("#f1f5f9"),
+                                borderPadding=(3, 4, 3, 4), leading=11)
+    st_etapa_na = ParagraphStyle("mr_etna", fontName="Helvetica", fontSize=8,
+                                 spaceBefore=11, spaceAfter=4,
+                                 textColor=colors.HexColor("#64748b"),
+                                 backColor=colors.HexColor("#f8fafc"),
+                                 borderPadding=(3, 4, 3, 4), leading=11)
+    st_passo   = ParagraphStyle("mr_pas", fontName="Helvetica", fontSize=7.5,
+                                leftIndent=14, spaceBefore=3, spaceAfter=1,
+                                textColor=colors.HexColor("#334155"), leading=10)
     st_det     = ParagraphStyle("mr_det", fontName="Helvetica", fontSize=8,
-                                leftIndent=10, textColor=colors.HexColor("#374151"))
+                                leftIndent=28, textColor=colors.HexColor("#374151"))
+    st_decisao = ParagraphStyle("mr_dec", fontName="Helvetica-Bold", fontSize=7.5,
+                                leftIndent=28, spaceBefore=2, spaceAfter=2,
+                                textColor=colors.HexColor("#166534"), leading=10)
     st_tot     = ParagraphStyle("mr_tot", fontName="Helvetica-Bold", fontSize=9,
                                 spaceBefore=4)
     _sz = TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
@@ -6795,8 +6811,25 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
         s = str(v or "")
         return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else "—"
 
-    def _etapa(titulo, linhas):
+    def _etapa(titulo, linhas, na="", passos=()):
+        """Uma ETAPA da memória.
+
+        na     — motivo de "não se aplica". Sai apagada e sem os detalhes, mas
+                 SAI: o Desktop também imprime o passo que não encontrou nada,
+                 em vez de omitir (o leitor precisa saber que foi verificado).
+        passos — chaves de _MEM_COD_AUX (nível 1), ex.: ('base_inss', 'inss').
+                 Aceita a chave sozinha ou a tupla (chave, complemento).
+        """
+        if na:
+            rows = [[Paragraph(f"{titulo}   Não se aplica — {na}", st_etapa_na)]]
+            t = Table(rows, colWidths=[17*cm]); t.setStyle(_sz)
+            return t
         rows = [[Paragraph(titulo, st_etapa)]]
+        for _p in passos:
+            chave, compl = (_p if isinstance(_p, (tuple, list)) else (_p, ""))
+            cod, nome = _MEM_COD_AUX.get(chave, ("9000", chave))
+            _txt = f"<b>{cod}</b> · {nome}" + (f" — {compl}" if compl else "")
+            rows.append([Paragraph(_txt, st_passo)])
         for ln in linhas:
             rows.append([Paragraph(ln, st_det)])
         t = Table(rows, colWidths=[17*cm]); t.setStyle(_sz)
@@ -6822,6 +6855,10 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 canvas.setFont("Helvetica-Bold", 8); canvas.drawCentredString(xL + 8.5*cm, y2, _t)
                 canvas.setStrokeColor(colors.HexColor("#374151")); canvas.setLineWidth(0.5)
                 canvas.line(xL, y2 - 0.28*cm, xR, y2 - 0.28*cm)
+                canvas.setFont("Helvetica", 6.5)
+                canvas.setFillColor(colors.HexColor("#94a3b8"))
+                canvas.drawString(xL, doc.bottomMargin * 0.4,
+                                  f"Folha10·Simples — versão {ler_versao()}")
                 canvas.restoreState()
 
             doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
@@ -6842,22 +6879,25 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             else:
                 lin_sal   = f"Salário cadastrado: {_B(sal)}/mês (mensalista)"
                 lin_shora = (f"Salário-hora = {_B(sal)} ÷ {_qhm} h/mês = <b>{_B(_shora)}/hora</b>")
-            e.append(_etapa("ETAPA 0001 - DADOS DA RESCISAO", [
+            e.append(_etapa("ETAPA 3010 - DADOS DA RESCISAO", [
                 f"Data da rescisão: {r['resc_data_fmt']}   Motivo: {r['motivo']}",
                 f"{aviso_txt}   Data projetada (avos): {r['dt_proj_fmt']}",
                 lin_sal,
                 lin_shora,
             ]))
             # 0002 — Saldo de salário
-            e.append(_etapa("ETAPA 0002 - SALDO DE SALARIO", [
+            e.append(_etapa("ETAPA 3020 - SALDO DE SALARIO", [
                 f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = <b>{_B(r['saldo'])}</b>",
             ]))
             # 0003 — Aviso prévio indenizado
             if r["aviso_val"]:
-                e.append(_etapa("ETAPA 0003 - AVISO PREVIO INDENIZADO", [
+                e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [
                     f"Salário {_B(sal)} × {r['dias_aviso']} dias / 30 = <b>{_B(r['aviso_val'])}</b>"
                     + ("  (acordo 484-A: 50%)" if r["multa_pct"] == 20 else ""),
                 ]))
+            else:
+                e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [],
+                                na="aviso trabalhado ou não devido neste motivo"))
             # 0004 — Médias (férias = 11 meses + mês da rescisão ÷ 12; 13º = ano corrente ÷ 12)
             det = (r.get("medias_info") or {}).get("det") or []
             mi = r.get("medias_info") or {}
@@ -6890,18 +6930,27 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 lin_med.append(f"<b>Total das médias (13º): {_B(r.get('med_total_13', 0))}</b>")
             else:
                 lin_med.append("Sem verbas variáveis com incidência de rescisão no período.")
-            e.append(_etapa("ETAPA 0004 - MEDIAS DAS VERBAS VARIAVEIS", lin_med))
+            e.append(_etapa("ETAPA 3040 - MEDIAS DAS VERBAS VARIAVEIS", lin_med,
+                            passos=[("media12", "12 meses para férias · ano corrente para o 13º")]))
             # 0005 — 13º proporcional (médias do ano corrente)
-            e.append(_etapa("ETAPA 0005 - 13o SALARIO PROPORCIONAL", [
-                f"(Salário {_B(sal)} + Médias {_B(r.get('med_total_13', 0))}) × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>"
-                if r["d13"] else "Sem 13º proporcional para este motivo.",
-            ]))
+            if r["d13"]:
+                e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [
+                    f"(Salário {_B(sal)} + Médias {_B(r.get('med_total_13', 0))})"
+                    f" × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>",
+                ]))
+            else:
+                e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [],
+                                na="o motivo da rescisão não gera 13º proporcional"))
             # 0006 — Férias proporcionais + 1/3 (médias de 12 meses)
-            e.append(_etapa("ETAPA 0006 - FERIAS PROPORCIONAIS + 1/3", [
-                f"(Salário {_B(sal)} + Médias {_B(r['med_total'])}) × {r['avos_fer']}/12 = {_B(r['fer_base'])}   "
-                f"+ 1/3 = <b>{_B(r['fer_prop'])}</b>"
-                if r["fer_prop"] else "Sem férias proporcionais para este motivo.",
-            ]))
+            if r["fer_prop"]:
+                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS + 1/3", [
+                    f"(Salário {_B(sal)} + Médias {_B(r['med_total'])})"
+                    f" × {r['avos_fer']}/12 = {_B(r['fer_base'])}   "
+                    f"+ 1/3 = <b>{_B(r['fer_prop'])}</b>",
+                ]))
+            else:
+                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS + 1/3", [],
+                                na="o motivo da rescisão não gera férias proporcionais"))
             # 0006B — Verbas manuais lançadas
             det_man = r.get("manuais_det") or []
             if det_man:
@@ -6917,7 +6966,10 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     lin_man.append(f"<b>Total proventos manuais: {_B(r['man_prov'])}</b>")
                 if r.get("man_desc"):
                     lin_man.append(f"<b>Total descontos manuais: {_B(r['man_desc'])}</b>")
-                e.append(_etapa("ETAPA 0006B - VERBAS MANUAIS LANCADAS", lin_man))
+                e.append(_etapa("ETAPA 3070 - VERBAS MANUAIS LANCADAS", lin_man))
+            else:
+                e.append(_etapa("ETAPA 3070 - VERBAS MANUAIS LANCADAS", [],
+                                na="nenhuma verba digitada no movimento desta rescisão"))
             # 0007 — INSS
             _base_lbl = "saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
             lin_inss = [f"Base saldo ({_base_lbl}): {_B(r['base_inss_saldo'])}"]
@@ -6927,7 +6979,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             lin_inss.append(f"INSS saldo = <b>{_B(r['inss_saldo'])}</b>")
             if r["inss_13"]:
                 lin_inss.append(f"INSS 13º (base {_B(r['d13_base'])}) = <b>{_B(r['inss_13'])}</b>")
-            e.append(_etapa("ETAPA 0007 - INSS", lin_inss))
+            e.append(_etapa("ETAPA 3080 - INSS", lin_inss,
+                            passos=["base_inss", "inss"]))
             # 0008 — IRRF
             _irrf_base_lbl = "saldo" + (" + manuais c/ inc. IRRF" if r.get("add_irrf") else "")
             lin_irrf = [
@@ -6944,16 +6997,32 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     lin_irrf.append("13º isento — rendimento até R$ 5.000,00 (Lei 15.270/2025)")
                 elif r.get("red_13"):
                     lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao 13º (−{_B(r['red_13'])})")
-            e.append(_etapa("ETAPA 0008 - IRRF", lin_irrf))
+            _p_irrf = ["base_irrf", "irrf"]
+            if r.get("red_saldo") or r.get("red_13") or r.get("isento_saldo") or r.get("isento_13"):
+                _p_irrf.append("redutor")
+            e.append(_etapa("ETAPA 3090 - IRRF", lin_irrf, passos=_p_irrf))
+            # Marcador de decisão: a Lei 15.270/2025 reduziu ou zerou o imposto.
+            _red_tot = int(r.get("red_saldo") or 0) + int(r.get("red_13") or 0)
+            if r.get("isento_saldo") or r.get("isento_13"):
+                e.append(Paragraph(
+                    "&#187; Lei 15.270/2025 &#8212; rendimento dentro da faixa isenta "
+                    "(até R$ 5.000,00) — <b>IRRF zerado</b>", st_decisao))
+            elif _red_tot:
+                e.append(Paragraph(
+                    f"&#187; Lei 15.270/2025 &#8212; redutor aplicado, "
+                    f"<b>−{_B(_red_tot)}</b> de IRRF", st_decisao))
             # 0009 — FGTS + multa
             _fgts_lbl = "saldo+13º+aviso" + ("+manuais c/ inc. FGTS" if r.get("add_fgts") else "")
             lin_fgts = [f"Base FGTS ({_fgts_lbl}) {_B(r['base_fgts'])} × 8% = <b>{_B(r['fgts_val'])}</b>"]
             if r["multa_pct"]:
                 lin_fgts.append(f"Multa FGTS: {r['multa_pct']}% sobre o saldo de FGTS"
                                 + (f" = {_B(r['multa_fgts'])}" if r["multa_fgts"] else " (informe o saldo)"))
-            e.append(_etapa("ETAPA 0009 - FGTS", lin_fgts))
+            e.append(_etapa("ETAPA 3100 - FGTS", lin_fgts,
+                            passos=["base_fgts", "fgts"]))
             # Totais
             e.append(Spacer(1, 4))
+            _cod_tot, _nm_tot = _MEM_COD_AUX["totais"]
+            e.append(Paragraph(f"<b>{_cod_tot}</b> · {_nm_tot}", st_passo))
             e.append(Paragraph(f"TOTAL PROVENTOS: {_B(r['total_prov'])}", st_tot))
             e.append(Paragraph(f"<font color='#b91c1c'>TOTAL DESCONTOS: {_B(r['total_desc'])}</font>", st_tot))
             e.append(Paragraph(f"LIQUIDO A RECEBER: {_B(r['liquido'])}", st_tot))
@@ -33667,8 +33736,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 _irrf_l = int(irrf_val_comp or 0)
                 _venc   = "Desconto Simplificado" if simpl_chosen else "Deduções Legais"
                 elems.append(Paragraph(
-                    f"&#9656; Simplificado: {_fmt_brl(_irrf_s)} &nbsp;·&nbsp; "
-                    f"Deduções Legais: {_fmt_brl(_irrf_l)} &nbsp;&#8594;&nbsp; "
+                    f"&#187; Simplificado: {_fmt_brl(_irrf_s)} &nbsp;·&nbsp; "
+                    f"Deduções Legais: {_fmt_brl(_irrf_l)} &nbsp;&#8212;&nbsp; "
                     f"escolhido <b>{_venc}</b> (menor IRRF para o funcionário)",
                     st_decisao))
             except Exception:
