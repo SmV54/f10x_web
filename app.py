@@ -29801,21 +29801,37 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
         return False, {"ok": False, "msg": f"Erro ao ler tab_cad: {e}"}
 
     mats = [cad_map[c]["matricula"] for c in cpfs if c in cad_map]
+
+    # Folhas que entram na soma do lado Folha10. A folha mensal e o adiantamento
+    # do 13º da mesma competência viajam no MESMO <dmDev> do S-1200, então o
+    # gov devolve os dois somados num S-5001/S-5003 só. Comparar a mensal
+    # sozinha contra esse total acusava diferença de FGTS em todo funcionário
+    # que teve adiantamento. _TIPOS_FOLHA_JUNTAS = ("N", "A").
+    _tipos_verif = (list(_TIPOS_FOLHA_JUNTAS)
+                    if str(folha_tipo or "N").upper() in _TIPOS_FOLHA_JUNTAS
+                    else [folha_tipo])
+
     tot_map = {}
     irrf_ret_por_mat = {}
+    _COLS_SOMA = ("valor_inss_retido", "valor_base_inss_comlimite",
+                  "valor_fgts", "valor_base_fgts", "valor_irrf_basetabela")
     if mats:
         try:
             tots = (supabase.table("tab_total")
-                    .select("matricula, valor_inss_retido, valor_base_inss_comlimite, "
-                            "valor_fgts, valor_base_fgts, "
+                    .select("matricula, folha_tipo, valor_inss_retido, "
+                            "valor_base_inss_comlimite, valor_fgts, valor_base_fgts, "
                             "valor_irrf_basetabela")
                     .eq("id_empresa", id_empresa)
                     .eq("folha", int(anomes_atual))
-                    .eq("folha_tipo", folha_tipo)
+                    .in_("folha_tipo", _tipos_verif)
                     .in_("matricula", mats)
                     .execute().data or [])
+            # SOMA por matrícula: com N+A vêm duas linhas do mesmo trabalhador.
             for t in tots:
-                tot_map[t.get("matricula")] = t
+                _m = t.get("matricula")
+                _d = tot_map.setdefault(_m, {c: 0 for c in _COLS_SOMA})
+                for _c in _COLS_SOMA:
+                    _d[_c] += int(t.get(_c) or 0)
         except Exception as e:
             return False, {"ok": False, "msg": f"Erro ao ler tab_total: {e}"}
         # IRRF retido do Folha10: soma da rubrica 120 (IMPOSTO DE RENDA) do tab_mov.
@@ -29826,7 +29842,7 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
                     .select("matricula, valor")
                     .eq("id_empresa", id_empresa)
                     .eq("folha", int(anomes_atual))
-                    .eq("folha_tipo", folha_tipo)
+                    .in_("folha_tipo", _tipos_verif)
                     .eq("cod_verba", 120)
                     .eq("situacao", "A")
                     .in_("matricula", mats)
