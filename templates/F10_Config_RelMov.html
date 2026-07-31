@@ -115,6 +115,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     transition: border-color 0.15s;
 }
 .func-busca:focus { border-color: var(--accent); background: #f0f7ff; }
+.func-acoes { display: flex; gap: 6px; margin: 6px 0 4px; }
+.btn-mini {
+    padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border); background: #fff; color: #475569;
+    cursor: pointer; font-family: var(--sans); transition: .12s;
+}
+.btn-mini:hover { border-color: var(--accent); color: var(--accent); }
+.func-conta { font-size: 11px; color: #94a3b8; margin-left: auto; align-self: center; }
 .func-check-box {
     border: 1px solid var(--border); border-radius: 8px;
     max-height: 180px; overflow-y: auto; background: #fafbfc;
@@ -261,11 +269,38 @@ const FUNCIONARIOS = {{ funcionarios | tojson }};
 const VERBAS       = {{ verbas | tojson }};
 
 /* ── Funcionários ─────────────────────────────────────────────────────── */
+// A seleção mora AQUI, não no DOM: filtrar re-renderiza a lista inteira e,
+// antes disso, quem estava marcado e saía do filtro simplesmente sumia da
+// seleção — inclusive na hora de gerar o relatório.
+const selFuncs = new Set();
+
+function onCheckFunc(chk) {
+    if (chk.checked) selFuncs.add(chk.value); else selFuncs.delete(chk.value);
+    atualizarContaFuncs();
+}
+
+function atualizarContaFuncs() {
+    const el = document.getElementById('func-conta');
+    if (el) el.textContent = selFuncs.size ? `${selFuncs.size} selecionado(s)` : 'nenhum selecionado';
+}
+
+function todosFuncs() {
+    FUNCIONARIOS.forEach(f => selFuncs.add(String(f.matricula)));
+    filtrarFuncs();
+}
+
+function limparFuncs() {
+    selFuncs.clear();
+    filtrarFuncs();
+}
+
 function renderFuncs(lista) {
     if (!lista.length) return '<div style="padding:10px 12px;font-size:12px;color:#94a3b8;">Nenhum funcionário.</div>';
     return lista.map(f =>
         `<label class="func-check-item">
-            <input type="checkbox" class="func-chk" value="${f.matricula}">
+            <input type="checkbox" class="func-chk" value="${f.matricula}"
+                   ${selFuncs.has(String(f.matricula)) ? 'checked' : ''}
+                   onchange="onCheckFunc(this)">
             <span class="func-check-mat">${String(f.matricula).padStart(6,'0')}</span>
             <span class="func-check-nome">${f.nome||'—'}</span>
         </label>`
@@ -284,7 +319,13 @@ function alternarFuncionarios() {
     label.classList.remove('desativada');
     valor.innerHTML = `
         <input class="func-busca" id="busca-func" placeholder="Buscar funcionário…" oninput="filtrarFuncs()">
+        <div class="func-acoes">
+            <button type="button" class="btn-mini" onclick="todosFuncs()">Todos</button>
+            <button type="button" class="btn-mini" onclick="limparFuncs()">Limpar</button>
+            <span class="func-conta" id="func-conta">nenhum selecionado</span>
+        </div>
         <div class="func-check-box" id="func-box">${renderFuncs(FUNCIONARIOS)}</div>`;
+    atualizarContaFuncs();
     // Lista montada por JS: o DOMContentLoaded ja passou, entao avisa o
     // f10_autoselect para marcar quando so houver um funcionario.
     if (window.f10MarcarUnicoFuncionario) window.f10MarcarUnicoFuncionario();
@@ -297,6 +338,8 @@ function filtrarFuncs() {
         ? FUNCIONARIOS.filter(f => f.nome.toLowerCase().includes(b) || String(f.matricula).padStart(6,'0').includes(b))
         : FUNCIONARIOS;
     box.innerHTML = renderFuncs(lista);
+    atualizarContaFuncs();
+    if (window.f10MarcarUnicoFuncionario) window.f10MarcarUnicoFuncionario();
 }
 
 /* ── Folha ────────────────────────────────────────────────────────────── */
@@ -357,7 +400,7 @@ function iniciar() {
 
     // Funcionários
     if (document.getElementById('tog-01').checked) {
-        const mats = [...document.querySelectorAll('.func-chk:checked')].map(c => c.value);
+        const mats = [...selFuncs];   // do Set: o DOM só tem os visíveis no filtro
         if (mats.length) p.set('mats', mats.join(','));
     }
 

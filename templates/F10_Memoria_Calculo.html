@@ -89,6 +89,14 @@ body {
 }
 .busca-input:focus { border-color: var(--accent); }
 
+.func-acoes { display: flex; justify-content: flex-end; margin-top: 6px; }
+.btn-mini {
+  padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); background: #fff; color: #475569;
+  cursor: pointer; font-family: var(--sans); transition: .12s;
+}
+.btn-mini:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-mini:disabled { opacity: .45; cursor: default; }
 .func-lista { flex: 1; overflow-y: auto; padding: 6px 0; }
 .func-item {
   display: flex; align-items: center; gap: 8px;
@@ -185,6 +193,10 @@ body {
       <input type="text" class="busca-input" id="busca"
              placeholder="Buscar nome ou matrícula…"
              oninput="filtrarLista()">
+      <div class="func-acoes">
+        <button type="button" class="btn-mini" id="btnLimparSel"
+                onclick="limparSelecao()" disabled>Limpar seleção</button>
+      </div>
     </div>
     <div class="func-lista" id="funcLista">
       {% for f in funcionarios %}
@@ -247,8 +259,22 @@ function onCheck(chk) {
       if (c !== chk) c.checked = false;
     });
   }
-  document.getElementById('btnAbrirMem').disabled =
-    !document.querySelector('#funcLista input[type=checkbox]:checked');
+  atualizarBotoes();
+}
+
+function atualizarBotoes() {
+  const temSel = !!document.querySelector('#funcLista input[type=checkbox]:checked');
+  document.getElementById('btnAbrirMem').disabled = !temSel;
+  const btnL = document.getElementById('btnLimparSel');
+  if (btnL) btnL.disabled = !temSel;
+}
+
+// A seleção aqui é ÚNICA (onCheck desmarca os outros), então limpar é
+// desmarcar o escolhido — útil para sair do estado sem ter que achar a linha
+// dele na lista depois de filtrar.
+function limparSelecao() {
+  document.querySelectorAll('#funcLista input[type=checkbox]').forEach(c => { c.checked = false; });
+  atualizarBotoes();
 }
 
 function abrirMemoria() {
