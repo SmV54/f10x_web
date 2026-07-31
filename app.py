@@ -6910,7 +6910,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     if not d.get("val_fer"):
                         continue
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min']} min/mês → {_B(d['val_fer'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min']} min/mês » {_B(d['val_fer'])}")
                     else:
                         lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total'])} /12 = {_B(d['val_fer'])}")
                 lin_med.append(f"<b>Total das médias (férias): {_B(r['med_total'])}</b>")
@@ -6922,7 +6922,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                         continue
                     _tem13 = True
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min13']} min/mês → {_B(d['val_13'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min13']} min/mês » {_B(d['val_13'])}")
                     else:
                         lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total13'])} /12 = {_B(d['val_13'])}")
                 if not _tem13:
@@ -6956,7 +6956,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             if det_man:
                 lin_man = []
                 for d in det_man:
-                    sinal = "+" if d["tp"] == "P" else "−"
+                    sinal = "+" if d["tp"] == "P" else "-"
                     tp_lbl = "Provento" if d["tp"] == "P" else "Desconto"
                     lin_man.append(f"{d['cod']:04d} {d['dsc']} — {tp_lbl} {sinal}<b>{_B(d['val'])}</b>"
                                    + (f"  (incide {d['inc']})" if d['tp'] == 'P' else ""))
@@ -6984,19 +6984,19 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             # 0008 — IRRF
             _irrf_base_lbl = "saldo" + (" + manuais c/ inc. IRRF" if r.get("add_irrf") else "")
             lin_irrf = [
-                f"Base ({_irrf_base_lbl}) − INSS − dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
+                f"Base ({_irrf_base_lbl}) - INSS - dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
                 f"IRRF saldo = <b>{_B(r['irrf_saldo'])}</b>",
             ]
             if r.get("isento_saldo"):
                 lin_irrf.append("Saldo isento — rendimento até R$ 5.000,00 (Lei 15.270/2025)")
             elif r.get("red_saldo"):
-                lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao saldo (−{_B(r['red_saldo'])})")
+                lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao saldo (-{_B(r['red_saldo'])})")
             if r["irrf_13"] or r.get("isento_13"):
                 lin_irrf.append(f"IRRF 13º (base {_B(r['base_irrf_13'])}) = <b>{_B(r['irrf_13'])}</b>")
                 if r.get("isento_13"):
                     lin_irrf.append("13º isento — rendimento até R$ 5.000,00 (Lei 15.270/2025)")
                 elif r.get("red_13"):
-                    lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao 13º (−{_B(r['red_13'])})")
+                    lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao 13º (-{_B(r['red_13'])})")
             _p_irrf = ["base_irrf", "irrf"]
             if r.get("red_saldo") or r.get("red_13") or r.get("isento_saldo") or r.get("isento_13"):
                 _p_irrf.append("redutor")
@@ -7010,7 +7010,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             elif _red_tot:
                 e.append(Paragraph(
                     f"&#187; Lei 15.270/2025 &#8212; redutor aplicado, "
-                    f"<b>−{_B(_red_tot)}</b> de IRRF", st_decisao))
+                    f"<b>-{_B(_red_tot)}</b> de IRRF", st_decisao))
             # 0009 — FGTS + multa
             _fgts_lbl = "saldo+13º+aviso" + ("+manuais c/ inc. FGTS" if r.get("add_fgts") else "")
             lin_fgts = [f"Base FGTS ({_fgts_lbl}) {_B(r['base_fgts'])} × 8% = <b>{_B(r['fgts_val'])}</b>"]
@@ -29990,13 +29990,13 @@ def api_esocial_verificacao_pdf():
         "", "",
         P("Folha10",  fn="Helvetica-Bold", fs=_FSH, align=2),
         P("eSocial",  fn="Helvetica-Bold", fs=_FSH, align=2),
-        P("Δ",        fn="Helvetica-Bold", fs=_FSH, align=2),
+        P("Dif.",        fn="Helvetica-Bold", fs=_FSH, align=2),
         P("Folha10",  fn="Helvetica-Bold", fs=_FSH, align=2),
         P("eSocial",  fn="Helvetica-Bold", fs=_FSH, align=2),
-        P("Δ",        fn="Helvetica-Bold", fs=_FSH, align=2),
+        P("Dif.",        fn="Helvetica-Bold", fs=_FSH, align=2),
         P("Folha10",  fn="Helvetica-Bold", fs=_FSH, align=2),
         P("eSocial",  fn="Helvetica-Bold", fs=_FSH, align=2),
-        P("Δ",        fn="Helvetica-Bold", fs=_FSH, align=2),
+        P("Dif.",        fn="Helvetica-Bold", fs=_FSH, align=2),
     ]
     tbl_data = [hdr1, hdr2]
 
@@ -33365,7 +33365,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ])
             if _linhas_dsr:
                 _e9c_linhas = [[Paragraph(
-                    "ETAPA 1110 - REPOUSO REMUNERADO (DSR) → V0025 Hora Extra · "
+                    "ETAPA 1110 - REPOUSO REMUNERADO (DSR) » V0025 Hora Extra · "
                     "V0026 Adic.Noturno · V0027 Comissões", st_etapa)]]
                 _e9c_linhas += [[Paragraph(t, st_detalhe)] for t in _linhas_dsr]
                 e9c_tbl = Table(_e9c_linhas, colWidths=[17*cm])
@@ -33832,7 +33832,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             if _adiant_v > 0:
                 mmVmm[160] = mmVmm.get(160, 0) + _adiant_v
                 _ad_linha = (f"Adiantamento Quinzenal (verbas 161-164): {_fmt_brl(_adiant_v)}"
-                             f"  →  V160 (desconto) = {_fmt_brl(_adiant_v)}")
+                             f"  »  V160 (desconto) = {_fmt_brl(_adiant_v)}")
                 if _adiant_dup > 0:
                     _ad_linha += (f"   ·   V161-164 lançadas no movimento "
                                   f"({_fmt_brl(_adiant_dup)}) não descontam de novo")
@@ -33966,9 +33966,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 _liq_final_ar = _liq_ajust + _v501_val
                 _ar_linhas = [f"Líq. antes do arred.: {_fmt_brl(_liq_base)}"]
                 if _v509_val > 0:
-                    _ar_linhas.append(f"V509 Desc.Arred.Ant.: -{_fmt_brl(_v509_val)}   →   Líq. ajustado: {_fmt_brl(_liq_ajust)}")
+                    _ar_linhas.append(f"V509 Desc.Arred.Ant.: -{_fmt_brl(_v509_val)}   »   Líq. ajustado: {_fmt_brl(_liq_ajust)}")
                 if _v501_val > 0:
-                    _ar_linhas.append(f"V501 Arredondamento: +{_fmt_brl(_v501_val)}   →   Líq. final: {_fmt_brl(_liq_final_ar)}")
+                    _ar_linhas.append(f"V501 Arredondamento: +{_fmt_brl(_v501_val)}   »   Líq. final: {_fmt_brl(_liq_final_ar)}")
                 elif _liq_ajust > 0:
                     _ar_linhas.append(f"Líq. já múltiplo de R$10,00 — V501 não lançada")
                 _arred_tbl = Table([
@@ -36600,9 +36600,11 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         c.setDash([3, 5], 0)
         c.line(ML - 0.2*cm, y_center, W_page - MR + 0.2*cm, y_center)
         c.setDash([], 0)
-        c.setFont("Helvetica", 7)
+        # ZapfDingbats (fonte padrao do PDF) tem a tesoura no 0x22; a Helvetica
+        # com WinAnsi nao tem e o ReportLab desenhava outro caractere no lugar.
+        c.setFont("ZapfDingbats", 7)
         c.setFillColor(colors.HexColor("#94a3b8"))
-        c.drawCentredString(W_page / 2, y_center + 2.5, "✂")
+        c.drawCentredString(W_page / 2, y_center + 2.5, '"')
         c.restoreState()
 
     def draw_stub(x0, y_top, w, func_data, compact=False, label_via=None, com_sig=True):
@@ -37265,8 +37267,9 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         c.setLineWidth(0.5); c.setDash([3, 5], 0)
         c.line(ML - 0.2*cm, y_c, W_page - MR + 0.2*cm, y_c)
         c.setDash([], 0)
-        c.setFont("Helvetica", 7); c.setFillColor(colors.HexColor("#94a3b8"))
-        c.drawCentredString(W_page/2, y_c + 2.5, "✂")
+        # ZapfDingbats: a tesoura fica no 0x22 (ver draw_cut_line).
+        c.setFont("ZapfDingbats", 7); c.setFillColor(colors.HexColor("#94a3b8"))
+        c.drawCentredString(W_page/2, y_c + 2.5, '"')
         c.restoreState()
 
     def draw_stub(x0, y_top, w, stub, compact=False, com_sig=True):
