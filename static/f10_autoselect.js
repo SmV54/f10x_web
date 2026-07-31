@@ -1,19 +1,24 @@
 /* ==========================================================================
-   f10_autoselect.js — empresa com UM funcionário só já vem escolhido.
+   f10_autoselect.js — quando sobra UM funcionário, ele já vem escolhido.
 
-   Quando a lista de funcionários da tela tem exatamente um item, marcar esse
-   item é a única saída possível: o clique não é uma escolha, é burocracia.
-   Este script marca sozinho e dispara o 'change', para a própria tela rodar o
-   handler dela (atualizarSelecao / atualizarTodos / o que for) sem que este
-   arquivo precise conhecer o nome da função.
+   Vale nos dois casos:
+     - a empresa só tem um funcionário;
+     - a busca/filtro da tela reduziu a lista a um.
+
+   Marcar o único item visível não é uma escolha, é burocracia. O script marca
+   e dispara o 'change', para a própria tela rodar o handler dela
+   (atualizarSelecao / atualizarTodos / o que for) sem que este arquivo precise
+   conhecer o nome da função.
 
    Não age quando:
-     - há 0 ou 2+ funcionários (aí existe escolha de verdade);
-     - a tela já marcou alguém (ex.: Visualizar Cálculo vindo com ?matricula=,
-       ou as telas de férias/rescisão que já vêm com tudo marcado).
+     - há 0 ou 2+ funcionários VISÍVEIS (aí existe escolha de verdade);
+     - a tela já marcou alguém (ex.: Visualizar Cálculo com ?matricula=, ou as
+       telas de férias/rescisão que já vêm com tudo marcado);
+     - o usuário já desmarcou aquele item — cada caixa só é marcada uma vez,
+       senão o filtro ficaria brigando com quem desmarcou de propósito.
 
-   Listas montadas por JS (fetch) devem chamar window.f10MarcarUnicoFuncionario()
-   no fim da renderização — o DOMContentLoaded já passou nessa hora.
+   Listas montadas por JS podem chamar window.f10MarcarUnicoFuncionario()
+   depois de renderizar; o MutationObserver abaixo também cobre esse caso.
    ========================================================================== */
 (function () {
     'use strict';
@@ -26,37 +31,72 @@
         'input.func-chk[type="checkbox"]'
     ];
 
-    function caixas() {
+    // Cada caixa é marcada no máximo uma vez. Sem isso, quem desmarcasse e
+    // continuasse digitando na busca veria o item marcar sozinho de novo.
+    var jaMarcadas = (typeof WeakSet === 'function') ? new WeakSet() : null;
+
+    function visivel(el) {
+        return !!(el.offsetParent || (el.getClientRects && el.getClientRects().length));
+    }
+
+    function caixasVisiveis() {
         var achadas = [];
         SELETORES.forEach(function (sel) {
-            var nós;
-            try { nós = document.querySelectorAll(sel); } catch (e) { return; }
-            Array.prototype.forEach.call(nós, function (c) {
-                if (!c.disabled && achadas.indexOf(c) === -1) achadas.push(c);
+            var nos;
+            try { nos = document.querySelectorAll(sel); } catch (e) { return; }
+            Array.prototype.forEach.call(nos, function (c) {
+                if (c.disabled) return;
+                if (achadas.indexOf(c) !== -1) return;
+                if (!visivel(c)) return;
+                achadas.push(c);
             });
         });
         return achadas;
     }
 
     function marcar() {
-        var chks = caixas();
-        if (chks.length !== 1) return false;   // 0 ou 2+: existe escolha
+        var chks = caixasVisiveis();
+        if (chks.length !== 1) return false;      // 0 ou 2+: existe escolha
         var c = chks[0];
-        if (c.checked) return false;           // a tela já marcou
+        if (c.checked) return false;              // já marcado
+        if (jaMarcadas && jaMarcadas.has(c)) return false;   // usuário desmarcou
+        if (jaMarcadas) jaMarcadas.add(c);
         c.checked = true;
         c.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
     }
 
-    // setTimeout 0: deixa o DOMContentLoaded da própria tela terminar antes,
-    // senão o init dela pode desmarcar o que acabamos de marcar.
-    function agendar() { setTimeout(marcar, 0); }
+    // Reavalia com folga: a tela pode filtrar, re-renderizar a lista ou rodar
+    // o próprio init logo depois. 120 ms junta a rajada num disparo só.
+    var timer = null;
+    function reavaliar() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () { timer = null; marcar(); }, 120);
+    }
 
     window.f10MarcarUnicoFuncionario = marcar;
 
+    function ligar() {
+        // 1) abertura da tela — setTimeout deixa o init dela terminar antes
+        setTimeout(marcar, 0);
+
+        // 2) busca/filtro: qualquer digitação pode reduzir a lista a um
+        document.addEventListener('input', reavaliar, true);
+
+        // 3) listas que somem/aparecem (display:none) ou são re-renderizadas
+        if (typeof MutationObserver === 'function' && document.body) {
+            new MutationObserver(reavaliar).observe(document.body, {
+                childList: true,
+                subtree:   true,
+                attributes: true,
+                attributeFilter: ['style', 'class', 'hidden']
+            });
+        }
+    }
+
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', agendar);
+        document.addEventListener('DOMContentLoaded', ligar);
     } else {
-        agendar();
+        ligar();
     }
 })();
