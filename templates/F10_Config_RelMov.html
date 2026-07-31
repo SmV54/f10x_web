@@ -285,6 +285,9 @@ function alternarFuncionarios() {
     valor.innerHTML = `
         <input class="func-busca" id="busca-func" placeholder="Buscar funcionário…" oninput="filtrarFuncs()">
         <div class="func-check-box" id="func-box">${renderFuncs(FUNCIONARIOS)}</div>`;
+    // Lista montada por JS: o DOMContentLoaded ja passou, entao avisa o
+    // f10_autoselect para marcar quando so houver um funcionario.
+    if (window.f10MarcarUnicoFuncionario) window.f10MarcarUnicoFuncionario();
 }
 
 function filtrarFuncs() {
@@ -374,5 +377,6 @@ function iniciar() {
 }
 </script>
 <script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_autoselect.js"></script>
 </body>
 </html>
