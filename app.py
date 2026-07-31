@@ -32039,6 +32039,68 @@ def _pdf_num_pagina(canvas, doc):
     canvas.restoreState()
 
 
+# =========================================================
+# Memória de cálculo — estilo (inspirado no Folha10 Desktop)
+# =========================================================
+# Três níveis fixos de indentação, como na memória do Desktop:
+#   nível 0 (0 pt)  → a ETAPA
+#   nível 1 (14 pt) → o sub-passo, com o código da rotina auxiliar (9xxx)
+#   nível 2 (28 pt) → o dado / a fórmula com os números
+# Ver a tabela de códigos em _MEM_COD_AUX abaixo.
+_MEM_COD_AUX = {
+    "media12":    ("9010", "Média das últimas 12 folhas"),
+    "hora_dec":   ("9020", "Conversão minutos → hora decimal"),
+    "sal_base":   ("9030", "Definição dos salários base (mês / dia / hora)"),
+    "ferias":     ("9040", "Consulta de férias no período"),
+    "afast":      ("9050", "Consulta de afastamentos"),
+    "faltas":     ("9060", "Consulta de faltas"),
+    "tempo_serv": ("9070", "Tempo de serviço e idade de dependente"),
+    "base_inss":  ("9110", "Base do INSS"),
+    "inss":       ("9120", "INSS por faixas"),
+    "base_irrf":  ("9130", "Base do IRRF"),
+    "irrf":       ("9140", "IRRF (faixa + parcela a deduzir)"),
+    "redutor":    ("9150", "Redutor da isenção até R$ 5.000 (Lei 15.270/2025)"),
+    "base_fgts":  ("9160", "Base do FGTS"),
+    "fgts":       ("9170", "FGTS"),
+    "totais":     ("9210", "Totais de proventos, descontos e líquido"),
+}
+
+
+def _mem_cabecalho_pagina(empresa_nm, cnpj_fmt, titulo, versao):
+    """Devolve o callback de página da memória: faixa de identificação no topo
+    (da 2ª página em diante — a 1ª já tem o cabeçalho grande) e rodapé com
+    versão e número da página em todas. O Desktop repete a identificação em
+    toda folha; sem isso uma página solta impressa não diz de quem é."""
+    _emp = str(empresa_nm or "")[:60]
+    _tit = str(titulo or "")[:95]
+
+    def _desenha(canvas, doc):
+        canvas.saveState()
+        larg, alt = doc.pagesize
+        esq, dir_ = doc.leftMargin, larg - doc.rightMargin
+        if canvas.getPageNumber() > 1:
+            canvas.setFont("Helvetica-Bold", 7)
+            canvas.setFillColor(colors.HexColor("#374151"))
+            canvas.drawString(esq, alt - 1.0 * cm, f"{cnpj_fmt} — {_emp}")
+            canvas.setFont("Helvetica", 6.5)
+            canvas.setFillColor(colors.HexColor("#64748b"))
+            canvas.drawString(esq, alt - 1.35 * cm, _tit)
+            canvas.setStrokeColor(colors.HexColor("#cbd5e1"))
+            canvas.setLineWidth(0.5)
+            canvas.line(esq, alt - 1.5 * cm, dir_, alt - 1.5 * cm)
+        canvas.setFont("Helvetica", 6.5)
+        canvas.setFillColor(colors.HexColor("#94a3b8"))
+        canvas.drawString(esq, doc.bottomMargin * 0.4,
+                          f"Folha10·Simples — versão {versao}")
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawRightString(dir_, doc.bottomMargin * 0.4,
+                               f"Pagina {canvas.getPageNumber()}")
+        canvas.restoreState()
+
+    return _desenha
+
+
 def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id_cliente=None, on_func=None, anomes_tipo="N", on_aviso=None):
     """Grava um PDF individual por funcionário (local no Windows / Supabase Storage
     no Render, via _memoria_destino/_salvar_memoria_pdf). Silencioso.
@@ -32057,13 +32119,44 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
         return
 
     ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
+    _versao_mem = ler_versao()
 
-    st_etapa   = ParagraphStyle("me_eta",  fontName="Helvetica", fontSize=8,
-                                spaceBefore=10, spaceAfter=3, leftIndent=0)
+    # NÍVEL 0 — a ETAPA. Faixa cinza e filete em cima separam um passo do outro
+    # sem precisar das réguas de 132 caracteres do Desktop.
+    st_etapa   = ParagraphStyle("me_eta",  fontName="Helvetica-Bold", fontSize=8,
+                                spaceBefore=11, spaceAfter=4, leftIndent=0,
+                                textColor=colors.HexColor("#1e293b"),
+                                backColor=colors.HexColor("#f1f5f9"),
+                                borderPadding=(3, 4, 3, 4),
+                                borderWidth=0, leading=11)
+    # NÍVEL 1 — sub-passo (rotina auxiliar 9xxx).
+    st_passo   = ParagraphStyle("me_pas",  fontName="Helvetica", fontSize=7.5,
+                                leftIndent=14, spaceBefore=3, spaceAfter=1,
+                                textColor=colors.HexColor("#334155"), leading=10)
+    # NÍVEL 2 — o dado e a fórmula com os números.
     st_formula = ParagraphStyle("me_fml",  fontName="Helvetica", fontSize=7,
-                                spaceAfter=6, leftIndent=10, textColor=colors.HexColor("#374151"))
+                                spaceAfter=6, leftIndent=28, textColor=colors.HexColor("#374151"))
     st_detalhe = ParagraphStyle("me_det",  fontName="Helvetica", fontSize=8,
-                                leftIndent=10, textColor=colors.HexColor("#374151"))
+                                leftIndent=28, textColor=colors.HexColor("#374151"))
+    # Etapa que NÃO se aplica: fica visível, mas apagada — o Desktop também
+    # imprime o "NAO ENCONTREI" em vez de omitir o passo.
+    st_etapa_na = ParagraphStyle("me_etna", fontName="Helvetica", fontSize=8,
+                                 spaceBefore=11, spaceAfter=4, leftIndent=0,
+                                 textColor=colors.HexColor("#64748b"),
+                                 backColor=colors.HexColor("#f8fafc"),
+                                 borderPadding=(3, 4, 3, 4), leading=11)
+    # Marcador de decisão, quando o cálculo escolhe entre dois caminhos.
+    st_decisao = ParagraphStyle("me_dec",  fontName="Helvetica-Bold", fontSize=7.5,
+                                leftIndent=28, spaceBefore=2, spaceAfter=2,
+                                textColor=colors.HexColor("#166534"), leading=10)
+
+    def _mem_passo(chave, complemento=""):
+        """Linha de nível 1 com o código da rotina auxiliar (ver _MEM_COD_AUX)."""
+        cod, nome = _MEM_COD_AUX.get(chave, ("9000", chave))
+        txt = f"<b>{cod}</b> · {nome}"
+        if complemento:
+            txt += f" — {complemento}"
+        return Paragraph(txt, st_passo)
     st_id_lbl  = ParagraphStyle("me_idl",  fontName="Helvetica-Bold", fontSize=9, leading=12)
     st_id_val  = ParagraphStyle("me_idv",  fontName="Helvetica",      fontSize=9, leading=12)
 
@@ -32110,7 +32203,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     }
     except Exception:
         pass
-    # Horarios de escala — mudam so o divisor do DSR (ETAPA 0009C)
+    # Horarios de escala — mudam so o divisor do DSR (ETAPA 1110)
     escala_ids = _ids_horario_escala(id_cliente)
 
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
@@ -32140,7 +32233,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
         rubricas_info.setdefault(509, {"tp":"2","dsc":"Desc.Arred.Ant.","unid":"V","inc_cp":"","inc_irrf":"","inc_fgts":""})
 
     # ── Pré-carga adiantamentos quinzenais (verbas 161-164) por matrícula ─────
-    # A verba 160 é gerada na ETAPA 0011B como desconto do total lançado.
+    # A verba 160 é gerada na ETAPA 1140 como desconto do total lançado.
     _adiant_por_mat = {}
     try:
         _q_ad = (supabase.table("tab_mov")
@@ -32300,7 +32393,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             # ── guard: admissão após o mês ────────────────
             dtadm_raw = str(l.get("dtadm") or "")
             if len(dtadm_raw) == 8 and dtadm_raw > dt_fim_c:
-                msg = (f"ETAPA 0002 - ADMITIDO APOS ESSA FOLHA - CALCULO NAO SERA FEITO"
+                msg = (f"ETAPA 1020 - ADMITIDO APOS ESSA FOLHA - CALCULO NAO SERA FEITO"
                        f"   Admissao em {_d_br(dtadm_raw)}")
                 msg_tbl = Table([[Paragraph(msg, st_etapa)]], colWidths=[17*cm])
                 msg_tbl.setStyle(TableStyle([
@@ -32310,9 +32403,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 0), (0, 0), 4),
                 ]))
                 elems.append(msg_tbl)
-                doc.build(elems,
-                          onFirstPage=_pdf_num_pagina,
-                          onLaterPages=_pdf_num_pagina)
+                _pg_mem = _mem_cabecalho_pagina(empresa_nm, cnpj_fmt, titulo_mem, _versao_mem)
+                doc.build(elems, onFirstPage=_pg_mem, onLaterPages=_pg_mem)
                 _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
                 continue
 
@@ -32344,7 +32436,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                            f"Salário Mensal = Salário Hora x Horas/Mes  =  "
                            f"{l['sal_hora_fmt']} x {l['qtdhrsmes']} h  =  {l['sal_mes_fmt']}")
             etapa_tbl = Table([
-                [Paragraph("ETAPA 0001 - CALCULO DO SALARIO HORA", st_etapa)],
+                [Paragraph("ETAPA 1010 - CALCULO DO SALARIO HORA", st_etapa)],
                 [Paragraph(formula, st_formula)],
             ], colWidths=[17*cm])
             etapa_tbl.setStyle(TableStyle([
@@ -32363,12 +32455,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             dias_antes_admissao = 0
             if len(dtadm_raw) == 8 and dtadm_raw[:6] == anomes:
                 dias_antes_admissao = int(dtadm_raw[6:8]) - 1
-                txt_e2 = (f"ETAPA 0002 - ADMISSAO NO MES DA FOLHA"
+                txt_e2 = (f"ETAPA 1020 - ADMISSAO NO MES DA FOLHA"
                           f"   Admitido em {_d_br(dtadm_raw)}"
                           f"  —  {dias_antes_admissao} "
                           f"{'dia' if dias_antes_admissao == 1 else 'dias'} anteriores a admissao")
             else:
-                txt_e2 = "ETAPA 0002 - ADMISSAO NO MES DA FOLHA   Não é o caso"
+                txt_e2 = "ETAPA 1020 - ADMISSAO NO MES DA FOLHA   Não se aplica — admitido antes desta folha"
             e2_adm = Table([[Paragraph(txt_e2, st_etapa)]], colWidths=[17*cm])
             e2_adm.setStyle(TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -32382,7 +32474,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             afast_func  = afastamentos.get(matr, [])
             ferias_func = ferias.get(matr, [])
             # 5 colunas: Motivo | Inicio | Final | Dias Atestado/Ferias | Dias INSS
-            e2_rows  = [[Paragraph("ETAPA 0003 - CALCULO DOS DIAS TRABALHADOS", st_etapa), "", "", "", ""]]
+            e2_rows  = [[Paragraph("ETAPA 1030 - CALCULO DOS DIAS TRABALHADOS", st_etapa), "", "", "", ""]]
             e2_spans = [("SPAN", (0, 0), (4, 0))]
 
             # 2.1 — Afastamentos
@@ -32490,7 +32582,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ])
             if is_intermitente:
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL"
+                    "ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL"
                     "   Nao aplicavel — Intermitente (Cat. 111). Remuneracao via Verba 003.",
                     st_etapa)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
@@ -32499,7 +32591,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL"
+                    "ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL"
                     "   Rubrica 0002 = ZERO — Porque a quantidade de dias trabalhados = Zero",
                     st_etapa)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
@@ -32510,7 +32602,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL"
+                    "ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL"
                     f"   Rubrica 0002 = ZERO — Ferias de {dias_ferias_total} dias ja cobrem o salario mensal completo (convencao 30 dias)",
                     st_etapa)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
@@ -32545,7 +32637,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
                 ]))
                 e4_tbl = Table([
-                    [Paragraph("ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL", st_etapa)],
+                    [Paragraph("ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL", st_etapa)],
                     [form_tbl],
                 ], colWidths=[17*cm])
                 e4_tbl.setStyle(TableStyle([
@@ -32559,8 +32651,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
             else:
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 - CALCULO DO SALARIO PROPORCIONAL   Não é o caso — mês completo trabalhado",
-                    st_etapa)]], colWidths=[17*cm])
+                    "ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL   Não se aplica — mês completo trabalhado",
+                    st_etapa_na)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
             elems.append(e4_tbl)
 
@@ -32572,7 +32664,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             mmQmm[139]   = qty_inj
             mmVmm[139]   = val_falta
             if faltas_func:
-                e5_rows  = [[Paragraph("ETAPA 0005 - FALTAS NO MES", st_etapa), "", ""]]
+                e5_rows  = [[Paragraph("ETAPA 1050 - FALTAS NO MES", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
                 for ft in faltas_func:
                     is_inj = ft.get("op2") == 1
@@ -32619,7 +32711,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         st_detalhe), "", ""])
                     e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
             else:
-                e5_rows  = [[Paragraph("ETAPA 0005 - FALTAS NO MES   Sem faltas no mes.", st_etapa), "", ""]]
+                e5_rows  = [[Paragraph("ETAPA 1050 - FALTAS NO MES   Não se aplica — nenhuma falta lançada no mês", st_etapa_na), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
                 idx51b   = None
             e5_tbl = Table(e5_rows, colWidths=[4*cm, 4*cm, 9*cm])
@@ -32672,7 +32764,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
                 ]))
                 e6_tbl = Table([
-                    [Paragraph("ETAPA 0006 - RUBRICA 0030-INSALUBRIDADE", st_etapa)],
+                    [Paragraph("ETAPA 1060 - RUBRICA 0030-INSALUBRIDADE", st_etapa)],
                     [form6],
                 ], colWidths=[17*cm])
                 e6_tbl.setStyle(TableStyle([
@@ -32687,8 +32779,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             else:
                 mmVmm[30] = 0.0
                 e6_tbl = Table([[Paragraph(
-                    "ETAPA 0006 - RUBRICA 0030-INSALUBRIDADE   Sem insalubridade ativa nesta Folha.",
-                    st_etapa)]], colWidths=[17*cm])
+                    "ETAPA 1060 - RUBRICA 0030-INSALUBRIDADE   Não se aplica — sem insalubridade ativa nesta folha",
+                    st_etapa_na)]], colWidths=[17*cm])
                 e6_tbl.setStyle(_st_e6_zero)
             elems.append(e6_tbl)
 
@@ -32729,7 +32821,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
                 ]))
                 e7_tbl = Table([
-                    [Paragraph("ETAPA 0007 - RUBRICA 0031-PERICULOSIDADE", st_etapa)],
+                    [Paragraph("ETAPA 1070 - RUBRICA 0031-PERICULOSIDADE", st_etapa)],
                     [form7],
                 ], colWidths=[17*cm])
                 e7_tbl.setStyle(TableStyle([
@@ -32744,8 +32836,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             else:
                 mmVmm[31] = 0.0
                 e7_tbl = Table([[Paragraph(
-                    "ETAPA 0007 - RUBRICA 0031-PERICULOSIDADE   Sem periculosidade ativa nesta Folha.",
-                    st_etapa)]], colWidths=[17*cm])
+                    "ETAPA 1070 - RUBRICA 0031-PERICULOSIDADE   Não se aplica — sem periculosidade ativa nesta folha",
+                    st_etapa_na)]], colWidths=[17*cm])
                 e7_tbl.setStyle(_st_e7_zero)
             elems.append(e7_tbl)
 
@@ -32755,7 +32847,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 not is_intermitente or
                 any(int(r.get("valor") or 0) > 0 for r in tab_mov_dict.get(matr, []))
             )
-            mf_rows  = [[Paragraph("ETAPA 0008 - MOVIMENTOS FIXOS", st_etapa), "", ""]]
+            mf_rows  = [[Paragraph("ETAPA 1080 - MOVIMENTOS FIXOS", st_etapa), "", ""]]
             mf_spans = [("SPAN", (0, 0), (2, 0))]
             mf_achou = False
             for rec in (mov_fixo_lista if intermitente_tem_horas else []):
@@ -32954,7 +33046,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             mov_func = tab_mov_dict.get(matr, [])
             ORIG_LABEL = {"M": "Manual", "C": "Calculado", "F": "Mov.Fixo"}
             TIPO_FOLHA = {"N": "Normal", "F": "Ferias", "R": "Rescisao"}
-            tm_rows  = [[Paragraph("ETAPA 0009 - LANCAMENTOS DO MES", st_etapa), "", ""]]
+            tm_rows  = [[Paragraph("ETAPA 1090 - LANCAMENTOS DO MES", st_etapa), "", ""]]
             tm_spans = [("SPAN", (0, 0), (2, 0))]
             if mov_func:
                 for reg in mov_func:
@@ -33130,7 +33222,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                               f"   1/12 + 1/3  =  {_fmt_brl(dozeavo)} + {_fmt_brl(terco)}"
                               f"  =  {_fmt_brl(val_58)}")
                     e9b_tbl = Table([
-                        [Paragraph("ETAPA 0009B - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)", st_etapa)],
+                        [Paragraph("ETAPA 1100 - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)", st_etapa)],
                         [Paragraph(txt_24, st_formula)],
                         [Paragraph(txt_56, st_formula)],
                         [Paragraph(txt_58, st_formula)],
@@ -33145,13 +33237,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ]))
                 else:
                     e9b_tbl = Table([[Paragraph(
-                        "ETAPA 0009B - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)"
+                        "ETAPA 1100 - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)"
                         "   Nao aplicavel — Verba 003 com valor zero.",
                         st_etapa)]], colWidths=[17*cm])
                     e9b_tbl.setStyle(_st_e9b_zero)
                 elems.append(e9b_tbl)
 
-            # ── ETAPA 0009C — REPOUSO REMUNERADO (DSR) ───────────────────
+            # ── ETAPA 1110 — REPOUSO REMUNERADO (DSR) ───────────────────
             # Cada origem marcada em "Outras Informações" do cadastro da verba
             # gera o repouso remunerado numa verba propria (Lei 605/49):
             #    19 - Hora Extra        → V0025
@@ -33204,7 +33296,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ])
             if _linhas_dsr:
                 _e9c_linhas = [[Paragraph(
-                    "ETAPA 0009C - REPOUSO REMUNERADO (DSR) → V0025 Hora Extra · "
+                    "ETAPA 1110 - REPOUSO REMUNERADO (DSR) → V0025 Hora Extra · "
                     "V0026 Adic.Noturno · V0027 Comissões", st_etapa)]]
                 _e9c_linhas += [[Paragraph(t, st_detalhe)] for t in _linhas_dsr]
                 e9c_tbl = Table(_e9c_linhas, colWidths=[17*cm])
@@ -33215,8 +33307,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
             else:
                 e9c_tbl = Table([[Paragraph(
-                    "ETAPA 0009C - REPOUSO REMUNERADO (DSR)"
-                    "   Não aplicável — sem verbas de Hora Extra, Adic.Noturno ou Comissão lançadas.",
+                    "ETAPA 1110 - REPOUSO REMUNERADO (DSR)"
+                    "   Não se aplica — sem verbas de Hora Extra, Adic. Noturno ou Comissão lançadas",
                     st_etapa)]], colWidths=[17*cm])
                 e9c_tbl.setStyle(_st_e9c_zero)
             elems.append(e9c_tbl)
@@ -33281,12 +33373,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 teto_obs = f"   (Salario acima do teto {_fmt_brl(inss_teto)} — INSS sobre o teto)"
             _rb_inss_cod = "0102" if is_domestico else "0101"
             if _fer_inss_base:
-                hdr10_txt = (f"ETAPA 0010 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
+                hdr10_txt = (f"ETAPA 1120 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
                              f"   Base Folha: {_fmt_brl(int(base_inss))}"
                              f" + Base Ferias: {_fmt_brl(_fer_inss_base)}"
                              f" = Base Total: {_fmt_brl(_base_inss_cons)}{teto_obs}")
             else:
-                hdr10_txt = (f"ETAPA 0010 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
+                hdr10_txt = (f"ETAPA 1120 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
                              f"   Base: {_fmt_brl(int(base_inss))}{teto_obs}")
             if inss_det:
                 hdr_row10 = [
@@ -33367,11 +33459,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
             else:
                 e10_tbl = Table([[Paragraph(
-                    f"ETAPA 0010 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
+                    f"ETAPA 1120 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
                     "   Base de calculo = ZERO — sem desconto.",
                     st_etapa)]], colWidths=[17*cm])
                 e10_tbl.setStyle(_st_e10_zero)
             elems.append(e10_tbl)
+            elems.append(_mem_passo('base_inss',
+                f"soma das verbas com incidência 11 = {_fmt_brl(int(base_inss))}"))
+            elems.append(_mem_passo('inss', 'aplicada faixa a faixa, tabela vigente da competência'))
 
             # ── base IRRF ─────────────────────────────────────
             base_irrf_bruta  = sum(
@@ -33438,7 +33533,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             sem_tabela_irrf = not tabela_legais or tabela_legais.get("irrf1_limite") is None
             if sem_tabela_irrf:
                 e11_tbl = Table([[Paragraph(
-                    "ETAPA 0011 - RUBRICA 0120-IRRF (Desconto)"
+                    "ETAPA 1130 - RUBRICA 0120-IRRF (Desconto)"
                     "   Tabela IRRF nao configurada em tab_tabelas_legais.",
                     st_etapa)]], colWidths=[17*cm])
                 e11_tbl.setStyle(_st_e11_zero)
@@ -33549,7 +33644,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                    else "   Redutor Lei 15.270/2025 aplicado" if redutor_val > 0
                                    else "")
                 e11_tbl = Table([
-                    [Paragraph(f"ETAPA 0011 - RUBRICA 0120-IRRF (Desconto)   Metodo: {met_label} (mais favoravel){_titulo_redutor}", st_etapa)],
+                    [Paragraph(f"ETAPA 1130 - RUBRICA 0120-IRRF (Desconto)   Metodo: {met_label} (mais favoravel){_titulo_redutor}", st_etapa)],
                     [comp_tbl],
                 ], colWidths=[17*cm])
                 e11_tbl.setStyle(TableStyle([
@@ -33562,6 +33657,22 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ("BOTTOMPADDING", (0, 1), (0, 1), 4),
                 ]))
             elems.append(e11_tbl)
+            elems.append(_mem_passo('base_irrf',
+                f"rendimentos tributáveis = {_fmt_brl(int(base_irrf_bruta))}"))
+            elems.append(_mem_passo('irrf', 'os dois métodos calculados e comparados abaixo'))
+            # Marcador de decisão (nível 2): diz qual dos dois caminhos venceu e
+            # por quê. No Desktop é o "<<<--- MELHOR ESTE".
+            try:
+                _irrf_s = int(irrf_val_simpl or 0)
+                _irrf_l = int(irrf_val_comp or 0)
+                _venc   = "Desconto Simplificado" if simpl_chosen else "Deduções Legais"
+                elems.append(Paragraph(
+                    f"&#9656; Simplificado: {_fmt_brl(_irrf_s)} &nbsp;·&nbsp; "
+                    f"Deduções Legais: {_fmt_brl(_irrf_l)} &nbsp;&#8594;&nbsp; "
+                    f"escolhido <b>{_venc}</b> (menor IRRF para o funcionário)",
+                    st_decisao))
+            except Exception:
+                pass
 
             # ── 11.1 dependentes IRRF ─────────────────────────
             _TPDEP_D = {
@@ -33637,12 +33748,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]))
             elems.append(_dep_outer11)
 
-            # ── ETAPA 0011B — DESCONTO DE ADIANTAMENTO QUINZENAL (verba 160) ──
+            # ── ETAPA 1140 — DESCONTO DE ADIANTAMENTO QUINZENAL (verba 160) ──
             # Soma os valores das verbas 161-164 lançadas previamente e gera a
             # verba 160 como desconto único na folha.
             # As 161-164 sao apenas o registro do adiantamento pago: quem desconta
             # e a 160. Se estiverem lancadas no movimento com origem 'M' elas
-            # entram em mmVmm pela ETAPA 0009 e, somadas a 160, descontam o
+            # entram em mmVmm pela ETAPA 1090 e, somadas a 160, descontam o
             # adiantamento duas vezes. Tira as quatro da base do calculo.
             _adiant_dup = 0
             for _cv_ad in (161, 162, 163, 164):
@@ -33657,7 +33768,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _ad_linha += (f"   ·   V161-164 lançadas no movimento "
                                   f"({_fmt_brl(_adiant_dup)}) não descontam de novo")
                 _ad_tbl = Table([
-                    [Paragraph("ETAPA 0011B - DESCONTO DE ADIANTAMENTO QUINZENAL", st_etapa)],
+                    [Paragraph("ETAPA 1140 - DESCONTO DE ADIANTAMENTO QUINZENAL", st_etapa)],
                     [Paragraph(_ad_linha, st_detalhe)],
                 ], colWidths=[17*cm])
                 _ad_tbl.setStyle(TableStyle([
@@ -33686,7 +33797,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                                  if int(r) < 9900
                                  and rubricas_info.get(r, {"tp":"1"})["tp"] != "1"))
 
-            # ── ETAPA 0013 — PENSÃO ALIMENTÍCIA (recalcula o IRRF) ───────────
+            # ── ETAPA 1150 — PENSÃO ALIMENTÍCIA (recalcula o IRRF) ───────────
             # A folha já está calculada (inclusive IRRF #1). Agora calcula a(s)
             # pensão(ões), lança verbas 281..284 (desconto) e RECALCULA o IRRF
             # abatendo a pensão da base (em qualquer método).
@@ -33752,7 +33863,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _prow("IRRF antes da pensao", _irrf_ant)
                     _prow(f"IRRF apos a pensao (metodo {_irrf2['metodo']})", irrf_val, _st_plb, _st_pvb)
 
-                    _all_rows = [[Paragraph("ETAPA 0013 - PENSAO ALIMENTICIA", st_etapa), ""]] + _pen_rows
+                    _all_rows = [[Paragraph("ETAPA 1150 - PENSAO ALIMENTICIA", st_etapa), ""]] + _pen_rows
                     _pen_sty = [
                         ("SPAN",         (0, 0), (1, 0)),
                         ("LEFTPADDING",  (0, 0), (-1, -1), 0),
@@ -33769,7 +33880,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _pen_tbl.setStyle(TableStyle(_pen_sty))
                     elems.append(_pen_tbl)
 
-            # ── ETAPA 0012 — Arredondamento (somente id_empresa=4) ───────────
+            # ── ETAPA 1160 — Arredondamento (somente id_empresa=4) ───────────
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr
             if int(id_empresa) == 4:
                 _v509_val  = _arred_prev501.get(matr, 0)
@@ -33792,7 +33903,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 elif _liq_ajust > 0:
                     _ar_linhas.append(f"Líq. já múltiplo de R$10,00 — V501 não lançada")
                 _arred_tbl = Table([
-                    [Paragraph("ETAPA 0012 - ARREDONDAMENTO (empresa 4)", st_etapa)],
+                    [Paragraph("ETAPA 1160 - ARREDONDAMENTO (empresa 4)", st_etapa)],
                     *[[Paragraph(ln, st_detalhe)] for ln in _ar_linhas],
                 ], colWidths=[17*cm])
                 _arred_tbl.setStyle(TableStyle([
@@ -33805,7 +33916,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
                 elems.append(_arred_tbl)
 
-            # ── ETAPA 0014 — INSUFICIÊNCIA DE SALDO (líquido nunca negativo) ──
+            # ── ETAPA 1170 — INSUFICIÊNCIA DE SALDO (líquido nunca negativo) ──
             # 1) devolve o que foi coberto no mês passado: 552 (desconto)
             # 2) se o líquido ficar negativo, cobre com a 551 (provento) e o
             #    líquido fecha em zero — a diferença volta no mês seguinte.
@@ -33838,7 +33949,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
                 if _ins_linhas:
                     _ins_tbl = Table([
-                        [Paragraph("ETAPA 0014 - INSUFICIENCIA DE SALDO", st_etapa)],
+                        [Paragraph("ETAPA 1170 - INSUFICIENCIA DE SALDO", st_etapa)],
                         *[[Paragraph(ln, st_detalhe)] for ln in _ins_linhas],
                     ], colWidths=[17*cm])
                     _ins_tbl.setStyle(TableStyle([
@@ -33873,6 +33984,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("LINEBELOW",     (0, -1), (-1, -1), 0.75, colors.HexColor("#374151")),
             ]))
             elems.append(Spacer(1, 0.5*cm))
+            elems.append(_mem_passo('totais'))
             elems.append(tot_tbl)
 
             # Segurança: apaga registros calculados deste funcionário antes de regravar
@@ -33992,9 +34104,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 except Exception as e_es:
                     print(f"[tab_esocial S-1200/1210 INSERT] mat={matr} erro: {e_es}")
 
-            doc.build(elems,
-                      onFirstPage=_pdf_num_pagina,
-                      onLaterPages=_pdf_num_pagina)
+            _pg_mem = _mem_cabecalho_pagina(empresa_nm, cnpj_fmt, titulo_mem, _versao_mem)
+            doc.build(elems, onFirstPage=_pg_mem, onLaterPages=_pg_mem)
             _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_loop:
             _aviso(f"[CALCULO ERRO] mat={matr} erro={e_loop}")
