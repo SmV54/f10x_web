@@ -189,7 +189,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="func-header-title">Funcionários com adiantamento ({{ funcionarios|length }})</span>
                 <div style="display:flex;gap:12px;align-items:center;">
                     <button type="button" class="btn-toggle-all" id="btnToggleAll" onclick="toggleMostrarLista()">Selecionar individualmente</button>
-                    <button type="button" class="btn-toggle-all" id="btnDesmarcar" onclick="desmarcarTodos()" style="display:none;color:#dc2626;">Desmarcar todos</button>
+                    <button type="button" class="btn-toggle-all" data-f10-visiveis style="display:none;" onclick="f10SelecionarVisiveis()"></button>
+          <button type="button" class="btn-toggle-all" id="btnDesmarcar" onclick="desmarcarTodos()" style="display:none;color:#dc2626;">Desmarcar todos</button>
                 </div>
             </div>
 

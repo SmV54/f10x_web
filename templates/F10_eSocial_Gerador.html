@@ -493,6 +493,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="func-busca-row">
           <input type="text" id="funcBusca" placeholder="Filtrar por nome ou matrícula…" oninput="filtrarFuncs()">
           <button type="button" class="btn-todos" id="btnTodos" onclick="toggleTodos()">Todos</button>
+                    <button type="button" class="btn-todos" data-f10-visiveis style="display:none;" onclick="f10SelecionarVisiveis()"></button>
           <span class="func-contador" id="funcContador">Nenhum selecionado</span>
         </div>
         <div class="func-lista" id="funcLista">

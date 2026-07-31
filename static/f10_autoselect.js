@@ -71,14 +71,60 @@
     var timer = null;
     function reavaliar() {
         if (timer) clearTimeout(timer);
-        timer = setTimeout(function () { timer = null; marcar(); }, 120);
+        timer = setTimeout(function () {
+            timer = null;
+            marcar();
+            atualizarBotaoVisiveis();
+        }, 120);
     }
 
+    /* ── "Selecionar visíveis" ─────────────────────────────────────────
+       Marcar enquanto se digita não dá: no caminho até "Adri" você passa por
+       "A", que casa com quase todo mundo. Para corrigir isso seria preciso
+       DESMARCAR quem sai do filtro — e aí a seleção deixaria de ser cumulativa
+       e apagaria o que foi marcado na mão. Então é um clique explícito: filtra,
+       vê quem sobrou, marca os que estão à vista. Mesmo padrão da tela Select
+       Funcionário, que já fazia assim.
+       Botões com [data-f10-visiveis] aparecem sozinhos quando há filtro. */
+    function selecionarVisiveis() {
+        var n = 0;
+        caixasVisiveis().forEach(function (c) {
+            if (c.checked) return;
+            if (jaMarcadas) jaMarcadas.add(c);
+            c.checked = true;
+            c.dispatchEvent(new Event('change', { bubbles: true }));
+            n++;
+        });
+        return n;
+    }
+
+    function totalCaixas() {
+        var t = 0;
+        SELETORES.forEach(function (sel) {
+            try { t += document.querySelectorAll(sel).length; } catch (e) {}
+        });
+        return t;
+    }
+
+    // Só faz sentido oferecer o botão quando o filtro escondeu alguém e ainda
+    // sobra mais de um visível (com um só, o auto-select já resolveu).
+    function atualizarBotaoVisiveis() {
+        var btns = document.querySelectorAll('[data-f10-visiveis]');
+        if (!btns.length) return;
+        var vis = caixasVisiveis();
+        var mostrar = vis.length > 1 && vis.length < totalCaixas();
+        Array.prototype.forEach.call(btns, function (b) {
+            b.style.display = mostrar ? '' : 'none';
+            b.textContent = '✓ Selecionar os ' + vis.length + ' visíveis';
+        });
+    }
+
+    window.f10SelecionarVisiveis     = selecionarVisiveis;
     window.f10MarcarUnicoFuncionario = marcar;
 
     function ligar() {
         // 1) abertura da tela — setTimeout deixa o init dela terminar antes
-        setTimeout(marcar, 0);
+        setTimeout(function () { marcar(); atualizarBotaoVisiveis(); }, 0);
 
         // 2) busca/filtro: qualquer digitação pode reduzir a lista a um
         document.addEventListener('input', reavaliar, true);

@@ -321,6 +321,7 @@ function alternarFuncionarios() {
         <input class="func-busca" id="busca-func" placeholder="Buscar funcionário…" oninput="filtrarFuncs()">
         <div class="func-acoes">
             <button type="button" class="btn-mini" onclick="todosFuncs()">Todos</button>
+            <button type="button" class="btn-mini" data-f10-visiveis style="display:none;" onclick="f10SelecionarVisiveis()"></button>
             <button type="button" class="btn-mini" onclick="limparFuncs()">Limpar</button>
             <span class="func-conta" id="func-conta">nenhum selecionado</span>
         </div>

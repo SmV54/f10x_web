@@ -85,6 +85,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .sel-todos input { cursor: pointer; accent-color: var(--accent); }
 
+.sel-acoes { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.btn-mini {
+    padding: 3px 10px; border-radius: 5px; font-size: 11px; font-weight: 600;
+    border: 1px solid var(--border); background: #fff; color: #475569;
+    cursor: pointer; font-family: var(--sans); transition: .12s;
+}
+.btn-mini:hover { border-color: var(--accent); color: var(--accent); }
+.btn-mini.visiveis { border-color: #5eead4; background: #f0fdfa; color: #0f766e; }
+.btn-mini.visiveis:hover { background: #ccfbf1; border-color: #14b8a6; }
+
 .func-lista {
     flex: 1; overflow-y: auto; padding: 6px 0;
 }
@@ -317,6 +327,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <input type="checkbox" id="chkTodos" onchange="selecionarTodos(this.checked)">
                 Selecionar todos
             </label>
+            <div class="sel-acoes">
+                <button type="button" class="btn-mini visiveis" data-f10-visiveis
+                        style="display:none;"
+                        onclick="f10SelecionarVisiveis()"></button>
+                <button type="button" class="btn-mini" onclick="limparSelecao()">Limpar</button>
+            </div>
         </div>
         <div class="func-lista" id="funcLista" style="flex:1;">
             {% for f in funcionarios %}
@@ -354,6 +370,13 @@ function selecionarTodos(checked) {
     document.querySelectorAll('.func-lista input[type=checkbox]').forEach(c => {
         if (c.closest('.func-item').style.display !== 'none') c.checked = checked;
     });
+}
+
+function limparSelecao() {
+    document.querySelectorAll('.func-lista input[type=checkbox]').forEach(c => { c.checked = false; });
+    const t = document.getElementById('chkTodos');
+    if (t) { t.checked = false; t.indeterminate = false; }
+    atualizarTodos();
 }
 
 function atualizarTodos() {
