@@ -267,6 +267,27 @@ def _xml_erro_save(_pref, etapa, msg, exc=None):
     _xml_save(f"{_pref}_{etapa}_erro.xml", xml)
 
 
+def _fmt_cod_rubr(c, ftipo):
+    """codRubr no formato que o empregador registrou no S-1010: NNNN-SUFIXO.
+
+    O Folha10 Desktop registra CADA verba quatro vezes — "-FOL", "-FER",
+    "-RES" e "-13S" — e o evento tem que apontar para a variante do contexto.
+    Confirmado nos XMLs de produção: os S-2299 do Desktop usam "0010-RES"
+    (2.734 rubricas, nenhuma crua) e codRubr == ideTabRubr em 2.736 delas.
+
+      F = Férias            -> "-FER"
+      1 = 13º / A = Adiant. -> "-13S"
+      R = Rescisão          -> "-RES"
+      demais (N)            -> "-FOL"
+    """
+    sufixo = {'F': 'FER', '1': '13S', 'A': '13S', 'R': 'RES'}.get(str(ftipo), 'FOL')
+    s = str(c or '').strip()
+    try:
+        return f"{int(s):04d}-{sufixo}"
+    except Exception:
+        return s
+
+
 def _mat_es(func):
     """Matrícula do trabalhador COMO O eSOCIAL A CONHECE.
 
@@ -20209,13 +20230,6 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     #   F = Férias           → "-FER"
     #   1 = 13º / A = Adiant. do 13º → "-13S"  (apuração ANUAL, indApuracao=2)
     #   demais (N/R)         → "-FOL"
-    def _fmt_cod_rubr(c, ftipo):
-        sufixo = {'F': 'FER', '1': '13S', 'A': '13S'}.get(str(ftipo), 'FOL')
-        s = str(c or '').strip()
-        try:
-            return f"{int(s):04d}-{sufixo}"
-        except Exception:
-            return s
     #
     # Retificação: indRetif=2 exige <nrRecibo> do evento original logo após.
     # indRetif=1 (original) não leva nrRecibo.
@@ -25071,10 +25085,15 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
         cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
         val = int(item.get('valor') or 0)
         if cod and val != 0:
+            # Verba da rescisão: "-RES", e ideTabRubr IGUAL ao codRubr. Era
+            # código cru + ideTabRubr = raiz do CNPJ, o que não casa com o que
+            # o S-1010 registrou (mesmo erro [269] que derrubou o S-1200 em
+            # julho). Ver _fmt_cod_rubr e [reference_esocial_codrubr].
+            _cod_fmt = _fmt_cod_rubr(cod, 'R')
             det_xml += f"""
               <detVerbas>
-                <codRubr>{x(cod)}</codRubr>
-                <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+                <codRubr>{x(_cod_fmt)}</codRubr>
+                <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
                 <vrRubr>{fmt_brl(val)}</vrRubr>
                 <indApurIR>0</indApurIR>
               </detVerbas>"""
@@ -25196,10 +25215,12 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
         cod = str(item.get('cod_verba') or item.get('cod_rubr') or '').strip()
         val = int(item.get('valor') or 0)
         if cod and val != 0:
+            # Mesma regra do S-2299 (ver _fmt_cod_rubr).
+            _cod_fmt = _fmt_cod_rubr(cod, 'R')
             det_xml += f"""
                 <detVerbas>
-                  <codRubr>{x(cod)}</codRubr>
-                  <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+                  <codRubr>{x(_cod_fmt)}</codRubr>
+                  <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
                   <vrRubr>{fmt_brl(val)}</vrRubr>
                   <indApurIR>0</indApurIR>
                 </detVerbas>"""
