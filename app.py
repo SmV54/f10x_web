@@ -37984,7 +37984,7 @@ def calcular_folha_etapa1_pdf():
             # ── guard: admissão após o mês ────────────────
             dtadm_raw = str(l.get("dtadm") or "")
             if len(dtadm_raw) == 8 and dtadm_raw > dt_fim_c:
-                msg = (f"ETAPA 0002 — ADMITIDO APÓS ESSA FOLHA — CÁLCULO NÃO SERÁ FEITO"
+                msg = (f"ETAPA 1020 — ADMITIDO APÓS ESSA FOLHA — CÁLCULO NÃO SERÁ FEITO"
                        f"   Admissão em {_d_br(dtadm_raw)}")
                 msg_tbl = Table([[Paragraph(msg, st_etapa)]], colWidths=[16*cm])
                 msg_tbl.setStyle(TableStyle([
@@ -38021,7 +38021,7 @@ def calcular_folha_etapa1_pdf():
                                f"Sal. Mensal = Sal. Hora x Horas/Mes  =  "
                                f"{l['sal_hora_fmt']} x {l['qtdhrsmes']} h  =  {l['sal_mes_fmt']}")
             etapa_tbl = Table([
-                [Paragraph("ETAPA 0001 — CÁLCULO DO SALÁRIO HORA", st_etapa)],
+                [Paragraph("ETAPA 1010 — CÁLCULO DO SALÁRIO HORA", st_etapa)],
                 [Paragraph(formula_txt, st_formula)],
             ], colWidths=[16*cm])
             etapa_tbl.setStyle(TableStyle([
@@ -38069,12 +38069,12 @@ def calcular_folha_etapa1_pdf():
             dias_antes_admissao = 0
             if len(dtadm_raw) == 8 and dtadm_raw[:6] == anomes:
                 dias_antes_admissao = int(dtadm_raw[6:8]) - 1
-                txt_e2 = (f"ETAPA 0002 — ADMISSÃO NO MÊS DA FOLHA"
+                txt_e2 = (f"ETAPA 1020 — ADMISSÃO NO MÊS DA FOLHA"
                           f"   Admitido em {_d_br(dtadm_raw)}"
                           f"  —  {dias_antes_admissao} "
                           f"{'dia' if dias_antes_admissao == 1 else 'dias'} anteriores à admissão")
             else:
-                txt_e2 = "ETAPA 0002 — ADMISSÃO NO MÊS DA FOLHA   Não é o caso"
+                txt_e2 = "ETAPA 1020 — ADMISSÃO NO MÊS DA FOLHA   Não é o caso"
             e2_adm = Table([[Paragraph(txt_e2, st_etapa)]], colWidths=[16*cm])
             e2_adm.setStyle(TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -38088,7 +38088,7 @@ def calcular_folha_etapa1_pdf():
             afast_func  = afastamentos.get(matr, [])
             ferias_func = ferias.get(matr, [])
             # 5 colunas: Motivo | Início | Final | Dias Atestado/Férias | Dias INSS
-            e2_rows  = [[Paragraph("ETAPA 0003 — CÁLCULO DOS DIAS TRABALHADOS", st_etapa), "", "", "", ""]]
+            e2_rows  = [[Paragraph("ETAPA 1030 — CÁLCULO DOS DIAS TRABALHADOS", st_etapa), "", "", "", ""]]
             e2_spans = [("SPAN", (0, 0), (4, 0))]
 
             # 2.1 — Afastamentos
@@ -38196,7 +38196,7 @@ def calcular_folha_etapa1_pdf():
             ])
             if is_intermitente:
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 — CÁLCULO DO SALÁRIO PROPORCIONAL"
+                    "ETAPA 1040 — CÁLCULO DO SALÁRIO PROPORCIONAL"
                     "   Não aplicável — Intermitente (Cat. 111). Remuneração via Verba 003.",
                     st_etapa)]], colWidths=[16*cm])
                 e4_tbl.setStyle(_st_e4_zero2)
@@ -38205,7 +38205,7 @@ def calcular_folha_etapa1_pdf():
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 — CÁLCULO DO SALÁRIO PROPORCIONAL"
+                    "ETAPA 1040 — CÁLCULO DO SALÁRIO PROPORCIONAL"
                     "   Rubrica 0002 = ZERO — Porque a quantidade de dias trabalhados = Zero",
                     st_etapa)]], colWidths=[16*cm])
                 e4_tbl.setStyle(_st_e4_zero2)
@@ -38216,7 +38216,7 @@ def calcular_folha_etapa1_pdf():
                 mmVmm[2] = 0.0
                 mmQmm[2] = 0
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 — CÁLCULO DO SALÁRIO PROPORCIONAL"
+                    "ETAPA 1040 — CÁLCULO DO SALÁRIO PROPORCIONAL"
                     f"   Rubrica 0002 = ZERO — Férias de {dias_ferias_total} dias já cobrem o salário mensal completo (convenção 30 dias)",
                     st_etapa)]], colWidths=[16*cm])
                 e4_tbl.setStyle(_st_e4_zero2)
@@ -38251,7 +38251,7 @@ def calcular_folha_etapa1_pdf():
                     ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
                 ]))
                 e4_tbl = Table([
-                    [Paragraph("ETAPA 0004 — CÁLCULO DO SALÁRIO PROPORCIONAL", st_etapa)],
+                    [Paragraph("ETAPA 1040 — CÁLCULO DO SALÁRIO PROPORCIONAL", st_etapa)],
                     [form_tbl2],
                 ], colWidths=[16*cm])
                 e4_tbl.setStyle(TableStyle([
@@ -38264,7 +38264,7 @@ def calcular_folha_etapa1_pdf():
                 ]))
             else:
                 e4_tbl = Table([[Paragraph(
-                    "ETAPA 0004 — CÁLCULO DO SALÁRIO PROPORCIONAL   Não é o caso — mês completo trabalhado",
+                    "ETAPA 1040 — CÁLCULO DO SALÁRIO PROPORCIONAL   Não é o caso — mês completo trabalhado",
                     st_etapa)]], colWidths=[16*cm])
                 e4_tbl.setStyle(_st_e4_zero2)
             elems.append(e4_tbl)
@@ -38277,7 +38277,7 @@ def calcular_folha_etapa1_pdf():
             mmQmm[139]   = qty_inj
             mmVmm[139]   = val_falta
             if faltas_func:
-                e5_rows  = [[Paragraph("ETAPA 0005 — FALTAS NO MÊS", st_etapa), "", ""]]
+                e5_rows  = [[Paragraph("ETAPA 1050 — FALTAS NO MÊS", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
                 for ft in faltas_func:
                     is_inj = ft.get("op2") == 1
@@ -38324,7 +38324,7 @@ def calcular_folha_etapa1_pdf():
                         st_detalhe), "", ""])
                     e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
             else:
-                e5_rows  = [[Paragraph("ETAPA 0005 — FALTAS NO MÊS   Sem faltas no mês.", st_etapa), "", ""]]
+                e5_rows  = [[Paragraph("ETAPA 1050 — FALTAS NO MÊS   Sem faltas no mês.", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
             e5_tbl = Table(e5_rows, colWidths=[4*cm, 4*cm, 8*cm])
             e5_tbl.setStyle(TableStyle([
@@ -39216,12 +39216,31 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
 
     ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
-    st_etapa   = ParagraphStyle("mf_eta",  fontName="Helvetica", fontSize=8,
-                                spaceBefore=10, spaceAfter=3, leftIndent=0)
+    # Mesmos 3 níveis das outras memórias (ver _MEM_COD_AUX).
+    st_etapa   = ParagraphStyle("mf_eta",  fontName="Helvetica-Bold", fontSize=8,
+                                spaceBefore=11, spaceAfter=4, leftIndent=0,
+                                textColor=colors.HexColor("#1e293b"),
+                                backColor=colors.HexColor("#f1f5f9"),
+                                borderPadding=(3, 4, 3, 4), leading=11)
+    st_etapa_na = ParagraphStyle("mf_etna", fontName="Helvetica", fontSize=8,
+                                 spaceBefore=11, spaceAfter=4, leftIndent=0,
+                                 textColor=colors.HexColor("#64748b"),
+                                 backColor=colors.HexColor("#f8fafc"),
+                                 borderPadding=(3, 4, 3, 4), leading=11)
+    st_passo   = ParagraphStyle("mf_pas",  fontName="Helvetica", fontSize=7.5,
+                                leftIndent=14, spaceBefore=3, spaceAfter=1,
+                                textColor=colors.HexColor("#334155"), leading=10)
     st_formula = ParagraphStyle("mf_fml",  fontName="Helvetica", fontSize=7,
-                                spaceAfter=6, leftIndent=10, textColor=colors.HexColor("#374151"))
+                                spaceAfter=6, leftIndent=28, textColor=colors.HexColor("#374151"))
     st_detalhe = ParagraphStyle("mf_det",  fontName="Helvetica", fontSize=8,
-                                leftIndent=10, textColor=colors.HexColor("#374151"))
+                                leftIndent=28, textColor=colors.HexColor("#374151"))
+
+    def _mem_passo(chave, complemento=""):
+        cod, nome = _MEM_COD_AUX.get(chave, ("9000", chave))
+        txt = f"<b>{cod}</b> · {nome}"
+        if complemento:
+            txt += f" — {complemento}"
+        return Paragraph(txt, st_passo)
     _st_zero = TableStyle([
         ("LEFTPADDING",   (0, 0), (-1, -1), 0),
         ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
@@ -39303,7 +39322,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             abono_txt = (f"   Abono Pecuniario: {dias_abono} dias" if dias_abono
                          else "   Sem abono pecuniario")
             e2_tbl = Table([
-                [Paragraph("ETAPA 0001 - PERIODO DE FERIAS", st_etapa)],
+                [Paragraph("ETAPA 2010 - PERIODO DE FERIAS", st_etapa)],
                 [Paragraph(
                     f"Periodo: {r.get('data1i_fmt','—')} a {r.get('data1f_fmt','—')}"
                     f"   Dias de Ferias: {dias}{abono_txt}", st_detalhe)],
@@ -39324,7 +39343,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 "M12": "M12-Ultimos 12 Meses",
                 "MAN": "MAN-Media do Ano",
             }
-            e7_rows = [[Paragraph("ETAPA 0002 - MEDIAS DAS VERBAS VARIAVEIS", st_etapa)]]
+            e7_rows = [[Paragraph("ETAPA 2020 - MEDIAS DAS VERBAS VARIAVEIS", st_etapa)],
+                       [_mem_passo("media12", "período aquisitivo das férias")]]
             if not verbas_med_pesq:
                 e7_rows.append([Paragraph(
                     "Nenhuma verba com incidencia em Ferias (inc_ferias = MAP/M12/MAN) cadastrada.",
@@ -39447,7 +39467,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("LINEBELOW",     (0, 0), (-1, 0), 0.3, colors.HexColor("#94a3b8")),
                 ]))
                 e9_tbl = Table([
-                    [Paragraph("ETAPA 0003 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
+                    [Paragraph("ETAPA 2030 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
                     [e9_det],
                 ], colWidths=[17*cm])
                 e9_tbl.setStyle(TableStyle([
@@ -39461,8 +39481,9 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
             else:
                 e9_tbl = Table([
-                    [Paragraph("ETAPA 0003 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS", st_etapa)],
-                    [Paragraph("Nao houve Lancamentos Digitados para essa Ferias.", st_detalhe)],
+                    [Paragraph("ETAPA 2030 - LANCAMENTOS DIGITADOS PARA ESSA FERIAS"
+                               "   Não se aplica — nenhum lançamento digitado para estas férias",
+                               st_etapa_na)],
                 ], colWidths=[17*cm])
                 e9_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
@@ -39480,7 +39501,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             _st_det5 = ParagraphStyle("mf_d5", fontName="Helvetica", fontSize=6,
                                       leftIndent=10, textColor=colors.HexColor("#374151"))
             e9a_rows = [[Paragraph(
-                "ETAPA 0004 - BASE DE CALCULO CONSOLIDADA (INSS / IRRF / FGTS)", st_etapa)]]
+                "ETAPA 2040 - BASE DE CALCULO CONSOLIDADA (INSS / IRRF / FGTS)", st_etapa)]]
             e9a_rows.append([Paragraph(
                 f"Ferias ({dias} dias): {_fmt_brl(sal_ferias)}"
                 f"   = {_fmt_brl(sal_mes)} x {dias} / 30", _st_det5)])
@@ -39523,7 +39544,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             _st_op10f = ParagraphStyle("op10f", fontName="Helvetica", fontSize=7,
                                        alignment=1, textColor=colors.HexColor("#374151"))
             if inss_det:
-                hdr10f_txt = (f"ETAPA 0005 - INSS (Desconto)"
+                hdr10f_txt = (f"ETAPA 2050 - INSS (Desconto)"
                               f"   Base: {_fmt_brl(base_calc)}")
                 det10f_rows = [[
                     Paragraph("Faixa",      _st_op10f),
@@ -39570,8 +39591,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 ]))
             else:
                 e10f_tbl = Table([[Paragraph(
-                    "ETAPA 0005 - INSS (Desconto)   Base de calculo = ZERO — sem desconto.",
-                    st_etapa)]], colWidths=[17*cm])
+                    "ETAPA 2050 - INSS (Desconto)   Não se aplica — base de cálculo zerada",
+                    st_etapa_na)]], colWidths=[17*cm])
                 e10f_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
@@ -39579,6 +39600,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("BOTTOMPADDING", (0, 0), (0, 0), 4),
                 ]))
             elems.append(e10f_tbl)
+            elems.append(_mem_passo("base_inss"))
+            elems.append(_mem_passo("inss", "aplicada faixa a faixa, tabela vigente"))
 
             # ── etapa 7 — IRRF ─────────────────────────────────────────
             if base_irrf <= 0 or irrf_info is None:
@@ -39617,7 +39640,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("LINEABOVE",     (0, 4), (-1, 4), 0.3, colors.HexColor("#94a3b8")),
                 ]))
                 e11f_tbl = Table([
-                    [Paragraph("ETAPA 0006 - IRRF (Desconto)", st_etapa)],
+                    [Paragraph("ETAPA 2060 - IRRF (Desconto)", st_etapa)],
                     [irrf11f_det_zero],
                 ], colWidths=[17*cm])
                 e11f_tbl.setStyle(TableStyle([
@@ -39683,7 +39706,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("LINEABOVE",     (0, 5), (-1, 5), 0.3, colors.HexColor("#94a3b8")),
                 ]))
                 e11f_tbl = Table([
-                    [Paragraph("ETAPA 0006 - IRRF (Desconto)", st_etapa)],
+                    [Paragraph("ETAPA 2060 - IRRF (Desconto)", st_etapa)],
                     [irrf11f_det],
                 ], colWidths=[17*cm])
                 e11f_tbl.setStyle(TableStyle([
@@ -39696,6 +39719,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("BOTTOMPADDING", (0, 1), (0, 1), 4),
                 ]))
             elems.append(e11f_tbl)
+            elems.append(_mem_passo("base_irrf"))
+            elems.append(_mem_passo("irrf", "faixa + parcela a deduzir"))
 
             # ── totais ─────────────────────────────────────────────────
             st_tot_lbl  = ParagraphStyle("mf_tl",  fontName="Helvetica-Bold", fontSize=9,
@@ -47956,10 +47981,30 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                                 alignment=TA_CENTER, spaceAfter=2)
     st_sub     = ParagraphStyle("asb", fontName="Helvetica", fontSize=9,
                                 alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
+    # Mesmos 3 níveis das outras memórias (ver _MEM_COD_AUX).
     st_etapa   = ParagraphStyle("aet", fontName="Helvetica-Bold", fontSize=8,
-                                spaceBefore=10, spaceAfter=4)
+                                spaceBefore=11, spaceAfter=4,
+                                textColor=colors.HexColor("#1e293b"),
+                                backColor=colors.HexColor("#f1f5f9"),
+                                borderPadding=(3, 4, 3, 4), leading=11)
+    st_etapa_na = ParagraphStyle("aetna", fontName="Helvetica", fontSize=8,
+                                 spaceBefore=11, spaceAfter=4,
+                                 textColor=colors.HexColor("#64748b"),
+                                 backColor=colors.HexColor("#f8fafc"),
+                                 borderPadding=(3, 4, 3, 4), leading=11)
+    st_passo   = ParagraphStyle("apa", fontName="Helvetica", fontSize=7.5,
+                                leftIndent=14, spaceBefore=3, spaceAfter=1,
+                                textColor=colors.HexColor("#334155"), leading=10)
     st_formula = ParagraphStyle("af",  fontName="Helvetica", fontSize=8,
-                                spaceAfter=6, textColor=colors.HexColor("#374151"))
+                                spaceAfter=6, leftIndent=28,
+                                textColor=colors.HexColor("#374151"))
+
+    def _mem_passo(chave, complemento=""):
+        cod, nome = _MEM_COD_AUX.get(chave, ("9000", chave))
+        txt = f"<b>{cod}</b> · {nome}"
+        if complemento:
+            txt += f" — {complemento}"
+        return Paragraph(txt, st_passo)
     st_rod     = ParagraphStyle("ar",  fontName="Helvetica", fontSize=7,
                                 alignment=TA_CENTER, textColor=colors.HexColor("#94a3b8"))
     st_id      = ParagraphStyle("aid", fontName="Helvetica", fontSize=9, leading=11)
@@ -47994,25 +48039,28 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     e.append(Table([[""]], colWidths=[16*cm], style=linha_sep))
 
     # ETAPA 1 — salário
-    e.append(Paragraph("ETAPA 0001 — ADIANTAMENTO SOBRE O SALÁRIO", st_etapa))
+    e.append(Paragraph("ETAPA 4010 — ADIANTAMENTO SOBRE O SALÁRIO", st_etapa))
+    e.append(_mem_passo("sal_base", f"salário do mês = {_fmt_brl(sal_mes)}"))
     e.append(Paragraph(
         f"Salário do mês {_fmt_brl(sal_mes)} × {perc}% = <b>{_fmt_brl(valor)}</b>  "
         f"(verba {VERBA_ADIANT_13})", st_formula))
 
     # ETAPA 2 — periculosidade
-    e.append(Paragraph("ETAPA 0002 — PERICULOSIDADE", st_etapa))
     if pericu > 0:
+        e.append(Paragraph("ETAPA 4020 — PERICULOSIDADE", st_etapa))
         pct_txt = f"{pericu_pct:.2f}".replace(".", ",")
         e.append(Paragraph(
             f"Periculosidade do mês (Salário × {pct_txt}%) = {_fmt_brl(pericu_mes)} × {perc}% "
             f"= <b>{_fmt_brl(pericu)}</b>  (verba {VERBA_PERICULOSIDADE})", st_formula))
     else:
-        e.append(Paragraph("Funcionário sem periculosidade ativa no mês.", st_formula))
+        e.append(Paragraph("ETAPA 4020 — PERICULOSIDADE"
+                           "   Não se aplica — sem periculosidade ativa no mês", st_etapa_na))
 
     # ETAPA 3 — médias das verbas variáveis
     e.append(Paragraph(
-        f"ETAPA 0003 — MÉDIAS DAS VERBAS VARIÁVEIS (ano corrente · ÷ {meses} {'mês' if meses == 1 else 'meses'})",
+        f"ETAPA 4030 — MÉDIAS DAS VERBAS VARIÁVEIS (ano corrente · ÷ {meses} {'mês' if meses == 1 else 'meses'})",
         st_etapa))
+    e.append(_mem_passo("media12", "ano corrente, apenas folhas fechadas"))
     if medias_detalhe:
         rows = [[Paragraph("<b>Verba</b>", st_cellb),
                  Paragraph("<b>Descrição</b>", st_cellb),
@@ -48050,17 +48098,22 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         ]))
         e.append(tbl)
     else:
-        e.append(Paragraph("Sem verbas variáveis lançadas no ano corrente.", st_formula))
+        e.append(Paragraph("Não se aplica — sem verbas variáveis lançadas no ano corrente.",
+                           st_formula))
 
     # ETAPA 4 — FGTS (aliq_fgts% sobre a base incidente; 2% para menor aprendiz)
-    e.append(Paragraph("ETAPA 0004 — FGTS", st_etapa))
     if base_fgts > 0:
+        e.append(Paragraph("ETAPA 4040 — FGTS", st_etapa))
+        e.append(_mem_passo("base_fgts", "adiantamento + periculosidade + médias"))
+        e.append(_mem_passo("fgts"))
         apr_txt = "  (menor aprendiz)" if int(aliq_fgts) == 2 else ""
         e.append(Paragraph(
             f"Base de incidência (adiantamento + periculosidade + médias) {_fmt_brl(base_fgts)} × {int(aliq_fgts)}% "
             f"= <b>{_fmt_brl(fgts_val)}</b>{apr_txt}", st_formula))
     else:
-        e.append(Paragraph("Sem base de incidência de FGTS neste adiantamento.", st_formula))
+        e.append(Paragraph("ETAPA 4040 — FGTS"
+                           "   Não se aplica — sem base de incidência neste adiantamento",
+                           st_etapa_na))
 
     # TOTAL
     e.append(Paragraph(f"TOTAL DO ADIANTAMENTO = {_fmt_brl(total)}", st_total))
