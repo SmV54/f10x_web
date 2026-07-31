@@ -29287,21 +29287,26 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
             })
             r[slot] = f"{d}/{nm}"
 
-    # Para cada (layout, matricula), pega remessa mais recente com algum arquivo de retorno
-    melhor = {}    # (layout, matricula) → {chave, path}
+    # Candidatos por (layout, matricula), do MAIS RECENTE para o mais antigo.
+    # Antes ficava só com o último envio — mas quando a consulta daquele envio
+    # voltou "[101] em processamento" o arquivo não traz S-5xxx nenhum, e os
+    # bases que já tinham chegado num envio anterior do MESMO trabalhador eram
+    # jogados fora. Resultado: "Nenhum S-5001/5002/5003 encontrado". Agora desce
+    # a lista até achar um retorno que realmente tenha os eventos.
+    cands = {}     # (layout, matricula) → [info, ...] mais recente primeiro
     for chave, info in remessas.items():
         if not (info["et6"] or info["et5"]):
             continue
-        key = (info["layout"], info["matricula"])
-        if key not in melhor or info["dt"] > melhor[key]["dt"]:
-            melhor[key] = {
-                "chave": chave, "dt": info["dt"],
-                "path":  info["et6"] or info["et5"],
-                "nome":  (info["et6"] or info["et5"]).rsplit("/", 1)[-1],
-                "layout": info["layout"], "matricula": info["matricula"],
-            }
+        cands.setdefault((info["layout"], info["matricula"]), []).append({
+            "chave": chave, "dt": info["dt"],
+            "path":  info["et6"] or info["et5"],
+            "nome":  (info["et6"] or info["et5"]).rsplit("/", 1)[-1],
+            "layout": info["layout"], "matricula": info["matricula"],
+        })
+    for _k in cands:
+        cands[_k].sort(key=lambda i: i["dt"], reverse=True)
 
-    if not melhor:
+    if not cands:
         return {
             "ok": True, "baixados": 0, "consultados": 0,
             "total_erros": len(erros), "erros": erros[:50],
@@ -29314,42 +29319,56 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
                     f"encontrado para {anomes_atual}."),
         }
 
-    # Lê e extrai S-5xxx de cada arquivo selecionado
+    # Lê e extrai os S-5xxx: por trabalhador, desce do envio mais recente até
+    # achar um retorno que traga eventos. Para no primeiro que trouxer.
     baixados = 0
     arquivos_lidos = []
     debug_tags_global = set()
-    for key, info in sorted(melhor.items()):
-        try:
-            data = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["path"])
-            xml_str = (data.decode("utf-8", errors="replace")
-                       if isinstance(data, bytes) else str(data))
-        except Exception as e:
-            erros.append(f"{info['nome']}: erro ao baixar — {e}")
-            continue
-        eventos = _extrair_s5xxx_do_xml(xml_str)
-        if not eventos:
-            # diagnóstico — lista tags evt* desse arquivo
+    for key in sorted(cands):
+        _tentados = []
+        for info in cands[key]:
             try:
-                from lxml import etree as _et
-                root = _et.fromstring(xml_str.encode("utf-8", errors="replace"))
-                for el in root.iter():
-                    if isinstance(el.tag, str):
-                        t = el.tag.split("}")[-1]
-                        if t.startswith("evt"):
-                            debug_tags_global.add(t)
-            except Exception:
-                pass
-        for ev in eventos:
-            if not ev["tpEvt"].startswith("S-50"):
+                data = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["path"])
+                xml_str = (data.decode("utf-8", errors="replace")
+                           if isinstance(data, bytes) else str(data))
+            except Exception as e:
+                erros.append(f"{info['nome']}: erro ao baixar — {e}")
                 continue
-            p = _verif_salvar_xml(id_empresa, anomes_atual, ev["tpEvt"],
-                                   ev["id"] or info["matricula"], ev["xml"], id_cliente)
-            if p:
-                baixados += 1
-        arquivos_lidos.append({
-            "layout": info["layout"], "matricula": info["matricula"],
-            "nome": info["nome"], "eventos": len(eventos),
-        })
+            eventos = _extrair_s5xxx_do_xml(xml_str)
+            _tentados.append(info["nome"])
+            if not eventos:
+                # diagnóstico — lista tags evt* desse arquivo
+                try:
+                    from lxml import etree as _et
+                    root = _et.fromstring(xml_str.encode("utf-8", errors="replace"))
+                    for el in root.iter():
+                        if isinstance(el.tag, str):
+                            t = el.tag.split("}")[-1]
+                            if t.startswith("evt"):
+                                debug_tags_global.add(t)
+                except Exception:
+                    pass
+                continue      # envio sem S-5xxx (ex.: consulta voltou [101]) → tenta o anterior
+            for ev in eventos:
+                if not ev["tpEvt"].startswith("S-50"):
+                    continue
+                p = _verif_salvar_xml(id_empresa, anomes_atual, ev["tpEvt"],
+                                      ev["id"] or info["matricula"], ev["xml"], id_cliente)
+                if p:
+                    baixados += 1
+            arquivos_lidos.append({
+                "layout": info["layout"], "matricula": info["matricula"],
+                "nome": info["nome"], "eventos": len(eventos),
+                "tentativas": len(_tentados),
+            })
+            break
+        else:
+            # Nenhum envio deste trabalhador trouxe S-5xxx.
+            arquivos_lidos.append({
+                "layout": key[0], "matricula": key[1],
+                "nome": (_tentados[0] if _tentados else ""), "eventos": 0,
+                "tentativas": len(_tentados),
+            })
 
     gravar_log("ESOCIAL",
                f"Verificação: {len(arquivos_lidos)} arquivo(s) lido(s), "
@@ -29803,14 +29822,14 @@ def api_esocial_verificacao_comparar():
     folha_tipo   = str(session.get("anomes_tipo") or "N")
     if not anomes_atual or len(anomes_atual) != 6:
         return jsonify({"ok": False, "msg": "Folha ativa inválida."})
-    # Auto-refresh DESABILITADO temporariamente — o Flask local do dev pode
-    # estar com codigo velho que extrai do arquivo errado, limpando a pasta
-    # e populando com dados antigos. Para reativar: descomente apos confirmar
-    # que o backend esta rodando o codigo atualizado.
-    # try:
-    #     _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
-    # except Exception as _e:
-    #     print(f"[VERIF] auto-refresh falhou: {_e}")
+    # Auto-refresh REATIVADO em 31/07/2026. Ficou comentado desde 29/06 por
+    # receio de código velho no Flask local — só que a tela chama SÓ o
+    # /comparar, então ninguém populava a pasta verificacao/ e o resultado era
+    # sempre "Nenhum S-5001/5002/5003 encontrado no Storage para o período".
+    try:
+        _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
+    except Exception as _e:
+        print(f"[VERIF] auto-refresh falhou: {_e}")
     ok, payload = _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo)
     return jsonify(payload)
 
@@ -29829,11 +29848,11 @@ def api_esocial_verificacao_pdf():
     if not anomes_atual or len(anomes_atual) != 6:
         return Response("Folha ativa inválida.", status=400, mimetype="text/plain")
 
-    # Auto-refresh desabilitado (ver comentario na rota /comparar acima).
-    # try:
-    #     _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
-    # except Exception as _e:
-    #     print(f"[VERIF PDF] auto-refresh falhou: {_e}")
+    # Auto-refresh reativado junto com o /comparar (ver comentário lá).
+    try:
+        _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
+    except Exception as _e:
+        print(f"[VERIF PDF] auto-refresh falhou: {_e}")
 
     ok, payload = _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo)
     if not ok:
