@@ -29446,13 +29446,75 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
                     f"encontrado para {anomes_atual}."),
         }
 
+    # ── Re-consulta ao gov quando o retorno mais recente veio sem S-5xxx ──
+    # A consulta rápida do envio quase sempre volta "[101] em processamento" e
+    # grava um _6_ vazio; os S-5001/5002/5003 só aparecem numa consulta
+    # posterior. Se ninguém clicou em Consultar (ou clicou antes de a rotina
+    # passar a salvar o retorno), o arquivo bom nunca existiu e a Verificação
+    # ficava comparando contra um envio ANTIGO. Aqui, quando o retorno mais
+    # recente de um trabalhador não tem evento nenhum, pega o protocolo do
+    # _5_resposta.xml da MESMA remessa e consulta de novo. É só leitura — não
+    # reenvia nada ao eSocial.
+    _cert = {}
+    def _cert_empresa():
+        """Carrega pfx+senha uma vez. {} se a empresa não tem certificado."""
+        if _cert:
+            return _cert
+        try:
+            _re_ = (supabase.table("tab_empresa").select("*")
+                    .eq("id_empresa", id_empresa).limit(1).execute().data or [])
+            if not _re_:
+                return {}
+            _emp = _re_[0]
+            _aplicar_cert_esocial(_emp)
+            if not (_emp.get("cert_pfx_b64") and _emp.get("cert_senha_enc")):
+                return {}
+            _cert["pfx"]   = base64.b64decode(_emp["cert_pfx_b64"])
+            _cert["senha"] = _cert_decrypt(_emp["cert_senha_enc"])
+        except Exception as e:
+            print(f"[VERIF] certificado indisponível: {e}")
+            return {}
+        return _cert
+
+    def _reconsultar_remessa(info):
+        """Consulta o gov pelo protocolo do _5_resposta e salva o retorno novo.
+        Devolve o XML do retorno, ou "" se não deu."""
+        if not info.get("et5"):
+            return ""
+        c = _cert_empresa()
+        if not c:
+            return ""
+        try:
+            _d5 = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["et5"])
+            _s5 = _d5.decode("utf-8", errors="replace") if isinstance(_d5, bytes) else str(_d5)
+            _m = re.search(r"<protocoloEnvio>(.*?)</protocoloEnvio>", _s5)
+            if not _m:
+                return ""
+            _prot = _m.group(1).strip()
+            _, _url_cons = _ES_ENDPOINTS.get("1", _ES_ENDPOINTS["1"])
+            _resp = _http_post_cert(_url_cons, _soap_consultar(_prot),
+                                    c["pfx"], c["senha"], _SA_CONSULTAR)
+            _now_v = _agora_brasilia()
+            _xml_save(f"{_xml_dir_rel(id_empresa, _now_v, id_cliente)}/"
+                      f"S{info['layout']}_{_mat6(info['matricula'])}_"
+                      f"{_now_v.strftime('%Y%m%d_%H%M%S')}_6_resultado_consulta.xml",
+                      _resp)
+            print(f"[VERIF] re-consulta {info['layout']}/{info['matricula']} "
+                  f"protocolo {_prot}")
+            return _resp
+        except Exception as e:
+            erros.append(f"re-consulta {info.get('nome','')}: {e}")
+            return ""
+
     # Lê e extrai os S-5xxx: por trabalhador, desce do envio mais recente até
     # achar um retorno que traga eventos. Para no primeiro que trouxer.
     baixados = 0
     arquivos_lidos = []
+    reconsultados = 0
     debug_tags_global = set()
     for key in sorted(cands):
         _tentados = []
+        _primeiro = True
         for info in cands[key]:
             try:
                 data = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["path"])
@@ -29463,6 +29525,17 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
                 continue
             eventos = _extrair_s5xxx_do_xml(xml_str)
             _tentados.append(info["nome"])
+            # Retorno mais recente sem evento: pergunta de novo ao gov, com o
+            # protocolo do próprio envio. Só na 1ª tentativa de cada
+            # trabalhador — as remessas anteriores ficam como estão.
+            if not eventos and _primeiro:
+                _novo = _reconsultar_remessa(info)
+                if _novo:
+                    reconsultados += 1
+                    _ev2 = _extrair_s5xxx_do_xml(_novo)
+                    if _ev2:
+                        eventos, xml_str = _ev2, _novo
+            _primeiro = False
             if not eventos:
                 # diagnóstico — lista tags evt* desse arquivo
                 try:
@@ -29499,19 +29572,23 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
 
     gravar_log("ESOCIAL",
                f"Verificação: {len(arquivos_lidos)} arquivo(s) lido(s), "
-               f"{baixados} S-5xxx extraídos.")
+               f"{baixados} S-5xxx extraídos"
+               + (f", {reconsultados} re-consulta(s) ao eSocial." if reconsultados else "."))
 
     return {
-        "ok":          True,
-        "consultados": len(arquivos_lidos),
-        "baixados":    baixados,
-        "arquivos":    arquivos_lidos,
-        "diretorios":  sorted(diretorios),
-        "debug_tags":  sorted(debug_tags_global),
-        "total_erros": len(erros),
-        "erros":       erros[:50],
-        "msg":         (f"{baixados} evento(s) S-5xxx extraído(s) de "
-                        f"{len(arquivos_lidos)} arquivo(s) S-1200/S-1210."),
+        "ok":            True,
+        "consultados":   len(arquivos_lidos),
+        "baixados":      baixados,
+        "reconsultados": reconsultados,
+        "arquivos":      arquivos_lidos,
+        "diretorios":    sorted(diretorios),
+        "debug_tags":    sorted(debug_tags_global),
+        "total_erros":   len(erros),
+        "erros":         erros[:50],
+        "msg":           (f"{baixados} evento(s) S-5xxx extraído(s) de "
+                          f"{len(arquivos_lidos)} arquivo(s) S-1200/S-1210"
+                          + (f" · {reconsultados} re-consulta(s) ao eSocial."
+                             if reconsultados else ".")),
     }
 
 
