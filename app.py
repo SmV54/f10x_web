@@ -239,6 +239,18 @@ def _xml_erro_save(_pref, etapa, msg, exc=None):
     _xml_save(f"{_pref}_{etapa}_erro.xml", xml)
 
 
+def _mat6(v):
+    """Matrícula com 6 dígitos para o NOME do arquivo XML.
+
+    S1200_000001_20260731_092135_1_evento.xml em vez de S1200_1_...  — deixa os
+    arquivos do mesmo trabalhador agrupados e alinhados na listagem do Storage.
+    Arquivos antigos (sem zeros) continuam existindo; a busca por matrícula na
+    tela Visualizar XML aceita as duas formas.
+    """
+    s = re.sub(r"\D", "", str(v if v is not None else ""))
+    return s.zfill(6) if s else "000000"
+
+
 def _xml_save(rel_path, content):
     """
     Sobe XML para o Supabase Storage (bucket 'esocial-xml').
@@ -14194,7 +14206,7 @@ def api_esocial_s2220_xml():
 
     xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
     mat     = es.get("matricula", "")
-    fname   = f"S2220_{mat}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname   = f"S2220_{_mat6(mat)}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
     return Response(xml_str, mimetype="application/xml; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
@@ -14264,7 +14276,7 @@ def api_esocial_s2220_enviar():
     # ── 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2220_{es.get('matricula')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2220_{_mat6(es.get('matricula'))}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2220(exame, func, empresa, tpAmb)
@@ -14369,7 +14381,7 @@ def api_esocial_s2220_enviar():
         "ok":         bool(recibo_final) and not obs_erro,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -19868,9 +19880,10 @@ def _ide_dm_dev(mat_es, folha_tipo):
 
 
 # Folhas que viajam JUNTAS numa remessa só (mesma competência, mesmo trabalhador):
-# a folha normal e o adiantamento do 13º. A ordem importa — a primeira encontrada
-# define <indApuracao>/<perApur> do evento, que são campos do ideEvento e valem
-# para o evento inteiro.
+# a folha normal e o adiantamento do 13º. Elas vão no MESMO <dmDev>/<infoPgto> —
+# um ideDmDev só. A ordem importa: a primeira encontrada define o ideDmDev e o
+# <indApuracao>/<perApur> do evento (campos do ideEvento, valem para o evento
+# inteiro).
 _TIPOS_FOLHA_JUNTAS = ("N", "A")
 
 
@@ -19967,10 +19980,10 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     """Gera string XML do S-1200 (Remuneração do Trabalhador - RGPS).
 
     dmdevs: lista de demonstrativos do MESMO trabalhador na MESMA competência,
-    cada um {"folha_tipo": "N"|"A"|..., "mov_items": [...]}. O evtRemun aceita
-    vários <dmDev> — é assim que a folha normal e o adiantamento do 13º do mesmo
-    mês viajam numa remessa só, cada um com seu ideDmDev. Quando não informado,
-    monta um único dmDev com (folha_tipo, mov_items) — comportamento antigo.
+    cada um {"folha_tipo": "N"|"A"|..., "mov_items": [...]}. As rubricas de TODAS
+    elas vão num <dmDev> ÚNICO — é assim que a folha normal e o adiantamento do
+    13º do mesmo mês viajam numa remessa só, com um ideDmDev só (o da 1ª folha da
+    lista). Quando não informado, monta o dmDev com (folha_tipo, mov_items).
 
     ATENÇÃO: <indApuracao>/<perApur> ficam no ideEvento, ou seja, valem para o
     evento INTEIRO. Por isso todos os dmdevs têm que ser da mesma apuração —
@@ -20117,23 +20130,35 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
               <vrRubr>{fmt_brl(val)}</vrRubr>
               <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
-        if not out.strip():
-            _cod_fmt = _fmt_cod_rubr(1, ftipo)
-            out = f"""
+        return out
+
+    # UM ÚNICO <dmDev> por trabalhador (decisão do usuário em 31/07/2026).
+    # A folha mensal e o adiantamento do 13º da mesma competência entram no
+    # MESMO demonstrativo — antes saíam em dois <dmDev>, com ideDmDev diferente
+    # (matrícula+"00" e matrícula+"13"), e o adiantamento aparecia separado no
+    # eSocial. Agora o ideDmDev é o da 1ª folha da lista (a mensal) e as
+    # rubricas das duas folhas ficam juntas em <remunPerApur>.
+    # O SUFIXO do codRubr continua sendo o do tipo de folha de origem — a verba
+    # 17 do adiantamento vai "0017-13S", que é como está registrada no S-1010.
+    _ft_princ = str(dmdevs[0].get("folha_tipo") or folha_tipo or "N").upper()
+    _itens_todos = ""
+    for _dm in dmdevs:
+        _ft = str(_dm.get("folha_tipo") or folha_tipo or "N").upper()
+        _itens_todos += _itens_xml(_dm.get("mov_items"), _ft)
+    if not _itens_todos.strip():
+        # Trabalhador sem movimento: o schema exige ao menos um <itensRemun>.
+        _cod_zero = _fmt_cod_rubr(1, _ft_princ)
+        _itens_todos = f"""
             <itensRemun>
-              <codRubr>{x(_cod_fmt)}</codRubr>
-              <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
+              <codRubr>{x(_cod_zero)}</codRubr>
+              <ideTabRubr>{x(_cod_zero)}</ideTabRubr>
               <vrRubr>0.00</vrRubr>
               <indApurIR>{ind_apur_ir}</indApurIR>
             </itensRemun>"""
-        return out
 
-    dmdev_xml = ""
-    for _dm in dmdevs:
-        _ft  = str(_dm.get("folha_tipo") or folha_tipo or "N").upper()
-        dmdev_xml += f"""
+    dmdev_xml = f"""
     <dmDev>
-      <ideDmDev>{_ide_dm_dev(mat_es, _ft)}</ideDmDev>
+      <ideDmDev>{_ide_dm_dev(mat_es, _ft_princ)}</ideDmDev>
       <codCateg>{x(codcateg)}</codCateg>
       <infoPerApur>
         <ideEstabLot>
@@ -20141,7 +20166,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
           <nrInsc>{x(cnpj_emp)}</nrInsc>
           <codLotacao>{x(cod_lotacao)}</codLotacao>
           <remunPerApur>
-            <matricula>{x(mat_es)}</matricula>{ind_simples_xml}{_itens_xml(_dm.get("mov_items"), _ft)}{info_ag_nocivo_xml}
+            <matricula>{x(mat_es)}</matricula>{ind_simples_xml}{_itens_todos}{info_ag_nocivo_xml}
           </remunPerApur>
         </ideEstabLot>
       </infoPerApur>
@@ -20184,11 +20209,11 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho).
 
     pgtos: lista de pagamentos do MESMO trabalhador na MESMA competência, cada um
-    {"folha_tipo": "N"|"A"|..., "valor_liquido": centavos}. Vira um <infoPgto> por
-    item, cada um apontando para o ideDmDev do seu demonstrativo no S-1200 — é
-    assim que a folha normal e o adiantamento do 13º do mesmo mês vão num evento
-    só (o gov recusa 2 evtPgtos com mesmo CPF + mesmo perApur, erro [106]).
-    Quando não informado, monta um único infoPgto a partir de (folha_tipo, totais).
+    {"folha_tipo": "N"|"A"|..., "valor_liquido": centavos}. Todos são SOMADOS num
+    <infoPgto> ÚNICO, apontando para o ideDmDev do demonstrativo único do S-1200
+    — é assim que a folha normal e o adiantamento do 13º do mesmo mês vão num
+    evento só (o gov recusa 2 evtPgtos com mesmo CPF + mesmo perApur, erro [106]).
+    Quando não informado, monta o infoPgto a partir de (folha_tipo, totais).
 
     Dentro de <infoPgto> o schema v_S_01_03_00 é minimalista (so dtPgto,
     tpPgto, perRef, ideDmDev, vrLiq + paisResidExt/infoPgtoExt opcionais —
@@ -20226,10 +20251,15 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
 
     # <perApur> do ideEvento é SEMPRE a competência do pagamento (AAAA-MM), mesmo
-    # no 13º. Quem muda é o <perRef> do infoPgto: ele identifica o demonstrativo
-    # pago e, na apuração ANUAL (13º / adiantamento do 13º), vale só o ANO.
-    # Confirmado em XML de produção do Desktop: perApur 2022-12 com dois infoPgto,
-    # um perRef 2022-12 (folha mensal) e outro perRef 2022 (13º).
+    # no 13º. Quem muda é o <perRef> do infoPgto: ele tem que casar com a apuração
+    # do <dmDev> que está sendo pago, então só vale o ANO quando o demonstrativo
+    # está num S-1200 de apuração ANUAL — o 13º FINAL (folha_tipo "1").
+    # O ADIANTAMENTO do 13º (tipo "A") NÃO é apuração anual: o dmDev dele viaja
+    # dentro do S-1200 MENSAL (indApuracao=1, perApur AAAA-MM), logo perRef=AAAA-MM.
+    # Confirmado em XML de produção do Desktop:
+    #   perApur 2022-12 → infoPgto perRef 2022-12 (mensal) + perRef 2022 (13INTEGRAL)
+    #   perApur 2022-11 → infoPgto perRef 2022-11 (mensal) + perRef 2022-11 (ADIANTAMENTO)
+    #   idem 2023-11 e 2024-11 — perRef=AAAA só aparece no 13º integral de dezembro.
     _am      = str(int(ano_mes)).zfill(6)
     per_apur = f"{_am[:4]}-{_am[4:6]}"
 
@@ -20255,16 +20285,18 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
 
     # ideDmDev: identificador do demonstrativo do trabalhador no S-1200 que este
     # pagamento referencia — tem que casar EXATAMENTE com o ideDmDev de lá.
-    info_pgto_xml = ""
-    for _pg in pgtos:
-        _ft = str(_pg.get("folha_tipo") or folha_tipo or "N").upper()
-        info_pgto_xml += f"""
+    # Como o S-1200 passou a mandar UM ÚNICO <dmDev> por trabalhador (folha
+    # mensal + adiantamento do 13º no mesmo demonstrativo), aqui também sai um
+    # ÚNICO <infoPgto>, com o vrLiq SOMADO das folhas da competência.
+    _ft_pgto  = str(pgtos[0].get("folha_tipo") or folha_tipo or "N").upper()
+    _vr_liq   = sum(int(_pg.get("valor_liquido") or 0) for _pg in pgtos)
+    info_pgto_xml = f"""
       <infoPgto>
         <dtPgto>{x(dtPgto)}</dtPgto>
-        <tpPgto>{x(_TP_PGTO.get(_ft, '1'))}</tpPgto>
-        <perRef>{_am[:4] if _ft in ('1', 'A') else per_apur}</perRef>
-        <ideDmDev>{_ide_dm_dev(mat_es, _ft)}</ideDmDev>
-        <vrLiq>{fmt_brl(_pg.get('valor_liquido', 0))}</vrLiq>
+        <tpPgto>{x(_TP_PGTO.get(_ft_pgto, '1'))}</tpPgto>
+        <perRef>{_am[:4] if _ft_pgto == '1' else per_apur}</perRef>
+        <ideDmDev>{_ide_dm_dev(mat_es, _ft_pgto)}</ideDmDev>
+        <vrLiq>{fmt_brl(_vr_liq)}</vrLiq>
       </infoPgto>"""
 
     # ── infoIRComplem ───────────────────────────────────────────────────
@@ -21443,10 +21475,30 @@ def api_esocial_s1005_enviar():
 # =========================================================
 # eSocial S-1010 — GERADOR DE XML (um evento por rubrica)
 # =========================================================
-def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1):
+# Cada rubrica é registrada QUATRO vezes no S-1010, uma por origem de folha —
+# é assim que o Folha10 Desktop registra em produção e é o que o S-1200 espera
+# (ver _fmt_cod_rubr: -FOL folha mensal, -FER férias, -13S 13º e adiantamento,
+# -RES rescisão). Sem a variante, o S-1200 que aponta para ela é recusado com
+# [269] "Rubrica ... não existe no cadastro do empregador".
+_S1010_SUFIXOS = ("FOL", "FER", "13S", "RES")
+
+
+def _s1010_variantes(rubrica):
+    """Códigos das 4 variantes de uma rubrica: ['0016-FOL', '0016-FER', ...]."""
+    try:
+        cod = int(rubrica.get("cod_rubr") or 0)
+    except Exception:
+        cod = 0
+    return [f"{cod:04d}-{suf}" for suf in _S1010_SUFIXOS]
+
+
+def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid, nr_seq=1,
+                            cod_rubr_fmt=None):
     """Gera o XML de um evtTabRubrica para uma única rubrica.
     tp_op: 'inclusao' ou 'alteracao'
     nr_seq: sequência do evento no lote (inteiro)
+    cod_rubr_fmt: código já formatado com o sufixo ('0016-FOL'). Quando não
+        informado, usa o cod_rubr cru da rubrica.
     """
     import re as _re
     from xml.sax.saxutils import escape as _esc
@@ -21464,7 +21516,7 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     seq_str   = str(nr_seq).zfill(5)
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}{seq_str}"
 
-    cod_rubr  = str(rubrica.get('cod_rubr') or '').strip()
+    cod_rubr  = str(cod_rubr_fmt or rubrica.get('cod_rubr') or '').strip()
     dsc_rubr  = x((rubrica.get('dsc_rubr') or '')[:100])
     nat_rubr  = str(rubrica.get('es03_nat_rubr') or '').strip()
     tp_rubr   = str(rubrica.get('tp_rubr') or '1').strip()
@@ -21504,7 +21556,7 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
       <{tp_op}>
         <ideRubrica>
           <codRubr>{x(cod_rubr)}</codRubr>
-          <ideTabRubr>{x(cnpj_raiz)}</ideTabRubr>
+          <ideTabRubr>{x(cod_rubr)}</ideTabRubr>
           <iniValid>{x(ini_valid)}</iniValid>{fim_valid_xml}
         </ideRubrica>
         <dadosRubrica>
@@ -21753,12 +21805,25 @@ def esocial_s1010():
         rows=rows,
         total=len(rows),
         rubricas_lista=rubricas_lista,
+        ini_valid_folha=_ini_valid_folha_atual(),
     )
 
 
 # =========================================================
 # eSocial S-1010 — API: gravar registro pendente
 # =========================================================
+def _ini_valid_folha_atual():
+    """Início de validade do S-1010 = dia 1 da folha atual, no formato AAAA-MM.
+
+    Decisão do usuário em 31/07/2026: a validade da rubrica é SEMPRE a
+    competência da folha ativa. Digitar um mês futuro fazia o gov rejeitar com
+    [980] "A data informada deve ser maior que 01/01/1900 e anterior à data
+    atual". O Gerador (api_esocial_gerador_criar) já gravava assim.
+    """
+    am = str(session.get("anomes_atual") or "").strip()
+    return f"{am[:4]}-{am[4:6]}" if len(am) == 6 and am.isdigit() else ""
+
+
 @app.route("/api/esocial_s1010_gravar", methods=["POST"])
 def api_esocial_s1010_gravar():
     if not session.get("logado"):
@@ -21770,13 +21835,16 @@ def api_esocial_s1010_gravar():
     data       = request.get_json(force=True) or {}
 
     tp_op     = data.get("tp_op", "inclusao")
-    ini_valid = data.get("ini_valid", "").strip()
     fim_valid = data.get("fim_valid", "").strip()
     tpAmb     = str(data.get("tpAmb", "1"))
     verbas    = data.get("verbas", [])   # lista de {cod_rubr, dsc_rubr}
 
-    if not ini_valid or len(ini_valid) != 7 or ini_valid[4] != '-':
-        return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
+    # A validade é sempre a competência da folha ativa — o que vier do front é
+    # ignorado de propósito (o campo na tela é só leitura). Ver _ini_valid_folha_atual.
+    ini_valid = _ini_valid_folha_atual()
+    if not ini_valid:
+        return jsonify({"ok": False,
+                        "msg": "Sem folha ativa na sessão — não dá para definir a validade da rubrica."})
 
     if not verbas:
         return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica."})
@@ -21889,9 +21957,15 @@ def api_esocial_s1010_xml():
     except Exception:
         rubricas = []
 
+    # Cada rubrica vira 4 eventos (-FOL, -FER, -13S, -RES) no MESMO XML.
     xmls = []
-    for idx, rub in enumerate(rubricas, start=1):
-        xmls.append(_gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op, ini_valid, fim_valid, idx))
+    _idx = 0
+    for rub in rubricas:
+        for cod_fmt in _s1010_variantes(rub):
+            _idx += 1
+            xmls.append(_gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op,
+                                                ini_valid, fim_valid, _idx,
+                                                cod_rubr_fmt=cod_fmt))
 
     combined = "\n<!-- ======== PRÓXIMO EVENTO ======== -->\n".join(xmls)
 
@@ -21992,6 +22066,26 @@ def api_esocial_s1010_enviar():
         am = str(es.get("ano_mes") or "")
         if len(am) == 6:
             ini_valid = f"{am[:4]}-{am[4:6]}"
+
+    # A validade é SEMPRE o dia 1 da folha ativa — inclusive em remessas antigas,
+    # gravadas quando o campo era digitável. Sem isso, um registro criado com
+    # validade futura continuaria sendo recusado com [980] "A data informada
+    # deve ser ... anterior à data atual" a cada reenvio.
+    _ini_folha = _ini_valid_folha_atual()
+    if _ini_folha and _ini_folha != ini_valid:
+        print(f"[S-1010] id={id_reg}: validade {ini_valid or '(vazia)'} -> {_ini_folha} (folha ativa)")
+        ini_valid = _ini_folha
+        params["ini"] = _ini_folha
+        _params_raw = "PARAMS:" + _json.dumps(params, ensure_ascii=False)
+        # ano_mes acompanha a validade, senão o registro fica dizendo um mês
+        # (ex.: 202608) e o XML enviado outro (2026-07).
+        try:
+            supabase.table("tab_esocial")\
+                .update({"ano_mes": int(_ini_folha.replace("-", ""))})\
+                .eq("id_esocial", int(id_reg)).execute()
+        except Exception as e:
+            print(f"[S-1010] id={id_reg}: falha ao ajustar ano_mes: {e}")
+
     if not ini_valid or cod_rubr_reg is None:
         return jsonify({"ok": False, "msg": "Parâmetros não encontrados. Recrie o registro."})
 
@@ -22027,15 +22121,23 @@ def api_esocial_s1010_enviar():
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1010_{ini_valid.replace('-','')}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
+    # Cada rubrica vira QUATRO eventos — 0016-FOL, 0016-FER, 0016-13S e
+    # 0016-RES — e os quatro viajam no MESMO lote/XML.
     xmls_crus = []
-    for idx, rub in enumerate(rubricas, start=1):
-        try:
-            xml_str = _gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op, ini_valid, fim_valid, idx)
-        except Exception as e:
-            msg = f"Erro ao gerar XML rubrica {rub.get('cod_rubr')}: {e}"
-            _xml_erro_save(_pref, 1, msg, e)
-            return jsonify({"ok": False, "msg": msg})
-        xmls_crus.append(xml_str)
+    cods_enviados = []
+    for rub in rubricas:
+        for cod_fmt in _s1010_variantes(rub):
+            idx = len(xmls_crus) + 1
+            try:
+                xml_str = _gerar_xml_s1010_evento(rub, empresa, tpAmb, tp_op,
+                                                  ini_valid, fim_valid, idx,
+                                                  cod_rubr_fmt=cod_fmt)
+            except Exception as e:
+                msg = f"Erro ao gerar XML rubrica {cod_fmt}: {e}"
+                _xml_erro_save(_pref, 1, msg, e)
+                return jsonify({"ok": False, "msg": msg})
+            xmls_crus.append(xml_str)
+            cods_enviados.append(cod_fmt)
 
     # Wrappa todos os eventos num único XML válido (sem múltiplas
     # declarações <?xml?>) pra ficar legível no viewer.
@@ -22066,7 +22168,7 @@ def api_esocial_s1010_enviar():
         try:
             xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
         except Exception as e:
-            msg = f"Erro na assinatura rubrica {rubricas[idx-1].get('cod_rubr')}: {e}"
+            msg = f"Erro na assinatura rubrica {cods_enviados[idx-1]}: {e}"
             _xml_erro_save(_pref, 2, msg, e)
             return jsonify({"ok": False, "msg": msg})
         xmls_assinados.append(xml_assinado)
@@ -22143,13 +22245,23 @@ def api_esocial_s1010_enviar():
         resultado = _extrair_resultado_consulta(resp_cons)
         cd_resp = resultado.get("cdResposta", "")
         if cd_resp not in ("101", "202"):
-            if resultado["eventos"]:
-                ev0 = resultado["eventos"][0]
-                recibo_final = ev0.get("nrRec", "")
-                if ev0.get("cdResp", "") not in ("", "201"):
-                    ocorrs = ev0.get("ocorrs", [])
-                    obs_erro = " · ".join(ocorrs) if ocorrs else (
-                        ev0.get("dscResp") or resultado.get("descResposta", ""))
+            # A remessa leva QUATRO eventos (-FOL/-FER/-13S/-RES). O recibo
+            # gravado é o do primeiro, mas um erro em QUALQUER um deles tem que
+            # aparecer — senão uma variante recusada passaria como sucesso.
+            _evs = resultado["eventos"] or []
+            if _evs:
+                recibo_final = _evs[0].get("nrRec", "")
+                _erros = []
+                for _i, _ev in enumerate(_evs):
+                    if _ev.get("cdResp", "") in ("", "201"):
+                        continue
+                    _oc  = _ev.get("ocorrs", [])
+                    _cod = cods_enviados[_i] if _i < len(cods_enviados) else f"evento {_i+1}"
+                    _txt = " · ".join(_oc) if _oc else (_ev.get("dscResp") or "")
+                    _erros.append(f"{_cod}: {_txt}" if _txt else f"{_cod}: recusado")
+                if _erros:
+                    recibo_final = ""   # não marca como enviada com variante recusada
+                    obs_erro = " | ".join(_erros) or resultado.get("descResposta", "")
             # cd_resp 201 sem nrRec individual → protocolo é o recibo
             if cd_resp == "201" and not recibo_final and not obs_erro:
                 recibo_final = protocolo_envio
@@ -22173,12 +22285,17 @@ def api_esocial_s1010_enviar():
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).execute()
 
+    # "nr_rec" é o nome que TODAS as outras telas leem (Fila, S-1200, S-1210…).
+    # Este endpoint devolvia só "recibo": a tela própria do S-1010 achava, mas a
+    # Fila mostrava "Enviado — Recibo:" em branco. Manda os dois.
+    # E, aguardando, "ok" tem que ser False — a Fila testa data.ok ANTES de
+    # data.aguardando, então ok=True marcava como Enviado sem recibo nenhum.
     rub_dsc = rubricas[0].get("dsc_rubr", "") if rubricas else ""
     if recibo_final and not obs_erro and not aguardando:
-        return jsonify({"ok": True, "recibo": recibo_final,
+        return jsonify({"ok": True, "recibo": recibo_final, "nr_rec": recibo_final,
                         "msg": f"S-1010 enviado — Verba {cod_rubr_reg} {rub_dsc}. Recibo: {recibo_final}"})
     if aguardando:
-        return jsonify({"ok": True, "aguardando": True,
+        return jsonify({"ok": False, "aguardando": True,
                         "msg": f"Aguardando processamento. Protocolo: {protocolo_envio}",
                         "protocolo": protocolo_envio})
     return jsonify({"ok": False, "msg": obs_erro or "Erro desconhecido na consulta."})
@@ -23068,7 +23185,7 @@ def api_esocial_s2200_xml():
         pass
 
     mat_fmt = str(matricula).zfill(6)
-    fname = f"S2200_{mat_fmt}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S2200_{_mat6(mat_fmt)}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
 
     return Response(
         xml_str,
@@ -23144,7 +23261,7 @@ def api_esocial_s2200_enviar():
     # ── 4. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2200_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2200(func, empresa, tpAmb)
@@ -23449,7 +23566,7 @@ def api_esocial_s2200_reconsutar():
     # Prefixo para salvar XML de re-consulta
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2200_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     # Loop de consulta (até 3×)
     recibo_final = ""
@@ -23604,7 +23721,7 @@ def api_esocial_s2300_xml():
         pass
 
     mat_fmt = str(matricula).zfill(6)
-    fname = f"S2300_{mat_fmt}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
+    fname = f"S2300_{_mat6(mat_fmt)}_{_agora_brasilia().strftime('%Y%m%d_%H%M%S')}.xml"
 
     return Response(
         xml_str,
@@ -23680,7 +23797,7 @@ def api_esocial_s2300_enviar():
     # ── 4. Gerar XML cru e salvar ASAP ────────────────────
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2300_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2300_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2300(func, empresa, tpAmb)
@@ -23896,7 +24013,7 @@ def api_esocial_s2300_reconsultar():
 
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2300_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2300_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     recibo_final = ""
     obs_erro     = ""
@@ -24366,7 +24483,7 @@ def api_esocial_s2205_enviar():
     # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2205_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2205_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb)
@@ -24493,7 +24610,7 @@ def api_esocial_s2205_enviar():
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
         "id_esocial": id_reg,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -24598,7 +24715,7 @@ def api_esocial_s2205_reconsultar():
         "ok":         ok,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -25189,7 +25306,7 @@ def api_esocial_s2206_enviar():
     # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2206_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2206_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb)
@@ -25316,7 +25433,7 @@ def api_esocial_s2206_enviar():
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
         "id_esocial": id_reg,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -25419,7 +25536,7 @@ def api_esocial_s2206_reconsultar():
         "ok":         ok,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -25610,7 +25727,7 @@ def api_esocial_s2299_enviar():
     # ── Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2299_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2299_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2299(func, mov_items, empresa, tpAmb,
@@ -25740,7 +25857,7 @@ def api_esocial_s2299_enviar():
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
         "id_esocial": id_reg,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -25817,7 +25934,7 @@ def api_esocial_s2399_enviar():
 
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S2399_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S2399_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s2399(func, mov_items, empresa, tpAmb,
@@ -25944,7 +26061,7 @@ def api_esocial_s2399_enviar():
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
         "id_esocial": id_reg,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -26044,7 +26161,7 @@ def api_esocial_s2299_reconsultar():
         "ok":         ok,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -26052,6 +26169,11 @@ def api_esocial_s2299_reconsultar():
 # =========================================================
 # eSocial — Fila Central de Remessas
 # =========================================================
+# Eventos de TABELA: o ano_mes deles é o início de validade da tabela
+# (iniValid), não a competência da folha.
+_LAYOUTS_TABELA_ESOCIAL = ["1000", "1005", "1010", "1020", "1070"]
+
+
 @app.route("/esocial_fila")
 def esocial_fila():
     if not session.get("logado"):
@@ -26092,13 +26214,38 @@ def esocial_fila():
                 q2 = q2.eq("layout", f_layout)
             r2 = q2.execute().data or []
 
+            # 3) eventos de TABELA criados no mês do período, qualquer ano_mes.
+            # Eles gravam ano_mes = início de VALIDADE da tabela (o iniValid),
+            # e não a competência da folha: uma rubrica com validade 2026-08
+            # cadastrada em julho ficava fora da fila de 07/2026 e "sumia".
+            # A tela própria do S-1010 já lista por data_cad — a fila passa a
+            # usar o mesmo critério para esses layouts.
+            q3 = (supabase.table("tab_esocial")
+                  .select("*")
+                  .eq("id_empresa", id_empresa)
+                  .in_("layout", _LAYOUTS_TABELA_ESOCIAL)
+                  .gte("data_cad", periodo + "01")
+                  .lte("data_cad", periodo + "31")
+                  .order("data_cad", desc=True)
+                  .order("hora_cad", desc=True))
+            if f_layout:
+                q3 = q3.eq("layout", f_layout)
+            r3 = q3.execute().data or []
+
             # mescla sem duplicatas, ordena por data/hora decrescente
             seen = set()
-            for r in r1 + r2:
+            for r in r1 + r2 + r3:
                 if r["id_esocial"] not in seen:
                     seen.add(r["id_esocial"])
                     rows.append(r)
-            rows.sort(key=lambda r: (r.get("data_cad", ""), r.get("hora_cad", "")), reverse=True)
+            # Ordem da lista: LAYOUT e, dentro dele, MATRÍCULA (quem não tem
+            # matrícula — tabelas, S-1299 — fica no início do seu layout).
+            # Dois sorts porque a data é decrescente e o resto crescente:
+            # o sort do Python é estável, então o 2º preserva a ordem do 1º.
+            rows.sort(key=lambda r: (str(r.get("data_cad") or ""),
+                                     str(r.get("hora_cad") or "")), reverse=True)
+            rows.sort(key=lambda r: (str(r.get("layout") or ""),
+                                     int(r.get("matricula") or 0)))
         except Exception:
             pass
 
@@ -26291,7 +26438,14 @@ def rel_esocial_fila_pdf():
                 if r["id_esocial"] not in seen:
                     seen.add(r["id_esocial"])
                     rows.append(r)
-            rows.sort(key=lambda r: (r.get("data_cad", ""), r.get("hora_cad", "")), reverse=True)
+            # Ordem da lista: LAYOUT e, dentro dele, MATRÍCULA (quem não tem
+            # matrícula — tabelas, S-1299 — fica no início do seu layout).
+            # Dois sorts porque a data é decrescente e o resto crescente:
+            # o sort do Python é estável, então o 2º preserva a ordem do 1º.
+            rows.sort(key=lambda r: (str(r.get("data_cad") or ""),
+                                     str(r.get("hora_cad") or "")), reverse=True)
+            rows.sort(key=lambda r: (str(r.get("layout") or ""),
+                                     int(r.get("matricula") or 0)))
         except Exception:
             pass
 
@@ -26609,7 +26763,7 @@ def api_esocial_reconsultar_generico():
         "ok":         ok,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -27362,7 +27516,7 @@ def api_esocial_s1200_enviar():
     # 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S1200_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S1200_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo_evt, tpAmb,
@@ -27513,7 +27667,7 @@ def api_esocial_s1200_enviar():
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -27629,7 +27783,7 @@ def api_esocial_s1200_reconsultar():
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -28075,7 +28229,7 @@ def _s1210_enviar_impl():
     # 6. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S1210_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S1210_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s1210(func, empresa, ano_mes, _tipos_pgto[0], tpAmb,
@@ -28224,7 +28378,7 @@ def _s1210_enviar_impl():
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -28336,7 +28490,7 @@ def api_esocial_s1210_reconsultar():
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -28780,7 +28934,7 @@ def api_esocial_s1299_enviar():
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
         "id_esocial": id_reg,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -28891,7 +29045,7 @@ def api_esocial_s1299_reconsultar():
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -29115,7 +29269,10 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
             if not m:
                 continue
             layout    = m.group(2)
-            matricula = m.group(3)
+            # Sem os zeros à esquerda: os XMLs antigos vieram "S1200_1_..." e os
+            # novos vêm "S1200_000001_...". Sem normalizar, o mesmo trabalhador
+            # viraria DOIS grupos e a remessa antiga seria processada de novo.
+            matricula = m.group(3).lstrip("0") or m.group(3)
             ymd       = m.group(4)
             hms       = m.group(5)
             etapa     = int(m.group(6))
@@ -30153,7 +30310,7 @@ def api_esocial_s1298_enviar():
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
         "id_esocial": id_reg,
-        "msg": ("eSocial ainda processando. Use Re-consultar." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Enviado com sucesso. Recibo: {recibo_final}"),
     })
 
@@ -30264,7 +30421,7 @@ def api_esocial_s1298_reconsultar():
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
         "cd_resp":    cd_resp,
-        "msg": ("Ainda processando." if aguardando
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
 
@@ -30472,7 +30629,7 @@ def api_esocial_s3000_enviar():
     # ── 4. Gerar XML S-3000 cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
-             f"S3000_{matricula}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+             f"S3000_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
     try:
         xml_str = _gerar_xml_s3000(
@@ -30983,8 +31140,8 @@ def _calc_dsr_mes(anomes):
         return 22, 4   # fallback conservador
 
 
-# Dias de trabalho considerados na escala 12x36 para o DSR: 15 nos meses
-# normais e 14 em fevereiro (nao varia entre mes de 30 e 31 dias).
+# Dias de trabalho considerados em QUALQUER escala para o DSR: 15 fixos nos
+# meses normais e 14 em fevereiro (nao varia entre mes de 30 e 31 dias).
 def _dsr_dias_escala(anomes):
     try:
         return 14 if int(str(anomes)[4:6]) == 2 else 15
@@ -30993,13 +31150,18 @@ def _dsr_dias_escala(anomes):
 
 
 def _ids_horario_escala(id_cliente):
-    """id_horario dos horarios de escala 12x36 (do sistema e do cliente)."""
+    """id_horario dos horarios de ESCALA (do sistema e do cliente).
+
+    Casa pelo nome: qualquer horario com "escala" na descricao (12x36, 6x1,
+    5x2...) entra. Antes so pegava "%12x36%", entao uma escala nova cadastrada
+    com outro nome caia no divisor de dias uteis do calendario.
+    """
     ids = set()
     try:
         r = (supabase.table("tab_aux_horarios")
              .select("id_horario, nome_horario")
              .in_("id_cliente", [0] + ([id_cliente] if id_cliente else []))
-             .ilike("nome_horario", "%12x36%")
+             .ilike("nome_horario", "%escala%")
              .execute())
         for row in (r.data or []):
             if row.get("id_horario"):
@@ -31929,7 +32091,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     }
     except Exception:
         pass
-    # Horarios de escala 12x36 — mudam so o divisor do DSR (ETAPA 0009C)
+    # Horarios de escala — mudam so o divisor do DSR (ETAPA 0009C)
     escala_ids = _ids_horario_escala(id_cliente)
 
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
@@ -32985,13 +33147,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]
             _cods_dsr    = {cod for _, cod, _ in DSR_ORIGENS}
             _du_dsr, _dias_dsr = _calc_dsr_mes(anomes)
-            # Escala 12x36: o divisor sai da escala (15 dias; 14 em fevereiro)
-            # em vez dos dias uteis do calendario. O multiplicador continua
-            # sendo domingos + feriados.
+            # Horário de ESCALA (12x36, 6x1, 5x2...): o divisor é fixo — 15 dias,
+            # 14 em fevereiro — em vez dos dias úteis do calendário. O
+            # multiplicador continua sendo domingos + feriados.
             _e_escala = int(l.get("id_horario") or 0) in escala_ids
             if _e_escala:
                 _du_dsr = _dsr_dias_escala(anomes)
-            _txt_div = ("Dias da escala 12x36" if _e_escala else "Dias úteis")
+            _txt_div = ("Dias da escala" if _e_escala else "Dias úteis")
             _linhas_dsr  = []
             for _flag, _cod_dsr, _nome_dsr in DSR_ORIGENS:
                 _base_dsr = int(sum(
@@ -41410,7 +41572,19 @@ def api_admin_xml_listar():
             if r[slot] is None or name > r[slot]["nome"]:
                 r[slot] = arq
         # Lista ordenada (timestamp embutido na chave)
-        remessas_list = sorted(remessas.values(), key=lambda r: r["chave"])
+        # Ordena pela DATA/HORA do nome, não pela chave inteira.
+        # A chave é S{layout}_{matricula}_{AAAAMMDD}_{HHMMSS}. Ordenar a string
+        # toda quebrou quando a matrícula passou a ir com 6 dígitos: no alfabeto
+        # "S1200_000001_..." vem ANTES de "S1200_1_...", então toda remessa nova
+        # caía no COMEÇO da lista e a tela — que por padrão mostra só a última —
+        # exibia sempre uma antiga. Nome sem data/hora vai para o INÍCIO, para
+        # não sequestrar o "última remessa" da tela.
+        def _ordem_remessa(chave):
+            m = _re_xml.search(r'_(\d{8})_(\d{6})$', str(chave or ""))
+            return (m.group(1) + m.group(2)) if m else "0"
+
+        remessas_list = sorted(remessas.values(),
+                               key=lambda r: (_ordem_remessa(r["chave"]), r["chave"]))
         return jsonify({"ok": True, "remessas": remessas_list, "prefixo": prefix, "debug": debug})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})

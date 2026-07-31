@@ -540,9 +540,13 @@ function renderRemessas(remessas) {
 
 function _remessasFiltradas() {
     const mat = (document.getElementById('inMatricula') || {}).value || '';
-    const matNum = mat.replace(/\D/g, '');
+    // Digitar 1, 001 ou 000001 tem que achar a mesma coisa: tira os zeros à
+    // esquerda do que foi digitado e aceita zeros à esquerda no nome do arquivo.
+    // Os XMLs novos são gravados com 6 dígitos (S1200_000001_...) e os antigos
+    // sem zeros (S1200_1_...) — as duas formas casam.
+    const matNum = mat.replace(/\D/g, '').replace(/^0+/, '');
     if (!matNum) return _todasRemessas;
-    // Compara matrícula como token entre underscores na chave (ex.: S1200_123_20260628_...)
+    // Compara matrícula como token entre underscores na chave (ex.: S1200_000123_20260628_...)
     const rx = new RegExp('(?:^|_)0*' + matNum + '_');
     return _todasRemessas.filter(r => rx.test(r.chave));
 }

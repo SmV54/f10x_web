@@ -619,7 +619,7 @@ function reconsultarS1020(id, btnEl) {
             else                   { sitEl.className = 'sit-badge sit-erro';       sitEl.textContent = 'Com Erro'; }
         }
         if (d.ok) setTimeout(() => window.location.reload(), 1800);
-        else alert(d.msg || (d.aguardando ? 'eSocial ainda processando. Tente novamente em alguns minutos.' : 'Erro na consulta.'));
+        else alert(d.msg || (d.aguardando ? 'eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' : 'Erro na consulta.'));
     })
     .catch(e => {
         btnEl.disabled = false; btnEl.textContent = '↺ Re-consultar';

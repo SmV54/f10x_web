@@ -211,6 +211,10 @@ body.menu-numerado .nav-item::before {
 .nav-item:hover { background: #eaf2fd; border-color: var(--accent); color: var(--accent); }
 .nav-item.em-breve { opacity: 0.42; pointer-events: none; }
 .nav-item.bloqueado:hover { background: #fff7ed; border-color: #f97316; color: #9a3412; }
+/* Liberado, mas com a folha fora de Aberta: entra depois de confirmar. */
+.nav-item.com-aviso-folha { border-color: #fcd34d; background: #fffbeb; }
+.nav-item.com-aviso-folha::after { content: '⚠'; font-size: 11px; color: #b45309; margin-left: 2px; }
+.nav-item.com-aviso-folha:hover { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
 .nav-item.acao-reabrir {
     background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; font-weight: 600;
 }
@@ -726,19 +730,19 @@ const modulos = {
         titulo: 'eSocial', icone: '📃',
         secoes: [
             { nome: 'Tabelas', itens: [
-                { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '/esocial_s1000', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '/esocial_s1005', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '📑', nome: 'S-1010 Rubricas',             href: '/esocial_s1010', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '💼', nome: 'S-1020 Lotações Tributárias', href: '/esocial_s1020', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '🏢', nome: 'S-1000 Dados do Empregador',  href: '/esocial_s1000', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '🏭', nome: 'S-1005 Estabelecimentos',     href: '/esocial_s1005', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '📑', nome: 'S-1010 Rubricas',             href: '/esocial_s1010', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '💼', nome: 'S-1020 Lotações Tributárias', href: '/esocial_s1020', ok: true, bloqueioFolha: 'aviso' },
             ]},
             { nome: 'Eventos Não Periódicos', itens: [
-                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '🏥', nome: 'S-2230 Afastamento',            href: '#' },
-                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '🎓', nome: 'S-2300 Início TSVE (Estagiário)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aberta' },
-                { icone: '🏁', nome: 'S-2399 Término TSVE (Estag./Diretor)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aberta' },
+                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '🎓', nome: 'S-2300 Início TSVE (Estagiário)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '🏁', nome: 'S-2399 Término TSVE (Estag./Diretor)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aviso' },
             ]},
             { nome: 'Eventos Periódicos', itens: [
                 { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true, bloqueioFolha: 'fechada' },
@@ -1002,6 +1006,10 @@ function clicarSecao(idx) {
     if (itens.length === 1 && !(secao && secao.semAtalho)) {
         const it = itens[0];
         if (it.ok && !it.loading && it.href && it.href !== '#' && !itemBloqueado(it)) {
+            // bloqueioFolha:'aviso' também confirma no atalho de seção com 1 item,
+            // senão o aviso seria pulado por este caminho.
+            if (it.bloqueioFolha === 'aviso' && folhaNaoAberta()
+                && !confirmarFolhaNaoAberta(it.nome)) return;
             window.location.href = it.href;
             return;
         }
@@ -1032,14 +1040,23 @@ function renderItens(itens) {
         //   true     → exige folha Aberta (bloqueia em C/F)  [retrocompat]
         //   'aberta' → exige folha Aberta (bloqueia em C/F)
         //   'fechada'→ exige folha Fechada (bloqueia em A/X/C)
+        //   'aviso'  → NÃO bloqueia: fora de Aberta só pergunta e segue se
+        //              o usuário confirmar. Usado nas Tabelas do eSocial
+        //              (S-1000/1005/1010/1020) e nos eventos não periódicos
+        //              (S-2200/2205/2206/2299/2300/2399), que não dependem do
+        //              fechamento da folha — o servidor também não trava
+        //              (ver _validar_folha_para_envio_esocial no app.py).
         // requerS1299 → exige que o S-1299 do período atual já tenha recibo
         let bloqueado = false;
         let motivoBloq = '';
+        let avisoFolha = false;
         if (item.bloqueioFolha === 'fechada') {
             if (!folhaFechada) {
                 bloqueado = true;
                 motivoBloq = 'fechada';
             }
+        } else if (item.bloqueioFolha === 'aviso') {
+            avisoFolha = !folhaAberta;
         } else if (item.bloqueioFolha === 'aberta' || item.bloqueioFolha === true) {
             if (!folhaAberta) {
                 bloqueado = true;
@@ -1094,6 +1111,15 @@ function renderItens(itens) {
         } else if (item.ok) {
             a.className = 'nav-item';
             a.href = item.href;
+            if (avisoFolha) {
+                // Folha fora de Aberta: entra assim mesmo, mas confirma antes.
+                a.classList.add('com-aviso-folha');
+                a.title = 'Folha ' + rotuloSituacaoFolha() + ' — este evento do eSocial não depende do fechamento da folha.';
+                a.addEventListener('click', e => {
+                    e.preventDefault();
+                    if (confirmarFolhaNaoAberta(item.nome)) window.location.href = item.href;
+                });
+            }
         } else {
             a.className = 'nav-item em-breve';
             a.href = '#';
@@ -1132,8 +1158,29 @@ function renderItens(itens) {
     });
 }
 
+function rotuloSituacaoFolha() {
+    return { A:'Aberta', X:'Aberta', P:'Processada', C:'Calculada', F:'Fechada' }[FOLHA_SITUACAO]
+           || FOLHA_SITUACAO || '—';
+}
+
+// Itens com bloqueioFolha:'aviso' — não travam, só pedem confirmação quando a
+// folha não está Aberta. Retorna true se o usuário quer seguir.
+function confirmarFolhaNaoAberta(nomeItem) {
+    return confirm(
+        `Folha ${rotuloSituacaoFolha()}.\n\n` +
+        `As tabelas (S-1000, S-1005, S-1010, S-1020) e os eventos não periódicos ` +
+        `(S-2xxx) do eSocial não dependem do fechamento da folha — o envio é permitido.\n\n` +
+        `Deseja abrir "${nomeItem}" e enviar mesmo assim?`
+    );
+}
+
+// A folha não está Aberta (A/X)?
+function folhaNaoAberta() {
+    return !(FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X');
+}
+
 function mostrarAvisoFolha(motivo) {
-    const sitLbl = { A:'Aberta', X:'Aberta', P:'Processada', C:'Calculada', F:'Fechada' }[FOLHA_SITUACAO] || FOLHA_SITUACAO || '—';
+    const sitLbl = rotuloSituacaoFolha();
     if (motivo === 'pos_s1299') {
         navAviso.innerHTML = `🔒 Esta opção fica disponível depois que o <strong>S-1299 do período atual</strong> for enviado e tiver recibo.`;
     } else if (motivo === 'fechada') {

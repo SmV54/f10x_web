@@ -438,8 +438,10 @@ tr:hover td { background: #f8fafc; }
                 </div>
                 <div class="form-group">
                     <label class="form-label">Início de Validade *</label>
-                    <input type="month" id="f-ini-valid" class="form-input mono" required>
-                    <span class="form-hint">Período inicial de vigência</span>
+                    <input type="month" id="f-ini-valid" class="form-input mono" required
+                           value="{{ ini_valid_folha }}" readonly
+                           title="A validade é sempre o dia 1 da folha atual.">
+                    <span class="form-hint">Dia 1 da folha atual — o eSocial recusa validade futura</span>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Fim de Validade (opcional)</label>
@@ -562,6 +564,8 @@ function iniciarTour() {
 }
 
 const RUBRICAS = {{ rubricas_lista | tojson }};
+// Validade do S-1010 = dia 1 da folha atual. O servidor reimpõe isso ao gravar.
+const INI_VALID_FOLHA = {{ (ini_valid_folha or '') | tojson }};
 const TP_LABEL = {'1':'Provento','2':'Desconto','3':'Informativo','4':'Inf.Ded.'};
 let selecionadas = new Set();
 
@@ -620,7 +624,8 @@ function selNenhuma() {
 
 function abrirModal() {
     document.getElementById('f-tp-op').value = 'inclusao';
-    document.getElementById('f-ini-valid').value = '';
+    // Validade fixa na folha atual — não limpa o campo ao reabrir o modal.
+    document.getElementById('f-ini-valid').value = INI_VALID_FOLHA;
     document.getElementById('f-fim-valid').value = '';
     document.getElementById('f-filtro-rub').value = '';
     document.getElementById('msg-modal').style.display = 'none';
@@ -806,7 +811,7 @@ async function reconsultarS1010(id, btnEl) {
             lbl.textContent = '✅ Enviado — Recibo: ' + (d.nr_rec || '');
             sit.className = 'sit-badge sit-enviado'; sit.textContent = 'Enviado';
         } else if (d.aguardando) {
-            lbl.textContent = '⏳ ' + (d.msg || 'Ainda processando.');
+            lbl.textContent = '⏳ ' + (d.msg || 'eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.');
             sit.className = 'sit-badge sit-aguardando'; sit.textContent = 'Aguardando';
             btnEl.disabled = false;
         } else {

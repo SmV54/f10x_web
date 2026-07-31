@@ -44,7 +44,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 }
 .btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
 
-.conteudo { max-width: 1200px; margin: 28px auto; padding: 0 24px 80px; }
+/* 1320px: a tabela tem 9 colunas e a 1200px sobrava uma rolagem horizontal
+   pequena. O overflow-x do .tabela-wrap continua como rede de segurança para
+   telas estreitas. */
+.conteudo { max-width: 1320px; margin: 28px auto; padding: 0 24px 80px; }
 
 /* ── FILTRO BAR ── */
 .filtro-bar {
@@ -118,6 +121,56 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 }
 .lay-check-todos { font-weight: 700; color: #0f766e; }
 
+/* ── "Mostrar todas" (por padrão a fila só lista o que falta enviar) ── */
+.filtro-todas {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    height: 36px; padding: 0 12px; border-radius: 7px; white-space: nowrap;
+    border: 1px solid #d1d5db; background: #f9fafb;
+    font-size: 12.5px; font-weight: 600; color: #475569; user-select: none;
+    transition: .13s;
+}
+.filtro-todas:hover { border-color: var(--accent); background: #fff; }
+.filtro-todas input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.filtro-todas em { font-style: normal; font-weight: 500; color: #94a3b8; }
+.fila-limpa {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: #f0fdf4; border: 1px solid #86efac; border-radius: 10px;
+    padding: 14px 18px; margin-bottom: 16px;
+    font-size: 13px; font-weight: 600; color: #166534;
+}
+.btn-ver-todas {
+    border: 1px solid #86efac; background: #fff; color: #166534;
+    font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+}
+.btn-ver-todas:hover { background: #dcfce7; border-color: #22c55e; }
+
+/* ── SELEÇÃO EM LOTE ── */
+.row-check { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; margin: 0; }
+.row-check:disabled { cursor: not-allowed; opacity: .35; }
+.barra-selec {
+    display: none; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: #f0fdfa; border: 1px solid #99e2d8; border-radius: 10px;
+    padding: 10px 16px; margin-bottom: 14px;
+}
+.barra-selec.ativa { display: flex; }
+.barra-selec-txt { font-size: 13px; font-weight: 600; color: #115e59; }
+.barra-selec-txt b { font-family: var(--mono); }
+.btn-enviar-selec {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: none; background: var(--accent); color: #fff;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-enviar-selec:hover:not(:disabled) { background: #0f766e; }
+.btn-enviar-selec:disabled { opacity: .5; cursor: not-allowed; }
+.btn-limpar-selec {
+    border: 1px solid #99e2d8; background: #fff; color: #115e59;
+    font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: .13s;
+}
+.btn-limpar-selec:hover { background: #ccfbf1; }
+
 /* ── COUNTERS ── */
 .counters {
     display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px;
@@ -161,19 +214,27 @@ tr:hover td { background: #f8fafc; }
     font-size: 11px; font-weight: 700; white-space: nowrap;
     font-family: var(--mono);
 }
-.lay-1000 { background: #f0f9ff; color: #0369a1; border: 1px solid #7dd3fc; }
-.lay-1010 { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-.lay-1200 { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
-.lay-1210 { background: #ede9fe; color: #5b21b6; border: 1px solid #ddd6fe; }
-.lay-1298 { background: #fff7ed; color: #c2410c; border: 1px solid #fed7aa; }
-.lay-1299 { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
-.lay-2200 { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-.lay-2205 { background: #f5f3ff; color: #7c3aed; border: 1px solid #ddd6fe; }
-.lay-2206 { background: #fdf4ff; color: #86198f; border: 1px solid #f0abfc; }
-.lay-2220 { background: #ecfdf5; color: #065f46; border: 1px solid #6ee7b7; }
-.lay-2230 { background: #fefce8; color: #854d0e; border: 1px solid #fde68a; }
-.lay-2299 { background: #fff1f2; color: #9f1239; border: 1px solid #fecdd3; }
-.lay-3000 { background: #f8fafc; color: #475569; border: 1px solid #cbd5e1; }
+/* Uma cor por layout, em tom baixo. Vermelho e verde ficam de fora de
+   propósito: são as cores das situações (Com Erro / Enviado) na coluna ao lado,
+   e repeti-las aqui faria o badge parecer status. */
+.lay-1000 { background: #eff6ff; color: #1e40af; border: 1px solid #c7d8f5; }  /* azul   */
+.lay-1005 { background: #ecfeff; color: #155e75; border: 1px solid #b6e3ec; }  /* ciano  */
+.lay-1010 { background: #fefce8; color: #854d0e; border: 1px solid #eadfae; }  /* amarelo*/
+.lay-1020 { background: #f0fdfa; color: #115e59; border: 1px solid #b3ddd8; }  /* teal   */
+.lay-1200 { background: #eef2ff; color: #3730a3; border: 1px solid #ccd2f5; }  /* indigo */
+.lay-1210 { background: #f5f3ff; color: #5b21b6; border: 1px solid #d9d2f2; }  /* violeta*/
+.lay-1298 { background: #fff7ed; color: #9a3412; border: 1px solid #f0d9bf; }  /* laranja*/
+.lay-1299 { background: #faf5ff; color: #6b21a8; border: 1px solid #e2d3f0; }  /* roxo   */
+.lay-2200 { background: #f7fee7; color: #3f6212; border: 1px solid #d6e6b8; }  /* lima   */
+.lay-2205 { background: #fdf4ff; color: #86198f; border: 1px solid #eed0f2; }  /* fúcsia */
+.lay-2206 { background: #fdf2f8; color: #9d174d; border: 1px solid #f2cfe0; }  /* rosa   */
+.lay-2210 { background: #fef2f2; color: #9f1239; border: 1px solid #eecdcd; }  /* terracota */
+.lay-2220 { background: #f0f9ff; color: #075985; border: 1px solid #bfdcee; }  /* azul c.*/
+.lay-2230 { background: #fffbeb; color: #92400e; border: 1px solid #f0dfb8; }  /* âmbar  */
+.lay-2299 { background: #f5f5f4; color: #57534e; border: 1px solid #d9d5d1; }  /* pedra  */
+.lay-2300 { background: #f8fafc; color: #334155; border: 1px solid #cfd8e3; }  /* ardósia*/
+.lay-2399 { background: #fafaf9; color: #78716c; border: 1px solid #ddd9d4; }  /* areia  */
+.lay-3000 { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }  /* cinza  */
 
 /* ── SITUAÇÃO BADGES ── */
 .sit-badge {
@@ -240,6 +301,9 @@ tr:hover td { background: #f8fafc; }
 .btn-excluir:disabled { opacity: .5; cursor: not-allowed; }
 
 /* ── PROGRESS ROW ── */
+/* Icone girando enquanto a consulta esta no ar. */
+.spin-ico { display: inline-block; animation: f10-girar 1s linear infinite; }
+@keyframes f10-girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .prog-row  { display: none; }
 .prog-cell { padding: 4px 12px 10px !important; }
 .prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 5px; overflow: hidden; margin-bottom: 4px; }
@@ -331,6 +395,11 @@ tr:hover td { background: #f8fafc; }
         {% endif %}{% endfor %}
       </div>
     </div>
+    <label class="filtro-todas" id="lblTodas"
+           title="Por padrão a fila mostra só o que falta enviar (remessas sem recibo).">
+      <input type="checkbox" id="chkTodas" onchange="escolherLayout()">
+      <span>Mostrar todas <em id="lblTodasQtd"></em></span>
+    </label>
     <a class="btn-pdf" id="btnPdf" href="#" target="_blank" onclick="abrirPdf(event)"
        style="margin-left:auto;">&#128438; Imprimir em PDF</a>
   </div>
@@ -346,12 +415,36 @@ tr:hover td { background: #f8fafc; }
   </div>
   {% endif %}
 
+  <!-- Envio em lote: só do MESMO layout (cada layout tem sua API de envio). -->
+  <div class="barra-selec" id="barraSelec">
+    <span class="barra-selec-txt">
+      <b id="contSelec">0</b> remessa(s) marcada(s) <span id="laySelecLbl"></span>
+    </span>
+    <button class="btn-enviar-selec" id="btnEnviarSelec" onclick="enviarSelecionados(this)" disabled>
+      &#9654; Enviar Selecionadas
+    </button>
+    <button class="btn-limpar-selec" onclick="_limparSelec()">Limpar seleção</button>
+    <span id="loteInfo" style="font-size:12px;color:#115e59;margin-left:auto;"></span>
+  </div>
+
+  <!-- Nada pendente: a fila esconde as enviadas, então avisa em vez de mostrar
+       uma tabela vazia sem explicação. -->
+  <div class="fila-limpa" id="filaLimpa" style="display:none;">
+    ✓ Nenhuma remessa pendente neste período — tudo já tem recibo.
+    <button type="button" class="btn-ver-todas" onclick="verTodas()">Mostrar todas</button>
+  </div>
+
   <!-- ── TABELA ── -->
   <div class="tabela-wrap" id="secaoTabela">
     {% if rows %}
     <table>
       <thead>
         <tr>
+          <th style="width:34px;padding-right:0;">
+            <input type="checkbox" class="row-check" id="chkTodos"
+                   title="Marcar/desmarcar todas as remessas do layout selecionado"
+                   onchange="_toggleTodos(this)">
+          </th>
           <th>Layout / Funcionário</th>
           <th>Folha</th>
           <th>Tipo</th>
@@ -366,6 +459,14 @@ tr:hover td { background: #f8fafc; }
       <tbody>
         {% for r in rows %}
         <tr id="row-{{ r.id_esocial }}" data-layout="{{ r.layout }}" data-sit="{{ r._sit }}">
+
+          <td style="padding-right:0;">
+            {# Só as que dá para enviar em lote ganham checkbox. #}
+            {% if r._sit in ('X', 'G', 'P') and r.layout in ('1005', '1010', '1020', '2200', '2220', '2300', '2399', '1200', '1210', '1298', '1299') %}
+            <input type="checkbox" class="row-check" data-id="{{ r.id_esocial }}"
+                   data-layout="{{ r.layout }}" onchange="_atualizarSelec()">
+            {% endif %}
+          </td>
 
           <td style="white-space:nowrap;">
             <span class="lay-badge lay-{{ r.layout }}">{{ r._lay_codigo }}</span>
@@ -457,7 +558,7 @@ tr:hover td { background: #f8fafc; }
 
         </tr>
         <tr class="prog-row" id="prog-{{ r.id_esocial }}" data-layout="{{ r.layout }}">
-          <td colspan="9" class="prog-cell">
+          <td colspan="10" class="prog-cell">
             <div class="prog-bar-wrap"><div class="prog-bar" id="bar-{{ r.id_esocial }}"></div></div>
             <span class="prog-label" id="lbl-{{ r.id_esocial }}"></span>
           </td>
@@ -517,15 +618,41 @@ function atualizarRotuloLayout() {
 }
 
 // Escolha ÚNICA de layout → filtra, atualiza e FECHA o painel
+// Por padrão a fila mostra só o que FALTA enviar (sem recibo, _sit != 'E').
+// O checkbox "Mostrar todas" libera as enviadas também.
+function _mostrandoTodas() {
+  const c = document.getElementById('chkTodas');
+  return !!(c && c.checked);
+}
+
+function verTodas() {
+  const c = document.getElementById('chkTodas');
+  if (c) { c.checked = true; escolherLayout(); }
+}
+
 function escolherLayout() {
   const marcados = _layMarcados();
+  const todas    = _mostrandoTodas();
+  let visiveis = 0;
   document.querySelectorAll('tr[data-layout]').forEach(tr => {
     const lay = tr.getAttribute('data-layout') || '';
-    tr.style.display = marcados.includes(lay) ? '' : 'none';
+    // A linha de progresso não tem data-sit — nunca é escondida por situação
+    // (o CSS já a mantém oculta até o envio começar).
+    const sit = tr.getAttribute('data-sit');
+    const ok  = marcados.includes(lay) && (todas || !sit || sit !== 'E');
+    tr.style.display = ok ? '' : 'none';
+    if (ok && sit) visiveis++;
   });
   atualizarContadores(marcados);
   atualizarRotuloLayout();
+  const vazio = document.getElementById('filaLimpa');
+  const tabela = document.getElementById('secaoTabela');
+  const temLinhas = document.querySelectorAll('tr[data-sit]').length > 0;
+  if (vazio)  vazio.style.display  = (temLinhas && visiveis === 0 && !todas) ? '' : 'none';
+  if (tabela) tabela.style.display = (temLinhas && visiveis === 0 && !todas) ? 'none' : '';
   document.getElementById('layPopover').classList.remove('aberto');
+  // Mudou o filtro: zera a seleção para não sobrar linha marcada escondida.
+  _limparSelec();
 }
 
 // Recalcula os contadores considerando apenas os layouts marcados
@@ -551,9 +678,109 @@ function atualizarContadores(marcados) {
   set('cntW', '⏳ Aguardando: ' + w, w);
   set('cntX', '⚠ Com Erro: '   + x, x);
   set('cntO', 'Outros: '            + o, o);
+
+  // Quantas ficam escondidas pelo filtro padrão (as que já têm recibo).
+  const q = document.getElementById('lblTodasQtd');
+  if (q) q.textContent = (!_mostrandoTodas() && e > 0) ? `(+${e} enviada${e > 1 ? 's' : ''})` : '';
+  const lbl = document.getElementById('lblTodas');
+  if (lbl) lbl.style.display = (e > 0 || _mostrandoTodas()) ? '' : 'none';
 }
 
-document.addEventListener('DOMContentLoaded', () => { atualizarContadores(); atualizarRotuloLayout(); });
+// ── SELEÇÃO EM LOTE ───────────────────────────────────────────────
+// Cada layout tem sua própria API de envio, então o lote é sempre de UM
+// layout só: ao marcar a primeira linha, as de outros layouts travam.
+function _checksLinha() {
+  return Array.from(document.querySelectorAll('input.row-check[data-id]'))
+              .filter(c => c.closest('tr').style.display !== 'none');
+}
+
+function _laySelecionadoLote() {
+  const m = _checksLinha().find(c => c.checked);
+  return m ? m.dataset.layout : '';
+}
+
+function _atualizarSelec() {
+  const checks = _checksLinha();
+  const lay    = _laySelecionadoLote();
+  // Trava o que é de outro layout enquanto houver alguma marcada.
+  checks.forEach(c => { c.disabled = !!lay && c.dataset.layout !== lay; });
+
+  const sel   = checks.filter(c => c.checked);
+  const barra = document.getElementById('barraSelec');
+  const cont  = document.getElementById('contSelec');
+  const btn   = document.getElementById('btnEnviarSelec');
+  const lbl   = document.getElementById('laySelecLbl');
+  if (cont)  cont.textContent = sel.length;
+  if (btn)   btn.disabled     = sel.length === 0;
+  if (lbl)   lbl.textContent  = lay ? '— S-' + lay : '';
+  if (barra) barra.classList.toggle('ativa', checks.length > 0);
+
+  const master = document.getElementById('chkTodos');
+  if (master) {
+    const eleg = checks.filter(c => !c.disabled);
+    master.checked = eleg.length > 0 && sel.length === eleg.length;
+    master.indeterminate = sel.length > 0 && sel.length < eleg.length;
+  }
+}
+
+function _toggleTodos(master) {
+  const checks = _checksLinha();
+  if (master.checked) {
+    // Sem layout definido ainda: adota o da 1ª linha elegível.
+    const lay = _laySelecionadoLote() || (checks[0] && checks[0].dataset.layout) || '';
+    checks.forEach(c => { c.checked = (c.dataset.layout === lay); });
+  } else {
+    checks.forEach(c => { c.checked = false; });
+  }
+  _atualizarSelec();
+}
+
+function _limparSelec() {
+  document.querySelectorAll('input.row-check[data-id]').forEach(c => { c.checked = false; c.disabled = false; });
+  const m = document.getElementById('chkTodos');
+  if (m) { m.checked = false; m.indeterminate = false; }
+  _atualizarSelec();
+}
+
+async function enviarSelecionados(btnSelec) {
+  const sel = _checksLinha().filter(c => c.checked);
+  if (!sel.length) return;
+
+  const lay = sel[0].dataset.layout;
+  if (!await f10Confirm(`Enviar ${sel.length} remessa(s) do S-${lay} ao eSocial?`)) return;
+
+  btnSelec.disabled = true;
+  const info = document.getElementById('loteInfo');
+  let ok = 0, aguard = 0, erro = 0;
+
+  for (let i = 0; i < sel.length; i++) {
+    const chk = sel[i];
+    const id  = chk.dataset.id;
+    const btn = document.querySelector(`#acao-${id} button.btn-ir`);
+    if (info) info.textContent = `Enviando ${i + 1} de ${sel.length}…`;
+    if (!btn) { erro++; continue; }
+    try {
+      await _enviarFila(btn);                       // um de cada vez
+      const s = (document.getElementById('sit-' + id) || {}).textContent || '';
+      if      (s.trim() === 'Enviado')    ok++;
+      else if (s.trim() === 'Aguardando') aguard++;
+      else                                erro++;
+    } catch (e) {
+      erro++;
+    }
+    chk.checked = false;
+  }
+
+  if (info) {
+    info.textContent = `Fim: ${ok} enviada(s)` +
+                       (aguard ? `, ${aguard} aguardando` : '') +
+                       (erro   ? `, ${erro} com erro`     : '');
+  }
+  _atualizarSelec();
+}
+
+// escolherLayout() no load para já aplicar o filtro padrão (só as pendentes).
+document.addEventListener('DOMContentLoaded', () => { escolherLayout(); _atualizarSelec(); });
 
 function abrirPdf(e) {
   e.preventDefault();
@@ -685,7 +912,7 @@ async function _enviarFila(btn) {
       rec.innerHTML   = `<span class="res-ok">${(data.nr_rec||'').slice(0,32)}</span>`;
       acao.innerHTML  = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>`;
     } else if (data.aguardando) {
-      lbl.textContent = data.msg || 'eSocial ainda processando.';
+      lbl.textContent = data.msg || 'eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.';
       sit.className   = 'sit-badge sit-aguardando';
       sit.textContent = 'Aguardando';
       acao.innerHTML  =
@@ -762,8 +989,22 @@ function iniciarTour() {
 }
 
 async function _reconsultar(id, btn) {
-  btn.disabled    = true;
-  btn.textContent = 'Consultando…';
+  const progRow = document.getElementById('prog-' + id);
+  const bar     = document.getElementById('bar-'  + id);
+  const lbl     = document.getElementById('lbl-'  + id);
+
+  btn.disabled  = true;
+  // Icone ↻ girando enquanto a consulta esta no ar.
+  btn.innerHTML = '<span class="spin-ico">&#8635;</span> Consultando…';
+
+  // Apaga a mensagem da tentativa anterior e liga a barrinha.
+  if (progRow) {
+    progRow.style.display = 'table-row';
+    bar.style.background  = '';
+    bar.style.width       = '30%';
+    lbl.textContent       = 'Consultando o eSocial…';
+  }
+
   try {
     const r = await fetch('/api/esocial_reconsultar_generico', {
       method:  'POST',
@@ -774,24 +1015,42 @@ async function _reconsultar(id, btn) {
     const sit  = document.getElementById('sit-' + id);
     const rec  = document.getElementById('rec-' + id);
     const acao = document.getElementById('acao-' + id);
+    if (progRow) bar.style.width = '100%';
     if (data.ok) {
+      if (progRow) {
+        bar.style.background = '#00a651';
+        lbl.textContent      = 'Enviado — Recibo: ' + (data.nr_rec || '');
+      }
       sit.className   = 'sit-badge sit-enviado';
       sit.textContent = 'Enviado';
       rec.innerHTML   = `<span class="res-ok">${(data.nr_rec||'').slice(0,32)}</span>`;
       acao.innerHTML  = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">—</span>`;
     } else if (data.aguardando) {
-      btn.disabled    = false;
-      btn.textContent = '↻ Consultar';
+      // Ainda sem resposta do gov: mostra a frase em vez de deixar a linha muda.
+      if (progRow) {
+        bar.style.background = '#f97316';
+        lbl.textContent      = data.msg || 'eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.';
+      }
+      btn.disabled  = false;
+      btn.innerHTML = '&#8635; Consultar';
     } else {
+      if (progRow) {
+        bar.style.background = '#ef4444';
+        lbl.textContent      = data.msg || 'Erro desconhecido';
+      }
       sit.className   = 'sit-badge sit-erro';
       sit.textContent = 'Com Erro';
       rec.innerHTML   = `<span class="res-erro" title="${data.msg}">${data.msg.slice(0,60)}</span>`;
       acao.innerHTML  = `<span style="color:#991b1b;font-size:11px;">Verificar erro</span>`;
     }
   } catch(e) {
-    btn.disabled    = false;
-    btn.textContent = '↻ Consultar';
-    alert('Erro: ' + e);
+    if (progRow) {
+      bar.style.width      = '100%';
+      bar.style.background = '#ef4444';
+      lbl.textContent      = 'Falha de comunicação: ' + e;
+    }
+    btn.disabled  = false;
+    btn.innerHTML = '&#8635; Consultar';
   }
 }
 </script>

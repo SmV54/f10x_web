@@ -179,6 +179,9 @@ tr:hover td { background: #f8fafc; }
 .btn-lote-cancelar:hover { background: #ef4444; color: #fff; }
 
 /* ── PROGRESS ROW ── */
+/* Icone girando enquanto a consulta esta no ar. */
+.spin-ico { display: inline-block; animation: f10-girar 1s linear infinite; }
+@keyframes f10-girar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .prog-row { display: none; }
 .prog-cell { padding: 6px 14px 10px !important; }
 .prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
@@ -393,7 +396,7 @@ tr:hover td { background: #f8fafc; }
             {% elif r._sit == 'W' %}
             <button class="btn-enviar reconsutar"
                     onclick="_reconsultar({{ r.id_esocial }}, this)">
-              &#8635; Re-consultar
+              &#8635; Consultar
             </button>
             {% elif r._sit == 'E' %}
             <span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>
@@ -442,7 +445,7 @@ tr:hover td { background: #f8fafc; }
       <li>O S-1210 deve ser enviado <strong>após</strong> o S-1200 correspondente estar com recibo (coluna S-1200 = Enviado).</li>
       <li>Informe a <strong>Data de Pagamento</strong> (dtPgto) antes de enviar — é a data do crédito em conta.</li>
       <li>O sistema usa o valor líquido e as bases de INSS/IRRF do cálculo da folha.</li>
-      <li>Registros em estado <strong>Aguardando</strong> foram enviados mas não processados — use <em>Re-consultar</em>.</li>
+      <li>Registros em estado <strong>Aguardando</strong> foram enviados mas não processados — use <em>Consultar</em>.</li>
       <li>Todo envio é feito em <strong>Produção</strong>.</li>
     </ul>
   </div>
@@ -586,12 +589,13 @@ async function _enviar(id, btn, suppressBanner) {
       lbl.textContent  = data.msg;
       sit.className    = 'sit-badge sit-aguardando';
       sit.textContent  = 'Aguardando';
-      acaoTd.innerHTML = `<button class="btn-enviar reconsutar" onclick="_reconsultar(${id}, this)">&#8635; Re-consultar</button>`;
+      acaoTd.innerHTML = `<button class="btn-enviar reconsutar" onclick="_reconsultar(${id}, this)">&#8635; Consultar</button>`;
       recTd.innerHTML  = `<span style="color:#94a3b8;font-size:12px;">Aguardando…</span>`;
     } else {
       lbl.textContent  = (data.msg || 'Erro desconhecido');
       if (data.detalhe) {
         const det = document.createElement('div');
+        det.className     = 'prog-detalhe';
         det.style.cssText = 'font-size:11px;color:#c0392b;margin-top:4px;word-break:break-all;';
         det.textContent   = data.detalhe;
         lbl.parentNode.appendChild(det);
@@ -612,14 +616,44 @@ async function _enviar(id, btn, suppressBanner) {
   }
 }
 
-async function _reconsultar(id, btn) {
-  const sit    = document.getElementById('sit-'  + id);
-  const acaoTd = document.getElementById('acao-' + id);
-  const recTd  = document.getElementById('rec-'  + id);
-  const tpAmb  = _getTpAmb();
+// Etapas da RE-CONSULTA. Só consulta o protocolo do lote já transmitido —
+// não gera, não assina e não reenvia nada.
+const ETAPAS_CONS = [
+  [20, 'Localizando o protocolo…'],
+  [45, 'Consultando o eSocial…'],
+  [70, 'Aguardando o processamento…'],
+  [90, 'Lendo o retorno…'],
+];
 
-  btn.disabled    = true;
-  btn.textContent = 'Consultando…';
+async function _reconsultar(id, btn) {
+  const progRow = document.getElementById('prog-' + id);
+  const bar     = document.getElementById('bar-'  + id);
+  const lbl     = document.getElementById('lbl-'  + id);
+  const sit     = document.getElementById('sit-'  + id);
+  const acaoTd  = document.getElementById('acao-' + id);
+  const recTd   = document.getElementById('rec-'  + id);
+  const tpAmb   = _getTpAmb();
+
+  btn.disabled  = true;
+  // Icone ↻ girando enquanto a consulta esta no ar.
+  btn.innerHTML = '<span class="spin-ico">&#8635;</span> Consultando…';
+
+  // Apaga a mensagem da tentativa anterior ("eSocial ainda não processou…")
+  // e liga a barrinha de acompanhamento.
+  lbl.parentNode.querySelectorAll('.prog-detalhe').forEach(el => el.remove());
+  progRow.style.display = 'table-row';
+  bar.style.background  = '';
+  bar.style.width       = '5%';
+  lbl.textContent       = 'Iniciando…';
+
+  let etapaIdx = 0;
+  const animTimer = setInterval(() => {
+    if (etapaIdx < ETAPAS_CONS.length) {
+      bar.style.width = ETAPAS_CONS[etapaIdx][0] + '%';
+      lbl.textContent = ETAPAS_CONS[etapaIdx][1];
+      etapaIdx++;
+    }
+  }, 2000);
 
   try {
     const r = await fetch('/api/esocial_s1210_reconsultar', {
@@ -629,26 +663,36 @@ async function _reconsultar(id, btn) {
     });
     const data = await r.json();
 
+    clearInterval(animTimer);
+    bar.style.width      = '100%';
+    bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
+
     if (data.ok) {
+      lbl.textContent  = 'Enviado — Recibo: ' + (data.nr_rec || '');
       sit.className    = 'sit-badge sit-enviado';
       sit.textContent  = 'Enviado';
       acaoTd.innerHTML = `<span style="color:#94a3b8;font-size:11px;font-style:italic;">Enviado</span>`;
       recTd.innerHTML  = `<span class="res-ok" title="${data.nr_rec}">${(data.nr_rec||'').slice(0,30)}</span>`;
     } else if (data.aguardando) {
+      lbl.textContent = data.msg || 'eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.';
       sit.className   = 'sit-badge sit-aguardando';
       sit.textContent = 'Aguardando';
       btn.disabled    = false;
-      btn.textContent = 'Re-consultar';
+      btn.innerHTML   = '&#8635; Consultar';
     } else {
+      lbl.textContent  = data.msg || 'Erro desconhecido';
       sit.className    = 'sit-badge sit-erro';
       sit.textContent  = 'Com Erro';
       acaoTd.innerHTML = `<button class="btn-enviar reenviar" onclick="_enviar(${id}, this)">Reenviar</button>`;
       recTd.innerHTML  = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
     }
   } catch(e) {
-    btn.disabled    = false;
-    btn.textContent = 'Re-consultar';
-    alert('Falha de comunicação: ' + e);
+    clearInterval(animTimer);
+    bar.style.width      = '100%';
+    bar.style.background = '#ef4444';
+    lbl.textContent      = 'Falha de comunicação: ' + e;
+    btn.disabled         = false;
+    btn.innerHTML        = '&#8635; Consultar';
   }
 }
 
