@@ -29429,6 +29429,9 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
             "path":  info["et6"] or info["et5"],
             "nome":  (info["et6"] or info["et5"]).rsplit("/", 1)[-1],
             "layout": info["layout"], "matricula": info["matricula"],
+            # et5/et6 vão junto: a re-consulta precisa do <protocoloEnvio>,
+            # que está tanto no _5_resposta quanto no _6_resultado_consulta.
+            "et5": info["et5"], "et6": info["et6"],
         })
     for _k in cands:
         cands[_k].sort(key=lambda i: i["dt"], reverse=True)
@@ -29476,18 +29479,20 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
             return {}
         return _cert
 
-    def _reconsultar_remessa(info):
-        """Consulta o gov pelo protocolo do _5_resposta e salva o retorno novo.
+    def _reconsultar_remessa(info, xml_atual=""):
+        """Consulta o gov pelo protocolo da remessa e salva o retorno novo.
         Devolve o XML do retorno, ou "" se não deu."""
-        if not info.get("et5"):
-            return ""
         c = _cert_empresa()
         if not c:
             return ""
         try:
-            _d5 = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["et5"])
-            _s5 = _d5.decode("utf-8", errors="replace") if isinstance(_d5, bytes) else str(_d5)
-            _m = re.search(r"<protocoloEnvio>(.*?)</protocoloEnvio>", _s5)
+            # O protocolo está no XML que já baixamos; só busca o _5_resposta
+            # se por algum motivo não estiver lá.
+            _m = re.search(r"<protocoloEnvio>(.*?)</protocoloEnvio>", xml_atual or "")
+            if not _m and info.get("et5"):
+                _d5 = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["et5"])
+                _s5 = _d5.decode("utf-8", errors="replace") if isinstance(_d5, bytes) else str(_d5)
+                _m = re.search(r"<protocoloEnvio>(.*?)</protocoloEnvio>", _s5)
             if not _m:
                 return ""
             _prot = _m.group(1).strip()
@@ -29529,7 +29534,7 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
             # protocolo do próprio envio. Só na 1ª tentativa de cada
             # trabalhador — as remessas anteriores ficam como estão.
             if not eventos and _primeiro:
-                _novo = _reconsultar_remessa(info)
+                _novo = _reconsultar_remessa(info, xml_str)
                 if _novo:
                     reconsultados += 1
                     _ev2 = _extrair_s5xxx_do_xml(_novo)
