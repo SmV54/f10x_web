@@ -39393,6 +39393,9 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                                 spaceAfter=6, leftIndent=28, textColor=colors.HexColor("#374151"))
     st_detalhe = ParagraphStyle("mf_det",  fontName="Helvetica", fontSize=8,
                                 leftIndent=28, textColor=colors.HexColor("#374151"))
+    st_decisao = ParagraphStyle("mf_dec",  fontName="Helvetica-Bold", fontSize=7.5,
+                                leftIndent=28, spaceBefore=2, spaceAfter=2,
+                                textColor=colors.HexColor("#166534"), leading=10)
 
     def _mem_passo(chave, complemento=""):
         cod, nome = _MEM_COD_AUX.get(chave, ("9000", chave))
@@ -39470,6 +39473,10 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                 canvas.setStrokeColor(colors.HexColor("#374151"))
                 canvas.setLineWidth(0.5)
                 canvas.line(xL, y2 - 0.28*cm, xR, y2 - 0.28*cm)
+                canvas.setFont("Helvetica", 6.5)
+                canvas.setFillColor(colors.HexColor("#94a3b8"))
+                canvas.drawString(xL, doc.bottomMargin * 0.4,
+                                  f"Folha10·Simples — versão {ler_versao()}")
                 canvas.restoreState()
 
             doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -39880,6 +39887,17 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             elems.append(e11f_tbl)
             elems.append(_mem_passo("base_irrf"))
             elems.append(_mem_passo("irrf", "faixa + parcela a deduzir"))
+            if irrf_isento or irrf_redutor:
+                elems.append(_mem_passo("redutor"))
+                # Marcador de decisão: a Lei 15.270/2025 zerou ou reduziu.
+                if irrf_isento:
+                    elems.append(Paragraph(
+                        "&#187; Lei 15.270/2025 &#8212; rendimento dentro da faixa isenta "
+                        "(até R$ 5.000,00) &#8212; <b>IRRF zerado</b>", st_decisao))
+                else:
+                    elems.append(Paragraph(
+                        f"&#187; Lei 15.270/2025 &#8212; redutor aplicado, "
+                        f"<b>-{_fmt_brl(irrf_redutor)}</b> de IRRF", st_decisao))
 
             # ── totais ─────────────────────────────────────────────────
             st_tot_lbl  = ParagraphStyle("mf_tl",  fontName="Helvetica-Bold", fontSize=9,
