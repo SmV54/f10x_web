@@ -224,6 +224,34 @@ def _xml_dir_rel(id_empresa, when=None, id_cliente=None):
             f"{str(id_cliente or 0).zfill(6)}/"
             f"{str(id_empresa).zfill(6)}")
 
+def _storage_listar(prefixo, pagina=100):
+    """Lista TUDO que existe no prefixo do bucket, paginando.
+
+    O .list() do supabase-py devolve no máximo 100 itens por chamada e não avisa
+    que truncou. A pasta de uma empresa/competência passa fácil disso (a 9 em
+    07/2026 tinha 129 arquivos) e, como a ordem é por nome, os S1210_* ficavam
+    inteiros fora da lista — a Verificação não achava nenhum S-5002 e o FGTS de
+    quem tinha remessa nova vinha de um retorno antigo.
+    """
+    todos, offset = [], 0
+    while True:
+        try:
+            lote = _supabase_storage.storage.from_(_ESOC_BUCKET).list(
+                prefixo, {"limit": pagina, "offset": offset,
+                          "sortBy": {"column": "name", "order": "asc"}}) or []
+        except Exception as e:
+            print(f"[storage list] {prefixo} offset={offset}: {e}")
+            break
+        todos.extend(lote)
+        if len(lote) < pagina:
+            break
+        offset += pagina
+        if offset > 10000:          # trava de segurança
+            print(f"[storage list] {prefixo}: parei em 10000 itens")
+            break
+    return todos
+
+
 def _xml_erro_save(_pref, etapa, msg, exc=None):
     """Grava um XML pequeno com a mensagem de erro do envio.
     Permite rastrear no viewer onde o fluxo de envio parou.
@@ -27820,6 +27848,21 @@ def api_esocial_s1200_reconsultar():
         if cd_resp in ("101", "202"):
             continue
 
+        # Guarda o retorno no Storage. A consulta rapida do ENVIO costuma voltar
+        # [101] em processamento e grava um arquivo SEM os S-5xxx; quem traz os
+        # S-5001/5002/5003 e justamente esta re-consulta. Sem salvar, a
+        # Verificacao Folha10 x eSocial continuava lendo o retorno ANTERIOR e
+        # acusava diferenca (foi o caso do FGTS da matricula 8 em 07/2026).
+        try:
+            _now_rc = _agora_brasilia()
+            _xml_save(
+                f"{_xml_dir_rel(id_empresa, _now_rc)}/"
+                f"S1200_{_mat6(es.get('matricula'))}_{_now_rc.strftime('%Y%m%d_%H%M%S')}"
+                f"_6_resultado_consulta.xml",
+                resp_cons)
+        except Exception as _e_rc:
+            print(f"[S-1200 reconsulta] falha ao salvar retorno: {_e_rc}")
+
         if resultado["eventos"]:
             ev0 = resultado["eventos"][0]
             recibo_final = ev0.get("nrRec", "")
@@ -28527,6 +28570,21 @@ def api_esocial_s1210_reconsultar():
         cd_resp = resultado.get("cdResposta", "")
         if cd_resp in ("101", "202"):
             continue
+
+        # Guarda o retorno no Storage. A consulta rapida do ENVIO costuma voltar
+        # [101] em processamento e grava um arquivo SEM os S-5xxx; quem traz os
+        # S-5001/5002/5003 e justamente esta re-consulta. Sem salvar, a
+        # Verificacao Folha10 x eSocial continuava lendo o retorno ANTERIOR e
+        # acusava diferenca (foi o caso do FGTS da matricula 8 em 07/2026).
+        try:
+            _now_rc = _agora_brasilia()
+            _xml_save(
+                f"{_xml_dir_rel(id_empresa, _now_rc)}/"
+                f"S1210_{_mat6(es.get('matricula'))}_{_now_rc.strftime('%Y%m%d_%H%M%S')}"
+                f"_6_resultado_consulta.xml",
+                resp_cons)
+        except Exception as _e_rc:
+            print(f"[S-1210 reconsulta] falha ao salvar retorno: {_e_rc}")
 
         if resultado["eventos"]:
             ev0 = resultado["eventos"][0]
@@ -29273,7 +29331,7 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
     # Limpa verificacao/<period> antes de salvar novos S-5xxx
     _pref_verif = _verif_path_rel(id_empresa, anomes_atual, id_cliente)
     try:
-        _antigos = _supabase_storage.storage.from_(_ESOC_BUCKET).list(_pref_verif) or []
+        _antigos = _storage_listar(_pref_verif) or []
         _paths_antigos = [f"{_pref_verif}/{it['name']}" for it in _antigos
                           if (it.get("name") or "").lower().endswith(".xml")]
         if _paths_antigos:
@@ -29326,7 +29384,7 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
 
     for d in sorted(diretorios):
         try:
-            items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(d) or []
+            items = _storage_listar(d) or []
         except Exception as e:
             erros.append(f"Falha ao listar {d}: {e}")
             continue
@@ -29490,7 +29548,7 @@ def api_esocial_verificacao_listar():
     pref = _verif_path_rel(id_empresa, anomes_atual, id_cliente)
     items = []
     try:
-        items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(pref) or []
+        items = _storage_listar(pref) or []
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao listar Storage: {e}"})
 
@@ -29747,7 +29805,7 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
     """Retorna (ok, payload). payload no sucesso traz 'linhas', 'total', 'diffs'."""
     pref = _verif_path_rel(id_empresa, anomes_atual, id_cliente)
     try:
-        items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(pref) or []
+        items = _storage_listar(pref) or []
     except Exception as e:
         return False, {"ok": False, "msg": f"Erro Storage: {e}"}
 
@@ -41763,7 +41821,7 @@ def api_admin_xml_listar():
         # não os números do meio do nome (ex.: S1010_202601_20260625_...).
         rx_chave = _re_xml.compile(r'^(.+)_(\d+)_([a-z][a-z0-9_]*)\.xml$', _re_xml.IGNORECASE)
 
-        items = _supabase_storage.storage.from_(_ESOC_BUCKET).list(prefix) or []
+        items = _storage_listar(prefix) or []
         # Inspeção do ambiente
         _svc_raw = os.getenv("SUPABASE_SERVICE_KEY") or ""
         _anon_raw = SUPABASE_KEY or ""
