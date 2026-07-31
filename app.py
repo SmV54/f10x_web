@@ -267,6 +267,24 @@ def _xml_erro_save(_pref, etapa, msg, exc=None):
     _xml_save(f"{_pref}_{etapa}_erro.xml", xml)
 
 
+def _mat_es(func):
+    """Matrícula do trabalhador COMO O eSOCIAL A CONHECE.
+
+    `tab_cad.matricula_es` guarda a string exata registrada no eSocial — vem da
+    migração do legado (tabreg op1=190) e pode ser '37', '18', '0001'... Nos
+    XMLs de produção do Folha10 Desktop aparecem matrículas de 2, 3, 4 e 6
+    dígitos: NÃO existe padrão de 6. Por isso ela vai VERBATIM. Aplicar
+    zfill(6) em '37' produzia '000037', que para o gov é outro vínculo.
+
+    Sem matricula_es (funcionário nascido no Folha10-Simples), usa a matrícula
+    interna com 6 dígitos, que é a convenção do sistema.
+    """
+    me = str(func.get("matricula_es") or "").strip()
+    if me:
+        return me
+    return str(func.get("matricula") or "").zfill(6)
+
+
 def _mat6(v):
     """Matrícula com 6 dígitos para o NOME do arquivo XML.
 
@@ -14200,7 +14218,7 @@ def _gerar_xml_s2220(exame, func, empresa, tpAmb="1"):
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf       = dg(func.get('cpf', '')).zfill(11)
-    mat_es    = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es    = _mat_es(func)
     nis       = dg(func.get('nis') or func.get('pis') or '')
     nis_xml   = f"\n      <nisTrab>{x(nis)}</nisTrab>" if nis else ''
 
@@ -19610,7 +19628,7 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
     uf        = func.get('ender_uf', '') or ''
 
     dtadm       = fmt_d8(func.get('dtadm'))
-    mat_es      = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es      = _mat_es(func)
     codcateg    = str(func.get('codcateg') or '101')
     cbo         = str(func.get('cbofuncao') or '')
     # Busca nome do cargo na tabela de funções pelo CBO
@@ -19810,7 +19828,7 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
     uf        = func.get('ender_uf', '') or ''
 
     dtinicio  = fmt_d8(func.get('dtadm'))
-    mat_es    = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es    = _mat_es(func)
     codcateg  = str(func.get('codcateg') or '901')
     cbo       = str(func.get('cbofuncao') or '')
 
@@ -20111,7 +20129,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf      = dg(func.get('cpf', '')).zfill(11)
-    mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es   = _mat_es(func)
     codcateg = str(func.get('codcateg') or '').strip()
     if not codcateg:
         raise ValueError(
@@ -20345,7 +20363,7 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf      = dg(func.get('cpf', '')).zfill(11)
-    mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es   = _mat_es(func)
 
     # <perApur> do ideEvento é SEMPRE a competência do pagamento (AAAA-MM), mesmo
     # no 13º. Quem muda é o <perRef> do infoPgto: ele tem que casar com a apuração
@@ -24279,7 +24297,7 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
     cnpj_emp  = dg(empresa.get('cnpj', ''))
     cnpj_raiz = cnpj_emp[:8]
     _now      = _dt.now()
-    mat_es    = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es    = _mat_es(func)
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf        = dg(str(func.get('cpf', '')))
@@ -24846,7 +24864,7 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf    = dg(func.get('cpf', ''))
-    mat_es = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es = _mat_es(func)
 
     cbo     = str(func.get('cbofuncao') or '')
     nmcargo = str(func.get('nmcargo') or '').strip()
@@ -24998,7 +25016,7 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf    = dg(func.get('cpf', '')).zfill(11)
-    mat_es = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es = _mat_es(func)
 
     # motivo (Tabela 19) e data do desligamento (obrigatórios)
     mtv = str(mtv_deslig if mtv_deslig is not None
@@ -25145,7 +25163,7 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
     cpf      = dg(func.get('cpf', '')).zfill(11)
-    mat_es   = str(func.get('matricula_es') or func.get('matricula') or '').zfill(6)
+    mat_es   = _mat_es(func)
     codcateg = str(func.get('codcateg') or '901').strip()
 
     # data de término (obrigatória)
