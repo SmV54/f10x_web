@@ -151,6 +151,7 @@
       flex: 0 0 auto;
     }
 
+
     .filtros input,
     .form-area input {
       width: 100%;
@@ -185,8 +186,8 @@
     }
 
     .lista-direita {
-      height: 180px;
-      max-height: 180px;
+      height: 330px;
+      max-height: 330px;
       min-height: 140px;
     }
 
@@ -260,7 +261,7 @@
     }
 
     .form-area {
-      margin-top: 8px;
+      margin-top: 18px;
       padding: 8px 10px;
       border: 1px solid #e5e7eb;
       border-radius: 10px;
@@ -276,10 +277,59 @@
 
     .form-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 132px 1fr 1fr;
       gap: 10px;
       margin-bottom: 6px;
     }
+
+    /* ── Busca direta por CBO ── */
+    .campo-cbo { position: relative; }
+
+    #cboDigitado {
+      font-family: 'IBM Plex Mono', monospace;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    #cboDigitado.cbo-ok    { border: 2px solid #65a30d; background: #f7fee7; }
+    #cboDigitado.cbo-erro  { border: 2px solid #f87171; background: #fef2f2; }
+
+    .cbo-msg {
+      font-size: 10px;
+      line-height: 1.25;
+      margin-top: 2px;
+      min-height: 12px;
+      color: #64748b;
+    }
+    .cbo-msg.erro { color: #b91c1c; font-weight: 700; }
+    .cbo-msg.ok   { color: #3f6212; font-weight: 700; }
+
+    .cbo-sugestoes {
+      position: absolute;
+      z-index: 30;
+      top: 100%;
+      left: 0;
+      width: 460px;
+      max-width: 80vw;
+      max-height: 220px;
+      overflow-y: auto;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+      display: none;
+    }
+    .cbo-sugestoes.aberto { display: block; }
+    .cbo-sugestao {
+      padding: 5px 10px;
+      font-size: 12px;
+      border-bottom: 1px solid #f1f5f9;
+      cursor: pointer;
+      white-space: normal;
+    }
+    .cbo-sugestao:last-child { border-bottom: none; }
+    .cbo-sugestao:hover { background: #eff6ff; }
+    .cbo-sugestao b { font-family: 'IBM Plex Mono', monospace; color: #1d4ed8; }
 
     .campo label {
       display: block;
@@ -287,6 +337,11 @@
       color: #475569;
       margin-bottom: 2px;
       font-weight: 700;
+      height: 14px;
+      line-height: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .grupo-opcoes {
@@ -567,7 +622,7 @@
         <div style="font-size:16px; line-height:1;">💡</div>
         <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:11px; color:#1e3a8a;">
           <strong style="color:#1e40af;">Como funciona:</strong>
-          <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">1</span> Clique numa função à <strong>esquerda</strong></span>
+          <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">1</span> Clique numa função à <strong>esquerda</strong> <em>ou</em> digite o <strong>CBO</strong> no campo ⓪</span>
           <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">2</span> Defina o <strong>nome resumido</strong></span>
           <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">3</span> Escolha <strong>esta empresa</strong> ou <strong>todas</strong></span>
           <span><span style="background:#16a34a;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">4</span> Clique <strong>Gravar Inclusão</strong></span>
@@ -584,7 +639,7 @@
 
           <div class="bloco-body">
             <div class="filtros">
-              <input type="text" id="pesquisaFuncao" placeholder="Pesquisar por CBO ou descrição da função">
+              <input type="text" id="pesquisaFuncao" placeholder="Pesquisar por CBO ou descrição da função (não precisa acentuar)">
             </div>
 
             {% if funcoes_total and funcoes_total|length > 0 %}
@@ -671,13 +726,21 @@
               <h3>➕ Adicionar função escolhida à minha empresa</h3>
 
               <div class="form-grid">
+                <div class="campo campo-cbo">
+                  <label>⓪ Digite o CBO</label>
+                  <input type="text" id="cboDigitado" maxlength="10" placeholder="Ex: 782510"
+                         autocomplete="off" inputmode="numeric">
+                  <div class="cbo-msg" id="cboMsg">Ou clique na lista à esquerda</div>
+                  <div class="cbo-sugestoes" id="cboSugestoes"></div>
+                </div>
+
                 <div class="campo">
-                  <label>① Função oficial selecionada (clique na lista acima)</label>
+                  <label title="Clique na lista à esquerda ou digite o CBO">① Função oficial selecionada</label>
                   <input type="text" id="funcaoSelecionada" value="{{ funcao_selecionada if funcao_selecionada else '' }}" readonly placeholder="Nenhuma função selecionada — clique na lista à esquerda">
                 </div>
 
                 <div class="campo">
-                  <label>② Nome resumido para uso interno na empresa</label>
+                  <label title="Nome resumido para uso interno na empresa">② Nome resumido na empresa</label>
                   <input type="text" id="nomeResumido" value="{{ nome_resumido if nome_resumido else '' }}" placeholder="Ex: Motorista, Aux. Administrativo, Gerente...">
                 </div>
               </div>
@@ -728,7 +791,119 @@
   </div>
 
   <script>
-    function selecionarFuncao(linha) {
+    // =========================================================
+    // BUSCA DIRETA PELO CBO (cadastro sem passar pela lista)
+    // =========================================================
+    function _linhasCatalogo() {
+      return Array.from(document.querySelectorAll("#tbodyFuncoesTotal tr"));
+    }
+
+    function _msgCbo(texto, tipo) {
+      var msg   = document.getElementById("cboMsg");
+      var campo = document.getElementById("cboDigitado");
+      if (msg) {
+        msg.textContent = texto;
+        msg.className = "cbo-msg" + (tipo ? " " + tipo : "");
+      }
+      if (campo) {
+        campo.classList.remove("cbo-ok", "cbo-erro");
+        if (tipo === "ok")   campo.classList.add("cbo-ok");
+        if (tipo === "erro") campo.classList.add("cbo-erro");
+      }
+    }
+
+    function _fecharSugestoes() {
+      var box = document.getElementById("cboSugestoes");
+      if (box) { box.classList.remove("aberto"); box.innerHTML = ""; }
+    }
+
+    function _mostrarSugestoes(linhas) {
+      var box = document.getElementById("cboSugestoes");
+      if (!box) return;
+      box.innerHTML = "";
+      linhas.slice(0, 60).forEach(function(tr) {
+        var div = document.createElement("div");
+        div.className = "cbo-sugestao";
+        div.innerHTML = "<b>" + (tr.getAttribute("data-cbo") || "") + "</b> — " +
+                        (tr.getAttribute("data-nome") || "");
+        div.onclick = function() {
+          selecionarFuncao(tr, true);
+          _fecharSugestoes();
+        };
+        box.appendChild(div);
+      });
+      box.classList.add("aberto");
+    }
+
+    function buscarPorCbo() {
+      var campo = document.getElementById("cboDigitado");
+      if (!campo) return;
+
+      var digitado = (campo.value || "").replace(/\D/g, "");
+      if (campo.value !== digitado) campo.value = digitado;
+
+      // Limpa a seleção anterior feita pelo CBO enquanto o usuário redigita
+      _fecharSugestoes();
+
+      if (digitado === "") {
+        _msgCbo("Ou clique na lista à esquerda", "");
+        return;
+      }
+
+      if (digitado.length < 3) {
+        _msgCbo("Digite ao menos 3 dígitos…", "");
+        return;
+      }
+
+      var exatas  = [];
+      var comecam = [];
+      _linhasCatalogo().forEach(function(tr) {
+        var cbo = (tr.getAttribute("data-cbo") || "").replace(/\D/g, "");
+        if (!cbo) return;
+        if (cbo === digitado) exatas.push(tr);
+        else if (cbo.indexOf(digitado) === 0) comecam.push(tr);
+      });
+
+      if (exatas.length === 1 && comecam.length === 0) {
+        selecionarFuncao(exatas[0], true);
+        return;
+      }
+
+      var candidatas = exatas.concat(comecam);
+
+      if (candidatas.length === 0) {
+        _msgCbo("CBO não encontrado no catálogo", "erro");
+        _limparSelecaoFuncao();
+        return;
+      }
+
+      if (exatas.length === 1) {
+        // Código exato existe, mas há outros que começam com ele: já seleciona o exato
+        selecionarFuncao(exatas[0], true);
+        _msgCbo(candidatas.length + " CBOs começam com " + digitado + " — clique para trocar", "ok");
+        _mostrarSugestoes(candidatas);
+        return;
+      }
+
+      _msgCbo(candidatas.length + " funções encontradas — escolha abaixo", "");
+      _mostrarSugestoes(candidatas);
+    }
+
+    function _limparSelecaoFuncao() {
+      document.querySelectorAll("#tbodyFuncoesTotal tr.linha-selecionada")
+              .forEach(function(tr) { tr.classList.remove("linha-selecionada"); });
+      var campoId     = document.getElementById("idFuncaoSelecionada");
+      var campoFuncao = document.getElementById("funcaoSelecionada");
+      var rodape      = document.getElementById("rodapeGravar");
+      if (campoId) campoId.value = "";
+      if (campoFuncao) {
+        campoFuncao.value = "";
+        campoFuncao.classList.remove("funcao-preenchida");
+      }
+      if (rodape) rodape.classList.add("hidden");
+    }
+
+    function selecionarFuncao(linha, viaCbo) {
       document.querySelectorAll("#tbodyFuncoesTotal tr").forEach(function(tr) {
         tr.classList.remove("linha-selecionada");
       });
@@ -754,6 +929,19 @@
       }
       if (campoNome) campoNome.value = nome;
       if (rodape) rodape.classList.remove("hidden");
+
+      // Mantém os dois caminhos em sincronia: campo do CBO x lista do catálogo
+      var campoCbo = document.getElementById("cboDigitado");
+      if (viaCbo) {
+        // Veio do campo do CBO: rola a lista da esquerda até a função escolhida
+        _msgCbo("", "ok");
+        try { linha.scrollIntoView({ block: "center" }); } catch (e) {}
+      } else if (campoCbo) {
+        // Veio do clique na lista: espelha o código no campo do CBO
+        campoCbo.value = cbo;
+        _msgCbo("", "ok");
+        _fecharSugestoes();
+      }
     }
 
     var _ordemAtual = { col: 'nome', asc: true };
@@ -785,16 +973,28 @@
       document.getElementById("icon-nome").style.color = col === 'nome' ? '#2563eb' : '#94a3b8';
     }
 
+    // Tira acentos e caixa: "Mecânico" e "mecanico" viram a mesma coisa
+    function _semAcento(s) {
+      return (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    }
+
     function filtrarFuncoes() {
       var campoPesquisa = document.getElementById("pesquisaFuncao");
-      var texto = (campoPesquisa ? campoPesquisa.value : "").toLowerCase().trim();
+      var texto = _semAcento(campoPesquisa ? campoPesquisa.value : "").trim();
       var linhas = document.querySelectorAll("#tbodyFuncoesTotal tr");
 
       linhas.forEach(function(linha) {
-        var cbo = (linha.getAttribute("data-cbo") || "").toLowerCase();
-        var nome = (linha.getAttribute("data-nome") || "").toLowerCase();
+        if (texto === "") { linha.style.display = ""; return; }
 
-        linha.style.display = (texto === "" || cbo.indexOf(texto) >= 0 || nome.indexOf(texto) >= 0) ? "" : "none";
+        var cbo  = (linha.getAttribute("data-cbo") || "").toLowerCase();
+        // data-busca é o nome já sem acento, calculado uma vez no carregamento
+        var nome = linha.getAttribute("data-busca");
+        if (nome === null) {
+          nome = _semAcento(linha.getAttribute("data-nome"));
+          linha.setAttribute("data-busca", nome);
+        }
+
+        linha.style.display = (cbo.indexOf(texto) >= 0 || nome.indexOf(texto) >= 0) ? "" : "none";
       });
     }
 
@@ -865,6 +1065,28 @@
       if (campoPesquisa) {
         campoPesquisa.addEventListener("input", filtrarFuncoes);
       }
+
+      var campoCbo = document.getElementById("cboDigitado");
+      if (campoCbo) {
+        campoCbo.addEventListener("input", buscarPorCbo);
+        campoCbo.addEventListener("keydown", function(ev) {
+          if (ev.key === "Enter") {
+            ev.preventDefault();
+            buscarPorCbo();
+            var nomeR = document.getElementById("nomeResumido");
+            if (nomeR && document.getElementById("idFuncaoSelecionada").value) {
+              nomeR.focus();
+              nomeR.select();
+            }
+          }
+          if (ev.key === "Escape") _fecharSugestoes();
+        });
+      }
+
+      // Fecha a lista de sugestões ao clicar fora
+      document.addEventListener("click", function(ev) {
+        if (!ev.target.closest(".campo-cbo")) _fecharSugestoes();
+      });
 
       var total = document.querySelectorAll("#tbodyFuncoesTotal tr").length;
       var escolhidas = {{ funcoes_cli|length if funcoes_cli else 0 }};
