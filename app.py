@@ -8115,6 +8115,31 @@ def incluir_funcao_cliente():
     except Exception:
         pass
 
+    # Mesmo CBO ja escolhido nao entra de novo. A conferencia olha o
+    # id_funcao_total E o cbo_codigo porque registro antigo pode ter sido
+    # gravado sem o cbo_codigo preenchido.
+    try:
+        ja = (supabase.table("tab_funcao_cli")
+              .select("id, cbo_codigo, id_funcao_total, nome_resumido, cnpj")
+              .eq("id_cliente", id_cliente)
+              .eq("situacao", "A")
+              .execute()).data or []
+        for r in ja:
+            mesmo = (str(r.get("id_funcao_total") or "") == str(idfuncao)) or \
+                    (cbo_codigo and str(r.get("cbo_codigo") or "").strip() == cbo_codigo)
+            if mesmo:
+                onde = "todas as suas empresas" if str(r.get("cnpj") or "") == "0" \
+                       else "esta empresa"
+                return jsonify({
+                    "ok": False,
+                    "duplicado": True,
+                    "msg": (f"O CBO {cbo_codigo} já está nas suas funções como "
+                            f"\"{r.get('nome_resumido') or ''}\", válido para {onde}. "
+                            "Nada foi incluído.")
+                })
+    except Exception as e:
+        print("Erro ao conferir funcao repetida:", str(e))
+
     try:
         payload = {
             "id_cliente":      id_cliente,
@@ -8129,6 +8154,169 @@ def incluir_funcao_cliente():
     except Exception as e:
         print("Erro em incluir_funcao_cliente:", str(e))
         return jsonify({"ok": False, "msg": str(e)})
+
+# =========================================================
+# API ALTERAR FUNÇÃO DO CLIENTE
+# =========================================================
+def _funcao_cli_do_cliente(id_funcao_cli, id_cliente):
+    """Devolve a linha de tab_funcao_cli se ela for mesmo deste cliente."""
+    r = (supabase.table("tab_funcao_cli")
+         .select("id, id_cliente, id_funcao_total, cbo_codigo, nome_resumido, cnpj, situacao")
+         .eq("id", int(id_funcao_cli))
+         .limit(1).execute())
+    linha = (r.data or [None])[0]
+    if not linha or str(linha.get("id_cliente")) != str(id_cliente):
+        return None
+    return linha
+
+
+def _cbo_da_funcao_cli(linha):
+    """CBO da função. Registro antigo pode estar sem cbo_codigo preenchido."""
+    cbo = str(linha.get("cbo_codigo") or "").strip()
+    if cbo:
+        return cbo
+    try:
+        rt = (supabase.table("tab_aux_funcao_total")
+              .select("cbo_codigo")
+              .eq("id", int(linha.get("id_funcao_total")))
+              .single().execute())
+        return str((rt.data or {}).get("cbo_codigo") or "").strip()
+    except Exception:
+        return ""
+
+
+@app.route("/alterar_funcao_cliente", methods=["POST"])
+def alterar_funcao_cliente():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data          = request.get_json() or {}
+    id_funcao     = data.get("id")
+    nome_resumido = (data.get("nome_resumido") or "").strip()
+    abrangencia   = (data.get("abrangencia") or "todas").strip()
+
+    id_cliente   = session.get("id_cliente")
+    cnpj_empresa = so_numeros(session.get("cnpj_empresa", ""))
+
+    if not id_funcao:
+        return jsonify({"ok": False, "msg": "Função não informada"})
+    if not nome_resumido:
+        return jsonify({"ok": False, "msg": "Nome resumido não informado"})
+
+    try:
+        linha = _funcao_cli_do_cliente(id_funcao, id_cliente)
+    except Exception as e:
+        print("Erro em alterar_funcao_cliente (leitura):", str(e))
+        return jsonify({"ok": False, "msg": str(e)})
+
+    if not linha:
+        return jsonify({"ok": False, "msg": "Função não encontrada"})
+
+    cnpj_funcao = cnpj_empresa if abrangencia == "empresa" else "0"
+
+    try:
+        supabase.table("tab_funcao_cli").update({
+            "nome_resumido": nome_resumido,
+            "cnpj":          cnpj_funcao,
+        }).eq("id", int(id_funcao)).execute()
+    except Exception as e:
+        print("Erro em alterar_funcao_cliente:", str(e))
+        return jsonify({"ok": False, "msg": str(e)})
+
+    gravar_log("FUNCAO", f"Alterou funcao CBO {_cbo_da_funcao_cli(linha)}: "
+                         f"\"{linha.get('nome_resumido')}\" -> \"{nome_resumido}\", "
+                         f"aplicacao {'esta empresa' if cnpj_funcao != '0' else 'todas'}")
+    return jsonify({"ok": True, "msg": "Função alterada com sucesso"})
+
+
+# =========================================================
+# API EXCLUIR FUNÇÃO DO CLIENTE
+# =========================================================
+@app.route("/excluir_funcao_cliente", methods=["POST"])
+def excluir_funcao_cliente():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    id_funcao  = data.get("id")
+    id_cliente = session.get("id_cliente")
+
+    if not id_funcao:
+        return jsonify({"ok": False, "msg": "Função não informada"})
+
+    try:
+        linha = _funcao_cli_do_cliente(id_funcao, id_cliente)
+    except Exception as e:
+        print("Erro em excluir_funcao_cliente (leitura):", str(e))
+        return jsonify({"ok": False, "msg": str(e)})
+
+    if not linha:
+        return jsonify({"ok": False, "msg": "Função não encontrada"})
+
+    cbo = _cbo_da_funcao_cli(linha)
+    if not cbo:
+        return jsonify({"ok": False, "msg": "Não consegui identificar o CBO desta função"})
+
+    # Varre TODAS as empresas do cliente e TODAS as situações: funcionário
+    # demitido continua valendo (folha antiga, rescisão, eSocial), então a
+    # função dele não pode sumir do cadastro.
+    # Aceita as variacoes de zero a esquerda: cadastro antigo pode ter gravado
+    # "10110" onde hoje o catalogo tem "010110". Errar aqui apagaria a funcao
+    # de um funcionario que existe.
+    variantes = {cbo, cbo.lstrip("0"), cbo.zfill(6)}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, situacao, id_empresa")
+             .eq("id_cliente", id_cliente)
+             .in_("cbofuncao", [v for v in variantes if v])
+             .execute())
+        usando = r.data or []
+    except Exception as e:
+        print("Erro ao conferir funcionarios da funcao:", str(e))
+        return jsonify({"ok": False, "msg": f"Não consegui conferir os funcionários: {str(e)}"})
+
+    if usando:
+        nomes_empresa = {}
+        try:
+            re_ = (supabase.table("tab_empresa")
+                   .select("id_empresa, razaosocial, nome_fantasia")
+                   .eq("id_cliente", id_cliente).execute())
+            for e in (re_.data or []):
+                nomes_empresa[str(e.get("id_empresa"))] = (
+                    e.get("nome_fantasia") or e.get("razaosocial") or f"Empresa {e.get('id_empresa')}")
+        except Exception:
+            pass
+
+        lista = []
+        for f in usando[:12]:
+            emp = nomes_empresa.get(str(f.get("id_empresa")), f"Empresa {f.get('id_empresa')}")
+            sit = "demitido" if str(f.get("situacao") or "").upper() == "D" else "ativo"
+            nome = f.get("nomer") or f.get("nome") or ""
+            lista.append(f"{f.get('matricula')} - {nome} ({emp}, {sit})")
+
+        return jsonify({
+            "ok": False,
+            "em_uso": True,
+            "qtd": len(usando),
+            "funcionarios": lista,
+            "msg": (f"A função CBO {cbo} está em uso por {len(usando)} "
+                    f"funcionário{'s' if len(usando) > 1 else ''} do cadastro "
+                    "(a conferência olha todas as suas empresas e inclui os demitidos). "
+                    "Troque a função desses funcionários antes de excluir."),
+        })
+
+    # Ninguém usa: sai da lista mas o registro fica no banco, para não perder
+    # o rastro de quem cadastrou e quando. A coluna só aceita "A" ou "D"
+    # (constraint chk_situacao), mesma convenção do tab_cad.
+    try:
+        supabase.table("tab_funcao_cli").update({"situacao": "D"}).eq("id", int(id_funcao)).execute()
+    except Exception as e:
+        print("Erro em excluir_funcao_cliente:", str(e))
+        return jsonify({"ok": False, "msg": str(e)})
+
+    gravar_log("FUNCAO", f"Excluiu funcao CBO {cbo} - \"{linha.get('nome_resumido')}\"")
+    return jsonify({"ok": True, "msg": "Função excluída"})
+
 
 # =========================================================
 # API FPAS - LISTA

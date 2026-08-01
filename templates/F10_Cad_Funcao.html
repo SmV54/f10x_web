@@ -108,6 +108,81 @@
       min-height: 0;
     }
 
+    /* Catalogo fechado: Minhas Funcoes sozinha e centralizada */
+    .layout-principal.sem-catalogo {
+      grid-template-columns: minmax(0, 980px);
+      justify-content: center;
+    }
+
+    .bloco-catalogo.oculto { display: none; }
+
+    /* ── Titulo do quadro + botao do catalogo, lado a lado ── */
+    .form-area-topo {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 14px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .form-area-topo h3 { margin: 0; }
+
+    .btn-catalogo {
+      height: 30px;
+      font-size: 12px;
+      padding: 0 14px;
+      color: #fff;
+      background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%);
+      border: 1px solid #d97706;
+      text-shadow: 0 1px 1px rgba(120,53,15,0.35);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.45), 0 3px 8px rgba(217,119,6,0.35);
+    }
+
+    .btn-catalogo:hover { filter: brightness(1.05); }
+
+    .btn-catalogo:active {
+      transform: translateY(1px);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 1px 4px rgba(217,119,6,0.3);
+    }
+
+    /* Fechar catalogo fica no mesmo lugar e na mesma cor do Consultar */
+
+    /* ── Acoes de cada funcao ja escolhida ── */
+    .col-acoes { white-space: nowrap; }
+
+    .btn-acao {
+      border: 1px solid #dbe3ee;
+      background: #fff;
+      border-radius: 6px;
+      padding: 1px 6px;
+      font-size: 13px;
+      line-height: 1.3;
+      cursor: pointer;
+      transition: 0.15s;
+    }
+    .btn-acao + .btn-acao { margin-left: 4px; }
+    .btn-editar:hover  { border-color: #2563eb; background: #eff6ff; }
+    .btn-excluir:hover { border-color: #dc2626; background: #fef2f2; }
+
+    .btn-cancelar {
+      background: linear-gradient(180deg, #f8fafc 0%, #e9eef5 100%);
+      color: #334155;
+      border: 1px solid #cbd5e1;
+      min-width: 150px;
+    }
+    .btn-cancelar:hover { filter: brightness(1.02); }
+
+    .btn-cancelar.hidden { display: none; }
+
+    /* Quadro em modo alteracao: fica claro que nao e inclusao */
+    .form-area.editando {
+      background: linear-gradient(180deg, #fffbeb 0%, #fef3c7 100%);
+      border-color: #fcd34d;
+    }
+    .form-area.editando #cboDigitado,
+    .form-area.editando #funcaoSelecionada { background: #f1f5f9; color: #475569; }
+
     .bloco {
       background: white;
       border-radius: 10px;
@@ -131,6 +206,17 @@
       font-size: 14px;
       color: #0f172a;
     }
+
+    /* Titulo do catalogo + botao de fechar, na mesma linha */
+    .bloco-header-topo {
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .btn-catalogo.hidden { display: none; }
 
     .bloco-header p {
       margin: 1px 0 0 0;
@@ -518,7 +604,8 @@
         min-height: auto;
       }
 
-      .layout-principal {
+      .layout-principal,
+      .layout-principal.sem-catalogo {
         grid-template-columns: 1fr;
       }
 
@@ -622,18 +709,24 @@
         <div style="font-size:16px; line-height:1;">💡</div>
         <div style="display:flex; align-items:center; gap:14px; flex-wrap:wrap; font-size:11px; color:#1e3a8a;">
           <strong style="color:#1e40af;">Como funciona:</strong>
-          <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">1</span> Clique numa função à <strong>esquerda</strong> <em>ou</em> digite o <strong>CBO</strong> no campo ⓪</span>
+          <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">1</span> <span id="passo1-texto">Digite o <strong>CBO</strong> no campo ⓪ (ou abra o catálogo acima)</span></span>
           <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">2</span> Defina o <strong>nome resumido</strong></span>
           <span><span style="background:#2563eb;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">3</span> Escolha <strong>esta empresa</strong> ou <strong>todas</strong></span>
           <span><span style="background:#16a34a;color:#fff;font-weight:700;padding:1px 6px;border-radius:999px;font-size:10px;">4</span> Clique <strong>Gravar Inclusão</strong></span>
         </div>
       </div>
 
-      <div class="layout-principal">
+      <div class="layout-principal sem-catalogo" id="layoutPrincipal">
 
-        <div class="bloco">
+        <div class="bloco bloco-catalogo oculto" id="blocoCatalogo">
           <div class="bloco-header">
-            <h2>📋 Catálogo CBO — Funções Disponíveis</h2>
+            <div class="bloco-header-topo">
+              <h2>📋 Catálogo CBO — Funções Disponíveis</h2>
+              <button class="btn btn-catalogo" type="button" onclick="alternarCatalogo()">
+                <span>✕</span>
+                <span>Fechar catálogo CBO</span>
+              </button>
+            </div>
             <p>Base oficial do Ministério do Trabalho · Clique em uma função para selecioná-la</p>
           </div>
 
@@ -697,11 +790,16 @@
                     <th style="width:110px;">CBO</th>
                     <th>Nome resumido</th>
                     <th style="width:150px;">Aplicação</th>
+                    <th style="width:96px;">Ações</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody id="tbodyFuncoesCli">
                   {% for f in funcoes_cli %}
-                  <tr>
+                  <tr data-id="{{ f.id }}"
+                      data-cbo="{{ f.cbo }}"
+                      data-funcao="{{ f.nome_funcao }}"
+                      data-resumido="{{ f.nome_resumido }}"
+                      data-cnpj="{{ f.cnpj }}">
                     <td>{{ f.cbo }}</td>
                     <td>{{ f.nome_resumido }}</td>
                     <td>
@@ -710,6 +808,12 @@
                       {% else %}
                         <span class="tag-status status-empresa">Empresa</span>
                       {% endif %}
+                    </td>
+                    <td class="col-acoes">
+                      <button type="button" class="btn-acao btn-editar" title="Alterar o nome resumido ou a aplicação"
+                              onclick="editarFuncao(this)">✏️</button>
+                      <button type="button" class="btn-acao btn-excluir" title="Excluir esta função"
+                              onclick="excluirFuncao(this)">🗑️</button>
                     </td>
                   </tr>
                   {% endfor %}
@@ -723,7 +827,15 @@
             {% endif %}
 
             <div class="form-area">
-              <h3>➕ Adicionar função escolhida à minha empresa</h3>
+              <div class="form-area-topo">
+                <h3>➕ Adicionar NOVA Função</h3>
+                <button class="btn btn-catalogo" type="button" id="btnCatalogo"
+                        title="Não sabe o código? Abra o catálogo oficial do CBO"
+                        onclick="alternarCatalogo()">
+                  <span>📋</span>
+                  <span>Consultar catálogo CBO</span>
+                </button>
+              </div>
 
               <div class="form-grid">
                 <div class="campo campo-cbo">
@@ -762,9 +874,14 @@
               </div>
 
               <div class="rodape-acoes hidden" id="rodapeGravar">
-                <button class="btn btn-gravar" type="button" onclick="gravarInclusao()">
+                <button class="btn btn-cancelar hidden" type="button" id="btnCancelarEdicao"
+                        onclick="sairDaEdicao(true)">
+                  <span>↩</span>
+                  <span>Cancelar alteração</span>
+                </button>
+                <button class="btn btn-gravar" type="button" id="btnGravar" onclick="gravarFuncao()">
                   <span class="icone-gravar">💾</span>
-                  <span>Gravar Inclusão</span>
+                  <span id="btnGravarTexto">Gravar Inclusão</span>
                 </button>
               </div>
             </div>
@@ -791,6 +908,52 @@
   </div>
 
   <script>
+    // =========================================================
+    // CATALOGO CBO — fica fechado ate a pessoa pedir
+    // =========================================================
+    function catalogoAberto() {
+      var bloco = document.getElementById("blocoCatalogo");
+      return bloco && !bloco.classList.contains("oculto");
+    }
+
+    function mostrarCatalogo(abrir) {
+      var bloco  = document.getElementById("blocoCatalogo");
+      var layout = document.getElementById("layoutPrincipal");
+      var botao  = document.getElementById("btnCatalogo");
+      var passo1 = document.getElementById("passo1-texto");
+      if (!bloco || !layout) return;
+
+      bloco.classList.toggle("oculto", !abrir);
+      layout.classList.toggle("sem-catalogo", !abrir);
+      // Com o catalogo aberto, quem fecha e o botao no topo dele
+      if (botao) botao.classList.toggle("hidden", abrir);
+
+      // A dica embaixo do campo do CBO acompanha o estado do catalogo
+      var campoCbo = document.getElementById("cboDigitado");
+      if (campoCbo && !campoCbo.value.trim()) {
+        _msgCbo(abrir ? "Ou clique na lista à esquerda"
+                      : "Não sabe o código? Use o Consultar catálogo", "");
+      }
+      if (passo1) {
+        passo1.innerHTML = abrir
+          ? 'Clique numa função à <strong>esquerda</strong> <em>ou</em> digite o <strong>CBO</strong> no campo ⓪'
+          : 'Digite o <strong>CBO</strong> no campo ⓪ (ou abra o catálogo acima)';
+      }
+      try { sessionStorage.setItem("cad_funcao_catalogo", abrir ? "1" : "0"); } catch (e) {}
+    }
+
+    function alternarCatalogo() {
+      var abrir = !catalogoAberto();
+      mostrarCatalogo(abrir);
+      if (abrir) {
+        var p = document.getElementById("pesquisaFuncao");
+        if (p) p.focus();
+        // se ja havia uma funcao escolhida, rola ate ela no catalogo
+        var sel = document.querySelector("#tbodyFuncoesTotal tr.linha-selecionada");
+        if (sel) { try { sel.scrollIntoView({ block: "center" }); } catch (e) {} }
+      }
+    }
+
     // =========================================================
     // BUSCA DIRETA PELO CBO (cadastro sem passar pela lista)
     // =========================================================
@@ -846,7 +1009,8 @@
       _fecharSugestoes();
 
       if (digitado === "") {
-        _msgCbo("Ou clique na lista à esquerda", "");
+        _msgCbo(catalogoAberto() ? "Ou clique na lista à esquerda"
+                                 : "Não sabe o código? Use o Consultar catálogo", "");
         return;
       }
 
@@ -904,6 +1068,10 @@
     }
 
     function selecionarFuncao(linha, viaCbo) {
+      // Escolher outra função no catálogo encerra a alteração em andamento:
+      // na alteração o CBO não muda, então isso aqui é uma nova inclusão.
+      if (_editando) sairDaEdicao(false);
+
       document.querySelectorAll("#tbodyFuncoesTotal tr").forEach(function(tr) {
         tr.classList.remove("linha-selecionada");
       });
@@ -998,6 +1166,176 @@
       });
     }
 
+    // CBOs que a empresa ja tem, montados na carga da tela
+    var CBOS_JA_ESCOLHIDOS = {
+      {% for f in funcoes_cli %}"{{ f.cbo }}": {"nome": {{ (f.nome_resumido or '')|tojson }}, "cnpj": "{{ f.cnpj }}"}{% if not loop.last %},{% endif %}
+      {% endfor %}
+    };
+
+    function avisar(msg, tipo, titulo) {
+      if (window.f10Alert) return window.f10Alert(msg, { tipo: tipo, titulo: titulo });
+      alert(msg);
+      return Promise.resolve();
+    }
+
+    // =========================================================
+    // ALTERAR / EXCLUIR uma funcao ja escolhida
+    // =========================================================
+    var _editando = null;      // id da funcao em edicao, ou null
+
+    function editarFuncao(botao) {
+      var tr = botao.closest("tr");
+      if (!tr) return;
+
+      _editando = tr.getAttribute("data-id");
+      var cbo      = tr.getAttribute("data-cbo") || "";
+      var funcao   = tr.getAttribute("data-funcao") || "";
+      var resumido = tr.getAttribute("data-resumido") || "";
+      var cnpj     = tr.getAttribute("data-cnpj") || "0";
+
+      document.querySelectorAll("#tbodyFuncoesCli tr").forEach(function (l) {
+        l.classList.remove("linha-selecionada");
+      });
+      tr.classList.add("linha-selecionada");
+
+      var campoCbo = document.getElementById("cboDigitado");
+      var campoFun = document.getElementById("funcaoSelecionada");
+      var campoNom = document.getElementById("nomeResumido");
+      var area     = document.querySelector(".form-area");
+      var titulo   = document.querySelector(".form-area-topo h3");
+
+      if (campoCbo) { campoCbo.value = cbo; campoCbo.readOnly = true; }
+      if (campoFun) campoFun.value = cbo + (funcao ? " - " + funcao : "");
+      if (campoNom) campoNom.value = resumido;
+      _fecharSugestoes();
+      _msgCbo("O CBO não muda na alteração", "");
+
+      var radio = document.querySelector('input[name="abrangencia"][value="' +
+                                         (cnpj === "0" ? "todas" : "empresa") + '"]');
+      if (radio) radio.checked = true;
+
+      if (area)   area.classList.add("editando");
+      if (titulo) titulo.textContent = "✏️ Alterar função escolhida";
+      var txt = document.getElementById("btnGravarTexto");
+      if (txt) txt.textContent = "Gravar Alteração";
+      var cancelar = document.getElementById("btnCancelarEdicao");
+      if (cancelar) cancelar.classList.remove("hidden");
+      var rodape = document.getElementById("rodapeGravar");
+      if (rodape) rodape.classList.remove("hidden");
+
+      if (campoNom) { campoNom.focus(); campoNom.select(); }
+    }
+
+    function sairDaEdicao(limparCampos) {
+      _editando = null;
+
+      var campoCbo = document.getElementById("cboDigitado");
+      var area     = document.querySelector(".form-area");
+      var titulo   = document.querySelector(".form-area-topo h3");
+
+      if (campoCbo) campoCbo.readOnly = false;
+      if (area)     area.classList.remove("editando");
+      if (titulo)   titulo.textContent = "➕ Adicionar NOVA Função";
+
+      var txt = document.getElementById("btnGravarTexto");
+      if (txt) txt.textContent = "Gravar Inclusão";
+      var cancelar = document.getElementById("btnCancelarEdicao");
+      if (cancelar) cancelar.classList.add("hidden");
+
+      document.querySelectorAll("#tbodyFuncoesCli tr").forEach(function (l) {
+        l.classList.remove("linha-selecionada");
+      });
+
+      if (limparCampos) {
+        if (campoCbo) campoCbo.value = "";
+        _limparSelecaoFuncao();
+        var campoNom = document.getElementById("nomeResumido");
+        if (campoNom) campoNom.value = "";
+        _msgCbo(catalogoAberto() ? "Ou clique na lista à esquerda"
+                                 : "Não sabe o código? Use o Consultar catálogo", "");
+      }
+    }
+
+    async function excluirFuncao(botao) {
+      var tr = botao.closest("tr");
+      if (!tr) return;
+
+      var id       = tr.getAttribute("data-id");
+      var cbo      = tr.getAttribute("data-cbo") || "";
+      var resumido = tr.getAttribute("data-resumido") || "";
+
+      var ok = window.f10Confirm
+        ? await window.f10Confirm(
+            "Excluir a função " + cbo + " - \"" + resumido + "\"?\n\n" +
+            "Antes de excluir eu confiro se algum funcionário usa essa função, " +
+            "em todas as suas empresas e incluindo os demitidos.",
+            { titulo: "Excluir função", tipo: "perigo", okText: "Conferir e excluir" })
+        : confirm("Excluir a função " + cbo + "?");
+      if (!ok) return;
+
+      try {
+        var r = await fetch("/excluir_funcao_cliente", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: id })
+        });
+        var dados = await r.json();
+
+        if (!dados.ok) {
+          var msg = dados.msg || "Erro ao excluir.";
+          if (dados.em_uso && dados.funcionarios && dados.funcionarios.length) {
+            msg += "\n\n" + dados.funcionarios.join("\n");
+            if (dados.qtd > dados.funcionarios.length) {
+              msg += "\n... e mais " + (dados.qtd - dados.funcionarios.length) + ".";
+            }
+          }
+          await avisar(msg, dados.em_uso ? "aviso" : "erro",
+                       dados.em_uso ? "Função em uso" : undefined);
+          return;
+        }
+
+        await avisar("Função excluída.", "sucesso");
+        location.reload();
+      } catch (e) {
+        avisar("Erro de comunicação com o servidor.", "erro");
+      }
+    }
+
+    function gravarFuncao() {
+      return _editando ? gravarAlteracao() : gravarInclusao();
+    }
+
+    async function gravarAlteracao() {
+      var campoNome = document.getElementById("nomeResumido");
+      var nomeResumido = campoNome ? (campoNome.value || "").trim() : "";
+      var abrangencia = document.querySelector('input[name="abrangencia"]:checked')?.value || "todas";
+
+      if (!nomeResumido) {
+        avisar("Informe o nome resumido.", "aviso");
+        return;
+      }
+
+      try {
+        var r = await fetch("/alterar_funcao_cliente", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: _editando, nome_resumido: nomeResumido,
+                                 abrangencia: abrangencia })
+        });
+        var dados = await r.json();
+
+        if (!dados.ok) {
+          await avisar(dados.msg || "Erro ao alterar.", "erro");
+          return;
+        }
+
+        await avisar("Função alterada.", "sucesso");
+        location.reload();
+      } catch (e) {
+        avisar("Erro de comunicação com o servidor.", "erro");
+      }
+    }
+
     async function gravarInclusao() {
       var campoId = document.getElementById("idFuncaoSelecionada");
       var campoNome = document.getElementById("nomeResumido");
@@ -1008,12 +1346,24 @@
       var abrangencia = document.querySelector('input[name="abrangencia"]:checked')?.value || "todas";
 
       if (!idfuncao) {
-        alert("Selecione uma função na lista.");
+        avisar("Selecione uma função na lista.", "aviso");
         return;
       }
 
       if (!nomeResumido) {
-        alert("Informe o nome resumido.");
+        avisar("Informe o nome resumido.", "aviso");
+        return;
+      }
+
+      // CBO repetido nao entra: avisa aqui mesmo, sem ida ao servidor
+      var linhaSel = document.querySelector('#tbodyFuncoesTotal tr[data-id="' + idfuncao + '"]');
+      var cboSel = linhaSel ? (linhaSel.getAttribute("data-cbo") || "") : "";
+      var repetido = CBOS_JA_ESCOLHIDOS[cboSel];
+      if (repetido) {
+        var onde = repetido.cnpj === "0" ? "todas as suas empresas" : "esta empresa";
+        avisar("O CBO " + cboSel + " já está nas suas funções como \"" + repetido.nome +
+               "\", válido para " + onde + ". Nada foi incluído.",
+               "aviso", "Função já cadastrada");
         return;
       }
 
@@ -1033,7 +1383,10 @@
         var dados = await r.json();
 
         if (!dados.ok) {
-          alert(dados.msg || "Erro ao gravar.");
+          await avisar(dados.msg || "Erro ao gravar.",
+                       dados.duplicado ? "aviso" : "erro",
+                       dados.duplicado ? "Função já cadastrada" : undefined);
+          if (dados.duplicado) location.reload();
           return;
         }
 
@@ -1092,6 +1445,18 @@
       var escolhidas = {{ funcoes_cli|length if funcoes_cli else 0 }};
       var resumo = document.getElementById("resumo-contadores");
       if (resumo) resumo.textContent = total + " disponíveis · " + escolhidas + " escolhidas";
+
+      // Catalogo: fechado por padrao. Abre sozinho para quem ainda nao tem
+      // nenhuma funcao (nao teria o que olhar do lado direito) e lembra a
+      // escolha enquanto a pessoa estiver usando o sistema.
+      var querAberto = false;
+      try {
+        var salvo = sessionStorage.getItem("cad_funcao_catalogo");
+        querAberto = (salvo === "1") || (salvo === null && escolhidas === 0);
+      } catch (e) {
+        querAberto = (escolhidas === 0);
+      }
+      mostrarCatalogo(querAberto);
 
       // Se a pagina ja veio com uma funcao selecionada (ex: retorno do cad_funcionario), mostra o botao
       var campoFuncao = document.getElementById("funcaoSelecionada");
