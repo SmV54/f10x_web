@@ -212,6 +212,25 @@ body.sel-unico .lista-row { cursor: pointer; }
     padding: 28px; text-align: center; font-size: 12px; color: #94a3b8;
 }
 
+/* Lista vazia porque quem tem aviso já está demitido — explica e dá a saída */
+.aviso-demitidos { color: #92400e; }
+.aviso-demitidos .ad-tit { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
+.aviso-demitidos .ad-lista {
+    list-style: none; margin: 0 auto 12px; padding: 8px 14px; max-width: 460px;
+    text-align: left; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 8px; font-size: 13px; line-height: 1.7; color: #78350f;
+}
+.aviso-demitidos .ad-txt {
+    font-size: 12.5px; line-height: 1.6; color: #78350f;
+    max-width: 520px; margin: 0 auto 16px;
+}
+.aviso-demitidos .ad-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #2a7de1; color: #fff; text-decoration: none;
+    font-size: 13px; font-weight: 600; padding: 10px 22px; border-radius: 8px;
+}
+.aviso-demitidos .ad-btn:hover { background: #1a5fb8; }
+
 /* ── RODAPÉ ── */
 .rodape {
     display: flex; align-items: center; justify-content: space-between;
@@ -531,6 +550,11 @@ const CONTEXTOS = {
         tituloCurto:   'Selecionar — Férias',
         proximo:       '/cad_ferias',
         f_situacao:    'A',
+        // o contexto tira da lista quem não tem férias a registrar:
+        // categoria 111 (intermitente) e as acima de 700 (pró-labore,
+        // sócio, diretor, estagiário)
+        apiUrl:        '/api/funcionarios_lista?contexto=ferias',
+        msgVazio:      'Nenhum funcionário com direito a registro de férias nesta empresa.',
     },
     afastamento: {
         titulo:        'Afastamento — Selecionar Funcionários',
@@ -792,6 +816,25 @@ async function carregarFuncionarios() {
         if (!d.ok) { body.innerHTML = `<div class="lista-vazio">Erro: ${d.msg}</div>`; return; }
         todosFunc = d.funcionarios || [];
         if (!todosFunc.length && ctx.apiUrl) {
+            // Caso especial do cancelar aviso: existe gente com aviso no mês, mas
+            // já demitida. Dizer só "não há ninguém" deixaria a pessoa sem saída.
+            const dem = d.com_aviso_demitidos || [];
+            if (dem.length) {
+                const nomes = dem.map(f =>
+                    `<li><strong>${String(f.matricula).padStart(6,'0')}</strong> — ${f.nome || ''}</li>`).join('');
+                body.innerHTML = `
+                  <div class="lista-vazio aviso-demitidos">
+                    <div class="ad-tit">⚠️ Há aviso prévio no mês, mas de quem já foi demitido</div>
+                    <ul class="ad-lista">${nomes}</ul>
+                    <div class="ad-txt">
+                      O aviso prévio desses funcionários virou desligamento e não pode ser
+                      cancelado sozinho. Para desfazer, cancele a rescisão: o funcionário
+                      volta a ficar ativo e aí o aviso prévio pode ser cancelado.
+                    </div>
+                    <a class="ad-btn" href="/select_funcionario?contexto=cancelar_rescisao">Ir para Cancelar Rescisão</a>
+                  </div>`;
+                return;
+            }
             body.innerHTML = '<div class="lista-vazio">' + (ctx.msgVazio || 'Nenhum funcionário encontrado para esta ação.') + '</div>';
             return;
         }

@@ -105,6 +105,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .banner-item  { display: flex; flex-direction: column; gap: 1px; }
 .banner-item-label { font-size: 9px; text-transform: uppercase; letter-spacing: .07em; color: var(--sublabel); }
 .banner-item-value { font-family: var(--mono); font-size: 13px; color: #1e3a5f; font-weight: 500; }
+/* Demissão: destacada em vermelho, e o motivo pode ocupar a linha toda */
+.banner-item-demissao { color: #9f1239; font-weight: 700; }
+.banner-item-largo { flex: 1 1 100%; }
+.banner-item-largo .banner-item-value { font-family: inherit; }
 .badge-situacao {
     padding: 4px 14px; border-radius: 20px; font-size: 11px; font-weight: 700;
     letter-spacing: .06em; text-transform: uppercase; align-self: flex-start;
@@ -308,6 +312,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
                 <span class="banner-item-label">Admissão</span>
                 <span class="banner-item-value">{{ funcionario._dtadm }}</span>
             </div>
+            {% if funcionario._demitido %}
+            <div class="banner-item">
+                <span class="banner-item-label">Demissão</span>
+                <span class="banner-item-value banner-item-demissao">{{ funcionario._datarescisao }}</span>
+            </div>
+            <div class="banner-item banner-item-largo">
+                <span class="banner-item-label">Motivo da demissão</span>
+                <span class="banner-item-value banner-item-demissao">{{ funcionario._motrescisao }}</span>
+            </div>
+            {% endif %}
         </div>
     </div>
     <div class="badge-situacao {{ 'badge-ativo' if funcionario.situacao == 'A' else 'badge-demitido' }}">

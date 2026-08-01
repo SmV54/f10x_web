@@ -103,7 +103,7 @@ body { font-family:var(--sans); background:var(--bg); color:var(--text-sub); min
         </div>
     </div>
 
-{% elif erro %}
+{% elif erro and erro != 'demitido' %}
     <div class="card err">
         <div class="ic">&#10060;</div>
         <div class="tit">Não foi possível cancelar</div>
@@ -111,6 +111,23 @@ body { font-family:var(--sans); background:var(--bg); color:var(--text-sub); min
         <div class="btns">
             <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_aviso_previo">Voltar</a>
             <a class="btn btn-menu" href="/menu">&#8592; Menu</a>
+        </div>
+    </div>
+
+{% elif ja_demitido %}
+    <div class="card warn">
+        <div class="ic">&#9888;</div>
+        <div class="tit">Funcionário já demitido</div>
+        <div class="desc">
+            {% if funcionario %}<strong>{{ funcionario.nome }}</strong> (matrícula {{ funcionario.mat_fmt }}) já está{% else %}Este funcionário já está{% endif %}
+            com a <strong>rescisão registrada</strong>. O aviso prévio dele não pode ser
+            cancelado sozinho — ele faz parte do desligamento.
+            <br>Para desfazer, cancele a rescisão: o funcionário volta a ficar ativo e,
+            aí sim, o aviso prévio pode ser cancelado.
+        </div>
+        <div class="btns">
+            <a class="btn btn-menu" href="/cancelar_rescisao?mats={{ funcionario.matricula if funcionario else '' }}">Cancelar a Rescisão</a>
+            <a class="btn btn-sec" href="/select_funcionario?contexto=cancelar_aviso_previo">Voltar</a>
         </div>
     </div>
 

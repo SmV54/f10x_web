@@ -750,6 +750,7 @@
   const VERBAS_DATA   = {{ verbas_json | safe }};
   const FOLHA_ABERTA      = {{ (folha_situacao in ('A', 'X')) | tojson }};
   const IS_ADMIN_VERBAS   = {{ (is_admin_verbas|default(false)) | tojson }};
+  const PROX_COD          = {{ (prox_cod|default(0)) | tojson }};   // sugestão vinda do servidor
 
   function iniParaTela(val) {
     if (!val) return '';
@@ -809,6 +810,7 @@
     if (existente) {
       const nome = existente.dsc_rubr_resumido || existente.dsc_rubr;
       hint.textContent = `⚠ Código ${cod} já existe ("${nome}"). Para alterá-la, use o botão ✏️ ao lado na lista.`;
+      hint.style.color = '#d97706';
       hint.style.display = 'block';
       el.style.borderColor = '#d97706';
       el.style.boxShadow   = '0 0 0 3px rgba(217,119,6,0.15)';
@@ -871,10 +873,50 @@
     });
   }
 
+  // Sugestão de código para verba nova: um a mais que a última cadastrada,
+  // sempre abaixo de 9900. O servidor manda a primeira (ele enxerga também as
+  // verbas desativadas); daí em diante recalcula pela lista da tela.
+  const COD_MIN = 1000, COD_MAX = 9899;
+
+  function proximoCodigoLivre() {
+    const usados = new Set(
+      VERBAS_DATA.map(v => Number(v.cod_rubr)).filter(n => Number.isFinite(n)));
+    if (PROX_COD && !usados.has(PROX_COD)) return PROX_COD;
+
+    const naFaixa = [...usados].filter(n => n >= COD_MIN && n <= COD_MAX);
+    let cand = naFaixa.length ? Math.max(...naFaixa) + 1 : COD_MIN;
+    if (cand <= COD_MAX && !usados.has(cand)) return cand;
+
+    for (let n = COD_MIN; n <= COD_MAX; n++) if (!usados.has(n)) return n;
+    return 0;
+  }
+
+  function sugerirCodigo() {
+    const campo = document.getElementById('inpCod');
+    const hint  = document.getElementById('hintCod');
+    if (!campo || campo.readOnly) return;
+    const cod = proximoCodigoLivre();
+    if (!cod) {
+      campo.value = '';
+      if (hint) {
+        hint.textContent = '⚠ Não há mais código livre abaixo de 9900.';
+        hint.style.display = 'block';
+      }
+      return;
+    }
+    campo.value = cod;
+    if (hint) {
+      hint.textContent = 'Sugerido: primeiro código livre. Pode trocar se quiser.';
+      hint.style.color = '#64748b';
+      hint.style.display = 'block';
+    }
+  }
+
   function modoNovo() {
     document.getElementById('inpId').value        = '';
     document.getElementById('inpIdCliente').value = '';
     limparForm();
+    sugerirCodigo();
     document.getElementById('formTitulo').textContent    = '➕ Nova Verba';
     document.getElementById('formSubtitulo').textContent = 'Preencha os dados da verba';
     document.getElementById('msgModo').textContent       = 'Modo: Inclusão';
@@ -1259,8 +1301,9 @@
     } catch(e) { mostrarErro('Erro de comunicação.'); }
   }
 
-  // Ao carregar a página já preenche o mês atual
+  // Ao carregar a página já preenche o mês atual e sugere o código da verba
   document.getElementById('inpIniValid').value = mesAtual();
+  sugerirCodigo();
 
   // Admin F10 pode criar verbas do sistema (código < 1000) — libera o mínimo do
   // campo para não travar o spinner/validação do input numérico.

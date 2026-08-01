@@ -103,6 +103,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .alerta-sem-aviso strong { font-weight: 700; }
 .alerta-sem-aviso a { color: #991b1b; text-decoration: underline; }
 
+/* ── ALERTA JUSTA CAUSA (motivo 01) ── */
+.alerta-justa-causa {
+    display: none;
+    margin-top: 8px;
+    background: #fff7ed; border: 2px solid #fb923c;
+    border-radius: 10px; padding: 10px 14px;
+    color: #9a3412; font-size: 12px; line-height: 1.5;
+}
+.alerta-justa-causa.visivel { display: block; }
+.motivo-select.justa-causa {
+    border-color: #fb923c;
+    box-shadow: 0 0 0 3px rgba(251,146,60,0.2);
+    background: #fff7ed;
+}
+
 /* ── RESUMO AVISO ── */
 .resumo-row {
     display: flex; gap: 0; border-bottom: 1px solid #f1f5f9;
@@ -275,6 +290,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                         <option value="{{ m.codigo }}">{{ m.codigo }} — {{ m.texto }}</option>
                         {% endfor %}
                     </select>
+
+                    <div class="alerta-justa-causa" id="alertaJustaCausa">
+                        <strong>⚠️ Atenção: demissão por justa causa é rara.</strong>
+                        Confirme que é isso mesmo antes de gravar. Nessa modalidade o
+                        funcionário não recebe aviso prévio, 13º proporcional, férias
+                        proporcionais nem a multa de 40% do FGTS, e não tem direito ao
+                        saque do FGTS nem ao seguro-desemprego. Se foi demissão comum,
+                        o motivo é o <strong>02 — sem justa causa</strong>.
+                    </div>
                 </div>
 
             </div>
@@ -298,6 +322,72 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 </div><!-- /conteudo -->
 
 <script src="/static/f10_dialog.js"></script>
+<script>
+/* Motivo 01 (justa causa) é raro: destaca na tela e pede confirmação
+   explícita antes de gravar, para não passar por engano no lugar do 02. */
+(function () {
+    const sel = document.getElementById('motivo_desligamento');
+    const box = document.getElementById('alertaJustaCausa');
+    const frm = document.getElementById('frm-rescisao');
+    if (!sel || !box || !frm) return;
+
+    const ehJustaCausa = () => String(sel.value || '').padStart(2, '0') === '01';
+
+    const TEXTO =
+        'MOTIVO 01 — DEMISSÃO POR JUSTA CAUSA\n\n' +
+        'É uma modalidade rara e de consequências pesadas para o funcionário. ' +
+        'Nela ele NÃO recebe:\n\n' +
+        '  •  aviso prévio\n' +
+        '  •  13º salário proporcional\n' +
+        '  •  férias proporcionais\n' +
+        '  •  multa de 40% do FGTS\n\n' +
+        'E ainda fica sem o saque do FGTS e sem o seguro-desemprego.\n\n' +
+        'Se foi uma demissão comum, o motivo correto é o 02 — sem justa causa.\n\n' +
+        'Confirma que esta demissão foi mesmo POR JUSTA CAUSA?';
+
+    function caixa() {
+        return window.f10Confirm
+            ? window.f10Confirm(TEXTO, { titulo: '⚠️ Confirmação de justa causa',
+                                         tipo: 'perigo',
+                                         okText: 'Sim, foi por justa causa',
+                                         cancelText: 'Não, escolher outro motivo' })
+            : Promise.resolve(confirm(TEXTO));
+    }
+
+    function realce(ligado) {
+        box.classList.toggle('visivel', ligado);
+        sel.classList.toggle('justa-causa', ligado);
+    }
+
+    let confirmado = false;
+
+    // A caixa aparece no momento em que a pessoa escolhe o 01 — se ela não
+    // confirmar, o motivo volta a ficar em branco e nada é gravado.
+    sel.addEventListener('change', async function () {
+        confirmado = false;
+        if (!ehJustaCausa()) { realce(false); return; }
+        realce(true);
+        const ok = await caixa();
+        if (ok) {
+            confirmado = true;
+        } else {
+            sel.value = '';
+            realce(false);
+            sel.focus();
+        }
+    });
+
+    // Rede de segurança: se chegou no Gravar com 01 sem ter confirmado
+    // (teclado, autofill), pergunta antes de mandar.
+    frm.addEventListener('submit', async function (ev) {
+        if (!ehJustaCausa() || confirmado) return;
+        ev.preventDefault();
+        if (await caixa()) { confirmado = true; frm.submit(); }
+    });
+
+    realce(ehJustaCausa());
+})();
+</script>
 
 </body>
 </html>

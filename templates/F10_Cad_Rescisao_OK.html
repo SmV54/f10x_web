@@ -81,6 +81,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
 }
 .btn-novo:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Ação principal depois de registrar: seguir para o cálculo */
+.btn-calcular {
+    background: linear-gradient(180deg, #4ec96d 0%, #35b357 100%);
+    border: 1px solid #2f9d4d; color: #fff;
+    font-size: 14px; font-family: var(--sans); font-weight: 700;
+    padding: 11px 26px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 2px 6px rgba(0,0,0,0.12);
+}
+.btn-calcular:hover { filter: brightness(1.04); }
+
+.obs-calculo {
+    margin-top: 14px; font-size: 12px; line-height: 1.5;
+    color: #92400e; background: #fffbeb; border: 1px solid #fde68a;
+    border-radius: 8px; padding: 8px 14px;
+}
+.obs-calculo.obs-ok { color: #475569; background: #f8fafc; border-color: #e2e8f0; }
 </style>
 </head>
 
@@ -123,9 +141,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
         <div class="btns">
+            <a class="btn-calcular" href="{% if mesmo_mes %}/calc_rescisao?auto={{ mat }}{% else %}/calc_rescisao{% endif %}">&#128176; Calcular Rescisão</a>
             <a class="btn-novo" href="/select_funcionario?contexto=rescisao">&#43; Nova Rescisão</a>
             <a class="btn-menu" href="/menu">&#8592; Menu</a>
         </div>
+
+        {% if not mesmo_mes %}
+        <div class="obs-calculo">
+            A demissão é de <strong>{{ mes_demissao_fmt }}</strong> e a folha ativa é
+            <strong>{{ folha_ativa_fmt }}</strong>. O cálculo lista os desligados do mês
+            da folha ativa — troque a folha para {{ mes_demissao_fmt }} antes de calcular.
+        </div>
+        {% else %}
+        <div class="obs-calculo obs-ok">
+            Próximo passo: calcular a rescisão para gerar os valores e a TRCT.
+        </div>
+        {% endif %}
     </div>
 </div>
 

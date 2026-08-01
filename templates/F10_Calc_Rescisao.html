@@ -40,6 +40,8 @@ thead th.c, tbody td.c { text-align: center; width: 34px; }
 tbody td.c input, thead th.c input { cursor: pointer; width: 16px; height: 16px; accent-color: #166534; }
 tbody td { padding: 6px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; }
+/* motivo 01 = justa causa, raro: chama a atenção na lista */
+.motivo-jc { color: #9a3412; font-weight: 700; background: #fff7ed; border: 1px solid #fdba74; border-radius: 5px; padding: 1px 5px; }
 tbody td.r { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; white-space: nowrap; }
 tbody td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
 tbody tr:last-child td { border-bottom: none; }
@@ -106,7 +108,7 @@ tbody tr:hover { background: #f8fafc; }
                 {% if modo_trct %}<th class="r">TRCT</th>{% elif modo_memoria %}<th class="r">Memória</th>{% endif %}</tr></thead>
             <tbody>
                 {% for f in funcs %}
-                <tr>{% if not modo_trct and not modo_memoria %}<td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" checked></td>{% endif %}<td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{{ f.motivo }}</td>
+                <tr>{% if not modo_trct and not modo_memoria %}<td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" checked></td>{% endif %}<td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{% if f.motivo|string == '01' %}<span class="motivo-jc" title="Justa causa — confira se é isso mesmo">{{ f.motivo }} ⚠️</span>{% else %}{{ f.motivo }}{% endif %}</td>
                     <td class="r">{% if f.calculado %}<span class="st-calc">Calculada</span>{% else %}<span class="st-pend">Pendente</span>{% endif %}</td>
                     {% if modo_trct %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/trct_pdf/{{ f.matricula }}" target="_blank">📄 TRCT</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>
                     {% elif modo_memoria %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/api/memoria_rescisao_pdf/{{ f.matricula }}" target="_blank">📄 Memória</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>{% endif %}</tr>
@@ -128,7 +130,7 @@ tbody tr:hover { background: #f8fafc; }
         <table>
             <thead><tr>
                 <th>Mat.</th><th>Nome</th>
-                <th class="r">Saldo</th><th class="r">13º</th><th class="r">Férias+1/3</th>
+                <th class="r">Saldo</th><th class="r">13º</th><th class="r">Fér.Venc.</th><th class="r">Fér.Prop.</th><th class="r">1/3</th>
                 <th class="r">Aviso</th>
                 <th class="r">INSS</th><th class="r">IRRF</th><th class="r">FGTS</th><th class="r">Líquido</th>
                 <th class="r">TRCT</th><th class="r">Memória</th>
@@ -148,8 +150,29 @@ tbody tr:hover { background: #f8fafc; }
 </div>
 
 <script>
+const AUTO_MAT = {{ (auto_mat|default(''))|tojson }};
+
 function toggleTodos(src) {
     document.querySelectorAll('.chk-func').forEach(c => c.checked = src.checked);
+}
+
+/* Veio da tela "Rescisão Registrada" (?auto=matrícula): marca só aquele
+   funcionário e já calcula, para a pessoa cair no resultado pronto. */
+async function calcularAutomatico() {
+    if (!AUTO_MAT) return;
+    const chks = [...document.querySelectorAll('.chk-func')];
+    const alvo = chks.find(c => parseInt(c.value) === parseInt(AUTO_MAT));
+    if (!alvo) return;              // não está na lista (folha de outro mês)
+
+    chks.forEach(c => { c.checked = (c === alvo); });
+    const todos = document.getElementById('chkAll');
+    if (todos) todos.checked = (chks.length === 1);
+
+    await calcular();
+    const res = document.getElementById('cardResult');
+    if (res && res.style.display !== 'none') {
+        try { res.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
+    }
 }
 async function calcular() {
     const btn = document.getElementById('btnCalc');
@@ -179,7 +202,9 @@ async function calcular() {
                 <td>${f.nome}</td>
                 <td class="r">${f.saldo_fmt}</td>
                 <td class="r">${f.d13_fmt}</td>
+                <td class="r">${f.venc_fmt || "—"}</td>
                 <td class="r">${f.fer_fmt}</td>
+                <td class="r">${f.terco_fmt || "—"}</td>
                 <td class="r">${f.aviso_fmt}</td>
                 <td class="r">${f.inss_fmt}</td>
                 <td class="r">${f.irrf_fmt}</td>
@@ -206,6 +231,8 @@ async function calcular() {
         btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
     }
 }
+
+document.addEventListener('DOMContentLoaded', calcularAutomatico);
 </script>
 <script src="/static/f10_dialog.js"></script>
 </body>

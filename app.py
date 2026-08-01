@@ -5359,9 +5359,17 @@ def api_funcionarios_com_aviso_cancelavel():
              .in_("matricula", mats)
              .order("matricula")
              .execute())
-        funcionarios = []
+        funcionarios, demitidos = [], []
         for f in (r.data or []):
-            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
+            # Quem já foi demitido não entra: o aviso virou desligamento, e o
+            # que se cancela nesse caso é a rescisão — ela devolve o
+            # funcionário para ativo e só então o aviso pode ser cancelado.
+            # Vai separado para a tela poder explicar em vez de dizer que
+            # "não há ninguém".
+            if str(f.get("situacao") or "").upper() == "D":
+                demitidos.append({"matricula": f.get("matricula"), "nome": nome})
+                continue
             funcionarios.append({
                 "matricula": f.get("matricula"),
                 "nome":      nome,
@@ -5370,7 +5378,8 @@ def api_funcionarios_com_aviso_cancelavel():
                 "codcateg":  str(f.get("codcateg") or ""),
                 "cbofuncao": str(f.get("cbofuncao") or ""),
             })
-        return jsonify({"ok": True, "funcionarios": funcionarios})
+        return jsonify({"ok": True, "funcionarios": funcionarios,
+                        "com_aviso_demitidos": demitidos})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
@@ -5389,10 +5398,25 @@ def cancelar_aviso_previo():
         return redirect("/select_funcionario?contexto=cancelar_aviso_previo")
     mat_int = int(mat_str)
 
+    # Funcionário já demitido: o aviso prévio dele virou desligamento e não
+    # pode mais ser cancelado sozinho — o caminho é cancelar a rescisão.
+    situacao_atual = ""
+    try:
+        r_sit = (supabase.table("tab_cad").select("situacao")
+                 .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                 .limit(1).execute())
+        if r_sit.data:
+            situacao_atual = str(r_sit.data[0].get("situacao") or "").upper()
+    except Exception:
+        pass
+    ja_demitido = (situacao_atual == "D")
+
     # ── POST: efetiva o cancelamento (deleta op1=9 do mês atual) ──
     if request.method == "POST":
         if not anomes:
             return redirect("/menu")
+        if ja_demitido:
+            return redirect(f"/cancelar_aviso_previo?mats={mat_int}&erro=demitido")
         nome_func = ""
         try:
             r_n = (supabase.table("tab_cad").select("nome, nomer")
@@ -5460,6 +5484,7 @@ def cancelar_aviso_previo():
         funcionario=funcionario,
         aviso=aviso,
         folha_fmt=folha_fmt,
+        ja_demitido=ja_demitido,
         ok=request.args.get("ok"),
         erro=request.args.get("erro"),
     )
@@ -5794,7 +5819,7 @@ def api_funcionarios_com_aviso():
              .execute())
         funcionarios = []
         for f in (r.data or []):
-            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
@@ -6002,6 +6027,15 @@ def cad_rescisao_ok():
     except Exception:
         mat_int = 0
 
+    # O cálculo da rescisão lista os desligados do mês da FOLHA ATIVA. Se a
+    # demissão for de outro mês, o botão avisa em vez de levar a uma tela vazia.
+    anomes  = str(session.get("anomes_atual") or "")
+    mes_dem = (data_demissao[:7].replace("-", "") if len(data_demissao) >= 7 else "")
+    mesmo_mes = bool(anomes) and mes_dem == anomes
+
+    def _mes_fmt(a):
+        return f"{a[4:6]}/{a[:4]}" if len(a) == 6 else "—"
+
     return render_template(
         "F10_Cad_Rescisao_OK.html",
         versao=ler_versao(),
@@ -6011,6 +6045,9 @@ def cad_rescisao_ok():
         mat_fmt=str(mat_raw).zfill(6),
         nome_func=nome_func,
         data_demissao_fmt=_fmt(data_demissao),
+        mesmo_mes=mesmo_mes,
+        mes_demissao_fmt=_mes_fmt(mes_dem),
+        folha_ativa_fmt=_mes_fmt(anomes),
     )
 
 
@@ -6291,8 +6328,12 @@ def cancelar_rescisao():
 VR_SALDO       = 10    # SALDO DE SALARIO
 VR_13_PROP     = 12    # 13 SALARIO PROPORCIONAL
 VR_13_AVISO    = 13    # 13 SALARIO INDENIZADO (projeção do aviso)
-VR_FERIAS_PROP = 49    # FERIAS PROPORCIONAIS+1/3
-VR_FERIAS_AVISO= 44    # FERIAS RESCISAO AVISO PREVIO (+1/3)
+# No Folha10 o terco constitucional e verba PROPRIA (42), calculada sobre a
+# soma das ferias da rescisao — nao vai embutido em cada uma delas.
+VR_FERIAS_VENC = 43    # FERIAS VENCIDAS RESCISAO
+VR_FERIAS_PROP = 49    # FERIAS PROPORCIONAIS
+VR_FERIAS_AVISO= 44    # FERIAS RESCISAO AVISO PREVIO
+VR_TERCO_FERIAS= 42    # 1/3 FERIAS (sobre 43 + 44 + 49)
 VR_AVISO_IND   = 61    # AVISO PREVIO (indenizado)
 VR_INSS        = 101   # INSS (saldo)
 VR_INSS_13     = 104   # INSS 13.SAL. RESC.
@@ -6339,6 +6380,62 @@ def _conta_avos_resc(dt_ini, dt_fim):
         if m > 12:
             m, y = 1, y + 1
     return min(12, avos)
+
+
+def _fim_aquisitivo(dt_ini):
+    """Último dia do período aquisitivo que começa em dt_ini (1 ano - 1 dia)."""
+    from datetime import timedelta as _td
+    try:
+        return dt_ini.replace(year=dt_ini.year + 1) - _td(days=1)
+    except ValueError:                      # 29/02
+        return dt_ini.replace(year=dt_ini.year + 1, day=28) - _td(days=1)
+
+
+def _periodos_ferias_vencidas(dt_adm, ini_curso, eventos_fer):
+    """Períodos aquisitivos COMPLETOS que o funcionário não gozou.
+
+    O que já foi gozado sai do próprio lançamento de férias: data2i/data2f
+    guardam o período aquisitivo de cada gozo. O primeiro período ainda em
+    aberto começa no dia seguinte ao data2f mais recente — ou na admissão, se
+    o funcionário nunca tirou férias. Conta-se dali até o período em curso
+    (esse é o das proporcionais).
+
+    Lançamento antigo pode estar sem data2f. Nesse caso deduz-se pelo gozo
+    mais recente: quem tira férias goza um período já fechado, então o
+    aquisitivo consumido termina na véspera do aniversário em curso naquela
+    data. É estimativa — sem isso, todos os períodos antigos apareceriam como
+    vencidos e a rescisão pagaria férias que já foram tiradas.
+    """
+    from datetime import timedelta as _td
+    if not dt_adm or not ini_curso:
+        return [], False
+
+    ult_fim, ult_gozo, estimado = None, None, False
+    for ev in (eventos_fer or []):
+        d2f = _dparse(ev.get("data2f"))
+        if d2f and (ult_fim is None or d2f > ult_fim):
+            ult_fim = d2f
+        d1i = _dparse(ev.get("data1i"))
+        if d1i and (ult_gozo is None or d1i > ult_gozo):
+            ult_gozo = d1i
+
+    if ult_fim is None and ult_gozo is not None:
+        ult_fim = _inicio_aquisitivo_resc(dt_adm, ult_gozo) - _td(days=1)
+        estimado = True
+
+    ini = (ult_fim + _td(days=1)) if ult_fim else dt_adm
+    if ini < dt_adm:
+        ini = dt_adm
+
+    periodos = []
+    p_ini = ini
+    while p_ini < ini_curso and len(periodos) < 20:
+        p_fim = _fim_aquisitivo(p_ini)
+        if p_fim >= ini_curso:              # ainda não fechou: é o período em curso
+            break
+        periodos.append((p_ini, p_fim))
+        p_ini = p_fim + _td(days=1)
+    return periodos, estimado
 
 
 def _inicio_aquisitivo_resc(dt_adm, dt_ref):
@@ -6402,9 +6499,15 @@ def calc_rescisao():
             funcs = []
     folha_situacao = _refresh_situacao_folha() if len(anomes) == 6 else ""
     modo = request.args.get("modo")
+    # ?auto=<matricula> vem da tela "Rescisão Registrada": já calcula aquele
+    # funcionário sozinho, sem a pessoa ter que marcar e clicar de novo.
+    auto_mat = (request.args.get("auto") or "").strip()
+    if not auto_mat.isdigit():
+        auto_mat = ""
+
     return render_template("F10_Calc_Rescisao.html", **_ctx_relatorio(),
                            anomes_atual=anomes, funcs=funcs,
-                           folha_situacao=folha_situacao,
+                           folha_situacao=folha_situacao, auto_mat=auto_mat,
                            modo_trct=(modo == "trct"), modo_memoria=(modo == "memoria"))
 
 
@@ -6445,6 +6548,22 @@ def api_calc_rescisao_calcular():
         return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"})
     if not demitidos:
         return jsonify({"ok": False, "msg": "Nenhum desligado no mês para calcular."})
+
+    # ── Férias já gozadas (op1=3) — dizem quais períodos aquisitivos já foram
+    #    consumidos; o que sobrou completo vira férias vencidas na rescisão ──
+    ferias_por_mat = {}
+    try:
+        _mats_calc = [int(c.get("matricula") or 0) for c in demitidos]
+        r_fer = (supabase.table("tab_eventos")
+                 .select("matricula, data1i, data1f, data2i, data2f")
+                 .eq("id_empresa", id_empresa)
+                 .eq("op1", 3)
+                 .in_("matricula", _mats_calc)
+                 .execute())
+        for ev in (r_fer.data or []):
+            ferias_por_mat.setdefault(int(ev.get("matricula") or 0), []).append(ev)
+    except Exception as e:
+        print("Erro ao buscar ferias gozadas (rescisao):", str(e))
 
     # ── Verbas variáveis que entram na média (inc_rescisao) ──
     try:
@@ -6498,6 +6617,62 @@ def api_calc_rescisao_calcular():
         pass
 
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
+
+    def _media_periodo(mat, sal_hora_c, dt_ini, dt_fim):
+        """Média das verbas variáveis dentro de UM período aquisitivo.
+
+        As férias vencidas se referem a um período que já se fechou — a média
+        que remunera esse período é a do próprio período, não a dos últimos 12
+        meses antes do desligamento (essa vale para as proporcionais) nem a do
+        ano corrente (essa é a regra do 13º). Sem isso, quem ganhou hora extra
+        no período vencido e parou depois receberia a média errada, para mais
+        ou para menos.
+
+        Devolve (total_da_media, detalhe) com as folhas fi..ff do período.
+        """
+        if not _verbas_media or not dt_ini or not dt_fim:
+            return 0, {}
+        fi = dt_ini.year * 100 + dt_ini.month
+        ff = dt_fim.year * 100 + dt_fim.month
+        tot_val, tot_qtd, por_mes = {}, {}, {}
+        try:
+            r = (supabase.table("tab_mov")
+                 .select("cod_verba, valor, qtd, folha")
+                 .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                 .eq("matricula", mat).eq("situacao", "A")
+                 .in_("cod_verba", _verbas_media)
+                 .gte("folha", fi).lte("folha", ff)
+                 .eq("folha_tipo", "N").execute())
+            for row in (r.data or []):
+                c   = int(row.get("cod_verba") or 0)
+                fol = int(row.get("folha") or 0)
+                por_mes.setdefault(c, {}).setdefault(fol, {"valor": 0, "qtd": 0})
+                por_mes[c][fol]["valor"] += int(row.get("valor") or 0)
+                por_mes[c][fol]["qtd"]   += int(row.get("qtd") or 0)
+                if c in _verbas_horas:
+                    tot_qtd[c] = tot_qtd.get(c, 0) + int(row.get("qtd") or 0)
+                else:
+                    tot_val[c] = tot_val.get(c, 0) + int(row.get("valor") or 0)
+        except Exception as e:
+            print("Erro em _media_periodo:", str(e))
+            return 0, {}
+
+        total, det = 0, []
+        for c in sorted(set(tot_val) | set(tot_qtd)):
+            if c in _verbas_horas:
+                avg_min = round(tot_qtd.get(c, 0) / 12)
+                val = round(avg_min * sal_hora_c / 60)
+            else:
+                avg_min = 0
+                val = round(tot_val.get(c, 0) / 12)
+            if val:
+                total += val
+                det.append({"cod": c, "dsc": _rubr_desc.get(c, f"Verba {c:04d}"),
+                            "tipo": "H" if c in _verbas_horas else "V",
+                            "avg_min": avg_min, "val": val,
+                            "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
+                            "por_mes": sorted(por_mes.get(c, {}).items())})
+        return total, {"fi": fi, "ff": ff, "det": det}
 
     def _media_variaveis(mat, sal_hora_c):
         """Médias das verbas variáveis da ficha financeira (tab_mov) para a rescisão.
@@ -6652,8 +6827,26 @@ def api_calc_rescisao_calcular():
         # férias proporcionais + 1/3 (avos do período aquisitivo em curso)
         ini_aq = _inicio_aquisitivo_resc(dt_adm, dt_proj) if dt_adm else _date(dt_proj.year, 1, 1)
         avos_fer = _conta_avos_resc(ini_aq, dt_proj) if tem_fer else 0
-        fer_base = round((sal_mes + base_media_fer) * avos_fer / 12) if avos_fer else 0
-        fer_prop = round(fer_base * 4 / 3)   # inclui 1/3
+        fer_prop = round((sal_mes + base_media_fer) * avos_fer / 12) if avos_fer else 0
+        # férias VENCIDAS: períodos aquisitivos completos sem gozo. São devidas
+        # SEMPRE, inclusive na justa causa — o motivo só derruba as proporcionais.
+        venc_periodos, venc_estimado = _periodos_ferias_vencidas(
+            dt_adm, ini_aq, ferias_por_mat.get(mat, []))
+        venc_qtd  = len(venc_periodos)
+        # Cada período vencido usa a média do PRÓPRIO período aquisitivo
+        fer_venc, venc_det = 0, []
+        for _p_ini, _p_fim in venc_periodos:
+            _med_p, _info_p = _media_periodo(mat, sal_hora_c, _p_ini, _p_fim)
+            _val_p = round(sal_mes + _med_p)
+            fer_venc += _val_p
+            venc_det.append({
+                "ini": _p_ini.strftime("%d/%m/%Y"), "fim": _p_fim.strftime("%d/%m/%Y"),
+                "media": _med_p, "valor": _val_p,
+                "fi": _info_p.get("fi"), "ff": _info_p.get("ff"),
+                "det": _info_p.get("det") or [],
+            })
+        # terco constitucional: uma linha so, sobre todas as ferias da rescisao
+        terco_fer = round((fer_prop + fer_venc) / 3)
 
         # ── Verbas MANUAIS (origem='M') lançadas na rescisão ──
         # Proventos entram nos totais e (conforme incidência) nas bases de
@@ -6729,7 +6922,7 @@ def api_calc_rescisao_calcular():
         base_fgts = saldo + d13 + aviso_val + add_fgts
         fgts_val = round(base_fgts * 8 / 100)
 
-        total_prov = saldo + aviso_val + d13 + fer_prop + man_prov
+        total_prov = saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
         total_desc = inss_saldo + inss_13 + irrf_saldo + irrf_13 + man_desc
         liquido    = total_prov - total_desc
 
@@ -6754,7 +6947,9 @@ def api_calc_rescisao_calcular():
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
         if d13:       recs.append({**base_mov, "cod_verba": VR_13_PROP,      "qtd": avos_13,  "valor": d13})
+        if fer_venc:  recs.append({**base_mov, "cod_verba": VR_FERIAS_VENC,  "qtd": venc_qtd, "valor": fer_venc})
         if fer_prop:  recs.append({**base_mov, "cod_verba": VR_FERIAS_PROP,  "qtd": avos_fer, "valor": fer_prop})
+        if terco_fer: recs.append({**base_mov, "cod_verba": VR_TERCO_FERIAS, "qtd": 0,        "valor": terco_fer})
         if inss_saldo:recs.append({**base_mov, "cod_verba": VR_INSS,         "qtd": 0, "valor": inss_saldo})
         if inss_13:   recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": inss_13})
         if irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,         "qtd": 0, "valor": irrf_saldo})
@@ -6782,6 +6977,7 @@ def api_calc_rescisao_calcular():
             pass
         gravar_log("CALC_RES",
                    f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
+                   f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
                    f"INSS={_fmt_brl(inss_saldo+inss_13)} IRRF={_fmt_brl(irrf_saldo+irrf_13)} Liq={_fmt_brl(liquido)}",
                    matricula=mat)
 
@@ -6800,7 +6996,12 @@ def api_calc_rescisao_calcular():
             "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dt_resc.day,
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
-            "avos_fer": avos_fer, "fer_base": fer_base, "fer_prop": fer_prop,
+            "avos_fer": avos_fer, "fer_prop": fer_prop,
+            "venc_qtd": venc_qtd, "fer_venc": fer_venc, "terco_fer": terco_fer,
+            "venc_det": venc_det,
+            "venc_estimado": venc_estimado,
+            "venc_periodos": [(x.strftime("%d/%m/%Y"), y.strftime("%d/%m/%Y"))
+                              for x, y in venc_periodos],
             "med_total": med_total, "med_total_13": med_total_13, "medias_info": medias_info,
             "base_inss_saldo": base_inss_saldo, "inss_saldo": inss_saldo, "inss_saldo_det": inss_saldo_det,
             "d13_base": d13, "inss_13": inss_13, "inss_13_det": inss_13_det,
@@ -6815,6 +7016,8 @@ def api_calc_rescisao_calcular():
             "total_prov": total_prov, "total_desc": total_desc, "liquido": liquido,
             # formatados p/ a tela
             "saldo_fmt": _fmt_brl(saldo), "d13_fmt": _fmt_brl(d13), "fer_fmt": _fmt_brl(fer_prop),
+            "venc_fmt": _fmt_brl(fer_venc) if fer_venc else "—", "venc_qtd": venc_qtd,
+            "terco_fmt": _fmt_brl(terco_fer) if terco_fer else "—",
             "aviso_fmt": _fmt_brl(aviso_val) if aviso_val else "—",
             "med_fmt": _fmt_brl(med_total) if med_total else "—",
             "inss_fmt": _fmt_brl(inss_saldo + inss_13), "irrf_fmt": _fmt_brl(irrf_saldo + irrf_13),
@@ -7008,16 +7211,41 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             else:
                 e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [],
                                 na="o motivo da rescisão não gera 13º proporcional"))
+            # 0005B — Férias vencidas + 1/3 (períodos completos sem gozo)
+            if r.get("fer_venc"):
+                _lin = [f"Períodos aquisitivos completos sem gozo: <b>{r['venc_qtd']}</b>"]
+                # A média de cada período vencido sai do PRÓPRIO período — não
+                # dos 12 meses antes do desligamento (essa vale para as
+                # proporcionais) nem do ano corrente (essa é a do 13º).
+                for _d in (r.get("venc_det") or []):
+                    _jan = (f" [médias das folhas {_d['fi']} a {_d['ff']}]"
+                            if _d.get("media") else "")
+                    _lin.append(
+                        f"{_d['ini']} a {_d['fim']}: Salário {_B(sal)} + "
+                        f"Médias do período {_B(_d['media'])} = <b>{_B(_d['valor'])}</b>{_jan}")
+                _lin.append(f"Total das férias vencidas = <b>{_B(r['fer_venc'])}</b>"
+                            f"   (o 1/3 vai na verba 42)")
+                if r.get("venc_estimado"):
+                    _lin.append("Atenção: lançamento de férias sem o período aquisitivo "
+                                "gravado — o período consumido foi deduzido pela data do "
+                                "último gozo. Confira.")
+                e.append(_etapa("ETAPA 3055 - FERIAS VENCIDAS", _lin))
             # 0006 — Férias proporcionais + 1/3 (médias de 12 meses)
             if r["fer_prop"]:
-                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS + 1/3", [
+                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", [
                     f"(Salário {_B(sal)} + Médias {_B(r['med_total'])})"
-                    f" × {r['avos_fer']}/12 = {_B(r['fer_base'])}   "
-                    f"+ 1/3 = <b>{_B(r['fer_prop'])}</b>",
+                    f" × {r['avos_fer']}/12 = <b>{_B(r['fer_prop'])}</b>"
+                    f"   (o 1/3 vai na verba 42)",
                 ]))
             else:
-                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS + 1/3", [],
+                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", [],
                                 na="o motivo da rescisão não gera férias proporcionais"))
+            # 0006C — Terco constitucional: verba propria, sobre todas as ferias
+            if r.get("terco_fer"):
+                e.append(_etapa("ETAPA 3065 - 1/3 CONSTITUCIONAL SOBRE AS FERIAS", [
+                    f"(Vencidas {_B(r['fer_venc'])} + Proporcionais {_B(r['fer_prop'])})"
+                    f" ÷ 3 = <b>{_B(r['terco_fer'])}</b>",
+                ]))
             # 0006B — Verbas manuais lançadas
             det_man = r.get("manuais_det") or []
             if det_man:
@@ -7124,9 +7352,11 @@ _TRCT_VERBAS = {
     12:  ("13º Salário Proporcional",                "P"),
     13:  ("13º Salário Indenizado (Aviso Prévio)",   "P"),
     14:  ("13º Salário sobre o Aviso Prévio",        "P"),
-    17:  ("Férias Vencidas + 1/3",                   "P"),
-    44:  ("Férias sobre o Aviso Prévio + 1/3",       "P"),
-    49:  ("Férias Proporcionais + 1/3",              "P"),
+    17:  ("Adiantamento do 13º Salário",             "P"),
+    42:  ("1/3 Constitucional sobre as Férias",      "P"),
+    43:  ("Férias Vencidas",                         "P"),
+    44:  ("Férias sobre o Aviso Prévio",             "P"),
+    49:  ("Férias Proporcionais",                    "P"),
     61:  ("Aviso Prévio Indenizado",                 "P"),
     101: ("INSS sobre o Saldo de Salário",           "D"),
     104: ("INSS sobre o 13º Salário",                "D"),
@@ -7301,6 +7531,8 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
                 ref = f"{qtd} dias"
             elif cod in (12, 49, 44):
                 ref = f"{qtd}/12"
+            elif cod == 43:
+                ref = f"{qtd} período{'s' if qtd > 1 else ''}"
             elif cod == 61:
                 ref = f"{qtd} dias"
             else:
@@ -9501,6 +9733,40 @@ def teste_endereco():
 # =========================================================
 # VERBAS — TELA
 # =========================================================
+COD_RUBR_MIN = 1000      # abaixo disso e verba do sistema
+COD_RUBR_MAX = 9899      # a sugestao tem que ficar MENOR que 9900
+
+
+def _proximo_cod_rubrica(id_cliente):
+    """Sugestao de codigo para verba nova: um a mais que a ultima cadastrada,
+    dentro de 1000..9899.
+
+    Olha as verbas do sistema e as do cliente em QUALQUER situacao — a tela so
+    carrega as ativas, e sugerir o numero de uma verba desativada daria choque
+    na gravacao. Se o proximo passar de 9899, procura a primeira folga na
+    faixa. Devolve 0 quando nao ha mais numero livre."""
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr")
+             .in_("id_cliente", [0, id_cliente])
+             .execute())
+        usados = {int(x["cod_rubr"]) for x in (r.data or [])
+                  if str(x.get("cod_rubr") or "").strip().lstrip("-").isdigit()}
+    except Exception as e:
+        print("Erro em _proximo_cod_rubrica:", str(e))
+        return COD_RUBR_MIN
+
+    na_faixa = [c for c in usados if COD_RUBR_MIN <= c <= COD_RUBR_MAX]
+    prox = (max(na_faixa) + 1) if na_faixa else COD_RUBR_MIN
+    if prox <= COD_RUBR_MAX and prox not in usados:
+        return prox
+
+    for c in range(COD_RUBR_MIN, COD_RUBR_MAX + 1):
+        if c not in usados:
+            return c
+    return 0
+
+
 @app.route("/cad_verba")
 def cad_verba():
     if not session.get("logado"):
@@ -9584,6 +9850,7 @@ def cad_verba():
         empresa_info=session.get("empresa_info", ""),
         verbas=r.data or [],
         verbas_json=verbas_json,
+        prox_cod=_proximo_cod_rubrica(id_cliente),
         nat_rubricas=nat.data or [],
         inc_cp=inc_cp.data or [],
         inc_fgts=inc_fgts.data or [],
@@ -10271,11 +10538,12 @@ def _primeiros_passos(id_cliente, id_empresa):
         return vazio
 
     # Passo 4 primeiro: com funcionario cadastrado, nao ha o que conduzir.
+    # Demitido conta: quem ja cadastrou alguem aprendeu o caminho, e empresa
+    # com um funcionario so, ja demitido, ficava presa nos primeiros passos.
     try:
         qtd_funcionarios = len(supabase.table("tab_cad")
                                .select("id")
                                .eq("id_empresa", id_empresa)
-                               .neq("situacao", "D")
                                .limit(1).execute().data or [])
     except Exception:
         return vazio
@@ -11750,6 +12018,26 @@ def ficha_registro():
                 f["_dtnascto"]   = fdata(f.get("dtnascto"))
                 f["_dtadm"]      = fdata(f.get("dtadm"))
                 f["_datarescisao"] = fdata(f.get("datarescisao"))
+                # Demissão: data e motivo (Tabela 19 do eSocial) só valem para
+                # quem está demitido
+                f["_demitido"] = str(f.get("situacao") or "").upper() == "D"
+                _cod_mot = str(f.get("motrescisao") or "").strip()
+                f["_motrescisao"] = "—"
+                if f["_demitido"] and _cod_mot:
+                    _cod_mot = _cod_mot.zfill(2)
+                    _txt = ""
+                    try:
+                        rmr = (supabase.table("tab_tabela_total")
+                               .select("texto")
+                               .eq("num_tabela", 19)
+                               .eq("codigo", _cod_mot)
+                               .limit(1).execute())
+                        _txt = (rmr.data or [{}])[0].get("texto") or ""
+                    except Exception:
+                        pass
+                    if not _txt:
+                        _txt = _MOTIVO_DESC_RESC.get(_cod_mot, "")
+                    f["_motrescisao"] = f"{_cod_mot} — {_txt}" if _txt else _cod_mot
                 f["_dttransf"]   = fdata(f.get("dttransf"))
                 f["_vrsalfx"]    = fsal(f.get("vrsalfx"))
                 f["_sexo"]       = dec("sexo",       f.get("sexo"))
@@ -13007,6 +13295,18 @@ def api_dependente_excluir():
         return jsonify({"ok": False, "msg": str(e)})
 
 
+def _categoria_tem_ferias(codcateg):
+    """False para quem não registra férias: 111 (contrato intermitente) e as
+    categorias acima de 700 (pró-labore, sócio, diretor não empregado,
+    estagiário). Categoria em branco continua entrando, para não sumir com
+    cadastro incompleto."""
+    t = str(codcateg or "").strip()
+    if not t.isdigit():
+        return True
+    n = int(t)
+    return not (n == 111 or n > 700)
+
+
 # =========================================================
 # FUNCIONÁRIOS — API: lista geral com filtros básicos
 # =========================================================
@@ -13049,9 +13349,15 @@ def api_funcionarios_lista():
     except Exception:
         aviso_mats = set()
 
+    # Contexto férias: intermitente (111) e não-empregado (acima de 700 —
+    # pró-labore, sócio, diretor, estagiário) não têm férias a registrar.
+    so_com_ferias = request.args.get("contexto", "").strip() == "ferias"
+
     funcionarios = []
     for f in rows:
-        nome = (f.get("nomer") or f.get("nome") or "").strip()
+        if so_com_ferias and not _categoria_tem_ferias(f.get("codcateg")):
+            continue
+        nome = (f.get("nome") or f.get("nomer") or "").strip()
         situacao = str(f.get("situacao") or "")
         try:
             mat_int = int(f.get("matricula") or 0)
@@ -13094,7 +13400,7 @@ def api_funcionarios_com_acidente_historico():
              .execute())
         funcionarios = []
         for f in (r.data or []):
-            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
             funcionarios.append({
                 "matricula": f.get("matricula"),
                 "nome":      nome,
@@ -13359,7 +13665,7 @@ def api_funcionarios_com_acidente():
 
         funcionarios = []
         for f in (r.data or []):
-            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
             funcionarios.append({
                 "matricula": f.get("matricula"),
                 "nome":      nome,
@@ -13422,7 +13728,7 @@ def api_ferias_lista_funcionarios():
     result = []
     for f in funcionarios:
         mat  = f.get("matricula")
-        nome = (f.get("nomer") or f.get("nome") or "").strip()
+        nome = (f.get("nome") or f.get("nomer") or "").strip()
         result.append({
             "matricula":     mat,
             "nome":          nome,
@@ -13532,7 +13838,7 @@ def api_funcionario_nome():
         )
         if r.data:
             row = r.data[0]
-            nome = (row.get("nomer") or row.get("nome") or "").strip()
+            nome = (row.get("nome") or row.get("nomer") or "").strip()
             return jsonify({"nome": nome})
     except Exception:
         pass
@@ -14042,7 +14348,7 @@ def api_funcionarios_com_exame_med():
 
         funcionarios = []
         for f in (r.data or []):
-            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
             funcionarios.append({
                 "matricula": f.get("matricula"),
                 "nome":      nome,
@@ -14752,7 +15058,7 @@ def api_funcionarios_com_qualquer_exame():
              .execute())
         funcionarios = []
         for f in (r.data or []):
-            nome = (f.get("nomer") or f.get("nome") or "").strip()
+            nome = (f.get("nome") or f.get("nomer") or "").strip()
             funcionarios.append({"matricula": f.get("matricula"), "nome": nome})
         return jsonify({"ok": True, "funcionarios": funcionarios})
     except Exception as e:
@@ -17158,7 +17464,7 @@ def api_funcionarios_com_falta():
         for f in (r.data or []):
             funcs.append({
                 "matricula": f.get("matricula"),
-                "nome":      (f.get("nomer") or f.get("nome") or "").strip(),
+                "nome":      (f.get("nome") or f.get("nomer") or "").strip(),
                 "dtadm":     str(f.get("dtadm") or ""),
                 "situacao":  str(f.get("situacao") or ""),
                 "codcateg":  str(f.get("codcateg") or ""),
@@ -31656,7 +31962,7 @@ def _calc_etapa1_dados(id_empresa):
             vrsalfx   = int(f.get("vrsalfx")   or 0)
             qtdhrsmes = int(f.get("qtdhrsmes")  or 0)
             und       = (f.get("undsalfixo") or "M").upper()
-            nome      = (f.get("nomer") or f.get("nome") or "").strip()
+            nome      = (f.get("nome") or f.get("nomer") or "").strip()
 
             if und == "H":
                 sal_hora = float(vrsalfx)
@@ -35511,7 +35817,7 @@ def api_visualizar_calculo_dados():
                     sh = float(vrsalfx); sm = float(vrsalfx * qhm)
                 else:
                     sh = round(vrsalfx / qhm, 4) if qhm else 0.0; sm = float(vrsalfx)
-                nomes.setdefault(m, (f.get("nomer") or f.get("nome") or "").strip())
+                nomes.setdefault(m, (f.get("nome") or f.get("nomer") or "").strip())
                 dtadms.setdefault(m, str(f.get("dtadm") or ""))
                 sal_hora_map.setdefault(m, sh)
                 sal_mes_map.setdefault(m, sm)
@@ -39506,16 +39812,20 @@ def calc_ferias():
                 mats = list({e["matricula"] for e in eventos})
                 r_cad = (
                     supabase.table("tab_cad")
-                    .select("matricula, nome, nomer")
+                    .select("matricula, nome, nomer, codcateg")
                     .eq("id_cliente", id_cliente)
                     .eq("id_empresa", id_empresa)
                     .in_("matricula", mats)
                     .execute()
                 )
                 nomes = {
-                    c["matricula"]: (c.get("nomer") or c.get("nome") or "").strip()
+                    c["matricula"]: (c.get("nome") or c.get("nomer") or "").strip()
                     for c in (r_cad.data or [])
                 }
+                # Fora da lista quem não registra férias: 111 (intermitente)
+                # e acima de 700 (pró-labore, sócio, diretor, estagiário)
+                sem_ferias = {c["matricula"] for c in (r_cad.data or [])
+                              if not _categoria_tem_ferias(c.get("codcateg"))}
 
                 def fmt8(s):
                     s = str(s or "")
@@ -39551,6 +39861,8 @@ def calc_ferias():
 
                 for ev in eventos:
                     mat  = ev["matricula"]
+                    if mat in sem_ferias:
+                        continue
                     dias = int(ev.get("ref1") or 0)
                     if dias == 0 and ev.get("data1i") and ev.get("data1f"):
                         d1 = ev["data1i"]; d2 = ev["data1f"]
@@ -40853,14 +41165,18 @@ def recibo_ferias():
                 mats  = list({e["matricula"] for e in eventos})
                 r_cad = (
                     supabase.table("tab_cad")
-                    .select("matricula, nome, nomer")
+                    .select("matricula, nome, nomer, codcateg")
                     .eq("id_cliente", id_cliente)
                     .eq("id_empresa", id_empresa)
                     .in_("matricula", mats)
                     .execute()
                 )
-                nomes = {c["matricula"]: (c.get("nomer") or c.get("nome") or "").strip()
+                nomes = {c["matricula"]: (c.get("nome") or c.get("nomer") or "").strip()
                          for c in (r_cad.data or [])}
+                # Fora da lista quem não registra férias: 111 (intermitente)
+                # e acima de 700 (pró-labore, sócio, diretor, estagiário)
+                sem_ferias = {c["matricula"] for c in (r_cad.data or [])
+                              if not _categoria_tem_ferias(c.get("codcateg"))}
 
                 def _f8(s):
                     s = str(s or "")
@@ -40868,6 +41184,8 @@ def recibo_ferias():
 
                 for ev in eventos:
                     mat  = ev["matricula"]
+                    if mat in sem_ferias:
+                        continue
                     dias = int(ev.get("ref1") or 0)
                     if not dias and ev.get("data1i") and ev.get("data1f"):
                         d1, d2 = str(ev["data1i"]), str(ev["data1f"])
