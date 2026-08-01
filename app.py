@@ -8330,6 +8330,11 @@ def incluir_funcao_cliente():
         return jsonify({"ok": False, "msg": "Função não informada"})
     if not nome_resumido:
         return jsonify({"ok": False, "msg": "Nome resumido não informado"})
+    if len(nome_resumido) > NOME_RESUMIDO_MAX:
+        return jsonify({"ok": False,
+                        "msg": (f"O nome resumido pode ter no máximo {NOME_RESUMIDO_MAX} "
+                                f"caracteres (você digitou {len(nome_resumido)}). "
+                                "Encurte o nome e grave de novo.")})
     if not id_cliente:
         return jsonify({"ok": False, "msg": "Sessão inválida"})
 
@@ -8390,6 +8395,25 @@ def incluir_funcao_cliente():
 # =========================================================
 # API ALTERAR FUNÇÃO DO CLIENTE
 # =========================================================
+# tab_funcao_cli.nome_resumido e varchar(50): passar disso o banco recusa com
+# "value too long for type character varying(50)", que nao diz nada ao cliente.
+# 12% dos nomes do catalogo CBO passam de 50 (chegam a 104), e a tela sugere o
+# nome oficial como nome resumido — por isso o corte tem que existir aqui.
+NOME_RESUMIDO_MAX = 50
+
+
+def _cortar_nome_resumido(nome):
+    """Encurta para caber na coluna, cortando na palavra sempre que der."""
+    t = re.sub(r"\s+", " ", str(nome or "")).strip()
+    if len(t) <= NOME_RESUMIDO_MAX:
+        return t
+    corte = t[:NOME_RESUMIDO_MAX]
+    espaco = corte.rfind(" ")
+    if espaco >= NOME_RESUMIDO_MAX - 15:      # nao corta no meio da palavra
+        corte = corte[:espaco]
+    return corte.rstrip(" ,.-;:")
+
+
 def _funcao_cli_do_cliente(id_funcao_cli, id_cliente):
     """Devolve a linha de tab_funcao_cli se ela for mesmo deste cliente."""
     r = (supabase.table("tab_funcao_cli")
@@ -8434,6 +8458,11 @@ def alterar_funcao_cliente():
         return jsonify({"ok": False, "msg": "Função não informada"})
     if not nome_resumido:
         return jsonify({"ok": False, "msg": "Nome resumido não informado"})
+    if len(nome_resumido) > NOME_RESUMIDO_MAX:
+        return jsonify({"ok": False,
+                        "msg": (f"O nome resumido pode ter no máximo {NOME_RESUMIDO_MAX} "
+                                f"caracteres (você digitou {len(nome_resumido)}). "
+                                "Encurte o nome e grave de novo.")})
 
     try:
         linha = _funcao_cli_do_cliente(id_funcao, id_cliente)
@@ -43648,7 +43677,7 @@ def _imp_funcao_f10(caminho, id_cliente):
             'id_cliente':      id_cliente,
             'id_funcao_total': id_funcao_total,
             'cbo_codigo':     cbo,
-            'nome_resumido':  rec['nome_resumido'],
+            'nome_resumido':  _cortar_nome_resumido(rec['nome_resumido']),
             'cnpj':           '0',
             'situacao':       'A',
         }

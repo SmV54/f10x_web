@@ -853,7 +853,8 @@
 
                 <div class="campo">
                   <label title="Nome resumido para uso interno na empresa">② Nome resumido na empresa</label>
-                  <input type="text" id="nomeResumido" value="{{ nome_resumido if nome_resumido else '' }}" placeholder="Ex: Motorista, Aux. Administrativo, Gerente...">
+                  <input type="text" id="nomeResumido" maxlength="50" value="{{ nome_resumido if nome_resumido else '' }}" placeholder="Ex: Motorista, Aux. Administrativo, Gerente...">
+                  <div class="cbo-msg" id="nomeMsg"></div>
                 </div>
               </div>
 
@@ -1067,6 +1068,34 @@
       if (rodape) rodape.classList.add("hidden");
     }
 
+    // A coluna nome_resumido do banco e varchar(50) e 12% dos nomes oficiais do
+    // CBO passam disso (chegam a 104). Corta na palavra e avisa, em vez de
+    // deixar o banco recusar a gravacao com uma mensagem incompreensivel.
+    var NOME_MAX = 50;
+
+    function preencherNomeResumido(nome) {
+        var campo = document.getElementById("nomeResumido");
+        var msg   = document.getElementById("nomeMsg");
+        if (!campo) return;
+        var t = (nome || "").replace(/\s+/g, " ").trim();
+        var cortado = false;
+        if (t.length > NOME_MAX) {
+            var corte = t.slice(0, NOME_MAX);
+            var espaco = corte.lastIndexOf(" ");
+            if (espaco >= NOME_MAX - 15) corte = corte.slice(0, espaco);
+            t = corte.replace(/[ ,.\-;:]+$/, "");
+            cortado = true;
+        }
+        campo.value = t;
+        if (msg) {
+            msg.textContent = cortado
+                ? "O nome oficial é longo demais para o campo (máx. " + NOME_MAX +
+                  ") — encurtei. Ajuste como preferir."
+                : "";
+            msg.className = "cbo-msg" + (cortado ? " erro" : "");
+        }
+    }
+
     function selecionarFuncao(linha, viaCbo) {
       // Escolher outra função no catálogo encerra a alteração em andamento:
       // na alteração o CBO não muda, então isso aqui é uma nova inclusão.
@@ -1095,7 +1124,7 @@
         void campoFuncao.offsetWidth;
         campoFuncao.classList.add("funcao-preenchida");
       }
-      if (campoNome) campoNome.value = nome;
+      if (campoNome) preencherNomeResumido(nome);
       if (rodape) rodape.classList.remove("hidden");
 
       // Mantém os dois caminhos em sincronia: campo do CBO x lista do catálogo
