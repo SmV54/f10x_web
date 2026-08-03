@@ -823,9 +823,12 @@ const modulos = {
     }
 };
 
-const CPF_INTERNO = '15313921487';
+// Quem ve o card ADMIN quem decide e o servidor (_pode_admin): toda a conta
+// da F10, nao um CPF. Comparar CPF aqui ainda imprimia o CPF do dono do
+// sistema no fonte da pagina de todo cliente.
+const MOSTRA_ADMIN = {{ 'true' if mostra_admin else 'false' }};
 const ordem = ['cadastros','novafolha','eventuais','movimento','movimentofixo','calculo','relatorios','conexoes','esocial',
-                'diversos', ...(CPF_USUARIO === CPF_INTERNO ? ['interno_f10'] : [])];
+                'diversos', ...(MOSTRA_ADMIN ? ['interno_f10'] : [])];
 
 // ── Renderiza os 10 cards ──
 const grid = document.getElementById('modulosGrid');

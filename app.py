@@ -1189,6 +1189,7 @@ def menu():
         cert_dias=cert_dias,
         cert_validade_fmt=cert_validade_fmt,
         eh_admin_f10=(_pode_impersonar() or bool(session.get("cpf_admin_original"))),
+        mostra_admin=_pode_admin(),
         sou_titular=_sou_titular(),
     )
 
@@ -30632,7 +30633,7 @@ def api_esocial_verificacao_xml():
     try:
         partes = path.split("/")
         cli_no_path = int(partes[2]) if len(partes) >= 3 else -1
-        if cli_no_path != int(id_cliente or 0) and not _is_admin_f10():
+        if cli_no_path != int(id_cliente or 0) and not _pode_admin():
             return Response("Acesso negado.", status=403, mimetype="text/plain")
     except Exception:
         return Response("Path inválido.", status=400, mimetype="text/plain")
@@ -42082,7 +42083,7 @@ def _fmt_data_limite(v):
 def admin_clientes():
     if not session.get("logado"):
         return redirect("/")
-    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect("/menu")
     try:
         _cols = ("id_cliente, nome, cpf, email, data_limite, "
@@ -42147,7 +42148,7 @@ def api_admin_online():
     verde sem recarregar a tela."""
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     try:
         limite = (_agora_brasilia() - timedelta(seconds=PRESENCA_ONLINE_S)).isoformat()
@@ -42167,7 +42168,7 @@ def api_admin_online():
 def api_admin_clientes_empresas(id_cliente):
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     try:
         empresas = (supabase.table("tab_empresa")
@@ -42202,7 +42203,7 @@ def api_admin_clientes_empresas(id_cliente):
 def admin_leads():
     if not session.get("logado"):
         return redirect("/")
-    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect("/menu")
     try:
         leads = (supabase.table("tab_lead")
@@ -42232,7 +42233,7 @@ def admin_leads():
 def api_admin_leads_excluir():
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if str(session.get("cpf") or "") != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     data = request.get_json(silent=True) or {}
     try:
@@ -42390,7 +42391,7 @@ def aviso_lido():
 def admin_avisos():
     if not session.get("logado"):
         return redirect("/")
-    if not _is_admin_f10():
+    if not _pode_admin():
         return redirect("/menu")
 
     agora_iso = _agora_brasilia().strftime("%Y-%m-%dT%H:%M:%S")
@@ -42478,7 +42479,7 @@ def admin_avisos():
 def api_admin_avisos_salvar():
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
 
     d = request.get_json(silent=True) or {}
@@ -42545,7 +42546,7 @@ def api_admin_avisos_encerrar():
     """Tira o aviso do ar sem apagar (ativo='N')."""
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     d = request.get_json(silent=True) or {}
     try:
@@ -42563,7 +42564,7 @@ def api_admin_avisos_encerrar():
 def api_admin_avisos_excluir():
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     d = request.get_json(silent=True) or {}
     try:
@@ -42616,6 +42617,18 @@ def _equipe_f10():
         return int((orig if orig is not None else session.get("id_cliente")) or 0) == ID_CLIENTE_F10
     except Exception:
         return False
+
+
+def _pode_admin():
+    """Modulo Administrador: qualquer usuario da conta da F10.
+
+    Impersonando um cliente ninguem entra, nem o master — la dentro a sessao
+    e do cliente, e a saida e o banner amarelo. E o que _is_admin_f10 ja fazia
+    sozinho, porque durante a impersonacao o cpf da sessao e o do cliente.
+    """
+    if session.get("cpf_admin_original"):
+        return False
+    return _is_admin_f10() or _equipe_f10()
 
 
 def _pode_impersonar():
@@ -42828,7 +42841,7 @@ def parar_impersonar():
 def admin_esocial_xml():
     if not session.get("logado"):
         return redirect("/")
-    if not _is_admin_f10():
+    if not _pode_admin():
         return redirect("/menu")
     try:
         clientes = (supabase.table("tab_cliente")
@@ -42853,7 +42866,7 @@ def admin_esocial_xml():
 def api_admin_xml_empresas(id_cliente):
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     try:
         empresas = (supabase.table("tab_empresa")
@@ -42879,7 +42892,7 @@ def api_admin_xml_empresas(id_cliente):
 def api_admin_xml_ultimo_envio(id_empresa):
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     try:
         rows = (supabase.table("tab_esocial")
@@ -42907,7 +42920,7 @@ def api_admin_xml_ultimo_envio(id_empresa):
 def api_admin_xml_listar():
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
 
     id_cliente = request.args.get("id_cliente", "").strip()
@@ -43011,7 +43024,7 @@ def api_admin_xml_listar():
 def api_admin_xml_arquivo():
     if not session.get("logado"):
         return Response("Não autenticado.", status=401, mimetype="text/plain")
-    if not _is_admin_f10():
+    if not _pode_admin():
         return Response("Acesso negado.", status=403, mimetype="text/plain")
 
     path = request.args.get("path", "").strip()
@@ -43038,7 +43051,7 @@ def api_admin_xml_arquivo():
 def admin_licenca_uso():
     if not session.get("logado"):
         return redirect("/")
-    if not _is_admin_f10():
+    if not _pode_admin():
         return redirect("/menu")
     try:
         clientes = (supabase.table("tab_cliente")
@@ -43060,7 +43073,7 @@ def admin_licenca_uso():
 def api_admin_licenca_get(id_cliente):
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False}), 403
     try:
         rc = (supabase.table("tab_cliente")
@@ -43096,7 +43109,7 @@ def api_admin_licenca_get(id_cliente):
 def api_admin_licenca_gravar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
-    if not _is_admin_f10():
+    if not _pode_admin():
         return jsonify({"ok": False, "msg": "Acesso restrito ao admin F10."}), 403
 
     data = request.get_json(force=True) or {}
@@ -44339,7 +44352,7 @@ def _imp_sindicatos_f10(caminho, id_cliente):
 def admin_importar_f10():
     if not session.get('logado'):
         return redirect('/')
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect('/menu')
     try:
         clientes = (supabase.table('tab_cliente')
@@ -44356,7 +44369,7 @@ def admin_importar_f10():
 @app.route('/api/admin_importar_f10/arquivos')
 def api_admin_imp_arquivos():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     try:
         if not os.path.isdir(PASTA_BASES_F10):
             return jsonify({'ok': True, 'arquivos': [],
@@ -44379,7 +44392,7 @@ def api_admin_imp_arquivos():
 @app.route('/api/admin_importar_f10/inspecionar')
 def api_admin_imp_inspecionar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -44452,7 +44465,7 @@ def _ler_empresas_access(caminho):
 def api_admin_imp_empresas():
     """Varre todos os arquivos FolhaFIX_*.accdb/.mdb e retorna empresas de cada um."""
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     try:
         import pyodbc  # noqa — só para verificar disponibilidade
     except ImportError:
@@ -44485,7 +44498,7 @@ def api_admin_imp_empresas():
 @app.route('/api/admin_importar_f10/comparar_empresa')
 def api_admin_imp_comparar_empresa():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -44533,7 +44546,7 @@ def api_admin_imp_comparar_empresa():
 def api_admin_imp_dump_filial():
     """Diagnóstico bruto: abre cada arquivo não-FolhaFIX, lista tabelas e primeiras linhas."""
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -44592,7 +44605,7 @@ def api_admin_imp_dump_filial():
 @app.route('/api/admin_importar_f10/comparar_filial')
 def api_admin_imp_comparar_filial():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -44692,7 +44705,7 @@ def api_admin_imp_comparar_filial():
 @app.route('/api/admin_importar_f10/comparar_cc')
 def api_admin_imp_comparar_cc():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -44758,7 +44771,7 @@ def api_admin_imp_comparar_cc():
 @app.route('/api/admin_importar_f10/comparar_funcao')
 def api_admin_imp_comparar_funcao():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -46752,7 +46765,7 @@ def _imp_folhas_f10(caminho, id_cliente):
 @app.route('/api/admin_importar_f10/comparar_func')
 def api_admin_imp_comparar_func():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -46882,7 +46895,7 @@ def api_admin_imp_comparar_func():
 def api_admin_imp_comparar_tabreg():
     """Inspeciona as tabelas tabreg nos arquivos F######_#### antes de migrar."""
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     nome = request.args.get('arquivo', '').strip()
     if not nome or '..' in nome or '/' in nome or '\\' in nome: return jsonify({'ok': False, 'msg': 'Arquivo inválido'})
     if not nome.lower().endswith(('.mdb', '.accdb')): return jsonify({'ok': False, 'msg': 'Extensão inválida'})
@@ -46951,7 +46964,7 @@ def api_admin_imp_comparar_tabreg():
 @app.route('/api/admin_importar_f10/executar', methods=['POST'])
 def api_admin_imp_executar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     body       = request.get_json(silent=True) or {}
     nome_arq   = (body.get('arquivo')    or '').strip()
     id_cliente = body.get('id_cliente')
@@ -47109,7 +47122,7 @@ def api_admin_imp_revisar():
     registros. Retorna status por etapa (ok / vazia / fallback / ausente) + resumo.
     Não grava nada — só leitura para o relatório de confirmação."""
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     ok_amb, msg_amb = _checar_ambiente_access()
     if not ok_amb:
         return jsonify({'ok': False, 'msg': msg_amb})
@@ -47603,7 +47616,7 @@ def _cobranca_gravar(caminho_nf, cod, cli, ndps, valor):
 def api_admin_nf_emitir():
     if not session.get('logado'):
         return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({'ok': False, 'msg': 'Acesso restrito.'}), 403
     import nfse_nacional as nfx
 
@@ -47865,7 +47878,7 @@ def _nfse_listar_emitidas(caminho):
 def api_admin_nf_emitidas():
     if not session.get('logado'):
         return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({'ok': False}), 403
     caminho = _arquivo_nf()
     if not caminho:
@@ -47881,7 +47894,7 @@ def api_admin_nf_emitidas():
 def api_admin_nf_xml():
     if not session.get('logado'):
         return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({'ok': False}), 403
     chave = _re_digits(request.args.get('chave', ''))
     caminho = _arquivo_nf()
@@ -47902,7 +47915,7 @@ def api_admin_nf_xml():
 def api_admin_nf_pdf():
     if not session.get('logado'):
         return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({'ok': False}), 403
     import nfse_nacional as nfx
     chave = _re_digits(request.args.get('chave', ''))
@@ -47929,7 +47942,7 @@ def api_admin_nf_whatsapp():
     """Envia o DANFSe (PDF) para o Celular_Whatsapp do cliente via Z-API."""
     if not session.get('logado'):
         return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return jsonify({'ok': False, 'msg': 'Acesso restrito.'}), 403
     import nfse_nacional as nfx
     data = request.get_json(force=True) or {}
@@ -47990,7 +48003,7 @@ def api_admin_nf_whatsapp():
 def admin_nf_consulta():
     if not session.get('logado'):
         return redirect('/')
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect('/menu')
     return render_template('F10_Admin_NF_Consulta.html',
                            versao=ler_versao(),
@@ -48001,7 +48014,7 @@ def admin_nf_consulta():
 def admin_nf():
     if not session.get('logado'):
         return redirect('/')
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect('/menu')
     return render_template('F10_Admin_NF.html',
                            versao=ler_versao(),
@@ -48012,7 +48025,7 @@ def admin_nf():
 @app.route('/api/admin_nf/clientes')
 def api_admin_nf_clientes():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     if not PASTA_NF:
         return jsonify({'ok': False, 'msg': 'Local do TABNF não configurado (PASTA_NF no app.py).'})
     ok_amb, msg_amb = _checar_ambiente_access()
@@ -48244,7 +48257,7 @@ def _copiar_base_para_teste(id_orig, id_emp_orig, job_id, meses=None):
 def admin_copiar_base():
     if not session.get('logado'):
         return redirect('/')
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect('/menu')
     return render_template('F10_Admin_Copiar_Base.html',
                            versao=ler_versao(),
@@ -48255,7 +48268,7 @@ def admin_copiar_base():
 @app.route('/api/admin_copiar_base/clientes')
 def api_admin_copiar_clientes():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     try:
         r = (supabase.table("tab_cliente")
              .select("id_cliente, nome, cpf")
@@ -48270,7 +48283,7 @@ def api_admin_copiar_clientes():
 @app.route('/api/admin_copiar_base/empresas/<int:id_cliente>')
 def api_admin_copiar_empresas(id_cliente):
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     try:
         r = (supabase.table("tab_empresa")
              .select("id_empresa, cnpj, razaosocial, nome_fantasia")
@@ -48290,7 +48303,7 @@ def api_admin_copiar_meses(id_cliente, id_empresa):
     """Lista os anos/meses (folhas) existentes da empresa, para o operador escolher
     quais copiar em tab_mov/tab_total. Fonte: tab_anomes (registro de períodos)."""
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     try:
         r = (supabase.table("tab_anomes")
              .select("ano_mes")
@@ -48308,7 +48321,7 @@ def api_admin_copiar_meses(id_cliente, id_empresa):
 @app.route('/api/admin_copiar_base/executar', methods=['POST'])
 def api_admin_copiar_executar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     body = request.get_json(silent=True) or {}
     id_orig = body.get('id_cliente')
     id_emp  = body.get('id_empresa')
@@ -48412,7 +48425,7 @@ def _rodar_backup_supabase(job_id, carimbo):
 def admin_backup_supabase():
     if not session.get('logado'):
         return redirect('/')
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10:
+    if not _pode_admin():
         return redirect('/menu')
     return render_template('F10_Admin_Backup.html',
                            versao=ler_versao(), nome=session.get('nome', ''),
@@ -48422,7 +48435,7 @@ def admin_backup_supabase():
 @app.route('/api/admin_backup_supabase/executar', methods=['POST'])
 def api_admin_backup_executar():
     if not session.get('logado'): return jsonify({'ok': False}), 401
-    if str(session.get('cpf') or '') != CPF_ADMIN_F10: return jsonify({'ok': False}), 403
+    if not _pode_admin(): return jsonify({'ok': False}), 403
     carimbo = _agora_brasilia().strftime('%Y%m%d')
     job_id = uuid.uuid4().hex[:12]
     _backup_jobs[job_id] = {'pct': 0, 'etapa': '', 'done': False, 'resultado': None,
