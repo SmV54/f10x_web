@@ -10247,8 +10247,9 @@ def cad_verba():
     )
 
     # Verbas com cod_rubr < 1000 sao "do sistema" (id_cliente=0) e so podem
-    # ser alteradas pelo administrador F10 (CPF 15313921487).
-    is_admin_verbas = (str(session.get("cpf") or "") == CPF_ADMIN_F10)
+    # ser alteradas por quem e da conta da F10 — mesma regra do modulo
+    # Administrador, entao quem entra la mexe nelas tambem.
+    is_admin_verbas = _pode_admin()
 
     return render_template(
         "F10_Cad_Verba.html",
@@ -10411,6 +10412,18 @@ def api_rubrica_incluir():
     if not tp_rubr:
         return jsonify({"ok": False, "msg": "Tipo da verba obrigatório"})
 
+    # Incluir com cod < 1000 cria verba do SISTEMA, que vale para todos os
+    # clientes. A tela ja limitava a faixa para quem nao e da F10, mas nada
+    # barrava o POST direto — e editar/desativar sempre foram travados aqui.
+    try:
+        _cod_novo = int(cod_rubr)
+    except (TypeError, ValueError):
+        _cod_novo = 0
+    if _cod_novo < 1000 and not _pode_admin():
+        return jsonify({"ok": False,
+            "msg": ("Verbas abaixo de 1000 sao do sistema e so podem ser "
+                    "criadas pelo administrador F10.")})
+
     # Verbas do sistema (cod_rubr < 1000) sao gravadas com id_cliente = 0.
     try:
         id_cliente_grava = 0 if int(cod_rubr) < 1000 else id_cliente
@@ -10489,7 +10502,7 @@ def api_rubrica_editar():
               .eq("id", int(id_reg))
               .limit(1).execute())
         _cod = int((_v.data or [{}])[0].get("cod_rubr") or 0)
-        if _cod < 1000 and str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        if _cod < 1000 and not _pode_admin():
             return jsonify({"ok": False,
                 "msg": (f"Verba {_cod:04d} e do sistema e so pode ser alterada "
                         "pelo administrador F10.")})
@@ -10580,7 +10593,7 @@ def api_rubrica_desativar():
               .eq("id", int(id_reg))
               .limit(1).execute())
         _cod = int((_v.data or [{}])[0].get("cod_rubr") or 0)
-        if _cod < 1000 and str(session.get("cpf") or "") != CPF_ADMIN_F10:
+        if _cod < 1000 and not _pode_admin():
             return jsonify({"ok": False,
                 "msg": (f"Verba {_cod:04d} e do sistema e so pode ser desativada "
                         "pelo administrador F10.")})

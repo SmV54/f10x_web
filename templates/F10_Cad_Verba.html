@@ -939,11 +939,11 @@
       alert('Verba nao encontrada (id ' + id + ').');
       return;
     }
-    // Verbas do sistema (cod_rubr < 1000) so podem ser alteradas pelo admin
-    // (CPF 15313921487). Para os demais usuarios, sao somente leitura.
+    // Verbas do sistema (cod_rubr < 1000) so a equipe F10 altera; quem pode e
+    // decidido no servidor (IS_ADMIN_VERBAS). Para os demais, somente leitura.
     if (Number(v.cod_rubr) < 1000 && !IS_ADMIN_VERBAS) {
       alert('Verba ' + String(v.cod_rubr).padStart(4, '0') + ' (' + v.dsc_rubr +
-            ') e do sistema. So pode ser alterada pelo administrador F10 (CPF 15313921487).');
+            ') e do sistema. So pode ser alterada pelo administrador F10.');
       return;
     }
 
