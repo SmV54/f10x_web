@@ -254,16 +254,18 @@ input[type="password"]:focus {
 
     <div class="form">
 
-        <input type="text" id="cpf" placeholder="CPF" autocomplete="off" maxlength="14">
+        <!-- readonly de proposito: campo somente-leitura nao recebe autofill do
+             navegador. O JS tira o readonly no primeiro clique/foco. -->
+        <input type="text" id="cpf" placeholder="CPF" autocomplete="off" maxlength="14" readonly>
         <div id="erro_cpf" class="linha-erro"></div>
 
-        <input type="text" id="nome" placeholder="Nome completo" autocomplete="off">
+        <input type="text" id="nome" placeholder="Nome completo" autocomplete="off" readonly>
         <div id="erro_nome" class="linha-erro"></div>
 
-        <input type="text" id="celular" placeholder="Celular com DDD" autocomplete="off">
+        <input type="text" id="celular" placeholder="Celular com DDD" autocomplete="off" readonly>
         <div id="erro_celular" class="linha-erro"></div>
 
-        <input type="text" id="email" placeholder="E-mail" autocomplete="off">
+        <input type="text" id="email" placeholder="E-mail" autocomplete="off" readonly>
         <div id="erro_email" class="linha-erro"></div>
 
         <div class="opcao-envio">
@@ -773,10 +775,24 @@ CAMPOS_CADASTRO.forEach(id => {
         c.addEventListener(ev, () => { pessoaMexeu = true; }));
 });
 
+// Trava principal contra o "perfil salvo" do navegador (o menu de informações
+// pessoais do Edge/Chrome, que chegou a jogar um CPF dentro do campo de
+// e-mail): campo readonly não é preenchido por autofill. O readonly sai no
+// primeiro foco, então para quem está digitando não muda nada. NÃO devolvemos
+// o readonly depois — voltar a travar o campo atrapalharia a edição.
+CAMPOS_CADASTRO.forEach(id => {
+    const c = el(id);
+    if (!c || !c.hasAttribute("readonly")) return;
+    const liberar = () => c.removeAttribute("readonly");
+    ["focus", "mousedown", "touchstart", "keydown"].forEach(ev =>
+        c.addEventListener(ev, liberar, { once: true }));
+});
+
 limparCamposIniciais();
 window.addEventListener("load", limparCamposIniciais);
 [100, 300, 700, 1200].forEach(ms => setTimeout(limparCamposIniciais, ms));
-el("cpf").focus();
+// Sem focar nada no load: foco programático faz o navegador abrir o menu de
+// sugestões e é justamente o que não queremos aqui.
 </script>
 
 <script src="/static/f10_dialog.js"></script>
