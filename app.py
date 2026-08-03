@@ -10408,8 +10408,6 @@ def cad_anomes():
         anomes_list = []
 
     # Calcula próximo ano/mês sugerido
-    from datetime import date as _date
-    hoje = _date.today()
     if anomes_list:
         ultimo = anomes_list[0]["ano_mes"]  # mais recente (ordem desc)
         _ano = int(ultimo[:4])
@@ -10420,7 +10418,9 @@ def cad_anomes():
             _ano += 1
         proximo_anomes = f"{_ano:04d}{_mes:02d}"
     else:
-        proximo_anomes = f"{hoje.year:04d}{hoje.month:02d}"
+        # Empresa ainda sem nenhuma folha: mesma regra do cadastro inicial
+        # (ate o dia 5 sugere o mes anterior).
+        proximo_anomes = _anomes_inicial()
 
     # Busca data_limite do cliente (formato "YYYY-MM" → "YYYYMM")
     limite_anomes = ""
@@ -10527,10 +10527,33 @@ def _criar_cc_padrao(id_cliente, id_empresa):
         return False
 
 
+# Ate esse dia do mes, o cliente novo recebe a folha do mes ANTERIOR.
+DIA_CORTE_MES_ANTERIOR = 5
+
+
+def _anomes_inicial():
+    """Competencia que a empresa recem-cadastrada recebe aberta (yyyymm).
+
+    Quem se cadastra nos primeiros dias do mes quase sempre tem a folha do mes
+    que passou ainda por fechar — o pagamento so vence no 5o dia util. Abrir o
+    mes corrente nessa janela deixaria o cliente sem como processar o mes que
+    ele veio processar. Dai o corte no dia 5: ate ele, mes anterior; depois,
+    mes corrente. Ex.: cadastro em 03/08/2026 -> abre 202607.
+    """
+    hoje = _agora_brasilia()
+    if hoje.day <= DIA_CORTE_MES_ANTERIOR:
+        ano, mes = hoje.year, hoje.month - 1
+        if mes == 0:
+            ano, mes = ano - 1, 12
+        return f"{ano:04d}{mes:02d}"
+    return hoje.strftime("%Y%m")
+
+
 def _abrir_folha_inicial(id_cliente, id_empresa):
-    """Abre a folha Normal do mes corrente para a empresa recem-cadastrada.
-    Respeita a data_limite da licenca. Retorna o ano_mes aberto ou ""."""
-    ano_mes = _agora_brasilia().strftime("%Y%m")
+    """Abre a folha Normal inicial para a empresa recem-cadastrada (mes corrente
+    ou o anterior, conforme _anomes_inicial). Respeita a data_limite da licenca.
+    Retorna o ano_mes aberto ou ""."""
+    ano_mes = _anomes_inicial()
     try:
         dl = ((supabase.table("tab_cliente")
                .select("data_limite")
