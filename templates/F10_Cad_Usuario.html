@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Usuários</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 24px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+.topo-esq { display: flex; flex-direction: column; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #111827; }
+.topo-nome { font-size: 11px; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-badge { display: inline-block; margin-top: 4px; font-size: 11px; background: #70c4a0; color: #374151; border-radius: 10px; padding: 2px 10px; }
+.topo-dir { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar-topo { background: transparent; border: 1px solid #70c4a0; color: #374151; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+.container { max-width: 900px; margin: 24px auto; padding: 0 18px 60px; }
+.alerta { border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; }
+.alerta-aviso { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.alerta-ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.alerta-erro { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+
+.card { background: white; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+.card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+.vagas { font-size: 12px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 8px; padding: 2px 10px; font-weight: 600; }
+.vagas.cheio { background: #fff7ed; color: #9a3412; border-color: #fdba74; }
+
+table { width: 100%; border-collapse: collapse; }
+thead th { background: #eaf1fb; text-align: left; padding: 9px 14px; font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee; white-space: nowrap; font-weight: 600; }
+tbody td { padding: 8px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tbody td.cpf { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tbody tr.inativo td { color: #94a3b8; }
+
+.tag { display: inline-block; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.tag-titular { background: #ede9fe; color: #5b21b6; }
+.tag-eu { background: #e0f2fe; color: #075985; margin-left: 4px; }
+.tag-ativo { background: #dcfce7; color: #166534; }
+.tag-inativo { background: #fee2e2; color: #991b1b; }
+
+.acoes { display: flex; gap: 6px; justify-content: flex-end; }
+.btn-mini { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #334155; cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-mini:hover { border-color: #2a7de1; color: #1e293b; }
+.btn-mini.perigo { border-color: #fca5a5; color: #b91c1c; }
+.btn-mini.perigo:hover { background: #fef2f2; }
+.btn-mini:disabled { opacity: .4; cursor: default; }
+
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; padding: 16px 20px; }
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo.largo { grid-column: 1 / -1; }
+.campo label { font-size: 11px; font-weight: 600; color: #475569; }
+.campo input { height: 38px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 10px; font-size: 13px; }
+.campo input:focus { outline: none; border-color: #2a7de1; }
+.campo .ajuda { font-size: 10px; color: #94a3b8; }
+.rodape-form { display: flex; justify-content: flex-end; gap: 8px; padding: 0 20px 16px; }
+.btn { border: none; border-radius: 8px; font-size: 13px; font-weight: 700; padding: 9px 20px; cursor: pointer; transition: .15s; }
+.btn-ok { background: #166534; color: #fff; }
+.btn-ok:hover { background: #14532d; }
+.btn-ok:disabled { opacity: .5; cursor: default; }
+.btn-neutro { background: #e5e7eb; color: #111827; }
+.btn-neutro:hover { background: #d1d5db; }
+.vazio { padding: 30px; text-align: center; font-size: 13px; color: #94a3b8; }
+.msg { margin: 0 20px 14px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div>
+        <div class="topo-titulo">Usuários da Conta</div>
+        <div style="text-align:center;"><span class="topo-badge">Até {{ limite }} usuários ativos</span></div>
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="container">
+
+<div class="card">
+    <div class="card-header">
+        <h2>Quem tem acesso</h2>
+        <span class="vagas {% if ativos >= limite %}cheio{% endif %}">
+            {{ ativos }} de {{ limite }} ativos
+        </span>
+    </div>
+
+    {% if usuarios %}
+    <table>
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>CPF</th>
+                <th>Situação</th>
+                <th>Último acesso</th>
+                <th style="text-align:right;">Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for u in usuarios %}
+            <tr class="{% if not u.ativo %}inativo{% endif %}">
+                <td>
+                    {{ u.nome }}
+                    {% if u.eh_titular %}<span class="tag tag-titular">Responsável</span>{% endif %}
+                    {% if u.sou_eu %}<span class="tag tag-eu">você</span>{% endif %}
+                </td>
+                <td class="cpf">{{ u.cpf_fmt }}</td>
+                <td>
+                    {% if u.ativo %}<span class="tag tag-ativo">Ativo</span>
+                    {% else %}<span class="tag tag-inativo">Desativado</span>{% endif %}
+                </td>
+                <td class="cpf">{{ u.ultimo_fmt }}</td>
+                <td>
+                    <div class="acoes">
+                    {% if sou_titular %}
+                        <button class="btn-mini"
+                                onclick="abrirEdicao({{ u.id_usuario }}, {{ u.nome|tojson }}, {{ (u.celular or '')|tojson }}, {{ (u.email or '')|tojson }})">
+                            Alterar
+                        </button>
+                        {% if not u.eh_titular %}
+                            {% if u.ativo %}
+                            <button class="btn-mini perigo" onclick="mudarSituacao({{ u.id_usuario }}, false, {{ u.nome|tojson }})">Desativar</button>
+                            {% else %}
+                            <button class="btn-mini" onclick="mudarSituacao({{ u.id_usuario }}, true, {{ u.nome|tojson }})">Reativar</button>
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+                    </div>
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">Nenhum usuário cadastrado.</div>
+    {% endif %}
+</div>
+
+{% if sou_titular %}
+<div class="card">
+    <div class="card-header">
+        <h2 id="titulo-form">Novo usuário</h2>
+    </div>
+
+    {% if not pode_incluir %}
+    <div class="alerta alerta-aviso" style="margin:16px 20px;">
+        O seu plano permite <strong>{{ limite }} usuários ativos</strong> e as vagas
+        estão ocupadas. Para liberar mais, entre em contato com a gente —
+        ou desative um usuário para abrir uma vaga.
+    </div>
+    {% endif %}
+
+    <div class="form-grid">
+        <div class="campo largo">
+            <label for="f-nome">Nome do usuário</label>
+            <input type="text" id="f-nome" maxlength="80" autocomplete="off">
+        </div>
+        <div class="campo">
+            <label for="f-cpf">CPF</label>
+            <input type="text" id="f-cpf" maxlength="14" autocomplete="off"
+                   oninput="mascaraCpf(this)" placeholder="000.000.000-00">
+            <span class="ajuda" id="ajuda-cpf">É com esse CPF que a pessoa entra no sistema.</span>
+        </div>
+        <div class="campo">
+            <label for="f-senha">Senha (6 dígitos)</label>
+            <input type="text" id="f-senha" maxlength="6" inputmode="numeric" autocomplete="off"
+                   oninput="this.value=this.value.replace(/\D/g,'')">
+            <span class="ajuda" id="ajuda-senha">A pessoa usa essa senha no primeiro acesso.</span>
+        </div>
+        <div class="campo">
+            <label for="f-celular">Celular (opcional)</label>
+            <input type="text" id="f-celular" maxlength="15" autocomplete="off">
+        </div>
+        <div class="campo">
+            <label for="f-email">E-mail (opcional)</label>
+            <input type="text" id="f-email" maxlength="120" autocomplete="off">
+        </div>
+    </div>
+
+    <div class="msg" id="msg-form"></div>
+
+    <div class="rodape-form">
+        <button class="btn btn-neutro" id="btn-cancelar" onclick="cancelarEdicao()" style="display:none;">Cancelar</button>
+        <button class="btn btn-ok" id="btn-gravar" onclick="gravar()"
+                {% if not pode_incluir %}disabled{% endif %}>Incluir usuário</button>
+    </div>
+</div>
+{% endif %}
+
+</div>
+
+<script>
+const LIMITE       = {{ limite }};
+const PODE_INCLUIR = {{ 'true' if pode_incluir else 'false' }};
+let editando = null;          // id_usuario em edição, ou null = inclusão
+
+function el(id) { return document.getElementById(id); }
+
+function msg(texto, tipo) {
+    const m = el("msg-form");
+    if (!m) return;
+    m.innerHTML = texto ? `<div class="alerta alerta-${tipo}">${texto}</div>` : "";
+}
+
+function mascaraCpf(campo) {
+    let v = campo.value.replace(/\D/g, "").slice(0, 11);
+    v = v.replace(/^(\d{3})(\d)/, "$1.$2")
+         .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+         .replace(/\.(\d{3})(\d)/, ".$1-$2");
+    campo.value = v;
+}
+
+function abrirEdicao(id, nome, celular, email) {
+    editando = id;
+    el("titulo-form").textContent = "Alterar usuário";
+    el("f-nome").value    = nome || "";
+    el("f-celular").value = celular || "";
+    el("f-email").value   = email || "";
+    el("f-cpf").value     = "";
+    el("f-senha").value   = "";
+    // CPF não muda: é a identidade do login e a chave do registro.
+    el("f-cpf").disabled  = true;
+    el("ajuda-cpf").textContent   = "O CPF não pode ser alterado.";
+    el("ajuda-senha").textContent = "Deixe em branco para manter a senha atual.";
+    el("btn-gravar").textContent  = "Gravar alteração";
+    el("btn-gravar").disabled     = false;
+    el("btn-cancelar").style.display = "";
+    msg("", "");
+    el("f-nome").focus();
+    el("titulo-form").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function cancelarEdicao() {
+    editando = null;
+    el("titulo-form").textContent = "Novo usuário";
+    ["f-nome", "f-cpf", "f-senha", "f-celular", "f-email"].forEach(id => el(id).value = "");
+    el("f-cpf").disabled = false;
+    el("ajuda-cpf").textContent   = "É com esse CPF que a pessoa entra no sistema.";
+    el("ajuda-senha").textContent = "A pessoa usa essa senha no primeiro acesso.";
+    el("btn-gravar").textContent  = "Incluir usuário";
+    el("btn-gravar").disabled     = !PODE_INCLUIR;
+    el("btn-cancelar").style.display = "none";
+    msg("", "");
+}
+
+async function gravar() {
+    const corpo = {
+        nome:    el("f-nome").value.trim(),
+        senha:   el("f-senha").value.trim(),
+        celular: el("f-celular").value.replace(/\D/g, ""),
+        email:   el("f-email").value.trim(),
+    };
+    let url = "/api/usuario/incluir";
+    if (editando) {
+        url = "/api/usuario/alterar";
+        corpo.id_usuario = editando;
+    } else {
+        corpo.cpf = el("f-cpf").value.replace(/\D/g, "");
+    }
+
+    el("btn-gravar").disabled = true;
+    msg("", "");
+    try {
+        const r = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(corpo),
+        });
+        const j = await r.json();
+        if (j.ok) { location.reload(); return; }
+        msg(j.msg || "Não foi possível gravar.", "erro");
+    } catch (e) {
+        msg("Falha de comunicação. Tente de novo.", "erro");
+    }
+    el("btn-gravar").disabled = false;
+}
+
+async function mudarSituacao(id, ativar, nome) {
+    const acao = ativar ? "reativar" : "desativar";
+    if (!confirm(`Confirma ${acao} o usuário ${nome}?`)) return;
+    try {
+        const r = await fetch("/api/usuario/situacao", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id_usuario: id, ativar: ativar }),
+        });
+        const j = await r.json();
+        if (j.ok) { location.reload(); return; }
+        alert(j.msg || "Não foi possível alterar.");
+    } catch (e) {
+        alert("Falha de comunicação. Tente de novo.");
+    }
+}
+</script>
+
+</body>
+</html>

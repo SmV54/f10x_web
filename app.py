@@ -98,6 +98,47 @@ def no_bfcache(response):
 PRESENCA_INTERVALO_S = 60     # grava no maximo 1x por minuto por sessao
 PRESENCA_ONLINE_S    = 300    # 5 min sem clicar -> deixa de estar online
 
+USUARIO_RECHECK_S = 60      # de quanto em quanto tempo reconfere a situacao
+
+
+@app.before_request
+def _conferir_usuario_ativo():
+    """Usuario desativado perde o acesso mesmo com a sessao ja aberta.
+
+    Checar so no login nao bastaria: quem ja estava dentro continuaria
+    trabalhando ate fechar o navegador — e a sessao e permanente quando a
+    pessoa marca "manter conectado". Reconfere no banco no maximo uma vez por
+    minuto, para nao virar uma consulta por clique.
+    """
+    if request.endpoint == "static" or not session.get("logado"):
+        return
+    if session.get("cpf_admin_original"):
+        return                      # admin impersonando; nao e o usuario dele
+    id_usuario = session.get("id_usuario")
+    if not id_usuario:
+        return                      # sessao antiga, de antes do tab_usuario
+
+    agora  = _agora_brasilia()
+    ultimo = session.get("usuario_conferido_em")
+    if ultimo:
+        try:
+            if (agora - datetime.fromisoformat(ultimo)).total_seconds() < USUARIO_RECHECK_S:
+                return
+        except Exception:
+            pass
+    session["usuario_conferido_em"] = agora.isoformat()
+    try:
+        r = (supabase.table("tab_usuario").select("situacao")
+             .eq("id_usuario", id_usuario).limit(1).execute())
+        linhas = r.data or []
+    except Exception:
+        return       # falha de rede nao pode derrubar quem esta trabalhando
+    situacao = str((linhas[0] if linhas else {}).get("situacao") or "A").upper()
+    if not linhas or situacao != "A":
+        session.clear()
+        return redirect("/?erro=usuario_inativo")
+
+
 @app.before_request
 def _marcar_presenca():
     if request.endpoint == "static":
@@ -121,9 +162,16 @@ def _marcar_presenca():
             pass
     session["presenca_gravada_em"] = agora.isoformat()
     try:
-        supabase.table("tab_cliente").update({
+        # No usuario (quem esta mexendo) e no cliente (o contrato — e o que as
+        # telas de admin leem para saber quem anda usando o sistema).
+        supabase.table("tab_usuario").update({
             "datahora_ultima_atividade": agora.isoformat()
         }).eq("cpf", cpf).execute()
+        id_cliente = session.get("id_cliente")
+        if id_cliente:
+            supabase.table("tab_cliente").update({
+                "datahora_ultima_atividade": agora.isoformat()
+            }).eq("id_cliente", id_cliente).execute()
     except Exception:
         pass      # presenca nunca pode derrubar a requisicao do cliente
 
@@ -502,6 +550,11 @@ TEMPO_BLOQUEIO_MINUTOS = 10
 # =========================================================
 # HELPERS LOGIN
 # =========================================================
+# Quantos usuarios cada cliente pode ter (inclui o titular). Passou disso, so
+# falando com a gente — a tela manda entrar em contato.
+LIMITE_USUARIOS_CLIENTE = 2
+
+
 def _cliente_por_cpf(cpf):
     r = (
         supabase
@@ -513,6 +566,67 @@ def _cliente_por_cpf(cpf):
     )
     dados = r.data or []
     return dados[0] if dados else None
+
+
+def _usuario_por_cpf(cpf):
+    """Quem esta entrando (tab_usuario). Devolve o registro ou None.
+
+    O acesso e por PESSOA: cada CPF e um usuario e aponta para o id_cliente,
+    que e o contrato. O titular nasce junto com o cadastro do cliente; os
+    demais ele cadastra em Cadastros > Tabelas Auxiliares > Usuarios.
+    """
+    try:
+        r = (supabase.table("tab_usuario").select("*")
+             .eq("cpf", cpf).limit(1).execute())
+        dados = r.data or []
+        return dados[0] if dados else None
+    except Exception as e:
+        print(f"[LOGIN] _usuario_por_cpf: {e}")
+        return None
+
+
+def _sou_titular():
+    """True se quem esta na sessao e o responsavel pela conta.
+
+    A flag nasce no login, mas quem ja estava logado quando o tab_usuario
+    entrou no ar tem sessao SEM ela — e ai o titular perderia a tela de
+    usuarios sem entender por que, ate deslogar. Nesse caso resolve pelo CPF
+    no banco e guarda na sessao, para nao consultar a cada clique.
+    """
+    if "usuario_titular" in session:
+        return bool(session["usuario_titular"])
+    cpf = so_numeros(session.get("cpf") or "")
+    if not cpf:
+        return False
+    try:
+        r = (supabase.table("tab_usuario").select("titular")
+             .eq("cpf", cpf).limit(1).execute())
+        linhas = r.data or []
+    except Exception as e:
+        # Banco fora do ar: nega o acesso agora, mas NAO grava nada na sessao.
+        # Gravar False aqui deixaria o titular trancado ate deslogar, muito
+        # depois de o banco ter voltado.
+        print(f"[USUARIO] _sou_titular: {e}")
+        return False
+    val = bool(linhas) and str(linhas[0].get("titular") or "N").upper() == "S"
+    session["usuario_titular"] = val
+    return val
+
+
+def _usuarios_do_cliente(id_cliente):
+    """Usuarios do contrato, titular primeiro e depois por nome."""
+    try:
+        r = (supabase.table("tab_usuario")
+             .select("id_usuario, cpf, nome, situacao, titular, celular, email, "
+                     "datahora_cadastro, datahora_ultimo_login")
+             .eq("id_cliente", id_cliente).execute())
+        linhas = r.data or []
+    except Exception as e:
+        print(f"[USUARIO] _usuarios_do_cliente: {e}")
+        return []
+    linhas.sort(key=lambda u: (str(u.get("titular") or "N") != "S",
+                               (u.get("nome") or "").upper()))
+    return linhas
 
 def _segundos_bloqueio(row):
     bloqueado_ate = row.get("bloqueado_ate")
@@ -531,11 +645,13 @@ def _segundos_bloqueio(row):
         return 0
 
 def _registrar_tentativa(cpf, row):
+    """Conta a senha errada no proprio usuario — o bloqueio e por pessoa, nao
+    por contrato: um usuario errando a senha nao pode travar o colega."""
     tentativas = (row.get("tentativas_login") or 0) + 1
     bloqueado_ate = None
     if tentativas >= MAX_TENTATIVAS_LOGIN:
         bloqueado_ate = (_agora_brasilia() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).isoformat()
-    supabase.table("tab_cliente").update({
+    supabase.table("tab_usuario").update({
         "tentativas_login": tentativas,
         "bloqueado_ate":    bloqueado_ate
     }).eq("cpf", cpf).execute()
@@ -623,7 +739,9 @@ def fazer_login():
     if (not _eh_cpf_teste and not validar_cpf(cpf)) or not re.fullmatch(r"\d{6}", senha):
         return jsonify({"ok": False, "msg": "Dados inválidos"})
 
-    row = _cliente_por_cpf(cpf)
+    # O login e por USUARIO (tab_usuario), nao mais por cliente: o mesmo
+    # contrato pode ter mais de uma pessoa entrando, cada uma com a sua senha.
+    row = _usuario_por_cpf(cpf)
     if row is None:
         # CPF válido, mas sem cadastro: propõe criar conta já com o CPF preenchido
         return jsonify({"ok": False, "nao_cadastrado": True,
@@ -637,29 +755,42 @@ def fazer_login():
 
     if (row.get("senha") or "").strip() != senha:
         _registrar_tentativa(cpf, row)
-        row2 = _cliente_por_cpf(cpf)
+        row2 = _usuario_por_cpf(cpf)
         if _segundos_bloqueio(row2) > 0:
             return jsonify({"ok": False, "bloqueado": True,
                             "msg": "Login bloqueado. Aguarde alguns minutos."})
         return jsonify({"ok": False, "msg": "Dados inválidos"})
 
+    # Usuario desativado pelo titular: senha certa, mas nao entra.
+    if str(row.get("situacao") or "A").upper() != "A":
+        return jsonify({"ok": False,
+                        "msg": "Usuário desativado. Fale com o responsável pela conta."})
+
     # Atualiza último login e reseta tentativas
-    supabase.table("tab_cliente").update({
+    supabase.table("tab_usuario").update({
         "datahora_ultimo_login": _agora_brasilia().isoformat(),
         "tentativas_login": 0,
         "bloqueado_ate": None
     }).eq("cpf", cpf).execute()
+    try:
+        supabase.table("tab_cliente").update({
+            "datahora_ultimo_login": _agora_brasilia().isoformat()
+        }).eq("id_cliente", row.get("id_cliente")).execute()
+    except Exception:
+        pass          # so alimenta as telas de admin; nao pode barrar o login
 
     id_cliente = row.get("id_cliente")
 
     session.clear()
-    session["logado"]       = True
-    session["cpf"]          = cpf
-    session["nome"]         = row.get("nome", "")
-    session["id_cliente"]   = id_cliente
-    session["cliente_info"] = row.get("nome", "")
-    session["empresa_info"] = ""
-    session.permanent       = manter
+    session["logado"]          = True
+    session["cpf"]             = cpf
+    session["nome"]            = row.get("nome", "")
+    session["id_cliente"]      = id_cliente
+    session["id_usuario"]      = row.get("id_usuario")
+    session["usuario_titular"] = str(row.get("titular") or "N").upper() == "S"
+    session["cliente_info"]    = row.get("nome", "")
+    session["empresa_info"]    = ""
+    session.permanent          = manter
 
     # Verifica empresas cadastradas
     empresas = _listar_empresas(id_cliente)
@@ -684,7 +815,9 @@ def fazer_login():
 # =========================================================
 # LOGIN - VERIFICA SE O CPF JÁ TEM CADASTRO
 # Chamado ao sair do campo CPF na tela de login. Se o CPF for
-# válido e não existir em tab_cliente, a tela propõe "Criar Conta".
+# válido e não existir em tab_usuario, a tela propõe "Criar Conta".
+# Olha tab_usuario, não tab_cliente: quem foi cadastrado como 2º
+# usuário de uma conta tem acesso, mas não é cliente nenhum.
 # =========================================================
 @app.route("/verificar_cpf_login", methods=["POST"])
 def verificar_cpf_login():
@@ -697,7 +830,7 @@ def verificar_cpf_login():
         return jsonify({"ok": True, "valido": False, "existe": False})
 
     try:
-        existe = _cliente_por_cpf(cpf) is not None
+        existe = _usuario_por_cpf(cpf) is not None
     except Exception as e:
         print("Erro em verificar_cpf_login:", str(e))
         # Em caso de falha na consulta não atrapalha o login
@@ -1055,7 +1188,8 @@ def menu():
         cert_status=cert_status,
         cert_dias=cert_dias,
         cert_validade_fmt=cert_validade_fmt,
-        eh_admin_f10=(_is_admin_f10() or bool(session.get("cpf_admin_original"))),
+        eh_admin_f10=(_pode_impersonar() or bool(session.get("cpf_admin_original"))),
+        sou_titular=_sou_titular(),
     )
 
 # =========================================================
@@ -7757,6 +7891,39 @@ def cliente_ja_cadastrado(cpf):
         print("Erro em cliente_ja_cadastrado:", str(e))
         return False
 
+def _gravar_usuario_titular(id_cliente, cpf, nome, celular, email, senha):
+    """Cria (ou atualiza) o usuario TITULAR do contrato.
+
+    Guarda importante: se o CPF ja for usuario de OUTRO cliente, nao mexe. Sem
+    isso, alguem cadastrado como 2o usuario da conta do vizinho e que depois
+    abrisse a propria conta seria arrancado da conta antiga em silencio.
+    """
+    cpf = so_numeros(cpf)
+    ja = _usuario_por_cpf(cpf)
+    if ja and ja.get("id_cliente") != id_cliente:
+        print(f"[cadastro] CPF {cpf} ja e usuario do cliente "
+              f"{ja.get('id_cliente')}; titular de {id_cliente} nao gravado")
+        return False
+    dados = {
+        "id_cliente": id_cliente,
+        "cpf":        cpf,
+        "nome":       (nome or "").strip()[:80] or "TITULAR",
+        "senha":      (senha or "").strip() or None,
+        "situacao":   "A",
+        "titular":    "S",
+        "celular":    so_numeros(celular)[:11] or None,
+        "email":      (email or "").strip()[:120] or None,
+        "tentativas_login": 0,
+        "bloqueado_ate":    None,
+    }
+    if ja:
+        (supabase.table("tab_usuario").update(dados)
+         .eq("id_usuario", ja["id_usuario"]).execute())
+    else:
+        supabase.table("tab_usuario").insert(dados).execute()
+    return True
+
+
 def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
     cpf     = so_numeros(cpf)
     celular = so_numeros(celular)
@@ -7778,6 +7945,19 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
         "tentativas_login": 0, "bloqueado_ate": None
     }
     resp = supabase.table("tab_cliente").upsert(payload).execute()
+
+    # O login le tab_usuario, entao o cliente recem-cadastrado PRECISA virar
+    # usuario titular aqui — sem isso ele nao entra no proprio cadastro.
+    try:
+        id_cliente_novo = ((resp.data or [{}])[0] or {}).get("id_cliente")
+        if not id_cliente_novo:
+            _rc = (supabase.table("tab_cliente").select("id_cliente")
+                   .eq("cpf", cpf).limit(1).execute())
+            id_cliente_novo = ((_rc.data or [{}])[0] or {}).get("id_cliente")
+        if id_cliente_novo:
+            _gravar_usuario_titular(id_cliente_novo, cpf, nome, celular, email, senha)
+    except Exception as e:
+        print(f"[cadastro] titular em tab_usuario: {e}")
 
     # Notifica o admin F10 por WhatsApp quando o cadastro for NOVO.
     if not ja_existia:
@@ -9601,6 +9781,196 @@ def api_cc_desativar():
 # =========================================================
 # FILIAIS — TELA
 # =========================================================
+# =========================================================
+# USUÁRIOS DO CLIENTE — Cadastros > Tabelas Auxiliares
+# Só o usuário TITULAR cadastra e desativa. Limite de
+# LIMITE_USUARIOS_CLIENTE por contrato (o titular conta).
+# Nada é apagado: desativar é situacao='I', para o tab_log
+# continuar fazendo sentido depois.
+# =========================================================
+def _titular_ou_erro():
+    """(id_cliente, None) se pode mexer; (None, resposta_de_erro) se não."""
+    if not session.get("logado"):
+        return None, jsonify({"ok": False, "msg": "Sessão expirada."})
+    if not _sou_titular():
+        return None, jsonify({"ok": False,
+                              "msg": "Só o usuário responsável pela conta pode "
+                                     "cadastrar ou desativar usuários."})
+    return session.get("id_cliente"), None
+
+
+@app.route("/cad_usuario")
+def cad_usuario():
+    if not session.get("logado"):
+        return redirect("/")
+    # A tela inteira e so do responsavel. Nao basta travar as APIs: a lista
+    # mostra CPF, celular e e-mail de todo mundo da conta, e isso nao e da
+    # conta do usuario comum. Ele nem ve o card no menu; quem chegar aqui
+    # digitando a URL volta para o menu.
+    if not _sou_titular():
+        return redirect("/menu")
+    id_cliente = session.get("id_cliente")
+    usuarios   = _usuarios_do_cliente(id_cliente)
+    for u in usuarios:
+        c = str(u.get("cpf") or "")
+        u["cpf_fmt"]     = f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}" if len(c) == 11 else c
+        u["eh_titular"]  = str(u.get("titular") or "N").upper() == "S"
+        u["ativo"]       = str(u.get("situacao") or "A").upper() == "A"
+        u["sou_eu"]      = u.get("id_usuario") == session.get("id_usuario")
+        ul = str(u.get("datahora_ultimo_login") or "")
+        u["ultimo_fmt"]  = (f"{ul[8:10]}/{ul[5:7]}/{ul[0:4]} {ul[11:16]}"
+                            if len(ul) >= 16 else "—")
+    ativos = len([u for u in usuarios if u["ativo"]])
+    return render_template(
+        "F10_Cad_Usuario.html", **_ctx_relatorio(),
+        usuarios=usuarios,
+        sou_titular=True,          # a rota ja barrou quem nao e titular
+        limite=LIMITE_USUARIOS_CLIENTE,
+        ativos=ativos,
+        pode_incluir=(ativos < LIMITE_USUARIOS_CLIENTE),
+    )
+
+
+@app.route("/api/usuario/incluir", methods=["POST"])
+def api_usuario_incluir():
+    id_cliente, erro = _titular_ou_erro()
+    if erro:
+        return erro
+
+    data    = request.get_json() or {}
+    cpf     = somente_numeros(data.get("cpf", ""))
+    nome    = (data.get("nome") or "").strip()
+    senha   = (data.get("senha") or "").strip()
+    celular = somente_numeros(data.get("celular", ""))
+    email   = (data.get("email") or "").strip()
+
+    if len(nome) < 3:
+        return jsonify({"ok": False, "msg": "Informe o nome do usuário."})
+    if not validar_cpf(cpf):
+        return jsonify({"ok": False, "msg": "CPF inválido."})
+    if not re.fullmatch(r"\d{6}", senha):
+        return jsonify({"ok": False, "msg": "A senha deve ter exatamente 6 dígitos."})
+
+    # O limite conta só os ATIVOS: desativar alguém libera a vaga.
+    atuais = _usuarios_do_cliente(id_cliente)
+    ativos = len([u for u in atuais if str(u.get("situacao") or "A").upper() == "A"])
+    if ativos >= LIMITE_USUARIOS_CLIENTE:
+        return jsonify({"ok": False, "limite": True,
+                        "msg": f"O seu plano permite {LIMITE_USUARIOS_CLIENTE} "
+                               f"usuários ativos. Para liberar mais, fale com a "
+                               f"gente."})
+
+    ja = _usuario_por_cpf(cpf)
+    if ja:
+        if ja.get("id_cliente") == id_cliente:
+            return jsonify({"ok": False,
+                            "msg": "Esse CPF já está cadastrado nesta conta."})
+        return jsonify({"ok": False,
+                        "msg": "Esse CPF já tem acesso ao Folha10-Simples em "
+                               "outra conta."})
+    try:
+        supabase.table("tab_usuario").insert({
+            "id_cliente": id_cliente,
+            "cpf":        cpf,
+            "nome":       nome[:80],
+            "senha":      senha,
+            "situacao":   "A",
+            "titular":    "N",
+            "celular":    celular[:11] or None,
+            "email":      email[:120] or None,
+            "tentativas_login": 0,
+        }).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+
+    gravar_log("USUARIO", f"Incluiu usuario {nome} (CPF {cpf})")
+    return jsonify({"ok": True, "msg": "Usuário cadastrado."})
+
+
+@app.route("/api/usuario/situacao", methods=["POST"])
+def api_usuario_situacao():
+    id_cliente, erro = _titular_ou_erro()
+    if erro:
+        return erro
+
+    data       = request.get_json() or {}
+    id_usuario = data.get("id_usuario")
+    ativar     = bool(data.get("ativar"))
+    if not id_usuario:
+        return jsonify({"ok": False, "msg": "Usuário não informado."})
+
+    alvo = next((u for u in _usuarios_do_cliente(id_cliente)
+                 if u.get("id_usuario") == id_usuario), None)
+    if not alvo:
+        return jsonify({"ok": False, "msg": "Usuário não encontrado nesta conta."})
+    # O titular nao pode ser desativado: a conta ficaria sem ninguem para
+    # gerenciar os usuarios, e nem o proprio dono voltaria a entrar.
+    if str(alvo.get("titular") or "N").upper() == "S" and not ativar:
+        return jsonify({"ok": False,
+                        "msg": "O usuário responsável pela conta não pode ser "
+                               "desativado."})
+    if ativar:
+        ativos = len([u for u in _usuarios_do_cliente(id_cliente)
+                      if str(u.get("situacao") or "A").upper() == "A"])
+        if ativos >= LIMITE_USUARIOS_CLIENTE:
+            return jsonify({"ok": False, "limite": True,
+                            "msg": f"O seu plano permite {LIMITE_USUARIOS_CLIENTE} "
+                                   f"usuários ativos. Para liberar mais, fale "
+                                   f"com a gente."})
+    try:
+        (supabase.table("tab_usuario")
+         .update({"situacao": "A" if ativar else "I"})
+         .eq("id_usuario", id_usuario).eq("id_cliente", id_cliente).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+
+    gravar_log("USUARIO", f"{'Ativou' if ativar else 'Desativou'} usuario "
+                          f"{alvo.get('nome')} (CPF {alvo.get('cpf')})")
+    return jsonify({"ok": True,
+                    "msg": "Usuário ativado." if ativar else "Usuário desativado."})
+
+
+@app.route("/api/usuario/alterar", methods=["POST"])
+def api_usuario_alterar():
+    """Titular corrige nome/contato e redefine a senha de quem esqueceu."""
+    id_cliente, erro = _titular_ou_erro()
+    if erro:
+        return erro
+
+    data       = request.get_json() or {}
+    id_usuario = data.get("id_usuario")
+    nome       = (data.get("nome") or "").strip()
+    senha      = (data.get("senha") or "").strip()
+    celular    = somente_numeros(data.get("celular", ""))
+    email      = (data.get("email") or "").strip()
+
+    alvo = next((u for u in _usuarios_do_cliente(id_cliente)
+                 if u.get("id_usuario") == id_usuario), None)
+    if not alvo:
+        return jsonify({"ok": False, "msg": "Usuário não encontrado nesta conta."})
+    if len(nome) < 3:
+        return jsonify({"ok": False, "msg": "Informe o nome do usuário."})
+    if senha and not re.fullmatch(r"\d{6}", senha):
+        return jsonify({"ok": False, "msg": "A senha deve ter exatamente 6 dígitos."})
+
+    novos = {"nome": nome[:80],
+             "celular": celular[:11] or None,
+             "email": email[:120] or None}
+    if senha:
+        # Senha nova zera o bloqueio: sem isso, quem foi bloqueado por errar a
+        # senha continuaria travado mesmo depois de o titular trocar.
+        novos.update({"senha": senha, "tentativas_login": 0, "bloqueado_ate": None})
+    try:
+        (supabase.table("tab_usuario").update(novos)
+         .eq("id_usuario", id_usuario).eq("id_cliente", id_cliente).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+
+    gravar_log("USUARIO", f"Alterou usuario {nome}"
+                          + (" (senha redefinida)" if senha else ""))
+    return jsonify({"ok": True, "msg": "Usuário alterado."})
+
+
 @app.route("/cad_filial")
 def cad_filial():
     if not session.get("logado"):
@@ -41651,6 +42021,10 @@ def api_recibo_ferias_pdf():
 # ADMINISTRADOR — Lista de Clientes
 # =========================================================
 CPF_ADMIN_F10 = '15313921487'
+# Conta da propria F10 (Comsist). QUALQUER usuario dela entra na conta dos
+# clientes para dar suporte — nao so o CPF master. As demais telas de admin
+# continuam restritas ao CPF_ADMIN_F10.
+ID_CLIENTE_F10 = 4
 
 
 def _fmt_data_cadastro(v):
@@ -42230,10 +42604,29 @@ def _is_admin_f10():
     return str(session.get("cpf") or "") == CPF_ADMIN_F10
 
 
+def _equipe_f10():
+    """Usuario da conta da F10 (id_cliente 4), titular ou nao.
+
+    Durante a impersonacao o id_cliente da sessao e o do CLIENTE ALVO, entao
+    quem manda e o id_cliente_admin_original guardado ao entrar. Sem isso a
+    pessoa perderia o botao de voltar assim que entrasse em algum cliente.
+    """
+    orig = session.get("id_cliente_admin_original")
+    try:
+        return int((orig if orig is not None else session.get("id_cliente")) or 0) == ID_CLIENTE_F10
+    except Exception:
+        return False
+
+
 def _pode_impersonar():
-    """Admin master pode impersonar. Se ja esta impersonando, o CPF original
-    do admin fica em session['cpf_admin_original']."""
-    return _is_admin_f10() or str(session.get("cpf_admin_original") or "") == CPF_ADMIN_F10
+    """Quem entra na conta dos clientes: qualquer usuario da conta da F10.
+
+    O CPF master segue valendo sozinho — se um dia a conta da F10 mudar de
+    id_cliente, o dono do sistema nao fica trancado do lado de fora.
+    """
+    return (_equipe_f10()
+            or _is_admin_f10()
+            or str(session.get("cpf_admin_original") or "") == CPF_ADMIN_F10)
 
 
 @app.route("/api/impersonando_state")
@@ -42311,24 +42704,31 @@ def api_impersonar_cliente():
         if not row:
             return jsonify({"ok": False, "msg": "Cliente nao encontrado"})
 
-        # Se o alvo for o proprio admin, apenas encerra impersonacao (se houver)
-        # e nao seta banner. Nao precisa registrar log de "impersonar admin".
-        if str(row.get("cpf") or "") == CPF_ADMIN_F10:
+        # Escolher a propria conta da F10 e "voltar para casa": encerra a
+        # impersonacao, sem banner e sem log. Devolve a pessoa a PROPRIA
+        # identidade — antes assumia o CPF do dono da conta, o que trocava o
+        # 2o usuario pelo titular sem ninguem pedir.
+        if int(row.get("id_cliente") or 0) == ID_CLIENTE_F10:
+            cpf_volta  = session.get("cpf_admin_original")  or session.get("cpf")
+            nome_volta = session.get("nome_admin_original") or session.get("nome", "")
             for k in ("cpf_admin_original", "nome_admin_original",
-                      "cnpj_empresa", "id_empresa",
+                      "id_cliente_admin_original", "cnpj_empresa", "id_empresa",
                       "anomes_atual", "anomes_tipo", "anomes_situacao"):
                 session.pop(k, None)
-            session["cpf"]          = row["cpf"]
-            session["nome"]         = row.get("nome", "")
+            session["cpf"]          = cpf_volta
+            session["nome"]         = nome_volta
             session["id_cliente"]   = row["id_cliente"]
             session["cliente_info"] = row.get("nome", "")
             session["empresa_info"] = ""
             return jsonify({"ok": True, "redirect": "/selecionar_empresa"})
 
-        # Guarda CPF original do admin (na primeira impersonacao apenas)
+        # Guarda quem entrou (na primeira impersonacao apenas). O id_cliente
+        # vai junto: e por ele que _equipe_f10 reconhece a pessoa depois que a
+        # sessao ja esta com o contexto do cliente alvo.
         if not session.get("cpf_admin_original"):
-            session["cpf_admin_original"]  = session.get("cpf")
-            session["nome_admin_original"] = session.get("nome", "")
+            session["cpf_admin_original"]        = session.get("cpf")
+            session["nome_admin_original"]       = session.get("nome", "")
+            session["id_cliente_admin_original"] = session.get("id_cliente")
 
         # Log de auditoria — grava no id_cliente=4 (conta do admin), nunca no
         # cliente alvo, para que o cliente não veja o log de impersonação.
@@ -42367,18 +42767,30 @@ def parar_impersonar():
     if not cpf_admin:
         return redirect("/menu")
     try:
-        row = _cliente_por_cpf(cpf_admin)
+        # Procura em tab_usuario primeiro: o 2o usuario da conta da F10 existe
+        # so la, nao em tab_cliente. Buscando so pelo cliente ele cairia no
+        # session.clear() e seria deslogado ao tentar voltar do cliente.
+        row = _usuario_por_cpf(so_numeros(cpf_admin)) or _cliente_por_cpf(cpf_admin)
         if not row:
             session.clear()
             return redirect("/")
-        # Restaura sessao do admin
+        # Restaura a sessao de quem estava dando suporte
         session["cpf"]          = row["cpf"]
         session["nome"]         = row.get("nome", "")
         session["id_cliente"]   = row["id_cliente"]
-        session["cliente_info"] = row.get("nome", "")
+        # cliente_info e o nome do CONTRATO, e row pode ser a pessoa (tab_usuario)
+        _nome_contrato = row.get("nome", "")
+        try:
+            _rc = (supabase.table("tab_cliente").select("nome")
+                   .eq("id_cliente", row["id_cliente"]).limit(1).execute())
+            _nome_contrato = (_rc.data or [{}])[0].get("nome") or _nome_contrato
+        except Exception:
+            pass
+        session["cliente_info"] = _nome_contrato
         session["empresa_info"] = ""
         for k in ("cnpj_empresa", "id_empresa", "anomes_atual", "anomes_tipo",
-                  "anomes_situacao", "cpf_admin_original", "nome_admin_original"):
+                  "anomes_situacao", "cpf_admin_original", "nome_admin_original",
+                  "id_cliente_admin_original"):
             session.pop(k, None)
         # Log — grava no id_cliente=4 (conta do admin), nunca no cliente alvo.
         try:

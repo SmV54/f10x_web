@@ -528,6 +528,9 @@ const modulos = {
                 { icone: '📅', nome: 'Feriados',              href: '/cad_feriado',   ok: true },
                 { icone: '🏷️', nome: 'Centros de Custo',     href: '/cad_cc',        ok: true },
                 { icone: '🏢', nome: 'Filiais',               href: '/cad_filial',    ok: true },
+                {% if sou_titular %}
+                { icone: '👥', nome: 'Usuários da Conta',     href: '/cad_usuario',   ok: true },
+                {% endif %}
                 { icone: '🏙️', nome: 'Cidades',              href: '#' },
             ]},
             { nome: 'Pensão Alimentícia', semAtalho: true, itens: [

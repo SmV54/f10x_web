@@ -43,11 +43,19 @@ h1 {
 
 .sub {
     text-align: center;
-    font-size: 13px;
+    font-size: 11px;
     margin-top: 8px;
     margin-bottom: 20px;
     color: #444;
     line-height: 1.4;
+    /* Frase tem que caber em uma linha só. Em Arial 11px ela mede ~351px; a
+       área útil do card é 360px e os -6px de margem tomam emprestado um pouco
+       do padding, chegando a 372px. O nowrap garante o resultado mesmo se a
+       fonte cair num fallback mais largo. Aumentar o corpo da letra faz a
+       frase estourar — a 12px ela já mede 384px. */
+    white-space: nowrap;
+    margin-left: -6px;
+    margin-right: -6px;
 }
 
 .opcao-envio {
@@ -234,6 +242,14 @@ input[type="password"]:focus {
     h1 {
         font-size: 24px;
     }
+
+    /* No celular não cabe em uma linha — aí deixa quebrar, que é melhor do
+       que a frase vazar para fora do card. */
+    .sub {
+        white-space: normal;
+        margin-left: 0;
+        margin-right: 0;
+    }
 }
 </style>
 </head>
@@ -247,7 +263,7 @@ input[type="password"]:focus {
     <h1>Cadastro</h1>
 
     <div class="sub">
-        Cadastro de um Novo Cliente no Folha10-Simples
+        Crie o seu acesso — a(s) empresa(s) você cadastra no passo seguinte
     </div>
 
     <div id="msg" class="msg"></div>
