@@ -372,7 +372,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
                     <div>
                         <label class="campo-label" id="lbl-entrada">Valor</label>
                         <input type="text" id="inp-entrada" class="inp-entrada" placeholder="0,00"
-                               oninput="mascaraValor(this)"
+                               oninput="mascaraValor(this)" onblur="completarHoras(this)"
                                onkeydown="if(event.key==='Enter'){event.preventDefault();modoEdicao?salvarAlteracao():incluir();}">
                     </div>
 
@@ -450,9 +450,22 @@ function mascaraValor(el) {
         if (!digits) { el.value = ''; return; }
         if (digits.length <= 2) { el.value = digits; return; }
         const hh = digits.slice(0, 2);
-        const mm = parseInt(digits.slice(2), 10);
-        el.value = hh + ':' + (mm > 59 ? '59' : digits.slice(2).padStart(2, '0'));
+        // Os minutos ficam como a pessoa digitou. Completar com zero à esquerda
+        // aqui dentro era o bug: ao digitar o 3o digito, "3" virava "03" e
+        // ocupava as duas casas do minuto; o 4o digito era entao descartado
+        // pelo slice(0,4) e 1234 terminava como 12:03. O zero entra no blur.
+        let mm = digits.slice(2);
+        if (mm.length === 2 && parseInt(mm, 10) > 59) mm = '59';
+        el.value = hh + ':' + mm;
     }
+}
+
+/* Ao sair do campo de horas, completa o minuto de 1 digito: 12:3 -> 12:03 */
+function completarHoras(el) {
+    if (campoUnidAtual !== 'H') return;
+    const p = (el.value || '').split(':');
+    if (p.length !== 2 || !p[1]) return;
+    el.value = p[0] + ':' + p[1].padStart(2, '0');
 }
 
 /* ── FUNCIONÁRIOS ── */
