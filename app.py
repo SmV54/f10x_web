@@ -9540,7 +9540,7 @@ def api_sindicato_incluir():
         return jsonify({"ok": False, "msg": "Sessão inválida"})
 
     data       = request.get_json() or {}
-    nome       = (data.get("nome_sindicato") or "").strip()
+    nome       = (data.get("nome_sindicato") or "").strip().upper()
     id_cliente = session.get("id_cliente")
 
     if not nome:
@@ -9589,7 +9589,7 @@ def api_sindicato_editar():
 
     data       = request.get_json() or {}
     id_reg     = data.get("id")
-    nome       = (data.get("nome_sindicato") or "").strip()
+    nome       = (data.get("nome_sindicato") or "").strip().upper()
     id_cliente = session.get("id_cliente")
 
     if not id_reg:

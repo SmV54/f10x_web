@@ -272,7 +272,8 @@
           <div class="form-secao">
             <label class="form-label">Nome do Sindicato <span style="color:#ef4444;">*</span></label>
             <input class="form-input" type="text" id="inpNome" maxlength="80"
-              placeholder="Ex: SINDICATO DOS COMERCIÁRIOS">
+              placeholder="Ex: SINDICATO DOS COMERCIÁRIOS"
+              oninput="this.value=this.value.toUpperCase()">
           </div>
 
           <div class="form-grid-2">
@@ -549,7 +550,7 @@
   // ── Gravar ────────────────────────────────────────────────
   async function gravarSindicato() {
     const id   = document.getElementById('inpId').value;
-    const nome = document.getElementById('inpNome').value.trim();
+    const nome = document.getElementById('inpNome').value.trim().toUpperCase();
     if (!nome) { mostrarErro('Informe o nome do sindicato.'); return; }
 
     const intOuNull = id => {
