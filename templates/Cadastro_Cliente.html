@@ -750,24 +750,33 @@ function registrarEventos() {
 registrarEventos();
 atualizarBotaoEnviar(false);
 
-// Pré-preenchimento vindo da landing (/petshop): nome, cel e email na querystring.
-// A pessoa só precisa completar o CPF (e o código de verificação).
-function prefillDaLanding() {
-    const p = new URLSearchParams(window.location.search);
-    const nome  = p.get("nome");
-    const cel   = p.get("cel");
-    const email = p.get("email");
-    const cpf   = p.get("cpf");     // vem do login, quando o CPF não tem cadastro
-    if (!nome && !cel && !email && !cpf) return;
-    if (nome)  { el("nome").value = nome; normalizarNome(); }
-    if (cel)   { el("celular").value = cel; formatarCelular(); }
-    if (email) { el("email").value = email; }
-    if (cpf)   { el("cpf").value = cpf; formatarDocumento(); }
-    // leva o cursor direto pro primeiro campo que falta
-    el(cpf ? "nome" : "cpf").focus();
-    prevalidarSilencioso();     // valida o que já veio preenchido
+// ── Esta tela SEMPRE abre em branco ──────────────────────────────────────
+// Nada de pré-preencher: nem pela querystring (/petshop mandava nome/cel/email,
+// o login mandava o cpf), nem pelo autofill do navegador. Cadastro de cliente
+// novo começa vazio para ninguém gravar sem perceber o dado de outra pessoa.
+const CAMPOS_CADASTRO = ["cpf", "nome", "celular", "email", "codigo", "senha", "senha2"];
+let pessoaMexeu = false;
+
+function limparCamposIniciais() {
+    if (pessoaMexeu) return;
+    CAMPOS_CADASTRO.forEach(id => { const c = el(id); if (c) c.value = ""; });
 }
-prefillDaLanding();
+
+// O autofill do Chrome/Edge ignora autocomplete="off" e chega depois do load,
+// então limpamos algumas vezes até a pessoa encostar no formulário. Só
+// keydown/paste/mousedown contam como "mexeu" — o evento input também é
+// disparado pelo próprio autofill e serviria de brecha.
+CAMPOS_CADASTRO.forEach(id => {
+    const c = el(id);
+    if (!c) return;
+    ["keydown", "paste", "mousedown"].forEach(ev =>
+        c.addEventListener(ev, () => { pessoaMexeu = true; }));
+});
+
+limparCamposIniciais();
+window.addEventListener("load", limparCamposIniciais);
+[100, 300, 700, 1200].forEach(ms => setTimeout(limparCamposIniciais, ms));
+el("cpf").focus();
 </script>
 
 <script src="/static/f10_dialog.js"></script>

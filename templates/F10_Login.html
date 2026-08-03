@@ -422,7 +422,9 @@ function fecharModalConta(){
 }
 
 function irCriarConta(){
-    window.location.href = "/cadastro?cpf=" + encodeURIComponent(_cpfNovo);
+    // Sem passar o CPF: a tela de cadastro sempre abre em branco, entao mandar
+    // o numero na URL so o deixaria exposto no historico do navegador.
+    window.location.href = "/cadastro";
 }
 
 function limparErroCpf(){

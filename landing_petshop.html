@@ -515,14 +515,8 @@
       .then(function(r){ return r.json().catch(function(){ return {ok:r.ok}; }); })
       .then(function(res){
         if(res && res.ok){
-          // pré-preenche o cadastro com o que a pessoa já digitou (só falta o CPF lá)
-          var qs = new URLSearchParams({
-            nome: payload.nome || '',
-            cel: payload.whatsapp || '',
-            email: payload.email || ''
-          });
-          var b = document.getElementById('btnCadastro');
-          if(b){ b.href = '/cadastro?' + qs.toString(); }
+          // O botao vai para /cadastro puro: aquela tela sempre abre em branco,
+          // entao nao adianta mandar nome/celular/email na querystring.
           f.classList.add('sent');
           document.getElementById('cadastro').scrollIntoView({behavior:'smooth', block:'center'});
         } else {
