@@ -6805,7 +6805,11 @@ def api_calc_rescisao_calcular():
             dt_proj = dt_resc + _td(days=dias_aviso)
 
         # ── Proventos ──
-        saldo = round(sal_mes * dt_resc.day / 30)
+        # Saldo de salário pela convenção do mês comercial: o divisor é sempre 30,
+        # então o mês de 31 dias trabalhado inteiro paga 30/30 (salário cheio) —
+        # sem o teto, dia 31 pagaria 31/30 e o saldo passaria do salário mensal.
+        dias_saldo = min(dt_resc.day, 30)
+        saldo = round(sal_mes * dias_saldo / 30)
         # aviso prévio indenizado (acordo=50%)
         aviso_val = 0
         if aviso_ind and dias_aviso > 0:
@@ -6943,7 +6947,7 @@ def api_calc_rescisao_calcular():
                     "matricula": mat, "folha": folha_int, "folha_tipo": "R",
                     "lote": 0, "origem": "C", "controle": 0, "os": 0}
         recs = []
-        if saldo:     recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dt_resc.day, "valor": saldo})
+        if saldo:     recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dias_saldo, "valor": saldo})
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
         if d13:       recs.append({**base_mov, "cod_verba": VR_13_PROP,      "qtd": avos_13,  "valor": d13})
@@ -6993,7 +6997,8 @@ def api_calc_rescisao_calcular():
             "resc_data_fmt": dt_resc.strftime("%d/%m/%Y"),
             "dt_proj_fmt": dt_proj.strftime("%d/%m/%Y"),
             "motivo": motivo, "aviso_ind": aviso_ind, "dias_aviso": dias_aviso,
-            "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dt_resc.day,
+            "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dias_saldo,
+            "dia_resc_real": dt_resc.day,
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
             "avos_fer": avos_fer, "fer_prop": fer_prop,
@@ -7156,9 +7161,11 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 lin_shora,
             ]))
             # 0002 — Saldo de salário
-            e.append(_etapa("ETAPA 3020 - SALDO DE SALARIO", [
-                f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = <b>{_B(r['saldo'])}</b>",
-            ]))
+            _lin_saldo = [f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = <b>{_B(r['saldo'])}</b>"]
+            if int(r.get("dia_resc_real") or 0) > 30:
+                _lin_saldo.append(f"Rescisão no dia {r['dia_resc_real']}: pela convenção do mês "
+                                  "comercial (divisor 30) o mês inteiro paga 30/30 = salário cheio")
+            e.append(_etapa("ETAPA 3020 - SALDO DE SALARIO", _lin_saldo))
             # 0003 — Aviso prévio indenizado
             if r["aviso_val"]:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [
