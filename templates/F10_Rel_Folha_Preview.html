@@ -118,7 +118,7 @@ table.tbl-verbas th {
 }
 table.tbl-verbas th:first-child { text-align: center; width: 52px; }
 table.tbl-verbas th.r { text-align: right; }
-table.tbl-verbas th.qtd { text-align: center; width: 60px; }
+table.tbl-verbas th.qtd { text-align: center; width: 76px; white-space: nowrap; }
 
 table.tbl-verbas td { padding: 6px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
 table.tbl-verbas tbody tr:nth-child(even) { background: #f9fafb; }
@@ -127,7 +127,8 @@ table.tbl-verbas tbody tr:last-child td { border-bottom: 1px solid var(--border)
 
 td.cod  { font-family: var(--mono); font-size: 11px; color: #94a3b8; text-align: center; }
 td.dsc  { color: #1e293b; }
-td.qtd  { font-family: var(--mono); font-size: 11px; color: #6b7280; text-align: center; }
+/* nowrap: sem ele "15 dias" nao cabe na largura da coluna e quebra em 2 linhas */
+td.qtd  { font-family: var(--mono); font-size: 11px; color: #6b7280; text-align: center; white-space: nowrap; }
 td.val  { font-family: var(--mono); font-size: 12px; text-align: right; white-space: nowrap; }
 td.prov { color: var(--prov); }
 td.desc { color: var(--desc); }
@@ -141,7 +142,7 @@ td.zero { color: #d1d5db; }
 }
 .tbl-info td { padding: 4px 10px; color: #475569; }
 .tbl-info td.cod  { font-family: var(--mono); font-size: 10px; color: #94a3b8; text-align: center; width: 52px; }
-.tbl-info td.qtd  { font-family: var(--mono); font-size: 10px; color: #94a3b8; text-align: center; width: 60px; }
+.tbl-info td.qtd  { font-family: var(--mono); font-size: 10px; color: #94a3b8; text-align: center; width: 76px; white-space: nowrap; }
 .tbl-info td.val  { font-family: var(--mono); font-size: 11px; text-align: right; color: #64748b; white-space: nowrap; }
 .tbl-info tbody tr:nth-child(even) { background: #f9fafb; }
 

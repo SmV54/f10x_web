@@ -32979,10 +32979,29 @@ def _dias_afast(di_raw, df_raw):
         return None
 
 
+# Verbas cuja qtd esta em DIAS embora a rubrica seja de valor (unid_verba='V').
+# O _fqtd so formata quantidade para unid 'H' (horas) e 'D' (diarias); sem esta
+# lista essas verbas sairiam sem quantidade nenhuma na folha e no contracheque,
+# e o funcionario nao veria a que numero de dias o valor se refere.
+#   0002 = salario proporcional (qtd = dias trabalhados, mmQmm[2])
+#   0009 = atestado medico       (qtd = dias de atestado, mmQmm[9])
+#   0139 = faltas                (qtd = dias de falta,    mmQmm[139])
+_VERBAS_QTD_DIAS = {2, 9, 139}
+
+
 def _split_afast_mes(di_raw_orig, df_raw, dt_ini_c, dt_fim_c, atestado_acum=0):
     """Dias de afastamento do mês divididos em atestado (empresa) e INSS.
-    A cota de atestado é 15 dias acumulados no mês — atestado_acum repassa
-    quantos dias já foram consumidos em afastamentos anteriores do mesmo mês.
+
+    Os 15 primeiros dias do afastamento sao por conta da empresa (art. 60 §3 da
+    Lei 8.213); do 16o em diante e o INSS. Os 15 dias contam A PARTIR DO INICIO
+    DO AFASTAMENTO, nao por mes: afastamento que comecou em mes anterior chega
+    nesta folha com parte (ou toda) a cota ja consumida.
+
+    Antes daqui a cota era recalculada a cada mes — um afastamento de 6 meses
+    pagaria 15 dias de atestado em CADA um dos 6, 90 dias em vez de 15.
+
+    atestado_acum repassa quantos dias ja foram consumidos por OUTROS
+    afastamentos do mesmo mes (o chamador acumula no laco).
     Retorna (dias_atestado, dias_inss, dias_no_mes). None nos três se inválido.
     """
     try:
@@ -33003,7 +33022,16 @@ def _split_afast_mes(di_raw_orig, df_raw, dt_ini_c, dt_fim_c, atestado_acum=0):
             return 0, 0, 0
 
         dias_no_mes   = (d_ef_fim - d_ef_ini).days + 1
-        restante      = max(0, 15 - atestado_acum)
+
+        # Dias deste afastamento que ja correram ANTES desta folha: consomem a
+        # cota de 15 mesmo sem terem sido pagos nesta competencia.
+        dias_antes = 0
+        if d_ini_orig < d_ini_mes:
+            fim_antes = min(d_fim, d_ini_mes - timedelta(days=1))
+            if fim_antes >= d_ini_orig:
+                dias_antes = (fim_antes - d_ini_orig).days + 1
+
+        restante      = max(0, 15 - dias_antes - atestado_acum)
         dias_atestado = min(dias_no_mes, restante)
         dias_inss     = dias_no_mes - dias_atestado
 
@@ -34501,6 +34529,64 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     st_etapa_na)]], colWidths=[17*cm])
                 e4_tbl.setStyle(_st_e4_zero)
             elems.append(e4_tbl)
+
+            # ── etapa 4B — atestado: os 15 dias por conta da empresa ──
+            # Os dias de atestado saem de dias_trabalhados (etapa 1030), entao o
+            # salario proporcional NAO os paga. Quem paga e a rubrica 0009, na
+            # proporcao do salario. Sem isso o funcionario perdia esses dias — o
+            # calculo descontava e nao repunha em lugar nenhum.
+            _val_dia_at = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
+            _val_atest  = int(_val_dia_at * dias_atestado_total)
+            if dias_atestado_total > 0 and _val_atest > 0:
+                mmQmm[9] = dias_atestado_total
+                mmVmm[9] = _val_atest
+                _st_op4b = ParagraphStyle("op4b", fontName="Helvetica", fontSize=7,
+                                          alignment=1, textColor=colors.HexColor("#374151"))
+                _form4b = Table([
+                    [Paragraph("0009-ATESTADO MEDICO", st_formula),
+                     Paragraph("=", _st_op4b),
+                     Paragraph("Salario Mensal", _st_op4b),
+                     Paragraph("/", _st_op4b),
+                     Paragraph("Dias do Mes", _st_op4b),
+                     Paragraph("x", _st_op4b),
+                     Paragraph("Dias de Atestado", _st_op4b)],
+                    [Paragraph(_fmt_brl(_val_atest), st_formula),
+                     Paragraph("=", _st_op4b),
+                     Paragraph(l["sal_mes_fmt"], _st_op4b),
+                     Paragraph("/", _st_op4b),
+                     Paragraph(str(dias_mes), _st_op4b),
+                     Paragraph("x", _st_op4b),
+                     Paragraph(str(dias_atestado_total), _st_op4b)],
+                ], colWidths=[2.8*cm, 0.4*cm, 2.2*cm, 0.4*cm, 1.8*cm, 0.4*cm, 2.3*cm])
+                _form4b.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]))
+                e4b_tbl = Table([
+                    [Paragraph("ETAPA 1045 - ATESTADO MEDICO (15 PRIMEIROS DIAS)", st_etapa)],
+                    [_form4b],
+                ], colWidths=[17*cm])
+                e4b_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING",   (0, 1), (0,  1), 10),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0), 8),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                    ("TOPPADDING",    (0, 1), (0, 1), 2),
+                    ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+                ]))
+            else:
+                _motivo_4b = ("Nao se aplica — sem afastamento nesta folha"
+                              if not afast_func else
+                              "Nao se aplica — os 15 dias da empresa ja foram "
+                              "consumidos em folhas anteriores (INSS a partir do 16o)")
+                e4b_tbl = Table([[Paragraph(
+                    f"ETAPA 1045 - ATESTADO MEDICO (15 PRIMEIROS DIAS)   {_motivo_4b}",
+                    st_etapa_na)]], colWidths=[17*cm])
+                e4b_tbl.setStyle(_st_e4_zero)
+            elems.append(e4b_tbl)
 
             # ── etapa 5 — faltas no mês ────────────────────
             faltas_func  = faltas.get(matr, [])
@@ -37371,10 +37457,13 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     def _fsal(v):
         return _fmt_brl(v) + "/Mês"
 
-    def _fqtd(qtd, unid):
+    def _fqtd(qtd, unid, cod=0):
         if unid == "H" and qtd > 0:
             return f"{qtd // 60}h{qtd % 60:02d}"
         if unid == "D" and qtd > 0:
+            return f"{qtd} dia{'s' if qtd != 1 else ''}"
+        # Verba de valor cuja qtd e em dias (ver _VERBAS_QTD_DIAS)
+        if int(cod or 0) in _VERBAS_QTD_DIAS and qtd > 0:
             return f"{qtd} dia{'s' if qtd != 1 else ''}"
         return ""
 
@@ -37415,7 +37504,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "verbas": [{
                     "cod":      f"{v['cod']:04d}",
                     "dsc":      v["dsc"],
-                    "qtd_fmt":  _fqtd(v["qtd"], v["unid"]),
+                    "qtd_fmt":  _fqtd(v["qtd"], v["unid"], v["cod"]),
                     "prov_fmt": _fmt_brl(v["val"]) if v["tp"] == "1" else "",
                     "desc_fmt": _fmt_brl(v["val"]) if v["tp"] != "1" else "",
                     "is_prov":  v["tp"] == "1",
@@ -37423,7 +37512,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "verbas_info": [{
                     "cod":     f"{v['cod']:04d}",
                     "dsc":     v["dsc"],
-                    "qtd_fmt": _fqtd(v["qtd"], v["unid"]),
+                    "qtd_fmt": _fqtd(v["qtd"], v["unid"], v["cod"]),
                     "val_fmt": _fmt_brl(v["val"]),
                 } for v in f["verbas_info"]],
                 "adiant_list": [{
@@ -37827,6 +37916,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     qtd_txt = f"{v['qtd'] // 60}h{v['qtd'] % 60:02d}"
                 elif v["unid"] == "D" and v["qtd"] > 0:
                     qtd_txt = f"{v['qtd']} dia{'s' if v['qtd'] != 1 else ''}"
+                # Verba de valor cuja qtd e em dias (ver _VERBAS_QTD_DIAS)
+                elif int(v["cod"] or 0) in _VERBAS_QTD_DIAS and v["qtd"] > 0:
+                    qtd_txt = f"{v['qtd']} dia{'s' if v['qtd'] != 1 else ''}"
                 else:
                     qtd_txt = ""
                 prov_txt = _fmt_brl(v["val"]) if v["tp"] == "1" else ""
@@ -38148,12 +38240,15 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         # Valor formatado em padrão BR, SEM o prefixo "R$"
         return f"{c/100:,.{dec}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    def _fqtd(qtd, unid):
+    def _fqtd(qtd, unid, cod=0):
         if qtd == 999999:          # qtd especial = ignorar (item 5)
             return ""
         if unid == "H" and qtd > 0:
             return f"{qtd // 60}h{qtd % 60:02d}"
         if unid == "D" and qtd > 0:
+            return f"{qtd} dia{'s' if qtd != 1 else ''}"
+        # Verba de valor cuja qtd e em dias (ver _VERBAS_QTD_DIAS)
+        if int(cod or 0) in _VERBAS_QTD_DIAS and qtd > 0:
             return f"{qtd} dia{'s' if qtd != 1 else ''}"
         return ""
 
@@ -38488,7 +38583,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             text_at(f"{v['cod']:04d}", xCOD+W_COD/2, y_v, "Helvetica", FS_COL,
                     C_LGRAY, "center")
             text_at(v["dsc"][:46], xDSC+PAD, y_v, "Helvetica", FS_VRB, C_TXT)
-            text_at(_fqtd(v["qtd"],v["unid"]), xQTD+W_QTD/2, y_v, "Helvetica", FS_COL,
+            text_at(_fqtd(v["qtd"],v["unid"],v["cod"]), xQTD+W_QTD/2, y_v, "Helvetica", FS_COL,
                     C_LGRAY, "center")
             if v["tp"] == "1":
                 text_at(_fbrl(v["val"]), xPRV+W_VAL-PAD, y_v, "Helvetica", FS_VRB,
@@ -40048,6 +40143,64 @@ def calcular_folha_etapa1_pdf():
                     st_etapa)]], colWidths=[16*cm])
                 e4_tbl.setStyle(_st_e4_zero2)
             elems.append(e4_tbl)
+
+            # ── etapa 4B — atestado: os 15 dias por conta da empresa ──
+            # Os dias de atestado saem de dias_trabalhados (etapa 1030), entao o
+            # salario proporcional NAO os paga. Quem paga e a rubrica 0009, na
+            # proporcao do salario. Sem isso o funcionario perdia esses dias — o
+            # calculo descontava e nao repunha em lugar nenhum.
+            _val_dia_at = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
+            _val_atest  = int(_val_dia_at * dias_atestado_total)
+            if dias_atestado_total > 0 and _val_atest > 0:
+                mmQmm[9] = dias_atestado_total
+                mmVmm[9] = _val_atest
+                _st_op4b = ParagraphStyle("op4b", fontName="Helvetica", fontSize=7,
+                                          alignment=1, textColor=colors.HexColor("#374151"))
+                _form4b = Table([
+                    [Paragraph("0009-ATESTADO MEDICO", st_formula),
+                     Paragraph("=", _st_op4b),
+                     Paragraph("Salario Mensal", _st_op4b),
+                     Paragraph("/", _st_op4b),
+                     Paragraph("Dias do Mes", _st_op4b),
+                     Paragraph("x", _st_op4b),
+                     Paragraph("Dias de Atestado", _st_op4b)],
+                    [Paragraph(_fmt_brl(_val_atest), st_formula),
+                     Paragraph("=", _st_op4b),
+                     Paragraph(l["sal_mes_fmt"], _st_op4b),
+                     Paragraph("/", _st_op4b),
+                     Paragraph(str(dias_mes), _st_op4b),
+                     Paragraph("x", _st_op4b),
+                     Paragraph(str(dias_atestado_total), _st_op4b)],
+                ], colWidths=[2.6*cm, 0.4*cm, 2.1*cm, 0.4*cm, 1.7*cm, 0.4*cm, 2.2*cm])
+                _form4b.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
+                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+                ]))
+                e4b_tbl = Table([
+                    [Paragraph("ETAPA 1045 - ATESTADO MEDICO (15 PRIMEIROS DIAS)", st_etapa)],
+                    [_form4b],
+                ], colWidths=[16*cm])
+                e4b_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("LEFTPADDING",   (0, 1), (0,  1), 10),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0), 8),
+                    ("BOTTOMPADDING", (0, 0), (0, 0), 2),
+                    ("TOPPADDING",    (0, 1), (0, 1), 2),
+                    ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+                ]))
+            else:
+                _motivo_4b = ("Nao se aplica — sem afastamento nesta folha"
+                              if not afast_func else
+                              "Nao se aplica — os 15 dias da empresa ja foram "
+                              "consumidos em folhas anteriores (INSS a partir do 16o)")
+                e4b_tbl = Table([[Paragraph(
+                    f"ETAPA 1045 - ATESTADO MEDICO (15 PRIMEIROS DIAS)   {_motivo_4b}",
+                    st_etapa_na)]], colWidths=[16*cm])
+                e4b_tbl.setStyle(_st_e4_zero2)
+            elems.append(e4b_tbl)
 
             # ── etapa 5 — faltas no mês ────────────────────
             faltas_func  = faltas.get(matr, [])
