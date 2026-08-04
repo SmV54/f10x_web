@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Excluir / Parar Movimento Fixo</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo { background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo { margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 1140px; margin: 24px auto; padding: 0 20px 60px; }
+
+.card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 20px; overflow: hidden; }
+.card-titulo { background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* EXPLICACAO DAS DUAS SAIDAS */
+.explica { padding: 14px 20px; display: flex; gap: 14px; flex-wrap: wrap; }
+.explica-box { flex: 1; min-width: 260px; border: 1px solid var(--border);
+    border-radius: 10px; padding: 11px 14px; font-size: 12px; line-height: 1.55; }
+.explica-box b { display: block; font-size: 12px; margin-bottom: 3px; }
+.explica-exc  { background: #fff1f2; border-color: #fecdd3; color: #9f1239; }
+.explica-par  { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+
+/* FILTROS */
+.filtro-body { padding: 14px 20px; display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.fg { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 170px; }
+.fg.sm { flex: 0 0 auto; min-width: 0; }
+.fg label { font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.07em; color: #94a3b8; }
+.fg select, .fg input {
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px;
+    font-family: var(--sans); font-size: 13px; outline: none;
+    background: #fff; color: var(--label); transition: border-color 0.15s; }
+.fg select:focus, .fg input:focus { border-color: var(--accent); }
+.chk-label { display: flex; align-items: center; gap: 6px; font-size: 12px;
+    color: #374151; cursor: pointer; padding-bottom: 8px; white-space: nowrap; }
+.chk-label input { accent-color: var(--accent); cursor: pointer; }
+
+/* TABELA */
+.tabela-wrap { overflow-x: auto; }
+.tabela-wrap table { width: 100%; border-collapse: collapse; }
+.tabela-wrap thead th { background: #f1f5f9; padding: 8px 12px; font-size: 10px;
+    font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b;
+    text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.tabela-wrap tbody tr { border-bottom: 1px solid #f1f5f9; }
+.tabela-wrap tbody tr:last-child { border-bottom: none; }
+.tabela-wrap tbody tr:hover { background: #f8fafc; }
+.tabela-wrap tbody tr.encerrado { opacity: 0.5; }
+.tabela-wrap tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; vertical-align: middle; }
+.td-num  { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 28px; text-align: right; }
+.td-cod  { font-family: var(--mono); font-size: 11px; }
+.td-val  { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
+.tabela-rodape { padding: 8px 14px; background: #f8fafc; border-top: 1px solid var(--border);
+    font-size: 11px; color: #64748b; }
+.vazio { padding: 40px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: 10px; font-weight: 700; white-space: nowrap; }
+.badge-novo  { background:#f0fdf4; color:#166534; border:1px solid #86efac; }
+.badge-hist  { background:#fefce8; color:#92400e; border:1px solid #fcd34d; }
+.badge-fim   { background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; }
+.badge-indiv { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+.badge-grupo { background:#faf5ff; color:#6b21a8; border:1px solid #d8b4fe; }
+.crit { display:inline-block; background:#f1f5f9; border:1px solid #e2e8f0;
+    border-radius:4px; padding:1px 6px; margin:2px 3px 0 0;
+    font-size:10px; color:#475569; }
+
+.btn-acao { border: 1px solid var(--border); background: #fff; border-radius: 7px;
+    padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+    font-family: var(--sans); transition: 0.15s; white-space: nowrap; margin-right: 5px; }
+.btn-parar:hover    { border-color: #2a7de1; background: #eff6ff; color: #1e40af; }
+.btn-excluir:hover  { border-color: #e11d48; background: #fff1f2; color: #9f1239; }
+
+/* MODAL PARAR */
+.mod-back { position: fixed; inset: 0; background: rgba(15,23,42,.45);
+    display: none; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+.mod-back.show { display: flex; }
+.mod { background: #fff; border-radius: 14px; width: 100%; max-width: 480px;
+    overflow: hidden; box-shadow: 0 18px 50px rgba(15,23,42,.28); }
+.mod-cab { padding: 13px 18px; border-bottom: 1px solid var(--border);
+    font-size: 14px; font-weight: 700; color: #1e293b; background: #f8fafc; }
+.mod-corpo { padding: 16px 18px; font-size: 13px; line-height: 1.6; }
+.mod-desc { background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; margin-bottom: 14px; font-size: 12px; color: #334155; }
+.opc { display: block; border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px 12px; margin-bottom: 9px; cursor: pointer; transition: 0.15s; }
+.opc:hover { border-color: var(--accent); background: #f8fbff; }
+.opc.sel { border-color: var(--accent); background: #eff6ff; }
+.opc-tit { font-size: 13px; font-weight: 600; color: #1e293b;
+    display: flex; align-items: center; gap: 7px; }
+.opc-sub { font-size: 11px; color: #64748b; margin-top: 3px; margin-left: 23px; }
+.opc input[type=radio] { accent-color: var(--accent); }
+.opc input[type=text] { margin-left: 23px; margin-top: 7px; width: 120px;
+    padding: 5px 9px; border: 1px solid var(--border); border-radius: 6px;
+    font-family: var(--mono); font-size: 13px; outline: none; }
+.mod-acoes { padding: 12px 18px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 9px; background: #f8fafc; }
+.mod-btn { border: none; border-radius: 8px; padding: 8px 18px; font-size: 13px;
+    font-weight: 600; cursor: pointer; font-family: var(--sans); }
+.mod-btn-cancel { background: #e2e8f0; color: #475569; }
+.mod-btn-ok { background: var(--accent); color: #fff; }
+.mod-btn-ok:hover { background: #1a5fb8; }
+.mod-erro { color: #be123c; font-size: 12px; margin-top: 8px; min-height: 16px; }
+
+.msg-topo { margin: 0 0 18px; padding: 10px 15px; border-radius: 9px;
+    font-size: 13px; font-weight: 500; display: none; }
+.msg-topo.show { display: block; }
+.msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Excluir / Parar Movimento Fixo</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="msg-topo" id="msg-topo"></div>
+
+    <!-- AS DUAS SAIDAS -->
+    <div class="card">
+        <div class="card-titulo"><span>❓ Qual das duas usar</span></div>
+        <div class="explica">
+            <div class="explica-box explica-exc">
+                <b>🗑️ Excluir — apaga de vez</b>
+                Só para o movimento <b>incluído nesta folha ({{ anomes_fmt }})</b> que ainda
+                não foi lançado em nenhuma. Como nunca produziu efeito, pode sumir sem deixar
+                rastro. O botão só aparece nas linhas em que isso vale.
+            </div>
+            <div class="explica-box explica-par">
+                <b>⏹️ Parar — encerra a vigência</b>
+                Para o movimento que <b>já rodou em folhas anteriores</b>. Grava a última folha
+                em que ele vale e para de lançar dali em diante. Nada do que já foi pago é
+                alterado — o histórico continua intacto.
+            </div>
+        </div>
+    </div>
+
+    <!-- FILTROS -->
+    <div class="card">
+        <div class="card-titulo"><span>🔍 Filtros</span></div>
+        <div class="filtro-body">
+            <div class="fg sm">
+                <label>Tipo</label>
+                <select id="sel-tipo" onchange="renderLista()">
+                    <option value="">— Todos —</option>
+                    <option value="I">👤 Só individuais</option>
+                    <option value="G">👥 Só de grupo</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Funcionário</label>
+                <select id="sel-func" onchange="renderLista()">
+                    <option value="">— Todos —</option>
+                </select>
+            </div>
+            <div class="fg">
+                <label>Verba</label>
+                <select id="sel-verba" onchange="renderLista()">
+                    <option value="">— Todas —</option>
+                </select>
+            </div>
+            <label class="chk-label fg sm">
+                <input type="checkbox" id="chk-encerrados" onchange="renderLista()">
+                Mostrar já encerrados
+            </label>
+        </div>
+    </div>
+
+    <!-- LISTA -->
+    <div class="card">
+        <div class="card-titulo"><span id="lista-titulo">📌 Movimentos Fixos</span></div>
+        <div id="lista-container"><div class="vazio">Carregando…</div></div>
+    </div>
+</div>
+
+<!-- MODAL PARAR -->
+<div class="mod-back" id="mod-parar">
+    <div class="mod">
+        <div class="mod-cab">⏹️ Parar movimento fixo</div>
+        <div class="mod-corpo">
+            <div class="mod-desc" id="mod-desc"></div>
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#94a3b8;margin-bottom:9px;">
+                Até quando ele ainda deve ser lançado?
+            </div>
+
+            <label class="opc sel" id="opc-ja">
+                <span class="opc-tit"><input type="radio" name="quando" value="ja" checked onchange="selOpc()"> Parar já nesta folha</span>
+                <span class="opc-sub">Não entra em {{ anomes_fmt }}. Última folha: <b>{{ anomes_ant_fmt }}</b></span>
+            </label>
+
+            <label class="opc" id="opc-depois">
+                <span class="opc-tit"><input type="radio" name="quando" value="depois" onchange="selOpc()"> Lançar uma última vez e parar</span>
+                <span class="opc-sub">Entra em {{ anomes_fmt }} e para depois. Última folha: <b>{{ anomes_fmt }}</b></span>
+            </label>
+
+            <label class="opc" id="opc-outra">
+                <span class="opc-tit"><input type="radio" name="quando" value="outra" onchange="selOpc()"> Outra folha</span>
+                <span class="opc-sub">Informe a última folha em que deve ser lançado (MM/AAAA)</span>
+                <input type="text" id="inp-outra" placeholder="MM/AAAA" maxlength="7"
+                       oninput="mascaraFolha(this)" onfocus="marcarOutra()">
+            </label>
+
+            <div class="mod-erro" id="mod-erro"></div>
+        </div>
+        <div class="mod-acoes">
+            <button class="mod-btn mod-btn-cancel" onclick="fecharParar()">Cancelar</button>
+            <button class="mod-btn mod-btn-ok" onclick="confirmarParar()">Parar</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const FUNCIONARIOS   = {{ funcionarios | tojson | safe }};
+const VERBAS         = {{ verbas       | tojson | safe }};
+const SINDICATOS     = {{ sindicatos   | tojson | safe }};
+const FUNCOES        = {{ funcoes      | tojson | safe }};
+const CATEGORIAS     = {{ categorias   | tojson | safe }};
+const ANOMES_ATUAL   = parseInt('{{ anomes }}'     || '0');
+const ANOMES_ANT     = parseInt('{{ anomes_ant }}' || '0');
+
+let REGISTROS = [];
+let LISTA_MAP = {};
+let ID_PARAR  = null;
+
+// ── INIT SELECTS ──
+(function() {
+    const sf = document.getElementById('sel-func');
+    FUNCIONARIOS.forEach(f => {
+        const o = document.createElement('option');
+        o.value = f.matricula;
+        o.textContent = `${String(f.matricula).padStart(6,'0')} — ${f.nome}`;
+        sf.appendChild(o);
+    });
+    const sv = document.getElementById('sel-verba');
+    VERBAS.forEach(v => {
+        const o = document.createElement('option');
+        o.value = v.cod_rubr;
+        o.textContent = `${String(v.cod_rubr).padStart(4,'0')} — ${v.dsc_rubr}`;
+        sv.appendChild(o);
+    });
+})();
+
+// ── HELPERS ──
+function nomeFunc(mat)  { const f = FUNCIONARIOS.find(x => x.matricula === mat); return f ? f.nome : '—'; }
+function nomeVerba(cod) { const v = VERBAS.find(x => x.cod_rubr === cod); return v ? v.dsc_rubr : '—'; }
+function nomeSind(id)   { const s = SINDICATOS.find(x => x.id === id); return s ? s.nome : `Sind.#${id}`; }
+function nomeFuncao(id) { const f = FUNCOES.find(x => x.id === id); return f ? f.nome : `Função #${id}`; }
+function nomeCateg(cod) {
+    const c = CATEGORIAS.find(x => String(x.codigo) === String(cod));
+    return c ? `${cod} — ${c.texto}` : String(cod);
+}
+function formatValor(c) { return ((c||0)/100).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+function formatFolha(n) { return n ? `${String(n % 100).padStart(2,'0')}/${Math.floor(n/100)}` : '—'; }
+function parseFolha(s) {
+    const m = (s||'').trim().match(/^(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const mm = parseInt(m[1]), yyyy = parseInt(m[2]);
+    if (mm < 1 || mm > 12 || yyyy < 1900 || yyyy > 9999) return null;
+    return yyyy * 100 + mm;
+}
+function mascaraFolha(el) {
+    let v = el.value.replace(/\D/g, '').slice(0, 6);
+    if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+    el.value = v;
+}
+function mostrarMsg(msg, tipo) {
+    const el = document.getElementById('msg-topo');
+    el.textContent = msg;
+    el.className = 'msg-topo show ' + (tipo === 'ok' ? 'msg-ok' : 'msg-err');
+    window.scrollTo({top: 0, behavior: 'smooth'});
+    setTimeout(() => { el.className = 'msg-topo'; }, 6000);
+}
+
+function descRegistro(id) {
+    const r = LISTA_MAP[id];
+    if (!r) return `ID ${id}`;
+    let alvo;
+    if (r.matricula) {
+        alvo = `Funcionário ${String(r.matricula).padStart(6,'0')} — ${nomeFunc(r.matricula)}`;
+    } else {
+        const c = [];
+        if (r.id_sindicato) c.push(`sindicato ${nomeSind(r.id_sindicato)}`);
+        if (r.id_funcao)    c.push(`função ${nomeFuncao(r.id_funcao)}`);
+        if (r.categoria)    c.push(`categoria ${r.categoria}`);
+        alvo = c.length ? `Grupo (${c.join(', ')})` : 'Grupo — todos os funcionários';
+    }
+    return `${alvo}\nVerba ${String(r.cod_verba).padStart(4,'0')} — ${nomeVerba(r.cod_verba)}\nR$ ${formatValor(r.valor)}`;
+}
+
+// A coluna diz explicitamente se o movimento e de UM funcionario ou de um grupo,
+// e no caso do grupo mostra por quais filtros ele pega — sem isso a linha nao
+// deixava claro em quem o "parar" vai mexer.
+function renderAlvo(r) {
+    if (r.matricula) {
+        return `<span class="badge badge-indiv">👤 Funcionário</span>
+                <div style="margin-top:4px;">
+                    <span class="td-cod">${String(r.matricula).padStart(6,'0')}</span>
+                    <span style="font-size:11px;color:#475569;"> — ${nomeFunc(r.matricula)}</span>
+                </div>`;
+    }
+    const criterios = [];
+    if (r.id_sindicato) criterios.push(`Sindicato: ${nomeSind(r.id_sindicato)}`);
+    if (r.id_funcao)    criterios.push(`Função: ${nomeFuncao(r.id_funcao)}`);
+    if (r.categoria)    criterios.push(`Categoria: ${nomeCateg(r.categoria)}`);
+    if (r.id_centrocusto) criterios.push(`C. Custo: ${r.id_centrocusto}`);
+    if (r.id_filial)      criterios.push(`Filial: ${r.id_filial}`);
+    const detalhe = criterios.length
+        ? criterios.map(c => `<span class="crit">${c}</span>`).join('')
+        : `<span style="font-size:11px;color:#64748b;">Todos os funcionários</span>`;
+    return `<span class="badge badge-grupo">👥 Grupo</span>
+            <div style="margin-top:4px;">${detalhe}</div>`;
+}
+
+function renderVigencia(r) {
+    if (r.qtd_parcelas) {
+        const rest = r.qtd_parcelas - (r.qtd_parcelas_before || 0);
+        return `<span style="font-size:11px;">${r.qtd_parcelas_before||0}/${r.qtd_parcelas} parcelas</span>
+                <br><span style="font-size:10px;color:#64748b;">${rest} restante(s)</span>`;
+    }
+    const ini = r.folha_inicial ? formatFolha(r.folha_inicial) : '—';
+    const fim = (r.folha_final && r.folha_final !== 999912) ? formatFolha(r.folha_final) : null;
+    return `<span style="font-size:11px;">${ini}${fim ? ' → ' + fim : ' →'}</span>`
+         + (!fim ? `<br><span style="font-size:10px;color:#64748b;">Indeterminado</span>` : '');
+}
+
+// Ja encerrado = tem folha_final que nao passa desta folha: nao lanca mais nada.
+function jaEncerrado(r) {
+    return !!(r.folha_final && r.folha_final !== 999912
+              && ANOMES_ATUAL && r.folha_final < ANOMES_ATUAL);
+}
+
+function renderSituacao(r) {
+    if (jaEncerrado(r))
+        return `<span class="badge badge-fim">Encerrado em ${formatFolha(r.folha_final)}</span>`;
+    if (r.pode_excluir)
+        return `<span class="badge badge-novo">Incluído nesta folha</span>
+                <br><span style="font-size:10px;color:#64748b;">nunca lançado</span>`;
+    return `<span class="badge badge-hist">Já lançado antes</span>
+            <br><span style="font-size:10px;color:#64748b;">só pode parar</span>`;
+}
+
+// ── LISTA ──
+function renderLista() {
+    const el    = document.getElementById('lista-container');
+    const fTipo = document.getElementById('sel-tipo').value;
+    const fMat  = document.getElementById('sel-func').value;
+    const fVer  = document.getElementById('sel-verba').value;
+    const verEnc = document.getElementById('chk-encerrados').checked;
+
+    let regs = REGISTROS.filter(r => r.situacao === 'A');
+    if (fTipo === 'I') regs = regs.filter(r => !!r.matricula);
+    if (fTipo === 'G') regs = regs.filter(r => !r.matricula);
+    // Filtrar por funcionario deixa de fora os de grupo — eles nao tem matricula
+    // gravada, entao nao da para afirmar aqui se pegam este funcionario.
+    if (fMat) regs = regs.filter(r => String(r.matricula || '') === fMat);
+    if (fVer) regs = regs.filter(r => String(r.cod_verba) === fVer);
+    if (!verEnc) regs = regs.filter(r => !jaEncerrado(r));
+
+    document.getElementById('lista-titulo').textContent =
+        `📌 Movimentos Fixos — folha ${formatFolha(ANOMES_ATUAL)}`;
+
+    if (!regs.length) {
+        el.innerHTML = '<div class="vazio">Nenhum movimento fixo para os filtros escolhidos.</div>';
+        return;
+    }
+
+    const rows = regs.map((r, i) => {
+        const enc = jaEncerrado(r);
+        return `
+        <tr class="${enc ? 'encerrado' : ''}">
+            <td class="td-num">${i+1}</td>
+            <td>${renderAlvo(r)}</td>
+            <td><span class="td-cod">${String(r.cod_verba).padStart(4,'0')}</span>
+                <br><span style="font-size:11px;color:#475569;">${nomeVerba(r.cod_verba)}</span></td>
+            <td class="td-val">R$ ${formatValor(r.valor)}</td>
+            <td>${renderVigencia(r)}</td>
+            <td>${renderSituacao(r)}</td>
+            <td style="white-space:nowrap;">
+                ${enc ? '' :
+                    `<button class="btn-acao btn-parar" onclick="abrirParar(${r.id})">⏹️ Parar</button>`
+                  + (r.pode_excluir
+                        ? `<button class="btn-acao btn-excluir" onclick="excluir(${r.id})">🗑️ Excluir</button>`
+                        : '')}
+            </td>
+        </tr>`;
+    }).join('');
+
+    el.innerHTML = `<div class="tabela-wrap"><table>
+        <thead><tr>
+            <th class="td-num">#</th><th>Alvo</th><th>Verba</th>
+            <th style="text-align:right;">Valor</th><th>Vigência</th>
+            <th>Situação</th><th>Ação</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+    </table>
+    <div class="tabela-rodape">${regs.length} movimento(s)</div></div>`;
+}
+
+async function carregarLista() {
+    const el = document.getElementById('lista-container');
+    el.innerHTML = '<div class="vazio">Carregando…</div>';
+    try {
+        const res = await fetch('/api/mov_fixo_listar');
+        const d   = await res.json();
+        if (!d.ok) { el.innerHTML = `<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
+        REGISTROS = d.registros || [];
+        LISTA_MAP = {};
+        REGISTROS.forEach(r => { LISTA_MAP[r.id] = r; });
+        renderLista();
+    } catch { el.innerHTML = '<div class="vazio" style="color:#be123c;">Erro ao carregar.</div>'; }
+}
+
+// ── EXCLUIR ──
+async function excluir(id) {
+    if (!await f10Confirm(
+        `Excluir definitivamente este movimento fixo?\n\n${descRegistro(id)}\n\n` +
+        `Ele foi incluído nesta folha e ainda não foi lançado, então some sem deixar rastro.`,
+        {tipo: 'perigo', okText: 'Excluir'}
+    )) return;
+    try {
+        const res = await fetch('/api/mov_fixo_excluir', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}),
+        });
+        const d = await res.json();
+        if (d.ok) { await carregarLista(); mostrarMsg(d.msg, 'ok'); return; }
+        // O servidor revalida: a tela pode estar aberta desde antes de a folha virar.
+        if (d.bloqueado === 'parar') {
+            if (await f10Confirm(`${d.msg}\n\nDeseja parar este movimento agora?`, {okText:'Parar'}))
+                abrirParar(id);
+            else await carregarLista();
+            return;
+        }
+        mostrarMsg(d.msg || 'Erro ao excluir.', 'err');
+    } catch { mostrarMsg('Erro de comunicação.', 'err'); }
+}
+
+// ── PARAR ──
+function abrirParar(id) {
+    ID_PARAR = id;
+    document.getElementById('mod-desc').textContent = descRegistro(id);
+    document.getElementById('mod-erro').textContent = '';
+    document.getElementById('inp-outra').value = '';
+    document.querySelector('input[name="quando"][value="ja"]').checked = true;
+    selOpc();
+    document.getElementById('mod-parar').classList.add('show');
+}
+function fecharParar() {
+    document.getElementById('mod-parar').classList.remove('show');
+    ID_PARAR = null;
+}
+function selOpc() {
+    const v = document.querySelector('input[name="quando"]:checked').value;
+    ['ja','depois','outra'].forEach(k => {
+        document.getElementById('opc-' + k).className = 'opc' + (k === v ? ' sel' : '');
+    });
+}
+function marcarOutra() {
+    document.querySelector('input[name="quando"][value="outra"]').checked = true;
+    selOpc();
+}
+
+async function confirmarParar() {
+    const erroEl = document.getElementById('mod-erro');
+    erroEl.textContent = '';
+    const r = LISTA_MAP[ID_PARAR];
+    const v = document.querySelector('input[name="quando"]:checked').value;
+
+    let folhaFinal;
+    if (v === 'ja')          folhaFinal = ANOMES_ANT;
+    else if (v === 'depois') folhaFinal = ANOMES_ATUAL;
+    else {
+        folhaFinal = parseFolha(document.getElementById('inp-outra').value);
+        if (!folhaFinal) { erroEl.textContent = 'Informe a folha no formato MM/AAAA.'; return; }
+    }
+    if (r && r.folha_inicial && folhaFinal < r.folha_inicial) {
+        erroEl.textContent = `A última folha não pode ser anterior ao início da vigência (${formatFolha(r.folha_inicial)}).`;
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/mov_fixo_parar', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id: ID_PARAR, folha_final: folhaFinal}),
+        });
+        const d = await res.json();
+        if (d.ok) { fecharParar(); await carregarLista(); mostrarMsg(d.msg, 'ok'); }
+        else erroEl.textContent = d.msg || 'Erro ao parar.';
+    } catch { erroEl.textContent = 'Erro de comunicação.'; }
+}
+
+document.getElementById('mod-parar').addEventListener('click', e => {
+    if (e.target.id === 'mod-parar') fecharParar();
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && document.getElementById('mod-parar').classList.contains('show'))
+        fecharParar();
+});
+
+carregarLista();
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

@@ -169,6 +169,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     display: none; align-items: center; gap: 6px; margin-bottom: 12px; }
 .edit-banner.show { display: flex; }
 
+/* AVISO "VAI PARA TODOS" — modo Filtrar sem nenhum filtro escolhido */
+.aviso-todos { background: #fff7ed; border: 1px solid #fdba74; border-radius: 8px;
+    padding: 9px 13px; font-size: 12px; color: #9a3412; line-height: 1.5;
+    display: none; gap: 8px; margin-top: 10px; }
+.aviso-todos.show { display: flex; }
+.aviso-todos b { color: #7c2d12; }
+.aviso-todos-ico { font-size: 15px; line-height: 1.2; }
+
 /* BUTTONS */
 .btn-row { display: flex; gap: 8px; margin-top: 20px; }
 .btn-incluir { flex: 1; background: var(--accent); color: #fff; border: none; border-radius: 8px;
@@ -300,22 +308,30 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="field-row">
                     <div class="fg">
                         <label>Sindicato</label>
-                        <select id="sel-sindicato">
+                        <select id="sel-sindicato" onchange="atualizarAvisoTodos()">
                             <option value="">Todos</option>
                         </select>
                     </div>
                     <div class="fg">
                         <label>Função</label>
-                        <select id="sel-funcao">
+                        <select id="sel-funcao" onchange="atualizarAvisoTodos()">
                             <option value="">Todas</option>
                         </select>
                     </div>
                     <div class="fg">
                         <label>Categoria (eSocial Tab. 01)</label>
-                        <select id="sel-categoria">
+                        <select id="sel-categoria" onchange="atualizarAvisoTodos()">
                             <option value="">Todas</option>
                         </select>
                     </div>
+                </div>
+
+                <div class="aviso-todos" id="aviso-todos">
+                    <span class="aviso-todos-ico">⚠️</span>
+                    <span>Nenhum filtro escolhido: este movimento fixo será lançado para
+                    <b>TODOS os funcionários da empresa</b>, inclusive os admitidos daqui
+                    em diante. Se a intenção é atingir só algumas pessoas, use
+                    <b>Funcionários específicos</b> ou preencha ao menos um filtro.</span>
                 </div>
 
                 <details class="filt-adv" id="filt-adv-details">
@@ -488,6 +504,18 @@ const SINDICATOS   = {{ sindicatos   | tojson | safe }};
 const FUNCOES      = {{ funcoes      | tojson | safe }};
 const CATEGORIAS   = {{ categorias   | tojson | safe }};
 
+// Verbas de adicional (insalubridade/periculosidade) e quem já as tem no
+// cadastro. A folha lança essas verbas sozinha a partir do cadastro, então
+// lançá-las também como movimento fixo pagaria em dobro.
+const VERBAS_INSALUB = new Set({{ verbas_insalub | tojson | safe }});
+const VERBAS_PERICU  = new Set({{ verbas_pericu  | tojson | safe }});
+const MATS_INSALUB   = new Set({{ mats_insalub   | tojson | safe }});
+const MATS_PERICU    = new Set({{ mats_pericu    | tojson | safe }});
+
+// Folha ativa e a anterior — preenchidas por carregarLista(), usadas no "Parar".
+let ANOMES_ATUAL    = 0;
+let ANOMES_ANTERIOR = 0;
+
 const TP_LABEL = {'1':'Provento','2':'Desconto','3':'Informativa','4':'Info.Ded.'};
 const TP_CLS   = {'1':'tp-1','2':'tp-2','3':'tp-3','4':'tp-4'};
 
@@ -583,6 +611,68 @@ function setModoAlvo(modo) {
     document.getElementById('div-especifico').style.display = modo === 'especifico' ? '' : 'none';
     document.getElementById('div-grupo').style.display      = modo === 'grupo'      ? '' : 'none';
     if (modo === 'grupo') document.getElementById('filt-adv-details').open = true;
+    atualizarAvisoTodos();
+}
+
+// No modo "Filtrar", deixar tudo em branco NAO e um movimento sem alvo: e um
+// movimento que pega a empresa inteira, hoje e no futuro. Como o formulario nao
+// reclama de campo vazio, o usuario pode gravar isso achando que nao selecionou
+// ninguem — dai o aviso ao vivo e a confirmacao extra na hora de gravar.
+const CAMPOS_FILTRO_GRUPO = [
+    'sel-sindicato', 'sel-funcao', 'sel-categoria',
+    'inp-nasc1', 'inp-nasc2', 'inp-adm1', 'inp-adm2',
+    'inp-sal1', 'inp-sal2', 'inp-idade1', 'inp-idade2', 'inp-ts1', 'inp-ts2',
+];
+
+// Os filtros avancados sao muitos e ficam dentro do <details>; em vez de um
+// oninput em cada um, escuta todos de uma vez.
+CAMPOS_FILTRO_GRUPO.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.addEventListener('input', atualizarAvisoTodos);
+              el.addEventListener('change', atualizarAvisoTodos); }
+});
+
+// Espelha _bloqueio_adicional_mov_fixo do servidor, só para avisar antes do POST.
+// A trava que vale é a de lá — esta lista foi carregada junto com a página e
+// pode estar velha.
+function bloqueioAdicional(codVerba, matriculas) {
+    let nome, marcados;
+    if (VERBAS_INSALUB.has(codVerba))      { nome = 'insalubridade';  marcados = MATS_INSALUB; }
+    else if (VERBAS_PERICU.has(codVerba))  { nome = 'periculosidade'; marcados = MATS_PERICU; }
+    else return null;
+    if (!marcados.size) return null;
+
+    const fmt = ms => ms.slice(0,8).map(m => String(m).padStart(6,'0')).join(', ')
+                    + (ms.length > 8 ? ` e mais ${ms.length - 8}` : '');
+
+    if (matriculas === null) {
+        const todos = [...marcados].sort((a,b) => a-b);
+        return `Movimento de grupo com a verba de ${nome}: ${todos.length} funcionário(s) `
+             + `já têm ${nome} no cadastro (${fmt(todos)}) e a folha já lança o adicional `
+             + `sozinha para eles. Restrinja o movimento a quem não tem o adicional.`;
+    }
+    const conflito = matriculas.filter(m => marcados.has(m)).sort((a,b) => a-b);
+    if (!conflito.length) return null;
+    return `${conflito.length} funcionário(s) já têm ${nome} marcada no cadastro `
+         + `(${fmt(conflito)}). A folha calcula o adicional sozinha — lançar a mesma `
+         + `verba como movimento fixo pagaria em dobro. Para mudar o percentual, `
+         + `use o cadastro do funcionário.`;
+}
+
+function contarFiltrosGrupo() {
+    return CAMPOS_FILTRO_GRUPO.filter(id => {
+        const el = document.getElementById(id);
+        return el && String(el.value || '').trim() !== '';
+    }).length;
+}
+
+function ehParaTodos() {
+    const modo = document.querySelector('input[name="modo_alvo"]:checked');
+    return !!modo && modo.value === 'grupo' && contarFiltrosGrupo() === 0;
+}
+
+function atualizarAvisoTodos() {
+    document.getElementById('aviso-todos').classList.toggle('show', ehParaTodos());
 }
 function toggleIndeterminado(checked) {
     const inp = document.getElementById('inp-folha-fim');
@@ -664,6 +754,9 @@ function coletarDados() {
         if (!matriculas.length) return {ok:false, msg:'Selecione ao menos um funcionário.'};
     }
 
+    const bloq = bloqueioAdicional(codVerba, matriculas);
+    if (bloq) return {ok:false, msg: bloq};
+
     let qtdParcelas = null, qtdBefore = 0, folhaIni = null, folhaFim = null;
     if (modoVig === 'parcelas') {
         qtdParcelas = parseInt(document.getElementById('inp-parc').value || '0');
@@ -726,6 +819,20 @@ let idEdicao   = null;
 async function gravar() {
     const r = coletarDados();
     if (!r.ok) { mostrarMsg(r.msg, 'err'); return; }
+
+    // Sem nenhum filtro o movimento vale para a empresa toda: exige confirmacao
+    // explicita, porque e o unico caso em que gravar sem escolher ninguem tem
+    // efeito sobre todo mundo.
+    if (ehParaTodos()) {
+        const qtd = (typeof FUNCIONARIOS !== 'undefined' && FUNCIONARIOS.length)
+            ? `os ${FUNCIONARIOS.length} funcionários ativos` : 'TODOS os funcionários';
+        if (!await f10Confirm(
+            `Você não escolheu nenhum filtro.\n\n` +
+            `Este movimento fixo será lançado para ${qtd} da empresa, e também ` +
+            `para quem for admitido daqui em diante.\n\nConfirma?`,
+            {tipo: 'aviso', okText: 'Sim, lançar para todos'}
+        )) return;
+    }
 
     const btn = document.getElementById('btn-principal');
     btn.disabled = true;
@@ -825,6 +932,8 @@ function editarRegistro(id) {
         document.getElementById('inp-idade2').value = r.idade2 || '';
         document.getElementById('inp-ts1').value    = r.tempo_servico1 || '';
         document.getElementById('inp-ts2').value    = r.tempo_servico2 || '';
+        // setModoAlvo rodou antes dos valores acima: reavalia com o form preenchido.
+        atualizarAvisoTodos();
     }
 
     if (r.qtd_parcelas) {
@@ -848,18 +957,65 @@ function editarRegistro(id) {
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
 
-// ── EXCLUIR (inativar) ──
+// ── EXCLUIR × PARAR ──
+// Excluir apaga de vez, e so vale para o movimento que nasceu nesta folha e
+// ainda nao foi lancado. Quem ja rodou em folha anterior faz parte do historico
+// pago: para esse o caminho e Parar, que fecha a vigencia sem apagar nada.
+function _descRegistro(id) {
+    const r = LISTA_MAP[id];
+    return r ? `Verba ${String(r.cod_verba).padStart(4,'0')} — R$ ${formatValor(r.valor)}`
+             : `ID ${id}`;
+}
+
 async function excluirRegistro(id) {
-    const r    = LISTA_MAP[id];
-    const desc = r ? `Verba ${String(r.cod_verba).padStart(4,'0')} — R$ ${formatValor(r.valor)}` : `ID ${id}`;
-    if (!await f10Confirm(`Inativar este movimento fixo?\n\n${desc}`)) return;
+    if (!await f10Confirm(
+        `Excluir definitivamente este movimento fixo?\n\n${_descRegistro(id)}\n\n` +
+        `Ele foi incluído nesta folha e ainda não foi lançado, então some sem deixar rastro.`,
+        {tipo: 'perigo', okText: 'Excluir'}
+    )) return;
     try {
         const res = await fetch('/api/mov_fixo_excluir', {
             method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}),
         });
         const d = await res.json();
-        if (d.ok) carregarLista();
-        else alert(d.msg || 'Erro ao inativar.');
+        if (d.ok) { carregarLista(); return; }
+        // O servidor revalida: a lista podia estar aberta desde antes de a folha virar.
+        if (d.bloqueado === 'parar') {
+            if (await f10Confirm(`${d.msg}\n\nDeseja parar este movimento agora?`,
+                                 {okText: 'Parar'})) pararRegistro(id);
+            return;
+        }
+        alert(d.msg || 'Erro ao excluir.');
+    } catch { alert('Erro de comunicação.'); }
+}
+
+async function pararRegistro(id) {
+    const r = LISTA_MAP[id];
+    // Padrao = folha anterior: parar significa "nao lanca mais a partir de agora".
+    // Quem quiser um ultimo lancamento neste mes e so digitar a folha atual.
+    const sugerida = formatFolha(ANOMES_ANTERIOR);
+    const resp = await f10Prompt(
+        `Parar este movimento fixo:\n\n${_descRegistro(id)}\n\n` +
+        `Informe a ÚLTIMA folha em que ele ainda deve ser lançado (MM/AAAA).\n` +
+        `${sugerida} = não entra mais já nesta folha (${formatFolha(ANOMES_ATUAL)}).\n` +
+        `${formatFolha(ANOMES_ATUAL)} = entra uma última vez nesta folha e para depois.`,
+        {valor: sugerida, okText: 'Parar'}
+    );
+    if (resp === null) return;
+    const folhaFinal = parseFolha((resp || '').trim());
+    if (!folhaFinal) { alert('Folha inválida. Use o formato MM/AAAA.'); return; }
+    if (r && r.folha_inicial && folhaFinal < r.folha_inicial) {
+        alert(`A última folha não pode ser anterior ao início da vigência (${formatFolha(r.folha_inicial)}).`);
+        return;
+    }
+    try {
+        const res = await fetch('/api/mov_fixo_parar', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({id, folha_final: folhaFinal}),
+        });
+        const d = await res.json();
+        if (d.ok) { carregarLista(); mostrarMsg(d.msg, 'ok'); }
+        else alert(d.msg || 'Erro ao parar.');
     } catch { alert('Erro de comunicação.'); }
 }
 
@@ -918,7 +1074,10 @@ function renderLista(regs) {
             <td style="white-space:nowrap;">
                 ${r.situacao === 'A'
                     ? `<button class="btn-acao" title="Editar" onclick="editarRegistro(${r.id})">✏️</button>
-                       <button class="btn-acao" title="Inativar" onclick="excluirRegistro(${r.id})">🗑️</button>`
+                       <button class="btn-acao" title="Parar (encerra a vigência, mantém o histórico)" onclick="pararRegistro(${r.id})">⏹️</button>`
+                      + (r.pode_excluir
+                        ? `<button class="btn-acao" title="Excluir (incluído nesta folha, ainda não lançado)" onclick="excluirRegistro(${r.id})">🗑️</button>`
+                        : '')
                     : ''}
             </td>
         </tr>`).join('');
@@ -941,6 +1100,8 @@ async function carregarLista() {
         const res = await fetch('/api/mov_fixo_listar');
         const d   = await res.json();
         if (!d.ok) { el.innerHTML = `<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
+        if (d.anomes)           ANOMES_ATUAL     = parseInt(d.anomes);
+        if (d.anomes_anterior)  ANOMES_ANTERIOR  = parseInt(d.anomes_anterior);
         renderLista(d.registros || []);
     } catch { el.innerHTML = '<div class="vazio" style="color:#be123c;">Erro ao carregar.</div>'; }
 }
@@ -1041,7 +1202,7 @@ function iniciarTour() {
             element: '#card-lista',
             popover: {
                 title: '📋 Movimentos Cadastrados',
-                description: 'Lista todos os movimentos fixos ativos e inativos. Colunas: alvo (funcionário ou grupo), verba, valor, vigência, regras e situação. Use ✏️ para editar e 🗑️ para inativar.',
+                description: 'Lista todos os movimentos fixos ativos e inativos. Colunas: alvo (funcionário ou grupo), verba, valor, vigência, regras e situação. Use ✏️ para editar, ⏹️ para <b>parar</b> (encerra a vigência e preserva o que já foi lançado) e 🗑️ para <b>excluir</b> — este só aparece no movimento incluído nesta folha, que ainda não rodou em nenhuma.',
                 side: 'top', align: 'start',
             }
         },

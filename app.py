@@ -19518,6 +19518,15 @@ def mov_fixo():
     anomes = str(session.get("anomes_atual") or "")
     folha_ini_default = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""
 
+    # Insalubridade/periculosidade vem do cadastro do funcionario e a folha ja as
+    # lanca sozinha. A tela precisa disso para avisar na hora, sem esperar o POST.
+    v_ins, v_per = _verbas_adicional_cad(id_cliente)
+    try:
+        mats_ins = sorted(_mats_com_adicional(id_empresa, id_cliente, 31, anomes))
+        mats_per = sorted(_mats_com_adicional(id_empresa, id_cliente, 41, anomes))
+    except Exception:
+        mats_ins, mats_per = [], []      # a trava do servidor continua valendo
+
     return render_template(
         "F10_Mov_Fixo.html",
         **_ctx_relatorio(),
@@ -19527,18 +19536,217 @@ def mov_fixo():
         funcoes=funcoes,
         categorias=categorias,
         folha_ini_default=folha_ini_default,
+        verbas_insalub=sorted(v_ins),
+        verbas_pericu=sorted(v_per),
+        mats_insalub=mats_ins,
+        mats_pericu=mats_per,
+    )
+
+
+# =========================================================
+# MOVIMENTO FIXO — tela de Excluir / Parar
+# =========================================================
+@app.route("/mov_fixo_encerrar")
+def mov_fixo_encerrar():
+    """Tela dedicada a tirar um movimento fixo de circulação.
+
+    Duas saídas, e a tela deixa claro qual vale para cada linha:
+      excluir — só o que nasceu nesta folha e nunca foi lançado; apaga de vez;
+      parar   — encerra a vigência (folha_final) e preserva o histórico.
+    A lista e as duas ações reaproveitam as APIs de /mov_fixo."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    funcionarios = []
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer")
+             .eq("id_empresa", id_empresa)
+             .order("nomer")
+             .execute())
+        for f in (r.data or []):
+            funcionarios.append({"matricula": f["matricula"],
+                                 "nome": (f.get("nomer") or f.get("nome") or "").strip()})
+    except Exception:
+        pass
+
+    verbas = []
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr, dsc_rubr, id_cliente")
+             .in_("id_cliente", [0, id_cliente])
+             .eq("situacao", "A")
+             .order("cod_rubr")
+             .execute())
+        vm = {}
+        for v in (r.data or []):
+            cod = v.get("cod_rubr")
+            if cod not in vm or v.get("id_cliente") != 0:
+                vm[cod] = {"cod_rubr": cod, "dsc_rubr": v.get("dsc_rubr") or ""}
+        verbas = sorted(vm.values(), key=lambda x: x["cod_rubr"])
+    except Exception:
+        pass
+
+    # Movimento de grupo nao tem matricula: quem identifica o alvo sao os filtros
+    # (sindicato / funcao / categoria). Sem esses nomes a lista mostraria so
+    # "Grupo", sem dizer grupo de quem.
+    sindicatos = []
+    try:
+        r = (supabase.table("tab_aux_sindicatos")
+             .select("id, nome_sindicato")
+             .eq("id_cliente", id_cliente)
+             .order("nome_sindicato")
+             .execute())
+        sindicatos = [{"id": x["id"], "nome": x.get("nome_sindicato", "")} for x in (r.data or [])]
+    except Exception:
+        pass
+
+    funcoes = []
+    try:
+        r = (supabase.table("tab_funcao_cli")
+             .select("id, nome_resumido, cbo_codigo")
+             .eq("id_cliente", id_cliente)
+             .order("nome_resumido")
+             .execute())
+        funcoes = [{"id": x["id"],
+                    "nome": f"{(x.get('cbo_codigo') or '').strip()} — {(x.get('nome_resumido') or '').strip()}"}
+                   for x in (r.data or [])]
+    except Exception:
+        pass
+
+    categorias = []
+    try:
+        r = (supabase.table("tab_tabela_total")
+             .select("codigo, texto")
+             .eq("num_tabela", 1)
+             .neq("codigo", "DOC")
+             .order("codigo")
+             .execute())
+        categorias = r.data or []
+    except Exception:
+        pass
+
+    anomes = str(session.get("anomes_atual") or "")
+    return render_template(
+        "F10_Mov_Fixo_Encerrar.html",
+        **_ctx_relatorio(),
+        funcionarios=funcionarios,
+        verbas=verbas,
+        sindicatos=sindicatos,
+        funcoes=funcoes,
+        categorias=categorias,
+        anomes=anomes,
+        anomes_fmt=_mf_fmt_anomes(anomes) if anomes else "",
+        anomes_ant=str(_anomes_menos_um(anomes)) if anomes else "",
+        anomes_ant_fmt=_mf_fmt_anomes(_anomes_menos_um(anomes)) if anomes else "",
     )
 
 
 # =========================================================
 # MOVIMENTO FIXO — API: listar
 # =========================================================
+def _anomes_menos_um(anomes):
+    """AAAAMM da folha imediatamente anterior a anomes."""
+    n = int(anomes)
+    ano, mes = n // 100, n % 100
+    return (ano - 1) * 100 + 12 if mes == 1 else ano * 100 + (mes - 1)
+
+
+def _mf_fmt_anomes(v):
+    """AAAAMM -> MM/AAAA. Existem varios _fmt_anomes no arquivo, mas todos sao
+    funcoes aninhadas dentro de outras rotas — daqui nenhum deles enxerga."""
+    try:
+        s = str(int(v)).zfill(6)
+    except (ValueError, TypeError):
+        return "—"
+    return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else "—"
+
+
+def _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes, cod_verba, matricula=None):
+    """O movimento fixo ja gerou lancamento em ALGUMA folha anterior a anomes?
+
+    Lancamento de mov_fixo entra no tab_mov com origem='F'. Se existe um desses
+    numa folha passada, o movimento ja produziu efeito no historico e nao pode
+    mais ser excluido — o caminho e "parar" (folha_final), que preserva o que ja
+    foi pago. Registro de grupo (matricula nula) vale por qualquer funcionario,
+    entao a checagem ignora a matricula nesse caso.
+    """
+    try:
+        q = (supabase.table("tab_mov")
+             .select("id")
+             .eq("id_empresa", id_empresa)
+             .eq("id_cliente", id_cliente)
+             .eq("origem", "F")
+             .eq("cod_verba", int(cod_verba))
+             .lt("folha", int(anomes))
+             .limit(1))
+        if matricula is not None:
+            q = q.eq("matricula", int(matricula))
+        return bool((q.execute().data or []))
+    except Exception as e:
+        # Sem resposta confiavel, o seguro e tratar como "ja rodou": bloqueia a
+        # exclusao e sobra o "parar", que nunca destroi historico.
+        print(f"[mov_fixo] checagem ja_rodou falhou: {e}")
+        return True
+
+
+def _mov_fixo_marcar_pode_excluir(regs, anomes, id_empresa, id_cliente):
+    """Marca rec['pode_excluir'] em cada registro da lista.
+
+    Exclusao so vale para movimento incluido NESTA folha e que nunca rodou.
+    Duas condicoes, ambas necessarias:
+      1. vigencia comeca nesta folha ou depois (folha_inicial >= anomes). No modo
+         parcelas folha_inicial e nula, entao esse teste passa e quem decide e a 2.
+      2. nunca gerou lancamento em folha anterior (tab_mov origem='F').
+
+    A condicao 1 e um teste local e derruba quase tudo — numa empresa com 160
+    movimentos ativos sobram ~3 candidatos. So esses vao ao banco, um a um.
+
+    NAO trocar isso por uma consulta unica em lote: o PostgREST corta a resposta
+    em 1000 linhas e ignora limit maior, entao um `in_(cod_verba, ...)` sobre o
+    tab_mov historico voltaria truncado sem avisar — e verba ausente da lista
+    cortada viraria "nunca rodou", liberando exclusao de historico.
+    """
+    for rec in regs:
+        rec["pode_excluir"] = False
+    if not anomes:
+        return
+
+    candidatos = []
+    for rec in regs:
+        if rec.get("situacao") != "A":
+            continue
+        fi = rec.get("folha_inicial")
+        if fi and int(fi) < int(anomes):
+            continue                      # ja vigorava antes desta folha
+        candidatos.append(rec)
+    if not candidatos:
+        return
+    if len(candidatos) > 100:
+        # Nada esperado na pratica. Se acontecer, o seguro e nao disparar uma
+        # rajada de consultas: ninguem excluivel, todo mundo usa "parar".
+        print(f"[mov_fixo] {len(candidatos)} candidatos a exclusao — checagem ignorada")
+        return
+
+    cache = {}
+    for rec in candidatos:
+        cv   = int(rec.get("cod_verba") or 0)
+        mat  = rec.get("matricula")
+        chave = (mat, cv)
+        if chave not in cache:
+            cache[chave] = _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes, cv, mat)
+        rec["pode_excluir"] = not cache[chave]
+
+
 @app.route("/api/mov_fixo_listar")
 def api_mov_fixo_listar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
     try:
         r = (supabase.table("tab_mov_fixo")
              .select("*")
@@ -19546,9 +19754,114 @@ def api_mov_fixo_listar():
              .eq("id_cliente", id_cliente)
              .order("id")
              .execute())
-        return jsonify({"ok": True, "registros": r.data or []})
+        regs = r.data or []
+        _mov_fixo_marcar_pode_excluir(regs, anomes, id_empresa, id_cliente)
+        return jsonify({"ok": True, "registros": regs,
+                        "anomes": anomes,
+                        "anomes_anterior": str(_anomes_menos_um(anomes)) if anomes else ""})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
+
+
+# =========================================================
+# MOVIMENTO FIXO — trava das verbas de insalubridade/periculosidade
+# =========================================================
+def _verbas_adicional_cad(id_cliente):
+    """Codigos das verbas de insalubridade e periculosidade, pelas flags da
+    rubrica (is_insalubridade / is_periculosidade). Na base padrao sao 30 e 31,
+    mas o cliente pode ter rubrica propria — por isso nao vem fixo no codigo."""
+    ins, per = set(), set()
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr, is_insalubridade, is_periculosidade")
+             .in_("id_cliente", [0, id_cliente])
+             .execute())
+        for row in (r.data or []):
+            cod = int(row.get("cod_rubr") or 0)
+            if row.get("is_insalubridade"):
+                ins.add(cod)
+            if row.get("is_periculosidade"):
+                per.add(cod)
+    except Exception as e:
+        print(f"[mov_fixo] falha ao ler verbas de adicional: {e}")
+    return (ins or {30}), (per or {31})
+
+
+def _mats_com_adicional(id_empresa, id_cliente, op1, anomes):
+    """Matriculas com o adicional do cadastro vigente na folha anomes ou depois.
+
+    O adicional fica em tab_eventos (op1=31 insalubridade, op1=41 periculosidade)
+    e o calculo da folha ja o lanca sozinho. Conta como marcado tudo que ainda
+    nao terminou antes desta folha — inclusive o que comeca no futuro, porque o
+    movimento fixo tambem vale para as folhas seguintes."""
+    mats = {}
+    if not anomes or len(str(anomes)) != 6:
+        return mats
+    dt_ini_folha = f"{str(anomes)}01"
+    try:
+        q = (supabase.table("tab_eventos")
+             .select("matricula, data1i, data1f, ref1")
+             .eq("id_empresa", id_empresa)
+             .eq("op1", op1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for ev in (q.execute().data or []):
+            mat = int(ev.get("matricula") or 0)
+            if not mat:
+                continue
+            df = str(ev.get("data1f") or "")
+            if df and len(df) == 8 and df < dt_ini_folha:
+                continue                      # ja encerrado antes desta folha
+            mats[mat] = ev
+    except Exception as e:
+        # Sem leitura confiavel nao da para afirmar que ninguem tem o adicional;
+        # quem decide o que fazer com isso e quem chama.
+        print(f"[mov_fixo] falha ao ler adicional op1={op1}: {e}")
+        raise
+    return mats
+
+
+def _bloqueio_adicional_mov_fixo(id_empresa, id_cliente, anomes, cod_verba, matriculas):
+    """Mensagem de recusa se a verba for de adicional e o cadastro ja o tiver.
+
+    Devolve None quando pode gravar. matriculas=None significa movimento de
+    grupo: como ele pega todo mundo, basta UM funcionario com o adicional no
+    cadastro para o lancamento duplicar."""
+    ins, per = _verbas_adicional_cad(id_cliente)
+    if cod_verba in ins:
+        op1, nome = 31, "insalubridade"
+    elif cod_verba in per:
+        op1, nome = 41, "periculosidade"
+    else:
+        return None
+
+    try:
+        marcados = _mats_com_adicional(id_empresa, id_cliente, op1, anomes)
+    except Exception:
+        return (f"Não foi possível verificar quem tem {nome} no cadastro. "
+                f"Tente de novo em instantes.")
+    if not marcados:
+        return None
+
+    if matriculas is None:
+        atingidos = sorted(marcados)
+        quem = ", ".join(str(m).zfill(6) for m in atingidos[:8])
+        resto = f" e mais {len(atingidos)-8}" if len(atingidos) > 8 else ""
+        return (f"Movimento de grupo com a verba de {nome}: "
+                f"{len(atingidos)} funcionário(s) já têm {nome} no cadastro "
+                f"({quem}{resto}) e a folha já lança o adicional sozinha para eles. "
+                f"Lançar também por movimento fixo pagaria em dobro. "
+                f"Restrinja o movimento a quem não tem o adicional no cadastro.")
+
+    conflito = sorted(m for m in matriculas if int(m) in marcados)
+    if not conflito:
+        return None
+    quem = ", ".join(str(int(m)).zfill(6) for m in conflito[:8])
+    resto = f" e mais {len(conflito)-8}" if len(conflito) > 8 else ""
+    return (f"{len(conflito)} funcionário(s) já têm {nome} marcada no cadastro "
+            f"({quem}{resto}). A folha calcula o adicional sozinha a partir do "
+            f"cadastro — lançar a mesma verba como movimento fixo pagaria em dobro. "
+            f"Para alterar o percentual, use o cadastro do funcionário.")
 
 
 # =========================================================
@@ -19582,6 +19895,13 @@ def api_mov_fixo_gravar():
     if se_afastado  not in ("1","2","3"):         return jsonify({"ok": False, "msg": "Valor inválido para 'Se Afastado'."})
     if mes_admissao not in ("T","P"):             return jsonify({"ok": False, "msg": "Valor inválido para 'Mês de Admissão'."})
     if mes_rescisao not in ("T","P"):             return jsonify({"ok": False, "msg": "Valor inválido para 'Mês de Rescisão'."})
+
+    # Insalubridade/periculosidade vem do cadastro e a folha ja as lanca sozinha.
+    bloqueio = _bloqueio_adicional_mov_fixo(
+        id_empresa, id_cliente, str(session.get("anomes_atual") or ""),
+        cod_verba, data.get("matriculas") or None)
+    if bloqueio:
+        return jsonify({"ok": False, "bloqueado": "adicional", "msg": bloqueio})
 
     from datetime import datetime
     agora = _agora_brasilia()
@@ -19680,6 +20000,15 @@ def api_mov_fixo_alterar():
     if mes_admissao not in ("T","P"):             return jsonify({"ok": False, "msg": "Valor inválido para 'Mês de Admissão'."})
     if mes_rescisao not in ("T","P"):             return jsonify({"ok": False, "msg": "Valor inválido para 'Mês de Rescisão'."})
 
+    # Mesma trava da inclusao: a alteracao pode trocar a verba ou o funcionario
+    # e cair num caso que o cadastro ja cobre.
+    _mat_alt = data.get("matricula")
+    bloqueio = _bloqueio_adicional_mov_fixo(
+        id_empresa, id_cliente, str(session.get("anomes_atual") or ""),
+        cod_verba, [_mat_alt] if _mat_alt else None)
+    if bloqueio:
+        return jsonify({"ok": False, "bloqueado": "adicional", "msg": bloqueio})
+
     from datetime import datetime
 
     def _int(v): return int(v) if v else None
@@ -19728,23 +20057,107 @@ def api_mov_fixo_alterar():
 
 
 # =========================================================
-# MOVIMENTO FIXO — API: inativar
+# MOVIMENTO FIXO — API: excluir (so o que ainda nao rodou)
 # =========================================================
 @app.route("/api/mov_fixo_excluir", methods=["POST"])
 def api_mov_fixo_excluir():
+    """Apaga de vez o movimento fixo — permitido so quando ele nasceu nesta folha
+    e nunca gerou lancamento. Quem ja rodou em folha anterior faz parte do
+    historico e nao pode sumir: para esses o caminho e /api/mov_fixo_parar."""
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
     data = request.get_json(force=True) or {}
     id_reg = data.get("id")
     if not id_reg:
         return jsonify({"ok": False, "msg": "ID não informado."})
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Folha ativa não identificada."})
     try:
-        supabase.table("tab_mov_fixo").update({"situacao": "D"}) \
+        r = (supabase.table("tab_mov_fixo").select("*")
+             .eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente)
+             .limit(1).execute())
+        rec = (r.data or [None])[0]
+        if not rec:
+            return jsonify({"ok": False, "msg": "Movimento fixo não encontrado."})
+
+        # A trava vale no servidor, nao so na tela: o botao pode vir de uma lista
+        # velha, aberta antes de a folha virar.
+        fi = rec.get("folha_inicial")
+        if fi and int(fi) < int(anomes):
+            return jsonify({"ok": False, "bloqueado": "parar",
+                            "msg": "Este movimento já vigorava em folhas anteriores "
+                                   f"(início {_mf_fmt_anomes(fi)}). Use 'Parar' — a exclusão "
+                                   "apagaria um lançamento que já faz parte do histórico."})
+        if _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes,
+                              rec.get("cod_verba"), rec.get("matricula")):
+            return jsonify({"ok": False, "bloqueado": "parar",
+                            "msg": "Este movimento já foi lançado em folha anterior. "
+                                   "Use 'Parar' para encerrá-lo sem mexer no histórico."})
+
+        supabase.table("tab_mov_fixo").delete() \
             .eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute()
-        gravar_log("MOV-FIXO-EXC", f"Inativado ID {id_reg}")
-        return jsonify({"ok": True, "msg": "Movimento fixo inativado."})
+        obs = _obs_mov_fixo(rec.get("cod_verba"), rec.get("valor"), rec)
+        gravar_log("MOV-FIXO-EXC", f"Excluído ID {id_reg} | {obs}",
+                   matricula=rec.get("matricula"))
+        return jsonify({"ok": True, "msg": "Movimento fixo excluído."})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+
+# =========================================================
+# MOVIMENTO FIXO — API: parar (encerra a vigencia)
+# =========================================================
+@app.route("/api/mov_fixo_parar", methods=["POST"])
+def api_mov_fixo_parar():
+    """Encerra um movimento fixo gravando a ultima folha em que ele vale.
+
+    Nao apaga nada: o que ja foi lancado continua no historico. O calculo pula o
+    registro quando a folha passa de folha_final (ver _calc_etapa8_mov_fixo)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    data = request.get_json(force=True) or {}
+    id_reg = data.get("id")
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "ID não informado."})
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Folha ativa não identificada."})
+
+    try:
+        folha_final = int(data.get("folha_final") or 0)
+    except (ValueError, TypeError):
+        folha_final = 0
+    if not (190001 <= folha_final <= 999912) or not (1 <= folha_final % 100 <= 12):
+        return jsonify({"ok": False, "msg": "Última folha inválida (MM/AAAA)."})
+
+    try:
+        r = (supabase.table("tab_mov_fixo").select("*")
+             .eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente)
+             .limit(1).execute())
+        rec = (r.data or [None])[0]
+        if not rec:
+            return jsonify({"ok": False, "msg": "Movimento fixo não encontrado."})
+
+        fi = rec.get("folha_inicial")
+        if fi and folha_final < int(fi):
+            return jsonify({"ok": False, "msg": "A última folha não pode ser anterior "
+                                                f"ao início da vigência ({_mf_fmt_anomes(fi)})."})
+
+        supabase.table("tab_mov_fixo").update({
+            "folha_final": folha_final,
+            "dt_gravacao": _agora_brasilia().strftime("%Y%m%d %H%M"),
+        }).eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute()
+
+        gravar_log("MOV-FIXO-PARAR",
+                   f"ID {id_reg} | verba {rec.get('cod_verba')} | última folha {_mf_fmt_anomes(folha_final)}",
+                   matricula=rec.get("matricula"))
+        return jsonify({"ok": True,
+                        "msg": f"Movimento fixo encerrado em {_mf_fmt_anomes(folha_final)}."})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
@@ -19941,6 +20354,77 @@ def _cert_pem(pfx_bytes, senha_str):
     senha = senha_str.encode() if isinstance(senha_str, str) else senha_str
     pk, cert, _ = pkcs12.load_key_and_certificates(pfx_bytes, senha)
     return pk, cert
+
+
+def _assinar_xml_consulta(xml_str, pfx_bytes, senha_str):
+    """Assina os XML de CONSULTA/DOWNLOAD (dwlcirurgico) com XMLDSig, URI="".
+
+    Igual ao _assinar_xml, mas para XMLs cujo filho de <eSocial> não é um evt*
+    com Id (aqui é <consultaIdentificadoresEvts> ou <download>). O eSocial
+    EXIGE assinatura também nessas consultas — sem ela responde
+    417 "…has incomplete content. List of possible elements expected:
+    'Signature'". O Id temporário é retirado antes de calcular o digest.
+    """
+    from signxml import XMLSigner, methods
+    from lxml import etree
+    from copy import deepcopy
+    import base64, hashlib
+    from cryptography.hazmat.primitives import hashes as _hashes
+    from cryptography.hazmat.primitives.asymmetric import padding as _pad
+    from cryptography.hazmat.primitives.serialization import (
+        Encoding, PrivateFormat, NoEncryption
+    )
+
+    pk, cert = _cert_pem(pfx_bytes, senha_str)
+    key_pem  = pk.private_bytes(Encoding.PEM, PrivateFormat.TraditionalOpenSSL, NoEncryption())
+    cert_pem = cert.public_bytes(Encoding.PEM)
+
+    root  = etree.fromstring(xml_str.encode("utf-8"))
+    filho = root[0]
+    tirar_id = not filho.get("Id")
+    if tirar_id:
+        filho.set("Id", "ID1")          # signxml precisa de um alvo com Id
+
+    signer = XMLSigner(
+        method=methods.enveloped,
+        signature_algorithm="rsa-sha256",
+        digest_algorithm="sha256",
+        c14n_algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315",
+    )
+    signed = signer.sign(root, key=key_pem, cert=cert_pem,
+                         reference_uri=f"#{filho.get('Id')}")
+
+    NS_DS = "http://www.w3.org/2000/09/xmldsig#"
+    ref = signed.find(f".//{{{NS_DS}}}Reference")
+    if ref is None:
+        return etree.tostring(signed, encoding="unicode", xml_declaration=False)
+    ref.set("URI", "")
+
+    if tirar_id:                        # tira o Id ANTES de calcular o digest
+        for ch in signed:
+            if (isinstance(ch.tag, str)
+                    and etree.QName(ch.tag).localname != "Signature"
+                    and ch.get("Id") == "ID1"):
+                del ch.attrib["Id"]
+
+    root_sem_sig = deepcopy(signed)
+    sig_tmp = root_sem_sig.find(f"{{{NS_DS}}}Signature")
+    if sig_tmp is not None:
+        root_sem_sig.remove(sig_tmp)
+    dv_el = ref.find(f"{{{NS_DS}}}DigestValue")
+    if dv_el is not None:
+        dv_el.text = base64.b64encode(
+            hashlib.sha256(etree.tostring(root_sem_sig, method="c14n")).digest()
+        ).decode()
+
+    si_el = signed.find(f".//{{{NS_DS}}}SignedInfo")
+    sv_el = signed.find(f".//{{{NS_DS}}}SignatureValue")
+    if si_el is not None and sv_el is not None:
+        sv_el.text = base64.b64encode(
+            pk.sign(etree.tostring(si_el, method="c14n"), _pad.PKCS1v15(), _hashes.SHA256())
+        ).decode()
+
+    return etree.tostring(signed, encoding="unicode", xml_declaration=False)
 
 
 def _assinar_xml(xml_str, pfx_bytes, senha_str):
@@ -20140,9 +20624,11 @@ _SA_CIE_EMP       = _NS_SVC_CIE_EMP  + "/ServicoConsultarIdentificadoresEventos/
 _SA_DWN           = _NS_SVC_DWN      + "/ServicoSolicitarDownloadEventos/SolicitarDownloadEventosPorId"
 
 
-def _soap_consultar_ide_trab(cnpj_raiz, cpf_trab, dt_ini, dt_fim, tp_evt=""):
+def _soap_consultar_ide_trab(cnpj_raiz, cpf_trab, dt_ini, dt_fim, tp_evt="",
+                             pfx_bytes=None, senha_str=None):
     """SOAP: ConsultarIdentificadoresEventosTrabalhador (busca IDs de S-2xxx/S-5001/5002/5003).
-    dt_ini/dt_fim no formato YYYY-MM-DD. tp_evt vazio = busca todos os tipos disponíveis."""
+    dt_ini/dt_fim no formato YYYY-MM-DD. tp_evt vazio = busca todos os tipos disponíveis.
+    pfx_bytes/senha_str: obrigatórios na prática — o eSocial recusa a consulta sem assinatura."""
     tp_evt_xml = f"<tpEvt>{tp_evt}</tpEvt>" if tp_evt else ""
     body_xml = (
         f'<eSocial xmlns="http://www.esocial.gov.br/schema/consulta/identificadores-eventos/trabalhador/v1_0_0">'
@@ -20157,6 +20643,8 @@ def _soap_consultar_ide_trab(cnpj_raiz, cpf_trab, dt_ini, dt_fim, tp_evt=""):
         f"</consultaIdentificadoresEvts>"
         f"</eSocial>"
     )
+    if pfx_bytes:
+        body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
     return (
         f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_CIE_TRAB}">'
         f"<soapenv:Header/><soapenv:Body>"
@@ -20167,7 +20655,7 @@ def _soap_consultar_ide_trab(cnpj_raiz, cpf_trab, dt_ini, dt_fim, tp_evt=""):
     )
 
 
-def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur):
+def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur, pfx_bytes=None, senha_str=None):
     """SOAP: ConsultarIdentificadoresEventosEmpregador (busca IDs de S-1xxx/S-5011/5012/5013).
     tp_evt: 'S-5011', 'S-5012', 'S-5013' etc. per_apur: YYYY-MM."""
     body_xml = (
@@ -20181,6 +20669,8 @@ def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur):
         f"</consultaIdentificadoresEvts>"
         f"</eSocial>"
     )
+    if pfx_bytes:
+        body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
     return (
         f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_CIE_EMP}">'
         f"<soapenv:Header/><soapenv:Body>"
@@ -20198,7 +20688,7 @@ _NS_SVC_CIE_TAB = "http://www.esocial.gov.br/servicos/empregador/consulta/identi
 _SA_CIE_TAB     = _NS_SVC_CIE_TAB + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTabela"
 
 
-def _soap_consultar_ide_tab(cnpj_raiz, tp_evt):
+def _soap_consultar_ide_tab(cnpj_raiz, tp_evt, pfx_bytes=None, senha_str=None):
     """SOAP: ConsultarIdentificadoresEventosTabela — lista os eventos de tabela
     (S-1000/S-1005/S-1010/S-1020) já transmitidos ao eSocial pelo empregador.
     Estrutura conforme ACBr: <ConsultarIdentificadoresEventosTabela>
@@ -20211,6 +20701,8 @@ def _soap_consultar_ide_tab(cnpj_raiz, tp_evt):
         f"</consultaIdentificadoresEvts>"
         f"</eSocial>"
     )
+    if pfx_bytes:
+        body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
     return (
         f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:v1="{_NS_SVC_CIE_TAB}">'
         f"<soapenv:Header/><soapenv:Body>"
@@ -20221,7 +20713,7 @@ def _soap_consultar_ide_tab(cnpj_raiz, tp_evt):
     )
 
 
-def _soap_download_evt(cnpj_raiz, ids):
+def _soap_download_evt(cnpj_raiz, ids, pfx_bytes=None, senha_str=None):
     """SOAP: SolicitarDownloadEventosPorId. Max 40 IDs por chamada (limite do gov)."""
     ids_xml = "".join(f"<id>{i}</id>" for i in ids[:40])
     body_xml = (
@@ -20232,6 +20724,8 @@ def _soap_download_evt(cnpj_raiz, ids):
         f"</download>"
         f"</eSocial>"
     )
+    if pfx_bytes:
+        body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
     return (
         f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_DWN}">'
         f"<soapenv:Header/><soapenv:Body>"
@@ -20244,7 +20738,7 @@ def _soap_download_evt(cnpj_raiz, ids):
 
 _SA_DWN_PORNRREC = _NS_SVC_DWN + "/ServicoSolicitarDownloadEventos/SolicitarDownloadEventosPorNrRec"
 
-def _soap_download_evt_por_nrrec(cnpj_raiz, nr_rec):
+def _soap_download_evt_por_nrrec(cnpj_raiz, nr_rec, pfx_bytes=None, senha_str=None):
     """SOAP: SolicitarDownloadEventosPorNrRec. Uma chamada por nrRec; retorna o evento
     original (S-1200/1210/1299) + eventos derivados (S-5xxx) gerados pelo gov."""
     body_xml = (
@@ -20257,6 +20751,8 @@ def _soap_download_evt_por_nrrec(cnpj_raiz, nr_rec):
         f"</download>"
         f"</eSocial>"
     )
+    if pfx_bytes:
+        body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
     return (
         f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_DWN}">'
         f"<soapenv:Header/><soapenv:Body>"
@@ -27949,7 +28445,7 @@ def api_esocial_consulta_tabela():
         return jsonify({"ok": False, "msg": f"Erro ao ler o certificado: {str(e)[:150]}"})
 
     cnpj_raiz = re.sub(r"\D", "", cnpj_emp)[:8]
-    soap = _soap_consultar_ide_tab(cnpj_raiz, tp_evt)
+    soap = _soap_consultar_ide_tab(cnpj_raiz, tp_evt, pfx_bytes, senha_str)
     # Consulta de identificadores fica no host de DOWNLOAD (dwlcirurgico), não no de consulta de lote.
     base_url = _ES_BASE_PROD_DWN if tpAmb == "1" else _ES_BASE_HOMOL
     url = base_url + _ES_PATH_CONS_IDE
@@ -27957,7 +28453,14 @@ def api_esocial_consulta_tabela():
     try:
         resp = _http_post_cert(url, soap, pfx_bytes, senha_str, _SA_CIE_TAB)
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao consultar o eSocial: {str(e)[:300]}"})
+        msg = f"Erro ao consultar o eSocial: {str(e)[:300]}"
+        # Entre os dias 1 e 7 o eSocial recusa qualquer solicitação de download.
+        # A Produção Restrita devolve isso escrito (cdResposta 403); a Produção
+        # devolve HTTP 500 com corpo vazio, então a dica tem que vir daqui.
+        if "HTTP 500" in str(e) and datetime.now().day <= 7:
+            msg = ("O eSocial não aceita solicitação de download entre os dias 1 e 7 "
+                   "do mês. Tente a partir do dia 8.")
+        return jsonify({"ok": False, "msg": msg})
 
     parsed = _parse_ide_response(resp)
     if parsed.get("erro"):

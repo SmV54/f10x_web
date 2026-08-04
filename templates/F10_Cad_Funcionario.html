@@ -651,18 +651,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Insalubridade</label>
                     <div class="check-pct-row">
-                        <input type="checkbox" id="hasInsalubridade" onchange="toggleInsalub(this)">
+                        <input type="checkbox" id="hasInsalubridade" onchange="toggleInsalub(this)" autocomplete="off">
                         <span class="check-label" id="labelInsalub">Sim</span>
-                        <input type="number" id="perInsalubridade" class="pct-num" min="0" max="100" step="0.01" placeholder="%" style="display:none" title="Percentual de insalubridade">
+                        <input type="number" id="perInsalubridade" class="pct-num" min="0" max="100" step="0.01" placeholder="%" style="display:none" title="Percentual de insalubridade" autocomplete="off">
                         <span class="pct-sym" id="symInsalub" style="display:none">%</span>
                     </div>
                 </div>
                 <div class="campo">
                     <label>Periculosidade</label>
                     <div class="check-pct-row">
-                        <input type="checkbox" id="hasPericulosidade" onchange="togglePericu(this)">
+                        <input type="checkbox" id="hasPericulosidade" onchange="togglePericu(this)" autocomplete="off">
                         <span class="check-label" id="labelPericu">Sim</span>
-                        <input type="number" id="perPericulosidade" class="pct-num" min="0" max="100" step="0.01" placeholder="%" style="display:none" title="Percentual de periculosidade">
+                        <input type="number" id="perPericulosidade" class="pct-num" min="0" max="100" step="0.01" placeholder="%" style="display:none" title="Percentual de periculosidade" autocomplete="off">
                         <span class="pct-sym" id="symPericu" style="display:none">%</span>
                     </div>
                 </div>
@@ -2116,11 +2116,25 @@ function limparFormulario() {
     document.getElementById('resultadoValidacao').innerHTML = '';
     document.getElementById('bloco-prazo').style.display  = 'none';
     document.getElementById('bloco-transf').style.display = 'none';
+    zerarInsalubPericu();
+    restaurarPadroes();
+}
+
+/* Insalubridade/periculosidade nao podem "pegar carona" de um cadastro para o
+   outro: sao adicionais de um funcionario especifico. O botao "Cadastrar outro
+   Funcionario" recarrega a pagina, e o navegador RESTAURA o estado dos campos
+   de formulario num reload — a marca do funcionario anterior reaparecia sozinha
+   no cadastro seguinte. Por isso o desmarcamos no load, alem do autocomplete=off
+   nos proprios campos. */
+function zerarInsalubPericu() {
     ['hasInsalubridade','hasPericulosidade'].forEach(id => {
         const cb = document.getElementById(id);
         if (cb) { cb.checked = false; cb.dispatchEvent(new Event('change')); }
     });
-    restaurarPadroes();
+    ['perInsalubridade','perPericulosidade'].forEach(id => {
+        const inp = document.getElementById(id);
+        if (inp) { inp.value = ''; inp.style.borderColor = ''; inp.style.boxShadow = ''; }
+    });
 }
 
 async function carregarProximaMatricula() {
@@ -2357,6 +2371,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (params.get('retorno') === '1') {
         _restaurarRascunho(params.get('tipo'), params.get('novo'));
     } else if (MODO === 'inclusao') {
+        zerarInsalubPericu();          // nao herda a marca do cadastro anterior
         await carregarProximaMatricula();
     }
 });
