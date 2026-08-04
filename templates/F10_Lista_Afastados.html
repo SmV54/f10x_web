@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Folha10 Simples — Funcionários em Férias</title>
+<title>Folha10 Simples — Funcionários Afastados</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 * { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
@@ -86,11 +86,17 @@ tbody tr.demitido:hover td { background: #ffefef; }
     background: #fee2e2; color: #991b1b; border: 1px solid #fecaca;
     border-radius: 6px; padding: 1px 7px; white-space: nowrap;
 }
-.tag-calc {
-    display: inline-block; margin-left: 8px; font-size: 10.5px; font-weight: 600;
+.tag-aberto {
+    display: inline-block; font-size: 11px; font-weight: 600;
     background: #fef3c7; color: #92400e; border: 1px solid #fde68a;
-    border-radius: 6px; padding: 1px 7px; white-space: nowrap; cursor: help;
+    border-radius: 8px; padding: 1px 9px; white-space: nowrap;
 }
+tbody td.mot { font-size: 12px; color: #475569; line-height: 1.35; }
+tbody td.mot .mot-cod {
+    font-family: 'IBM Plex Mono', monospace; font-size: 11px; font-weight: 600;
+    color: #1e40af; background: #eff6ff; border-radius: 5px; padding: 1px 5px; margin-right: 4px;
+}
+tbody td.mot .obs { color: #94a3b8; font-style: italic; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
 .card-total { padding: 8px 16px; font-size: 12px; color: #64748b; text-align: right; border-top: 1px solid #f1f5f9; }
 .nota { margin-top: 10px; font-size: 11.5px; color: #94a3b8; }
@@ -127,8 +133,8 @@ tbody tr.demitido:hover td { background: #ffefef; }
         <span class="topo-nome">{{ nome }}</span>
     </div>
     <div class="topo-centro">
-        <div class="topo-titulo">Funcionários em Férias</div>
-        <span class="topo-badge">Por período de gozo</span>
+        <div class="topo-titulo">Funcionários Afastados</div>
+        <span class="topo-badge">Por período do afastamento</span>
     </div>
     <div class="topo-dir">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
@@ -141,7 +147,7 @@ tbody tr.demitido:hover td { background: #ffefef; }
 
 <div class="container">
 
-    <form method="get" action="/lista_ferias">
+    <form method="get" action="/lista_afastados">
         <div class="filtros">
             <div class="filtro-grupo">
                 <span class="filtro-label">Período:</span>
@@ -163,9 +169,10 @@ tbody tr.demitido:hover td { background: #ffefef; }
 
     <div class="card">
         <div class="card-header">
-            <h2>Férias no período</h2>
+            <h2>Afastamentos no período</h2>
             <div class="badges">
-                <span class="total-badge">{{ funcs|length }} período(s)</span>
+                <span class="total-badge">{{ funcs|length }} afastamento(s)</span>
+                {% if n_abertos %}<span class="tag-aberto">{{ n_abertos }} em aberto</span>{% endif %}
                 {% if n_demitidos %}
                 <span class="dem-badge">{{ n_demitidos }} já demitido(s)</span>
                 {% endif %}
@@ -178,12 +185,11 @@ tbody tr.demitido:hover td { background: #ffefef; }
                 <tr>
                     <th>Matrícula</th>
                     <th>Nome</th>
+                    <th>Motivo</th>
                     <th class="c">Início</th>
                     <th class="c">Fim</th>
                     <th class="c">Dias</th>
-                    <th class="c">Abono</th>
                     <th class="c">Retorno</th>
-                    <th class="c">Período Aquisitivo</th>
                     <th class="c">Folha</th>
                 </tr>
             </thead>
@@ -194,39 +200,42 @@ tbody tr.demitido:hover td { background: #ffefef; }
                     <td>
                         {{ f.nome }}
                         {% if f.demitido %}<span class="tag-dem">DEMITIDO em {{ f.dem_fmt }}</span>{% endif %}
-                        {% if f.sem_datas %}<span class="tag-calc" title="A folha de férias foi calculada, mas as datas do gozo não existem no banco: vieram da migração do Folha10 antigo sem a etapa de eventos.">sem as datas no banco</span>{% endif %}
+                    </td>
+                    <td class="mot">
+                        <span class="mot-cod">{{ f.mot_cod }}</span> {{ f.mot_txt }}
+                        {% if f.obs %}<span class="obs">({{ f.obs }})</span>{% endif %}
                     </td>
                     <td class="c">{{ f.ini_fmt }}</td>
-                    <td class="c">{{ f.fim_fmt }}</td>
+                    <td class="c">
+                        {% if f.aberto %}<span class="tag-aberto">Em aberto</span>
+                        {% else %}{{ f.fim_fmt }}{% endif %}
+                    </td>
                     <td class="c">{{ f.dias or '—' }}</td>
-                    <td class="c">{{ f.abono or '—' }}</td>
                     <td class="c">{{ f.retorno }}</td>
-                    <td class="c">{{ f.aquis_fmt }}</td>
                     <td class="c">{{ f.folha_fmt }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         <div class="card-total">
-            Total: {{ funcs|length }} período(s) de férias
+            Total: {{ funcs|length }} afastamento(s)
+            {% if n_abertos %} · {{ n_abertos }} em aberto{% endif %}
             {% if n_demitidos %} · {{ n_demitidos }} de funcionário(s) já demitido(s){% endif %}
         </div>
         {% else %}
-        <div class="vazio">Nenhuma férias no período informado.</div>
+        <div class="vazio">Nenhum afastamento no período informado.</div>
         {% endif %}
     </div>
 
     <div class="nota">
-        Entram as férias que <b>encostam</b> no período: quem saiu em 25/07 e volta em 13/08
-        aparece tanto em julho quanto em agosto. A folha pode estar em qualquer situação.<br>
-        <b>“sem as datas no banco”</b>: a folha de férias dessa pessoa foi calculada, mas as
-        datas de início e fim do gozo não existem no banco — a empresa veio da migração do
-        Folha10 antigo sem a etapa que traz os eventos. Ela entra pela competência da folha
-        (coluna Folha). Para ter as datas é preciso importar essa etapa da base antiga.
+        Entram os afastamentos que <b>encostam</b> no período: quem se afastou em 20/06 e
+        voltou em 05/08 aparece em junho, julho e agosto. A folha pode estar em qualquer situação.<br>
+        <b>“Em aberto”</b>: afastamento sem data de retorno registrada — segue contando até
+        que o retorno seja lançado. Nesses a coluna Dias fica em branco de propósito.
     </div>
 
     <div class="rodape">
-        <a class="btn-pdf" href="/lista_ferias_pdf?data_ini={{ data_ini }}&data_fim={{ data_fim }}&situacao={{ situacao }}" target="_blank">&#128438; Imprimir em PDF</a>
+        <a class="btn-pdf" href="/lista_afastados_pdf?data_ini={{ data_ini }}&data_fim={{ data_fim }}&situacao={{ situacao }}" target="_blank">&#128438; Imprimir em PDF</a>
         <a class="btn-menu" href="/menu">Voltar ao Menu</a>
     </div>
 

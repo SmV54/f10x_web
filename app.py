@@ -5945,6 +5945,12 @@ def _lista_ferias_dados(id_empresa, ini8, fim8, situacao="all"):
     except Exception:
         return []
 
+    # (matricula, folha) de TODO evento lido, antes de filtrar por data: e a
+    # chave que evita a mesma ferias aparecer duas vezes quando ela tambem
+    # tem folha de ferias calculada (ver o bloco de tab_total abaixo).
+    ja_no_evento = {(int(e.get("matricula") or 0), int(e.get("folha") or 0))
+                    for e in eventos}
+
     # Sobreposicao com o periodo, ja em Python (data1f pode vir vazia).
     # data1i='99999999' e periodo aquisitivo registrado SEM gozo marcado —
     # nao e ferias, e nao pode entrar aqui. O lte acima ja o descarta, mas
@@ -5952,13 +5958,38 @@ def _lista_ferias_dados(id_empresa, ini8, fim8, situacao="all"):
     eventos = [e for e in eventos
                if str(e.get("data1i") or "") != "99999999"
                and (str(e.get("data1f") or e.get("data1i") or "")) >= ini8]
-    if not eventos:
+
+    # Ferias que existem SO como folha calculada, sem evento de lancamento.
+    # Acontece em empresa migrada do Folha10 antigo quando a etapa 13
+    # (tabreg -> tab_eventos) nao veio junto: tab_mov/tab_total trazem a folha
+    # de ferias, mas ninguem trouxe as datas do gozo. Sem isso o funcionario
+    # sumia do relatorio, que e como esse furo apareceu.
+    calculadas = []
+    try:
+        f_ini, f_fim = int(ini8[:6]), int(fim8[:6])
+        r3 = (supabase.table("tab_total")
+              .select("matricula, folha")
+              .eq("id_empresa", id_empresa)
+              .eq("folha_tipo", "F")
+              .gte("folha", f_ini)
+              .lte("folha", f_fim)
+              .order("folha")
+              .execute())
+        for t in (r3.data or []):
+            chave = (int(t.get("matricula") or 0), int(t.get("folha") or 0))
+            if chave not in ja_no_evento:
+                calculadas.append(t)
+    except Exception:
+        pass
+
+    if not eventos and not calculadas:
         return []
 
     # Cadastro dos funcionarios envolvidos
     cads = {}
     try:
-        mats = sorted({int(e["matricula"]) for e in eventos if e.get("matricula")})
+        mats = sorted({int(e["matricula"]) for e in eventos if e.get("matricula")}
+                      | {int(t["matricula"]) for t in calculadas if t.get("matricula")})
         for i in range(0, len(mats), 200):
             r2 = (supabase.table("tab_cad")
                   .select("matricula, nome, nomer, dtadm, situacao, datarescisao")
@@ -6024,6 +6055,37 @@ def _lista_ferias_dados(id_empresa, ini8, fim8, situacao="all"):
             "folha_fmt":  f"{folha[4:6]}/{folha[0:4]}" if len(folha) == 6 else "—",
             "demitido":   sit == "D",
             "dem_fmt":    _d(dem_raw) if sit == "D" else "",
+            "sem_datas":  False,
+        })
+
+    # As que so tem folha calculada: entram pela competencia, sem datas de
+    # gozo — a base nao as tem. Ordenam pelo 1o dia do mes da folha.
+    for t in calculadas:
+        mat = int(t.get("matricula") or 0)
+        cad = cads.get(mat, {})
+        sit = str(cad.get("situacao") or "").upper()
+        if situacao == "A" and sit == "D":
+            continue
+        if situacao == "D" and sit != "D":
+            continue
+        folha   = str(t.get("folha") or "")
+        dem_raw = str(cad.get("datarescisao") or "")
+        linhas.append({
+            "matricula":  mat,
+            "mat_fmt":    f"{mat:06d}",
+            "nome":       (cad.get("nome") or cad.get("nomer") or "").strip() or "(sem cadastro)",
+            "adm_fmt":    _d(cad.get("dtadm")),
+            "ini_raw":    (folha + "01") if len(folha) == 6 else "",
+            "ini_fmt":    "—",
+            "fim_fmt":    "—",
+            "retorno":    "—",
+            "dias":       0,
+            "abono":      0,
+            "aquis_fmt":  "—",
+            "folha_fmt":  f"{folha[4:6]}/{folha[0:4]}" if len(folha) == 6 else "—",
+            "demitido":   sit == "D",
+            "dem_fmt":    _d(dem_raw) if sit == "D" else "",
+            "sem_datas":  True,
         })
 
     if _def_classificacao() == "A":
@@ -6033,9 +6095,154 @@ def _lista_ferias_dados(id_empresa, ini8, fim8, situacao="all"):
     return linhas
 
 
-def _ferias_filtro_args():
+# =========================================================
+# FUNCIONÁRIOS AFASTADOS — listagem por período
+# Mesma ideia da lista de férias: roda com a folha em qualquer situação.
+# =========================================================
+def _motivos_afastamento():
+    """{codigo: texto} da tabela 18 do eSocial (motivos de afastamento)."""
+    try:
+        r = (supabase.table("tab_tabela_total")
+             .select("codigo, texto")
+             .eq("num_tabela", 18)
+             .neq("codigo", "DOC")
+             .execute())
+        return {str(m.get("codigo") or "").strip(): (m.get("texto") or "").strip()
+                for m in (r.data or [])}
+    except Exception:
+        return {}
+
+
+def _lista_afastados_dados(id_empresa, ini8, fim8, situacao="all"):
+    """Afastamentos (tab_eventos op1=6) que ENCOSTAM no período [ini8, fim8].
+
+    Dois cuidados que as ferias nao tem:
+
+    1) data1f VAZIA significa afastamento EM ABERTO, sem retorno marcado — nao
+       e data faltando. Ele encosta em todo periodo dali para a frente.
+    2) Nao da para limitar a busca a poucos meses atras: afastamento se arrasta
+       por anos (a base tem um de 2022 que so terminou em 2025). A consulta vai
+       ate o fim do periodo, sem piso.
+
+    op2 e o motivo (tabela 18 do eSocial, 01 a 42). A base migrada tem tambem
+    op2=203, registro auxiliar que repete o afastamento verdadeiro com a mesma
+    data — fica de fora por nao ser um motivo valido. Filtrar por "op2 >= 10",
+    como faz o calculo da folha, esconderia licenca maternidade (17) e licenca
+    nao remunerada (21), que sao afastamentos de verdade.
+    """
+    if not ini8 or not fim8:
+        return []
+
+    try:
+        r = (supabase.table("tab_eventos")
+             .select("matricula, op2, data1i, data1f, campotxt4, folha")
+             .eq("id_empresa", id_empresa)
+             .eq("op1", 6)
+             .lte("data1i", fim8)
+             .order("data1i")
+             .execute())
+        eventos = r.data or []
+    except Exception:
+        return []
+
+    motivos = _motivos_afastamento()
+
+    def _mot_cod(v):
+        try:
+            return f"{int(v):02d}"
+        except Exception:
+            return ""
+
+    validos = []
+    for e in eventos:
+        cod = _mot_cod(e.get("op2"))
+        if cod not in motivos:          # 203 e afins: registro auxiliar
+            continue
+        fim_ev = str(e.get("data1f") or "")
+        # Em aberto encosta em qualquer periodo depois do inicio
+        if fim_ev and fim_ev < ini8:
+            continue
+        e["_cod"] = cod
+        validos.append(e)
+    if not validos:
+        return []
+
+    cads = {}
+    try:
+        mats = sorted({int(e["matricula"]) for e in validos if e.get("matricula")})
+        for i in range(0, len(mats), 200):
+            r2 = (supabase.table("tab_cad")
+                  .select("matricula, nome, nomer, dtadm, situacao, datarescisao")
+                  .eq("id_empresa", id_empresa)
+                  .in_("matricula", mats[i:i+200])
+                  .execute())
+            for f in (r2.data or []):
+                cads[int(f["matricula"])] = f
+    except Exception:
+        pass
+
+    def _d(v):
+        v = str(v or "")
+        return f"{v[6:8]}/{v[4:6]}/{v[0:4]}" if len(v) == 8 and v.isdigit() else "—"
+
+    linhas = []
+    for e in validos:
+        mat = int(e.get("matricula") or 0)
+        cad = cads.get(mat, {})
+        sit = str(cad.get("situacao") or "").upper()
+        if situacao == "A" and sit == "D":
+            continue
+        if situacao == "D" and sit != "D":
+            continue
+
+        ini_raw = str(e.get("data1i") or "")
+        fim_raw = str(e.get("data1f") or "")
+        aberto  = not (len(fim_raw) == 8 and fim_raw.isdigit())
+
+        dias, retorno = 0, "—"
+        if not aberto and len(ini_raw) == 8:
+            try:
+                d_i = date(int(ini_raw[:4]), int(ini_raw[4:6]), int(ini_raw[6:8]))
+                d_f = date(int(fim_raw[:4]), int(fim_raw[4:6]), int(fim_raw[6:8]))
+                dias    = (d_f - d_i).days + 1
+                retorno = (d_f + timedelta(days=1)).strftime("%d/%m/%Y")
+            except Exception:
+                pass
+
+        cod     = e.get("_cod") or ""
+        dem_raw = str(cad.get("datarescisao") or "")
+        folha   = str(e.get("folha") or "")
+        linhas.append({
+            "matricula":  mat,
+            "mat_fmt":    f"{mat:06d}",
+            "nome":       (cad.get("nome") or cad.get("nomer") or "").strip() or "(sem cadastro)",
+            "adm_fmt":    _d(cad.get("dtadm")),
+            "ini_raw":    ini_raw,
+            "ini_fmt":    _d(ini_raw),
+            "fim_fmt":    "Em aberto" if aberto else _d(fim_raw),
+            "aberto":     aberto,
+            "retorno":    retorno,
+            "dias":       dias,
+            "mot_cod":    cod,
+            "mot_txt":    motivos.get(cod, ""),
+            "obs":        (e.get("campotxt4") or "").strip(),
+            "folha_fmt":  f"{folha[4:6]}/{folha[0:4]}" if len(folha) == 6 else "—",
+            "demitido":   sit == "D",
+            "dem_fmt":    _d(dem_raw) if sit == "D" else "",
+        })
+
+    if _def_classificacao() == "A":
+        linhas.sort(key=lambda x: (x["nome"].upper(), x["ini_raw"]))
+    else:
+        linhas.sort(key=lambda x: (x["matricula"], x["ini_raw"]))
+    return linhas
+
+
+def _periodo_situacao_args():
     """(data_ini, data_fim, ini8, fim8, situacao) — período default = folha atual,
-    situação default = todos (inclusive demitidos)."""
+    situação default = todos (inclusive demitidos).
+
+    Serve as listagens de Férias e de Afastados, que filtram igual."""
     data_ini, data_fim, ini_int, fim_int = _intervalo_args()
     situacao = (request.args.get("situacao") or "all").strip()
     if situacao not in ("all", "A", "D"):
@@ -6050,7 +6257,7 @@ def _ferias_filtro_args():
 def lista_ferias():
     if not session.get("logado"):
         return redirect("/")
-    data_ini, data_fim, ini8, fim8, situacao = _ferias_filtro_args()
+    data_ini, data_fim, ini8, fim8, situacao = _periodo_situacao_args()
     funcs = _lista_ferias_dados(_get_id_empresa(), ini8, fim8, situacao)
     return render_template("F10_Lista_Ferias.html", **_ctx_relatorio(),
                            funcs=funcs, data_ini=data_ini, data_fim=data_fim,
@@ -6071,7 +6278,7 @@ def lista_ferias_pdf():
     from reportlab.lib.styles import ParagraphStyle
 
     id_empresa = _get_id_empresa()
-    data_ini, data_fim, ini8, fim8, situacao = _ferias_filtro_args()
+    data_ini, data_fim, ini8, fim8, situacao = _periodo_situacao_args()
     funcs      = _lista_ferias_dados(id_empresa, ini8, fim8, situacao)
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
@@ -6099,7 +6306,10 @@ def lista_ferias_pdf():
     for f in funcs:
         # Demitido sai em vermelho, com a data da rescisao colada no nome —
         # o PDF nao tem tarja, e a informacao nao pode se perder na impressao.
+        # Idem para a ferias sem datas: no papel o "—" sozinho parece defeito.
         nome = f["nome"] + (f"  (DEMITIDO em {f['dem_fmt']})" if f["demitido"] else "")
+        if f["sem_datas"]:
+            nome += "  (sem as datas do gozo no banco)"
         cor  = vermelho if f["demitido"] else colors.HexColor("#1f2937")
         tbl_data.append([
             P(f["mat_fmt"], fn="Courier", col=cor),
@@ -6114,8 +6324,112 @@ def lista_ferias_pdf():
         ])
 
     tbl = Table(tbl_data, repeatRows=1,
-                colWidths=[2.0*cm, 7.4*cm, 2.1*cm, 2.1*cm, 1.2*cm, 1.3*cm,
-                           2.1*cm, 4.6*cm, 1.8*cm])
+                colWidths=[2.0*cm, 8.6*cm, 2.1*cm, 2.1*cm, 1.2*cm, 1.3*cm,
+                           2.1*cm, 4.4*cm, 1.7*cm])
+    row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
+              for i in range(1, len(tbl_data))]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    n_dem  = sum(1 for f in funcs if f["demitido"])
+    n_calc = sum(1 for f in funcs if f["sem_datas"])
+    resumo = f"Total: {len(funcs)} período(s) de férias"
+    if n_dem:
+        resumo += f"  ·  {n_dem} de funcionário(s) já demitido(s)"
+    if n_calc:
+        resumo += f"  ·  {n_calc} sem as datas do gozo no banco"
+    total_linha = P(resumo, fn="Helvetica", fs=8,
+                    col=colors.HexColor("#64748b"), align=2)
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 6), total_linha]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="Ferias.pdf"'
+    return resp
+
+
+@app.route("/lista_afastados")
+def lista_afastados():
+    if not session.get("logado"):
+        return redirect("/")
+    data_ini, data_fim, ini8, fim8, situacao = _periodo_situacao_args()
+    funcs = _lista_afastados_dados(_get_id_empresa(), ini8, fim8, situacao)
+    return render_template("F10_Lista_Afastados.html", **_ctx_relatorio(),
+                           funcs=funcs, data_ini=data_ini, data_fim=data_fim,
+                           situacao=situacao,
+                           n_demitidos=sum(1 for f in funcs if f["demitido"]),
+                           n_abertos=sum(1 for f in funcs if f["aberto"]))
+
+
+@app.route("/lista_afastados_pdf")
+def lista_afastados_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    id_empresa = _get_id_empresa()
+    data_ini, data_fim, ini8, fim8, situacao = _periodo_situacao_args()
+    funcs      = _lista_afastados_dados(id_empresa, ini8, fim8, situacao)
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    def _br(d):
+        return f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d) == 10 else d
+    sit_lbl = {"all": "Todos", "A": "Só ativos", "D": "Só demitidos"}[situacao]
+    titulo  = f"Funcionários Afastados — {_br(data_ini)} a {_br(data_fim)}  ·  {sit_lbl}"
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=1.5*cm, rightMargin=1.5*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    cab = ["Matrícula", "Nome", "Motivo", "Início", "Fim", "Dias", "Retorno", "Folha"]
+    tbl_data = [[P(h, fn="Helvetica-Bold") for h in cab]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    vermelho = colors.HexColor("#b91c1c")
+    for f in funcs:
+        nome = f["nome"] + (f"  (DEMITIDO em {f['dem_fmt']})" if f["demitido"] else "")
+        cor  = vermelho if f["demitido"] else colors.HexColor("#1f2937")
+        mot  = f"{f['mot_cod']} — {f['mot_txt']}" if f["mot_cod"] else "—"
+        if f["obs"]:
+            mot += f" ({f['obs']})"
+        tbl_data.append([
+            P(f["mat_fmt"], fn="Courier", col=cor),
+            P(nome, col=cor),
+            P(mot, col=cor, fs=7),
+            P(f["ini_fmt"], align=1, col=cor),
+            P(f["fim_fmt"], align=1, col=cor),
+            P(f["dias"] or "—", align=1, col=cor),
+            P(f["retorno"], align=1, col=cor),
+            P(f["folha_fmt"], align=1, col=cor),
+        ])
+
+    tbl = Table(tbl_data, repeatRows=1,
+                colWidths=[2.0*cm, 6.0*cm, 8.0*cm, 2.1*cm, 2.3*cm, 1.2*cm,
+                           2.1*cm, 1.7*cm])
     row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
               for i in range(1, len(tbl_data))]
     tbl.setStyle(TableStyle([
@@ -6130,7 +6444,10 @@ def lista_ferias_pdf():
     ] + row_bg))
 
     n_dem = sum(1 for f in funcs if f["demitido"])
-    resumo = f"Total: {len(funcs)} período(s) de férias"
+    n_ab  = sum(1 for f in funcs if f["aberto"])
+    resumo = f"Total: {len(funcs)} afastamento(s)"
+    if n_ab:
+        resumo += f"  ·  {n_ab} em aberto (sem retorno marcado)"
     if n_dem:
         resumo += f"  ·  {n_dem} de funcionário(s) já demitido(s)"
     total_linha = P(resumo, fn="Helvetica", fs=8,
@@ -6143,7 +6460,7 @@ def lista_ferias_pdf():
     from flask import make_response
     resp = make_response(buf.read())
     resp.headers["Content-Type"]        = "application/pdf"
-    resp.headers["Content-Disposition"] = 'inline; filename="Ferias.pdf"'
+    resp.headers["Content-Disposition"] = 'inline; filename="Afastados.pdf"'
     return resp
 
 

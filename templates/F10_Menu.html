@@ -603,6 +603,8 @@ const modulos = {
                 { icone: '🚨', nome: 'Acidente — Informar CAT',      href: '/select_funcionario?contexto=acidente',        ok: true },
                 { icone: '✏️', nome: 'Acidente — Alterar/Excluir',   href: '/select_funcionario?contexto=alt_acidente',    ok: true },
                 { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true },
+                // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
+                { icone: '📋', nome: 'Funcionários Afastados',        href: '/lista_afastados',     ok: true, permiteFolhaBloqueada: true },
                 { icone: '🤱', nome: 'Lic. Maternidade/Paternidade', href: '#' },
             ]},
             { nome: 'Faltas', itens: [
