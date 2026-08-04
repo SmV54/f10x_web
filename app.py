@@ -8996,8 +8996,9 @@ def api_gravar_empresa():
         id_empresa = resposta.data[0].get("id_empresa")
         print(f"=== Empresa gravada id={id_empresa} cnpj={dados.get('cnpj')} ===")
 
-        # Condução do cliente novo: já deixa a empresa pronta para uso —
-        # cria o CC 001, abre a folha do mês corrente e carrega na sessão.
+        # Condução do cliente novo: já deixa a empresa pronta para uso — cria
+        # o CC 001, abre a primeira folha (mês corrente, ou o anterior até o
+        # dia 5 — ver _anomes_inicial) e carrega na sessão.
         nome_empresa = (dados.get("razaosocial") or dados.get("nome_fantasia")
                         or "Empresa")
         _criar_cc_padrao(id_cliente_sess, id_empresa)
@@ -10844,6 +10845,8 @@ def cad_anomes():
         anomes_list=anomes_list,
         proximo_anomes=proximo_anomes,
         limite_anomes=limite_anomes,
+        minimo_anomes=_anomes_minimo(id_cliente, id_empresa),
+        liberados_anomes=sorted(_anomes_liberados(id_cliente, id_empresa)),
         modo=modo,
     )
 
@@ -10893,8 +10896,11 @@ def api_tabela_legal():
 # =========================================================
 # CONDUÇÃO DO CLIENTE NOVO — "Primeiros passos"
 # 1) empresa  2) funções  3) centro de custo  4) funcionários
-# Ao cadastrar a empresa o sistema ja cria o CC 001 e abre a folha
-# do mes corrente, para o cliente nunca ficar travado nesses dois.
+# Ao cadastrar a empresa o sistema ja cria o CC 001 e abre a primeira
+# folha, para o cliente nunca ficar travado nesses dois. A competencia
+# e a do mes corrente — ou a do mes anterior ate o dia 5, ver
+# _anomes_inicial. Dali em diante a folha so anda para a frente
+# (ver _anomes_minimo).
 # =========================================================
 CC_PADRAO_CODIGO = "001"
 CC_PADRAO_NOME   = "Centro de Custo Único"
@@ -10943,6 +10949,65 @@ def _anomes_inicial():
             ano, mes = ano - 1, 12
         return f"{ano:04d}{mes:02d}"
     return hoje.strftime("%Y%m")
+
+
+def _anomes_minimo(id_cliente, id_empresa):
+    """Competencia mais antiga que ainda pode ser aberta na empresa (yyyymm).
+
+    A folha anda so para a frente. Sem esse piso, quem entrou com 07/2026
+    conseguia abrir 05/2026 e processar meses que nunca contratou — foi o que
+    aconteceu antes daqui.
+
+    O piso e a folha MAIS RECENTE que a empresa ja tem. Competencia igual ao
+    piso continua liberada de proposito: no mesmo mes convivem tipos
+    diferentes (Normal, 13o, Adiantamento do 13o), e a duplicidade de
+    ano_mes+tipo ja tem barreira propria.
+
+    Empresa sem nenhuma folha (a inicial pode nao ter nascido, se a licenca
+    ja tinha vencido): o piso e o mesmo do cadastro inicial.
+    Falha de leitura devolve "" — sem piso, para um tropeco do banco nao
+    impedir o cliente de abrir a folha do mes.
+    """
+    try:
+        r = (supabase.table("tab_anomes")
+             .select("ano_mes")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .order("ano_mes", desc=True)
+             .limit(1).execute().data or [])
+    except Exception as e:
+        print(f"[ANOMES] _anomes_minimo: {e}")
+        return ""
+    if r:
+        return str(r[0].get("ano_mes") or "")
+    return _anomes_inicial()
+
+
+# Liberacoes de folha anterior concedidas pelo Admin da F10 (tela
+# /admin_folhas_anteriores). Uma linha por competencia liberada, por empresa,
+# em tab_tabela_cli num_tabela="1002" (codigo = yyyymm). Tabela que ja existe:
+# a liberacao nao pediu DDL nenhuma no Supabase.
+NUM_TAB_FOLHA_LIBERADA = "1002"
+
+
+def _anomes_liberados(id_cliente, id_empresa):
+    """Competencias abaixo do piso que o Admin liberou para esta empresa.
+
+    Set de yyyymm. Falha de leitura devolve vazio — na duvida o piso vale, que
+    e o lado seguro: no maximo o cliente volta a pedir a liberacao.
+    """
+    try:
+        r = (supabase.table("tab_tabela_cli")
+             .select("codigo")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("num_tabela", NUM_TAB_FOLHA_LIBERADA)
+             .eq("situacao", "A")
+             .execute().data or [])
+        return {str(x.get("codigo") or "").strip() for x in r}
+    except Exception as e:
+        print(f"[ANOMES] _anomes_liberados: {e}")
+        return set()
 
 
 def _abrir_folha_inicial(id_cliente, id_empresa):
@@ -11154,6 +11219,16 @@ def api_anomes_incluir():
                     "msg": f"Limite do plano atingido. A folha máxima permitida é {lim_fmt}."})
     except Exception:
         pass
+
+    # Piso: a folha nao volta atras (ver _anomes_minimo), a nao ser que o
+    # Admin da F10 tenha liberado essa competencia (ver _anomes_liberados).
+    min_anomes = _anomes_minimo(id_cliente, id_empresa)
+    if (min_anomes and ano_mes < min_anomes
+            and ano_mes not in _anomes_liberados(id_cliente, id_empresa)):
+        min_fmt = f"{min_anomes[4:6]}/{min_anomes[0:4]}"
+        return jsonify({"ok": False,
+            "msg": f"A folha mais antiga permitida para esta empresa é {min_fmt}. "
+                   f"Para processar um mês anterior, fale com o suporte da Folha10."})
 
     # Verifica duplicidade
     dup = (
@@ -49283,6 +49358,212 @@ def _rodar_backup_supabase(job_id, carimbo):
         job['resultado'] = {"ok": False,
                             "msg": f"{type(ex).__name__}: {str(ex)[:200]}",
                             "itens": resultados}
+
+
+# =========================================================
+# ADMIN — LIBERA FOLHAS ANTERIORES
+# A folha do cliente so anda para a frente (_anomes_minimo). Aqui a F10
+# abre excecao: escolhe cliente + empresa e marca quais competencias
+# abaixo do piso ele pode abrir. Grava em tab_tabela_cli num_tabela 1002.
+# =========================================================
+MESES_LIBERA_ANTERIORES = 24        # quantos meses abaixo do piso a tela oferece
+
+
+def _meses_antes(ano_mes, quantos):
+    """Lista os N yyyymm imediatamente ANTERIORES a ano_mes, do mais novo ao mais antigo."""
+    try:
+        ano, mes = int(ano_mes[:4]), int(ano_mes[4:6])
+    except Exception:
+        return []
+    saida = []
+    for _ in range(quantos):
+        mes -= 1
+        if mes == 0:
+            ano, mes = ano - 1, 12
+        saida.append(f"{ano:04d}{mes:02d}")
+    return saida
+
+
+@app.route('/admin_folhas_anteriores')
+def admin_folhas_anteriores():
+    if not session.get('logado'):
+        return redirect('/')
+    if not _pode_admin():
+        return redirect('/menu')
+    return render_template('F10_Admin_Folhas_Anteriores.html',
+                           versao=ler_versao(), nome=session.get('nome', ''))
+
+
+@app.route('/api/admin_folhas_ant/clientes')
+def api_admin_folhas_ant_clientes():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        r = (supabase.table("tab_cliente")
+             .select("id_cliente, nome, cpf")
+             .order("nome").execute())
+        return jsonify({'ok': True, 'clientes': r.data or []})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_folhas_ant/empresas/<int:id_cliente>')
+def api_admin_folhas_ant_empresas(id_cliente):
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        r = (supabase.table("tab_empresa")
+             .select("id_empresa, cnpj, razaosocial, nome_fantasia")
+             .eq("id_cliente", id_cliente)
+             .order("razaosocial").execute())
+        empresas = [{"id_empresa": e.get("id_empresa"),
+                     "cnpj": e.get("cnpj", ""),
+                     "nome": e.get("razaosocial") or e.get("nome_fantasia") or "Empresa"}
+                    for e in (r.data or [])]
+        return jsonify({'ok': True, 'empresas': empresas})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_folhas_ant/meses/<int:id_cliente>/<int:id_empresa>')
+def api_admin_folhas_ant_meses(id_cliente, id_empresa):
+    """Competencias abaixo do piso da empresa, com o que ja esta liberado e o
+    que ja virou folha (o cliente pode ter aberto antes do bloqueio existir)."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        piso = _anomes_minimo(id_cliente, id_empresa)
+        if not piso:
+            return jsonify({'ok': False, 'msg': 'Empresa sem folha de referência.'})
+
+        candidatos = _meses_antes(piso, MESES_LIBERA_ANTERIORES)
+        liberados  = _anomes_liberados(id_cliente, id_empresa)
+
+        # Quais desses meses ja tem folha Normal — nesses nao ha o que criar
+        existentes = set()
+        try:
+            r = (supabase.table("tab_anomes")
+                 .select("ano_mes")
+                 .eq("id_cliente", id_cliente)
+                 .eq("id_empresa", id_empresa)
+                 .eq("tipo", "N")
+                 .in_("ano_mes", candidatos)
+                 .execute().data or [])
+            existentes = {str(x.get("ano_mes") or "") for x in r}
+        except Exception:
+            pass
+
+        meses = [{"ano_mes":  m,
+                  "label":    f"{m[4:6]}/{m[0:4]}",
+                  "liberado": m in liberados,
+                  "existe":   m in existentes} for m in candidatos]
+        return jsonify({'ok': True, 'piso': piso,
+                        'piso_label': f"{piso[4:6]}/{piso[0:4]}",
+                        'meses': meses})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_folhas_ant/gravar', methods=['POST'])
+def api_admin_folhas_ant_gravar():
+    """Cria as folhas Normais dos meses marcados e registra a liberacao.
+
+    Liberar aqui ja deixa a folha aberta — o cliente entra e processa, sem
+    passar pela tela de Ano/Mes. A liberacao continua gravada junto porque a
+    folha pode ser excluida e refeita depois; sem ela o piso barraria de novo.
+
+    Mes que ja tem folha nao e tocado, e desmarcar NUNCA apaga folha: so
+    devolve a competencia ao bloqueio.
+    """
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+
+    d          = request.get_json() or {}
+    id_cliente = d.get('id_cliente')
+    id_empresa = d.get('id_empresa')
+    marcados   = {str(m).strip() for m in (d.get('meses') or [])}
+
+    if not id_cliente or not id_empresa:
+        return jsonify({'ok': False, 'msg': 'Escolha o cliente e a empresa.'})
+    if any(len(m) != 6 or not m.isdigit() for m in marcados):
+        return jsonify({'ok': False, 'msg': 'Competência inválida (yyyymm).'})
+
+    try:
+        # Folhas Normais que a empresa ja tem nesses meses
+        ja_tem = set()
+        if marcados:
+            r = (supabase.table("tab_anomes")
+                 .select("ano_mes")
+                 .eq("id_cliente", id_cliente)
+                 .eq("id_empresa", id_empresa)
+                 .eq("tipo", "N")
+                 .in_("ano_mes", sorted(marcados))
+                 .execute().data or [])
+            ja_tem = {str(x.get("ano_mes") or "") for x in r}
+
+        criar = sorted(marcados - ja_tem)
+        if criar:
+            novas = []
+            for m in criar:
+                ult = calendar.monthrange(int(m[:4]), int(m[4:6]))[1]
+                novas.append({
+                    "id_cliente":  id_cliente,
+                    "id_empresa":  id_empresa,
+                    "ano_mes":     m,
+                    "tipo":        "N",
+                    "situacao":    "A",
+                    "data_falta1": f"{m}01",
+                    "data_falta2": f"{m}{ult:02d}",
+                })
+            supabase.table("tab_anomes").insert(novas).execute()
+
+        # Liberacao (tab_tabela_cli 1002): acompanha o que esta marcado
+        atuais  = _anomes_liberados(id_cliente, id_empresa)
+        incluir = sorted(marcados - atuais)
+        remover = sorted(atuais - marcados)
+
+        if incluir:
+            carimbo = (f"Liberado por {session.get('nome') or ''} "
+                       f"em {_agora_brasilia().strftime('%d/%m/%Y %H:%M')}")[:120]
+            supabase.table("tab_tabela_cli").insert([{
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "num_tabela": NUM_TAB_FOLHA_LIBERADA,
+                "codigo":     m,
+                "texto":      carimbo,
+                "valor":      0,
+                "situacao":   "A",
+            } for m in incluir]).execute()
+
+        for m in remover:
+            (supabase.table("tab_tabela_cli").delete()
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("num_tabela", NUM_TAB_FOLHA_LIBERADA)
+             .eq("codigo", m).execute())
+
+        # Log na conta do CLIENTE (nao na do admin) — gravar_log usaria a sessao
+        if criar or incluir or remover:
+            try:
+                partes = []
+                if criar:   partes.append("criou folha " + ", ".join(criar))
+                if incluir: partes.append("liberou " + ", ".join(incluir))
+                if remover: partes.append("retirou " + ", ".join(remover))
+                supabase.table("tab_log").insert({
+                    "id_cliente":      id_cliente,
+                    "id_empresa":      id_empresa,
+                    "cpf_usuario":     session.get("cpf"),
+                    "menu":            "LIBFOLHA"[:12],
+                    "observacao":      f"Folhas anteriores: {' / '.join(partes)}",
+                    "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
+                }).execute()
+            except Exception:
+                pass
+
+        return jsonify({'ok': True, 'criadas': criar, 'removidos': remover,
+                        'total': len(marcados)})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f"{type(ex).__name__}: {str(ex)[:200]}"})
 
 
 @app.route('/admin_backup_supabase')

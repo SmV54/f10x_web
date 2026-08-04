@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Libera Folhas Anteriores</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  /* Cabeçalho */
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn-voltar:hover { background: #374151; }
+
+  .wrap { max-width: 720px; margin: 26px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; margin-bottom: 14px; color: #111827; display: flex;
+             align-items: center; gap: 8px; }
+
+  .aviso { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+           border-radius: 10px; padding: 14px 16px; font-size: 13.5px; line-height: 1.5;
+           margin-bottom: 18px; }
+  .aviso b { color: #1e3a8a; }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+  .campo { margin-bottom: 16px; }
+
+  /* Listas de seleção (checklist de seleção única) */
+  .lista-sel { max-height: 190px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 8px; }
+  .lista-item { display: flex; align-items: center; gap: 9px; padding: 8px 12px; font-size: 13.5px;
+                cursor: pointer; border-bottom: 1px solid #f1f3f5; }
+  .lista-item:last-child { border-bottom: none; }
+  .lista-item:hover { background: #f8fafc; }
+  .lista-item.sel { background: #eff6ff; }
+  .lista-item input { margin: 0; flex: 0 0 auto; }
+  .lista-item .lid { font-variant-numeric: tabular-nums; color: #6b7280; font-weight: 600; }
+  .lista-vazio { color: #9ca3af; font-size: 13px; padding: 10px 12px; }
+
+  /* Piso atual */
+  .piso-box { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 9px;
+              padding: 11px 14px; font-size: 13.5px; color: #374151; margin-bottom: 14px; }
+  .piso-box b { color: #111827; font-variant-numeric: tabular-nums; }
+
+  /* Lista de meses */
+  .meses-acoes { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  .meses-acoes button { font-size: 12px; padding: 5px 10px; border: 1px solid #d1d5db;
+                        background: #fff; border-radius: 6px; cursor: pointer; color: #374151; }
+  .meses-acoes button:hover { background: #f3f4f6; }
+  .meses-box { max-height: 230px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px;
+               padding: 8px 10px; display: grid;
+               grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 12px; }
+  .meses-box label { display: flex; align-items: center; gap: 6px; font-weight: 400;
+                     font-size: 13px; margin: 0; cursor: pointer; }
+  .meses-vazio { color: #9ca3af; font-size: 13px; }
+  .tag-existe { font-size: 10.5px; background: #fef3c7; color: #92400e; border-radius: 5px;
+                padding: 1px 5px; letter-spacing: .02em; }
+
+  .btn-exec { width: 100%; background: #16a34a; color: #fff; border: none; border-radius: 9px;
+              padding: 13px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+  .btn-exec:hover { background: #15803d; }
+  .btn-exec:disabled { background: #a7d7b9; cursor: not-allowed; }
+
+  #resultado { display: none; }
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 12px 14px; font-size: 14px; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 12px 14px; font-size: 14px; }
+  .mut { color: #9ca3af; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">🔓 Libera Folhas Anteriores</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="aviso">
+      A folha do cliente <b>só anda para a frente</b>: ele não consegue abrir competência
+      anterior à mais recente que já tem. Aqui você abre a exceção — marque os meses e
+      <b>as folhas já são criadas abertas</b>, prontas para ele processar. Desmarcar apenas
+      devolve o mês ao bloqueio: <b>nenhuma folha é apagada</b>.
+    </div>
+
+    <div class="card">
+      <h2>1 · Escolha o cliente</h2>
+      <div class="campo">
+        <label>Cliente</label>
+        <div class="lista-sel" id="listaClientes"><div class="lista-vazio">Carregando clientes…</div></div>
+      </div>
+      <div class="campo">
+        <label>Empresa</label>
+        <div class="lista-sel" id="listaEmpresas"><div class="lista-vazio">Selecione o cliente primeiro</div></div>
+      </div>
+    </div>
+
+    <div class="card" id="cardMeses" style="display:none;">
+      <h2>2 · Marque as folhas a criar</h2>
+      <div class="piso-box" id="pisoBox"></div>
+      <div class="meses-acoes">
+        <button type="button" onclick="marcarMeses(true)">Marcar todos</button>
+        <button type="button" onclick="marcarMeses(false)">Desmarcar todos</button>
+        <button type="button" onclick="marcarUltimos(12)">Últimos 12</button>
+        <span id="mesesResumo" class="mut"></span>
+      </div>
+      <div class="meses-box" id="mesesBox"></div>
+      <div class="mut" style="margin-top:5px;">
+        <span class="tag-existe">folha já existe</span> = essa competência já está aberta na empresa; nada a criar.
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn-exec" id="btnExec" disabled onclick="gravar()">Liberar e Criar as Folhas</button>
+      </div>
+    </div>
+
+    <div class="card" id="resultado"></div>
+  </div>
+
+<script>
+const listaClientes = document.getElementById('listaClientes');
+const listaEmpresas = document.getElementById('listaEmpresas');
+const btn = document.getElementById('btnExec');
+let clienteSel = null, empresaSel = null, MESES = [];
+
+const pad6 = n => String(n).padStart(6, '0');
+
+fetch('/api/admin_folhas_ant/clientes').then(r => r.json()).then(d => {
+  if (!d.ok) { listaClientes.innerHTML = '<div class="lista-vazio">Erro: ' + (d.msg || '') + '</div>'; return; }
+  if (!d.clientes.length) { listaClientes.innerHTML = '<div class="lista-vazio">Nenhum cliente</div>'; return; }
+  listaClientes.innerHTML = d.clientes.map(c =>
+    `<label class="lista-item" data-id="${c.id_cliente}">
+       <input type="radio" name="cli">
+       <span class="lid">${pad6(c.id_cliente)}</span><span>${c.nome || '(sem nome)'}</span>
+     </label>`).join('');
+  listaClientes.querySelectorAll('.lista-item').forEach(it =>
+    it.addEventListener('click', () => selecionarCliente(Number(it.dataset.id), it)));
+});
+
+function selecionarCliente(id, itemEl) {
+  clienteSel = id; empresaSel = null;
+  listaClientes.querySelectorAll('.lista-item').forEach(x => x.classList.remove('sel'));
+  if (itemEl) { itemEl.classList.add('sel'); itemEl.querySelector('input').checked = true; }
+  document.getElementById('cardMeses').style.display = 'none';
+  document.getElementById('resultado').style.display = 'none';
+  MESES = []; btn.disabled = true;
+  listaEmpresas.innerHTML = '<div class="lista-vazio">Carregando empresas…</div>';
+  fetch('/api/admin_folhas_ant/empresas/' + id).then(r => r.json()).then(d => {
+    if (!d.ok) { listaEmpresas.innerHTML = '<div class="lista-vazio">Erro: ' + (d.msg || '') + '</div>'; return; }
+    if (!d.empresas.length) { listaEmpresas.innerHTML = '<div class="lista-vazio">Cliente sem empresas</div>'; return; }
+    listaEmpresas.innerHTML = d.empresas.map(e =>
+      `<label class="lista-item" data-id="${e.id_empresa}">
+         <input type="radio" name="emp">
+         <span class="lid">${pad6(e.id_empresa)}</span><span>${e.nome}${e.cnpj ? ' · ' + e.cnpj : ''}</span>
+       </label>`).join('');
+    const itens = listaEmpresas.querySelectorAll('.lista-item');
+    itens.forEach(it => it.addEventListener('click', () => selecionarEmpresa(Number(it.dataset.id), it)));
+    // Cliente com uma empresa só: já deixa selecionada
+    if (itens.length === 1) selecionarEmpresa(Number(itens[0].dataset.id), itens[0]);
+  });
+}
+
+function selecionarEmpresa(id, itemEl) {
+  empresaSel = id;
+  listaEmpresas.querySelectorAll('.lista-item').forEach(x => x.classList.remove('sel'));
+  if (itemEl) { itemEl.classList.add('sel'); itemEl.querySelector('input').checked = true; }
+  carregarMeses(clienteSel, id);
+}
+
+function carregarMeses(idCliente, idEmpresa) {
+  const card = document.getElementById('cardMeses');
+  const box  = document.getElementById('mesesBox');
+  card.style.display = 'block';
+  btn.disabled = true;
+  box.innerHTML = '<span class="meses-vazio">Carregando meses…</span>';
+  document.getElementById('pisoBox').textContent = '';
+  fetch(`/api/admin_folhas_ant/meses/${idCliente}/${idEmpresa}`).then(r => r.json()).then(d => {
+    if (!d.ok) { box.innerHTML = '<span class="meses-vazio">Erro: ' + (d.msg || '') + '</span>'; return; }
+    MESES = d.meses || [];
+    document.getElementById('pisoBox').innerHTML =
+      `Folha mais antiga que o cliente pode abrir hoje: <b>${d.piso_label}</b>. ` +
+      `Os meses abaixo estão bloqueados para ele — marque os que você quer criar.`;
+    if (!MESES.length) { box.innerHTML = '<span class="meses-vazio">Nada a liberar</span>'; return; }
+    // Mês que já tem folha vai marcado e travado: não há o que criar, e
+    // desmarcar não apagaria nada — só confundiria.
+    box.innerHTML = MESES.map(m =>
+      `<label><input type="checkbox" class="mes-chk" value="${m.ano_mes}"
+              ${(m.liberado || m.existe) ? 'checked' : ''} ${m.existe ? 'disabled' : ''}
+              onchange="atualizarResumo()"> ${m.label}` +
+      (m.existe ? ' <span class="tag-existe">folha já existe</span>' : '') + `</label>`).join('');
+    btn.disabled = false;
+    atualizarResumo();
+  }).catch(e => { box.innerHTML = '<span class="meses-vazio">Erro ao carregar meses</span>'; });
+}
+
+function marcarMeses(estado) {
+  document.querySelectorAll('.mes-chk').forEach(c => { if (!c.disabled) c.checked = estado; });
+  atualizarResumo();
+}
+function marcarUltimos(n) {
+  document.querySelectorAll('.mes-chk').forEach((c, i) => { if (!c.disabled) c.checked = i < n; });
+  atualizarResumo();
+}
+// Inclui os travados (folha já existe): mantém a liberação deles gravada,
+// em vez de a tela retirá-la sem querer a cada gravação.
+function mesesMarcados() {
+  return Array.from(document.querySelectorAll('.mes-chk:checked')).map(c => c.value);
+}
+function aCriar() {
+  return Array.from(document.querySelectorAll('.mes-chk:checked')).filter(c => !c.disabled).length;
+}
+function atualizarResumo() {
+  document.getElementById('mesesResumo').textContent =
+    `${aCriar()} folha(s) a criar · ${MESES.length} mês(es) na lista`;
+}
+
+function gravar() {
+  if (!clienteSel || !empresaSel) return;
+  btn.disabled = true;
+  const box = document.getElementById('resultado');
+  box.style.display = 'none';
+  fetch('/api/admin_folhas_ant/gravar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_cliente: clienteSel, id_empresa: empresaSel, meses: mesesMarcados() })
+  }).then(r => r.json()).then(d => {
+    btn.disabled = false;
+    box.style.display = 'block';
+    if (!d.ok) { box.innerHTML = `<div class="erro-box">❌ ${d.msg || 'Falha ao gravar'}</div>`; return; }
+    const fmt = l => l.map(m => m.substring(4,6) + '/' + m.substring(0,4)).join(', ');
+    const det = [];
+    if (d.criadas.length)   det.push('Folhas criadas: ' + fmt(d.criadas));
+    if (d.removidos.length) det.push('Liberação retirada (folha não apagada): ' + fmt(d.removidos));
+    box.innerHTML = `<div class="ok-box">✅ ${d.criadas.length} folha(s) criada(s) e aberta(s) para o cliente.` +
+                    (det.length ? `<div class="mut" style="margin-top:6px;color:#166534;">${det.join(' · ')}</div>` : '') +
+                    `</div>`;
+    carregarMeses(clienteSel, empresaSel);   // recarrega: as novas viram "folha já existe"
+  }).catch(e => {
+    btn.disabled = false;
+    box.style.display = 'block';
+    box.innerHTML = `<div class="erro-box">❌ ${String(e)}</div>`;
+  });
+}
+</script>
+</body>
+</html>

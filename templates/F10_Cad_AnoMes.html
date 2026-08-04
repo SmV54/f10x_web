@@ -569,6 +569,13 @@
   // Limite máximo de folha permitido pelo plano (yyyymm)
   const LIMITE_ANOMES = "{{ limite_anomes }}";
 
+  // Folha mais antiga que ainda pode ser aberta (yyyymm) — a folha não
+  // volta atrás. Quem barra de verdade é o backend; aqui é só o aviso.
+  const MINIMO_ANOMES = "{{ minimo_anomes }}";
+
+  // Competências abaixo do piso que o Admin da F10 liberou para esta empresa.
+  const LIBERADOS_ANOMES = {{ liberados_anomes | tojson }};
+
   // ── Helpers ───────────────────────────────────────────────
   // Converte yyyymmdd → yyyy-mm-dd para o input[type=date]
   function strParaDate(s) {
@@ -882,6 +889,16 @@
 
       if (ano.length !== 4 || isNaN(parseInt(ano))) { alerta('Campo inválido', 'Informe um ano válido com 4 dígitos.'); return; }
       if (!mes) { alerta('Campo inválido', 'Selecione o mês antes de gravar.'); return; }
+
+      // Verifica o piso: a folha não volta atrás, salvo liberação do Admin
+      if (MINIMO_ANOMES && (ano + mes) < MINIMO_ANOMES
+          && !LIBERADOS_ANOMES.includes(ano + mes)) {
+        const min = MINIMO_ANOMES.substring(4,6) + '/' + MINIMO_ANOMES.substring(0,4);
+        alerta('Folha anterior bloqueada',
+               'A folha mais antiga permitida para esta empresa é ' + min +
+               '. Para processar um mês anterior, fale com o suporte da Folha10.');
+        return;
+      }
 
       // Verifica limite do plano
       if (LIMITE_ANOMES) {
