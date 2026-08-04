@@ -6902,6 +6902,8 @@ def api_calc_rescisao_calcular():
         return medias_fer, medias_13, {"fi": fi, "ff": ff, "fi13": fi13, "det": det}
 
     from datetime import date as _date
+    # Cache dos adicionais: uma leitura para todos os demitidos (ver _adicionais_cache)
+    _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
     resultados = []
     for cad in demitidos:
         mat = int(cad.get("matricula") or 0)
@@ -6943,12 +6945,22 @@ def api_calc_rescisao_calcular():
         # Saldo de salário pela convenção do mês comercial: o divisor é sempre 30,
         # então o mês de 31 dias trabalhado inteiro paga 30/30 (salário cheio) —
         # sem o teto, dia 31 pagaria 31/30 e o saldo passaria do salário mensal.
+        # Adicionais (insalubridade / periculosidade / risco de vida) integram a
+        # remuneracao (Sumula 139 do TST): entram na base do saldo, do aviso, do
+        # 13o proporcional e das ferias. Aqui eles sao EMBUTIDOS no valor de cada
+        # verba, e nao lancados em linha separada — mesma convencao que as medias
+        # ja seguem na rescisao (ao contrario das ferias, onde saem em linha).
+        adics_mes_r = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
+                                         eventos_cache=_adic_ev, mov_cache=_adic_mov)
+        adic_total  = _adicionais_total(adics_mes_r)
+        sal_mes_ad  = sal_mes + adic_total          # remuneracao mensal cheia
+
         dias_saldo = min(dt_resc.day, 30)
-        saldo = round(sal_mes * dias_saldo / 30)
+        saldo = round(sal_mes_ad * dias_saldo / 30)
         # aviso prévio indenizado (acordo=50%)
         aviso_val = 0
         if aviso_ind and dias_aviso > 0:
-            aviso_val = round(sal_mes * dias_aviso / 30)
+            aviso_val = round(sal_mes_ad * dias_aviso / 30)
             if multa_pct == 20:   # acordo 484-A → aviso 50%
                 aviso_val = round(aviso_val / 2)
         # médias variáveis (férias = 12 meses; 13º = só ano corrente)
@@ -6962,11 +6974,11 @@ def api_calc_rescisao_calcular():
         if dt_adm and dt_adm > ini_ano:
             ini_ano = dt_adm
         avos_13 = _conta_avos_resc(ini_ano, dt_proj) if tem_13 else 0
-        d13 = round((sal_mes + base_media_13) * avos_13 / 12) if avos_13 else 0
+        d13 = round((sal_mes_ad + base_media_13) * avos_13 / 12) if avos_13 else 0
         # férias proporcionais + 1/3 (avos do período aquisitivo em curso)
         ini_aq = _inicio_aquisitivo_resc(dt_adm, dt_proj) if dt_adm else _date(dt_proj.year, 1, 1)
         avos_fer = _conta_avos_resc(ini_aq, dt_proj) if tem_fer else 0
-        fer_prop = round((sal_mes + base_media_fer) * avos_fer / 12) if avos_fer else 0
+        fer_prop = round((sal_mes_ad + base_media_fer) * avos_fer / 12) if avos_fer else 0
         # férias VENCIDAS: períodos aquisitivos completos sem gozo. São devidas
         # SEMPRE, inclusive na justa causa — o motivo só derruba as proporcionais.
         venc_periodos, venc_estimado = _periodos_ferias_vencidas(
@@ -6976,7 +6988,7 @@ def api_calc_rescisao_calcular():
         fer_venc, venc_det = 0, []
         for _p_ini, _p_fim in venc_periodos:
             _med_p, _info_p = _media_periodo(mat, sal_hora_c, _p_ini, _p_fim)
-            _val_p = round(sal_mes + _med_p)
+            _val_p = round(sal_mes_ad + _med_p)
             fer_venc += _val_p
             venc_det.append({
                 "ini": _p_ini.strftime("%d/%m/%Y"), "fim": _p_fim.strftime("%d/%m/%Y"),
@@ -33304,6 +33316,136 @@ def _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=None):
     return result
 
 
+# =========================================================
+# ADICIONAIS (insalubridade / periculosidade / risco de vida)
+# =========================================================
+# As tres verbas tem inc_ferias/inc_13sal/inc_adto13/inc_rescisao = 'CN' na
+# tab_rubrica. 'CN' = "calculada normalmente": nao entra por media (media e para
+# verba variavel — hora extra, comissao), entra pelo valor VIGENTE. Como 'CN' nao
+# esta em {MAP,M12,MAN,S}, os quatro calculos simplesmente ignoravam as tres.
+#
+# Media seria errada aqui por dois motivos concretos:
+#   - o SM muda todo janeiro (1518 -> 1621 em 2026, +6,8%); media de 12 meses
+#     pagaria ferias/13o sobre um minimo que nao existe mais;
+#   - quem ganhou o adicional ha 2 meses teria 2/12 do valor devido.
+VERBA_INSALUBRIDADE  = 30
+VERBA_PERICULOSIDADE = 31
+VERBA_RISCO_VIDA     = 32
+# op1 do evento de cadastro que origina cada verba. Risco de vida nao tem evento
+# proprio — so existe se for lancado (manual ou movimento fixo).
+_OP1_ADICIONAL = {VERBA_INSALUBRIDADE: 31, VERBA_PERICULOSIDADE: 41}
+
+
+def _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
+                       eventos_cache=None, mov_cache=None):
+    """Valor vigente dos 3 adicionais para um funcionario no mes anomes.
+
+    Devolve {cod_verba: centavos}, so com as verbas que tem valor > 0.
+
+    Duas fontes, nessa ordem:
+      1. evento do cadastro (op1=31 insalubridade / op1=41 periculosidade) —
+         recalcula: insalubridade sobre o SALARIO MINIMO, periculosidade sobre o
+         SALARIO do funcionario. E a fonte correta, porque acompanha o SM e o
+         salario do momento.
+      2. o que foi efetivamente lancado naquela folha em tab_mov (origem C/F/M).
+         Cobre risco de vida, que nao tem evento, e a periculosidade lancada a
+         mao — hoje TODOS os lancamentos da verba 31 em producao sao origem='M'.
+
+    eventos_cache/mov_cache evitam repetir consulta quando o chamador percorre
+    varios funcionarios: dicts {(op1): {mat: ev}} e {mat: {cod_verba: valor}}.
+    """
+    out = {}
+    sm = _get_sm_centavos(anomes)
+
+    for verba, op1 in _OP1_ADICIONAL.items():
+        if eventos_cache is not None and op1 in eventos_cache:
+            ev = (eventos_cache[op1] or {}).get(int(mat))
+        else:
+            fn = (_calc_etapa6_insalubridade if op1 == 31 else _calc_etapa7_periculosidade)
+            ev = fn(id_empresa, anomes, id_cliente=id_cliente).get(int(mat))
+        if not ev:
+            continue
+        ref1 = int(ev.get("ref1") or 0)          # 2000 = 20,00%
+        if ref1 <= 0:
+            continue
+        base = sm if verba == VERBA_INSALUBRIDADE else int(sal_mes or 0)
+        val  = int(base * (ref1 / 10000))        # centavos truncados, igual a folha
+        if val > 0:
+            out[verba] = val
+
+    # Fonte 2 — so para as verbas que o cadastro nao resolveu
+    faltam = [v for v in (VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA)
+              if v not in out]
+    if faltam:
+        lanc = None
+        if mov_cache is not None:
+            lanc = (mov_cache or {}).get(int(mat)) or {}
+        else:
+            try:
+                q = (supabase.table("tab_mov")
+                     .select("cod_verba, valor")
+                     .eq("id_empresa", id_empresa)
+                     .eq("folha", int(anomes))
+                     .eq("folha_tipo", "N")
+                     .eq("situacao", "A")
+                     .eq("matricula", int(mat))
+                     .in_("cod_verba", faltam))
+                if id_cliente:
+                    q = q.eq("id_cliente", id_cliente)
+                lanc = {}
+                for row in (q.execute().data or []):
+                    cv = int(row.get("cod_verba") or 0)
+                    lanc[cv] = lanc.get(cv, 0) + int(row.get("valor") or 0)
+            except Exception as e:
+                print(f"[adicionais] falha ao ler lançamentos mat {mat}: {e}")
+                lanc = {}
+        for v in faltam:
+            if int(lanc.get(v) or 0) > 0:
+                out[v] = int(lanc[v])
+    return out
+
+
+def _adicionais_total(adics):
+    """Soma dos adicionais — o que integra a base de férias/13º/rescisão."""
+    return sum(int(v or 0) for v in (adics or {}).values())
+
+
+def _adicionais_cache(id_empresa, id_cliente, anomes, folha_tipo="N"):
+    """Monta de uma vez os mapas que _adicionais_do_mes consome.
+
+    OBRIGATORIO em qualquer laco por funcionario: sem cache, cada chamada de
+    _adicionais_do_mes refaz a varredura dos eventos da empresa INTEIRA (e mais
+    uma consulta a tab_mov), ou seja O(n) varreduras para n funcionarios.
+    Devolve (eventos_cache, mov_cache) pronto para repassar."""
+    ev = {}
+    try:
+        ev[31] = _calc_etapa6_insalubridade(id_empresa, anomes, id_cliente=id_cliente)
+        ev[41] = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+    except Exception as e:
+        print(f"[adicionais] cache de eventos falhou: {e}")
+        ev = {31: {}, 41: {}}
+
+    mov = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, cod_verba, valor")
+             .eq("id_empresa", id_empresa)
+             .eq("folha", int(anomes))
+             .eq("folha_tipo", folha_tipo)
+             .eq("situacao", "A")
+             .in_("cod_verba", [VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA]))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for row in (q.execute().data or []):
+            m  = int(row.get("matricula") or 0)
+            cv = int(row.get("cod_verba") or 0)
+            mov.setdefault(m, {})
+            mov[m][cv] = mov[m].get(cv, 0) + int(row.get("valor") or 0)
+    except Exception as e:
+        print(f"[adicionais] cache de lançamentos falhou: {e}")
+    return ev, mov
+
+
 def _get_sm_centavos(anomes):
     """Retorna o salário mínimo em centavos para o período anomes (AAAAMM), ou 0 em caso de erro."""
     try:
@@ -41553,6 +41695,7 @@ def api_calc_ferias_calcular():
         s = str(s or "")
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
 
+    _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
     resultados = []
     for ev in eventos:
         mat = ev["matricula"]
@@ -41577,9 +41720,24 @@ def api_calc_ferias_calcular():
             except Exception:
                 dias = 30
 
+        # ── Adicionais (insalubridade / periculosidade / risco de vida) ──
+        # Integram a remuneração de férias (Súmula 139 do TST), proporcionais aos
+        # dias gozados, e entram como VERBA PRÓPRIA no recibo — mesmo tratamento
+        # que as médias variáveis recebem. O 1/3 constitucional incide sobre
+        # salário + adicionais, não só sobre o salário.
+        adics_mes   = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
+                                         eventos_cache=_adic_ev, mov_cache=_adic_mov)
+        adics_fer   = {cod: round(val * dias / 30) for cod, val in adics_mes.items()}
+        adics_fer   = {c: v for c, v in adics_fer.items() if v}
+        adic_total  = _adicionais_total(adics_fer)
+
         sal_ferias  = round(sal_mes * dias / 30)
-        terco_const = round(sal_ferias / 3)
-        abono_val   = round(sal_mes * dias_abono / 30) if dias_abono else 0
+        terco_const = round((sal_ferias + adic_total) / 3)
+        # Abono pecuniário é venda de dias de férias: mesma remuneração, mesmos
+        # adicionais proporcionais.
+        adic_abono  = (round(_adicionais_total(adics_mes) * dias_abono / 30)
+                       if dias_abono else 0)
+        abono_val   = round(sal_mes * dias_abono / 30) + adic_abono if dias_abono else 0
         terco_abono = round(abono_val / 3) if abono_val else 0
 
         # ── Média de verbas variáveis (MAP / M12 / MAN) ─────────────
@@ -41718,8 +41876,9 @@ def api_calc_ferias_calcular():
                 elif _inf.get("tp") == "2":
                     man_desc_cp += _val
 
-        # INSS e IRRF: férias + 1/3 + médias de variáveis + manuais que incidem (abono é isento)
-        base_calc   = sal_ferias + terco_const + sum(medias_variaveis.values()) + man_prov_cp - man_desc_cp
+        # INSS e IRRF: férias + adicionais + 1/3 + médias de variáveis + manuais que incidem (abono é isento)
+        base_calc   = (sal_ferias + adic_total + terco_const
+                       + sum(medias_variaveis.values()) + man_prov_cp - man_desc_cp)
         inss_val, inss_det, _ = _calc_inss_progressivo(base_calc, tabela)
         fgts_val              = round(base_calc * 8 / 100)
 
@@ -41775,6 +41934,10 @@ def api_calc_ferias_calcular():
         if sal_ferias:
             recs_mov.append({**base_mov, "cod_verba": 41,
                              "qtd": dias, "valor": sal_ferias})
+        # Adicionais como verba própria (0030/0031/0032), antes do 1/3
+        for cod_a, val_a in sorted(adics_fer.items()):
+            recs_mov.append({**base_mov, "cod_verba": cod_a,
+                             "qtd": 0, "valor": val_a})
         if terco_const:
             recs_mov.append({**base_mov, "cod_verba": 42,
                              "qtd": 0, "valor": terco_const})
@@ -41797,6 +41960,7 @@ def api_calc_ferias_calcular():
 
         _verbas_auto_fc = {41, 42, 45, 46}
         _verbas_auto_fc.update(medias_variaveis.keys())
+        _verbas_auto_fc.update(adics_fer.keys())
         if inss_val:
             _verbas_auto_fc.add(103)
         if cod_irrf_fc and irrf_val:
@@ -41811,7 +41975,7 @@ def api_calc_ferias_calcular():
                 return jsonify({"ok": False, "msg": f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}"})
 
         # ── Insere totais em tab_total (folha_tipo='F') ──────────
-        total_prov = sal_ferias + terco_const + abono_val + terco_abono
+        total_prov = sal_ferias + adic_total + terco_const + abono_val + terco_abono
         total_desc = inss_val + irrf_val
         try:
             rec_tot = {
@@ -41884,6 +42048,17 @@ def api_calc_ferias_calcular():
             "sal_mes_fmt":    _fmt_brl(sal_mes),
             "sal_ferias_fmt": _fmt_brl(sal_ferias),
             "terco_fmt":      _fmt_brl(terco_const),
+            "adic_total":     adic_total,
+            "adic_total_fmt": _fmt_brl(adic_total) if adic_total else "—",
+            # Uma linha por adicional, para o recibo e a memória mostrarem qual é
+            "adicionais_pdf": [
+                {"cod":     cod,
+                 "dsc":     _rubr_desc_map.get(cod, f"Verba {cod:04d}"),
+                 "valor":   val,
+                 "val_fmt": _fmt_brl(val),
+                 "mes_fmt": _fmt_brl(adics_mes.get(cod, 0))}
+                for cod, val in sorted(adics_fer.items())
+            ],
             "abono_fmt":      _fmt_brl(abono_val) if abono_val else "—",
             "terco_abono_fmt":_fmt_brl(terco_abono) if terco_abono else "—",
             "base_calc_fmt":  _fmt_brl(base_calc),
@@ -41959,7 +42134,7 @@ def api_calc_ferias_calcular():
                    "total_prov","total_desc","liquido",
                    "medias_variaveis_pdf","verbas_media_pesquisadas_pdf",
                    "periodo_aq_pdf","recs_mov_pdf",
-                   "sal_hora_c_pdf","und_pdf"}
+                   "sal_hora_c_pdf","und_pdf","adicionais_pdf"}
     resultados_web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
     return jsonify({"ok": True, "resultados": resultados_web})
 
@@ -42332,6 +42507,7 @@ def api_recibo_ferias_pdf():
 
     LW = W - 3.6*cm   # largura útil
 
+    _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
     story = []
 
     for ev in eventos:
@@ -42359,13 +42535,24 @@ def api_recibo_ferias_pdf():
 
         dias_abono  = int(ev.get("ref2") or 0)
 
+        # Adicionais integram a remuneração de férias, proporcionais aos dias.
+        # ATENÇÃO: este recibo REFAZ o cálculo em vez de ler o que foi gravado em
+        # tab_mov, então precisa repetir a regra. As médias variáveis continuam
+        # de fora daqui (divergência que já existia antes dos adicionais).
+        adics_mes   = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
+                                         eventos_cache=_adic_ev, mov_cache=_adic_mov)
+        adics_fer   = {c: v for c, v in
+                       ((c, (v * dias) // 30) for c, v in adics_mes.items()) if v}
+        adic_total  = _adicionais_total(adics_fer)
+
         sal_ferias  = (sal_mes * dias) // 30
-        terco_const = sal_ferias // 3
-        abono_val   = (sal_mes * dias_abono) // 30 if dias_abono else 0
+        terco_const = (sal_ferias + adic_total) // 3
+        adic_abono  = (_adicionais_total(adics_mes) * dias_abono) // 30 if dias_abono else 0
+        abono_val   = ((sal_mes * dias_abono) // 30 + adic_abono) if dias_abono else 0
         terco_abono = abono_val // 3 if abono_val else 0
 
-        # INSS e IRRF incidem apenas sobre férias + 1/3 (abono é isento)
-        base_calc   = sal_ferias + terco_const
+        # INSS e IRRF incidem sobre férias + adicionais + 1/3 (abono é isento)
+        base_calc   = sal_ferias + adic_total + terco_const
         inss_val, _, _ = _calc_inss_progressivo(base_calc, tabela)
         fgts_val       = (base_calc * 8) // 100   # FGTS: só sobre férias+1/3
         ndep           = dep_count.get(mat, 0)
@@ -42451,9 +42638,17 @@ def api_recibo_ferias_pdf():
                 return f"{cod}  —  "
             return ""
 
-        total_bruto = sal_ferias + terco_const + abono_val + terco_abono
+        total_bruto = sal_ferias + adic_total + terco_const + abono_val + terco_abono
+        _DSC_ADIC = {VERBA_INSALUBRIDADE: "Insalubridade",
+                     VERBA_PERICULOSIDADE: "Periculosidade",
+                     VERBA_RISCO_VIDA: "Risco de Vida"}
         rows = [
             lin(f"{_verba_prefix(v_ferias_cod, v_ferias_dsc)}Salário Férias  ({dias} dias)", _brl(sal_ferias)),
+        ]
+        for _ca, _va in sorted(adics_fer.items()):
+            rows.append(lin(f"{str(_ca).zfill(4)}  {_DSC_ADIC.get(_ca, 'Adicional')}  —  "
+                            f"({dias} dias)", _brl(_va)))
+        rows += [
             lin("1/3 Constitucional",             _brl(terco_const)),
         ]
         if dias_abono:
@@ -49404,7 +49599,8 @@ def api_calcular_adiantamento():
 # Sem INSS/IRRF. (avos: etapa futura)
 # =========================================================
 VERBA_ADIANT_13     = 17
-VERBA_PERICULOSIDADE = 31
+# VERBA_PERICULOSIDADE agora vem do bloco dos ADICIONAIS (junto de
+# VERBA_INSALUBRIDADE e VERBA_RISCO_VIDA), definido bem antes neste arquivo.
 
 
 def _get_per_adianta13(id_empresa):
@@ -49465,13 +49661,36 @@ def _elegivel_adiant13(f):
 def _pericu_adiant13(sal_mes, ev, perc=50):
     """Periculosidade no adiantamento do 13º = perc% da periculosidade do mês.
     ev = evento op1=41 (ou None); ref1 = percentual ×100 (3000 = 30,00%).
-    Periculosidade mensal = sal_mes × ref1/10000; adiantamento = perc% disso."""
+    Periculosidade mensal = sal_mes × ref1/10000; adiantamento = perc% disso.
+
+    MANTIDA para o caso de alguem ainda chamar; o fluxo usa
+    _adicionais_adiant13, que cobre as tres verbas e tambem o adicional lancado
+    a mao (a periculosidade em producao e 100% origem='M', que este aqui nao ve).
+    """
     if not ev:
         return 0
     ref1 = int(ev.get("ref1") or 0)
     if ref1 <= 0:
         return 0
     return int(sal_mes * ref1 / 10000) * perc // 100
+
+
+def _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc=50,
+                         eventos_cache=None, mov_cache=None):
+    """perc% de cada adicional vigente — insalubridade, periculosidade e risco
+    de vida. O adiantamento do 13o e uma antecipacao da remuneracao, entao leva
+    os adicionais na mesma proporcao do salario.
+
+    Passe os caches de _adicionais_cache quando estiver num laco por funcionario.
+    Devolve {cod_verba: centavos}, so o que ficou > 0."""
+    adics = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
+                               eventos_cache=eventos_cache, mov_cache=mov_cache)
+    out = {}
+    for cod, val in adics.items():
+        v = int(val) * int(perc) // 100
+        if v > 0:
+            out[cod] = v
+    return out
 
 
 def _verbas_media_adiant13(id_cliente):
@@ -49690,7 +49909,8 @@ def _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, matriculas):
 def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                           perc, meses, valor, pericu, pericu_pct, pericu_mes,
                           medias_detalhe, total, usuario, versao,
-                          base_fgts=0, fgts_val=0, aliq_fgts=8):
+                          base_fgts=0, fgts_val=0, aliq_fgts=8,
+                          adicionais=None, adicionais_mes=None):
     """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário)."""
     def _hhmm(mins):
         mins = int(round(mins))
@@ -49767,16 +49987,22 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         f"Salário do mês {_fmt_brl(sal_mes)} × {perc}% = <b>{_fmt_brl(valor)}</b>  "
         f"(verba {VERBA_ADIANT_13})", st_formula))
 
-    # ETAPA 2 — periculosidade
-    if pericu > 0:
-        e.append(Paragraph("ETAPA 4020 — PERICULOSIDADE", st_etapa))
-        pct_txt = f"{pericu_pct:.2f}".replace(".", ",")
-        e.append(Paragraph(
-            f"Periculosidade do mês (Salário × {pct_txt}%) = {_fmt_brl(pericu_mes)} × {perc}% "
-            f"= <b>{_fmt_brl(pericu)}</b>  (verba {VERBA_PERICULOSIDADE})", st_formula))
+    # ETAPA 2 — adicionais (insalubridade / periculosidade / risco de vida)
+    _DSC_AD = {VERBA_INSALUBRIDADE: "Insalubridade",
+               VERBA_PERICULOSIDADE: "Periculosidade",
+               VERBA_RISCO_VIDA: "Risco de Vida"}
+    if adicionais:
+        e.append(Paragraph("ETAPA 4020 — ADICIONAIS", st_etapa))
+        for _c, _v in sorted(adicionais.items()):
+            _mes = int((adicionais_mes or {}).get(_c, 0))
+            _base = ("Salário Mínimo" if _c == VERBA_INSALUBRIDADE else "Salário")
+            e.append(Paragraph(
+                f"{_DSC_AD.get(_c, 'Adicional')} do mês ({_base} × %) = {_fmt_brl(_mes)} × {perc}% "
+                f"= <b>{_fmt_brl(_v)}</b>  (verba {_c})", st_formula))
     else:
-        e.append(Paragraph("ETAPA 4020 — PERICULOSIDADE"
-                           "   Não se aplica — sem periculosidade ativa no mês", st_etapa_na))
+        e.append(Paragraph("ETAPA 4020 — ADICIONAIS"
+                           "   Não se aplica — sem insalubridade, periculosidade "
+                           "ou risco de vida no mês", st_etapa_na))
 
     # ETAPA 3 — médias das verbas variáveis
     e.append(Paragraph(
@@ -50023,12 +50249,14 @@ def calcular_adiantamento_13():
     id_cliente = session.get("id_cliente")
     try:
         pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+        _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'A')
     except Exception:
         pericu_map = {}
+        _adic_ev, _adic_mov = {31: {}, 41: {}}, {}
 
     # médias das verbas variáveis (inc_adto13='S') — ano corrente, ÷ mês da folha
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
-    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
+    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
 
@@ -50051,7 +50279,10 @@ def calcular_adiantamento_13():
             mat_f   = int(f.get("matricula") or 0)
             sal_mes = _sal_mes_adiant13(f)
             valor   = sal_mes * perc // 100          # perc% do salário
-            pericu  = _pericu_adiant13(sal_mes, pericu_map.get(mat_f), perc)
+            adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, mat_f, sal_mes, perc,
+                                           eventos_cache=_adic_ev, mov_cache=_adic_mov)
+            adic_tot = _adicionais_total(adics13)
+            pericu  = adics13.get(VERBA_PERICULOSIDADE, 0)   # retrocompat. da tela
             vrsalfx = int(f.get("vrsalfx") or 0)
             und     = str(f.get("undsalfixo") or "M").upper()[:1]
             qhm     = int(f.get("qtdhrsmes") or 220) or 220
@@ -50059,8 +50290,8 @@ def calcular_adiantamento_13():
             medias_det = _medias_adiant13(id_cliente, id_empresa, mat_f, sal_hora_c,
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
             medias_tot = sum(d["val"] for d in medias_det)
-            total_f = valor + pericu + medias_tot
-            verba_valores = {VERBA_ADIANT_13: valor, VERBA_PERICULOSIDADE: pericu}
+            total_f = valor + adic_tot + medias_tot
+            verba_valores = {VERBA_ADIANT_13: valor, **adics13}
             verba_valores.update({d["cod"]: d["val"] for d in medias_det})
             aliq_fgts = _aliq_fgts_adiant13(f)
             base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
@@ -50072,6 +50303,8 @@ def calcular_adiantamento_13():
                 "valor_fmt":  _fmt_reais(valor),
                 "pericu":     pericu,
                 "pericu_fmt": _fmt_reais(pericu) if pericu else "—",
+                "adicionais":     adic_tot,
+                "adicionais_fmt": _fmt_reais(adic_tot) if adic_tot else "—",
                 "medias":     medias_tot,
                 "medias_fmt": _fmt_reais(medias_tot) if medias_tot else "—",
                 "fgts":       fgts_val,
@@ -50114,7 +50347,7 @@ def api_calcular_adiantamento_13():
     fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
 
     # incidência de FGTS por verba (verba 17='S'; periculosidade/médias='11')
-    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
+    inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
 
     # limpa cálculo anterior desta folha (verba 17/31 + médias, origem calculada)
     try:
@@ -50122,7 +50355,7 @@ def api_calcular_adiantamento_13():
          .eq("id_empresa", id_empresa)
          .eq("folha",      folha_int)
          .eq("folha_tipo", "A")
-         .in_("cod_verba", [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
+         .in_("cod_verba", [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
          .eq("origem",     "C")
          .execute())
     except Exception as e:
@@ -50143,8 +50376,10 @@ def api_calcular_adiantamento_13():
     # periculosidade ativa no mês (op1=41), por funcionário — entra a perc%
     try:
         pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+        _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'A')
     except Exception:
         pericu_map = {}
+        _adic_ev, _adic_mov = {31: {}, 41: {}}, {}
 
     # pasta das memórias de cálculo (1 PDF por funcionário), espelhando a folha normal
     empresa_nm = str(session.get("empresa_info") or "")
@@ -50174,7 +50409,10 @@ def api_calcular_adiantamento_13():
             if valor <= 0:
                 continue
             mat    = f.get("matricula")
-            pericu = _pericu_adiant13(sal_mes, pericu_map.get(int(mat or 0)), perc)
+            adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, int(mat or 0), sal_mes, perc,
+                                           eventos_cache=_adic_ev, mov_cache=_adic_mov)
+            adic_tot = _adicionais_total(adics13)
+            pericu  = adics13.get(VERBA_PERICULOSIDADE, 0)
             vrsalfx = int(f.get("vrsalfx") or 0)
             und     = str(f.get("undsalfixo") or "M").upper()[:1]
             qhm     = int(f.get("qtdhrsmes") or 220) or 220
@@ -50202,8 +50440,9 @@ def api_calcular_adiantamento_13():
             except Exception as e_ins:
                 return jsonify({"ok": False, "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
 
-            # Periculosidade (verba 31), quando ativa — perc% da periculosidade do mês
-            if pericu > 0:
+            # Adicionais (30 insalubridade / 31 periculosidade / 32 risco de vida),
+            # quando ativos — perc% do adicional do mês, um lançamento por verba
+            for cod_a, val_a in sorted(adics13.items()):
                 try:
                     supabase.table("tab_mov").insert({
                         "id_cliente": id_cliente,
@@ -50212,16 +50451,16 @@ def api_calcular_adiantamento_13():
                         "matricula":  int(mat),
                         "folha":      folha_int,
                         "folha_tipo": "A",
-                        "cod_verba":  VERBA_PERICULOSIDADE,
+                        "cod_verba":  cod_a,
                         "qtd":        0,
-                        "valor":      pericu,
+                        "valor":      val_a,
                         "lote":       0,
                         "origem":     "C",
                         "controle":   0,
                         "os":         0,
                     }).execute()
                 except Exception as e_ins:
-                    return jsonify({"ok": False, "msg": f"Erro periculosidade mat {mat}: {str(e_ins)[:300]}"})
+                    return jsonify({"ok": False, "msg": f"Erro adicional {cod_a} mat {mat}: {str(e_ins)[:300]}"})
 
             # Médias das verbas variáveis (uma linha por verba, cada uma com seu código)
             for cod_m, val_m in sorted(medias.items()):
@@ -50246,8 +50485,8 @@ def api_calcular_adiantamento_13():
 
             # Totais (tab_total): adiantamento sem INSS/IRRF, COM FGTS (verba 17
             # incide FGTS — tpn_inc_fgts='S'). Proventos = adiant. + pericul. + médias.
-            prov_total = valor + pericu + sum(medias.values())
-            verba_valores = {VERBA_ADIANT_13: valor, VERBA_PERICULOSIDADE: pericu}
+            prov_total = valor + adic_tot + sum(medias.values())
+            verba_valores = {VERBA_ADIANT_13: valor, **adics13}
             verba_valores.update(medias)
             aliq_fgts = _aliq_fgts_adiant13(f)
             base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
@@ -50290,6 +50529,8 @@ def api_calcular_adiantamento_13():
             # Memória de cálculo — 1 PDF por funcionário (local C:\ ou Storage)
             if dest.get("base"):
                 try:
+                    _adics_mes_pdf = {c: (v * 100 // perc if perc else 0)
+                                      for c, v in adics13.items()}
                     ev_p      = pericu_map.get(int(mat or 0))
                     ref1_p    = int(ev_p.get("ref1") or 0) if ev_p else 0
                     pericu_mes = int(sal_mes * ref1_p / 10000) if ref1_p > 0 else 0
@@ -50297,7 +50538,8 @@ def api_calcular_adiantamento_13():
                     pdf_bytes = _pdf_memoria_adiant13(
                         empresa_nm, anomes, int(mat or 0), nome_pdf, sal_mes, sal_hora_c,
                         perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
-                        medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts)
+                        medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
+                        adicionais=adics13, adicionais_mes=_adics_mes_pdf)
                     nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
                                 f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
                     if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
@@ -50362,7 +50604,7 @@ def calcular_adiantamento_13_stream():
     folha_int  = int(anomes)
     perc       = _get_per_adianta13(id_empresa)
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
-    inc_fgts   = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
+    inc_fgts   = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
     ano_folha  = int(anomes[:4]); mes_folha = int(anomes[4:6])
     fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
 
@@ -50383,7 +50625,7 @@ def calcular_adiantamento_13_stream():
             try:
                 (supabase.table("tab_mov").delete()
                  .eq("id_empresa", id_empresa).eq("folha", folha_int).eq("folha_tipo", "A")
-                 .in_("cod_verba", [VERBA_ADIANT_13, VERBA_PERICULOSIDADE] + cods_media)
+                 .in_("cod_verba", [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
                  .eq("origem", "C").execute())
             except Exception as e:
                 _put({"tipo": "erro", "msg": f"Erro ao limpar cálculo anterior: {str(e)[:200]}"})
@@ -50400,8 +50642,10 @@ def calcular_adiantamento_13_stream():
 
             try:
                 pericu_map = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
+                _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'A')
             except Exception:
                 pericu_map = {}
+                _adic_ev, _adic_mov = {31: {}, 41: {}}, {}
 
             # destino das memórias: Windows local → C:\ ; Render → Supabase Storage
             dest = _memoria_destino(anomes, id_empresa)
@@ -50434,7 +50678,10 @@ def calcular_adiantamento_13_stream():
                 valor   = sal_mes * perc // 100
                 if valor <= 0:
                     continue
-                pericu  = _pericu_adiant13(sal_mes, pericu_map.get(mat), perc)
+                adics13 = _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc,
+                                               eventos_cache=_adic_ev, mov_cache=_adic_mov)
+                adic_tot = _adicionais_total(adics13)
+                pericu  = adics13.get(VERBA_PERICULOSIDADE, 0)
                 vrsalfx = int(f.get("vrsalfx") or 0)
                 und     = str(f.get("undsalfixo") or "M").upper()[:1]
                 qhm     = int(f.get("qtdhrsmes") or 220) or 220
@@ -50449,11 +50696,11 @@ def calcular_adiantamento_13_stream():
                 except Exception as e_ins:
                     _put({"tipo": "erro", "msg": f"Erro mat {mat}: {str(e_ins)[:300]}"})
                     return
-                if pericu > 0:
+                for cod_a, val_a in sorted(adics13.items()):
                     try:
-                        supabase.table("tab_mov").insert(_mov(mat, VERBA_PERICULOSIDADE, pericu)).execute()
+                        supabase.table("tab_mov").insert(_mov(mat, cod_a, val_a)).execute()
                     except Exception as e_ins:
-                        _put({"tipo": "erro", "msg": f"Erro periculosidade mat {mat}: {str(e_ins)[:300]}"})
+                        _put({"tipo": "erro", "msg": f"Erro adicional {cod_a} mat {mat}: {str(e_ins)[:300]}"})
                         return
                 for cod_m, val_m in sorted(medias.items()):
                     try:
@@ -50462,9 +50709,9 @@ def calcular_adiantamento_13_stream():
                         _put({"tipo": "erro", "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
                         return
 
-                prov_total = valor + pericu + sum(medias.values())
+                prov_total = valor + adic_tot + sum(medias.values())
                 total_val += prov_total
-                verba_valores = {VERBA_ADIANT_13: valor, VERBA_PERICULOSIDADE: pericu}
+                verba_valores = {VERBA_ADIANT_13: valor, **adics13}
                 verba_valores.update(medias)
                 aliq_fgts = _aliq_fgts_adiant13(f)
                 base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
@@ -50491,13 +50738,16 @@ def calcular_adiantamento_13_stream():
 
                 if dest.get("base"):
                     try:
+                        _adics_mes_pdf = {c: (v * 100 // perc if perc else 0)
+                                          for c, v in adics13.items()}
                         ev_p       = pericu_map.get(mat)
                         ref1_p     = int(ev_p.get("ref1") or 0) if ev_p else 0
                         pericu_mes = int(sal_mes * ref1_p / 10000) if ref1_p > 0 else 0
                         pdf_bytes  = _pdf_memoria_adiant13(
                             empresa_nm, anomes, mat, nome, sal_mes, sal_hora_c,
                             perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
-                            medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts)
+                            medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
+                            adicionais=adics13, adicionais_mes=_adics_mes_pdf)
                         nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
                                     f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
