@@ -5811,8 +5811,8 @@ def _lista_demitidos_dados(id_empresa, ini_int, fim_int):
     return funcs
 
 
-def _demitidos_intervalo_args():
-    """Lê data_ini/data_fim da query (default = mês atual) e retorna
+def _intervalo_args():
+    """Lê data_ini/data_fim da query (default = folha atual) e retorna
     (data_ini, data_fim, ini_int, fim_int)."""
     def_ini, def_fim = _mes_atual_intervalo()
     data_ini = request.args.get("data_ini") or def_ini
@@ -5827,7 +5827,7 @@ def _demitidos_intervalo_args():
 def lista_demitidos():
     if not session.get("logado"):
         return redirect("/")
-    data_ini, data_fim, ini_int, fim_int = _demitidos_intervalo_args()
+    data_ini, data_fim, ini_int, fim_int = _intervalo_args()
     funcs = _lista_demitidos_dados(_get_id_empresa(), ini_int, fim_int)
     return render_template("F10_Lista_Demitidos.html", **_ctx_relatorio(),
                            funcs=funcs, data_ini=data_ini, data_fim=data_fim)
@@ -5846,7 +5846,7 @@ def lista_demitidos_pdf():
     from reportlab.lib.styles import ParagraphStyle
 
     id_empresa = _get_id_empresa()
-    data_ini, data_fim, ini_int, fim_int = _demitidos_intervalo_args()
+    data_ini, data_fim, ini_int, fim_int = _intervalo_args()
     funcs      = _lista_demitidos_dados(id_empresa, ini_int, fim_int)
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
@@ -5902,6 +5902,248 @@ def lista_demitidos_pdf():
     resp = make_response(buf.read())
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = 'inline; filename="Demitidos.pdf"'
+    return resp
+
+
+# =========================================================
+# FUNCIONÁRIOS EM FÉRIAS — listagem por período
+# Roda com a folha em qualquer situação (Aberta, Calculada ou Fechada):
+# e consulta, nao lancamento.
+# =========================================================
+def _lista_ferias_dados(id_empresa, ini8, fim8, situacao="all"):
+    """Férias (tab_eventos op1=3) que ENCOSTAM no período [ini8, fim8] (YYYYMMDD).
+
+    Encostar = sobrepor o periodo, nao comecar dentro dele. Quem saiu em 25/07
+    e volta em 13/08 esta de ferias em agosto, e um filtro por data de inicio o
+    esconderia justamente do mes em que ele falta na empresa.
+
+    situacao: 'all' (padrao, inclui demitido), 'A' so ativos, 'D' so demitidos.
+    Demitido nunca some por acaso — vem marcado, com a data da rescisao.
+    """
+    if not ini8 or not fim8:
+        return []
+
+    # Piso da busca: o gozo tem no maximo 30 dias, entao ferias que alcancam
+    # o periodo comecaram no maximo ~2 meses antes. Sem esse piso a consulta
+    # varreria o historico inteiro e o PostgREST corta em 1000 linhas.
+    try:
+        d_ini = date(int(ini8[:4]), int(ini8[4:6]), int(ini8[6:8]))
+        piso8 = (d_ini - timedelta(days=60)).strftime("%Y%m%d")
+    except Exception:
+        piso8 = ini8
+
+    try:
+        r = (supabase.table("tab_eventos")
+             .select("matricula, data1i, data1f, data2i, data2f, ref1, ref2, folha")
+             .eq("id_empresa", id_empresa)
+             .eq("op1", 3)
+             .gte("data1i", piso8)
+             .lte("data1i", fim8)
+             .order("data1i")
+             .execute())
+        eventos = r.data or []
+    except Exception:
+        return []
+
+    # Sobreposicao com o periodo, ja em Python (data1f pode vir vazia).
+    # data1i='99999999' e periodo aquisitivo registrado SEM gozo marcado —
+    # nao e ferias, e nao pode entrar aqui. O lte acima ja o descarta, mas
+    # deixo explicito para nao voltar por descuido num filtro futuro.
+    eventos = [e for e in eventos
+               if str(e.get("data1i") or "") != "99999999"
+               and (str(e.get("data1f") or e.get("data1i") or "")) >= ini8]
+    if not eventos:
+        return []
+
+    # Cadastro dos funcionarios envolvidos
+    cads = {}
+    try:
+        mats = sorted({int(e["matricula"]) for e in eventos if e.get("matricula")})
+        for i in range(0, len(mats), 200):
+            r2 = (supabase.table("tab_cad")
+                  .select("matricula, nome, nomer, dtadm, situacao, datarescisao")
+                  .eq("id_empresa", id_empresa)
+                  .in_("matricula", mats[i:i+200])
+                  .execute())
+            for f in (r2.data or []):
+                cads[int(f["matricula"])] = f
+    except Exception:
+        pass
+
+    def _d(v):
+        v = str(v or "")
+        return f"{v[6:8]}/{v[4:6]}/{v[0:4]}" if len(v) == 8 and v.isdigit() else "—"
+
+    linhas = []
+    for e in eventos:
+        mat = int(e.get("matricula") or 0)
+        cad = cads.get(mat, {})
+        sit = str(cad.get("situacao") or "").upper()
+        if situacao == "A" and sit == "D":
+            continue
+        if situacao == "D" and sit != "D":
+            continue
+
+        ini_raw = str(e.get("data1i") or "")
+        fim_raw = str(e.get("data1f") or "")
+
+        # Retorno = dia seguinte ao fim do gozo
+        retorno = "—"
+        if len(fim_raw) == 8 and fim_raw.isdigit():
+            try:
+                d = date(int(fim_raw[:4]), int(fim_raw[4:6]), int(fim_raw[6:8])) + timedelta(days=1)
+                retorno = d.strftime("%d/%m/%Y")
+            except Exception:
+                pass
+
+        # ref1 = dias de gozo. Lancamento antigo/importado vem com 0 — nesse
+        # caso conta pelas proprias datas, senao a coluna Dias sai vazia.
+        dias = int(e.get("ref1") or 0)
+        if not dias and len(ini_raw) == 8 and len(fim_raw) == 8:
+            try:
+                dias = (date(int(fim_raw[:4]), int(fim_raw[4:6]), int(fim_raw[6:8]))
+                        - date(int(ini_raw[:4]), int(ini_raw[4:6]), int(ini_raw[6:8]))).days + 1
+            except Exception:
+                dias = 0
+
+        dem_raw = str(cad.get("datarescisao") or "")
+        folha   = str(e.get("folha") or "")
+        linhas.append({
+            "matricula":  mat,
+            "mat_fmt":    f"{mat:06d}",
+            "nome":       (cad.get("nome") or cad.get("nomer") or "").strip() or "(sem cadastro)",
+            "adm_fmt":    _d(cad.get("dtadm")),
+            "ini_raw":    ini_raw,
+            "ini_fmt":    _d(ini_raw),
+            "fim_fmt":    _d(fim_raw),
+            "retorno":    retorno,
+            "dias":       dias,
+            "abono":      int(e.get("ref2") or 0),
+            "aquis_fmt":  (f"{_d(e.get('data2i'))} a {_d(e.get('data2f'))}"
+                           if e.get("data2i") else "—"),
+            "folha_fmt":  f"{folha[4:6]}/{folha[0:4]}" if len(folha) == 6 else "—",
+            "demitido":   sit == "D",
+            "dem_fmt":    _d(dem_raw) if sit == "D" else "",
+        })
+
+    if _def_classificacao() == "A":
+        linhas.sort(key=lambda x: (x["nome"].upper(), x["ini_raw"]))
+    else:
+        linhas.sort(key=lambda x: (x["matricula"], x["ini_raw"]))
+    return linhas
+
+
+def _ferias_filtro_args():
+    """(data_ini, data_fim, ini8, fim8, situacao) — período default = folha atual,
+    situação default = todos (inclusive demitidos)."""
+    data_ini, data_fim, ini_int, fim_int = _intervalo_args()
+    situacao = (request.args.get("situacao") or "all").strip()
+    if situacao not in ("all", "A", "D"):
+        situacao = "all"
+    return (data_ini, data_fim,
+            str(ini_int) if ini_int else "",
+            str(fim_int) if fim_int else "",
+            situacao)
+
+
+@app.route("/lista_ferias")
+def lista_ferias():
+    if not session.get("logado"):
+        return redirect("/")
+    data_ini, data_fim, ini8, fim8, situacao = _ferias_filtro_args()
+    funcs = _lista_ferias_dados(_get_id_empresa(), ini8, fim8, situacao)
+    return render_template("F10_Lista_Ferias.html", **_ctx_relatorio(),
+                           funcs=funcs, data_ini=data_ini, data_fim=data_fim,
+                           situacao=situacao,
+                           n_demitidos=sum(1 for f in funcs if f["demitido"]))
+
+
+@app.route("/lista_ferias_pdf")
+def lista_ferias_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    id_empresa = _get_id_empresa()
+    data_ini, data_fim, ini8, fim8, situacao = _ferias_filtro_args()
+    funcs      = _lista_ferias_dados(id_empresa, ini8, fim8, situacao)
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    def _br(d):
+        return f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d) == 10 else d
+    sit_lbl = {"all": "Todos", "A": "Só ativos", "D": "Só demitidos"}[situacao]
+    titulo  = f"Funcionários em Férias — {_br(data_ini)} a {_br(data_fim)}  ·  {sit_lbl}"
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=1.5*cm, rightMargin=1.5*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    cab = ["Matrícula", "Nome", "Início", "Fim", "Dias", "Abono",
+           "Retorno", "Período Aquisitivo", "Folha"]
+    tbl_data = [[P(h, fn="Helvetica-Bold") for h in cab]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    vermelho = colors.HexColor("#b91c1c")
+    for f in funcs:
+        # Demitido sai em vermelho, com a data da rescisao colada no nome —
+        # o PDF nao tem tarja, e a informacao nao pode se perder na impressao.
+        nome = f["nome"] + (f"  (DEMITIDO em {f['dem_fmt']})" if f["demitido"] else "")
+        cor  = vermelho if f["demitido"] else colors.HexColor("#1f2937")
+        tbl_data.append([
+            P(f["mat_fmt"], fn="Courier", col=cor),
+            P(nome, col=cor),
+            P(f["ini_fmt"], align=1, col=cor),
+            P(f["fim_fmt"], align=1, col=cor),
+            P(f["dias"] or "—", align=1, col=cor),
+            P(f["abono"] or "—", align=1, col=cor),
+            P(f["retorno"], align=1, col=cor),
+            P(f["aquis_fmt"], align=1, col=cor),
+            P(f["folha_fmt"], align=1, col=cor),
+        ])
+
+    tbl = Table(tbl_data, repeatRows=1,
+                colWidths=[2.0*cm, 7.4*cm, 2.1*cm, 2.1*cm, 1.2*cm, 1.3*cm,
+                           2.1*cm, 4.6*cm, 1.8*cm])
+    row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
+              for i in range(1, len(tbl_data))]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    n_dem = sum(1 for f in funcs if f["demitido"])
+    resumo = f"Total: {len(funcs)} período(s) de férias"
+    if n_dem:
+        resumo += f"  ·  {n_dem} de funcionário(s) já demitido(s)"
+    total_linha = P(resumo, fn="Helvetica", fs=8,
+                    col=colors.HexColor("#64748b"), align=2)
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 6), total_linha]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="Ferias.pdf"'
     return resp
 
 
