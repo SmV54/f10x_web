@@ -12327,6 +12327,14 @@ def api_funcionario_alterar():
         if v is not None:
             campos[db_col] = v
 
+    # Centro de custo: faltava por completo no mapa de alteracao — o campo era
+    # enviado pela tela e descartado calado. Preenchido, grava; vazio, so
+    # preenche se o cadastro tambem estiver sem (ver logo abaixo, onde o
+    # registro atual ja foi lido). Nunca sobrescreve um CC existente por vazio.
+    _cc_novo = (sv("centrocusto") or "").strip()
+    if _cc_novo:
+        campos["centrocusto"] = _cc_novo
+
     # Bloqueio: a categoria eSocial (codCateg) só pode mudar se o S-2200 ainda
     # NÃO foi enviado, ou se foi enviado e anulado por S-3000. Com S-2200 ativo
     # a categoria fica travada — o eSocial não aceita troca de categoria com a
@@ -12334,12 +12342,16 @@ def api_funcionario_alterar():
     novo_categ = (campos.get("codcateg") or "").strip()
     try:
         _cur = (supabase.table("tab_cad")
-                .select("codcateg, matricula")
+                .select("codcateg, matricula, centrocusto, id_cliente")
                 .eq("id", func_id).eq("id_empresa", id_empresa)
                 .limit(1).execute().data or [])
     except Exception:
         _cur = []
     if _cur:
+        # Sem CC no cadastro e sem CC no payload: aplica o padrao da empresa.
+        # Sem centrocusto o S-1020/S-1200 sai sem codLotacao e o gov recusa.
+        if not _cc_novo and not str(_cur[0].get("centrocusto") or "").strip():
+            campos["centrocusto"] = _cc_padrao(_cur[0].get("id_cliente"), id_empresa)
         _cat_atual = str(_cur[0].get("codcateg") or "").strip()
         if novo_categ != _cat_atual and _s2200_ativo(id_empresa, _cur[0].get("matricula")):
             return jsonify({"ok": False, "msg":
@@ -12636,7 +12648,9 @@ def api_funcionario_incluir():
         "tpregjor":      sv("tpRegJor"),
         "cbofuncao":     sv("CBOFuncao"),
         "natatividade":  "1",
-        "centrocusto":   sv("centrocusto") or None,
+        # Nunca grava vazio: sem centro de custo o S-1020/S-1200 sai sem
+        # codLotacao e o eSocial recusa. Ver _cc_padrao.
+        "centrocusto":   (sv("centrocusto") or "").strip() or _cc_padrao(id_cliente, id_empresa),
     }
     # mapeamento campo_payload → coluna_db
     opcionais = {
@@ -51113,6 +51127,28 @@ def _verba_salario(categ_n):
     if 700 <= categ_n <= 799:
         return 16
     return 1
+
+
+def _cc_padrao(id_cliente, id_empresa):
+    """Centro de custo a usar quando o cadastro vem sem nenhum.
+
+    NAO devolve "001" fixo: o centrocusto vira o codLotacao do S-1020/S-1200,
+    e cravar um codigo que a empresa nao tem faria o eSocial recusar. Usa o
+    PRIMEIRO CC da propria empresa; so cai no "001" se ela nao tiver nenhum —
+    que e o codigo criado automaticamente nos primeiros passos do cliente.
+    """
+    try:
+        r = (supabase.table("tab_cc")
+             .select("codigo_cc")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .order("codigo_cc")
+             .limit(1).execute().data or [])
+        if r and str(r[0].get("codigo_cc") or "").strip():
+            return str(r[0]["codigo_cc"]).strip()
+    except Exception as e:
+        print(f"[cc_padrao] erro ao ler tab_cc: {e}")
+    return "001"
 
 
 def _tem_fgts(categ_n):
