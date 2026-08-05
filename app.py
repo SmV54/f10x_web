@@ -38065,8 +38065,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     except Exception:
         pass
     _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
-                  101:"INSS",120:"IRRF",139:"FGTS Provisionado"}
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2"),(139,"2")]:
+                  101:"INSS",120:"IRRF"}
+    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO (faltas), nao FGTS.
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod, f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
 
@@ -38192,7 +38193,12 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
-        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
+        # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
+        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS — mas
+        # a 139 e DESCONTO REPOUSO REMUNERADO, usada no calculo para as faltas
+        # (mmVmm[139] = val_falta). Resultado: quem tinha falta via o desconto no
+        # lugar do FGTS (ex.: 58,54 em vez de 121,75).
+        fgts_val  = int(base_fgts * _aliq_fgts) // 100
 
         # Adiantamento Quinzenal (161-164) — bloco próprio acima das informativas
         adiant_list = []
@@ -38420,8 +38426,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     except Exception:
         pass
     _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
-                  101:"INSS",120:"IRRF",139:"FGTS Provisionado"}
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2"),(139,"2")]:
+                  101:"INSS",120:"IRRF"}
+    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO (faltas), nao FGTS.
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod,f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
 
@@ -38558,7 +38565,12 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
-        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
+        # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
+        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS — mas
+        # a 139 e DESCONTO REPOUSO REMUNERADO, usada no calculo para as faltas
+        # (mmVmm[139] = val_falta). Resultado: quem tinha falta via o desconto no
+        # lugar do FGTS (ex.: 58,54 em vez de 121,75).
+        fgts_val  = int(base_fgts * _aliq_fgts) // 100
 
         # Adiantamentos quinzenais (verbas 161-164) — linha acima das informativas
         adiant_list = []
@@ -39042,8 +39054,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     except Exception:
         pass
     _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
-                  101:"INSS",120:"IRRF",139:"FGTS Provisionado"}
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2"),(139,"2")]:
+                  101:"INSS",120:"IRRF"}
+    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO (faltas), nao FGTS.
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod,f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
 
@@ -39149,7 +39162,12 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
-        fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
+        # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
+        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS — mas
+        # a 139 e DESCONTO REPOUSO REMUNERADO, usada no calculo para as faltas
+        # (mmVmm[139] = val_falta). Resultado: quem tinha falta via o desconto no
+        # lugar do FGTS (ex.: 58,54 em vez de 121,75).
+        fgts_val  = int(base_fgts * _aliq_fgts) // 100
         # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
         adiant_list = []
         for r_ad in adiant_data.get(mat, []):
@@ -41106,7 +41124,10 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     rubr_map.setdefault(101, {"dsc": "INSS",              "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
     rubr_map.setdefault(102, {"dsc": "INSS CONT.INDIVIDUAL", "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
     rubr_map.setdefault(120, {"dsc": "IRRF",              "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
-    rubr_map.setdefault(139, {"dsc": "FGTS Provisionado", "tp": "2", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
+    # A 139 vem do tab_rubrica com o nome real (DESCONTO REPOUSO REMUNERADO).
+    # Havia aqui um setdefault chamando-a de "FGTS Provisionado" — sobra do
+    # legado, em que a 139 guardava o FGTS. Hoje o calculo usa a 139 para as
+    # faltas, entao esse rotulo so enganava.
 
     # ── Movimento do mês ──
     try:
@@ -41124,7 +41145,6 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     totais = {}
     todas_mats = set()
     emp_fgts_base = {}   # {matricula: base FGTS em centavos}
-    emp_fgts139   = {}   # {matricula: valor rubrica 139 em centavos}
     emp_base_cp   = {}   # {matricula: base INSS (inc_cp=11) em centavos}
     emp_inss      = {}   # {matricula: INSS retido (rubrica 101) em centavos}
     emp_inss102   = {}   # {matricula: INSS pró-labore (rubrica 102) em centavos}
@@ -41143,8 +41163,6 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             emp_fgts_base[mat] = emp_fgts_base.get(mat, 0) + val
         if rb_cod.get("tp") == "1" and rb_cod.get("inc_cp") == "11":
             emp_base_cp[mat] = emp_base_cp.get(mat, 0) + val
-        if cod == 139:
-            emp_fgts139[mat] = emp_fgts139.get(mat, 0) + val
         # 101 = INSS do empregado; 102 = INSS do contribuinte individual
         # (pró-labore). Cada um alimenta o seu quadro.
         if cod == 101:
@@ -41226,12 +41244,9 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # A 721 nao entra aqui: e CI para o INSS, mas recolhe FGTS.
     for _m in mats_sem_fgts:
         emp_fgts_base.pop(_m, None)
-        emp_fgts139.pop(_m, None)
 
     base_fgts_8 = sum(v for mat, v in emp_fgts_base.items() if mat not in mats_aprendiz)
     base_fgts_2 = sum(v for mat, v in emp_fgts_base.items() if mat in mats_aprendiz)
-    fgts139_8   = sum(v for mat, v in emp_fgts139.items()   if mat not in mats_aprendiz)
-    fgts139_2   = sum(v for mat, v in emp_fgts139.items()   if mat in mats_aprendiz)
     fgts8_calc  = (base_fgts_8 * 8) // 100
     fgts2_calc  = (base_fgts_2 * 2) // 100
 
@@ -41390,12 +41405,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "tem_aprendiz":     len(mats_aprendiz) > 0,
         "base_fgts_8":      _fmt_brl(base_fgts_8),
         "fgts8_calc":       _fmt_brl(fgts8_calc),
-        "fgts8_ok":         abs(fgts139_8 - fgts8_calc) <= 100,
-        "fgts8_dif_fmt":    _fmt_brl(abs(fgts139_8 - fgts8_calc)),
         "base_fgts_2":      _fmt_brl(base_fgts_2),
         "fgts2_calc":       _fmt_brl(fgts2_calc),
-        "fgts2_ok":         abs(fgts139_2 - fgts2_calc) <= 100,
-        "fgts2_dif_fmt":    _fmt_brl(abs(fgts139_2 - fgts2_calc)),
         "fgts_total_calc":  _fmt_brl(fgts8_calc + fgts2_calc),
         # INSS Empresa
         "base_inss_emp":    _fmt_brl(base_cp_patronal),
