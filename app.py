@@ -33747,8 +33747,10 @@ def _dias_afast(di_raw, df_raw):
 # e o funcionario nao veria a que numero de dias o valor se refere.
 #   0002 = salario proporcional (qtd = dias trabalhados, mmQmm[2])
 #   0009 = atestado medico       (qtd = dias de atestado, mmQmm[9])
-#   0139 = faltas                (qtd = dias de falta,    mmQmm[139])
-_VERBAS_QTD_DIAS = {2, 9, 139}
+# A 0132 (FALTAS EM DIAS) NAO entra aqui: ja e unid_verba='D' e o _fqtd a
+# formata sozinho. Ate 05/08/2026 as faltas caiam na 0139 (que e unid 'V'),
+# e a 0139 so estava nesta lista para contornar essa escolha errada.
+_VERBAS_QTD_DIAS = {2, 9}
 
 
 def _split_afast_mes(di_raw_orig, df_raw, dt_ini_c, dt_fim_c, atestado_acum=0):
@@ -34842,7 +34844,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     # Horarios de escala — mudam so o divisor do DSR (ETAPA 1110)
     escala_ids = _ids_horario_escala(id_cliente)
 
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(132,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V"})
     rubricas_info.setdefault(101, {"tp": "2", "dsc": "INSS", "unid": "V", "inc_cp": "", "inc_irrf": ""})
     rubricas_info.setdefault(120, {"tp": "2", "dsc": "IRRF", "unid": "V", "inc_cp": "", "inc_irrf": ""})
@@ -35355,8 +35357,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             val_dia_f    = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
             qty_inj      = sum(1 for ft in faltas_func if ft.get("op2") == 1)
             val_falta    = int(val_dia_f * qty_inj)
-            mmQmm[139]   = qty_inj
-            mmVmm[139]   = val_falta
+            # 0132 = FALTAS EM DIAS. Ate 05/08/2026 o desconto caia na 0139,
+            # que e DESCONTO REPOUSO REMUNERADO (o DSR perdido pela falta) —
+            # outra verba, outro calculo. O valor descontado nao mudou.
+            mmQmm[132]   = qty_inj
+            mmVmm[132]   = val_falta
             if faltas_func:
                 e5_rows  = [[Paragraph("ETAPA 1050 - FALTAS NO MES", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
@@ -35372,7 +35377,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 _st_op5 = ParagraphStyle("op5a", fontName="Helvetica", fontSize=7,
                                          alignment=1, textColor=colors.HexColor("#374151"))
                 form5 = Table([
-                    [Paragraph("0139-FALTAS", st_detalhe),
+                    [Paragraph("0132-FALTAS", st_detalhe),
                      Paragraph("=", _st_op5),
                      Paragraph("Salario Mensal", st_detalhe),
                      Paragraph("/", _st_op5),
@@ -35401,7 +35406,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _dj = "dia" if qty_just == 1 else "dias"
                     idx52 = len(e5_rows)
                     e5_rows.append([Paragraph(
-                        f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — nao incluidas na Rubrica 139",
+                        f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — nao incluidas na Rubrica 132",
                         st_detalhe), "", ""])
                     e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
             else:
@@ -37716,7 +37721,7 @@ def api_visualizar_calculo_dados():
                     }
     except Exception:
         pass
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(139,"2")]:
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(132,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V", "inc_cp": ""})
     rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
                                    "unid": "V", "inc_cp": ""})
@@ -38066,7 +38071,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         pass
     _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
                   101:"INSS",120:"IRRF"}
-    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO (faltas), nao FGTS.
+    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO, nao FGTS.
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod, f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
@@ -38194,10 +38199,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
-        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS — mas
-        # a 139 e DESCONTO REPOUSO REMUNERADO, usada no calculo para as faltas
-        # (mmVmm[139] = val_falta). Resultado: quem tinha falta via o desconto no
-        # lugar do FGTS (ex.: 58,54 em vez de 121,75).
+        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS —
+        # sobra do legado. A 139 e DESCONTO REPOUSO REMUNERADO, nunca foi FGTS.
+        # Nos lancamentos que existem na base isso dava 58,54 em vez de 121,75.
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
 
         # Adiantamento Quinzenal (161-164) — bloco próprio acima das informativas
@@ -38427,7 +38431,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         pass
     _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
                   101:"INSS",120:"IRRF"}
-    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO (faltas), nao FGTS.
+    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO, nao FGTS.
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod,f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
@@ -38566,10 +38570,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
-        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS — mas
-        # a 139 e DESCONTO REPOUSO REMUNERADO, usada no calculo para as faltas
-        # (mmVmm[139] = val_falta). Resultado: quem tinha falta via o desconto no
-        # lugar do FGTS (ex.: 58,54 em vez de 121,75).
+        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS —
+        # sobra do legado. A 139 e DESCONTO REPOUSO REMUNERADO, nunca foi FGTS.
+        # Nos lancamentos que existem na base isso dava 58,54 em vez de 121,75.
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
 
         # Adiantamentos quinzenais (verbas 161-164) — linha acima das informativas
@@ -39055,7 +39058,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         pass
     _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
                   101:"INSS",120:"IRRF"}
-    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO (faltas), nao FGTS.
+    # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO, nao FGTS.
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
         rubricas_info.setdefault(cod, {"dsc":_sys_verbs.get(cod,f"Verba {cod:04d}"),
                                        "tp":tp,"unid":"V","icp":"","ift":"","iir":""})
@@ -39163,10 +39166,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
-        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS — mas
-        # a 139 e DESCONTO REPOUSO REMUNERADO, usada no calculo para as faltas
-        # (mmVmm[139] = val_falta). Resultado: quem tinha falta via o desconto no
-        # lugar do FGTS (ex.: 58,54 em vez de 121,75).
+        # verba 139, o relatorio mostrava o valor dela como se fosse o FGTS —
+        # sobra do legado. A 139 e DESCONTO REPOUSO REMUNERADO, nunca foi FGTS.
+        # Nos lancamentos que existem na base isso dava 58,54 em vez de 121,75.
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
         # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
         adiant_list = []
@@ -40997,8 +40999,9 @@ def calcular_folha_etapa1_pdf():
             val_dia_f    = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
             qty_inj      = sum(1 for ft in faltas_func if ft.get("op2") == 1)
             val_falta    = int(val_dia_f * qty_inj)
-            mmQmm[139]   = qty_inj
-            mmVmm[139]   = val_falta
+            # 0132 = FALTAS EM DIAS (ver a etapa 1050 do outro gerador).
+            mmQmm[132]   = qty_inj
+            mmVmm[132]   = val_falta
             if faltas_func:
                 e5_rows  = [[Paragraph("ETAPA 1050 — FALTAS NO MÊS", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
@@ -41014,7 +41017,7 @@ def calcular_folha_etapa1_pdf():
                 _st_op5 = ParagraphStyle("op5b", fontName="Helvetica", fontSize=7,
                                          alignment=1, textColor=colors.HexColor("#374151"))
                 form5 = Table([
-                    [Paragraph("0139-FALTAS", st_detalhe),
+                    [Paragraph("0132-FALTAS", st_detalhe),
                      Paragraph("=", _st_op5),
                      Paragraph("Salário Mensal", st_detalhe),
                      Paragraph("/", _st_op5),
@@ -41043,7 +41046,7 @@ def calcular_folha_etapa1_pdf():
                     _dj = "dia" if qty_just == 1 else "dias"
                     idx52 = len(e5_rows)
                     e5_rows.append([Paragraph(
-                        f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — não incluídas na Rubrica 139",
+                        f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — não incluídas na Rubrica 132",
                         st_detalhe), "", ""])
                     e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
             else:
@@ -41198,7 +41201,6 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     liquido  = total_prov - total_desc
     inss_val = totais.get(101, {}).get("valor", 0)
     irrf_val = totais.get(120, {}).get("valor", 0)
-    fgts_val = totais.get(139, {}).get("valor", 0)
 
     # ── Split por categoria: Menor Aprendiz (103) e Contribuintes
     #    Individuais / diretores (700-799, pró-labore) ──
@@ -41389,7 +41391,6 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "base_inss_c":      base_inss,
         "inss_val_c":       inss_val,
         "irrf_val_c":       irrf_val,
-        "fgts_val_c":       fgts_val,
         "base_inss":        _fmt_brl(base_inss),
         "inss_val":         _fmt_brl(inss_val),
         "inss_aliq":        _pct(inss_val, base_inss),
