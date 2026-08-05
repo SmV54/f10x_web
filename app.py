@@ -12264,8 +12264,12 @@ def api_funcionario_alterar():
         # conjunto _S2206 ele dispara alteracao contratual sozinho.
         "nmCargo":           "nmcargo",
         "UndSalFixo":        "undsalfixo",
-        "dtTerm":            "datarescisao",
-        "ClauAssec":         "clausassec",
+        # dtTerm e ClauAssec NAO entram aqui. O dtTerm gravava em
+        # "datarescisao" — outro conceito (data do desligamento, nao o prazo do
+        # contrato) — e o ClauAssec apontava para uma coluna que nao existe em
+        # tab_cad, o que fazia a gravacao estourar com 400 se alguem preenchesse
+        # o campo. Os dois passaram a morar no evento op1=1/op2=167
+        # (ver _contrato_prazo). O objDet segue aqui: a coluna existe.
         "objDet":            "objdet",
         "natEstagio":        "est_natestagio",
         "nivEstagio":        "est_nivestagio",
@@ -12664,8 +12668,12 @@ def api_funcionario_incluir():
         # conjunto _S2206 ele dispara alteracao contratual sozinho.
         "nmCargo":           "nmcargo",
         "UndSalFixo":        "undsalfixo",
-        "dtTerm":            "datarescisao",
-        "ClauAssec":         "clausassec",
+        # dtTerm e ClauAssec NAO entram aqui. O dtTerm gravava em
+        # "datarescisao" — outro conceito (data do desligamento, nao o prazo do
+        # contrato) — e o ClauAssec apontava para uma coluna que nao existe em
+        # tab_cad, o que fazia a gravacao estourar com 400 se alguem preenchesse
+        # o campo. Os dois passaram a morar no evento op1=1/op2=167
+        # (ver _contrato_prazo). O objDet segue aqui: a coluna existe.
         "objDet":            "objdet",
         "natEstagio":        "est_natestagio",
         "nivEstagio":        "est_nivestagio",
@@ -21951,13 +21959,18 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
     lt_nrinsc  = dg(func.get('lt_nrinsc') or '') or cnpj_emp
     cnpjsind   = dg(func.get('cnpjsindcategprof') or '')
 
-    # Duração do contrato
+    # Duração do contrato — vem do evento op1=1/op2=167 (ver _contrato_prazo).
+    # Antes usava func['datarescisao'] como dtTerm: alem de ser outro conceito
+    # (data em que a rescisao ocorreu, nao o prazo do contrato), ela so existe
+    # DEPOIS do desligamento — entao todo temporario ainda ativo caia no else e
+    # era declarado ao eSocial como prazo INDETERMINADO.
     tpcontr    = str(func.get('tpcontr') or '1')
-    _dtterm_raw = str(func.get('datarescisao') or '').strip()
+    _contr     = _contrato_prazo(func.get('id_empresa'), func.get('matricula')) or {}
+    _dtterm_raw = str(_contr.get('dtterm') or '').strip()
     _dtterm_fmt = fmt_d8(_dtterm_raw) if _dtterm_raw else ''
     if tpcontr == '2' and _dtterm_fmt:
-        _clauassec   = x(func.get('clausassec', 'N') or 'N')
-        _objdet      = str(func.get('objdet') or '').strip()
+        _clauassec   = x(_contr.get('clausassec') or 'N')
+        _objdet      = str(_contr.get('objdet') or func.get('objdet') or '').strip()
         _objdet_xml  = f"\n          <objDet>{x(_objdet)}</objDet>" if _objdet else ''
         duracao_xml  = (f"\n        <duracao>"
                         f"\n          <tpContr>2</tpContr>"
@@ -27194,12 +27207,16 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     lt_tpinsc = str(func.get('lt_tpinsc') or '1')
     lt_nrinsc = dg(func.get('lt_nrinsc') or '') or cnpj_emp
 
+    # Mesma correcao do S-2200: a duracao vem do evento op1=1/op2=167, nao de
+    # func['datarescisao'] (que e a data do desligamento) nem de
+    # func['clausassec'] (coluna que nao existe em tab_cad).
     tpcontr     = str(func.get('tpcontr') or '1')
-    _dtterm_raw = str(func.get('datarescisao') or '').strip()
+    _contr      = _contrato_prazo(func.get('id_empresa'), func.get('matricula')) or {}
+    _dtterm_raw = str(_contr.get('dtterm') or '').strip()
     _dtterm_fmt = fmt_d8(_dtterm_raw) if _dtterm_raw else ''
     if tpcontr == '2' and _dtterm_fmt:
-        _clauassec  = x(func.get('clausassec', 'N') or 'N')
-        _objdet     = str(func.get('objdet') or '').strip()
+        _clauassec  = x(_contr.get('clausassec') or 'N')
+        _objdet     = str(_contr.get('objdet') or func.get('objdet') or '').strip()
         _objdet_xml = f"\n          <objDet>{x(_objdet)}</objDet>" if _objdet else ''
         duracao_xml = (f"\n        <duracao>"
                        f"\n          <tpContr>2</tpContr>"
@@ -51127,6 +51144,59 @@ def _verba_salario(categ_n):
     if 700 <= categ_n <= 799:
         return 16
     return 1
+
+
+# =========================================================
+# CONTRATO POR PRAZO DETERMINADO — tab_eventos op1=1 / op2=167
+# =========================================================
+# NAO ha colunas dtterm/clausassec em tab_cad: a informacao mora no evento,
+# reaproveitando colunas que este tipo de evento nao usa. A convencao de
+# data1f/ref1 veio do legado (Desktop), que ja grava assim — conferido em 3
+# registros migrados, todos batendo prazo x data.
+CONTR_OP1, CONTR_OP2 = 1, 167
+#   data1f     = data de termino do contrato (AAAAMMDD)
+#   ref1       = prazo em dias
+#   data1i     = data de termino ANTERIOR — vazia no cadastro inicial, preenchida
+#                na prorrogacao. E o que torna a EXCLUSAO possivel: sem ela nao
+#                se sabe para onde voltar ao desfazer.
+#   ref2       = numero da prorrogacao (0 = contrato original, 1 = primeira)
+#   ref3       = clausula assecuratoria: 1 = S, 0 = N. Decide o calculo da
+#                rescisao antecipada (com clausula = aviso + multa 40%;
+#                sem clausula = art. 479, metade do que faltava).
+#   campotxt1  = objeto determinante (quando tpcontr = 3)
+_DATA_VAZIA_LEGADO = "11110101"   # o "sem data" que o Desktop grava
+
+
+def _contrato_prazo(id_empresa, matricula):
+    """Contrato por prazo determinado do funcionario, lido do tab_eventos.
+
+    Devolve None se nao houver. Havendo mais de um (prorrogacoes), vale o de
+    maior ref2 — o mais recente."""
+    try:
+        rows = (supabase.table("tab_eventos")
+                .select("data1i, data1f, ref1, ref2, ref3, campotxt1")
+                .eq("id_empresa", id_empresa).eq("matricula", matricula)
+                .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                .execute().data or [])
+    except Exception as e:
+        print(f"[contrato_prazo] erro: {e}")
+        return None
+    if not rows:
+        return None
+    rows.sort(key=lambda r: int(r.get("ref2") or 0))
+    ult = rows[-1]
+    _dt = str(ult.get("data1f") or "").strip()
+    if _dt == _DATA_VAZIA_LEGADO:
+        _dt = ""
+    _ant = str(ult.get("data1i") or "").strip()
+    return {
+        "dtterm":       _dt,
+        "dias":         int(ult.get("ref1") or 0),
+        "clausassec":   "S" if str(ult.get("ref3") or "0") == "1" else "N",
+        "objdet":       str(ult.get("campotxt1") or "").strip(),
+        "prorrogacoes": int(ult.get("ref2") or 0),
+        "dtterm_ant":   "" if _ant in ("", _DATA_VAZIA_LEGADO) else _ant,
+    }
 
 
 def _cc_padrao(id_cliente, id_empresa):
