@@ -39,10 +39,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                display: flex; align-items: center; justify-content: center; gap: 12px; }
 .topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
-/* Id na frente do nome (empresa e cliente). Monoespacado e mais claro que o
-   nome: identifica no suporte sem roubar a leitura. */
-.topo-id      { font-family: var(--mono); font-weight: 500; color: #9ca3af;
-                letter-spacing: 0.02em; }
+/* Id na frente do nome (empresa e cliente). NAO troca a familia da fonte: a
+   monoespacada tem metrica diferente e desalinhava a linha de base ao lado do
+   nome. Herda a fonte e o tamanho do pai; so a cor e o peso mudam.
+   tabular-nums mantem os digitos com a mesma largura, alinhando as duas linhas
+   uma sob a outra. */
+.topo-id      { font-weight: 500; color: #9ca3af;
+                font-variant-numeric: tabular-nums; }
 /* ── LABEL LICENÇA FIXO (canto inferior esquerdo) ── */
 .label-licenca {
     position: fixed; bottom: 88px; left: 24px; z-index: 500;
