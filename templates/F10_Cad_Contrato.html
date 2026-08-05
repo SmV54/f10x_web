@@ -26,7 +26,7 @@ body{margin:0;font-family:var(--sans);background:#f6f8fb;color:#111827}
       border-bottom:1px solid #f1f5f9;margin-bottom:16px}
 .func b{font-family:var(--mono)}
 .lbl{color:var(--text-sub);font-size:11px;display:block;margin-bottom:3px}
-.linha{display:grid;grid-template-columns:120px 180px 130px 1fr;gap:14px;align-items:end}
+.linha{display:grid;grid-template-columns:230px 180px 130px 1fr;gap:14px;align-items:end}
 input,select{width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;
       font-family:var(--sans);font-size:13px}
 input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
@@ -45,6 +45,15 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 .aviso{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:10px 12px;
       border-radius:8px;font-size:12.5px;margin-bottom:14px}
 .vazio{color:var(--text-sub);font-size:13px;padding:8px 0}
+/* Prazos a mostra, nao escondidos num dropdown: sao a forma normal de lancar,
+   e a data digitada e a excecao. */
+.prazos{display:flex;gap:6px}
+.prazo-btn{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:7px 0;
+      flex:1;font-family:var(--sans);font-size:13px;font-weight:600;color:#334155;
+      cursor:pointer;transition:.12s}
+.prazo-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+.prazo-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
+.prazo-btn:disabled{opacity:.5;cursor:not-allowed}
 </style>
 
 <div class="topo">
@@ -89,15 +98,17 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
     <div class="linha">
       <div>
         <span class="lbl">Prazo</span>
-        <select id="prazo" {% if contrato and not pode_prorrogar %}disabled{% endif %}>
-          <option value="30">30 dias</option>
-          <option value="15">15 dias</option>
-          <option value="45">45 dias</option>
-          <option value="">Outro (digitar)</option>
-        </select>
+        <div class="prazos">
+          <button type="button" class="prazo-btn" data-dias="15"
+                  {% if contrato and not pode_prorrogar %}disabled{% endif %}>15 dias</button>
+          <button type="button" class="prazo-btn" data-dias="30"
+                  {% if contrato and not pode_prorrogar %}disabled{% endif %}>30 dias</button>
+          <button type="button" class="prazo-btn" data-dias="45"
+                  {% if contrato and not pode_prorrogar %}disabled{% endif %}>45 dias</button>
+        </div>
       </div>
       <div>
-        <span class="lbl">Data de término {% if contrato %}(nova){% endif %}</span>
+        <span class="lbl">Data de término {% if contrato %}(nova){% endif %} — ou digite</span>
         <input type="date" id="dtterm" {% if contrato and not pode_prorrogar %}disabled{% endif %}>
       </div>
       <div>
@@ -159,21 +170,31 @@ function d8ParaDate(s) {
     return new Date(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8));
 }
 
-function calcularTermino() {
-    const dias = parseInt(document.getElementById('prazo').value || '0', 10);
-    const campo = document.getElementById('dtterm');
-    if (!dias) return;                       // "Outro": o usuario digita
+function aplicarPrazo(dias) {
     const base = d8ParaDate(DTFIM || DTADM);
     if (!base) return;
     const d = new Date(base.getTime());
+    // Cadastro: o dia da admissao conta (dias-1). Prorrogacao: comeca no dia
+    // seguinte ao termino atual, entao soma os dias cheios.
     d.setDate(d.getDate() + (DTFIM ? dias : dias - 1));
     const p = n => String(n).padStart(2, '0');
-    campo.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+    document.getElementById('dtterm').value =
+        `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    const sel = document.getElementById('prazo');
-    if (sel && !sel.disabled) { sel.onchange = calcularTermino; calcularTermino(); }
+    document.querySelectorAll('.prazo-btn').forEach(function(b) {
+        b.onclick = function() {
+            document.querySelectorAll('.prazo-btn').forEach(x => x.classList.remove('sel'));
+            b.classList.add('sel');
+            aplicarPrazo(parseInt(b.dataset.dias, 10));
+        };
+    });
+    // Data digitada na mao desmarca o prazo — o numero deixaria de corresponder.
+    const dt = document.getElementById('dtterm');
+    if (dt) dt.addEventListener('input', function() {
+        document.querySelectorAll('.prazo-btn').forEach(x => x.classList.remove('sel'));
+    });
 });
 
 function msg(txt, ok) {
