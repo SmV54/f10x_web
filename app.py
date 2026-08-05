@@ -12226,6 +12226,12 @@ def api_funcionario_alterar():
         "natatividade": "1",
     }
     opcionais_alt = {
+        # A matricula do eSocial PRECISA ser alteravel: o caso de uso dela e
+        # justamente o funcionario que ja existe no eSocial por outro sistema,
+        # e isso costuma ser descoberto depois da inclusao. Faltava aqui — o
+        # campo era enviado pela tela e descartado em silencio na alteracao.
+        # (A matricula comum continua fora: e a chave, nao muda por aqui.)
+        "matricula_eS":      "matricula_es",
         "nomeR":             "nomer",
         "nomeMae":           "nomemae",
         # Nome do cargo digitado pelo usuario. Em branco = usa o nome da funcao
