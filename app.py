@@ -21883,7 +21883,8 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
     """Gera string XML do S-2300 (evtTSVInicio — Início de TSVE / não-empregado).
 
     Categorias tratadas: 721/722/723 (contribuinte individual / diretor) e
-    901 (estagiário). O bloco <infoEstagiario> só é emitido para 901.
+    901 (estagiário). O bloco <infoEstagiario> só é emitido para 901 e o
+    grupo <FGTS> só para 721.
     Estrutura baseada no schema evtTSVInicio v_S_01_03_00. Os campos de
     estágio vêm das colunas est_* / nat/niv/dtprevterm de tab_cad."""
     import re
@@ -22023,12 +22024,28 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
             f"\n          </instEnsino>"
             f"\n        </infoEstagiario>")
     else:
+        # Grupo FGTS: obrigatório SÓ na categoria 721 (diretor não empregado COM
+        # FGTS) e proibido nas demais (722 é o "sem FGTS", 723 é sócio/empresário).
+        # Sem ele o eSocial rejeita com "[8] Grupo 'Informações relativas ao FGTS'
+        # deve ser preenchido".
+        # Na sequência do XSD ele entra logo depois de <remuneracao> e antes de
+        # <localTrabGeral>. O leiaute simplificado tem só <dtOpcFGTS> — o antigo
+        # <opcFGTS> deixou de existir.
+        # A data de opção não pode ser anterior ao início do TSVE; como tab_cad
+        # não tem coluna própria, o padrão é a própria data de início.
+        fgts_xml = ''
+        if _cat_int == 721:
+            dtopc = fmt_d8(func.get('dtopcfgts')) or dtinicio
+            fgts_xml = (f"\n        <FGTS>"
+                        f"\n          <dtOpcFGTS>{x(dtopc)}</dtOpcFGTS>"
+                        f"\n        </FGTS>")
         complementares_xml = (
             f"{cargo_xml}"
             f"\n        <remuneracao>"
             f"\n          <vrSalFx>{x(vrsalfx)}</vrSalFx>"
             f"\n          <undSalFixo>{x(undsalfixo)}</undSalFixo>"
-            f"\n        </remuneracao>")
+            f"\n        </remuneracao>"
+            f"{fgts_xml}")
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTSVInicio/v_S_01_03_00"
