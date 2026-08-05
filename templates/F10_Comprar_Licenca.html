@@ -408,7 +408,7 @@ body {
 (function() {
   const PRECO_EMPRESA_MES = 5000;   // centavos
   const PRECO_FUNC_MES    = 1280;   // centavos
-  const MIN_MENSAL        = 18000;  // centavos
+  const MIN_MENSAL        = 0;      // centavos — 0 libera o minimo (era 18000 = R$ 180,00)
   const ATUAL_EMP = {{ atual_qtd_empresas }};
   const ATUAL_FUN = {{ atual_qtd_funcionarios }};
   const DESC = { "1": 0, "3": 5, "6": 10, "12": 20 };
@@ -505,7 +505,7 @@ body {
     html += `<div class="lin"><span>${fun} funcionário(s) × R$ 12,80</span><span>${fmtBrl(valFun)}</span></div>`;
     html += `<div class="lin subt"><span>Soma mensal</span><span>${fmtBrl(soma)}</span></div>`;
     if (aplicouMinimo) {
-      html += `<div class="lin"><span>Aplicado o mínimo mensal (R$ 180,00)</span><span>${fmtBrl(mensal)}</span></div>`;
+      html += `<div class="lin"><span>Aplicado o mínimo mensal (${fmtBrl(MIN_MENSAL)})</span><span>${fmtBrl(mensal)}</span></div>`;
     }
     if (temDesconto) {
       html += `<div class="lin subt"><span>Subtotal ${periodoNome}</span><span>${fmtBrl(subtotal)}</span></div>`;
