@@ -647,6 +647,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                         <button type="button" class="btn-add-rapido" onclick="irParaNovaFuncao()" title="Cadastrar nova função. Após cadastrar, você voltará automaticamente para esta tela sem perder nenhum dado.">+ Nova Função</button>
                     </div>
                 </div>
+                <div class="campo">
+                    <label>Nome do Cargo <span style="font-weight:400;color:#64748b">(opcional)</span></label>
+                    <input type="text" id="nmCargo" maxlength="40" autocomplete="off"
+                           placeholder="deixe em branco para usar o nome da função"
+                           onfocus="showHint(this,'Use só quando o cargo tiver nome próprio, diferente do nome da função.\nEx.: CBO 521125 é “Repositor de mercadorias”; aqui você pode pôr “Repositor de Frios”.\nEm branco, vale o nome da função pelo CBO.\nATENÇÃO: mudar este campo em quem já foi admitido gera S-2206 (alteração contratual).')" onblur="clearHint()">
+                </div>
                 {% if modo != 'alteracao' %}
                 <div class="campo">
                     <label>Insalubridade</label>
@@ -1703,6 +1709,7 @@ function preencherFormulario(d) {
     sv('tomador_tpInsc', d.tomador_tpinsc);
     sv('tomador_nrInsc', d.tomador_nrinsc);
     sv('CBOFuncao',     d.cbofuncao);
+    sv('nmCargo',       d.nmcargo);
     sv('lt_tpInsc',     d.lt_tpinsc);
     sv('lt_nrInsc',     d.lt_nrinsc);
     sv('qtdHrsSem',     d.qtdhrssem);
@@ -2013,6 +2020,7 @@ async function salvarFuncionario() {
         horNoturno:       gv('horNoturno'),
         id_tab_Horario:   gv('id_tab_Horario'),
         CBOFuncao:        gv('CBOFuncao'),
+        nmCargo:          gv('nmCargo'),
         ender_cep:        soNum(gv('ender_cep')),
         ender_dscLograd:  gv('ender_dscLograd'),
         ender_nrLograd:   gv('ender_nrLograd'),

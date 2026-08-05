@@ -4369,6 +4369,10 @@ def gerador_relatorio():
                        if k in CAD_CAMPOS_MAP and CAD_CAMPOS_MAP[k][1]]
             if "funcao_nome" in cad_fields and "cbofuncao" not in _extra:
                 _extra.append("cbofuncao")
+            # nmcargo tem precedencia sobre o nome do CBO: sem ele no SELECT,
+            # o campo chegaria sempre vazio e o cargo digitado seria ignorado.
+            if "funcao_nome" in cad_fields and "nmcargo" not in _extra:
+                _extra.append("nmcargo")
             _sel    = ", ".join(dict.fromkeys(_always + _extra))
             q = supabase.table("tab_cad") \
                 .select(_sel) \
@@ -4506,8 +4510,10 @@ def gerador_relatorio():
                         elif tp == "data":
                             disp = _fdata(raw)
                         elif tp == "lookup_funcao":
+                            # nmcargo do cadastro vence o nome do catalogo do CBO
                             cbo = str(f.get("cbofuncao") or "").strip()
-                            disp = mapa_funcao.get(cbo, "—")
+                            disp = (str(f.get("nmcargo") or "").strip()
+                                    or mapa_funcao.get(cbo, "—"))
                         else:
                             disp = str(raw or "—")
                         cad_row[k] = {"label": lbl, "valor": disp}
@@ -4720,6 +4726,9 @@ def gerador_relatorio_pdf():
                    if k in CAD_CAMPOS_MAP and CAD_CAMPOS_MAP[k][1]]
         if "funcao_nome" in cad_fields and "cbofuncao" not in _extra:
             _extra.append("cbofuncao")
+        # nmcargo tem precedencia sobre o nome do CBO (ver comentario acima).
+        if "funcao_nome" in cad_fields and "nmcargo" not in _extra:
+            _extra.append("nmcargo")
         _sel = ", ".join(dict.fromkeys(_always + _extra))
         q = supabase.table("tab_cad").select(_sel).eq("id_empresa", id_empresa).order(order_col)
         if sit != "T":
@@ -4926,8 +4935,10 @@ def gerador_relatorio_pdf():
             elif tp == "data":
                 disp = _fdata(raw)
             elif tp == "lookup_funcao":
+                # nmcargo do cadastro vence o nome do catalogo do CBO
                 cbo  = str(f.get("cbofuncao") or "").strip()
-                disp = mapa_funcao.get(cbo, "—")
+                disp = (str(f.get("nmcargo") or "").strip()
+                        or mapa_funcao.get(cbo, "—"))
             else:
                 disp = str(raw or "—")
             row.append(disp)
@@ -12217,6 +12228,10 @@ def api_funcionario_alterar():
     opcionais_alt = {
         "nomeR":             "nomer",
         "nomeMae":           "nomemae",
+        # Nome do cargo digitado pelo usuario. Em branco = usa o nome da funcao
+        # pelo CBO, como sempre. Preenchido, tem precedencia — e por estar no
+        # conjunto _S2206 ele dispara alteracao contratual sozinho.
+        "nmCargo":           "nmcargo",
         "UndSalFixo":        "undsalfixo",
         "dtTerm":            "datarescisao",
         "ClauAssec":         "clausassec",
@@ -12599,6 +12614,10 @@ def api_funcionario_incluir():
         "filial":            "filial",
         "nomeR":             "nomer",
         "nomeMae":           "nomemae",
+        # Nome do cargo digitado pelo usuario. Em branco = usa o nome da funcao
+        # pelo CBO, como sempre. Preenchido, tem precedencia — e por estar no
+        # conjunto _S2206 ele dispara alteracao contratual sozinho.
+        "nmCargo":           "nmcargo",
         "UndSalFixo":        "undsalfixo",
         "dtTerm":            "datarescisao",
         "ClauAssec":         "clausassec",
@@ -13174,9 +13193,10 @@ def ficha_registro():
                         sind_nome = match.get("nome_sindicato", "") if match else "??? NÃO ENCONTRADO ???"
                     except Exception:
                         pass
-                # Busca nome da função pelo CBO
-                func_nome = ""
-                if f.get("cbofuncao"):
+                # Nome do cargo digitado no cadastro vence; em branco, cai no
+                # nome da função pelo CBO (comportamento de sempre).
+                func_nome = str(f.get("nmcargo") or "").strip()
+                if not func_nome and f.get("cbofuncao"):
                     try:
                         rf = (supabase.table("tab_funcao_cli")
                               .select("nome_resumido")
