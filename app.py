@@ -29770,16 +29770,22 @@ def _s1010_declaradas(id_empresa):
     for r in rows:
         if not (r.get("recibo") or "").strip():
             continue
-        cod = str(r.get("matricula") or "").strip()
-        if not cod.isdigit():
-            continue
-        ini = ""
+        # O codigo da rubrica vem do PARAMS: a tela /esocial_s1010 NAO preenche
+        # a coluna matricula. So os registros antigos, vindos da migracao do
+        # Desktop, e que trazem o codigo ali — por isso o fallback.
+        cod, ini = "", ""
         obs = str(r.get("observacao_erro") or "")
         if obs.startswith("PARAMS:"):
             try:
-                ini = str(_json.loads(obs[7:]).get("ini") or "")
+                _p  = _json.loads(obs[7:])
+                cod = str(_p.get("cod_rubr") or "").strip()
+                ini = str(_p.get("ini") or "")
             except Exception:
-                ini = ""
+                pass
+        if not cod:
+            cod = str(r.get("matricula") or "").strip()
+        if not cod.isdigit():
+            continue
         cod = str(int(cod))
         if cod not in out or (ini and ini < out[cod]):
             out[cod] = ini
