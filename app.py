@@ -647,20 +647,38 @@ def _usuarios_do_cliente(id_cliente):
     return linhas
 
 def _segundos_bloqueio(row):
+    """Segundos que faltam para o bloqueio expirar (0 = liberado).
+
+    bloqueado_ate e timestamptz. Gravar hora de Brasilia SEM fuso fazia o
+    Postgres interpretar o valor como UTC e devolve-lo com +00:00, 3h no
+    passado; e a subtracao contra _agora_brasilia() (naive de proposito)
+    ainda levantava TypeError, que o except engolia devolvendo 0. Somando os
+    dois, o bloqueio por tentativas NUNCA valeu para ninguem.
+
+    Agora grava e compara em UTC — para uma duracao o que importa e o
+    instante, nao a hora-relogio."""
     bloqueado_ate = row.get("bloqueado_ate")
     if not bloqueado_ate:
         return 0
     try:
-        ate = datetime.fromisoformat(bloqueado_ate)
-        restante = (ate - _agora_brasilia()).total_seconds()
-        # Trava de seguranca: o bloqueio nunca pode passar de
-        # TEMPO_BLOQUEIO_MINUTOS. Sem isso, um bloqueado_ate gravado em UTC
-        # (antes de o sistema passar a usar a hora de Brasilia) ficaria 3h no
-        # futuro e prenderia o cliente fora do sistema por todo esse tempo.
-        restante = min(restante, TEMPO_BLOQUEIO_MINUTOS * 60)
-        return max(0, int(restante))
-    except Exception:
+        ate = datetime.fromisoformat(str(bloqueado_ate))
+    except (TypeError, ValueError):
         return 0
+    if ate.tzinfo is None:
+        # Linha gravada pela versao antiga: o Postgres a leu como UTC.
+        ate = ate.replace(tzinfo=timezone.utc)
+    restante = (ate - datetime.now(timezone.utc)).total_seconds()
+    # Teto de seguranca: um valor estranho no banco nao pode prender o
+    # cliente fora do sistema por mais que o tempo de bloqueio.
+    restante = min(restante, TEMPO_BLOQUEIO_MINUTOS * 60)
+    return max(0, int(restante))
+
+def _msg_bloqueio(row, segundos):
+    """Mensagem do bloqueio: diz quantos erros travaram e quanto falta."""
+    erros = row.get("tentativas_login") or MAX_TENTATIVAS_LOGIN
+    mins  = max(1, -(-segundos // 60))      # arredonda para cima
+    return f"Login Bloqueado ({erros} erros). Tente de novo em {mins} min."
+
 
 def _registrar_tentativa(cpf, row):
     """Conta a senha errada no proprio usuario — o bloqueio e por pessoa, nao
@@ -668,7 +686,9 @@ def _registrar_tentativa(cpf, row):
     tentativas = (row.get("tentativas_login") or 0) + 1
     bloqueado_ate = None
     if tentativas >= MAX_TENTATIVAS_LOGIN:
-        bloqueado_ate = (_agora_brasilia() + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).isoformat()
+        # Em UTC e COM fuso: a coluna e timestamptz (ver _segundos_bloqueio).
+        bloqueado_ate = (datetime.now(timezone.utc)
+                         + timedelta(minutes=TEMPO_BLOQUEIO_MINUTOS)).isoformat()
     supabase.table("tab_usuario").update({
         "tentativas_login": tentativas,
         "bloqueado_ate":    bloqueado_ate
@@ -769,14 +789,15 @@ def fazer_login():
     seg = _segundos_bloqueio(row)
     if seg > 0:
         return jsonify({"ok": False, "bloqueado": True,
-                        "msg": "Login bloqueado. Aguarde alguns minutos."})
+                        "msg": _msg_bloqueio(row, seg)})
 
     if (row.get("senha") or "").strip() != senha:
         _registrar_tentativa(cpf, row)
         row2 = _usuario_por_cpf(cpf)
-        if _segundos_bloqueio(row2) > 0:
+        _seg2 = _segundos_bloqueio(row2)
+        if _seg2 > 0:
             return jsonify({"ok": False, "bloqueado": True,
-                            "msg": "Login bloqueado. Aguarde alguns minutos."})
+                            "msg": _msg_bloqueio(row2, _seg2)})
         return jsonify({"ok": False, "msg": "Dados inválidos"})
 
     # Usuario desativado pelo titular: senha certa, mas nao entra.
