@@ -28,7 +28,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 /* ── TOPO ── */
 .topo {
     background: var(--navy); border-bottom: 1px solid var(--navy-line);
-    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    /* 1fr auto 1fr (e nao auto 1fr auto): as colunas laterais ficam com a
+       mesma largura, entao a do meio cai no centro da BARRA. Com 'auto' na
+       esquerda, ela crescia junto com o conteudo — foi o que descentralizou o
+       titulo quando os ids entraram no nome da empresa. */
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
     align-items: center; gap: 0 32px; min-height: 64px;
     position: sticky; top: 0; z-index: 200;
 }
@@ -37,7 +41,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .topo-versao { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; letter-spacing: 0.03em; margin-top: 2px; }
 .topo-titulo { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
                display: flex; align-items: center; justify-content: center; gap: 12px; }
-.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
+/* min-width:0 tira o piso de min-content da coluna 1fr; sem isso um nome de
+   empresa longo faria a coluna crescer e o titulo sairia do centro de novo. */
+.topo-ident   { min-width: 0; max-width: 100%; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
 /* Id na frente do nome (empresa e cliente).
    font-size FIXO de proposito: as duas linhas tem tamanhos diferentes (empresa
@@ -421,7 +429,7 @@ body.menu-numerado .nav-item::before {
 <body{% if menu_numerado == "S" %} class="menu-numerado"{% endif %}>
 
 <div class="topo">
-    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+    <div class="topo-ident" style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if id_empresa_hdr %}<span class="topo-id">{{ '%06d'|format(id_empresa_hdr|int) }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome"><span class="topo-id">{{ '%06d'|format(id_cliente_hdr|int) }} - </span>{{ nome }}</span>
     </div>
@@ -434,7 +442,7 @@ body.menu-numerado .nav-item::before {
         </span>
         {% endif %}
     </div>
-    <div style="display:flex;align-items:center;gap:16px;">
+    <div style="display:flex;align-items:center;gap:16px;justify-self:end;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img">
             <span class="topo-versao">Versão {{ versao }}</span>
