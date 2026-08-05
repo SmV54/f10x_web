@@ -42,13 +42,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 /* Id na frente do nome (empresa e cliente).
    font-size FIXO de proposito: as duas linhas tem tamanhos diferentes (empresa
    15px, nome 11px) e, herdando, o prefixo de cima ficava mais largo que o de
-   baixo — os nomes comecavam em pontos diferentes. Com tamanho igual + largura
-   fixa, os dois nomes alinham na mesma coluna.
+   baixo — os nomes comecavam em pontos diferentes. Com tamanho igual nas duas,
+   os nomes alinham na mesma coluna.
+   SEM largura fixa: com tamanho igual, 6 digitos sempre (%06d) e tabular-nums,
+   as duas linhas ja dao exatamente a mesma largura sozinhas. A largura fixa so
+   deixava sobra entre o traco e o nome.
    Nao troca a familia da fonte: a monoespacada tem metrica diferente e
    desencontrava a linha de base ao lado do nome. */
 .topo-id      { font-size: 11px; font-weight: 500; color: #9ca3af;
-                font-variant-numeric: tabular-nums;
-                display: inline-block; width: 66px; }
+                font-variant-numeric: tabular-nums; }
 /* ── LABEL LICENÇA FIXO (canto inferior esquerdo) ── */
 .label-licenca {
     position: fixed; bottom: 88px; left: 24px; z-index: 500;
