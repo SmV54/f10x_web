@@ -1,0 +1,184 @@
+<meta charset="utf-8">
+<title>Contrato por Prazo Determinado — Folha10-Simples</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#fff;--navy-line:#e8edf4;--accent:#2a7de1;--text-head:#0b1f3a;
+      --text-sub:#64748b;--sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;}
+*{box-sizing:border-box}
+body{margin:0;font-family:var(--sans);background:#f6f8fb;color:#111827}
+.topo{background:var(--navy);border-bottom:1px solid var(--navy-line);padding:0 28px;
+      display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:0 32px;
+      min-height:64px;position:sticky;top:0;z-index:10}
+.topo-ident{min-width:0;max-width:100%}
+.topo-empresa{font-size:15px;font-weight:600;color:#111827;white-space:nowrap;
+              overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.topo-nome{font-size:11px;color:var(--text-sub);margin-top:2px}
+.topo-titulo{font-size:16px;font-weight:600;color:var(--text-head);text-align:center}
+.topo-versao{font-family:var(--mono);font-size:10px;font-weight:700;color:#374151;margin-top:2px}
+.btn-voltar-topo{margin-left:16px;background:transparent;border:1px solid var(--navy-line);
+      color:var(--text-sub);font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;
+      font-family:var(--sans)}
+.btn-voltar-topo:hover{border-color:var(--accent);color:var(--text-head)}
+.wrap{max-width:820px;margin:22px auto;padding:0 18px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 22px;margin-bottom:16px}
+.card h2{margin:0 0 14px;font-size:15px;color:var(--text-head)}
+.func{display:flex;gap:20px;flex-wrap:wrap;font-size:13px;padding-bottom:14px;
+      border-bottom:1px solid #f1f5f9;margin-bottom:16px}
+.func b{font-family:var(--mono)}
+.lbl{color:var(--text-sub);font-size:11px;display:block;margin-bottom:3px}
+.linha{display:grid;grid-template-columns:180px 130px 1fr;gap:14px;align-items:end}
+input,select{width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;
+      font-family:var(--sans);font-size:13px}
+input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
+.btn{border:0;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer}
+.btn-ok{background:var(--accent);color:#fff}
+.btn-del{background:#fff;color:#b91c1c;border:1px solid #fca5a5}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.acoes{display:flex;gap:10px;margin-top:18px}
+.hist{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.hist th{text-align:left;color:var(--text-sub);font-weight:600;font-size:11px;
+      border-bottom:1px solid #e5e7eb;padding:5px 6px}
+.hist td{padding:6px;border-bottom:1px solid #f1f5f9;font-family:var(--mono)}
+.msg{padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
+.msg-ok{background:#f0fdf4;border:1px solid #86efac;color:#15803d}
+.msg-err{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b}
+.aviso{background:#fffbeb;border:1px solid #fcd34d;color:#92400e;padding:10px 12px;
+      border-radius:8px;font-size:12.5px;margin-bottom:14px}
+.vazio{color:var(--text-sub);font-size:13px;padding:8px 0}
+</style>
+
+<div class="topo">
+    <div class="topo-ident" style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Contrato por Prazo Determinado</div>
+    <div style="display:flex;align-items:center;gap:16px;justify-self:end;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:37px;width:auto;display:block;">
+            <span class="topo-versao">Versão {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="wrap">
+  <div id="msg" class="msg"></div>
+
+  <div class="card">
+    <div class="func">
+      <div><span class="lbl">Matrícula</span><b>{{ '%06d'|format(func.matricula|int) }}</b></div>
+      <div><span class="lbl">Nome</span><b>{{ func.nomer or func.nome }}</b></div>
+      <div><span class="lbl">Admissão</span><b id="dtadm">{{ func.dtadm }}</b></div>
+      <div><span class="lbl">Tipo atual</span><b>{{ {'1':'Indeterminado','2':'Prazo determinado','3':'Prazo determinado (obra)'}.get(func.tpcontr, func.tpcontr or '—') }}</b></div>
+    </div>
+
+    {% if contrato %}
+      <h2>Prorrogação</h2>
+      {% if not pode_prorrogar %}
+      <div class="aviso">
+        Este contrato <b>já foi prorrogado uma vez</b>. Pela CLT (art. 451) uma segunda
+        prorrogação transforma o contrato em prazo indeterminado — por isso o lançamento
+        está bloqueado. Para seguir, altere o tipo de contrato no cadastro do funcionário.
+      </div>
+      {% endif %}
+    {% else %}
+      <h2>Cadastrar contrato</h2>
+    {% endif %}
+
+    <div class="linha">
+      <div>
+        <span class="lbl">Data de término {% if contrato %}(nova){% endif %}</span>
+        <input type="date" id="dtterm" {% if contrato and not pode_prorrogar %}disabled{% endif %}>
+      </div>
+      <div>
+        <span class="lbl">Cláusula assecuratória</span>
+        <select id="clausassec" {% if contrato %}disabled{% endif %}>
+          <option value="N" {% if contrato and contrato.clausassec == 'N' %}selected{% endif %}>Não</option>
+          <option value="S" {% if contrato and contrato.clausassec == 'S' %}selected{% endif %}>Sim</option>
+        </select>
+      </div>
+      <div>
+        <span class="lbl">Objeto determinante (obra/serviço — opcional)</span>
+        <input type="text" id="objdet" maxlength="100" {% if contrato %}disabled{% endif %}
+               value="{{ contrato.objdet if contrato else '' }}">
+      </div>
+    </div>
+
+    <div class="acoes">
+      <button class="btn btn-ok" id="btnGravar"
+              {% if contrato and not pode_prorrogar %}disabled{% endif %}>
+        {% if contrato %}Registrar prorrogação{% else %}Gravar contrato{% endif %}
+      </button>
+      {% if contrato %}
+      <button class="btn btn-del" id="btnExcluir">Excluir último lançamento</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Histórico</h2>
+    {% if contrato %}
+    <table class="hist">
+      <thead><tr><th>Lançamento</th><th>Término anterior</th><th>Término</th><th>Prazo (dias)</th><th>Cláusula</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>{{ 'Prorrogação' if contrato.prorrogacoes else 'Contrato original' }}</td>
+          <td>{{ contrato.dtterm_ant or '—' }}</td>
+          <td>{{ contrato.dtterm }}</td>
+          <td>{{ contrato.dias }}</td>
+          <td>{{ contrato.clausassec }}</td>
+        </tr>
+      </tbody>
+    </table>
+    {% else %}
+    <div class="vazio">Nenhum contrato por prazo determinado lançado para este funcionário.</div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+const MAT = {{ func.matricula|int }};
+
+function msg(txt, ok) {
+    const m = document.getElementById('msg');
+    m.className = 'msg ' + (ok ? 'msg-ok' : 'msg-err');
+    m.textContent = txt;
+    m.style.display = 'block';
+    window.scrollTo(0, 0);
+}
+
+async function post(url, body) {
+    const r = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json'},
+                               body: JSON.stringify(body)});
+    return await r.json();
+}
+
+document.getElementById('btnGravar').onclick = async function() {
+    const dt = document.getElementById('dtterm').value;   // AAAA-MM-DD
+    if (!dt) { msg('Informe a data de término do contrato.', false); return; }
+    this.disabled = true;
+    try {
+        const d = await post('/api/contrato/gravar', {
+            matricula:  MAT,
+            dtterm:     dt.replace(/-/g, ''),
+            clausassec: document.getElementById('clausassec').value,
+            objdet:     document.getElementById('objdet').value
+        });
+        if (d.ok) { msg(d.msg, true); setTimeout(() => location.reload(), 900); }
+        else      { msg(d.msg || 'Erro ao gravar.', false); this.disabled = false; }
+    } catch (e) { msg('Falha de comunicação: ' + e, false); this.disabled = false; }
+};
+
+const btnDel = document.getElementById('btnExcluir');
+if (btnDel) btnDel.onclick = async function() {
+    if (!confirm('Excluir o último lançamento do contrato?\n\n'
+               + 'Se não sobrar nenhum, o funcionário volta a prazo INDETERMINADO.')) return;
+    this.disabled = true;
+    try {
+        const d = await post('/api/contrato/excluir', {matricula: MAT});
+        if (d.ok) { msg(d.msg, true); setTimeout(() => location.reload(), 900); }
+        else      { msg(d.msg || 'Erro ao excluir.', false); this.disabled = false; }
+    } catch (e) { msg('Falha de comunicação: ' + e, false); this.disabled = false; }
+};
+</script>

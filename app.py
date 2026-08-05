@@ -13137,6 +13137,227 @@ def api_limpeza_executar():
     })
 
 
+
+# =========================================================
+# CONTRATO POR PRAZO DETERMINADO — tela (Eventuais)
+# =========================================================
+@app.route("/cad_contrato")
+def cad_contrato():
+    if not session.get("logado"):
+        return redirect("/")
+    mat_raw = (request.args.get("mat") or request.args.get("mats") or "").strip()
+    mat_str = mat_raw.split(",")[0].strip()
+    if not mat_str.isdigit():
+        return redirect("/select_funcionario?contexto=contrato")
+
+    id_empresa = _get_id_empresa()
+    mat        = int(mat_str)
+    func       = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, dtadm, tpcontr, objdet, situacao")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .limit(1).execute())
+        if r.data:
+            func = r.data[0]
+    except Exception as e:
+        print(f"[cad_contrato] erro ao ler funcionario: {e}")
+
+    contr = _contrato_prazo(id_empresa, mat)
+    return render_template(
+        "F10_Cad_Contrato.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        func=func,
+        contrato=contr,
+        # Prorrogacao unica (art. 451 CLT): com ref2 >= 1 a tela ja abre travada.
+        pode_prorrogar=bool(contr) and int(contr.get("prorrogacoes") or 0) < 1,
+        anomes_atual=str(session.get("anomes_atual") or ""),
+    )
+
+
+@app.route("/api/contrato/gravar", methods=["POST"])
+def api_contrato_gravar():
+    """Cadastra o contrato por prazo determinado ou registra a prorrogacao.
+
+    Qual das duas coisas nao vem da tela: e decidido aqui pela existencia de
+    evento anterior. Assim a tela nao consegue pedir uma prorrogacao de um
+    contrato que nao existe, nem duplicar o cadastro inicial.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "").strip()
+    d          = request.get_json(force=True) or {}
+
+    try:
+        mat = int(d.get("matricula") or 0)
+    except (TypeError, ValueError):
+        mat = 0
+    dtterm = re.sub(r"\D", "", str(d.get("dtterm") or ""))
+    clau   = "1" if str(d.get("clausassec") or "N").upper() == "S" else "0"
+    objdet = str(d.get("objdet") or "").strip()[:100]
+    tpc    = "3" if objdet else "2"
+
+    if not mat or not id_empresa or not id_cliente:
+        return jsonify({"ok": False, "msg": "Sessao incompleta."})
+    if len(dtterm) != 8:
+        return jsonify({"ok": False, "msg": "Informe a data de termino do contrato."})
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa nao definida."})
+
+    cad = {}
+    try:
+        r = (supabase.table("tab_cad").select("dtadm, situacao, nome, nomer")
+             .eq("id_empresa", id_empresa).eq("matricula", mat).limit(1).execute())
+        if not r.data:
+            return jsonify({"ok": False, "msg": "Funcionario nao encontrado."})
+        cad = r.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler funcionario: {e}"})
+
+    if str(cad.get("situacao") or "").upper() == "D":
+        return jsonify({"ok": False, "msg": "Funcionario ja demitido."})
+
+    dtadm = re.sub(r"\D", "", str(cad.get("dtadm") or ""))
+    if len(dtadm) == 8 and dtterm <= dtadm:
+        return jsonify({"ok": False,
+                        "msg": "A data de termino tem que ser posterior a admissao."})
+
+    atual = _contrato_prazo(id_empresa, mat)
+
+    # Art. 451 CLT: uma prorrogacao so. A segunda transformaria o contrato em
+    # indeterminado — o usuario pediu para BLOQUEAR, nao converter sozinho.
+    if atual and int(atual.get("prorrogacoes") or 0) >= 1:
+        return jsonify({"ok": False, "msg": (
+            "Este contrato ja foi prorrogado uma vez. Pela CLT (art. 451) uma "
+            "segunda prorrogacao transforma o contrato em prazo indeterminado — "
+            "altere o tipo de contrato no cadastro do funcionario.")})
+
+    if atual:
+        ant  = str(atual.get("dtterm") or "")
+        ref2 = 1
+        if dtterm <= ant:
+            return jsonify({"ok": False, "msg": (
+                f"A prorrogacao tem que ir alem do termino atual "
+                f"({_fmt_dt(ant)}).")})
+    else:
+        ant, ref2 = "", 0
+
+    try:
+        _a   = date(int(dtadm[:4]), int(dtadm[4:6]), int(dtadm[6:]))
+        _t   = date(int(dtterm[:4]), int(dtterm[4:6]), int(dtterm[6:]))
+        dias = (_t - _a).days
+    except Exception:
+        dias = 0
+
+    try:
+        supabase.table("tab_eventos").insert({
+            "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
+            "folha": int(anomes), "op1": CONTR_OP1, "op2": CONTR_OP2,
+            "data1i": ant or _DATA_VAZIA_LEGADO,   # termino ANTERIOR (permite desfazer)
+            "data1f": dtterm,
+            "ref1": max(0, dias), "ref2": ref2, "ref3": int(clau),
+            "campotxt1": objdet or None,
+        }).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar o contrato: {e}"})
+
+    # tab_cad guarda o ESTADO atual (o evento guarda o historico). Sem isso o
+    # S-2200/S-2206 nao sabe que o contrato e por prazo determinado.
+    try:
+        upd = {"tpcontr": tpc}
+        if objdet:
+            upd["objdet"] = objdet
+        supabase.table("tab_cad").update(upd)\
+            .eq("id_empresa", id_empresa).eq("matricula", mat).execute()
+    except Exception as e:
+        print(f"[contrato] falha ao atualizar tpcontr: {e}")
+
+    _nm = (cad.get("nomer") or cad.get("nome") or "").strip()
+    _ac = "Prorrogacao" if ref2 else "Contrato por prazo determinado"
+    gravar_log("CONTRATO", f"{_ac}: {_nm} — termino {_fmt_dt(dtterm)}"
+                           f"{' (antes ' + _fmt_dt(ant) + ')' if ant else ''}", matricula=mat)
+    return jsonify({"ok": True, "prorrogacao": bool(ref2),
+                    "msg": ("Prorrogacao registrada." if ref2
+                            else "Contrato por prazo determinado registrado.")})
+
+
+@app.route("/api/contrato/excluir", methods=["POST"])
+def api_contrato_excluir():
+    """Exclui o ultimo lancamento do contrato (prorrogacao ou cadastro).
+
+    Tira o evento de maior ref2. Se nao sobrar nenhum, o funcionario volta a
+    prazo INDETERMINADO (tpcontr=1). Desfazer uma prorrogacao apenas devolve o
+    termino anterior, que estava guardado em data1i.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
+    id_empresa = _get_id_empresa()
+    d = request.get_json(force=True) or {}
+    try:
+        mat = int(d.get("matricula") or 0)
+    except (TypeError, ValueError):
+        mat = 0
+    if not mat:
+        return jsonify({"ok": False, "msg": "Matricula invalida."})
+
+    try:
+        rows = (supabase.table("tab_eventos")
+                .select("id, ref2, data1f")
+                .eq("id_empresa", id_empresa).eq("matricula", mat)
+                .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o contrato: {e}"})
+    if not rows:
+        return jsonify({"ok": False, "msg": "Nao ha contrato lancado para excluir."})
+
+    # Trava: com S-2200/S-2206 ja aceito, apagar aqui nao desfaz nada no governo.
+    try:
+        evs = (supabase.table("tab_esocial")
+               .select("layout, recibo, observacao_erro")
+               .eq("id_empresa", id_empresa).eq("matricula", mat)
+               .in_("layout", ["2200", "2206"])
+               .execute().data or [])
+        ativos = [e for e in evs
+                  if (e.get("recibo") or "").strip()
+                  and (e.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"]
+        if ativos:
+            _l = ", ".join(sorted({f"S-{e['layout']}" for e in ativos}))
+            return jsonify({"ok": False, "msg": (
+                f"Bloqueado: ha evento eSocial aceito para este funcionario "
+                f"({_l}). Envie o S-3000 antes de excluir o contrato.")})
+    except Exception as e:
+        print(f"[contrato excluir] falha ao validar eSocial: {e}")
+
+    rows.sort(key=lambda r: int(r.get("ref2") or 0))
+    alvo = rows[-1]
+    try:
+        (supabase.table("tab_eventos").delete()
+         .eq("id", alvo["id"]).eq("op1", CONTR_OP1).eq("op2", CONTR_OP2).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {e}"})
+
+    restam = len(rows) - 1
+    if restam <= 0:
+        try:
+            supabase.table("tab_cad").update({"tpcontr": "1"})\
+                .eq("id_empresa", id_empresa).eq("matricula", mat).execute()
+        except Exception as e:
+            print(f"[contrato excluir] falha ao voltar tpcontr: {e}")
+
+    gravar_log("CONTRATO-EX",
+               f"Excluido {'prorrogacao' if int(alvo.get('ref2') or 0) else 'contrato'} "
+               f"(termino {_fmt_dt(str(alvo.get('data1f') or ''))})"
+               f"{'; voltou a prazo indeterminado' if restam <= 0 else ''}",
+               matricula=mat)
+    return jsonify({"ok": True, "restam": restam,
+                    "msg": ("Contrato excluido. Funcionario voltou a prazo indeterminado."
+                            if restam <= 0 else "Prorrogacao excluida.")})
+
 # =========================================================
 # FICHA DE REGISTRO — TELA
 # =========================================================
