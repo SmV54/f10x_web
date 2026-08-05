@@ -650,7 +650,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo">
                     <label>Nome da Função se Diferente da CBO <span style="font-weight:400;color:#64748b">(opcional)</span></label>
                     <input type="text" id="nmCargo" maxlength="40" autocomplete="off"
-                           placeholder="em branco = usa o nome da função do CBO"
+                           placeholder="Deixe em branco quando o nome oficial pelo CBO estiver ok"
                            onfocus="showHint(this,'Use só quando o cargo tiver nome próprio, diferente do nome da função.\nEx.: CBO 521125 é “Repositor de mercadorias”; aqui você pode pôr “Repositor de Frios”.\nEm branco, vale o nome da função pelo CBO.\nATENÇÃO: mudar este campo em quem já foi admitido gera S-2206 (alteração contratual).')" onblur="clearHint()">
                 </div>
                 {% if modo != 'alteracao' %}
