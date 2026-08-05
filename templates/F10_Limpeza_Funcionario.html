@@ -300,8 +300,10 @@ async function carregar() {
         _funcs = d.funcionarios || [];
         const fa = String(d.folha_ativa || '');
         const faFmt = fa.length === 6 ? `${fa.slice(4,6)}/${fa.slice(0,4)}` : '—';
-        lbl.textContent = `${_funcs.length} admitido(s) em ${faFmt} (folha ativa). `
-                        + `Só aparecem aqui os admitidos no mês da folha ativa.`;
+        const nMes  = _funcs.filter(f => !f.fora_do_mes).length;
+        const nFora = _funcs.length - nMes;
+        lbl.textContent = `${_funcs.length} funcionário(s). ${nMes} admitido(s) em ${faFmt} `
+                        + `(folha ativa)` + (nFora ? `, ${nFora} de outros meses — marcados com ⚠.` : '.');
         renderTabela();
     } catch (e) {
         cont.innerHTML = `<div class="vazio">⚠ Falha de comunicacao: ${esc(String(e))}</div>`;
@@ -320,8 +322,7 @@ function renderTabela() {
     if (!lista.length) {
         cont.innerHTML = q
             ? '<div class="vazio">Nenhum funcionário encontrado com esse filtro.</div>'
-            : '<div class="vazio">Nenhum funcionário admitido no mês da folha ativa.<br>'
-              + 'A limpeza só é permitida para admitidos no mês da folha ativa.</div>';
+            : '<div class="vazio">Nenhum funcionário cadastrado nesta empresa.</div>';
         return;
     }
     let html = `<table>
@@ -336,10 +337,12 @@ function renderTabela() {
         <tbody>`;
     for (const f of lista) {
         const mat = String(f.matricula || '').padStart(6, '0');
+        // ⚠ = admitido fora da folha ativa: pode ter historico de meses anteriores
+        const marca = f.fora_do_mes ? '⚠ ' : '';
         const sit = f.situacao || '—';
         const sitClass = 'sit-' + (sit === 'A' || sit === 'X' || sit === 'D' || sit === 'F' ? sit : 'F');
         html += `<tr>
-            <td class="col-mat">${mat}</td>
+            <td class="col-mat" title="${f.fora_do_mes ? 'Admitido fora do mes da folha ativa' : ''}">${marca}${mat}</td>
             <td>${esc(f.nome || '—')}</td>
             <td class="col-adm">${fmtData(f.dtadm)}</td>
             <td class="col-sit"><span class="badge-sit ${sitClass}">${esc(sit)}</span></td>
@@ -409,12 +412,18 @@ function mostrarPasso() {
     const c    = _validacao.contagens || {};
     const matFmt = String(f.matricula || '').padStart(6, '0');
 
+    // Admissao fora do mes da folha ativa: avisa, mas nao impede (o bloqueio
+    // de verdade e o do eSocial). Aparece nos 3 passos, nao so no primeiro.
+    const aviso = _validacao.aviso
+        ? `<div class="msg-final msg-err" style="margin-bottom:12px">⚠ ${esc(_validacao.aviso)}</div>`
+        : '';
+
     const infoCard = `
         <div class="modal-info-card">
             <div><span class="lbl">Matrícula:</span> <span class="val">${matFmt}</span></div>
             <div><span class="lbl">Nome:</span> <span class="val">${esc(f.nome || '—')}</span></div>
             <div><span class="lbl">CPF:</span> <span class="val">${esc(f.cpf || '—')}</span></div>
-        </div>`;
+        </div>` + aviso;
 
     if (_passo === 1) {
         cont.innerHTML = `

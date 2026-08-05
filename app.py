@@ -12829,12 +12829,17 @@ def _limpeza_regras(id_cliente, id_empresa, matricula):
     detalhes["dtadm"] = dtadm
     if not dtadm:
         return False, "Funcionario sem data de admissao. Limpeza bloqueada.", detalhes
+    # Admissao fora do mes da folha ativa AVISA, mas nao bloqueia. Era bloqueio
+    # ate 05/08/2026; nas implantacoes e comum precisar remover cadastro errado
+    # de mes anterior. A trava que continua valendo e a do eSocial (Regra 2):
+    # com S-2200 com recibo ativo, nao limpa de jeito nenhum.
     if (dtadm // 100) != int(folha):
         d = str(dtadm).zfill(8)
-        return False, (
-            f"Bloqueado: a limpeza so vale para admitidos no mes da folha ativa "
-            f"({folha[4:6]}/{folha[0:4]}). Este funcionario foi admitido em "
-            f"{d[6:8]}/{d[4:6]}/{d[0:4]}."), detalhes
+        detalhes["aviso"] = (
+            f"Este funcionario foi admitido em {d[6:8]}/{d[4:6]}/{d[0:4]}, fora da "
+            f"folha ativa ({folha[4:6]}/{folha[0:4]}). Ele pode ter historico de "
+            f"meses anteriores, e a exclusao apaga tudo sem volta. Confira a "
+            f"contagem de registros antes de confirmar.")
 
     # --- Regra 2: nenhum evento eSocial com recibo ativo ---
     # "Ativo" = tem recibo e nao foi anulado por S-3000 (observacao_erro=EXCLUIDO).
@@ -12907,18 +12912,24 @@ def api_limpeza_funcionarios():
     if len(folha) != 6:
         return jsonify({"ok": False,
                         "msg": "Folha ativa nao definida. Abra uma folha antes de limpar."})
-    # Admitidos no mes da folha ativa: dtadm (int YYYYMMDD) entre AAAAMM01 e AAAAMM31
+    # Traz TODOS os funcionarios da empresa. Ate 05/08/2026 a lista so mostrava
+    # os admitidos no mes da folha ativa, e nas implantacoes o cadastro errado de
+    # mes anterior ficava inalcancavel. Quem esta fora do mes vem marcado com
+    # fora_do_mes=True para a tela avisar — o bloqueio de verdade e o do eSocial.
     try:
         rows = (supabase.table("tab_cad")
                 .select("matricula, nome, cpf, situacao, codcateg, dtadm")
                 .eq("id_cliente", id_cliente)
                 .eq("id_empresa", id_empresa)
-                .gte("dtadm", int(folha + "01"))
-                .lte("dtadm", int(folha + "31"))
                 .order("matricula")
                 .execute().data or [])
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro: {e}"})
+    for r in rows:
+        try:
+            r["fora_do_mes"] = (int(r.get("dtadm") or 0) // 100) != int(folha)
+        except (TypeError, ValueError):
+            r["fora_do_mes"] = True
     return jsonify({"ok": True, "funcionarios": rows, "folha_ativa": folha})
 
 
@@ -12976,6 +12987,7 @@ def api_limpeza_validar(matricula):
         "func":            func,
         "eventos_ativos":  detalhes.get("eventos_ativos", []),
         "folha_ativa":     detalhes.get("folha_ativa"),
+        "aviso":           detalhes.get("aviso", ""),
         "contagens":       contagens,
     })
 
