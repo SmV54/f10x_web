@@ -29747,6 +29747,129 @@ def _s1200_listar_pendentes_prereq(id_empresa):
     return counts
 
 
+def _s1010_declaradas(id_empresa):
+    """Rubricas com S-1010 ACEITO na empresa -> {cod_rubr: menor ini_valid}.
+
+    O codigo da rubrica fica na coluna `matricula` do tab_esocial (o S-1010 nao
+    tem trabalhador); o ini_valid vem do PARAMS gravado em observacao_erro.
+    So conta quem tem recibo — pendente nao protege o S-1200 de nada."""
+    import json as _json
+    out = {}
+    try:
+        rows = (supabase.table("tab_esocial")
+                .select("matricula, recibo, observacao_erro")
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "1010")
+                .execute().data or [])
+    except Exception as e:
+        # Devolve None (nao {}) de proposito: dicionario vazio significaria
+        # "nenhuma verba declarada" e faria a rotina criar S-1010 para TODAS.
+        # Falha de leitura tem que soltar o S-1200, nao inventar remessa.
+        print(f"[S1010 declaradas] erro={e}")
+        return None
+    for r in rows:
+        if not (r.get("recibo") or "").strip():
+            continue
+        cod = str(r.get("matricula") or "").strip()
+        if not cod.isdigit():
+            continue
+        ini = ""
+        obs = str(r.get("observacao_erro") or "")
+        if obs.startswith("PARAMS:"):
+            try:
+                ini = str(_json.loads(obs[7:]).get("ini") or "")
+            except Exception:
+                ini = ""
+        cod = str(int(cod))
+        if cod not in out or (ini and ini < out[cod]):
+            out[cod] = ini
+    return out
+
+
+def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
+    """Verbas lancadas na folha que ainda NAO tem S-1010 aceito.
+
+    Devolve lista de {"cod_rubr", "dsc_rubr"} ordenada pelo codigo.
+
+    Duas regras que nao sao obvias:
+    - a VIGENCIA conta: rubrica declarada com iniValid 2026-07 nao cobre a
+      folha de 2026-06, entao recibo com ini_valid depois da competencia da
+      folha nao vale;
+    - verba informativa (codigo >= 9900) fica de fora — ela nao vai no S-1200.
+    """
+    try:
+        mov = (supabase.table("tab_mov")
+               .select("cod_verba")
+               .eq("id_empresa", id_empresa)
+               .eq("folha", int(ano_mes))
+               .eq("folha_tipo", folha_tipo)
+               .execute().data or [])
+    except Exception as e:
+        print(f"[S1010 check] erro ao ler tab_mov: {e}")
+        return []
+
+    usadas = sorted({int(m["cod_verba"]) for m in mov
+                     if str(m.get("cod_verba") or "").strip().isdigit()
+                     and int(m["cod_verba"]) < 9900})
+    if not usadas:
+        return []
+
+    declaradas = _s1010_declaradas(id_empresa)
+    if declaradas is None:
+        return []          # nao deu para conferir: deixa o S-1200 seguir
+    # competencia da folha no formato do ini_valid do S-1010 (AAAA-MM)
+    _am = str(ano_mes)
+    comp = f"{_am[:4]}-{_am[4:6]}"
+
+    faltando = []
+    for cod in usadas:
+        ini = declaradas.get(str(cod))
+        if ini is not None and (not ini or ini <= comp):
+            continue
+        faltando.append(cod)
+    if not faltando:
+        return []
+
+    nomes = {}
+    try:
+        rb = (supabase.table("tab_rubrica")
+              .select("cod_rubr, dsc_rubr")
+              .in_("cod_rubr", faltando)
+              .execute().data or [])
+        nomes = {int(x["cod_rubr"]): str(x.get("dsc_rubr") or "") for x in rb}
+    except Exception:
+        pass
+    return [{"cod_rubr": c, "dsc_rubr": nomes.get(c, f"Verba {c:04d}")} for c in faltando]
+
+
+def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1"):
+    """Cria as remessas S-1010 (inclusao) das verbas que faltam. Nao envia —
+    so deixa pronto na Fila para o usuario transmitir. Devolve quantas criou."""
+    import json as _json
+    agora = _agora_brasilia()
+    criadas = 0
+    for v in verbas:
+        p = _json.dumps({"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
+                         "cod_rubr": int(v["cod_rubr"]),
+                         "dsc_rubr": v["dsc_rubr"]}, ensure_ascii=False)
+        try:
+            supabase.table("tab_esocial").insert({
+                "id_cliente":      id_cliente,
+                "id_empresa":      id_empresa,
+                "data_cad":        agora.strftime("%Y%m%d"),
+                "hora_cad":        agora.strftime("%H%M"),
+                "layout":          "1010",
+                "ano_mes":         int(ini_valid.replace("-", "")),
+                "folha_tipo":      "I",
+                "operacao":        "I",
+                "observacao_erro": f"PARAMS:{p}",
+            }).execute()
+            criadas += 1
+        except Exception as e:
+            print(f"[S1010 auto] falha ao criar verba {v['cod_rubr']}: {e}")
+    return criadas
+
+
 def _s1200_msg_pendentes(counts):
     if not counts:
         return ""
@@ -29824,6 +29947,28 @@ def api_esocial_s1200_enviar():
     ok_val, msg_val = _validar_folha_para_envio_esocial("1200", ano_mes, folha_tipo)
     if not ok_val:
         return jsonify({"ok": False, "msg": msg_val})
+
+    # 1.b Verbas da folha ainda nao declaradas no S-1010.
+    #     O gov rejeita o S-1200 que cita rubrica desconhecida, e a mensagem
+    #     dele nao diz QUAL faltou. Aqui a gente descobre antes, ja deixa as
+    #     remessas prontas na Fila e diz o que enviar. A checagem de pendentes
+    #     logo acima nao cobre isto: ela so olha S-1010 que ja existem.
+    if not forcar:
+        _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo)
+        if _falta:
+            _am   = str(ano_mes)
+            _novas = _criar_s1010_pendentes(session.get("id_cliente"), id_empresa,
+                                            _falta, f"{_am[:4]}-{_am[4:6]}", tpAmb)
+            _lista = "  ·  ".join(f"{v['cod_rubr']:04d} {v['dsc_rubr']}" for v in _falta)
+            return jsonify({
+                "ok": False,
+                "prereq_s1010": True,
+                "verbas": _falta,
+                "msg": (f"{len(_falta)} verba(s) desta folha ainda não foram declaradas "
+                        f"no eSocial (S-1010):\n  {_lista}\n\n"
+                        f"{_novas} remessa(s) S-1010 foram criadas na Fila. "
+                        "Envie o S-1010 primeiro e depois repita o S-1200."),
+            })
 
     # 2. Dados do funcionário
     try:
