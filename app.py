@@ -411,7 +411,25 @@ def _cert_encrypt(text):
     return _cert_fernet().encrypt(text.encode()).decode()
 
 def _cert_decrypt(token):
-    return _cert_fernet().decrypt(token.encode()).decode()
+    """Abre a senha do .pfx cifrada com FLASK_SECRET_KEY.
+
+    O token só abre no MESMO ambiente em que foi gravado (local ≠ Render),
+    então InvalidToken quase sempre significa "certificado gravado com outra
+    chave". Como InvalidToken vem com str(e) VAZIO, todos os endpoints de
+    envio devolviam só "Erro inesperado" sem pista. Troca por uma mensagem
+    acionável — vale para todos os chamadores de uma vez."""
+    from cryptography.fernet import InvalidToken
+    try:
+        return _cert_fernet().decrypt(token.encode()).decode()
+    except InvalidToken:
+        raise RuntimeError(
+            # Seta em ASCII de propósito: esta mensagem entra no traceback que
+            # o handler global imprime, e "→" (U+2192) estoura o console cp1252
+            # do Windows — o erro morreria dentro do próprio tratador de erro.
+            "Não foi possível abrir a senha do certificado digital neste "
+            "ambiente. Ele foi gravado com outra FLASK_SECRET_KEY — regrave "
+            "o arquivo .pfx em eSocial -> Certificado Digital."
+        ) from None
 
 def _cert_info(pfx_bytes, senha_str):
     """Valida o .pfx e retorna dict com titular, CNPJ e validade."""
@@ -1672,12 +1690,24 @@ def api_pix_qr():
 #   URL:  https://folha10-simples.com.br/webhook/asaas
 #   Auth: mesmo valor de ASAAS_WEBHOOK_TOKEN no .env (Asaas envia no header
 #         'asaas-access-token' a cada notificacao).
+# tab_log.menu e varchar(12). "PAGAMENTO_ASAAS" (15 chars) estourava o limite:
+# o insert falhava, a marca de idempotencia nunca era gravada e cada reentrega
+# do webhook creditava mais um mes na licenca. NAO passar de 12 caracteres.
+_MENU_PAGTO_ASAAS = "PAGTO_ASAAS"
+_MENU_PAGTO_BLOQ  = "PAGTO_BLOQ"
+
+# Janela em que um SEGUNDO pagamento do mesmo cliente nao e creditado
+# automaticamente. Vale so para payment_id diferente — reentrega do mesmo
+# pagamento ja e barrada pela marca de idempotencia.
+_PAGTO_JANELA_MIN = 5
+
+
 @app.route("/webhook/asaas", methods=["POST"])
 def webhook_asaas():
     """Recebe notificacoes do Asaas. Em PAYMENT_RECEIVED/CONFIRMED de uma cobranca
     de licenca (externalReference 'lic_NNNNNN_epoch_E#_F#_M#'), atualiza tab_cliente:
     data_limite (+meses), qtd_empresas e qtd_funcionarios.
-    Idempotente por payment_id via marca em tab_log (menu='PAGAMENTO_ASAAS')."""
+    Idempotente por payment_id via marca em tab_log (menu=_MENU_PAGTO_ASAAS)."""
     import re
     from datetime import datetime
 
@@ -1728,11 +1758,72 @@ def webhook_asaas():
         if payment_id:
             ja = (supabase.table("tab_log")
                   .select("id_cliente")
-                  .eq("menu", "PAGAMENTO_ASAAS")
+                  .eq("menu", _MENU_PAGTO_ASAAS)
                   .ilike("observacao", f"%{payment_id}%")
                   .limit(1).execute())
             if ja.data:
                 return jsonify({"ok": True, "duplicate": payment_id}), 200
+
+        # 4.1) Trava de tempo — segunda linha de defesa, pedida depois do caso em
+        #    que uma licenca andou de 08/26 a 11/26 com um pagamento so. Se a marca
+        #    por payment_id falhar de novo por qualquer motivo, esta janela impede a
+        #    licenca de pular varios meses em minutos. Reentrega do MESMO pagamento
+        #    ja parou no passo 4, entao aqui so cai payment_id DIFERENTE — o caso
+        #    realmente suspeito.
+        #    NAO descarta o pagamento calado: registra e avisa o admin, que decide
+        #    se credita na mao. Responde 200 para o Asaas parar de re-tentar.
+        try:
+            ult = (supabase.table("tab_log")
+                   .select("data_hora_grava, observacao")
+                   .eq("menu", _MENU_PAGTO_ASAAS)
+                   .eq("id_cliente", id_cliente)
+                   .order("id", desc=True)
+                   .limit(1).execute())
+            if ult.data:
+                _ant = datetime.strptime(
+                    str(ult.data[0].get("data_hora_grava") or "").strip(), "%Y%m%d %H%M")
+                _min = (_agora_brasilia() - _ant).total_seconds() / 60.0
+                if 0 <= _min < _PAGTO_JANELA_MIN:
+                    _av = (f"*PAGAMENTO BLOQUEADO POR SEGURANCA*\n\n"
+                           f"*Cliente:* {id_cliente:06d}\n"
+                           f"*Cobranca Asaas:* {payment_id}\n"
+                           f"*Valor:* {pagamento.get('value')}\n"
+                           f"*Motivo:* segundo pagamento em {_min:.1f} min "
+                           f"(janela de {_PAGTO_JANELA_MIN} min)\n"
+                           f"*Anterior:* {str(ult.data[0].get('observacao'))[:120]}\n\n"
+                           f"A licenca NAO foi creditada. Confira no painel do Asaas "
+                           f"e credite manualmente se o pagamento for legitimo.")
+                    try:
+                        _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, _av)
+                    except Exception:
+                        pass
+                    try:
+                        _enviar_email_texto("sergiomoraesvieira@outlook.com",
+                                            f"Pagamento BLOQUEADO - Cliente {id_cliente:06d}",
+                                            _av.replace("*", ""))
+                    except Exception:
+                        pass
+                    try:
+                        supabase.table("tab_log").insert({
+                            "id_cliente":      id_cliente,
+                            "id_empresa":      None,
+                            "cpf_usuario":     "",
+                            "menu":            _MENU_PAGTO_BLOQ,
+                            "observacao":      (f"BLOQUEADO Asaas {payment_id} "
+                                                f"valor={pagamento.get('value')} "
+                                                f"{_min:.1f}min apos o anterior")[:200],
+                            "ano_mes":         None,
+                            "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
+                        }).execute()
+                    except Exception as ex_bl:
+                        print(f"webhook_asaas: falha ao logar bloqueio ({payment_id}): {ex_bl}")
+                    print(f"webhook_asaas: BLOQUEADO {payment_id} "
+                          f"(cliente {id_cliente}, {_min:.1f} min do anterior)")
+                    return jsonify({"ok": True, "blocked": payment_id,
+                                    "motivo": f"outro pagamento ha {_min:.1f} min"}), 200
+        except Exception as ex_jan:
+            # A trava e secundaria: se ela mesma falhar, nao impede o credito.
+            print(f"webhook_asaas: trava de tempo nao avaliada ({payment_id}): {ex_jan}")
 
         # 5) Le data_limite atual e calcula a nova (YYYY-MM, formato do banco)
         r = (supabase.table("tab_cliente")
@@ -1745,30 +1836,47 @@ def webhook_asaas():
         email_cli   = (row.get("email") or "").strip()
         celular_cli = (row.get("celular") or "").strip()
 
-        # 6) Update — so mexe em qtd se veio valor > 0 (evita zerar licenca)
-        upd = {"data_limite": nova_dl}
-        if empresas > 0:
-            upd["qtd_empresas"] = empresas
-        if funcionarios > 0:
-            upd["qtd_funcionarios"] = funcionarios
-        supabase.table("tab_cliente").update(upd).eq("id_cliente", id_cliente).execute()
-
-        # 7) Marca de auditoria/idempotencia
+        # 6) Marca de idempotencia ANTES de creditar — a ordem importa.
+        #    Creditar primeiro e marcar depois (best-effort, com o erro so no
+        #    print) foi o que permitiu multiplicar a licenca: a marca falhava,
+        #    ninguem via, e a reentrega seguinte creditava de novo. Agora, sem
+        #    marca nao ha credito: devolve 500 e o Asaas re-tenta.
         valor = pagamento.get("value")
         try:
-            supabase.table("tab_log").insert({
+            r_marca = supabase.table("tab_log").insert({
                 "id_cliente":      id_cliente,
                 "id_empresa":      None,
                 "cpf_usuario":     row.get("cpf") or "",
-                "menu":            "PAGAMENTO_ASAAS",
+                "menu":            _MENU_PAGTO_ASAAS,
                 "observacao":      (f"Pagamento Asaas {payment_id} valor={valor} "
                                     f"E{empresas} F{funcionarios} M{meses} "
                                     f"nova_data_limite={nova_dl}")[:200],
                 "ano_mes":         None,
                 "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             }).execute()
+            id_marca = (r_marca.data or [{}])[0].get("id")
         except Exception as ex_log:
-            print(f"webhook_asaas: falha ao gravar marca em tab_log: {ex_log}")
+            print(f"webhook_asaas: marca de idempotencia FALHOU ({payment_id}): {ex_log}")
+            return jsonify({"ok": False, "msg": "falha ao registrar o pagamento"}), 500
+
+        # 7) Credito da licenca — so mexe em qtd se veio valor > 0 (evita zerar)
+        upd = {"data_limite": nova_dl}
+        if empresas > 0:
+            upd["qtd_empresas"] = empresas
+        if funcionarios > 0:
+            upd["qtd_funcionarios"] = funcionarios
+        try:
+            supabase.table("tab_cliente").update(upd).eq("id_cliente", id_cliente).execute()
+        except Exception as ex_upd:
+            # Desfaz a marca: senao o pagamento ficaria travado para sempre por
+            # uma marca sem credito nenhum aplicado.
+            try:
+                if id_marca:
+                    supabase.table("tab_log").delete().eq("id", id_marca).execute()
+            except Exception:
+                pass
+            print(f"webhook_asaas: credito da licenca FALHOU ({payment_id}): {ex_upd}")
+            return jsonify({"ok": False, "msg": "falha ao creditar a licenca"}), 500
 
         # 8) Notificacoes (best-effort, nunca quebram a resposta 200)
         #    Nova data em formato amigavel MM/YYYY para o cliente.
@@ -1777,7 +1885,6 @@ def webhook_asaas():
             nova_dl_br = f"{_p[1]}/{_p[0]}" if len(_p) >= 2 else nova_dl
         except Exception:
             nova_dl_br = nova_dl
-        valor = pagamento.get("value")
 
         # 8.1) WhatsApp para o CLIENTE (confirmacao amigavel)
         try:
@@ -3024,7 +3131,7 @@ def rel_log_pdf():
         q = supabase.table("tab_log").select("*").eq("id_cliente", id_cliente)
         # Logs de impersonação (admin entrando no cliente) só o admin pode ver.
         if not _pode_impersonar():
-            q = q.neq("menu", "IMPERSONAR").neq("menu", "IMPERSONAR-FIM")
+            q = q.neq("menu", "IMPERSONAR").neq("menu", "IMPERSON-FIM")
         if f_matricula:
             q = q.eq("matricula", int(f_matricula))
         if f_ano_mes:
@@ -13360,7 +13467,7 @@ def rel_log():
             # Logs de impersonação só o admin pode ver (protege registros antigos
             # que ficaram sob o id_cliente do cliente antes da correção).
             if not _pode_impersonar():
-                q = q.neq("menu", "IMPERSONAR").neq("menu", "IMPERSONAR-FIM")
+                q = q.neq("menu", "IMPERSONAR").neq("menu", "IMPERSON-FIM")
 
             if f_matricula:
                 q = q.eq("matricula", int(f_matricula))
@@ -19818,7 +19925,11 @@ def handle_exception(e):
     import traceback
     tb = traceback.format_exc()
     print("=== EXCEÇÃO NÃO TRATADA ===\n", tb)
-    return jsonify({"ok": False, "msg": f"Erro inesperado: {str(e)[:300]}"}), 500
+    # Várias exceções têm str(e) VAZIO (InvalidToken do certificado é o caso
+    # clássico) e a tela recebia só "Erro inesperado:" sem pista nenhuma.
+    # Sem mensagem, mostra ao menos o nome da classe.
+    _det = str(e)[:300] or e.__class__.__name__
+    return jsonify({"ok": False, "msg": f"Erro inesperado: {_det}"}), 500
 
 
 # =========================================================
@@ -36603,9 +36714,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # Grava totais no tab_total
             try:
-                # Cat 700-799 (nao-empregado / CI / socio) e Cat 901 (estagiario)
-                # nao tem FGTS, independentemente da incidencia das rubricas.
-                if is_nao_empregado or is_estagiario:
+                # Quem recolhe FGTS e definido pela CATEGORIA (ver _tem_fgts):
+                # 700-799 e 901 nao tem, com a excecao da 721 (Diretor nao
+                # empregado COM FGTS), que recolhe normalmente.
+                if not _tem_fgts(_categ_n):
                     base_fgts_func = 0
                     fgts_func = 0
                 else:
@@ -38075,7 +38187,10 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
-        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
+        # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
+        base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+                     if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
 
@@ -38438,7 +38553,10 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         inss_val  = agg.get(101, {}).get("val", 0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
-        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
+        # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
+        base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+                     if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
 
@@ -39026,7 +39144,10 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         inss_val  = agg.get(101,{}).get("val",0)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
-        base_fgts = sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
+        # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
+        base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+                     if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         fgts_val  = agg[139]["val"] if 139 in agg else int(base_fgts * _aliq_fgts) // 100
         # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
@@ -41065,6 +41186,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     #    Individuais / diretores (700-799, pró-labore) ──
     mats_aprendiz = set()
     mats_ci       = set()
+    mats_sem_fgts = set()   # nao recolhem FGTS (7xx menos a 721, e a 901)
     if todas_mats:
         try:
             r_cat = (supabase.table("tab_cad")
@@ -41078,6 +41200,11 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                     mats_aprendiz.add(row.get("matricula"))
                 if cat.isdigit() and 700 <= int(cat) <= 799:
                     mats_ci.add(row.get("matricula"))
+                # Quem nao recolhe FGTS sai da base do quadro de FGTS. A 721 e
+                # CI para o INSS mas TEM FGTS, entao entra no mats_ci acima e
+                # NAO entra aqui (ver _tem_fgts).
+                if not _tem_fgts(cat):
+                    mats_sem_fgts.add(row.get("matricula"))
         except Exception as e:
             print(f"[resumo_folha] falha ao ler categorias em tab_cad: {e}")
 
@@ -41094,6 +41221,12 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     inss_ci_val  = sum(emp_inss102.values()) + inss_ci_101
     base_inss   -= base_inss_ci
     inss_val    -= inss_ci_101
+
+    # Tira da base do FGTS quem nao recolhe (pro-labore sem FGTS, estagiario).
+    # A 721 nao entra aqui: e CI para o INSS, mas recolhe FGTS.
+    for _m in mats_sem_fgts:
+        emp_fgts_base.pop(_m, None)
+        emp_fgts139.pop(_m, None)
 
     base_fgts_8 = sum(v for mat, v in emp_fgts_base.items() if mat not in mats_aprendiz)
     base_fgts_2 = sum(v for mat, v in emp_fgts_base.items() if mat in mats_aprendiz)
@@ -44326,7 +44459,7 @@ def parar_impersonar():
                 "id_cliente":      4,
                 "id_empresa":      None,
                 "cpf_usuario":     row["cpf"],
-                "menu":            "IMPERSONAR-FIM",
+                "menu":            "IMPERSON-FIM",   # varchar(12): nao aumentar
                 "observacao":      "admin encerrou impersonation",
                 "ano_mes":         None,
                 "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
@@ -49503,7 +49636,8 @@ def api_admin_nf_whatsapp():
     try:
         supabase.table("tab_log").insert({
             "id_cliente": None, "id_empresa": None,
-            "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_WHATSAPP",
+            # menu e varchar(12): "NFSE_WHATSAPP" (13) estourava e o log nunca entrava
+            "cpf_usuario": str(session.get('cpf') or ''), "menu": "NFSE_WHATS",
             "observacao": f"NFS-e nº {numero} cod={cod} tel={cel_d} ok={ok} {('' if ok else err)}"[:200],
             "ano_mes": None, "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
         }).execute()
@@ -50643,8 +50777,14 @@ def _verba_salario(categ_n):
     """Verba do 'salário' (remuneração base) conforme a categoria eSocial.
        901 (estagiário) → 7 (bolsa estágio);
        721 → 6, 722 → 16, 723 → 86 (pró-labore específico por tipo de sócio);
-       demais 700-799 (não-empregado / CI / diretor) → 6 (pró-labore);
-       empregado geral → 1 (salário)."""
+       demais 700-799 (não-empregado / CI / autônomo) → 16 (pró-labore SEM FGTS);
+       empregado geral → 1 (salário).
+
+    A verba 6 (PROLABORE COM FGTS) e EXCLUSIVA da 721 — e a unica categoria da
+    faixa que recolhe FGTS. Ate 05/08/2026 as "demais 700-799" (ex.: 701,
+    autonomo) tambem caiam na 6; como a 6 passou a declarar codIncFGTS=11 no
+    S-1010, mante-las ali faria o eSocial calcular FGTS para quem nao tem.
+    Por isso caem na 16 (PROLABORE DIRETOR SEM FGTS), que ja e sem incidencia."""
     if categ_n == 901:
         return 7
     if categ_n == 721:
@@ -50654,8 +50794,30 @@ def _verba_salario(categ_n):
     if categ_n == 723:
         return 86
     if 700 <= categ_n <= 799:
-        return 6
+        return 16
     return 1
+
+
+def _tem_fgts(categ_n):
+    """A categoria eSocial recolhe FGTS?
+
+    A faixa 700-799 (nao-empregado / CI / socio / diretor) nao tem FGTS —
+    EXCETO a 721, que e literalmente "Diretor nao empregado COM FGTS" e e a
+    unica da faixa que recolhe. A 901 (estagiario, Lei 11.788) tambem nao tem.
+    O resto (empregado) tem.
+
+    A categoria e a autoridade, nao a incidencia da rubrica: a verba 6
+    (PROLABORE COM FGTS) e usada pela 721 e tambem pelas "demais 700-799",
+    entao so a incidencia da rubrica nao consegue separar quem recolhe."""
+    try:
+        c = int(categ_n or 0)
+    except (TypeError, ValueError):
+        return True
+    if c == 721:
+        return True
+    if c == 901:
+        return False
+    return not (700 <= c <= 799)
 
 
 def _elegivel_adiant13(f):
