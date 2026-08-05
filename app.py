@@ -33637,6 +33637,37 @@ def _calc_dsr_mes(anomes):
         return 22, 4   # fallback conservador
 
 
+def _dsr_perdido_faltas(faltas_func, val_dia):
+    """DSR perdido por falta injustificada — Lei 605/49, art. 6o.
+
+    Quem falta sem justificativa perde o repouso semanal remunerado daquela
+    semana. Conta UMA semana (segunda a domingo) por semana com falta, e nao
+    uma por falta: duas faltas na mesma semana custam um DSR so.
+
+    Falta JUSTIFICADA (op2 != 1) nao tira o repouso — a mesma regra que ja
+    vale para o desconto do dia na verba 0132.
+
+    Devolve (qtd_semanas, valor_em_centavos) para lancar na verba 0139
+    (DESCONTO REPOUSO REMUNERADO). Feriados da semana NAO sao descontados:
+    so o repouso semanal.
+    """
+    semanas = set()
+    for ft in (faltas_func or []):
+        if ft.get("op2") != 1:
+            continue
+        s = re.sub(r"\D", "", str(ft.get("data1i") or ""))
+        if len(s) != 8:
+            continue
+        try:
+            d = date(int(s[:4]), int(s[4:6]), int(s[6:]))
+        except ValueError:
+            continue
+        # A segunda-feira da semana identifica a semana de forma unica.
+        semanas.add((d - timedelta(days=d.weekday())).toordinal())
+    qtd = len(semanas)
+    return qtd, int(val_dia * qtd)
+
+
 # Dias de trabalho considerados em QUALQUER escala para o DSR: 15 fixos nos
 # meses normais e 14 em fevereiro (nao varia entre mes de 30 e 31 dias).
 def _dsr_dias_escala(anomes):
@@ -34844,7 +34875,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     # Horarios de escala — mudam so o divisor do DSR (ETAPA 1110)
     escala_ids = _ids_horario_escala(id_cliente)
 
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(132,"2")]:
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(132,"2"),(139,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V"})
     rubricas_info.setdefault(101, {"tp": "2", "dsc": "INSS", "unid": "V", "inc_cp": "", "inc_irrf": ""})
     rubricas_info.setdefault(120, {"tp": "2", "dsc": "IRRF", "unid": "V", "inc_cp": "", "inc_irrf": ""})
@@ -35362,6 +35393,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             # outra verba, outro calculo. O valor descontado nao mudou.
             mmQmm[132]   = qty_inj
             mmVmm[132]   = val_falta
+            # 0139 = DESCONTO REPOUSO REMUNERADO: a falta injustificada tambem
+            # derruba o repouso da semana (Lei 605/49, art. 6o).
+            dsr_sem, dsr_val = _dsr_perdido_faltas(faltas_func, val_dia_f)
+            if dsr_val:
+                mmQmm[139] = dsr_sem
+                mmVmm[139] = dsr_val
             if faltas_func:
                 e5_rows  = [[Paragraph("ETAPA 1050 - FALTAS NO MES", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
@@ -35409,6 +35446,15 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — nao incluidas na Rubrica 132",
                         st_detalhe), "", ""])
                     e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
+                if dsr_val:
+                    _ds = "semana" if dsr_sem == 1 else "semanas"
+                    idx53 = len(e5_rows)
+                    e5_rows.append([Paragraph(
+                        f"5.3 - Repouso perdido (Lei 605/49, art. 6o): {dsr_sem} {_ds} "
+                        f"com falta injustificada   0139 = {l['sal_mes_fmt']} / {dias_mes} "
+                        f"x {dsr_sem} = {_fmt_brl(dsr_val)}",
+                        st_detalhe), "", ""])
+                    e5_spans.append(("SPAN", (0, idx53), (2, idx53)))
             else:
                 e5_rows  = [[Paragraph("ETAPA 1050 - FALTAS NO MES   Não se aplica — nenhuma falta lançada no mês", st_etapa_na), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
@@ -36014,10 +36060,21 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
             # ── base INSS ─────────────────────────────────────
             # Estagiario (Cat. 901) nao tem INSS: base zero, ignora incidencias.
-            base_inss = 0 if is_estagiario else sum(
-                val for cod, val in mmVmm.items()
-                if rubricas_info.get(cod, {}).get("inc_cp") == "11" and val > 0
-            )
+            # Mesma regra da base do FGTS: provento com incidencia soma,
+            # desconto com incidencia (falta 0132, repouso perdido 0139) subtrai.
+            if is_estagiario:
+                base_inss = 0
+            else:
+                base_inss = 0
+                for _cd, _vl in mmVmm.items():
+                    _ri = rubricas_info.get(_cd, {})
+                    if _vl <= 0 or _ri.get("inc_cp") != "11":
+                        continue
+                    if str(_ri.get("tp", "1")) == "1":
+                        base_inss += _vl
+                    else:
+                        base_inss -= _vl
+                base_inss = max(0, base_inss)
 
             # Busca INSS pago nas ferias do mesmo mes para base consolidada.
             # Regra: base_folha + base_ferias → 1 calculo progressivo; INSS ferias = adiantamento.
@@ -36726,10 +36783,20 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     base_fgts_func = 0
                     fgts_func = 0
                 else:
-                    base_fgts_func = sum(
-                        val for cod, val in mmVmm.items()
-                        if rubricas_info.get(cod, {}).get("inc_fgts") == "11" and val > 0
-                    )
+                    # Provento com incidencia SOMA; desconto com incidencia
+                    # (falta 0132, repouso perdido 0139) SUBTRAI. O mmVmm guarda
+                    # desconto como valor POSITIVO — sem separar por tp, a falta
+                    # acabava aumentando a base do FGTS em vez de reduzi-la.
+                    base_fgts_func = 0
+                    for _cd, _vl in mmVmm.items():
+                        _ri = rubricas_info.get(_cd, {})
+                        if _vl <= 0 or _ri.get("inc_fgts") != "11":
+                            continue
+                        if str(_ri.get("tp", "1")) == "1":
+                            base_fgts_func += _vl
+                        else:
+                            base_fgts_func -= _vl
+                    base_fgts_func = max(0, base_fgts_func)
                     fgts_func = (int(base_fgts_func) * 8) // 100
                 base_inss_com = (min(int(base_inss), inss_teto)
                                  if inss_teto and int(base_inss) > inss_teto
@@ -37721,7 +37788,7 @@ def api_visualizar_calculo_dados():
                     }
     except Exception:
         pass
-    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(132,"2")]:
+    for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(132,"2"),(139,"2")]:
         rubricas_info.setdefault(cod, {"tp": tp, "dsc": "", "unid": "V", "inc_cp": ""})
     rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
                                    "unid": "V", "inc_cp": ""})
@@ -38195,7 +38262,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
-        base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
+        base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
+                                for v in verbas if v["ift"] in ("11","S")))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -38566,7 +38635,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
-        base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
+        base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
+                                for v in verbas if v["ift"] in ("11","S")))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -39162,7 +39233,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
-        base_fgts = (sum(v["val"] for v in verbas if v["tp"]=="1" and v["ift"] in ("11","S"))
+        # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
+        base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
+                                for v in verbas if v["ift"] in ("11","S")))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -41002,6 +41075,11 @@ def calcular_folha_etapa1_pdf():
             # 0132 = FALTAS EM DIAS (ver a etapa 1050 do outro gerador).
             mmQmm[132]   = qty_inj
             mmVmm[132]   = val_falta
+            # 0139 = DESCONTO REPOUSO REMUNERADO (ver etapa 1050 do outro gerador)
+            dsr_sem, dsr_val = _dsr_perdido_faltas(faltas_func, val_dia_f)
+            if dsr_val:
+                mmQmm[139] = dsr_sem
+                mmVmm[139] = dsr_val
             if faltas_func:
                 e5_rows  = [[Paragraph("ETAPA 1050 — FALTAS NO MÊS", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
@@ -41049,6 +41127,15 @@ def calcular_folha_etapa1_pdf():
                         f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — não incluídas na Rubrica 132",
                         st_detalhe), "", ""])
                     e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
+                if dsr_val:
+                    _ds = "semana" if dsr_sem == 1 else "semanas"
+                    idx53 = len(e5_rows)
+                    e5_rows.append([Paragraph(
+                        f"5.3 - Repouso perdido (Lei 605/49, art. 6º): {dsr_sem} {_ds} "
+                        f"com falta injustificada   0139 = {l['sal_mes_fmt']} / {dias_mes} "
+                        f"x {dsr_sem} = {_fmt_brl(dsr_val)}",
+                        st_detalhe), "", ""])
+                    e5_spans.append(("SPAN", (0, idx53), (2, idx53)))
             else:
                 e5_rows  = [[Paragraph("ETAPA 1050 — FALTAS NO MÊS   Sem faltas no mês.", st_etapa), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
@@ -41162,10 +41249,14 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         totais[cod]["mats"].add(mat)
         rb_cod = rubr_map.get(cod, {})
         # inc_fgts: "11" = incide integral; "S" = adiantamento do 13º (verba 17).
-        if rb_cod.get("tp") == "1" and rb_cod.get("inc_fgts") in ("11", "S"):
-            emp_fgts_base[mat] = emp_fgts_base.get(mat, 0) + val
-        if rb_cod.get("tp") == "1" and rb_cod.get("inc_cp") == "11":
-            emp_base_cp[mat] = emp_base_cp.get(mat, 0) + val
+        if rb_cod.get("inc_fgts") in ("11", "S"):
+            # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
+            emp_fgts_base[mat] = (emp_fgts_base.get(mat, 0)
+                                  + (val if rb_cod.get("tp") == "1" else -val))
+        if rb_cod.get("inc_cp") == "11":
+            # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
+            emp_base_cp[mat] = (emp_base_cp.get(mat, 0)
+                                + (val if rb_cod.get("tp") == "1" else -val))
         # 101 = INSS do empregado; 102 = INSS do contribuinte individual
         # (pró-labore). Cada um alimenta o seu quadro.
         if cod == 101:
