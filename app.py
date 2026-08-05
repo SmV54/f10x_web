@@ -13246,10 +13246,16 @@ def api_contrato_gravar():
     else:
         ant, ref2 = "", 0
 
+    # Prazo em dias. O dia da admissao CONTA: contrato de 30 dias admitido em
+    # 15/08 termina em 13/09, nao 14/09 — por isso o +1. Conferido nos 3
+    # contratos migrados do Desktop, que gravam ref1 exatamente assim.
+    # Na prorrogacao, ref1 e o prazo DAQUELE periodo (do termino anterior ate o
+    # novo), nao o total acumulado.
     try:
-        _a   = date(int(dtadm[:4]), int(dtadm[4:6]), int(dtadm[6:]))
-        _t   = date(int(dtterm[:4]), int(dtterm[4:6]), int(dtterm[6:]))
-        dias = (_t - _a).days
+        _base = ant if ant else dtadm
+        _a    = date(int(_base[:4]), int(_base[4:6]), int(_base[6:]))
+        _t    = date(int(dtterm[:4]), int(dtterm[4:6]), int(dtterm[6:]))
+        dias  = (_t - _a).days + (0 if ant else 1)
     except Exception:
         dias = 0
 

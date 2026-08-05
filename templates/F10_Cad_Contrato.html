@@ -26,7 +26,7 @@ body{margin:0;font-family:var(--sans);background:#f6f8fb;color:#111827}
       border-bottom:1px solid #f1f5f9;margin-bottom:16px}
 .func b{font-family:var(--mono)}
 .lbl{color:var(--text-sub);font-size:11px;display:block;margin-bottom:3px}
-.linha{display:grid;grid-template-columns:180px 130px 1fr;gap:14px;align-items:end}
+.linha{display:grid;grid-template-columns:120px 180px 130px 1fr;gap:14px;align-items:end}
 input,select{width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;
       font-family:var(--sans);font-size:13px}
 input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
@@ -88,6 +88,15 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 
     <div class="linha">
       <div>
+        <span class="lbl">Prazo</span>
+        <select id="prazo" {% if contrato and not pode_prorrogar %}disabled{% endif %}>
+          <option value="30">30 dias</option>
+          <option value="15">15 dias</option>
+          <option value="45">45 dias</option>
+          <option value="">Outro (digitar)</option>
+        </select>
+      </div>
+      <div>
         <span class="lbl">Data de término {% if contrato %}(nova){% endif %}</span>
         <input type="date" id="dtterm" {% if contrato and not pode_prorrogar %}disabled{% endif %}>
       </div>
@@ -138,7 +147,34 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 </div>
 
 <script>
-const MAT = {{ func.matricula|int }};
+const MAT   = {{ func.matricula|int }};
+// Base do calculo: no cadastro e a admissao (o dia da admissao CONTA, por isso
+// dias-1); na prorrogacao e o termino atual, e o novo periodo comeca no dia
+// seguinte — entao soma os dias cheios.
+const DTADM = '{{ func.dtadm }}';
+const DTFIM = '{{ contrato.dtterm if contrato else "" }}';
+
+function d8ParaDate(s) {
+    if (!s || s.length !== 8) return null;
+    return new Date(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8));
+}
+
+function calcularTermino() {
+    const dias = parseInt(document.getElementById('prazo').value || '0', 10);
+    const campo = document.getElementById('dtterm');
+    if (!dias) return;                       // "Outro": o usuario digita
+    const base = d8ParaDate(DTFIM || DTADM);
+    if (!base) return;
+    const d = new Date(base.getTime());
+    d.setDate(d.getDate() + (DTFIM ? dias : dias - 1));
+    const p = n => String(n).padStart(2, '0');
+    campo.value = `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    const sel = document.getElementById('prazo');
+    if (sel && !sel.disabled) { sel.onchange = calcularTermino; calcularTermino(); }
+});
 
 function msg(txt, ok) {
     const m = document.getElementById('msg');
