@@ -39,6 +39,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                display: flex; align-items: center; justify-content: center; gap: 12px; }
 .topo-empresa { font-size: 15px; font-weight: 600; color: #111827; letter-spacing: 0.01em; }
 .topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+/* Ids de cliente/empresa — referencia rapida para suporte. Discreto de
+   proposito: nao compete com o nome da empresa. */
+.topo-ids     { font-family: var(--mono); font-size: 9px; color: #9ca3af;
+                letter-spacing: 0.04em; margin-top: 3px; }
 /* ── LABEL LICENÇA FIXO (canto inferior esquerdo) ── */
 .label-licenca {
     position: fixed; bottom: 88px; left: 24px; z-index: 500;
@@ -412,6 +416,7 @@ body.menu-numerado .nav-item::before {
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{{ empresa }}</span>
         <span class="topo-nome">{{ nome }}</span>
+        <span class="topo-ids">CLI {{ '%06d'|format(id_cliente_hdr|int) }}{% if id_empresa_hdr %} &middot; EMP {{ '%04d'|format(id_empresa_hdr|int) }}{% endif %}</span>
     </div>
     <div class="topo-titulo">
         <span>Menu Principal</span>

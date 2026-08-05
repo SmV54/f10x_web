@@ -1212,6 +1212,10 @@ def menu():
         versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
+        # Ids no cabecalho: identificam cliente/empresa no suporte sem obrigar
+        # a caçar pelo nome. Sao os mesmos usados como chave em todas as tabelas.
+        id_cliente_hdr=id_cliente,
+        id_empresa_hdr=session.get("id_empresa"),
         folha_situacao=str(session.get("anomes_situacao") or ""),
         cpf_usuario=str(session.get("cpf") or ""),
         qtd_empresas=qtd_empresas,
