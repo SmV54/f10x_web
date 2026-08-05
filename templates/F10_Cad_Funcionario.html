@@ -110,12 +110,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .grid-contrato-top {
     display: grid;
-    grid-template-columns: 150px 130px 190px 1fr 140px 140px;
+    grid-template-columns: 150px 130px 190px 1fr 1.3fr 140px 140px;
     gap: 8px 14px;
 }
 .grid-contrato-top-alt {
     display: grid;
-    grid-template-columns: 150px 130px 190px 1fr;
+    grid-template-columns: 150px 130px 190px 1fr 1.3fr;
     gap: 8px 14px;
 }
 .grid-contrato-prazo {
@@ -648,9 +648,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </div>
                 </div>
                 <div class="campo">
-                    <label>Nome do Cargo <span style="font-weight:400;color:#64748b">(opcional)</span></label>
+                    <label>Nome da Função se Diferente da CBO <span style="font-weight:400;color:#64748b">(opcional)</span></label>
                     <input type="text" id="nmCargo" maxlength="40" autocomplete="off"
-                           placeholder="deixe em branco para usar o nome da função"
+                           placeholder="em branco = usa o nome da função do CBO"
                            onfocus="showHint(this,'Use só quando o cargo tiver nome próprio, diferente do nome da função.\nEx.: CBO 521125 é “Repositor de mercadorias”; aqui você pode pôr “Repositor de Frios”.\nEm branco, vale o nome da função pelo CBO.\nATENÇÃO: mudar este campo em quem já foi admitido gera S-2206 (alteração contratual).')" onblur="clearHint()">
                 </div>
                 {% if modo != 'alteracao' %}
