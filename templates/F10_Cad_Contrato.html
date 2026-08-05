@@ -47,13 +47,13 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 .vazio{color:var(--text-sub);font-size:13px;padding:8px 0}
 /* Prazos a mostra, nao escondidos num dropdown: sao a forma normal de lancar,
    e a data digitada e a excecao. */
-.prazos{display:flex;gap:6px}
-.prazo-btn{border:1px solid #cbd5e1;background:#fff;border-radius:7px;padding:7px 0;
-      flex:1;font-family:var(--sans);font-size:13px;font-weight:600;color:#334155;
-      cursor:pointer;transition:.12s}
-.prazo-btn:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-.prazo-btn.sel{background:var(--accent);border-color:var(--accent);color:#fff}
-.prazo-btn:disabled{opacity:.5;cursor:not-allowed}
+.prazos{display:flex;gap:14px;align-items:center;padding-bottom:7px}
+.prazo-op{display:flex;align-items:center;gap:5px;font-size:13px;color:#334155;
+      cursor:pointer;user-select:none}
+.prazo-op input{width:15px;height:15px;margin:0;cursor:pointer;accent-color:var(--accent)}
+.prazo-op input:disabled{cursor:not-allowed}
+.prazo-op:has(input:disabled){opacity:.5}
+.prazo-op:has(input:checked){color:var(--accent);font-weight:600}
 </style>
 
 <div class="topo">
@@ -99,12 +99,13 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
       <div>
         <span class="lbl">Prazo</span>
         <div class="prazos">
-          <button type="button" class="prazo-btn" data-dias="15"
-                  {% if contrato and not pode_prorrogar %}disabled{% endif %}>15 dias</button>
-          <button type="button" class="prazo-btn" data-dias="30"
-                  {% if contrato and not pode_prorrogar %}disabled{% endif %}>30 dias</button>
-          <button type="button" class="prazo-btn" data-dias="45"
-                  {% if contrato and not pode_prorrogar %}disabled{% endif %}>45 dias</button>
+          {% for d in [15, 30, 45] %}
+          <label class="prazo-op">
+            <input type="checkbox" class="chk-prazo" data-dias="{{ d }}"
+                   {% if contrato and not pode_prorrogar %}disabled{% endif %}>
+            {{ d }} dias
+          </label>
+          {% endfor %}
         </div>
       </div>
       <div>
@@ -183,17 +184,19 @@ function aplicarPrazo(dias) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    document.querySelectorAll('.prazo-btn').forEach(function(b) {
-        b.onclick = function() {
-            document.querySelectorAll('.prazo-btn').forEach(x => x.classList.remove('sel'));
-            b.classList.add('sel');
-            aplicarPrazo(parseInt(b.dataset.dias, 10));
+    // Sao caixas de marcar, mas EXCLUSIVAS entre si: dois prazos ao mesmo tempo
+    // nao existem. Marcar um desmarca os outros.
+    document.querySelectorAll('.chk-prazo').forEach(function(c) {
+        c.onchange = function() {
+            if (!c.checked) return;          // desmarcar so limpa a escolha
+            document.querySelectorAll('.chk-prazo').forEach(x => { if (x !== c) x.checked = false; });
+            aplicarPrazo(parseInt(c.dataset.dias, 10));
         };
     });
     // Data digitada na mao desmarca o prazo — o numero deixaria de corresponder.
     const dt = document.getElementById('dtterm');
     if (dt) dt.addEventListener('input', function() {
-        document.querySelectorAll('.prazo-btn').forEach(x => x.classList.remove('sel'));
+        document.querySelectorAll('.chk-prazo').forEach(x => x.checked = false);
     });
 });
 
