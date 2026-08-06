@@ -1706,8 +1706,10 @@ function preencherFormulario(d) {
     set('ind_simples', d.ind_simples || '');
     set('perc_simples', flt(d.perc_simples));
     set('perAdianta13', d.perAdianta13 != null ? d.perAdianta13 : 50);
-    // Quinzenal: já gravado vem como está; nunca gravado abre com o padrão 50.
-    set('per_adiantamento', d.per_adiantamento != null ? d.per_adiantamento : 50);
+    // Quinzenal: nunca gravado abre EM BRANCO — em branco significa que a
+    // empresa não paga adiantamento quinzenal, e é o estado de hoje. O 50
+    // pré-fixado vale só para empresa nova (valor do HTML).
+    set('per_adiantamento', d.per_adiantamento != null ? d.per_adiantamento : '');
     atualizarSimplesUI();
     // eSocial
     set('ind_coop',      d.es_ind_coop      || '');
