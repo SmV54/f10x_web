@@ -620,6 +620,8 @@ const modulos = {
             ]},
             { nome: 'Contrato Temporário', itens: [
                 { icone: '📃', nome: 'Contrato / Prorrogação', href: '/select_funcionario?contexto=contrato', ok: true, bloqueioFolha: true },
+                // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
+                { icone: '📄', nome: 'Relação dos Contratos',  href: '/lista_contratos', ok: true, permiteFolhaBloqueada: true },
             ]},
             { nome: 'Afastamentos', itens: [
                 { icone: '🏥', nome: 'Lançar Afastamento',           href: '/select_funcionario?contexto=afastamento',    ok: true, bloqueioFolha: true },

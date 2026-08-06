@@ -163,6 +163,52 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     grid-template-columns: 130px 200px 110px 200px;
     gap: 8px 14px;
 }
+/* Contrato de experiencia — mesmo desenho da tela Eventuais → Contrato, para
+   quem ja conhece uma reconhecer a outra. */
+.grid-exper {
+    display: grid;
+    grid-template-columns: 385px 150px 190px 1fr;
+    gap: 8px 14px;
+}
+/* min-height, nao height: com altura travada as opcoes que nao coubessem numa
+   linha seriam espremidas e o texto sumiria cortado. */
+.prazos-exp { display: flex; flex-wrap: wrap; gap: 7px 12px; align-items: center; min-height: 36px; }
+/* Preso ao id da secao de proposito: `.campo label` (mais abaixo neste mesmo
+   arquivo) traz overflow:hidden + text-overflow:ellipsis e vinha ganhando de
+   `.prazo-op` — era o que comia o "15 dias" e deixava so a caixinha. Com o id
+   no seletor a disputa acaba, independente da ordem das regras. */
+#secao-experiencia .prazo-op {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12.5px; font-weight: 500; color: var(--label);
+    cursor: pointer; user-select: none; white-space: nowrap;
+    overflow: visible; text-overflow: clip; letter-spacing: 0;
+}
+#secao-experiencia .prazo-op input { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); flex-shrink: 0; }
+#secao-experiencia .prazo-op:has(input:checked) { color: var(--accent); font-weight: 600; }
+.exp-nota { font-size: 11.5px; color: var(--placeholder); line-height: 1.5; }
+/* O "?" do rotulo: a explicacao da clausula nao cabe num balao de foco, mas
+   tambem nao pode ocupar a tela toda de um formulario ja denso. */
+.btn-explica {
+    margin-left: 5px; width: 15px; height: 15px; padding: 0;
+    border: 1px solid #b3d4f5; border-radius: 50%;
+    background: #ddeefb; color: #2a7de1;
+    font-family: var(--sans); font-size: 10px; font-weight: 700; line-height: 1;
+    cursor: pointer; vertical-align: middle;
+}
+.btn-explica:hover { background: #2a7de1; border-color: #2a7de1; color: #fff; }
+.exp-aviso {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    background: #f4f8fd; border: 1px solid #c2d9f7;
+    border-radius: 8px; padding: 11px 14px;
+    font-size: 12.5px; color: #1a4a7a; line-height: 1.55;
+}
+.exp-aviso .btn-ir {
+    background: var(--accent); color: #fff; border: 0;
+    border-radius: 6px; padding: 7px 14px;
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+}
+.exp-aviso .btn-ir:hover { background: var(--accent-dim); }
 
 /* ── INSALUBRIDADE / PERICULOSIDADE ──────────────────── */
 .check-pct-row {
@@ -675,24 +721,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 {% endif %}
             </div>
 
-            <!-- Bloco prazo determinado — só aparece se tpContr = 2 -->
+            <!-- Bloco do objeto determinante — só aparece se tpContr = 3.
+                 Término e Cláusula saíram daqui: eram campos mortos (o payload ia
+                 para colunas que nao existem em tab_cad e nada era gravado). Os
+                 dois agora vivem na seção Contrato de Experiência, que grava o
+                 evento op1=1/op2=167 — a mesma coisa que a tela de Eventuais lê. -->
             <div class="grid-contrato-prazo" id="bloco-prazo" style="display:none">
-                <div class="campo campo-mono">
-                    <label>Término do Contrato</label>
-                    <input type="text" id="dtTerm" maxlength="10" placeholder="DD/MM/AAAA"
-                           oninput="mascaraData(this)"
-                           onfocus="showHint(this,'Data de término do contrato por prazo determinado.\nObrigatório se Tipo de Contrato = 2.')" onblur="clearHint()">
-                </div>
-                <div class="campo">
-                    <label>Cláusula Assecuratória do Contrato</label>
-                    <select id="ClauAssec"
-                            onfocus="showHint(this,'Indica se o contrato contém cláusula assecuratória de rescisão recíproca antes do término.\nObrigatório se tpContr = 2.')" onblur="clearHint()">
-                        <option value="">—</option>
-                        <option value="S">S — Sim</option>
-                        <option value="N">N — Não</option>
-                    </select>
-                </div>
-                <div class="campo">
+                <div class="campo" style="grid-column:1/-1">
                     <label>Objeto Determinante</label>
                     <input type="text" id="objDet" maxlength="120" placeholder="Obra, serviço, safra… (obrigatório se tipo 3)"
                            onfocus="showHint(this,'Objeto do contrato por prazo determinado.\nObrigatório e exclusivo se tpContr = 3.')" onblur="clearHint()">
@@ -1090,6 +1125,74 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </select>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <!-- ── CONTRATO DE EXPERIÊNCIA ─────────────────────── -->
+    <!-- Só na inclusão. Depois de cadastrado, o contrato (e a prorrogação) passa
+         a ser lançado por Eventuais → Contrato por Prazo Determinado, que guarda
+         o histórico e trava a 2ª prorrogação (art. 451 CLT). -->
+    <div class="secao" id="secao-experiencia">
+        <div class="secao-header">
+            <div class="secao-icone" style="background:#b45309"></div>
+            <span class="secao-titulo">Contrato de Experiência</span>
+            {% if modo != 'alteracao' %}<span class="badge-opcional">Opcional</span>{% endif %}
+        </div>
+        <div class="secao-corpo">
+        {% if modo == 'alteracao' %}
+            <div class="exp-aviso">
+                <div style="flex:1;min-width:280px">
+                    O contrato de experiência de quem já está cadastrado <b>não é alterado por aqui</b>.
+                    Use <b>Eventuais → Contrato por Prazo Determinado</b>: é lá que se registra a
+                    prorrogação, guardando o término anterior e o histórico. Pela CLT (art. 451)
+                    só cabe <b>uma</b> prorrogação — aquela tela controla isso.
+                </div>
+                <button type="button" class="btn-ir" onclick="irParaContrato()">Ir para Contrato</button>
+            </div>
+        {% else %}
+            <div class="grid-exper">
+                <div class="campo">
+                    <label>Prazo</label>
+                    <div class="prazos-exp">
+                        {% for d in [15, 30, 45, 60, 90] %}
+                        <label class="prazo-op">
+                            <input type="checkbox" class="chk-prazo-exp" id="exp_p{{ d }}" data-dias="{{ d }}"
+                                   onchange="marcarPrazoExp(this)" autocomplete="off">
+                            {{ d }} dias
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="campo campo-mono">
+                    <label>Término do Contrato</label>
+                    <input type="text" id="exp_dtTerm" maxlength="10" placeholder="DD/MM/AAAA"
+                           autocomplete="off"
+                           oninput="mascaraData(this); limparPrazoExp()"
+                           onfocus="showHint(this,'Data em que o contrato de experiência termina.\nMarque um prazo ao lado que o sistema calcula, ou digite a data direto.\nDeixe em branco se não houver contrato de experiência.')"
+                           onblur="clearHint(); validarData(this)">
+                </div>
+                <div class="campo">
+                    <label>Cláusula Assecuratória
+                        <button type="button" class="btn-explica" onclick="explicarClausula()"
+                                title="O que é a cláusula assecuratória?">?</button>
+                    </label>
+                    <select id="exp_ClauAssec"
+                            onfocus="showHint(this,'Cláusula que permite às duas partes encerrar o contrato ANTES do término.\nSó vale se o contrato for rompido no meio — terminando na data, tanto faz.\nCom (S): a saída antecipada segue as regras do contrato indeterminado — aviso prévio e multa de 40% do FGTS.\nSem (N): o empregador paga metade do salário que faltava até o término (art. 479); saindo o empregado, ele é que indeniza (art. 480).\nClique no ? ao lado do título para o texto completo.')" onblur="clearHint()">
+                        <option value="N">N — Não</option>
+                        <option value="S">S — Sim</option>
+                    </select>
+                </div>
+                <div class="campo">
+                    <label>&nbsp;</label>
+                    <div class="exp-nota">
+                        Opcional — em branco, nenhum contrato é lançado.<br>
+                        O prazo conta a partir da <b>data de admissão</b>, que já entra no cálculo
+                        (30 dias admitido em 15/08 termina em 13/09). Preenchido, o
+                        <b>Tipo de Contrato</b> passa a 2 — prazo determinado.
+                    </div>
+                </div>
+            </div>
+        {% endif %}
         </div>
     </div>
 
@@ -1553,7 +1656,81 @@ function togglePericu(cb) {
 function ajustarContrato() {
     const tp = document.getElementById('tpContr').value;
     const bloco = document.getElementById('bloco-prazo');
-    bloco.style.display = (tp === '2') ? '' : 'none';
+    // Objeto determinante e' exclusivo do tipo 3 (fato/obra) — antes o bloco
+    // abria no tipo 2, onde o campo nao se aplica, e ficava inalcancavel no 3.
+    bloco.style.display = (tp === '3') ? '' : 'none';
+}
+
+/* ── CONTRATO DE EXPERIÊNCIA (só na inclusão) ─────────────
+   As caixas sao exclusivas entre si: dois prazos ao mesmo tempo nao existem.
+   Marcar uma calcula o termino a partir da admissao; a data segue editavel e
+   digitar na mao desmarca as caixas, porque o numero deixaria de corresponder. */
+function marcarPrazoExp(chk) {
+    if (!chk.checked) return;              // desmarcar so limpa a escolha
+    document.querySelectorAll('.chk-prazo-exp')
+            .forEach(x => { if (x !== chk) x.checked = false; });
+
+    const adm = (document.getElementById('dtAdm')?.value || '').trim();
+    const p   = adm.split('/');
+    if (p.length !== 3 || p[2].length !== 4) {
+        chk.checked = false;
+        f10Alert('Preencha antes a Data de Admissão — é dela que sai a contagem do prazo.',
+                 { tipo: 'info', titulo: 'Contrato de Experiência' });
+        document.getElementById('dtAdm')?.focus();
+        return;
+    }
+    // O dia da admissao CONTA: 30 dias admitido em 15/08 termina em 13/09, por
+    // isso dias-1. Mesma conta da tela Eventuais → Contrato.
+    const d = new Date(+p[2], +p[1] - 1, +p[0]);
+    d.setDate(d.getDate() + parseInt(chk.dataset.dias, 10) - 1);
+    const z = n => String(n).padStart(2, '0');
+    document.getElementById('exp_dtTerm').value =
+        `${z(d.getDate())}/${z(d.getMonth() + 1)}/${d.getFullYear()}`;
+    _expAjustaTipoContrato();
+}
+
+function limparPrazoExp() {
+    document.querySelectorAll('.chk-prazo-exp').forEach(x => x.checked = false);
+    _expAjustaTipoContrato();
+}
+
+/* Contrato de experiencia E' contrato por prazo determinado: deixar o tipo em
+   "1 — Indeterminado" com data de termino gravada produziria um S-2200
+   contraditorio. Preenchido o termino, o tipo acompanha. */
+function _expAjustaTipoContrato() {
+    const tem = !!(document.getElementById('exp_dtTerm')?.value || '').trim();
+    const tp  = document.getElementById('tpContr');
+    if (!tp) return;
+    if (tem && (tp.value === '' || tp.value === '1')) { tp.value = '2'; ajustarContrato(); }
+}
+
+/* A escolha da clausula so mostra efeito la na frente, numa rescisao
+   antecipada — quem marca precisa saber o que esta marcando agora. */
+function explicarClausula() {
+    f10Alert(
+        'É a cláusula que dá às DUAS PARTES o direito de encerrar o contrato antes '
+      + 'da data combinada. Ela só tem efeito se o contrato for rompido no meio do '
+      + 'caminho: chegando ao fim na data marcada, tanto faz o que estiver marcado aqui.'
+      + '\n\nCOM cláusula (S)\n'
+      + 'A saída antecipada segue as regras do contrato por prazo indeterminado: '
+      + 'aviso prévio e, se a dispensa for do empregador, multa de 40% do FGTS.'
+      + '\n\nSEM cláusula (N)\n'
+      + 'Dispensando antes do prazo, o empregador paga metade do salário que faltava '
+      + 'até o término. Se quem sai é o empregado, ele é que indeniza a empresa, no '
+      + 'mesmo limite. Não há aviso prévio nem multa de 40%.'
+      + '\n\nBase legal: art. 481 da CLT (com cláusula) e arts. 479 e 480 (sem cláusula). '
+      + 'É esta escolha que o sistema usa para calcular a rescisão antecipada — na '
+      + 'dúvida, confira o que está escrito no contrato assinado.',
+        { tipo: 'info', titulo: 'Cláusula Assecuratória' }
+    );
+}
+
+/* Modo alteração: o contrato ja existente nao se mexe por aqui — o caminho
+   certo guarda o historico e trava a 2a prorrogacao. */
+function irParaContrato() {
+    const mat = (document.getElementById('matricula')?.value || '').replace(/\D/g, '');
+    window.location.href = mat ? ('/cad_contrato?mats=' + mat)
+                               : '/select_funcionario?contexto=contrato';
 }
 
 function ajustarBolsaEstagio() {
@@ -1692,8 +1869,6 @@ function preencherFormulario(d) {
     sv('cnpjTransf',    d.cnpjtransf);
     sv('matriculaTransf', d.matriculatransf);
     sv('tpContr',       d.tpcontr);
-    sv('dtTerm',        toDMY(d.dtterm));
-    sv('ClauAssec',     d.clausassec);
     sv('objDet',        d.objdet);
     sv('natEstagio',    d.est_natestagio);
     sv('nivEstagio',    d.est_nivestagio);
@@ -1988,9 +2163,12 @@ async function salvarFuncionario() {
         vrSalFx:          vrSalFx,
         UndSalFixo:       gv('UndSalFixo'),
         tpContr:          gv('tpContr'),
-        dtTerm:           toYMD(gv('dtTerm')),
-        ClauAssec:        gv('ClauAssec'),
         objDet:           gv('objDet'),
+        // Contrato de experiencia: so existe na inclusao. Vai para o evento
+        // op1=1/op2=167, nao para tab_cad — e' o mesmo lugar que a tela de
+        // Eventuais grava e le.
+        exp_dtTerm:       MODO === 'alteracao' ? '' : toYMD(gv('exp_dtTerm')),
+        exp_ClauAssec:    MODO === 'alteracao' ? '' : gv('exp_ClauAssec'),
         natEstagio:       gv('natEstagio'),
         nivEstagio:       gv('nivEstagio'),
         dtPrevTerm:       toYMD(gv('dtPrevTerm')),
@@ -2071,6 +2249,14 @@ async function salvarFuncionario() {
             const btnSalvar = document.getElementById('btnSalvar');
             if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.style.opacity = '0.5'; btnSalvar.style.cursor = 'not-allowed'; }
             painel.innerHTML = `<div class="resultado-ok"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg>Funcionário ${acao} com sucesso!</div>`;
+            // O funcionario pode ter sido gravado E o contrato de experiencia
+            // ter ficado de fora. Isso precisa aparecer, senao o usuario sai
+            // achando que lancou o contrato.
+            if (json.aviso) {
+                painel.innerHTML += `<div class="resultado-erro" style="margin-top:8px">
+                    <strong>Atenção:</strong> ${json.aviso}<br>
+                    Lance o contrato por Eventuais &rarr; Contrato por Prazo Determinado.</div>`;
+            }
             if (MODO === 'inclusao') {
                 funcionarioId = null;
                 painel.innerHTML += `
@@ -2143,6 +2329,11 @@ function zerarInsalubPericu() {
         const inp = document.getElementById(id);
         if (inp) { inp.value = ''; inp.style.borderColor = ''; inp.style.boxShadow = ''; }
     });
+    // Mesmo motivo para o contrato de experiencia: o prazo do funcionario
+    // anterior nao pode reaparecer marcado no cadastro seguinte.
+    document.querySelectorAll('.chk-prazo-exp').forEach(cb => cb.checked = false);
+    const _et = document.getElementById('exp_dtTerm');
+    if (_et) { _et.value = ''; _et.style.borderColor = ''; _et.style.boxShadow = ''; }
 }
 
 async function carregarProximaMatricula() {
@@ -2331,6 +2522,16 @@ function iniciarTour() {
             popover: {
                 title: '📍 Endereço',
                 description: 'Digite o CEP e pressione Tab — o sistema preenche logradouro, bairro, município e UF automaticamente via ViaCEP. Apenas o número precisa ser digitado manualmente.',
+                side: 'top', align: 'start'
+            }
+        },
+        {
+            element: '#secao-experiencia',
+            popover: {
+                title: '📝 Contrato de Experiência',
+                description: alterar
+                    ? 'Contrato de quem já está cadastrado não se altera aqui. Use <strong>Eventuais → Contrato por Prazo Determinado</strong>: é lá que a prorrogação é registrada, com o término anterior guardado e a trava da 2ª prorrogação (art. 451 CLT).'
+                    : 'Opcional. Marque <strong>15, 30, 45 ou 90 dias</strong> que o término é calculado a partir da admissão — ou digite a data direto. Em branco, nenhum contrato é lançado. Preenchido, o Tipo de Contrato passa a 2 (prazo determinado).',
                 side: 'top', align: 'start'
             }
         },

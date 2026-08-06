@@ -2,8 +2,9 @@
 <title>Contrato por Prazo Determinado — Folha10-Simples</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#fff;--navy-line:#e8edf4;--accent:#2a7de1;--text-head:#0b1f3a;
-      --text-sub:#64748b;--sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;}
+/* Mesma paleta de cabecalho das demais telas — o verde e' o padrao da casa. */
+:root{--navy:#a0d9be;--navy-line:#70c4a0;--accent:#2a7de1;--text-head:#1e293b;
+      --text-sub:#374151;--sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;}
 *{box-sizing:border-box}
 body{margin:0;font-family:var(--sans);background:#f6f8fb;color:#111827}
 .topo{background:var(--navy);border-bottom:1px solid var(--navy-line);padding:0 28px;
@@ -19,6 +20,12 @@ body{margin:0;font-family:var(--sans);background:#f6f8fb;color:#111827}
       color:var(--text-sub);font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;
       font-family:var(--sans)}
 .btn-voltar-topo:hover{border-color:var(--accent);color:var(--text-head)}
+.topo-folha-ativa{display:inline-flex;align-items:center;padding:3px 11px;border-radius:6px;
+      font-size:12px;font-weight:700;white-space:nowrap}
+.sit-aberta    {background:#fff;color:#111827;border:2px solid #86efac}
+.sit-calculada {background:#fff;color:#111827;border:2px solid #fde047}
+.sit-fechada   {background:#fff;color:#111827;border:2px solid #fca5a5}
+.sit-processada{background:#fff;color:#111827;border:2px solid #93c5fd}
 .wrap{max-width:820px;margin:22px auto;padding:0 18px}
 .card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:20px 22px;margin-bottom:16px}
 .card h2{margin:0 0 14px;font-size:15px;color:var(--text-head)}
@@ -26,7 +33,7 @@ body{margin:0;font-family:var(--sans);background:#f6f8fb;color:#111827}
       border-bottom:1px solid #f1f5f9;margin-bottom:16px}
 .func b{font-family:var(--mono)}
 .lbl{color:var(--text-sub);font-size:11px;display:block;margin-bottom:3px}
-.linha{display:grid;grid-template-columns:230px 180px 130px 1fr;gap:14px;align-items:end}
+.linha{display:grid;grid-template-columns:270px 180px 130px 1fr;gap:14px;align-items:end}
 input,select{width:100%;padding:7px 9px;border:1px solid #cbd5e1;border-radius:6px;
       font-family:var(--sans);font-size:13px}
 input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
@@ -34,11 +41,13 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 .btn-ok{background:var(--accent);color:#fff}
 .btn-del{background:#fff;color:#b91c1c;border:1px solid #fca5a5}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.acoes{display:flex;gap:10px;margin-top:18px}
+.acoes{display:flex;gap:10px;margin-top:18px;align-items:center;flex-wrap:wrap}
 .hist{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
 .hist th{text-align:left;color:var(--text-sub);font-weight:600;font-size:11px;
       border-bottom:1px solid #e5e7eb;padding:5px 6px}
 .hist td{padding:6px;border-bottom:1px solid #f1f5f9;font-family:var(--mono)}
+.hist tr.atual td{background:#f8fbff}
+.hist .tag{font-family:var(--sans);font-size:11px;font-weight:600;color:var(--accent)}
 .msg{padding:10px 12px;border-radius:8px;font-size:13px;margin-bottom:14px;display:none}
 .msg-ok{background:#f0fdf4;border:1px solid #86efac;color:#15803d}
 .msg-err{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b}
@@ -46,14 +55,39 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
       border-radius:8px;font-size:12.5px;margin-bottom:14px}
 .vazio{color:var(--text-sub);font-size:13px;padding:8px 0}
 /* Prazos a mostra, nao escondidos num dropdown: sao a forma normal de lancar,
-   e a data digitada e a excecao. */
-.prazos{display:flex;gap:14px;align-items:center;padding-bottom:7px}
+   e a data digitada e a excecao. Cada opcao e indivisivel ("15 dias" nunca
+   quebra no meio); faltando largura, quem quebra e a lista. */
+.prazos{display:flex;flex-wrap:wrap;gap:7px 14px;align-items:center;padding-bottom:7px}
 .prazo-op{display:flex;align-items:center;gap:5px;font-size:13px;color:#334155;
-      cursor:pointer;user-select:none}
+      cursor:pointer;user-select:none;white-space:nowrap}
 .prazo-op input{width:15px;height:15px;margin:0;cursor:pointer;accent-color:var(--accent)}
 .prazo-op input:disabled{cursor:not-allowed}
 .prazo-op:has(input:disabled){opacity:.5}
 .prazo-op:has(input:checked){color:var(--accent);font-weight:600}
+/* Escolha da acao: mesma caixa de marcar dos prazos, tambem exclusiva. */
+.acoes-op{display:flex;flex-wrap:wrap;gap:8px 22px;align-items:center;
+      background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;
+      padding:10px 14px;margin-bottom:16px}
+.acoes-op .titulo{font-size:11px;color:var(--text-sub);width:100%}
+.acao-op{display:flex;align-items:center;gap:6px;font-size:13px;color:#334155;
+      cursor:pointer;user-select:none}
+.acao-op input{width:15px;height:15px;margin:0;cursor:pointer;accent-color:var(--accent)}
+.acao-op:has(input:disabled){opacity:.5;cursor:not-allowed}
+.acao-op:has(input:checked){color:var(--accent);font-weight:600}
+.acao-op .porque{font-size:11.5px;color:var(--text-sub);font-weight:400}
+/* Explicacao da clausula assecuratoria. Fica a mostra: e' um campo de duas
+   opcoes cuja escolha so aparece la na frente, na rescisao antecipada — quem
+   marca precisa saber o que esta marcando na hora de marcar. */
+.explica{margin-top:18px;border:1px solid #e5e7eb;border-radius:9px;background:#f8fafc;
+      padding:12px 15px;font-size:12.5px;line-height:1.6;color:#334155}
+.explica h3{margin:0 0 7px;font-size:12px;font-weight:700;color:var(--text-head);
+      letter-spacing:.02em}
+.explica p{margin:0 0 7px}
+.explica p:last-child{margin-bottom:0}
+.explica b{color:#0f172a}
+.explica .caso{display:grid;grid-template-columns:74px 1fr;gap:4px 10px;margin:8px 0}
+.explica .caso .q{font-weight:700;color:var(--accent)}
+.explica .lei{color:var(--text-sub);font-size:11.5px}
 </style>
 
 <div class="topo">
@@ -61,7 +95,10 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
         <span class="topo-empresa">{{ empresa }}</span>
         <span class="topo-nome">{{ nome }}</span>
     </div>
-    <div class="topo-titulo">Contrato por Prazo Determinado</div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Contrato por Prazo Determinado</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+    </div>
     <div style="display:flex;align-items:center;gap:16px;justify-self:end;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:37px;width:auto;display:block;">
@@ -78,19 +115,43 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
     <div class="func">
       <div><span class="lbl">Matrícula</span><b>{{ '%06d'|format(func.matricula|int) }}</b></div>
       <div><span class="lbl">Nome</span><b>{{ func.nomer or func.nome }}</b></div>
-      <div><span class="lbl">Admissão</span><b id="dtadm">{{ func.dtadm }}</b></div>
+      <div><span class="lbl">Admissão</span><b id="dtadm">{{ dtadm_fmt or '—' }}</b></div>
       <div><span class="lbl">Tipo atual</span><b>{{ {'1':'Indeterminado','2':'Prazo determinado','3':'Prazo determinado (obra)'}.get(func.tpcontr, func.tpcontr or '—') }}</b></div>
     </div>
 
     {% if contrato %}
-      <h2>Prorrogação</h2>
+      <h2>Contrato lançado</h2>
       {% if not pode_prorrogar %}
       <div class="aviso">
         Este contrato <b>já foi prorrogado uma vez</b>. Pela CLT (art. 451) uma segunda
-        prorrogação transforma o contrato em prazo indeterminado — por isso o lançamento
-        está bloqueado. Para seguir, altere o tipo de contrato no cadastro do funcionário.
+        prorrogação transforma o contrato em prazo indeterminado — por isso só resta
+        corrigir o lançamento. Para seguir, altere o tipo de contrato no cadastro do funcionário.
       </div>
       {% endif %}
+      {% if adm_fora_da_folha %}
+      <div class="aviso">
+        Atenção: este funcionário foi admitido em <b>{{ dtadm_fmt }}</b>, <b>fora do mês da
+        folha ativa</b>. Ele pode ter histórico de meses anteriores — confira antes de
+        corrigir ou excluir o lançamento.
+      </div>
+      {% endif %}
+
+      <!-- Corrigir e prorrogar mexem no MESMO registro e pedem os mesmos campos,
+           mas fazem coisas diferentes com ele. Sem escolher, nada e' gravado. -->
+      <div class="acoes-op">
+        <span class="titulo">O que você quer fazer?</span>
+        <label class="acao-op">
+          <input type="checkbox" class="chk-acao" data-acao="editar" value="editar">
+          Corrigir o lançamento atual
+        </label>
+        <label class="acao-op"
+               {% if not pode_prorrogar %}title="Contrato já prorrogado uma vez (art. 451 CLT)"{% endif %}>
+          <input type="checkbox" class="chk-acao" data-acao="prorrogar" value="prorrogar"
+                 {% if not pode_prorrogar %}disabled{% endif %}>
+          Registrar prorrogação
+          {% if not pode_prorrogar %}<span class="porque">— já prorrogado</span>{% endif %}
+        </label>
+      </div>
     {% else %}
       <h2>Cadastrar contrato</h2>
     {% endif %}
@@ -99,18 +160,19 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
       <div>
         <span class="lbl">Prazo</span>
         <div class="prazos">
-          {% for d in [15, 30, 45] %}
+          {% for d in [15, 30, 45, 60, 90] %}
           <label class="prazo-op">
             <input type="checkbox" class="chk-prazo" data-dias="{{ d }}"
-                   {% if contrato and not pode_prorrogar %}disabled{% endif %}>
+                   {% if contrato %}disabled{% endif %}>
             {{ d }} dias
           </label>
           {% endfor %}
         </div>
       </div>
       <div>
-        <span class="lbl">Data de término {% if contrato %}(nova){% endif %} — ou digite</span>
-        <input type="date" id="dtterm" {% if contrato and not pode_prorrogar %}disabled{% endif %}>
+        <span class="lbl">Data de término — ou digite</span>
+        <input type="date" id="dtterm" {% if contrato %}disabled{% endif %}
+               value="{{ '%s-%s-%s'|format(contrato.dtterm[:4], contrato.dtterm[4:6], contrato.dtterm[6:8]) if contrato and contrato.dtterm else '' }}">
       </div>
       <div>
         <span class="lbl">Cláusula assecuratória</span>
@@ -126,13 +188,33 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
       </div>
     </div>
 
+    <div class="explica">
+      <h3>O que é a cláusula assecuratória</h3>
+      <p>É a cláusula que dá às <b>duas partes</b> o direito de encerrar o contrato
+         <b>antes</b> da data combinada. Ela só tem efeito se o contrato for rompido no
+         meio do caminho — chegando ao fim na data marcada, tanto faz o que está aqui.</p>
+      <div class="caso">
+        <span class="q">Com (S)</span>
+        <span>A saída antecipada segue as regras do contrato por prazo <b>indeterminado</b>:
+              aviso prévio e, se a dispensa for do empregador, multa de 40% do FGTS.</span>
+        <span class="q">Sem (N)</span>
+        <span>Dispensando antes do prazo, o empregador paga <b>metade</b> do salário que
+              faltava até o término. Se quem sai é o empregado, ele é que indeniza a
+              empresa, no mesmo limite. Não há aviso prévio nem multa de 40%.</span>
+      </div>
+      <p class="lei">Base legal: art. 481 da CLT (com cláusula) e arts. 479 e 480
+         (sem cláusula). É esta escolha que o sistema usa para calcular a rescisão
+         antecipada — na dúvida, confira o que está escrito no contrato assinado.</p>
+    </div>
+
     <div class="acoes">
-      <button class="btn btn-ok" id="btnGravar"
-              {% if contrato and not pode_prorrogar %}disabled{% endif %}>
-        {% if contrato %}Registrar prorrogação{% else %}Gravar contrato{% endif %}
+      <button class="btn btn-ok" id="btnGravar" {% if contrato %}disabled{% endif %}>
+        {% if contrato %}Escolha uma ação{% else %}Gravar contrato{% endif %}
       </button>
       {% if contrato %}
-      <button class="btn btn-del" id="btnExcluir">Excluir último lançamento</button>
+      <button class="btn btn-del" id="btnExcluir">
+        {% if pode_prorrogar %}Excluir o contrato{% else %}Excluir a prorrogação{% endif %}
+      </button>
       {% endif %}
     </div>
   </div>
@@ -143,13 +225,25 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
     <table class="hist">
       <thead><tr><th>Lançamento</th><th>Término anterior</th><th>Término</th><th>Prazo (dias)</th><th>Cláusula</th></tr></thead>
       <tbody>
-        <tr>
-          <td>{{ 'Prorrogação' if contrato.prorrogacoes else 'Contrato original' }}</td>
-          <td>{{ contrato.dtterm_ant or '—' }}</td>
-          <td>{{ contrato.dtterm }}</td>
+        <!-- Prorrogado, o registro guarda os DOIS periodos: o original em
+             data1i e o prorrogado em data1f. Por isso duas linhas de uma
+             linha so do banco. -->
+        <tr {% if not contrato.dtterm_ant %}class="atual"{% endif %}>
+          <td>Contrato original</td>
+          <td>—</td>
+          <td>{{ contrato.dtterm_ant_fmt or contrato.dtterm_fmt }}</td>
+          <td>{{ contrato.dias_ant if contrato.dtterm_ant else contrato.dias }}</td>
+          <td>{{ contrato.clausassec }}</td>
+        </tr>
+        {% if contrato.dtterm_ant %}
+        <tr class="atual">
+          <td>Prorrogação <span class="tag">← atual</span></td>
+          <td>{{ contrato.dtterm_ant_fmt }}</td>
+          <td>{{ contrato.dtterm_fmt }}</td>
           <td>{{ contrato.dias }}</td>
           <td>{{ contrato.clausassec }}</td>
         </tr>
+        {% endif %}
       </tbody>
     </table>
     {% else %}
@@ -160,27 +254,65 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 
 <script>
 const MAT   = {{ func.matricula|int }};
-// Base do calculo: no cadastro e a admissao (o dia da admissao CONTA, por isso
-// dias-1); na prorrogacao e o termino atual, e o novo periodo comeca no dia
-// seguinte — entao soma os dias cheios.
+// Base do calculo, que muda com a acao:
+//   cadastro  → admissao, e o dia da admissao CONTA (dias-1)
+//   corrigir  → mesma base do lancamento que se corrige (termino anterior se ja
+//               prorrogado, senao a admissao)
+//   prorrogar → termino atual, e o novo periodo comeca no dia seguinte (dias cheios)
 const DTADM = '{{ func.dtadm }}';
 const DTFIM = '{{ contrato.dtterm if contrato else "" }}';
+const DTANT = '{{ contrato.dtterm_ant if contrato else "" }}';
+const TEM_CONTRATO   = {{ 'true' if contrato else 'false' }};
+const ADM_FORA_FOLHA = {{ 'true' if adm_fora_da_folha else 'false' }};
 
 function d8ParaDate(s) {
     if (!s || s.length !== 8) return null;
     return new Date(+s.slice(0,4), +s.slice(4,6) - 1, +s.slice(6,8));
 }
 
+function acaoAtual() {
+    if (!TEM_CONTRATO) return 'cadastro';
+    const c = document.querySelector('.chk-acao:checked');
+    return c ? c.dataset.acao : '';
+}
+
+/* Qual data serve de ponto de partida do prazo, e se o proprio dia dela conta. */
+function baseDoPrazo() {
+    const ac = acaoAtual();
+    if (ac === 'prorrogar') return { d: DTFIM, contaODia: false };
+    if (ac === 'editar')    return DTANT ? { d: DTANT, contaODia: false }
+                                         : { d: DTADM, contaODia: true  };
+    return { d: DTADM, contaODia: true };
+}
+
 function aplicarPrazo(dias) {
-    const base = d8ParaDate(DTFIM || DTADM);
+    const b = baseDoPrazo();
+    const base = d8ParaDate(b.d);
     if (!base) return;
     const d = new Date(base.getTime());
-    // Cadastro: o dia da admissao conta (dias-1). Prorrogacao: comeca no dia
-    // seguinte ao termino atual, entao soma os dias cheios.
-    d.setDate(d.getDate() + (DTFIM ? dias : dias - 1));
+    d.setDate(d.getDate() + (b.contaODia ? dias - 1 : dias));
     const p = n => String(n).padStart(2, '0');
     document.getElementById('dtterm').value =
         `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+}
+
+/* Sem acao escolhida os campos ficam travados: com contrato lancado, digitar
+   uma data sem dizer se e correcao ou prorrogacao nao significa nada. */
+function ajustarPelaAcao() {
+    const ac  = acaoAtual();
+    const on  = !!ac;
+    ['dtterm','clausassec','objdet'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = !on;
+    });
+    document.querySelectorAll('.chk-prazo').forEach(x => { x.disabled = !on; });
+    const b = document.getElementById('btnGravar');
+    if (!b) return;
+    b.disabled  = !on;
+    b.textContent = ac === 'prorrogar' ? 'Registrar prorrogação'
+                  : ac === 'editar'    ? 'Salvar correção'
+                  : TEM_CONTRATO       ? 'Escolha uma ação'
+                                       : 'Gravar contrato';
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -193,11 +325,31 @@ document.addEventListener('DOMContentLoaded', function() {
             aplicarPrazo(parseInt(c.dataset.dias, 10));
         };
     });
+    // Mesma regra para a acao: corrigir e prorrogar sao coisas diferentes e nao
+    // acontecem juntas.
+    document.querySelectorAll('.chk-acao').forEach(function(c) {
+        c.onchange = function() {
+            if (c.checked) {
+                document.querySelectorAll('.chk-acao').forEach(x => { if (x !== c) x.checked = false; });
+            }
+            // Trocar de acao muda a base do calculo — o prazo marcado passaria a
+            // apontar para outra data, entao ele e limpo.
+            document.querySelectorAll('.chk-prazo').forEach(x => x.checked = false);
+            if (c.checked && c.dataset.acao === 'prorrogar') {
+                document.getElementById('dtterm').value = '';   // a nova data ainda nao existe
+            } else if (c.checked && c.dataset.acao === 'editar' && DTFIM) {
+                document.getElementById('dtterm').value =
+                    `${DTFIM.slice(0,4)}-${DTFIM.slice(4,6)}-${DTFIM.slice(6,8)}`;
+            }
+            ajustarPelaAcao();
+        };
+    });
     // Data digitada na mao desmarca o prazo — o numero deixaria de corresponder.
     const dt = document.getElementById('dtterm');
     if (dt) dt.addEventListener('input', function() {
         document.querySelectorAll('.chk-prazo').forEach(x => x.checked = false);
     });
+    ajustarPelaAcao();
 });
 
 function msg(txt, ok) {
@@ -215,12 +367,15 @@ async function post(url, body) {
 }
 
 document.getElementById('btnGravar').onclick = async function() {
+    const acao = acaoAtual();
+    if (!acao) { msg('Escolha o que fazer: corrigir o lançamento ou registrar a prorrogação.', false); return; }
     const dt = document.getElementById('dtterm').value;   // AAAA-MM-DD
     if (!dt) { msg('Informe a data de término do contrato.', false); return; }
     this.disabled = true;
     try {
         const d = await post('/api/contrato/gravar', {
             matricula:  MAT,
+            acao:       acao,
             dtterm:     dt.replace(/-/g, ''),
             clausassec: document.getElementById('clausassec').value,
             objdet:     document.getElementById('objdet').value
@@ -232,8 +387,18 @@ document.getElementById('btnGravar').onclick = async function() {
 
 const btnDel = document.getElementById('btnExcluir');
 if (btnDel) btnDel.onclick = async function() {
-    if (!confirm('Excluir o último lançamento do contrato?\n\n'
-               + 'Se não sobrar nenhum, o funcionário volta a prazo INDETERMINADO.')) return;
+    // Prorrogado, excluir devolve o contrato ao termino anterior; original,
+    // apaga o lancamento e o funcionario volta a prazo indeterminado. O texto
+    // do aviso diz qual dos dois vai acontecer.
+    let txt = DTANT
+        ? ('Excluir a PRORROGAÇÃO?\n\nO contrato volta ao término anterior '
+           + `(${DTANT.slice(6,8)}/${DTANT.slice(4,6)}/${DTANT.slice(0,4)}).`)
+        : 'Excluir o CONTRATO?\n\nO funcionário volta a prazo INDETERMINADO.';
+    if (ADM_FORA_FOLHA) {
+        txt += '\n\nATENÇÃO: este funcionário não foi admitido no mês da folha ativa. '
+             + 'Ele pode ter histórico de meses anteriores — confira antes de excluir.';
+    }
+    if (!confirm(txt)) return;
     this.disabled = true;
     try {
         const d = await post('/api/contrato/excluir', {matricula: MAT});

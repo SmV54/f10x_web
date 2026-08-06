@@ -6049,6 +6049,240 @@ def lista_demitidos_pdf():
 
 
 # =========================================================
+# CONTRATOS POR PRAZO DETERMINADO — listagem
+# Consulta, nao lancamento: roda com a folha em qualquer situacao.
+# =========================================================
+def _contratos_intervalo_args():
+    """Le os quatro campos de periodo da query.
+
+    Todos OPCIONAIS e em branco por padrao — o padrao da tela e mostrar todos
+    os contratos. Um default de "mes atual" esconderia justamente o contrato
+    que comecou em maio e ainda esta correndo, que e o que se quer ver.
+
+    Devolve (dict com os valores para a tela, dict com os YYYYMMDD do filtro).
+    """
+    def _d(nome):
+        return (request.args.get(nome) or "").strip()
+
+    def _to8(d):
+        d = (d or "").replace("-", "")
+        return d if len(d) == 8 and d.isdigit() else None
+
+    tela = {k: _d(k) for k in ("ini_de", "ini_ate", "fim_de", "fim_ate")}
+    filtro = {k: _to8(v) for k, v in tela.items()}
+    return tela, filtro
+
+
+def _lista_contratos_dados(id_empresa, filtro):
+    """Funcionarios com contrato por prazo determinado lancado (op1=1/op2=167).
+
+    ini_de/ini_ate filtram a data INICIAL do contrato — que e a data de
+    admissao, de onde o prazo comeca a correr. fim_de/fim_ate filtram a data
+    de TERMINO (data1f). Os dois periodos sao independentes: preencher so um
+    deles filtra so por ele.
+
+    Os filtros rodam em Python, nao no PostgREST: data1i/data1f sao gravadas
+    como texto YYYYMMDD e a quantidade de contratos por empresa e pequena.
+    """
+    try:
+        evs = (supabase.table("tab_eventos")
+               .select("id, matricula, data1i, data1f, ref1, ref2, ref3, campotxt1")
+               .eq("id_empresa", id_empresa)
+               .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+               .execute().data or [])
+    except Exception as e:
+        print(f"[lista_contratos] erro ao ler eventos: {e}")
+        return []
+
+    # Um funcionario tem UM contrato. Base antiga pode ter duas linhas (o
+    # cadastro e a prorrogacao separados) — vale a de maior ref2, mesma regra
+    # de _contrato_prazo.
+    por_mat = {}
+    for e in evs:
+        try:
+            m = int(e.get("matricula") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not m:
+            continue
+        chave = (int(e.get("ref2") or 0), int(e.get("id") or 0))
+        if m not in por_mat or chave > por_mat[m][0]:
+            por_mat[m] = (chave, e)
+
+    if not por_mat:
+        return []
+
+    mats = sorted(por_mat.keys())
+    cads = {}
+    # Em blocos: o PostgREST corta a resposta em 1000 linhas.
+    for i in range(0, len(mats), 300):
+        try:
+            rows = (supabase.table("tab_cad")
+                    .select("matricula, nome, nomer, dtadm, situacao, datarescisao")
+                    .eq("id_empresa", id_empresa)
+                    .in_("matricula", mats[i:i + 300])
+                    .execute().data or [])
+        except Exception as e:
+            print(f"[lista_contratos] erro ao ler funcionarios: {e}")
+            rows = []
+        for c in rows:
+            try:
+                cads[int(c.get("matricula") or 0)] = c
+            except (TypeError, ValueError):
+                pass
+
+    hoje  = _agora_brasilia().strftime("%Y%m%d")
+    funcs = []
+    for m in mats:
+        ev  = por_mat[m][1]
+        cad = cads.get(m)
+        if not cad:
+            continue                       # evento orfao: funcionario nao existe mais
+
+        fim = re.sub(r"\D", "", str(ev.get("data1f") or ""))
+        if len(fim) != 8 or fim == _DATA_VAZIA_LEGADO:
+            continue                       # sem termino nao ha contrato a listar
+        ini = re.sub(r"\D", "", str(cad.get("dtadm") or ""))
+        ant = re.sub(r"\D", "", str(ev.get("data1i") or ""))
+        if ant == _DATA_VAZIA_LEGADO:
+            ant = ""
+
+        # Os quatro filtros sao independentes; cada um so age se preenchido.
+        if filtro.get("ini_de")  and (len(ini) != 8 or ini < filtro["ini_de"]):
+            continue
+        if filtro.get("ini_ate") and (len(ini) != 8 or ini > filtro["ini_ate"]):
+            continue
+        if filtro.get("fim_de")  and fim < filtro["fim_de"]:
+            continue
+        if filtro.get("fim_ate") and fim > filtro["fim_ate"]:
+            continue
+
+        sit = str(cad.get("situacao") or "").strip().upper()
+        funcs.append({
+            "matricula":  m,
+            "mat_fmt":    f"{m:06d}",
+            "nome":       (cad.get("nome") or cad.get("nomer") or "").strip(),
+            "ini_raw":    ini,
+            "ini_fmt":    _fmt_dt(ini) if len(ini) == 8 else "—",
+            "fim_raw":    fim,
+            "fim_fmt":    _fmt_dt(fim),
+            "ant_fmt":    _fmt_dt(ant) if ant else "",
+            "dias":       int(ev.get("ref1") or 0),
+            "prorrogado": int(ev.get("ref2") or 0) >= 1,
+            "clausula":   "S" if str(ev.get("ref3") or "0") == "1" else "N",
+            "objdet":     str(ev.get("campotxt1") or "").strip(),
+            "situacao":   sit,
+            # Vencido e' informacao do contrato, nao da folha: o prazo passou e
+            # ninguem rescindiu nem prorrogou.
+            "vencido":    fim < hoje and sit != "D",
+        })
+
+    funcs.sort(key=lambda f: (f["fim_raw"], f["nome"]))
+    return funcs
+
+
+@app.route("/lista_contratos")
+def lista_contratos():
+    if not session.get("logado"):
+        return redirect("/")
+    tela, filtro = _contratos_intervalo_args()
+    funcs = _lista_contratos_dados(_get_id_empresa(), filtro)
+    return render_template("F10_Lista_Contratos.html", **_ctx_relatorio(),
+                           funcs=funcs, **tela)
+
+
+@app.route("/lista_contratos_pdf")
+def lista_contratos_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    tela, filtro = _contratos_intervalo_args()
+    funcs      = _lista_contratos_dados(_get_id_empresa(), filtro)
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    def _br(d):
+        return f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d) == 10 else d
+
+    # O titulo diz exatamente o que foi filtrado — um PDF sem isso vira papel
+    # sem contexto assim que sai da tela.
+    partes = []
+    if tela["ini_de"] or tela["ini_ate"]:
+        partes.append(f"início {_br(tela['ini_de']) or '…'} a {_br(tela['ini_ate']) or '…'}")
+    if tela["fim_de"] or tela["fim_ate"]:
+        partes.append(f"término {_br(tela['fim_de']) or '…'} a {_br(tela['fim_ate']) or '…'}")
+    titulo = "Contratos por Prazo Determinado"
+    if partes:
+        titulo += " — " + "; ".join(partes)
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+
+    cab = ["Matrícula", "Nome", "Início", "Término", "Dias", "Prorrog.", "Cláus.", "Situação"]
+    tbl_data = [[P(h, fn="Helvetica-Bold") for h in cab]]
+    lt_gray  = colors.HexColor("#f8fafc")
+    for f in funcs:
+        if f["situacao"] == "D":
+            sit = "Demitido"
+        elif f["vencido"]:
+            sit = "Vencido"
+        else:
+            sit = "Em vigor"
+        tbl_data.append([
+            P(f["mat_fmt"], fn="Courier"),
+            P(f["nome"]),
+            P(f["ini_fmt"], align=1),
+            P(f["fim_fmt"], align=1),
+            P(f["dias"] or "—", align=1),
+            P("Sim" if f["prorrogado"] else "—", align=1),
+            P(f["clausula"], align=1),
+            P(sit, align=1),
+        ])
+
+    tbl = Table(tbl_data, colWidths=[1.9*cm, 5.1*cm, 2.1*cm, 2.1*cm, 1.2*cm,
+                                     1.6*cm, 1.3*cm, 1.7*cm], repeatRows=1)
+    row_bg = [("BACKGROUND", (0, i), (-1, i), lt_gray if i % 2 == 0 else colors.white)
+              for i in range(1, len(tbl_data))]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -1), 0.3, colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    total_linha = P(f"Total: {len(funcs)} contrato(s)", fn="Helvetica", fs=8,
+                    col=colors.HexColor("#64748b"), align=2)
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 6), total_linha]
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="ContratosPrazoDeterminado.pdf"'
+    return resp
+
+
+# =========================================================
 # FUNCIONÁRIOS EM FÉRIAS — listagem por período
 # Roda com a folha em qualquer situação (Aberta, Calculada ou Fechada):
 # e consulta, nao lancamento.
@@ -12744,6 +12978,13 @@ def api_funcionario_incluir():
         except (ValueError, TypeError):
             pass
 
+    # Contrato de experiencia preenchido => o contrato E' por prazo determinado.
+    # Sem isto o S-2200 sairia com tpContr=1 (indeterminado) convivendo com uma
+    # data de termino gravada no evento — contradicao que o eSocial rejeita.
+    exp_dt = re.sub(r"\D", "", str(d.get("exp_dtTerm") or ""))
+    if len(exp_dt) == 8 and str(campos.get("tpcontr") or "") in ("", "1"):
+        campos["tpcontr"] = "2"
+
     try:
         supabase.table("tab_cad").insert(campos).execute()
         mat = int(matricula_raw) if matricula_raw else None
@@ -12810,7 +13051,56 @@ def api_funcionario_incluir():
                 except Exception:
                     pass
 
-    return jsonify({"ok": True})
+    # ── Contrato de experiencia (opcional) ──────────────────────────────
+    # Nao vai para tab_cad: mora no evento op1=1/op2=167, o MESMO que a tela
+    # Eventuais -> Contrato por Prazo Determinado le, prorroga e exclui. Assim
+    # existe um so lugar com a verdade do contrato, e a prorrogacao encontra o
+    # cadastro inicial ja gravado (sem ele ela nao teria de onde partir).
+    aviso = None
+    if len(exp_dt) == 8:
+        if not mat:
+            aviso = ("Funcionario gravado, mas o contrato de experiencia nao foi "
+                     "lancado: e preciso ter matricula.")
+        elif len(anomes_ev) != 6:
+            aviso = ("Funcionario gravado, mas o contrato de experiencia nao foi "
+                     "lancado: folha ativa nao definida.")
+        elif len(dtadm_cad) != 8 or exp_dt <= dtadm_cad:
+            aviso = ("Funcionario gravado, mas o contrato de experiencia nao foi "
+                     "lancado: o termino tem que ser posterior a data de admissao.")
+        else:
+            # O dia da admissao CONTA: 30 dias admitido em 15/08 termina em
+            # 13/09, por isso o +1. Mesma conta de api_contrato_gravar.
+            try:
+                _a = date(int(dtadm_cad[:4]), int(dtadm_cad[4:6]), int(dtadm_cad[6:]))
+                _t = date(int(exp_dt[:4]), int(exp_dt[4:6]), int(exp_dt[6:]))
+                dias_exp = (_t - _a).days + 1
+            except ValueError:
+                dias_exp = 0
+            clau_exp = "1" if str(d.get("exp_ClauAssec") or "N").strip().upper() == "S" else "0"
+            try:
+                supabase.table("tab_eventos").insert({
+                    "id_cliente": id_cliente,
+                    "id_empresa": id_empresa,
+                    "matricula":  mat,
+                    "folha":      int(anomes_ev),
+                    "op1":        CONTR_OP1,
+                    "op2":        CONTR_OP2,
+                    # Sem termino anterior: este e o contrato original, ref2=0.
+                    "data1i":     _DATA_VAZIA_LEGADO,
+                    "data1f":     exp_dt,
+                    "ref1":       max(0, dias_exp),
+                    "ref2":       0,
+                    "ref3":       int(clau_exp),
+                    "campotxt1":  (d.get("objDet") or "").strip()[:100] or None,
+                }).execute()
+                gravar_log("CONTRATO",
+                           f"Contrato de experiencia na inclusao: {nome[:30]} — "
+                           f"termino {_fmt_dt(exp_dt)} ({dias_exp} dias)", matricula=mat)
+            except Exception as e:
+                aviso = (f"Funcionario gravado, mas o contrato de experiencia "
+                         f"falhou: {e}")
+
+    return jsonify({"ok": True, "aviso": aviso})
 
 
 # =========================================================
@@ -13163,9 +13453,29 @@ def cad_contrato():
     except Exception as e:
         print(f"[cad_contrato] erro ao ler funcionario: {e}")
 
-    contr = _contrato_prazo(id_empresa, mat)
+    contr  = _contrato_prazo(id_empresa, mat)
+    anomes = str(session.get("anomes_atual") or "")
+    dtadm  = re.sub(r"\D", "", str(func.get("dtadm") or ""))
+
+    # Com a prorrogacao gravada no MESMO registro, o historico do periodo
+    # original so existe em data1i. Reconstroi aqui os dias daquele primeiro
+    # periodo para a tela poder mostrar as duas linhas.
+    if contr and contr.get("dtterm_ant") and len(dtadm) == 8:
+        try:
+            _a = date(int(dtadm[:4]), int(dtadm[4:6]), int(dtadm[6:]))
+            _p = contr["dtterm_ant"]
+            _t = date(int(_p[:4]), int(_p[4:6]), int(_p[6:]))
+            contr["dias_ant"] = max(0, (_t - _a).days + 1)
+        except ValueError:
+            contr["dias_ant"] = 0
+
+    if contr:
+        contr["dtterm_fmt"]     = _fmt_dt(contr.get("dtterm"))
+        contr["dtterm_ant_fmt"] = _fmt_dt(contr.get("dtterm_ant"))
+
     return render_template(
         "F10_Cad_Contrato.html",
+        dtadm_fmt=_fmt_dt(dtadm),
         versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
@@ -13173,17 +13483,31 @@ def cad_contrato():
         contrato=contr,
         # Prorrogacao unica (art. 451 CLT): com ref2 >= 1 a tela ja abre travada.
         pode_prorrogar=bool(contr) and int(contr.get("prorrogacoes") or 0) < 1,
-        anomes_atual=str(session.get("anomes_atual") or ""),
+        anomes_atual=anomes,
+        # Admissao fora da folha ativa nao impede nada, mas precisa aparecer
+        # antes de uma exclusao: e' sinal de que ha historico de outros meses.
+        adm_fora_da_folha=bool(len(dtadm) == 8 and len(anomes) == 6
+                               and dtadm[:6] != anomes),
     )
 
 
 @app.route("/api/contrato/gravar", methods=["POST"])
 def api_contrato_gravar():
-    """Cadastra o contrato por prazo determinado ou registra a prorrogacao.
+    """Cadastra, corrige ou prorroga o contrato por prazo determinado.
 
-    Qual das duas coisas nao vem da tela: e decidido aqui pela existencia de
-    evento anterior. Assim a tela nao consegue pedir uma prorrogacao de um
-    contrato que nao existe, nem duplicar o cadastro inicial.
+    Sao tres acoes sobre UM UNICO registro do tab_eventos (op1=1/op2=167):
+
+      cadastro  — nao existe contrato ainda: insere o registro.
+      editar    — corrige o lancamento atual (termino, clausula, objeto) sem
+                  criar prorrogacao nenhuma. ref2 e data1i ficam como estao.
+      prorrogar — ATUALIZA o mesmo registro: o termino que estava vigente desce
+                  para data1i (a informacao anterior fica conservada, e e' dela
+                  que a exclusao sabe para onde voltar) e o novo termino entra
+                  em data1f, com ref2=1.
+
+    A acao pedida pela tela e' validada aqui: nao se prorroga contrato que nao
+    existe, nem se duplica o cadastro inicial, nem passa a 2a prorrogacao
+    (art. 451 CLT).
     """
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
@@ -13196,6 +13520,7 @@ def api_contrato_gravar():
         mat = int(d.get("matricula") or 0)
     except (TypeError, ValueError):
         mat = 0
+    acao   = str(d.get("acao") or "").strip().lower()
     dtterm = re.sub(r"\D", "", str(d.get("dtterm") or ""))
     clau   = "1" if str(d.get("clausassec") or "N").upper() == "S" else "0"
     objdet = str(d.get("objdet") or "").strip()[:100]
@@ -13210,7 +13535,7 @@ def api_contrato_gravar():
 
     cad = {}
     try:
-        r = (supabase.table("tab_cad").select("dtadm, situacao, nome, nomer")
+        r = (supabase.table("tab_cad").select("dtadm, situacao, nome, nomer, codcateg")
              .eq("id_empresa", id_empresa).eq("matricula", mat).limit(1).execute())
         if not r.data:
             return jsonify({"ok": False, "msg": "Funcionario nao encontrado."})
@@ -13228,21 +13553,40 @@ def api_contrato_gravar():
 
     atual = _contrato_prazo(id_empresa, mat)
 
-    # Art. 451 CLT: uma prorrogacao so. A segunda transformaria o contrato em
-    # indeterminado — o usuario pediu para BLOQUEAR, nao converter sozinho.
-    if atual and int(atual.get("prorrogacoes") or 0) >= 1:
+    # A acao vem da tela, mas quem manda e' o estado do banco: sem contrato so
+    # cabe cadastro; com contrato, cadastrar de novo duplicaria o lancamento.
+    if not atual:
+        acao = "cadastro"
+    elif acao not in ("editar", "prorrogar"):
         return jsonify({"ok": False, "msg": (
-            "Este contrato ja foi prorrogado uma vez. Pela CLT (art. 451) uma "
-            "segunda prorrogacao transforma o contrato em prazo indeterminado — "
-            "altere o tipo de contrato no cadastro do funcionario.")})
+            "Este funcionario ja tem contrato lancado. Escolha Corrigir o "
+            "lancamento ou Registrar prorrogacao.")})
 
-    if atual:
+    ref2_atual = int(atual.get("prorrogacoes") or 0) if atual else 0
+
+    if acao == "prorrogar":
+        # Art. 451 CLT: uma prorrogacao so. A segunda transformaria o contrato
+        # em indeterminado — o usuario pediu para BLOQUEAR, nao converter.
+        if ref2_atual >= 1:
+            return jsonify({"ok": False, "msg": (
+                "Este contrato ja foi prorrogado uma vez. Pela CLT (art. 451) uma "
+                "segunda prorrogacao transforma o contrato em prazo indeterminado — "
+                "altere o tipo de contrato no cadastro do funcionario.")})
         ant  = str(atual.get("dtterm") or "")
         ref2 = 1
         if dtterm <= ant:
             return jsonify({"ok": False, "msg": (
                 f"A prorrogacao tem que ir alem do termino atual "
                 f"({_fmt_dt(ant)}).")})
+    elif acao == "editar":
+        # Corrigir nao mexe no estagio do contrato: o que era prorrogacao
+        # continua prorrogacao, e o termino anterior segue guardado.
+        ant  = str(atual.get("dtterm_ant") or "")
+        ref2 = ref2_atual
+        if ant and dtterm <= ant:
+            return jsonify({"ok": False, "msg": (
+                f"O termino da prorrogacao tem que ser posterior ao termino "
+                f"anterior ({_fmt_dt(ant)}).")})
     else:
         ant, ref2 = "", 0
 
@@ -13250,7 +13594,8 @@ def api_contrato_gravar():
     # 15/08 termina em 13/09, nao 14/09 — por isso o +1. Conferido nos 3
     # contratos migrados do Desktop, que gravam ref1 exatamente assim.
     # Na prorrogacao, ref1 e o prazo DAQUELE periodo (do termino anterior ate o
-    # novo), nao o total acumulado.
+    # novo), nao o total acumulado — e o novo periodo comeca no dia seguinte,
+    # entao ali nao entra o +1.
     try:
         _base = ant if ant else dtadm
         _a    = date(int(_base[:4]), int(_base[4:6]), int(_base[6:]))
@@ -13259,15 +13604,29 @@ def api_contrato_gravar():
     except Exception:
         dias = 0
 
+    registro = {
+        "data1i":    ant or _DATA_VAZIA_LEGADO,   # termino ANTERIOR (permite desfazer)
+        "data1f":    dtterm,
+        "ref1":      max(0, dias),
+        "ref2":      ref2,
+        "ref3":      int(clau),
+        "campotxt1": objdet or None,
+    }
     try:
-        supabase.table("tab_eventos").insert({
-            "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
-            "folha": int(anomes), "op1": CONTR_OP1, "op2": CONTR_OP2,
-            "data1i": ant or _DATA_VAZIA_LEGADO,   # termino ANTERIOR (permite desfazer)
-            "data1f": dtterm,
-            "ref1": max(0, dias), "ref2": ref2, "ref3": int(clau),
-            "campotxt1": objdet or None,
-        }).execute()
+        if acao == "cadastro":
+            registro.update({
+                "id_cliente": id_cliente, "id_empresa": id_empresa,
+                "matricula": mat, "folha": int(anomes),
+                "op1": CONTR_OP1, "op2": CONTR_OP2,
+            })
+            supabase.table("tab_eventos").insert(registro).execute()
+        else:
+            # Prorrogacao e correcao gravam no MESMO registro. Na prorrogacao o
+            # termino que estava vigente desce para data1i, e nada se perde: o
+            # registro passa a conter o periodo original e o prorrogado.
+            (supabase.table("tab_eventos").update(registro)
+             .eq("id", atual["id"])
+             .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2).execute())
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao gravar o contrato: {e}"})
 
@@ -13282,22 +13641,72 @@ def api_contrato_gravar():
     except Exception as e:
         print(f"[contrato] falha ao atualizar tpcontr: {e}")
 
-    _nm = (cad.get("nomer") or cad.get("nome") or "").strip()
-    _ac = "Prorrogacao" if ref2 else "Contrato por prazo determinado"
-    gravar_log("CONTRATO", f"{_ac}: {_nm} — termino {_fmt_dt(dtterm)}"
-                           f"{' (antes ' + _fmt_dt(ant) + ')' if ant else ''}", matricula=mat)
-    return jsonify({"ok": True, "prorrogacao": bool(ref2),
-                    "msg": ("Prorrogacao registrada." if ref2
-                            else "Contrato por prazo determinado registrado.")})
+    # ── eSocial ────────────────────────────────────────────────────────────
+    # Mexer no termino do contrato e alteracao contratual, e o eSocial so fica
+    # sabendo por S-2206. So faz sentido DEPOIS que a admissao foi aceita:
+    # antes disso o proprio S-2200, que ainda vai sair, ja leva o contrato como
+    # esta agora — e um S-2206 pendente sairia antes do evento que ele altera.
+    # TSVE (categoria >= 700) usaria S-2306, ainda nao implementado: por ora
+    # nao gera evento, melhor nada que evento errado.
+    s2206 = False
+    try:
+        _categ = int(str(cad.get("codcateg") or "0").strip() or 0)
+    except (TypeError, ValueError):
+        _categ = 0
+    if _categ < 700 and _tem_s2200_aceito(id_empresa, mat):
+        _ag = _agora_brasilia()
+        try:
+            supabase.table("tab_esocial").insert({
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                # data_cad vira o <dtAlteracao> do S-2206 no envio (ver a rota
+                # de envio, que le esta coluna). Hoje = data do lancamento,
+                # mesmo criterio das demais alteracoes contratuais do sistema.
+                "data_cad":   _ag.strftime("%Y%m%d"),
+                "hora_cad":   _ag.strftime("%H%M"),
+                "id_remessa": f"{_ag.strftime('%Y%m%d%H%M%S')}2206",
+                "ano_mes":    int(anomes),
+                "folha_tipo": "N",
+                "layout":     "2206",
+                "matricula":  mat,
+                "codigo2":    0,
+            }).execute()
+            s2206 = True
+        except Exception as e:
+            print(f"[contrato] falha ao gerar pendencia S-2206: {e}")
+
+    _nm  = (cad.get("nomer") or cad.get("nome") or "").strip()
+    _mnu = {"cadastro": "CONTRATO", "editar": "CONTRATO-ED",
+            "prorrogar": "CONTRATO"}[acao]
+    _ac  = {"cadastro":  "Contrato por prazo determinado",
+            "editar":    "Correcao do contrato" + (" (prorrogado)" if ref2 else ""),
+            "prorrogar": "Prorrogacao"}[acao]
+    gravar_log(_mnu, f"{_ac}: {_nm} — termino {_fmt_dt(dtterm)}"
+                     f"{' (antes ' + _fmt_dt(ant) + ')' if ant else ''}"
+                     f" — {max(0, dias)} dias"
+                     f"{'; S-2206 gerado' if s2206 else ''}", matricula=mat)
+    _msg = {"cadastro":  "Contrato por prazo determinado registrado.",
+            "editar":    "Lancamento corrigido.",
+            "prorrogar": "Prorrogacao registrada."}[acao]
+    if s2206:
+        _msg += (" O eSocial ja sabe da admissao deste trabalhador, entao foi "
+                 "gerado um S-2206 (alteracao contratual) na fila — envie-o "
+                 "para informar o novo termino.")
+    return jsonify({"ok": True, "prorrogacao": acao == "prorrogar",
+                    "s2206": s2206, "msg": _msg})
 
 
 @app.route("/api/contrato/excluir", methods=["POST"])
 def api_contrato_excluir():
     """Exclui o ultimo lancamento do contrato (prorrogacao ou cadastro).
 
-    Tira o evento de maior ref2. Se nao sobrar nenhum, o funcionario volta a
-    prazo INDETERMINADO (tpcontr=1). Desfazer uma prorrogacao apenas devolve o
-    termino anterior, que estava guardado em data1i.
+    Com a prorrogacao morando no MESMO registro, "excluir a prorrogacao" nao e
+    apagar linha nenhuma: e devolver o registro ao estado anterior, usando o
+    termino que ficou guardado em data1i. Só a exclusao do contrato ORIGINAL
+    apaga a linha — e ai o funcionario volta a prazo INDETERMINADO (tpcontr=1).
+
+    Base antiga (duas linhas, de antes da prorrogacao no mesmo registro) segue
+    tratada como era: apaga a linha de maior ref2.
     """
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessao expirada."}), 401
@@ -13312,7 +13721,7 @@ def api_contrato_excluir():
 
     try:
         rows = (supabase.table("tab_eventos")
-                .select("id, ref2, data1f")
+                .select("id, ref2, data1i, data1f")
                 .eq("id_empresa", id_empresa).eq("matricula", mat)
                 .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
                 .execute().data or [])
@@ -13320,6 +13729,22 @@ def api_contrato_excluir():
         return jsonify({"ok": False, "msg": f"Erro ao ler o contrato: {e}"})
     if not rows:
         return jsonify({"ok": False, "msg": "Nao ha contrato lancado para excluir."})
+
+    # Admissao fora da folha ativa nao bloqueia, mas tem que ficar registrada:
+    # e sinal de que o funcionario tem historico de outros meses, e a exclusao
+    # nao pergunta de novo depois de feita.
+    dtadm  = ""
+    try:
+        _r = (supabase.table("tab_cad").select("dtadm")
+              .eq("id_empresa", id_empresa).eq("matricula", mat).limit(1).execute())
+        if _r.data:
+            dtadm = re.sub(r"\D", "", str(_r.data[0].get("dtadm") or ""))
+    except Exception as e:
+        print(f"[contrato excluir] falha ao ler admissao: {e}")
+    anomes   = str(session.get("anomes_atual") or "").strip()
+    fora_mes = bool(len(dtadm) == 8 and len(anomes) == 6 and dtadm[:6] != anomes)
+    aviso    = (f"Funcionario admitido em {_fmt_dt(dtadm)}, fora da folha ativa "
+                f"({anomes[4:6]}/{anomes[0:4]})." if fora_mes else None)
 
     # Trava: com S-2200/S-2206 ja aceito, apagar aqui nao desfaz nada no governo.
     try:
@@ -13339,15 +13764,40 @@ def api_contrato_excluir():
     except Exception as e:
         print(f"[contrato excluir] falha ao validar eSocial: {e}")
 
-    rows.sort(key=lambda r: int(r.get("ref2") or 0))
-    alvo = rows[-1]
+    rows.sort(key=lambda r: (int(r.get("ref2") or 0), int(r.get("id") or 0)))
+    alvo     = rows[-1]
+    era_pror = int(alvo.get("ref2") or 0) >= 1
+    ant      = str(alvo.get("data1i") or "").strip()
+    if ant == _DATA_VAZIA_LEGADO:
+        ant = ""
+
+    # Desfazer a prorrogacao do registro unico: volta o termino anterior para
+    # data1f e zera ref2. So vale quando ela esta MESMO no mesmo registro — na
+    # base antiga (2 linhas) a linha da prorrogacao e apagada, como antes.
+    desfazer = era_pror and len(rows) == 1 and len(ant) == 8
     try:
-        (supabase.table("tab_eventos").delete()
-         .eq("id", alvo["id"]).eq("op1", CONTR_OP1).eq("op2", CONTR_OP2).execute())
+        if desfazer:
+            try:
+                _a    = date(int(dtadm[:4]), int(dtadm[4:6]), int(dtadm[6:]))
+                _t    = date(int(ant[:4]), int(ant[4:6]), int(ant[6:]))
+                dias1 = max(0, (_t - _a).days + 1)
+            except (ValueError, IndexError):
+                dias1 = 0
+            (supabase.table("tab_eventos").update({
+                "data1i": _DATA_VAZIA_LEGADO,
+                "data1f": ant,
+                "ref1":   dias1,
+                "ref2":   0,
+             })
+             .eq("id", alvo["id"])
+             .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2).execute())
+        else:
+            (supabase.table("tab_eventos").delete()
+             .eq("id", alvo["id"]).eq("op1", CONTR_OP1).eq("op2", CONTR_OP2).execute())
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao excluir: {e}"})
 
-    restam = len(rows) - 1
+    restam = len(rows) if desfazer else len(rows) - 1
     if restam <= 0:
         try:
             supabase.table("tab_cad").update({"tpcontr": "1"})\
@@ -13356,13 +13806,17 @@ def api_contrato_excluir():
             print(f"[contrato excluir] falha ao voltar tpcontr: {e}")
 
     gravar_log("CONTRATO-EX",
-               f"Excluido {'prorrogacao' if int(alvo.get('ref2') or 0) else 'contrato'} "
+               f"Excluido {'prorrogacao' if era_pror else 'contrato'} "
                f"(termino {_fmt_dt(str(alvo.get('data1f') or ''))})"
-               f"{'; voltou a prazo indeterminado' if restam <= 0 else ''}",
+               f"{'; voltou ao termino ' + _fmt_dt(ant) if desfazer else ''}"
+               f"{'; voltou a prazo indeterminado' if restam <= 0 else ''}"
+               f"{'; ' + aviso if aviso else ''}",
                matricula=mat)
-    return jsonify({"ok": True, "restam": restam,
+    return jsonify({"ok": True, "restam": restam, "aviso": aviso,
                     "msg": ("Contrato excluido. Funcionario voltou a prazo indeterminado."
-                            if restam <= 0 else "Prorrogacao excluida.")})
+                            if restam <= 0 else
+                            f"Prorrogacao excluida — o contrato voltou ao termino "
+                            f"{_fmt_dt(ant)}." if desfazer else "Prorrogacao excluida.")})
 
 # =========================================================
 # FICHA DE REGISTRO — TELA
@@ -22195,17 +22649,11 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
     _contr     = _contrato_prazo(func.get('id_empresa'), func.get('matricula')) or {}
     _dtterm_raw = str(_contr.get('dtterm') or '').strip()
     _dtterm_fmt = fmt_d8(_dtterm_raw) if _dtterm_raw else ''
-    if tpcontr == '2' and _dtterm_fmt:
-        _clauassec   = x(_contr.get('clausassec') or 'N')
-        _objdet      = str(_contr.get('objdet') or func.get('objdet') or '').strip()
-        _objdet_xml  = f"\n          <objDet>{x(_objdet)}</objDet>" if _objdet else ''
-        duracao_xml  = (f"\n        <duracao>"
-                        f"\n          <tpContr>2</tpContr>"
-                        f"\n          <dtTerm>{_dtterm_fmt}</dtTerm>"
-                        f"\n          <clauAssec>{_clauassec}</clauAssec>{_objdet_xml}"
-                        f"\n        </duracao>")
-    else:
-        duracao_xml  = "\n        <duracao>\n          <tpContr>1</tpContr>\n        </duracao>"
+    _clauassec  = x(_contr.get('clausassec') or 'N')
+    # Corta antes de escapar: cortar depois poderia partir uma entidade
+    # (&amp; virando &am) e quebrar o XML.
+    _objdet     = str(_contr.get('objdet') or func.get('objdet') or '').strip()[:255]
+    duracao_xml = _duracao_xml(tpcontr, _dtterm_fmt, _clauassec, x(_objdet))
 
     # Blocos opcionais
     nomemae_xml = f"\n        <nomeMae>{x(nomemae)}</nomeMae>" if nomemae else ''
@@ -27441,17 +27889,11 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     _contr      = _contrato_prazo(func.get('id_empresa'), func.get('matricula')) or {}
     _dtterm_raw = str(_contr.get('dtterm') or '').strip()
     _dtterm_fmt = fmt_d8(_dtterm_raw) if _dtterm_raw else ''
-    if tpcontr == '2' and _dtterm_fmt:
-        _clauassec  = x(_contr.get('clausassec') or 'N')
-        _objdet     = str(_contr.get('objdet') or func.get('objdet') or '').strip()
-        _objdet_xml = f"\n          <objDet>{x(_objdet)}</objDet>" if _objdet else ''
-        duracao_xml = (f"\n        <duracao>"
-                       f"\n          <tpContr>2</tpContr>"
-                       f"\n          <dtTerm>{_dtterm_fmt}</dtTerm>"
-                       f"\n          <clauAssec>{_clauassec}</clauAssec>{_objdet_xml}"
-                       f"\n        </duracao>")
-    else:
-        duracao_xml = "\n        <duracao>\n          <tpContr>1</tpContr>\n        </duracao>"
+    _clauassec  = x(_contr.get('clausassec') or 'N')
+    # Corta antes de escapar: cortar depois poderia partir uma entidade
+    # (&amp; virando &am) e quebrar o XML.
+    _objdet     = str(_contr.get('objdet') or func.get('objdet') or '').strip()[:255]
+    duracao_xml = _duracao_xml(tpcontr, _dtterm_fmt, _clauassec, x(_objdet))
 
     # dt_alteracao aceita yyyy-mm-dd ou yyyymmdd
     if len(dt_alteracao.replace('-','')) == 8:
@@ -51394,6 +51836,60 @@ CONTR_OP1, CONTR_OP2 = 1, 167
 _DATA_VAZIA_LEGADO = "11110101"   # o "sem data" que o Desktop grava
 
 
+def _duracao_xml(tpcontr, dtterm_fmt, clauassec, objdet):
+    """Bloco <duracao> do S-2200/S-2206, com as tres formas que o leiaute aceita.
+
+    A ordem dos campos e a exclusividade sao do proprio leiaute e nao sao
+    negociaveis:
+
+      tipo 1 (indeterminado) — so tpContr. clauAssec nao pode aparecer.
+      tipo 2 (prazo em dias) — tpContr, dtTerm, clauAssec. objDet NAO entra:
+             ele e exclusivo do tipo 3, e mandar junto derruba o evento.
+      tipo 3 (fato/obra)     — tpContr, clauAssec, objDet. dtTerm NAO entra:
+             no contrato por fato nao existe data prevista.
+
+    Faltando o dado que o tipo exige (termino no 2, objeto no 3), cai em
+    indeterminado: e o que ja acontecia, e um evento recusado seria pior.
+
+    objdet chega JA ESCAPADO e ja cortado pelo chamador — o escape de XML mora
+    dentro de cada gerador (a funcao x()), nao aqui.
+    """
+    if tpcontr == '2' and dtterm_fmt:
+        return (f"\n        <duracao>"
+                f"\n          <tpContr>2</tpContr>"
+                f"\n          <dtTerm>{dtterm_fmt}</dtTerm>"
+                f"\n          <clauAssec>{clauassec}</clauAssec>"
+                f"\n        </duracao>")
+    if tpcontr == '3' and objdet:
+        return (f"\n        <duracao>"
+                f"\n          <tpContr>3</tpContr>"
+                f"\n          <clauAssec>{clauassec}</clauAssec>"
+                f"\n          <objDet>{objdet}</objDet>"
+                f"\n        </duracao>")
+    return "\n        <duracao>\n          <tpContr>1</tpContr>\n        </duracao>"
+
+
+def _tem_s2200_aceito(id_empresa, matricula):
+    """O trabalhador ja tem admissao aceita e valendo no eSocial?
+
+    "Valendo" = tem recibo e nao foi anulada por S-3000. E o que separa os dois
+    mundos: antes disso o proprio S-2200 (ainda nao enviado) leva o contrato
+    atualizado; depois, o governo tem a versao antiga e so um S-2206 corrige.
+    """
+    try:
+        evs = (supabase.table("tab_esocial")
+               .select("layout, recibo, observacao_erro")
+               .eq("id_empresa", id_empresa).eq("matricula", matricula)
+               .in_("layout", ["2200", "2206"])
+               .execute().data or [])
+    except Exception as e:
+        print(f"[s2200_aceito] erro: {e}")
+        return False
+    return any((ev.get("recibo") or "").strip()
+               and (ev.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+               for ev in evs)
+
+
 def _contrato_prazo(id_empresa, matricula):
     """Contrato por prazo determinado do funcionario, lido do tab_eventos.
 
@@ -51401,7 +51897,7 @@ def _contrato_prazo(id_empresa, matricula):
     maior ref2 — o mais recente."""
     try:
         rows = (supabase.table("tab_eventos")
-                .select("data1i, data1f, ref1, ref2, ref3, campotxt1")
+                .select("id, data1i, data1f, ref1, ref2, ref3, campotxt1")
                 .eq("id_empresa", id_empresa).eq("matricula", matricula)
                 .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
                 .execute().data or [])
@@ -51410,13 +51906,17 @@ def _contrato_prazo(id_empresa, matricula):
         return None
     if not rows:
         return None
-    rows.sort(key=lambda r: int(r.get("ref2") or 0))
+    # Desempate pelo id: base antiga (migrada do Desktop) pode ter duas linhas
+    # com o mesmo ref2, e "qualquer uma" nao serve — vale a mais recente.
+    rows.sort(key=lambda r: (int(r.get("ref2") or 0), int(r.get("id") or 0)))
     ult = rows[-1]
     _dt = str(ult.get("data1f") or "").strip()
     if _dt == _DATA_VAZIA_LEGADO:
         _dt = ""
     _ant = str(ult.get("data1i") or "").strip()
     return {
+        "id":           ult.get("id"),
+        "total_linhas": len(rows),
         "dtterm":       _dt,
         "dias":         int(ult.get("ref1") or 0),
         "clausassec":   "S" if str(ult.get("ref3") or "0") == "1" else "N",
