@@ -53303,6 +53303,11 @@ def listagem_adiantamentos():
     if folha_sel and not any(f["folha"] == folha_sel for f in folhas_disponiveis):
         folhas_disponiveis.insert(0, {"folha": folha_sel})
 
+    # A mesma tela serve aos dois itens do menu: sem ?acao=editar é listagem
+    # pura (relatório, sem botão nenhum); com ?acao=editar aparecem o lápis e a
+    # lixeira. Evita expor ação destrutiva em quem só quer conferir os valores.
+    modo_edicao = (request.args.get("acao") or "").strip().lower() == "editar"
+
     return render_template(
         "F10_Rel_Adiantamentos.html",
         versao=ler_versao(),
@@ -53311,6 +53316,7 @@ def listagem_adiantamentos():
         anomes_atual=anomes,
         folha_selecionada=folha_sel,
         folhas_disponiveis=folhas_disponiveis,
+        modo_edicao=modo_edicao,
     )
 
 

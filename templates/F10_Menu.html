@@ -664,9 +664,10 @@ const modulos = {
             { nome: 'Listagens', itens: [
                 { icone: '📋', nome: 'Listagem de Movimento', href: '/rel_config_mov', ok: true },
             ]},
-            { nome: 'Pagamentos Antecipados', itens: [
-                { icone: '💵', nome: 'Adiantamento Salarial',       href: '#' },
-                { icone: '💰', nome: 'Adiantamento Quinzenal',      href: '/calcular_adiantamento', ok: true, bloqueioFolha: true, classe: 'acao-adiantamento' },
+            { nome: 'Adiantamento Quinzenal', itens: [
+                { icone: '💰', nome: 'Calcular',           href: '/calcular_adiantamento', ok: true, bloqueioFolha: true, classe: 'acao-adiantamento' },
+                { icone: '📋', nome: 'Listagem',           href: '/listagem_adiantamentos', ok: true },
+                { icone: '✏️', nome: 'Alterar ou Excluir', href: '/listagem_adiantamentos?acao=editar', ok: true, bloqueioFolha: true },
             ]}
         ]
     },
@@ -698,6 +699,7 @@ const modulos = {
                 { icone: '💰', nome: 'Calcular Adiantamento',    href: '/calcular_adiantamento', ok: true, bloqueioFolha: true, classe: 'acao-adiantamento' },
                 { icone: '✏️', nome: 'Informar Adiantamento',     href: '/informar_adiantamento', ok: true },
                 { icone: '📋', nome: 'Listagem de Adiantamentos', href: '/listagem_adiantamentos', ok: true },
+                { icone: '✏️', nome: 'Alterar ou Excluir',        href: '/listagem_adiantamentos?acao=editar', ok: true, bloqueioFolha: true },
                 { icone: '🧾', nome: 'Recibo do Adiantamento',    href: '/recibo_adiantamento', ok: true },
             ]}
         ]

@@ -145,7 +145,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
         <span class="topo-nome">{{ nome }}</span>
     </div>
     <div class="topo-titulo">
-        <span>Listagem de Adiantamentos Quinzenais</span>
+        <span>{% if modo_edicao %}Alterar ou Excluir Adiantamento Quinzenal{% else %}Listagem de Adiantamentos Quinzenais{% endif %}</span>
         {% if anomes_atual %}
         <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
         {% endif %}
@@ -183,7 +183,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
     <div class="card">
         <div class="card-titulo">
             <span>Adiantamentos lançados</span>
-            <span class="card-titulo-right">Verbas 161–164 · ✏️ altera o valor · 🗑 exclui</span>
+            <span class="card-titulo-right">{% if modo_edicao %}Verbas 161–164 · ✏️ altera o valor · 🗑 exclui{% else %}Verbas 161–164 · somente consulta{% endif %}</span>
         </div>
 
         <div class="tabela-wrap">
@@ -194,12 +194,12 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                         <th>Nome</th>
                         <th>Verba</th>
                         <th class="th-r">Valor</th>
-                        <th style="width:72px;"></th>
+                        {% if modo_edicao %}<th style="width:72px;"></th>{% endif %}
                     </tr>
                 </thead>
                 <tbody id="corpoTabela">
                     <tr>
-                        <td colspan="5">
+                        <td colspan="{% if modo_edicao %}5{% else %}4{% endif %}">
                             <div class="estado-central">
                                 <div class="spinner"></div>
                                 Carregando…
@@ -220,6 +220,8 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 
 <script>
 const ANOMES_ATUAL = {{ anomes_atual | tojson }};
+const MODO_EDICAO  = {{ (modo_edicao|default(false)) | tojson }};
+const NCOLS        = MODO_EDICAO ? 5 : 4;
 
 function fmtFolha(f) {
     const s = String(f);
@@ -237,7 +239,7 @@ async function carregar() {
     const tbody  = document.getElementById('corpoTabela');
     const rodape = document.getElementById('rodape');
 
-    tbody.innerHTML = `<tr><td colspan="4"><div class="estado-central"><div class="spinner"></div>Carregando…</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${NCOLS}"><div class="estado-central"><div class="spinner"></div>Carregando…</div></td></tr>`;
     rodape.style.display = 'none';
     document.getElementById('resumoFiltro').textContent = '';
 
@@ -246,13 +248,13 @@ async function carregar() {
         const d = await r.json();
 
         if (!d.ok) {
-            tbody.innerHTML = `<tr><td colspan="4"><div class="estado-central"><div class="icone">⚠️</div>${_esc(d.msg || 'Erro ao carregar.')}</div></td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${NCOLS}"><div class="estado-central"><div class="icone">⚠️</div>${_esc(d.msg || 'Erro ao carregar.')}</div></td></tr>`;
             return;
         }
 
         const lista = d.registros || [];
         if (lista.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5"><div class="estado-central"><div class="icone">📭</div>Nenhum adiantamento lançado para esta folha.</div></td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="${NCOLS}"><div class="estado-central"><div class="icone">📭</div>Nenhum adiantamento lançado para esta folha.</div></td></tr>`;
             document.getElementById('resumoFiltro').textContent = '0 registros';
             return;
         }
@@ -260,7 +262,7 @@ async function carregar() {
         renderTabela(lista);
 
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="5"><div class="estado-central"><div class="icone">⚠️</div>Erro de comunicação com o servidor.</div></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${NCOLS}"><div class="estado-central"><div class="icone">⚠️</div>Erro de comunicação com o servidor.</div></td></tr>`;
     }
 }
 
@@ -275,12 +277,12 @@ function renderTabela(lista) {
             <td class="td-nome" title="${_esc(reg.nome)}">${_esc(reg.nome)}</td>
             <td class="td-verba"><span class="td-cod">${reg.cod_verba}</span>${_esc(reg.dsc_rubr || '—')}</td>
             <td class="td-valor" id="val-${reg.id}">${fmtReais(reg.valor || 0)}</td>
-            <td class="td-acoes">
+            ${MODO_EDICAO ? `<td class="td-acoes">
                 <button class="btn-editar" title="Alterar valor"
                         onclick="editar(${reg.id}, '${nomeAttr}')">✏️</button>
                 <button class="btn-excluir" title="Excluir lançamento"
                         onclick="excluir(${reg.id}, '${nomeAttr}')">🗑</button>
-            </td>
+            </td>` : ''}
         </tr>`;
     }).join('');
 
@@ -376,7 +378,7 @@ async function excluir(id, nome) {
                 `${linhas} registro${linhas !== 1 ? 's' : ''}`;
             if (linhas === 0) {
                 document.getElementById('corpoTabela').innerHTML =
-                    `<tr><td colspan="5"><div class="estado-central"><div class="icone">📭</div>Nenhum adiantamento lançado para esta folha.</div></td></tr>`;
+                    `<tr><td colspan="${NCOLS}"><div class="estado-central"><div class="icone">📭</div>Nenhum adiantamento lançado para esta folha.</div></td></tr>`;
                 document.getElementById('rodape').style.display = 'none';
             }
         } else {
