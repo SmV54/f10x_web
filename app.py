@@ -15459,17 +15459,45 @@ def api_funcionarios_lista():
     # Contexto pensão: marca na lista quem JÁ tem pensão ativa, para o usuário
     # saber de cara que aquele clique é edição, não cadastro novo.
     pensao_mats = set()
+    pensoes_por_mat = {}
     if _contexto == "pensao":
         try:
             r_pe = (supabase.table("tab_pensao")
-                    .select("matricula")
+                    .select("id, matricula, dep_responsavel, valor_fixo, percentual")
                     .eq("id_empresa", id_empresa)
                     .eq("situacao", "A")
+                    .order("id")          # a ordem do id define a verba: 281, 282…
                     .execute())
-            pensao_mats = {int(row["matricula"]) for row in (r_pe.data or [])
-                           if row.get("matricula") is not None}
+            linhas = r_pe.data or []
+            pensao_mats = {int(x["matricula"]) for x in linhas
+                           if x.get("matricula") is not None}
+            _resp_ids = {int(x["dep_responsavel"]) for x in linhas
+                         if x.get("dep_responsavel")}
+            _nomes = {}
+            if _resp_ids:
+                rd = (supabase.table("tab_dependentes").select("id, nome")
+                      .in_("id", list(_resp_ids)).execute())
+                _nomes = {int(d["id"]): (d.get("nome") or "").strip()
+                          for d in (rd.data or [])}
+            for x in linhas:
+                m = int(x.get("matricula") or 0)
+                if not m:
+                    continue
+                lst = pensoes_por_mat.setdefault(m, [])
+                if x.get("valor_fixo") is not None:
+                    _vtxt = _fmt_brl(int(x["valor_fixo"]))
+                elif x.get("percentual") is not None:
+                    _vtxt = f"{int(x['percentual']) / 100:.2f}".replace(".", ",") + "%"
+                else:
+                    _vtxt = "—"
+                lst.append({
+                    "id":    x.get("id"),
+                    "verba": 281 + len(lst),
+                    "resp":  _nomes.get(int(x.get("dep_responsavel") or 0), "—"),
+                    "valor_txt": _vtxt,
+                })
         except Exception:
-            pensao_mats = set()
+            pensao_mats, pensoes_por_mat = set(), {}
 
     funcionarios = []
     for f in rows:
@@ -15490,6 +15518,7 @@ def api_funcionarios_lista():
             "cbofuncao": str(f.get("cbofuncao") or ""),
             "aviso_previo": (mat_int in aviso_mats),
             "tem_pensao":   (mat_int in pensao_mats),
+            "pensoes":      pensoes_por_mat.get(mat_int, []),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})

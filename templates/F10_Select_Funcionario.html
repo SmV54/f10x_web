@@ -221,6 +221,25 @@ body.sel-unico .lista-row { cursor: pointer; }
     cursor: pointer; white-space: nowrap; font-family: var(--sans); transition: 0.15s;
 }
 .btn-alterar-pensao:hover { background: #fef3c7; border-color: #d97706; }
+.menu-pensoes {
+    position: absolute; z-index: 9999; min-width: 290px;
+    background: #fff; border: 1px solid #cbd5e1; border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(15,23,42,0.18); padding: 6px; overflow: hidden;
+}
+.mp-titulo {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #64748b; padding: 4px 8px 6px;
+}
+.mp-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: none; border-radius: 7px; padding: 7px 8px;
+    font-family: var(--sans); font-size: 12px; color: #334155;
+    cursor: pointer; text-align: left; transition: 0.12s;
+}
+.mp-item:hover { background: #eff6ff; }
+.mp-verba { font-family: var(--mono); font-size: 11px; color: #64748b; }
+.mp-resp  { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mp-valor { font-family: var(--mono); font-weight: 700; color: #1d4ed8; white-space: nowrap; }
 {% if contexto == 'pensao' %}
 /* Coluna da ação mais larga: os dois botões não cabem em 116px. */
 .lista-header, .lista-row { grid-template-columns: 32px 54px 1fr 110px 236px; }
@@ -1153,9 +1172,11 @@ function renderLista(lista) {
             // é marcado, e o botão leva direto ao cadastro de mais uma.
             const nova = '<button class="btn-nova-pensao" title="Cadastrar uma nova pensão para este funcionário"'
                 + ' onclick="event.stopPropagation(); irNovaPensao(' + f.matricula + ')">➕ Nova Pensão</button>';
-            const pens = f.tem_pensao
-                ? '<button class="btn-alterar-pensao" title="Abrir a pensão já cadastrada para alterar ou excluir"'
-                  + ' onclick="event.stopPropagation(); irAlterarPensao(' + f.matricula + ')">✏️ Alterar Pensão</button>'
+            const qtdP = (f.pensoes || []).length;
+            const pens = qtdP
+                ? '<button class="btn-alterar-pensao" title="Abrir a pensão cadastrada para alterar ou excluir"'
+                  + ' onclick="event.stopPropagation(); irAlterarPensao(' + f.matricula + ', this)">'
+                  + '✏️ Alterar Pensão' + (qtdP > 1 ? ' (' + qtdP + ')' : '') + '</button>'
                 : '';
             sitCell = '<span class="sit-linha">' + nova + pens + '</span>';
         } else {
@@ -1209,8 +1230,41 @@ function irNovaPensao(mat) {
     window.location.href = '/cad_pensao?mats=' + mat + '&nova=1';
 }
 
-function irAlterarPensao(mat) {
-    window.location.href = '/cad_pensao?mats=' + mat;
+function escHtml(t) {
+    return String(t == null ? '' : t)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// 1 pensão abre direto; 2 ou mais abrem um menu para escolher qual alterar.
+function irAlterarPensao(mat, btn) {
+    const f = todosFunc.find(x => x.matricula === mat);
+    const lista = (f && f.pensoes) || [];
+    if (lista.length <= 1) {
+        const id = lista[0] ? '&pensao_id=' + lista[0].id : '';
+        window.location.href = '/cad_pensao?mats=' + mat + id;
+        return;
+    }
+    fecharMenuPensoes();
+    const m = document.createElement('div');
+    m.className = 'menu-pensoes';
+    m.id = 'menuPensoes';
+    m.innerHTML = '<div class="mp-titulo">Qual pensão alterar?</div>' + lista.map(p =>
+        `<button class="mp-item" onclick="window.location.href='/cad_pensao?mats=${mat}&pensao_id=${p.id}'">
+            <span class="mp-verba">${String(p.verba).padStart(4, '0')}</span>
+            <span class="mp-resp">${escHtml(p.resp)}</span>
+            <span class="mp-valor">${escHtml(p.valor_txt)}</span>
+         </button>`).join('');
+    document.body.appendChild(m);
+    const r = btn.getBoundingClientRect();
+    m.style.top  = (window.scrollY + r.bottom + 4) + 'px';
+    m.style.left = (window.scrollX + Math.min(r.left, window.innerWidth - 320)) + 'px';
+    setTimeout(() => document.addEventListener('click', fecharMenuPensoes, { once: true }), 0);
+}
+
+function fecharMenuPensoes() {
+    const el = document.getElementById('menuPensoes');
+    if (el) el.remove();
 }
 
 function toggleRow(mat) {
