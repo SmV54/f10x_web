@@ -36823,6 +36823,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             TIPO_FOLHA = {"N": "Normal", "F": "Ferias", "R": "Rescisao"}
             tm_rows  = [[Paragraph("ETAPA 1090 - LANCAMENTOS DO MES", st_etapa), "", ""]]
             tm_spans = [("SPAN", (0, 0), (2, 0))]
+            # Verbas ja tratadas neste laco — controla a substituicao do calculado
+            # (so a PRIMEIRA ocorrencia descarta; da segunda em diante os
+            # lancamentos da mesma verba somam entre si).
+            _verbas_manuais_vistas = set()
             if mov_func:
                 for reg in mov_func:
                     cod_v  = int(reg.get("cod_verba") or 0)
@@ -36834,6 +36838,20 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     dsc_s  = ri["dsc"] or f"Verba {cod_v:04d}"
                     unid   = ri.get("unid", "V")
                     orig_s = ORIG_LABEL.get(origem, origem)
+                    # O lancamento manual SUBSTITUI o valor calculado da mesma
+                    # verba. Antes somava, e o resultado nao fechava: a gravacao
+                    # (ver cod_verbas_manuais) grava so o manual no tab_mov, mas
+                    # o mmVmm levava calculado + manual para os totais e para as
+                    # bases de INSS, IRRF e FGTS — holerite com um valor, encargos
+                    # com outro.
+                    _calc_subst = None
+                    if cod_v not in _verbas_manuais_vistas:
+                        _verbas_manuais_vistas.add(cod_v)
+                        _ant_v = int(mmVmm.get(cod_v, 0) or 0)
+                        if _ant_v:
+                            _calc_subst = _ant_v
+                        mmVmm.pop(cod_v, None)
+                        mmQmm.pop(cod_v, None)
                     # ── Rotina exclusiva: verba 89 — Feriado Trabalhado ──
                     # qtd_dias × sal_dia × 2; qtd=0 → assume 1 dia.
                     if cod_v == 89:
@@ -36944,6 +36962,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         f"{cod_v:04d} — {dsc_s}   [{tp_s}]   Valor: {_fmt_brl(valor_calc)}{txt_qtd}"
                         f"   Origem: {orig_s}", st_detalhe), "", ""])
                     tm_spans.append(("SPAN", (0, idx_tm), (2, idx_tm)))
+                    if _calc_subst is not None:
+                        idx_tm = len(tm_rows)
+                        tm_rows.append([Paragraph(
+                            f"Substituiu o valor calculado da {cod_v:04d}: "
+                            f"{_fmt_brl(_calc_subst)} descartado — o lancamento manual "
+                            f"prevalece e e ele que entra nos totais e nas bases de "
+                            f"INSS, IRRF e FGTS", st_detalhe), "", ""])
+                        tm_spans.append(("SPAN", (0, idx_tm), (2, idx_tm)))
             else:
                 idx_tm = len(tm_rows)
                 tm_rows.append([Paragraph("Sem lancamentos nesta Folha.", st_detalhe), "", ""])
@@ -36973,7 +36999,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     # DSR — Repouso Remunerado
                     dias_uteis_dsr, dias_dsr = _calc_dsr_mes(anomes)
                     val_024 = int(round(val_003 / dias_uteis_dsr * dias_dsr)) if dias_uteis_dsr else 0
-                    mmVmm[24] = mmVmm.get(24, 0.0) + val_024
+                    # Mesma regra da ETAPA 1090: verba digitada a mao prevalece,
+                    # a automatica nao soma por cima (ver _verbas_manuais_vistas).
+                    _man_txt = "   *** digitada manualmente — valor manual mantido ***"
+                    if 24 not in _verbas_manuais_vistas:
+                        mmVmm[24] = mmVmm.get(24, 0.0) + val_024
                     # Base 56/58 = soma de todos proventos que incidem no INSS
                     base_56_58 = int(sum(
                         val for cod, val in mmVmm.items()
@@ -36983,19 +37013,24 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     terco   = dozeavo // 3
                     val_56  = dozeavo
                     val_58  = dozeavo + terco
-                    mmVmm[56] = mmVmm.get(56, 0.0) + val_56
-                    mmVmm[58] = mmVmm.get(58, 0.0) + val_58
+                    if 56 not in _verbas_manuais_vistas:
+                        mmVmm[56] = mmVmm.get(56, 0.0) + val_56
+                    if 58 not in _verbas_manuais_vistas:
+                        mmVmm[58] = mmVmm.get(58, 0.0) + val_58
                     dsc_24 = rubricas_info.get(24, {}).get("dsc") or "Repouso Remunerado"
                     dsc_56 = rubricas_info.get(56, {}).get("dsc") or "13 Salario Intermitente"
                     dsc_58 = rubricas_info.get(58, {}).get("dsc") or "Ferias Intermitentes"
                     txt_24 = (f"0024 — {dsc_24}"
                               f"   {_fmt_brl(val_003)} / {dias_uteis_dsr} dias uteis"
-                              f" × {dias_dsr} dias DSR  =  {_fmt_brl(val_024)}")
+                              f" × {dias_dsr} dias DSR  =  {_fmt_brl(val_024)}"
+                              + (_man_txt if 24 in _verbas_manuais_vistas else ""))
                     txt_56 = (f"0056 — {dsc_56}   Base INSS: {_fmt_brl(base_56_58)}"
-                              f"   1/12  =  {_fmt_brl(dozeavo)}")
+                              f"   1/12  =  {_fmt_brl(dozeavo)}"
+                              + (_man_txt if 56 in _verbas_manuais_vistas else ""))
                     txt_58 = (f"0058 — {dsc_58}   Base INSS: {_fmt_brl(base_56_58)}"
                               f"   1/12 + 1/3  =  {_fmt_brl(dozeavo)} + {_fmt_brl(terco)}"
-                              f"  =  {_fmt_brl(val_58)}")
+                              f"  =  {_fmt_brl(val_58)}"
+                              + (_man_txt if 58 in _verbas_manuais_vistas else ""))
                     e9b_tbl = Table([
                         [Paragraph("ETAPA 1100 - VERBAS AUTOMATICAS INTERMITENTE (Cat. 111)", st_etapa)],
                         [Paragraph(txt_24, st_formula)],
