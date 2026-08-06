@@ -139,6 +139,9 @@ body {
 .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px 14px; }
 /* Tributação: Natureza Jurídica maior; ISS e PIS menores (col 1..6) */
 .grid-trib { display: grid; grid-template-columns: 1.8fr 1fr 0.6fr 0.6fr 1fr 1fr; gap: 8px 14px; }
+/* Os dois campos de percentual caem na 2ª linha do grid, onde a 1ª coluna é
+   larga (1.8fr). Sem isto o input de 2 dígitos ficava esticado na linha toda. */
+.campo-pct input { max-width: 80px; }
 
 .grid-encargos-area {
     display: grid;
@@ -803,7 +806,8 @@ body {
                     </select>
                 </div>
                 <div class="campo" id="campoPercSimples" style="display:none;"><label>% Simples</label>             <input type="text" id="perc_simples" placeholder="—" onfocus="showHint(this,'% Simples — Alíquota efetiva do Simples Nacional.\nCalculada conforme o anexo e faixa de receita bruta acumulada dos últimos 12 meses.\nPreencher apenas para empresas optantes pelo Simples Nacional.')" onblur="clearHint()"></div>
-                <div class="campo"><label>% Adiantamento 13º Salário</label>       <input type="text" id="perAdianta13" value="50" placeholder="50" maxlength="2" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onfocus="showHint(this,'% Adiantamento do 13º — Percentual pago como 1ª parcela (adiantamento) do 13º salário, aplicado sobre o salário e as médias das verbas variáveis.\nInforme um número inteiro entre 10 e 90. Padrão legal: 50%.')" onblur="clearHint()"></div>
+                <div class="campo campo-pct"><label>% Adiantamento 13º Salário</label>       <input type="text" id="perAdianta13" value="50" placeholder="50" maxlength="2" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onfocus="showHint(this,'% Adiantamento do 13º — Percentual pago como 1ª parcela (adiantamento) do 13º salário, aplicado sobre o salário e as médias das verbas variáveis.\nInforme um número inteiro entre 10 e 90. Padrão legal: 50%.')" onblur="clearHint()"></div>
+                <div class="campo campo-pct"><label>% Adiantamento Quinzenal</label>         <input type="text" id="per_adiantamento" value="50" placeholder="50" maxlength="2" inputmode="numeric" oninput="this.value=this.value.replace(/\D/g,'')" onfocus="showHint(this,'% Adiantamento Quinzenal — Percentual do salário pago como adiantamento no meio do mês, usado pelo cálculo quando o funcionário não tem percentual ou valor próprio.\nInforme um número inteiro entre 10 e 60. Padrão: 50%.\nDeixe EM BRANCO se a empresa não paga adiantamento quinzenal — sem ele, só recebem os funcionários com percentual ou valor informado individualmente.')" onblur="clearHint()"></div>
             </div>
         </div>
     </div>
@@ -1403,6 +1407,20 @@ async function gravarEmpresa(painel) {
         return;
     }
 
+    // % Adiantamento Quinzenal: inteiro entre 10 e 60, ou em branco (empresa
+    // que não paga adiantamento quinzenal).
+    const _perAdQzRaw = v('per_adiantamento').trim();
+    let _perAdQz = null;
+    if (_perAdQzRaw !== '') {
+        _perAdQz = parseInt(_perAdQzRaw, 10);
+        if (isNaN(_perAdQz) || _perAdQz < 10 || _perAdQz > 60) {
+            const el = document.getElementById('per_adiantamento');
+            if (el) { el.focus(); _marcarErro(el); }
+            alert('O % de adiantamento quinzenal deve ser um número inteiro entre 10 e 60, ou ficar em branco se a empresa não paga adiantamento.');
+            return;
+        }
+    }
+
     // Procuração exige procurador selecionado
     if (v('cert_modo') === 'procuracao' && !v('id_procurador')) {
         const el = document.getElementById('id_procurador');
@@ -1413,6 +1431,7 @@ async function gravarEmpresa(painel) {
 
     const dados = {
         perAdianta13:           _perAd13,
+        per_adiantamento:       _perAdQz,
         cnpj:                   v('cnpj').replace(/\D/g,''),
         razaosocial:            document.getElementById('razaosocial')?.value.trim() || null,
         nome_fantasia:          v('nome_fantasia') || null,
@@ -1687,6 +1706,8 @@ function preencherFormulario(d) {
     set('ind_simples', d.ind_simples || '');
     set('perc_simples', flt(d.perc_simples));
     set('perAdianta13', d.perAdianta13 != null ? d.perAdianta13 : 50);
+    // Quinzenal: já gravado vem como está; nunca gravado abre com o padrão 50.
+    set('per_adiantamento', d.per_adiantamento != null ? d.per_adiantamento : 50);
     atualizarSimplesUI();
     // eSocial
     set('ind_coop',      d.es_ind_coop      || '');

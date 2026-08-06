@@ -9796,6 +9796,30 @@ def _validar_per_adianta13(dados):
     return None
 
 
+def _validar_per_adiantamento(dados):
+    """Normaliza dados['per_adiantamento'] — % do adiantamento QUINZENAL.
+
+    Diferente do 13º, este e opcional: em branco significa que a empresa nao
+    paga adiantamento quinzenal, e ai so recebe quem tem percentual ou valor
+    proprio no cadastro do funcionario. A tela abre com 50 (o padrao), mas
+    quem apagar o campo grava NULL de proposito.
+    Retorna msg de erro (str) ou None, ajustando dados."""
+    if "per_adiantamento" not in dados:
+        return None
+    v = dados.get("per_adiantamento")
+    if v is None or str(v).strip() == "":
+        dados["per_adiantamento"] = None
+        return None
+    try:
+        p = int(v)
+    except (TypeError, ValueError):
+        return "O % de adiantamento quinzenal deve ser um número inteiro entre 10 e 60."
+    if p < 10 or p > 60:
+        return "O % de adiantamento quinzenal deve estar entre 10 e 60."
+    dados["per_adiantamento"] = p
+    return None
+
+
 @app.route("/alterar_empresa")
 def alterar_empresa():
     if not session.get("logado"):
@@ -9851,6 +9875,9 @@ def api_alterar_empresa():
         _erro_p13 = _validar_per_adianta13(dados)
         if _erro_p13:
             return jsonify({"ok": False, "msg": _erro_p13})
+        _erro_pq = _validar_per_adiantamento(dados)
+        if _erro_pq:
+            return jsonify({"ok": False, "msg": _erro_pq})
         dados.pop("cnpj",       None)
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
@@ -9887,6 +9914,9 @@ def api_gravar_empresa():
         _erro_p13 = _validar_per_adianta13(dados)
         if _erro_p13:
             return jsonify({"ok": False, "msg": _erro_p13})
+        _erro_pq = _validar_per_adiantamento(dados)
+        if _erro_pq:
+            return jsonify({"ok": False, "msg": _erro_pq})
 
         id_cliente_sess = session.get("id_cliente", 1)
         dados["id_cliente"] = id_cliente_sess
