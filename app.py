@@ -51586,12 +51586,19 @@ def api_adiantamento_gravar():
         return jsonify({"ok": False, "msg": "Nenhum funcionário informado."})
 
     erros = 0
+    gravados = 0
     for item in itens:
         mat = item.get("matricula")
         if not mat:
             continue
 
-        if modo in ("E", "P"):
+        if modo == "E":
+            # "% da Empresa" LIMPA a configuração individual: o funcionário passa
+            # a herdar o per_adiantamento da empresa. Antes carimbava o percentual
+            # em cada tab_cad, e mudar o percentual da empresa depois não mexia em
+            # ninguém — todos já tinham valor próprio.
+            campos = {"per_adianta": None, "valor_adianta": None}
+        elif modo == "P":
             per = item.get("percentual")
             if per is None:
                 erros += 1; continue
@@ -51614,11 +51621,61 @@ def api_adiantamento_gravar():
              .eq("id_empresa", id_empresa)
              .eq("matricula", int(mat))
              .execute())
+            gravados += 1
         except Exception:
             erros += 1
 
     if erros:
         return jsonify({"ok": False, "msg": f"{erros} registro(s) com erro ao gravar."})
+    if modo == "E" and gravados:
+        gravar_log(_LOG_ADTO,
+                   f"{gravados} funcionário(s) passaram a herdar o % de adiantamento "
+                   f"quinzenal da empresa (configuração individual limpa)")
+    return jsonify({"ok": True})
+
+
+@app.route("/api/adiantamento_soltar", methods=["POST"])
+def api_adiantamento_soltar():
+    """Solta UM funcionário: apaga o % / valor próprio e ele volta a herdar o
+    percentual da empresa. O 'Limpar' do rodapé faz isso para todos de uma vez."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    data = request.get_json(force=True) or {}
+    try:
+        mat = int(data.get("matricula"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Matrícula inválida."})
+
+    ant = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("per_adianta, valor_adianta")
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", mat)
+             .limit(1).execute())
+        ant = (r.data or [{}])[0]
+    except Exception:
+        pass
+
+    try:
+        (supabase.table("tab_cad")
+         .update({"per_adianta": None, "valor_adianta": None})
+         .eq("id_empresa", id_empresa)
+         .eq("matricula", mat)
+         .execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+    if ant.get("valor_adianta") is not None:
+        _de = f"valor fixo {_fmt_brl(int(ant['valor_adianta']))}"
+    elif ant.get("per_adianta") is not None:
+        _de = f"{int(ant['per_adianta'])}% individual"
+    else:
+        _de = "sem configuração própria"
+    gravar_log(_LOG_ADTO,
+               f"Adiantamento quinzenal: {_de} removido — passa a herdar o % da empresa",
+               matricula=mat)
     return jsonify({"ok": True})
 
 
@@ -51633,6 +51690,9 @@ def api_adiantamento_limpar():
          .eq("id_empresa", id_empresa)
          .eq("situacao", "A")
          .execute())
+        gravar_log(_LOG_ADTO,
+                   "Adiantamento quinzenal: configuração individual de TODOS os "
+                   "funcionários limpa — passam a herdar o % da empresa")
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})

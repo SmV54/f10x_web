@@ -106,6 +106,28 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .btn-aplicar:hover { background: #1a5fb8; }
 .acao-nota { font-size: 11px; color: #94a3b8; margin-left: auto; white-space: nowrap; }
+.acao-nota-alerta { color: #b45309; white-space: normal; }
+.acao-nota-alerta a { color: #b45309; font-weight: 600; }
+.pct-empresa-fixo {
+    font-family: var(--mono); font-size: 14px; font-weight: 700; color: #1d4ed8;
+    background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 3px 10px;
+}
+.pct-empresa-fixo.pct-vazio { color: #b45309; background: #fffbeb; border-color: #fcd34d; font-size: 12px; }
+
+/* Coluna "Atual": de onde sai hoje o adiantamento de cada funcionário */
+.td-atual { text-align: right; white-space: nowrap; width: 160px; }
+.badge-orig {
+    display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+    padding: 2px 7px; border-radius: 999px; vertical-align: middle;
+}
+.badge-herda   { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
+.badge-proprio { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.btn-soltar {
+    background: none; border: none; cursor: pointer; padding: 1px 5px; margin-left: 4px;
+    border-radius: 5px; color: #cbd5e1; font-size: 13px; font-weight: 700; line-height: 1;
+    vertical-align: middle;
+}
+.btn-soltar:hover { background: #fee2e2; color: #dc2626; }
 
 /* ── TABELA DE FUNCIONÁRIOS ── */
 .tabela-wrap { overflow-x: auto; }
@@ -255,7 +277,7 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                     <input type="radio" name="modo" id="radio-E" value="E" checked>
                     <label for="radio-E">% da Empresa</label>
                 </div>
-                <div class="modo-card-desc">Aplica o mesmo percentual configurado para a empresa a todos os funcionários.</div>
+                <div class="modo-card-desc">Todos herdam o percentual do cadastro da empresa. Apaga % e valor próprios — mudar o percentual da empresa passa a valer para todos.</div>
             </div>
             <div class="modo-card" id="modoCard-P" onclick="selecionarModo('P')">
                 <div class="modo-card-label">
@@ -276,11 +298,16 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
         <!-- Barra modo E -->
         <div class="acao-rapida" id="barraModoE">
             <label>Percentual da empresa:</label>
-            <input type="number" id="pctEmpresa" class="inp-pct"
-                   min="10" max="60" value="{{ per_empresa or '' }}"
-                   placeholder="–" oninput="aplicarModoE()">
-            <span>%</span>
-            <span class="acao-nota">Aplica a todos ao digitar</span>
+            {% if per_empresa %}
+            <span class="pct-empresa-fixo">{{ per_empresa }}%</span>
+            <span class="acao-nota">vem do Cadastro da Empresa · gravar aqui faz todos herdarem</span>
+            {% else %}
+            <span class="pct-empresa-fixo pct-vazio">não informado</span>
+            <span class="acao-nota acao-nota-alerta">
+                Informe o <strong>% Adiantamento Quinzenal</strong> no
+                <a href="/alterar_empresa">Cadastro da Empresa</a> para usar este modo.
+            </span>
+            {% endif %}
         </div>
 
         <!-- Barra modo P -->
@@ -321,6 +348,7 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                     <th class="th-r">Sal. Base</th>
                     <th class="th-r" id="thEntrada">% Adiant.</th>
                     <th class="th-r" id="thEstimado">Estimado</th>
+                    <th class="th-r" id="thAtual">Atual</th>
                 </tr>
             </thead>
             <tbody id="corpoTabela"></tbody>
@@ -451,6 +479,7 @@ function renderizarTabela(manterValores) {
             <td class="td-sal">${salFmt}</td>
             ${celEntrada}
             ${celEstimado}
+            ${celAtual(f)}
         `;
         tbody.appendChild(tr);
     });
@@ -458,14 +487,61 @@ function renderizarTabela(manterValores) {
     atualizarTotal();
 }
 
-function _getPctEmpresa() {
-    const v = document.getElementById('pctEmpresa').value.trim();
-    const n = parseInt(v, 10);
-    return (!isNaN(n) && n >= 10 && n <= 60) ? n : null;
+// Coluna "Atual": mostra de onde sai hoje o adiantamento do funcionário.
+// Quem tem % ou valor próprio ganha o "×" para soltar e voltar a herdar da empresa.
+function celAtual(f) {
+    if (f.valor_adianta != null) {
+        return `<td class="td-atual">
+            <span class="badge-orig badge-proprio">VALOR ${fmtReais(f.valor_adianta)}</span>
+            <button class="btn-soltar" title="Remover o valor próprio — passa a herdar o % da empresa"
+                    onclick="soltar(${f.matricula})">&times;</button>
+        </td>`;
+    }
+    if (f.per_adianta != null) {
+        return `<td class="td-atual">
+            <span class="badge-orig badge-proprio">${f.per_adianta}% PRÓPRIO</span>
+            <button class="btn-soltar" title="Remover o percentual próprio — passa a herdar o % da empresa"
+                    onclick="soltar(${f.matricula})">&times;</button>
+        </td>`;
+    }
+    const sufixo = PER_EMPRESA != null ? ` (${PER_EMPRESA}%)` : ' — sem %';
+    return `<td class="td-atual"><span class="badge-orig badge-herda">EMPRESA${sufixo}</span></td>`;
 }
 
-function aplicarModoE() {
-    renderizarTabela(false);
+// Solta um funcionário: apaga a configuração própria dele no cadastro.
+async function soltar(mat) {
+    const f = FUNCIONARIOS.find(x => x.matricula === mat);
+    const nome = f ? f.nome : `matrícula ${mat}`;
+    const ok = await f10Confirm(
+        `Remover a configuração própria de ${nome}?\n\n`
+        + `Ele passa a herdar o % de adiantamento do cadastro da empresa`
+        + (PER_EMPRESA != null ? ` (${PER_EMPRESA}%).` : `, que hoje não está informado — ficaria sem adiantamento.`),
+        { titulo: 'Voltar a herdar da empresa', tipo: 'aviso', okText: 'Remover' });
+    if (!ok) return;
+    try {
+        const r = await fetch('/api/adiantamento_soltar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matricula: mat }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            if (f) { f.per_adianta = null; f.valor_adianta = null; }
+            renderizarTabela(true);
+            mostrarMsg(`${nome} passou a herdar o percentual da empresa.`, 'ok');
+        } else {
+            mostrarMsg(d.msg || 'Erro ao remover.', 'err');
+        }
+    } catch(e) {
+        mostrarMsg('Erro de comunicação com o servidor.', 'err');
+    }
+}
+
+// No modo "% da Empresa" o percentual NÃO é digitado aqui: vem do cadastro da
+// empresa (per_adiantamento). Gravar neste modo apaga a configuração individual.
+function _getPctEmpresa() {
+    const n = parseInt(PER_EMPRESA, 10);
+    return (!isNaN(n) && n >= 10 && n <= 60) ? n : null;
 }
 
 function preencherTodosP() {
@@ -572,15 +648,19 @@ async function gravar() {
     let erroValidacao = false;
 
     if (modoAtivo === 'E') {
-        const pct = _getPctEmpresa();
-        if (pct === null) {
-            mostrarMsg('Informe o percentual da empresa (10–60).', 'err');
+        if (_getPctEmpresa() === null) {
+            mostrarMsg('A empresa não tem % de adiantamento quinzenal. Informe no Cadastro da Empresa antes de usar este modo.', 'err');
             btn.disabled = false;
             return;
         }
-        FUNCIONARIOS.forEach(f => {
-            itens.push({ matricula: f.matricula, percentual: pct, valor: null });
-        });
+        // Só precisa mandar quem TEM configuração própria — os demais já herdam.
+        FUNCIONARIOS.filter(f => f.per_adianta != null || f.valor_adianta != null)
+                    .forEach(f => itens.push({ matricula: f.matricula, percentual: null, valor: null }));
+        if (itens.length === 0) {
+            mostrarMsg('Todos os funcionários já herdam o percentual da empresa.', 'ok');
+            btn.disabled = false;
+            return;
+        }
 
     } else if (modoAtivo === 'P') {
         document.querySelectorAll('.inp-pct-row').forEach(inp => {
@@ -632,10 +712,13 @@ async function gravar() {
             itens.forEach(item => {
                 const f = FUNCIONARIOS.find(x => x.matricula === item.matricula);
                 if (!f) return;
-                f.per_adianta   = modoAtivo !== 'V' ? item.percentual : null;
+                f.per_adianta   = modoAtivo === 'P' ? item.percentual : null;
                 f.valor_adianta = modoAtivo === 'V' ? item.valor      : null;
             });
-            mostrarMsg(`${itens.length} adiantamento${itens.length !== 1 ? 's' : ''} gravado${itens.length !== 1 ? 's' : ''} com sucesso.`, 'ok');
+            renderizarTabela(true);   // atualiza a coluna "Atual"
+            mostrarMsg(modoAtivo === 'E'
+                ? `${itens.length} funcionário${itens.length !== 1 ? 's' : ''} passou a herdar o percentual da empresa.`
+                : `${itens.length} adiantamento${itens.length !== 1 ? 's' : ''} gravado${itens.length !== 1 ? 's' : ''} com sucesso.`, 'ok');
         } else {
             mostrarMsg(d.msg || 'Erro ao gravar.', 'err');
         }
