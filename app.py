@@ -36286,9 +36286,27 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             # salario proporcional NAO os paga. Quem paga e a rubrica 0009, na
             # proporcao do salario. Sem isso o funcionario perdia esses dias — o
             # calculo descontava e nao repunha em lugar nenhum.
+            #
+            # A 0002 digitada tambem INIBE a 0009 calculada: quem digitou o
+            # salario do mes decide quanto e atestado. Se o atestado for devido,
+            # a 0009 e digitada junto — 0002 e 0009 convivem no mesmo mes, desde
+            # que ambas venham do lancamento manual (ETAPA 1090).
             _val_dia_at = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
             _val_atest  = int(_val_dia_at * dias_atestado_total)
-            if dias_atestado_total > 0 and _val_atest > 0:
+            if _mov_manual_2 and not is_intermitente:
+                mmVmm.pop(9, None)
+                mmQmm.pop(9, None)
+                _tem_9_manual = any(int(r.get("cod_verba") or 0) == 9
+                                    for r in tab_mov_dict.get(matr, []))
+                e4b_tbl = Table([[Paragraph(
+                    "ETAPA 1045 - ATESTADO MEDICO (15 PRIMEIROS DIAS)"
+                    "   Nao calculada — 0002 lancada manualmente inibe a 0009 automatica"
+                    + ("; a 0009 desta folha vem do lancamento manual (ETAPA 1090)"
+                       if _tem_9_manual else
+                       "; nenhuma 0009 lancada nesta folha"),
+                    st_etapa)]], colWidths=[17*cm])
+                e4b_tbl.setStyle(_st_e4_zero)
+            elif dias_atestado_total > 0 and _val_atest > 0:
                 mmQmm[9] = dias_atestado_total
                 mmVmm[9] = _val_atest
                 _st_op4b = ParagraphStyle("op4b", fontName="Helvetica", fontSize=7,
