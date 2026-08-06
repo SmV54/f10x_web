@@ -40606,6 +40606,11 @@ def recibo_pensao_pdf():
                              textColor=colors.HexColor("#1f2937"), leading=12)
     st_sub  = ParagraphStyle("sub",  fontName="Helvetica", fontSize=7.5,
                              textColor=colors.HexColor("#64748b"), leading=10)
+    # A competência fica logo abaixo do título e precisa da MESMA centralização:
+    # o alinhamento de um Paragraph vem do estilo dele, não do ALIGN da tabela.
+    st_sub_c = ParagraphStyle("subc", parent=st_sub, alignment=1,
+                              fontName="Helvetica-Bold", fontSize=8,
+                              textColor=colors.HexColor("#475569"))
     st_corp = ParagraphStyle("corp", fontName="Helvetica", fontSize=9.5, alignment=4,
                              textColor=colors.HexColor("#1f2937"), leading=15)
     st_lbl  = ParagraphStyle("lbl",  fontName="Helvetica", fontSize=7,
@@ -40623,11 +40628,10 @@ def recibo_pensao_pdf():
         cab = Table([[Paragraph(empresa_nm[:60], st_emp),
                       Paragraph("RECIBO DE PENSÃO ALIMENTÍCIA", st_tit)],
                      [Paragraph(f"CNPJ: {cnpj_fmt}", st_sub),
-                      Paragraph(f"Competência: {comp_curta}", st_sub)]],
+                      Paragraph(f"Competência: {comp_curta}", st_sub_c)]],
                     colWidths=[L*0.42, L*0.58])
         cab.setStyle(TableStyle([
             ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-            ("ALIGN",  (1,1), (1,1), "RIGHT"),
             ("LEFTPADDING",  (0,0), (-1,-1), 0),
             ("RIGHTPADDING", (0,0), (-1,-1), 0),
             ("BOTTOMPADDING",(0,0), (-1,-1), 2),
