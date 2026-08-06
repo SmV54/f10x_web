@@ -36406,6 +36406,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]))
             elems.append(e5_tbl)
 
+            # ── afastamento x adicionais (insalubridade / periculosidade) ──
+            # Sem trabalho no ambiente insalubre/perigoso nao ha adicional: os
+            # dias de afastamento (atestado da empresa + INSS) saem do calculo.
+            # Mes inteiro afastado = adicional ZERO; afastamento parcial = valor
+            # proporcional aos dias restantes, na mesma logica do salario (1040).
+            dias_afast_adic = dias_atestado_total + dias_inss_total
+            dias_adic       = max(0, dias_mes - dias_afast_adic)
+
             # ── etapa 6 — insalubridade ────────────────────
             insalub_ev = insalubridades.get(matr)
             _st_e6_zero = TableStyle([
@@ -36414,28 +36422,52 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("TOPPADDING",    (0, 0), (0, 0), 10),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 4),
             ])
-            if insalub_ev:
+            if insalub_ev and dias_adic <= 0:
+                mmVmm[30] = 0.0
+                e6_tbl = Table([[Paragraph(
+                    "ETAPA 1060 - RUBRICA 0030-INSALUBRIDADE   Rubrica 0030 = ZERO — "
+                    f"afastado o mes inteiro ({dias_afast_adic} dias de afastamento)",
+                    st_etapa)]], colWidths=[17*cm])
+                e6_tbl.setStyle(_st_e6_zero)
+            elif insalub_ev:
                 ref1_ev     = int(insalub_ev.get("ref1") or 0)
                 pct_num     = ref1_ev / 100           # e.g. 2000 → 20.0
                 pct_frac    = ref1_ev / 10000         # e.g. 2000 → 0.20
-                insalub_val = int(sm_centavos * pct_frac)   # centavos truncados
+                insalub_int = int(sm_centavos * pct_frac)   # centavos truncados
+                insalub_val = (int(insalub_int * dias_adic / dias_mes)
+                               if (dias_afast_adic > 0 and dias_mes) else insalub_int)
                 mmVmm[30]   = insalub_val
                 pct_fmt     = f"{pct_num:g}%"
                 _st_op6  = ParagraphStyle("op6a", fontName="Helvetica", fontSize=7,
                                           alignment=1, textColor=colors.HexColor("#374151"))
                 _cw6 = [3.8*cm, 0.4*cm, 2.5*cm, 0.4*cm, 2.5*cm]
-                form6 = Table([
+                _rows6 = [
                     [Paragraph("0030-INSALUBRIDADE", st_detalhe),
                      Paragraph("=", _st_op6),
                      Paragraph("Salario Minimo", st_detalhe),
                      Paragraph("x", _st_op6),
                      Paragraph(f"Percentual ({pct_fmt})", _st_op6)],
-                    [Paragraph(_fmt_brl(insalub_val), _st_op6),
+                    [Paragraph(_fmt_brl(insalub_int), _st_op6),
                      Paragraph("=", _st_op6),
                      Paragraph(_fmt_brl(sm_centavos), _st_op6),
                      Paragraph("x", _st_op6),
                      Paragraph(pct_fmt, _st_op6)],
-                ], colWidths=_cw6)
+                ]
+                if dias_afast_adic > 0:
+                    _rows6 += [
+                        [Paragraph("0030 Proporcional", st_detalhe),
+                         Paragraph("=", _st_op6),
+                         Paragraph("Insalubridade Integral", _st_op6),
+                         Paragraph("x", _st_op6),
+                         Paragraph("Dias sem Afastamento / Dias do Mes", _st_op6)],
+                        [Paragraph(_fmt_brl(insalub_val), st_detalhe),
+                         Paragraph("=", _st_op6),
+                         Paragraph(_fmt_brl(insalub_int), _st_op6),
+                         Paragraph("x", _st_op6),
+                         Paragraph(f"{dias_adic} / {dias_mes}"
+                                   f"  ({dias_afast_adic} dias afastado)", _st_op6)],
+                    ]
+                form6 = Table(_rows6, colWidths=_cw6)
                 form6.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
@@ -36471,28 +36503,52 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("TOPPADDING",    (0, 0), (0, 0), 10),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 4),
             ])
-            if pericu_ev:
+            if pericu_ev and dias_adic <= 0:
+                mmVmm[31] = 0.0
+                e7_tbl = Table([[Paragraph(
+                    "ETAPA 1070 - RUBRICA 0031-PERICULOSIDADE   Rubrica 0031 = ZERO — "
+                    f"afastado o mes inteiro ({dias_afast_adic} dias de afastamento)",
+                    st_etapa)]], colWidths=[17*cm])
+                e7_tbl.setStyle(_st_e7_zero)
+            elif pericu_ev:
                 ref1_ev     = int(pericu_ev.get("ref1") or 0)
                 pct_num     = ref1_ev / 100           # e.g. 3000 → 30.0
                 pct_frac    = ref1_ev / 10000         # e.g. 3000 → 0.30
-                pericu_val  = int(l["sal_mes"] * pct_frac)   # centavos truncados
+                pericu_int  = int(l["sal_mes"] * pct_frac)   # centavos truncados
+                pericu_val  = (int(pericu_int * dias_adic / dias_mes)
+                               if (dias_afast_adic > 0 and dias_mes) else pericu_int)
                 mmVmm[31]   = pericu_val
                 pct_fmt     = f"{pct_num:g}%"
                 _st_op7     = ParagraphStyle("op7a", fontName="Helvetica", fontSize=7,
                                              alignment=1, textColor=colors.HexColor("#374151"))
                 _cw7 = [3.8*cm, 0.4*cm, 2.5*cm, 0.4*cm, 2.5*cm]
-                form7 = Table([
+                _rows7 = [
                     [Paragraph("0031-PERICULOSIDADE", st_detalhe),
                      Paragraph("=", _st_op7),
                      Paragraph("Salario Base", st_detalhe),
                      Paragraph("x", _st_op7),
                      Paragraph(f"Percentual ({pct_fmt})", _st_op7)],
-                    [Paragraph(_fmt_brl(pericu_val), _st_op7),
+                    [Paragraph(_fmt_brl(pericu_int), _st_op7),
                      Paragraph("=", _st_op7),
                      Paragraph(_fmt_brl(l["sal_mes"]), _st_op7),
                      Paragraph("x", _st_op7),
                      Paragraph(pct_fmt, _st_op7)],
-                ], colWidths=_cw7)
+                ]
+                if dias_afast_adic > 0:
+                    _rows7 += [
+                        [Paragraph("0031 Proporcional", st_detalhe),
+                         Paragraph("=", _st_op7),
+                         Paragraph("Periculosidade Integral", _st_op7),
+                         Paragraph("x", _st_op7),
+                         Paragraph("Dias sem Afastamento / Dias do Mes", _st_op7)],
+                        [Paragraph(_fmt_brl(pericu_val), st_detalhe),
+                         Paragraph("=", _st_op7),
+                         Paragraph(_fmt_brl(pericu_int), _st_op7),
+                         Paragraph("x", _st_op7),
+                         Paragraph(f"{dias_adic} / {dias_mes}"
+                                   f"  ({dias_afast_adic} dias afastado)", _st_op7)],
+                    ]
+                form7 = Table(_rows7, colWidths=_cw7)
                 form7.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
