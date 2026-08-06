@@ -16062,22 +16062,32 @@ def api_afastamento_gravar():
     motivo     = str(data.get("motivo", "")).strip()
     campotxt1  = data.get("campotxt1")  # posição 1: S/N mesmo motivo; posição 2: 0-3 acidente
     campotxt4  = data.get("campotxt4")  # observação (motivo 21)
+    # Data anterior ao mês da folha ativa: a tela pergunta e manda estes dois.
+    retroativo_ok = bool(data.get("retroativo_ok"))
+    ger_es_raw    = data.get("gerar_esocial")
+    gerar_esocial = True if ger_es_raw is None else bool(ger_es_raw)
 
     if not matriculas:
         return jsonify({"ok": False, "msg": "Nenhuma matrícula informada."})
     if len(data1i) != 8 or not data1i.isdigit():
         return jsonify({"ok": False, "msg": "Data Início inválida."})
     anomes_am  = str(session.get("anomes_atual") or "")
-    if anomes_am and data1i[:6] != anomes_am:
-        return jsonify({"ok": False, "msg": f"Data Início fora da Folha Ativa ({anomes_am[4:6]}/{anomes_am[0:4]})."})
+    folha_lbl  = f"{anomes_am[4:6]}/{anomes_am[0:4]}" if anomes_am else ""
+    retroativo = bool(anomes_am and data1i[:6] < anomes_am)
+    if anomes_am and data1i[:6] > anomes_am:
+        return jsonify({"ok": False, "msg": f"Data Início posterior à Folha Ativa ({folha_lbl})."})
+    if retroativo and not retroativo_ok:
+        return jsonify({"ok": False, "msg": f"Data Início anterior à Folha Ativa ({folha_lbl}) — confirmação necessária."})
     if data1f is not None:
         data1f = str(data1f).strip()
         if len(data1f) != 8 or not data1f.isdigit():
             return jsonify({"ok": False, "msg": "Data Fim inválida."})
         if data1f < data1i:
             return jsonify({"ok": False, "msg": "Data Fim deve ser igual ou posterior à Data Início."})
-        if anomes_am and data1f[:6] != anomes_am:
-            return jsonify({"ok": False, "msg": f"Data Fim fora da Folha Ativa ({anomes_am[4:6]}/{anomes_am[0:4]})."})
+        if anomes_am and data1f[:6] > anomes_am:
+            return jsonify({"ok": False, "msg": f"Data Fim posterior à Folha Ativa ({folha_lbl})."})
+        if anomes_am and data1f[:6] < anomes_am and not retroativo_ok:
+            return jsonify({"ok": False, "msg": f"Data Fim anterior à Folha Ativa ({folha_lbl}) — confirmação necessária."})
     else:
         data1f = None
     if not motivo:
@@ -16117,35 +16127,41 @@ def api_afastamento_gravar():
             gravados += 1
             eventos_list.append({"matricula": mat_int, "id_evento": id_evento})
 
-            # Remessa eSocial S-2230
+            # Remessa eSocial S-2230 (em data retroativa o usuário escolhe se gera)
             es_ok = False
-            try:
-                agora_es      = _agora_brasilia()
-                anomes_tp     = str(session.get("anomes_tipo") or "")
-                folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
-                base_es = {
-                    "id_cliente": id_cliente,
-                    "id_empresa": id_empresa,
-                    "data_cad":   agora_es.strftime("%Y%m%d"),
-                    "hora_cad":   agora_es.strftime("%H%M"),
-                    "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-                    "ano_mes":    int(anomes_am) if anomes_am else None,
-                    "folha_tipo": folha_tipo_es,
-                    "layout":     "2230",
-                    "matricula":  mat_int,
-                    "codigo2":    id_evento,
-                }
-                # S — saída (sempre)
-                supabase.table("tab_esocial").insert({**base_es, "flag1": "S"}).execute()
-                # R — retorno (só se data fim foi informada)
-                if data1f:
-                    supabase.table("tab_esocial").insert({**base_es, "flag1": "R"}).execute()
-                es_ok = True
-            except Exception as e_es:
-                msg_es = str(e_es)[:120]
-                avisos_es.append(f"Mat {mat_int}: {msg_es}")
+            if gerar_esocial:
+                try:
+                    agora_es      = _agora_brasilia()
+                    anomes_tp     = str(session.get("anomes_tipo") or "")
+                    folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
+                    base_es = {
+                        "id_cliente": id_cliente,
+                        "id_empresa": id_empresa,
+                        "data_cad":   agora_es.strftime("%Y%m%d"),
+                        "hora_cad":   agora_es.strftime("%H%M"),
+                        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                        "ano_mes":    int(anomes_am) if anomes_am else None,
+                        "folha_tipo": folha_tipo_es,
+                        "layout":     "2230",
+                        "matricula":  mat_int,
+                        "codigo2":    id_evento,
+                    }
+                    # S — saída (sempre)
+                    supabase.table("tab_esocial").insert({**base_es, "flag1": "S"}).execute()
+                    # R — retorno (só se data fim foi informada)
+                    if data1f:
+                        supabase.table("tab_esocial").insert({**base_es, "flag1": "R"}).execute()
+                    es_ok = True
+                except Exception as e_es:
+                    msg_es = str(e_es)[:120]
+                    avisos_es.append(f"Mat {mat_int}: {msg_es}")
 
-            gravar_log("AFASTAMENTO", f"{_fmt_dt(data1i)} a {_fmt_dt(data1f) if data1f else 'Sem Retorno'} mot:{motivo}", matricula=mat_int)
+            sufixo_log = ""
+            if retroativo:
+                sufixo_log = " RETROATIVO" + ("" if gerar_esocial else " s/S-2230")
+            gravar_log("AFASTAMENTO",
+                       f"{_fmt_dt(data1i)} a {_fmt_dt(data1f) if data1f else 'Sem Retorno'} mot:{motivo}{sufixo_log}",
+                       matricula=mat_int)
 
         except Exception as e:
             erros.append(f"Mat {mat_int}: {str(e)}")
@@ -16154,6 +16170,10 @@ def api_afastamento_gravar():
         return jsonify({"ok": False, "msg": "Nenhum registro gravado. " + "; ".join(erros)})
 
     msg = f"Afastamento registrado: {gravados} funcionário(s)."
+    if retroativo:
+        msg += " (data retroativa)"
+    if not gerar_esocial:
+        msg += " Remessa do S-2230 não gerada."
     if erros:
         msg += " Erros: " + "; ".join(erros)
     if avisos_es:

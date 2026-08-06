@@ -130,9 +130,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .select-motivo:focus { border-color: var(--accent); background: #f0f7ff; }
 .select-motivo.erro  { border-color: #ef4444; background: #fff5f5; }
 
-.hint      { font-size: 11px; color: #94a3b8; }
-.hint.ok   { color: #16a34a; }
-.hint.erro { color: #ef4444; }
+.hint       { font-size: 11px; color: #94a3b8; }
+.hint.ok    { color: #16a34a; }
+.hint.erro  { color: #ef4444; }
+.hint.aviso { color: #b45309; font-weight: 600; }
+
+.input-data.aviso { border-color: #f59e0b; background: #fffbeb; }
 
 .radio-group { display: flex; gap: 18px; align-items: center; padding-top: 4px; }
 .radio-group label {
@@ -400,33 +403,52 @@ function folhaLabel() {
     return ANOMES ? `${ANOMES.slice(4,6)}/${ANOMES.slice(0,4)}` : '';
 }
 
+function fmtBr(yyyymmdd) {
+    if (!yyyymmdd || yyyymmdd.length !== 8) return '';
+    return yyyymmdd.slice(6,8) + '/' + yyyymmdd.slice(4,6) + '/' + yyyymmdd.slice(0,4);
+}
+
+// Data anterior ao mês da Folha Ativa é permitida (com confirmação na gravação);
+// data posterior continua barrada.
+function ehRetroativa(yyyymmdd) {
+    return !!(ANOMES && yyyymmdd && yyyymmdd.slice(0,6) < ANOMES);
+}
+
 function validarDataInicio() {
     const el = document.getElementById('data_inicio');
     const hint = document.getElementById('hint-inicio');
-    el.classList.remove('erro'); hint.textContent = ''; hint.className = 'hint';
+    el.classList.remove('erro', 'aviso'); hint.textContent = ''; hint.className = 'hint';
     const raw = el.value.replace(/\D/g,'');
     if (!raw) return;
     const yyyymmdd = parseData(el.value);
     if (!yyyymmdd) { el.classList.add('erro'); hint.classList.add('erro'); hint.textContent = 'Data inválida'; return; }
-    if (ANOMES && yyyymmdd.slice(0,6) !== ANOMES) {
+    if (!ANOMES) return;
+    if (yyyymmdd.slice(0,6) > ANOMES) {
         el.classList.add('erro'); hint.classList.add('erro');
-        hint.textContent = `Fora da Folha Ativa (${folhaLabel()})`;
+        hint.textContent = `Posterior à Folha Ativa (${folhaLabel()})`;
+    } else if (yyyymmdd.slice(0,6) < ANOMES) {
+        el.classList.add('aviso'); hint.classList.add('aviso');
+        hint.textContent = `Retroativa — anterior à Folha Ativa (${folhaLabel()}); será pedida confirmação`;
     }
 }
 
 function validarDataFim() {
     const el = document.getElementById('data_fim');
     const hint = document.getElementById('hint-fim');
-    el.classList.remove('erro'); hint.textContent = ''; hint.className = 'hint';
+    el.classList.remove('erro', 'aviso'); hint.textContent = ''; hint.className = 'hint';
     const raw = el.value.replace(/\D/g,'');
     if (!raw) return;
     const yyyymmdd = parseData(el.value);
     if (!yyyymmdd) { el.classList.add('erro'); hint.classList.add('erro'); hint.textContent = 'Data inválida'; return; }
     const ini = parseData(document.getElementById('data_inicio').value);
     if (ini && yyyymmdd < ini) { el.classList.add('erro'); hint.classList.add('erro'); hint.textContent = 'Fim anterior ao Início'; return; }
-    if (ANOMES && yyyymmdd.slice(0,6) !== ANOMES) {
+    if (!ANOMES) return;
+    if (yyyymmdd.slice(0,6) > ANOMES) {
         el.classList.add('erro'); hint.classList.add('erro');
-        hint.textContent = `Fora da Folha Ativa (${folhaLabel()})`;
+        hint.textContent = `Posterior à Folha Ativa (${folhaLabel()})`;
+    } else if (yyyymmdd.slice(0,6) < ANOMES) {
+        el.classList.add('aviso'); hint.classList.add('aviso');
+        hint.textContent = `Retroativa — anterior à Folha Ativa (${folhaLabel()}); será pedida confirmação`;
     }
 }
 
@@ -466,9 +488,9 @@ async function gravar() {
         document.getElementById('data_inicio').classList.add('erro');
         showToast('Informe a Data Início.', 'erro'); return;
     }
-    if (ANOMES && data1i.slice(0,6) !== ANOMES) {
+    if (ANOMES && data1i.slice(0,6) > ANOMES) {
         document.getElementById('data_inicio').classList.add('erro');
-        showToast(`Data Início fora da Folha Ativa (${folhaLabel()}).`, 'erro'); return;
+        showToast(`Data Início posterior à Folha Ativa (${folhaLabel()}).`, 'erro'); return;
     }
 
     const data_fim_val = document.getElementById('data_fim').value.replace(/\D/g,'');
@@ -483,9 +505,9 @@ async function gravar() {
             document.getElementById('data_fim').classList.add('erro');
             showToast('Data Fim deve ser igual ou posterior à Data Início.', 'erro'); return;
         }
-        if (ANOMES && data1f.slice(0,6) !== ANOMES) {
+        if (ANOMES && data1f.slice(0,6) > ANOMES) {
             document.getElementById('data_fim').classList.add('erro');
-            showToast(`Data Fim fora da Folha Ativa (${folhaLabel()}).`, 'erro'); return;
+            showToast(`Data Fim posterior à Folha Ativa (${folhaLabel()}).`, 'erro'); return;
         }
     }
 
@@ -526,13 +548,36 @@ async function gravar() {
         campotxt4 = obs;
     }
 
+    // ── Data anterior ao mês da Folha Ativa: confirma o registro e
+    //    pergunta se deve gerar a remessa do S-2230 ──
+    const retro = ehRetroativa(data1i) || ehRetroativa(data1f);
+    let gerarEsocial = true;
+    if (retro) {
+        const quais = ehRetroativa(data1i)
+            ? `Data Início ${fmtBr(data1i)}`
+            : `Data Fim ${fmtBr(data1f)}`;
+        const ok = await f10Confirm(
+            `${quais} é anterior ao mês da Folha Ativa (${folhaLabel()}).\n\n` +
+            `O afastamento será gravado com essa data retroativa. Confirma?`,
+            { titulo: 'Afastamento com data retroativa', tipo: 'aviso',
+              okText: 'Sim, registrar', cancelText: 'Cancelar' });
+        if (!ok) return;
+
+        gerarEsocial = await f10Confirm(
+            `Deseja gerar a remessa do S-2230 (Afastamento Temporário) para o eSocial?\n\n` +
+            `Escolha "Não gerar" se este afastamento já foi enviado ao eSocial.`,
+            { titulo: 'Remessa eSocial S-2230', tipo: 'info',
+              okText: 'Sim, gerar', cancelText: 'Não gerar' });
+    }
+
     const btn = document.getElementById('btn-gravar');
     btn.disabled = true; btn.textContent = 'Registrando…';
 
     document.getElementById('erro-box').style.display = 'none';
 
     try {
-        const payload = { matriculas, data1i, data1f, motivo, campotxt1, campotxt4 };
+        const payload = { matriculas, data1i, data1f, motivo, campotxt1, campotxt4,
+                          retroativo_ok: retro, gerar_esocial: gerarEsocial };
         console.log('Enviando afastamento:', payload);
         const resp = await fetch('/api/afastamento_gravar', {
             method: 'POST',
@@ -542,7 +587,8 @@ async function gravar() {
         const d = await resp.json();
         console.log('Resposta:', d);
         if (d.ok) {
-            showToast(`Afastamento registrado — ${d.gravados} funcionário${d.gravados !== 1 ? 's' : ''}.`, 'ok');
+            showToast(`Afastamento registrado — ${d.gravados} funcionário${d.gravados !== 1 ? 's' : ''}.`
+                      + (retro ? (gerarEsocial ? ' Remessa S-2230 gerada.' : ' Sem remessa S-2230.') : ''), 'ok');
 
             // Motivo 01 (típico) ou 03 (trajeto) → exibir botões para registrar CAT
             if (['01', '03'].includes(d.motivo) && d.eventos?.length) {
