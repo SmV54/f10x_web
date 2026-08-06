@@ -40364,6 +40364,356 @@ def rel_liquidos_pdf():
 
 
 # =========================================================
+# RECIBO DE PENSÃO ALIMENTÍCIA
+# =========================================================
+# Quem assina o recibo é o RESPONSÁVEL pelo recebimento (tab_pensao.
+# dep_responsavel), não o funcionário: o desconto sai da folha dele, mas quem
+# recebe e dá quitação é quem cuida dos beneficiários.
+# As pensões de um funcionário saem nas verbas 281..284, na ordem do id em
+# tab_pensao — a 1ª pensão é a 281, a 2ª a 282, e assim por diante (mesma
+# convenção do cálculo, ver _get_pensoes_por_mat).
+VERBAS_PENSAO = (281, 282, 283, 284)
+
+
+_EXT_UNI = ["", "um", "dois", "três", "quatro", "cinco", "seis", "sete", "oito", "nove",
+            "dez", "onze", "doze", "treze", "quatorze", "quinze", "dezesseis",
+            "dezessete", "dezoito", "dezenove"]
+_EXT_DEZ = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta",
+            "setenta", "oitenta", "noventa"]
+_EXT_CEM = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos",
+            "seiscentos", "setecentos", "oitocentos", "novecentos"]
+
+
+def _ext_ate_999(n):
+    if n == 100:
+        return "cem"
+    p = []
+    c, r = divmod(n, 100)
+    if c:
+        p.append(_EXT_CEM[c])
+    if r:
+        if r < 20:
+            p.append(_EXT_UNI[r])
+        else:
+            d, u = divmod(r, 10)
+            p.append(_EXT_DEZ[d] + (f" e {_EXT_UNI[u]}" if u else ""))
+    return " e ".join(p)
+
+
+def _ext_inteiro(n):
+    """Número inteiro por extenso, até bilhões."""
+    if n == 0:
+        return "zero"
+    grupos = [(1_000_000_000, "bilhão", "bilhões"),
+              (1_000_000,     "milhão", "milhões"),
+              (1_000,         "mil",    "mil")]
+    partes = []
+    for div, sing, plur in grupos:
+        q, n = divmod(n, div)
+        if q:
+            if div == 1000:
+                partes.append(("mil" if q == 1 else f"{_ext_ate_999(q)} mil"))
+            else:
+                partes.append(f"{_ext_ate_999(q)} {sing if q == 1 else plur}")
+    if n:
+        partes.append(_ext_ate_999(n))
+    # "e" antes da última parte quando ela é menor que cem ou múltiplo de cem
+    if len(partes) > 1 and n and (n < 100 or n % 100 == 0):
+        return ", ".join(partes[:-1]) + " e " + partes[-1]
+    return " ".join(partes) if len(partes) == 1 else ", ".join(partes)
+
+
+def _valor_extenso(centavos):
+    """Valor em centavos escrito por extenso, para recibos."""
+    c = int(centavos or 0)
+    reais, cents = c // 100, c % 100
+    s_r = ""
+    if reais:
+        ext = _ext_inteiro(reais)
+        # "um milhão DE reais" — a preposição só entra quando o número termina
+        # exatamente em milhão/bilhão (2.500.000 = "dois milhões e quinhentos mil reais").
+        de = " de" if ext.endswith(("milhão", "milhões", "bilhão", "bilhões")) else ""
+        s_r = f"{ext}{de} {'real' if reais == 1 else 'reais'}"
+    s_c = (f"{_ext_inteiro(cents)} {'centavo' if cents == 1 else 'centavos'}") if cents else ""
+    if s_r and s_c:
+        return f"{s_r} e {s_c}"
+    return s_r or s_c or "zero real"
+
+
+def _cpf_br(v):
+    """CPF formatado; '' quando não houver 11 dígitos."""
+    d = so_numeros(str(v or ""))
+    return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}" if len(d) == 11 else ""
+
+
+def _recibo_pensao_dados(id_empresa, id_cliente, anomes, anomes_tipo):
+    """Uma entrada por pensão descontada na folha (valor > 0)."""
+    folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
+
+    # 1. valores descontados na folha, por matrícula e verba
+    mov = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, cod_verba, valor")
+             .eq("id_empresa", id_empresa)
+             .eq("situacao",   "A")
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo_mov)
+             .in_("cod_verba", list(VERBAS_PENSAO)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            mat = int(r.get("matricula") or 0)
+            cod = int(r.get("cod_verba") or 0)
+            val = int(r.get("valor") or 0)
+            if mat and val:
+                mov.setdefault(mat, {})
+                mov[mat][cod] = mov[mat].get(cod, 0) + val
+    except Exception as e:
+        print(f"[recibo_pensao] erro ao ler movimento: {e}")
+        return []
+    if not mov:
+        return []
+
+    # 2. pensões vigentes — a ordem define qual verba é de quem
+    pensoes = _get_pensoes_por_mat(id_empresa, anomes)
+
+    # 3. nomes: funcionário e dependentes (responsável + beneficiários)
+    mats = sorted(mov.keys())
+    func_info = {}
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, cpf")
+             .eq("id_empresa", id_empresa)
+             .in_("matricula", mats).execute())
+        for f in (r.data or []):
+            func_info[int(f.get("matricula") or 0)] = {
+                "nome": (f.get("nome") or f.get("nomer") or "").strip(),
+                "cpf":  _cpf_br(f.get("cpf")),
+            }
+    except Exception as e:
+        print(f"[recibo_pensao] erro ao ler funcionários: {e}")
+
+    deps = {}
+    try:
+        r = (supabase.table("tab_dependentes")
+             .select("id, nome, cpfdep")
+             .eq("id_empresa", id_empresa)
+             .in_("matricula", mats).execute())
+        for d in (r.data or []):
+            deps[int(d.get("id") or 0)] = {
+                "nome": (d.get("nome") or "").strip(),
+                "cpf":  _cpf_br(d.get("cpfdep")),
+            }
+    except Exception as e:
+        print(f"[recibo_pensao] erro ao ler dependentes: {e}")
+
+    out = []
+    for mat in mats:
+        fi    = func_info.get(mat, {"nome": f"Matr. {mat:06d}", "cpf": ""})
+        lista = pensoes.get(mat, [])
+        for cod, valor in sorted(mov[mat].items()):
+            idx = cod - VERBAS_PENSAO[0]
+            p   = lista[idx] if 0 <= idx < len(lista) else {}
+            resp = deps.get(int(p.get("dep_responsavel") or 0), {})
+            benef = []
+            for i in range(9):
+                did = p.get(f"dep_benef{i+1}")
+                if did and deps.get(int(did)):
+                    benef.append(deps[int(did)]["nome"])
+            out.append({
+                "mat":        mat,
+                "mat_fmt":    f"{mat:06d}",
+                "func_nome":  fi["nome"],
+                "func_cpf":   fi["cpf"],
+                "verba":      cod,
+                "ordem":      idx + 1,
+                "valor":      valor,
+                "valor_fmt":  _fmt_brl(valor),
+                "resp_nome":  resp.get("nome") or "—",
+                "resp_cpf":   resp.get("cpf") or "",
+                "benef":      benef,
+                "benef_txt":  ", ".join(benef) if benef else "—",
+                "sem_cadastro": not p,
+            })
+    out.sort(key=lambda x: (x["mat"], x["verba"]))
+    return out
+
+
+@app.route("/recibo_pensao")
+def recibo_pensao():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    folha_aberta = _rel_liquidos_folha_aberta()
+
+    itens = []
+    if anomes and not folha_aberta:
+        itens = _recibo_pensao_dados(_get_id_empresa(), session.get("id_cliente"),
+                                     anomes, anomes_tipo)
+    total = sum(i["valor"] for i in itens)
+    return render_template("F10_Recibo_Pensao.html", **_ctx_relatorio(),
+                           itens=itens, total_fmt=_fmt_brl(total),
+                           anomes_atual=anomes, folha_aberta=folha_aberta)
+
+
+@app.route("/recibo_pensao_pdf")
+def recibo_pensao_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle, Paragraph,
+                                    Spacer, KeepTogether)
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    if not anomes:
+        return "Nenhuma folha ativa.", 400
+    if _rel_liquidos_folha_aberta():
+        return ("A folha está Aberta — calcule a folha antes de emitir o "
+                "recibo de pensão alimentícia."), 403
+
+    id_empresa = _get_id_empresa()
+    itens = _recibo_pensao_dados(id_empresa, session.get("id_cliente"), anomes, anomes_tipo)
+
+    # Seleção da tela: "mat-verba" separados por vírgula. Sem seleção, sai tudo.
+    sel = (request.args.get("sel") or "").strip()
+    if sel:
+        chaves = {s.strip() for s in sel.split(",") if s.strip()}
+        itens  = [i for i in itens if f"{i['mat']}-{i['verba']}" in chaves]
+    if not itens:
+        return "Nenhuma pensão descontada nesta folha.", 404
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+    meses_pt   = ["", "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                  "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+    mes_i      = int(anomes[4:6])
+    comp_txt   = f"{meses_pt[mes_i]} de {anomes[:4]}" if 1 <= mes_i <= 12 else anomes
+    comp_curta = f"{anomes[4:6]}/{anomes[:4]}"
+    agora      = _agora_brasilia()
+    data_ext   = f"{agora.day} de {meses_pt[agora.month]} de {agora.year}"
+
+    st_tit  = ParagraphStyle("tit",  fontName="Helvetica-Bold", fontSize=12, alignment=1,
+                             textColor=colors.HexColor("#0f172a"), leading=15)
+    st_emp  = ParagraphStyle("emp",  fontName="Helvetica-Bold", fontSize=9,
+                             textColor=colors.HexColor("#1f2937"), leading=12)
+    st_sub  = ParagraphStyle("sub",  fontName="Helvetica", fontSize=7.5,
+                             textColor=colors.HexColor("#64748b"), leading=10)
+    st_corp = ParagraphStyle("corp", fontName="Helvetica", fontSize=9.5, alignment=4,
+                             textColor=colors.HexColor("#1f2937"), leading=15)
+    st_lbl  = ParagraphStyle("lbl",  fontName="Helvetica", fontSize=7,
+                             textColor=colors.HexColor("#64748b"), leading=9)
+    st_val  = ParagraphStyle("val",  fontName="Helvetica-Bold", fontSize=8.5,
+                             textColor=colors.HexColor("#1f2937"), leading=11)
+    st_sig  = ParagraphStyle("sig",  fontName="Helvetica", fontSize=8, alignment=1,
+                             textColor=colors.HexColor("#374151"), leading=11)
+    st_rod  = ParagraphStyle("rod",  fontName="Helvetica", fontSize=6.5, alignment=1,
+                             textColor=colors.HexColor("#94a3b8"), leading=9)
+
+    L = 17*cm
+
+    def _bloco(it):
+        cab = Table([[Paragraph(empresa_nm[:60], st_emp),
+                      Paragraph("RECIBO DE PENSÃO ALIMENTÍCIA", st_tit)],
+                     [Paragraph(f"CNPJ: {cnpj_fmt}", st_sub),
+                      Paragraph(f"Competência: {comp_curta}", st_sub)]],
+                    colWidths=[L*0.42, L*0.58])
+        cab.setStyle(TableStyle([
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("ALIGN",  (1,1), (1,1), "RIGHT"),
+            ("LEFTPADDING",  (0,0), (-1,-1), 0),
+            ("RIGHTPADDING", (0,0), (-1,-1), 0),
+            ("BOTTOMPADDING",(0,0), (-1,-1), 2),
+            ("LINEBELOW", (0,1), (-1,1), 1, colors.HexColor("#0f172a")),
+        ]))
+
+        texto = (f"Recebi de <b>{empresa_nm}</b>, CNPJ {cnpj_fmt}, a importância de "
+                 f"<b>{it['valor_fmt']}</b> ({_valor_extenso(it['valor'])}), "
+                 f"referente à <b>pensão alimentícia</b> descontada na folha de pagamento "
+                 f"de {comp_txt} de <b>{it['func_nome']}</b>"
+                 + (f", CPF {it['func_cpf']}" if it['func_cpf'] else "")
+                 + f", matrícula {it['mat_fmt']}, dando plena e geral quitação do valor "
+                 f"acima em favor dos beneficiários abaixo relacionados.")
+
+        quadro = Table([
+            [Paragraph("RECEBEDOR (RESPONSÁVEL)", st_lbl), Paragraph("CPF", st_lbl),
+             Paragraph("VERBA", st_lbl), Paragraph("VALOR", st_lbl)],
+            [Paragraph(it["resp_nome"], st_val), Paragraph(it["resp_cpf"] or "—", st_val),
+             Paragraph(f"{it['verba']:04d} — Pensão {it['ordem']}", st_val),
+             Paragraph(it["valor_fmt"], st_val)],
+            [Paragraph("BENEFICIÁRIO(S)", st_lbl), "", "", ""],
+            [Paragraph(it["benef_txt"], st_val), "", "", ""],
+        ], colWidths=[L*0.42, L*0.20, L*0.22, L*0.16])
+        quadro.setStyle(TableStyle([
+            ("SPAN", (0,2), (3,2)), ("SPAN", (0,3), (3,3)),
+            ("BACKGROUND", (0,0), (-1,-1), colors.HexColor("#f8fafc")),
+            ("BOX",        (0,0), (-1,-1), 0.5, colors.HexColor("#cbd5e1")),
+            ("LINEBELOW",  (0,1), (-1,1), 0.4, colors.HexColor("#e2e8f0")),
+            ("VALIGN",     (0,0), (-1,-1), "MIDDLE"),
+            ("ALIGN",      (3,0), (3,1), "RIGHT"),
+            ("LEFTPADDING",(0,0), (-1,-1), 6),
+            ("RIGHTPADDING",(0,0),(-1,-1), 6),
+            ("TOPPADDING", (0,0), (-1,-1), 3),
+            ("BOTTOMPADDING",(0,0),(-1,-1), 3),
+        ]))
+
+        assin = Table([
+            [Paragraph(data_ext, st_sig)],
+            [Spacer(1, 26)],
+            [Paragraph("_" * 52, st_sig)],
+            [Paragraph(f"{it['resp_nome']}" + (f"  —  CPF {it['resp_cpf']}" if it['resp_cpf'] else ""), st_sig)],
+        ], colWidths=[L])
+        assin.setStyle(TableStyle([
+            ("LEFTPADDING", (0,0), (-1,-1), 0), ("RIGHTPADDING", (0,0), (-1,-1), 0),
+            ("TOPPADDING",  (0,0), (-1,-1), 1), ("BOTTOMPADDING",(0,0), (-1,-1), 1),
+        ]))
+
+        partes = [cab, Spacer(1, 10), Paragraph(texto, st_corp), Spacer(1, 10),
+                  quadro, Spacer(1, 14), assin]
+        if it["sem_cadastro"]:
+            partes.insert(2, Paragraph(
+                "Atenção: não há cadastro de pensão vigente para esta verba nesta "
+                "competência — confira o responsável e os beneficiários antes de entregar.",
+                ParagraphStyle("av", fontName="Helvetica-Oblique", fontSize=7.5,
+                               textColor=colors.HexColor("#b45309"), leading=10)))
+        return KeepTogether(partes)
+
+    story = []
+    for i, it in enumerate(itens):
+        story.append(_bloco(it))
+        if i < len(itens) - 1:
+            story.append(Spacer(1, 12))
+            corte = Table([[Paragraph("- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - "
+                                      "- - - - - - - - - - - - - - - - - - - - - - - - -", st_rod)]],
+                          colWidths=[L])
+            corte.setStyle(TableStyle([("LEFTPADDING", (0,0), (-1,-1), 0),
+                                       ("RIGHTPADDING", (0,0), (-1,-1), 0)]))
+            story.append(corte)
+            story.append(Spacer(1, 12))
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm,
+                            title=f"Recibo de Pensão Alimentícia {comp_curta}")
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="ReciboPensao_{anomes}.pdf"'
+    return resp
+
+
+# =========================================================
 # CONTRACHEQUE — CONFIGURAÇÃO + PDF
 # =========================================================
 

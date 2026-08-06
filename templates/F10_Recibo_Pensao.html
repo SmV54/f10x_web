@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Recibo de Pensão Alimentícia</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+
+/* ── Cabeçalho padrão do sistema ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #111827; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #111827; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
+.topo-sem-folha { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
+
+.container { max-width: 1060px; margin: 24px auto; padding: 0 18px 40px; }
+
+.card {
+    background: white; border-radius: 12px; border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden;
+}
+.card-header {
+    padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb;
+    display: flex; justify-content: space-between; align-items: center;
+}
+.card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+.total-badge {
+    font-size: 12px; background: #eff6ff; color: #1d4ed8;
+    border: 1px solid #bfdbfe; border-radius: 8px; padding: 2px 10px; font-weight: 600;
+}
+.tabela-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th {
+    background: #eaf1fb; text-align: left; padding: 9px 14px;
+    font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee;
+    white-space: nowrap; font-weight: 600; letter-spacing: 0.3px;
+}
+thead th.c { text-align: center; }
+thead th.r { text-align: right; }
+tbody td { padding: 7px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
+tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; width: 1%; }
+tbody td.verba { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; text-align: center; }
+tbody td.benef { color: #475569; font-size: 12px; }
+tbody td.val {
+    text-align: right; font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px; font-weight: 600; color: #1d4ed8; width: 1%;
+}
+tbody td.chk { text-align: center; width: 1%; }
+tbody td.chk input { accent-color: #2563eb; width: 15px; height: 15px; cursor: pointer; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: #f8fafc; }
+tfoot td {
+    padding: 10px 14px; font-size: 13px; font-weight: 700;
+    background: #f1f5f9; border-top: 2px solid #94a3b8; color: #0f172a;
+}
+tfoot td.val { text-align: right; font-family: 'IBM Plex Mono', monospace; }
+.aviso-sem-cad { color: #b45309; font-size: 11px; font-weight: 600; }
+
+.vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
+.vazio.bloqueado { color: #92400e; padding: 36px 28px; }
+.bloq-icone  { font-size: 30px; margin-bottom: 8px; }
+.bloq-titulo { font-size: 15px; font-weight: 700; color: #92400e; margin-bottom: 8px; }
+.bloq-texto  { font-size: 13px; color: #78350f; max-width: 520px; margin: 0 auto; line-height: 1.6; }
+.bloq-link {
+    display: inline-block; margin-top: 16px; padding: 8px 18px; border-radius: 8px;
+    background: #f59e0b; color: #fff; font-size: 13px; font-weight: 700; text-decoration: none;
+}
+.bloq-link:hover { background: #d97706; }
+
+.rodape { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; text-decoration: none; transition: .15s; white-space: nowrap;
+}
+.btn-pdf:hover { background: #b91c1c; }
+.btn-pdf:disabled { background: #fca5a5; cursor: not-allowed; }
+.btn-menu {
+    height: 36px; padding: 0 20px; border-radius: 8px;
+    background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px;
+    border: none; cursor: pointer; transition: .15s; text-decoration: none;
+    display: inline-flex; align-items: center;
+}
+.btn-menu:hover { background: #d1d5db; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Recibo de Pensão Alimentícia</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>
+        {% else %}<span class="topo-folha-ativa topo-sem-folha">Sem folha ativa</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="container">
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Pensões descontadas nesta folha</h2>
+            <span class="total-badge">{{ itens|length }} recibo(s) · {{ total_fmt }}</span>
+        </div>
+
+        {% if not anomes_atual %}
+        <div class="vazio">Nenhuma folha ativa. Selecione o mês/ano no menu antes de continuar.</div>
+        {% elif folha_aberta %}
+        <div class="vazio bloqueado">
+            <div class="bloq-icone">🔒</div>
+            <div class="bloq-titulo">Folha Aberta — recibo indisponível</div>
+            <div class="bloq-texto">
+                O recibo sai do valor descontado na folha, então só fica disponível com a
+                folha <strong>Calculada</strong> ou <strong>Fechada</strong>.
+            </div>
+            <a class="bloq-link" href="/calcular_folha">Ir para Calcular Folha →</a>
+        </div>
+        {% elif itens %}
+        <div class="tabela-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th class="c"><input type="checkbox" id="chkTodos" checked onclick="marcarTodos(this)"></th>
+                    <th>Matrícula</th>
+                    <th>Funcionário</th>
+                    <th class="c">Verba</th>
+                    <th>Responsável (recebedor)</th>
+                    <th>Beneficiários</th>
+                    <th class="r">Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in itens %}
+                <tr>
+                    <td class="chk"><input type="checkbox" class="chk-item" value="{{ i.mat }}-{{ i.verba }}" checked onchange="atualizar()"></td>
+                    <td class="mat">{{ i.mat_fmt }}</td>
+                    <td>{{ i.func_nome }}</td>
+                    <td class="verba">{{ '%04d'|format(i.verba) }}</td>
+                    <td>
+                        {{ i.resp_nome }}
+                        {% if i.sem_cadastro %}<br><span class="aviso-sem-cad">⚠ sem cadastro vigente de pensão</span>{% endif %}
+                    </td>
+                    <td class="benef">{{ i.benef_txt }}</td>
+                    <td class="val">{{ i.valor_fmt }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="6">TOTAL — {{ itens|length }} recibo(s)</td>
+                    <td class="val">{{ total_fmt }}</td>
+                </tr>
+            </tfoot>
+        </table>
+        </div>
+        {% else %}
+        <div class="vazio">Nenhuma pensão alimentícia descontada nesta folha (verbas 0281 a 0284).</div>
+        {% endif %}
+    </div>
+
+    <div class="rodape">
+        {% if itens %}
+        <button class="btn-pdf" id="btnPdf" onclick="gerar()">&#128438; Gerar Recibos em PDF</button>
+        {% else %}
+        <span></span>
+        {% endif %}
+        <a class="btn-menu" href="/relatorios">Voltar aos Relatórios</a>
+    </div>
+
+</div>
+
+<script>
+function selecionados() {
+    return Array.from(document.querySelectorAll('.chk-item:checked')).map(c => c.value);
+}
+function atualizar() {
+    const n = selecionados().length;
+    const btn = document.getElementById('btnPdf');
+    if (btn) {
+        btn.disabled = n === 0;
+        btn.innerHTML = n === 0 ? '&#128438; Gerar Recibos em PDF'
+                                : `&#128438; Gerar ${n} Recibo${n !== 1 ? 's' : ''} em PDF`;
+    }
+    const todos = document.getElementById('chkTodos');
+    if (todos) todos.checked = n === document.querySelectorAll('.chk-item').length;
+}
+function marcarTodos(el) {
+    document.querySelectorAll('.chk-item').forEach(c => { c.checked = el.checked; });
+    atualizar();
+}
+function gerar() {
+    const sel = selecionados();
+    if (!sel.length) return;
+    window.open('/recibo_pensao_pdf?sel=' + encodeURIComponent(sel.join(',')), '_blank');
+}
+atualizar();
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>
