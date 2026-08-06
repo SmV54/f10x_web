@@ -105,6 +105,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .rel-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    /* Todas as linhas do grid com a MESMA altura (a da maior), senão cada linha
+       fica com a altura do seu próprio card mais alto e os cards do grupo saem
+       de tamanhos diferentes conforme a descrição ocupa 1, 2 ou 3 linhas.
+       O 1fr vale por grid, ou seja, a padronização é por grupo. */
+    grid-auto-rows: 1fr;
+    align-items: stretch;
     gap: 10px;
 }
 
@@ -138,7 +144,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .rel-card-desc {
     font-size: 11px; color: #64748b; line-height: 1.5;
+    /* Empurra a descrição para a base: com as alturas iguais, o texto de todos
+       os cards da linha começa na mesma altura, em vez de flutuar no meio. */
+    margin-top: auto;
 }
+/* Ícone com tamanho fixo — não encolhe quando o card cresce */
+.rel-card-icone { flex-shrink: 0; }
 
 /* Em breve */
 .rel-card.em-breve {
