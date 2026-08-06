@@ -40606,9 +40606,9 @@ def recibo_pensao_pdf():
                              textColor=colors.HexColor("#1f2937"), leading=12)
     st_sub  = ParagraphStyle("sub",  fontName="Helvetica", fontSize=7.5,
                              textColor=colors.HexColor("#64748b"), leading=10)
-    # A competência fica logo abaixo do título e precisa da MESMA centralização:
-    # o alinhamento de um Paragraph vem do estilo dele, não do ALIGN da tabela.
-    st_sub_c = ParagraphStyle("subc", parent=st_sub, alignment=1,
+    # Competência na ponta direita da primeira linha. O alinhamento de um
+    # Paragraph vem do estilo dele, não do ALIGN da TableStyle.
+    st_sub_r = ParagraphStyle("subr", parent=st_sub, alignment=2,
                               fontName="Helvetica-Bold", fontSize=8,
                               textColor=colors.HexColor("#475569"))
     st_corp = ParagraphStyle("corp", fontName="Helvetica", fontSize=9.5, alignment=4,
@@ -40625,17 +40625,23 @@ def recibo_pensao_pdf():
     L = 17*cm
 
     def _bloco(it):
+        # Título CENTRALIZADO NA LARGURA TOTAL do recibo (span das duas colunas),
+        # no mesmo eixo do corpo, do quadro e da assinatura. Antes ele era
+        # centralizado só dentro da coluna da direita e saía deslocado ~100pt.
+        # Empresa/CNPJ à esquerda, competência à direita, na linha de cima.
         cab = Table([[Paragraph(empresa_nm[:60], st_emp),
-                      Paragraph("RECIBO DE PENSÃO ALIMENTÍCIA", st_tit)],
-                     [Paragraph(f"CNPJ: {cnpj_fmt}", st_sub),
-                      Paragraph(f"Competência: {comp_curta}", st_sub_c)]],
-                    colWidths=[L*0.42, L*0.58])
+                      Paragraph(f"Competência: {comp_curta}", st_sub_r)],
+                     [Paragraph(f"CNPJ: {cnpj_fmt}", st_sub), ""],
+                     [Paragraph("RECIBO DE PENSÃO ALIMENTÍCIA", st_tit), ""]],
+                    colWidths=[L*0.62, L*0.38])
         cab.setStyle(TableStyle([
+            ("SPAN",   (0,2), (1,2)),
             ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
             ("LEFTPADDING",  (0,0), (-1,-1), 0),
             ("RIGHTPADDING", (0,0), (-1,-1), 0),
             ("BOTTOMPADDING",(0,0), (-1,-1), 2),
-            ("LINEBELOW", (0,1), (-1,1), 1, colors.HexColor("#0f172a")),
+            ("TOPPADDING",   (0,2), (1,2), 6),
+            ("LINEBELOW", (0,2), (-1,2), 1, colors.HexColor("#0f172a")),
         ]))
 
         texto = (f"Recebi de <b>{empresa_nm}</b>, CNPJ {cnpj_fmt}, a importância de "
