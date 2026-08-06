@@ -40130,6 +40130,139 @@ def relatorio_folha_pdf():
 
 
 # =========================================================
+# RELAÇÃO DOS LÍQUIDOS
+# =========================================================
+# Matrícula, nome, função e líquido, com total no fim. O líquido sai de
+# _folha_pagamento_dados, o mesmo do relatório da Folha de Pagamento — assim os
+# dois relatórios nunca divergem em centavo nenhum (informativas > 9900 fora,
+# 161-164 fora porque o desconto já vem pela 160).
+def _rel_liquidos_dados(id_empresa, id_cliente, anomes, anomes_tipo, ordem="mat"):
+    """(linhas, resumo) — uma linha por funcionário, já ordenada."""
+    dados = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente,
+                                   ordem="mat",
+                                   cnpj_empresa=str(session.get("cnpj_empresa") or ""))
+    linhas = [
+        {"mat": f["mat"], "nome": f["nome"], "funcao": f["funcao"],
+         "liq_fmt": f["liq_fmt"], "liq_ok": f["liq_ok"]}
+        for cc in dados.get("cc_list", [])
+        for f  in cc.get("funcs", [])
+    ]
+    if ordem == "alfa":
+        linhas.sort(key=lambda x: (x["nome"] or "").upper())
+    else:
+        linhas.sort(key=lambda x: x["mat"])
+    resumo = {
+        "anomes_fmt": dados.get("anomes_fmt", ""),
+        "tipo_lbl":   dados.get("tipo_lbl", ""),
+        "n_func":     dados.get("n_func", 0),
+        "total_fmt":  dados.get("grand_liq", _fmt_brl(0)),
+    }
+    return linhas, resumo
+
+
+def _rel_liquidos_ordem():
+    o = (request.args.get("ordem") or "mat").strip().lower()
+    return "alfa" if o in ("alfa", "nome") else "mat"
+
+
+@app.route("/rel_liquidos")
+def rel_liquidos():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    ordem       = _rel_liquidos_ordem()
+
+    linhas, resumo = ([], {"anomes_fmt": "", "tipo_lbl": "", "n_func": 0,
+                           "total_fmt": _fmt_brl(0)})
+    if anomes:
+        linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
+                                             anomes, anomes_tipo, ordem)
+    return render_template("F10_Rel_Liquidos.html", **_ctx_relatorio(),
+                           linhas=linhas, resumo=resumo, ordem=ordem,
+                           anomes_atual=anomes)
+
+
+@app.route("/rel_liquidos_pdf")
+def rel_liquidos_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    if not anomes:
+        return "Nenhuma folha ativa.", 400
+    ordem = _rel_liquidos_ordem()
+    linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
+                                         anomes, anomes_tipo, ordem)
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+    titulo     = (f"Relação dos Líquidos — {resumo['anomes_fmt']}"
+                  f"  ({'por Nome' if ordem == 'alfa' else 'por Matrícula'})")
+
+    def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    cab = ["Matrícula", "Nome", "Função", "Líquido"]
+    tbl_data = [[P(h, fn="Helvetica-Bold", align=(2 if h == "Líquido" else 0)) for h in cab]]
+    for l in linhas:
+        tbl_data.append([
+            P(l["mat"], fn="Courier"),
+            P(l["nome"]),
+            P(l["funcao"] or "—"),
+            P(l["liq_fmt"], fn="Courier", align=2,
+              col=colors.HexColor("#1f2937" if l["liq_ok"] else "#b91c1c")),
+        ])
+    tbl_data.append([
+        P(""), P(f"TOTAL — {resumo['n_func']} funcionário(s)", fn="Helvetica-Bold"), P(""),
+        P(resumo["total_fmt"], fn="Courier-Bold", align=2),
+    ])
+
+    tbl = Table(tbl_data, colWidths=[2.2*cm, 6.6*cm, 5.0*cm, 3.2*cm], repeatRows=1)
+    n_ult = len(tbl_data) - 1
+    row_bg = [("BACKGROUND", (0, i), (-1, i),
+               colors.HexColor("#f8fafc") if i % 2 == 0 else colors.white)
+              for i in range(1, n_ult)]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -2), 0.3, colors.HexColor("#f1f5f9")),
+        ("LINEABOVE",     (0, n_ult), (-1, n_ult), 0.8, colors.HexColor("#94a3b8")),
+        ("BACKGROUND",    (0, n_ult), (-1, n_ult), colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+             Spacer(1, 8), tbl]
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="Liquidos_{anomes}.pdf"'
+    return resp
+
+
+# =========================================================
 # CONTRACHEQUE — CONFIGURAÇÃO + PDF
 # =========================================================
 
