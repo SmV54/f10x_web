@@ -39201,6 +39201,21 @@ def api_visualizar_calculo_dados():
 # =========================================================
 # FOLHA DE PAGAMENTO — DADOS (compartilhado entre tela e PDF)
 # =========================================================
+def _cods_inc_fgts(folha_tipo):
+    """Códigos de tpn_inc_fgts que somam na base do FGTS, conforme o tipo da folha.
+
+    '11' = base do FGTS mensal; '12' = base do FGTS do 13º salário; 'S' = marca
+    antiga de "incide", anterior aos códigos do eSocial.
+
+    O '12' só entra nas folhas de 13º (tipo 'A' adiantamento e '1' integral):
+    na folha mensal ele somaria valor que não é do mês. A verba 17
+    (ADIANT.13.SALARIO) traz justamente '12' — sem aceitá-lo, o FGTS do
+    adiantamento do 13º saía ZERO, porque o valor do adiantamento não entrava
+    na base.
+    """
+    return ("S", "11", "12") if str(folha_tipo or "").upper() in ("A", "1") else ("S", "11")
+
+
 def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat", cnpj_empresa=""):
     _cnpj_dig = ''.join(c for c in cnpj_empresa if c.isdigit())
     def _clean_fil(v):
@@ -39363,7 +39378,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
         base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                                for v in verbas if v["ift"] in ("11","S")))
+                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -39737,7 +39752,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
         base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                                for v in verbas if v["ift"] in ("11","S")))
+                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -40928,7 +40943,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         # Sem esse filtro o relatorio mostrava FGTS para pro-labore sem FGTS.
         # Desconto com incidencia (falta, repouso perdido) REDUZ a base.
         base_fgts = (max(0, sum((v["val"] if v["tp"] == "1" else -v["val"])
-                                for v in verbas if v["ift"] in ("11","S")))
+                                for v in verbas if v["ift"] in _cods_inc_fgts(anomes_tipo)))
                      if _tem_fgts(fi.get("cat")) else 0)
         _aliq_fgts = 2 if int(fi.get("cat") or 0) == 103 else 8   # menor aprendiz (cat 103) recolhe 2%
         # O FGTS vem SEMPRE da base x aliquota. Antes, quando havia lancamento na
@@ -42941,8 +42956,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         totais[cod]["valor"] += val
         totais[cod]["mats"].add(mat)
         rb_cod = rubr_map.get(cod, {})
-        # inc_fgts: "11" = incide integral; "S" = adiantamento do 13º (verba 17).
-        if rb_cod.get("inc_fgts") in ("11", "S"):
+        # Códigos que incidem, por tipo de folha — ver _cods_inc_fgts.
+        if rb_cod.get("inc_fgts") in _cods_inc_fgts(anomes_tipo):
             # Desconto com incidencia entra NEGATIVO (falta, repouso perdido).
             emp_fgts_base[mat] = (emp_fgts_base.get(mat, 0)
                                   + (val if rb_cod.get("tp") == "1" else -val))
@@ -42977,7 +42992,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             total_prov += val
             if rb["inc_cp"]   == "11": base_inss += val
             if rb["inc_irrf"] == "11": base_irrf += val
-            if rb["inc_fgts"] in ("11", "S"): base_fgts += val
+            if rb["inc_fgts"] in _cods_inc_fgts(anomes_tipo): base_fgts += val
         else:
             descontos.append(linha)
             total_desc += val
@@ -52943,8 +52958,8 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
 def _inc_fgts_adiant13(id_cliente, cods):
     """Mapa {cod_verba: codigo_incidencia_fgts (str, maiúsculo)} das rubricas
     informadas. Verba do cliente (id_cliente≠0) sobrepõe a global (0).
-    A verba 17 (ADIANT.13.SALARIO) traz 'S' em tpn_inc_fgts; as demais que
-    incidem trazem '11' (incide integralmente)."""
+    A verba 17 (ADIANT.13.SALARIO) traz '12' em tpn_inc_fgts (base do FGTS do
+    13º); os adicionais trazem '11' (base do FGTS mensal)."""
     cods = [int(c) for c in (cods or [])]
     if not cods:
         return {}
@@ -52976,11 +52991,11 @@ def _aliq_fgts_adiant13(f):
 def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8):
     """Base e valor do FGTS do adiantamento do 13º.
     Base = soma dos proventos cujo tpn_inc_fgts indica incidência
-    ('S' = adiantamento do 13º; '11' = incide integralmente).
+    (ver _cods_inc_fgts: '11' mensal, '12' do 13º, 'S' legado).
     FGTS = aliq_fgts% da base (8% geral, 2% menor aprendiz).
     Retorna (base_fgts, fgts) em centavos."""
     base = sum(int(v) for cod, v in (verba_valores or {}).items()
-               if int(v) > 0 and inc_fgts.get(int(cod), "") in ("S", "11"))
+               if int(v) > 0 and inc_fgts.get(int(cod), "") in _cods_inc_fgts("A"))
     return int(base), int(base) * int(aliq_fgts) // 100
 
 
