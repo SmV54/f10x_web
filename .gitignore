@@ -63,3 +63,9 @@ supabase_para_access.py
 add_colunas_estagio_s2300.sql
 atualizar_situacao_rubrica.sql
 inserir_verba_0086_igual_0016.sql
+
+# Saidas da campanha de WhatsApp e das coletas — ruido, nao codigo
+*.log
+*.err
+*.xlsx
+log_envio_*.csv
