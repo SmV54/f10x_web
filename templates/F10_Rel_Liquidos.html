@@ -45,7 +45,10 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
 .sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
 .topo-sem-folha { background: #fff; color: #991b1b; border: 2px solid #fca5a5; }
 
-.container { max-width: 880px; margin: 24px auto; padding: 0 18px 40px; }
+/* Com a conta bancária são 5 colunas: a tela precisa de mais espaço para nome
+   e função não quebrarem em duas linhas. */
+.container { max-width: {% if com_conta %}1180px{% else %}940px{% endif %}; margin: 24px auto; padding: 0 18px 40px; }
+.tabela-wrap { overflow-x: auto; }
 .filtros {
     background: white; border-radius: 12px; border: 1px solid #e5e7eb;
     padding: 16px 20px; margin-bottom: 20px;
@@ -87,8 +90,9 @@ thead th {
     white-space: nowrap; font-weight: 600; letter-spacing: 0.3px;
 }
 thead th.r { text-align: right; }
-tbody td { padding: 6px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
+tbody td { padding: 6px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; white-space: nowrap; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; width: 1%; }
+tbody td.nome { font-weight: 500; }
 tbody td.funcao { color: #475569; font-size: 12px; }
 tbody td.conta {
     font-family: 'IBM Plex Mono', monospace; font-size: 12px;
@@ -202,6 +206,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
             <a class="bloq-link" href="/calcular_folha">Ir para Calcular Folha →</a>
         </div>
         {% elif linhas %}
+        <div class="tabela-wrap">
         <table>
             <thead>
                 <tr>
@@ -216,7 +221,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
                 {% for l in linhas %}
                 <tr>
                     <td class="mat">{{ l.mat }}</td>
-                    <td>{{ l.nome }}</td>
+                    <td class="nome">{{ l.nome }}</td>
                     <td class="funcao">{{ l.funcao or '—' }}</td>
                     {% if com_conta %}<td class="conta {% if l.sem_conta %}caixa{% endif %}">{{ l.conta }}</td>{% endif %}
                     <td class="liq {% if not l.liq_ok %}neg{% endif %}">{{ l.liq_fmt }}</td>
@@ -230,6 +235,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
                 </tr>
             </tfoot>
         </table>
+        </div>
         {% else %}
         <div class="vazio">Nenhum funcionário com movimento nesta folha. Calcule a folha antes de emitir a relação.</div>
         {% endif %}

@@ -40260,7 +40260,7 @@ def rel_liquidos_pdf():
 
     from io import BytesIO
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.pagesizes import A4, landscape
     from reportlab.lib import colors
     from reportlab.lib.units import cm
     from reportlab.lib.styles import ParagraphStyle
@@ -40287,13 +40287,20 @@ def rel_liquidos_pdf():
                             textColor=col, leading=fs + 2)
         return Paragraph(str(txt), st)
 
-    # Com a conta bancária a tabela ganha uma coluna: a função encolhe para caber.
+    # Nome e função não podem quebrar linha. Em retrato sobram 17cm: dá para as
+    # quatro colunas. Com a conta bancária seriam cinco no mesmo espaço, e o nome
+    # ficaria em 5cm (quebra em qualquer nome comprido) — por isso essa versão
+    # sai em PAISAGEM, onde a área útil passa para 25,7cm.
     if com_conta:
         cab       = ["Matrícula", "Nome", "Função", "Conta Bancária", "Líquido"]
-        col_larg  = [2.0*cm, 5.0*cm, 3.4*cm, 3.6*cm, 3.0*cm]
+        col_larg  = [2.2*cm, 8.6*cm, 6.4*cm, 4.5*cm, 4.0*cm]   # = 25,7cm
+        pagesize  = landscape(A4)
+        larg_util = 25.7*cm
     else:
         cab       = ["Matrícula", "Nome", "Função", "Líquido"]
-        col_larg  = [2.2*cm, 6.6*cm, 5.0*cm, 3.2*cm]
+        col_larg  = [2.0*cm, 7.2*cm, 5.2*cm, 2.6*cm]           # = 17,0cm
+        pagesize  = A4
+        larg_util = 17*cm
     tbl_data = [[P(h, fn="Helvetica-Bold", align=(2 if h == "Líquido" else 0)) for h in cab]]
     for l in linhas:
         linha = [
@@ -40332,10 +40339,11 @@ def rel_liquidos_pdf():
         ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
     ] + row_bg))
 
-    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, data_label="Emitido em"),
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, page_width=larg_util,
+                            data_label="Emitido em"),
              Spacer(1, 8), tbl]
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4,
+    doc = SimpleDocTemplate(buf, pagesize=pagesize,
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
     doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
