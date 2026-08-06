@@ -215,8 +215,14 @@ body.sel-unico .lista-row { cursor: pointer; }
     cursor: pointer; white-space: nowrap; font-family: var(--sans); transition: 0.15s;
 }
 .btn-nova-pensao:hover { background: #dbeafe; border-style: solid; border-color: #2a7de1; }
+.btn-alterar-pensao {
+    border: 1px solid #fcd34d; background: #fffbeb; color: #92400e;
+    border-radius: 6px; padding: 3px 9px; font-size: 10px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; font-family: var(--sans); transition: 0.15s;
+}
+.btn-alterar-pensao:hover { background: #fef3c7; border-color: #d97706; }
 {% if contexto == 'pensao' %}
-/* Coluna da ação mais larga: "Tem Pensão" + botão não cabem em 116px. */
+/* Coluna da ação mais larga: os dois botões não cabem em 116px. */
 .lista-header, .lista-row { grid-template-columns: 32px 54px 1fr 110px 236px; }
 {% endif %}
 .lc-data-col    { font-family: var(--mono); font-size: 12px; color: #334155; white-space: nowrap; }
@@ -749,7 +755,7 @@ const CONTEXTOS = {
     },
     pensao: {
         titulo:        'Pensão Alimentícia — Selecionar Funcionário',
-        subtitulo:     'Clique no funcionário para cadastrar a pensionista. Quem tem o selo Tem Pensão abre para editar ou excluir.',
+        subtitulo:     'Use Nova Pensão para cadastrar mais uma; Alterar Pensão abre a que já existe para mudar ou excluir.',
         tituloCurto:   'Selecionar — Pensão Alimentícia',
         proximo:       '/cad_pensao',
         // precisa do contexto na API para vir o flag tem_pensao de cada linha
@@ -1145,12 +1151,13 @@ function renderLista(lista) {
             // Aqui a lista já vem só com ativos (f_situacao 'A'), então o selo
             // "Ativo" não informa nada. A coluna vira AÇÃO: quem já tem pensão
             // é marcado, e o botão leva direto ao cadastro de mais uma.
-            const pens = f.tem_pensao
-                ? '<span class="badge-pensao" title="Já tem pensão cadastrada — clique na linha para editar ou excluir">Tem Pensão</span>'
-                : '';
             const nova = '<button class="btn-nova-pensao" title="Cadastrar uma nova pensão para este funcionário"'
                 + ' onclick="event.stopPropagation(); irNovaPensao(' + f.matricula + ')">➕ Nova Pensão</button>';
-            sitCell = '<span class="sit-linha">' + pens + nova + '</span>';
+            const pens = f.tem_pensao
+                ? '<button class="btn-alterar-pensao" title="Abrir a pensão já cadastrada para alterar ou excluir"'
+                  + ' onclick="event.stopPropagation(); irAlterarPensao(' + f.matricula + ')">✏️ Alterar Pensão</button>'
+                : '';
+            sitCell = '<span class="sit-linha">' + nova + pens + '</span>';
         } else {
             const sit = (f.situacao === 'A')
                 ? '<span class="badge-ativo">Ativo</span>'
@@ -1200,6 +1207,10 @@ function applyRowState(mat) {
 
 function irNovaPensao(mat) {
     window.location.href = '/cad_pensao?mats=' + mat + '&nova=1';
+}
+
+function irAlterarPensao(mat) {
+    window.location.href = '/cad_pensao?mats=' + mat;
 }
 
 function toggleRow(mat) {
