@@ -556,6 +556,10 @@ const modulos = {
             { nome: 'Pensão Alimentícia', semAtalho: true, itens: [
                 { icone: '⚖️', nome: 'Cadastro da Pensionista', href: '/select_funcionario?contexto=pensao', ok: true },
                 { icone: '🧮', nome: 'Fórmulas',                 href: '/pensao_formulas',                    ok: true },
+                // Recibo é consulta do que já foi descontado: continua acessível
+                // com a folha Calculada/Fechada (é justamente quando ele existe).
+                { icone: '🧾', nome: 'Recibo da Pensão',         href: '/recibo_pensao', ok: true,
+                  bloqueioFolha: 'calculada', permiteFolhaBloqueada: true },
             ]},
             { nome: 'Empresa', itens: [
                 // Exceção ao bloqueio da folha Calculada/Fechada: cadastrar uma
