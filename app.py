@@ -14795,14 +14795,53 @@ def cad_pensao():
             })
     except Exception:
         formulas = []
-    # Pensão ativa já cadastrada (para pré-preencher a tela)
-    pensao_atual = None
+    # Pensões ativas do funcionário. Um funcionário pode ter MAIS DE UMA (o
+    # cálculo suporta 4, verbas 281 a 284, na ordem do id). A tela lista todas e
+    # edita uma por vez: ?pensao_id=N abre a escolhida, ?nova=1 abre em branco.
+    _sel_id  = request.args.get("pensao_id", "").strip()
+    _sel_id  = int(_sel_id) if _sel_id.isdigit() else None
+    _e_nova  = (request.args.get("nova") or "").strip() in ("1", "s", "S")
+    pensoes_lista = []
+    _todas = []
     try:
-        rp = (supabase.table("tab_pensao").select("*")
+        rl = (supabase.table("tab_pensao").select("*")
               .eq("id_empresa", id_empresa).eq("matricula", matricula).eq("situacao", "A")
-              .order("id", desc=True).limit(1).execute())
-        if rp.data:
-            p = rp.data[0]
+              .order("id").execute())
+        _todas = rl.data or []
+    except Exception:
+        _todas = []
+
+    _dep_nomes = {}
+    if _todas:
+        try:
+            rd = (supabase.table("tab_dependentes").select("id, nome")
+                  .eq("id_empresa", id_empresa).eq("matricula", matricula).execute())
+            _dep_nomes = {int(d["id"]): (d.get("nome") or "").strip() for d in (rd.data or [])}
+        except Exception:
+            _dep_nomes = {}
+    for _i, _p in enumerate(_todas):
+        if _p.get("valor_fixo") is not None:
+            _vtxt = _fmt_brl(int(_p["valor_fixo"]))
+        elif _p.get("percentual") is not None:
+            _vtxt = f"{int(_p['percentual']) / 100:.2f}".replace(".", ",") + "%"
+        else:
+            _vtxt = "—"
+        pensoes_lista.append({
+            "id":    _p.get("id"),
+            "ordem": _i + 1,
+            "verba": 281 + _i,
+            "resp":  _dep_nomes.get(int(_p.get("dep_responsavel") or 0), "—"),
+            "valor_txt": _vtxt,
+        })
+
+    # Qual registro abre no formulário
+    pensao_atual = None
+    _reg = None
+    if not _e_nova and _todas:
+        _reg = next((x for x in _todas if x.get("id") == _sel_id), None) or _todas[0]
+    try:
+        if _reg:
+            p = _reg
             benef = [p.get(f"dep_benef{i+1}") for i in range(9)]
             benef = [b for b in benef if b]
             codigo = None
@@ -14812,6 +14851,7 @@ def cad_pensao():
                 if rc.data:
                     codigo = (rc.data[0].get("codigo") or "").strip()
             pensao_atual = {
+                "id":             p.get("id"),
                 "responsavel":    p.get("dep_responsavel"),
                 "beneficiarios":  benef,
                 "formula":        codigo,
@@ -14831,6 +14871,9 @@ def cad_pensao():
         tipos_dep=tipos_dep,
         formulas=formulas,
         pensao_atual=pensao_atual,
+        pensoes_lista=pensoes_lista,
+        pode_nova=len(pensoes_lista) < 4,   # 4 verbas disponíveis: 281 a 284
+        e_nova=_e_nova,
         folha_atual=str(session.get("anomes_atual") or ""),
     )
 
@@ -14866,16 +14909,24 @@ def api_pensao_gravar():
         except (TypeError, ValueError):
             return None
 
-    # Pensão ativa já existente do funcionário (para atualizar ou desativar).
+    # QUAL pensão está sendo gravada. A tela manda o id quando é edição; sem id
+    # é pensão NOVA — um funcionário pode ter até 4 (verbas 281 a 284).
+    _pid_raw  = str(data.get("pensao_id") or "").strip()
+    pensao_id = int(_pid_raw) if _pid_raw.isdigit() else None
     try:
         rp = (supabase.table("tab_pensao").select("id")
               .eq("id_empresa", id_empresa).eq("matricula", mat).eq("situacao", "A")
-              .order("id", desc=True).limit(1).execute())
-        pensao_id = rp.data[0]["id"] if rp.data else None
+              .order("id").execute())
+        ativas = [int(x["id"]) for x in (rp.data or [])]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao ler pensão: {str(e)[:200]}"})
+    if pensao_id and pensao_id not in ativas:
+        return jsonify({"ok": False, "msg": "Pensão não encontrada para este funcionário."})
+    if not pensao_id and len(ativas) >= 4:
+        return jsonify({"ok": False, "msg": "Limite de 4 pensões por funcionário "
+                                            "(verbas 0281 a 0284) já atingido."})
 
-    # Sem beneficiários → desativa a pensão existente e sai.
+    # Sem beneficiários → desativa a pensão que está aberta e sai.
     if not sel_ids:
         if pensao_id:
             supabase.table("tab_pensao").update({"situacao": "D"}).eq("id", pensao_id).execute()
@@ -14961,7 +15012,8 @@ def api_pensao_gravar():
                    matricula=mat)
     except Exception:
         pass
-    return jsonify({"ok": True, "vinculados": len(benef), "num_formula": num})
+    return jsonify({"ok": True, "vinculados": len(benef), "num_formula": num,
+                    "pensao_id": pensao_id})
 
 
 # =========================================================
@@ -14981,16 +15033,22 @@ def api_pensao_excluir():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "msg": "Matrícula inválida."})
 
+    # Com mais de uma pensão por funcionário, a tela manda QUAL excluir.
+    _pid_raw = str(data.get("pensao_id") or "").strip()
+    pensao_id = int(_pid_raw) if _pid_raw.isdigit() else None
     try:
-        r = (supabase.table("tab_pensao")
+        q = (supabase.table("tab_pensao")
              .select("id, dep_responsavel, valor_fixo, percentual, anomes_inicial")
              .eq("id_empresa", id_empresa).eq("matricula", mat)
-             .eq("situacao", "A").limit(1).execute())
+             .eq("situacao", "A"))
+        if pensao_id:
+            q = q.eq("id", pensao_id)
+        r = q.order("id").limit(1).execute()
         reg = (r.data or [None])[0]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao ler a pensão: {str(e)[:200]}"})
     if not reg:
-        return jsonify({"ok": False, "msg": "Este funcionário não tem pensão ativa."})
+        return jsonify({"ok": False, "msg": "Pensão não encontrada para este funcionário."})
 
     try:
         (supabase.table("tab_pensao")

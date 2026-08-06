@@ -144,6 +144,27 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
 }
 .btn-perigo:hover { background: #fee2e2; border-color: #ef4444; }
 
+/* ── FAIXA DAS PENSÕES DO FUNCIONÁRIO ── */
+.faixa-pensoes {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    margin: 0 0 12px; padding: 10px 14px;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+}
+.faixa-rotulo { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.faixa-limite { font-size: 11px; color: #b45309; font-weight: 600; }
+.card-pensao {
+    display: inline-flex; align-items: center; gap: 8px;
+    border: 1px solid #cbd5e1; border-radius: 9px; padding: 6px 12px;
+    background: #f8fafc; text-decoration: none; color: #334155;
+    font-size: 12px; transition: 0.15s;
+}
+.card-pensao:hover { border-color: #2a7de1; background: #eff6ff; }
+.card-pensao.ativa { border-color: #2a7de1; background: #eff6ff; box-shadow: inset 0 0 0 1px #2a7de1; }
+.card-pensao.nova  { border-style: dashed; color: #1d4ed8; font-weight: 700; }
+.cp-verba { font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #64748b; }
+.cp-resp  { font-weight: 600; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-valor { font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: #1d4ed8; }
+
 /* ── RODAPÉ ── */
 .rodape-final { display: flex; align-items: center; margin-top: 12px; flex: 0 0 auto; }
 .btn-voltar-menu {
@@ -198,6 +219,28 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
             <div class="valor">Cadastro de Pensionista</div>
         </div>
     </div>
+
+    {% if pensoes_lista %}
+    <div class="faixa-pensoes">
+        <span class="faixa-rotulo">Pensões deste funcionário:</span>
+        {% for p in pensoes_lista %}
+        <a class="card-pensao{% if pensao_atual and pensao_atual.id == p.id %} ativa{% endif %}"
+           href="/cad_pensao?mats={{ matricula }}&pensao_id={{ p.id }}"
+           title="Abrir para editar ou excluir">
+            <span class="cp-verba">{{ '%04d'|format(p.verba) }}</span>
+            <span class="cp-resp">{{ p.resp }}</span>
+            <span class="cp-valor">{{ p.valor_txt }}</span>
+        </a>
+        {% endfor %}
+        {% if pode_nova %}
+        <a class="card-pensao nova{% if e_nova %} ativa{% endif %}"
+           href="/cad_pensao?mats={{ matricula }}&nova=1"
+           title="Cadastrar mais uma pensão para este funcionário">➕ Nova Pensão</a>
+        {% else %}
+        <span class="faixa-limite">Limite de 4 pensões (verbas 0281–0284) atingido</span>
+        {% endif %}
+    </div>
+    {% endif %}
 
     <div class="layout-principal">
 
@@ -265,7 +308,8 @@ const TIPOS_DEP  = {
 const FORMULAS = [
     {% for f in formulas %}{ numero: '{{ f.numero|e }}', nome: '{{ f.nome|e }}' },{% endfor %}
 ];
-const PENSAO = {{ pensao_atual|tojson }};   // pensão já cadastrada (ou null)
+const PENSAO = {{ pensao_atual|tojson }};   // pensão aberta no formulário (ou null)
+const PENSAO_ID = PENSAO ? PENSAO.id : null;   // null = gravar cria uma NOVA
 const FOLHA_ATUAL = '{{ folha_atual }}';    // yyyymm da folha ativa
 
 let DEPS = [];                    // todos os dependentes do funcionário
@@ -558,7 +602,7 @@ async function excluirPensao() {
         const r = await fetch('/api/pensao_excluir', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matricula: MATRICULA }),
+            body: JSON.stringify({ matricula: MATRICULA, pensao_id: PENSAO_ID }),
         });
         const d = await r.json();
         if (d.ok) {
@@ -606,7 +650,8 @@ async function gravarPensao() {
         const r = await fetch('/api/pensao_gravar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matricula: MATRICULA, ids, num_formula: num, valor, perc, responsavel: responsavelId }),
+            body: JSON.stringify({ matricula: MATRICULA, pensao_id: PENSAO_ID, ids,
+                                   num_formula: num, valor, perc, responsavel: responsavelId }),
         });
         const d = await r.json();
         if (!d.ok) { msg.style.color = '#b91c1c'; msg.textContent = 'Erro: ' + (d.msg || 'falha'); return; }
@@ -614,6 +659,12 @@ async function gravarPensao() {
         formulaEscolhida = num;
         msg.style.color = '#15803d';
         msg.textContent = `✓ Pensão gravada — ${d.vinculados} dependente(s) na fórmula ${String(d.num_formula).padStart(4,'0')}.`;
+        // Pensão nova: recarrega para a faixa mostrar o card novo e a tela passar
+        // a editar esse registro (senão o próximo Gravar criaria outra pensão).
+        if (!PENSAO_ID && d.pensao_id) {
+            setTimeout(() => { window.location.href =
+                `/cad_pensao?mats=${MATRICULA}&pensao_id=${d.pensao_id}`; }, 900);
+        }
     } catch (e) {
         msg.style.color = '#b91c1c';
         msg.textContent = 'Falha de rede ao gravar.';
