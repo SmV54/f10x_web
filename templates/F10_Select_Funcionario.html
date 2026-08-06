@@ -209,9 +209,15 @@ body.sel-unico .lista-row { cursor: pointer; }
 .badge-pensao   { display: inline-block; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 /* .lc-sit empilha os selos em coluna; aqui os dois ficam na MESMA linha. */
 .sit-linha { display: inline-flex; align-items: center; gap: 5px; }
+.btn-nova-pensao {
+    border: 1px dashed #93c5fd; background: #eff6ff; color: #1d4ed8;
+    border-radius: 6px; padding: 3px 9px; font-size: 10px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; font-family: var(--sans); transition: 0.15s;
+}
+.btn-nova-pensao:hover { background: #dbeafe; border-style: solid; border-color: #2a7de1; }
 {% if contexto == 'pensao' %}
-/* Coluna da situação mais larga: "Ativo" + "Tem Pensão" não cabem em 116px. */
-.lista-header, .lista-row { grid-template-columns: 32px 54px 1fr 110px 186px; }
+/* Coluna da ação mais larga: "Tem Pensão" + botão não cabem em 116px. */
+.lista-header, .lista-row { grid-template-columns: 32px 54px 1fr 110px 236px; }
 {% endif %}
 .lc-data-col    { font-family: var(--mono); font-size: 12px; color: #334155; white-space: nowrap; }
 
@@ -812,6 +818,9 @@ document.addEventListener('DOMContentLoaded', () => {
     if (ctx.colAviso || ctx.colResc) {
         const lbl = document.getElementById('col-sit-label');
         if (lbl) lbl.textContent = ctx.colAviso ? 'Aviso Prévio' : 'Data Rescisão';
+    } else if (CONTEXTO === 'pensao') {
+        const lbl = document.getElementById('col-sit-label');
+        if (lbl) lbl.textContent = 'Pensão';
     }
 
     syncRescisaoDisponivel();
@@ -1132,6 +1141,16 @@ function renderLista(lista) {
             sitCell = f.resc_data
                 ? '<span class="lc-data-col" title="Data da rescisão">' + f.resc_data + '</span>'
                 : '<span class="lc-data-col">—</span>';
+        } else if (CONTEXTO === 'pensao') {
+            // Aqui a lista já vem só com ativos (f_situacao 'A'), então o selo
+            // "Ativo" não informa nada. A coluna vira AÇÃO: quem já tem pensão
+            // é marcado, e o botão leva direto ao cadastro de mais uma.
+            const pens = f.tem_pensao
+                ? '<span class="badge-pensao" title="Já tem pensão cadastrada — clique na linha para editar ou excluir">Tem Pensão</span>'
+                : '';
+            const nova = '<button class="btn-nova-pensao" title="Cadastrar uma nova pensão para este funcionário"'
+                + ' onclick="event.stopPropagation(); irNovaPensao(' + f.matricula + ')">➕ Nova Pensão</button>';
+            sitCell = '<span class="sit-linha">' + pens + nova + '</span>';
         } else {
             const sit = (f.situacao === 'A')
                 ? '<span class="badge-ativo">Ativo</span>'
@@ -1139,12 +1158,7 @@ function renderLista(lista) {
             const aviso = f.aviso_previo
                 ? '<span class="badge-aviso" title="Funcionário em aviso prévio">Aviso Prévio</span>'
                 : '';
-            // Contexto pensão: quem já tem pensão ativa entra marcado — o clique
-            // abre a pensão existente para editar, não um cadastro em branco.
-            const pens = (CONTEXTO === 'pensao' && f.tem_pensao)
-                ? '<span class="badge-pensao" title="Já tem pensão cadastrada — clique para editar ou excluir">Tem Pensão</span>'
-                : '';
-            sitCell = (pens ? '<span class="sit-linha">' + sit + pens + '</span>' : sit) + aviso;
+            sitCell = sit + aviso;
         }
         return `<div class="lista-row${sel?' selecionado':''}" data-mat="${f.matricula}" onclick="toggleRow(${f.matricula})">
             <div class="lc-check"><input type="checkbox" class="func-chk" value="${f.matricula}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="chkChange(this,${f.matricula})"></div>
@@ -1182,6 +1196,10 @@ function applyRowState(mat) {
     if (row) row.classList.toggle('selecionado', sel);
     if (chk) chk.checked = sel;
     atualizarContagem();
+}
+
+function irNovaPensao(mat) {
+    window.location.href = '/cad_pensao?mats=' + mat + '&nova=1';
 }
 
 function toggleRow(mat) {
