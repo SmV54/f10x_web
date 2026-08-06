@@ -52196,6 +52196,7 @@ def api_adiantamento_gravar():
 
     erros = 0
     gravados = 0
+    limpos = 0          # voltaram a herdar o % da empresa
     for item in itens:
         mat = item.get("matricula")
         if not mat:
@@ -52209,20 +52210,29 @@ def api_adiantamento_gravar():
             campos = {"per_adianta": None, "valor_adianta": None}
         elif modo == "P":
             per = item.get("percentual")
+            # percentual nulo = campo esvaziado na tela: TIRA a configuração
+            # própria e o funcionário volta a herdar o % da empresa. Antes isso
+            # contava como erro e a gravação inteira era recusada.
             if per is None:
-                erros += 1; continue
-            per = int(per)
-            if not (10 <= per <= 60):
-                erros += 1; continue
-            campos = {"per_adianta": per, "valor_adianta": None}
+                campos = {"per_adianta": None, "valor_adianta": None}
+                limpos += 1
+            else:
+                per = int(per)
+                if not (10 <= per <= 60):
+                    erros += 1; continue
+                campos = {"per_adianta": per, "valor_adianta": None}
         else:
             val = item.get("valor")
             if val is None:
-                erros += 1; continue
-            val = int(round(float(val)))
-            if val <= 0:
-                erros += 1; continue
-            campos = {"per_adianta": None, "valor_adianta": val}
+                campos = {"per_adianta": None, "valor_adianta": None}
+                limpos += 1
+            else:
+                val = int(round(float(val)))
+                if val <= 0:
+                    campos = {"per_adianta": None, "valor_adianta": None}
+                    limpos += 1
+                else:
+                    campos = {"per_adianta": None, "valor_adianta": val}
 
         try:
             (supabase.table("tab_cad")
@@ -52240,7 +52250,11 @@ def api_adiantamento_gravar():
         gravar_log(_LOG_ADTO,
                    f"{gravados} funcionário(s) passaram a herdar o % de adiantamento "
                    f"quinzenal da empresa (configuração individual limpa)")
-    return jsonify({"ok": True})
+    elif limpos:
+        gravar_log(_LOG_ADTO,
+                   f"{limpos} funcionário(s) tiveram o adiantamento quinzenal próprio "
+                   f"removido — voltam a herdar o % da empresa")
+    return jsonify({"ok": True, "gravados": gravados, "limpos": limpos})
 
 
 @app.route("/api/adiantamento_soltar", methods=["POST"])

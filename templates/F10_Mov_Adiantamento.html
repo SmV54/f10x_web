@@ -317,7 +317,7 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                    min="10" max="60" placeholder="%" oninput="" value="{{ per_empresa or '' }}">
             <span>%</span>
             <button class="btn-aplicar" onclick="preencherTodosP()">Aplicar a todos</button>
-            <span class="acao-nota">ou edite linha a linha na tabela</span>
+            <span class="acao-nota">ou edite linha a linha · campo vazio herda o % da empresa</span>
         </div>
 
         <!-- Barra modo V -->
@@ -454,7 +454,7 @@ function renderizarTabela(manterValores) {
             const pctVal = manterValores && f.per_adianta != null ? f.per_adianta : '';
             celEntrada  = `<td class="td-input">
                 <input type="number" class="inp-pct-row" min="10" max="60"
-                       value="${pctVal}" placeholder="10-60"
+                       value="${pctVal}" placeholder="vazio = empresa"
                        data-mat="${f.matricula}" data-sal="${salCents}"
                        oninput="calcEstimado(this)" onblur="validarPct(this)">
                 <span class="sufixo-pct">%</span>
@@ -646,6 +646,7 @@ async function gravar() {
 
     const itens = [];
     let erroValidacao = false;
+    let limpos = 0;   // linhas esvaziadas → voltam a herdar o % da empresa
 
     if (modoAtivo === 'E') {
         if (_getPctEmpresa() === null) {
@@ -664,8 +665,18 @@ async function gravar() {
 
     } else if (modoAtivo === 'P') {
         document.querySelectorAll('.inp-pct-row').forEach(inp => {
-            const mat = parseInt(inp.dataset.mat, 10);
-            const pct = parseInt(inp.value, 10);
+            const mat   = parseInt(inp.dataset.mat, 10);
+            const bruto = (inp.value || '').trim();
+            const pct   = parseInt(bruto, 10);
+            // Campo vazio ou zerado = TIRAR o percentual próprio: o funcionário
+            // volta a herdar o % da empresa. Antes isso era tratado como erro de
+            // validação e a gravação inteira parava, sem mexer em nada.
+            if (bruto === '' || pct === 0) {
+                inp.style.borderColor = '';
+                itens.push({ matricula: mat, percentual: null, valor: null });
+                limpos++;
+                return;
+            }
             if (isNaN(pct) || pct < 10 || pct > 60) {
                 inp.style.borderColor = '#dc2626';
                 erroValidacao = true;
@@ -679,9 +690,11 @@ async function gravar() {
         document.querySelectorAll('.inp-val-row').forEach(inp => {
             const mat   = parseInt(inp.dataset.mat, 10);
             const cents = parseCents(inp.value);
+            // Mesma regra do modo P: vazio ou zero tira o valor próprio.
             if (cents <= 0) {
-                inp.style.borderColor = '#dc2626';
-                erroValidacao = true;
+                inp.style.borderColor = '';
+                itens.push({ matricula: mat, percentual: null, valor: null });
+                limpos++;
                 return;
             }
             inp.style.borderColor = '';
@@ -716,9 +729,17 @@ async function gravar() {
                 f.valor_adianta = modoAtivo === 'V' ? item.valor      : null;
             });
             renderizarTabela(true);   // atualiza a coluna "Atual"
-            mostrarMsg(modoAtivo === 'E'
-                ? `${itens.length} funcionário${itens.length !== 1 ? 's' : ''} passou a herdar o percentual da empresa.`
-                : `${itens.length} adiantamento${itens.length !== 1 ? 's' : ''} gravado${itens.length !== 1 ? 's' : ''} com sucesso.`, 'ok');
+            const gravadosN = itens.length - limpos;
+            let msg;
+            if (modoAtivo === 'E') {
+                msg = `${itens.length} funcionário${itens.length !== 1 ? 's' : ''} passou a herdar o percentual da empresa.`;
+            } else {
+                const p = [];
+                if (gravadosN) p.push(`${gravadosN} adiantamento${gravadosN !== 1 ? 's' : ''} gravado${gravadosN !== 1 ? 's' : ''}`);
+                if (limpos)    p.push(`${limpos} voltou${limpos !== 1 ? '' : ''} a herdar o % da empresa`.replace('voltou', limpos !== 1 ? 'voltaram' : 'voltou'));
+                msg = p.join(' · ') + '.';
+            }
+            mostrarMsg(msg, 'ok');
         } else {
             mostrarMsg(d.msg || 'Erro ao gravar.', 'err');
         }
