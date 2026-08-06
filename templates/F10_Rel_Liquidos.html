@@ -57,7 +57,9 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
     display: flex; align-items: center; gap: 6px;
     font-size: 13px; font-weight: 500; color: #334155; cursor: pointer;
 }
-.opcoes input[type="radio"] { accent-color: #2563eb; width: 15px; height: 15px; cursor: pointer; }
+.opcoes input[type="radio"],
+.opcoes input[type="checkbox"] { accent-color: #2563eb; width: 15px; height: 15px; cursor: pointer; }
+.filtro-sep { width: 1px; height: 22px; background: #e5e7eb; }
 .btn-filtrar {
     margin-left: auto; height: 36px; padding: 0 20px; border-radius: 8px;
     background: #2563eb; color: white; font-weight: 700; font-size: 13px;
@@ -88,6 +90,11 @@ thead th.r { text-align: right; }
 tbody td { padding: 6px 16px; font-size: 13px; border-bottom: 1px solid #f1f5f9; }
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; width: 1%; }
 tbody td.funcao { color: #475569; font-size: 12px; }
+tbody td.conta {
+    font-family: 'IBM Plex Mono', monospace; font-size: 12px;
+    color: #334155; white-space: nowrap;
+}
+tbody td.conta.caixa { font-family: 'IBM Plex Sans', sans-serif; color: #b45309; font-weight: 600; }
 tbody td.liq {
     text-align: right; white-space: nowrap; font-family: 'IBM Plex Mono', monospace;
     font-size: 13px; font-weight: 600; color: #1d4ed8; width: 1%;
@@ -156,6 +163,10 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
                 <label><input type="radio" name="ordem" value="mat"  {% if ordem != 'alfa' %}checked{% endif %}> Por matrícula</label>
                 <label><input type="radio" name="ordem" value="alfa" {% if ordem == 'alfa' %}checked{% endif %}> Por nome</label>
             </div>
+            <span class="filtro-sep"></span>
+            <div class="opcoes">
+                <label><input type="checkbox" name="conta" value="1" {% if com_conta %}checked{% endif %}> Incluir conta bancária</label>
+            </div>
             <button type="submit" class="btn-filtrar">Atualizar a Lista</button>
         </div>
     </form>
@@ -175,6 +186,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
                     <th>Matrícula</th>
                     <th>Nome</th>
                     <th>Função</th>
+                    {% if com_conta %}<th>Conta Bancária</th>{% endif %}
                     <th class="r">Líquido</th>
                 </tr>
             </thead>
@@ -184,13 +196,14 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
                     <td class="mat">{{ l.mat }}</td>
                     <td>{{ l.nome }}</td>
                     <td class="funcao">{{ l.funcao or '—' }}</td>
+                    {% if com_conta %}<td class="conta {% if l.sem_conta %}caixa{% endif %}">{{ l.conta }}</td>{% endif %}
                     <td class="liq {% if not l.liq_ok %}neg{% endif %}">{{ l.liq_fmt }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
             <tfoot>
                 <tr>
-                    <td colspan="3">TOTAL — {{ resumo.n_func }} funcionário(s)</td>
+                    <td colspan="{% if com_conta %}4{% else %}3{% endif %}">TOTAL — {{ resumo.n_func }} funcionário(s)</td>
                     <td class="liq">{{ resumo.total_fmt }}</td>
                 </tr>
             </tfoot>
@@ -201,7 +214,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
     </div>
 
     <div class="rodape">
-        <a class="btn-pdf" href="/rel_liquidos_pdf?ordem={{ ordem }}" target="_blank">&#128438; Imprimir em PDF</a>
+        <a class="btn-pdf" href="/rel_liquidos_pdf?ordem={{ ordem }}{% if com_conta %}&conta=1{% endif %}" target="_blank">&#128438; Imprimir em PDF</a>
         <a class="btn-menu" href="/relatorios">Voltar aos Relatórios</a>
     </div>
 

@@ -40136,14 +40136,70 @@ def relatorio_folha_pdf():
 # _folha_pagamento_dados, o mesmo do relatório da Folha de Pagamento — assim os
 # dois relatórios nunca divergem em centavo nenhum (informativas > 9900 fora,
 # 161-164 fora porque o desconto já vem pela 160).
-def _rel_liquidos_dados(id_empresa, id_cliente, anomes, anomes_tipo, ordem="mat"):
+def _fmt_conta_bancaria(row):
+    """'001 / 1234-5 / 12345-6' a partir das colunas banco_* de tab_cad.
+
+    Devolve "" quando não há conta — quem chama troca por "Recebe no Caixa".
+    Campo só com zeros conta como vazio: é assim que o cadastro fica quando
+    ninguém preencheu."""
+    def _v(campo):
+        s = str(row.get(campo) or "").strip()
+        return "" if not s.strip("0 ") else s
+    banco = _v("banco_numero")
+    ag    = _v("banco_agencia")
+    cc    = _v("banco_conta")
+    agdv  = str(row.get("banco_agenciadv") or "").strip()
+    ccdv  = str(row.get("banco_contadv")   or "").strip()
+    if not cc:
+        return ""
+    partes = []
+    if banco:
+        partes.append(banco.zfill(3))
+    if ag:
+        partes.append(f"{ag}-{agdv}" if agdv else ag)
+    partes.append(f"{cc}-{ccdv}" if ccdv else cc)
+    return " / ".join(partes)
+
+
+def _contas_por_matricula(id_empresa):
+    """{matricula: conta formatada} da empresa. Pagina de 1000 (limite do PostgREST)."""
+    out    = {}
+    offset = 0
+    page   = 1000
+    while True:
+        try:
+            r = (supabase.table("tab_cad")
+                 .select("matricula, banco_numero, banco_agencia, banco_agenciadv, "
+                         "banco_conta, banco_contadv")
+                 .eq("id_empresa", id_empresa)
+                 .range(offset, offset + page - 1)
+                 .execute())
+            rows = r.data or []
+        except Exception as e:
+            print(f"[rel_liquidos] falha ao ler contas: {e}")
+            break
+        for row in rows:
+            mat = int(row.get("matricula") or 0)
+            if mat:
+                out[mat] = _fmt_conta_bancaria(row)
+        if len(rows) < page:
+            break
+        offset += page
+    return out
+
+
+def _rel_liquidos_dados(id_empresa, id_cliente, anomes, anomes_tipo, ordem="mat",
+                        com_conta=False):
     """(linhas, resumo) — uma linha por funcionário, já ordenada."""
     dados = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente,
                                    ordem="mat",
                                    cnpj_empresa=str(session.get("cnpj_empresa") or ""))
+    contas = _contas_por_matricula(id_empresa) if com_conta else {}
     linhas = [
         {"mat": f["mat"], "nome": f["nome"], "funcao": f["funcao"],
-         "liq_fmt": f["liq_fmt"], "liq_ok": f["liq_ok"]}
+         "liq_fmt": f["liq_fmt"], "liq_ok": f["liq_ok"],
+         "conta": (contas.get(int(f["mat"]), "") or "Recebe no Caixa") if com_conta else "",
+         "sem_conta": com_conta and not contas.get(int(f["mat"]), "")}
         for cc in dados.get("cc_list", [])
         for f  in cc.get("funcs", [])
     ]
@@ -40165,6 +40221,10 @@ def _rel_liquidos_ordem():
     return "alfa" if o in ("alfa", "nome") else "mat"
 
 
+def _rel_liquidos_com_conta():
+    return (request.args.get("conta") or "").strip() in ("1", "S", "s", "on", "true")
+
+
 @app.route("/rel_liquidos")
 def rel_liquidos():
     if not session.get("logado"):
@@ -40172,15 +40232,16 @@ def rel_liquidos():
     anomes      = str(session.get("anomes_atual") or "")
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     ordem       = _rel_liquidos_ordem()
+    com_conta   = _rel_liquidos_com_conta()
 
     linhas, resumo = ([], {"anomes_fmt": "", "tipo_lbl": "", "n_func": 0,
                            "total_fmt": _fmt_brl(0)})
     if anomes:
         linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
-                                             anomes, anomes_tipo, ordem)
+                                             anomes, anomes_tipo, ordem, com_conta)
     return render_template("F10_Rel_Liquidos.html", **_ctx_relatorio(),
                            linhas=linhas, resumo=resumo, ordem=ordem,
-                           anomes_atual=anomes)
+                           com_conta=com_conta, anomes_atual=anomes)
 
 
 @app.route("/rel_liquidos_pdf")
@@ -40199,9 +40260,10 @@ def rel_liquidos_pdf():
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     if not anomes:
         return "Nenhuma folha ativa.", 400
-    ordem = _rel_liquidos_ordem()
+    ordem     = _rel_liquidos_ordem()
+    com_conta = _rel_liquidos_com_conta()
     linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
-                                         anomes, anomes_tipo, ordem)
+                                         anomes, anomes_tipo, ordem, com_conta)
 
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
@@ -40213,22 +40275,34 @@ def rel_liquidos_pdf():
                             textColor=col, leading=fs + 2)
         return Paragraph(str(txt), st)
 
-    cab = ["Matrícula", "Nome", "Função", "Líquido"]
+    # Com a conta bancária a tabela ganha uma coluna: a função encolhe para caber.
+    if com_conta:
+        cab       = ["Matrícula", "Nome", "Função", "Conta Bancária", "Líquido"]
+        col_larg  = [2.0*cm, 5.0*cm, 3.4*cm, 3.6*cm, 3.0*cm]
+    else:
+        cab       = ["Matrícula", "Nome", "Função", "Líquido"]
+        col_larg  = [2.2*cm, 6.6*cm, 5.0*cm, 3.2*cm]
     tbl_data = [[P(h, fn="Helvetica-Bold", align=(2 if h == "Líquido" else 0)) for h in cab]]
     for l in linhas:
-        tbl_data.append([
+        linha = [
             P(l["mat"], fn="Courier"),
             P(l["nome"]),
             P(l["funcao"] or "—"),
-            P(l["liq_fmt"], fn="Courier", align=2,
-              col=colors.HexColor("#1f2937" if l["liq_ok"] else "#b91c1c")),
-        ])
-    tbl_data.append([
-        P(""), P(f"TOTAL — {resumo['n_func']} funcionário(s)", fn="Helvetica-Bold"), P(""),
-        P(resumo["total_fmt"], fn="Courier-Bold", align=2),
-    ])
+        ]
+        if com_conta:
+            linha.append(P(l["conta"],
+                           fn="Helvetica" if l["sem_conta"] else "Courier", fs=7.5,
+                           col=colors.HexColor("#b45309" if l["sem_conta"] else "#1f2937")))
+        linha.append(P(l["liq_fmt"], fn="Courier", align=2,
+                       col=colors.HexColor("#1f2937" if l["liq_ok"] else "#b91c1c")))
+        tbl_data.append(linha)
+    rodape = [P(""), P(f"TOTAL — {resumo['n_func']} funcionário(s)", fn="Helvetica-Bold"), P("")]
+    if com_conta:
+        rodape.append(P(""))
+    rodape.append(P(resumo["total_fmt"], fn="Courier-Bold", align=2))
+    tbl_data.append(rodape)
 
-    tbl = Table(tbl_data, colWidths=[2.2*cm, 6.6*cm, 5.0*cm, 3.2*cm], repeatRows=1)
+    tbl = Table(tbl_data, colWidths=col_larg, repeatRows=1)
     n_ult = len(tbl_data) - 1
     row_bg = [("BACKGROUND", (0, i), (-1, i),
                colors.HexColor("#f8fafc") if i % 2 == 0 else colors.white)
