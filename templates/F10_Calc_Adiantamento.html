@@ -206,6 +206,18 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 </div>
 {% endif %}
 
+{% if afastados_count %}
+<div class="alerta alerta-aviso">
+    <span class="alerta-icone">🏥</span>
+    <div>
+        <strong>{{ afastados_count }} funcionário{{ 's' if afastados_count != 1 else '' }}</strong>
+        afastado{{ 's' if afastados_count != 1 else '' }} na 1ª quinzena
+        {{ 'ficarão' if afastados_count != 1 else 'ficará' }} de fora —
+        não há quinzena trabalhada a adiantar.
+    </div>
+</div>
+{% endif %}
+
 <!-- CARD: PRÉVIA -->
 <div class="card">
     <div class="card-titulo">
@@ -235,6 +247,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                     <td class="td-modo">{{ f.modo_desc }}</td>
                     <td class="td-val {% if f.valor_calc is none %}sem{% endif %}">
                         {% if f.valor_calc is not none %}{{ f.valor_fmt }}
+                        {%- elif f.afastado %}afastado
                         {%- elif f.em_ferias %}em férias
                         {%- else %}sem config.{% endif %}
                     </td>

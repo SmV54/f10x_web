@@ -52335,6 +52335,32 @@ def _mats_ferias_quinzena(id_empresa, anomes):
     return out
 
 
+def _mats_afastados_quinzena(id_empresa, anomes, id_cliente=None):
+    """Matrículas AFASTADAS na 1ª QUINZENA (dias 01–15) da competência.
+
+    Mesma régua das férias (ver _mats_ferias_quinzena): sem quinzena trabalhada
+    não há o que adiantar, e adiantar a quem está pelo INSS cria desconto que a
+    folha do mês pode não ter como cobrir. Afastamento que começa depois do dia
+    15 não tira o adiantamento — a quinzena já foi trabalhada.
+
+    Reaproveita _calc_etapa2_afastamentos (op1=6, já sem os registros
+    auxiliares op2>=10) e refina o intervalo. Sem data fim = ainda afastado.
+    """
+    if not anomes or len(anomes) != 6:
+        return set()
+    ini_q, fim_q = f"{anomes}01", f"{anomes}15"
+    out = set()
+    for mat, evs in (_calc_etapa2_afastamentos(id_empresa, anomes,
+                                               id_cliente=id_cliente) or {}).items():
+        for ev in evs:
+            di = _norm_data8(ev.get("data1i") or "")
+            df = _norm_data8(ev.get("data1f") or "")
+            if di and di <= fim_q and (not df or df >= ini_q):
+                out.add(int(mat))
+                break
+    return out
+
+
 @app.route("/calcular_adiantamento")
 def calcular_adiantamento():
     if not session.get("logado"):
@@ -52365,6 +52391,7 @@ def calcular_adiantamento():
         funcionarios=[],
         sem_adiantamento=0,
         em_ferias_count=0,
+        afastados_count=0,
         total_com=0,
         total_funcs=0,
         total_fmt="R$ 0,00",
@@ -52419,7 +52446,8 @@ def calcular_adiantamento():
         pass
 
     # Funcionários ativos
-    mats_ferias  = _mats_ferias_quinzena(id_empresa, anomes)
+    mats_ferias    = _mats_ferias_quinzena(id_empresa, anomes)
+    mats_afastados = _mats_afastados_quinzena(id_empresa, anomes, id_cliente=id_cliente)
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
@@ -52438,8 +52466,12 @@ def calcular_adiantamento():
             per_ind   = f.get("per_adianta")
             val_fixo  = f.get("valor_adianta")
 
-            # De férias na quinzena: aparece na lista, mas sem valor a adiantar.
-            if int(f.get("matricula") or 0) in mats_ferias:
+            # Férias ou afastamento na quinzena: aparece na lista, mas sem
+            # valor a adiantar — não há quinzena trabalhada a antecipar.
+            if int(f.get("matricula") or 0) in mats_afastados:
+                valor_calc = None
+                modo_desc  = "Afastado"
+            elif int(f.get("matricula") or 0) in mats_ferias:
                 valor_calc = None
                 modo_desc  = "Em férias"
             elif val_fixo is not None:
@@ -52462,6 +52494,7 @@ def calcular_adiantamento():
                 "sal_fmt":    _fmt_reais(vrsalfx),
                 "modo_desc":  modo_desc,
                 "em_ferias":  int(f.get("matricula") or 0) in mats_ferias,
+                "afastado":   int(f.get("matricula") or 0) in mats_afastados,
                 "valor_calc": valor_calc,
                 "valor_fmt":  _fmt_reais(valor_calc) if valor_calc is not None else "—",
             })
@@ -52471,9 +52504,10 @@ def calcular_adiantamento():
 
     com_adianta   = [f for f in funcionarios if f["valor_calc"] is not None]
     total_cents   = sum(f["valor_calc"] for f in com_adianta)
-    ferias_count  = sum(1 for f in funcionarios if f["em_ferias"])
-    # "sem configuração" não inclui quem está de férias — são motivos diferentes
-    sem_count     = len(funcionarios) - len(com_adianta) - ferias_count
+    afast_count   = sum(1 for f in funcionarios if f["afastado"])
+    ferias_count  = sum(1 for f in funcionarios if f["em_ferias"] and not f["afastado"])
+    # "sem configuração" não inclui quem está de férias ou afastado — motivos diferentes
+    sem_count     = len(funcionarios) - len(com_adianta) - ferias_count - afast_count
 
     ctx.update(
         aviso_verba=bool(verbas_ocupadas),
@@ -52483,6 +52517,7 @@ def calcular_adiantamento():
         funcionarios=funcionarios,
         sem_adiantamento=sem_count,
         em_ferias_count=ferias_count,
+        afastados_count=afast_count,
         total_com=len(com_adianta),
         total_funcs=len(funcionarios),
         total_fmt=_fmt_reais(total_cents),
@@ -52540,7 +52575,9 @@ def api_calcular_adiantamento():
     gravados    = 0
     erros       = 0
     pulou_ferias = 0
-    mats_ferias  = _mats_ferias_quinzena(id_empresa, anomes)
+    pulou_afast  = 0
+    mats_ferias    = _mats_ferias_quinzena(id_empresa, anomes)
+    mats_afastados = _mats_afastados_quinzena(id_empresa, anomes, id_cliente=id_cliente)
     try:
         r_cad = (supabase.table("tab_cad")
                  .select("matricula, vrsalfx, dtadm, per_adianta, valor_adianta")
@@ -52552,7 +52589,10 @@ def api_calcular_adiantamento():
             dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
-            # Férias na 1ª quinzena → sem adiantamento quinzenal
+            # Afastado ou de férias na 1ª quinzena → sem adiantamento quinzenal
+            if int(f.get("matricula") or 0) in mats_afastados:
+                pulou_afast += 1
+                continue
             if int(f.get("matricula") or 0) in mats_ferias:
                 pulou_ferias += 1
                 continue
@@ -52599,12 +52639,15 @@ def api_calcular_adiantamento():
         return jsonify({"ok": False, "msg": f"{erros} erro(s) ao gravar. Nenhum adiantamento foi salvo."})
     _msg_fer = (f" {pulou_ferias} funcionário(s) de férias na quinzena ficaram de fora."
                 if pulou_ferias else "")
+    if pulou_afast:
+        _msg_fer += (f" {pulou_afast} funcionário(s) afastado(s) na quinzena "
+                     f"ficaram de fora.")
     if erros:
         return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
-                        "ferias": pulou_ferias,
+                        "ferias": pulou_ferias, "afastados": pulou_afast,
                         "msg": f"{erros} erro(s) parciais.{_msg_fer}"})
     return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
-                    "ferias": pulou_ferias,
+                    "ferias": pulou_ferias, "afastados": pulou_afast,
                     "msg": _msg_fer.strip() or None})
 
 
