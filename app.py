@@ -53384,15 +53384,81 @@ def api_adiantamento_listagem():
     return jsonify({"ok": True, "registros": registros})
 
 
+# ── Edição / exclusão do adiantamento quinzenal ──────────
+# Mexer no adiantamento depois da folha calculada desencontraria a verba 160
+# (o desconto que soma as 161-164 na ETAPA 1140): o valor ja teria entrado no
+# calculo. Por isso as duas operacoes exigem a folha aberta. Ambas gravam em
+# tab_log — menu 'ADTO-QUINZ' (10 chars; a coluna e varchar(12)).
+_LOG_ADTO = "ADTO-QUINZ"
+
+
+def _folha_br(folha):
+    s = str(folha or "")
+    return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else s
+
+
+def _adto_folha_situacao(id_empresa, folha, tipo):
+    """Situação da folha do lançamento em tab_anomes ('A'/'X' aberta, 'C', 'F')."""
+    try:
+        r = (supabase.table("tab_anomes")
+             .select("situacao")
+             .eq("id_empresa", int(id_empresa))
+             .eq("ano_mes",    int(folha))
+             .eq("tipo",       str(tipo or "N"))
+             .limit(1).execute())
+        if r.data:
+            return str(r.data[0].get("situacao") or "")
+    except Exception:
+        pass
+    return ""
+
+
+def _adto_registro(id_empresa, id_cliente, id_mov):
+    """Lançamento de adiantamento (161-164) pelo id, ou None."""
+    try:
+        q = (supabase.table("tab_mov")
+             .select("id, matricula, cod_verba, valor, folha, folha_tipo, situacao")
+             .eq("id",         int(id_mov))
+             .eq("id_empresa", id_empresa)
+             .in_("cod_verba", list(VERBAS_ADIANTAMENTO)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        return ((q.limit(1).execute().data) or [None])[0]
+    except Exception:
+        return None
+
+
+def _adto_checar(id_empresa, id_cliente, id_mov):
+    """(registro, erro_json). Valida existência, situação e folha aberta."""
+    if not id_mov:
+        return None, {"ok": False, "msg": "ID não informado."}
+    reg = _adto_registro(id_empresa, id_cliente, id_mov)
+    if not reg:
+        return None, {"ok": False, "msg": "Lançamento de adiantamento não encontrado."}
+    if str(reg.get("situacao") or "") != "A":
+        return None, {"ok": False, "msg": "Este lançamento já foi excluído."}
+    sit = _adto_folha_situacao(id_empresa, reg.get("folha"), reg.get("folha_tipo"))
+    if sit in ("C", "F"):
+        rotulo = "Calculada" if sit == "C" else "Fechada"
+        return None, {"ok": False,
+                      "msg": f"A folha {_folha_br(reg.get('folha'))} está {rotulo} — "
+                             f"reabra a folha para alterar ou excluir o adiantamento."}
+    return reg, None
+
+
 @app.route("/api/adiantamento_excluir", methods=["POST"])
 def api_adiantamento_excluir():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
     id_empresa = _get_id_empresa()
-    data = request.get_json(force=True) or {}
+    id_cliente = session.get("id_cliente")
+    data   = request.get_json(force=True) or {}
     id_mov = data.get("id")
-    if not id_mov:
-        return jsonify({"ok": False, "msg": "ID não informado."})
+
+    reg, erro = _adto_checar(id_empresa, id_cliente, id_mov)
+    if erro:
+        return jsonify(erro)
+
     try:
         (supabase.table("tab_mov")
          .update({"situacao": "D"})
@@ -53400,9 +53466,57 @@ def api_adiantamento_excluir():
          .eq("id_empresa", id_empresa)
          .in_("cod_verba", list(VERBAS_ADIANTAMENTO))
          .execute())
-        return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
+
+    gravar_log(_LOG_ADTO,
+               f"Excluído adiantamento quinzenal V{int(reg['cod_verba']):04d} "
+               f"{_fmt_brl(int(reg.get('valor') or 0))} — folha {_folha_br(reg.get('folha'))}",
+               ano_mes=reg.get("folha"), matricula=int(reg.get("matricula") or 0))
+    return jsonify({"ok": True})
+
+
+@app.route("/api/adiantamento_editar", methods=["POST"])
+def api_adiantamento_editar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    data   = request.get_json(force=True) or {}
+    id_mov = data.get("id")
+
+    try:
+        val_novo = int(round(float(data.get("valor"))))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Valor inválido."})
+    if val_novo <= 0:
+        return jsonify({"ok": False, "msg": "O valor do adiantamento deve ser maior que zero."})
+    if val_novo > 99999999:
+        return jsonify({"ok": False, "msg": "Valor acima do limite (R$ 999.999,99)."})
+
+    reg, erro = _adto_checar(id_empresa, id_cliente, id_mov)
+    if erro:
+        return jsonify(erro)
+
+    val_ant = int(reg.get("valor") or 0)
+    if val_novo == val_ant:
+        return jsonify({"ok": True, "valor": val_novo, "msg": "Valor sem alteração."})
+
+    try:
+        (supabase.table("tab_mov")
+         .update({"valor": val_novo})
+         .eq("id",         int(id_mov))
+         .eq("id_empresa", id_empresa)
+         .in_("cod_verba", list(VERBAS_ADIANTAMENTO))
+         .execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+
+    gravar_log(_LOG_ADTO,
+               f"Alterado adiantamento quinzenal V{int(reg['cod_verba']):04d}: "
+               f"{_fmt_brl(val_ant)} → {_fmt_brl(val_novo)} — folha {_folha_br(reg.get('folha'))}",
+               ano_mes=reg.get("folha"), matricula=int(reg.get("matricula") or 0))
+    return jsonify({"ok": True, "valor": val_novo})
 
 
 # =========================================================

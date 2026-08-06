@@ -128,6 +128,13 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
     line-height: 1;
 }
 .btn-excluir:hover { background: #fee2e2; color: #dc2626; }
+.btn-editar {
+    background: none; border: none; cursor: pointer; padding: 3px 6px;
+    border-radius: 5px; color: #cbd5e1; font-size: 15px; transition: 0.15s;
+    line-height: 1;
+}
+.btn-editar:hover { background: #dbeafe; color: var(--accent); }
+.td-acoes { text-align: center; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -176,7 +183,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
     <div class="card">
         <div class="card-titulo">
             <span>Adiantamentos lançados</span>
-            <span class="card-titulo-right">Verbas 161–164 · tab_mov</span>
+            <span class="card-titulo-right">Verbas 161–164 · ✏️ altera o valor · 🗑 exclui</span>
         </div>
 
         <div class="tabela-wrap">
@@ -187,7 +194,7 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
                         <th>Nome</th>
                         <th>Verba</th>
                         <th class="th-r">Valor</th>
-                        <th style="width:36px;"></th>
+                        <th style="width:72px;"></th>
                     </tr>
                 </thead>
                 <tbody id="corpoTabela">
@@ -262,14 +269,17 @@ function renderTabela(lista) {
     let total = 0;
     tbody.innerHTML = lista.map(reg => {
         total += reg.valor || 0;
+        const nomeAttr = _esc(reg.nome).replace(/'/g, '&#39;');
         return `<tr id="row-${reg.id}">
             <td class="td-mat">${String(reg.matricula).padStart(4,'0')}</td>
             <td class="td-nome" title="${_esc(reg.nome)}">${_esc(reg.nome)}</td>
             <td class="td-verba"><span class="td-cod">${reg.cod_verba}</span>${_esc(reg.dsc_rubr || '—')}</td>
-            <td class="td-valor">${fmtReais(reg.valor || 0)}</td>
-            <td style="text-align:center;">
-                <button class="btn-excluir" title="Apagar lançamento"
-                        onclick="excluir(${reg.id}, ${reg.valor || 0})">🗑</button>
+            <td class="td-valor" id="val-${reg.id}">${fmtReais(reg.valor || 0)}</td>
+            <td class="td-acoes">
+                <button class="btn-editar" title="Alterar valor"
+                        onclick="editar(${reg.id}, '${nomeAttr}')">✏️</button>
+                <button class="btn-excluir" title="Excluir lançamento"
+                        onclick="excluir(${reg.id}, '${nomeAttr}')">🗑</button>
             </td>
         </tr>`;
     }).join('');
@@ -283,9 +293,68 @@ function atualizarTotal(total) {
     document.getElementById('totalGeral').textContent = fmtReais(total);
 }
 
-async function excluir(id, valor) {
+function valorDaLinha(id) {
+    const el = document.getElementById(`val-${id}`);
+    return el ? parseCents(el.textContent) : 0;
+}
+
+// Aceita "1.234,56", "1234,56" ou "1234.56" → centavos. null se não for número.
+function lerValorDigitado(txt) {
+    const limpo = String(txt || '').replace(/[^\d.,-]/g, '').trim();
+    if (!limpo) return null;
+    let n = limpo;
+    if (n.includes(',')) n = n.replace(/\./g, '').replace(',', '.');
+    const f = parseFloat(n);
+    if (isNaN(f)) return null;
+    return Math.round(f * 100);
+}
+
+async function editar(id, nome) {
+    const atual = valorDaLinha(id);
+    const resp = await f10Prompt(
+        `Novo valor do adiantamento quinzenal de ${nome}:`,
+        { titulo: 'Alterar adiantamento', tipo: 'info', okText: 'Gravar',
+          valor: (atual / 100).toFixed(2).replace('.', ',') });
+    if (resp === null) return;
+
+    const cents = lerValorDigitado(resp);
+    if (cents === null) { f10Alert('Valor inválido.'); return; }
+    if (cents <= 0)     { f10Alert('O valor deve ser maior que zero. Para tirar o adiantamento, use o botão de excluir.'); return; }
+    if (cents === atual) return;
+
+    const tr = document.getElementById(`row-${id}`);
+    if (tr) tr.style.opacity = '0.4';
+    try {
+        const r = await fetch('/api/adiantamento_editar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, valor: cents }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            const totalAtual = parseCents(document.getElementById('totalGeral').textContent);
+            document.getElementById(`val-${id}`).textContent = fmtReais(cents);
+            atualizarTotal(totalAtual - atual + cents);
+        } else {
+            f10Alert(d.msg || 'Erro ao alterar.');
+        }
+    } catch(e) {
+        f10Alert('Erro de comunicação com o servidor.');
+    } finally {
+        if (tr) tr.style.opacity = '';
+    }
+}
+
+async function excluir(id, nome) {
     const tr = document.getElementById(`row-${id}`);
     if (!tr) return;
+    const valor = valorDaLinha(id);
+
+    const ok = await f10Confirm(
+        `Excluir o adiantamento quinzenal de ${nome} (${fmtReais(valor)})?\n\n`
+        + `O lançamento sai da folha e deixa de ser descontado na verba 0160.`,
+        { titulo: 'Excluir adiantamento', tipo: 'perigo', okText: 'Excluir' });
+    if (!ok) return;
 
     tr.style.opacity = '0.4';
     try {
