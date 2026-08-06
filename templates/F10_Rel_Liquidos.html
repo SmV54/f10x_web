@@ -108,6 +108,15 @@ tfoot td {
 }
 tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
+.vazio.bloqueado { color: #92400e; padding: 36px 28px; }
+.bloq-icone  { font-size: 30px; margin-bottom: 8px; }
+.bloq-titulo { font-size: 15px; font-weight: 700; color: #92400e; margin-bottom: 8px; }
+.bloq-texto  { font-size: 13px; color: #78350f; max-width: 520px; margin: 0 auto; line-height: 1.6; }
+.bloq-link {
+    display: inline-block; margin-top: 16px; padding: 8px 18px; border-radius: 8px;
+    background: #f59e0b; color: #fff; font-size: 13px; font-weight: 700; text-decoration: none;
+}
+.bloq-link:hover { background: #d97706; }
 
 .rodape { margin-top: 16px; display: flex; justify-content: space-between; align-items: center; }
 .btn-pdf {
@@ -156,6 +165,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
 
 <div class="container">
 
+    {% if anomes_atual and not folha_aberta %}
     <form method="get" action="/rel_liquidos">
         <div class="filtros">
             <span class="filtro-label">Classificação:</span>
@@ -170,6 +180,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
             <button type="submit" class="btn-filtrar">Atualizar a Lista</button>
         </div>
     </form>
+    {% endif %}
 
     <div class="card">
         <div class="card-header">
@@ -179,6 +190,17 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
 
         {% if not anomes_atual %}
         <div class="vazio">Nenhuma folha ativa. Selecione o mês/ano no menu antes de continuar.</div>
+        {% elif folha_aberta %}
+        <div class="vazio bloqueado">
+            <div class="bloq-icone">🔒</div>
+            <div class="bloq-titulo">Folha Aberta — relação indisponível</div>
+            <div class="bloq-texto">
+                A Relação dos Líquidos só sai com a folha <strong>Calculada</strong> ou
+                <strong>Fechada</strong>. Enquanto a folha está aberta, os valores ainda
+                mudam a cada lançamento e o líquido não está fechado.
+            </div>
+            <a class="bloq-link" href="/calcular_folha">Ir para Calcular Folha →</a>
+        </div>
         {% elif linhas %}
         <table>
             <thead>
@@ -214,7 +236,11 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
     </div>
 
     <div class="rodape">
+        {% if anomes_atual and not folha_aberta %}
         <a class="btn-pdf" href="/rel_liquidos_pdf?ordem={{ ordem }}{% if com_conta %}&conta=1{% endif %}" target="_blank">&#128438; Imprimir em PDF</a>
+        {% else %}
+        <span></span>
+        {% endif %}
         <a class="btn-menu" href="/relatorios">Voltar aos Relatórios</a>
     </div>
 

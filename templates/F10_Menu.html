@@ -726,7 +726,7 @@ const modulos = {
             const secFolha = { nome: 'Folha de Pagamento', itens: [
                 { icone: '🖨️', nome: 'Folha de Pagamento',  href: '/relatorio_folha', ok: true, navLoading: true },
                 { icone: '🧾', nome: 'Contracheque',         href: '/contracheque',    ok: true },
-                { icone: '💵', nome: 'Relação dos Líquidos', href: '/rel_liquidos',    ok: true, navLoading: true },
+                { icone: '💵', nome: 'Relação dos Líquidos', href: '/rel_liquidos',    ok: true, navLoading: true, bloqueioFolha: 'calculada' },
                 { icone: '📊', nome: 'Resumo da Folha',      href: '/resumo_folha',        ok: true, navLoading: true },
                 { icone: '📋', nome: 'Relação de N Verbas',  href: '/config_rel_verbas',   ok: true },
                 { icone: '📅', nome: 'Ficha Financeira',     href: '/rel_ficha_financeira', ok: true },
@@ -1031,6 +1031,7 @@ function itemBloqueado(item) {
     const folhaAberta  = FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X';
     const folhaFechada = FOLHA_SITUACAO === 'F';
     if (item.bloqueioFolha === 'fechada' && !folhaFechada) return true;
+    if (item.bloqueioFolha === 'calculada' && folhaAberta) return true;
     if ((item.bloqueioFolha === 'aberta' || item.bloqueioFolha === true) && !folhaAberta) return true;
     if (item.requerS1299 && !S1299_ENVIADO) return true;
     return false;
@@ -1094,6 +1095,13 @@ function renderItens(itens) {
             if (!folhaFechada) {
                 bloqueado = true;
                 motivoBloq = 'fechada';
+            }
+        } else if (item.bloqueioFolha === 'calculada') {
+            // Exige folha JA calculada (C/F) - o inverso do 'aberta'. Relatorio
+            // de resultado da folha nao faz sentido com a folha ainda aberta.
+            if (folhaAberta) {
+                bloqueado = true;
+                motivoBloq = 'calculada';
             }
         } else if (item.bloqueioFolha === 'aviso') {
             avisoFolha = !folhaAberta;
@@ -1223,6 +1231,8 @@ function mostrarAvisoFolha(motivo) {
     const sitLbl = rotuloSituacaoFolha();
     if (motivo === 'pos_s1299') {
         navAviso.innerHTML = `🔒 Esta opção fica disponível depois que o <strong>S-1299 do período atual</strong> for enviado e tiver recibo.`;
+    } else if (motivo === 'calculada') {
+        navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — esta opção só está disponível com a folha <strong>Calculada</strong> ou <strong>Fechada</strong>.`;
     } else if (motivo === 'fechada') {
         navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — eventos periódicos do eSocial só podem ser enviados com a folha <strong>Fechada</strong>.`;
     } else {

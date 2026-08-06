@@ -40225,6 +40225,11 @@ def _rel_liquidos_com_conta():
     return (request.args.get("conta") or "").strip() in ("1", "S", "s", "on", "true")
 
 
+def _rel_liquidos_folha_aberta():
+    """Folha ainda Aberta (A/X) — sem cálculo, não há líquido para relacionar."""
+    return str(session.get("anomes_situacao") or "") in ("A", "X")
+
+
 @app.route("/rel_liquidos")
 def rel_liquidos():
     if not session.get("logado"):
@@ -40233,15 +40238,19 @@ def rel_liquidos():
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     ordem       = _rel_liquidos_ordem()
     com_conta   = _rel_liquidos_com_conta()
+    folha_aberta = _rel_liquidos_folha_aberta()
 
     linhas, resumo = ([], {"anomes_fmt": "", "tipo_lbl": "", "n_func": 0,
                            "total_fmt": _fmt_brl(0)})
-    if anomes:
+    # Folha Aberta não tem líquido fechado: o que estiver em tab_mov é parcial e
+    # muda no próximo cálculo. A tela avisa em vez de listar número que engana.
+    if anomes and not folha_aberta:
         linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
                                              anomes, anomes_tipo, ordem, com_conta)
     return render_template("F10_Rel_Liquidos.html", **_ctx_relatorio(),
                            linhas=linhas, resumo=resumo, ordem=ordem,
-                           com_conta=com_conta, anomes_atual=anomes)
+                           com_conta=com_conta, anomes_atual=anomes,
+                           folha_aberta=folha_aberta)
 
 
 @app.route("/rel_liquidos_pdf")
@@ -40260,6 +40269,9 @@ def rel_liquidos_pdf():
     anomes_tipo = str(session.get("anomes_tipo")  or "N")
     if not anomes:
         return "Nenhuma folha ativa.", 400
+    if _rel_liquidos_folha_aberta():
+        return ("A folha está Aberta — calcule a folha antes de emitir a "
+                "Relação dos Líquidos."), 403
     ordem     = _rel_liquidos_ordem()
     com_conta = _rel_liquidos_com_conta()
     linhas, resumo = _rel_liquidos_dados(_get_id_empresa(), session.get("id_cliente"),
