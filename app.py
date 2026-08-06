@@ -11214,6 +11214,10 @@ def cad_verba():
         inc_irrf=inc_irrf.data or [],
         inc_pis=inc_pis.data or [],
         is_admin_verbas=is_admin_verbas,
+        # "Válido a partir de" nasce com a folha em processamento, não com o mês
+        # do calendário: quem lança verba em agosto processando julho quer que a
+        # rubrica já valha para a folha que está na tela.
+        anomes_atual=str(session.get("anomes_atual") or ""),
     )
 
 

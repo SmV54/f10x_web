@@ -431,6 +431,7 @@
             <div class="form-secao">
               <label class="form-label">Válido a partir de <span style="font-size:10px; color:#64748b; font-weight:400;">(para o eSocial)</span> <span style="color:#ef4444;">*</span></label>
               <input class="form-input" type="month" id="inpIniValid">
+              <span id="hintIniValid" style="display:none; font-size:10px; color:#64748b; margin-top:2px;"></span>
             </div>
           </div>
 
@@ -751,6 +752,7 @@
   const FOLHA_ABERTA      = {{ (folha_situacao in ('A', 'X')) | tojson }};
   const IS_ADMIN_VERBAS   = {{ (is_admin_verbas|default(false)) | tojson }};
   const PROX_COD          = {{ (prox_cod|default(0)) | tojson }};   // sugestão vinda do servidor
+  const ANOMES_FOLHA      = {{ (anomes_atual|default('')) | tojson }};  // AAAAMM da folha em processamento
 
   function iniParaTela(val) {
     if (!val) return '';
@@ -795,7 +797,14 @@
     '1': ['inpInc13sal', 'inpIncAdto13'],
   };
 
-  function mesAtual() {
+  // Mês que preenche o "Válido a partir de": a FOLHA EM PROCESSAMENTO, não o
+  // mês do calendário. Quem cadastra a verba em agosto processando a folha de
+  // julho precisa que ela já valha para julho. Sem folha ativa, cai no
+  // calendário para o campo nunca ficar vazio.
+  function mesFolhaAtiva() {
+    if (ANOMES_FOLHA && ANOMES_FOLHA.length === 6) {
+      return ANOMES_FOLHA.slice(0, 4) + '-' + ANOMES_FOLHA.slice(4, 6);
+    }
     const d = new Date();
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
   }
@@ -852,7 +861,7 @@
     });
     document.getElementById('hintNome').style.display = 'none';
     document.getElementById('hintCod').style.display  = 'none';
-    document.getElementById('inpIniValid').value    = mesAtual();
+    document.getElementById('inpIniValid').value    = mesFolhaAtiva();
     document.getElementById('inpTipo').value        = '';
     document.getElementById('inpUnid').value        = 'V';
     document.getElementById('inpPerc').value         = '';
@@ -1301,8 +1310,13 @@
     } catch(e) { mostrarErro('Erro de comunicação.'); }
   }
 
-  // Ao carregar a página já preenche o mês atual e sugere o código da verba
-  document.getElementById('inpIniValid').value = mesAtual();
+  // Ao carregar a página já preenche a folha em processamento e sugere o código
+  document.getElementById('inpIniValid').value = mesFolhaAtiva();
+  if (ANOMES_FOLHA && ANOMES_FOLHA.length === 6) {
+    const _h = document.getElementById('hintIniValid');
+    _h.textContent = `Folha em processamento: ${ANOMES_FOLHA.slice(4,6)}/${ANOMES_FOLHA.slice(0,4)}`;
+    _h.style.display = 'block';
+  }
   sugerirCodigo();
 
   // Admin F10 pode criar verbas do sistema (código < 1000) — libera o mínimo do
