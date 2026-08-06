@@ -14965,6 +14965,54 @@ def api_pensao_gravar():
 
 
 # =========================================================
+# PENSÃO ALIMENTÍCIA — API: excluir a pensão do funcionário
+# =========================================================
+# Exclusão LÓGICA (situacao='D'): _get_pensoes_por_mat só enxerga 'A', então o
+# desconto para nas próximas folhas e as já calculadas ficam intactas — o que
+# já foi descontado continua no tab_mov, como tem que ser.
+@app.route("/api/pensao_excluir", methods=["POST"])
+def api_pensao_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    data = request.get_json(force=True) or {}
+    try:
+        mat = int(data.get("matricula"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Matrícula inválida."})
+
+    try:
+        r = (supabase.table("tab_pensao")
+             .select("id, dep_responsavel, valor_fixo, percentual, anomes_inicial")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("situacao", "A").limit(1).execute())
+        reg = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a pensão: {str(e)[:200]}"})
+    if not reg:
+        return jsonify({"ok": False, "msg": "Este funcionário não tem pensão ativa."})
+
+    try:
+        (supabase.table("tab_pensao")
+         .update({"situacao": "D"})
+         .eq("id", reg["id"]).eq("id_empresa", id_empresa)
+         .execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
+
+    if reg.get("valor_fixo") is not None:
+        _det = f"valor fixo {_fmt_brl(int(reg['valor_fixo']))}"
+    elif reg.get("percentual") is not None:
+        _det = f"{int(reg['percentual']) / 100:.2f}%"
+    else:
+        _det = "sem valor"
+    gravar_log("PENSAO",
+               f"mat {mat}: pensão EXCLUÍDA ({_det}, desde {reg.get('anomes_inicial') or '—'})",
+               matricula=mat)
+    return jsonify({"ok": True})
+
+
+# =========================================================
 # PENSÃO ALIMENTÍCIA — TELA (Fórmulas)
 # Fórmulas ficam em tab_tabela_cli, num_tabela='7'.
 #   - id_cliente=0 + id_empresa='0'  → fórmula global (todos os clientes)
@@ -15347,7 +15395,23 @@ def api_funcionarios_lista():
 
     # Contexto férias: intermitente (111) e não-empregado (acima de 700 —
     # pró-labore, sócio, diretor, estagiário) não têm férias a registrar.
-    so_com_ferias = request.args.get("contexto", "").strip() == "ferias"
+    _contexto     = request.args.get("contexto", "").strip()
+    so_com_ferias = _contexto == "ferias"
+
+    # Contexto pensão: marca na lista quem JÁ tem pensão ativa, para o usuário
+    # saber de cara que aquele clique é edição, não cadastro novo.
+    pensao_mats = set()
+    if _contexto == "pensao":
+        try:
+            r_pe = (supabase.table("tab_pensao")
+                    .select("matricula")
+                    .eq("id_empresa", id_empresa)
+                    .eq("situacao", "A")
+                    .execute())
+            pensao_mats = {int(row["matricula"]) for row in (r_pe.data or [])
+                           if row.get("matricula") is not None}
+        except Exception:
+            pensao_mats = set()
 
     funcionarios = []
     for f in rows:
@@ -15367,6 +15431,7 @@ def api_funcionarios_lista():
             "codcateg":  str(f.get("codcateg") or ""),
             "cbofuncao": str(f.get("cbofuncao") or ""),
             "aviso_previo": (mat_int in aviso_mats),
+            "tem_pensao":   (mat_int in pensao_mats),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})

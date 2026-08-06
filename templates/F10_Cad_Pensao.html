@@ -139,6 +139,10 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
 }
 .btn-primario:hover { filter: brightness(1.04); }
+.btn-perigo {
+    background: #fff; border: 1px solid #fca5a5; color: #b91c1c;
+}
+.btn-perigo:hover { background: #fee2e2; border-color: #ef4444; }
 
 /* ── RODAPÉ ── */
 .rodape-final { display: flex; align-items: center; margin-top: 12px; flex: 0 0 auto; }
@@ -498,9 +502,14 @@ function atualizarPainel() {
                 </div>`;
         }
         // O botão Gravar só aparece depois de uma fórmula escolhida.
+        // Excluir só aparece quando JÁ existe pensão gravada — é o que
+        // transforma a tela em edição/exclusão para quem tem o selo na lista.
+        const btnExcluir = PENSAO ? `
+                <button class="btn btn-perigo" onclick="excluirPensao()"
+                        style="margin-left:10px;">🗑 Excluir Pensão</button>` : '';
         const botao = preselect ? `
             <div style="margin-top:16px;">
-                <button class="btn btn-primario" onclick="gravarPensao()">💾 Gravar Pensão</button>
+                <button class="btn btn-primario" onclick="gravarPensao()">💾 Gravar Pensão</button>${btnExcluir}
             </div>` : '';
         seletor = `
             <label style="${estLbl}">Fórmula de cálculo da pensão</label>
@@ -535,6 +544,34 @@ function atualizarPainel() {
 }
 
 /* ── Grava o vínculo dos dependentes com a fórmula escolhida ── */
+async function excluirPensao() {
+    if (!PENSAO) return;
+    const ok = await f10Confirm(
+        `Excluir a pensão de ${FUNC_LABEL}?
+
+`
+        + `O desconto deixa de sair nas próximas folhas. As folhas já calculadas `
+        + `não são alteradas.`,
+        { titulo: 'Excluir pensão', tipo: 'perigo', okText: 'Excluir' });
+    if (!ok) return;
+    try {
+        const r = await fetch('/api/pensao_excluir', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ matricula: MATRICULA }),
+        });
+        const d = await r.json();
+        if (d.ok) {
+            await f10Alert('Pensão excluída.');
+            window.location.href = '/select_funcionario?contexto=pensao';
+        } else {
+            f10Alert(d.msg || 'Erro ao excluir.');
+        }
+    } catch (e) {
+        f10Alert('Erro de comunicação com o servidor.');
+    }
+}
+
 async function gravarPensao() {
     const msg = document.getElementById('pensao-msg');
     const sel = document.getElementById('sel-formula');
@@ -587,5 +624,7 @@ document.addEventListener('DOMContentLoaded', carregarLista);
 </script>
 
 </div><!-- /pagina -->
+
+<script src="/static/f10_dialog.js"></script>
 </body>
 </html>

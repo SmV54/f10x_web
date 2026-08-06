@@ -206,6 +206,7 @@ body.sel-unico .lista-row { cursor: pointer; }
 .badge-ativo    { display: inline-block; background: #f0fdf4; color: #166534; border: 1px solid #86efac; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
 .badge-demitido { display: inline-block; background: #fff1f2; color: #9f1239; border: 1px solid #fda4af; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
 .badge-aviso    { display: inline-block; background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.badge-pensao   { display: inline-block; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; margin-left: 4px; }
 .lc-data-col    { font-family: var(--mono); font-size: 12px; color: #334155; white-space: nowrap; }
 
 .lista-loading, .lista-vazio {
@@ -736,9 +737,11 @@ const CONTEXTOS = {
     },
     pensao: {
         titulo:        'Pensão Alimentícia — Selecionar Funcionário',
-        subtitulo:     'Clique no funcionário para cadastrar a pensionista (deve estar entre os dependentes)',
+        subtitulo:     'Clique no funcionário para cadastrar a pensionista. Quem tem o selo Tem Pensão abre para editar ou excluir.',
         tituloCurto:   'Selecionar — Pensão Alimentícia',
         proximo:       '/cad_pensao',
+        // precisa do contexto na API para vir o flag tem_pensao de cada linha
+        apiUrl:        '/api/funcionarios_lista?contexto=pensao',
         f_situacao:    'A',          // só funcionários ativos (não mostra demitidos)
         semFiltros:    true,         // esconde o painel de Filtros — só a lista
         maxSel:        1,
@@ -1130,7 +1133,12 @@ function renderLista(lista) {
             const aviso = f.aviso_previo
                 ? '<span class="badge-aviso" title="Funcionário em aviso prévio">Aviso Prévio</span>'
                 : '';
-            sitCell = sit + aviso;
+            // Contexto pensão: quem já tem pensão ativa entra marcado — o clique
+            // abre a pensão existente para editar, não um cadastro em branco.
+            const pens = (CONTEXTO === 'pensao' && f.tem_pensao)
+                ? '<span class="badge-pensao" title="Já tem pensão cadastrada — clique para editar ou excluir">Tem Pensão</span>'
+                : '';
+            sitCell = sit + aviso + pens;
         }
         return `<div class="lista-row${sel?' selecionado':''}" data-mat="${f.matricula}" onclick="toggleRow(${f.matricula})">
             <div class="lc-check"><input type="checkbox" class="func-chk" value="${f.matricula}" ${sel?'checked':''} onclick="event.stopPropagation()" onchange="chkChange(this,${f.matricula})"></div>
