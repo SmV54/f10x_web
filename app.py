@@ -39440,6 +39440,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "prov_fmt":   _fmt_brl(f["prov"]),
                 "desc_fmt":   _fmt_brl(f["desc"]),
                 "liq_fmt":    _fmt_brl(f["liq"]),
+                "liq_c":      f["liq"],          # numérico, p/ quem precisa filtrar/somar
                 "liq_ok":     f["liq"] >= 0,
                 "b_inss_fmt": _fmt_brl(f["b_inss"]),
                 "b_irrf_fmt": _fmt_brl(f["b_irrf"]),
@@ -40195,23 +40196,29 @@ def _rel_liquidos_dados(id_empresa, id_cliente, anomes, anomes_tipo, ordem="mat"
                                    ordem="mat",
                                    cnpj_empresa=str(session.get("cnpj_empresa") or ""))
     contas = _contas_por_matricula(id_empresa) if com_conta else {}
+    # Líquido zero fica de fora: é quem não tem nada a receber nesta folha
+    # (afastado o mês todo, admitido depois, folha só com informativas). A
+    # relação existe para saber quanto pagar a cada um.
     linhas = [
         {"mat": f["mat"], "nome": f["nome"], "funcao": f["funcao"],
-         "liq_fmt": f["liq_fmt"], "liq_ok": f["liq_ok"],
+         "liq_fmt": f["liq_fmt"], "liq_ok": f["liq_ok"], "liq_c": int(f.get("liq_c") or 0),
          "conta": (contas.get(int(f["mat"]), "") or "Recebe no Caixa") if com_conta else "",
          "sem_conta": com_conta and not contas.get(int(f["mat"]), "")}
         for cc in dados.get("cc_list", [])
         for f  in cc.get("funcs", [])
+        if int(f.get("liq_c") or 0) != 0
     ]
     if ordem == "alfa":
         linhas.sort(key=lambda x: (x["nome"] or "").upper())
     else:
         linhas.sort(key=lambda x: x["mat"])
+    # Contagem e total saem das linhas listadas, não do total geral da folha —
+    # senão o rodapé anunciaria funcionários que a relação não mostra.
     resumo = {
         "anomes_fmt": dados.get("anomes_fmt", ""),
         "tipo_lbl":   dados.get("tipo_lbl", ""),
-        "n_func":     dados.get("n_func", 0),
-        "total_fmt":  dados.get("grand_liq", _fmt_brl(0)),
+        "n_func":     len(linhas),
+        "total_fmt":  _fmt_brl(sum(l["liq_c"] for l in linhas)),
     }
     return linhas, resumo
 
