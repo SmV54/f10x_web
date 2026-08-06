@@ -36177,13 +36177,35 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(etapa2_tbl)
 
             # ── etapa 4 — salário proporcional ────────────────
+            # 0002 DIGITADA A MAO INIBE a verba do salario (0001, ou a da
+            # categoria). O valor lancado passa a ser o salario do mes, com mes
+            # completo ou nao. Antes: em mes completo a 0001 era paga ao lado da
+            # 0002 manual (salario em dobro) e, em mes incompleto, a 0001 ia a
+            # zero mas o proporcional calculado continuava somando no mmVmm — as
+            # bases de INSS/IRRF/FGTS saiam infladas, porque o tab_mov so recebia
+            # o lancamento manual (ver o filtro cod_verbas_manuais na gravacao).
+            _mov_manual_2 = [r for r in tab_mov_dict.get(matr, [])
+                             if int(r.get("cod_verba") or 0) == 2]
+            _val_manual_2 = sum(int(r.get("valor") or 0) for r in _mov_manual_2)
             _st_e4_zero = TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
                 ("TOPPADDING",    (0, 0), (0, 0), 8),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 4),
             ])
-            if is_intermitente:
+            if _mov_manual_2 and not is_intermitente:
+                # o valor da 0002 entra na ETAPA 1090 (lancamentos do mes);
+                # aqui so se anula a verba do salario para nao pagar as duas.
+                mmVmm[_cod_sal_mes] = 0
+                mmVmm.pop(2, None)
+                e4_tbl = Table([[Paragraph(
+                    f"ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL"
+                    f"   Rubrica {_cod_sal_mes:04d} = ZERO — 0002 lancada manualmente"
+                    f" ({_fmt_brl(_val_manual_2)}) inibe a verba do salario;"
+                    f" o salario do mes e o valor lancado (ver ETAPA 1090)",
+                    st_etapa)]], colWidths=[17*cm])
+                e4_tbl.setStyle(_st_e4_zero)
+            elif is_intermitente:
                 e4_tbl = Table([[Paragraph(
                     "ETAPA 1040 - CALCULO DO SALARIO PROPORCIONAL"
                     "   Nao aplicavel — Intermitente (Cat. 111). Remuneracao via Verba 003.",
