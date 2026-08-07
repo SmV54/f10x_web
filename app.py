@@ -7395,9 +7395,10 @@ def cancelar_rescisao():
 # Cliente 0038 (Hernani Alves Lacerda Barcelos) não quer INSS, IRRF nem FGTS
 # em nenhuma verba, em nenhum tipo de folha (mensal, férias, rescisão, 13º).
 # O cálculo roda NORMALMENTE — as etapas continuam saindo na memória com os
-# valores apurados — e no fim os três encargos (valor E base) são zerados
-# antes de gravar em tab_mov/tab_total. Fica registrado na memória de cálculo
-# o que seria devido e o que foi efetivamente lançado (etapas x180/2070/3110).
+# valores apurados — e no fim só o VALOR dos três encargos é zerado antes de
+# gravar em tab_mov/tab_total. As BASES (base INSS, base IRRF, base FGTS)
+# continuam gravadas no tab_total. Fica registrado na memória de cálculo o que
+# seria devido e o que foi efetivamente lançado (etapas 1155/2070/3110/4040).
 CLIENTES_SEM_ENCARGOS = {38}
 
 
@@ -8031,17 +8032,13 @@ def api_calc_rescisao_calcular():
 
         # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): tudo acima continua
         # calculado e vai para a memória (ETAPA 3110); o que é gravado/descontado
-        # é a versão zerada (prefixo g_).
+        # é a versão zerada (prefixo g_). As BASES continuam sendo gravadas.
         _enc0        = _sem_encargos(id_cliente)
         g_inss_saldo = 0 if _enc0 else inss_saldo
         g_inss_13    = 0 if _enc0 else inss_13
         g_irrf_saldo = 0 if _enc0 else irrf_saldo
         g_irrf_13    = 0 if _enc0 else irrf_13
-        g_base_inss  = 0 if _enc0 else base_inss_saldo
-        g_base_irrf  = 0 if _enc0 else base_irrf_saldo
-        g_base_fgts  = 0 if _enc0 else base_fgts
         g_fgts_val   = 0 if _enc0 else fgts_val
-        g_dep_total  = 0 if _enc0 else dep_total
 
         total_prov = saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
         total_desc = g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
@@ -8083,11 +8080,11 @@ def api_calc_rescisao_calcular():
         rec_tot = {
             "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
             "folha": folha_int, "folha_tipo": "R",
-            "valor_base_inss_semlimite": g_base_inss, "valor_base_inss_comlimite": g_base_inss,
+            "valor_base_inss_semlimite": base_inss_saldo, "valor_base_inss_comlimite": base_inss_saldo,
             "valor_inss_retido": g_inss_saldo + g_inss_13,
-            "valor_base_fgts": g_base_fgts, "valor_fgts": g_fgts_val,
-            "valor_irrf_basetotal": g_base_inss, "valor_irrf_basetabela": g_base_irrf,
-            "valor_irrf_dependentes": g_dep_total, "qtd_irrf_dependentes": ndep,
+            "valor_base_fgts": base_fgts, "valor_fgts": g_fgts_val,
+            "valor_irrf_basetotal": base_inss_saldo, "valor_irrf_basetabela": base_irrf_saldo,
+            "valor_irrf_dependentes": dep_total, "qtd_irrf_dependentes": ndep,
             "valor_salario": sal_mes, "valor_total_proventos": total_prov,
             "valor_total_descontos": total_desc, "valor_liquido": liquido,
             "os": 0, "controle": 0,
@@ -8457,7 +8454,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                         f"{VR_IRRF_13:04d} não são lançadas)",
                         f"FGTS apurado {_B(r['fgts_val'])} sobre a base {_B(r['base_fgts'])} "
                         f"&#8594; <b>zerado</b> (inclusive a multa rescisória)",
-                        "Em tab_total gravamos zero no valor E na base dos três encargos.",
+                        "As BASES continuam gravadas no tab_total; só o valor dos "
+                        "três encargos vai zerado.",
                     ], passos=["sem_enc"]))
                 e.append(Paragraph(
                     "&#187; Cliente sem encargos &#8212; <b>nada foi descontado do "
@@ -37970,16 +37968,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 _enc0_base_inss = int(base_inss)
                 _enc0_base_irrf = int(base_irrf_bruta)
 
-                # zera valor E base dos três encargos
+                # zera só o VALOR dos três encargos — as bases continuam
+                # gravadas no tab_total (base_inss / base_irrf / base_fgts).
                 inss_val = 0
                 irrf_val = 0
                 mmVmm.pop(101, None)      # INSS
                 mmVmm.pop(102, None)      # INSS pró-labore
                 mmVmm.pop(120, None)      # IRRF
-                base_inss       = 0
-                base_irrf       = 0
-                base_irrf_bruta = 0
-                dep_irrf_total  = 0
                 total_prov = int(sum(v for r, v in mmVmm.items()
                                      if int(r) < 9900
                                      and rubricas_info.get(r, {"tp":"1"})["tp"] == "1"))
@@ -37998,7 +37993,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     f"(verba 0120 não é lançada)",
                     f"FGTS apurado {_fmt_brl(_enc0_fgts)} sobre a base "
                     f"{_fmt_brl(int(_enc0_base_fgts))}   »   <b>zerado</b>",
-                    "Em tab_total gravamos zero no valor E na base dos três encargos.",
+                    "As BASES continuam gravadas no tab_total; só o valor dos "
+                    "três encargos vai zerado.",
                 ]
                 _enc0_tbl = Table([
                     [Paragraph("ETAPA 1155 - CLIENTE SEM ENCARGOS "
@@ -38162,8 +38158,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 # Quem recolhe FGTS e definido pela CATEGORIA (ver _tem_fgts):
                 # 700-799 e 901 nao tem, com a excecao da 721 (Diretor nao
                 # empregado COM FGTS), que recolhe normalmente.
-                # _enc0: cliente sem encargos (ETAPA 1155) — FGTS já zerado lá.
-                if _enc0 or not _tem_fgts(_categ_n):
+                if not _tem_fgts(_categ_n):
                     base_fgts_func = 0
                     fgts_func = 0
                 else:
@@ -38182,6 +38177,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                             base_fgts_func -= _vl
                     base_fgts_func = max(0, base_fgts_func)
                     fgts_func = (int(base_fgts_func) * 8) // 100
+                # Cliente sem encargos (ETAPA 1155): a BASE do FGTS continua
+                # gravada; só o valor a recolher vai zerado.
+                if _enc0:
+                    fgts_func = 0
                 base_inss_com = (min(int(base_inss), inss_teto)
                                  if inss_teto and int(base_inss) > inss_teto
                                  else int(base_inss))
@@ -44570,7 +44569,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     f"   »   <b>zerado</b> (verba 0121 não é lançada)",
                     f"FGTS apurado {_fmt_brl(int(r.get('fgts_val') or 0))} sobre a base "
                     f"{_fmt_brl(base_calc)}   »   <b>zerado</b>",
-                    "Em tab_total gravamos zero no valor E na base dos três encargos.",
+                    "As BASES continuam gravadas no tab_total; só o valor dos "
+                    "três encargos vai zerado.",
                 ]
                 _enc0_tbl = Table([
                     [Paragraph("ETAPA 2070 - CLIENTE SEM ENCARGOS "
@@ -44956,14 +44956,11 @@ def api_calc_ferias_calcular():
 
         # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): o cálculo acima
         # continua indo para a memória (ETAPA 2070); o que é gravado/descontado
-        # é a versão zerada (prefixo g_).
+        # é a versão zerada (prefixo g_). As BASES continuam sendo gravadas.
         _enc0        = _sem_encargos(id_cliente)
         g_inss_val   = 0 if _enc0 else inss_val
         g_irrf_val   = 0 if _enc0 else irrf_val
         g_fgts_val   = 0 if _enc0 else fgts_val
-        g_base_calc  = 0 if _enc0 else base_calc
-        g_base_irrf  = 0 if _enc0 else base_irrf
-        g_dep_total  = 0 if _enc0 else dep_total
 
         liquido = base_calc - g_inss_val - g_irrf_val + abono_val + terco_abono
 
@@ -45062,14 +45059,14 @@ def api_calc_ferias_calcular():
                 "matricula":                 mat,
                 "folha":                     folha_int,
                 "folha_tipo":                "F",
-                "valor_base_inss_semlimite": g_base_calc,
-                "valor_base_inss_comlimite": g_base_calc,
+                "valor_base_inss_semlimite": base_calc,
+                "valor_base_inss_comlimite": base_calc,
                 "valor_inss_retido":         g_inss_val,
-                "valor_base_fgts":           g_base_calc,
+                "valor_base_fgts":           base_calc,
                 "valor_fgts":                g_fgts_val,
-                "valor_irrf_basetotal":      g_base_calc,
-                "valor_irrf_basetabela":     g_base_irrf,
-                "valor_irrf_dependentes":    g_dep_total,
+                "valor_irrf_basetotal":      base_calc,
+                "valor_irrf_basetabela":     base_irrf,
+                "valor_irrf_dependentes":    dep_total,
                 "qtd_irrf_dependentes":      ndep,
                 "valor_salario":             sal_mes,
                 "valor_total_proventos":     total_prov,
@@ -45147,8 +45144,8 @@ def api_calc_ferias_calcular():
             "base_calc_fmt":  _fmt_brl(base_calc),
             "inss_fmt":       _fmt_brl(g_inss_val),
             "fgts_fmt":       _fmt_brl(g_fgts_val),
-            "dep_fmt":        _fmt_brl(g_dep_total) if g_dep_total else "—",
-            "base_irrf_fmt":  _fmt_brl(g_base_irrf),
+            "dep_fmt":        _fmt_brl(dep_total) if dep_total else "—",
+            "base_irrf_fmt":  _fmt_brl(base_irrf),
             "irrf_fmt":       _fmt_brl(g_irrf_val),
             "liquido_fmt":    _fmt_brl(liquido),
             "medias_variaveis_pdf": [
@@ -53389,12 +53386,13 @@ def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8, id_cliente=None):
     Base = soma dos proventos cujo tpn_inc_fgts indica incidência
     (ver _cods_inc_fgts: '11' mensal, '12' do 13º, 'S' legado).
     FGTS = aliq_fgts% da base (8% geral, 2% menor aprendiz).
-    Cliente sem encargos (CLIENTES_SEM_ENCARGOS) devolve (0, 0).
+    Cliente sem encargos (CLIENTES_SEM_ENCARGOS): devolve a base normal e
+    valor ZERO — a base continua sendo gravada no tab_total.
     Retorna (base_fgts, fgts) em centavos."""
-    if _sem_encargos(id_cliente):
-        return 0, 0
     base = sum(int(v) for cod, v in (verba_valores or {}).items()
                if int(v) > 0 and inc_fgts.get(int(cod), "") in _cods_inc_fgts("A"))
+    if _sem_encargos(id_cliente):
+        return int(base), 0
     return int(base), int(base) * int(aliq_fgts) // 100
 
 
@@ -53629,18 +53627,17 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
     if sem_encargos:
         # Cliente sem encargos (CLIENTES_SEM_ENCARGOS): o adiantamento do 13º
         # não tem INSS nem IRRF por natureza, então só o FGTS é zerado aqui.
-        _b0 = (int(valor)
-               + sum(int(v) for v in (adicionais or {}).values())
-               + sum(int(d.get("val") or 0) for d in (medias_detalhe or [])))
+        # A base continua sendo gravada no tab_total.
         e.append(Paragraph("ETAPA 4040 — FGTS", st_etapa))
+        e.append(_mem_passo("base_fgts", "adiantamento + periculosidade + médias"))
         e.append(_mem_passo("sem_enc"))
         e.append(Paragraph(
             f"Cliente {int(id_cliente or 0):04d} — configurado para NÃO calcular INSS, "
             f"IRRF nem FGTS em nenhuma verba.", st_formula))
         e.append(Paragraph(
-            f"FGTS apurado {_fmt_brl(int(_b0) * int(aliq_fgts) // 100)} "
-            f"(base {_fmt_brl(int(_b0))} × {int(aliq_fgts)}%) &#8594; <b>zerado</b>; "
-            f"tab_total recebe zero no valor e na base.", st_formula))
+            f"FGTS apurado {_fmt_brl(int(base_fgts) * int(aliq_fgts) // 100)} "
+            f"(base {_fmt_brl(int(base_fgts))} × {int(aliq_fgts)}%) &#8594; <b>zerado</b>; "
+            f"a base continua gravada no tab_total, só o valor vai zero.", st_formula))
     elif base_fgts > 0:
         e.append(Paragraph("ETAPA 4040 — FGTS", st_etapa))
         e.append(_mem_passo("base_fgts", "adiantamento + periculosidade + médias"))
