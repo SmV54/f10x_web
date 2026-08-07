@@ -568,7 +568,8 @@ async function gravar() {
     // ── Data anterior ao mês da Folha Ativa: confirma o registro e
     //    pergunta se deve gerar a remessa do S-2230 DA SAÍDA ──
     const retro = ehRetroativa(data1i) || ehRetroativa(data1f);
-    let gerarEsocial = true;
+    let gerarEsSaida   = true;   // remessa da saida  (mes do inicio)
+    let gerarEsRetorno = true;   // remessa do retorno (mes do fim)
     if (retro) {
         const quais = ehRetroativa(data1i)
             ? `Data Início ${fmtBr(data1i)}`
@@ -580,14 +581,30 @@ async function gravar() {
               okText: 'Sim, registrar', cancelText: 'Cancelar' });
         if (!ok) return;
 
-        gerarEsocial = await f10Confirm(
-            `Deseja gerar a remessa do S-2230 de SAÍDA (Afastamento Temporário) `
-            + `para o eSocial?\n\n`
-            + `A remessa entra na competência ${mesAnoBr(data1i)}, do início do `
-            + `afastamento — não na Folha Ativa.\n\n`
-            + `Escolha "Não gerar" se este afastamento já foi enviado ao eSocial.`,
-            { titulo: 'Remessa eSocial S-2230 (saída)', tipo: 'info',
-              okText: 'Sim, gerar', cancelText: 'Não gerar' });
+        // Uma pergunta por remessa: o afastamento pode ter começado num mês já
+        // enviado (ou ser só informativo) e mesmo assim o RETORNO precisar ir
+        // ao eSocial. Só se pergunta pela data que é retroativa.
+        if (ehRetroativa(data1i)) {
+            gerarEsSaida = await f10Confirm(
+                `Deseja gerar a remessa do S-2230 de SAÍDA (Afastamento Temporário) `
+                + `para o eSocial?\n\n`
+                + `A remessa entra na competência ${mesAnoBr(data1i)}, do início do `
+                + `afastamento — não na Folha Ativa.\n\n`
+                + `Escolha "Não gerar" se o afastamento já foi enviado ao eSocial, `
+                + `ou se este registro é apenas informativo e não exige o evento.`,
+                { titulo: 'Remessa eSocial S-2230 — saída', tipo: 'info',
+                  okText: 'Sim, gerar', cancelText: 'Não gerar' });
+        }
+        if (data1f && ehRetroativa(data1f)) {
+            gerarEsRetorno = await f10Confirm(
+                `E a remessa do S-2230 de RETORNO?\n\n`
+                + `Ela entra na competência ${mesAnoBr(data1f)}, do fim do `
+                + `afastamento.\n\n`
+                + `Escolha "Não gerar" se o retorno já foi enviado ao eSocial, `
+                + `ou se este registro é apenas informativo.`,
+                { titulo: 'Remessa eSocial S-2230 — retorno', tipo: 'info',
+                  okText: 'Sim, gerar', cancelText: 'Não gerar' });
+        }
     }
 
     // ── Data Fim depois de HOJE: o retorno ainda não aconteceu ──
@@ -613,7 +630,9 @@ async function gravar() {
 
     try {
         const payload = { matriculas, data1i, data1f, motivo, campotxt1, campotxt4,
-                          retroativo_ok: retro, gerar_esocial: gerarEsocial,
+                          retroativo_ok: retro,
+                          gerar_es_saida: gerarEsSaida,
+                          gerar_es_retorno: gerarEsRetorno,
                           retorno_futuro_ok: retornoFuturoOk };
         console.log('Enviando afastamento:', payload);
         const resp = await fetch('/api/afastamento_gravar', {
@@ -624,8 +643,8 @@ async function gravar() {
         const d = await resp.json();
         console.log('Resposta:', d);
         if (d.ok) {
-            showToast(`Afastamento registrado — ${d.gravados} funcionário${d.gravados !== 1 ? 's' : ''}.`
-                      + (retro ? (gerarEsocial ? ' Remessa S-2230 gerada.' : ' Sem remessa S-2230.') : ''), 'ok');
+            // O servidor já detalha as remessas e a competência de cada uma.
+            showToast(d.msg || `Afastamento registrado — ${d.gravados} funcionário${d.gravados !== 1 ? 's' : ''}.`, 'ok');
 
             // Motivo 01 (típico) ou 03 (trajeto) → exibir botões para registrar CAT
             if (['01', '03'].includes(d.motivo) && d.eventos?.length) {

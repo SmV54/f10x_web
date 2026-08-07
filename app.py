@@ -16335,6 +16335,14 @@ def api_afastamento_gravar():
     retroativo_ok = bool(data.get("retroativo_ok"))
     ger_es_raw    = data.get("gerar_esocial")
     gerar_esocial = True if ger_es_raw is None else bool(ger_es_raw)
+    # A escolha é por remessa, não pelo par: o afastamento pode ter começado num
+    # mês já enviado (ou ser só informativo) e mesmo assim o RETORNO precisar ir
+    # ao eSocial — e vice-versa. `gerar_esocial` continua aceito como resposta
+    # única para quem chamar a API sem os campos novos.
+    _ges = data.get("gerar_es_saida")
+    _ger = data.get("gerar_es_retorno")
+    gerar_es_saida   = gerar_esocial if _ges is None else bool(_ges)
+    gerar_es_retorno = gerar_esocial if _ger is None else bool(_ger)
     # Data Fim depois de hoje: retorno ainda não aconteceu, a tela confirma.
     retorno_futuro_ok = bool(data.get("retorno_futuro_ok"))
 
@@ -16405,7 +16413,7 @@ def api_afastamento_gravar():
 
             # Remessa eSocial S-2230 (em data retroativa o usuário escolhe se gera)
             es_ok = False
-            if gerar_esocial:
+            if gerar_es_saida or (data1f and gerar_es_retorno):
                 try:
                     agora_es      = _agora_brasilia()
                     anomes_tp     = str(session.get("anomes_tipo") or "")
@@ -16428,19 +16436,19 @@ def api_afastamento_gravar():
                     # agrupar, então ele tem que ser o do evento.
                     _am_saida   = int(data1i[:6])
                     _am_retorno = int(data1f[:6]) if data1f else None
-                    supabase.table("tab_esocial").insert({
-                        **base_es, "flag1": "S",
-                        "ano_mes": _am_saida,
-                        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-                    }).execute()
-                    if data1f:
+                    if gerar_es_saida:
+                        supabase.table("tab_esocial").insert({
+                            **base_es, "flag1": "S",
+                            "ano_mes": _am_saida,
+                            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                        }).execute()
+                        _es_comp.add(_am_saida)
+                    if data1f and gerar_es_retorno:
                         supabase.table("tab_esocial").insert({
                             **base_es, "flag1": "R",
                             "ano_mes": _am_retorno,
                             "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
                         }).execute()
-                    _es_comp.add(_am_saida)
-                    if _am_retorno:
                         _es_comp.add(_am_retorno)
                     es_ok = True
                 except Exception as e_es:
@@ -16463,23 +16471,23 @@ def api_afastamento_gravar():
     msg = f"Afastamento registrado: {gravados} funcionário(s)."
     if retroativo:
         msg += " (data retroativa)"
-    if not gerar_esocial:
-        msg += " Remessa do S-2230 não gerada."
-    elif _es_comp:
-        # A Fila do eSocial agrupa por competência. Se a remessa foi para um mês
-        # diferente do da folha ativa, o usuário precisa saber onde procurar.
-        _fmt_c = lambda c: f"{str(c)[4:6]}/{str(c)[:4]}"
-        _saida = f"{data1i[4:6]}/{data1i[:4]}"
-        if data1f:
-            _volta = f"{data1f[4:6]}/{data1f[:4]}"
-            msg += (f" S-2230 de saída na competência {_saida}"
-                    f" e de retorno em {_volta}.")
-        else:
-            msg += f" S-2230 de saída na competência {_saida}."
-        _outras = sorted(c for c in _es_comp if str(c) != anomes_am)
-        if _outras:
-            msg += (" Para enviar, troque o período na Fila do eSocial para "
-                    + " e ".join(_fmt_c(c) for c in _outras) + ".")
+    # Diz, remessa por remessa, o que foi gerado e em que competência. A Fila do
+    # eSocial agrupa por ano_mes, então quando a competência não é a da folha
+    # ativa o usuário precisa saber onde procurar.
+    _fmt_c = lambda c: f"{str(c)[4:6]}/{str(c)[:4]}"
+    _saida = f"{data1i[4:6]}/{data1i[:4]}"
+    _volta = f"{data1f[4:6]}/{data1f[:4]}" if data1f else ""
+    _partes = []
+    _partes.append(f"saída em {_saida}" if gerar_es_saida
+                   else "saída NÃO gerada")
+    if data1f:
+        _partes.append(f"retorno em {_volta}" if gerar_es_retorno
+                       else "retorno NÃO gerado")
+    msg += " S-2230: " + " · ".join(_partes) + "."
+    _outras = sorted(c for c in _es_comp if str(c) != anomes_am)
+    if _outras:
+        msg += (" Para enviar, troque o período na Fila do eSocial para "
+                + " e ".join(_fmt_c(c) for c in _outras) + ".")
     if erros:
         msg += " Erros: " + "; ".join(erros)
     if avisos_es:
