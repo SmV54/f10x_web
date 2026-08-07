@@ -595,9 +595,7 @@ function _getPctEmpresa() {
 function preencherTodosP() {
     const v = parseInt(document.getElementById('pctTodos').value, 10);
     if (isNaN(v) || v < 10 || v > 60) {
-        f10Alert('Informe um percentual entre 10 e 60.
-
-Para tirar um funcionário do '
+        f10Alert('Informe um percentual entre 10 e 60.\n\nPara tirar um funcionário do '
                + 'adiantamento, use a caixa "Não adianta" na linha dele.',
                  { tipo: 'aviso', titulo: 'Percentual inválido' });
         return;
@@ -612,9 +610,7 @@ function preencherTodosV() {
     const raw = document.getElementById('valorTodos').value;
     const cents = parseCents(raw);
     if (cents <= 0) {
-        f10Alert('Informe um valor maior que zero.
-
-Para tirar um funcionário do '
+        f10Alert('Informe um valor maior que zero.\n\nPara tirar um funcionário do '
                + 'adiantamento, use a caixa "Não adianta" na linha dele.',
                  { tipo: 'aviso', titulo: 'Valor inválido' });
         return;
