@@ -1,0 +1,117 @@
+{# ─────────────────────────────────────────────────────────────────────
+   AJUDA DO REGISTRO DE AFASTAMENTO
+
+   Requer o estilo: incluir {% include '_ajuda_estilo.html' %} uma vez na
+   página, e um gatilho chamando abrirAjudaAfastamento().
+   ───────────────────────────────────────────────────────────────────── #}
+<div class="ajuda-fundo" id="ajudaAfastamento"
+     onclick="if (event.target === this) fecharAjudaAfastamento()">
+  <div class="ajuda-caixa">
+    <div class="ajuda-topo">
+        <h2>🏥 Registro de Afastamento — como funciona</h2>
+        <button class="ajuda-fechar" onclick="fecharAjudaAfastamento()" title="Fechar">&times;</button>
+    </div>
+    <div class="ajuda-corpo">
+
+        <h3>O que esta tela faz</h3>
+        <p>Registra o período em que o funcionário ficou <b>afastado</b> — doença,
+        acidente, licença maternidade, serviço militar, suspensão. O registro serve a
+        duas coisas ao mesmo tempo: a <b>folha</b> passa a descontar os dias parados no
+        cálculo, e o <b>eSocial</b> recebe o evento <b>S-2230</b>.</p>
+        <p>Você pode registrar o mesmo afastamento para vários funcionários de uma vez —
+        os selecionados aparecem no topo da tela.</p>
+
+        <h3>As datas</h3>
+        <table>
+            <tr><th>Situação</th><th>O que acontece</th></tr>
+            <tr><td class="rot"><b>Início depois</b><br>da Folha Ativa</td>
+                <td><b>Não é aceito.</b> Não dá para afastar em competência que ainda
+                    não abriu.</td></tr>
+            <tr><td class="rot"><b>Início antes</b><br>da Folha Ativa</td>
+                <td>É aceito, com confirmação. Aparece a escolha do eSocial (abaixo).</td></tr>
+            <tr><td class="rot"><b>Fim em branco</b></td>
+                <td>Afastamento <b>em aberto</b> — o funcionário ainda não voltou. É o
+                    caso mais comum ao registrar.</td></tr>
+            <tr><td class="rot"><b>Fim depois<br>de hoje</b></td>
+                <td>É aceito, com confirmação, mas <b>não é recomendado</b>: veja
+                    abaixo.</td></tr>
+        </table>
+
+        <div class="ajuda-nota">
+            <b>Retorno que ainda não aconteceu.</b> Ao informar uma Data Fim futura, o
+            sistema já cria o S-2230 de <b>retorno</b>. Se o afastamento se prolongar,
+            você terá de corrigir o evento no eSocial. Na dúvida, <b>deixe a Data Fim em
+            branco</b> e informe o retorno quando ele ocorrer.
+        </div>
+
+        <h3>Uma saída e um retorno — cada um na sua competência</h3>
+        <p>Informando as duas datas, saem <b>duas</b> remessas do S-2230:</p>
+        <ul>
+            <li>a de <b>saída</b>, na competência do <b>mês de início</b>;</li>
+            <li>a de <b>retorno</b>, na competência do <b>mês do fim</b>.</li>
+        </ul>
+        <p>Num afastamento que atravessa o mês — 20/07 a 05/08, por exemplo — a saída vai
+        para 07/2026 e o retorno para 08/2026.</p>
+
+        <div class="ajuda-nota">
+            <b>Onde encontrar a remessa.</b> A Fila do eSocial mostra <b>uma competência
+            por vez</b>. Se a remessa caiu em mês diferente do da Folha Ativa, troque o
+            período na Fila para achá-la — a mensagem de confirmação diz qual é.
+        </div>
+
+        <h3>Data retroativa: enviar ou não ao eSocial</h3>
+        <p>Quando a data é anterior à Folha Ativa, aparecem as caixas
+        <b>“Não enviar o S-2230”</b> — uma para a saída, outra para o retorno. Elas já
+        vêm <b>marcadas</b>, ou seja, o padrão é <b>não gerar</b> a remessa.</p>
+        <p>Isso porque um afastamento antigo geralmente já foi transmitido ao eSocial, ou
+        está sendo registrado só para a folha enxergar os dias parados. <b>Desmarque</b>
+        a caixa quando quiser mesmo gerar o evento.</p>
+        <p>As duas escolhas são independentes: dá para não enviar a saída (mês já
+        fechado) e enviar o retorno (mês atual).</p>
+
+        <h3>Motivo</h3>
+        <p>É a <b>Tabela 18 do eSocial</b>, com os códigos oficiais. Alguns pedem
+        informação extra:</p>
+        <ul>
+            <li><b>01 — Acidente/doença do trabalho</b> e <b>03 — Acidente/doença não
+                relacionada ao trabalho</b>: perguntam se é continuação do
+                <b>mesmo motivo</b> de um afastamento anterior e se houve
+                <b>acidente de trânsito</b>. Depois de gravar, a tela oferece registrar
+                a <b>CAT</b> (evento S-2210).</li>
+            <li><b>21 — Licença não remunerada</b>: exige <b>observação</b>.</li>
+        </ul>
+        <p>“Mesmo motivo” importa para o INSS: afastamentos pela mesma causa em menos de
+        60 dias se somam, e isso muda de quem é a responsabilidade pelo pagamento.</p>
+
+        <h3>Depois de registrar</h3>
+        <ul>
+            <li>A folha passa a considerar os dias de afastamento no cálculo.</li>
+            <li>O funcionário aparece no relatório <b>Funcionários Afastados</b>.</li>
+            <li>As remessas ficam na <b>Fila do eSocial</b>, prontas para envio.</li>
+            <li>Para cancelar, use a tela própria de cancelamento — apagar direto
+                deixaria a remessa órfã.</li>
+        </ul>
+
+    </div>
+    <div class="ajuda-rodape">
+        <span style="font-size:12px;color:#94a3b8;">
+            Motivos conforme a Tabela 18 do eSocial · evento S-2230.
+        </span>
+        <button class="ajuda-btn-ok" onclick="fecharAjudaAfastamento()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function abrirAjudaAfastamento() {
+    document.getElementById('ajudaAfastamento').classList.add('aberto');
+    document.body.style.overflow = 'hidden';
+}
+function fecharAjudaAfastamento() {
+    document.getElementById('ajudaAfastamento').classList.remove('aberto');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') fecharAjudaAfastamento();
+});
+</script>
