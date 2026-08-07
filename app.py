@@ -52792,6 +52792,19 @@ def _mats_ferias_quinzena(id_empresa, anomes):
     return out
 
 
+def _anomes_admissao(dtadm):
+    """AAAAMM da admissão, para comparar com a competência da folha.
+
+    `tab_cad.dtadm` é gravado como AAAAMMDD (sem traços). O código antigo fazia
+    `dtadm[:4] + dtadm[5:7]`, que só funciona em 'AAAA-MM-DD': com AAAAMMDD ele
+    pegava o 2º dígito do mês e o 1º do dia, então '20260302' virava '202630' e
+    o funcionário era considerado admitido no futuro e sumia da lista do
+    adiantamento. Tirar os não-dígitos e cortar em 6 atende aos dois formatos.
+    """
+    so_num = re.sub(r"\D", "", str(dtadm or ""))
+    return so_num[:6] if len(so_num) >= 6 else ""
+
+
 def _mats_afastados_quinzena(id_empresa, anomes, id_cliente=None):
     """Matrículas AFASTADAS na 1ª QUINZENA (dias 01–15) da competência.
 
@@ -52939,7 +52952,7 @@ def calcular_adiantamento():
                  .execute())
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
-            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            dtadm_anomes = _anomes_admissao(dtadm_raw)
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
             nome      = (f.get("nome") or f.get("nomer") or "").strip()
@@ -53111,7 +53124,7 @@ def api_calcular_adiantamento():
                  .execute())
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
-            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            dtadm_anomes = _anomes_admissao(dtadm_raw)
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
             # Afastado ou de férias na 1ª quinzena → sem adiantamento quinzenal
@@ -54043,7 +54056,7 @@ def calcular_adiantamento_13():
                  .execute())
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
-            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            dtadm_anomes = _anomes_admissao(dtadm_raw)
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
             if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
@@ -54172,7 +54185,7 @@ def api_calcular_adiantamento_13():
                  .execute())
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
-            dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+            dtadm_anomes = _anomes_admissao(dtadm_raw)
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
             if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
@@ -54430,7 +54443,7 @@ def calcular_adiantamento_13_stream():
             elegiveis = []
             for f in (r_cad.data or []):
                 dtadm_raw = str(f.get("dtadm") or "")
-                dtadm_anomes = (dtadm_raw[:4] + dtadm_raw[5:7]) if len(dtadm_raw) >= 7 else ""
+                dtadm_anomes = _anomes_admissao(dtadm_raw)
                 if dtadm_anomes and dtadm_anomes > anomes:
                     continue
                 if not _elegivel_adiant13(f):   # exclui cat 111 e >= 700 (sem 13º)
