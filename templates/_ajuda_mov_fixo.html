@@ -1,0 +1,186 @@
+{# ─────────────────────────────────────────────────────────────────────
+   AJUDA DO MOVIMENTO FIXO — painel compartilhado
+
+   Incluído em DOIS lugares: no card do menu principal (F10_Menu.html) e
+   na própria tela (F10_Mov_Fixo.html). O texto mora só aqui — editar num
+   lugar vale para os dois.
+
+   Quem inclui precisa fornecer o gatilho (um botão chamando
+   abrirAjudaMovFixo()). O botão "Fazer o tour" do rodapé só aparece
+   quando a página tem iniciarTour(); no menu ele fica escondido.
+   ───────────────────────────────────────────────────────────────────── #}
+<style>
+/* ── PAINEL DE AJUDA ("?" flutuante) ──────────────────────────────
+   O texto e longo demais para um balao de foco ou um f10Alert: tem
+   secoes e uma tabela. Por isso um painel proprio, rolavel. */
+.ajuda-fundo {
+    display: none; position: fixed; inset: 0; z-index: 10000;
+    background: rgba(15, 23, 42, 0.55); padding: 24px;
+    align-items: center; justify-content: center;
+}
+.ajuda-fundo.aberto { display: flex; }
+.ajuda-caixa {
+    background: #fff; border-radius: 16px; width: min(760px, 100%);
+    max-height: 88vh; display: flex; flex-direction: column;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3); overflow: hidden;
+}
+.ajuda-topo {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 22px; background: #f8fafc; border-bottom: 1px solid var(--border);
+}
+.ajuda-topo h2 { font-size: 15px; font-weight: 600; color: var(--text-head); margin: 0; }
+.ajuda-fechar {
+    background: none; border: none; font-size: 22px; line-height: 1; cursor: pointer;
+    color: #94a3b8; padding: 2px 8px; border-radius: 6px;
+}
+.ajuda-fechar:hover { background: #fee2e2; color: #dc2626; }
+.ajuda-corpo { padding: 20px 22px; overflow-y: auto; font-size: 13px; line-height: 1.6; color: #374151; }
+.ajuda-corpo h3 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+    color: #1e3d5c; margin: 20px 0 6px;
+}
+.ajuda-corpo h3:first-child { margin-top: 0; }
+.ajuda-corpo p  { margin: 0 0 10px; }
+.ajuda-corpo ul { margin: 0 0 10px 18px; }
+.ajuda-corpo li { margin-bottom: 4px; }
+.ajuda-corpo b  { color: #111827; }
+.ajuda-corpo table { width: 100%; border-collapse: collapse; margin: 4px 0 12px; }
+.ajuda-corpo th, .ajuda-corpo td {
+    border: 1px solid var(--border); padding: 5px 9px; font-size: 12px; text-align: left;
+}
+.ajuda-corpo th { background: #f1f5f9; font-weight: 600; color: #475569; }
+.ajuda-corpo td:first-child { width: 42px; text-align: center; font-weight: 700; color: #1d4ed8; }
+.ajuda-nota {
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;
+    padding: 10px 12px; margin: 10px 0; font-size: 12.5px; color: #78350f;
+}
+.ajuda-rodape {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 22px; background: #f8fafc; border-top: 1px solid var(--border);
+}
+.ajuda-btn-tour {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-family: var(--sans); font-size: 12.5px; font-weight: 600;
+    cursor: pointer;
+}
+.ajuda-btn-tour:hover { background: #1a5fb8; }
+.ajuda-btn-ok {
+    background: #fff; color: #475569; border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 16px; font-family: var(--sans); font-size: 12.5px; cursor: pointer;
+}
+.ajuda-btn-ok:hover { background: #f1f5f9; }
+</style>
+
+<div class="ajuda-fundo" id="ajudaMovFixo" onclick="if (event.target === this) fecharAjudaMovFixo()">
+  <div class="ajuda-caixa">
+    <div class="ajuda-topo">
+        <h2>📌 Movimento Fixo — como funciona</h2>
+        <button class="ajuda-fechar" onclick="fecharAjudaMovFixo()" title="Fechar">&times;</button>
+    </div>
+    <div class="ajuda-corpo">
+
+        <h3>O que é</h3>
+        <p>Um lançamento que você cadastra <b>uma única vez</b> e o sistema repete
+        automaticamente a cada folha, sem precisar digitar de novo todo mês. Serve para
+        tudo que se repete: vale-transporte, plano de saúde, empréstimo consignado,
+        gratificação, desconto de farmácia, quebra de caixa.</p>
+        <p>Ele não se confunde com o que você digita no movimento do mês: ao recalcular a
+        folha, o sistema apaga só o que ele mesmo gerou e <b>preserva os lançamentos
+        digitados por você</b>.</p>
+
+        <h3>Quem recebe</h3>
+        <ul>
+            <li><b>Por matrícula</b> — um funcionário específico. É o caso do empréstimo,
+                do vale-farmácia, de qualquer coisa individual.</li>
+            <li><b>Por grupo</b> — vale para todo mundo que se encaixar nos filtros:
+                categoria, data de nascimento, data de admissão, salário-base, idade e
+                tempo de serviço. Deixando tudo em branco, vale para todos.</li>
+        </ul>
+        <p>O grupo é reavaliado <b>a cada folha</b>, e essa é a maior vantagem dele: um vale
+        cadastrado para “categoria 101, salário até R$ 3.000” passa a valer sozinho para
+        quem for admitido depois dentro desse perfil, e deixa de valer para quem sair dele.</p>
+
+        <h3>Por quanto tempo</h3>
+        <ul>
+            <li><b>Por parcelas</b> — informe a quantidade (ex.: 10). O sistema conta as já
+                lançadas e para sozinho ao chegar no total. É o modo do empréstimo.</li>
+            <li><b>Por período</b> — informe a folha inicial e, se quiser, a final. Sem folha
+                final, vale por prazo indeterminado. É o modo do vale-transporte.</li>
+        </ul>
+
+        <h3>O que fazer quando o mês não é normal</h3>
+        <p>Aqui o movimento fixo passa a ser mais do que um repetidor. <b>Em férias</b>:</p>
+        <table>
+            <tr><th>Op.</th><th>Comportamento</th></tr>
+            <tr><td>0</td><td>Não processa, mesmo que seja 1 dia de férias</td></tr>
+            <tr><td>1</td><td>Processa integral, sem proporcionalidade</td></tr>
+            <tr><td>2</td><td>Processa tudo nas férias, se as férias começarem nessa folha</td></tr>
+            <tr><td>3</td><td>Proporcional aos dias trabalhados <b>e</b> aos dias gozados</td></tr>
+            <tr><td>4</td><td>Proporcional aos dias trabalhados, zero nas férias</td></tr>
+        </table>
+        <p><b>Se afastado</b>: continuar normalmente, interromper, ou proporcional aos dias
+        trabalhados. <b>Mês de admissão</b> e <b>mês de rescisão</b>: total ou proporcional.</p>
+        <p>A escolha costuma seguir a natureza da verba: vale-transporte normalmente é
+        proporcional (não se usa vale em férias), enquanto plano de saúde costuma ser
+        integral — a mensalidade não diminui porque a pessoa saiu de férias.</p>
+
+        <h3>Unidade do valor</h3>
+        <p>O que você digita depende da rubrica: <b>Valor (R$)</b> para verbas monetárias,
+        <b>Horas</b> ou <b>Diárias</b> para as demais. Nesses dois casos o sistema multiplica
+        pelo salário-hora ou salário-dia na hora do cálculo — então o valor acompanha o
+        reajuste salarial sozinho.</p>
+
+        <h3>Como encerrar</h3>
+        <p>No card <b>Excluir / Parar Mov. Fixo</b> há duas saídas, e elas são diferentes:</p>
+        <ul>
+            <li><b>Parar</b> grava uma folha final. O lançamento fica no histórico e deixa de
+                ser gerado a partir do mês seguinte. É o que se usa em quase todos os casos —
+                o funcionário devolveu o vale, o empréstimo foi quitado antes.</li>
+            <li><b>Excluir</b> apaga de vez, e só é permitido quando o movimento nasceu nesta
+                folha e <b>nunca gerou lançamento nenhum</b>. É a saída para o erro de
+                digitação, não para o encerramento.</li>
+        </ul>
+        <p>A trava existe por um motivo simples: excluir um movimento que já rodou em folha
+        paga apagaria o rastro de um valor que a pessoa efetivamente recebeu ou pagou.</p>
+
+        <div class="ajuda-nota">
+            <b>Atenção — insalubridade e periculosidade.</b> Não podem ser lançadas como
+            movimento fixo para quem já tem o adicional no cadastro do funcionário: a folha
+            já lança sozinha e pagaria em dobro. Em movimento de grupo, basta um funcionário
+            ter o adicional para o sistema recusar.
+        </div>
+
+        <h3>Onde conferir</h3>
+        <p>A <b>ETAPA 1080 — MOVIMENTOS FIXOS</b> da memória de cálculo mostra, funcionário
+        por funcionário, cada movimento aplicado: a verba, se é provento ou desconto, o motivo
+        do enquadramento (matrícula específica ou qual filtro de grupo bateu), a vigência ou o
+        número da parcela, e o histórico das parcelas anteriores. Quando as parcelas se
+        esgotam, ela registra <b>PARCELAS ESGOTADAS</b> em vez de omitir — assim você vê que
+        foi verificado.</p>
+
+    </div>
+    <div class="ajuda-rodape">
+        <button class="ajuda-btn-tour" id="ajudaMovFixoTour" onclick="fecharAjudaMovFixo(); iniciarTour();">
+            🧭 Fazer o tour da tela
+        </button>
+        <button class="ajuda-btn-ok" onclick="fecharAjudaMovFixo()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function abrirAjudaMovFixo() {
+    document.getElementById('ajudaMovFixo').classList.add('aberto');
+    document.body.style.overflow = 'hidden';
+    // O tour é da tela do Movimento Fixo; no menu principal não existe.
+    const bt = document.getElementById('ajudaMovFixoTour');
+    if (bt) bt.style.display = window.iniciarTour ? '' : 'none';
+}
+function fecharAjudaMovFixo() {
+    document.getElementById('ajudaMovFixo').classList.remove('aberto');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') fecharAjudaMovFixo();
+});
+</script>

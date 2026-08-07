@@ -292,6 +292,19 @@ body.menu-numerado .nav-item::before {
     box-shadow: 0 2px 5px rgba(0,0,0,0.2);
 }
 .modulo-card { position: relative; }
+
+/* "?" de ajuda no canto do card. Só nos módulos que têm texto de apoio —
+   um em cada card poluiria o grid. Fica discreto até o hover do card. */
+.card-ajuda-badge {
+    position: absolute; top: -7px; left: -7px; z-index: 2;
+    width: 20px; height: 20px; padding: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: #fff; color: #2a7de1; border: 2px solid #b3d4f5; border-radius: 50%;
+    font-family: var(--sans); font-size: 11px; font-weight: 800; line-height: 1;
+    cursor: help; opacity: 0.55; transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.modulo-card:hover .card-ajuda-badge { opacity: 1; }
+.card-ajuda-badge:hover { background: #2a7de1; border-color: #2a7de1; color: #fff; opacity: 1; }
 /* Cards de largura uniforme (usado na seção Rescisão) — alinha em grade */
 .nav-item.nav-fix { min-width: 232px; justify-content: flex-start; }
 
@@ -869,6 +882,13 @@ const MOSTRA_ADMIN = {{ 'true' if mostra_admin else 'false' }};
 const ordem = ['cadastros','novafolha','eventuais','movimento','movimentofixo','calculo','relatorios','conexoes','esocial',
                 'diversos', ...(MOSTRA_ADMIN ? ['interno_f10'] : [])];
 
+// Módulos que ganham "?" no card. Para acrescentar outro, crie o parcial de
+// ajuda, inclua no fim do arquivo e registre aqui.
+const AJUDA_CARDS = {
+    movimentofixo: { titulo: 'Como funciona o Movimento Fixo',
+                     abrir: () => abrirAjudaMovFixo() },
+};
+
 // ── Renderiza os 10 cards ──
 const grid = document.getElementById('modulosGrid');
 for (const id of ordem) {
@@ -912,6 +932,18 @@ for (const id of ordem) {
     } else {
         const nomeCard = (id === 'novafolha') ? 'Mês/Ano' : m.titulo;
         card.innerHTML = `<div class="modulo-icone">${m.icone}</div><div class="modulo-nome">${nomeCard}</div>`;
+    }
+
+    // "?" de ajuda: só nos módulos que já têm painel de apoio escrito.
+    // O clique NÃO pode abrir o submenu junto, daí o stopPropagation.
+    if (AJUDA_CARDS[id]) {
+        const a = document.createElement('button');
+        a.className = 'card-ajuda-badge';
+        a.type = 'button';
+        a.textContent = '?';
+        a.title = AJUDA_CARDS[id].titulo;
+        a.addEventListener('click', e => { e.stopPropagation(); AJUDA_CARDS[id].abrir(); });
+        card.appendChild(a);
     }
 
     // Card eSocial em destaque só se houver pendência de S-2200 ou S-2299 no mês ativo
@@ -1477,6 +1509,9 @@ function iniciarTour() {
 </a>
 
 <script src="/static/f10_dialog.js"></script>
+
+{# Painéis de ajuda dos cards — ver AJUDA_CARDS lá em cima #}
+{% include '_ajuda_mov_fixo.html' %}
 
 </body>
 </html>
