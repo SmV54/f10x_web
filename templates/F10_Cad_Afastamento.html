@@ -242,14 +242,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <div class="rel-header">
         <button class="btn-voltar" onclick="window.history.back()">&#8592; Voltar</button>
         <div>
-            <div class="rel-titulo" style="display:flex;align-items:center;gap:10px;">
-                Registro de Afastamento
-                <button type="button" class="btn-ajuda-afast" onclick="abrirAjudaAfastamento()">
-                    Dúvida?
-                </button>
-            </div>
+            <div class="rel-titulo">Registro de Afastamento</div>
             <div class="rel-subtitulo">Informe as datas e o motivo do afastamento</div>
         </div>
+        {# margin-left:auto empurra para a ponta direita do cabeçalho #}
+        <button type="button" class="btn-ajuda-afast" style="margin-left:auto;"
+                onclick="abrirAjudaAfastamento()">Dúvida?</button>
     </div>
 
     <div class="pref-card">
