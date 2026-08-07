@@ -1,0 +1,138 @@
+{# ─────────────────────────────────────────────────────────────────────
+   AJUDA DO CADASTRO DE VERBAS (rubricas)
+
+   Requer o estilo: incluir {% include '_ajuda_estilo.html' %} uma vez na
+   página, e um gatilho chamando abrirAjudaVerba().
+   ───────────────────────────────────────────────────────────────────── #}
+<div class="ajuda-fundo" id="ajudaVerba"
+     onclick="if (event.target === this) fecharAjudaVerba()">
+  <div class="ajuda-caixa">
+    <div class="ajuda-topo">
+        <h2>🏷️ Cadastro de Verbas — como funciona</h2>
+        <button class="ajuda-fechar" onclick="fecharAjudaVerba()" title="Fechar">&times;</button>
+    </div>
+    <div class="ajuda-corpo">
+
+        <h3>O que é uma verba</h3>
+        <p>Verba (ou <b>rubrica</b>) é cada linha que pode aparecer no holerite: salário,
+        hora extra, INSS, vale-transporte, plano de saúde. Ela define <b>o que</b> é pago
+        ou descontado, <b>como</b> o valor é apurado e <b>sobre o que</b> ele incide.</p>
+        <p>Cadastrar a verba não paga nada a ninguém — é só a definição. O valor entra
+        depois, pelo movimento do mês, pelo movimento fixo ou pelo próprio cálculo.</p>
+
+        <h3>Faixas de código</h3>
+        <table>
+            <tr><th>Faixa</th><th>O que é</th></tr>
+            <tr><td style="text-align:left;width:auto;"><b>1 a 999</b></td>
+                <td>Verbas <b>do sistema</b>, iguais para todos os clientes (salário,
+                    INSS, IRRF, FGTS…). Você não cria nem altera.</td></tr>
+            <tr><td style="text-align:left;width:auto;"><b>1000 a 9899</b></td>
+                <td><b>Suas verbas.</b> É aqui que você cadastra. O sistema já sugere o
+                    próximo código livre.</td></tr>
+            <tr><td style="text-align:left;width:auto;"><b>9900 a 9999</b></td>
+                <td><b>Informativas.</b> Aparecem no holerite e vão para o eSocial, mas
+                    <b>não entram</b> no total de proventos, descontos nem no líquido.</td></tr>
+        </table>
+
+        <h3>Tipo da rubrica</h3>
+        <ul>
+            <li><b>1 — Provento:</b> soma no líquido (salário, hora extra, adicional).</li>
+            <li><b>2 — Desconto:</b> subtrai do líquido (INSS, vale, adiantamento).</li>
+            <li><b>3 — Informativa:</b> só aparece, não mexe no líquido (base de FGTS,
+                por exemplo).</li>
+            <li><b>4 — Info. dedutora:</b> informativa que abate de outra base.</li>
+        </ul>
+
+        <h3>Unidade e % de acréscimo</h3>
+        <p>A <b>unidade</b> define o que se digita no movimento: <b>Valor (R$)</b>,
+        <b>Hora</b> ou <b>Diária</b>. Nas duas últimas o sistema multiplica a quantidade
+        pelo salário-hora ou salário-dia no momento do cálculo — o valor acompanha o
+        reajuste salarial sozinho.</p>
+        <p>O <b>% de acréscimo</b> se soma a esse resultado: <b>50</b> faz a hora extra de
+        50% (× 1,5), <b>100</b> faz o dobro (× 2). Deixe vazio quando não houver acréscimo.</p>
+
+        <h3>Tipos de folha em que a verba pode ser usada</h3>
+        <p>São quatro caixas — <b>N</b> Normal, <b>F</b> Férias, <b>R</b> Rescisão e
+        <b>1</b> 13º Salário. Marque em quais a verba pode ser lançada e, em cada uma,
+        informe as incidências.</p>
+
+        <div class="ajuda-nota">
+            <b>As incidências não são “sim/não”.</b> Cada uma guarda o <b>código do
+            eSocial</b> — por exemplo, <b>11 = incide integralmente</b> para a
+            contribuição previdenciária. Escolha pela lista, que já traz o código e o
+            texto oficial. É esse código que vai no S-1010, então errar aqui vira
+            rejeição na hora de enviar.
+        </div>
+
+        <h3>Incidências por evento</h3>
+        <p>Diz o que fazer com a verba quando o funcionário sai de <b>férias</b>, é
+        <b>desligado</b> ou recebe o <b>13º</b> — ou seja, como ela vira média:</p>
+        <table>
+            <tr><th>Opção</th><th>Significado</th></tr>
+            <tr><td style="text-align:left;width:auto;">NI</td><td>Não incide — a verba não reflete nesse evento</td></tr>
+            <tr><td style="text-align:left;width:auto;">M12</td><td>Média dos últimos 12 meses</td></tr>
+            <tr><td style="text-align:left;width:auto;">MAP</td><td>Média do período aquisitivo (férias)</td></tr>
+            <tr><td style="text-align:left;width:auto;">MAN</td><td>Média desde o início do ano (13º)</td></tr>
+            <tr><td style="text-align:left;width:auto;">UL</td><td>Repete o último lançamento</td></tr>
+            <tr><td style="text-align:left;width:auto;">CN</td><td>Cálculo normal, sem média</td></tr>
+        </table>
+        <p>É o que faz a hora extra habitual entrar nas férias e na rescisão. Esquecer
+        disso é a causa mais comum de média que “não bateu”.</p>
+
+        <h3>Outras informações</h3>
+        <p>São marcações que ensinam o sistema a reconhecer a verba. Elas não mudam o
+        valor: mudam <b>o que o cálculo faz com ela</b>. As que mais pesam:</p>
+        <ul>
+            <li><b>01 — Não permite digitar no movimento:</b> some das telas de
+                lançamento. Use nas verbas que só o cálculo gera.</li>
+            <li><b>04 Comissão · 11 Adicional Noturno · 19 Hora Extra:</b> são as que
+                geram o <b>Repouso Remunerado (DSR)</b> — respectivamente nas verbas
+                0027, 0026 e 0025.</li>
+            <li><b>06 Insalubridade · 07 Periculosidade:</b> o sistema usa essas marcas
+                para impedir que o adicional seja pago em dobro (cadastro + movimento
+                fixo).</li>
+            <li><b>09 DSR · 10 Salário Família · 02 Salário Maternidade:</b> têm
+                tratamento próprio na folha e no eSocial.</li>
+        </ul>
+
+        <h3>Verbas que compõem a base de cálculo</h3>
+        <p>Serve para a verba que é <b>percentual de outras</b>. Escolhendo aqui as verbas
+        que formam a base, o cálculo soma esses valores antes de aplicar o percentual —
+        em vez de usar só o salário. É o caso de gratificações e adicionais que incidem
+        sobre salário + outras parcelas.</p>
+
+        <h3>Válido a partir de</h3>
+        <p>Competência em que a verba passa a existir <b>para o eSocial</b>. É o campo que
+        o S-1010 usa como início de validade. Numa verba nova, informe o mês em que ela
+        começa a ser usada; mudou algo que o eSocial acompanha, o certo é uma nova
+        validade, não sobrescrever a antiga.</p>
+
+        <div class="ajuda-nota">
+            <b>Antes de criar, procure.</b> A lista já vem com as verbas do sistema e as
+            suas. Criar uma verba nova para algo que já existe espalha o mesmo evento em
+            dois códigos e bagunça relatório, média e eSocial.
+        </div>
+
+    </div>
+    <div class="ajuda-rodape">
+        <span style="font-size:12px;color:#94a3b8;">
+            As verbas de 1 a 999 são do sistema e não podem ser alteradas.
+        </span>
+        <button class="ajuda-btn-ok" onclick="fecharAjudaVerba()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function abrirAjudaVerba() {
+    document.getElementById('ajudaVerba').classList.add('aberto');
+    document.body.style.overflow = 'hidden';
+}
+function fecharAjudaVerba() {
+    document.getElementById('ajudaVerba').classList.remove('aberto');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') fecharAjudaVerba();
+});
+</script>

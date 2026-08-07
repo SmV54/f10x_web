@@ -252,6 +252,15 @@
     .vazio { padding: 20px; font-size: 13px; color: #64748b; text-align: center; border: 1px dashed #cbd5e1; border-radius: 10px; background: #fafafa; }
 
     /* SEÇÃO VERBAS SOMA BASE */
+    /* Gatilho da ajuda, no cabecalho do formulario. Esta tela e a mais densa
+       do sistema; o "?" tem que estar onde a pessoa comeca a preencher. */
+    .btn-ajuda-verba {
+        background: #eff6ff; border: 1px solid #bfdbfe; color: #1d4ed8;
+        font-family: inherit; font-size: 11.5px; font-weight: 600;
+        padding: 4px 11px; border-radius: 7px; cursor: pointer;
+        white-space: nowrap; transition: 0.15s;
+    }
+    .btn-ajuda-verba:hover { background: #2a7de1; border-color: #2a7de1; color: #fff; }
     .secao-somabase {
       background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px;
       padding: 8px 12px; display: flex; flex-direction: column; gap: 6px;
@@ -401,7 +410,11 @@
       <!-- ── FORM ── -->
       <div class="bloco">
         <div class="bloco-header">
-          <h2 id="formTitulo">➕ Nova Verba</h2>
+          <h2 id="formTitulo" style="display:flex;align-items:center;gap:10px;">➕ Nova Verba
+            <button type="button" class="btn-ajuda-verba" onclick="abrirAjudaVerba()">
+                ? Como preencher
+            </button>
+          </h2>
           <p id="formSubtitulo">Preencha os dados da verba</p>
         </div>
         <div class="bloco-body">
@@ -1681,5 +1694,9 @@
     if (e.target === this) fecharSelCompleta();
   });
 </script>
+
+{% include '_ajuda_estilo.html' %}
+{% include '_ajuda_cad_verba.html' %}
+
 </body>
 </html>
