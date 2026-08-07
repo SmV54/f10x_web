@@ -474,7 +474,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="grid-ident">
                 <div class="campo">
                     <label>Categoria eSocial</label>
-                    <select id="codCateg" onchange="ajustarBolsaEstagio(); ajustarPrefixoMatricula()"
+                    <select id="codCateg" onchange="ajustarBolsaEstagio(); ajustarPrefixoMatricula(); limparMatriculaESProLabore()"
                             onfocus="showHint(this,'Categoria do trabalhador conforme a Tabela 01 do eSocial — define quais eventos e encargos se aplicam.\nEx.: 101 – Empregado geral | 103 – Aprendiz | 104 – Doméstico | 901 – Estagiário | 721/722/723 – Diretor/pró-labore.\nEstagiário e pró-labore ajustam o rótulo do salário e o prefixo da matrícula (8 ou 9).')" onblur="clearHint()">
                         <option value="">Selecione…</option>
                         {% for cat in categorias %}
@@ -496,9 +496,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                            {% endif %}>
                 </div>
                 <div class="campo">
-                    <label>Matrícula eSocial</label>
+                    <label>Matrícula eSocial
+                        <button type="button" class="btn-explica" onclick="explicarMatriculaES()"
+                                title="Quando a Matrícula eSocial pode ficar em branco?">?</button>
+                    </label>
                     <input type="text" id="matricula_eS" maxlength="30" placeholder="Preenchida automaticamente"
-                           onfocus="showHint(this,'Matrícula que identifica o trabalhador nos eventos do eSocial.\nUse quando o funcionário JÁ tem cadastro no eSocial (feito por outro sistema): informe aqui a matrícula que já existe lá.\nNão é “matrícula social” — não tem relação com NIS/programas sociais.\nEm inclusões novas, vem igual à Matrícula.')" onblur="clearHint()">
+                           onfocus="hintMatriculaES(this)" onblur="clearHint()">
                 </div>
                 <div class="campo campo-mono">
                     <label>CPF</label>
@@ -1438,9 +1441,13 @@ function apenasNumeros(campo, max) {
     campo.value = campo.value.replace(/\D/g, '').substring(0, max);
 }
 
+/* Copia a Matrícula para a Matrícula eSocial. No pró-labore (721/722/723) NÃO
+   copia: nessas categorias o contribuinte costuma ter sido cadastrado no
+   eSocial sem matrícula, e o campo pode/deve ficar em branco. */
 function sincMatriculaES(campo) {
     const es = document.getElementById('matricula_eS');
-    if (es) es.value = campo.value;
+    if (!es || ehCatSemMatES()) return;
+    es.value = campo.value;
 }
 
 function formatarMatricula(campo) {
@@ -1763,6 +1770,59 @@ function ajustarPrefixoMatricula() {
     v = (prefixo + v).substring(0, 6);
     mat.value = v;
     sincMatriculaES(mat);
+}
+
+/* Categorias de contribuinte individual (pró-labore) — sócio, diretor e
+   conselheiro. São as que aceitam Matrícula eSocial em branco. */
+const CATS_SEM_MAT_ES = ['721', '722', '723'];
+
+function ehCatSemMatES() {
+    return CATS_SEM_MAT_ES.includes(document.getElementById('codCateg')?.value || '');
+}
+
+/* Balão de ajuda da Matrícula eSocial — avisa que pode ficar vazia no
+   pró-labore, onde o contribuinte costuma ter sido cadastrado sem matrícula. */
+function hintMatriculaES(el) {
+    let msg = 'Matrícula que identifica o trabalhador nos eventos do eSocial.\n'
+            + 'Use quando o funcionário JÁ tem cadastro no eSocial (feito por outro '
+            + 'sistema): informe aqui a matrícula que já existe lá.\n'
+            + 'Não é “matrícula social” — não tem relação com NIS/programas sociais.\n'
+            + 'Em inclusões novas, vem igual à Matrícula.';
+    if (ehCatSemMatES()) {
+        msg += '\n\nPró-labore (' + document.getElementById('codCateg').value + '): '
+             + 'PODE FICAR EM BRANCO — clique no ? ao lado do título.';
+    }
+    showHint(el, msg);
+}
+
+/* Trocou para pró-labore depois de digitar a matrícula: apaga o que a cópia
+   automática tinha posto (só se for exatamente igual à Matrícula — valor
+   digitado à mão nunca é mexido). Só na inclusão; na alteração o campo é do
+   usuário e ninguém limpa por ele. */
+function limparMatriculaESProLabore() {
+    if (MODO === 'alteracao' || !ehCatSemMatES()) return;
+    const es  = document.getElementById('matricula_eS');
+    const mat = document.getElementById('matricula');
+    if (es && mat && es.value && es.value === mat.value) es.value = '';
+}
+
+function explicarMatriculaES() {
+    f10Alert(
+        'Na maioria dos casos este campo vem igual à Matrícula e não precisa de atenção. '
+      + 'Ele existe para o funcionário que JÁ está no eSocial por outro sistema: aí você '
+      + 'informa aqui a matrícula que já existe lá, para os eventos caírem no mesmo vínculo.'
+      + '\n\nQUANDO PODE FICAR EM BRANCO'
+      + '\nNas categorias de pró-labore — 721 (diretor não empregado com FGTS), '
+      + '722 (diretor não empregado sem FGTS) e 723 (sócio/administrador) — é comum o '
+      + 'contribuinte ter sido cadastrado no eSocial SEM matrícula nenhuma. '
+      + 'Nesses casos deixe o campo vazio: não é erro e a gravação não reclama.'
+      + '\n\nPor isso, nessas três categorias o sistema não copia mais a Matrícula para '
+      + 'cá automaticamente — se você quiser uma matrícula no eSocial, digite.'
+      + '\n\nNAS DEMAIS CATEGORIAS'
+      + '\nDeixando em branco, o sistema usa a Matrícula do funcionário com 6 dígitos, '
+      + 'que é a convenção do Folha10·Simples.',
+        { tipo: 'info', titulo: 'Matrícula eSocial' }
+    );
 }
 
 /* Balão de ajuda da Matrícula — texto adapta-se à categoria (prefixo 8/9). */
@@ -2441,7 +2501,7 @@ function iniciarTour() {
             element: '#matricula',
             popover: {
                 title: '🔢 Matrícula',
-                description: 'Número único do funcionário na empresa — 6 dígitos, completado com zeros à esquerda. É sincronizado automaticamente com o campo <em>Matrícula eSocial</em>.',
+                description: 'Número único do funcionário na empresa — 6 dígitos, completado com zeros à esquerda. É sincronizado automaticamente com o campo <em>Matrícula eSocial</em> — menos no pró-labore (721/722/723), onde a Matrícula eSocial pode ficar em branco.',
                 side: 'right', align: 'start'
             }
         },
