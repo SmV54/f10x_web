@@ -203,6 +203,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .tabela-wrap tbody tr:hover { background: #f8fafc; }
 .tabela-wrap tbody td { padding: 7px 12px; font-size: 12px; color: #1e293b; vertical-align: middle; }
 .tabela-wrap tbody tr.inativo { opacity: 0.45; }
+.tabela-wrap tbody tr.encerrado { opacity: 0.5; }
+/* Caixa do cabecalho da lista: por padrao so os que ainda valem. */
+.chk-mostrar-todos { display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 500; color: #475569; cursor: pointer;
+    white-space: nowrap; }
+.chk-mostrar-todos input { accent-color: var(--accent); cursor: pointer; }
 .td-num { font-family: var(--mono); font-size: 10px; color: #94a3b8; width: 28px; text-align: right; }
 .td-cod { font-family: var(--mono); font-size: 11px; }
 .td-val { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
@@ -489,8 +495,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <!-- CARD: LISTA -->
     <div class="card" id="card-lista">
         <div class="card-titulo">
-            <span>Movimentos Fixos Cadastrados</span>
-            <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
+            <span id="lista-titulo">Movimentos Fixos em Vigência</span>
+            <span style="display:flex;align-items:center;gap:14px;">
+                <label class="chk-mostrar-todos">
+                    <input type="checkbox" id="chk-todos" onchange="renderLista(REGISTROS)">
+                    Mostrar também os encerrados
+                </label>
+                <button class="btn-refresh" onclick="carregarLista()">↻ Atualizar</button>
+            </span>
         </div>
         <div id="lista-container"><div class="vazio">Carregando…</div></div>
     </div>
@@ -901,6 +913,9 @@ function cancelarEdicao() {
 
 // ── EDITAR ──
 let LISTA_MAP = {};
+// Todos os registros vindos da API. A lista filtra em cima disso, entao
+// marcar/desmarcar "Mostrar tambem os encerrados" nao refaz a consulta.
+let REGISTROS = [];
 
 function editarRegistro(id) {
     const r = LISTA_MAP[id];
@@ -1056,18 +1071,38 @@ function renderVigencia(r) {
          + (!fim ? `<br><span style="font-size:10px;color:#64748b;">Por tempo indeterminado</span>` : '');
 }
 
+// Encerrado = tem folha_final que já passou desta folha; não lança mais nada.
+// Mesma definição da tela Excluir / Parar.
+function jaEncerrado(r) {
+    return !!(r.folha_final && r.folha_final !== 999912
+              && ANOMES_ATUAL && r.folha_final < ANOMES_ATUAL);
+}
+
 function renderLista(regs) {
-    const el = document.getElementById('lista-container');
+    const el   = document.getElementById('lista-container');
+    const tudo = document.getElementById('chk-todos').checked;
     LISTA_MAP = {};
-    regs.forEach(r => { LISTA_MAP[r.id] = r; });
+    regs.forEach(r => { LISTA_MAP[r.id] = r; });   // o mapa guarda TODOS
+
+    // Por padrão a lista mostra só o que ainda vale. Os encerrados continuam
+    // cadastrados e voltam com a caixa "Mostrar também os encerrados".
+    const ocultos = tudo ? 0 : regs.filter(jaEncerrado).length;
+    if (!tudo) regs = regs.filter(r => !jaEncerrado(r));
+
+    document.getElementById('lista-titulo').textContent =
+        tudo ? 'Movimentos Fixos Cadastrados' : 'Movimentos Fixos em Vigência';
 
     if (!regs.length) {
-        el.innerHTML = '<div class="vazio">Nenhum movimento fixo cadastrado.</div>';
+        el.innerHTML = '<div class="vazio">'
+            + (ocultos ? `Nenhum movimento fixo em vigência. `
+                       + `${ocultos} já encerrado(s) — marque "Mostrar também os encerrados".`
+                       : 'Nenhum movimento fixo cadastrado.')
+            + '</div>';
         return;
     }
 
     const rows = regs.map((r, i) => `
-        <tr class="${r.situacao === 'D' ? 'inativo' : ''}">
+        <tr class="${r.situacao === 'D' ? 'inativo' : ''}${jaEncerrado(r) ? ' encerrado' : ''}">
             <td class="td-num">${i+1}</td>
             <td>${renderAlvo(r)}</td>
             <td><span class="td-cod">${String(r.cod_verba).padStart(4,'0')}</span>
@@ -1097,7 +1132,8 @@ function renderLista(regs) {
         </tr></thead>
         <tbody>${rows}</tbody>
     </table>
-    <div class="tabela-rodape">${regs.length} registro(s)</div></div>`;
+    <div class="tabela-rodape">${regs.length} registro(s)${
+        ocultos ? ` · ${ocultos} encerrado(s) fora da lista` : ''}</div></div>`;
 }
 
 async function carregarLista() {
@@ -1109,7 +1145,8 @@ async function carregarLista() {
         if (!d.ok) { el.innerHTML = `<div class="vazio" style="color:#be123c;">${d.msg||'Erro.'}</div>`; return; }
         if (d.anomes)           ANOMES_ATUAL     = parseInt(d.anomes);
         if (d.anomes_anterior)  ANOMES_ANTERIOR  = parseInt(d.anomes_anterior);
-        renderLista(d.registros || []);
+        REGISTROS = d.registros || [];
+        renderLista(REGISTROS);
     } catch { el.innerHTML = '<div class="vazio" style="color:#be123c;">Erro ao carregar.</div>'; }
 }
 
