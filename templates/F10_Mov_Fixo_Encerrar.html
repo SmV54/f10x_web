@@ -184,10 +184,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <!-- AS DUAS SAIDAS -->
     <div class="card">
         <div class="card-titulo">
-            <span>❓ Qual das duas usar</span>
-            <button class="btn-saiba-mais" onclick="abrirAjudaMFEncerrar()">
-                Ver explicação completa →
-            </button>
+            {# O botao vai DENTRO do span do titulo: com o space-between do
+               .card-titulo, como item separado ele era jogado para a direita. #}
+            <span style="display:flex;align-items:center;gap:10px;">
+                ❓ Qual das duas usar
+                <button class="btn-saiba-mais" onclick="abrirAjudaMFEncerrar()">
+                    Ver explicação completa →
+                </button>
+            </span>
         </div>
         <div class="explica">
             <div class="explica-box explica-exc">
