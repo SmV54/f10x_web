@@ -17611,6 +17611,21 @@ CONSIG_VERBA_INI = 700
 CONSIG_VERBA_FIM = 749
 
 
+def _eh_verba_consignado(cod):
+    """True para as verbas de empréstimo consignado (700-749).
+
+    Elas não podem ser lançadas como movimento fixo: cada contrato traz banco,
+    número do contrato e prazo, que só chegam pela planilha mensal
+    (Movimento → Importar Consignados). Um movimento fixo repetiria o valor
+    todo mês sem nada disso e ainda brigaria com a importação, que apaga e
+    regrava a faixa a cada rodada.
+    """
+    try:
+        return CONSIG_VERBA_INI <= int(cod) <= CONSIG_VERBA_FIM
+    except (TypeError, ValueError):
+        return False
+
+
 def _consig_mmyyyy_to_yyyymm(v):
     """'07/2026' → '202607'. Retorna '' se não reconhecer."""
     s = str(v or "").strip()
@@ -21266,6 +21281,11 @@ def mov_fixo():
             if v.get("is_nao_digitar"):
                 continue
             cod = v.get("cod_rubr")
+            # Consignado (700-749) fica FORA do movimento fixo: cada contrato
+            # carrega banco, nº do contrato e prazo, que só vêm da planilha
+            # mensal. Ver Movimento → Importar Consignados.
+            if _eh_verba_consignado(cod):
+                continue
             if cod not in vm or v.get("id_cliente") != 0:
                 vm[cod] = {
                     "cod_rubr":   cod,
@@ -21695,6 +21715,14 @@ def api_mov_fixo_gravar():
 
     if not (1 <= cod_verba <= 9999):
         return jsonify({"ok": False, "msg": "Código de verba inválido."})
+    # A tela ja nao lista 700-749, mas a trava tem que valer no servidor: a
+    # requisicao pode vir de uma pagina velha ou de fora da tela.
+    if _eh_verba_consignado(cod_verba):
+        return jsonify({"ok": False, "msg":
+            f"A verba {cod_verba:04d} e de emprestimo consignado "
+            f"({CONSIG_VERBA_INI}-{CONSIG_VERBA_FIM}) e nao pode ser movimento fixo. "
+            "Cada contrato traz banco, numero e prazo proprios — use "
+            "Movimento -> Importar Consignados."})
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor deve ser maior que zero."})
 
@@ -21799,6 +21827,14 @@ def api_mov_fixo_alterar():
 
     if not (1 <= cod_verba <= 9999):
         return jsonify({"ok": False, "msg": "Código de verba inválido."})
+    # A tela ja nao lista 700-749, mas a trava tem que valer no servidor: a
+    # requisicao pode vir de uma pagina velha ou de fora da tela.
+    if _eh_verba_consignado(cod_verba):
+        return jsonify({"ok": False, "msg":
+            f"A verba {cod_verba:04d} e de emprestimo consignado "
+            f"({CONSIG_VERBA_INI}-{CONSIG_VERBA_FIM}) e nao pode ser movimento fixo. "
+            "Cada contrato traz banco, numero e prazo proprios — use "
+            "Movimento -> Importar Consignados."})
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor deve ser maior que zero."})
 
