@@ -11851,9 +11851,15 @@ def cad_anomes():
     except Exception:
         anomes_list = []
 
-    # Calcula próximo ano/mês sugerido
+    # Calcula próximo ano/mês sugerido — SEMPRE a partir da última folha NORMAL.
+    # As folhas do 13º (tipo 'A' adiantamento e '1' final) são abertas em
+    # nov/dez e não fazem parte da sequência mensal: considerá-las empurrava a
+    # sugestão para janeiro e pulava a folha normal de dezembro.
     if anomes_list:
-        ultimo = anomes_list[0]["ano_mes"]  # mais recente (ordem desc)
+        _normais = [r for r in anomes_list
+                    if str(r.get("tipo") or "N").upper() == "N"]
+        # Só 13º cadastrado (nenhuma normal): cai no comportamento antigo.
+        ultimo = (_normais or anomes_list)[0]["ano_mes"]   # mais recente (ordem desc)
         _ano = int(ultimo[:4])
         _mes = int(ultimo[4:6])
         _mes += 1
