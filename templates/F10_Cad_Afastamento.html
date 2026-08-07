@@ -137,6 +137,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 .input-data.aviso { border-color: #f59e0b; background: #fffbeb; }
 
+/* Escolha da remessa em data retroativa */
+.chk-es {
+    display: flex; align-items: center; gap: 7px; cursor: pointer;
+    font-size: 12.5px; color: #334155; padding: 2px 0; white-space: nowrap;
+}
+.chk-es input { accent-color: #b45309; width: 15px; height: 15px; cursor: pointer; }
+.chk-es-comp { font-family: var(--mono); font-size: 11px; color: #94a3b8; }
+
 .radio-group { display: flex; gap: 18px; align-items: center; padding-top: 4px; }
 .radio-group label {
     display: flex; align-items: center; gap: 6px;
@@ -246,7 +254,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="opcao-valor">
                 <input type="text" id="data_inicio" class="input-data"
                     placeholder="dd/mm/aaaa" maxlength="10"
-                    oninput="mascaraData(this)" onblur="validarDataInicio()">
+                    oninput="mascaraData(this)" onblur="validarDataInicio(); atualizarEscolhaEsocial()">
                 <span class="hint" id="hint-inicio"></span>
             </div>
         </div>
@@ -258,8 +266,30 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <div class="opcao-valor">
                 <input type="text" id="data_fim" class="input-data"
                     placeholder="dd/mm/aaaa" maxlength="10"
-                    oninput="mascaraData(this)" onblur="validarDataFim()">
+                    oninput="mascaraData(this)" onblur="validarDataFim(); atualizarEscolhaEsocial()">
                 <span class="hint" id="hint-fim"></span>
+            </div>
+        </div>
+
+        <!-- Data retroativa: escolha manual sobre a remessa do eSocial.
+             Aparece só quando a data correspondente é anterior à Folha Ativa e
+             já vem MARCADA para NÃO enviar — o normal, nesse caso, é o evento
+             já ter sido transmitido ou o registro ser apenas informativo. -->
+        <div class="opcao-linha" id="linha-es-retro" style="display:none;">
+            <div></div>
+            <div class="opcao-label">eSocial &nbsp;<span class="opcional">data retroativa</span></div>
+            <div class="opcao-valor" style="align-items:flex-start;">
+                <label class="chk-es" id="lbl-es-saida">
+                    <input type="checkbox" id="chk-nao-env-saida" checked>
+                    <span>Não enviar o S-2230 de <b>saída</b>
+                        <span class="chk-es-comp" id="comp-es-saida"></span></span>
+                </label>
+                <label class="chk-es" id="lbl-es-retorno" style="display:none;">
+                    <input type="checkbox" id="chk-nao-env-retorno" checked>
+                    <span>Não enviar o S-2230 de <b>retorno</b>
+                        <span class="chk-es-comp" id="comp-es-retorno"></span></span>
+                </label>
+                <span class="hint">Desmarque para gerar a remessa na Fila do eSocial.</span>
             </div>
         </div>
 
@@ -428,6 +458,32 @@ function mesAnoBr(yyyymmdd) {
     return yyyymmdd.slice(4,6) + '/' + yyyymmdd.slice(0,4);
 }
 
+// Mostra a escolha da remessa só para a(s) data(s) retroativa(s). Chamada
+// sempre que uma das datas muda. As caixas nascem marcadas (= não enviar) e
+// voltam a esse estado quando a linha some, para não guardar decisão antiga.
+function atualizarEscolhaEsocial() {
+    const d1 = parseData(document.getElementById('data_inicio').value);
+    const d2 = parseData(document.getElementById('data_fim').value);
+    const retroI = ehRetroativa(d1);
+    const retroF = !!(d2 && ehRetroativa(d2));
+
+    const linha = document.getElementById('linha-es-retro');
+    const lblS  = document.getElementById('lbl-es-saida');
+    const lblR  = document.getElementById('lbl-es-retorno');
+
+    lblS.style.display = retroI ? '' : 'none';
+    lblR.style.display = retroF ? '' : 'none';
+    linha.style.display = (retroI || retroF) ? '' : 'none';
+
+    document.getElementById('comp-es-saida').textContent =
+        retroI ? `(competência ${mesAnoBr(d1)})` : '';
+    document.getElementById('comp-es-retorno').textContent =
+        retroF ? `(competência ${mesAnoBr(d2)})` : '';
+
+    if (!retroI) document.getElementById('chk-nao-env-saida').checked   = true;
+    if (!retroF) document.getElementById('chk-nao-env-retorno').checked = true;
+}
+
 function validarDataInicio() {
     const el = document.getElementById('data_inicio');
     const hint = document.getElementById('hint-inicio');
@@ -565,8 +621,7 @@ async function gravar() {
         campotxt4 = obs;
     }
 
-    // ── Data anterior ao mês da Folha Ativa: confirma o registro e
-    //    pergunta se deve gerar a remessa do S-2230 DA SAÍDA ──
+    // ── Data anterior ao mês da Folha Ativa ──
     const retro = ehRetroativa(data1i) || ehRetroativa(data1f);
     let gerarEsSaida   = true;   // remessa da saida  (mes do inicio)
     let gerarEsRetorno = true;   // remessa do retorno (mes do fim)
@@ -574,37 +629,32 @@ async function gravar() {
         const quais = ehRetroativa(data1i)
             ? `Data Início ${fmtBr(data1i)}`
             : `Data Fim ${fmtBr(data1f)}`;
+        // Lê as caixas ANTES de confirmar, para o resumo dizer o que vai
+        // acontecer com a remessa.
+        if (ehRetroativa(data1i))
+            gerarEsSaida = !document.getElementById('chk-nao-env-saida').checked;
+        if (data1f && ehRetroativa(data1f))
+            gerarEsRetorno = !document.getElementById('chk-nao-env-retorno').checked;
+
+        const _res = [];
+        if (ehRetroativa(data1i))
+            _res.push(gerarEsSaida
+                ? `• S-2230 de saída SERÁ gerado na competência ${mesAnoBr(data1i)}`
+                : `• S-2230 de saída NÃO será gerado`);
+        if (data1f && ehRetroativa(data1f))
+            _res.push(gerarEsRetorno
+                ? `• S-2230 de retorno SERÁ gerado na competência ${mesAnoBr(data1f)}`
+                : `• S-2230 de retorno NÃO será gerado`);
+
         const ok = await f10Confirm(
-            `${quais} é anterior ao mês da Folha Ativa (${folhaLabel()}).\n\n` +
-            `O afastamento será gravado com essa data retroativa. Confirma?`,
+            `${quais} é anterior ao mês da Folha Ativa (${folhaLabel()}).\n\n`
+            + `O afastamento será gravado com essa data retroativa.\n\n`
+            + _res.join('\n')
+            + `\n\nPara mudar isso, cancele e ajuste as caixas do eSocial no formulário.`,
             { titulo: 'Afastamento com data retroativa', tipo: 'aviso',
               okText: 'Sim, registrar', cancelText: 'Cancelar' });
         if (!ok) return;
 
-        // Uma pergunta por remessa: o afastamento pode ter começado num mês já
-        // enviado (ou ser só informativo) e mesmo assim o RETORNO precisar ir
-        // ao eSocial. Só se pergunta pela data que é retroativa.
-        if (ehRetroativa(data1i)) {
-            gerarEsSaida = await f10Confirm(
-                `Deseja gerar a remessa do S-2230 de SAÍDA (Afastamento Temporário) `
-                + `para o eSocial?\n\n`
-                + `A remessa entra na competência ${mesAnoBr(data1i)}, do início do `
-                + `afastamento — não na Folha Ativa.\n\n`
-                + `Escolha "Não gerar" se o afastamento já foi enviado ao eSocial, `
-                + `ou se este registro é apenas informativo e não exige o evento.`,
-                { titulo: 'Remessa eSocial S-2230 — saída', tipo: 'info',
-                  okText: 'Sim, gerar', cancelText: 'Não gerar' });
-        }
-        if (data1f && ehRetroativa(data1f)) {
-            gerarEsRetorno = await f10Confirm(
-                `E a remessa do S-2230 de RETORNO?\n\n`
-                + `Ela entra na competência ${mesAnoBr(data1f)}, do fim do `
-                + `afastamento.\n\n`
-                + `Escolha "Não gerar" se o retorno já foi enviado ao eSocial, `
-                + `ou se este registro é apenas informativo.`,
-                { titulo: 'Remessa eSocial S-2230 — retorno', tipo: 'info',
-                  okText: 'Sim, gerar', cancelText: 'Não gerar' });
-        }
     }
 
     // ── Data Fim depois de HOJE: o retorno ainda não aconteceu ──
