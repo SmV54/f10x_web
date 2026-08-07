@@ -20,6 +20,7 @@ eSocial_XML/
 Nada.txt
 *.txt
 !versaoxxx.txt
+!REGRAS_DO_SISTEMA.txt
 
 # Ferramentas
 .claude/

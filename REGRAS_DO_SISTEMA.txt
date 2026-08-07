@@ -1,0 +1,530 @@
+﻿================================================================================
+                    FOLHA10 SIMPLES - REGRAS E ANOTACOES
+                         Resumo agrupado por funcao
+================================================================================
+Gerado em 07/08/2026 - versao do sistema 20260807-1657
+Compilado a partir das decisoes tomadas com o usuario e do comportamento
+verificado no codigo e no banco.
+================================================================================
+
+
++------------------------------------------------------------------------------
+| 1. CONCEITOS QUE VALEM PARA O SISTEMA INTEIRO
++------------------------------------------------------------------------------
+
+VALORES SAO SEMPRE EM CENTAVOS (inteiro)
+  R$ 1.500,00 e gravado como 150000. Vale para salario (vrsalfx), verbas,
+  totais e tabelas legais. Percentuais em centesimos: 750 = 7,50%.
+  Na migracao do Access o valor JA vem em centavos - nunca multiplicar por 100.
+
+FOLHA ATIVA (competencia)
+  Quase tudo depende do mes/ano ativo da sessao. A folha so anda para a FRENTE:
+  nao da para abrir competencia anterior a mais recente da empresa.
+  Ao cadastrar a empresa, a 1a folha ja e aberta automaticamente. Ate o dia 5 a
+  competencia sugerida e o MES ANTERIOR - quem se cadastra no comeco do mes vem
+  processar o mes que passou.
+
+  NOVA FOLHA: a sugestao do proximo mes sai sempre da ultima folha NORMAL.
+  As folhas de 13o (tipo A = adiantamento, tipo 1 = final) sao ignoradas, pois
+  sao abertas em nov/dez e nao fazem parte da sequencia mensal.
+
+SITUACAO DA FOLHA
+  A / X = Aberta    C = Calculada    F = Fechada
+  Calculada ou Fechada bloqueia inclusao e alteracao na maioria das telas.
+
+TIPOS DE FOLHA
+  N = Normal   F = Ferias   R = Rescisao   A = Adiantamento 13o   1 = 13o final
+
+NO BANCO TUDO E MINUSCULO
+  O Postgres rebaixa nomes nao-aspeados. CamelCase no codigo Python vira erro
+  42703 (coluna nao existe) - e quase sempre esta dentro de "except: pass",
+  entao a falha e calada.
+  Exemplos: tab_CAD -> tab_cad     codCateg -> codcateg
+
+
++------------------------------------------------------------------------------
+| 2. CADASTRO DE FUNCIONARIO
++------------------------------------------------------------------------------
+
+DATA DE ADMISSAO x FOLHA ATIVA
+  Posterior a folha ativa .... RECUSADO, nao grava
+  No mes da folha ativa ...... grava normal, com S-2200 ou S-2300
+  Anterior a folha ativa ..... confirma na tela e NAO gera o S-2200
+
+  Admissao retroativa e praticamente sempre implantacao: o evento ja foi
+  transmitido pelo sistema anterior e um S-2200 duplicado da trabalho para
+  desfazer no eSocial. Se o evento ainda precisar ir, use o Gerador de Remessa.
+  As duas travas valem NO SERVIDOR, nao so na tela.
+
+MATRICULA
+  6 digitos. Estagiario (901) recebe prefixo 8.
+  Pro-labore (721/722/723) recebe prefixo 9.
+
+MATRICULA eSOCIAL (tab_cad.matricula_es)
+  E a matricula como o eSocial ja conhece o trabalhador - usada quando ele veio
+  de outro sistema. Nas inclusoes normais vem igual a Matricula.
+
+  - PODE FICAR EM BRANCO nas categorias 721/722/723: esses contribuintes
+    costumam ter sido cadastrados no eSocial sem matricula nenhuma. Nessas
+    categorias o sistema nao copia mais a Matricula automaticamente.
+  - Em branco, a tag <matricula> nao sai no S-1200 nem no S-2300.
+  - Alterar a matricula eSocial NAO gera S-2205 nem S-2206. Depois de aceito,
+    so se corrige retificando o proprio S-2200.
+
+CATEGORIA - o que muda no calculo
+  101 e demais empregados ... salario na verba 1, INSS na 101, FGTS normal
+  721 Diretor COM FGTS ...... verba 6 - UNICA da faixa 700 que tem FGTS
+  722 ....................... verba 16
+  723 ....................... verba 86
+  demais 700-799 ............ verba 16, sem FGTS, INSS na verba 102
+  901 Estagiario ............ verba 7 (bolsa), SO IRRF - sem INSS e sem FGTS
+
+  Categorias 700 ou maior geram S-2300 (TSVE) em vez de S-2200.
+
+NOME DO CARGO (nmcargo)
+  Em branco vale o nome da funcao pelo CBO. Preenchido, tem precedencia.
+  Serve para o caso de duas funcoes com o mesmo CBO.
+  E lido pelo TRCT e pelos eventos S-2200, S-2300 e S-2206.
+
+SINDICATO
+  O vinculo e por CNPJ (tab_cad.cnpjsindcategprof), nao por id.
+  NAO SINDICALIZADO = CNPJ 37115367003500.
+
+
++------------------------------------------------------------------------------
+| 3. CADASTRO DE VERBAS (RUBRICAS)
++------------------------------------------------------------------------------
+
+FAIXAS DE CODIGO
+  1 a 999 ......... verbas do SISTEMA (id_cliente = 0), iguais para todos os
+                    clientes. So a equipe F10 altera.
+  1000 a 9899 ..... as verbas do cliente. O sistema sugere o proximo livre.
+  9900 a 9999 ..... INFORMATIVAS: aparecem no holerite e vao ao eSocial, mas
+                    NAO entram no total de proventos, descontos nem no liquido.
+
+TIPO DA RUBRICA
+  1 Provento    2 Desconto    3 Informativa    4 Informativa dedutora
+
+UNIDADE
+  V = Valor (R$)    H = Hora    D = Diaria
+  Em H e D o sistema multiplica a quantidade pelo salario-hora ou salario-dia
+  NO MOMENTO DO CALCULO, entao o valor acompanha o reajuste sozinho.
+  O "% de acrescimo" soma sobre isso: 50 = hora extra 50% (x 1,5), 100 = dobro.
+
+INCIDENCIAS NAO SAO S/N
+  Os campos tpn_ / tpr_ / tpf_ / tp1_ combinados com _inc_cp, _inc_fgts,
+  _inc_irrf e _inc_pis guardam o CODIGO DE INCIDENCIA DO eSOCIAL.
+  Exemplo: 11 = incide integralmente.
+  Prefixos: tpn_ Normal   tpr_ Rescisao   tpf_ Ferias   tp1_ 13o
+  E esse codigo que vai no S-1010 - errar aqui vira rejeicao no envio.
+
+INCIDENCIA POR EVENTO (como a verba vira media)
+  NI ... Nao incide
+  M12 .. Media dos ultimos 12 meses
+  MAP .. Media do periodo aquisitivo (ferias)
+  MAN .. Media desde o inicio do ano (13o)
+  UL ... Repete o ultimo lancamento
+  CN ... Calculo normal, sem media
+
+  E o que faz a hora extra habitual refletir em ferias e rescisao. Esquecer
+  disso e a causa mais comum de "a media nao bateu".
+
+FLAGS DE "OUTRAS INFORMACOES" QUE O CALCULO USA
+  01 Nao permite digitar no movimento - some das telas de lancamento
+  04 Comissao ............ gera DSR na verba 0027
+  11 Adicional Noturno ... gera DSR na verba 0026
+  19 Hora Extra .......... gera DSR na verba 0025
+  06 Insalubridade e 07 Periculosidade - o sistema usa essas marcas para
+     impedir pagamento em dobro (cadastro + movimento fixo)
+
+VERBAS QUE COMPOEM A BASE
+  Para verba que e percentual de outras: escolhendo as verbas da base, o
+  calculo soma esses valores antes de aplicar o percentual, em vez de usar
+  so o salario.
+
+
++------------------------------------------------------------------------------
+| 4. MOVIMENTO FIXO
++------------------------------------------------------------------------------
+
+O QUE E
+  Lancamento cadastrado UMA VEZ que o sistema repete a cada folha.
+  Entra no tab_mov com origem F (o calculo gerou). O que voce digita no
+  movimento do mes e origem M e nunca e sobrescrito pelo recalculo.
+
+QUEM RECEBE
+  Por matricula ... um funcionario especifico.
+  Por grupo ....... filtros de categoria, data de nascimento, data de admissao,
+                    salario-base, idade e tempo de servico. E reavaliado A CADA
+                    FOLHA: quem for admitido depois dentro do perfil passa a
+                    receber sozinho.
+
+DURACAO
+  Por parcelas .... informa a quantidade; para sozinho ao atingir o total.
+  Por periodo ..... folha inicial e, se quiser, final. Sem final = prazo
+                    indeterminado.
+
+COMPORTAMENTO EM FERIAS
+  0 ... Nao processa, mesmo que seja 1 dia de ferias
+  1 ... Processa integral, sem proporcionalidade
+  2 ... Processa tudo nas ferias, se as ferias comecarem nessa folha
+  3 ... Proporcional aos dias trabalhados E aos dias gozados
+  4 ... Proporcional aos dias trabalhados, zero nas ferias
+
+  Ha ainda: Se afastado (continuar / interromper / proporcional) e
+  Mes de admissao e Mes de rescisao (total ou proporcional).
+
+ENCERRAR - DUAS SAIDAS DIFERENTES
+  PARAR ..... grava a ultima folha em que o movimento vale. O historico fica
+              intacto. E o que se usa em quase todos os casos.
+  EXCLUIR ... apaga de vez. So permitido quando o movimento comecou nesta folha
+              E nunca gerou lancamento nenhum. E a saida para erro de digitacao.
+
+  A trava existe porque excluir algo que ja rodou em folha paga apagaria o
+  historico de um valor efetivamente pago. Vale no servidor tambem.
+
+  Do PARAR da para voltar atras: edite o movimento e limpe a ultima folha.
+  Da EXCLUSAO nao ha volta.
+
+O QUE NAO ENTRA AQUI
+  - Insalubridade e periculosidade para quem ja tem o adicional no cadastro.
+    A folha ja lanca sozinha e pagaria em dobro. Em movimento de grupo, basta
+    um funcionario ter o adicional para o sistema recusar.
+  - Verbas 700 a 749 (emprestimo consignado): cada contrato tem banco, numero
+    e prazo proprios, que so chegam pela planilha mensal. O caminho e
+    Movimento -> Importar Consignados, que apaga e regrava a faixa a cada
+    rodada.
+
+LISTA
+  Mostra por padrao so os EM VIGENCIA. A caixa "Mostrar tambem os encerrados"
+  traz o resto. Encerrado = a folha final ja passou da folha ativa.
+
+
++------------------------------------------------------------------------------
+| 5. ADIANTAMENTO QUINZENAL
++------------------------------------------------------------------------------
+
+TRES ESTADOS, NAO DOIS
+  Campo VAZIO .............. herda o % do cadastro da empresa
+  Caixa "Nao adianta" ...... NAO adianta nada, e nem herda o % da empresa
+  Valor ou % preenchido .... usa o proprio
+
+  O "nao adianta" e gravado em tab_cad.sem_adiantamento (boolean).
+  NAO da para usar 0 nem -1 nas colunas de valor: o banco tem CHECK exigindo
+  valor_adianta > 0 e per_adianta entre 10 e 60. Digitar 0 na tela funciona
+  como atalho para a caixa.
+
+ADMITIDO NO MES DA FOLHA
+  Do dia 1 ao 10 ......... recebe, PROPORCIONAL aos dias trabalhados
+                           (dia 1 = integral)
+  Do dia 11 em diante .... NAO recebe
+
+  O divisor sao os dias reais do mes (30, 31, 28), a mesma regra da ETAPA 1030
+  da folha.
+  Exemplo: salario 3.000, 40%, admitido 05/07 -> 1.200 x 27/31 = 1.045,16
+
+QUEM FICA DE FORA
+  Afastado ou de ferias na 1a quinzena (dias 01 a 15).
+
+AS VERBAS
+  161 a 164 ... ate 4 parcelas na mesma folha. Aparecem em bloco proprio nos
+                relatorios e NAO entram nos totais.
+  160 ......... desconto unico na folha mensal, que soma 161 a 164.
+
+RECALCULAR
+  Se ja existe parcela na folha, o botao vira "Recalcular esta Parcela": apaga
+  os lancamentos daquela verba e refaz na MESMA. Lancar uma parcela ADICIONAL
+  virou excecao, por link explicito.
+
+
++------------------------------------------------------------------------------
+| 6. AFASTAMENTO
++------------------------------------------------------------------------------
+
+AS DATAS
+  Inicio POSTERIOR a folha ativa .... ERRO, nao grava
+  Inicio ANTERIOR a folha ativa ..... grava com confirmacao
+  Fim em BRANCO ..................... afastamento EM ABERTO. E o mais comum na
+                                      hora de registrar.
+  Fim POSTERIOR a hoje .............. permitido com confirmacao, mas NAO e
+                                      recomendado: se o afastamento se
+                                      prolongar, vira correcao no eSocial.
+
+DUAS REMESSAS, CADA UMA NA SUA COMPETENCIA
+  Informando inicio e fim, saem dois S-2230:
+    SAIDA ..... competencia do MES DE INICIO
+    RETORNO ... competencia do MES DO FIM
+
+  Exemplo: 20/07 a 05/08 gera saida em 07/2026 e retorno em 08/2026.
+
+  ATENCAO: a Fila do eSocial mostra UMA competencia por vez. Remessa de mes
+  anterior nao aparece na Fila da folha ativa - e preciso trocar o periodo.
+  A mensagem de confirmacao diz qual e.
+
+DATA RETROATIVA: ENVIAR OU NAO
+  Aparecem as caixas "Nao enviar o S-2230", uma para a saida e outra para o
+  retorno, JA MARCADAS. O padrao e NAO gerar: afastamento antigo geralmente ja
+  foi transmitido, ou esta sendo registrado so para a folha enxergar os dias
+  parados. As duas escolhas sao independentes.
+
+MOTIVOS (Tabela 18 do eSocial)
+  01 e 03 (acidente ou doenca) pedem "mesmo motivo" e acidente de transito, e
+     oferecem registrar a CAT (S-2210) depois de gravar.
+  21 (licenca nao remunerada) exige observacao.
+
+  "Mesmo motivo" importa para o INSS: afastamentos pela mesma causa em menos
+  de 60 dias se somam, e isso muda de quem e a responsabilidade pelo pagamento.
+
+
++------------------------------------------------------------------------------
+| 7. FERIAS
++------------------------------------------------------------------------------
+
+DIREITO (CLT)
+  12 meses aquisitivos. Dias conforme as faltas:
+    30 dias (0 a 5 faltas)    24 (6 a 14)    18 (15 a 23)
+    12 (24 a 32)              0 (mais de 32)
+
+  Periodo concessivo: 12 meses apos o aquisitivo. Fora do prazo, ferias em
+  dobro. Fracionamento em ate 3 periodos (minimo de 14 dias mais minimos de 5).
+  Abono pecuniario: venda de ate 1/3 dos dias.
+
+CALCULO
+  1. Salario ferias = salario / 30 x dias
+  2. 1/3 constitucional = salario ferias / 3
+  3. Medias das verbas variaveis no periodo aquisitivo
+  4. Base de INSS, IRRF e FGTS = ferias + 1/3 + medias
+  5. O abono e o 1/3 sobre o abono sao ISENTOS de INSS e IRRF
+
+ARMADILHA
+  Evento op1 = 3 com data1i = 99999999 e periodo aquisitivo SEM gozo marcado.
+  Nao e ferias e tem que ficar de fora das listagens.
+
+
++------------------------------------------------------------------------------
+| 8. RESCISAO
++------------------------------------------------------------------------------
+
+Parte da rescisao JA REGISTRADA (situacao D, com data e motivo). O calculo nao
+mexe no cadastro do funcionario.
+
+VERBAS
+  10 .... Saldo de salario
+  12 .... 13o proporcional          13 .... 13o indenizado
+  41 .... Ferias                    42 .... 1/3 FERIAS - verba PROPRIA,
+                                            calculada sobre 43 + 44 + 49
+  43 .... Ferias vencidas           44 .... Ferias aviso previo
+  49 .... Ferias proporcionais      61 .... Aviso previo indenizado
+  101 ... INSS                      104 ... INSS 13o
+  120 ... IRRF                      122 ... IRRF 13o
+
+  Atencao: 17 e ADIANT.13.SALARIO, NAO e verba de ferias.
+
+MEDIAS - cada uma tem a sua janela
+  Ferias VENCIDAS ........ media do proprio periodo aquisitivo
+  Ferias PROPORCIONAIS ... 12 meses ate o mes da rescisao
+  13o .................... de janeiro do ano ate o mes da rescisao
+
+  As medias sao REFLEXO: entram no 13o e nas ferias e nao viram linha propria.
+
+CANCELAR RESCISAO
+  Reverte o cadastro, apaga o S-2299 pendente e cancela tambem o aviso previo
+  que a originou. So e permitido se a folha ATUAL estiver aberta, o mes da
+  rescisao for o mes da folha ativa e o S-1299 do periodo nao estiver ativo.
+
+TRCT
+  Replica do formulario oficial (Portaria 1057/2012). Le o que foi PERSISTIDO
+  no calculo, entao e preciso calcular a rescisao antes.
+
+
++------------------------------------------------------------------------------
+| 9. CALCULO DA FOLHA
++------------------------------------------------------------------------------
+
+NUMERACAO DAS ETAPAS DA MEMORIA (passo de 10, para caber etapa nova no meio)
+  1xxx ... Folha mensal      2xxx ... Ferias
+  3xxx ... Rescisao          4xxx ... 13o e adiantamento do 13o
+  9xxx ... Rotinas auxiliares compartilhadas (o codigo identifica a ROTINA,
+           nao a posicao)
+
+  Folha mensal:
+    1010 salario hora           1020 admissao no mes
+    1030 dias trabalhados       1040 salario proporcional
+    1050 faltas                 1060 insalubridade
+    1070 periculosidade         1080 movimentos fixos
+    1090 lancamentos do mes     1100 verbas do intermitente
+    1110 DSR                    1120 INSS
+    1130 IRRF                   1140 desconto adiant. quinzenal
+    1150 pensao alimenticia     1155 cliente sem encargos
+    1160 arredondamento         1170 insuficiencia de saldo
+
+TABELAS LEGAIS
+  Ficam DENTRO do sistema - o cliente nao configura. Vigencia por
+  ano_mes_inicio; a busca usa o maior valor menor ou igual a competencia da
+  folha. Uma vez gravadas, nunca sao alteradas.
+
+INSS
+  Progressivo por faixa, sem arredondamento intermediario.
+  Verba 101 = empregado. Verba 102 = contribuinte individual / pro-labore (11%).
+  Base = verbas com incidencia 11. Provento soma; desconto com incidencia
+  subtrai. Ferias do mesmo mes entram numa base consolidada e o INSS das ferias
+  vira adiantamento.
+
+IRRF
+  Calcula pelos DOIS metodos (completo e simplificado) e usa o mais favoravel
+  ao funcionario.
+  ISENCAO ATE R$ 5.000 (Lei 15.270/2025, desde jan/2026): rendimento ate
+  5.000,00 fica isento; de 5.000,01 a 7.350,00 aplica o redutor.
+  Nao e faixa da tabela - e o redutor (irrf_redutor_a/b/ini/fim).
+
+FGTS
+  Quem recolhe e definido pela CATEGORIA, nao pela incidencia da rubrica.
+  700-799 e 901 nao tem, EXCETO a 721.
+  ATENCAO: o FGTS e calculado em 4 lugares - o calculo que grava o tab_total e
+  mais 3 que recalculam a partir do tab_mov. Mexeu na regra? Confira os quatro.
+
+DSR - REPOUSO REMUNERADO
+  Formula: base / dias uteis x (domingos + feriados)
+  Origem 19 Hora Extra ...... verba 0025
+  Origem 11 Adic. Noturno ... verba 0026
+  Origem 04 Comissao ........ verba 0027
+  Horario de ESCALA troca o divisor por 15 dias (14 em fevereiro).
+
+INSALUBRIDADE x PERICULOSIDADE
+  Insalubridade = % do SALARIO MINIMO.
+  Periculosidade = % do SALARIO BASE.
+  Fonte: tab_eventos op1 = 31 (insalubridade) e op1 = 41 (periculosidade).
+
+  LACUNA CONHECIDA: as verbas 30, 31 e 32 estao com inc_* = CN, valor que o
+  codigo nao trata. Por isso nao entram em ferias, 13o nem rescisao.
+  Pendente de decisao.
+
+
++------------------------------------------------------------------------------
+| 10. eSOCIAL
++------------------------------------------------------------------------------
+
+ENVIO x STATUS DA FOLHA
+  Nao periodicos (S-1000 a S-1099 e S-2xxx) .... SEM trava de status.
+  Periodicos (S-1200, S-1210, S-1298, S-1299) .. exigem folha FECHADA.
+
+QUAL EVENTO CADA UM GERA
+  Admissao de empregado (categoria < 700) .... S-2200
+  Admissao de nao-empregado (700 ou mais) .... S-2300 (TSVE)
+  Afastamento ................................ S-2230 (saida e retorno)
+  Ferias ..................................... S-2230 com flag F
+  Desligamento ............................... S-2299
+  Acidente ................................... S-2210 (CAT)
+
+REGRAS DE XML QUE JA CUSTARAM CARO
+  - nrSeqEvento = 00001 para lote de 1 evento. Usar a matricula causava
+    rejeicao 609.
+  - indApurIR = 0 sempre na folha mensal. Nao existe 2; usar 1 zera o IRRF.
+  - ideDmDev = matricula com 6 digitos + "00" (ex.: 00000100). Tem que ser
+    unico por trabalhador, senao o IRRF vem zerado no S-5012.
+  - codRubr = "0001-FOL". Sufixo -FER para ferias, -13S para 13o, -FOL demais.
+
+CERTIFICADO DIGITAL
+  A senha e cifrada com chave derivada do FLASK_SECRET_KEY, que e DIFERENTE
+  entre o ambiente local e o Render. Certificado salvo local so abre local.
+  Se der "Erro interno" no envio, regrave o .pfx NO AMBIENTE onde vai enviar,
+  normalmente o site.
+
+FILA DE REMESSAS
+  Agrupa por competencia (ano_mes). Nao confundir a "Fila de Remessas" com as
+  telas proprias de cada layout.
+
+
++------------------------------------------------------------------------------
+| 11. REGRAS ESPECIFICAS DE CLIENTE
++------------------------------------------------------------------------------
+
+CLIENTE 0038 - Hernani Alves Lacerda Barcelos
+  Constantes no app.py: CLIENTES_SEM_ENCARGOS e CLIENTES_SEM_DSR.
+
+  - NAO calcula INSS, IRRF nem FGTS em nenhuma verba.
+    O calculo roda inteiro e a memoria mostra o que seria devido; so o VALOR e
+    zerado antes de gravar. As BASES continuam gravadas no tab_total.
+    Vale na folha mensal, no 13o, nas ferias, na rescisao e no adiantamento
+    do 13o.
+
+  - NAO calcula Repouso Remunerado nas verbas 0025 (hora extra) e 0027
+    (comissoes). A 0026 (adicional noturno) continua normal. O valor e apurado
+    e mostrado na memoria, mas nao e lancado.
+
+  - Verba digitada A MAO continua sendo mantida. A regra vale para o que o
+    sistema CALCULA.
+
+CLIENTE 000614 - Nota Fiscal
+  Emite NFS-e com ISS retido pelo tomador a 5%, com endereco fixo.
+
+CONTA 4 - equipe F10
+  Todo usuario do id_cliente 4 tem o modulo ADMIN, o Trocar Cliente e pode
+  mexer nas verbas de sistema (codigo abaixo de 1000).
+
+
++------------------------------------------------------------------------------
+| 12. ARMADILHAS DE BANCO E DE DADOS
++------------------------------------------------------------------------------
+
+tab_cad.dtadm E AAAAMMDD (sem tracos)
+  Ler como AAAA-MM-DD junta o 2o digito do mes com o 1o do dia: 20260302 vira
+  202630. Isso ja sumiu com funcionarios na tela de adiantamento.
+  Usar o helper _anomes_admissao().
+
+tab_log.menu E varchar(12)
+  Insert cru com codigo maior falha CALADO - quase todos estao em except: pass.
+  Foi o que multiplicou licenca no webhook do Asaas. O helper gravar_log()
+  trunca; inserts crus nao.
+
+tab_tabela_cli.codigo E varchar(12)
+  Preferencias precisam de codigo curto.
+
+PostgREST CORTA EM 1000 LINHAS
+  E ignora limit maior - limit=5000 devolve 1000. Consulta em lote para validar
+  "ja existe" pode dar falso negativo. Testado.
+
+tab_eventos - CODIGOS op1
+  3 .... Ferias              6 .... Afastamento
+  9 .... Aviso previo        31 ... Insalubridade
+  41 ... Periculosidade      190 .. matricula_es (migracao)
+
+  ARMADILHA: op2 = 203 no afastamento e registro auxiliar da migracao que
+  duplica o afastamento verdadeiro.
+
+tab_esocial
+  A PK e id_esocial, nao "id". Evento ENVIADO = recibo nao vazio.
+  EXCLUIDO por S-3000 = observacao_erro igual a EXCLUIDO.
+
+RLS DESLIGADA NO SUPABASE (pendente)
+  O isolamento entre clientes e feito exclusivamente pelo .eq("id_cliente") no
+  codigo Python. Decisao adiada.
+
+
++------------------------------------------------------------------------------
+| 13. PADROES DE INTERFACE
++------------------------------------------------------------------------------
+
+AJUDA - botao "Duvida?"
+  Verde, formato pilula, alinhado a DIREITA do cabecalho da tela.
+  Abre um painel proprio, nao um alerta de texto puro.
+  O texto mora num parcial _ajuda_<modulo>.html, incluido na tela e no card do
+  menu - editar num lugar so vale para os dois.
+  Telas com ajuda hoje: Movimento Fixo, Excluir/Parar Mov. Fixo, Cadastro de
+  Verbas e Registro de Afastamento.
+
+VERSAO
+  Atualizar versaoxxx.txt a cada alteracao rodando: python _gravar_versao.py
+  (hora de Brasilia; nunca digitar a mao).
+
+CABECALHO PADRAO
+  Tres colunas: empresa e nome | titulo e badge da folha | logo, versao e
+  botao Voltar.
+
+TOUR GUIADO
+  29 telas tem tour (Driver.js), pelo botao "?" no canto inferior direito.
+
+
+================================================================================
+                              FIM DO DOCUMENTO
+================================================================================
