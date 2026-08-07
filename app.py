@@ -7411,6 +7411,27 @@ def _sem_encargos(id_cliente):
 
 
 # =========================================================
+# CLIENTES SEM REPOUSO REMUNERADO (DSR) — verbas 0025 e 0027
+# =========================================================
+# Mesma ideia e, hoje, o mesmo cliente 0038: não quer o Repouso Remunerado
+# sobre Hora Extra (V0025) nem sobre Comissões (V0027). A V0026 (Adicional
+# Noturno) continua normal. Constante separada de propósito — são regras
+# diferentes e podem divergir de cliente.
+# O DSR é calculado normalmente e aparece na memória (ETAPA 1110); só não é
+# lançado, então não entra em nenhum total nem em nenhuma base.
+CLIENTES_SEM_DSR   = {38}
+VERBAS_DSR_ZERADAS = (25, 27)
+
+
+def _sem_dsr(id_cliente):
+    """True quando o cliente não quer as verbas de DSR VERBAS_DSR_ZERADAS."""
+    try:
+        return int(id_cliente or 0) in CLIENTES_SEM_DSR
+    except (TypeError, ValueError):
+        return False
+
+
+# =========================================================
 # CÁLCULO DA RESCISÃO  (folha_tipo="R")
 # Espelha o cálculo de férias: médias da ficha financeira (inc_rescisao),
 # INSS/IRRF/FGTS, grava tab_mov/tab_total/tab_log e memória PDF detalhada.
@@ -35926,6 +35947,7 @@ _MEM_COD_AUX = {
     "base_fgts":  ("9160", "Base do FGTS"),
     "fgts":       ("9170", "FGTS"),
     "sem_enc":    ("9180", "Cliente sem encargos — zera INSS/IRRF/FGTS"),
+    "sem_dsr":    ("9190", "Cliente sem Repouso Remunerado — zera V0025/V0027"),
     "totais":     ("9210", "Totais de proventos, descontos e líquido"),
 }
 
@@ -37337,6 +37359,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 _du_dsr = _dsr_dias_escala(anomes)
             _txt_div = ("Dias da escala" if _e_escala else "Dias úteis")
             _linhas_dsr  = []
+            _sem_dsr_cli = _sem_dsr(id_cliente)
             for _flag, _cod_dsr, _nome_dsr in DSR_ORIGENS:
                 _base_dsr = int(sum(
                     v for cod, v in mmVmm.items()
@@ -37349,11 +37372,29 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 _man_dsr    = next((r for r in mov_func
                                     if int(r.get("cod_verba") or 0) == _cod_dsr), None)
                 if _man_dsr:
+                    _aviso_man = ""
+                    if _sem_dsr_cli and _cod_dsr in VERBAS_DSR_ZERADAS:
+                        # A regra vale para o que o sistema CALCULA. Verba
+                        # digitada é decisão de quem lançou — fica, mas avisa.
+                        _aviso_man = ("   »   <b>ATENÇÃO</b>: este cliente não calcula "
+                                      "esta verba, mas ela foi digitada no movimento "
+                                      "e por isso foi mantida")
                     _linhas_dsr.append(
                         f"{_nome_dsr}: base {_fmt_brl(_base_dsr)}"
                         f"   DSR calculado: {_fmt_brl(_val_dsr)}"
                         f"   *** V{_cod_dsr:04d} digitada manualmente "
-                        f"({_fmt_brl(int(_man_dsr.get('valor') or 0))}) — valor manual mantido ***")
+                        f"({_fmt_brl(int(_man_dsr.get('valor') or 0))}) — valor manual mantido ***"
+                        + _aviso_man)
+                elif _sem_dsr_cli and _cod_dsr in VERBAS_DSR_ZERADAS:
+                    # Cliente sem DSR (ver CLIENTES_SEM_DSR): calculou acima e
+                    # NÃO lança a verba. Como não entra no mmVmm, também não
+                    # entra em total, base de INSS/IRRF/FGTS nem no tab_mov.
+                    _linhas_dsr.append(
+                        f"{_nome_dsr}: base {_fmt_brl(_base_dsr)}"
+                        f"   ×   Domingos+Feriados ({_dias_dsr}) ÷ {_txt_div} ({_du_dsr})"
+                        f"   =   V{_cod_dsr:04d}: {_fmt_brl(_val_dsr)}"
+                        f"   »   <b>ZERADO</b> — cliente {int(id_cliente or 0):04d} "
+                        f"não calcula Repouso Remunerado nesta verba")
                 else:
                     mmVmm[_cod_dsr] = _val_dsr
                     _linhas_dsr.append(
@@ -37365,11 +37406,22 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("LEFTPADDING",  (0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),0),
                 ("TOPPADDING",   (0,0),(0,0),8),   ("BOTTOMPADDING",(0,0),(0,0),4),
             ])
+            _dsr_regra = ""
+            if _sem_dsr_cli:
+                _dsr_regra = (
+                    f"Cliente {int(id_cliente or 0):04d} — configurado para NÃO calcular "
+                    "Repouso Remunerado nas verbas "
+                    + " e ".join(f"V{c:04d}" for c in VERBAS_DSR_ZERADAS)
+                    + ". O valor é apurado e mostrado acima, mas não é lançado: "
+                      "não entra em total, base nem no movimento.")
             if _linhas_dsr:
                 _e9c_linhas = [[Paragraph(
                     "ETAPA 1110 - REPOUSO REMUNERADO (DSR) » V0025 Hora Extra · "
                     "V0026 Adic.Noturno · V0027 Comissões", st_etapa)]]
                 _e9c_linhas += [[Paragraph(t, st_detalhe)] for t in _linhas_dsr]
+                if _dsr_regra:
+                    _e9c_linhas.append([_mem_passo('sem_dsr')])
+                    _e9c_linhas.append([Paragraph(_dsr_regra, st_detalhe)])
                 e9c_tbl = Table(_e9c_linhas, colWidths=[17*cm])
                 e9c_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0,0),(-1,-1),0), ("RIGHTPADDING",(0,0),(-1,-1),0),
