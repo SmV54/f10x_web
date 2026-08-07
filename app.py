@@ -52885,10 +52885,34 @@ def calcular_adiantamento():
     except Exception:
         pass
 
-    verba_usar = next((v for v in verbas_todas if v not in verbas_ocupadas), None)
+    # PADRÃO = RECALCULAR a última parcela lançada: apaga os lançamentos dela e
+    # refaz na MESMA verba. Antes cada clique ocupava a próxima verba livre e o
+    # lançamento antigo ficava para trás, somando duas parcelas na mesma folha.
+    # Lançar em verba NOVA virou a exceção (?nova=1), pedida na tela.
+    quer_nova  = str(request.args.get("nova") or "") in ("1", "true", "S", "s")
+    verba_prox = next((v for v in verbas_todas if v not in verbas_ocupadas), None)
+    recalcular = bool(verbas_ocupadas) and not quer_nova
+    verba_usar = max(verbas_ocupadas) if recalcular else verba_prox
+
     if verba_usar is None:
-        ctx["erro_critico"] = "Todas as verbas de adiantamento (161–164) já foram utilizadas nesta folha."
+        ctx["erro_critico"] = ("Todas as verbas de adiantamento (161–164) já foram "
+                               "utilizadas nesta folha. Use o Recalcular para refazer "
+                               "a última parcela.")
         return render_template("F10_Calc_Adiantamento.html", **ctx)
+
+    # Quantos lançamentos serão substituídos, para a tela avisar antes
+    qtd_substituir = 0
+    if recalcular:
+        try:
+            _q_sub = (supabase.table("tab_mov")
+                      .select("id", count="exact")
+                      .eq("id_empresa", id_empresa)
+                      .eq("folha",      folha_int)
+                      .eq("situacao",   "A")
+                      .eq("cod_verba",  verba_usar))
+            qtd_substituir = int(_q_sub.execute().count or 0)
+        except Exception:
+            pass
 
     # Descrição da verba a usar
     dsc_verba = ""
@@ -52975,6 +52999,9 @@ def calcular_adiantamento():
         aviso_verba=bool(verbas_ocupadas),
         verbas_ocupadas=sorted(verbas_ocupadas),
         verba_usar=verba_usar,
+        recalcular=recalcular,
+        qtd_substituir=qtd_substituir,
+        verba_prox=verba_prox,
         dsc_verba=dsc_verba,
         funcionarios=funcionarios,
         sem_adiantamento=sem_count,
@@ -53029,9 +53056,45 @@ def api_calcular_adiantamento():
     except Exception:
         pass
 
-    verba_usar = next((v for v in verbas_todas if v not in verbas_ocupadas), None)
-    if verba_usar is None:
-        return jsonify({"ok": False, "msg": "Todas as verbas (161–164) já utilizadas nesta folha."})
+    # PADRÃO = recalcular a última parcela (mesma verba). "nova": true no corpo
+    # pede uma parcela adicional na próxima verba livre — caso raro.
+    _body     = request.get_json(silent=True) or {}
+    quer_nova = bool(_body.get("nova"))
+    recalcular = bool(verbas_ocupadas) and not quer_nova
+    if recalcular:
+        verba_usar = max(verbas_ocupadas)
+    else:
+        verba_usar = next((v for v in verbas_todas if v not in verbas_ocupadas), None)
+        if verba_usar is None:
+            return jsonify({"ok": False,
+                            "msg": "Todas as verbas (161–164) já foram utilizadas nesta "
+                                   "folha. Use o Recalcular para refazer a última parcela."})
+
+    # Recalcular: apaga (situação 'D') o que já existe na verba antes de refazer.
+    # Exclusão lógica, igual à da Listagem — a folha só soma o que está em 'A'.
+    substituidos = 0
+    if recalcular:
+        try:
+            _r_ant = (supabase.table("tab_mov")
+                      .select("id")
+                      .eq("id_empresa", id_empresa)
+                      .eq("folha",      folha_int)
+                      .eq("situacao",   "A")
+                      .eq("cod_verba",  verba_usar)
+                      .execute())
+            substituidos = len(_r_ant.data or [])
+            if substituidos:
+                (supabase.table("tab_mov")
+                 .update({"situacao": "D"})
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      folha_int)
+                 .eq("situacao",   "A")
+                 .eq("cod_verba",  verba_usar)
+                 .execute())
+        except Exception as e_del:
+            return jsonify({"ok": False,
+                            "msg": f"Erro ao limpar a parcela V{verba_usar:04d} antes de "
+                                   f"recalcular: {str(e_del)[:180]}"})
 
     # Funcionários e cálculo
     gravados    = 0
@@ -53110,13 +53173,17 @@ def api_calcular_adiantamento():
     if pulou_afast:
         _msg_fer += (f" {pulou_afast} funcionário(s) afastado(s) na quinzena "
                      f"ficaram de fora.")
+    if recalcular:
+        gravar_log(_LOG_ADTO,
+                   f"Recalculada a parcela V{verba_usar:04d} do adiantamento quinzenal: "
+                   f"{substituidos} lancamento(s) substituido(s) por {gravados}",
+                   ano_mes=folha_int)
+    _base = {"ok": True, "gravados": gravados, "verba": verba_usar,
+             "recalculado": recalcular, "substituidos": substituidos,
+             "ferias": pulou_ferias, "afastados": pulou_afast}
     if erros:
-        return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
-                        "ferias": pulou_ferias, "afastados": pulou_afast,
-                        "msg": f"{erros} erro(s) parciais.{_msg_fer}"})
-    return jsonify({"ok": True, "gravados": gravados, "verba": verba_usar,
-                    "ferias": pulou_ferias, "afastados": pulou_afast,
-                    "msg": _msg_fer.strip() or None})
+        return jsonify({**_base, "msg": f"{erros} erro(s) parciais.{_msg_fer}"})
+    return jsonify({**_base, "msg": _msg_fer.strip() or None})
 
 
 # =========================================================

@@ -177,10 +177,36 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 
 {% if aviso_verba %}
 <div class="alerta alerta-aviso">
-    <span class="alerta-icone">⚠️</span>
+    <span class="alerta-icone">{{ '🔄' if recalcular else '⚠️' }}</span>
     <div>
+        {% if recalcular %}
+        <strong>Recalculando a parcela da verba {{ verba_usar }}.</strong>
+        {% if qtd_substituir %}
+        Os {{ qtd_substituir }} lançamento{{ 's' if qtd_substituir != 1 else '' }}
+        que já {{ 'existem' if qtd_substituir != 1 else 'existe' }} nela
+        {{ 'serão apagados e refeitos' if qtd_substituir != 1 else 'será apagado e refeito' }}
+        com os valores de agora.
+        {% endif %}
+        {% if verba_prox %}
+        <div style="margin-top:6px;font-size:12px;">
+            Quer uma parcela <em>a mais</em> em vez de refazer esta?
+            <a href="/calcular_adiantamento?nova=1" style="font-weight:600;">
+                Lançar na verba {{ verba_prox }} →</a>
+        </div>
+        {% else %}
+        <div style="margin-top:6px;font-size:12px;">
+            As quatro verbas (161–164) já estão em uso — só dá para recalcular.
+        </div>
+        {% endif %}
+        {% else %}
         <strong>Verbas {{ verbas_ocupadas | join(', ') }} já utilizadas nesta folha.</strong>
-        O adiantamento será lançado na verba <strong>{{ verba_usar }}</strong>.
+        O adiantamento será lançado na verba <strong>{{ verba_usar }}</strong>,
+        como uma parcela <em>adicional</em>.
+        <div style="margin-top:6px;font-size:12px;">
+            <a href="/calcular_adiantamento" style="font-weight:600;">
+                ← Voltar e recalcular a verba {{ verbas_ocupadas | last }}</a>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endif %}
@@ -271,7 +297,8 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
     <a class="btn-listagem" href="/listagem_adiantamentos">📋 Ver Listagem</a>
     {% if total_com > 0 %}
     <button class="btn-calcular" id="btnCalc" onclick="calcular()">
-        💰 Calcular Adiantamento
+        {% if recalcular %}🔄 Recalcular esta Parcela (V{{ verba_usar }})
+        {% else %}💰 Calcular Adiantamento{% endif %}
     </button>
     {% endif %}
 </div>
@@ -282,13 +309,33 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 </div>
 
 <script>
+const RECALCULAR     = {{ 'true' if recalcular else 'false' }};
+const QTD_SUBSTITUIR = {{ qtd_substituir or 0 }};
+const VERBA_USAR     = {{ verba_usar or 0 }};
+const QUER_NOVA      = {{ 'true' if (aviso_verba and not recalcular) else 'false' }};
+
 async function calcular() {
     const btn = document.getElementById('btnCalc');
+
+    // Recalcular apaga lançamentos que já existem — confirma antes.
+    if (RECALCULAR && QTD_SUBSTITUIR > 0) {
+        const ok = await f10Confirm(
+            `Refazer a parcela da verba ${VERBA_USAR}?\n\n`
+            + `Os ${QTD_SUBSTITUIR} lançamento(s) que já existem nela serão apagados `
+            + `e gravados de novo com os valores mostrados acima.`,
+            { titulo: 'Recalcular esta parcela', tipo: 'aviso', okText: 'Recalcular' });
+        if (!ok) return;
+    }
+
     btn.disabled = true;
     btn.textContent = 'Calculando…';
 
     try {
-        const r = await fetch('/api/calcular_adiantamento', { method: 'POST' });
+        const r = await fetch('/api/calcular_adiantamento', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nova: QUER_NOVA }),
+        });
         const d = await r.json();
         const el = document.getElementById('msgResultado');
         el.style.display = 'block';
@@ -296,7 +343,9 @@ async function calcular() {
             el.innerHTML = `<div class="alerta alerta-ok">
                 <span class="alerta-icone">✅</span>
                 <div><strong>${d.gravados} adiantamento${d.gravados !== 1 ? 's' : ''} gravado${d.gravados !== 1 ? 's' : ''}</strong>
-                na verba ${d.verba} com sucesso.
+                na verba ${d.verba} com sucesso.${d.recalculado && d.substituidos
+                    ? ` ${d.substituidos} lançamento${d.substituidos !== 1 ? 's' : ''} anterior${d.substituidos !== 1 ? 'es' : ''} foi substituído.`
+                    : ''}
                 <a href="/listagem_adiantamentos" style="margin-left:12px;color:#166534;font-weight:600;">Ver listagem →</a></div>
             </div>`;
             btn.style.display = 'none';
