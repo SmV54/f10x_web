@@ -12952,6 +12952,31 @@ def api_funcionario_incluir():
         if not (d.get(campo) or "").strip():
             return jsonify({"ok": False, "msg": f"{label} obrigatório"})
 
+    # ── Data de admissão × folha ativa ────────────────────────────────────
+    # FUTURA: recusa. Não existe admitir em competência que ainda não abriu, e
+    # a folha do mês nem enxergaria o funcionário.
+    # ANTERIOR: aceita com confirmação — é o caso da implantação do sistema —
+    # e o usuário decide se gera o S-2200, porque numa migração o evento
+    # normalmente já foi transmitido pelo sistema anterior.
+    # A trava vale AQUI, não só na tela: a página pode estar aberta desde antes
+    # de a folha virar.
+    _anomes_am  = str(session.get("anomes_atual") or "")
+    _adm_am     = re.sub(r"\D", "", str(d.get("dtAdm") or ""))[:6]
+    _adm_retro  = bool(_anomes_am and _adm_am and _adm_am < _anomes_am)
+    _folha_lbl  = f"{_anomes_am[4:6]}/{_anomes_am[:4]}" if _anomes_am else ""
+    if _anomes_am and _adm_am and _adm_am > _anomes_am:
+        return jsonify({"ok": False,
+                        "msg": f"Data de Admissão posterior à Folha Ativa ({_folha_lbl}) — "
+                               "não é possível admitir em mês futuro."})
+    if _adm_retro and not d.get("retroativo_ok"):
+        return jsonify({"ok": False, "retroativo": True,
+                        "msg": f"Data de Admissão anterior à Folha Ativa ({_folha_lbl}) — "
+                               "confirmação necessária."})
+    # Só a admissão retroativa deixa a escolha na mão do usuário; no mês
+    # corrente o evento sempre é gerado.
+    _ger_raw       = d.get("gerar_esocial")
+    _gerar_esocial = True if not _adm_retro else bool(_ger_raw)
+
     # Duplicidade: CPF ativo na mesma empresa
     try:
         dup_cpf = (
@@ -13111,6 +13136,7 @@ def api_funcionario_incluir():
 
     # Registra remessa eSocial: empregado → S-2200; não-empregado
     # (TSVE 721/722/723/901) → S-2300 (evtTSVInicio).
+    # Em admissão retroativa o usuário escolhe se quer a remessa.
     try:
         agora       = _agora_brasilia()
         anomes_tp   = str(session.get("anomes_tipo")   or "")
@@ -13123,18 +13149,19 @@ def api_funcionario_incluir():
         # TSVE / não-empregado = categoria >= 700 (CI, sócio, diretor, estagiário,
         # bolsista etc.) → S-2300. Empregado (< 700) → S-2200.
         layout_es = "2300" if _categ_es >= 700 else "2200"
-        supabase.table("tab_esocial").insert({
-            "id_cliente": id_cliente,
-            "id_empresa": id_empresa,
-            "data_cad":   agora.strftime("%Y%m%d"),
-            "hora_cad":   agora.strftime("%H%M"),
-            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
-            "ano_mes":    int(anomes_am) if anomes_am else None,
-            "folha_tipo": folha_tipo_es,
-            "layout":     layout_es,
-            "matricula":  mat,
-            "codigo2":    0,
-        }).execute()
+        if _gerar_esocial:
+            supabase.table("tab_esocial").insert({
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "data_cad":   agora.strftime("%Y%m%d"),
+                "hora_cad":   agora.strftime("%H%M"),
+                "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
+                "ano_mes":    int(anomes_am) if anomes_am else None,
+                "folha_tipo": folha_tipo_es,
+                "layout":     layout_es,
+                "matricula":  mat,
+                "codigo2":    0,
+            }).execute()
     except Exception:
         pass  # falha no eSocial não desfaz a inclusão do funcionário
 
@@ -13216,6 +13243,15 @@ def api_funcionario_incluir():
             except Exception as e:
                 aviso = (f"Funcionario gravado, mas o contrato de experiencia "
                          f"falhou: {e}")
+
+    # Em admissão retroativa, diz o que aconteceu com a remessa — senão o
+    # usuário fica sem saber se precisa gerar o evento à mão depois.
+    if _adm_retro:
+        _lbl_adm = f"{_adm_am[4:6]}/{_adm_am[:4]}"
+        _extra = (f"Admissão retroativa ({_lbl_adm}). "
+                  + ("Remessa do eSocial gerada." if _gerar_esocial
+                     else "Remessa do eSocial NÃO gerada."))
+        aviso = f"{aviso} {_extra}".strip() if aviso else _extra
 
     return jsonify({"ok": True, "aviso": aviso})
 

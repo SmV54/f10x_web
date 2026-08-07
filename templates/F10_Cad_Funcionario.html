@@ -2186,6 +2186,38 @@ async function salvarFuncionario() {
         return;
     }
 
+    // ── Admissão anterior à Folha Ativa: confirma e decide o S-2200 ──
+    // Só na INCLUSÃO — na alteração a admissão já existe e não gera evento novo.
+    let retroativoOk  = false;
+    let gerarEsocial  = true;
+    if (MODO !== 'alteracao' && ANOMES_ATUAL) {
+        const _adm = toYMD(gv('dtAdm'));
+        if (_adm.length === 8 && _adm.slice(0,6) < ANOMES_ATUAL) {
+            const _folhaFmt = ANOMES_ATUAL.slice(4,6) + '/' + ANOMES_ATUAL.slice(0,4);
+            const _admFmt   = _adm.slice(4,6) + '/' + _adm.slice(0,4);
+            const ok = await f10Confirm(
+                `A Data de Admissão (${_admFmt}) é anterior à Folha Ativa (${_folhaFmt}).\n\n`
+                + `Isso normalmente só acontece na implantação do sistema, com o `
+                + `funcionário já admitido antes de você começar a usar o Folha10.\n\n`
+                + `Confirma a inclusão com essa data?`,
+                { titulo: 'Admissão em folha anterior', tipo: 'aviso',
+                  okText: 'Sim, incluir', cancelText: 'Cancelar' });
+            if (!ok) { painel.innerHTML = ''; return; }
+            retroativoOk = true;
+
+            // Padrão: NÃO gerar. Na implantação o evento quase sempre já foi
+            // transmitido pelo sistema anterior, e um S-2200 duplicado dá
+            // trabalho para desfazer no eSocial.
+            gerarEsocial = await f10Confirm(
+                `Gerar a remessa do S-2200 (Admissão) para o eSocial?\n\n`
+                + `Escolha "Não gerar" se este funcionário já foi enviado ao eSocial `
+                + `por outro sistema — é o caso mais comum na implantação.\n\n`
+                + `Você pode gerar o evento depois, pelo Gerador de Remessa.`,
+                { titulo: 'Remessa eSocial S-2200', tipo: 'info',
+                  okText: 'Sim, gerar', cancelText: 'Não gerar' });
+        }
+    }
+
     painel.innerHTML = `<div class="resultado-ok"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5 8l2 2 4-4"/></svg>Gravando…</div>`;
     painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
 
@@ -2219,6 +2251,9 @@ async function salvarFuncionario() {
         paisNac:          gv('paisNac'),
         matricula:        soNum(gv('matricula')),
         matricula_eS:     gv('matricula_eS'),
+        // Admissão em folha anterior: confirmação e escolha da remessa
+        retroativo_ok:    retroativoOk,
+        gerar_esocial:    gerarEsocial,
         filial:           gv('filial'),
         vrSalFx:          vrSalFx,
         UndSalFixo:       gv('UndSalFixo'),
