@@ -52603,6 +52603,7 @@ def api_adiantamento_gravar():
     erros = 0
     gravados = 0
     limpos = 0          # voltaram a herdar o % da empresa
+    zerados = 0         # ZERO de verdade — não adiantam nada nesta folha
     for item in itens:
         mat = item.get("matricula")
         if not mat:
@@ -52616,27 +52617,37 @@ def api_adiantamento_gravar():
             campos = {"per_adianta": None, "valor_adianta": None}
         elif modo == "P":
             per = item.get("percentual")
-            # percentual nulo = campo esvaziado na tela: TIRA a configuração
-            # própria e o funcionário volta a herdar o % da empresa. Antes isso
-            # contava como erro e a gravação inteira era recusada.
+            # NULO (campo vazio na tela) = TIRA a configuração própria e o
+            # funcionário volta a herdar o % da empresa.
+            # ZERO digitado = zero MESMO: fica gravado 0 e ele não adianta nada.
+            # São coisas diferentes — antes o zero virava nulo e o funcionário
+            # voltava a herdar o percentual da empresa, ou seja, continuava
+            # adiantando. Só o campo vazio limpa.
             if per is None:
                 campos = {"per_adianta": None, "valor_adianta": None}
                 limpos += 1
             else:
                 per = int(per)
-                if not (10 <= per <= 60):
+                if per == 0:
+                    campos = {"per_adianta": 0, "valor_adianta": None}
+                    zerados += 1
+                elif not (10 <= per <= 60):
                     erros += 1; continue
-                campos = {"per_adianta": per, "valor_adianta": None}
+                else:
+                    campos = {"per_adianta": per, "valor_adianta": None}
         else:
             val = item.get("valor")
+            # Mesma distinção do modo P: nulo limpa, zero é zero mesmo.
             if val is None:
                 campos = {"per_adianta": None, "valor_adianta": None}
                 limpos += 1
             else:
                 val = int(round(float(val)))
-                if val <= 0:
-                    campos = {"per_adianta": None, "valor_adianta": None}
-                    limpos += 1
+                if val < 0:
+                    erros += 1; continue
+                elif val == 0:
+                    campos = {"per_adianta": None, "valor_adianta": 0}
+                    zerados += 1
                 else:
                     campos = {"per_adianta": None, "valor_adianta": val}
 
@@ -52660,7 +52671,12 @@ def api_adiantamento_gravar():
         gravar_log(_LOG_ADTO,
                    f"{limpos} funcionário(s) tiveram o adiantamento quinzenal próprio "
                    f"removido — voltam a herdar o % da empresa")
-    return jsonify({"ok": True, "gravados": gravados, "limpos": limpos})
+    if zerados:
+        gravar_log(_LOG_ADTO,
+                   f"{zerados} funcionário(s) com adiantamento quinzenal ZERADO "
+                   f"(zero próprio — não herdam o % da empresa)")
+    return jsonify({"ok": True, "gravados": gravados, "limpos": limpos,
+                    "zerados": zerados})
 
 
 @app.route("/api/adiantamento_soltar", methods=["POST"])
@@ -52696,10 +52712,13 @@ def api_adiantamento_soltar():
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
-    if ant.get("valor_adianta") is not None:
-        _de = f"valor fixo {_fmt_brl(int(ant['valor_adianta']))}"
-    elif ant.get("per_adianta") is not None:
-        _de = f"{int(ant['per_adianta'])}% individual"
+    _vf, _pi = ant.get("valor_adianta"), ant.get("per_adianta")
+    if (_vf is not None and int(_vf) == 0) or (_pi is not None and int(_pi) == 0):
+        _de = "zero próprio (não adiantava)"
+    elif _vf is not None:
+        _de = f"valor fixo {_fmt_brl(int(_vf))}"
+    elif _pi is not None:
+        _de = f"{int(_pi)}% individual"
     else:
         _de = "sem configuração própria"
     gravar_log(_LOG_ADTO,
@@ -52894,6 +52913,14 @@ def calcular_adiantamento():
             elif int(f.get("matricula") or 0) in mats_ferias:
                 valor_calc = None
                 modo_desc  = "Em férias"
+            # Zero gravado (0 ou 0%) = "não adianta nada" — é diferente de nulo,
+            # que faz herdar o % da empresa. Ver api_adiantamento_gravar.
+            elif val_fixo is not None and int(val_fixo) == 0:
+                valor_calc = 0
+                modo_desc  = "Zerado — não adianta"
+            elif per_ind is not None and int(per_ind) == 0:
+                valor_calc = 0
+                modo_desc  = "Zerado — não adianta"
             elif val_fixo is not None:
                 valor_calc = int(val_fixo)
                 modo_desc  = "Valor fixo"

@@ -122,6 +122,9 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .badge-herda   { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; }
 .badge-proprio { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+/* Zero gravado: nao adianta nada e nao herda da empresa — precisa se
+   distinguir do "herda" cinza e do "proprio" ambar. */
+.badge-zerado  { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 .btn-soltar {
     background: none; border: none; cursor: pointer; padding: 1px 5px; margin-left: 4px;
     border-radius: 5px; color: #cbd5e1; font-size: 13px; font-weight: 700; line-height: 1;
@@ -284,14 +287,16 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                     <input type="radio" name="modo" id="radio-P" value="P">
                     <label for="radio-P">% Individual</label>
                 </div>
-                <div class="modo-card-desc">Define um percentual diferente para cada funcionário individualmente.</div>
+                <div class="modo-card-desc">Define um percentual diferente para cada funcionário individualmente.
+                    <b>0</b> = não adianta nada · campo <b>vazio</b> = herda o % da empresa.</div>
             </div>
             <div class="modo-card" id="modoCard-V" onclick="selecionarModo('V')">
                 <div class="modo-card-label">
                     <input type="radio" name="modo" id="radio-V" value="V">
                     <label for="radio-V">Valor Fixo</label>
                 </div>
-                <div class="modo-card-desc">Informa um valor em reais fixo por funcionário, independente do salário.</div>
+                <div class="modo-card-desc">Informa um valor em reais fixo por funcionário, independente do salário.
+                    <b>0</b> = não adianta nada · campo <b>vazio</b> = herda o % da empresa.</div>
             </div>
         </div>
 
@@ -453,8 +458,9 @@ function renderizarTabela(manterValores) {
         } else if (modoAtivo === 'P') {
             const pctVal = manterValores && f.per_adianta != null ? f.per_adianta : '';
             celEntrada  = `<td class="td-input">
-                <input type="number" class="inp-pct-row" min="10" max="60"
-                       value="${pctVal}" placeholder="vazio = empresa"
+                <input type="number" class="inp-pct-row" min="0" max="60"
+                       value="${pctVal}" placeholder="vazio = empresa · 0 = não adianta"
+                       title="Vazio: herda o % da empresa. Zero: não adianta nada."
                        data-mat="${f.matricula}" data-sal="${salCents}"
                        oninput="calcEstimado(this)" onblur="validarPct(this)">
                 <span class="sufixo-pct">%</span>
@@ -466,7 +472,8 @@ function renderizarTabela(manterValores) {
             const valFmt = manterValores && f.valor_adianta != null ? fmtReaisInput(f.valor_adianta) : '';
             celEntrada  = `<td class="td-input">
                 <input type="text" class="inp-val-row"
-                       value="${valFmt}" placeholder="R$ 0,00"
+                       value="${valFmt}" placeholder="vazio = empresa · 0 = não adianta"
+                       title="Vazio: herda o % da empresa. Zero: não adianta nada."
                        data-mat="${f.matricula}"
                        oninput="mascaraValorRow(this)" onfocus="this.select()">
             </td>`;
@@ -490,6 +497,16 @@ function renderizarTabela(manterValores) {
 // Coluna "Atual": mostra de onde sai hoje o adiantamento do funcionário.
 // Quem tem % ou valor próprio ganha o "×" para soltar e voltar a herdar da empresa.
 function celAtual(f) {
+    // Zero gravado (valor 0 ou 0%) é diferente de "sem configuração": o
+    // funcionário NÃO adianta nada e NÃO herda o % da empresa.
+    const zerado = (f.valor_adianta === 0) || (f.per_adianta === 0);
+    if (zerado) {
+        return `<td class="td-atual">
+            <span class="badge-orig badge-zerado">NÃO ADIANTA</span>
+            <button class="btn-soltar" title="Remover o zero — passa a herdar o % da empresa"
+                    onclick="soltar(${f.matricula})">&times;</button>
+        </td>`;
+    }
     if (f.valor_adianta != null) {
         return `<td class="td-atual">
             <span class="badge-orig badge-proprio">VALOR ${fmtReais(f.valor_adianta)}</span>
@@ -576,7 +593,10 @@ function calcEstimado(inp) {
     const mat    = inp.dataset.mat;
     const cel    = document.getElementById(`est-${mat}`);
     if (!cel) return;
-    if (!isNaN(pct) && pct >= 10 && pct <= 60 && salCts > 0) {
+    if (pct === 0) {                       // zero mesmo — não adianta nada
+        cel.textContent = fmtReais(0);
+        cel.classList.remove('vazio');
+    } else if (!isNaN(pct) && pct >= 10 && pct <= 60 && salCts > 0) {
         cel.textContent = fmtReais(Math.round(salCts * pct / 100));
         cel.classList.remove('vazio');
     } else {
@@ -588,7 +608,8 @@ function calcEstimado(inp) {
 
 function validarPct(inp) {
     const v = parseInt(inp.value, 10);
-    if (!isNaN(v) && (v < 10 || v > 60)) {
+    // 0 é válido: significa "não adianta nada" (ver gravarAdiantamentos).
+    if (!isNaN(v) && v !== 0 && (v < 10 || v > 60)) {
         inp.style.borderColor = '#dc2626';
     } else {
         inp.style.borderColor = '';
@@ -629,7 +650,15 @@ function atualizarTotal() {
 
 function mascaraValor(inp) {
     const digits = inp.value.replace(/\D/g, '');
-    const cents  = parseInt(digits || '0', 10);
+    // Sem nenhum dígito o campo fica VAZIO mesmo — é assim que se volta a
+    // herdar o % da empresa. Digitar 0 dá "0,00", que é o zero de verdade.
+    if (digits === '') {
+        inp.value = '';
+        inp.dataset.cents = '';
+        atualizarTotal();
+        return;
+    }
+    const cents = parseInt(digits, 10);
     inp.value = fmtReaisInput(cents);
     inp.dataset.cents = cents;
     atualizarTotal();
@@ -647,6 +676,7 @@ async function gravar() {
     const itens = [];
     let erroValidacao = false;
     let limpos = 0;   // linhas esvaziadas → voltam a herdar o % da empresa
+    let zerados = 0;  // linhas com ZERO digitado → não adiantam nada
 
     if (modoAtivo === 'E') {
         if (_getPctEmpresa() === null) {
@@ -668,13 +698,20 @@ async function gravar() {
             const mat   = parseInt(inp.dataset.mat, 10);
             const bruto = (inp.value || '').trim();
             const pct   = parseInt(bruto, 10);
-            // Campo vazio ou zerado = TIRAR o percentual próprio: o funcionário
-            // volta a herdar o % da empresa. Antes isso era tratado como erro de
-            // validação e a gravação inteira parava, sem mexer em nada.
-            if (bruto === '' || pct === 0) {
+            // Campo VAZIO = tirar o percentual próprio: volta a herdar o % da
+            // empresa (continua adiantando).
+            if (bruto === '') {
                 inp.style.borderColor = '';
                 itens.push({ matricula: mat, percentual: null, valor: null });
                 limpos++;
+                return;
+            }
+            // ZERO digitado = zero MESMO: grava 0 e o funcionário não adianta
+            // nada. É o oposto de esvaziar o campo.
+            if (pct === 0) {
+                inp.style.borderColor = '';
+                itens.push({ matricula: mat, percentual: 0, valor: null });
+                zerados++;
                 return;
             }
             if (isNaN(pct) || pct < 10 || pct > 60) {
@@ -689,12 +726,20 @@ async function gravar() {
     } else { // V
         document.querySelectorAll('.inp-val-row').forEach(inp => {
             const mat   = parseInt(inp.dataset.mat, 10);
-            const cents = parseCents(inp.value);
-            // Mesma regra do modo P: vazio ou zero tira o valor próprio.
-            if (cents <= 0) {
+            const bruto = (inp.value || '').trim();
+            const cents = parseCents(bruto);
+            // Mesma regra do modo P: campo VAZIO tira o valor próprio (volta a
+            // herdar o % da empresa); ZERO digitado é zero mesmo.
+            if (bruto === '') {
                 inp.style.borderColor = '';
                 itens.push({ matricula: mat, percentual: null, valor: null });
                 limpos++;
+                return;
+            }
+            if (cents === 0) {
+                inp.style.borderColor = '';
+                itens.push({ matricula: mat, percentual: null, valor: 0 });
+                zerados++;
                 return;
             }
             inp.style.borderColor = '';
@@ -729,14 +774,15 @@ async function gravar() {
                 f.valor_adianta = modoAtivo === 'V' ? item.valor      : null;
             });
             renderizarTabela(true);   // atualiza a coluna "Atual"
-            const gravadosN = itens.length - limpos;
+            const gravadosN = itens.length - limpos - zerados;
             let msg;
             if (modoAtivo === 'E') {
                 msg = `${itens.length} funcionário${itens.length !== 1 ? 's' : ''} passou a herdar o percentual da empresa.`;
             } else {
                 const p = [];
                 if (gravadosN) p.push(`${gravadosN} adiantamento${gravadosN !== 1 ? 's' : ''} gravado${gravadosN !== 1 ? 's' : ''}`);
-                if (limpos)    p.push(`${limpos} voltou${limpos !== 1 ? '' : ''} a herdar o % da empresa`.replace('voltou', limpos !== 1 ? 'voltaram' : 'voltou'));
+                if (zerados)   p.push(`${zerados} zerado${zerados !== 1 ? 's' : ''} (não adianta${zerados !== 1 ? 'm' : ''} nada)`);
+                if (limpos)    p.push(`${limpos} ${limpos !== 1 ? 'voltaram' : 'voltou'} a herdar o % da empresa`);
                 msg = p.join(' · ') + '.';
             }
             mostrarMsg(msg, 'ok');
@@ -780,7 +826,9 @@ function fmtReais(cents) {
     return 'R$ ' + (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function fmtReaisInput(cents) {
-    if (!cents) return '';
+    // 0 tem que virar "0,00", não string vazia: zero gravado significa "não
+    // adianta nada" e o campo em branco significa "herda o % da empresa".
+    if (cents === null || cents === undefined || cents === '') return '';
     return (cents / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function parseCents(str) {
