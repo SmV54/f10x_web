@@ -23071,6 +23071,15 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
     codcateg  = str(func.get('codcateg') or '901')
     cbo       = str(func.get('cbofuncao') or '')
 
+    # Pró-labore (721/722/723) com a Matrícula eSocial EM BRANCO no cadastro:
+    # são contribuintes registrados no eSocial sem matrícula nenhuma, então a
+    # tag <matricula> não vai no infoTSVInicio (é opcional no layout).
+    # Mesma regra do S-1200 (ver _gerar_xml_s1200).
+    _sem_mat_es = (codcateg in ("721", "722", "723")
+                   and not str(func.get("matricula_es") or "").strip())
+    matricula_xml = ("" if _sem_mat_es
+                     else f"\n      <matricula>{x(mat_es)}</matricula>")
+
     # Nome do cargo pelo CBO (mesmo lookup do S-2200)
     nmcargo = str(func.get('nmcargo') or '').strip()
     if not nmcargo and cbo:
@@ -23224,8 +23233,7 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
       </endereco>{bloco_def}
     </trabalhador>
     <infoTSVInicio>
-      <cadIni>N</cadIni>
-      <matricula>{x(mat_es)}</matricula>
+      <cadIni>N</cadIni>{matricula_xml}
       <codCateg>{x(codcateg)}</codCateg>
       <dtInicio>{x(dtinicio)}</dtInicio>{_nat_ativ_xml}
       <infoComplementares>{complementares_xml}{localtrab_xml}
