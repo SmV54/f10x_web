@@ -12972,10 +12972,11 @@ def api_funcionario_incluir():
         return jsonify({"ok": False, "retroativo": True,
                         "msg": f"Data de Admissão anterior à Folha Ativa ({_folha_lbl}) — "
                                "confirmação necessária."})
-    # Só a admissão retroativa deixa a escolha na mão do usuário; no mês
-    # corrente o evento sempre é gerado.
-    _ger_raw       = d.get("gerar_esocial")
-    _gerar_esocial = True if not _adm_retro else bool(_ger_raw)
+    # Admissão retroativa NÃO gera remessa: na implantação o S-2200 quase sempre
+    # já foi transmitido pelo sistema anterior, e um duplicado dá trabalho para
+    # desfazer no eSocial. Quem precisar do evento gera pelo Gerador de Remessa.
+    # A regra é do servidor — não depende da tela mandar o campo.
+    _gerar_esocial = not _adm_retro
 
     # Duplicidade: CPF ativo na mesma empresa
     try:

@@ -213,14 +213,21 @@
       backdrop.classList.remove('show');
       setTimeout(() => backdrop.remove(), 180);
     }
-    return { backdrop, tipo, fechar };
+
+    // Enter/Esc pressionado para fechar UM dialogo chegava a vazar para o
+    // seguinte, quando dois sao abertos em sequencia: o segundo ja nasce com o
+    // botao focado e se resolvia sozinho. Ignora tecla nos primeiros 250ms.
+    const nascidoEm = performance.now();
+    function tecladoLiberado() { return performance.now() - nascidoEm > 250; }
+
+    return { backdrop, tipo, fechar, tecladoLiberado };
   }
 
   // ── f10Alert ──
   window.f10Alert = function f10Alert(msg, opts) {
     opts = Object.assign({ msg }, opts || {});
     return new Promise((resolve) => {
-      const { backdrop, tipo, fechar } = criarModal(opts);
+      const { backdrop, tipo, fechar, tecladoLiberado } = criarModal(opts);
       const acoes = backdrop.querySelector('.f10dlg-acoes');
       const btn = document.createElement('button');
       btn.className = 'f10dlg-btn f10dlg-btn-ok-' + tipo;
@@ -231,6 +238,7 @@
 
       // ESC fecha
       backdrop.addEventListener('keydown', (e) => {
+        if (!tecladoLiberado()) return;
         if (e.key === 'Escape') { fechar(); resolve(); }
       });
       backdrop.tabIndex = -1;
@@ -242,7 +250,7 @@
   window.f10Confirm = function f10Confirm(msg, opts) {
     opts = Object.assign({ msg }, opts || {});
     return new Promise((resolve) => {
-      const { backdrop, tipo, fechar } = criarModal(opts);
+      const { backdrop, tipo, fechar, tecladoLiberado } = criarModal(opts);
       const acoes = backdrop.querySelector('.f10dlg-acoes');
 
       const btnCancel = document.createElement('button');
@@ -268,6 +276,7 @@
       btnOk.focus();
 
       backdrop.addEventListener('keydown', (e) => {
+        if (!tecladoLiberado()) return;
         if (e.key === 'Escape') { fechar(); resolve(false); }
         if (e.key === 'Enter')  { fechar(); resolve(true);  }
       });
@@ -280,7 +289,7 @@
   window.f10Prompt = function f10Prompt(msg, opts) {
     opts = Object.assign({ msg }, opts || {});
     return new Promise((resolve) => {
-      const { backdrop, tipo, fechar } = criarModal(opts);
+      const { backdrop, tipo, fechar, tecladoLiberado } = criarModal(opts);
       const corpo = backdrop.querySelector('.f10dlg-corpo');
       const input = document.createElement('input');
       input.type = 'text';
@@ -304,6 +313,7 @@
       setTimeout(() => input.focus(), 50);
 
       input.addEventListener('keydown', (e) => {
+        if (!tecladoLiberado()) return;
         if (e.key === 'Enter')  { fechar(); resolve(input.value); }
         if (e.key === 'Escape') { fechar(); resolve(null); }
       });

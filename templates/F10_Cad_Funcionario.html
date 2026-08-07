@@ -2195,26 +2195,23 @@ async function salvarFuncionario() {
         if (_adm.length === 8 && _adm.slice(0,6) < ANOMES_ATUAL) {
             const _folhaFmt = ANOMES_ATUAL.slice(4,6) + '/' + ANOMES_ATUAL.slice(0,4);
             const _admFmt   = _adm.slice(4,6) + '/' + _adm.slice(0,4);
+            // Admissão retroativa NÃO gera o S-2200: na implantação o evento
+            // quase sempre já foi transmitido pelo sistema anterior, e um
+            // duplicado dá trabalho para desfazer no eSocial. Um aviso só, sem
+            // segunda pergunta — quem quiser o evento usa o Gerador de Remessa.
             const ok = await f10Confirm(
                 `A Data de Admissão (${_admFmt}) é anterior à Folha Ativa (${_folhaFmt}).\n\n`
                 + `Isso normalmente só acontece na implantação do sistema, com o `
                 + `funcionário já admitido antes de você começar a usar o Folha10.\n\n`
+                + `ATENÇÃO: a remessa do S-2200 (Admissão) NÃO será gerada. Se o `
+                + `evento ainda precisar ir ao eSocial, gere depois pelo Gerador `
+                + `de Remessa.\n\n`
                 + `Confirma a inclusão com essa data?`,
-                { titulo: 'Admissão em folha anterior', tipo: 'aviso',
+                { titulo: 'Admissão em folha anterior — sem S-2200', tipo: 'aviso',
                   okText: 'Sim, incluir', cancelText: 'Cancelar' });
             if (!ok) { painel.innerHTML = ''; return; }
             retroativoOk = true;
-
-            // Padrão: NÃO gerar. Na implantação o evento quase sempre já foi
-            // transmitido pelo sistema anterior, e um S-2200 duplicado dá
-            // trabalho para desfazer no eSocial.
-            gerarEsocial = await f10Confirm(
-                `Gerar a remessa do S-2200 (Admissão) para o eSocial?\n\n`
-                + `Escolha "Não gerar" se este funcionário já foi enviado ao eSocial `
-                + `por outro sistema — é o caso mais comum na implantação.\n\n`
-                + `Você pode gerar o evento depois, pelo Gerador de Remessa.`,
-                { titulo: 'Remessa eSocial S-2200', tipo: 'info',
-                  okText: 'Sim, gerar', cancelText: 'Não gerar' });
+            gerarEsocial = false;
         }
     }
 
