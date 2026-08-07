@@ -16335,6 +16335,8 @@ def api_afastamento_gravar():
     retroativo_ok = bool(data.get("retroativo_ok"))
     ger_es_raw    = data.get("gerar_esocial")
     gerar_esocial = True if ger_es_raw is None else bool(ger_es_raw)
+    # Data Fim depois de hoje: retorno ainda não aconteceu, a tela confirma.
+    retorno_futuro_ok = bool(data.get("retorno_futuro_ok"))
 
     if not matriculas:
         return jsonify({"ok": False, "msg": "Nenhuma matrícula informada."})
@@ -16353,8 +16355,12 @@ def api_afastamento_gravar():
             return jsonify({"ok": False, "msg": "Data Fim inválida."})
         if data1f < data1i:
             return jsonify({"ok": False, "msg": "Data Fim deve ser igual ou posterior à Data Início."})
-        if anomes_am and data1f[:6] > anomes_am:
-            return jsonify({"ok": False, "msg": f"Data Fim posterior à Folha Ativa ({folha_lbl})."})
+        # Retorno no futuro é PERMITIDO, mas exige confirmação: lançar a volta
+        # antes de ela acontecer gera um S-2230 de retorno que pode não se
+        # confirmar. Antes isto era recusado quando passava do mês da folha.
+        if data1f > _agora_brasilia().strftime("%Y%m%d") and not retorno_futuro_ok:
+            return jsonify({"ok": False, "retorno_futuro": True,
+                            "msg": "Data Fim posterior a hoje — confirmação necessária."})
         if anomes_am and data1f[:6] < anomes_am and not retroativo_ok:
             return jsonify({"ok": False, "msg": f"Data Fim anterior à Folha Ativa ({folha_lbl}) — confirmação necessária."})
     else:

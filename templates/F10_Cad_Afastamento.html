@@ -414,6 +414,20 @@ function ehRetroativa(yyyymmdd) {
     return !!(ANOMES && yyyymmdd && yyyymmdd.slice(0,6) < ANOMES);
 }
 
+// AAAAMMDD de hoje, para comparar direto com os campos de data.
+function hojeYmd() {
+    const d = new Date();
+    return d.getFullYear().toString()
+         + String(d.getMonth() + 1).padStart(2, '0')
+         + String(d.getDate()).padStart(2, '0');
+}
+
+// AAAAMMDD → MM/AAAA (a competência em que a remessa vai cair).
+function mesAnoBr(yyyymmdd) {
+    if (!yyyymmdd || yyyymmdd.length < 6) return '';
+    return yyyymmdd.slice(4,6) + '/' + yyyymmdd.slice(0,4);
+}
+
 function validarDataInicio() {
     const el = document.getElementById('data_inicio');
     const hint = document.getElementById('hint-inicio');
@@ -442,11 +456,16 @@ function validarDataFim() {
     if (!yyyymmdd) { el.classList.add('erro'); hint.classList.add('erro'); hint.textContent = 'Data inválida'; return; }
     const ini = parseData(document.getElementById('data_inicio').value);
     if (ini && yyyymmdd < ini) { el.classList.add('erro'); hint.classList.add('erro'); hint.textContent = 'Fim anterior ao Início'; return; }
+    // Retorno com data futura é PERMITIDO (com confirmação na gravação) — a alta
+    // pode já estar marcada. Antes era barrado, o que obrigava a deixar o fim em
+    // branco mesmo quando a data era conhecida.
+    if (yyyymmdd > hojeYmd()) {
+        el.classList.add('aviso'); hint.classList.add('aviso');
+        hint.textContent = 'Retorno ainda não ocorreu — será pedida confirmação';
+        return;
+    }
     if (!ANOMES) return;
-    if (yyyymmdd.slice(0,6) > ANOMES) {
-        el.classList.add('erro'); hint.classList.add('erro');
-        hint.textContent = `Posterior à Folha Ativa (${folhaLabel()})`;
-    } else if (yyyymmdd.slice(0,6) < ANOMES) {
+    if (yyyymmdd.slice(0,6) < ANOMES) {
         el.classList.add('aviso'); hint.classList.add('aviso');
         hint.textContent = `Retroativa — anterior à Folha Ativa (${folhaLabel()}); será pedida confirmação`;
     }
@@ -505,10 +524,8 @@ async function gravar() {
             document.getElementById('data_fim').classList.add('erro');
             showToast('Data Fim deve ser igual ou posterior à Data Início.', 'erro'); return;
         }
-        if (ANOMES && data1f.slice(0,6) > ANOMES) {
-            document.getElementById('data_fim').classList.add('erro');
-            showToast(`Data Fim posterior à Folha Ativa (${folhaLabel()}).`, 'erro'); return;
-        }
+        // Data Fim no futuro não é mais barrada aqui — vira uma confirmação
+        // logo abaixo, com o aviso de que o retorno ainda não aconteceu.
     }
 
     const motivo = document.getElementById('motivo').value;
@@ -549,7 +566,7 @@ async function gravar() {
     }
 
     // ── Data anterior ao mês da Folha Ativa: confirma o registro e
-    //    pergunta se deve gerar a remessa do S-2230 ──
+    //    pergunta se deve gerar a remessa do S-2230 DA SAÍDA ──
     const retro = ehRetroativa(data1i) || ehRetroativa(data1f);
     let gerarEsocial = true;
     if (retro) {
@@ -564,10 +581,29 @@ async function gravar() {
         if (!ok) return;
 
         gerarEsocial = await f10Confirm(
-            `Deseja gerar a remessa do S-2230 (Afastamento Temporário) para o eSocial?\n\n` +
-            `Escolha "Não gerar" se este afastamento já foi enviado ao eSocial.`,
-            { titulo: 'Remessa eSocial S-2230', tipo: 'info',
+            `Deseja gerar a remessa do S-2230 de SAÍDA (Afastamento Temporário) `
+            + `para o eSocial?\n\n`
+            + `A remessa entra na competência ${mesAnoBr(data1i)}, do início do `
+            + `afastamento — não na Folha Ativa.\n\n`
+            + `Escolha "Não gerar" se este afastamento já foi enviado ao eSocial.`,
+            { titulo: 'Remessa eSocial S-2230 (saída)', tipo: 'info',
               okText: 'Sim, gerar', cancelText: 'Não gerar' });
+    }
+
+    // ── Data Fim depois de HOJE: o retorno ainda não aconteceu ──
+    let retornoFuturoOk = false;
+    if (data1f && data1f > hojeYmd()) {
+        retornoFuturoOk = await f10Confirm(
+            `A Data Fim ${fmtBr(data1f)} ainda não chegou.\n\n`
+            + `NÃO é recomendado lançar o retorno antes de ter certeza de que ele `
+            + `vai acontecer: o sistema já cria o S-2230 de retorno na competência `
+            + `${mesAnoBr(data1f)}, e se o afastamento se prolongar você terá de `
+            + `corrigir o evento no eSocial.\n\n`
+            + `Se ainda não há certeza, deixe a Data Fim em branco e informe o `
+            + `retorno quando ele ocorrer.`,
+            { titulo: 'Retorno com data futura', tipo: 'aviso',
+              okText: 'Registrar mesmo assim', cancelText: 'Voltar e corrigir' });
+        if (!retornoFuturoOk) return;
     }
 
     const btn = document.getElementById('btn-gravar');
@@ -577,7 +613,8 @@ async function gravar() {
 
     try {
         const payload = { matriculas, data1i, data1f, motivo, campotxt1, campotxt4,
-                          retroativo_ok: retro, gerar_esocial: gerarEsocial };
+                          retroativo_ok: retro, gerar_esocial: gerarEsocial,
+                          retorno_futuro_ok: retornoFuturoOk };
         console.log('Enviando afastamento:', payload);
         const resp = await fetch('/api/afastamento_gravar', {
             method: 'POST',
