@@ -52604,6 +52604,7 @@ def api_adiantamento_gravar():
     gravados = 0
     limpos = 0          # voltaram a herdar o % da empresa
     zerados = 0         # ZERO de verdade — não adiantam nada nesta folha
+    detalhes = []       # motivo de cada erro, para a tela mostrar
     for item in itens:
         mat = item.get("matricula")
         if not mat:
@@ -52629,10 +52630,16 @@ def api_adiantamento_gravar():
             else:
                 per = int(per)
                 if per == 0:
-                    campos = {"per_adianta": 0, "valor_adianta": None}
+                    # "Não adianta" é sempre gravado como valor_adianta = 0, nunca
+                    # como per_adianta = 0: o banco recusa 0 na coluna do
+                    # percentual, e o cálculo lê o valor fixo primeiro, então o
+                    # efeito é idêntico (ver api_calcular_adiantamento).
+                    campos = {"per_adianta": None, "valor_adianta": 0}
                     zerados += 1
                 elif not (10 <= per <= 60):
-                    erros += 1; continue
+                    erros += 1
+                    detalhes.append(f"mat {mat}: percentual {per} fora da faixa (10 a 60)")
+                    continue
                 else:
                     campos = {"per_adianta": per, "valor_adianta": None}
         else:
@@ -52644,7 +52651,9 @@ def api_adiantamento_gravar():
             else:
                 val = int(round(float(val)))
                 if val < 0:
-                    erros += 1; continue
+                    erros += 1
+                    detalhes.append(f"mat {mat}: valor negativo ({val})")
+                    continue
                 elif val == 0:
                     campos = {"per_adianta": None, "valor_adianta": 0}
                     zerados += 1
@@ -52658,11 +52667,16 @@ def api_adiantamento_gravar():
              .eq("matricula", int(mat))
              .execute())
             gravados += 1
-        except Exception:
+        except Exception as e_upd:
+            # Guardar o motivo REAL. Engolir a exceção só devolvia "N registro(s)
+            # com erro" e não dava para saber o que o banco recusou.
             erros += 1
+            detalhes.append(f"mat {mat}: {str(e_upd)[:160]}")
 
     if erros:
-        return jsonify({"ok": False, "msg": f"{erros} registro(s) com erro ao gravar."})
+        return jsonify({"ok": False,
+                        "msg": f"{erros} registro(s) com erro ao gravar.",
+                        "detalhes": detalhes[:8]})
     if modo == "E" and gravados:
         gravar_log(_LOG_ADTO,
                    f"{gravados} funcionário(s) passaram a herdar o % de adiantamento "

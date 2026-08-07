@@ -406,9 +406,11 @@ let modoAtivo = 'E';
     document.getElementById('contadorFunc').textContent =
         total === 0 ? 'Nenhum funcionário ativo' : `${total} funcionário${total !== 1 ? 's' : ''} ativo${total !== 1 ? 's' : ''}`;
 
-    // Detecta modo pelos campos já preenchidos no cadastro
-    const comValor = FUNCIONARIOS.some(f => f.valor_adianta != null);
-    const comPct   = FUNCIONARIOS.some(f => f.per_adianta  != null);
+    // Detecta modo pelos campos já preenchidos no cadastro. Zero NÃO conta:
+    // "não adianta" é gravado como valor_adianta = 0 e não significa que a
+    // empresa trabalhe com valor fixo — senão a tela abriria no modo errado.
+    const comValor = FUNCIONARIOS.some(f => f.valor_adianta != null && f.valor_adianta !== 0);
+    const comPct   = FUNCIONARIOS.some(f => f.per_adianta  != null && f.per_adianta  !== 0);
     const modoInicial = comValor ? 'V' : comPct ? 'P' : 'E';
 
     selecionarModo(modoInicial, true);
@@ -576,10 +578,12 @@ async function soltar(mat) {
             renderizarTabela(true);
             mostrarMsg(`${nome} passou a herdar o percentual da empresa.`, 'ok');
         } else {
-            mostrarMsg(d.msg || 'Erro ao remover.', 'err');
+            await f10Alert(d.msg || 'Não foi possível remover a configuração.',
+                       { tipo: 'erro', titulo: 'Erro ao remover' });
         }
     } catch(e) {
-        mostrarMsg('Erro de comunicação com o servidor.', 'err');
+        await f10Alert('Não foi possível falar com o servidor. Verifique a conexão e '
+                     + 'tente de novo.', { tipo: 'erro', titulo: 'Erro de comunicação' });
     }
 }
 
@@ -593,7 +597,11 @@ function _getPctEmpresa() {
 function preencherTodosP() {
     const v = parseInt(document.getElementById('pctTodos').value, 10);
     if (isNaN(v) || v < 10 || v > 60) {
-        mostrarMsg('Informe um percentual entre 10 e 60.', 'err');
+        f10Alert('Informe um percentual entre 10 e 60.
+
+Para tirar um funcionário do '
+               + 'adiantamento, use a caixa "Não adianta" na linha dele.',
+                 { tipo: 'aviso', titulo: 'Percentual inválido' });
         return;
     }
     document.querySelectorAll('.inp-pct-row').forEach(inp => {
@@ -606,7 +614,11 @@ function preencherTodosV() {
     const raw = document.getElementById('valorTodos').value;
     const cents = parseCents(raw);
     if (cents <= 0) {
-        mostrarMsg('Informe um valor válido.', 'err');
+        f10Alert('Informe um valor maior que zero.
+
+Para tirar um funcionário do '
+               + 'adiantamento, use a caixa "Não adianta" na linha dele.',
+                 { tipo: 'aviso', titulo: 'Valor inválido' });
         return;
     }
     document.querySelectorAll('.inp-val-row').forEach(inp => {
@@ -734,7 +746,10 @@ async function gravar() {
 
     if (modoAtivo === 'E') {
         if (_getPctEmpresa() === null) {
-            mostrarMsg('A empresa não tem % de adiantamento quinzenal. Informe no Cadastro da Empresa antes de usar este modo.', 'err');
+            await f10Alert('A empresa não tem % de adiantamento quinzenal.\n\n'
+                         + 'Informe o percentual no Cadastro da Empresa antes de '
+                         + 'usar este modo.',
+                           { tipo: 'aviso', titulo: 'Falta o % da empresa' });
             btn.disabled = false;
             return;
         }
@@ -829,7 +844,8 @@ async function gravar() {
         return;
     }
     if (itens.length === 0) {
-        mostrarMsg('Nenhum funcionário para gravar.', 'err');
+        await f10Alert('Nenhum funcionário para gravar.',
+                       { tipo: 'aviso', titulo: 'Nada a fazer' });
         btn.disabled = false;
         return;
     }
@@ -846,8 +862,14 @@ async function gravar() {
             itens.forEach(item => {
                 const f = FUNCIONARIOS.find(x => x.matricula === item.matricula);
                 if (!f) return;
-                f.per_adianta   = modoAtivo === 'P' ? item.percentual : null;
-                f.valor_adianta = modoAtivo === 'V' ? item.valor      : null;
+                // "Não adianta" (percentual 0 no modo P) é gravado no servidor
+                // como valor_adianta = 0 — o espelho local tem que bater.
+                if (modoAtivo === 'P' && item.percentual === 0) {
+                    f.per_adianta = null; f.valor_adianta = 0;
+                } else {
+                    f.per_adianta   = modoAtivo === 'P' ? item.percentual : null;
+                    f.valor_adianta = modoAtivo === 'V' ? item.valor      : null;
+                }
             });
             renderizarTabela(true);   // atualiza a coluna "Atual"
             const gravadosN = itens.length - limpos - zerados;
@@ -863,10 +885,18 @@ async function gravar() {
             }
             mostrarMsg(msg, 'ok');
         } else {
-            mostrarMsg(d.msg || 'Erro ao gravar.', 'err');
+            // MsgBox com o motivo REAL devolvido pelo servidor — a faixa no topo
+            // truncava e passava batida.
+            let _err = d.msg || 'Erro ao gravar.';
+            if (Array.isArray(d.detalhes) && d.detalhes.length) {
+                _err += '\n\nDetalhe:\n' + d.detalhes.map(x => '  •  ' + x).join('\n');
+            }
+            await f10Alert(_err, { tipo: 'erro', titulo: 'Erro ao gravar' });
         }
     } catch(e) {
-        mostrarMsg('Erro de comunicação com o servidor.', 'err');
+        await f10Alert('Não foi possível falar com o servidor. Verifique a conexão '
+                     + 'e tente de novo.\n\nNada foi gravado.',
+                       { tipo: 'erro', titulo: 'Erro de comunicação' });
     }
 
     btn.disabled = false;
@@ -889,10 +919,12 @@ async function executarLimpar() {
             selecionarModo(modoAtivo, false);
             mostrarMsg('Adiantamentos dos funcionários limpos.', 'ok');
         } else {
-            mostrarMsg(d.msg || 'Erro ao limpar.', 'err');
+            await f10Alert(d.msg || 'Não foi possível limpar as configurações.',
+                       { tipo: 'erro', titulo: 'Erro ao limpar' });
         }
     } catch(e) {
-        mostrarMsg('Erro de comunicação com o servidor.', 'err');
+        await f10Alert('Não foi possível falar com o servidor. Verifique a conexão e '
+                     + 'tente de novo.', { tipo: 'erro', titulo: 'Erro de comunicação' });
     }
 }
 
