@@ -52553,7 +52553,8 @@ def informar_adiantamento():
     funcionarios = []
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, vrsalfx, dtadm, per_adianta, valor_adianta")
+             .select("matricula, nome, nomer, vrsalfx, dtadm, per_adianta, valor_adianta, "
+                     "sem_adiantamento")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .order("nomer")
@@ -52569,6 +52570,7 @@ def informar_adiantamento():
                 "vrsalfx":      f.get("vrsalfx") or 0,
                 "per_adianta":  f.get("per_adianta"),
                 "valor_adianta": f.get("valor_adianta"),
+                "sem_adianta":  bool(f.get("sem_adiantamento")),
             })
     except Exception:
         pass
@@ -52610,7 +52612,15 @@ def api_adiantamento_gravar():
         if not mat:
             continue
 
-        if modo == "E":
+        # "Não adianta" tem coluna própria (tab_cad.sem_adiantamento). Não dá
+        # para usar 0 nem -1 como sentinela: as duas colunas de valor têm CHECK
+        # (valor_adianta > 0 e per_adianta entre 10 e 60) e recusam qualquer um
+        # dos dois. Flag é flag, valor é valor.
+        if item.get("sem_adianta"):
+            campos = {"per_adianta": None, "valor_adianta": None,
+                      "sem_adiantamento": True}
+            zerados += 1
+        elif modo == "E":
             # "% da Empresa" LIMPA a configuração individual: o funcionário passa
             # a herdar o per_adiantamento da empresa. Antes carimbava o percentual
             # em cada tab_cad, e mudar o percentual da empresa depois não mexia em
@@ -52619,46 +52629,38 @@ def api_adiantamento_gravar():
         elif modo == "P":
             per = item.get("percentual")
             # NULO (campo vazio na tela) = TIRA a configuração própria e o
-            # funcionário volta a herdar o % da empresa.
-            # ZERO digitado = zero MESMO: fica gravado 0 e ele não adianta nada.
-            # São coisas diferentes — antes o zero virava nulo e o funcionário
-            # voltava a herdar o percentual da empresa, ou seja, continuava
-            # adiantando. Só o campo vazio limpa.
+            # funcionário volta a herdar o % da empresa. Zero NÃO chega aqui:
+            # a tela manda sem_adianta=True e ele foi tratado lá em cima.
             if per is None:
                 campos = {"per_adianta": None, "valor_adianta": None}
                 limpos += 1
             else:
                 per = int(per)
-                if per == 0:
-                    # "Não adianta" é sempre gravado como valor_adianta = 0, nunca
-                    # como per_adianta = 0: o banco recusa 0 na coluna do
-                    # percentual, e o cálculo lê o valor fixo primeiro, então o
-                    # efeito é idêntico (ver api_calcular_adiantamento).
-                    campos = {"per_adianta": None, "valor_adianta": 0}
-                    zerados += 1
-                elif not (10 <= per <= 60):
+                if not (10 <= per <= 60):
                     erros += 1
-                    detalhes.append(f"mat {mat}: percentual {per} fora da faixa (10 a 60)")
+                    detalhes.append(
+                        f"mat {mat}: percentual {per} fora da faixa (10 a 60). "
+                        f"Para não adiantar, marque 'Não adianta'.")
                     continue
-                else:
-                    campos = {"per_adianta": per, "valor_adianta": None}
+                campos = {"per_adianta": per, "valor_adianta": None}
         else:
             val = item.get("valor")
-            # Mesma distinção do modo P: nulo limpa, zero é zero mesmo.
             if val is None:
                 campos = {"per_adianta": None, "valor_adianta": None}
                 limpos += 1
             else:
                 val = int(round(float(val)))
-                if val < 0:
+                if val <= 0:
                     erros += 1
-                    detalhes.append(f"mat {mat}: valor negativo ({val})")
+                    detalhes.append(
+                        f"mat {mat}: valor tem que ser maior que zero. "
+                        f"Para não adiantar, marque 'Não adianta'.")
                     continue
-                elif val == 0:
-                    campos = {"per_adianta": None, "valor_adianta": 0}
-                    zerados += 1
-                else:
-                    campos = {"per_adianta": None, "valor_adianta": val}
+                campos = {"per_adianta": None, "valor_adianta": val}
+
+        # Qualquer gravação que NÃO seja "não adianta" desliga a flag — inclusive
+        # limpar e voltar a herdar o % da empresa.
+        campos.setdefault("sem_adiantamento", False)
 
         try:
             (supabase.table("tab_cad")
@@ -52709,7 +52711,7 @@ def api_adiantamento_soltar():
     ant = {}
     try:
         r = (supabase.table("tab_cad")
-             .select("per_adianta, valor_adianta")
+             .select("per_adianta, valor_adianta, sem_adiantamento")
              .eq("id_empresa", id_empresa)
              .eq("matricula", mat)
              .limit(1).execute())
@@ -52719,7 +52721,8 @@ def api_adiantamento_soltar():
 
     try:
         (supabase.table("tab_cad")
-         .update({"per_adianta": None, "valor_adianta": None})
+         .update({"per_adianta": None, "valor_adianta": None,
+                  "sem_adiantamento": False})
          .eq("id_empresa", id_empresa)
          .eq("matricula", mat)
          .execute())
@@ -52727,8 +52730,8 @@ def api_adiantamento_soltar():
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
     _vf, _pi = ant.get("valor_adianta"), ant.get("per_adianta")
-    if (_vf is not None and int(_vf) == 0) or (_pi is not None and int(_pi) == 0):
-        _de = "zero próprio (não adiantava)"
+    if ant.get("sem_adiantamento"):
+        _de = "marcação 'não adianta'"
     elif _vf is not None:
         _de = f"valor fixo {_fmt_brl(int(_vf))}"
     elif _pi is not None:
@@ -52748,7 +52751,8 @@ def api_adiantamento_limpar():
     id_empresa = _get_id_empresa()
     try:
         (supabase.table("tab_cad")
-         .update({"per_adianta": None, "valor_adianta": None})
+         .update({"per_adianta": None, "valor_adianta": None,
+                  "sem_adiantamento": False})
          .eq("id_empresa", id_empresa)
          .eq("situacao", "A")
          .execute())
@@ -52904,7 +52908,7 @@ def calcular_adiantamento():
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
-                 .select("matricula, nome, nomer, vrsalfx, dtadm, per_adianta, valor_adianta")
+                 .select("matricula, nome, nomer, vrsalfx, dtadm, per_adianta, valor_adianta, sem_adiantamento")
                  .eq("id_empresa", id_empresa)
                  .eq("situacao",   "A")
                  .order("nomer")
@@ -52927,14 +52931,11 @@ def calcular_adiantamento():
             elif int(f.get("matricula") or 0) in mats_ferias:
                 valor_calc = None
                 modo_desc  = "Em férias"
-            # Zero gravado (0 ou 0%) = "não adianta nada" — é diferente de nulo,
-            # que faz herdar o % da empresa. Ver api_adiantamento_gravar.
-            elif val_fixo is not None and int(val_fixo) == 0:
+            # Marcado como "não adianta" no Informar Adiantamento: fica na lista
+            # para ficar claro que foi decisão, não esquecimento.
+            elif f.get("sem_adiantamento"):
                 valor_calc = 0
-                modo_desc  = "Zerado — não adianta"
-            elif per_ind is not None and int(per_ind) == 0:
-                valor_calc = 0
-                modo_desc  = "Zerado — não adianta"
+                modo_desc  = "Não adianta"
             elif val_fixo is not None:
                 valor_calc = int(val_fixo)
                 modo_desc  = "Valor fixo"
@@ -53041,7 +53042,7 @@ def api_calcular_adiantamento():
     mats_afastados = _mats_afastados_quinzena(id_empresa, anomes, id_cliente=id_cliente)
     try:
         r_cad = (supabase.table("tab_cad")
-                 .select("matricula, vrsalfx, dtadm, per_adianta, valor_adianta")
+                 .select("matricula, vrsalfx, dtadm, per_adianta, valor_adianta, sem_adiantamento")
                  .eq("id_empresa", id_empresa)
                  .eq("situacao",   "A")
                  .execute())
@@ -53061,6 +53062,12 @@ def api_calcular_adiantamento():
             per_ind  = f.get("per_adianta")
             val_fixo = f.get("valor_adianta")
             mat      = f.get("matricula")
+
+            # Marcado como "não adianta" no Informar Adiantamento: não recebe
+            # nada, e nem cai no % da empresa (é justamente o contrário de
+            # "sem configuração"). Ver tab_cad.sem_adiantamento.
+            if f.get("sem_adiantamento"):
+                continue
 
             if val_fixo is not None:
                 valor = int(val_fixo)
