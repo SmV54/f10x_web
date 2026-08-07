@@ -52805,6 +52805,33 @@ def _anomes_admissao(dtadm):
     return so_num[:6] if len(so_num) >= 6 else ""
 
 
+# Admitido a partir deste dia não recebe adiantamento quinzenal: sobra pouca
+# quinzena trabalhada para antecipar.
+DIA_LIMITE_ADM_ADIANTAMENTO = 10
+
+
+def _adto_prop_admissao(dtadm, anomes):
+    """Regra do ADMITIDO NO MÊS da folha, no adiantamento quinzenal.
+
+    Até o dia 10 recebe, proporcional aos dias trabalhados; do dia 11 em diante
+    não recebe. O divisor são os dias reais do mês (30/31/28) — mesma régua da
+    ETAPA 1030 da folha, então o adiantamento fica sendo o percentual do que a
+    pessoa vai de fato ganhar e não desencontra da verba 160 no fechamento.
+    Admitido no dia 1 dá proporção cheia.
+
+    Devolve (recebe, dias_trab, dias_mes, dia_adm); `dias_trab == dias_mes`
+    significa valor integral. Quem não foi admitido neste mês passa direto.
+    """
+    dias_mes = _dias_no_mes_total(anomes)
+    so_num   = re.sub(r"\D", "", str(dtadm or ""))
+    if len(so_num) < 8 or so_num[:6] != str(anomes):
+        return True, dias_mes, dias_mes, 0
+    dia = int(so_num[6:8] or 0)
+    if dia > DIA_LIMITE_ADM_ADIANTAMENTO:
+        return False, 0, dias_mes, dia
+    return True, max(0, dias_mes - (dia - 1)), dias_mes, dia
+
+
 def _mats_afastados_quinzena(id_empresa, anomes, id_cliente=None):
     """Matrículas AFASTADAS na 1ª QUINZENA (dias 01–15) da competência.
 
@@ -52986,6 +53013,18 @@ def calcular_adiantamento():
                 valor_calc = None
                 modo_desc  = "—"
 
+            # Admitido no mês da folha: até o dia 10 recebe proporcional aos
+            # dias trabalhados; depois disso, não recebe (ver _adto_prop_admissao).
+            _adm_ok, _adm_dt, _adm_dm, _adm_dia = _adto_prop_admissao(dtadm_raw, anomes)
+            if valor_calc:
+                if not _adm_ok:
+                    valor_calc = None
+                    modo_desc  = (f"Admitido dia {_adm_dia:02d} — sem adiantamento "
+                                  f"(após o dia {DIA_LIMITE_ADM_ADIANTAMENTO})")
+                elif _adm_dt < _adm_dm:
+                    valor_calc = int(valor_calc * _adm_dt / _adm_dm)
+                    modo_desc += f"  ·  admitido dia {_adm_dia:02d}: {_adm_dt}/{_adm_dm} dias"
+
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
@@ -53114,6 +53153,8 @@ def api_calcular_adiantamento():
     erros       = 0
     pulou_ferias = 0
     pulou_afast  = 0
+    pulou_adm    = 0    # admitidos depois do dia 10
+    prop_adm     = 0    # admitidos até o dia 10, com valor proporcional
     mats_ferias    = _mats_ferias_quinzena(id_empresa, anomes)
     mats_afastados = _mats_afastados_quinzena(id_empresa, anomes, id_cliente=id_cliente)
     try:
@@ -53145,6 +53186,12 @@ def api_calcular_adiantamento():
             if f.get("sem_adiantamento"):
                 continue
 
+            # Admitido no mês da folha: do dia 11 em diante não recebe.
+            _adm_ok, _adm_dt, _adm_dm, _adm_dia = _adto_prop_admissao(dtadm_raw, anomes)
+            if not _adm_ok:
+                pulou_adm += 1
+                continue
+
             if val_fixo is not None:
                 valor = int(val_fixo)
             elif per_ind is not None:
@@ -53153,6 +53200,11 @@ def api_calcular_adiantamento():
                 valor = round(vrsalfx * int(per_empresa) / 100)
             else:
                 continue  # sem adiantamento configurado
+
+            # Proporcional aos dias trabalhados (dia 1 = integral)
+            if _adm_dt < _adm_dm:
+                valor = int(valor * _adm_dt / _adm_dm)
+                prop_adm += 1
 
             if valor <= 0:
                 continue
@@ -53186,6 +53238,12 @@ def api_calcular_adiantamento():
     if pulou_afast:
         _msg_fer += (f" {pulou_afast} funcionário(s) afastado(s) na quinzena "
                      f"ficaram de fora.")
+    if pulou_adm:
+        _msg_fer += (f" {pulou_adm} admitido(s) após o dia {DIA_LIMITE_ADM_ADIANTAMENTO} "
+                     f"ficaram de fora.")
+    if prop_adm:
+        _msg_fer += (f" {prop_adm} admitido(s) no mês receberam valor proporcional "
+                     f"aos dias trabalhados.")
     if recalcular:
         gravar_log(_LOG_ADTO,
                    f"Recalculada a parcela V{verba_usar:04d} do adiantamento quinzenal: "
