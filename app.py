@@ -7390,6 +7390,26 @@ def cancelar_rescisao():
 
 
 # =========================================================
+# CLIENTES SEM ENCARGOS (INSS / IRRF / FGTS)
+# =========================================================
+# Cliente 0038 (Hernani Alves Lacerda Barcelos) não quer INSS, IRRF nem FGTS
+# em nenhuma verba, em nenhum tipo de folha (mensal, férias, rescisão, 13º).
+# O cálculo roda NORMALMENTE — as etapas continuam saindo na memória com os
+# valores apurados — e no fim os três encargos (valor E base) são zerados
+# antes de gravar em tab_mov/tab_total. Fica registrado na memória de cálculo
+# o que seria devido e o que foi efetivamente lançado (etapas x180/2070/3110).
+CLIENTES_SEM_ENCARGOS = {38}
+
+
+def _sem_encargos(id_cliente):
+    """True quando o cliente não recolhe INSS/IRRF/FGTS (CLIENTES_SEM_ENCARGOS)."""
+    try:
+        return int(id_cliente or 0) in CLIENTES_SEM_ENCARGOS
+    except (TypeError, ValueError):
+        return False
+
+
+# =========================================================
 # CÁLCULO DA RESCISÃO  (folha_tipo="R")
 # Espelha o cálculo de férias: médias da ficha financeira (inc_rescisao),
 # INSS/IRRF/FGTS, grava tab_mov/tab_total/tab_log e memória PDF detalhada.
@@ -8009,8 +8029,22 @@ def api_calc_rescisao_calcular():
         base_fgts = saldo + d13 + aviso_val + add_fgts
         fgts_val = round(base_fgts * 8 / 100)
 
+        # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): tudo acima continua
+        # calculado e vai para a memória (ETAPA 3110); o que é gravado/descontado
+        # é a versão zerada (prefixo g_).
+        _enc0        = _sem_encargos(id_cliente)
+        g_inss_saldo = 0 if _enc0 else inss_saldo
+        g_inss_13    = 0 if _enc0 else inss_13
+        g_irrf_saldo = 0 if _enc0 else irrf_saldo
+        g_irrf_13    = 0 if _enc0 else irrf_13
+        g_base_inss  = 0 if _enc0 else base_inss_saldo
+        g_base_irrf  = 0 if _enc0 else base_irrf_saldo
+        g_base_fgts  = 0 if _enc0 else base_fgts
+        g_fgts_val   = 0 if _enc0 else fgts_val
+        g_dep_total  = 0 if _enc0 else dep_total
+
         total_prov = saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
-        total_desc = inss_saldo + inss_13 + irrf_saldo + irrf_13 + man_desc
+        total_desc = g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -8037,10 +8071,10 @@ def api_calc_rescisao_calcular():
         if fer_venc:  recs.append({**base_mov, "cod_verba": VR_FERIAS_VENC,  "qtd": venc_qtd, "valor": fer_venc})
         if fer_prop:  recs.append({**base_mov, "cod_verba": VR_FERIAS_PROP,  "qtd": avos_fer, "valor": fer_prop})
         if terco_fer: recs.append({**base_mov, "cod_verba": VR_TERCO_FERIAS, "qtd": 0,        "valor": terco_fer})
-        if inss_saldo:recs.append({**base_mov, "cod_verba": VR_INSS,         "qtd": 0, "valor": inss_saldo})
-        if inss_13:   recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": inss_13})
-        if irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,         "qtd": 0, "valor": irrf_saldo})
-        if irrf_13:   recs.append({**base_mov, "cod_verba": VR_IRRF_13,      "qtd": 0, "valor": irrf_13})
+        if g_inss_saldo:recs.append({**base_mov, "cod_verba": VR_INSS,       "qtd": 0, "valor": g_inss_saldo})
+        if g_inss_13: recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": g_inss_13})
+        if g_irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,       "qtd": 0, "valor": g_irrf_saldo})
+        if g_irrf_13: recs.append({**base_mov, "cod_verba": VR_IRRF_13,      "qtd": 0, "valor": g_irrf_13})
         if recs:
             try:
                 supabase.table("tab_mov").insert(recs).execute()
@@ -8049,11 +8083,11 @@ def api_calc_rescisao_calcular():
         rec_tot = {
             "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
             "folha": folha_int, "folha_tipo": "R",
-            "valor_base_inss_semlimite": base_inss_saldo, "valor_base_inss_comlimite": base_inss_saldo,
-            "valor_inss_retido": inss_saldo + inss_13,
-            "valor_base_fgts": base_fgts, "valor_fgts": fgts_val,
-            "valor_irrf_basetotal": base_inss_saldo, "valor_irrf_basetabela": base_irrf_saldo,
-            "valor_irrf_dependentes": dep_total, "qtd_irrf_dependentes": ndep,
+            "valor_base_inss_semlimite": g_base_inss, "valor_base_inss_comlimite": g_base_inss,
+            "valor_inss_retido": g_inss_saldo + g_inss_13,
+            "valor_base_fgts": g_base_fgts, "valor_fgts": g_fgts_val,
+            "valor_irrf_basetotal": g_base_inss, "valor_irrf_basetabela": g_base_irrf,
+            "valor_irrf_dependentes": g_dep_total, "qtd_irrf_dependentes": ndep,
             "valor_salario": sal_mes, "valor_total_proventos": total_prov,
             "valor_total_descontos": total_desc, "valor_liquido": liquido,
             "os": 0, "controle": 0,
@@ -8065,7 +8099,8 @@ def api_calc_rescisao_calcular():
         gravar_log("CALC_RES",
                    f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
                    f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
-                   f"INSS={_fmt_brl(inss_saldo+inss_13)} IRRF={_fmt_brl(irrf_saldo+irrf_13)} Liq={_fmt_brl(liquido)}",
+                   f"INSS={_fmt_brl(g_inss_saldo+g_inss_13)} IRRF={_fmt_brl(g_irrf_saldo+g_irrf_13)} "
+                   f"Liq={_fmt_brl(liquido)}" + (" [cliente sem encargos]" if _enc0 else ""),
                    matricula=mat)
 
         # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no cálculo.
@@ -8073,7 +8108,8 @@ def api_calc_rescisao_calcular():
         _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes, _folha_tipo_es,
                                    codcateg=cad.get("codcateg"))
 
-        multa_fgts = round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100)
+        multa_fgts = (0 if _enc0 else
+                      round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100))
         resultados.append({
             "matricula": mat, "mat_fmt": f"{mat:06d}", "nome": nome,
             "calc_dhg": _agora_brasilia().strftime("%d/%m/%Y %H:%M"),
@@ -8099,6 +8135,9 @@ def api_calc_rescisao_calcular():
             "base_irrf_13": base_irrf_13, "irrf_13": irrf_13, "irrf_13_info": irrf_13_info,
             "red_13": _red_13, "isento_13": _isento_13,
             "base_fgts": base_fgts, "fgts_val": fgts_val, "multa_pct": multa_pct, "multa_fgts": multa_fgts,
+            # cliente sem encargos: os campos acima trazem o CALCULADO (memória);
+            # o que foi gravado/descontado está nos *_fmt e é zero.
+            "enc0": _enc0, "enc0_cli": int(id_cliente or 0),
             "man_prov": man_prov, "man_desc": man_desc, "manuais_det": manuais_det,
             "add_inss": add_inss, "add_irrf": add_irrf, "add_fgts": add_fgts,
             "total_prov": total_prov, "total_desc": total_desc, "liquido": liquido,
@@ -8108,8 +8147,8 @@ def api_calc_rescisao_calcular():
             "terco_fmt": _fmt_brl(terco_fer) if terco_fer else "—",
             "aviso_fmt": _fmt_brl(aviso_val) if aviso_val else "—",
             "med_fmt": _fmt_brl(med_total) if med_total else "—",
-            "inss_fmt": _fmt_brl(inss_saldo + inss_13), "irrf_fmt": _fmt_brl(irrf_saldo + irrf_13),
-            "fgts_fmt": _fmt_brl(fgts_val), "prov_fmt": _fmt_brl(total_prov),
+            "inss_fmt": _fmt_brl(g_inss_saldo + g_inss_13), "irrf_fmt": _fmt_brl(g_irrf_saldo + g_irrf_13),
+            "fgts_fmt": _fmt_brl(g_fgts_val), "prov_fmt": _fmt_brl(total_prov),
             "desc_fmt": _fmt_brl(total_desc), "liq_fmt": _fmt_brl(liquido),
         })
 
@@ -8404,6 +8443,25 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                                 + (f" = {_B(r['multa_fgts'])}" if r["multa_fgts"] else " (informe o saldo)"))
             e.append(_etapa("ETAPA 3100 - FGTS", lin_fgts,
                             passos=["base_fgts", "fgts"]))
+            # 0010 — Cliente sem encargos: calculou tudo acima e zerou
+            if r.get("enc0"):
+                _ei = int(r["inss_saldo"]) + int(r["inss_13"])
+                _er = int(r["irrf_saldo"]) + int(r["irrf_13"])
+                e.append(_etapa(
+                    "ETAPA 3110 - CLIENTE SEM ENCARGOS (INSS / IRRF / FGTS ZERADOS)", [
+                        f"Cliente {int(r.get('enc0_cli') or 0):04d} — configurado para NÃO "
+                        f"calcular INSS, IRRF nem FGTS em nenhuma verba.",
+                        f"INSS apurado {_B(_ei)} &#8594; <b>zerado</b> (verbas {VR_INSS:04d} e "
+                        f"{VR_INSS_13:04d} não são lançadas)",
+                        f"IRRF apurado {_B(_er)} &#8594; <b>zerado</b> (verbas {VR_IRRF:04d} e "
+                        f"{VR_IRRF_13:04d} não são lançadas)",
+                        f"FGTS apurado {_B(r['fgts_val'])} sobre a base {_B(r['base_fgts'])} "
+                        f"&#8594; <b>zerado</b> (inclusive a multa rescisória)",
+                        "Em tab_total gravamos zero no valor E na base dos três encargos.",
+                    ], passos=["sem_enc"]))
+                e.append(Paragraph(
+                    "&#187; Cliente sem encargos &#8212; <b>nada foi descontado do "
+                    "funcionário e nada foi apurado para recolhimento</b>", st_decisao))
             # Totais
             e.append(Spacer(1, 4))
             _cod_tot, _nm_tot = _MEM_COD_AUX["totais"]
@@ -35851,6 +35909,7 @@ _MEM_COD_AUX = {
     "redutor":    ("9150", "Redutor da isenção até R$ 5.000 (Lei 15.270/2025)"),
     "base_fgts":  ("9160", "Base do FGTS"),
     "fgts":       ("9170", "FGTS"),
+    "sem_enc":    ("9180", "Cliente sem encargos — zera INSS/IRRF/FGTS"),
     "totais":     ("9210", "Totais de proventos, descontos e líquido"),
 }
 
@@ -37887,6 +37946,79 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     _pen_tbl.setStyle(TableStyle(_pen_sty))
                     elems.append(_pen_tbl)
 
+            # ── ETAPA 1155 — CLIENTE SEM ENCARGOS (INSS/IRRF/FGTS zerados) ──
+            # Roda depois da pensão (que recalcula o IRRF) e antes do
+            # arredondamento/insuficiência, que dependem dos totais.
+            # Ver CLIENTES_SEM_ENCARGOS.
+            _enc0 = _sem_encargos(id_cliente)
+            if _enc0:
+                _enc0_inss = int(inss_val)
+                _enc0_irrf = int(irrf_val)
+                # FGTS que seria devido — mesma regra usada na gravação do tab_total
+                _enc0_base_fgts = 0
+                if _tem_fgts(_categ_n):
+                    for _cd, _vl in mmVmm.items():
+                        _ri = rubricas_info.get(_cd, {})
+                        if _vl <= 0 or _ri.get("inc_fgts") != "11":
+                            continue
+                        if str(_ri.get("tp", "1")) == "1":
+                            _enc0_base_fgts += _vl
+                        else:
+                            _enc0_base_fgts -= _vl
+                    _enc0_base_fgts = max(0, _enc0_base_fgts)
+                _enc0_fgts = (int(_enc0_base_fgts) * 8) // 100
+                _enc0_base_inss = int(base_inss)
+                _enc0_base_irrf = int(base_irrf_bruta)
+
+                # zera valor E base dos três encargos
+                inss_val = 0
+                irrf_val = 0
+                mmVmm.pop(101, None)      # INSS
+                mmVmm.pop(102, None)      # INSS pró-labore
+                mmVmm.pop(120, None)      # IRRF
+                base_inss       = 0
+                base_irrf       = 0
+                base_irrf_bruta = 0
+                dep_irrf_total  = 0
+                total_prov = int(sum(v for r, v in mmVmm.items()
+                                     if int(r) < 9900
+                                     and rubricas_info.get(r, {"tp":"1"})["tp"] == "1"))
+                total_desc = int(sum(v for r, v in mmVmm.items()
+                                     if int(r) < 9900
+                                     and rubricas_info.get(r, {"tp":"1"})["tp"] != "1"))
+
+                _enc0_lin = [
+                    f"Cliente {int(id_cliente or 0):04d} — configurado para NÃO calcular "
+                    f"INSS, IRRF nem FGTS em nenhuma verba.",
+                    f"INSS apurado {_fmt_brl(_enc0_inss)} sobre a base "
+                    f"{_fmt_brl(_enc0_base_inss)}   »   <b>zerado</b> "
+                    f"(verba {_rb_inss_cod} não é lançada)",
+                    f"IRRF apurado {_fmt_brl(_enc0_irrf)} sobre a base "
+                    f"{_fmt_brl(_enc0_base_irrf)}   »   <b>zerado</b> "
+                    f"(verba 0120 não é lançada)",
+                    f"FGTS apurado {_fmt_brl(_enc0_fgts)} sobre a base "
+                    f"{_fmt_brl(int(_enc0_base_fgts))}   »   <b>zerado</b>",
+                    "Em tab_total gravamos zero no valor E na base dos três encargos.",
+                ]
+                _enc0_tbl = Table([
+                    [Paragraph("ETAPA 1155 - CLIENTE SEM ENCARGOS "
+                               "(INSS / IRRF / FGTS ZERADOS)", st_etapa)],
+                    [_mem_passo('sem_enc')],
+                    *[[Paragraph(ln, st_detalhe)] for ln in _enc0_lin],
+                    [Paragraph("&#187; Cliente sem encargos &#8212; <b>nada foi descontado do "
+                               "funcionário e nada foi apurado para recolhimento</b>",
+                               st_decisao)],
+                ], colWidths=[17*cm])
+                _enc0_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0),   10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0),   2),
+                    ("TOPPADDING",    (0, 1), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, -1),(0, -1),  4),
+                ]))
+                elems.append(_enc0_tbl)
+
             # ── ETAPA 1160 — Arredondamento (somente id_empresa=4) ───────────
             # Aplica diretamente em total_prov/total_desc, sem depender de tp_rubr
             if int(id_empresa) == 4:
@@ -38030,7 +38162,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 # Quem recolhe FGTS e definido pela CATEGORIA (ver _tem_fgts):
                 # 700-799 e 901 nao tem, com a excecao da 721 (Diretor nao
                 # empregado COM FGTS), que recolhe normalmente.
-                if not _tem_fgts(_categ_n):
+                # _enc0: cliente sem encargos (ETAPA 1155) — FGTS já zerado lá.
+                if _enc0 or not _tem_fgts(_categ_n):
                     base_fgts_func = 0
                     fgts_func = 0
                 else:
@@ -44426,6 +44559,38 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                         f"&#187; Lei 15.270/2025 &#8212; redutor aplicado, "
                         f"<b>-{_fmt_brl(irrf_redutor)}</b> de IRRF", st_decisao))
 
+            # ── etapa 8 — cliente sem encargos (calcula e zera) ────────
+            if r.get("enc0"):
+                _enc0_lin = [
+                    f"Cliente {int(r.get('enc0_cli') or 0):04d} — configurado para NÃO "
+                    f"calcular INSS, IRRF nem FGTS em nenhuma verba.",
+                    f"INSS apurado {_fmt_brl(inss_val)} sobre a base {_fmt_brl(base_calc)}"
+                    f"   »   <b>zerado</b> (verba 0103 não é lançada)",
+                    f"IRRF apurado {_fmt_brl(irrf_val)} sobre a base {_fmt_brl(base_irrf)}"
+                    f"   »   <b>zerado</b> (verba 0121 não é lançada)",
+                    f"FGTS apurado {_fmt_brl(int(r.get('fgts_val') or 0))} sobre a base "
+                    f"{_fmt_brl(base_calc)}   »   <b>zerado</b>",
+                    "Em tab_total gravamos zero no valor E na base dos três encargos.",
+                ]
+                _enc0_tbl = Table([
+                    [Paragraph("ETAPA 2070 - CLIENTE SEM ENCARGOS "
+                               "(INSS / IRRF / FGTS ZERADOS)", st_etapa)],
+                    [_mem_passo("sem_enc")],
+                    *[[Paragraph(ln, st_detalhe)] for ln in _enc0_lin],
+                    [Paragraph("&#187; Cliente sem encargos &#8212; <b>nada foi descontado do "
+                               "funcionário e nada foi apurado para recolhimento</b>",
+                               st_decisao)],
+                ], colWidths=[17*cm])
+                _enc0_tbl.setStyle(TableStyle([
+                    ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+                    ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+                    ("TOPPADDING",    (0, 0), (0, 0),   10),
+                    ("BOTTOMPADDING", (0, 0), (0, 0),   2),
+                    ("TOPPADDING",    (0, 1), (-1, -1), 0),
+                    ("BOTTOMPADDING", (0, -1),(0, -1),  4),
+                ]))
+                elems.append(_enc0_tbl)
+
             # ── totais ─────────────────────────────────────────────────
             st_tot_lbl  = ParagraphStyle("mf_tl",  fontName="Helvetica-Bold", fontSize=9,
                                          alignment=2, textColor=colors.HexColor("#111827"))
@@ -44789,7 +44954,18 @@ def api_calc_ferias_calcular():
         # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
         irrf_val, _red_fer, _isento_fer = _irrf_isencao_redutor(base_calc, irrf_val, tabela)
 
-        liquido = base_calc - inss_val - irrf_val + abono_val + terco_abono
+        # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): o cálculo acima
+        # continua indo para a memória (ETAPA 2070); o que é gravado/descontado
+        # é a versão zerada (prefixo g_).
+        _enc0        = _sem_encargos(id_cliente)
+        g_inss_val   = 0 if _enc0 else inss_val
+        g_irrf_val   = 0 if _enc0 else irrf_val
+        g_fgts_val   = 0 if _enc0 else fgts_val
+        g_base_calc  = 0 if _enc0 else base_calc
+        g_base_irrf  = 0 if _enc0 else base_irrf
+        g_dep_total  = 0 if _enc0 else dep_total
+
+        liquido = base_calc - g_inss_val - g_irrf_val + abono_val + terco_abono
 
         # ── Apaga apenas registros calculados (origem='C'); preserva manuais (origem='M') ──
         try:
@@ -44851,22 +45027,24 @@ def api_calc_ferias_calcular():
         if dias_abono and terco_abono:
             recs_mov.append({**base_mov, "cod_verba": 46,
                              "qtd": 0, "valor": terco_abono})
-        if inss_val:
+        if g_inss_val:
             recs_mov.append({**base_mov, "cod_verba": 103,
-                             "qtd": 0, "valor": inss_val})
-        if cod_irrf_fc and irrf_val:
+                             "qtd": 0, "valor": g_inss_val})
+        if cod_irrf_fc and g_irrf_val:
             recs_mov.append({**base_mov, "cod_verba": cod_irrf_fc,
-                             "qtd": 0, "valor": irrf_val})
+                             "qtd": 0, "valor": g_irrf_val})
 
         _verbas_auto_fc = {41, 42, 45, 46}
         _verbas_auto_fc.update(medias_variaveis.keys())
         _verbas_auto_fc.update(adics_fer.keys())
-        if inss_val:
+        if g_inss_val:
             _verbas_auto_fc.add(103)
-        if cod_irrf_fc and irrf_val:
+        if cod_irrf_fc and g_irrf_val:
             _verbas_auto_fc.add(cod_irrf_fc)
 
-        print(f"[calc_ferias] mat={mat} base={base_calc} inss={inss_val} irrf={irrf_val} recs={len(recs_mov)} verbas={[r['cod_verba'] for r in recs_mov]}")
+        print(f"[calc_ferias] mat={mat} base={base_calc} inss={g_inss_val} irrf={g_irrf_val} "
+              f"recs={len(recs_mov)} verbas={[r['cod_verba'] for r in recs_mov]}"
+              + (" [cliente sem encargos]" if _enc0 else ""))
         if recs_mov:
             try:
                 supabase.table("tab_mov").insert(recs_mov).execute()
@@ -44876,7 +45054,7 @@ def api_calc_ferias_calcular():
 
         # ── Insere totais em tab_total (folha_tipo='F') ──────────
         total_prov = sal_ferias + adic_total + terco_const + abono_val + terco_abono
-        total_desc = inss_val + irrf_val
+        total_desc = g_inss_val + g_irrf_val
         try:
             rec_tot = {
                 "id_cliente":                id_cliente,
@@ -44884,14 +45062,14 @@ def api_calc_ferias_calcular():
                 "matricula":                 mat,
                 "folha":                     folha_int,
                 "folha_tipo":                "F",
-                "valor_base_inss_semlimite": base_calc,
-                "valor_base_inss_comlimite": base_calc,
-                "valor_inss_retido":         inss_val,
-                "valor_base_fgts":           base_calc,
-                "valor_fgts":                fgts_val,
-                "valor_irrf_basetotal":      base_calc,
-                "valor_irrf_basetabela":     base_irrf,
-                "valor_irrf_dependentes":    dep_total,
+                "valor_base_inss_semlimite": g_base_calc,
+                "valor_base_inss_comlimite": g_base_calc,
+                "valor_inss_retido":         g_inss_val,
+                "valor_base_fgts":           g_base_calc,
+                "valor_fgts":                g_fgts_val,
+                "valor_irrf_basetotal":      g_base_calc,
+                "valor_irrf_basetabela":     g_base_irrf,
+                "valor_irrf_dependentes":    g_dep_total,
                 "qtd_irrf_dependentes":      ndep,
                 "valor_salario":             sal_mes,
                 "valor_total_proventos":     total_prov,
@@ -44910,7 +45088,8 @@ def api_calc_ferias_calcular():
 
         gravar_log("CALC_FER",
                    f"Férias calculadas: {dias}d sal={_fmt_brl(sal_ferias)} 1/3={_fmt_brl(terco_const)} "
-                   f"INSS={_fmt_brl(inss_val)} IRRF={_fmt_brl(irrf_val)} Liq={_fmt_brl(liquido)}",
+                   f"INSS={_fmt_brl(g_inss_val)} IRRF={_fmt_brl(g_irrf_val)} Liq={_fmt_brl(liquido)}"
+                   + (" [cliente sem encargos]" if _enc0 else ""),
                    matricula=mat)
 
         calc_dhg_now = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
@@ -44942,6 +45121,10 @@ def api_calc_ferias_calcular():
             "irrf_info":      irrf_info,
             "irrf_redutor":   _red_fer,
             "irrf_isento":    _isento_fer,
+            # cliente sem encargos: os campos acima trazem o CALCULADO (memória);
+            # o gravado/descontado está nos *_fmt e nos totais, e é zero.
+            "enc0":           _enc0,
+            "enc0_cli":       int(id_cliente or 0),
             "total_prov":     total_prov,
             "total_desc":     total_desc,
             "liquido":        liquido,
@@ -44962,11 +45145,11 @@ def api_calc_ferias_calcular():
             "abono_fmt":      _fmt_brl(abono_val) if abono_val else "—",
             "terco_abono_fmt":_fmt_brl(terco_abono) if terco_abono else "—",
             "base_calc_fmt":  _fmt_brl(base_calc),
-            "inss_fmt":       _fmt_brl(inss_val),
-            "fgts_fmt":       _fmt_brl(fgts_val),
-            "dep_fmt":        _fmt_brl(dep_total) if dep_total else "—",
-            "base_irrf_fmt":  _fmt_brl(base_irrf),
-            "irrf_fmt":       _fmt_brl(irrf_val),
+            "inss_fmt":       _fmt_brl(g_inss_val),
+            "fgts_fmt":       _fmt_brl(g_fgts_val),
+            "dep_fmt":        _fmt_brl(g_dep_total) if g_dep_total else "—",
+            "base_irrf_fmt":  _fmt_brl(g_base_irrf),
+            "irrf_fmt":       _fmt_brl(g_irrf_val),
             "liquido_fmt":    _fmt_brl(liquido),
             "medias_variaveis_pdf": [
                 {
@@ -45461,6 +45644,10 @@ def api_recibo_ferias_pdf():
         irrf_val, _    = _calc_irrf(base_irrf, tabela)
         # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
         irrf_val, _red_fer, _isento_fer = _irrf_isencao_redutor(base_calc, irrf_val, tabela)
+        # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): o recibo tem que
+        # bater com o que foi gravado — sem INSS, sem IRRF e sem FGTS.
+        if _sem_encargos(id_cliente):
+            inss_val = irrf_val = fgts_val = 0
         liquido        = base_calc - inss_val - irrf_val + abono_val + terco_abono
 
         data1i_fmt = _f8(ev.get("data1i"))
@@ -53197,12 +53384,15 @@ def _aliq_fgts_adiant13(f):
     return 2 if cat == 103 else 8
 
 
-def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8):
+def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8, id_cliente=None):
     """Base e valor do FGTS do adiantamento do 13º.
     Base = soma dos proventos cujo tpn_inc_fgts indica incidência
     (ver _cods_inc_fgts: '11' mensal, '12' do 13º, 'S' legado).
     FGTS = aliq_fgts% da base (8% geral, 2% menor aprendiz).
+    Cliente sem encargos (CLIENTES_SEM_ENCARGOS) devolve (0, 0).
     Retorna (base_fgts, fgts) em centavos."""
+    if _sem_encargos(id_cliente):
+        return 0, 0
     base = sum(int(v) for cod, v in (verba_valores or {}).items()
                if int(v) > 0 and inc_fgts.get(int(cod), "") in _cods_inc_fgts("A"))
     return int(base), int(base) * int(aliq_fgts) // 100
@@ -53295,7 +53485,8 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                           perc, meses, valor, pericu, pericu_pct, pericu_mes,
                           medias_detalhe, total, usuario, versao,
                           base_fgts=0, fgts_val=0, aliq_fgts=8,
-                          adicionais=None, adicionais_mes=None):
+                          adicionais=None, adicionais_mes=None, sem_encargos=False,
+                          id_cliente=0):
     """Bytes de um PDF de memória de cálculo do adiantamento do 13º (1 funcionário)."""
     def _hhmm(mins):
         mins = int(round(mins))
@@ -53435,7 +53626,22 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                            st_formula))
 
     # ETAPA 4 — FGTS (aliq_fgts% sobre a base incidente; 2% para menor aprendiz)
-    if base_fgts > 0:
+    if sem_encargos:
+        # Cliente sem encargos (CLIENTES_SEM_ENCARGOS): o adiantamento do 13º
+        # não tem INSS nem IRRF por natureza, então só o FGTS é zerado aqui.
+        _b0 = (int(valor)
+               + sum(int(v) for v in (adicionais or {}).values())
+               + sum(int(d.get("val") or 0) for d in (medias_detalhe or [])))
+        e.append(Paragraph("ETAPA 4040 — FGTS", st_etapa))
+        e.append(_mem_passo("sem_enc"))
+        e.append(Paragraph(
+            f"Cliente {int(id_cliente or 0):04d} — configurado para NÃO calcular INSS, "
+            f"IRRF nem FGTS em nenhuma verba.", st_formula))
+        e.append(Paragraph(
+            f"FGTS apurado {_fmt_brl(int(_b0) * int(aliq_fgts) // 100)} "
+            f"(base {_fmt_brl(int(_b0))} × {int(aliq_fgts)}%) &#8594; <b>zerado</b>; "
+            f"tab_total recebe zero no valor e na base.", st_formula))
+    elif base_fgts > 0:
         e.append(Paragraph("ETAPA 4040 — FGTS", st_etapa))
         e.append(_mem_passo("base_fgts", "adiantamento + periculosidade + médias"))
         e.append(_mem_passo("fgts"))
@@ -53679,7 +53885,7 @@ def calcular_adiantamento_13():
             verba_valores = {VERBA_ADIANT_13: valor, **adics13}
             verba_valores.update({d["cod"]: d["val"] for d in medias_det})
             aliq_fgts = _aliq_fgts_adiant13(f)
-            base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
+            base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts, id_cliente)
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
@@ -53874,7 +54080,7 @@ def api_calcular_adiantamento_13():
             verba_valores = {VERBA_ADIANT_13: valor, **adics13}
             verba_valores.update(medias)
             aliq_fgts = _aliq_fgts_adiant13(f)
-            base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
+            base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts, id_cliente)
             rec_total = {
                 "id_cliente":                id_cliente,
                 "id_empresa":                id_empresa,
@@ -53924,7 +54130,8 @@ def api_calcular_adiantamento_13():
                         empresa_nm, anomes, int(mat or 0), nome_pdf, sal_mes, sal_hora_c,
                         perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                         medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
-                        adicionais=adics13, adicionais_mes=_adics_mes_pdf)
+                        adicionais=adics13, adicionais_mes=_adics_mes_pdf,
+                        sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente)
                     nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
                                 f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
                     if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
@@ -54099,7 +54306,7 @@ def calcular_adiantamento_13_stream():
                 verba_valores = {VERBA_ADIANT_13: valor, **adics13}
                 verba_valores.update(medias)
                 aliq_fgts = _aliq_fgts_adiant13(f)
-                base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts)
+                base_fgts, fgts_val = _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts, id_cliente)
                 rec_total = {
                     "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                     "matricula": int(mat), "folha": folha_int, "folha_tipo": "A",
@@ -54132,7 +54339,8 @@ def calcular_adiantamento_13_stream():
                             empresa_nm, anomes, mat, nome, sal_mes, sal_hora_c,
                             perc, meses, valor, pericu, ref1_p / 100, pericu_mes,
                             medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
-                            adicionais=adics13, adicionais_mes=_adics_mes_pdf)
+                            adicionais=adics13, adicionais_mes=_adics_mes_pdf,
+                            sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente)
                         nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
                                     f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
