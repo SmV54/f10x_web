@@ -16370,6 +16370,7 @@ def api_afastamento_gravar():
     erros        = []
     avisos_es    = []
     eventos_list = []   # lista de {matricula, id_evento} para CAT
+    _es_comp     = set()  # competências em que remessas S-2230 foram criadas
     for mat in matriculas:
         try:
             mat_int = int(mat)
@@ -16408,18 +16409,33 @@ def api_afastamento_gravar():
                         "id_empresa": id_empresa,
                         "data_cad":   agora_es.strftime("%Y%m%d"),
                         "hora_cad":   agora_es.strftime("%H%M"),
-                        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-                        "ano_mes":    int(anomes_am) if anomes_am else None,
                         "folha_tipo": folha_tipo_es,
                         "layout":     "2230",
                         "matricula":  mat_int,
                         "codigo2":    id_evento,
                     }
-                    # S — saída (sempre)
-                    supabase.table("tab_esocial").insert({**base_es, "flag1": "S"}).execute()
-                    # R — retorno (só se data fim foi informada)
+                    # Cada remessa vai na COMPETÊNCIA do seu próprio fato: a
+                    # saída no mês do afastamento, o retorno no mês da volta.
+                    # Antes as duas iam no mês da folha ativa, o que jogava um
+                    # afastamento retroativo — ou que atravessa o mês — para a
+                    # competência errada. É esse ano_mes que a Fila usa para
+                    # agrupar, então ele tem que ser o do evento.
+                    _am_saida   = int(data1i[:6])
+                    _am_retorno = int(data1f[:6]) if data1f else None
+                    supabase.table("tab_esocial").insert({
+                        **base_es, "flag1": "S",
+                        "ano_mes": _am_saida,
+                        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                    }).execute()
                     if data1f:
-                        supabase.table("tab_esocial").insert({**base_es, "flag1": "R"}).execute()
+                        supabase.table("tab_esocial").insert({
+                            **base_es, "flag1": "R",
+                            "ano_mes": _am_retorno,
+                            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                        }).execute()
+                    _es_comp.add(_am_saida)
+                    if _am_retorno:
+                        _es_comp.add(_am_retorno)
                     es_ok = True
                 except Exception as e_es:
                     msg_es = str(e_es)[:120]
@@ -16443,6 +16459,21 @@ def api_afastamento_gravar():
         msg += " (data retroativa)"
     if not gerar_esocial:
         msg += " Remessa do S-2230 não gerada."
+    elif _es_comp:
+        # A Fila do eSocial agrupa por competência. Se a remessa foi para um mês
+        # diferente do da folha ativa, o usuário precisa saber onde procurar.
+        _fmt_c = lambda c: f"{str(c)[4:6]}/{str(c)[:4]}"
+        _saida = f"{data1i[4:6]}/{data1i[:4]}"
+        if data1f:
+            _volta = f"{data1f[4:6]}/{data1f[:4]}"
+            msg += (f" S-2230 de saída na competência {_saida}"
+                    f" e de retorno em {_volta}.")
+        else:
+            msg += f" S-2230 de saída na competência {_saida}."
+        _outras = sorted(c for c in _es_comp if str(c) != anomes_am)
+        if _outras:
+            msg += (" Para enviar, troque o período na Fila do eSocial para "
+                    + " e ".join(_fmt_c(c) for c in _outras) + ".")
     if erros:
         msg += " Erros: " + "; ".join(erros)
     if avisos_es:
