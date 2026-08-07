@@ -977,7 +977,7 @@ function _descRegistro(id) {
 async function excluirRegistro(id) {
     if (!await f10Confirm(
         `Excluir definitivamente este movimento fixo?\n\n${_descRegistro(id)}\n\n` +
-        `Ele foi incluído nesta folha e ainda não foi lançado, então some sem deixar rastro.`,
+        `Ele foi incluído nesta folha e ainda não foi lançado, então some sem deixar histórico.`,
         {tipo: 'perigo', okText: 'Excluir'}
     )) return;
     try {
