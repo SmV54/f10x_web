@@ -23392,6 +23392,17 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
             "preencha o campo Categoria eSocial em tab_cad antes de enviar o S-1200."
         )
 
+    # Pró-labore (721/722/723) com a Matrícula eSocial EM BRANCO no cadastro:
+    # são contribuintes que foram registrados no eSocial sem matrícula nenhuma,
+    # então a tag <matricula> não vai no remunPerApur (é opcional no layout).
+    # ATENÇÃO: o ideDmDev continua usando o fallback do _mat_es (a matrícula
+    # interna com 6 dígitos) — ele não é a matrícula do eSocial, é só o
+    # identificador do demonstrativo, e precisa ser único por trabalhador.
+    _sem_mat_es = (codcateg in ("721", "722", "723")
+                   and not str(func.get("matricula_es") or "").strip())
+    matricula_xml = ("" if _sem_mat_es
+                     else f"\n            <matricula>{x(mat_es)}</matricula>")
+
     # infoAgNocivo só vale para empregados (categorias 1xx — CLT, rurais, aprendizes etc.).
     # Para outras categorias (avulsos, dirigentes, contribuintes individuais, etc.)
     # o eSocial não aceita esse grupo.
@@ -23528,8 +23539,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
           <tpInsc>1</tpInsc>
           <nrInsc>{x(cnpj_emp)}</nrInsc>
           <codLotacao>{x(cod_lotacao)}</codLotacao>
-          <remunPerApur>
-            <matricula>{x(mat_es)}</matricula>{ind_simples_xml}{_itens_todos}{info_ag_nocivo_xml}
+          <remunPerApur>{matricula_xml}{ind_simples_xml}{_itens_todos}{info_ag_nocivo_xml}
           </remunPerApur>
         </ideEstabLot>
       </infoPerApur>
