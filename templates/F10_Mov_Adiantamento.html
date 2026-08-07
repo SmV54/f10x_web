@@ -748,7 +748,18 @@ async function gravar() {
     }
 
     if (erroValidacao) {
-        mostrarMsg('Corrija os campos destacados em vermelho.', 'err');
+        // MsgBox em vez do aviso na faixa do topo: a faixa passava batida e o
+        // usuário ficava sem saber por que a gravação não aconteceu.
+        const _msg = (modoAtivo === 'P')
+            ? 'Há percentual fora da faixa permitida — os campos estão '
+              + 'destacados em vermelho.\n\nValores aceitos:\n'
+              + '  •  de 10% a 60%\n'
+              + '  •  0 — o funcionário NÃO adianta nada\n'
+              + '  •  campo vazio — herda o percentual da empresa\n\n'
+              + 'Nada foi gravado.'
+            : 'Há valores inválidos — os campos estão destacados em vermelho.\n\n'
+              + 'Nada foi gravado.';
+        await f10Alert(_msg, { tipo: 'aviso', titulo: 'Corrija antes de gravar' });
         btn.disabled = false;
         return;
     }
