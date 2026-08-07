@@ -1,0 +1,99 @@
+{# ─────────────────────────────────────────────────────────────────────
+   AJUDA DE "EXCLUIR / PARAR MOVIMENTO FIXO"
+
+   O card "Qual das duas usar" da própria tela já dá o resumo. Este painel
+   é o aprofundamento: as condições exatas da exclusão, as três opções de
+   data do Parar, o caso do movimento de grupo e como voltar atrás.
+
+   Requer o estilo: incluir {% include '_ajuda_estilo.html' %} uma vez na
+   página, e um gatilho chamando abrirAjudaMFEncerrar().
+   ───────────────────────────────────────────────────────────────────── #}
+<div class="ajuda-fundo" id="ajudaMFEncerrar"
+     onclick="if (event.target === this) fecharAjudaMFEncerrar()">
+  <div class="ajuda-caixa">
+    <div class="ajuda-topo">
+        <h2>⏹️ Excluir ou Parar um Movimento Fixo</h2>
+        <button class="ajuda-fechar" onclick="fecharAjudaMFEncerrar()" title="Fechar">&times;</button>
+    </div>
+    <div class="ajuda-corpo">
+
+        <h3>A regra em uma frase</h3>
+        <p><b>Errou o cadastro? Exclua. Acabou a vigência? Pare.</b> A exclusão é para
+        desfazer um lançamento que nunca existiu na prática; o Parar é para encerrar
+        algo que existiu e foi pago.</p>
+
+        <h3>Excluir — as duas condições</h3>
+        <p>O botão 🗑️ <b>Excluir</b> só aparece na linha quando as duas são verdadeiras:</p>
+        <ul>
+            <li>o movimento <b>começa nesta folha ou depois</b> — não vigorava antes;</li>
+            <li>ele <b>nunca gerou lançamento</b> em nenhuma folha anterior.</li>
+        </ul>
+        <p>Faltando qualquer uma, o botão não aparece. E se você tiver deixado a tela
+        aberta desde antes de virar o mês, o sistema recusa de novo no momento do clique
+        e sugere o Parar — a mesma trava vale no servidor, não só na tela.</p>
+
+        <div class="ajuda-nota">
+            <b>Por que a trava existe.</b> Excluir apaga o cadastro por completo. Se o
+            movimento já rodou em folha paga, some o rastro de um valor que a pessoa
+            efetivamente recebeu ou pagou — e a conferência daquele mês deixa de fechar.
+        </div>
+
+        <h3>Parar — qual data escolher</h3>
+        <p>Você informa a <b>última folha em que o movimento ainda vale</b>. Dali em diante
+        o cálculo simplesmente deixa de lançá-lo. As três opções do modal:</p>
+        <table>
+            <tr><th>Opção</th><th>Quando usar</th></tr>
+            <tr><td style="text-align:left;width:auto;"><b>Parar já nesta folha</b></td>
+                <td>Não entra na folha atual. É o padrão — cobre o caso mais comum,
+                    “cancelou antes de o mês rodar”.</td></tr>
+            <tr><td style="text-align:left;width:auto;"><b>Lançar uma última vez</b></td>
+                <td>Entra na folha atual e para depois. Use quando o mês corrente ainda
+                    é devido — a última parcela, o último mês de vale.</td></tr>
+            <tr><td style="text-align:left;width:auto;"><b>Outra folha</b></td>
+                <td>Qualquer mês, inclusive futuro, no formato MM/AAAA. Serve para
+                    programar o fim com antecedência.</td></tr>
+        </table>
+        <p>A data não pode ser anterior ao início da vigência — o sistema recusa e mostra
+        qual é esse início.</p>
+
+        <h3>Movimento de grupo</h3>
+        <p>No movimento de grupo não há uma matrícula: quem define o alvo são os filtros.
+        Por isso a checagem de “já rodou” <b>ignora a matrícula</b> — basta o movimento ter
+        sido lançado para <b>qualquer</b> funcionário do grupo, uma vez, para a exclusão ser
+        bloqueada. O Parar continua disponível e encerra o grupo inteiro.</p>
+
+        <h3>Dá para voltar atrás?</h3>
+        <p>Do <b>Parar</b>, sim: vá em <b>Movimento Fixo → Movimentos Fixos</b>, edite o
+        registro e apague (ou adie) a última folha. Ele volta a ser lançado normalmente.</p>
+        <p>Da <b>exclusão</b>, não — ela apaga o cadastro de vez. Foi justamente por isso
+        que ela ficou restrita ao caso em que nada se perde.</p>
+
+        <h3>Como conferir que funcionou</h3>
+        <p>Na lista, o movimento encerrado passa a mostrar o selo
+        <b>“Encerrado em MM/AAAA”</b>. No cálculo seguinte, a
+        <b>ETAPA 1080 — MOVIMENTOS FIXOS</b> da memória deixa de trazê-lo, e as folhas
+        anteriores continuam exatamente como estavam.</p>
+
+    </div>
+    <div class="ajuda-rodape">
+        <span style="font-size:12px;color:#94a3b8;">
+            O cadastro dos movimentos fica em <b>Movimento Fixo → Movimentos Fixos</b>.
+        </span>
+        <button class="ajuda-btn-ok" onclick="fecharAjudaMFEncerrar()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function abrirAjudaMFEncerrar() {
+    document.getElementById('ajudaMFEncerrar').classList.add('aberto');
+    document.body.style.overflow = 'hidden';
+}
+function fecharAjudaMFEncerrar() {
+    document.getElementById('ajudaMFEncerrar').classList.remove('aberto');
+    document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') fecharAjudaMFEncerrar();
+});
+</script>

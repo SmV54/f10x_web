@@ -137,6 +137,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .msg-topo.show { display: block; }
 .msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
 .msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+
+#btnAjuda {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnAjuda:hover { background: #1a5fb8; }
 </style>
 </head>
 <body>
@@ -542,6 +553,12 @@ document.addEventListener('keydown', e => {
 
 carregarLista();
 </script>
+<button id="btnAjuda" title="Excluir ou Parar — como funciona"
+        onclick="abrirAjudaMFEncerrar()">?</button>
+
+{% include '_ajuda_estilo.html' %}
+{% include '_ajuda_mov_fixo_encerrar.html' %}
+
 <script src="/static/f10_dialog.js"></script>
 </body>
 </html>
