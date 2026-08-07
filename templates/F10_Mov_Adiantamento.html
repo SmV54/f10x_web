@@ -141,6 +141,14 @@ thead th {
     text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
 }
 thead th.th-r { text-align: right; }
+thead th.th-c { text-align: center; width: 62px; line-height: 1.15; }
+/* Coluna "Nao adianta": jeito EXPLICITO de tirar o funcionario do
+   adiantamento. Digitar 0 faz o mesmo, mas zero digitado e campo vazio se
+   parecem demais — a caixa nao deixa duvida. */
+.td-semadto { text-align: center; width: 62px; }
+.td-semadto input { width: 16px; height: 16px; accent-color: #b91c1c; cursor: pointer; }
+tr.linha-sem-adto .td-nome,
+tr.linha-sem-adto .td-sal { color: #94a3b8; text-decoration: line-through; }
 tbody tr { border-bottom: 1px solid #f1f5f9; }
 tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: #fafbfc; }
@@ -288,7 +296,7 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                     <label for="radio-P">% Individual</label>
                 </div>
                 <div class="modo-card-desc">Define um percentual diferente para cada funcionário individualmente.
-                    <b>0</b> = não adianta nada · campo <b>vazio</b> = herda o % da empresa.</div>
+                    Marque <b>Não adianta</b> em quem fica de fora · campo <b>vazio</b> = herda o % da empresa.</div>
             </div>
             <div class="modo-card" id="modoCard-V" onclick="selecionarModo('V')">
                 <div class="modo-card-label">
@@ -296,7 +304,7 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                     <label for="radio-V">Valor Fixo</label>
                 </div>
                 <div class="modo-card-desc">Informa um valor em reais fixo por funcionário, independente do salário.
-                    <b>0</b> = não adianta nada · campo <b>vazio</b> = herda o % da empresa.</div>
+                    Marque <b>Não adianta</b> em quem fica de fora · campo <b>vazio</b> = herda o % da empresa.</div>
             </div>
         </div>
 
@@ -352,6 +360,7 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
                     <th>Nome</th>
                     <th class="th-r">Sal. Base</th>
                     <th class="th-r" id="thEntrada">% Adiant.</th>
+                    <th class="th-c" id="thSemAdto" title="Funcionário que não recebe adiantamento nesta folha">Não<br>adianta</th>
                     <th class="th-r" id="thEstimado">Estimado</th>
                     <th class="th-r" id="thAtual">Atual</th>
                 </tr>
@@ -419,6 +428,9 @@ function selecionarModo(modo, init) {
 
     const thEntrada  = document.getElementById('thEntrada');
     const thEstimado = document.getElementById('thEstimado');
+    // "Não adianta" só nos modos individuais — no modo Empresa todos herdam
+    // o mesmo percentual e não há o que marcar por funcionário.
+    document.getElementById('thSemAdto').style.display = (modo === 'E') ? 'none' : '';
     if (modo === 'V') {
         thEntrada.textContent  = 'Valor (R$)';
         thEstimado.textContent = '';
@@ -480,15 +492,32 @@ function renderizarTabela(manterValores) {
             celEstimado = `<td style="display:none;"></td>`;
         }
 
+        // Caixa "Não adianta": grava ZERO para este funcionário. Só faz sentido
+        // nos modos individuais — no modo Empresa todos herdam o mesmo %.
+        const semAdto = (f.per_adianta === 0) || (f.valor_adianta === 0);
+        const celSem  = (modoAtivo === 'E')
+            ? `<td style="display:none;"></td>`
+            : `<td class="td-semadto">
+                   <input type="checkbox" class="chk-sem-adto" data-mat="${f.matricula}"
+                          ${semAdto ? 'checked' : ''}
+                          title="Marcado: este funcionário NÃO recebe adiantamento nesta folha"
+                          onchange="alternarSemAdto(this)">
+               </td>`;
+
         tr.innerHTML = `
             <td class="td-mat">${String(f.matricula).padStart(4,'0')}</td>
             <td class="td-nome" title="${_esc(f.nome)}">${_esc(f.nome)}</td>
             <td class="td-sal">${salFmt}</td>
             ${celEntrada}
+            ${celSem}
             ${celEstimado}
             ${celAtual(f)}
         `;
         tbody.appendChild(tr);
+        if (semAdto && modoAtivo !== 'E') {
+            const chk = tr.querySelector('.chk-sem-adto');
+            if (chk) alternarSemAdto(chk);
+        }
     });
 
     atualizarTotal();
@@ -587,6 +616,25 @@ function preencherTodosV() {
     atualizarTotal();
 }
 
+// Marca/desmarca "Não adianta": trava o campo de entrada da linha e zera o
+// estimado. O valor gravado sai do próprio checkbox, não do campo.
+function alternarSemAdto(chk) {
+    const tr  = chk.closest('tr');
+    const inp = tr.querySelector('.inp-pct-row, .inp-val-row');
+    const cel = document.getElementById(`est-${chk.dataset.mat}`);
+    tr.classList.toggle('linha-sem-adto', chk.checked);
+    if (inp) {
+        inp.disabled = chk.checked;
+        inp.style.borderColor = '';
+        if (chk.checked) inp.value = '';
+    }
+    if (cel) {
+        cel.textContent = chk.checked ? fmtReais(0) : '—';
+        cel.classList.toggle('vazio', !chk.checked);
+    }
+    atualizarTotal();
+}
+
 function calcEstimado(inp) {
     const pct    = parseInt(inp.value, 10);
     const salCts = parseInt(inp.dataset.sal, 10) || 0;
@@ -668,6 +716,12 @@ function mascaraValorRow(inp) {
     mascaraValor(inp);
 }
 
+// A caixa "Não adianta" da mesma linha do campo de entrada.
+function _semAdtoMarcado(inp) {
+    const chk = inp.closest('tr')?.querySelector('.chk-sem-adto');
+    return !!(chk && chk.checked);
+}
+
 // ── gravar ──
 async function gravar() {
     const btn = document.getElementById('btnGravar');
@@ -696,6 +750,12 @@ async function gravar() {
     } else if (modoAtivo === 'P') {
         document.querySelectorAll('.inp-pct-row').forEach(inp => {
             const mat   = parseInt(inp.dataset.mat, 10);
+            // "Não adianta" marcado ganha de tudo: grava 0 e pula o campo.
+            if (_semAdtoMarcado(inp)) {
+                itens.push({ matricula: mat, percentual: 0, valor: null });
+                zerados++;
+                return;
+            }
             const bruto = (inp.value || '').trim();
             const pct   = parseInt(bruto, 10);
             // Campo VAZIO = tirar o percentual próprio: volta a herdar o % da
@@ -726,6 +786,11 @@ async function gravar() {
     } else { // V
         document.querySelectorAll('.inp-val-row').forEach(inp => {
             const mat   = parseInt(inp.dataset.mat, 10);
+            if (_semAdtoMarcado(inp)) {
+                itens.push({ matricula: mat, percentual: null, valor: 0 });
+                zerados++;
+                return;
+            }
             const bruto = (inp.value || '').trim();
             const cents = parseCents(bruto);
             // Mesma regra do modo P: campo VAZIO tira o valor próprio (volta a
