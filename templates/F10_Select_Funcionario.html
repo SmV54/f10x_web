@@ -612,6 +612,21 @@ const CONTEXTOS = {
         f_situacao:    'A',
         maxSel:        1,
         msgMaxSel:     'Para lançar contrato, selecione apenas 1 funcionário',
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
+    },
+    contrato_pdf: {
+        titulo:        'Contrato de Experiência — Selecionar Funcionário',
+        subtitulo:     'Selecione o funcionário para imprimir o contrato de experiência',
+        tituloCurto:   'Selecionar — Imprimir Contrato',
+        // A rota do PDF aceita "?mats=", que e como esta tela navega.
+        proximo:       '/contrato_experiencia_pdf',
+        // a lista traz SO quem tem contrato lancado (op1=1/op2=167)
+        apiUrl:        '/api/funcionarios_lista?contexto=contrato_pdf',
+        f_situacao:    'A',
+        maxSel:        1,
+        msgMaxSel:     'Para imprimir o contrato, selecione apenas 1 funcionário',
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
+        msgVazio:      'Nenhum funcionário com contrato de experiência lançado nesta empresa.',
     },
     exame_med: {
         titulo:        'Exame Médico Ocupacional — Selecionar Funcionário',

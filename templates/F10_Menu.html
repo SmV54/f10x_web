@@ -639,6 +639,9 @@ const modulos = {
                 { icone: '📃', nome: 'Contrato / Prorrogação', href: '/select_funcionario?contexto=contrato', ok: true, bloqueioFolha: true },
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
                 { icone: '📄', nome: 'Relação dos Contratos',  href: '/lista_contratos', ok: true, permiteFolhaBloqueada: true },
+                // Só imprime o que já está lançado — não mexe em nada, por isso
+                // vale também com a folha bloqueada (2ª via, contrato antigo).
+                { icone: '🖶', nome: 'Imprimir Contrato de Experiência', href: '/select_funcionario?contexto=contrato_pdf', ok: true, permiteFolhaBloqueada: true },
             ]},
             { nome: 'Afastamentos', itens: [
                 { icone: '🏥', nome: 'Lançar Afastamento',           href: '/select_funcionario?contexto=afastamento',    ok: true, bloqueioFolha: true },

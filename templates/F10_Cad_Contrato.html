@@ -40,6 +40,9 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 .btn{border:0;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:600;cursor:pointer}
 .btn-ok{background:var(--accent);color:#fff}
 .btn-del{background:#fff;color:#b91c1c;border:1px solid #fca5a5}
+.btn-imp{background:#fff;color:var(--accent);border:1px solid var(--accent);
+      text-decoration:none;display:inline-block;line-height:normal}
+.btn-imp:hover{background:var(--accent);color:#fff}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .acoes{display:flex;gap:10px;margin-top:18px;align-items:center;flex-wrap:wrap}
 .hist{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
@@ -212,6 +215,10 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
         {% if contrato %}Escolha uma ação{% else %}Gravar contrato{% endif %}
       </button>
       {% if contrato %}
+      <!-- Imprimir sai da mesma fonte que a tela mostra (o evento op1=1/op2=167),
+           entao o papel sempre bate com o que esta aqui, inclusive prorrogado. -->
+      <a class="btn btn-imp" href="/contrato_experiencia_pdf/{{ func.matricula|int }}"
+         target="_blank" rel="noopener">&#128438; Imprimir contrato</a>
       <button class="btn btn-del" id="btnExcluir">
         {% if pode_prorrogar %}Excluir o contrato{% else %}Excluir a prorrogação{% endif %}
       </button>

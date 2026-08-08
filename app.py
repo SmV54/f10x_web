@@ -13202,6 +13202,7 @@ def api_funcionario_incluir():
     # existe um so lugar com a verdade do contrato, e a prorrogacao encontra o
     # cadastro inicial ja gravado (sem ele ela nao teria de onde partir).
     aviso = None
+    _contrato_gravado = False
     if len(exp_dt) == 8:
         if not mat:
             aviso = ("Funcionario gravado, mas o contrato de experiencia nao foi "
@@ -13238,6 +13239,7 @@ def api_funcionario_incluir():
                     "ref3":       int(clau_exp),
                     "campotxt1":  (d.get("objDet") or "").strip()[:100] or None,
                 }).execute()
+                _contrato_gravado = True
                 gravar_log("CONTRATO",
                            f"Contrato de experiencia na inclusao: {nome[:30]} — "
                            f"termino {_fmt_dt(exp_dt)} ({dias_exp} dias)", matricula=mat)
@@ -13254,7 +13256,19 @@ def api_funcionario_incluir():
                      else "Remessa do eSocial NÃO gerada."))
         aviso = f"{aviso} {_extra}".strip() if aviso else _extra
 
-    return jsonify({"ok": True, "aviso": aviso})
+    # contrato_exp diz a tela se pode oferecer a emissao do contrato. Duas
+    # condicoes:
+    #   1) o evento entrou mesmo — usa a flag do insert, e nao
+    #      "aviso in (None, '')": em admissao retroativa o aviso vem preenchido
+    #      mesmo com o contrato gravado direitinho;
+    #   2) a admissao e do mes da folha ativa. Em admissao de mes anterior o
+    #      funcionario ja esta trabalhando ha tempo e o contrato ja foi
+    #      assinado no papel — nao faz sentido oferecer.
+    _adm_no_mes = bool(len(dtadm_cad) == 8 and len(anomes_ev) == 6
+                       and dtadm_cad[:6] == anomes_ev)
+    return jsonify({"ok": True, "aviso": aviso,
+                    "matricula": mat,
+                    "contrato_exp": bool(_contrato_gravado and _adm_no_mes)})
 
 
 # =========================================================
@@ -13971,6 +13985,279 @@ def api_contrato_excluir():
                             if restam <= 0 else
                             f"Prorrogacao excluida — o contrato voltou ao termino "
                             f"{_fmt_dt(ant)}." if desfazer else "Prorrogacao excluida.")})
+
+# =========================================================
+# CONTRATO DE EXPERIENCIA — PDF
+# =========================================================
+# Texto do termo aditivo, guardado para a emissao pela tela Eventuais ->
+# Contrato por Prazo Determinado. NAO entra no contrato inicial. As datas: o
+# termino anterior fica no data1i do evento e o novo no data1f (ver
+# _contrato_prazo -> dtterm_ant / dtterm).
+CONTRATO_EXP_PRORROGACAO_TXT = (
+    "Por mútuo acordo entre as partes, o presente Contrato de Experiência, "
+    "que venceria em {dtterm_ant}, fica prorrogado até o dia {dtterm}."
+)
+
+
+def _contrato_exp_dados(id_cliente, id_empresa, mat):
+    """Junta empresa + funcionario + contrato para montar o PDF.
+
+    Devolve (dados, erro). O contrato sai do MESMO evento op1=1/op2=167 que a
+    tela Eventuais -> Contrato por Prazo Determinado grava e prorroga, entao o
+    papel sempre reflete o que esta lancado — inclusive a prorrogacao.
+    """
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, cpf, dtadm, vrsalfx, "
+                     "nmcargo, cbofuncao, id_tab_horario")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .limit(1).execute())
+    except Exception as e:
+        return None, f"Erro ao ler o funcionario: {e}"
+    if not r.data:
+        return None, "Funcionario nao encontrado."
+    cad = r.data[0]
+
+    contrato = _contrato_prazo(id_empresa, mat)
+    if not contrato or len(str(contrato.get("dtterm") or "")) != 8:
+        return None, ("Este funcionario nao tem contrato de experiencia lancado. "
+                      "Lance por Eventuais -> Contrato por Prazo Determinado.")
+
+    try:
+        re_ = (supabase.table("tab_empresa")
+               .select("*")
+               .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+               .limit(1).execute())
+        emp = (re_.data or [{}])[0]
+    except Exception:
+        emp = {}
+
+    # Jornada: o resumo legivel que a propria tela de cadastro mostra.
+    jornada = ""
+    if cad.get("id_tab_horario"):
+        try:
+            rh = (supabase.table("tab_aux_horarios").select("*")
+                  .eq("id_horario", cad["id_tab_horario"]).limit(1).execute())
+            if rh.data:
+                jornada = _resumo_horario(rh.data[0])
+        except Exception as e:
+            print(f"[contrato exp] horario: {e}")
+
+    # Nome do cargo digitado vence; em branco, cai no nome da funcao pelo CBO
+    # (mesma regra da Ficha de Registro).
+    funcao = str(cad.get("nmcargo") or "").strip()
+    if not funcao and cad.get("cbofuncao"):
+        try:
+            rf = (supabase.table("tab_funcao_cli")
+                  .select("nome_resumido")
+                  .eq("id_cliente", id_cliente)
+                  .eq("cbo_codigo", str(cad["cbofuncao"]).strip())
+                  .eq("situacao", "A").limit(1).execute())
+            if rf.data:
+                funcao = str(rf.data[0].get("nome_resumido") or "").strip()
+        except Exception:
+            pass
+
+    # Endereco do empregador: o tab_empresa NAO guarda endereco (conferido no
+    # banco em 08/08/2026 — 61 colunas, nenhuma de endereco). O app resolve
+    # isso pela BrasilAPI, com o endereco cadastral da Receita — mesmo caminho
+    # do /api/empresa_endereco. Os get() de coluna ficam como primeira tentativa
+    # porque base migrada do Desktop pode ter esses campos.
+    e_logr = emp.get("end_logradouro") or emp.get("logradouro") or ""
+    e_nr   = emp.get("end_nrlogr") or emp.get("nrlograd") or ""
+    e_cmp  = emp.get("end_complemento") or emp.get("complemento") or ""
+    e_bai  = emp.get("end_bairro") or emp.get("bairro") or ""
+    e_cid  = (emp.get("end_cidade_nome") or emp.get("cidade_nome")
+              or emp.get("cidade") or emp.get("municipio") or "")
+    e_uf   = emp.get("end_uf") or emp.get("uf") or ""
+
+    if not e_logr and not e_cid:
+        _cnpj_num = so_numeros(emp.get("cnpj") or session.get("cnpj_empresa", ""))
+        if _cnpj_num:
+            try:
+                _rr = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{_cnpj_num}",
+                                   timeout=6,
+                                   headers={"User-Agent": "Folha10-Simples/1.0"})
+                if _rr.status_code == 200:
+                    _j    = _rr.json()
+                    e_logr = _j.get("logradouro") or ""
+                    e_nr   = _j.get("numero") or ""
+                    e_cmp  = _j.get("complemento") or ""
+                    e_bai  = _j.get("bairro") or ""
+                    e_cid  = _j.get("municipio") or ""
+                    e_uf   = _j.get("uf") or ""
+            except Exception as e:
+                print(f"[contrato exp] endereco pela BrasilAPI: {e}")
+
+    endereco = ", ".join([p for p in [e_logr, (f"nº {e_nr}" if e_nr else ""),
+                                      e_cmp, e_bai] if p])
+    if e_cid:
+        endereco = f"{endereco} — {e_cid}/{e_uf}" if endereco else f"{e_cid}/{e_uf}"
+
+    return {
+        "razao":     (emp.get("razaosocial") or emp.get("nome_fantasia")
+                      or str(session.get("empresa_info") or "")).strip() or "—",
+        "cnpj":      _fmt_cnpj(emp.get("cnpj") or session.get("cnpj_empresa", "")),
+        "endereco":  endereco or "—",
+        "cidade":    e_cid or "—",
+        "nome":      (cad.get("nome") or cad.get("nomer") or "").strip() or "—",
+        "cpf":       _cpf_br(cad.get("cpf")),
+        "funcao":    funcao or "—",
+        "cbo":       str(cad.get("cbofuncao") or "").strip() or "—",
+        "salario":   f"{(int(cad.get('vrsalfx') or 0) / 100):,.2f}"
+                     .replace(",", "X").replace(".", ",").replace("X", "."),
+        "jornada":   jornada or "—",
+        "dtadm":     str(cad.get("dtadm") or "").zfill(8),
+        "dias":      int(contrato.get("dias") or 0),
+        "dtterm":    str(contrato.get("dtterm") or ""),
+        "dtterm_ant": str(contrato.get("dtterm_ant") or ""),
+        "prorrogacoes": int(contrato.get("prorrogacoes") or 0),
+        "matricula": mat,
+    }, None
+
+
+@app.route("/contrato_experiencia_pdf")
+@app.route("/contrato_experiencia_pdf/<int:mat>")
+def contrato_experiencia_pdf(mat=None):
+    if not session.get("logado"):
+        return redirect("/")
+
+    # Sem matricula no caminho, veio da tela de selecao, que navega com
+    # "?mats=". A tela limita a 1, mas se vier mais de uma vale a primeira.
+    if mat is None:
+        _m = (request.args.get("mats") or request.args.get("mat") or "").split(",")[0]
+        _m = re.sub(r"\D", "", _m)
+        if not _m:
+            return Response("<p style='font-family:sans-serif;padding:24px'>"
+                            "Selecione um funcionário para imprimir o contrato.</p>",
+                            mimetype="text/html")
+        mat = int(_m)
+
+    from io import BytesIO
+    from flask import make_response
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    d, erro = _contrato_exp_dados(session.get("id_cliente"),
+                                  _get_id_empresa(), mat)
+    if erro:
+        return Response(f"<p style='font-family:sans-serif;padding:24px'>{erro}</p>",
+                        mimetype="text/html")
+
+    PRETO = colors.HexColor("#111827")
+    st_tit  = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=12,
+                             alignment=1, textColor=PRETO, leading=16)
+    st_sub  = ParagraphStyle("s", fontName="Helvetica-Bold", fontSize=9,
+                             textColor=PRETO, leading=13)
+    st_txt  = ParagraphStyle("x", fontName="Helvetica", fontSize=9,
+                             textColor=PRETO, leading=13, alignment=4)
+    st_qua  = ParagraphStyle("q", fontName="Helvetica", fontSize=9,
+                             textColor=PRETO, leading=13)
+    st_ass  = ParagraphStyle("a", fontName="Helvetica", fontSize=8,
+                             alignment=1, textColor=PRETO, leading=11)
+
+    def linha_cheia():
+        t = Table([[""]], colWidths=[17 * cm], rowHeights=[1])
+        t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.8, PRETO)]))
+        return t
+
+    def item(num, texto):
+        return Table([[Paragraph(f"<b>{num}</b>", st_qua), Paragraph(texto, st_txt)]],
+                     colWidths=[0.9 * cm, 16.1 * cm],
+                     style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                       ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                       ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+
+    def assinaturas():
+        """Quatro linhas: funcionario/empresa em cima, testemunhas embaixo."""
+        vazio = "_" * 42
+        bloco = [
+            [Paragraph(vazio, st_ass), Paragraph(vazio, st_ass)],
+            [Paragraph("<b>FUNCIONÁRIO</b>", st_ass), Paragraph("<b>EMPRESA</b>", st_ass)],
+            [Paragraph(d["nome"], st_ass), Paragraph(d["razao"], st_ass)],
+            [Paragraph("&nbsp;", st_ass), Paragraph("&nbsp;", st_ass)],
+            [Paragraph(vazio, st_ass), Paragraph(vazio, st_ass)],
+            [Paragraph("<b>TESTEMUNHA</b>", st_ass), Paragraph("<b>TESTEMUNHA</b>", st_ass)],
+        ]
+        return Table(bloco, colWidths=[8.5 * cm, 8.5 * cm],
+                     style=TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                                       ("TOPPADDING", (0, 0), (-1, -1), 1),
+                                       ("BOTTOMPADDING", (0, 0), (-1, -1), 1)]))
+
+    def cabec_partes():
+        return [
+            linha_cheia(), Spacer(1, 4),
+            Paragraph(f"<b>EMPREGADOR:</b> {d['razao']}", st_qua),
+            Paragraph(f"<b>CNPJ:</b> {d['cnpj']}", st_qua),
+            Paragraph(f"<b>ENDEREÇO:</b> {d['endereco']}", st_qua),
+            Spacer(1, 4), linha_cheia(), Spacer(1, 4),
+            Paragraph(f"<b>EMPREGADO:</b> {d['nome']}", st_qua),
+            Paragraph(f"<b>CPF:</b> {d['cpf']} &nbsp;&nbsp;&nbsp; "
+                      f"<b>Matrícula:</b> {int(d['matricula']):06d}", st_qua),
+            Spacer(1, 4), linha_cheia(), Spacer(1, 12),
+        ]
+
+    hoje = date.today()
+    _mes = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho",
+            "agosto", "setembro", "outubro", "novembro", "dezembro"][hoje.month - 1]
+    data_assin = f"{hoje.day} de {_mes} de {hoje.year}"
+
+    story = [Paragraph("CONTRATO DE EXPERIÊNCIA", st_tit), Spacer(1, 8)]
+    story += cabec_partes()
+
+    story += [
+        item("01 -", "Contrato de trabalho por prazo determinado, na modalidade de "
+                     "experiência, nos termos dos artigos 443, 445 e 451 da CLT."),
+        item("02 -", f"O EMPREGADO exercerá as funções de <b>{d['funcao']}</b> "
+                     f"(CBO {d['cbo']})."),
+        item("03 -", f"A remuneração mensal será de <b>R$ {d['salario']}</b>."),
+        item("04 -", f"A jornada de trabalho será de <b>{d['jornada']}</b>, podendo o "
+                     "EMPREGADOR alterá-la de acordo com as necessidades, respeitados "
+                     "os limites legais."),
+        item("05 -", f"O prazo deste contrato é de <b>{d['dias']} dias</b>, com início em "
+                     f"<b>{_fmt_dt(d['dtadm'])}</b> e término em <b>{_fmt_dt(d['dtterm'])}</b>, "
+                     "podendo ser prorrogado uma única vez, mediante termo aditivo "
+                     "assinado pelas partes, desde que a soma dos períodos não "
+                     "ultrapasse 90 dias (art. 445, parágrafo único, da CLT)."),
+        item("06 -", "Permanecendo o EMPREGADO a serviço do EMPREGADOR após o término "
+                     "deste contrato, este passará automaticamente a vigorar por prazo "
+                     "indeterminado."),
+        Spacer(1, 6),
+        Paragraph("E por estarem de pleno acordo, as partes assinam o presente Contrato "
+                  "de Experiência em duas vias, ficando a primeira para o EMPREGADOR e a "
+                  "segunda para o EMPREGADO.", st_txt),
+        Spacer(1, 14),
+        Paragraph(f"{d['cidade']}, {data_assin}.", st_qua),
+        Spacer(1, 22),
+        assinaturas(),
+    ]
+
+    # O TERMO DE PRORROGACAO nao sai neste contrato inicial (decisao do Sergio
+    # em 08/08/2026): o papel da admissao e so o contrato. O texto esta guardado
+    # em CONTRATO_EXP_PRORROGACAO_TXT para quando existir a emissao pela tela
+    # Eventuais -> Contrato por Prazo Determinado, que e onde a prorrogacao
+    # acontece de verdade.
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2 * cm, rightMargin=2 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                            title="Contrato de Experiência")
+    doc.build(story)
+    buf.seek(0)
+
+    gravar_log("CONTRATO", f"Contrato de experiencia emitido em PDF: "
+                           f"{d['nome'][:30]}", matricula=mat)
+
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="ContratoExperiencia_{int(mat):06d}.pdf"')
+    return resp
+
 
 # =========================================================
 # FICHA DE REGISTRO — TELA
@@ -15576,6 +15863,22 @@ def api_funcionarios_lista():
     _contexto     = request.args.get("contexto", "").strip()
     so_com_ferias = _contexto == "ferias"
 
+    # Contexto imprimir contrato: so entra na lista quem TEM contrato lancado
+    # (evento op1=1/op2=167). Sem isso a tela ofereceria funcionario para quem
+    # o PDF nao existe, e o usuario so descobriria depois de clicar.
+    contrato_mats = set()
+    if _contexto == "contrato_pdf":
+        try:
+            r_ct = (supabase.table("tab_eventos")
+                    .select("matricula")
+                    .eq("id_empresa", id_empresa)
+                    .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                    .execute())
+            contrato_mats = {int(row["matricula"]) for row in (r_ct.data or [])
+                             if row.get("matricula") is not None}
+        except Exception as e:
+            print(f"[funcionarios_lista] contratos: {e}")
+
     # Contexto pensão: marca na lista quem JÁ tem pensão ativa, para o usuário
     # saber de cara que aquele clique é edição, não cadastro novo.
     pensao_mats = set()
@@ -15629,6 +15932,8 @@ def api_funcionarios_lista():
             mat_int = int(f.get("matricula") or 0)
         except (TypeError, ValueError):
             mat_int = 0
+        if _contexto == "contrato_pdf" and mat_int not in contrato_mats:
+            continue
         funcionarios.append({
             "matricula": f.get("matricula"),
             "nome":      nome,

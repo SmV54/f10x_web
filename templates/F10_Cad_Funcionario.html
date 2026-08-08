@@ -2356,6 +2356,10 @@ async function salvarFuncionario() {
                         <button class="btn btn-salvar" onclick="window.location.reload()">
                             &#43; Cadastrar outro Funcionário
                         </button>
+                        ${json.contrato_exp ? `<button class="btn btn-voltar" style="border-color:var(--accent);color:var(--accent)"
+                            onclick="window.open('/contrato_experiencia_pdf/${json.matricula}','_blank')">
+                            &#128196; Contrato de Experiência
+                        </button>` : ''}
                         <button class="btn btn-voltar" onclick="window.location.href='/menu'">
                             &#8592; Voltar Menu
                         </button>
@@ -2372,6 +2376,17 @@ async function salvarFuncionario() {
                     </div>`;
             }
             painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+            // Quadro de experiência preenchido: oferece o papel para assinar
+            // enquanto o funcionário ainda está na frente. Quem disser "agora
+            // não" continua com o botão no painel.
+            if (json.contrato_exp) {
+                const emitir = await f10Confirm(
+                    'O contrato de experiência foi lançado.\n\n'
+                    + 'Quer emitir agora o contrato para assinatura?',
+                    { titulo: 'Contrato de Experiência', tipo: 'info',
+                      okText: 'Emitir agora', cancelText: 'Agora não' });
+                if (emitir) window.open('/contrato_experiencia_pdf/' + json.matricula, '_blank');
+            }
         } else {
             painel.innerHTML = `<div class="resultado-erro"><strong>Erro ao gravar:</strong> ${json.msg}</div>`;
         }
