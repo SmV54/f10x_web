@@ -512,8 +512,8 @@ tr:hover td { background: #f8fafc; }
           <td id="rec-{{ r.id_esocial }}" class="cel-recibo">
             {% if r.recibo %}
               <span class="res-ok" title="{{ r.recibo }}">{{ r.recibo }}</span>
-            {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
-              <span class="res-erro" title="{{ r.observacao_erro }}">{{ r.observacao_erro }}</span>
+            {% elif r._erro_txt and not r._erro_txt.startswith('AGUARDANDO:') %}
+              <span class="res-erro" title="{{ r._erro_txt }}">{{ r._erro_txt }}</span>
             {% else %}
               <span style="color:#94a3b8;font-size:12px;">—</span>
             {% endif %}

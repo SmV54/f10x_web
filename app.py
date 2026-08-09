@@ -14816,9 +14816,10 @@ def rel_esocial_remessas():
 
             for r in data:
                 recibo = (r.get("recibo")          or "").strip()
-                obs    = (r.get("observacao_erro") or "").strip()
+                obs    = _es_obs_status(r.get("observacao_erro"))
                 dgrava = (r.get("data_grava")      or "").strip()
 
+                r["_erro_txt"] = obs   # sem o bloco PARAMS: só o status do envio
                 if not dgrava and not recibo:
                     r["_sit"] = "1"; r["_sit_label"] = "Pendente";  r["_sit_class"] = "sit-pendente"
                 elif obs:
@@ -26280,6 +26281,35 @@ def api_esocial_s1010_deletar():
 # =========================================================
 # eSocial S-1020 — TELA DE LISTAGEM
 # =========================================================
+def _fpas_tercs_empresa(id_empresa):
+    """FPAS e codigo de Terceiros da empresa -> (fpas, cod_tercs).
+
+    O codTercs sai do FPAS (tab_aux_fpas), em 4 digitos. Excecao: Simples
+    Nacional / MEI (classTrib 01-04) recolhe Terceiros pela DAS, entao o
+    codTercs TEM que ser 0000 — senao o eSocial devolve o erro 247."""
+    fpas = cod_tercs = class_trib = ""
+    try:
+        r_emp = (supabase.table("tab_empresa").select("gps_fpas,es08_classtributaria")
+                 .eq("id_empresa", id_empresa).limit(1).execute())
+        if r_emp.data:
+            fpas       = str(r_emp.data[0].get("gps_fpas") or "").strip()
+            class_trib = str(r_emp.data[0].get("es08_classtributaria") or "").strip().zfill(2)
+    except Exception as e:
+        print(f"[FPAS empresa] erro={e}")
+        return "", ""
+    if class_trib in ('01', '02', '03', '04'):
+        cod_tercs = '0000'
+    elif fpas:
+        try:
+            r_f = (supabase.table("tab_aux_fpas").select("cod_terceiros")
+                   .eq("cod_fpas", int(fpas)).limit(1).execute())
+            if r_f.data:
+                cod_tercs = str(r_f.data[0].get("cod_terceiros") or "").strip().zfill(4)
+        except Exception:
+            pass
+    return fpas, cod_tercs
+
+
 @app.route("/esocial_s1020")
 def esocial_s1020():
     if not session.get("logado"):
@@ -26304,30 +26334,7 @@ def esocial_s1020():
         rows = []
 
     # FPAS + Código de Terceiros da empresa para pré-preencher o modal
-    fpas_empresa = ""
-    cod_tercs_empresa = ""
-    class_trib_empresa = ""
-    try:
-        r_emp = (supabase.table("tab_empresa").select("gps_fpas,es08_classtributaria")
-                 .eq("id_empresa", id_empresa).limit(1).execute())
-        if r_emp.data:
-            fpas_empresa = str(r_emp.data[0].get("gps_fpas") or "")
-            class_trib_empresa = str(r_emp.data[0].get("es08_classtributaria") or "").strip().zfill(2)
-    except Exception:
-        pass
-    # Código de terceiros é derivado do FPAS (tab_aux_fpas), formatado em 4 dígitos.
-    # Exceto Simples Nacional / MEI (classTrib 01-04): Terceiros vão pela DAS,
-    # então o codTercs TEM que ser 0000 (erro 247 do eSocial).
-    if class_trib_empresa in ('01', '02', '03', '04'):
-        cod_tercs_empresa = '0000'
-    elif fpas_empresa:
-        try:
-            r_f = (supabase.table("tab_aux_fpas").select("cod_terceiros")
-                   .eq("cod_fpas", int(fpas_empresa)).limit(1).execute())
-            if r_f.data:
-                cod_tercs_empresa = str(r_f.data[0].get("cod_terceiros") or "").strip().zfill(4)
-        except Exception:
-            pass
+    fpas_empresa, cod_tercs_empresa = _fpas_tercs_empresa(id_empresa)
 
     import json as _json
 
@@ -30010,6 +30017,20 @@ def api_esocial_s2299_reconsultar():
 _LAYOUTS_TABELA_ESOCIAL = ["1000", "1005", "1010", "1020", "1070"]
 
 
+def _es_obs_status(obs):
+    """Parte de STATUS da observacao_erro — o que sobra depois dos PARAMS.
+
+    Nos eventos de tabela (S-1000/S-1010/S-1020) a coluna guarda os parametros
+    da remessa como `PARAMS:{...}` e, depois do separador `|`, o status do
+    envio (ver _obs_upd). Quem quiser saber se a remessa deu erro tem que olhar
+    so a 2a parte: usando a coluna crua, remessa recem-criada — que so tem
+    PARAMS — aparecia como "Com Erro" na lista sem nunca ter sido enviada."""
+    obs = str(obs or "").strip()
+    if not obs.startswith("PARAMS:"):
+        return obs
+    return obs.split("|", 1)[1].strip() if "|" in obs else ""
+
+
 @app.route("/esocial_fila")
 def esocial_fila():
     if not session.get("logado"):
@@ -30168,7 +30189,7 @@ def esocial_fila():
             r["_envio_fmt"] = ""
 
         recibo = (r.get("recibo") or "").strip()
-        obs    = (r.get("observacao_erro") or "").strip()
+        obs    = _es_obs_status(r.get("observacao_erro"))
         dgrava = (r.get("data_grava") or "").strip()
 
         if recibo:
@@ -30184,6 +30205,7 @@ def esocial_fila():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
+        r["_erro_txt"]  = obs   # só a parte de status: o PARAMS não é erro
         r["_operacao"]  = str(r.get("operacao") or "I").upper()
 
         am = r.get("ano_mes")
@@ -30336,7 +30358,7 @@ def rel_esocial_fila_pdf():
         else:
             r["_envio"] = ""
         recibo = (r.get("recibo") or "").strip()
-        obs    = (r.get("observacao_erro") or "").strip()
+        obs    = _es_obs_status(r.get("observacao_erro"))
         dgrava = (r.get("data_grava") or "").strip()
         if recibo:
             s = "E"
@@ -31193,6 +31215,25 @@ def _s1200_listar_pendentes_prereq(id_empresa):
     return counts
 
 
+def _esocial_rows_layout(id_empresa, layout, campos):
+    """Le tab_esocial de um layout paginado. O PostgREST corta em 1000 linhas e
+    uma leitura truncada aqui faria a conferencia acusar rubrica nao declarada
+    que na verdade ja tem recibo."""
+    out, off = [], 0
+    while True:
+        chunk = (supabase.table("tab_esocial")
+                 .select(campos)
+                 .eq("id_empresa", id_empresa)
+                 .eq("layout", layout)
+                 .range(off, off + 999)
+                 .execute().data or [])
+        out.extend(chunk)
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    return out
+
+
 def _s1010_declaradas(id_empresa):
     """Rubricas com S-1010 ACEITO na empresa -> {cod_rubr: menor ini_valid}.
 
@@ -31202,11 +31243,7 @@ def _s1010_declaradas(id_empresa):
     import json as _json
     out = {}
     try:
-        rows = (supabase.table("tab_esocial")
-                .select("matricula, recibo, observacao_erro")
-                .eq("id_empresa", id_empresa)
-                .eq("layout", "1010")
-                .execute().data or [])
+        rows = _esocial_rows_layout(id_empresa, "1010", "matricula, recibo, observacao_erro")
     except Exception as e:
         # Devolve None (nao {}) de proposito: dicionario vazio significaria
         # "nenhuma verba declarada" e faria a rotina criar S-1010 para TODAS.
@@ -31220,7 +31257,7 @@ def _s1010_declaradas(id_empresa):
         # a coluna matricula. So os registros antigos, vindos da migracao do
         # Desktop, e que trazem o codigo ali — por isso o fallback.
         cod, ini = "", ""
-        obs = str(r.get("observacao_erro") or "")
+        obs = str(r.get("observacao_erro") or "").split("|")[0]
         if obs.startswith("PARAMS:"):
             try:
                 _p  = _json.loads(obs[7:])
@@ -31238,10 +31275,67 @@ def _s1010_declaradas(id_empresa):
     return out
 
 
+def _s1020_declaradas(id_empresa):
+    """Lotacoes com S-1020 ACEITO na empresa -> {codLotacao: menor ini_valid}.
+
+    O codLotacao nao fica em coluna propria: vem do PARAMS gravado em
+    observacao_erro (a tela /esocial_s1020 nao usa a coluna matricula). O envio
+    devolve o PARAMS para a coluna junto com o recibo, entao ele sobrevive.
+
+    Devolve None (nao {}) se a leitura falhar — dicionario vazio significaria
+    "nenhuma lotacao declarada" e barraria o S-1200 a toa."""
+    import json as _json
+    out = {}
+    try:
+        rows = _esocial_rows_layout(id_empresa, "1020", "recibo, observacao_erro")
+    except Exception as e:
+        print(f"[S1020 declaradas] erro={e}")
+        return None
+    for r in rows:
+        if not (r.get("recibo") or "").strip():
+            continue  # so conta quem ja tem recibo
+        # observacao_erro pode vir como "PARAMS:{...}|status" (ver _obs_upd)
+        obs = str(r.get("observacao_erro") or "").split("|")[0]
+        if not obs.startswith("PARAMS:"):
+            continue
+        try:
+            _p  = _json.loads(obs[7:])
+            cod = str(_p.get("codLotacao") or "").strip()
+            ini = str(_p.get("ini") or "")
+        except Exception:
+            continue
+        if not cod:
+            continue
+        if cod not in out or (ini and ini < out[cod]):
+            out[cod] = ini
+    return out
+
+
+def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_verba"):
+    """Le tab_mov da competencia. Pagina de 1000 em 1000 porque o PostgREST
+    corta a resposta nesse tamanho — folha grande perdia linhas em silencio.
+    folha_tipo=None traz TODOS os tipos (N, F, R, A, 1) da competencia."""
+    out, off = [], 0
+    while True:
+        q = (supabase.table("tab_mov")
+             .select(campos)
+             .eq("id_empresa", id_empresa)
+             .eq("folha", int(ano_mes)))
+        if folha_tipo:
+            q = q.eq("folha_tipo", folha_tipo)
+        chunk = q.range(off, off + 999).execute().data or []
+        out.extend(chunk)
+        if len(chunk) < 1000:
+            break
+        off += 1000
+    return out
+
+
 def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     """Verbas lancadas na folha que ainda NAO tem S-1010 aceito.
 
     Devolve lista de {"cod_rubr", "dsc_rubr"} ordenada pelo codigo.
+    folha_tipo=None confere todos os tipos de folha da competencia.
 
     Duas regras que nao sao obvias:
     - a VIGENCIA conta: rubrica declarada com iniValid 2026-07 nao cobre a
@@ -31250,12 +31344,7 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     - verba informativa (codigo >= 9900) fica de fora — ela nao vai no S-1200.
     """
     try:
-        mov = (supabase.table("tab_mov")
-               .select("cod_verba")
-               .eq("id_empresa", id_empresa)
-               .eq("folha", int(ano_mes))
-               .eq("folha_tipo", folha_tipo)
-               .execute().data or [])
+        mov = _mov_da_folha(id_empresa, ano_mes, folha_tipo, campos="cod_verba")
     except Exception as e:
         print(f"[S1010 check] erro ao ler tab_mov: {e}")
         return []
@@ -31294,13 +31383,99 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     return [{"cod_rubr": c, "dsc_rubr": nomes.get(c, f"Verba {c:04d}")} for c in faltando]
 
 
+def _lotacoes_folha_sem_s1020(id_empresa, ano_mes, folha_tipo=None):
+    """Lotacoes usadas pelos funcionarios da folha que ainda NAO tem S-1020 aceito.
+
+    O codLotacao do S-1200 e o centrocusto do funcionario (ver _gerar_xml_s1200).
+    Se ele nunca foi declarado no S-1020, o eSocial recusa o S-1200 — e esse e
+    justamente o caso do cliente no primeiro mes, que ainda nao tem NENHUM
+    registro 1020 na tab_esocial (a checagem de pendentes nao pega isso: ela so
+    olha remessas que ja existem).
+
+    Devolve lista de codigos de lotacao ordenada. Vigencia conta, igual ao S-1010.
+    """
+    try:
+        mov = _mov_da_folha(id_empresa, ano_mes, folha_tipo, campos="matricula")
+    except Exception as e:
+        print(f"[S1020 check] erro ao ler tab_mov: {e}")
+        return []
+    mats = {str(m.get("matricula") or "").strip() for m in mov}
+    mats.discard("")
+    if not mats:
+        return []
+
+    # centrocusto dos funcionarios da empresa (paginado: empresa pode ter
+    # mais de 1000 cadastros e o PostgREST corta a resposta ai)
+    cc_por_mat, off = {}, 0
+    try:
+        while True:
+            chunk = (supabase.table("tab_cad")
+                     .select("matricula, centrocusto")
+                     .eq("id_empresa", id_empresa)
+                     .range(off, off + 999)
+                     .execute().data or [])
+            for c in chunk:
+                cc_por_mat[str(c.get("matricula") or "").strip()] = \
+                    str(c.get("centrocusto") or "").strip()
+            if len(chunk) < 1000:
+                break
+            off += 1000
+    except Exception as e:
+        print(f"[S1020 check] erro ao ler tab_cad: {e}")
+        return []
+
+    usadas = sorted({cc_por_mat.get(m, "") for m in mats} - {""})
+    if not usadas:
+        return []
+
+    declaradas = _s1020_declaradas(id_empresa)
+    if declaradas is None:
+        return []          # nao deu para conferir: deixa o S-1200 seguir
+    _am  = str(ano_mes)
+    comp = f"{_am[:4]}-{_am[4:6]}"
+
+    faltando = []
+    for cod in usadas:
+        ini = declaradas.get(cod)
+        if ini is not None and (not ini or ini <= comp):
+            continue
+        faltando.append(cod)
+    return faltando
+
+
 def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1"):
     """Cria as remessas S-1010 (inclusao) das verbas que faltam. Nao envia —
-    so deixa pronto na Fila para o usuario transmitir. Devolve quantas criou."""
+    so deixa pronto na Fila para o usuario transmitir. Devolve quantas criou.
+
+    Pula a verba que ja tem remessa 1010 na tab_esocial (mesmo pendente ou com
+    erro): sem isso, cada nova tentativa de enviar o S-1200 duplicava a Fila."""
     import json as _json
+
+    # codigos que ja tem alguma remessa 1010 gravada (qualquer situacao)
+    ja_tem = set()
+    try:
+        for r in _esocial_rows_layout(id_empresa, "1010", "matricula, observacao_erro"):
+            cod = ""
+            obs = str(r.get("observacao_erro") or "").split("|")[0]
+            if obs.startswith("PARAMS:"):
+                try:
+                    cod = str(_json.loads(obs[7:]).get("cod_rubr") or "").strip()
+                except Exception:
+                    cod = ""
+            if not cod:
+                cod = str(r.get("matricula") or "").strip()
+            if cod.isdigit():
+                ja_tem.add(int(cod))
+    except Exception as e:
+        # Nao dando para conferir, e melhor nao criar nada do que duplicar.
+        print(f"[S1010 auto] falha ao ler remessas existentes: {e}")
+        return 0
+
     agora = _agora_brasilia()
     criadas = 0
     for v in verbas:
+        if int(v["cod_rubr"]) in ja_tem:
+            continue
         p = _json.dumps({"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
                          "cod_rubr": int(v["cod_rubr"]),
                          "dsc_rubr": v["dsc_rubr"]}, ensure_ascii=False)
@@ -31322,6 +31497,68 @@ def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1")
     return criadas
 
 
+def _criar_s1020_pendentes(id_cliente, id_empresa, lotacoes, ini_valid, tpAmb="1"):
+    """Cria as remessas S-1020 (inclusao) das lotacoes que faltam. Nao envia.
+
+    Devolve (criadas, erro). O FPAS e o codigo de Terceiros saem do cadastro da
+    empresa — sem FPAS nao da para montar o evento, e ai a rotina nao cria nada
+    e devolve o motivo para a tela mostrar.
+
+    tpLotacao fica 01 (estabelecimento/CNPJ), que e o mesmo padrao da tela do
+    S-1020 — no Folha10 a lotacao e o centro de custo do proprio estabelecimento."""
+    import json as _json
+
+    fpas, cod_tercs = _fpas_tercs_empresa(id_empresa)
+    if not fpas:
+        return 0, ("A empresa está sem o código FPAS no cadastro. "
+                   "Preencha o FPAS em Cadastros → Empresa e repita.")
+    if not cod_tercs:
+        return 0, (f"Não foi possível derivar o código de Terceiros do FPAS {fpas}. "
+                   "Cadastre a lotação pela tela Tabelas → S-1020.")
+
+    # lotacoes que ja tem remessa 1020 (qualquer situacao) nao entram de novo
+    ja_tem = set()
+    try:
+        for r in _esocial_rows_layout(id_empresa, "1020", "observacao_erro"):
+            obs = str(r.get("observacao_erro") or "").split("|")[0]
+            if not obs.startswith("PARAMS:"):
+                continue
+            try:
+                cod = str(_json.loads(obs[7:]).get("codLotacao") or "").strip()
+            except Exception:
+                continue
+            if cod:
+                ja_tem.add(cod)
+    except Exception as e:
+        print(f"[S1020 auto] falha ao ler remessas existentes: {e}")
+        return 0, "Não foi possível conferir as remessas S-1020 já existentes."
+
+    agora = _agora_brasilia()
+    criadas = 0
+    for cod in lotacoes:
+        if cod in ja_tem:
+            continue
+        p = _json.dumps({"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
+                         "codLotacao": cod, "tpLotacao": "01",
+                         "fpas": fpas, "codTercs": cod_tercs}, ensure_ascii=False)
+        try:
+            supabase.table("tab_esocial").insert({
+                "id_cliente":      id_cliente,
+                "id_empresa":      id_empresa,
+                "data_cad":        agora.strftime("%Y%m%d"),
+                "hora_cad":        agora.strftime("%H%M"),
+                "layout":          "1020",
+                "ano_mes":         int(ini_valid.replace("-", "")),
+                "folha_tipo":      "I",
+                "operacao":        "I",
+                "observacao_erro": f"PARAMS:{p}",
+            }).execute()
+            criadas += 1
+        except Exception as e:
+            print(f"[S1020 auto] falha ao criar lotacao {cod}: {e}")
+    return criadas, ""
+
+
 def _s1200_msg_pendentes(counts):
     if not counts:
         return ""
@@ -31331,20 +31568,109 @@ def _s1200_msg_pendentes(counts):
             + "\n\nDeseja enviar o S-1200 assim mesmo?")
 
 
+def _s1200_msg_prereq(counts, falta_1010, falta_1020):
+    """Mensagem única da conferência prévia do S-1200 (tabelas + pendências)."""
+    blocos = []
+    if falta_1020:
+        blocos.append(
+            "Lotação (centro de custo) ainda não declarada no eSocial (S-1020):\n  "
+            + "  ·  ".join(falta_1020)
+            + "\nSem o S-1020 aceito o eSocial recusa o S-1200. "
+              "Cadastre e envie pela tela Tabelas → S-1020.")
+    if falta_1010:
+        blocos.append(
+            f"{len(falta_1010)} verba(s) desta folha ainda não foram declaradas no eSocial (S-1010):\n  "
+            + "  ·  ".join(f"{v['cod_rubr']:04d} {v['dsc_rubr']}" for v in falta_1010))
+    if counts:
+        blocos.append(
+            "Remessas pendentes que normalmente vão antes do S-1200:\n  "
+            + "  ·  ".join(f"S-{lay}: {n}" for lay, n in sorted(counts.items())))
+    return "\n\n".join(blocos)
+
+
+def _s1200_anomes_check(arg=None):
+    """Competência a conferir: a do filtro da tela, senão a folha ativa."""
+    am = str(arg or "").strip()
+    if am == "all" or not am.isdigit() or len(am) != 6:
+        am = str(session.get("anomes_atual") or "").strip()
+    return am if am.isdigit() and len(am) == 6 else ""
+
+
 @app.route("/api/esocial_s1200_check_pendentes")
 def api_esocial_s1200_check_pendentes():
-    """Endpoint read-only: retorna se há pré-requisitos pendentes para a empresa atual."""
+    """Endpoint read-only: conferência prévia do S-1200 da empresa atual.
+
+    Três coisas, nesta ordem de gravidade:
+      1. lotações da folha sem S-1020 aceito  (bloqueia — o gov recusa)
+      2. verbas da folha sem S-1010 aceito    (bloqueia — o gov recusa e não
+         diz qual verba faltou)
+      3. remessas pré-requisito pendentes     (só aviso)
+    Não grava nada."""
     if not session.get("logado"):
         return jsonify({"ok": False}), 401
     id_empresa = _get_id_empresa()
+    anomes     = _s1200_anomes_check(request.args.get("anomes"))
+
     counts = _s1200_listar_pendentes_prereq(id_empresa)
-    total = sum(counts.values())
+    falta_1010, falta_1020 = [], []
+    if anomes:
+        # folha_tipo=None: confere a competência inteira (normal, férias,
+        # rescisão, adiantamento e 13º vão todos no S-1200)
+        falta_1010 = _verbas_folha_sem_s1010(id_empresa, int(anomes), None)
+        falta_1020 = _lotacoes_folha_sem_s1020(id_empresa, int(anomes), None)
+
     return jsonify({
-        "ok":        True,
-        "total":     total,
-        "counts":    counts,
-        "msg":       _s1200_msg_pendentes(counts),
+        "ok":             True,
+        "anomes":         anomes,
+        "total":          sum(counts.values()),
+        "counts":         counts,
+        "faltando_s1010": falta_1010,
+        "faltando_s1020": falta_1020,
+        "bloqueia":       bool(falta_1010 or falta_1020),
+        "msg":            _s1200_msg_prereq(counts, falta_1010, falta_1020),
     })
+
+
+@app.route("/api/esocial_s1200_criar_pendencias", methods=["POST"])
+def api_esocial_s1200_criar_pendencias():
+    """Cria na Fila as remessas de tabela que faltam para a competência: S-1020
+    das lotações e S-1010 das verbas ainda não declaradas.
+
+    Recalcula as listas no servidor (não confia no que o navegador mandou) e
+    não envia nada — só deixa pronto para o usuário transmitir."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    data       = request.get_json(force=True) or {}
+    anomes     = _s1200_anomes_check(data.get("anomes"))
+    tpAmb      = str(data.get("tpAmb", "1"))
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Competência não identificada."})
+
+    ini_valid  = f"{anomes[:4]}-{anomes[4:6]}"
+    falta_1020 = _lotacoes_folha_sem_s1020(id_empresa, int(anomes), None)
+    falta_1010 = _verbas_folha_sem_s1010(id_empresa, int(anomes), None)
+
+    if not falta_1020 and not falta_1010:
+        return jsonify({"ok": True, "criadas": 0,
+                        "msg": "As tabelas desta folha já estão todas declaradas no eSocial."})
+
+    partes, erro = [], ""
+    if falta_1020:
+        n20, erro = _criar_s1020_pendentes(id_cliente, id_empresa, falta_1020, ini_valid, tpAmb)
+        partes.append(f"S-1020: {n20} de {len(falta_1020)} lotação(ões)")
+    if falta_1010:
+        n10 = _criar_s1010_pendentes(id_cliente, id_empresa, falta_1010, ini_valid, tpAmb)
+        partes.append(f"S-1010: {n10} de {len(falta_1010)} verba(s)")
+
+    msg = "Remessas criadas na Fila — " + "  ·  ".join(partes) + "."
+    msg += ("\n\nO que não foi criado já tinha remessa esperando envio. "
+            "Envie primeiro o S-1020, depois o S-1010, e então repita o S-1200.")
+    if erro:
+        msg = f"{erro}\n\n{msg}" if partes else erro
+    return jsonify({"ok": not erro, "msg": msg})
 
 
 # =========================================================
@@ -31362,6 +31688,9 @@ def api_esocial_s1200_enviar():
     data       = request.get_json(force=True) or {}
     id_reg     = data.get("id_esocial")
     tpAmb      = str(data.get("tpAmb", "1"))
+    # Confirmar o aviso de remessas pendentes NÃO libera as tabelas: lotação sem
+    # S-1020 e verba sem S-1010 são recusa certa do eSocial, e essas duas barram
+    # o envio sempre — não há "enviar mesmo assim" para elas.
     forcar     = bool(data.get("forcar"))
 
     if not id_reg:
@@ -31400,27 +31729,45 @@ def api_esocial_s1200_enviar():
     if not ok_val:
         return jsonify({"ok": False, "msg": msg_val})
 
-    # 1.b Verbas da folha ainda nao declaradas no S-1010.
+    # 1.b Lotacao (centro de custo) da folha ainda nao declarada no S-1020.
+    #     Vem antes do S-1010 porque e a pendencia mais grave do cliente novo:
+    #     no primeiro mes nao existe NENHUM registro 1020 e a checagem de
+    #     pendentes la de cima nao ve o que nao existe. Sem S-1020 aceito o
+    #     eSocial recusa o S-1200, entao aqui a remessa e criada e o envio para.
+    _falta_lot = _lotacoes_folha_sem_s1020(id_empresa, ano_mes, folha_tipo)
+    if _falta_lot:
+        _am    = str(ano_mes)
+        _n20, _erro20 = _criar_s1020_pendentes(session.get("id_cliente"), id_empresa,
+                                               _falta_lot, f"{_am[:4]}-{_am[4:6]}", tpAmb)
+        _msg = ("Lotação (centro de custo) sem S-1020 aceito no eSocial: "
+                + "  ·  ".join(_falta_lot) + ".\n\n")
+        _msg += _erro20 if _erro20 else (
+            f"{_n20} remessa(s) S-1020 foram criadas na Fila. "
+            "Envie o S-1020 primeiro e depois repita o S-1200.")
+        return jsonify({"ok": False, "prereq_s1020": True,
+                        "lotacoes": _falta_lot, "msg": _msg})
+
+    # 1.c Verbas da folha ainda nao declaradas no S-1010.
     #     O gov rejeita o S-1200 que cita rubrica desconhecida, e a mensagem
     #     dele nao diz QUAL faltou. Aqui a gente descobre antes, ja deixa as
     #     remessas prontas na Fila e diz o que enviar. A checagem de pendentes
     #     logo acima nao cobre isto: ela so olha S-1010 que ja existem.
-    if not forcar:
-        _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo)
-        if _falta:
-            _am   = str(ano_mes)
-            _novas = _criar_s1010_pendentes(session.get("id_cliente"), id_empresa,
-                                            _falta, f"{_am[:4]}-{_am[4:6]}", tpAmb)
-            _lista = "  ·  ".join(f"{v['cod_rubr']:04d} {v['dsc_rubr']}" for v in _falta)
-            return jsonify({
-                "ok": False,
-                "prereq_s1010": True,
-                "verbas": _falta,
-                "msg": (f"{len(_falta)} verba(s) desta folha ainda não foram declaradas "
-                        f"no eSocial (S-1010):\n  {_lista}\n\n"
-                        f"{_novas} remessa(s) S-1010 foram criadas na Fila. "
-                        "Envie o S-1010 primeiro e depois repita o S-1200."),
-            })
+    #     Sem escapatoria: enviar assim so gastaria a viagem ate o gov.
+    _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo)
+    if _falta:
+        _am   = str(ano_mes)
+        _novas = _criar_s1010_pendentes(session.get("id_cliente"), id_empresa,
+                                        _falta, f"{_am[:4]}-{_am[4:6]}", tpAmb)
+        _lista = "  ·  ".join(f"{v['cod_rubr']:04d} {v['dsc_rubr']}" for v in _falta)
+        return jsonify({
+            "ok": False,
+            "prereq_s1010": True,
+            "verbas": _falta,
+            "msg": (f"{len(_falta)} verba(s) desta folha ainda não foram declaradas "
+                    f"no eSocial (S-1010):\n  {_lista}\n\n"
+                    f"{_novas} remessa(s) S-1010 foram criadas na Fila. "
+                    "Envie o S-1010 primeiro e depois repita o S-1200."),
+        })
 
     # 2. Dados do funcionário
     try:

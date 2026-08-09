@@ -497,30 +497,87 @@ function _getTpAmb() {
   return '1';  // Sempre Produção
 }
 
-// Confirmação de pré-requisitos (S-1005/1010/1020/2200/2205/2206/2210/2220/2299).
+// Conferência de pré-requisitos antes do S-1200. Três coisas:
+//   · lotação da folha sem S-1020 aceito  → barra e cria a remessa na Fila
+//   · verba da folha sem S-1010 aceito    → barra e cria a remessa na Fila
+//   · remessas pré-requisito pendentes    → só aviso, dá para seguir
+// As duas primeiras são recusa certa do eSocial: o S-1200 só sai depois que
+// forem enviadas, não existe "enviar mesmo assim" para elas.
 // True quando o usuário já confirmou nesta sessão de página → não pergunta de novo.
 let _prereqConfirmado = false;
 
+function _anomesTela() {
+  const sel = document.getElementById('selAnomes');
+  const v   = sel ? sel.value : '';
+  return (!v || v === 'all') ? '{{ anomes_atual }}' : v;
+}
+
 async function _confirmarPrereqS1200() {
   if (_prereqConfirmado) return true;
+
+  let cd;
   try {
-    const r  = await fetch('/api/esocial_s1200_check_pendentes');
-    const cd = await r.json();
-    if (!cd.ok || !cd.total) {
-      _prereqConfirmado = true;
-      return true;
-    }
-    const ok = await f10Confirm(cd.msg, {
-      titulo:     'Remessas pendentes',
-      tipo:       'aviso',
-      okText:     'Enviar mesmo assim',
-      cancelText: 'Cancelar',
-    });
-    if (ok) _prereqConfirmado = true;
-    return ok;
+    const r = await fetch('/api/esocial_s1200_check_pendentes?anomes='
+                          + encodeURIComponent(_anomesTela()));
+    cd = await r.json();
   } catch (e) {
     return true;  // em caso de falha de rede, não bloqueia
   }
+  if (!cd || !cd.ok) return true;
+
+  const falta1010 = cd.faltando_s1010 || [];
+  const falta1020 = cd.faltando_s1020 || [];
+  if (!cd.total && !falta1010.length && !falta1020.length) {
+    _prereqConfirmado = true;
+    return true;
+  }
+
+  // Tabela faltando: o S-1200 não sai. Deixa as remessas prontas na Fila.
+  if (falta1020.length || falta1010.length) {
+    const titulo = falta1020.length
+      ? (falta1010.length ? 'Tabelas não declaradas (S-1020 e S-1010)'
+                          : 'Lotação não declarada (S-1020)')
+      : 'Verbas não declaradas (S-1010)';
+    const criar = await f10Confirm(
+      cd.msg + '\n\nO S-1200 só pode ser enviado depois que isso for resolvido.', {
+      titulo:     titulo,
+      tipo:       'aviso',
+      okText:     'Criar as remessas',
+      cancelText: 'Fechar',
+    });
+    if (criar) await _criarPendenciasS1200();
+    return false;
+  }
+
+  const ok = await f10Confirm(cd.msg + '\n\nDeseja enviar o S-1200 assim mesmo?', {
+    titulo:     'Remessas pendentes',
+    tipo:       'aviso',
+    okText:     'Enviar mesmo assim',
+    cancelText: 'Cancelar',
+  });
+  if (ok) _prereqConfirmado = true;
+  return ok;
+}
+
+async function _criarPendenciasS1200() {
+  let d;
+  try {
+    const r = await fetch('/api/esocial_s1200_criar_pendencias', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ anomes: _anomesTela(), tpAmb: _getTpAmb() }),
+    });
+    d = await r.json();
+  } catch (e) {
+    d = { ok: false, msg: 'Falha de comunicação: ' + e };
+  }
+  const ir = await f10Confirm(d.msg || 'Nada a fazer.', {
+    titulo:     'Remessas de tabela',
+    tipo:       d.ok ? 'info' : 'aviso',
+    okText:     'Ir para a Fila',
+    cancelText: 'Fechar',
+  });
+  if (ir) window.location.href = '/esocial_fila';
 }
 
 async function _retificar(id, btn) {
@@ -566,7 +623,8 @@ async function _enviar(id, btn, suppressBanner, retificar) {
     const r = await fetch('/api/esocial_s1200_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, forcar: _prereqConfirmado, retificar: !!retificar }),
+      body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, forcar: _prereqConfirmado,
+                             retificar: !!retificar }),
     });
     const data = await r.json();
 
@@ -601,6 +659,19 @@ async function _enviar(id, btn, suppressBanner, retificar) {
       btn.className   = 'btn-enviar reenviar';
       btn.textContent = 'Reenviar';
       recTd.innerHTML = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
+
+      // Barrado pelas tabelas — o servidor já criou as remessas na Fila.
+      // Só no envio avulso: em lote seria um diálogo por trabalhador. A
+      // competência da linha pode ser outra que não a do filtro, então isto
+      // pega o que a conferência prévia não viu.
+      if ((data.prereq_s1010 || data.prereq_s1020) && !suppressBanner) {
+        const irFila = await f10Confirm(data.msg, {
+          titulo: data.prereq_s1020 ? 'Lotação não declarada (S-1020)'
+                                    : 'Verbas não declaradas (S-1010)',
+          tipo: 'aviso', okText: 'Ir para a Fila', cancelText: 'Fechar',
+        });
+        if (irFila) window.location.href = '/esocial_fila';
+      }
     }
   } catch(e) {
     clearInterval(animTimer);

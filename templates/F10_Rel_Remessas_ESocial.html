@@ -417,7 +417,7 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
                     <span title="{{ r.recibo or '' }}">{{ r._recibo_curto or '—' }}</span>
                 </td>
                 <td class="col-obs" style="font-size:11px;color:#64748b;">
-                    {{ r.observacao_erro or '' }}
+                    {{ r._erro_txt or '' }}
                 </td>
             </tr>
             {% endfor %}
