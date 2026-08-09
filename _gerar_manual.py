@@ -587,9 +587,6 @@ item("Cinco bancos atendidos.")
 item("Duas modalidades: crédito em conta e PIX.")
 item("O arquivo tem que suportar funcionários com conta em banco diferente do banco da empresa.")
 
-h2("Integração")
-caminho("SEFIP / GFIP · Exportar para Contabilidade")
-p("Sem regra adicional documentada até esta edição do manual.")
 
 
 # ============================================================== ETAPA 9

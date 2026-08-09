@@ -629,9 +629,6 @@ p("O sistema gera o arquivo no padrão CNAB 240 para o banco pagar a folha, em "
 dica("Confira os dados bancários no cadastro do funcionário antes de gerar o "
      "arquivo. Conta errada é o motivo mais comum de pagamento devolvido.")
 
-h2("Integração")
-p("SEFIP/GFIP e a exportação para a contabilidade ficam neste grupo.")
-
 
 # ============================================================== ETAPA 9
 h1("Etapa 9 — eSocial")
