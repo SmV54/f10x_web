@@ -17,6 +17,11 @@ Copias/
 "000 - Anotacoes/"
 eSocial_XML/
 *.pdf
+# Exceção: o Manual do Usuário é servido pelo botão do menu (/manual_pdf).
+# Ele é gerado pelo Word na máquina local, então precisa viajar no
+# repositório — no servidor não há como produzi-lo. O manual interno, de
+# regras, não é servido por rota nenhuma: só o .docx dele fica versionado.
+!manual/Manual_do_Usuario_Folha10_Simples.pdf
 Nada.txt
 *.txt
 !versaoxxx.txt

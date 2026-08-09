@@ -9188,6 +9188,27 @@ def landing_petshop():
     return send_file(caminho)
 
 
+@app.route("/manual_pdf")
+def manual_pdf():
+    """Manual do Usuário em PDF, aberto pelo botão do menu.
+
+    É o manual de OPERAÇÃO. O outro arquivo da pasta manual/ é o de regras
+    técnicas, interno — não é servido por rota nenhuma.
+
+    O arquivo viaja no repositório porque é gerado pelo Word na máquina local:
+    no servidor não há como produzi-lo. Vai inline, para abrir no visualizador
+    do navegador em vez de baixar."""
+    if not session.get("logado"):
+        return redirect("/")
+    caminho = os.path.join(os.path.dirname(__file__), "manual",
+                           "Manual_do_Usuario_Folha10_Simples.pdf")
+    if not os.path.exists(caminho):
+        return ("Manual ainda não publicado nesta instalação.", 404)
+    return send_file(caminho, mimetype="application/pdf",
+                     as_attachment=False,
+                     download_name="Manual_do_Usuario_Folha10_Simples.pdf")
+
+
 @app.route("/lead_petshop", methods=["POST"])
 def lead_petshop():
     """Recebe o formulário da landing: valida, dispara o WhatsApp de boas-vindas

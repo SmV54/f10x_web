@@ -329,9 +329,15 @@ body.menu-numerado .nav-item::before {
     flex-wrap: wrap; align-items: center;
 }
 
-/* ── BOTÃO PREFERÊNCIAS FIXO (canto superior direito, abaixo do cabeçalho) ── */
-.card-pref {
+/* ── BOTÕES FIXOS DO CANTO (superior direito, abaixo do cabeçalho) ──
+   Manual e Preferências dividem a mesma pílula. Ficam num flex em vez de
+   cada um com o seu "right": assim mudar o rótulo de um não desalinha o
+   outro. Preferências continua encostado na borda, como sempre esteve. */
+.cards-canto {
     position: fixed; top: 104px; right: 24px; z-index: 500;
+    display: flex; align-items: center; gap: 8px;
+}
+.card-pref {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 5px 12px 5px 5px; border-radius: 22px; cursor: pointer;
     background: var(--surface); border: 1px solid var(--border);
@@ -1506,10 +1512,17 @@ function iniciarTour() {
 </a>
 {% endif %}
 
-<a class="card-pref" href="/preferencias" title="Preferências">
-  <span class="card-pref-icone">⚙️</span>
-  <span class="card-pref-label">Preferências</span>
-</a>
+<div class="cards-canto">
+  <a class="card-pref" href="/manual_pdf" target="_blank" rel="noopener"
+     title="Manual de Regras do Sistema (PDF)">
+    <span class="card-pref-icone">📘</span>
+    <span class="card-pref-label">Manual</span>
+  </a>
+  <a class="card-pref" href="/preferencias" title="Preferências">
+    <span class="card-pref-icone">⚙️</span>
+    <span class="card-pref-label">Preferências</span>
+  </a>
+</div>
 
 <script src="/static/f10_dialog.js"></script>
 

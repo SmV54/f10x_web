@@ -11,198 +11,19 @@ no codigo. Nada aqui e suposicao: o que nao esta documentado aparece como
 lacuna declarada, nao inventado.
 """
 import os
-from docx import Document
-from docx.shared import Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
-from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+from _manual_base import *   # noqa: F401,F403
 
-DESTINO = r"C:\folha10-simples\manual"
+DESTINO = "C:/folha10-simples/manual"
 ARQUIVO = os.path.join(DESTINO, "Manual_de_Regras_Folha10_Simples.docx")
-VERSAO_SISTEMA = open(r"C:\folha10-simples\versaoxxx.txt", encoding="utf-8").read().strip()
+VERSAO_SISTEMA = open("C:/folha10-simples/versaoxxx.txt", encoding="utf-8").read().strip()
 
-AZUL   = RGBColor(0x1D, 0x4E, 0xD8)
-CINZA  = RGBColor(0x47, 0x55, 0x69)
-VERMELHO = RGBColor(0xB9, 0x1C, 0x1C)
-
-doc = Document()
-
-# ---------------------------------------------------------------- estilos
-normal = doc.styles["Normal"]
-normal.font.name = "Calibri"
-normal.font.size = Pt(10.5)
-normal.paragraph_format.space_after = Pt(6)
-normal.paragraph_format.line_spacing = 1.12
-
-for nome, tam, cor in (("Heading 1", 17, AZUL), ("Heading 2", 13, AZUL), ("Heading 3", 11.5, CINZA)):
-    st = doc.styles[nome]
-    st.font.name = "Calibri"
-    st.font.size = Pt(tam)
-    st.font.color.rgb = cor
-    st.font.bold = True
-    st.paragraph_format.space_before = Pt(14 if nome == "Heading 1" else 10)
-    st.paragraph_format.space_after = Pt(6)
-
-sec = doc.sections[0]
-sec.top_margin = sec.bottom_margin = Cm(2.0)
-sec.left_margin = sec.right_margin = Cm(2.2)
-
-
-def _borda_inferior(par):
-    """Fio fino embaixo do paragrafo — separa o cabecalho do texto da pagina."""
-    pPr = par._p.get_or_add_pPr()
-    bordas = OxmlElement("w:pBdr")
-    linha = OxmlElement("w:bottom")
-    linha.set(qn("w:val"), "single")
-    linha.set(qn("w:sz"), "4")        # 4 oitavos de ponto = fio de 0,5pt
-    linha.set(qn("w:space"), "4")
-    linha.set(qn("w:color"), "C7D2E4")
-    bordas.append(linha)
-    pPr.append(bordas)
-
-
-def montar_cabecalho(secao, titulo, direita):
-    """Cabecalho de todas as paginas, menos a capa.
-
-    Titulo a esquerda e versao a direita, na mesma linha, com um tab alinhado
-    a direita na largura util da pagina (21cm de A4 menos as duas margens)."""
-    secao.different_first_page_header_footer = True   # capa sai limpa
-    par = secao.header.paragraphs[0]
-    par.text = ""
-    par.paragraph_format.space_after = Pt(4)
-    par.paragraph_format.tab_stops.add_tab_stop(
-        secao.page_width - secao.left_margin - secao.right_margin,
-        WD_TAB_ALIGNMENT.RIGHT)
-    r = par.add_run(titulo)
-    r.font.size = Pt(8.5)
-    r.font.color.rgb = CINZA
-    r = par.add_run("\t" + direita)
-    r.font.size = Pt(8.5)
-    r.font.color.rgb = CINZA
-    _borda_inferior(par)
-
-
-montar_cabecalho(sec, "Folha10 Simples — Manual de Regras do Sistema",
-                 f"versão {VERSAO_SISTEMA}")
-
-
-# ---------------------------------------------------------------- helpers
-def h1(txt, quebra=True):
-    if quebra:
-        doc.add_page_break()
-    doc.add_heading(txt, level=1)
-
-
-def h2(txt):
-    doc.add_heading(txt, level=2)
-
-
-def h3(txt):
-    doc.add_heading(txt, level=3)
-
-
-def p(txt="", italico=False, cor=None):
-    par = doc.add_paragraph()
-    run = par.add_run(txt)
-    run.italic = italico
-    if cor is not None:
-        run.font.color.rgb = cor
-    return par
-
-
-def regra(titulo, texto):
-    """Um paragrafo com o nome da regra em negrito e a explicacao em seguida."""
-    par = doc.add_paragraph()
-    par.add_run(titulo + " — ").bold = True
-    par.add_run(texto)
-    return par
-
-
-def item(txt, nivel=0):
-    par = doc.add_paragraph(txt, style="List Bullet")
-    par.paragraph_format.left_indent = Cm(0.7 + 0.6 * nivel)
-    par.paragraph_format.space_after = Pt(2)
-    return par
-
-
-def atencao(txt):
-    par = doc.add_paragraph()
-    r = par.add_run("Atenção  ")
-    r.bold = True
-    r.font.color.rgb = VERMELHO
-    par.add_run(txt)
-    par.paragraph_format.left_indent = Cm(0.4)
-    return par
-
-
-def _sombrear(celula, cor_hex):
-    tc = celula._tc.get_or_add_tcPr()
-    shd = OxmlElement("w:shd")
-    shd.set(qn("w:val"), "clear")
-    shd.set(qn("w:fill"), cor_hex)
-    tc.append(shd)
-
-
-def tabela(cabecalho, linhas, larguras=None):
-    t = doc.add_table(rows=1, cols=len(cabecalho))
-    t.style = "Table Grid"
-    t.alignment = WD_TABLE_ALIGNMENT.LEFT
-    hdr = t.rows[0].cells
-    for i, c in enumerate(cabecalho):
-        hdr[i].text = ""
-        run = hdr[i].paragraphs[0].add_run(c)
-        run.bold = True
-        run.font.size = Pt(9.5)
-        _sombrear(hdr[i], "E8EEF9")
-    for ln in linhas:
-        cells = t.add_row().cells
-        for i, v in enumerate(ln):
-            cells[i].text = ""
-            run = cells[i].paragraphs[0].add_run(str(v))
-            run.font.size = Pt(9.5)
-    if larguras:
-        for row in t.rows:
-            for i, w in enumerate(larguras):
-                row.cells[i].width = Cm(w)
-    doc.add_paragraph().paragraph_format.space_after = Pt(2)
-    return t
-
-
-def caminho(txt):
-    """Linha de navegacao: Menu > Modulo > Secao > Item."""
-    par = doc.add_paragraph()
-    r = par.add_run(txt)
-    r.italic = True
-    r.font.size = Pt(9.5)
-    r.font.color.rgb = CINZA
-    par.paragraph_format.space_after = Pt(8)
-    return par
+iniciar("Folha10 Simples — Manual de Regras do Sistema", f"versão {VERSAO_SISTEMA}")
 
 
 # ================================================================== CAPA
-tit = doc.add_paragraph()
-tit.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = tit.add_run("FOLHA10 SIMPLES")
-r.bold = True
-r.font.size = Pt(30)
-r.font.color.rgb = AZUL
-
-sub = doc.add_paragraph()
-sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = sub.add_run("Manual de Regras do Sistema")
-r.font.size = Pt(17)
-r.font.color.rgb = CINZA
-
-sub2 = doc.add_paragraph()
-sub2.alignment = WD_ALIGN_PARAGRAPH.CENTER
-r = sub2.add_run("Organizado etapa por etapa, na ordem dos botões do menu principal")
-r.font.size = Pt(11)
-r.italic = True
-r.font.color.rgb = CINZA
-
-doc.add_paragraph()
-doc.add_paragraph()
+capa("FOLHA10 SIMPLES",
+     "Manual de Regras do Sistema",
+     "Organizado etapa por etapa, na ordem dos botões do menu principal")
 
 p("Este manual reúne as regras que já estão definidas e valendo no sistema — "
   "não é um projeto do que se pretende fazer. Cada etapa corresponde a um card "
@@ -212,7 +33,7 @@ p("Este manual reúne as regras que já estão definidas e valendo no sistema �
 p("Onde uma regra ainda não está fechada, ela aparece marcada como lacuna em "
   "aberto. Preferimos declarar o que falta a preencher com suposição.")
 
-doc.add_paragraph()
+p()
 tabela(
     ["", ""],
     [["Versão do sistema", VERSAO_SISTEMA],
@@ -222,7 +43,7 @@ tabela(
     larguras=[4.5, 11.5],
 )
 
-doc.add_paragraph()
+p()
 h2("As etapas deste manual")
 for n, nome in enumerate([
     "Conceitos que valem para o sistema inteiro (antes de qualquer etapa)",
@@ -230,12 +51,12 @@ for n, nome in enumerate([
     "Cálculo", "Relatórios", "Conexões", "eSocial", "Diversos", "Administrador",
 ]):
     rot = "Etapa 0" if n == 0 else f"Etapa {n}"
-    par = doc.add_paragraph()
+    par = documento().add_paragraph()
     par.paragraph_format.space_after = Pt(2)
     par.add_run(f"{rot}  ").bold = True
     par.add_run(nome)
 
-par = doc.add_paragraph()
+par = documento().add_paragraph()
 par.paragraph_format.space_before = Pt(10)
 par.add_run("Anexos  ").bold = True
 par.add_run("A) Armadilhas de banco e de dados   B) Padrões de tela   "
@@ -981,7 +802,7 @@ p("Todo usuário do id_cliente 4 tem o módulo Admin, o Trocar Cliente e pode al
 
 
 # ============================================================== FECHO
-doc.add_page_break()
+documento().add_page_break()
 h2("Sobre este manual")
 p("Reúne o que já está definido e valendo. Onde a regra ainda não está fechada, o texto diz "
   "isso — as lacunas declaradas hoje são:")
@@ -994,5 +815,5 @@ p(f"Folha10 Simples — versão {VERSAO_SISTEMA}. Documento gerado em 09/08/2026
   italico=True, cor=CINZA)
 
 os.makedirs(DESTINO, exist_ok=True)
-doc.save(ARQUIVO)
+salvar(ARQUIVO)
 print("OK:", ARQUIVO)
