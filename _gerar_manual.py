@@ -13,7 +13,7 @@ lacuna declarada, nao inventado.
 import os
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
@@ -47,6 +47,44 @@ for nome, tam, cor in (("Heading 1", 17, AZUL), ("Heading 2", 13, AZUL), ("Headi
 sec = doc.sections[0]
 sec.top_margin = sec.bottom_margin = Cm(2.0)
 sec.left_margin = sec.right_margin = Cm(2.2)
+
+
+def _borda_inferior(par):
+    """Fio fino embaixo do paragrafo — separa o cabecalho do texto da pagina."""
+    pPr = par._p.get_or_add_pPr()
+    bordas = OxmlElement("w:pBdr")
+    linha = OxmlElement("w:bottom")
+    linha.set(qn("w:val"), "single")
+    linha.set(qn("w:sz"), "4")        # 4 oitavos de ponto = fio de 0,5pt
+    linha.set(qn("w:space"), "4")
+    linha.set(qn("w:color"), "C7D2E4")
+    bordas.append(linha)
+    pPr.append(bordas)
+
+
+def montar_cabecalho(secao, titulo, direita):
+    """Cabecalho de todas as paginas, menos a capa.
+
+    Titulo a esquerda e versao a direita, na mesma linha, com um tab alinhado
+    a direita na largura util da pagina (21cm de A4 menos as duas margens)."""
+    secao.different_first_page_header_footer = True   # capa sai limpa
+    par = secao.header.paragraphs[0]
+    par.text = ""
+    par.paragraph_format.space_after = Pt(4)
+    par.paragraph_format.tab_stops.add_tab_stop(
+        secao.page_width - secao.left_margin - secao.right_margin,
+        WD_TAB_ALIGNMENT.RIGHT)
+    r = par.add_run(titulo)
+    r.font.size = Pt(8.5)
+    r.font.color.rgb = CINZA
+    r = par.add_run("\t" + direita)
+    r.font.size = Pt(8.5)
+    r.font.color.rgb = CINZA
+    _borda_inferior(par)
+
+
+montar_cabecalho(sec, "Folha10 Simples — Manual de Regras do Sistema",
+                 f"versão {VERSAO_SISTEMA}")
 
 
 # ---------------------------------------------------------------- helpers
