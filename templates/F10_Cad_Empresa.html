@@ -656,6 +656,25 @@ body {
             <span class="secao-titulo">Identificação da Empresa</span>
         </div>
         <div class="secao-corpo">
+            {% if modo|default('novo') != 'alterar' %}
+            <!-- Empresa nova: o certificado A1 já traz CNPJ e razão social, e com ele
+                 dá para buscar o S-1000 no eSocial e preencher a parte tributária. -->
+            <div id="box-cert" style="border:1px solid #dde6f0;border-radius:8px;padding:14px 16px;margin-bottom:18px;background:var(--read-bg,#f7fafc);">
+                <div style="font-weight:600;margin-bottom:4px;">Preencher a partir do certificado digital</div>
+                <div style="color:var(--text-sub);font-size:.9em;margin-bottom:10px;line-height:1.5;">
+                    Tem o certificado A1 da empresa? O CNPJ e a razão social estão dentro dele,
+                    e o resto vem do S-1000 que a empresa já enviou ao eSocial.
+                    O certificado é usado só nesta consulta e não fica guardado.
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                    <input type="file" id="cert_arq" accept=".pfx,.p12" style="max-width:290px;">
+                    <input type="password" id="cert_senha" placeholder="Senha do certificado"
+                           autocomplete="new-password" style="max-width:210px;">
+                    <button type="button" class="btn" id="btnCert" onclick="buscarDoCertificado()">Buscar no eSocial</button>
+                </div>
+                <div id="cert_msg" style="margin-top:10px;font-size:.9em;line-height:1.5;"></div>
+            </div>
+            {% endif %}
             <div class="grid-id">
                 <div class="campo">
                     <label>CNPJ</label>
@@ -1128,6 +1147,86 @@ function mascaraCNAE(campo) {
     if (v.length > 5)      v = v.replace(/^(\d{2})(\d{3})(\d{0,2}).*/, '$1.$2-$3');
     else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,3}).*/, '$1.$2');
     campo.value = v;
+}
+
+/* ── PREENCHER A PARTIR DO CERTIFICADO (empresa nova) ──────
+   O CNPJ e a razão social vêm de dentro do próprio certificado; o resto vem do
+   S-1000 já transmitido ao eSocial. Gasta 2 das 10 solicitações diárias. */
+function _certPoe(id, valor) {
+    if (valor === undefined || valor === null || valor === '') return false;
+    const el = document.getElementById(id);
+    if (!el) return false;
+    if (el.tagName === 'SELECT' && !Array.from(el.options).some(o => o.value === String(valor)))
+        return false;                       // opção inexistente: não força lixo
+    el.value = valor;
+    el.dispatchEvent(new Event('change'));  // dispara ajustarRisco/atualizarSimplesUI
+    el.style.background = '#eefaf0';        // marca o que veio pronto
+    return true;
+}
+
+async function buscarDoCertificado() {
+    const arq   = document.getElementById('cert_arq');
+    const senha = document.getElementById('cert_senha');
+    const msg   = document.getElementById('cert_msg');
+    const btn   = document.getElementById('btnCert');
+
+    if (!arq.files || !arq.files.length) { await f10Alert('Escolha o arquivo .pfx do certificado.'); return; }
+    if (!senha.value.trim())             { await f10Alert('Informe a senha do certificado.'); return; }
+
+    const fd = new FormData();
+    fd.append('cert', arq.files[0]);
+    fd.append('senha', senha.value);
+
+    btn.disabled = true;
+    const rotulo = btn.textContent;
+    btn.textContent = 'Consultando o eSocial…';
+    msg.style.color = 'var(--text-sub)';
+    msg.textContent = 'Abrindo o certificado e consultando o S-1000. Pode levar alguns segundos.';
+
+    try {
+        const r = await fetch('/api/empresa_do_certificado', { method: 'POST', body: fd });
+        const j = await r.json();
+        if (!j.ok) {
+            msg.style.color = '#b3261e';
+            msg.textContent = j.msg || 'Não foi possível ler o certificado.';
+            return;
+        }
+        const d = j.dados || {};
+
+        const cnpjEl = document.getElementById('cnpj');
+        if (d.cnpj && cnpjEl) {
+            cnpjEl.value = d.cnpj;
+            if (typeof mascaraCNPJ === 'function') mascaraCNPJ(cnpjEl);
+            cnpjEl.style.background = '#eefaf0';
+        }
+        const veio = [];
+        if (_certPoe('razaosocial',   d.razaosocial))   veio.push('razão social');
+        if (_certPoe('class_trib',    d.class_trib))    veio.push('classificação tributária');
+        if (_certPoe('nat_juridica',  d.nat_juridica))  veio.push('natureza jurídica');
+        if (_certPoe('ind_coop',      d.ind_coop))      veio.push('cooperativa');
+        if (_certPoe('ind_constr',    d.ind_constr))    veio.push('construtora');
+        if (_certPoe('ind_des_folha', d.ind_des_folha)) veio.push('desoneração');
+        if (_certPoe('ind_porte',     d.ind_porte))     veio.push('porte');
+        if (_certPoe('ind_simples',   d.ind_simples))   veio.push('Simples Nacional');
+
+        let txt = '';
+        if (d.cert_validade) txt += `Certificado de ${d.razaosocial || ''} — vence em ${d.cert_validade}. `;
+        txt += veio.length ? `Preenchidos: ${veio.join(', ')}.` : 'Nenhum campo veio preenchido.';
+        if (j.parcial && j.msg) txt += ' ' + j.msg;
+        // ind_simples não existe no S-1000: sai deduzido do classTrib, tem que conferir
+        if ((d.deduzidos || []).includes('ind_simples'))
+            txt += ' O Simples Nacional foi deduzido da classificação tributária — confira.';
+        txt += ' Confira tudo e complete o que faltar antes de salvar.';
+        msg.style.color = j.parcial ? '#8a6d00' : '#1e6b2e';
+        msg.textContent = txt;
+    } catch (e) {
+        msg.style.color = '#b3261e';
+        msg.textContent = 'Falha na comunicação: ' + e;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = rotulo;
+        senha.value = '';               // não deixa a senha na tela
+    }
 }
 
 /* ── TOGGLE ENCARGOS MANUAIS ───────────────────────────── */

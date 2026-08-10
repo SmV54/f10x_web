@@ -60,6 +60,29 @@ tbody tr:hover { background: #f8fafc; }
 .st-calc { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #dcfce7; color: #166534; }
 .st-pend { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #fef3c7; color: #92400e; }
 .st-bloq { display: inline-block; font-size: 11px; font-weight: 600; color: #b45309; white-space: nowrap; }
+/* Importar consignados da rescisão — modal */
+.btn-consig { background: #7c2d12; border: none; cursor: pointer; font-family: inherit; }
+.btn-consig:hover { background: #9a3412; }
+.cx-over { position: fixed; inset: 0; background: rgba(15,23,42,.55); display: none; align-items: flex-start; justify-content: center; z-index: 60; padding: 30px 16px; overflow-y: auto; }
+.cx-over.on { display: flex; }
+.cx-box { background: #fff; border-radius: 12px; width: 100%; max-width: 980px; box-shadow: 0 20px 50px rgba(0,0,0,.25); }
+.cx-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; }
+.cx-head h3 { margin: 0; font-size: 15px; color: #0f172a; }
+.cx-head .cx-sub { font-size: 12px; color: #64748b; font-weight: 400; }
+.cx-x { background: transparent; border: none; font-size: 20px; line-height: 1; color: #64748b; cursor: pointer; }
+.cx-body { padding: 16px 18px; }
+.cx-body .hint { font-size: 12px; color: #475569; margin-top: 6px; }
+.cx-file { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.cx-file input[type=file] { font-size: 13px; }
+.cx-base { margin-top: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 14px; font-size: 13px; }
+.cx-base b { font-family: 'IBM Plex Mono', monospace; }
+.cx-foot { display: flex; gap: 10px; justify-content: flex-end; padding: 12px 18px; border-top: 1px solid #e5e7eb; }
+.cx-tab { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+.cx-tab th { background: #f1f5f9; text-align: left; padding: 6px 8px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+.cx-tab td { padding: 6px 8px; border-bottom: 1px solid #f1f5f9; }
+.cx-tab td.n { text-align: right; font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.cx-tab tr.l-erro td { background: #fff1f2; color: #be123c; }
+.cx-tab tr.l-aviso td { background: #fffbeb; color: #92400e; }
 .btn-visu-resc { display: inline-flex; align-items: center; gap: 8px; background: #166534; color: #fff; font-size: 14px; font-weight: 700; padding: 10px 20px; border-radius: 10px; text-decoration: none; transition: .15s; }
 .btn-visu-resc:hover { background: #14532d; }
 .btn-mem-resc { background: #1e3a5f; }
@@ -105,13 +128,14 @@ tbody tr:hover { background: #f8fafc; }
         <div class="card-header"><h2>Desligados do mês</h2><span class="total-badge">{{ funcs|length }}</span></div>
         <table>
             <thead><tr>{% if not modo_trct and not modo_memoria %}<th class="c"><input type="checkbox" id="chkAll" checked onchange="toggleTodos(this)"></th>{% endif %}<th>Matrícula</th><th>Nome</th><th>Data Rescisão</th><th>Motivo</th><th class="r">Status</th>
-                {% if modo_trct %}<th class="r">TRCT</th>{% elif modo_memoria %}<th class="r">Memória</th>{% endif %}</tr></thead>
+                {% if modo_trct %}<th class="r">TRCT</th>{% elif modo_memoria %}<th class="r">Memória</th>{% else %}<th class="r">Consignado</th>{% endif %}</tr></thead>
             <tbody>
                 {% for f in funcs %}
                 <tr>{% if not modo_trct and not modo_memoria %}<td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" checked></td>{% endif %}<td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{% if f.motivo|string == '01' %}<span class="motivo-jc" title="Justa causa — confira se é isso mesmo">{{ f.motivo }} ⚠️</span>{% else %}{{ f.motivo }}{% endif %}</td>
                     <td class="r">{% if f.calculado %}<span class="st-calc">Calculada</span>{% else %}<span class="st-pend">Pendente</span>{% endif %}</td>
                     {% if modo_trct %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/trct_pdf/{{ f.matricula }}" target="_blank">📄 TRCT</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>
-                    {% elif modo_memoria %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/api/memoria_rescisao_pdf/{{ f.matricula }}" target="_blank">📄 Memória</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>{% endif %}</tr>
+                    {% elif modo_memoria %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/api/memoria_rescisao_pdf/{{ f.matricula }}" target="_blank">📄 Memória</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>
+                    {% else %}<td class="r">{% if f.calculado %}<button type="button" class="btn-trct btn-consig" onclick='abrirConsig({{ f.matricula }}, {{ f.nome|tojson }})'>💳 Consignado</button>{% else %}<span class="st-bloq" title="Calcule a rescisão antes de importar os consignados">🔒 calcular</span>{% endif %}</td>{% endif %}</tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -133,7 +157,7 @@ tbody tr:hover { background: #f8fafc; }
                 <th class="r">Saldo</th><th class="r">13º</th><th class="r">Fér.Venc.</th><th class="r">Fér.Prop.</th><th class="r">1/3</th>
                 <th class="r">Aviso</th>
                 <th class="r">INSS</th><th class="r">IRRF</th><th class="r">FGTS</th><th class="r">Líquido</th>
-                <th class="r">TRCT</th><th class="r">Memória</th>
+                <th class="r">TRCT</th><th class="r">Memória</th><th class="r">Consignado</th>
             </tr></thead>
             <tbody id="resBody"></tbody>
         </table>
@@ -147,6 +171,33 @@ tbody tr:hover { background: #f8fafc; }
     <div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
 {% endif %}
 
+</div>
+
+<!-- Importar consignados da rescisao -->
+<div class="cx-over" id="cxOver">
+  <div class="cx-box">
+    <div class="cx-head">
+      <h3>&#128179; Consignados da rescisão<br><span class="cx-sub" id="cxFunc"></span></h3>
+      <button type="button" class="cx-x" onclick="fecharConsig()" title="Fechar">&times;</button>
+    </div>
+    <div class="cx-body">
+      <div class="cx-file">
+        <input type="file" id="cxArq" accept=".xlsx,.csv,.txt" onchange="cxLimpaPrevia()">
+        <button type="button" class="btn-trct" id="cxBtnPrev" onclick="consigPrevia()">Ver Prévia</button>
+      </div>
+      <div class="hint">
+        A consulta de consignados deste funcionário (.xlsx ou .csv). Cada contrato vira uma verba
+        700 em diante: desconto = base &times; percentual da garantia, limitado ao saldo devedor.
+        Nada é gravado até você confirmar.
+      </div>
+      <div id="cxMsg"></div>
+      <div id="cxPrev"></div>
+    </div>
+    <div class="cx-foot">
+      <button type="button" class="btn-menu" onclick="fecharConsig()">Cancelar</button>
+      <button type="button" class="btn-trct btn-consig" id="cxBtnGrav" style="display:none;" onclick="consigImportar()">Importar e Recalcular</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -212,6 +263,7 @@ async function calcular() {
                 <td class="liq">${f.liq_fmt}</td>
                 <td class="r"><a class="btn-trct" href="/trct_pdf/${f.matricula}" target="_blank">📄 TRCT</a></td>
                 <td class="r"><a class="btn-trct" href="/api/memoria_rescisao_pdf/${f.matricula}" target="_blank">📄 Memória</a></td>
+                <td class="r"><button type="button" class="btn-trct btn-consig" onclick="abrirConsig(${f.matricula}, ${JSON.stringify(f.nome || '')})">💳 Consignado</button></td>
             </tr>`).join('');
         document.getElementById('resTotal').textContent = (d.total || 0) + ' calculado(s)';
         document.getElementById('resPasta').innerHTML = '📄 Memória de cálculo detalhada gerada por funcionário.';
@@ -229,6 +281,133 @@ async function calcular() {
     } catch (e) {
         msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Erro de comunicação.</div></div>`;
         btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
+    }
+}
+
+/* Importacao dos consignados na rescisao.
+   A rescisao precisa estar calculada: a base do desconto e o total dos
+   proventos menos INSS, INSS 13o, IRRF e as pensoes. Depois de gravar as
+   verbas 700+, a rescisao e recalculada para o liquido sair certo. */
+let cxMat = 0;
+
+function cxBRL(cent) {
+    return ((cent || 0) / 100).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function cxErro(t) {
+    document.getElementById('cxMsg').innerHTML =
+        '<div class="alerta alerta-erro" style="margin-top:14px"><span>&#10060;</span><div>' + t + '</div></div>';
+}
+function cxLimpaPrevia() {
+    document.getElementById('cxPrev').innerHTML = '';
+    document.getElementById('cxMsg').innerHTML = '';
+    document.getElementById('cxBtnGrav').style.display = 'none';
+}
+function abrirConsig(mat, nome) {
+    cxMat = mat;
+    document.getElementById('cxFunc').textContent =
+        String(mat).padStart(6, '0') + ' \u2014 ' + (nome || '');
+    document.getElementById('cxArq').value = '';
+    cxLimpaPrevia();
+    document.getElementById('cxOver').classList.add('on');
+}
+function fecharConsig() {
+    document.getElementById('cxOver').classList.remove('on');
+}
+
+async function consigPrevia() {
+    const inp = document.getElementById('cxArq');
+    if (!inp.files.length) { cxErro('Selecione o arquivo .xlsx ou .csv.'); return; }
+    const btn = document.getElementById('cxBtnPrev');
+    btn.disabled = true; btn.textContent = 'Lendo...';
+    cxLimpaPrevia();
+    try {
+        const fd = new FormData();
+        fd.append('arquivo', inp.files[0]);
+        fd.append('matricula', cxMat);
+        const r = await fetch('/api/consignado_resc/preview', {method: 'POST', body: fd});
+        const d = await r.json();
+        if (!d.ok) { cxErro(d.msg || 'N\u00e3o foi poss\u00edvel ler a planilha.'); return; }
+
+        const rs = d.resumo || {};
+        let html = '<div class="cx-base">Total dos proventos <b>' + cxBRL(d.total_proventos) +
+                   '</b> &nbsp;&minus;&nbsp; redu\u00e7\u00f5es (INSS, IRRF, pens\u00f5es) <b>' + cxBRL(d.reducoes) +
+                   '</b> &nbsp;=&nbsp; base do c\u00e1lculo <b>' + cxBRL(d.base) + '</b></div>';
+        html += '<table class="cx-tab"><thead><tr>' +
+                '<th>Verba</th><th>Banco</th><th>Contrato</th><th>Parcela</th>' +
+                '<th class="n">%</th><th class="n">Saldo devedor</th><th class="n">Desconto</th><th>Observa\u00e7\u00e3o</th>' +
+                '</tr></thead><tbody>';
+        (d.linhas || []).forEach(it => {
+            const cls = it.status === 'erro' ? 'l-erro' : (it.status === 'aviso' ? 'l-aviso' : '');
+            html += '<tr class="' + cls + '">' +
+                    '<td>' + (it.cod_verba || '\u2014') + '</td>' +
+                    '<td>' + esc(it.if_codigo) + (it.if_desc ? ' \u2014 ' + esc(it.if_desc) : '') + '</td>' +
+                    '<td>' + esc(it.contrato) + '</td>' +
+                    '<td>' + (it.parcela_atual || '\u2014') + '/' + (it.parcelas_total || '\u2014') + '</td>' +
+                    '<td class="n">' + (it.percentual || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2}) + '</td>' +
+                    '<td class="n">' + (it.tem_saldo ? cxBRL(it.saldo_centavos) : '\u2014') + '</td>' +
+                    '<td class="n">' + cxBRL(it.valor_centavos) + '</td>' +
+                    '<td>' + esc(it.mensagem) + '</td></tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('cxPrev').innerHTML = html;
+
+        let avisos = '';
+        if (rs.ignoradas)     avisos += rs.ignoradas + ' linha(s) de outros funcion\u00e1rios foram ignoradas. ';
+        if (rs.sem_saldo)     avisos += rs.sem_saldo + ' contrato(s) sem saldo devedor \u2014 n\u00e3o descontam nada. ';
+        if (rs.ja_existentes) avisos += 'J\u00e1 existem ' + rs.ja_existentes + ' verba(s) 700-749 nesta rescis\u00e3o: ser\u00e3o apagadas e regravadas. ';
+
+        if (d.has_error) {
+            cxErro('Existem erros na planilha (linhas em vermelho). Nada ser\u00e1 gravado.');
+        } else {
+            document.getElementById('cxMsg').innerHTML =
+                '<div class="alerta alerta-ok" style="margin-top:14px"><span>&#9989;</span><div><strong>' +
+                rs.lancamentos + '</strong> empr\u00e9stimo(s) \u2014 total a descontar <strong>' +
+                cxBRL(rs.descontado) + '</strong>.' + (avisos ? '<br>' + avisos : '') + '</div></div>';
+            document.getElementById('cxBtnGrav').style.display = 'inline-flex';
+        }
+    } catch (e) {
+        cxErro('Erro de comunica\u00e7\u00e3o.');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Ver Pr\u00e9via';
+    }
+}
+
+async function consigImportar() {
+    const inp = document.getElementById('cxArq');
+    if (!inp.files.length) { cxErro('Carregue a pr\u00e9via primeiro.'); return; }
+    const btn = document.getElementById('cxBtnGrav');
+    btn.disabled = true; btn.textContent = 'Importando...';
+    try {
+        const fd = new FormData();
+        fd.append('arquivo', inp.files[0]);
+        fd.append('matricula', cxMat);
+        const r = await fetch('/api/consignado_resc/importar', {method: 'POST', body: fd});
+        const d = await r.json();
+        if (!d.ok) {
+            cxErro(d.msg || 'N\u00e3o foi poss\u00edvel importar.');
+            btn.disabled = false; btn.textContent = 'Importar e Recalcular';
+            return;
+        }
+        /* Recalcula a rescisao do funcionario: e o recalculo que refaz os
+           totais e o liquido com as verbas 700 ja lancadas. */
+        btn.textContent = 'Recalculando...';
+        const r2 = await fetch('/api/calc_rescisao_calcular', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({matriculas: [cxMat]})
+        });
+        const d2 = await r2.json();
+        fecharConsig();
+        const msg = document.getElementById('msg');
+        msg.innerHTML = '<div class="alerta alerta-' + (d2.ok ? 'ok' : 'aviso') + '"><span>' +
+            (d2.ok ? '&#9989;' : '&#9888;&#65039;') + '</span><div>' + d.msg +
+            (d2.ok ? ' Rescis\u00e3o recalculada.'
+                   : ' <strong>O rec\u00e1lculo falhou: ' + esc(d2.msg || '') +
+                     '</strong> \u2014 recalcule pela tela.') + '</div></div>';
+        try { msg.scrollIntoView({behavior: 'smooth', block: 'center'}); } catch (e) {}
+        setTimeout(() => window.location.reload(), 2500);
+    } catch (e) {
+        cxErro('Erro de comunica\u00e7\u00e3o.');
+        btn.disabled = false; btn.textContent = 'Importar e Recalcular';
     }
 }
 

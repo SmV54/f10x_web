@@ -18053,21 +18053,162 @@ def _consig_dtcontrato_key(v):
     return s
 
 
+def _consig_num(v):
+    """Número da planilha → float. Aceita '1234.56' e '1.234,56'.
+
+    No .xlsx o openpyxl já devolve número pronto; no .csv vem texto e o
+    separador decimal muda conforme quem gerou o arquivo (o sistema manda
+    ponto, o Excel pt-BR grava vírgula). Regra: se tem vírgula, ela é o
+    decimal e o ponto é milhar; sem vírgula, o ponto é o decimal.
+    """
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(" ", "").replace(" ", "")
+    if not s:
+        return None
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _consig_norm_mat(v):
+    """Normaliza a matrícula para casar planilha × `tab_cad.matricula_es`.
+
+    A coluna E da planilha é a matrícula do **eSocial**, que no Folha10 mora em
+    `matricula_es` — não na `matricula` interna. Conferido no cliente 30: das
+    102 pessoas, só 4 têm as duas iguais.
+
+    `matricula_es` é texto livre e aparece de todo jeito: '63', '000148',
+    '0200179', 'COL185706177200000002868', 'ESTAG1915587476...'. Daí:
+      - compara como TEXTO — `int()` estoura nos alfanuméricos;
+      - o Excel devolve número quando a célula é só dígitos, então '148.0' e a
+        notação científica voltam a ser inteiro;
+      - devolve também a forma sem zeros à esquerda, porque '000148' e '148'
+        são a mesma matrícula.
+
+    Retorna (forma_cheia, forma_sem_zeros).
+    """
+    s = str(v if v is not None else "").strip()
+    if not s:
+        return "", ""
+    if re.fullmatch(r"\d+\.0+", s):                            # 148.0 -> 148
+        s = s.split(".")[0]
+    elif re.fullmatch(r"\d+(?:\.\d+)?[eE][+-]?\d+", s):        # 5.2e+11
+        try:
+            s = format(int(float(s)), "d")
+        except (ValueError, OverflowError):
+            pass
+    s = s.upper()
+    return s, (s.lstrip("0") or s)
+
+
+def _consig_csv_texto(file_bytes):
+    """bytes do .csv → texto, resolvendo a acentuação.
+
+    Com BOM não tem dúvida; sem BOM tenta UTF-8 e cai para Windows-1252,
+    que é como o Excel grava o .csv por aqui.
+    """
+    if file_bytes.startswith(b"\xef\xbb\xbf"):
+        return file_bytes.decode("utf-8-sig")
+    if file_bytes[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return file_bytes.decode("utf-16")
+    try:
+        return file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return file_bytes.decode("cp1252", errors="replace")
+
+
+def _consig_csv_sep(texto):
+    """Separador do .csv: o que mais aparece no cabeçalho, fora das aspas."""
+    cab = []
+    aspas = False
+    for ch in texto:
+        if ch == '"':
+            aspas = not aspas
+        elif not aspas and ch in "\r\n":
+            break
+        elif not aspas:
+            cab.append(ch)
+    cab = "".join(cab)
+    cont = {s: cab.count(s) for s in (";", ",", "\t", "|")}
+    melhor = max(cont, key=lambda s: cont[s])
+    return melhor if cont[melhor] else ";"
+
+
+def _consig_ler_csv(file_bytes):
+    """Lê o .csv e devolve as linhas como tuplas de texto.
+
+    Mesma forma que o openpyxl entrega o .xlsx, para o resto da rotina não
+    saber de onde veio. Linhas totalmente em branco são descartadas.
+    """
+    import csv   # import tardio, como o openpyxl
+    texto = _consig_csv_texto(file_bytes)
+    leitor = csv.reader(io.StringIO(texto, newline=""),
+                        delimiter=_consig_csv_sep(texto), quotechar='"')
+    linhas = []
+    for row in leitor:
+        campos = tuple((c or "").strip() for c in row)
+        if any(campos):
+            linhas.append(campos)
+    return linhas
+
+
+def _consig_mapa_colunas(header):
+    """Cabeçalho da planilha → {nome da coluna: índice}.
+
+    O mesmo relatório sai com os títulos curtos (planilha mensal) ou com o
+    prefixo "emprestimo." (planilha da rescisão). Guarda os dois nomes, então
+    quem procura por "contrato" acha também "emprestimo.contrato".
+    """
+    col = {}
+    for i, h in enumerate(header or []):
+        nome = str(h if h is not None else "").strip()
+        if not nome:
+            continue
+        col.setdefault(nome, i)
+        if nome.lower().startswith("emprestimo."):
+            col.setdefault(nome.split(".", 1)[1], i)
+    return col
+
+
+def _consig_ler_arquivo(file_bytes):
+    """Lê o arquivo da importação (.xlsx ou .csv) e devolve as linhas.
+
+    O tipo é reconhecido pelo conteúdo, não pela extensão: todo .xlsx começa
+    com "PK" (é um zip) e todo Excel antigo começa com a assinatura do OLE2.
+    Assim um .csv salvo com o nome errado ainda entra.
+    """
+    if file_bytes[:2] == b"PK":
+        import openpyxl  # import tardio: dependência só desta feature
+        wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
+        ws = wb.active
+        # Lê tudo de uma vez: iter_rows é o caminho rápido do modo read_only.
+        # (acesso aleatório ws.cell(r,c) em read_only reparseia e é lentíssimo).
+        todas = list(ws.iter_rows(values_only=True))
+        wb.close()
+        return todas
+    if file_bytes[:4] == b"\xd0\xcf\x11\xe0":
+        raise ValueError("Este arquivo é um Excel antigo (.xls). "
+                         "Salve como .xlsx ou .csv e importe de novo.")
+    return _consig_ler_csv(file_bytes)
+
+
 def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
-    """Lê a planilha e devolve o resultado do processamento (sem gravar).
+    """Lê o arquivo (.xlsx ou .csv) e devolve o resultado do processamento (sem gravar).
     Retorna dict: {abort, abort_msg, competencia_planilha, linhas, resumo,
     has_error, para_gravar}."""
-    import openpyxl  # import tardio: dependência só desta feature
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True, read_only=True)
-    ws = wb.active
-    # Lê tudo de uma vez: iter_rows é o caminho rápido do modo read_only.
-    # (acesso aleatório ws.cell(r,c) em read_only reparseia e é lentíssimo).
-    todas = list(ws.iter_rows(values_only=True))
-    wb.close()
+    try:
+        todas = _consig_ler_arquivo(file_bytes)
+    except ValueError as e:
+        return {"abort": True, "abort_msg": str(e)}
     if not todas:
         return {"abort": True, "abort_msg": "A planilha está vazia."}
-    header = todas[0]
-    col = {str(h).strip(): i for i, h in enumerate(header) if h is not None}
+    col = _consig_mapa_colunas(todas[0])
 
     obrig = ["numeroInscricaoEmpregador", "cpf", "matricula", "contrato",
              "ifConcessora.codigo", "dataInicioContrato",
@@ -18084,7 +18225,8 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
         return rowt[i] if (i is not None and i < len(rowt)) else None
 
     # ── Regra 1: CNPJ raiz (8) da planilha × CNPJ da empresa ──
-    cnpj_emp8 = "".join(ch for ch in str(cnpj_empresa or "") if ch.isdigit())[:8]
+    cnpj_emp14 = "".join(ch for ch in str(cnpj_empresa or "") if ch.isdigit())[:14]
+    cnpj_emp8 = cnpj_emp14[:8]
     raizes = set()
     linhas_brutas = []   # (num_linha_xls, rowtuple)
     for offset, rowt in enumerate(todas[1:]):
@@ -18110,21 +18252,29 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
     competencia_pl = _consig_mmyyyy_to_yyyymm(cel(linhas_brutas[0][1], "competencia")) \
         if "competencia" in col else ""
 
-    # ── Carrega funcionários da empresa (matricula → dados) ──
-    cadastro = {}
+    # ── Carrega funcionários da empresa, indexados pela matrícula do eSocial ──
+    # A planilha traz a matrícula do eSocial (`matricula_es`), não a nossa.
+    cadastro, dup_es = {}, set()
     try:
         rc = (supabase.table("tab_cad")
-              .select("matricula, cpf, nome, nomer, situacao, datarescisao")
+              .select("matricula, matricula_es, cpf, nome, nomer, situacao, datarescisao")
               .eq("id_cliente", id_cliente)
               .eq("id_empresa", id_empresa)
               .execute())
         for f in (rc.data or []):
-            try:
-                cadastro[int(f.get("matricula"))] = f
-            except (TypeError, ValueError):
-                pass
-    except Exception:
-        pass
+            cheia, curta = _consig_norm_mat(f.get("matricula_es"))
+            if not cheia:
+                continue
+            for chave in {cheia, curta}:
+                if chave in cadastro:
+                    dup_es.add(chave)        # ambíguo: ninguém entra por ele
+                else:
+                    cadastro[chave] = f
+    except Exception as e:
+        # Sem o cadastro TODA linha viraria "não é desta empresa" e a planilha
+        # inteira seria descartada em silêncio. Recusar é o certo.
+        return {"abort": True,
+                "abort_msg": f"Não consegui ler o cadastro de funcionários: {str(e)[:150]}"}
 
     # ── Monta as linhas processadas ──
     linhas = []          # cada item = dict com dados + status
@@ -18132,24 +18282,22 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
     for (r, rowt) in linhas_brutas:
         mat_raw = cel(rowt, "matricula")
         contrato = cel(rowt, "contrato")
-        try:
-            mat = int(str(mat_raw).strip())
-        except (TypeError, ValueError):
-            mat = None
+        mat_cheia, mat_curta = _consig_norm_mat(mat_raw)
         cpf_pl = "".join(ch for ch in str(cel(rowt, "cpf") or "") if ch.isdigit()).zfill(11)
+        # CNPJ de 14 dígitos do estabelecimento da linha. É ele que diz de qual
+        # filial é o funcionário — `numeroInscricaoEmpregador` traz só a raiz.
+        # Coluna opcional: layout antigo pode não ter.
+        estab_pl = "".join(ch for ch in str(cel(rowt, "numeroInscricaoEstabelecimento") or "")
+                           if ch.isdigit())[:14]
         if_cod = str(cel(rowt, "ifConcessora.codigo") or "").strip()[:3]
         if_desc = str(cel(rowt, "ifConcessora.descricao") or "").strip()
         contrato_s = str(contrato or "").strip()
-        vparc = cel(rowt, "valorParcela")
-        try:
-            valor_cent = int(round(float(vparc) * 100)) if vparc not in (None, "") else 0
-        except (TypeError, ValueError):
-            valor_cent = 0
-        _ptot_raw = cel(rowt, "totalParcelas")
-        try:
-            ptotal = int(_ptot_raw) if _ptot_raw not in (None, "") else 0
-        except (TypeError, ValueError):
-            ptotal = 0
+        # _consig_num aguenta o texto do .csv ("176,29" ou "176.29") e o
+        # número que o openpyxl já devolve pronto no .xlsx.
+        _vparc = _consig_num(cel(rowt, "valorParcela"))
+        valor_cent = int(round(_vparc * 100)) if _vparc is not None else 0
+        _ptot = _consig_num(cel(rowt, "totalParcelas"))
+        ptotal = int(_ptot) if _ptot is not None else 0
         comp_ini = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaInicioDesconto"))
         datafinal = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaFimDesconto"))
         # parcelaatual = meses (comp_ini → anomes) + 1  (Opção A)
@@ -18161,7 +18309,8 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
 
         item = {
             "linha_xls": r,
-            "matricula": mat,
+            "matricula": None,           # a NOSSA — preenchida quando acha o cadastro
+            "matricula_es": mat_cheia,   # a da planilha (coluna E)
             "cpf_planilha": cpf_pl,
             "nome": "",
             "if_codigo": if_cod,
@@ -18177,13 +18326,39 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
             "mensagem": "",
         }
 
-        # ── Regra 2: localizar por matrícula, conferir CPF ──
-        cad = cadastro.get(mat) if mat is not None else None
-        if mat is None:
-            item["status"] = "erro"; item["mensagem"] = "Matrícula inválida na planilha."
+        # ── Regra 2: localizar pela matrícula do eSocial, conferir CPF ──
+        cad = cadastro.get(mat_cheia) or cadastro.get(mat_curta)
+        if not mat_cheia:
+            item["status"] = "erro"; item["mensagem"] = "Matrícula em branco na planilha."
+        elif mat_cheia in dup_es or mat_curta in dup_es:
+            item["status"] = "erro"
+            item["mensagem"] = (f"Matrícula eSocial {mat_cheia} está repetida no cadastro "
+                                f"desta empresa — não dá para saber de quem é.")
+        elif cad is None and estab_pl and estab_pl != cnpj_emp14:
+            # Cliente que separou as filiais como empresas nossas (caso do 30): a
+            # planilha vem pelo CNPJ raiz e traz gente das outras. A coluna
+            # `numeroInscricaoEstabelecimento` diz de qual filial é cada linha,
+            # então dá para afirmar em vez de supor. Desprezada, sem barrar.
+            item["status"] = "rejeitado"
+            item["fora_da_empresa"] = True
+            item["mensagem"] = (f"Linha do estabelecimento {estab_pl}, que não é a empresa "
+                                f"ativa ({cnpj_emp14}) — importe com aquela filial ativa.")
         elif cad is None:
-            item["status"] = "erro"; item["mensagem"] = f"Matrícula {mat} não encontrada no cadastro."
+            # Aqui a planilha diz que a linha É desta empresa (ou nem informa o
+            # estabelecimento) e mesmo assim a matrícula não está no cadastro.
+            # Isso não é filial: é funcionário faltando ou matricula_es errada,
+            # e tratar como "deve ser de outra filial" esconderia o problema.
+            item["status"] = "erro"
+            item["mensagem"] = (f"Matrícula eSocial {mat_cheia} não está no cadastro desta "
+                                f"empresa. Confira o campo Matrícula eSocial do funcionário.")
         else:
+            try:
+                item["matricula"] = int(cad.get("matricula"))
+            except (TypeError, ValueError):
+                item["status"] = "erro"
+                item["mensagem"] = "Cadastro sem matrícula válida."
+                linhas.append(item)
+                continue
             item["nome"] = (cad.get("nomer") or cad.get("nome") or "").strip()
             cpf_cad = "".join(ch for ch in str(cad.get("cpf") or "") if ch.isdigit()).zfill(11)
             if cpf_cad != cpf_pl:
@@ -18199,10 +18374,20 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
                     # ── Regra 6: demitido no mês ativo → grava com aviso ──
                     item["status"] = "aviso"
                     item["mensagem"] = f"Demitido neste mês ({dtresc[6:8]}/{dtresc[4:6]}) — importado."
+                if estab_pl and estab_pl != cnpj_emp14 and item["status"] != "rejeitado":
+                    # A pessoa está no cadastro DESTA empresa, mas a planilha
+                    # aponta outro estabelecimento. Vale o nosso cadastro (é ele
+                    # que manda na folha), só que o desencontro tem que aparecer.
+                    item["status"] = "aviso" if item["status"] == "ok" else item["status"]
+                    item["mensagem"] = ((item["mensagem"] + " ") if item["mensagem"] else "") + (
+                        f"A planilha marca o estabelecimento {estab_pl}, mas o funcionário está "
+                        f"nesta empresa ({cnpj_emp14}) — importado assim mesmo.")
 
         linhas.append(item)
-        if mat is not None:
-            por_matricula.setdefault(mat, []).append(len(linhas) - 1)
+        # Agrupa pela NOSSA matrícula: é ela que numera as verbas 700+ e vai
+        # para o tab_mov.
+        if item["matricula"] is not None:
+            por_matricula.setdefault(item["matricula"], []).append(len(linhas) - 1)
 
     # ── Regra 3: atribui verbas 700..749 por funcionário (ordem = dataInicio) ──
     for mat, idxs in por_matricula.items():
@@ -18226,6 +18411,14 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
             verba += 1
 
     # ── Resumo ──
+    n_fora = sum(1 for it in linhas if it.get("fora_da_empresa"))
+    if linhas and n_fora == len(linhas):
+        # Todas de fora quase sempre significa empresa ativa errada. Importar
+        # zero linha "com sucesso" seria pior do que recusar.
+        return {"abort": True,
+                "abort_msg": ("Nenhuma matrícula da planilha existe nesta empresa. "
+                              "Confira se a empresa ativa é a certa — pela matrícula "
+                              "do eSocial, esta planilha parece ser de outra filial.")}
     n_ok      = sum(1 for it in linhas if it["status"] == "ok")
     n_aviso   = sum(1 for it in linhas if it["status"] == "aviso")
     n_rejeit  = sum(1 for it in linhas if it["status"] == "rejeitado")
@@ -18255,6 +18448,7 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
         "resumo": {
             "total": len(linhas), "ok": n_ok, "aviso": n_aviso,
             "rejeitado": n_rejeit, "erro": n_erro,
+            "fora_da_empresa": n_fora,
             "lancamentos": len(para_gravar), "funcionarios": funcs_gravar,
             "ja_existentes": ja_existe,
         },
@@ -18277,7 +18471,7 @@ def consignado_importar():
 
 @app.route("/api/consignado/preview", methods=["POST"])
 def api_consignado_preview():
-    """Recebe o .xlsx, valida e devolve a prévia (sem gravar)."""
+    """Recebe o arquivo (.xlsx ou .csv), valida e devolve a prévia (sem gravar)."""
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
     anomes = str(session.get("anomes_atual") or "")
@@ -18287,8 +18481,8 @@ def api_consignado_preview():
         return jsonify({"ok": False, "msg": "A folha ativa não é Normal. "
                         "Abra a folha Normal antes de importar consignados."})
     f = request.files.get("arquivo")
-    if not f or not f.filename.lower().endswith(".xlsx"):
-        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx."})
+    if not f or not f.filename.lower().endswith((".xlsx", ".csv", ".txt")):
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx ou .csv."})
     try:
         res = _consig_processar(f.read(), session.get("id_cliente"),
                                 _get_id_empresa(), anomes,
@@ -18321,8 +18515,8 @@ def api_consignado_importar():
     if str(session.get("anomes_tipo") or "N") not in ("N", ""):
         return jsonify({"ok": False, "msg": "A folha ativa não é Normal."})
     f = request.files.get("arquivo")
-    if not f or not f.filename.lower().endswith(".xlsx"):
-        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx."})
+    if not f or not f.filename.lower().endswith((".xlsx", ".csv", ".txt")):
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx ou .csv."})
 
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
@@ -18403,8 +18597,8 @@ def api_consignado_pdf():
     if len(anomes) != 6:
         return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
     f = request.files.get("arquivo")
-    if not f or not f.filename.lower().endswith(".xlsx"):
-        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx."})
+    if not f or not f.filename.lower().endswith((".xlsx", ".csv", ".txt")):
+        return jsonify({"ok": False, "msg": "Envie um arquivo .xlsx ou .csv."})
     try:
         res = _consig_processar(f.read(), session.get("id_cliente"),
                                 _get_id_empresa(), anomes,
@@ -18504,6 +18698,1006 @@ def api_consignado_pdf():
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = 'inline; filename="PreviaConsignados.pdf"'
     return resp
+
+
+# =========================================================
+# CONSIGNADOS NA RESCISÃO → tab_mov (folha_tipo 'R')
+# Mesma planilha do consignado, só que a da rescisão: cada contrato vira uma
+# verba 700+ com desconto = base × percentual da garantia (coluna V), limitado
+# ao saldo devedor (coluna T). Coluna T em branco = saldo zero: não desconta.
+# É individual — a tela manda a matrícula e as linhas de outros funcionários
+# são ignoradas (com aviso na prévia).
+# A verba entra com origem='M' de propósito: o recálculo da rescisão só apaga
+# as calculadas (origem='C'), então o desconto sobrevive ao recálculo e entra
+# nos totais como verba manual. Mesma conta do Folha10 Desktop.
+# =========================================================
+# Descontos que saem da base. Lista igual à do Desktop — o IRRF do 13º (122)
+# não entra, e isso é de propósito, para os dois sistemas darem o mesmo valor.
+CONSIG_RESC_REDUTORAS = (VR_INSS, VR_INSS_13, VR_IRRF, 281, 282, 283)
+
+
+def _consig_resc_base(id_cliente, id_empresa, folha_int, mat):
+    """Base do desconto das verbas 700 na rescisão.
+
+    base = total dos proventos da rescisão JÁ CALCULADA − INSS − INSS 13º
+           − IRRF − as três pensões alimentícias.
+    Retorna (base, total_prov, reducoes, erro_msg) — tudo em centavos.
+    """
+    try:
+        q = (supabase.table("tab_total")
+             .select("valor_total_proventos")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("folha", folha_int).eq("folha_tipo", "R"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        linhas = q.execute().data or []
+    except Exception as e:
+        return 0, 0, 0, f"Erro ao ler o total da rescisão: {str(e)[:150]}"
+    if not linhas:
+        return 0, 0, 0, ("A rescisão deste funcionário ainda não foi calculada. "
+                         "Calcule a rescisão antes de importar os consignados.")
+    total_prov = int(linhas[0].get("valor_total_proventos") or 0)
+
+    reducoes = 0
+    try:
+        q = (supabase.table("tab_mov")
+             .select("cod_verba, valor")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("folha", folha_int).eq("folha_tipo", "R").eq("situacao", "A")
+             .in_("cod_verba", list(CONSIG_RESC_REDUTORAS)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for row in (q.execute().data or []):
+            reducoes += int(row.get("valor") or 0)
+    except Exception:
+        pass
+
+    return total_prov - reducoes, total_prov, reducoes, ""
+
+
+def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
+                           cnpj_empresa, mat):
+    """Lê a planilha e monta as verbas 700+ da rescisão do funcionário.
+
+    Não grava nada: devolve as linhas prontas para a prévia e para o insert.
+    """
+    folha_int = int(anomes)
+    try:
+        todas = _consig_ler_arquivo(file_bytes)
+    except ValueError as e:
+        return {"abort": True, "abort_msg": str(e)}
+    if not todas:
+        return {"abort": True, "abort_msg": "A planilha está vazia."}
+    col = _consig_mapa_colunas(todas[0])
+
+    obrig = ["numeroInscricaoEmpregador", "cpf", "matricula", "contrato",
+             "ifConcessora.codigo", "dataInicioContrato",
+             "competenciaInicioDesconto", "competenciaFimDesconto",
+             "totalParcelas", "valorSaldoDevedor",
+             "garantia.percVerbaRescisoriaGarantia"]
+    faltando = [c for c in obrig if c not in col]
+    if faltando:
+        return {"abort": True,
+                "abort_msg": "Planilha fora do layout esperado. Colunas ausentes: "
+                             + ", ".join(faltando)}
+
+    def cel(rowt, nome):
+        i = col.get(nome)
+        return rowt[i] if (i is not None and i < len(rowt)) else None
+
+    # ── Funcionário da tela ──
+    try:
+        q = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, cpf, situacao, datarescisao")
+             .eq("id_empresa", id_empresa).eq("matricula", mat))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        _d = q.execute().data or []
+    except Exception as e:
+        return {"abort": True, "abort_msg": f"Erro ao ler o cadastro: {str(e)[:150]}"}
+    if not _d:
+        return {"abort": True, "abort_msg": f"Matrícula {mat} não encontrada no cadastro."}
+    cad = _d[0]
+    nome_cad = (cad.get("nomer") or cad.get("nome") or "").strip()
+    cpf_cad = "".join(ch for ch in str(cad.get("cpf") or "") if ch.isdigit()).zfill(11)
+
+    # ── Base do cálculo (a rescisão precisa estar calculada) ──
+    base, total_prov, reducoes, erro = _consig_resc_base(id_cliente, id_empresa,
+                                                         folha_int, mat)
+    if erro:
+        return {"abort": True, "abort_msg": erro}
+    if base <= 0:
+        return {"abort": True,
+                "abort_msg": (f"A base do cálculo está "
+                              f"{'zerada' if base == 0 else 'negativa'}: proventos "
+                              f"{_consig_brl(total_prov)} − reduções {_consig_brl(reducoes)}. "
+                              f"Nada foi alterado.")}
+
+    # ── Linhas da planilha ──
+    cnpj_emp8 = "".join(ch for ch in str(cnpj_empresa or "") if ch.isdigit())[:8].zfill(8)
+    raizes, linhas, ignoradas = set(), [], 0
+
+    for offset, rowt in enumerate(todas[1:]):
+        mat_raw  = cel(rowt, "matricula")
+        contrato = cel(rowt, "contrato")
+        if mat_raw in (None, "") and contrato in (None, ""):
+            continue                                  # linha vazia
+        try:
+            mat_pl = int(str(mat_raw).strip())
+        except (TypeError, ValueError):
+            mat_pl = None
+        if mat_pl != mat:
+            ignoradas += 1                            # é de outro funcionário
+            continue
+
+        cnpj_pl = "".join(ch for ch in str(cel(rowt, "numeroInscricaoEmpregador") or "")
+                          if ch.isdigit())
+        if cnpj_pl:
+            raizes.add(cnpj_pl[:8].zfill(8))
+
+        cpf_pl   = "".join(ch for ch in str(cel(rowt, "cpf") or "") if ch.isdigit()).zfill(11)
+        if_cod   = str(cel(rowt, "ifConcessora.codigo") or "").strip()[:3]
+        if_desc  = str(cel(rowt, "ifConcessora.descricao") or "").strip()
+        comp_ini = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaInicioDesconto"))
+        datafim  = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaFimDesconto"))
+        _ptot    = _consig_num(cel(rowt, "totalParcelas"))
+        ptotal   = int(_ptot) if _ptot is not None else 0
+
+        parcatual = 0
+        if len(comp_ini) == 6 and len(anomes) == 6:
+            diff = (int(anomes[:4]) - int(comp_ini[:4])) * 12 + \
+                   (int(anomes[4:6]) - int(comp_ini[4:6]))
+            parcatual = max(1, diff + 1)
+
+        # Percentual da garantia (coluna V) e saldo devedor (coluna T).
+        perc = _consig_num(cel(rowt, "garantia.percVerbaRescisoriaGarantia")) or 0.0
+        saldo_txt = str(cel(rowt, "valorSaldoDevedor") or "").strip()
+        tem_saldo = saldo_txt != ""
+        _sd = _consig_num(saldo_txt)
+        saldo_cent = int(round(_sd * 100)) if _sd is not None else 0
+
+        # Mesma conta do Desktop: base × % , arredondando para cima no 0,5;
+        # o saldo devedor é o teto. Sem saldo informado, não desconta nada.
+        valor_cent = int(base * perc / 100 + 0.5)
+        if valor_cent > saldo_cent:
+            valor_cent = saldo_cent
+        if valor_cent < 0:
+            valor_cent = 0
+
+        item = {
+            "linha_xls": offset + 2,
+            "matricula": mat,
+            "nome": nome_cad,
+            "if_codigo": if_cod,
+            "if_desc": if_desc,
+            "contrato": str(contrato or "").strip(),
+            "comp_inicial": comp_ini,
+            "data_final": datafim,
+            "parcela_atual": parcatual,
+            "parcelas_total": ptotal,
+            "percentual": perc,
+            "saldo_centavos": saldo_cent,
+            "tem_saldo": tem_saldo,
+            "valor_centavos": valor_cent,
+            "no_teto": bool(tem_saldo and valor_cent == saldo_cent and saldo_cent > 0),
+            "dt_contrato_key": _consig_dtcontrato_key(cel(rowt, "dataInicioContrato")),
+            "cod_verba": None,
+            "status": "ok",
+            "mensagem": "",
+        }
+        if cpf_pl != cpf_cad:
+            item["status"] = "erro"
+            item["mensagem"] = f"CPF diverge: planilha {cpf_pl} × cadastro {cpf_cad}."
+        elif not tem_saldo:
+            item["status"] = "aviso"
+            item["mensagem"] = "Saldo devedor em branco — nada foi descontado."
+        elif item["no_teto"]:
+            item["mensagem"] = "Limitado ao saldo devedor."
+        linhas.append(item)
+
+    if not linhas:
+        return {"abort": True,
+                "abort_msg": (f"A planilha não tem nenhum contrato da matrícula "
+                              f"{mat:06d} — {nome_cad}."
+                              + (f" Foram encontradas {ignoradas} linha(s) de outros "
+                                 f"funcionários." if ignoradas else ""))}
+
+    # ── CNPJ da planilha × CNPJ da empresa ativa ──
+    raizes_dif = {x for x in raizes if x != cnpj_emp8}
+    if raizes_dif:
+        return {"abort": True,
+                "abort_msg": f"CNPJ da planilha ({', '.join(sorted(raizes))}) é diferente "
+                             f"do CNPJ da empresa ativa ({cnpj_emp8}). Importação cancelada."}
+
+    # ── Verbas 700+ por contrato, na ordem da data de início ──
+    verba = CONSIG_VERBA_INI
+    for it in sorted(linhas, key=lambda i: i["dt_contrato_key"]):
+        if it["status"] == "erro":
+            continue
+        if verba > CONSIG_VERBA_FIM:
+            it["status"] = "erro"
+            it["mensagem"] = (f"Passou do limite de "
+                              f"{CONSIG_VERBA_FIM - CONSIG_VERBA_INI + 1} empréstimos "
+                              f"(verba {CONSIG_VERBA_FIM}).")
+            continue
+        it["cod_verba"] = verba
+        verba += 1
+
+    # A verba segue a data do contrato, que quase nunca é a ordem da planilha;
+    # a prévia fica ilegível assim. Ordena pela verba para mostrar e gravar.
+    linhas.sort(key=lambda i: (i["cod_verba"] or 9999, i["linha_xls"]))
+
+    para_gravar = [it for it in linhas if it["status"] != "erro" and it["cod_verba"]]
+    n_erro = sum(1 for it in linhas if it["status"] == "erro")
+    n_sem_saldo = sum(1 for it in linhas if not it["tem_saldo"])
+
+    # Verbas 700-749 que já estão nesta rescisão (serão apagadas e regravadas)
+    ja_existe = 0
+    try:
+        q = (supabase.table("tab_mov")
+             .select("id", count="exact")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("folha", folha_int).eq("folha_tipo", "R")
+             .gte("cod_verba", CONSIG_VERBA_INI).lte("cod_verba", CONSIG_VERBA_FIM))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        ja_existe = q.execute().count or 0
+    except Exception:
+        ja_existe = 0
+
+    return {
+        "abort": False,
+        "matricula": mat,
+        "nome": nome_cad,
+        "base": base,
+        "total_proventos": total_prov,
+        "reducoes": reducoes,
+        "linhas": linhas,
+        "para_gravar": para_gravar,
+        "has_error": n_erro > 0,
+        "resumo": {
+            "total": len(linhas), "erro": n_erro, "sem_saldo": n_sem_saldo,
+            "ignoradas": ignoradas, "lancamentos": len(para_gravar),
+            "descontado": sum(it["valor_centavos"] for it in para_gravar),
+            "ja_existentes": ja_existe,
+        },
+    }
+
+
+def _consig_resc_argumentos():
+    """Validações comuns das duas rotas. Retorna (dados, erro_json)."""
+    if not session.get("logado"):
+        return None, jsonify({"ok": False, "msg": "Sessão expirada."})
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return None, jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if str(session.get("anomes_situacao") or "") in ("C", "F"):
+        return None, jsonify({"ok": False,
+                              "msg": "A folha precisa estar Aberta para importar."})
+    mat_txt = str(request.form.get("matricula") or "").strip()
+    if not mat_txt.isdigit():
+        return None, jsonify({"ok": False, "msg": "Funcionário não informado."})
+    f = request.files.get("arquivo")
+    if not f or not f.filename.lower().endswith((".xlsx", ".csv", ".txt")):
+        return None, jsonify({"ok": False, "msg": "Envie um arquivo .xlsx ou .csv."})
+    return {"anomes": anomes, "mat": int(mat_txt), "arquivo": f,
+            "id_cliente": session.get("id_cliente"),
+            "id_empresa": _get_id_empresa()}, None
+
+
+@app.route("/api/consignado_resc/preview", methods=["POST"])
+def api_consignado_resc_preview():
+    """Prévia da importação dos consignados na rescisão (não grava nada)."""
+    dados, erro = _consig_resc_argumentos()
+    if erro:
+        return erro
+    try:
+        res = _consig_resc_processar(dados["arquivo"].read(), dados["id_cliente"],
+                                     dados["id_empresa"], dados["anomes"],
+                                     session.get("cnpj_empresa", ""), dados["mat"])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a planilha: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "abort": True, "msg": res["abort_msg"]})
+    for it in res["linhas"]:
+        it.pop("dt_contrato_key", None)
+    return jsonify({"ok": True, "anomes": dados["anomes"],
+                    "matricula": res["matricula"], "nome": res["nome"],
+                    "base": res["base"], "total_proventos": res["total_proventos"],
+                    "reducoes": res["reducoes"], "has_error": res["has_error"],
+                    "resumo": res["resumo"], "linhas": res["linhas"]})
+
+
+@app.route("/api/consignado_resc/importar", methods=["POST"])
+def api_consignado_resc_importar():
+    """Grava as verbas 700+ da rescisão (apaga as 700-749 do funcionário antes)."""
+    dados, erro = _consig_resc_argumentos()
+    if erro:
+        return erro
+    id_cliente, id_empresa = dados["id_cliente"], dados["id_empresa"]
+    anomes, mat = dados["anomes"], dados["mat"]
+    folha_int = int(anomes)
+
+    try:
+        res = _consig_resc_processar(dados["arquivo"].read(), id_cliente, id_empresa,
+                                     anomes, session.get("cnpj_empresa", ""), mat)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a planilha: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "msg": res["abort_msg"]})
+    if res["has_error"]:
+        return jsonify({"ok": False, "msg": "Existem erros na planilha. Corrija antes de importar."})
+    if not res["para_gravar"]:
+        return jsonify({"ok": False, "msg": "Nenhum contrato válido para importar."})
+
+    registros = []
+    for it in res["para_gravar"]:
+        registros.append({
+            "id_cliente":    id_cliente,
+            "id_empresa":    id_empresa,
+            "situacao":      "A",
+            "matricula":     mat,
+            "folha":         folha_int,
+            "folha_tipo":    "R",
+            "cod_verba":     it["cod_verba"],
+            "qtd":           0,
+            "valor":         it["valor_centavos"],
+            "lote":          0,
+            # origem 'M': o recálculo da rescisão só apaga as verbas 'C'.
+            "origem":        "M",
+            "controle":      0,
+            "os":            0,
+            "instfinanc":    it["if_codigo"] or None,
+            "nrdoc":         it["contrato"] or None,
+            "parcelaatual":  it["parcela_atual"] or None,
+            "parcelastotal": it["parcelas_total"] or None,
+            "datafinal":     it["data_final"] or None,
+        })
+
+    try:
+        q = (supabase.table("tab_mov").delete()
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .eq("folha", folha_int).eq("folha_tipo", "R")
+             .gte("cod_verba", CONSIG_VERBA_INI).lte("cod_verba", CONSIG_VERBA_FIM))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        q.execute()
+        supabase.table("tab_mov").insert(registros).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}"})
+
+    total_desc = sum(r["valor"] for r in registros)
+    gravar_log("RESC-CONS",
+               f"Consignados da rescisão: {len(registros)} verba(s) "
+               f"{CONSIG_VERBA_INI}+ = {_consig_brl(total_desc)} "
+               f"(base {_consig_brl(res['base'])}) na folha {anomes}.",
+               ano_mes=anomes, matricula=mat)
+
+    return jsonify({"ok": True, "matricula": mat, "n_lancamentos": len(registros),
+                    "descontado": total_desc,
+                    "msg": (f"{len(registros)} empréstimo(s) importado(s) — "
+                            f"total descontado {_consig_brl(total_desc)}. "
+                            f"A rescisão vai ser recalculada.")})
+
+
+# =========================================================
+# IMPORTAR XML DO eSOCIAL → CADASTRO
+# Lê uma pasta de XMLs (mandada como .zip ou vários arquivos) e monta o
+# cadastro dos funcionários. Serve para qualquer origem: o ZIP do portal, a
+# pasta do provedor anterior ou o que o download cirúrgico baixar — o XML do
+# eSocial é o mesmo nos três casos.
+# Grava sempre na EMPRESA ATIVA da sessão: troque para o cliente/empresa de
+# destino antes de importar (para teste, o cliente 6 - ZZZ Bases Teste).
+# =========================================================
+_XMLI_EVENTOS = {
+    "evtInfoEmpregador": "S-1000",
+    "evtTabEstab":       "S-1005",
+    "evtTabLotacao":     "S-1020",
+    "evtAdmissao":       "S-2200",
+    "evtAltCadastral":   "S-2205",
+    "evtAltContratual":  "S-2206",
+    "evtAfastTemp":      "S-2230",
+    "evtDeslig":         "S-2299",
+    "evtTSVInicio":      "S-2300",
+    "evtTSVTermino":     "S-2399",
+}
+# undSalFixo do eSocial → letra do Folha10 (inverso do _und_map do gerador)
+_XMLI_UND_SAL = {"1": "H", "2": "D", "3": "S", "4": "Q", "5": "M", "6": "T", "7": "N"}
+
+
+def _xmli_ln(el):
+    """local-name da tag, sem o namespace."""
+    return el.tag.split("}")[-1] if isinstance(el.tag, str) else ""
+
+
+def _xmli_ache(el, *tags):
+    """Primeiro descendente com um desses local-names (ou None)."""
+    if el is None:
+        return None
+    alvo = set(tags)
+    for x in el.iter():
+        if _xmli_ln(x) in alvo:
+            return x
+    return None
+
+
+def _xmli_txt(el, *tags):
+    """Texto do primeiro descendente com um desses local-names."""
+    if el is None:
+        return ""
+    alvo = set(tags)
+    for x in el.iter():
+        if _xmli_ln(x) in alvo and (x.text or "").strip():
+            return (x.text or "").strip()
+    return ""
+
+
+def _xmli_data(v):
+    """'2023-12-13' → '20231213'. '2023-12' → '202312'. Devolve '' se não der."""
+    s = re.sub(r"\D", "", str(v or ""))
+    return s if len(s) in (6, 8) else ""
+
+
+def _xmli_cent(v):
+    """'2250.00' → 225000 (centavos)."""
+    n = _consig_num(v)
+    return int(round(n * 100)) if n is not None else 0
+
+
+def _xmli_arquivos(lista_files):
+    """FileStorage(s) do upload → [(nome, bytes)], abrindo o que for .zip.
+
+    Aceita o ZIP inteiro da pasta ou os .xml soltos. Ignora silenciosamente o
+    que não for XML (o ZIP do portal costuma vir com PDF e txt junto).
+    """
+    import zipfile
+    saida = []
+
+    def abrir(nome, dados, nivel=0):
+        eh_zip = nome.lower().endswith(".zip") or dados[:2] == b"PK"
+        if eh_zip:
+            # O download por período do portal vem com ZIP dentro de ZIP quando o
+            # período tem muitos eventos. Sem descer, a importação terminava em
+            # zero sem dizer por quê. 3 níveis é folga de sobra.
+            if nivel >= 3:
+                return
+            try:
+                with zipfile.ZipFile(io.BytesIO(dados)) as z:
+                    for it in z.infolist():
+                        if it.is_dir():
+                            continue
+                        baixo = it.filename.lower()
+                        if not (baixo.endswith(".xml") or baixo.endswith(".zip")):
+                            continue
+                        if it.file_size > 40 * 1024 * 1024:     # trava de zip bomb
+                            continue
+                        abrir(it.filename, z.read(it), nivel + 1)
+            except zipfile.BadZipFile:
+                return
+        elif nome.lower().endswith(".xml"):
+            if len(dados) <= 4 * 1024 * 1024:                   # XML de evento é pequeno
+                saida.append((nome, dados))
+
+    for f in lista_files:
+        abrir((f.filename or "").strip(), f.read())
+    return saida
+
+
+def _xmli_evento(dados):
+    """bytes de um XML → (tipo, elemento do evento). (None, None) se não for evento.
+
+    Funciona tanto com o XML solto quanto com o que vem dentro do lote ou da
+    resposta do download — procura o primeiro elemento evt* conhecido.
+    """
+    from lxml import etree      # import tardio, como no resto do modulo eSocial
+    try:
+        root = etree.fromstring(dados)
+    except Exception:
+        return None, None
+    for el in root.iter():
+        tipo = _XMLI_EVENTOS.get(_xmli_ln(el))
+        if tipo:
+            return tipo, el
+    return None, None
+
+
+def _xmli_ordem(tipo, ev):
+    """Data que ordena o evento (AAAAMMDD) — para aplicar na ordem certa."""
+    if tipo == "S-2200":
+        return _xmli_data(_xmli_txt(ev, "dtAdm", "dtInicio")) or "00000000"
+    if tipo in ("S-2205", "S-2206"):
+        return _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf")) or "00000000"
+    if tipo in ("S-2299", "S-2399"):
+        return _xmli_data(_xmli_txt(ev, "dtDeslig", "dtTerm")) or "99999999"
+    if tipo == "S-2230":
+        # Ordena pelo fato do próprio evento: o retorno tem que ser aplicado
+        # depois do início. Como o retorno vem num S-2230 separado, que só traz
+        # dtTermAfast, as três tags entram na mesma busca — _xmli_txt devolve a
+        # primeira em ordem de documento, e iniAfastamento vem antes de fim.
+        return _xmli_data(_xmli_txt(ev, "dtIniAfast", "dtAltAfast", "dtTermAfast")) or "00000000"
+    return "00000000"
+
+
+def _xmli_cpf_do_evento(ev):
+    return re.sub(r"\D", "", _xmli_txt(ev, "cpfTrab", "cpfBenef"))[:11].zfill(11)
+
+
+def _xmli_ler_s2200(ev, cnpj_empresa):
+    """evtAdmissao (ou evtTSVInicio) → dicionário no formato do tab_cad."""
+    trab   = _xmli_ache(ev, "trabalhador")
+    vinc   = _xmli_ache(ev, "vinculo", "infoTSVInicio")
+    contr  = _xmli_ache(ev, "infoContrato")
+    remun  = _xmli_ache(contr, "remuneracao") if contr is not None else None
+    horc   = _xmli_ache(contr, "horContratual") if contr is not None else None
+    durac  = _xmli_ache(contr, "duracao") if contr is not None else None
+    ender  = _xmli_ache(trab, "brasil") if trab is not None else None
+
+    hrs_sem = _xmli_txt(horc, "qtdHrsSem") if horc is not None else ""
+    try:
+        hrs_mes = str(int(round(float(hrs_sem.replace(",", ".")) * 5))) if hrs_sem else ""
+    except ValueError:
+        hrs_mes = ""
+
+    und = _xmli_txt(remun, "undSalFixo") if remun is not None else ""
+    mat_es = _xmli_txt(vinc, "matricula") if vinc is not None else ""
+
+    return {
+        "cpf":        _xmli_cpf_do_evento(ev),
+        "nome":       _xmli_txt(trab, "nmTrab"),
+        "sexo":       _xmli_txt(trab, "sexo"),
+        "racacor":    _xmli_txt(trab, "racaCor"),
+        "estciv":     _xmli_txt(trab, "estCiv"),
+        "grauinstr":  _xmli_txt(trab, "grauInstr"),
+        "dtnascto":   _xmli_data(_xmli_txt(trab, "dtNascto")),
+        "paisnascto": _xmli_txt(trab, "paisNascto"),
+        "paisnac":    _xmli_txt(trab, "paisNac"),
+        "nomemae":    _xmli_txt(trab, "nmMae"),
+        "ender_dsclograd":  _xmli_txt(ender, "dscLograd"),
+        "ender_nrlograd":   _xmli_txt(ender, "nrLograd"),
+        "ender_complemento": _xmli_txt(ender, "complemento"),
+        "ender_bairro":     _xmli_txt(ender, "bairro"),
+        "ender_cep":        re.sub(r"\D", "", _xmli_txt(ender, "cep")),
+        "ender_codmunic":   _xmli_txt(ender, "codMunic"),
+        "ender_uf":         _xmli_txt(ender, "uf"),
+        "matricula_es": mat_es,
+        "dtadm":      _xmli_data(_xmli_txt(ev, "dtAdm", "dtInicio")),
+        "tpadmissao": _xmli_txt(ev, "tpAdmissao"),
+        "indadmissao": _xmli_txt(ev, "indAdmissao"),
+        "tpregjor":   _xmli_txt(ev, "tpRegJor"),
+        "natatividade": _xmli_txt(ev, "natAtividade"),
+        "codcateg":   _xmli_txt(contr, "codCateg"),
+        "nmcargo":    _xmli_txt(contr, "nmCargo"),
+        "cbofuncao":  _xmli_txt(contr, "CBOCargo", "codCBO"),
+        "vrsalfx":    _xmli_cent(_xmli_txt(remun, "vrSalFx")) if remun is not None else 0,
+        "undsalfixo": _XMLI_UND_SAL.get(und, "M"),
+        "qtdhrssem":  hrs_sem,
+        "qtdhrsmes":  hrs_mes,
+        "tpjornada":  _xmli_txt(horc, "tpJornada") if horc is not None else "",
+        "tmpparc":    _xmli_txt(horc, "tmpParc") if horc is not None else "",
+        "tpcontr":    _xmli_txt(durac, "tpContr") if durac is not None else "",
+        "cnpjsindcategprof": re.sub(r"\D", "", _xmli_txt(ev, "cnpjSindCategProf")),
+        "filial":     re.sub(r"\D", "", str(cnpj_empresa or ""))[8:14],
+        "centrocusto": "001",
+        "situacao":   "A",
+    }
+
+
+def _xmli_ler_s2230(ev):
+    """evtAfastTemp → o que este evento diz sobre o afastamento.
+
+    Um S-2230 pode trazer o INÍCIO, o FIM, os dois, e ainda a ALTERAÇÃO do
+    motivo. Na prática o retorno quase sempre vem num evento separado, contendo
+    só <fimAfastamento>, e ele fecha o afastamento que estava aberto.
+    Cada bloco é lido a partir do seu próprio elemento — procurar codMotAfast a
+    partir da raiz pegaria o da alteração no lugar do início.
+    """
+    ini = _xmli_ache(ev, "iniAfastamento")
+    alt = _xmli_ache(ev, "altAfastamento")
+    fim = _xmli_ache(ev, "fimAfastamento")
+    out = {}
+    if ini is not None:
+        out["dt_ini"]        = _xmli_data(_xmli_txt(ini, "dtIniAfast"))
+        out["motivo"]        = _xmli_txt(ini, "codMotAfast")
+        out["mesmo_mtv"]     = _xmli_txt(ini, "infoMesmoMtv")
+        out["acid_transito"] = _xmli_txt(ini, "tpAcidTransito")
+        out["observacao"]    = _xmli_txt(ini, "observacao")
+    if alt is not None:
+        out["motivo_alt"] = _xmli_txt(alt, "codMotAfast")
+    if fim is not None:
+        out["dt_fim"] = _xmli_data(_xmli_txt(fim, "dtTermAfast"))
+    return out
+
+
+def _xmli_afast_extras(motivo, a):
+    """campotxt1/campotxt4 com a MESMA codificação da tela de afastamento:
+    campotxt1 = mesmo motivo (S/N) + acidente de trânsito (0-3), só nos motivos
+    01 e 03; campotxt4 = observação, só no motivo 21."""
+    c1 = c4 = None
+    if motivo in ("01", "03"):
+        c1 = ((a.get("mesmo_mtv") or "N")[:1] + (a.get("acid_transito") or "0")[:1])
+    if motivo == "21" and a.get("observacao"):
+        c4 = a["observacao"][:255]
+    return c1, c4
+
+
+def _xmli_processar(arquivos, id_cliente, id_empresa, cnpj_empresa):
+    """Lê os XMLs e monta empresa + funcionários (sem gravar nada)."""
+    eventos, ignorados = [], []
+    for nome, dados in arquivos:
+        tipo, ev = _xmli_evento(dados)
+        if not tipo:
+            ignorados.append(nome)
+            continue
+        eventos.append({"arquivo": nome, "tipo": tipo, "ev": ev,
+                        "ordem": _xmli_ordem(tipo, ev)})
+    if not eventos:
+        return {"abort": True,
+                "abort_msg": "Nenhum XML de evento do eSocial foi encontrado nos arquivos enviados."}
+
+    # ── Empresa (só leitura, para você conferir) ──
+    empresa = {}
+    for e in sorted([x for x in eventos if x["tipo"] == "S-1000"], key=lambda x: x["arquivo"]):
+        empresa.update({
+            "cnpj_raiz":  _xmli_txt(e["ev"], "nrInsc"),
+            "nmrazao":    _xmli_txt(e["ev"], "nmRazao"),
+            "classtrib":  _xmli_txt(e["ev"], "classTrib"),
+            "natjurid":   _xmli_txt(e["ev"], "natJurid"),
+            "indcoop":    _xmli_txt(e["ev"], "indCoop"),
+            "indconstr":  _xmli_txt(e["ev"], "indConstr"),
+            "inddesfolha": _xmli_txt(e["ev"], "indDesFolha"),
+            "contato":    _xmli_txt(e["ev"], "nmCtt"),
+        })
+    estabs = [{"cnpj": _xmli_txt(e["ev"], "nrInsc"), "cnae": _xmli_txt(e["ev"], "cnaePrep")}
+              for e in eventos if e["tipo"] == "S-1005"]
+    lotacoes = [{"codigo": _xmli_txt(e["ev"], "codLotacao"), "tipo": _xmli_txt(e["ev"], "tpLotacao")}
+                for e in eventos if e["tipo"] == "S-1020"]
+
+    # ── Funcionários: aplica os eventos na ordem cronológica ──
+    funcs = {}
+    for e in sorted(eventos, key=lambda x: (x["ordem"], x["arquivo"])):
+        tipo, ev = e["tipo"], e["ev"]
+        if tipo not in ("S-2200", "S-2300", "S-2205", "S-2206", "S-2230",
+                        "S-2299", "S-2399"):
+            continue
+        cpf = _xmli_cpf_do_evento(ev)
+        if not cpf or cpf == "00000000000":
+            continue
+
+        if tipo in ("S-2200", "S-2300"):
+            f = _xmli_ler_s2200(ev, cnpj_empresa)
+            f["_eventos"] = [tipo]
+            f["_arquivos"] = [e["arquivo"]]
+            if cpf in funcs:                       # readmissão: fica o mais recente
+                f["_eventos"] = funcs[cpf]["_eventos"] + [tipo]
+                f["_arquivos"] = funcs[cpf]["_arquivos"] + [e["arquivo"]]
+            funcs[cpf] = f
+            continue
+
+        f = funcs.get(cpf)
+        if f is None:                              # alteração sem a admissão junto
+            f = {"cpf": cpf, "situacao": "A", "centrocusto": "001",
+                 "filial": re.sub(r"\D", "", str(cnpj_empresa or ""))[8:14],
+                 "_eventos": [], "_arquivos": [], "_sem_admissao": True}
+            funcs[cpf] = f
+        f["_eventos"].append(tipo)
+        f["_arquivos"].append(e["arquivo"])
+
+        if tipo == "S-2205":                        # alteração cadastral
+            for col, tag in (("nome", "nmTrab"), ("estciv", "estCiv"),
+                             ("grauinstr", "grauInstr"), ("racacor", "racaCor")):
+                v = _xmli_txt(ev, tag)
+                if v:
+                    f[col] = v
+            ender = _xmli_ache(ev, "brasil")
+            if ender is not None:
+                for col, tag in (("ender_dsclograd", "dscLograd"), ("ender_nrlograd", "nrLograd"),
+                                 ("ender_bairro", "bairro"), ("ender_cep", "cep"),
+                                 ("ender_codmunic", "codMunic"), ("ender_uf", "uf")):
+                    v = _xmli_txt(ender, tag)
+                    if v:
+                        f[col] = re.sub(r"\D", "", v) if col == "ender_cep" else v
+
+        elif tipo == "S-2206":                      # alteração contratual
+            contr = _xmli_ache(ev, "infoContrato")
+            remun = _xmli_ache(contr, "remuneracao") if contr is not None else None
+            horc  = _xmli_ache(contr, "horContratual") if contr is not None else None
+            for col, tag, el in (("nmcargo", "nmCargo", contr), ("cbofuncao", "CBOCargo", contr),
+                                 ("codcateg", "codCateg", contr)):
+                v = _xmli_txt(el, tag) if el is not None else ""
+                if v:
+                    f[col] = v
+            if remun is not None:
+                v = _xmli_txt(remun, "vrSalFx")
+                if v:
+                    f["vrsalfx"] = _xmli_cent(v)
+                u = _xmli_txt(remun, "undSalFixo")
+                if u:
+                    f["undsalfixo"] = _XMLI_UND_SAL.get(u, f.get("undsalfixo") or "M")
+            if horc is not None:
+                v = _xmli_txt(horc, "qtdHrsSem")
+                if v:
+                    f["qtdhrssem"] = v
+                    try:
+                        f["qtdhrsmes"] = str(int(round(float(v.replace(",", ".")) * 5)))
+                    except ValueError:
+                        pass
+            f["_alterado_em"] = _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf"))
+
+        elif tipo == "S-2230":                       # afastamento temporário
+            # Afastamento não mora no tab_cad: vira registro no tab_eventos
+            # (op1=6), gravado depois que o funcionário ganha matrícula. Aqui só
+            # se monta a lista, aplicando os eventos na ordem cronológica.
+            a = _xmli_ler_s2230(ev)
+            lista = f.setdefault("_afast", [])
+            if a.get("dt_ini"):
+                mot = a.get("motivo") or ""
+                c1, c4 = _xmli_afast_extras(mot, a)
+                lista.append({"data1i": a["dt_ini"], "op2": mot, "data1f": None,
+                              "campotxt1": c1, "campotxt4": c4})
+            if a.get("motivo_alt"):                  # alteração troca o motivo
+                for x in reversed(lista):
+                    if x["data1f"] is None:
+                        x["op2"] = a["motivo_alt"]
+                        # os campos condicionais seguem o motivo NOVO: se ele
+                        # sair de 01/03 (ou de 21), o que estava lá não vale mais
+                        if x["op2"] not in ("01", "03"):
+                            x["campotxt1"] = None
+                        if x["op2"] != "21":
+                            x["campotxt4"] = None
+                        break
+            if a.get("dt_fim"):                      # retorno fecha o que está aberto
+                alvo = next((x for x in reversed(lista) if x["data1f"] is None), None)
+                if alvo is not None:
+                    alvo["data1f"] = a["dt_fim"]
+                else:
+                    # Retorno sem início: a saída ficou fora dos meses baixados.
+                    # Não dá para inventar a data de início, então vira aviso.
+                    f.setdefault("_afast_orfaos", []).append(a["dt_fim"])
+
+        elif tipo in ("S-2299", "S-2399"):           # desligamento
+            f["datarescisao"] = _xmli_data(_xmli_txt(ev, "dtDeslig", "dtTerm"))
+            mtv = _xmli_txt(ev, "mtvDeslig")
+            if mtv:
+                f["motrescisao"] = mtv
+                f["motdesligamento"] = mtv
+            f["situacao"] = "D"
+
+    # ── Confronta com quem já está na empresa de destino ──
+    ja_tem = {}
+    try:
+        q = (supabase.table("tab_cad").select("matricula, cpf, nome")
+             .eq("id_empresa", id_empresa))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            c = re.sub(r"\D", "", str(r.get("cpf") or "")).zfill(11)
+            ja_tem[c] = r
+    except Exception:
+        pass
+    mats_usadas = {int(r.get("matricula") or 0) for r in ja_tem.values()}
+
+    linhas = []
+    prox_mat = (max(mats_usadas) + 1) if mats_usadas else 1
+    for cpf in sorted(funcs, key=lambda c: (funcs[c].get("dtadm") or "", c)):
+        f = funcs[cpf]
+        item = dict(f)
+        item["status"] = "ok"
+        item["mensagem"] = ""
+
+        # 1) situação da linha. A ordem importa: quem não vai ser gravado não
+        #    pode consumir matrícula (senão as válidas saem numeradas errado).
+        item["matricula"] = 0
+        if item.get("_sem_admissao"):
+            item["status"] = "erro"
+            item["mensagem"] = ("Só vieram eventos de alteração/desligamento deste CPF, "
+                                "sem o S-2200 da admissão. Falta o cadastro base.")
+        elif not item.get("nome") or not item.get("dtadm"):
+            item["status"] = "erro"
+            item["mensagem"] = "O S-2200 não trouxe nome ou data de admissão."
+        elif cpf in ja_tem:
+            item["status"] = "existe"
+            item["matricula"] = int(ja_tem[cpf].get("matricula") or 0)
+            item["mensagem"] = (f"CPF já cadastrado na empresa "
+                                f"(matrícula {item['matricula']:06d}) — não será gravado.")
+
+        # 2) matrícula só para quem vai entrar: a do XML se estiver livre,
+        #    senão a próxima da empresa.
+        if item["status"] == "ok":
+            try:
+                mat_xml = int(re.sub(r"\D", "", item.get("matricula_es") or "") or 0)
+            except ValueError:
+                mat_xml = 0
+            if mat_xml and mat_xml not in mats_usadas:
+                item["matricula"] = mat_xml
+            else:
+                while prox_mat in mats_usadas:
+                    prox_mat += 1
+                item["matricula"] = prox_mat
+                if mat_xml:
+                    item["mensagem"] = (f"Matrícula {mat_xml:06d} do XML já está em uso; "
+                                        f"entra como {prox_mat:06d}.")
+                prox_mat += 1
+            mats_usadas.add(item["matricula"])
+
+        item["eventos_txt"] = " + ".join(item.get("_eventos") or [])
+        # Afastamentos só entram junto com o cadastro; em quem já existe na
+        # empresa o importador não toca, então nada é gravado.
+        item["afastamentos"] = len(item.get("_afast") or []) if item["status"] == "ok" else 0
+        item["afast_orfaos"] = len(item.get("_afast_orfaos") or [])
+        if item["afast_orfaos"] and item["status"] == "ok":
+            item["mensagem"] = ((item["mensagem"] + " ") if item["mensagem"] else "") + (
+                f"{item['afast_orfaos']} retorno(s) de afastamento sem o evento de início "
+                f"nos meses baixados — esse afastamento não será gravado.")
+        linhas.append(item)
+
+    tipos = {}
+    for e in eventos:
+        tipos[e["tipo"]] = tipos.get(e["tipo"], 0) + 1
+
+    return {
+        "abort": False,
+        "empresa": empresa,
+        "estabelecimentos": estabs,
+        "lotacoes": lotacoes,
+        "linhas": linhas,
+        "tipos": tipos,
+        "ignorados": len(ignorados),
+        "resumo": {
+            "arquivos": len(arquivos),
+            "eventos": len(eventos),
+            "funcionarios": len(linhas),
+            "novos": sum(1 for x in linhas if x["status"] == "ok"),
+            "existentes": sum(1 for x in linhas if x["status"] == "existe"),
+            "erros": sum(1 for x in linhas if x["status"] == "erro"),
+            "afastamentos": sum(x.get("afastamentos") or 0 for x in linhas),
+        },
+    }
+
+
+# Colunas do tab_cad que o importador preenche (o resto fica no default).
+_XMLI_COLS = (
+    "matricula", "matricula_es", "cpf", "nome", "situacao", "sexo", "racacor", "estciv",
+    "grauinstr", "dtnascto", "paisnascto", "paisnac", "nomemae", "ender_dsclograd",
+    "ender_nrlograd", "ender_complemento", "ender_bairro", "ender_cep", "ender_codmunic",
+    "ender_uf", "dtadm", "tpadmissao", "indadmissao", "tpregjor", "natatividade",
+    "codcateg", "nmcargo", "cbofuncao", "vrsalfx", "undsalfixo", "qtdhrssem", "qtdhrsmes",
+    "tpjornada", "tmpparc", "tpcontr", "cnpjsindcategprof", "filial", "centrocusto",
+    "datarescisao", "motrescisao", "motdesligamento",
+)
+
+
+@app.route("/importar_xml_esocial")
+def importar_xml_esocial():
+    """Tela de importação de XMLs do eSocial para o cadastro."""
+    if not session.get("logado"):
+        return redirect("/")
+    return render_template(
+        "F10_Importar_XML_eSocial.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=str(session.get("anomes_atual") or ""),
+    )
+
+
+def _xmli_args():
+    """Validação comum das duas rotas. Retorna (dados, erro_json)."""
+    if not session.get("logado"):
+        return None, jsonify({"ok": False, "msg": "Sessão expirada."})
+    files = request.files.getlist("arquivos")
+    if not files:
+        return None, jsonify({"ok": False, "msg": "Envie o .zip da pasta ou os arquivos .xml."})
+    arquivos = _xmli_arquivos(files)
+    if not arquivos:
+        return None, jsonify({"ok": False,
+                              "msg": "Nenhum arquivo .xml encontrado no que foi enviado."})
+    return {"arquivos": arquivos,
+            "id_cliente": session.get("id_cliente"),
+            "id_empresa": _get_id_empresa(),
+            "cnpj": session.get("cnpj_empresa", "")}, None
+
+
+@app.route("/api/importar_xml/preview", methods=["POST"])
+def api_importar_xml_preview():
+    """Lê os XMLs e devolve a prévia. Não grava nada."""
+    d, erro = _xmli_args()
+    if erro:
+        return erro
+    try:
+        res = _xmli_processar(d["arquivos"], d["id_cliente"], d["id_empresa"], d["cnpj"])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler os XMLs: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "msg": res["abort_msg"]})
+    for it in res["linhas"]:
+        for k in ("_eventos", "_arquivos", "_sem_admissao"):
+            it.pop(k, None)
+    return jsonify({"ok": True, "empresa_ativa": session.get("empresa_info", ""),
+                    **{k: res[k] for k in ("empresa", "estabelecimentos", "lotacoes",
+                                           "linhas", "tipos", "ignorados", "resumo")}})
+
+
+@app.route("/api/importar_xml/gravar", methods=["POST"])
+def api_importar_xml_gravar():
+    """Grava no tab_cad da empresa ativa os funcionários novos da prévia."""
+    d, erro = _xmli_args()
+    if erro:
+        return erro
+    id_cliente, id_empresa = d["id_cliente"], d["id_empresa"]
+    try:
+        res = _xmli_processar(d["arquivos"], id_cliente, id_empresa, d["cnpj"])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler os XMLs: {str(e)[:200]}"})
+    if res.get("abort"):
+        return jsonify({"ok": False, "msg": res["abort_msg"]})
+
+    novos = [x for x in res["linhas"] if x["status"] == "ok"]
+    if not novos:
+        return jsonify({"ok": False,
+                        "msg": "Nenhum funcionário novo para gravar "
+                               "(os da lista já existem na empresa ou têm erro)."})
+
+    registros = []
+    for it in novos:
+        rec = {"id_cliente": id_cliente, "id_empresa": id_empresa}
+        for col in _XMLI_COLS:
+            v = it.get(col)
+            if v not in (None, ""):
+                rec[col] = v
+        registros.append(rec)
+
+    try:
+        for i in range(0, len(registros), 200):
+            supabase.table("tab_cad").insert(registros[i:i + 200]).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:250]}"})
+
+    # ── Afastamentos (S-2230) de quem acabou de entrar ────────────────────
+    # Vão para o tab_eventos com op1=6, no mesmo formato da tela de
+    # afastamento. `folha` é a competência do próprio fato (mês do início),
+    # como faz a remessa do S-2230 — as consultas de afastamento filtram por
+    # op1 e datas, não por folha.
+    afast_rows = []
+    for it in novos:
+        for a in (it.get("_afast") or []):
+            if not a.get("data1i"):
+                continue
+            linha_ev = {
+                "id_cliente": id_cliente, "id_empresa": id_empresa,
+                "matricula":  it["matricula"], "op1": 6,
+                "op2":        a.get("op2") or "",
+                "data1i":     a["data1i"], "data1f": a.get("data1f"),
+                "folha":      int(a["data1i"][:6]),
+            }
+            if a.get("campotxt1"):
+                linha_ev["campotxt1"] = a["campotxt1"]
+            if a.get("campotxt4"):
+                linha_ev["campotxt4"] = a["campotxt4"]
+            afast_rows.append(linha_ev)
+
+    afast_grav, afast_erro = 0, ""
+    if afast_rows:
+        try:
+            for i in range(0, len(afast_rows), 200):
+                supabase.table("tab_eventos").insert(afast_rows[i:i + 200]).execute()
+            afast_grav = len(afast_rows)
+        except Exception as e:
+            # O cadastro já entrou e não se desfaz por causa do complemento —
+            # avisa em vez de fingir que deu tudo certo.
+            afast_erro = str(e)[:150]
+
+    gravar_log("IMP-XML-ES",
+               f"Importados {len(registros)} funcionário(s) de XML do eSocial "
+               f"({res['resumo']['eventos']} evento(s) em {res['resumo']['arquivos']} arquivo(s)), "
+               f"{afast_grav} afastamento(s).")
+    msg = f"{len(registros)} funcionário(s) importado(s) para a empresa ativa."
+    if afast_grav:
+        msg += f" {afast_grav} afastamento(s) registrado(s)."
+    if afast_erro:
+        msg += (f" ATENÇÃO: os funcionários entraram, mas os {len(afast_rows)} "
+                f"afastamento(s) não foram gravados ({afast_erro}).")
+    return jsonify({"ok": True, "gravados": len(registros),
+                    "afastamentos": afast_grav, "afast_erro": afast_erro, "msg": msg})
 
 
 @app.route("/cad_mov_ferias")
@@ -22973,8 +24167,11 @@ def _soap_consultar_ide_tab(cnpj_raiz, tp_evt, pfx_bytes=None, senha_str=None):
 def _soap_download_evt(cnpj_raiz, ids, pfx_bytes=None, senha_str=None):
     """SOAP: SolicitarDownloadEventosPorId. Max 40 IDs por chamada (limite do gov)."""
     ids_xml = "".join(f"<id>{i}</id>" for i in ids[:40])
+    # O "/id/" no namespace do XML de DENTRO e obrigatorio: sem ele o eSocial
+    # responde 417 "targetNamespace invalido". Nao confundir com o namespace do
+    # SERVICO (_NS_SVC_DWN), que e sem o /id/ e vai no envelope SOAP.
     body_xml = (
-        f'<eSocial xmlns="http://www.esocial.gov.br/schema/download/solicitacao/v1_0_0">'
+        f'<eSocial xmlns="http://www.esocial.gov.br/schema/download/solicitacao/id/v1_0_0">'
         f"<download>"
         f"<ideEmpregador><tpInsc>1</tpInsc><nrInsc>{cnpj_raiz}</nrInsc></ideEmpregador>"
         f"<solicDownloadEvtsPorId>{ids_xml}</solicDownloadEvtsPorId>"
@@ -23050,11 +24247,14 @@ def _parse_ide_response(xml_resp):
             out["status"]["cdResp"] = txt
         elif tag == "descResposta":
             out["status"]["descResp"] = txt
-    # Coleta cada <ideEvento> contendo <id> e <tpEvt>
+    # A resposta real traz <identificadoresEvts><identificadorEvt><id/><nrRec/>.
+    # O nome "ideEvento" (usado aqui antes) NAO existe no retorno — a lista vinha
+    # sempre vazia, mesmo com o cdResposta dizendo que achou eventos. Conferido
+    # no WSDL e contra a producao. "ideEvento" fica aceito por seguranca.
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
-        if el.tag.split("}")[-1] != "ideEvento":
+        if el.tag.split("}")[-1] not in ("identificadorEvt", "ideEvento"):
             continue
         item = {"id": "", "tpEvt": "", "nrRecEvt": "", "perApur": ""}
         for c in el:
@@ -23062,10 +24262,10 @@ def _parse_ide_response(xml_resp):
                 continue
             t = c.tag.split("}")[-1]
             txt = (c.text or "").strip()
-            if t == "id":          item["id"]       = txt
-            elif t == "tpEvt":     item["tpEvt"]    = txt
-            elif t == "nrRecEvt":  item["nrRecEvt"] = txt
-            elif t == "perApur":   item["perApur"]  = txt
+            if t == "id":                       item["id"]       = txt
+            elif t == "tpEvt":                  item["tpEvt"]    = txt
+            elif t in ("nrRec", "nrRecEvt"):    item["nrRecEvt"] = txt
+            elif t == "perApur":                item["perApur"]  = txt
         if item["id"]:
             out["ids"].append(item)
     cd = out["status"].get("cdResp", "")
@@ -30711,6 +31911,162 @@ def esocial_consulta():
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
         anomes_atual=str(session.get("anomes_atual") or ""),
     )
+
+
+def _cert_cnpj_razao(pfx_bytes, senha_str):
+    """Lê CNPJ e razão social de DENTRO do e-CNPJ A1.
+
+    No padrão ICP-Brasil o CN vem como 'RAZAO SOCIAL LTDA:00000000000000',
+    então os dois campos que o usuário digitaria já estão no certificado.
+    Devolve (cnpj14, razao, cert). CNPJ vazio se o CN não tiver o formato.
+    """
+    from cryptography.hazmat.primitives.serialization import pkcs12
+    from cryptography.x509.oid import NameOID
+    _pk, cert, _ = pkcs12.load_key_and_certificates(
+        pfx_bytes, (senha_str or "").encode())
+    cn = ""
+    for a in cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME):
+        cn = (a.value or "").strip()
+        break
+    m = re.match(r"^(.*?):(\d{14})$", cn)
+    if m:
+        return m.group(2), m.group(1).strip(), cert
+    return "", cn, cert
+
+
+# classTrib do S-1000 que caracteriza optante pelo Simples (01/02/03) e MEI (04).
+_CLASSTRIB_SIMPLES = {"01", "02", "03", "04"}
+
+
+@app.route("/api/empresa_do_certificado", methods=["POST"])
+def api_empresa_do_certificado():
+    """Cliente novo: sobe o .pfx da empresa ANTES de cadastrá-la.
+
+    Tira CNPJ e razão social de dentro do certificado e busca o S-1000 já
+    transmitido ao eSocial para trazer classificação tributária, natureza
+    jurídica e os indicativos. NÃO grava nada — devolve os campos para o
+    formulário, que o usuário confere e salva como sempre.
+
+    Gasta 2 das 10 solicitações diárias do eSocial (1 consulta + 1 download).
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    arq   = request.files.get("cert")
+    senha = (request.form.get("senha") or "").strip()
+    tpAmb = str(request.form.get("tpAmb") or "1")
+    if not arq or not (arq.filename or "").lower().endswith((".pfx", ".p12")):
+        return jsonify({"ok": False, "msg": "Envie o certificado A1 (arquivo .pfx ou .p12)."})
+    if not senha:
+        return jsonify({"ok": False, "msg": "Informe a senha do certificado."})
+
+    pfx_bytes = arq.read()
+    try:
+        cnpj, razao, cert = _cert_cnpj_razao(pfx_bytes, senha)
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "msg": f"Não consegui abrir o certificado — confira a senha. ({str(e)[:120]})"})
+
+    if not cnpj:
+        return jsonify({"ok": False,
+                        "msg": ("O certificado não é um e-CNPJ (não tem o CNPJ no titular). "
+                                "Use o certificado da empresa, não o de pessoa física.")})
+
+    venc = cert.not_valid_after_utc.strftime("%d/%m/%Y")
+    dados = {"cnpj": cnpj, "razaosocial": razao,
+             "cert_titular": cert.subject.rfc4514_string()[:120], "cert_validade": venc}
+
+    # Empresa já cadastrada para este cliente? Avisa em vez de deixar duplicar.
+    try:
+        _ja = (supabase.table("tab_empresa").select("id_empresa,razaosocial")
+               .eq("id_cliente", session.get("id_cliente", 1))
+               .eq("cnpj", cnpj).limit(1).execute().data or [])
+        if _ja:
+            return jsonify({"ok": False, "cnpj": cnpj, "razaosocial": razao,
+                            "msg": (f"O CNPJ {cnpj} já está cadastrado para este cliente "
+                                    f"({_ja[0].get('razaosocial') or ''}). Use 'Alterar Esta Empresa'.")})
+    except Exception:
+        pass      # a checagem é cortesia; não impede seguir
+
+    # ── S-1000 no eSocial: consulta os identificadores e baixa o mais recente ──
+    raiz     = cnpj[:8]
+    base_url = _ES_BASE_PROD_DWN if tpAmb == "1" else _ES_BASE_HOMOL
+    aviso    = ""
+
+    def _erro_amigavel(e):
+        s = str(e)
+        if "HTTP 500" in s and ("<html" in s.lower() or "Server Error" in s):
+            return ("O serviço de download do eSocial está fora do ar no momento "
+                    "(erro no servidor deles). Tente mais tarde.")
+        if "HTTP 500" in s and datetime.now().day <= 7:
+            return ("O eSocial não aceita solicitação de download entre os dias 1 e 7 "
+                    "do mês. Tente a partir do dia 8.")
+        return f"Erro ao consultar o eSocial: {s[:200]}"
+
+    try:
+        resp = _http_post_cert(base_url + _ES_PATH_CONS_IDE,
+                               _soap_consultar_ide_tab(raiz, "S-1000", pfx_bytes, senha),
+                               pfx_bytes, senha, _SA_CIE_TAB)
+    except Exception as e:
+        dados["aviso"] = _erro_amigavel(e)
+        return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
+
+    p = _parse_ide_response(resp)
+    cd = (p.get("status") or {}).get("cdResp", "")
+    if cd == "405" or "solicitações por dia" in ((p.get("status") or {}).get("descResp") or ""):
+        dados["aviso"] = ("A cota de 10 solicitações por dia do eSocial já foi usada. "
+                          "Tente amanhã.")
+        return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
+    if p.get("erro") or not p.get("ids"):
+        dados["aviso"] = (p.get("erro")
+                          or "Esta empresa ainda não tem S-1000 transmitido ao eSocial. "
+                             "Preencha o cadastro normalmente.")
+        return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
+
+    # O id traz a data/hora embutida (ID1 + CNPJ + AAAAMMDDHHMMSS + seq), então
+    # a ordem alfabética decrescente entrega o S-1000 mais recente.
+    id_evt = sorted([i["id"] for i in p["ids"] if i.get("id")], reverse=True)[0]
+    try:
+        resp_d = _http_post_cert(base_url + _ES_PATH_DOWNLOAD,
+                                 _soap_download_evt(raiz, [id_evt], pfx_bytes, senha),
+                                 pfx_bytes, senha, _SA_DWN)
+    except Exception as e:
+        dados["aviso"] = _erro_amigavel(e)
+        return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
+
+    d = _parse_dwn_response(resp_d)
+    if d.get("erro") or not d.get("eventos"):
+        dados["aviso"] = d.get("erro") or "O eSocial não devolveu o XML do S-1000."
+        return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
+
+    xml_evt = d["eventos"][0].get("xml_str") or d["eventos"][0].get("xml") or ""
+    tipo, ev = _xmli_evento(xml_evt.encode("utf-8") if isinstance(xml_evt, str) else xml_evt)
+    if tipo != "S-1000" or ev is None:
+        dados["aviso"] = "O XML devolvido não é um S-1000."
+        return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
+
+    class_trib = _xmli_txt(ev, "classTrib")
+    dados.update({
+        # nmRazao do S-1000 é a fonte oficial; o CN do certificado fica de reserva
+        "razaosocial":   _xmli_txt(ev, "nmRazao") or razao,
+        "class_trib":    class_trib,
+        "nat_juridica":  _xmli_txt(ev, "natJurid"),
+        "ind_coop":      _xmli_txt(ev, "indCoop"),
+        "ind_constr":    _xmli_txt(ev, "indConstr"),
+        "ind_des_folha": _xmli_txt(ev, "indDesFolha"),
+        "ind_porte":     _xmli_txt(ev, "indPorte"),
+        "contato_nome":  _xmli_txt(ev, "nmCtt"),
+        "contato_cpf":   _xmli_txt(ev, "cpfCtt"),
+        "email":         _xmli_txt(ev, "email"),
+        "telefone":      _xmli_txt(ev, "foneFixo") or _xmli_txt(ev, "foneCel"),
+        # Deduzido do classTrib (01/02/03 Simples, 04 MEI) — o S-1000 não tem
+        # campo próprio para isso. Fica marcado como deduzido para o usuário conferir.
+        "ind_simples":   "S" if class_trib in _CLASSTRIB_SIMPLES else "N",
+    })
+    dados["deduzidos"] = ["ind_simples"]
+    dados["s1000_id"]  = id_evt
+    return jsonify({"ok": True, "parcial": False, "dados": dados,
+                    "msg": f"Dados trazidos do S-1000 de {razao}."})
 
 
 @app.route("/api/esocial_consulta_tabela", methods=["POST"])

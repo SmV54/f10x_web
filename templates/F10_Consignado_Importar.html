@@ -162,14 +162,14 @@ tbody tr:last-child td { border-bottom: none; }
 
     <!-- CARD: Upload -->
     <div class="card">
-        <div class="card-titulo"><span>1. Selecionar a planilha (.xlsx)</span></div>
+        <div class="card-titulo"><span>1. Selecionar a planilha (.xlsx ou .csv)</span></div>
         <div class="card-body">
             <div class="upload-row">
-                <input type="file" id="arquivo" class="file-inp" accept=".xlsx">
+                <input type="file" id="arquivo" class="file-inp" accept=".xlsx,.csv,.txt">
                 <button class="btn" id="btn-preview" onclick="carregarPrevia()">Ver Prévia</button>
             </div>
             <div class="hint">
-                A planilha mensal dos consignados (govBR/Dataprev). O sistema confere o CNPJ, localiza cada
+                A planilha mensal dos consignados (govBR/Dataprev), em .xlsx ou .csv. O sistema confere o CNPJ, localiza cada
                 funcionário pela matrícula, valida o CPF e atribui as verbas 700 a 749. Nada é gravado até você confirmar.
             </div>
         </div>
@@ -225,7 +225,7 @@ function esc(s){ return (s==null?'':String(s)).replace(/[&<>]/g, c=>({'&':'&amp;
 
 async function carregarPrevia() {
     const inp = document.getElementById('arquivo');
-    if (!inp.files.length) { alert('Selecione um arquivo .xlsx.'); return; }
+    if (!inp.files.length) { alert('Selecione um arquivo .xlsx ou .csv.'); return; }
     arquivoSel = inp.files[0];
     const fd = new FormData();
     fd.append('arquivo', arquivoSel);
@@ -274,6 +274,15 @@ function renderPrevia(d) {
                <b>${fmtComp(d.competencia_planilha)}</b>, mas a folha ativa é
                <b>${fmtComp(d.anomes)}</b>. Confira se é o arquivo certo.</div></div>`;
     }
+    if (R.fora_da_empresa > 0) {
+        // Cliente com as filiais separadas em empresas nossas: a planilha vem
+        // pelo CNPJ raiz e traz gente das outras. Some da importação de
+        // propósito — mas tem que aparecer, senão parece perda silenciosa.
+        al += `<div class="alerta alerta-info">ℹ️ <div><b>${R.fora_da_empresa}</b> linha(s) são de
+               funcionários que não estão nesta empresa — pela matrícula do eSocial, de outra
+               filial. Foram desprezadas. Importe a planilha de novo com cada filial ativa
+               para lançar as demais.</div></div>`;
+    }
     if (R.ja_existentes > 0) {
         al += `<div class="alerta alerta-info">ℹ️ <div>Já existem <b>${R.ja_existentes}</b> lançamento(s)
                de consignado (verbas 700–749) nesta folha. Ao importar, eles serão
@@ -294,7 +303,8 @@ function renderPrevia(d) {
         const b = badge[it.status] || ['b-ok','OK'];
         html += `<tr class="st-${it.status}">
             <td class="mono">${it.linha_xls}</td>
-            <td class="mono">${it.matricula==null?'—':it.matricula}</td>
+            <td class="mono">${it.matricula==null?'—':it.matricula}
+                ${it.matricula_es?`<br><span style="font-size:10px;color:#94a3b8;">eSoc ${esc(it.matricula_es)}</span>`:''}</td>
             <td>${esc(it.nome) || '—'}</td>
             <td class="mono">${it.cod_verba || '—'}</td>
             <td class="mono">${esc(it.if_codigo)}${it.if_desc?(' · '+esc(it.if_desc)):''}</td>
