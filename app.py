@@ -18019,6 +18019,13 @@ def cad_mov_rescisao():
 CONSIG_VERBA_INI = 700
 CONSIG_VERBA_FIM = 749
 
+# Clientes que cadastram cada filial como uma empresa nossa. A planilha do
+# consignado vem pela RAIZ do CNPJ e traz todas as filiais de uma vez, então a
+# maior parte das linhas nunca é da empresa ativa — listá-las como "rejeitado"
+# só polui a prévia. Nestes clientes a linha não localizada é descartada da
+# lista; continua contada no resumo, para ninguém achar que sumiu por acaso.
+CONSIG_CLIENTES_MULTIFILIAL = {30}
+
 
 def _eh_verba_consignado(cod):
     """True para as verbas de empréstimo consignado (700-749).
@@ -18254,7 +18261,7 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
 
     # ── Carrega funcionários da empresa, indexados pela matrícula do eSocial ──
     # A planilha traz a matrícula do eSocial (`matricula_es`), não a nossa.
-    cadastro, dup_es = {}, set()
+    cadastro, dup_es, por_cpf = {}, set(), {}
     try:
         rc = (supabase.table("tab_cad")
               .select("matricula, matricula_es, cpf, nome, nomer, situacao, datarescisao")
@@ -18262,6 +18269,11 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
               .eq("id_empresa", id_empresa)
               .execute())
         for f in (rc.data or []):
+            # Índice por CPF: rede de segurança para o caso de a matrícula do
+            # eSocial estar errada ou em branco no nosso cadastro.
+            cpf_f = "".join(ch for ch in str(f.get("cpf") or "") if ch.isdigit()).zfill(11)
+            if cpf_f != "00000000000":
+                por_cpf.setdefault(cpf_f, f)
             cheia, curta = _consig_norm_mat(f.get("matricula_es"))
             if not cheia:
                 continue
@@ -18334,20 +18346,37 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
             item["status"] = "erro"
             item["mensagem"] = (f"Matrícula eSocial {mat_cheia} está repetida no cadastro "
                                 f"desta empresa — não dá para saber de quem é.")
+        elif cad is None and cpf_pl in por_cpf:
+            # A matrícula do eSocial não bateu, mas o CPF é de alguém DESTA
+            # empresa. Não é filial: é `matricula_es` errado (ou em branco) no
+            # nosso cadastro. Descartar calado aqui perderia o desconto de um
+            # funcionário que é nosso — então isto é erro, sempre, em qualquer
+            # cliente. Os dois campos têm que bater.
+            _c = por_cpf[cpf_pl]
+            item["status"] = "erro"
+            item["nome"] = (_c.get("nomer") or _c.get("nome") or "").strip()
+            item["mensagem"] = (f"O CPF {cpf_pl} é desta empresa ({item['nome']}), mas a "
+                                f"matrícula eSocial não confere: planilha {mat_cheia} × "
+                                f"cadastro {str(_c.get('matricula_es') or '(vazio)')}.")
+        elif cad is None and id_cliente in CONSIG_CLIENTES_MULTIFILIAL:
+            # Filiais cadastradas como empresas separadas: nem matrícula nem CPF
+            # são desta empresa, então a linha é de outra filial. Sai da prévia
+            # (só o total fica), a pedido — senão a lista vira mais ruído que
+            # informação.
+            item["fora_da_empresa"] = True
+            item["descartado"] = True
+            linhas.append(item)
+            continue
         elif cad is None and estab_pl and estab_pl != cnpj_emp14:
-            # Cliente que separou as filiais como empresas nossas (caso do 30): a
-            # planilha vem pelo CNPJ raiz e traz gente das outras. A coluna
-            # `numeroInscricaoEstabelecimento` diz de qual filial é cada linha,
-            # então dá para afirmar em vez de supor. Desprezada, sem barrar.
+            # Demais clientes: a coluna `numeroInscricaoEstabelecimento` diz de
+            # qual filial é a linha, então dá para afirmar em vez de supor.
             item["status"] = "rejeitado"
             item["fora_da_empresa"] = True
             item["mensagem"] = (f"Linha do estabelecimento {estab_pl}, que não é a empresa "
                                 f"ativa ({cnpj_emp14}) — importe com aquela filial ativa.")
         elif cad is None:
-            # Aqui a planilha diz que a linha É desta empresa (ou nem informa o
-            # estabelecimento) e mesmo assim a matrícula não está no cadastro.
-            # Isso não é filial: é funcionário faltando ou matricula_es errada,
-            # e tratar como "deve ser de outra filial" esconderia o problema.
+            # A planilha diz que a linha É desta empresa (ou nem informa o
+            # estabelecimento) e mesmo assim nem matrícula nem CPF estão aqui.
             item["status"] = "erro"
             item["mensagem"] = (f"Matrícula eSocial {mat_cheia} não está no cadastro desta "
                                 f"empresa. Confira o campo Matrícula eSocial do funcionário.")
@@ -18411,14 +18440,21 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
             verba += 1
 
     # ── Resumo ──
-    n_fora = sum(1 for it in linhas if it.get("fora_da_empresa"))
-    if linhas and n_fora == len(linhas):
+    n_fora  = sum(1 for it in linhas if it.get("fora_da_empresa"))
+    n_desc  = sum(1 for it in linhas if it.get("descartado"))
+    total_lidas = len(linhas)
+    if linhas and n_fora == total_lidas:
         # Todas de fora quase sempre significa empresa ativa errada. Importar
         # zero linha "com sucesso" seria pior do que recusar.
         return {"abort": True,
                 "abort_msg": ("Nenhuma matrícula da planilha existe nesta empresa. "
                               "Confira se a empresa ativa é a certa — pela matrícula "
                               "do eSocial, esta planilha parece ser de outra filial.")}
+    # Cliente multifilial: as de outra filial saem da LISTA, mas continuam no
+    # total. Some da tela, não da conta. Feito só aqui, depois da numeração das
+    # verbas, porque `por_matricula` guarda índices desta lista.
+    if n_desc:
+        linhas = [it for it in linhas if not it.get("descartado")]
     n_ok      = sum(1 for it in linhas if it["status"] == "ok")
     n_aviso   = sum(1 for it in linhas if it["status"] == "aviso")
     n_rejeit  = sum(1 for it in linhas if it["status"] == "rejeitado")
@@ -18446,9 +18482,9 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
         "has_error": n_erro > 0,
         "para_gravar": para_gravar,
         "resumo": {
-            "total": len(linhas), "ok": n_ok, "aviso": n_aviso,
+            "total": total_lidas, "ok": n_ok, "aviso": n_aviso,
             "rejeitado": n_rejeit, "erro": n_erro,
-            "fora_da_empresa": n_fora,
+            "fora_da_empresa": n_fora, "nao_listadas": n_desc,
             "lancamentos": len(para_gravar), "funcionarios": funcs_gravar,
             "ja_existentes": ja_existe,
         },

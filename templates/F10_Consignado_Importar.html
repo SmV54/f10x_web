@@ -276,12 +276,15 @@ function renderPrevia(d) {
     }
     if (R.fora_da_empresa > 0) {
         // Cliente com as filiais separadas em empresas nossas: a planilha vem
-        // pelo CNPJ raiz e traz gente das outras. Some da importação de
-        // propósito — mas tem que aparecer, senão parece perda silenciosa.
-        al += `<div class="alerta alerta-info">ℹ️ <div><b>${R.fora_da_empresa}</b> linha(s) são de
-               funcionários que não estão nesta empresa — pela matrícula do eSocial, de outra
-               filial. Foram desprezadas. Importe a planilha de novo com cada filial ativa
-               para lançar as demais.</div></div>`;
+        // pelo CNPJ raiz e traz gente das outras. Some da lista de propósito —
+        // mas o número tem que aparecer, senão parece perda silenciosa.
+        const naoList = R.nao_listadas
+            ? ` <b>${R.nao_listadas}</b> delas nem aparecem na lista abaixo, para não poluir a prévia.`
+            : '';
+        al += `<div class="alerta alerta-info">ℹ️ <div><b>${R.fora_da_empresa}</b> de
+               <b>${R.total}</b> linha(s) são de funcionários que não estão nesta empresa —
+               pela matrícula do eSocial e pelo CPF, de outra filial.${naoList}
+               Importe a planilha de novo com cada filial ativa para lançar as demais.</div></div>`;
     }
     if (R.ja_existentes > 0) {
         al += `<div class="alerta alerta-info">ℹ️ <div>Já existem <b>${R.ja_existentes}</b> lançamento(s)
