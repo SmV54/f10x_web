@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>XML do eSocial</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn-voltar:hover { background: #374151; }
+
+  .wrap { max-width: 900px; margin: 22px auto; padding: 0 20px; }
+
+  .passos { display: flex; gap: 10px; margin-bottom: 18px; }
+  .passo { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+           padding: 11px 15px; font-size: 13px; color: #9ca3af; }
+  .passo b { display: block; font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase;
+             margin-bottom: 2px; }
+  .passo.ativo { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; font-weight: 600; }
+  .passo.ativo b { color: #3b82f6; }
+
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 20px 22px; margin-bottom: 18px; }
+  .card h3 { font-size: 14px; color: #374151; margin-bottom: 14px; font-weight: 600; }
+
+  .info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 10px;
+          padding: 13px 16px; font-size: 13px; line-height: 1.55; margin-bottom: 18px; }
+  .info b { color: #1e3a8a; }
+  .cam { font-family: 'IBM Plex Mono', ui-monospace, monospace; background: #f1f5f9;
+         padding: 2px 6px; border-radius: 5px; }
+  .alerta { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 10px;
+            padding: 12px 15px; font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+
+  .linha { display: grid; grid-template-columns: 110px 1fr; align-items: center;
+           gap: 10px; margin-bottom: 10px; }
+  .linha label { font-size: 13px; color: #6b7280; }
+  input[type=text] { width: 100%; border: 1px solid #d1d5db; border-radius: 8px;
+                     padding: 8px 10px; font-size: 13.5px; font-family: inherit; }
+  .periodo { display: flex; align-items: center; gap: 8px; }
+  .periodo input { width: 100px; }
+  .periodo span { font-size: 13px; color: #6b7280; }
+
+  .btn { background: #2563eb; color: #fff; border: none; border-radius: 9px;
+         padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #1d4ed8; }
+  .btn:disabled { background: #9dbef5; cursor: not-allowed; }
+  .btn-sec { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 7px;
+             padding: 7px 13px; font-size: 12.5px; cursor: pointer; }
+  .btn-sec:hover { background: #f9fafb; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid #f0f0f0; }
+  th { color: #6b7280; font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600; }
+  tr.marcada { background: #f0f9ff; }
+  tr.extra td { color: #9ca3af; }
+  tr.extra td.cod { color: #9ca3af; }
+  td.mortos { color: #b45309; }
+  .opcoes { display: flex; flex-wrap: wrap; gap: 18px; margin: 15px 0 4px;
+            font-size: 13px; color: #374151; }
+  .opcoes label { cursor: pointer; }
+
+  #progressoWrap { display: none; }
+  .barra { height: 14px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin: 8px 0; }
+  .barra-fill { height: 100%; width: 0%; background: #16a34a; transition: width .25s; }
+  .prog-linha { display: flex; justify-content: space-between; font-size: 13px; color: #374151; }
+  .prog-linha .etapa { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
+                       color: #6b7280; overflow: hidden; text-overflow: ellipsis;
+                       white-space: nowrap; max-width: 70%; }
+
+  #resultado { display: none; }
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 12px 14px; font-size: 14px; margin-bottom: 10px; line-height: 1.5; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 12px 14px; font-size: 14px; }
+  .mut { color: #9ca3af; font-size: 12px; }
+  .carregando { color: #6b7280; font-size: 13px; padding: 6px 0; }
+  .rodape-sel { display: flex; justify-content: space-between; align-items: center;
+                margin-top: 14px; gap: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">📥 XML do eSocial</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="passos">
+      <div class="passo ativo"><b>Etapa 1</b> Descompactar os XMLs</div>
+      <div class="passo"><b>Etapa 2</b> a definir</div>
+    </div>
+
+    {% if no_render %}
+    <div class="alerta">
+      ⚠️ Este app está rodando no <b>servidor</b>, onde o disco é efêmero e essas pastas não
+      existem. Abra a tela com o app rodando na sua máquina.
+    </div>
+    {% endif %}
+
+    <div class="info">
+      Extrai os ZIPs baixados à mão no <b>portal do eSocial</b> (menu Download) para a pasta de
+      trabalho. O layout sai do próprio nome do arquivo (<span class="cam">ID….<b>S-2200</b>.xml</span>),
+      sem abrir o XML. Os eventos <b>anulados por um S-3000</b> ficam de fora — o S-3000 aponta o
+      recibo do evento que excluiu, e todo XML baixado traz o recibo dele próprio.
+    </div>
+
+    <div class="card">
+      <h3>Pastas</h3>
+      <div class="linha">
+        <label for="origem">ZIPs em</label>
+        <input type="text" id="origem" value="{{ origem }}">
+      </div>
+      <div class="linha">
+        <label for="destino">Extrair para</label>
+        <input type="text" id="destino" value="{{ destino }}">
+      </div>
+      <div class="linha">
+        <label>Competência</label>
+        <div class="periodo">
+          <span>de</span><input type="text" id="de" placeholder="AAAAMM" maxlength="6">
+          <span>até</span><input type="text" id="ate" placeholder="AAAAMM" maxlength="6">
+          <span class="mut">— em branco traz todos os ZIPs da pasta</span>
+        </div>
+      </div>
+      <div style="margin-top:6px;">
+        <button class="btn-sec" id="btnAnalisar" onclick="analisar()">Reler a pasta</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 id="tituloLayouts">O que descompactar</h3>
+      <div id="carregando" class="carregando">Lendo os ZIPs da pasta padrão…</div>
+      <table id="tabela" style="display:none;">
+        <thead>
+          <tr>
+            <th style="width:30px;"></th><th style="width:80px;">Layout</th>
+            <th>Evento</th><th class="num" style="width:105px;">XMLs nos ZIPs</th>
+            <th class="num" style="width:105px;">anulados<br>por S-3000</th>
+          </tr>
+        </thead>
+        <tbody id="corpoLayouts"></tbody>
+      </table>
+      <div class="opcoes" id="opcoes" style="display:none;">
+        <label><input type="checkbox" id="verTodos" onchange="montarLinhas()">
+               Mostrar os demais layouts</label>
+        <label><input type="checkbox" id="subLayout"> Uma subpasta por layout</label>
+        <label><input type="checkbox" id="sobrescrever"> Regravar o que já existe</label>
+        <label><input type="checkbox" id="manterExcluidos" onchange="pintar()">
+               Extrair também os anulados por S-3000</label>
+      </div>
+      <div class="rodape-sel">
+        <span class="mut" id="resumoSel"></span>
+        <button class="btn" id="btnExtrair" onclick="extrair()" disabled>Descompactar</button>
+      </div>
+    </div>
+
+    <div class="card" id="progressoWrap">
+      <div class="prog-linha">
+        <span class="etapa" id="progressoEtapa">Iniciando…</span>
+        <span id="progressoPct">0%</span>
+      </div>
+      <div class="barra"><div class="barra-fill" id="progressoFill"></div></div>
+      <div class="mut">Não feche esta janela até concluir.</div>
+    </div>
+
+    <div class="card" id="resultado"></div>
+  </div>
+
+<script src="/static/f10_dialog.js"></script>
+<script id="dadosEtapa1" type="application/json">{{ etapa1|tojson }}</script>
+<script id="dadosNomes" type="application/json">{{ nomes|tojson }}</script>
+<script>
+const ETAPA1 = JSON.parse(document.getElementById('dadosEtapa1').textContent || '[]');
+const NOMES = JSON.parse(document.getElementById('dadosNomes').textContent || '{}');
+let LINHAS = [];
+let MARCADOS = ETAPA1.slice();     // sobrevive ao redesenho da tabela
+
+function val(id) { return document.getElementById(id).value.trim(); }
+function el(id) { return document.getElementById(id); }
+
+function corpoPedido() {
+  return { origem: val('origem'), destino: val('destino'), de: val('de'), ate: val('ate') };
+}
+
+function manterExcluidos() {
+  const c = el('manterExcluidos');
+  return !!(c && c.checked);
+}
+
+function analisar() {
+  const btn = el('btnAnalisar');
+  btn.disabled = true;
+  el('tabela').style.display = 'none';
+  el('opcoes').style.display = 'none';
+  el('resultado').style.display = 'none';
+  el('carregando').style.display = 'block';
+  el('carregando').textContent = 'Lendo os ZIPs…';
+  fetch('/api/descompactar_xml/analisar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpoPedido())
+  }).then(r => r.json()).then(d => {
+    btn.disabled = false;
+    if (!d.ok) { el('carregando').textContent = ''; mostrarErro(d.msg || 'Falha ao ler os ZIPs'); return; }
+    LINHAS = d.linhas || [];
+    el('carregando').style.display = 'none';
+    el('tabela').style.display = 'table';
+    el('opcoes').style.display = 'flex';
+    const per = (d.competencias && d.competencias.length)
+      ? ' — competências de ' + d.competencias[0] + ' a ' + d.competencias[d.competencias.length - 1]
+      : '';
+    el('tituloLayouts').textContent =
+      `O que descompactar — ${d.zips} ZIP(s), ${d.total_zips} XMLs${per}`;
+    montarLinhas();
+    if ((d.invalidos || []).length) {
+      mostrarErro('ZIP inválido (ignorado): ' + d.invalidos.join(', '));
+    }
+  }).catch(e => {
+    btn.disabled = false;
+    el('carregando').textContent = '';
+    mostrarErro(String(e));
+  });
+}
+
+function montarLinhas() {
+  const todos = el('verTodos').checked;
+  const mostrar = LINHAS.filter(L => todos || ETAPA1.indexOf(L.layout) >= 0);
+  // Layout da Etapa 1 que não aparece em nenhum ZIP entra zerado: sem a linha,
+  // não dá para saber se ele foi procurado e não tinha, ou se ficou de fora.
+  ETAPA1.forEach(cod => {
+    if (!LINHAS.some(L => L.layout === cod)) {
+      mostrar.push({ layout: cod, nome: NOMES[cod] || '', nos_zips: 0, excluidos: 0 });
+    }
+  });
+  mostrar.sort((a, b) => a.layout.localeCompare(b.layout));
+  el('corpoLayouts').innerHTML = mostrar.map(L => {
+    const daEtapa = ETAPA1.indexOf(L.layout) >= 0;
+    const chk = MARCADOS.indexOf(L.layout) >= 0 ? ' checked' : '';
+    return `<tr class="${daEtapa ? '' : 'extra'}">
+       <td><input type="checkbox" class="chk" value="${L.layout}"${chk} onchange="pintar()"></td>
+       <td class="cod">${L.layout}</td>
+       <td>${L.nome || ''}</td>
+       <td class="num">${L.nos_zips}</td>
+       <td class="num mortos">${L.excluidos || ''}</td>
+     </tr>`;
+  }).join('');
+  pintar();
+}
+
+function marcados() {
+  return Array.from(document.querySelectorAll('.chk')).filter(c => c.checked).map(c => c.value);
+}
+
+function pintar() {
+  // Guarda a marcação dos layouts visíveis sem perder a dos escondidos.
+  const visiveis = Array.from(document.querySelectorAll('.chk')).map(c => c.value);
+  MARCADOS = MARCADOS.filter(x => visiveis.indexOf(x) < 0).concat(marcados());
+
+  let qtd = 0, mortos = 0;
+  document.querySelectorAll('.chk').forEach(c => {
+    c.closest('tr').classList.toggle('marcada', c.checked);
+    if (c.checked) {
+      const L = LINHAS.find(x => x.layout === c.value);
+      qtd += (L ? L.nos_zips : 0);
+      mortos += (L ? (L.excluidos || 0) : 0);
+    }
+  });
+  const sel = MARCADOS.length;
+  let txt = 'Nenhum layout marcado.';
+  if (sel) {
+    txt = `${sel} layout(s) marcado(s) — ${qtd} XMLs`;
+    if (mortos) {
+      txt += manterExcluidos()
+        ? ` (inclui ${mortos} anulado(s) por S-3000)`
+        : ` − ${mortos} anulado(s) por S-3000 = ${qtd - mortos} a gravar`;
+    }
+  }
+  el('resumoSel').textContent = txt;
+  el('btnExtrair').disabled = (sel === 0);
+}
+
+function extrair() {
+  const btn = el('btnExtrair');
+  btn.disabled = true; btn.textContent = 'Descompactando…';
+  el('resultado').style.display = 'none';
+  el('progressoWrap').style.display = 'block';
+  setBarra(0, 'Iniciando…');
+  const corpo = corpoPedido();
+  corpo.layouts = MARCADOS;
+  corpo.sub_layout = el('subLayout').checked;
+  corpo.sobrescrever = el('sobrescrever').checked;
+  corpo.manter_excluidos = manterExcluidos();
+  fetch('/api/descompactar_xml/extrair', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpo)
+  }).then(r => r.json()).then(d => {
+    if (!d.ok) { encerrar(); mostrarErro(d.msg || 'Falha ao descompactar'); return; }
+    poll(d.job_id);
+  }).catch(e => { encerrar(); mostrarErro(String(e)); });
+}
+
+function setBarra(pct, etapa) {
+  el('progressoFill').style.width = pct + '%';
+  el('progressoPct').textContent = pct + '%';
+  if (etapa != null) el('progressoEtapa').textContent = etapa;
+}
+
+function encerrar() {
+  const btn = el('btnExtrair');
+  btn.disabled = false; btn.textContent = 'Descompactar';
+  el('progressoWrap').style.display = 'none';
+}
+
+function poll(jobId) {
+  fetch('/api/descompactar_xml/progresso?job=' + jobId).then(r => r.json()).then(d => {
+    if (!d.ok) { encerrar(); mostrarErro(d.msg || 'Job não encontrado'); return; }
+    setBarra(d.pct || 0, d.etapa || '');
+    if (d.done) { concluir(d.resultado); return; }
+    setTimeout(function () { poll(jobId); }, 400);
+    // Falha de rede no meio não derruba o acompanhamento: a extração segue no
+    // servidor e a próxima tentativa reencontra o job.
+  }).catch(function () { setTimeout(function () { poll(jobId); }, 1200); });
+}
+
+function concluir(res) {
+  setBarra(100, 'Concluído');
+  encerrar();
+  if (!res || !res.ok) { mostrarErro((res && res.msg) || 'Erro desconhecido'); return; }
+  finalizar(res);
+  const obs = res.total_excluidos
+    ? `\n\n${res.total_excluidos} evento(s) ficaram de fora por estarem anulados por um S-3000.`
+    : '';
+  f10Alert(`${res.total_gravados} XML(s) gravado(s) em ${res.destino}.${obs}`,
+           { titulo: 'Etapa 1 concluída', tipo: 'sucesso' });
+}
+
+function finalizar(d) {
+  const box = el('resultado');
+  box.style.display = 'block';
+  const linhas = (d.linhas || []).filter(L => L.gravados > 0).map(L =>
+    `<tr><td class="cod">${L.layout}</td><td>${L.nome || ''}</td>
+         <td class="num">${L.gravados}</td></tr>`).join('');
+  const obs = [];
+  if (d.total_excluidos) obs.push(`${d.total_excluidos} fora por estarem anulados por S-3000`);
+  if (d.ja_tinha)   obs.push(`${d.ja_tinha} já existiam no destino (marque "Regravar" para refazer)`);
+  if (d.repetidos)  obs.push(`${d.repetidos} repetidos entre ZIPs (gravados uma vez)`);
+  if (d.sem_padrao) obs.push(`${d.sem_padrao} fora do padrão ID…S-XXXX.xml`);
+  box.innerHTML =
+    `<div class="ok-box">✅ <b>${d.total_gravados}</b> XML(s) gravado(s) em
+       <span class="cam">${d.destino}</span><br>
+       Lidos ${d.zips} ZIP(s) com ${d.total_zips} XMLs.</div>
+     <table><thead><tr><th style="width:80px;">Layout</th><th>Evento</th>
+       <th class="num" style="width:90px;">Gravados</th></tr></thead>
+       <tbody>${linhas}</tbody></table>
+     ${obs.length ? '<div class="mut" style="margin-top:10px;">' + obs.join(' · ') + '</div>' : ''}`;
+}
+
+function mostrarErro(msg) {
+  const box = el('resultado');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="erro-box">❌ ' + msg + '</div>';
+}
+
+// Já abre lendo a pasta padrão — a Etapa 1 tem sempre o mesmo ponto de partida.
+document.addEventListener('DOMContentLoaded', analisar);
+</script>
+</body>
+</html>

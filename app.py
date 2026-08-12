@@ -54784,6 +54784,129 @@ def api_admin_backup_progresso():
 
 
 # =========================================================
+# MIGRAÇÃO — DESCOMPACTAR XML DO eSOCIAL (etapa 1 da importação)
+# =========================================================
+# Os ZIPs são baixados à mão no portal do eSocial (menu Download) e ficam em
+# C:\XMLeSocial\XMLzip. Esta tela extrai só os layouts escolhidos para
+# C:\XMLeSocial\XML, de onde saem os arquivos que a tela de importação lê.
+# O filtro sai do próprio nome do arquivo (ID<numero>.S-2200.xml) — não abre XML.
+# Recurso LOCAL: no Render o disco é efêmero e essas pastas não existem.
+def _dxml():
+    """Importa o módulo do descompactador (mesmo núcleo do script de linha de
+    comando _descompactar_xml_esocial.py). Import tardio para o app subir mesmo
+    se o arquivo não tiver ido junto no deploy."""
+    import _descompactar_xml_esocial as M
+    return M
+
+
+def _dxml_gate():
+    """(erro_json, None) se não pode; (None, modulo) se pode."""
+    if not session.get('logado'):
+        return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), None
+    if not _pode_admin():
+        return jsonify({'ok': False, 'msg': 'Sem permissão.'}), None
+    if _RUNNING_RENDER:
+        return jsonify({'ok': False, 'msg': 'Recurso local: no servidor não existe a '
+                                            'pasta dos ZIPs. Rode o app na sua máquina.'}), None
+    try:
+        return None, _dxml()
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Descompactador indisponível: {ex}'}), None
+
+
+@app.route('/admin_descompactar_xml')
+def admin_descompactar_xml():
+    if not session.get('logado'):
+        return redirect('/')
+    if not _pode_admin():
+        return redirect('/menu')
+    try:
+        M = _dxml()
+        origem, destino, etapa1, nomes = M.ORIGEM, M.DESTINO, M.ETAPA1, M.NOMES
+    except Exception:
+        origem, destino, nomes = r'C:\XMLeSocial\XMLzip', r'C:\XMLeSocial\XML', {}
+        etapa1 = ['S-1000', 'S-2200', 'S-2205', 'S-2206', 'S-2230', 'S-2299', 'S-3000']
+    return render_template('F10_Admin_Descompactar_XML.html',
+                           versao=ler_versao(), nome=session.get('nome', ''),
+                           origem=origem, destino=destino, etapa1=etapa1, nomes=nomes,
+                           no_render=_RUNNING_RENDER)
+
+
+@app.route('/api/descompactar_xml/analisar', methods=['POST'])
+def api_descompactar_xml_analisar():
+    """Inventário dos ZIPs: quantos XMLs de cada layout existem. Não grava."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    try:
+        r = M.processar(origem=(d.get('origem') or M.ORIGEM).strip(),
+                        destino=(d.get('destino') or M.DESTINO).strip(),
+                        de=(d.get('de') or '').strip(), ate=(d.get('ate') or '').strip(),
+                        listar=True,
+                        pular_excluidos=not d.get('manter_excluidos'))
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
+    return jsonify(r)
+
+
+_dxml_jobs = {}
+
+
+def _dxml_rodar(job_id, M, kw):
+    """Roda a extração fora da requisição para a tela poder acompanhar."""
+    job = _dxml_jobs[job_id]
+
+    def prog(pct, etapa):
+        job['pct'] = pct
+        job['etapa'] = etapa
+
+    try:
+        job['resultado'] = M.processar(progresso=prog, **kw)
+    except Exception as ex:
+        job['resultado'] = {'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'}
+    job['pct'] = 100
+    job['done'] = True
+
+
+@app.route('/api/descompactar_xml/extrair', methods=['POST'])
+def api_descompactar_xml_extrair():
+    """Dispara a extração dos layouts marcados e devolve o job para a barra."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    layouts = d.get('layouts') or []
+    if not layouts:
+        return jsonify({'ok': False, 'msg': 'Marque ao menos um layout.'})
+    kw = {
+        'origem': (d.get('origem') or M.ORIGEM).strip(),
+        'destino': (d.get('destino') or M.DESTINO).strip(),
+        'layouts': layouts,
+        'de': (d.get('de') or '').strip(),
+        'ate': (d.get('ate') or '').strip(),
+        'listar': False,
+        'sub_layout': bool(d.get('sub_layout')),
+        'sobrescrever': bool(d.get('sobrescrever')),
+        'pular_excluidos': not d.get('manter_excluidos'),
+    }
+    job_id = uuid.uuid4().hex[:12]
+    _dxml_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
+    threading.Thread(target=_dxml_rodar, args=(job_id, M, kw), daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id})
+
+
+@app.route('/api/descompactar_xml/progresso')
+def api_descompactar_xml_progresso():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    job = _dxml_jobs.get(request.args.get('job', '').strip())
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
+
+
+# =========================================================
 # ADIANTAMENTO QUINZENAL
 # =========================================================
 @app.route("/informar_adiantamento")
