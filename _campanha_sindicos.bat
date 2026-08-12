@@ -24,4 +24,7 @@ if not errorlevel 1 (
     exit /b 0
 )
 
-start "Campanha Condominios" /min cmd /c "python enviar_whatsapp_sindicos.py --fonte coteibem --intervalo 720 1>> _saida_condominios_%HOJE%.log 2>> _saida_condominios_%HOJE%.err"
+REM Intervalo sorteado a cada envio entre 10 e 20 min (media 15). Antes era
+REM cravado em 12 min: ritmo exato demais e o padrao mais facil de reconhecer
+REM como robo do outro lado.
+start "Campanha Condominios" /min cmd /c "python enviar_whatsapp_sindicos.py --fonte coteibem --intervalo 600 --intervalo-max 1200 1>> _saida_condominios_%HOJE%.log 2>> _saida_condominios_%HOJE%.err"

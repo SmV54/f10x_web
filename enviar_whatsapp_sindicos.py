@@ -8,7 +8,12 @@ Uso:
     python enviar_whatsapp_sindicos.py --teste          # SIMULA (nao envia)
     python enviar_whatsapp_sindicos.py                  # ENVIA de verdade
     python enviar_whatsapp_sindicos.py --intervalo 180  # segundos (padrao 180 = 3 min)
+    python enviar_whatsapp_sindicos.py --intervalo 600 --intervalo-max 1200
     python enviar_whatsapp_sindicos.py --fonte coteibem # so os contatos daquela fonte
+
+Com --intervalo-max a espera entre um envio e outro e sorteada dentro da faixa
+[--intervalo, --intervalo-max] a cada envio, em vez de ser sempre a mesma. Um
+ritmo cravado no relogio e o padrao mais facil de reconhecer como robo.
 
 Janela de trabalho: por padrao so envia de 2a a 6a, das 9h as 17h. Fora disso o
 script dorme ate a proxima abertura em vez de encerrar — da para deixar rodando
@@ -23,7 +28,7 @@ Diferencas para o enviar_whatsapp_clientes.py:
   5581933279227, que e um celular de OUTRA pessoa.
 - Log proprio (log_envio_sindicos.csv), separado da campanha de clientes.
 """
-import os, re, sys, csv, time, argparse
+import os, re, sys, csv, time, random, argparse
 from datetime import datetime
 
 # Nome de contato vindo da web traz caractere fora do cp1252 (ex.: U+200E, a
@@ -126,6 +131,31 @@ def ja_enviados_ok():
     return feitos
 
 
+# Handle do mutex em variavel de modulo: se ele for coletado, o Windows libera
+# a trava e uma segunda campanha entra.
+_MUTEX = None
+
+
+def instancia_unica():
+    """True se esta e a unica campanha rodando; False se ja existe outra.
+
+    O Agendador dispara todo dia as 9h, mas o script nao encerra quando a janela
+    fecha as 17h — dorme ate a proxima abertura. Sem esta trava, cada dia util
+    somava mais uma instancia viva percorrendo a MESMA lista, e o contato recebia
+    uma mensagem de cada uma (em 12/08/2026 havia 4 processos: 07, 10, 11 e 12/08).
+    Mutex nomeado do Windows porque o sistema o libera sozinho quando o processo
+    morre — nao fica trava velha para trombar depois de um encerramento feio.
+    """
+    global _MUTEX
+    if os.name != "nt":
+        return True
+    import ctypes
+    ERROR_ALREADY_EXISTS = 183
+    k32 = ctypes.windll.kernel32
+    _MUTEX = k32.CreateMutexW(None, False, "Folha10_CampanhaSindicos")
+    return k32.GetLastError() != ERROR_ALREADY_EXISTS
+
+
 def carregar_contatos():
     wb = load_workbook(PLANILHA, read_only=True)
     ws = wb.active
@@ -224,6 +254,9 @@ def main():
     ap.add_argument("--teste", action="store_true", help="Simula, nao envia")
     ap.add_argument("--limite", type=int, default=0, help="Envia so aos N primeiros")
     ap.add_argument("--intervalo", type=int, default=180, help="Segundos entre envios (padrao 180 = 3 min)")
+    ap.add_argument("--intervalo-max", type=int, default=0, dest="intervalo_max",
+                    help="Se informado, a espera e sorteada entre --intervalo e este valor "
+                         "a cada envio (ex.: --intervalo 600 --intervalo-max 1200 = 10 a 20 min)")
     ap.add_argument("--espera-inicial", type=int, default=0, dest="espera_inicial",
                     help="Segundos de espera ANTES do primeiro envio. Serve para retomar "
                          "uma campanha sem encurtar o intervalo em relacao ao ultimo envio.")
@@ -234,8 +267,22 @@ def main():
                     help="Hora em que a janela fecha (padrao 17 — o ultimo envio sai antes das 17h)")
     ap.add_argument("--qualquer-dia", action="store_true", dest="qualquer_dia",
                     help="Envia tambem no sabado e no domingo (padrao: so 2a a 6a)")
+    ap.add_argument("--ignorar-trava", action="store_true", dest="ignorar_trava",
+                    help="Roda mesmo com outra campanha aberta (so para depurar)")
     args = ap.parse_args()
     dias_uteis = not args.qualquer_dia
+
+    if not args.teste and not args.ignorar_trava and not instancia_unica():
+        print("[ABORTADO] ja existe uma campanha rodando nesta maquina.", flush=True)
+        print("Duas campanhas ao mesmo tempo mandam a mesma mensagem duas vezes "
+              "para o mesmo contato.", flush=True)
+        sys.exit(0)
+
+    # Faixa da espera. Sem --intervalo-max (ou com valor menor que o piso) o
+    # comportamento e o de antes: espera fixa igual a --intervalo.
+    esp_min = max(1, args.intervalo)
+    esp_max = max(esp_min, args.intervalo_max or 0)
+    esp_medio = (esp_min + esp_max) / 2
 
     with open(MSG_FILE, encoding="utf-8") as f:
         mensagem = f.read().strip()
@@ -254,7 +301,7 @@ def main():
     marcados_planilha = len([c for c in validos if c["ja_msg"]])
 
     # quantos cabem por dia dentro da janela, e em quantos dias isso termina
-    por_dia = max(1, int((args.hora_fim - args.hora_inicio) * 3600 / max(1, args.intervalo)))
+    por_dia = max(1, int((args.hora_fim - args.hora_inicio) * 3600 / esp_medio))
     dias    = (faltam + por_dia - 1) // por_dia
 
     print("=" * 70, flush=True)
@@ -267,7 +314,11 @@ def main():
     print(f"Ja OK     : {len(feitos)} no log (os desta lista serao pulados)", flush=True)
     print(f"Ja marcado: {marcados_planilha} com data na planilha (tambem pulados)", flush=True)
     print(f"A enviar  : {faltam}", flush=True)
-    print(f"Intervalo : {args.intervalo}s ({args.intervalo/60:.1f} min)", flush=True)
+    if esp_max > esp_min:
+        print(f"Intervalo : aleatorio de {esp_min}s a {esp_max}s "
+              f"({esp_min/60:.1f} a {esp_max/60:.1f} min, media {esp_medio/60:.1f})", flush=True)
+    else:
+        print(f"Intervalo : {esp_min}s ({esp_min/60:.1f} min) fixo", flush=True)
     print(f"Janela    : {args.hora_inicio}h as {args.hora_fim}h, "
           f"{'2a a 6a' if dias_uteis else 'todos os dias'}", flush=True)
     print(f"Ritmo     : ate {por_dia}/dia  ->  ~{dias} dia(s) de janela", flush=True)
@@ -317,6 +368,18 @@ def main():
             time.sleep(args.espera_inicial)
             esperou_inicial = True
 
+        # Relê o log agora, na hora do envio: entre a largada e este ponto podem
+        # ter se passado horas (ou dias, se dormiu fora da janela) e outra
+        # campanha pode ter atendido este contato. O `feitos` da largada e uma
+        # foto do passado. Arquivo pequeno — o custo e irrelevante perto dos
+        # 10 a 20 min de espera entre um envio e outro.
+        if not args.teste and tel in ja_enviados_ok():
+            print(f"{prefixo}  ::  PULADO (ja consta no log — outra campanha enviou)",
+                  flush=True)
+            feitos.add(tel)
+            pulados += 1
+            continue
+
         agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         if args.teste:
             print(f"{prefixo}  ::  [TESTE] enviaria ({len(mensagem)} chars)", flush=True)
@@ -335,8 +398,8 @@ def main():
         logf.flush()
 
         if i < total:
-            espera = 2 if args.teste else args.intervalo
-            print(f"      aguardando {espera}s...", flush=True)
+            espera = 2 if args.teste else random.randint(esp_min, esp_max)
+            print(f"      aguardando {espera}s ({espera/60:.1f} min)...", flush=True)
             time.sleep(espera)
 
     logf.close()
