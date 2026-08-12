@@ -159,13 +159,15 @@ def montar_dps(d):
         else:
             E(toma, "CNPJ", tom_ins.zfill(14))
         E(toma, "xNome", _txt(d.get("tom_nome") or "TOMADOR"))
-        # Endereço do tomador:
-        #  - ISS retido pelo tomador → obrigatório informar na DPS (senão E0237);
-        #  - CPF → sem cadastro central, informamos;
-        #  - CNPJ não-retido → omitimos (o Sistema Nacional completa pelo cadastro da
-        #    Receita, evitando rejeição por CEP/município desatualizado, ex. E0240).
+        # Endereço do tomador: enviado SEMPRE que o cadastro tem os dados completos.
+        # (Antes só ia com ISS retido — obrigatório, senão E0237 — ou tomador CPF;
+        # para CNPJ não-retido era omitido e o endereço não aparecia na NFS-e nem
+        # no DANFSe.) O cMun vem do CEP (ViaCEP), então município e CEP são
+        # coerentes entre si, o que evita a rejeição E0240.
+        # xLgr, nro e xBairro são obrigatórios dentro de <end> (XSD TCEndereco):
+        # sem qualquer um deles o grupo inteiro é omitido.
         _tem_end = all(d.get(k) for k in ("tom_lgr", "tom_nro", "tom_bairro", "tom_ibge", "tom_cep"))
-        if _tem_end and (d.get("iss_retido") or len(tom_ins) == 11):
+        if _tem_end:
             end = E(toma, "end")
             endnac = E(end, "endNac")
             E(endnac, "cMun", so_digitos(d["tom_ibge"]).zfill(7))
@@ -372,8 +374,15 @@ def _fmt_chave(c):
     return " ".join(d[i:i+4] for i in range(0, len(d), 4))
 
 
-def gerar_danfse_pdf(nfse_xml_str, chave=""):
-    """Gera o DANFSE (PDF auxiliar) a partir do XML da NFS-e. Retorna bytes do PDF."""
+def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None):
+    """Gera o DANFSE (PDF auxiliar) a partir do XML da NFS-e. Retorna bytes do PDF.
+
+    tom_mun: "CIDADE - UF" do tomador (o XML só traz o código IBGE do município).
+             Em branco, o quadro do tomador mostra o próprio código.
+    tom_end: endereço do tomador vindo do CADASTRO, usado SÓ quando o XML não tem
+             o grupo <end> (notas emitidas antes de o endereço passar a ser enviado
+             sempre). Dict com lgr/nro/cpl/bairro/cep. É o mesmo que o portal
+             nacional faz no DANFSe dele: completa o tomador pelo CNPJ."""
     from lxml import etree
     from io import BytesIO
     from reportlab.lib.pagesizes import A4
@@ -421,6 +430,14 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
     t_cpl  = g(f"{dps}/{{}}toma/{{}}end/{{}}xCpl")
     t_bai  = g(f"{dps}/{{}}toma/{{}}end/{{}}xBairro")
     t_cep  = g(f"{dps}/{{}}toma/{{}}end/{{}}endNac/{{}}CEP")
+    t_cmun = g(f"{dps}/{{}}toma/{{}}end/{{}}endNac/{{}}cMun")
+    # Nota antiga, sem <end> no XML: completa pelo cadastro (ver docstring).
+    if not t_lgr and tom_end:
+        t_lgr = tom_end.get("lgr") or ""
+        t_nro = tom_end.get("nro") or ""
+        t_cpl = tom_end.get("cpl") or ""
+        t_bai = tom_end.get("bairro") or ""
+        t_cep = t_cep or tom_end.get("cep") or ""
     t_mail = g(f"{dps}/{{}}toma/{{}}email")
     desc   = g(f"{dps}/{{}}serv/{{}}cServ/{{}}xDescServ")
     ctribnac = g(f"{dps}/{{}}serv/{{}}cServ/{{}}cTribNac")
@@ -618,7 +635,7 @@ def gerar_danfse_pdf(nfse_xml_str, chave=""):
         [("Nome / Nome Empresarial", t_nome or "-")],
         [("E-mail", t_mail or "-")],
         [("Endereço", t_end)],
-        [("Município", "-"), ("CEP", _fmt_cep(t_cep) if t_cep else "-")],
+        [("Município", (tom_mun or t_cmun or "-")), ("CEP", _fmt_cep(t_cep) if t_cep else "-")],
     ])
 
     # ── Intermediário (ausente) ──

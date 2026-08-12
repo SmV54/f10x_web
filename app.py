@@ -53421,9 +53421,8 @@ def _nfse_nome_pdf(numero, cod, nome_cli):
 
 def _nfse_salvar_pdf(nfse_xml, chave, numero, cod, nome_cli):
     """Gera o DANFSE em PDF e salva em PASTA_NF_PDF. Retorna o caminho (ou '')."""
-    import nfse_nacional as nfx
     try:
-        pdf = nfx.gerar_danfse_pdf(nfse_xml, chave)
+        pdf = _nfse_gerar_pdf(nfse_xml, chave)
         os.makedirs(PASTA_NF_PDF, exist_ok=True)
         caminho = os.path.join(PASTA_NF_PDF, _nfse_nome_pdf(numero, cod, nome_cli))
         with open(caminho, "wb") as f:
@@ -53492,26 +53491,95 @@ def _nfse_celular_por_cod(caminho, cod):
 _NFSE_CEP_CACHE = {}
 
 
-def _nfse_ibge_do_cep(cep):
-    """Código IBGE (7 díg.) do município do CEP, via ViaCEP. None se não resolver.
-    Usado porque a TabCLI_NF grava o NOME da cidade (não o código) em ~66% dos
-    clientes; o CEP é a fonte confiável do município (evita E0240)."""
+def _nfse_viacep(cep):
+    """Consulta o ViaCEP (com cache em memória). Retorna dict {ibge, cidade, uf}
+    com strings vazias quando não resolve."""
     d = re.sub(r"\D", "", str(cep or ""))
     if len(d) != 8:
-        return None
+        return {"ibge": "", "cidade": "", "uf": ""}
     if d in _NFSE_CEP_CACHE:
         return _NFSE_CEP_CACHE[d]
-    ibge = None
+    info = {"ibge": "", "cidade": "", "uf": ""}
     try:
         r = requests.get(f"https://viacep.com.br/ws/{d}/json/", timeout=12, verify=False)
         j = r.json()
         if not j.get("erro"):
             cand = re.sub(r"\D", "", str(j.get("ibge") or ""))
-            ibge = cand if len(cand) == 7 else None
+            info = {"ibge": cand if len(cand) == 7 else "",
+                    "cidade": str(j.get("localidade") or "").strip(),
+                    "uf": str(j.get("uf") or "").strip()}
     except Exception:
-        ibge = None
-    _NFSE_CEP_CACHE[d] = ibge
-    return ibge
+        pass
+    _NFSE_CEP_CACHE[d] = info
+    return info
+
+
+def _nfse_ibge_do_cep(cep):
+    """Código IBGE (7 díg.) do município do CEP, via ViaCEP. None se não resolver.
+    Usado porque a TabCLI_NF grava o NOME da cidade (não o código) em ~66% dos
+    clientes; o CEP é a fonte confiável do município (evita E0240)."""
+    return _nfse_viacep(cep)["ibge"] or None
+
+
+def _nfse_mun_uf_do_cep(cep):
+    """'CIDADE - UF' do CEP (para o quadro do tomador no DANFSe). '' se não resolver."""
+    i = _nfse_viacep(cep)
+    return f"{i['cidade']} - {i['uf']}" if (i["cidade"] and i["uf"]) else ""
+
+
+def _nfse_cliente_por_cnpj(caminho, cnpj):
+    """Lê 1 cliente da TabCLI_NF pelo CNPJ/CPF (sem máscara). None se não achar."""
+    import pyodbc
+    try:
+        conn = pyodbc.connect(
+            f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
+        cur = conn.cursor()
+        cur.execute("""SELECT Endereco_Tipo, Endereco_Rua, Endereco_Numero,
+                              Endereco_Complemento, Endereco_Bairro, Endereco_CEP
+                       FROM TabCLI_NF WHERE CNPJ_CPF = ?""", str(cnpj))
+        row = cur.fetchone()
+        conn.close()
+        if not row:
+            return None
+        return {
+            "lgr":    f"{str(row[0] or '').strip()} {str(row[1] or '').strip()}".strip(),
+            "nro":    str(row[2] or "").strip(),
+            "cpl":    str(row[3] or "").strip(),
+            "bairro": str(row[4] or "").strip(),
+            "cep":    str(row[5] or "").strip(),
+        }
+    except Exception:
+        return None
+
+
+def _nfse_gerar_pdf(nfse_xml, chave=""):
+    """DANFSe em PDF, com dois complementos que o XML da NFS-e não tem:
+      - o NOME do município do tomador (o XML só traz o código IBGE) — pelo CEP;
+      - o endereço inteiro, quando a nota é ANTERIOR à mudança que passou a enviar
+        o endereço sempre — buscado na TabCLI_NF pelo CNPJ/CPF do tomador."""
+    import nfse_nacional as nfx
+    NS = "{http://www.sped.fazenda.gov.br/nfse}"
+    tom_mun, tom_end = "", None
+    try:
+        from lxml import etree as _et
+        _raiz = _et.fromstring(nfse_xml.encode('utf-8') if isinstance(nfse_xml, str) else nfse_xml)
+        _cep_el = _raiz.find(f".//{NS}toma/{NS}end/{NS}endNac/{NS}CEP")
+        _cep = _cep_el.text if (_cep_el is not None and _cep_el.text) else ""
+        if not _cep:
+            # Nota sem endereço no XML → completa pelo cadastro.
+            _doc_el = _raiz.find(f".//{NS}toma/{NS}CNPJ")
+            if _doc_el is None:
+                _doc_el = _raiz.find(f".//{NS}toma/{NS}CPF")
+            _caminho = _arquivo_nf()
+            if _doc_el is not None and _doc_el.text and _caminho:
+                tom_end = _nfse_cliente_por_cnpj(_caminho, _re_digits(_doc_el.text))
+                if tom_end:
+                    _cep = tom_end.get("cep") or ""
+        if _cep:
+            tom_mun = _nfse_mun_uf_do_cep(_cep)
+    except Exception:
+        pass
+    return nfx.gerar_danfse_pdf(nfse_xml, chave, tom_mun=tom_mun, tom_end=tom_end)
 
 
 def _nfse_ensure_log(caminho):
@@ -53982,7 +54050,7 @@ def api_admin_nf_pdf():
     try:
         with open(arq_xml, "r", encoding="utf-8") as f:
             nfse_xml = f.read()
-        pdf = nfx.gerar_danfse_pdf(nfse_xml, chave)
+        pdf = _nfse_gerar_pdf(nfse_xml, chave)
     except Exception as ex:
         return f"Falha ao gerar PDF: {ex}", 500
     baixar = request.args.get('download') == '1'
@@ -54017,7 +54085,7 @@ def api_admin_nf_whatsapp():
     try:
         with open(arq_xml, "r", encoding="utf-8") as f:
             nfse_xml = f.read()
-        pdf = nfx.gerar_danfse_pdf(nfse_xml, chave)
+        pdf = _nfse_gerar_pdf(nfse_xml, chave)
     except Exception as ex:
         return jsonify({'ok': False, 'msg': f'Falha ao gerar PDF: {ex}'})
 
