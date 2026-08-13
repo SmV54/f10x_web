@@ -175,6 +175,11 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .meta-chip.excede .par .atual { color: #dc2626; }
 .meta-chip.cadastro { color: #64748b; }
 .meta-chip.limite   { color: #92400e; background: #fffbeb; border-color: #fde68a; }
+/* Login travado por senha errada: clicável, libera na hora. */
+.meta-chip.trava    { color: #92400e; background: #fffbeb; border-color: #fcd34d;
+                      cursor: pointer; }
+.meta-chip.trava.bloqueado { color: #991b1b; background: #fef2f2; border-color: #fecaca; }
+.meta-chip.trava:hover { filter: brightness(0.97); text-decoration: underline; }
 .cliente-card.ativo .meta-chip { background: #fff; border-color: #c3d9f8; }
 .cliente-id {
     font-family: var(--mono); font-size: 11px; font-weight: 500;
@@ -441,6 +446,20 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                 <span class="meta-chip limite" title="Data limite da licença">
                     <span class="ic">⏳</span> {{ c.data_limite_fmt }}
                 </span>
+                {% if c.trava %}
+                <!-- Só aparece para quem errou a senha. Clicar libera; o
+                     stopPropagation impede que o clique abra o cliente. -->
+                <span class="meta-chip trava {% if c.trava.bloqueados %}bloqueado{% endif %}"
+                      id="trava-{{ c.id_cliente }}"
+                      title="{{ c.trava.quem|join(' · ') }} — clique para liberar"
+                      onclick="event.stopPropagation(); desbloquear({{ c.id_cliente }}, '{{ c.nome|e }}')">
+                    {% if c.trava.bloqueados %}
+                    <span class="ic">🔒</span> Bloqueado{% if c.trava.minutos %} · {{ c.trava.minutos }} min{% endif %}
+                    {% else %}
+                    <span class="ic">⚠️</span> {{ c.trava.com_erro }} com erro
+                    {% endif %}
+                </span>
+                {% endif %}
             </div>
             {% else %}
             <div class="lista-vazia">Nenhum cliente cadastrado.</div>
@@ -637,6 +656,27 @@ function atualizarOnline() {
             priorizarOnline();      // quem entrou agora sobe para o topo
         })
         .catch(() => {});   // rede oscilou: mantem o que esta na tela
+}
+
+// Libera quem errou a senha. O chip só existe quando há alguém travado, e o
+// clique nele não pode abrir o cliente (stopPropagation no onclick).
+function desbloquear(idCliente, nomeCliente) {
+    f10Confirm('Liberar o login de ' + nomeCliente + '?\n\n' +
+               'Zera as tentativas e o bloqueio de todos os usuários deste cliente.',
+               { titulo: 'Desbloquear login', tipo: 'aviso',
+                 okText: 'Liberar', cancelText: 'Agora não' })
+    .then(function (sim) {
+        if (!sim) return;
+        fetch('/api/admin_desbloquear', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_cliente: idCliente })
+        }).then(r => r.json()).then(function (d) {
+            if (!d.ok) { f10Alert(d.msg || 'Falhou', { tipo: 'erro' }); return; }
+            const chip = document.getElementById('trava-' + idCliente);
+            if (chip && d.liberados) chip.remove();
+            f10Alert(d.msg, { titulo: 'Desbloquear login', tipo: 'sucesso' });
+        }).catch(e => f10Alert(String(e), { tipo: 'erro' }));
+    });
 }
 
 // Ordenação padrão: Data de cadastro (mais recentes primeiro)

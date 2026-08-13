@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Desbloquear Login</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 8px 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+
+  .wrap { max-width: 940px; margin: 16px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 14px 16px; margin-bottom: 12px; }
+  .card h3 { font-size: 13.5px; color: #374151; margin-bottom: 10px; font-weight: 600; }
+  .info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 10px;
+          padding: 11px 13px; font-size: 12.5px; line-height: 1.45; margin-bottom: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #f0f0f0;
+           vertical-align: middle; }
+  th { color: #6b7280; font-weight: 600; font-size: 12px; }
+  td.cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #64748b; }
+  tr.bloq td { background: #fef2f2; }
+  .tag { display: inline-block; border-radius: 6px; padding: 1px 7px; font-size: 11px;
+         font-weight: 700; white-space: nowrap; }
+  .tag-bloq { background: #fee2e2; color: #991b1b; }
+  .tag-erro { background: #fffbeb; color: #92400e; }
+  .tag-tit  { background: #eef2ff; color: #3730a3; margin-left: 6px; }
+
+  .btn { background: #16a34a; color: #fff; border: none; border-radius: 8px;
+         padding: 7px 14px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #15803d; }
+  .btn:disabled { background: #a7d8b6; cursor: not-allowed; }
+  .btn-sec { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 7px;
+             padding: 7px 13px; font-size: 12.5px; cursor: pointer; }
+  .vazio { padding: 26px; text-align: center; font-size: 13.5px; color: #16a34a; }
+  .mut { color: #9ca3af; font-size: 12px; }
+  .rodape-sel { display: flex; justify-content: space-between; align-items: center;
+                margin-top: 12px; gap: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">🔓 Desbloquear Login</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="info">
+      O bloqueio é <b>da pessoa, não do contrato</b>: são {{ max_tentativas }} erros de senha no
+      mesmo CPF. Um usuário travado não impede os colegas de entrarem. Liberar zera as tentativas
+      e o bloqueio — a senha <b>não</b> muda.
+    </div>
+
+    <div class="card">
+      <h3>Quem está travado agora</h3>
+      {% if travados %}
+      <table>
+        <thead>
+          <tr><th>Situação</th><th>Pessoa</th><th>CPF</th><th>Cliente</th>
+              <th style="width:110px;"></th></tr>
+        </thead>
+        <tbody>
+          {% for t in travados %}
+          <tr id="linha-{{ t.cpf }}" class="{% if t.bloqueado %}bloq{% endif %}">
+            <td>
+              {% if t.bloqueado %}
+              <span class="tag tag-bloq">🔒 Bloqueado · {{ t.minutos }} min</span>
+              {% else %}
+              <span class="tag tag-erro">⚠️ {{ t.tentativas }} erro(s)</span>
+              {% endif %}
+            </td>
+            <td>{{ t.nome }}{% if t.titular %}<span class="tag tag-tit">titular</span>{% endif %}</td>
+            <td class="cod">{{ t.cpf_fmt }}</td>
+            <td>{{ '%04d'|format(t.id_cliente|int) }} — {{ t.cliente }}</td>
+            <td><button class="btn"
+                  onclick="liberar('{{ t.cpf }}', '{{ t.nome|e }}', '{{ t.cliente|e }}', {{ t.tentativas }})">
+                  Liberar</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="rodape-sel">
+        <span class="mut">{{ travados|length }} pessoa(s) — liberar não muda a senha de ninguém.</span>
+        <button class="btn-sec" onclick="window.location.reload()">Reler a lista</button>
+      </div>
+      {% else %}
+      <div class="vazio">✅ Ninguém está bloqueado agora.</div>
+      <div class="rodape-sel">
+        <span class="mut">A lista mostra quem errou a senha, mesmo que o bloqueio já tenha vencido.</span>
+        <button class="btn-sec" onclick="window.location.reload()">Reler a lista</button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+<script src="/static/f10_dialog.js"></script>
+<script>
+// Confirmação com nome, CPF e cliente escritos por extenso: liberar a pessoa
+// errada é raro, mas o custo é o cliente errado voltando a errar a senha.
+function liberar(cpf, nome, cliente, erros) {
+  f10Confirm('Liberar o login de:\n\n' + nome + '\nCPF ' + cpf +
+             '\nCliente: ' + cliente + '\n' + erros + ' erro(s) de senha' +
+             '\n\nZera as tentativas e o bloqueio. A senha continua a mesma.',
+             { titulo: 'Desbloquear login', tipo: 'aviso',
+               okText: 'Liberar', cancelText: 'Agora não' })
+  .then(function (sim) {
+    if (!sim) return;
+    fetch('/api/admin_desbloquear', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cpf: cpf })
+    }).then(r => r.json()).then(function (d) {
+      if (!d.ok) { f10Alert(d.msg || 'Falhou', { tipo: 'erro' }); return; }
+      const l = document.getElementById('linha-' + cpf);
+      if (l) l.remove();
+      f10Alert(d.msg, { titulo: 'Desbloquear login', tipo: 'sucesso' })
+        .then(function () {
+          if (!document.querySelectorAll('tbody tr').length) window.location.reload();
+        });
+    }).catch(e => f10Alert(String(e), { tipo: 'erro' }));
+  });
+}
+</script>
+</body>
+</html>

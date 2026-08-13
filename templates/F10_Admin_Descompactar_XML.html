@@ -10,7 +10,7 @@
          background: #f4f6f9; color: #1f2937; }
 
   .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
-          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+          gap: 12px; padding: 8px 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
   .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
                  padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
   .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
@@ -20,60 +20,99 @@
                 padding: 8px 14px; font-size: 13px; cursor: pointer; }
   .btn-voltar:hover { background: #374151; }
 
-  .wrap { max-width: 900px; margin: 22px auto; padding: 0 20px; }
+  /* Tela larga e baixa: tudo o que é de leitura (etapas, explicação, pastas)
+     fica na coluna da esquerda e a tabela — a parte que cresce — na direita,
+     para a página caber sem rolagem. Abaixo de 1000px volta a empilhar. */
+  .wrap { max-width: 1340px; margin: 14px auto; padding: 0 20px; }
+  .colunas { display: grid; grid-template-columns: 380px 1fr; gap: 14px; align-items: start; }
+  /* A coluna da esquerda ocupa as duas linhas da direita (Etapa 1 em cima,
+     Etapa 2 embaixo) — sem isso a Etapa 2 desce até o fim da coluna esquerda e
+     abre um buraco no meio da tela. */
+  .colunas > div:first-child { grid-row: 1 / span 3; }
+  @media (max-width: 1000px) {
+    .colunas { grid-template-columns: 1fr; }
+    #cardEtapa2, #cardEtapa3 { grid-column: 1 !important; }
+  }
 
-  .passos { display: flex; gap: 10px; margin-bottom: 18px; }
-  .passo { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
-           padding: 11px 15px; font-size: 13px; color: #9ca3af; }
-  .passo b { display: block; font-size: 11.5px; letter-spacing: .05em; text-transform: uppercase;
-             margin-bottom: 2px; }
+  .passos { display: flex; gap: 8px; margin-bottom: 12px; }
+  .passo { flex: 1; background: #fff; border: 1px solid #e5e7eb; border-radius: 9px;
+           padding: 7px 11px; font-size: 12.5px; color: #9ca3af; }
+  .passo b { display: block; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
   .passo.ativo { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; font-weight: 600; }
   .passo.ativo b { color: #3b82f6; }
+  .passo-link { cursor: pointer; }
+  .passo-link:hover { background: #dbeafe; }
 
   .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
-          padding: 20px 22px; margin-bottom: 18px; }
-  .card h3 { font-size: 14px; color: #374151; margin-bottom: 14px; font-weight: 600; }
+          padding: 13px 16px; margin-bottom: 12px; }
+  .card:last-child { margin-bottom: 0; }
+  .card h3 { font-size: 13.5px; color: #374151; margin-bottom: 10px; font-weight: 600; }
 
   .info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 10px;
-          padding: 13px 16px; font-size: 13px; line-height: 1.55; margin-bottom: 18px; }
+          padding: 11px 13px; font-size: 12.5px; line-height: 1.45; margin-bottom: 12px; }
   .info b { color: #1e3a8a; }
   .cam { font-family: 'IBM Plex Mono', ui-monospace, monospace; background: #f1f5f9;
          padding: 2px 6px; border-radius: 5px; }
   .alerta { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 10px;
-            padding: 12px 15px; font-size: 13px; line-height: 1.5; margin-bottom: 18px; }
+            padding: 10px 13px; font-size: 12.5px; line-height: 1.45; margin-bottom: 12px; }
 
-  .linha { display: grid; grid-template-columns: 110px 1fr; align-items: center;
-           gap: 10px; margin-bottom: 10px; }
-  .linha label { font-size: 13px; color: #6b7280; }
-  input[type=text] { width: 100%; border: 1px solid #d1d5db; border-radius: 8px;
-                     padding: 8px 10px; font-size: 13.5px; font-family: inherit; }
-  .periodo { display: flex; align-items: center; gap: 8px; }
-  .periodo input { width: 100px; }
-  .periodo span { font-size: 13px; color: #6b7280; }
+  .linha { display: grid; grid-template-columns: 92px 1fr; align-items: center;
+           gap: 8px; margin-bottom: 7px; }
+  .linha label { font-size: 12.5px; color: #6b7280; }
+  input[type=text] { width: 100%; border: 1px solid #d1d5db; border-radius: 7px;
+                     padding: 6px 9px; font-size: 13px; font-family: inherit; }
+  .periodo { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .periodo input { width: 84px; }
+  .periodo span { font-size: 12.5px; color: #6b7280; }
+  .pastas-linha { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 9px;
+                  padding-bottom: 10px; margin-bottom: 8px; border-bottom: 1px solid #f0f0f0; }
+  .pastas-linha label, .pastas-linha span { font-size: 12.5px; color: #6b7280; }
+  .pastas-linha input { width: auto; }
+  /* Lista com caixinha em vez de select: o destino tem que estar visível o tempo
+     todo — num select só se vê a linha escolhida, e o engano passa batido.
+     Marca uma só (a caixa desmarca as outras), com o 0006 de teste já marcado. */
+  .lista-cli { max-height: 132px; overflow-y: auto; border: 1px solid #e5e7eb;
+               border-radius: 8px; padding: 4px 6px; }
+  .lista-cli label { display: flex; align-items: center; gap: 7px; padding: 3px 2px;
+                     font-size: 12.5px; color: #374151; cursor: pointer; border-radius: 5px; }
+  .lista-cli label:hover { background: #f8fafc; }
+  .lista-cli label.marcado { background: #eff6ff; color: #1e40af; font-weight: 600; }
+  .lista-cli .cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  .modo { border-radius: 8px; padding: 9px 11px; font-size: 12.5px; line-height: 1.45;
+          margin-top: 8px; }
+  .modo-nova  { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+  .modo-so    { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+  .modo-bloq  { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .modo > b:first-child { display: block; }   /* só o título vira linha própria */
+  .modo .btn { white-space: nowrap; padding: 8px 14px; }
 
   .btn { background: #2563eb; color: #fff; border: none; border-radius: 9px;
-         padding: 11px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+         padding: 9px 18px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
   .btn:hover { background: #1d4ed8; }
   .btn:disabled { background: #9dbef5; cursor: not-allowed; }
   .btn-sec { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 7px;
-             padding: 7px 13px; font-size: 12.5px; cursor: pointer; }
+             padding: 7px 13px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
   .btn-sec:hover { background: #f9fafb; }
 
+  /* A tabela é a única parte que cresce (marcando "mostrar os demais layouts"
+     passa de 30 linhas): rola dentro da caixa, não empurra a página. */
+  .tabela-box { max-height: calc(100vh - 300px); min-height: 120px; overflow-y: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 9px; border-bottom: 1px solid #f0f0f0; }
-  th { color: #6b7280; font-weight: 600; font-size: 12px; }
+  th, td { text-align: left; padding: 3px 9px; border-bottom: 1px solid #f0f0f0; }
+  th { color: #6b7280; font-weight: 600; font-size: 12px; position: sticky; top: 0;
+       background: #fff; box-shadow: inset 0 -1px 0 #e5e7eb; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   td.cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-weight: 600; }
   tr.marcada { background: #f0f9ff; }
   tr.extra td { color: #9ca3af; }
   tr.extra td.cod { color: #9ca3af; }
   td.mortos { color: #b45309; }
-  .opcoes { display: flex; flex-wrap: wrap; gap: 18px; margin: 15px 0 4px;
-            font-size: 13px; color: #374151; }
+  .opcoes { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0 2px;
+            font-size: 12.5px; color: #374151; }
   .opcoes label { cursor: pointer; }
 
   #progressoWrap { display: none; }
-  .barra { height: 14px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin: 8px 0; }
+  .barra { height: 12px; background: #e5e7eb; border-radius: 8px; overflow: hidden; margin: 6px 0; }
   .barra-fill { height: 100%; width: 0%; background: #16a34a; transition: width .25s; }
   .prog-linha { display: flex; justify-content: space-between; font-size: 13px; color: #374151; }
   .prog-linha .etapa { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px;
@@ -82,13 +121,13 @@
 
   #resultado { display: none; }
   .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
-            padding: 12px 14px; font-size: 14px; margin-bottom: 10px; line-height: 1.5; }
+            padding: 10px 13px; font-size: 13.5px; margin-bottom: 8px; line-height: 1.45; }
   .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
-              padding: 12px 14px; font-size: 14px; }
+              padding: 10px 13px; font-size: 13.5px; }
   .mut { color: #9ca3af; font-size: 12px; }
-  .carregando { color: #6b7280; font-size: 13px; padding: 6px 0; }
+  .carregando { color: #6b7280; font-size: 13px; padding: 4px 0; }
   .rodape-sel { display: flex; justify-content: space-between; align-items: center;
-                margin-top: 14px; gap: 12px; }
+                margin-top: 10px; gap: 12px; }
 </style>
 </head>
 <body>
@@ -100,81 +139,148 @@
         <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
         <span class="topo-versao">Versão: {{ versao }}</span>
       </div>
-      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+      <!-- Sair da esteira desfaz a impersonação e devolve a sessão à conta da
+           F10 (0004). A rota já cai no /menu quando não há o que desfazer. -->
+      <button class="btn-voltar" onclick="window.location.href='/parar_impersonar'"
+              title="Sai e volta para o cliente 0004">↪ Menu</button>
     </div>
   </div>
 
   <div class="wrap">
-    <div class="passos">
-      <div class="passo ativo"><b>Etapa 1</b> Descompactar os XMLs</div>
-      <div class="passo"><b>Etapa 2</b> a definir</div>
-    </div>
+    <div class="colunas">
+      <div>
+        <div class="passos">
+          <div class="passo ativo"><b>Etapa 0</b> Cliente</div>
+          <div class="passo ativo"><b>Etapa 1</b> Descompactar</div>
+          <div class="passo ativo"><b>Etapa 2</b> Conferir</div>
+          <div class="passo ativo passo-link" onclick="window.location.href='/importar_xml_esocial'"
+               title="Abre a importação para o cadastro"><b>Etapa 3</b> Importar ↗</div>
+        </div>
 
-    {% if no_render %}
-    <div class="alerta">
-      ⚠️ Este app está rodando no <b>servidor</b>, onde o disco é efêmero e essas pastas não
-      existem. Abra a tela com o app rodando na sua máquina.
-    </div>
-    {% endif %}
+        {% if no_render %}
+        <div class="alerta">
+          ⚠️ Este app está rodando no <b>servidor</b>, onde o disco é efêmero e essas pastas não
+          existem. Abra a tela com o app rodando na sua máquina.
+        </div>
+        {% endif %}
 
-    <div class="info">
-      Extrai os ZIPs baixados à mão no <b>portal do eSocial</b> (menu Download) para a pasta de
-      trabalho. O layout sai do próprio nome do arquivo (<span class="cam">ID….<b>S-2200</b>.xml</span>),
-      sem abrir o XML. Os eventos <b>anulados por um S-3000</b> ficam de fora — o S-3000 aponta o
-      recibo do evento que excluiu, e todo XML baixado traz o recibo dele próprio.
-    </div>
+        <!-- Etapa 0: para onde vai × de onde vem, no mesmo card. Juntos porque
+             é o confronto dos dois que pega o cliente errado antes de tudo — a
+             importação grava na empresa ATIVA da sessão, não há outro destino. -->
+        <div class="card" id="cardEtapa0">
+          <h3>Etapa 0 — Cliente de destino</h3>
+          <input type="text" id="buscaCli" placeholder="filtrar cliente…"
+                 oninput="filtrarClientes()" style="margin-bottom:6px;">
+          <div id="listaClientes" class="lista-cli">
+            <div class="carregando">Carregando os clientes…</div>
+          </div>
+          <div id="destinoBox" class="mut" style="margin-top:8px;">—</div>
 
-    <div class="card">
-      <h3>Pastas</h3>
-      <div class="linha">
-        <label for="origem">ZIPs em</label>
-        <input type="text" id="origem" value="{{ origem }}">
+          <div style="border-top:1px solid #f0f0f0;margin:12px 0 10px;"></div>
+          <h3 style="margin-bottom:8px;">Empresa dos arquivos</h3>
+          <div id="empresaBox" class="carregando">Identificando pelo S-1000…</div>
+        </div>
+
       </div>
-      <div class="linha">
-        <label for="destino">Extrair para</label>
-        <input type="text" id="destino" value="{{ destino }}">
-      </div>
-      <div class="linha">
-        <label>Competência</label>
-        <div class="periodo">
-          <span>de</span><input type="text" id="de" placeholder="AAAAMM" maxlength="6">
-          <span>até</span><input type="text" id="ate" placeholder="AAAAMM" maxlength="6">
-          <span class="mut">— em branco traz todos os ZIPs da pasta</span>
+
+      <div class="card">
+        <h3 id="tituloLayouts">Etapa 1 — O que descompactar</h3>
+        <!-- As pastas ficam dentro da própria Etapa 1: são o parâmetro dela, e
+             na coluna larga cabem em uma linha só. -->
+        <div class="pastas-linha">
+          <label for="origem">ZIPs em</label>
+          <input type="text" id="origem" value="{{ origem }}" style="width:180px;">
+          <label for="destino">Extrair para</label>
+          <input type="text" id="destino" value="{{ destino }}" style="width:165px;">
+          <label>Compet.</label>
+          <input type="text" id="de" placeholder="AAAAMM" maxlength="6" style="width:84px;">
+          <span>até</span>
+          <input type="text" id="ate" placeholder="AAAAMM" maxlength="6" style="width:84px;">
+          <button class="btn-sec" id="btnAnalisar" onclick="analisar()">Reler a pasta</button>
+        </div>
+        <div class="mut" style="margin-bottom:4px;">
+          O layout sai do nome do arquivo (<span class="cam">ID….S-2200.xml</span>), sem abrir o
+          XML, e o que um <b>S-3000</b> anulou fica de fora.
+        </div>
+        <div id="carregando" class="carregando">Lendo os ZIPs da pasta padrão…</div>
+        <div class="tabela-box">
+          <table id="tabela" style="display:none;">
+            <thead>
+              <tr>
+                <th style="width:30px;"></th><th style="width:80px;">Layout</th>
+                <th>Evento</th><th class="num" style="width:105px;">XMLs nos ZIPs</th>
+                <th class="num" style="width:105px;">anulados por S-3000</th>
+              </tr>
+            </thead>
+            <tbody id="corpoLayouts"></tbody>
+          </table>
+        </div>
+        <div class="opcoes" id="opcoes" style="display:none;">
+          <label><input type="checkbox" id="verTodos" onchange="montarLinhas()">
+                 Mostrar os demais layouts</label>
+          <label><input type="checkbox" id="subLayout"> Uma subpasta por layout</label>
+          <label><input type="checkbox" id="sobrescrever"> Regravar o que já existe</label>
+          <label><input type="checkbox" id="manterExcluidos" onchange="pintar()">
+                 Extrair também os anulados por S-3000</label>
+        </div>
+        <div class="rodape-sel">
+          <span class="mut" id="resumoSel"></span>
+          <button class="btn" id="btnExtrair" onclick="extrair()" disabled>Descompactar</button>
         </div>
       </div>
-      <div style="margin-top:6px;">
-        <button class="btn-sec" id="btnAnalisar" onclick="analisar()">Reler a pasta</button>
+
+      <div class="card" id="cardEtapa2" style="grid-column:2;">
+        <h3>Etapa 2 — Planilhas de conferência</h3>
+        <div class="mut" style="line-height:1.5;">
+          Uma planilha por layout em <span class="cam">{{ planilhas }}</span> mais a
+          <b>consolidada</b> (o funcionário já com as alterações aplicadas).
+          <b>Nada é gravado no banco</b>.
+        </div>
+        <div id="prog2Wrap" style="display:none;">
+          <div class="prog-linha">
+            <span class="etapa" id="prog2Etapa">Iniciando…</span>
+            <span id="prog2Pct">0%</span>
+          </div>
+          <div class="barra"><div class="barra-fill" id="prog2Fill"></div></div>
+        </div>
+        <div id="resultado2" style="display:none;margin-top:10px;"></div>
+        <div class="rodape-sel">
+          <span class="mut" id="resumo2"></span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-sec" onclick="abrirPastaPlanilhas()">Abrir a pasta</button>
+            <button class="btn" id="btnPlanilhas" onclick="gerarPlanilhas()">Gerar as planilhas</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" id="cardEtapa3" style="grid-column:2;">
+        <h3>Etapa 3 — Importar para o cadastro</h3>
+        <div class="mut" style="line-height:1.5;">
+          Grava as planilhas no <span class="cam">tab_cad</span> (com S-2205/S-2206 e o
+          desligamento do S-2299), no <span class="cam">tab_eventos</span> (férias op1=3 e
+          afastamentos op1=6, do S-2230) e no <span class="cam">tab_dependentes</span> —
+          no <b>cliente e na empresa da Etapa 0</b>.
+        </div>
+        <div id="prog3Wrap" style="display:none;">
+          <div class="prog-linha">
+            <span class="etapa" id="prog3Etapa">Iniciando…</span>
+            <span id="prog3Pct">0%</span>
+          </div>
+          <div class="barra"><div class="barra-fill" id="prog3Fill"></div></div>
+        </div>
+        <div id="resultado3" style="display:none;margin-top:10px;"></div>
+        <div class="rodape-sel">
+          <span class="mut" id="resumo3"></span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-sec" onclick="window.location.href='/importar_xml_esocial'"
+                    title="Caminho antigo: manda os XMLs por upload">Por upload ↗</button>
+            <button class="btn" id="btnEtapa3" onclick="importarAgora()">Importar agora</button>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div class="card">
-      <h3 id="tituloLayouts">O que descompactar</h3>
-      <div id="carregando" class="carregando">Lendo os ZIPs da pasta padrão…</div>
-      <table id="tabela" style="display:none;">
-        <thead>
-          <tr>
-            <th style="width:30px;"></th><th style="width:80px;">Layout</th>
-            <th>Evento</th><th class="num" style="width:105px;">XMLs nos ZIPs</th>
-            <th class="num" style="width:105px;">anulados<br>por S-3000</th>
-          </tr>
-        </thead>
-        <tbody id="corpoLayouts"></tbody>
-      </table>
-      <div class="opcoes" id="opcoes" style="display:none;">
-        <label><input type="checkbox" id="verTodos" onchange="montarLinhas()">
-               Mostrar os demais layouts</label>
-        <label><input type="checkbox" id="subLayout"> Uma subpasta por layout</label>
-        <label><input type="checkbox" id="sobrescrever"> Regravar o que já existe</label>
-        <label><input type="checkbox" id="manterExcluidos" onchange="pintar()">
-               Extrair também os anulados por S-3000</label>
-      </div>
-      <div class="rodape-sel">
-        <span class="mut" id="resumoSel"></span>
-        <button class="btn" id="btnExtrair" onclick="extrair()" disabled>Descompactar</button>
-      </div>
-    </div>
-
-    <div class="card" id="progressoWrap">
+    <div class="card" id="progressoWrap" style="margin-top:12px;">
       <div class="prog-linha">
         <span class="etapa" id="progressoEtapa">Iniciando…</span>
         <span id="progressoPct">0%</span>
@@ -183,23 +289,370 @@
       <div class="mut">Não feche esta janela até concluir.</div>
     </div>
 
-    <div class="card" id="resultado"></div>
+    <div class="card" id="resultado" style="margin-top:12px;"></div>
   </div>
 
 <script src="/static/f10_dialog.js"></script>
+<script id="dadosAlvo" type="application/json">{{ alvo|tojson }}</script>
 <script id="dadosEtapa1" type="application/json">{{ etapa1|tojson }}</script>
 <script id="dadosNomes" type="application/json">{{ nomes|tojson }}</script>
 <script>
+const ALVO = JSON.parse(document.getElementById('dadosAlvo').textContent || '{}');
 const ETAPA1 = JSON.parse(document.getElementById('dadosEtapa1').textContent || '[]');
 const NOMES = JSON.parse(document.getElementById('dadosNomes').textContent || '{}');
 let LINHAS = [];
 let MARCADOS = ETAPA1.slice();     // sobrevive ao redesenho da tabela
+let EMPRESA_OK = false;            // nada roda antes de confirmar a empresa
+let EMPRESA = null;
 
 function val(id) { return document.getElementById(id).value.trim(); }
 function el(id) { return document.getElementById(id); }
 
 function corpoPedido() {
-  return { origem: val('origem'), destino: val('destino'), de: val('de'), ate: val('ate') };
+  return { origem: val('origem'), destino: val('destino'), de: val('de'), ate: val('ate'),
+           empresa_ok: EMPRESA_OK };
+}
+
+// ── Etapa 0: para que cliente vai esta base ──
+// A lista fica aqui dentro porque a escolha do cliente é o primeiro passo da
+// esteira; trocar por fora (menu) tirava a pessoa do meio do fluxo.
+function carregarClientes() {
+  return fetch('/api/descompactar_xml/clientes').then(r => r.json()).then(function (d) {
+    const box = el('listaClientes');
+    if (!d.ok) { box.innerHTML = '<div class="carregando">' + (d.msg || 'falhou') + '</div>'; return; }
+    const lista = d.clientes || [];
+
+    // Dentro de um cliente, o destino é ele mesmo: sem lista, sem troca por
+    // baixo do pano. A lista é só para quem está na conta da F10 ou na de teste.
+    if (!d.mostrar_lista) {
+      const c = lista[0] || {};
+      el('buscaCli').style.display = 'none';
+      box.innerHTML =
+        `<label class="marcado"><input type="checkbox" class="cli" value="${c.id_cliente || ''}"
+             checked disabled>
+           <span class="cod">${('0000' + (c.id_cliente || '')).slice(-4)}</span>
+           <span>${c.nome || '(sem nome)'}</span></label>
+         <div class="mut" style="margin-top:4px;">Importação vai para o cliente em que você está.
+           <a href="/trocar_cliente" style="color:#2563eb;">trocar de cliente</a></div>`;
+      return;
+    }
+
+    const teste = String(d.cliente_teste || 6);
+    el('buscaCli').style.display = '';
+    // Na casa (F10 ou teste): a base de teste vem marcada por padrão.
+    const temTeste = lista.some(c => String(c.id_cliente) === teste);
+    const marcar = temTeste ? teste : String(d.id_cliente || '');
+    box.innerHTML = lista.map(function (c) {
+      const id = String(c.id_cliente || '');
+      const on = id === marcar;
+      return `<label class="${on ? 'marcado' : ''}" data-nome="${
+        ((('0000' + id).slice(-4)) + ' ' + (c.nome || '')).toLowerCase()}">
+        <input type="checkbox" class="cli" value="${id}"${on ? ' checked' : ''}
+               ${d.pode_trocar ? '' : ' disabled'} onchange="escolherCliente(this)">
+        <span class="cod">${('0000' + id).slice(-4)}</span>
+        <span>${c.nome || '(sem nome)'}</span></label>`;
+    }).join('') || '<div class="carregando">nenhum cliente</div>';
+    // O que está marcado tem que ser o destino de verdade: se a sessão está em
+    // outro cliente, troca agora — caixa marcada que mente é o erro que esta
+    // tela existe para evitar.
+    if (marcar && marcar !== String(d.id_cliente || '')) {
+      const alvo = box.querySelector('.cli[value="' + marcar + '"]');
+      if (alvo) return escolherCliente(alvo);
+    }
+  });
+}
+
+function filtrarClientes() {
+  const q = (el('buscaCli').value || '').toLowerCase().trim();
+  Array.from(document.querySelectorAll('#listaClientes label')).forEach(function (l) {
+    l.style.display = (!q || (l.dataset.nome || '').indexOf(q) >= 0) ? '' : 'none';
+  });
+}
+
+function escolherCliente(cx) {
+  // Uma caixa só: destino é um cliente, não vários.
+  Array.from(document.querySelectorAll('#listaClientes .cli')).forEach(function (c) {
+    if (c !== cx) c.checked = false;
+    c.closest('label').classList.toggle('marcado', c.checked);
+  });
+  if (!cx.checked) {                 // desmarcou o que estava: fica sem destino
+    EMPRESA_OK = false;
+    el('destinoBox').innerHTML = '<div class="modo modo-so"><b>Nenhum cliente marcado</b>'
+      + 'Marque o cliente de destino para continuar.</div>';
+    marcarStatusEmpresa();
+    return;
+  }
+  const id = cx.value;
+  if (!id) return;
+  EMPRESA_OK = false;                     // trocou o destino: confirma de novo
+  el('destinoBox').textContent = 'Trocando de cliente…';
+  return fetch('/api/impersonar_cliente', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id_cliente: parseInt(id, 10) })
+  }).then(r => r.json()).then(function (d) {
+    if (!d.ok) { el('destinoBox').textContent = d.msg || 'Não deu para trocar de cliente'; return; }
+    return conferirSituacao();
+  }).catch(function (e) { el('destinoBox').textContent = String(e); });
+}
+
+// Situação do CNPJ dos arquivos DENTRO do cliente escolhido — é ela que diz se
+// entra o S-1000, se entram só os funcionários, ou se não entra nada.
+function conferirSituacao(perguntar) {
+  // perguntar=false: só redesenha (depois de importar, por exemplo). Sem isso a
+  // tela reabria o diálogo de confirmação em cima do resultado.
+  if (perguntar === undefined) perguntar = true;
+  const cnpj = ((EMPRESA && EMPRESA.empresas && EMPRESA.empresas[0]) || {}).cnpj || '';
+  return fetch('/api/descompactar_xml/situacao', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cnpj: cnpj })
+  }).then(r => r.json()).then(function (s) {
+    if (!s.ok) { el('destinoBox').textContent = s.msg || 'falhou'; return false; }
+    if (EMPRESA) { EMPRESA.destino = s.destino; EMPRESA.situacao = s;
+                   EMPRESA.bate = !!(s.empresa); }
+    desenharDestino(s);
+    // Ainda sem os arquivos identificados (carga inicial): quem pergunta é o
+    // identificarEmpresa() logo em seguida, com origem e destino já prontos.
+    if (!EMPRESA) return false;
+    desenharEmpresa(EMPRESA);
+    if (!perguntar) { marcarStatusEmpresa(); return EMPRESA_OK; }
+    return perguntarEmpresa(EMPRESA);
+  });
+}
+
+function criarEmpresa() {
+  const b = el('btnCriarEmpresa');
+  const e = ((EMPRESA && EMPRESA.empresas && EMPRESA.empresas[0]) || {});
+  // Diz para QUEM vai a empresa: criar no cliente errado é o erro caro aqui.
+  const a = ((EMPRESA && EMPRESA.destino) || ALVO || {});
+  const cli = 'Cliente ' + ('0000' + (a.id_cliente || '')).slice(-4) +
+              ' — ' + (a.cliente || '(sem nome)');
+  f10Confirm('Criar a empresa do CNPJ ' + (e.cnpj_fmt || '?') + ' em:\n' + cli + '\n\n' +
+             'Com os dados do S-1000 e a razão social "Razão Social Provisória"?\n' +
+             'O nome não vem do eSocial — corrija depois em Cadastros → Empresa.',
+             { titulo: 'Criar a empresa', tipo: 'aviso', okText: 'Criar', cancelText: 'Agora não' })
+  .then(function (ok) {
+    if (!ok) return;
+    if (b) { b.disabled = true; b.textContent = 'Criando…'; }
+    return fetch('/api/descompactar_xml/criar_empresa', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpoPedido())
+    }).then(r => r.json()).then(function (d) {
+      if (!d.ok) {
+        if (b) { b.disabled = false; b.textContent = 'Criar a empresa'; }
+        return f10Alert(d.msg || 'Não deu para criar a empresa', { tipo: 'erro' });
+      }
+      if (EMPRESA) { EMPRESA.situacao = d.situacao; EMPRESA.destino = d.destino;
+                     EMPRESA.bate = true; }
+      desenharDestino(Object.assign({}, d.situacao, { destino: d.destino }));
+      if (EMPRESA) desenharEmpresa(EMPRESA);
+      marcarStatusEmpresa();
+      const obs = (d.descartados || []).length
+        ? '\n\nNão entraram: ' + d.descartados.join(', ') : '';
+      return f10Alert('Empresa criada em ' + cli + '\n(id ' + d.id_empresa + ', CNPJ ' + d.cnpj + ')' +
+                      (d.folha ? ', folha ' + d.folha.slice(4) + '/' + d.folha.slice(0, 4) : '') +
+                      '.\nRazão social provisória — corrija em Cadastros → Empresa.' + obs,
+                      { titulo: 'Etapa 0', tipo: 'sucesso' });
+    });
+  }).catch(function (x) {
+    if (b) { b.disabled = false; b.textContent = 'Criar a empresa'; }
+    f10Alert(String(x), { tipo: 'erro' });
+  });
+}
+
+function desenharDestino(s) {
+  const a = (s && s.destino) || ALVO || {};
+  const cli = a.id_cliente
+    ? ('Cliente ' + ('0000' + a.id_cliente).slice(-4) + ' — ' + (a.cliente || '(sem nome)'))
+    : '⚠️ nenhum cliente escolhido';
+  const emp = (s && s.empresa)
+    ? `<div style="font-size:13px;color:#111827;font-weight:600;margin-top:3px;">
+         ${s.empresa.nome || '(empresa sem nome)'}</div>
+       <div class="mut">CNPJ ${s.empresa.cnpj_fmt}</div>`
+    : '';
+  el('destinoBox').innerHTML =
+    `<div style="font-size:13px;color:#374151;">${cli}</div>` + emp + caixaModo(s);
+}
+
+function caixaModo(s) {
+  const modo = (s && s.modo) || 'indefinido';
+  if (modo === 'nova') {
+    return `<div class="modo modo-nova">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+        <b style="display:inline;">🆕 Empresa nova neste cliente</b>
+        <button class="btn" id="btnCriarEmpresa" onclick="criarEmpresa()">Criar a empresa</button>
+      </div>
+      Criada pelo S-1000 dos ZIPs, com razão social <b>"Razão Social Provisória"</b> — o eSocial
+      não manda o nome; corrija em Cadastros → Empresa.</div>`;
+  }
+  if (modo === 'so_funcionarios') {
+    return `<div class="modo modo-so"><b>Só os funcionários</b>
+      A empresa já existe neste cliente e está vazia: o <b>S-1000 não será importado</b>,
+      para não mexer no cadastro que já foi conferido.</div>`;
+  }
+  if (modo === 'bloqueado') {
+    return `<div class="modo modo-bloq"><b>⛔ Importação bloqueada</b>
+      A empresa já tem ${s.funcionarios} funcionário(s). Importar base por cima duplicaria
+      gente — escolha outro cliente ou limpe a empresa antes.</div>`;
+  }
+  return `<div class="modo modo-so"><b>Situação indefinida</b>
+    ${(s && s.erro) ? s.erro : 'Escolha o cliente para saber o que dá para importar.'}</div>`;
+}
+
+// ── De quem são estes arquivos ──
+// O S-1000 do eSocial não tem razão social, só o CNPJ: o nome vem do cadastro
+// do Folha10 e o do certificado é só pista (quem assina costuma ser o contador).
+function nomesDaBase(e) {
+  return (e.na_base || []).map(x => (x.nome || ('empresa ' + x.id_empresa))
+                                    + ' (cliente ' + (x.id_cliente || '?') + ')').join(' · ');
+}
+
+// Consulta que falhou não pode virar "não existe" — é o mesmo engano que esta
+// conferência existe para evitar.
+function semNomeDaBase(e) {
+  return e.base_off ? 'não deu para consultar a sua base agora'
+                    : '⚠️ nenhuma empresa com este CNPJ na sua base';
+}
+
+function identificarEmpresa() {
+  return fetch('/api/descompactar_xml/empresa', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpoPedido())
+  }).then(r => r.json()).then(function (d) {
+    if (!d.ok || !(d.empresas || []).length) {
+      el('empresaBox').className = 'alerta';
+      el('empresaBox').innerHTML = '⚠️ ' + (d.msg || 'Não deu para identificar a empresa nos ZIPs.');
+      return false;
+    }
+    EMPRESA = d;
+    desenharEmpresa(d);
+    desenharDestino(Object.assign({}, d.situacao || {}, { destino: d.destino }));
+    // Sem cliente definido não há o que confirmar: a Etapa 0 vem antes da 1.
+    if (!temDestino(d)) { marcarStatusEmpresa(); return false; }
+    return perguntarEmpresa(d);
+  }).catch(function (e) {
+    el('empresaBox').className = 'alerta';
+    el('empresaBox').innerHTML = '⚠️ ' + String(e);
+    return false;
+  });
+}
+
+function desenharEmpresa(d) {
+  const linhas = (d.empresas || []).map(function (e) {
+    const nomes = nomesDaBase(e);
+    return `<div style="font-size:15px;font-weight:600;color:#111827;">${e.cnpj_fmt}</div>
+            <div style="font-size:13px;color:${nomes ? '#166534' : '#b45309'};margin-top:2px;">
+              ${nomes || semNomeDaBase(e)}</div>`;
+  }).join('<hr style="border:none;border-top:1px solid #f0f0f0;margin:8px 0;">');
+  const est = (d.estabelecimentos || []).length
+    ? `<div class="mut" style="margin-top:6px;">Estabelecimentos: ${d.estabelecimentos.join(', ')}</div>` : '';
+  const ass = (d.assinante && d.assinante.nome)
+    ? `<div class="mut" style="margin-top:4px;">Assinado por ${d.assinante.nome}
+         ${d.assinante.cnpj_fmt || ''} — pode ser o contador, não a empresa.</div>` : '';
+  const varias = (d.empresas || []).length > 1
+    ? '<div class="alerta" style="margin:8px 0 0;">⚠️ Os ZIPs têm mais de um CNPJ.</div>' : '';
+  // Em empresa nova não há com o que comparar — quem explica é a caixa do modo,
+  // logo acima. Repetir "CNPJ diferente" aqui só confundiria.
+  const conf = ((d.situacao || {}).modo === 'nova') ? ''
+    : (d.bate
+      ? '<div style="font-size:12.5px;color:#166534;margin-top:6px;">✓ mesmo CNPJ da empresa ativa</div>'
+      : `<div class="alerta" style="margin:8px 0 0;">⚠️ CNPJ diferente do da empresa ativa
+           ${(d.destino && d.destino.cnpj_fmt) ? '(' + d.destino.cnpj_fmt + ')' : '(nenhuma escolhida)'}
+         </div>`);
+  const box = el('empresaBox');
+  box.className = '';
+  box.innerHTML = linhas + est + ass + conf + varias +
+    `<div class="mut" style="margin-top:6px;">Identificada por ${d.fonte} em ${d.zips} ZIP(s).
+       <span id="empresaStatus"></span></div>`;
+  marcarStatusEmpresa();
+}
+
+// Basta o CLIENTE: em base nova a empresa ainda vai nascer do S-1000, então
+// exigir empresa ativa aqui travaria justamente o caso novo.
+function temDestino(d) {
+  const a = (d && d.destino) || ALVO || {};
+  return !!a.id_cliente;
+}
+
+function modoAtual() {
+  return ((EMPRESA && EMPRESA.situacao) || {}).modo || 'indefinido';
+}
+
+function marcarStatusEmpresa() {
+  const s = el('empresaStatus');
+  if (s) {
+    s.innerHTML = !temDestino(EMPRESA)
+      ? '<b style="color:#b45309;">escolha o cliente na Etapa 0</b>'
+      : (EMPRESA_OK ? '<b style="color:#166534;">✓ confirmada</b>'
+                    : '<b style="color:#b45309;">não confirmada — nada roda até confirmar</b>');
+  }
+  el('btnPlanilhas').disabled = !EMPRESA_OK;
+  // Etapa 3 só abre no que dá para importar; Etapas 1 e 2 continuam liberadas
+  // porque só leem arquivo e geram planilha.
+  const b3 = el('btnEtapa3');
+  if (b3) {
+    const bloq = modoAtual() === 'bloqueado';
+    b3.disabled = bloq;
+    b3.title = bloq ? 'A empresa já tem funcionários — importação bloqueada' : '';
+  }
+  pintar();
+}
+
+function perguntarEmpresa(d) {
+  const e = (d.empresas || [])[0] || {};
+  const nomes = nomesDaBase(e);
+  const alvo = d.destino || ALVO || {};
+
+  // Destino primeiro: a pergunta é "para que cliente vai isso", e só depois
+  // "de quem são os arquivos". É o confronto dos dois que pega o engano.
+  let msg = 'PARA ONDE VAI (Etapa 0)\n';
+  msg += alvo.tem_empresa
+    ? 'Cliente ' + (alvo.id_cliente || '?') + ' — ' + (alvo.cliente || '(sem nome)') +
+      '\n' + (alvo.empresa || '(empresa sem nome)') + ' — CNPJ ' + alvo.cnpj_fmt
+    : '⚠️ Nenhuma empresa ativa na sessão.';
+  msg += '\n\nDE ONDE VEM (os arquivos)\nCNPJ ' + (e.cnpj_fmt || '?') + '\n' +
+         (nomes ? 'Na sua base: ' + nomes : semNomeDaBase(e));
+  if ((d.estabelecimentos || []).length) {
+    msg += '\nEstabelecimentos: ' + d.estabelecimentos.join(', ');
+  }
+  if (d.assinante && d.assinante.nome) {
+    msg += '\nAssinado por: ' + d.assinante.nome + ' (pode ser o contador)';
+  }
+  if ((d.empresas || []).length > 1) {
+    msg += '\n\n⚠️ Há mais de um CNPJ nos arquivos: ' +
+           d.empresas.map(x => x.cnpj_fmt).join(', ');
+  }
+
+  // O que dá para importar deste CNPJ para este cliente — é a regra da Etapa 0.
+  const s = d.situacao || {};
+  const rotulo = {
+    nova: '🆕 Empresa NOVA neste cliente: entra o S-1000 (cria a empresa) + funcionários.',
+    so_funcionarios: 'A empresa JÁ EXISTE e está vazia: entram SÓ os funcionários, sem o S-1000.',
+    bloqueado: '⛔ A empresa já tem ' + (s.funcionarios || 0) +
+               ' funcionário(s): a importação está BLOQUEADA.',
+    indefinido: '⚠️ Não deu para conferir a situação da empresa neste cliente.'
+  }[s.modo || 'indefinido'];
+  msg += '\n\n' + rotulo;
+
+  const perigo = (s.modo === 'bloqueado') || (s.modo === 'indefinido');
+  msg += '\n\nConfirma que a importação é para este cliente?';
+  return f10Confirm(msg, { titulo: 'Etapa 0 — confirme o cliente',
+                           tipo: perigo ? 'perigo' : 'aviso',
+                           okText: perigo ? 'Continuar mesmo assim' : 'Sim, confirmo',
+                           cancelText: 'Não' })
+    .then(function (ok) {
+      EMPRESA_OK = !!ok;
+      marcarStatusEmpresa();
+      return EMPRESA_OK;
+    });
+}
+
+function garantirEmpresa() {
+  if (!temDestino(EMPRESA)) {
+    return f10Alert('Escolha o cliente e a empresa de destino na Etapa 0 antes de começar.',
+                    { titulo: 'Falta a Etapa 0', tipo: 'aviso' }).then(function () { return false; });
+  }
+  if (EMPRESA_OK) return Promise.resolve(true);
+  return EMPRESA ? perguntarEmpresa(EMPRESA) : identificarEmpresa();
 }
 
 function manterExcluidos() {
@@ -229,7 +682,7 @@ function analisar() {
       ? ' — competências de ' + d.competencias[0] + ' a ' + d.competencias[d.competencias.length - 1]
       : '';
     el('tituloLayouts').textContent =
-      `O que descompactar — ${d.zips} ZIP(s), ${d.total_zips} XMLs${per}`;
+      `Etapa 1 — O que descompactar: ${d.zips} ZIP(s), ${d.total_zips} XMLs${per}`;
     montarLinhas();
     if ((d.invalidos || []).length) {
       mostrarErro('ZIP inválido (ignorado): ' + d.invalidos.join(', '));
@@ -295,10 +748,60 @@ function pintar() {
     }
   }
   el('resumoSel').textContent = txt;
-  el('btnExtrair').disabled = (sel === 0);
+  el('btnExtrair').disabled = (sel === 0) || !EMPRESA_OK;
 }
 
 function extrair() {
+  // Nada começa com arquivo sobrando nas pastas de trabalho: o que ficou de uma
+  // rodada anterior se mistura com o desta e ninguém percebe.
+  const btn = el('btnExtrair');
+  btn.disabled = true;
+  garantirEmpresa().then(function (ok) {
+    if (!ok) {
+      btn.disabled = false;
+      mostrarErro('Empresa não confirmada — nada foi descompactado.');
+      return;
+    }
+    return conferirPastas().then(function (liberado) {
+      btn.disabled = false;
+      if (liberado) rodarExtracao();
+    });
+  });
+}
+
+function conferirPastas() {
+  el('resultado').style.display = 'none';
+  return fetch('/api/descompactar_xml/pastas', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpoPedido())
+  }).then(r => r.json()).then(function (d) {
+    if (!d.ok) { mostrarErro(d.msg || 'Falha ao conferir as pastas'); return false; }
+    const cheias = (d.pastas || []).filter(p => p.qtd > 0);
+    if (!cheias.length) return true;
+    const lista = cheias.map(p => '•  ' + p.pasta + ' — ' + p.qtd + ' arquivo(s)').join('\n');
+    return f10Confirm(
+      'Estas pastas ainda têm arquivos:\n\n' + lista +
+      '\n\nA descompactação só pode começar com elas vazias.\nApagar esses arquivos e continuar?',
+      { titulo: 'Pastas não estão vazias', tipo: 'perigo',
+        okText: 'Apagar e continuar', cancelText: 'Não apagar' }
+    ).then(function (ok) {
+      if (!ok) {
+        mostrarErro('Descompactação não iniciada — as pastas continuam como estavam. ' +
+                    'Esvazie-as (ou mande apagar) e tente de novo.');
+        return false;
+      }
+      return fetch('/api/descompactar_xml/limpar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpoPedido())
+      }).then(r => r.json()).then(function (x) {
+        if (!x.ok) { mostrarErro(x.msg || 'Falha ao apagar os arquivos'); return false; }
+        return true;
+      });
+    });
+  }).catch(function (e) { mostrarErro(String(e)); return false; });
+}
+
+function rodarExtracao() {
   const btn = el('btnExtrair');
   btn.disabled = true; btn.textContent = 'Descompactando…';
   el('resultado').style.display = 'none';
@@ -306,6 +809,7 @@ function extrair() {
   setBarra(0, 'Iniciando…');
   const corpo = corpoPedido();
   corpo.layouts = MARCADOS;
+  corpo.pastas_ok = true;         // já conferidas/esvaziadas logo acima
   corpo.sub_layout = el('subLayout').checked;
   corpo.sobrescrever = el('sobrescrever').checked;
   corpo.manter_excluidos = manterExcluidos();
@@ -374,6 +878,200 @@ function finalizar(d) {
      ${obs.length ? '<div class="mut" style="margin-top:10px;">' + obs.join(' · ') + '</div>' : ''}`;
 }
 
+// ── Etapa 2 — planilhas de conferência ──
+function gerarPlanilhas() {
+  garantirEmpresa().then(function (ok) {
+    if (!ok) { erro2('Empresa não confirmada — nenhuma planilha foi gerada.'); return; }
+    rodarPlanilhas();
+  });
+}
+
+function rodarPlanilhas() {
+  const btn = el('btnPlanilhas');
+  btn.disabled = true; btn.textContent = 'Gerando…';
+  el('resultado2').style.display = 'none';
+  el('prog2Wrap').style.display = 'block';
+  setBarra2(0, 'Iniciando…');
+  fetch('/api/planilhas_xml/gerar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpoPedido())
+  }).then(r => r.json()).then(function (d) {
+    if (!d.ok) { encerrar2(); erro2(d.msg || 'Falha ao gerar'); return; }
+    poll2(d.job_id);
+  }).catch(function (e) { encerrar2(); erro2(String(e)); });
+}
+
+function setBarra2(pct, etapa) {
+  el('prog2Fill').style.width = pct + '%';
+  el('prog2Pct').textContent = pct + '%';
+  if (etapa != null) el('prog2Etapa').textContent = etapa;
+}
+
+function encerrar2() {
+  const btn = el('btnPlanilhas');
+  btn.disabled = false; btn.textContent = 'Gerar as planilhas';
+  el('prog2Wrap').style.display = 'none';
+}
+
+function poll2(jobId) {
+  fetch('/api/planilhas_xml/progresso?job=' + jobId).then(r => r.json()).then(function (d) {
+    if (!d.ok) { encerrar2(); erro2(d.msg || 'Job não encontrado'); return; }
+    setBarra2(d.pct || 0, d.etapa || '');
+    if (d.done) { concluir2(d.resultado); return; }
+    setTimeout(function () { poll2(jobId); }, 400);
+  }).catch(function () { setTimeout(function () { poll2(jobId); }, 1200); });
+}
+
+function concluir2(res) {
+  encerrar2();
+  if (!res || !res.ok) { erro2((res && res.msg) || 'Erro desconhecido'); return; }
+  const linhas = (res.planilhas || []).map(p =>
+    `<tr><td class="cod">${p.arquivo}</td><td>${p.titulo}</td>
+         <td class="num">${p.linhas}</td></tr>`).join('');
+  const obs = [];
+  if (res.fora_do_escopo) obs.push(`${res.fora_do_escopo} XML(s) de outros layouts ficaram de fora`);
+  (res.ilegiveis || []).forEach(x => obs.push('não deu para ler ' + x));
+  // Repete de quem são os dados: é o que faltava para não conferir a planilha
+  // de outra empresa sem perceber. Vai também na aba Empresa de cada arquivo.
+  const donos = (res.empregadores || []).map(e =>
+    e.cnpj_fmt + ' — ' + (nomesDaBase(e) || semNomeDaBase(e))).join(' · ');
+  const box = el('resultado2');
+  box.style.display = 'block';
+  box.innerHTML =
+    `<div class="ok-box">✅ Planilhas gravadas em <span class="cam">${res.pasta}</span><br>
+       ${donos ? 'Empregador: <b>' + donos + '</b><br>' : ''}
+       Lidos ${res.xmls} XML(s). Nada foi gravado no banco.</div>
+     <table><thead><tr><th style="width:150px;">Planilha</th><th>Conteúdo</th>
+       <th class="num" style="width:70px;">Linhas</th></tr></thead>
+       <tbody>${linhas}</tbody></table>
+     ${obs.length ? '<div class="mut" style="margin-top:8px;">' + obs.join(' · ') + '</div>' : ''}`;
+  el('resumo2').textContent = 'Confira as planilhas antes da importação.';
+}
+
+function erro2(msg) {
+  const box = el('resultado2');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="erro-box">❌ ' + msg + '</div>';
+}
+
+function abrirPastaPlanilhas() {
+  fetch('/planilhas_xml/abrir').then(r => r.json()).then(function (d) {
+    if (!d.ok) erro2(d.msg || 'Não deu para abrir a pasta');
+  }).catch(function (e) { erro2(String(e)); });
+}
+
+// ── Etapa 3 — importar as planilhas para a base ──
+function importarAgora() {
+  garantirEmpresa().then(function (ok) {
+    if (!ok) { erro3('Cliente não confirmado — nada foi importado.'); return; }
+    if (modoAtual() === 'bloqueado') {
+      return f10Alert('A empresa já tem funcionários — importação bloqueada.',
+                      { titulo: 'Etapa 3', tipo: 'erro' });
+    }
+    const a = ((EMPRESA && EMPRESA.destino) || ALVO || {});
+    if (modoAtual() === 'nova') {
+      return f10Alert('Esta empresa ainda não existe no cliente. Crie-a na Etapa 0 primeiro.',
+                      { titulo: 'Etapa 3', tipo: 'aviso' });
+    }
+    if (!a.tem_empresa) {
+      return f10Alert('A tela ainda não sabe qual é a empresa de destino. Clique em '
+                      + '"Reler a pasta" ou recarregue a tela e confirme a Etapa 0.',
+                      { titulo: 'Etapa 3', tipo: 'aviso' });
+    }
+    return f10Confirm(
+      'Gravar as planilhas na base?\n\n' +
+      'Cliente ' + ('0000' + (a.id_cliente || '')).slice(-4) + ' — ' + (a.cliente || '') + '\n' +
+      (a.empresa || '') + ' — CNPJ ' + (a.cnpj_fmt || '') + '\n\n' +
+      'Entram os funcionários (tab_cad) e as férias/afastamentos (tab_eventos).\n' +
+      'Isto grava no banco e não tem desfazer.',
+      { titulo: 'Etapa 3 — importar', tipo: 'perigo',
+        okText: 'Importar', cancelText: 'Cancelar' })
+      .then(function (sim) { if (sim) rodarImportacao(); });
+  });
+}
+
+function rodarImportacao() {
+  const btn = el('btnEtapa3');
+  btn.disabled = true; btn.textContent = 'Importando…';
+  el('resultado3').style.display = 'none';
+  el('prog3Wrap').style.display = 'block';
+  setBarra3(0, 'Iniciando…');
+  fetch('/api/descompactar_xml/importar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpoPedido())
+  }).then(r => r.json()).then(function (d) {
+    if (!d.ok) { encerrar3(); erro3(d.msg || 'Falha ao importar'); return; }
+    poll3(d.job_id);
+  }).catch(function (e) { encerrar3(); erro3(String(e)); });
+}
+
+function setBarra3(pct, etapa) {
+  el('prog3Fill').style.width = pct + '%';
+  el('prog3Pct').textContent = pct + '%';
+  if (etapa != null) el('prog3Etapa').textContent = etapa;
+}
+
+function encerrar3() {
+  const btn = el('btnEtapa3');
+  btn.disabled = false; btn.textContent = 'Importar agora';
+  el('prog3Wrap').style.display = 'none';
+}
+
+function poll3(jobId) {
+  fetch('/api/descompactar_xml/importar/progresso?job=' + jobId).then(r => r.json())
+    .then(function (d) {
+      if (!d.ok) { encerrar3(); erro3(d.msg || 'Job não encontrado'); return; }
+      setBarra3(d.pct || 0, d.etapa || '');
+      if (d.done) { concluir3(d.resultado); return; }
+      setTimeout(function () { poll3(jobId); }, 500);
+    }).catch(function () { setTimeout(function () { poll3(jobId); }, 1200); });
+}
+
+function concluir3(res) {
+  encerrar3();
+  if (!res || !res.ok) { erro3((res && res.msg) || 'Erro desconhecido'); return; }
+  const obs = [];
+  if (res.qtd_pulados) obs.push(`${res.qtd_pulados} funcionário(s) fora: ` +
+    (res.pulados || []).slice(0, 3).map(p => p.cpf + ' (' + p.motivo + ')').join('; ') +
+    (res.qtd_pulados > 3 ? ' …' : ''));
+  if (res.qtd_ev_pulados) obs.push(`${res.qtd_ev_pulados} férias/afastamento(s) de quem não entrou`);
+  if ((res.completados || []).length) obs.push('campos que o XML não trouxe e entraram vazios: ' +
+    res.completados.map(c => c[0] + ' (' + c[1] + ')').join(', '));
+  if ((res.trocados || []).length) obs.push('códigos antigos do eSocial ajustados: ' +
+    res.trocados.map(c => c[0] + ' (' + c[1] + ')').join(', '));
+  if (res.eventos_erro) obs.push('ATENÇÃO: os funcionários entraram, mas as férias/afastamentos ' +
+                                 'não foram gravados — ' + res.eventos_erro);
+  if (res.dependentes) obs.push('o sexo do dependente não vem do eSocial: entrou o palpite pelo ' +
+                                'nome — confira em Cadastros → Dependentes');
+  if (res.dep_pulados) obs.push(`${res.dep_pulados} dependente(s) de quem não entrou`);
+  if (res.dep_erro) obs.push('ATENÇÃO: dependentes não gravados — ' + res.dep_erro);
+  const box = el('resultado3');
+  box.style.display = 'block';
+  box.innerHTML =
+    `<div class="ok-box">✅ <b>${res.gravados}</b> funcionário(s) no
+       <span class="cam">tab_cad</span> (${res.demitidos} já demitido(s)),
+       <b>${res.eventos_gravados}</b> no <span class="cam">tab_eventos</span>
+       (${res.ferias} férias + ${res.afastamentos} afastamentos) e
+       <b>${res.dependentes || 0}</b> no <span class="cam">tab_dependentes</span><br>
+       Gravados com <b>id_cliente ${res.id_cliente}</b> e
+       <b>id_empresa ${res.id_empresa}</b>.</div>
+     ${obs.length ? '<div class="mut" style="margin-top:8px;">' + obs.join(' · ') + '</div>' : ''}
+     <div style="margin-top:12px;display:flex;gap:8px;justify-content:flex-end;">
+       <button class="btn-sec" onclick="window.location.reload()">Ficar aqui</button>
+       <button class="btn" onclick="window.location.href='/parar_impersonar'">
+         ↪ Ir para o Menu</button>
+     </div>`;
+  el('resumo3').textContent = 'Importação concluída.';
+  // A empresa deixou de estar vazia: a trava passa a valer (sem repergunta).
+  conferirSituacao(false);
+}
+
+function erro3(msg) {
+  const box = el('resultado3');
+  box.style.display = 'block';
+  box.innerHTML = '<div class="erro-box">❌ ' + msg + '</div>';
+}
+
 function mostrarErro(msg) {
   const box = el('resultado');
   box.style.display = 'block';
@@ -381,7 +1079,15 @@ function mostrarErro(msg) {
 }
 
 // Já abre lendo a pasta padrão — a Etapa 1 tem sempre o mesmo ponto de partida.
-document.addEventListener('DOMContentLoaded', analisar);
+// A pergunta da empresa vem antes de tudo: enquanto ela não for respondida, os
+// dois botões ficam travados.
+document.addEventListener('DOMContentLoaded', function () {
+  el('btnPlanilhas').disabled = true;
+  analisar();
+  // Nesta ordem: primeiro o cliente (que pode trocar a sessão), depois a
+  // identificação dos arquivos — senão a situação sairia do cliente anterior.
+  carregarClientes().then(identificarEmpresa);
+});
 </script>
 </body>
 </html>

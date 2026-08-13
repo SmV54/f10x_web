@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apagar Cliente / Empresa</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 8px 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  /* Mesmo selo das outras telas do Admin. Vermelho e escrito "APAGAR BASE" ele
+     parecia um botão de ação — o aviso de perigo é o quadro vermelho abaixo. */
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em;
+                 cursor: default; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+
+  .wrap { max-width: 1100px; margin: 16px auto; padding: 0 20px; }
+  .colunas { display: grid; grid-template-columns: 380px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 900px) { .colunas { grid-template-columns: 1fr; } }
+
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 13px 16px; margin-bottom: 12px; }
+  .card h3 { font-size: 13.5px; color: #374151; margin-bottom: 10px; font-weight: 600; }
+
+  .alerta-forte { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;
+                  border-radius: 10px; padding: 12px 14px; font-size: 13px; line-height: 1.5;
+                  margin-bottom: 12px; }
+  .lista { max-height: 190px; overflow-y: auto; border: 1px solid #e5e7eb;
+           border-radius: 8px; padding: 4px 6px; }
+  .lista label { display: flex; align-items: center; gap: 7px; padding: 3px 2px;
+                 font-size: 12.5px; color: #374151; cursor: pointer; border-radius: 5px; }
+  .lista label:hover { background: #f8fafc; }
+  .lista label.marcado { background: #fef2f2; color: #991b1b; font-weight: 600; }
+  .lista label.travado { opacity: .45; cursor: not-allowed; }
+  .cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+  input[type=text] { width: 100%; border: 1px solid #d1d5db; border-radius: 7px;
+                     padding: 7px 9px; font-size: 13px; font-family: inherit; }
+  .mut { color: #9ca3af; font-size: 12px; }
+
+  .btn { background: #dc2626; color: #fff; border: none; border-radius: 9px;
+         padding: 9px 18px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #b91c1c; }
+  .btn:disabled { background: #fca5a5; cursor: not-allowed; }
+  .btn-sec { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 7px;
+             padding: 7px 13px; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 9px; border-bottom: 1px solid #f0f0f0; }
+  th { color: #6b7280; font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  td.cod { color: #6b7280; font-size: 12px; }
+  tr.dona td { color: #991b1b; font-weight: 700; }
+
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 10px 13px; font-size: 13.5px; line-height: 1.45; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 10px 13px; font-size: 13.5px; }
+  .rodape-sel { display: flex; justify-content: space-between; align-items: center;
+                margin-top: 10px; gap: 12px; }
+
+  /* Rodinha do "estou trabalhando": apagar base pode demorar alguns segundos e
+     sem sinal nenhum a pessoa clica de novo. */
+  .spin { display: inline-block; width: 13px; height: 13px; border-radius: 50%;
+          border: 2px solid rgba(255,255,255,.45); border-top-color: #fff;
+          animation: girar .7s linear infinite; vertical-align: -2px; margin-right: 7px; }
+  .btn-sec .spin { border-color: #cbd5e1; border-top-color: #475569; }
+  @keyframes girar { to { transform: rotate(360deg); } }
+  .trabalhando { display: none; align-items: center; gap: 8px; margin-top: 10px;
+                 background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412;
+                 border-radius: 9px; padding: 9px 12px; font-size: 12.5px; }
+  .trabalhando .spin { border-color: #fdba74; border-top-color: #9a3412; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">🗑️ Apagar Cliente / Empresa</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="alerta-forte">
+      <b>Não tem desfazer.</b> Antes de apagar, o sistema grava um JSON com tudo o que vai sumir em
+      <span class="cod">C:\Folha10-Simples\CopiaBase\_apagados</span> — se o backup falhar, nada é
+      apagado. A conta da F10 (0004) e o cliente em que você está logado não podem ser apagados.
+    </div>
+
+    <div class="colunas">
+      <div>
+        <div class="card">
+          <h3>1. Cliente</h3>
+          <input type="text" id="buscaCli" placeholder="filtrar cliente…"
+                 oninput="filtrar()" style="margin-bottom:6px;">
+          <div id="listaClientes" class="lista"></div>
+        </div>
+
+        <div class="card">
+          <h3>2. O que apagar</h3>
+          <div id="listaEscopo" class="lista">
+            <div class="mut" style="padding:6px;">Escolha o cliente primeiro.</div>
+          </div>
+          <!-- Só faz sentido apagando UMA empresa: esvazia sem tirar o cadastro
+               dela do ar, que é o estado de "pronta para receber base de novo". -->
+          <label id="boxPreservar" style="display:none;align-items:center;gap:7px;
+                 margin-top:9px;font-size:12.5px;color:#374151;cursor:pointer;">
+            <input type="checkbox" id="preservar" onchange="limparPrevia()">
+            <span>Preservar a empresa — apaga só o conteúdo e mantém o cadastro
+              da empresa, os centros de custo, as filiais e a folha aberta</span>
+          </label>
+        </div>
+      </div>
+
+      <div>
+        <div class="card">
+          <h3 id="tituloPrevia">3. O que será apagado</h3>
+          <div id="previaBox" class="mut">Escolha o cliente e o que apagar, e clique em
+            <b>Ver o que será apagado</b>.</div>
+          <div class="rodape-sel">
+            <span class="mut" id="resumoPrevia"></span>
+            <button class="btn-sec" id="btnPrevia" onclick="verPrevia()" disabled>
+              Ver o que será apagado</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>4. Confirmação</h3>
+          <div class="mut" style="margin-bottom:6px;">
+            Para liberar o botão, digite <b>CONFIRMO</b> (em maiúsculas) no campo abaixo.
+          </div>
+          <input type="text" id="confirmacao" placeholder="digite CONFIRMO"
+                 oninput="travar()" autocomplete="off">
+          <div class="rodape-sel">
+            <span class="mut" id="alvoTxt"></span>
+            <button class="btn" id="btnApagar" onclick="apagar()" disabled>Apagar definitivamente</button>
+          </div>
+          <div class="trabalhando" id="trabalhando">
+            <span class="spin"></span>
+            <span>Apagando… não feche a tela. Tabela por tabela, pode levar alguns segundos.</span>
+          </div>
+        </div>
+
+        <div class="card" id="resultado" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+<script src="/static/f10_dialog.js"></script>
+<script id="dadosClientes" type="application/json">{{ clientes|tojson }}</script>
+<script id="dadosEmpresas" type="application/json">{{ empresas|tojson }}</script>
+<script>
+const CLIENTES = JSON.parse(document.getElementById('dadosClientes').textContent || '[]');
+const EMPRESAS = JSON.parse(document.getElementById('dadosEmpresas').textContent || '[]');
+const ID_SESSAO = {{ id_cliente_sessao|tojson }};
+const ID_F10 = {{ id_cliente_f10|tojson }};
+let CLIENTE = null, EMPRESA = null, PREVIA = null, PREVIA_MANTIDAS = [];
+
+function el(id) { return document.getElementById(id); }
+function pad4(n) { return ('0000' + (n || '')).slice(-4); }
+
+// Cliente logado e conta da F10 aparecem travados: apagar qualquer um dos dois
+// derruba quem está usando a tela.
+function travadoPor(c) {
+  if (String(c.id_cliente) === String(ID_F10)) return 'conta da F10';
+  if (String(c.id_cliente) === String(ID_SESSAO)) return 'você está logado nele';
+  return '';
+}
+
+function montarClientes() {
+  el('listaClientes').innerHTML = CLIENTES.map(function (c) {
+    const trava = travadoPor(c);
+    return `<label class="${trava ? 'travado' : ''}" title="${trava}"
+              data-nome="${(pad4(c.id_cliente) + ' ' + (c.nome || '')).toLowerCase()}">
+      <input type="checkbox" class="cli" value="${c.id_cliente}"${trava ? ' disabled' : ''}
+             onchange="escolherCliente(this)">
+      <span class="cod">${pad4(c.id_cliente)}</span>
+      <span>${c.nome || '(sem nome)'}${trava ? ' — ' + trava : ''}</span></label>`;
+  }).join('') || '<div class="mut" style="padding:6px;">nenhum cliente</div>';
+}
+
+function filtrar() {
+  const q = (el('buscaCli').value || '').toLowerCase().trim();
+  Array.from(document.querySelectorAll('#listaClientes label')).forEach(function (l) {
+    l.style.display = (!q || (l.dataset.nome || '').indexOf(q) >= 0) ? '' : 'none';
+  });
+}
+
+function escolherCliente(cx) {
+  Array.from(document.querySelectorAll('.cli')).forEach(function (c) {
+    if (c !== cx) c.checked = false;
+    c.closest('label').classList.toggle('marcado', c.checked);
+  });
+  CLIENTE = cx.checked ? CLIENTES.find(c => String(c.id_cliente) === cx.value) : null;
+  EMPRESA = null;
+  montarEscopo();
+  limparPrevia();
+}
+
+// Duas escolhas: o cliente inteiro (com todas as empresas) ou UMA empresa dele.
+function montarEscopo() {
+  const box = el('listaEscopo');
+  if (!CLIENTE) {
+    box.innerHTML = '<div class="mut" style="padding:6px;">Escolha o cliente primeiro.</div>';
+    return;
+  }
+  const emps = EMPRESAS.filter(e => String(e.id_cliente) === String(CLIENTE.id_cliente));
+  box.innerHTML =
+    `<label><input type="checkbox" class="esc" value="" onchange="escolherEscopo(this)">
+       <span><b>O CLIENTE INTEIRO</b> — ${emps.length} empresa(s) e tudo dentro delas</span></label>` +
+    emps.map(e => `<label><input type="checkbox" class="esc" value="${e.id_empresa}"
+         onchange="escolherEscopo(this)">
+       <span class="cod">${e.cnpj_fmt}</span><span>${e.nome}</span></label>`).join('');
+}
+
+function escolherEscopo(cx) {
+  Array.from(document.querySelectorAll('.esc')).forEach(function (c) {
+    if (c !== cx) c.checked = false;
+    c.closest('label').classList.toggle('marcado', c.checked);
+  });
+  EMPRESA = cx.checked ? (cx.value || null) : undefined;
+  if (!cx.checked) EMPRESA = undefined;
+  // A opção de preservar só existe para UMA empresa; no cliente inteiro some
+  // (e desmarca, para não ficar marcada por baixo e voltar depois).
+  el('boxPreservar').style.display = EMPRESA ? 'flex' : 'none';
+  if (!EMPRESA) el('preservar').checked = false;
+  limparPrevia();
+  el('btnPrevia').disabled = (EMPRESA === undefined);
+  el('alvoTxt').textContent = alvoTexto();
+}
+
+function alvoTexto() {
+  if (!CLIENTE || EMPRESA === undefined) return '';
+  if (!EMPRESA) return `Cliente ${pad4(CLIENTE.id_cliente)} — ${CLIENTE.nome} (INTEIRO)`;
+  const e = EMPRESAS.find(x => String(x.id_empresa) === String(EMPRESA)) || {};
+  return `Empresa ${e.cnpj_fmt || ''} — ${e.nome || ''} (cliente ${pad4(CLIENTE.id_cliente)})`
+         + (preservando() ? ' — SÓ O CONTEÚDO, a empresa fica' : '');
+}
+
+function limparPrevia() {
+  PREVIA = null;
+  el('previaBox').className = 'mut';
+  el('previaBox').innerHTML = 'Escolha o cliente e o que apagar, e clique em '
+    + '<b>Ver o que será apagado</b>.';
+  el('resumoPrevia').textContent = '';
+  travar();
+}
+
+// O escopo vai EXPLÍCITO: o servidor não deduz "cliente inteiro" por um
+// id_empresa que chegou vazio. EMPRESA: undefined = nada escolhido,
+// null/'' = o cliente inteiro, número = aquela empresa.
+function preservando() {
+  return !!EMPRESA && el('preservar').checked;
+}
+
+function corpo() {
+  return { id_cliente: CLIENTE ? CLIENTE.id_cliente : 0,
+           escopo: EMPRESA === undefined ? '' : (EMPRESA ? 'empresa' : 'cliente'),
+           id_empresa: EMPRESA || 0,
+           preservar_empresa: preservando(),
+           total_previsto: PREVIA ? PREVIA.total : null,
+           confirmacao: (el('confirmacao').value || '').trim() };
+}
+
+// Botão com a rodinha girando enquanto espera o servidor.
+function girar(btn, texto) {
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>' + texto;
+}
+
+function parar(btn, texto) {
+  btn.disabled = false;
+  btn.textContent = texto;
+}
+
+function verPrevia() {
+  const b = el('btnPrevia');
+  girar(b, 'Contando…');
+  el('previaBox').className = 'mut';
+  el('previaBox').textContent = 'Contando…';
+  fetch('/api/admin_apagar/previa', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(corpo())
+  }).then(r => r.json()).then(function (d) {
+    parar(b, 'Ver o que será apagado');
+    if (!d.ok) { el('previaBox').innerHTML = '<div class="erro-box">❌ ' + (d.msg || '') + '</div>';
+                 return; }
+    PREVIA = d;
+    el('previaBox').className = '';
+    el('previaBox').innerHTML = d.linhas.length
+      ? `<table><thead><tr><th>Tabela</th><th>Conteúdo</th><th class="num">Linhas</th></tr></thead>
+           <tbody>${d.linhas.map(l => `<tr class="${l.tabela === 'tab_cliente'
+             || l.tabela === 'tab_empresa' ? 'dona' : ''}">
+             <td class="cod">${l.tabela}</td><td>${l.rotulo}</td>
+             <td class="num">${l.qtd}</td></tr>`).join('')}</tbody></table>`
+      : '<div class="ok-box">Não há nada para apagar nesta seleção.</div>';
+    if ((d.mantidas || []).length) {
+      el('previaBox').innerHTML +=
+        `<div class="ok-box" style="margin-top:8px;">Fica de pé: ` +
+        d.mantidas.map(m => `${m.rotulo} (${m.qtd})`).join(' · ') + '</div>';
+    }
+    el('resumoPrevia').textContent = `${d.total} linha(s) em ${d.linhas.length} tabela(s)`;
+    travar();
+  }).catch(function (e) {
+    parar(b, 'Ver o que será apagado');
+    el('previaBox').innerHTML = '<div class="erro-box">❌ ' + String(e) + '</div>';
+  });
+}
+
+// O botão só acorda com a prévia na tela E a palavra digitada: ver o que some
+// antes é parte da confirmação, não um extra.
+function travar() {
+  const ok = !!PREVIA && PREVIA.total > 0 &&
+             (el('confirmacao').value || '').trim().toUpperCase() === 'CONFIRMO';
+  el('btnApagar').disabled = !ok;
+  el('alvoTxt').textContent = alvoTexto();
+}
+
+function apagar() {
+  const alvo = alvoTexto();
+  // Guardado antes de limpar a seleção, para o aviso final ainda saber o que
+  // ficou de pé.
+  PREVIA_MANTIDAS = PREVIA.mantidas || [];
+  f10Confirm('APAGAR DEFINITIVAMENTE:\n\n' + alvo + '\n\n' +
+             PREVIA.total + ' linha(s) em ' + PREVIA.linhas.length + ' tabela(s).\n' +
+             ((PREVIA.mantidas || []).length
+               ? 'Fica de pé: ' + PREVIA.mantidas.map(m => m.rotulo).join(', ') + '.\n' : '') +
+             'Um JSON com tudo é gravado antes, mas no sistema isto não volta.\n\n' +
+             'Confirma?',
+             { titulo: 'Última chance', tipo: 'perigo',
+               okText: 'Apagar', cancelText: 'Cancelar' })
+  .then(function (sim) {
+    if (!sim) return;
+    const b = el('btnApagar');
+    girar(b, 'Apagando…');
+    el('trabalhando').style.display = 'flex';
+    fetch('/api/admin_apagar/executar', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo())
+    }).then(r => r.json()).then(function (d) {
+      el('trabalhando').style.display = 'none';
+      parar(b, 'Apagar definitivamente');
+      const box = el('resultado');
+      box.style.display = 'block';
+      if (!d.ok) { box.innerHTML = '<div class="erro-box">❌ ' + (d.msg || '') + '</div>';
+                   travar(); return; }
+      box.innerHTML =
+        `<div class="ok-box">✅ ${d.total} linha(s) apagada(s).<br>
+           Backup em <span class="cod">${d.backup}</span></div>
+         <table style="margin-top:8px;"><thead><tr><th>Tabela</th><th>Conteúdo</th>
+           <th class="num">Linhas</th></tr></thead><tbody>
+           ${d.apagados.map(l => `<tr><td class="cod">${l.tabela}</td><td>${l.rotulo}</td>
+             <td class="num">${l.qtd}</td></tr>`).join('')}</tbody></table>
+         ${(d.falhas || []).length ? '<div class="erro-box" style="margin-top:8px;">Falhas: '
+           + d.falhas.map(f => f.tabela + ': ' + f.erro).join(' · ') + '</div>' : ''}`;
+      el('confirmacao').value = '';
+      CLIENTE = null; EMPRESA = undefined; PREVIA = null;
+      el('boxPreservar').style.display = 'none'; el('preservar').checked = false;
+      montarClientes(); montarEscopo(); limparPrevia();
+      // Aviso no fim: a rodinha diz "estou trabalhando", isto diz "acabou".
+      // Sem ele, a única pista era a caixa verde no canto da tela.
+      const mant = (PREVIA_MANTIDAS || []).length
+        ? '\nContinuam de pé: ' + PREVIA_MANTIDAS.map(m => m.rotulo).join(', ') + '.' : '';
+      const falhou = (d.falhas || []).length
+        ? '\n\nATENÇÃO: ' + d.falhas.length + ' tabela(s) falharam — veja no resultado.' : '';
+      f10Alert('Terminou.\n\n' + alvo + '\n' + d.total + ' linha(s) apagada(s).' + mant +
+               '\n\nBackup: ' + d.backup + falhou,
+               { titulo: (d.preservar ? 'Empresa esvaziada' : 'Apagado'),
+                 tipo: falhou ? 'aviso' : 'sucesso' });
+    }).catch(function (e) {
+      el('trabalhando').style.display = 'none';
+      parar(b, 'Apagar definitivamente');
+      el('resultado').style.display = 'block';
+      el('resultado').innerHTML = '<div class="erro-box">❌ ' + String(e) + '</div>';
+    });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  montarClientes();
+  limparPrevia();
+});
+</script>
+</body>
+</html>

@@ -76,6 +76,8 @@ thead th:first-child, tbody td.mat { width: 1%; white-space: nowrap; padding-rig
 tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; }
 th.col-adm, td.col-adm { width: 1%; white-space: nowrap; text-align: center; }
 tbody td.col-adm { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #475569; }
+/* Demissão em vermelho discreto: na lista "Todos" é o que separa quem saiu. */
+tbody td.col-dem { color: #b91c1c; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
@@ -182,6 +184,7 @@ tbody tr:hover { background: #f8fafc; }
                     <th>Matrícula</th>
                     <th>Nome completo</th>
                     <th class="col-adm">Admissão</th>
+                    {% if ver_demissao %}<th class="col-adm">Demissão</th>{% endif %}
                 </tr>
             </thead>
             <tbody>
@@ -190,6 +193,9 @@ tbody tr:hover { background: #f8fafc; }
                     <td class="mat">{{ "%06d"|format(f.matricula) }}</td>
                     <td>{{ f.nome_fmt }}</td>
                     <td class="col-adm">{{ f.dtadm_fmt }}</td>
+                    {% if ver_demissao %}
+                    <td class="col-adm col-dem">{{ f.dtdem_fmt }}</td>
+                    {% endif %}
                 </tr>
                 {% endfor %}
             </tbody>

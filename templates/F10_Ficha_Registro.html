@@ -300,6 +300,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
                 <span class="banner-item-label">Matrícula</span>
                 <span class="banner-item-value">{{ funcionario._mat_fmt }}</span>
             </div>
+            {% if funcionario.matricula_es %}
+            {# A matrícula do eSocial é a que o GOVERNO tem no vínculo — em base
+               importada ela é a chave longa do S-2200, e não a nossa. #}
+            <div class="banner-item">
+                <span class="banner-item-label">Matrícula eSocial</span>
+                <span class="banner-item-value">{{ funcionario.matricula_es }}</span>
+            </div>
+            {% endif %}
             <div class="banner-item">
                 <span class="banner-item-label">CPF</span>
                 <span class="banner-item-value">{{ funcionario._cpf }}</span>

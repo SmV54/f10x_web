@@ -2449,8 +2449,11 @@ def rel_lista_funcionarios():
 
     order_col = "nome" if classificacao == "A" else "matricula"
 
+    # A coluna Demissão só faz sentido onde há desligado na lista.
+    ver_demissao = situacao_filtro in ("D", "T")
     try:
-        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao, dtadm") \
+        q = supabase.table("tab_cad").select(
+            "matricula, nome, nomer, situacao, dtadm, datarescisao") \
             .eq("id_empresa", id_empresa).order(order_col)
         if situacao_filtro != "T":
             q = q.eq("situacao", situacao_filtro)
@@ -2463,6 +2466,10 @@ def rel_lista_funcionarios():
         f["nome_fmt"]  = (f.get("nome") or f.get("nomer") or "").strip()
         _adm = str(f.get("dtadm") or "").zfill(8)
         f["dtadm_fmt"] = _fmt_dt(_adm) if _adm != "00000000" else "—"
+        _dem = re.sub(r"\D", "", str(f.get("datarescisao") or ""))
+        # Ativo não tem demissão; demitido sem data aparece como "—" em vez de
+        # sumir, porque aí é dado faltando e não ausência de fato.
+        f["dtdem_fmt"] = _fmt_dt(_dem.zfill(8)) if len(_dem) == 8 else "—"
 
     return render_template(
         "F10_Rel_Lista_Funcionarios.html",
@@ -2470,6 +2477,7 @@ def rel_lista_funcionarios():
         funcs=funcs,
         classificacao=classificacao,
         situacao_filtro=situacao_filtro,
+        ver_demissao=ver_demissao,
     )
 
 
@@ -2490,8 +2498,10 @@ def rel_lista_funcionarios_pdf():
     situacao_filtro = request.args.get("situacao", "A").strip()
 
     order_col = "nome" if classificacao == "A" else "matricula"
+    ver_demissao = situacao_filtro in ("D", "T")     # mesma regra da tela
     try:
-        q = supabase.table("tab_cad").select("matricula, nome, nomer, situacao, dtadm") \
+        q = supabase.table("tab_cad").select(
+            "matricula, nome, nomer, situacao, dtadm, datarescisao") \
             .eq("id_empresa", id_empresa).order(order_col)
         if situacao_filtro != "T":
             q = q.eq("situacao", situacao_filtro)
@@ -2515,9 +2525,12 @@ def rel_lista_funcionarios_pdf():
                             leftMargin=2*cm, rightMargin=2*cm,
                             topMargin=1.5*cm, bottomMargin=1.5*cm)
 
-    tbl_data = [[P("Matrícula", fn="Helvetica-Bold"),
-                 P("Nome completo", fn="Helvetica-Bold"),
-                 P("Admissão", fn="Helvetica-Bold", align=1)]]
+    cab = [P("Matrícula", fn="Helvetica-Bold"),
+           P("Nome completo", fn="Helvetica-Bold"),
+           P("Admissão", fn="Helvetica-Bold", align=1)]
+    if ver_demissao:
+        cab.append(P("Demissão", fn="Helvetica-Bold", align=1))
+    tbl_data = [cab]
     lt_gray  = colors.HexColor("#f8fafc")
     for f in funcs:
         mat_i = int(f.get("matricula") or 0)
@@ -2525,10 +2538,18 @@ def rel_lista_funcionarios_pdf():
         nome  = (f.get("nome") or f.get("nomer") or "").strip()
         _adm  = str(f.get("dtadm") or "").zfill(8)
         adm   = _fmt_dt(_adm) if _adm != "00000000" else "—"
-        tbl_data.append([P(mat, fn="Courier"), P(nome),
-                         P(adm, fn="Courier", align=1)])
+        linha = [P(mat, fn="Courier"), P(nome), P(adm, fn="Courier", align=1)]
+        if ver_demissao:
+            _dem = re.sub(r"\D", "", str(f.get("datarescisao") or ""))
+            dem = _fmt_dt(_dem.zfill(8)) if len(_dem) == 8 else "—"
+            linha.append(P(dem, fn="Courier", align=1,
+                           col=colors.HexColor("#b91c1c") if dem != "—"
+                           else colors.HexColor("#1f2937")))
+        tbl_data.append(linha)
 
-    tbl = Table(tbl_data, colWidths=[2.6*cm, 11.0*cm, 3.4*cm], repeatRows=1)
+    larguras = ([2.6*cm, 8.4*cm, 3.2*cm, 3.2*cm] if ver_demissao
+                else [2.6*cm, 11.0*cm, 3.4*cm])
+    tbl = Table(tbl_data, colWidths=larguras, repeatRows=1)
     row_bg = []
     for i in range(1, len(tbl_data)):
         bg = lt_gray if i % 2 == 0 else colors.white
@@ -19318,6 +19339,58 @@ def _xmli_ler_s2200(ev, cnpj_empresa):
     }
 
 
+def _xmli_filho(el, nome):
+    """Texto do filho DIRETO com esse local-name (não desce a árvore)."""
+    for x in (el if el is not None else []):
+        if _xmli_ln(x) == nome:
+            return (x.text or "").strip()
+    return ""
+
+
+# Terminações do PRIMEIRO nome que indicam feminino. Pelo sobrenome não dá
+# ("PEDRO ... DE ALMEIDA" viraria F) e só "-A" deixa de fora Laís, Sarah,
+# Isabelly, Wyliane, Conceição — que foi o que apareceu na base real.
+_SUFIXO_F = ("A", "AH", "IS", "LY", "NE", "CE", "EN")
+
+
+def _sexo_palpite(nome):
+    """M/F pelo primeiro nome. É PALPITE: o eSocial não informa o sexo do
+    dependente e a coluna é obrigatória com CHECK. A planilha da Etapa 2 mostra
+    o valor para conferir/corrigir antes de importar."""
+    p = (str(nome or "").strip().split() or [""])[0].upper()
+    return "F" if p.endswith(_SUFIXO_F) else "M"
+
+
+def _xmli_ler_dependentes(ev):
+    """Dependentes do bloco <trabalhador> — vale para S-2200 e S-2205.
+
+    PEGA: `sexodep` do Folha10 é obrigatório e tem CHECK (só M/F), mas o eSocial
+    NÃO informa o sexo do dependente. Vai um palpite pelo final do nome, e a
+    planilha da Etapa 2 mostra a coluna para conferir/corrigir antes de importar.
+    """
+    trab = _xmli_ache(ev, "trabalhador")
+    if trab is None:
+        return []
+    fora = []
+    for d in trab.iter():
+        if _xmli_ln(d) != "dependente":
+            continue
+        nome = _xmli_filho(d, "nmDep")
+        if not nome:
+            continue
+        fora.append({
+            "nome": nome[:30],                       # a coluna guarda 30
+            "tpdep": _xmli_filho(d, "tpDep"),
+            "dtnascto": _xmli_data(_xmli_filho(d, "dtNascto")),
+            "cpfdep": re.sub(r"\D", "", _xmli_filho(d, "cpfDep")),
+            "depirrf": (_xmli_filho(d, "depIRRF") or "N")[:1].upper(),
+            "depsf": (_xmli_filho(d, "depSF") or "N")[:1].upper(),
+            "inctrabf": (_xmli_filho(d, "incTrab") or "N")[:1].upper(),
+            "sexodep": _sexo_palpite(nome),
+        })
+    return fora
+
+
 def _xmli_ler_s2230(ev):
     """evtAfastTemp → o que este evento diz sobre o afastamento.
 
@@ -19356,6 +19429,79 @@ def _xmli_afast_extras(motivo, a):
     return c1, c4
 
 
+def _mat_do_es(valor):
+    """A matrícula do eSocial só serve como matrícula do Folha10 se for curta.
+
+    PEGA: em boa parte das bases o `matricula` do S-2200 é uma CHAVE de 20+
+    dígitos (CPF + categoria + data), não um número de matrícula. Usada como
+    está, estoura o inteiro da coluna e o %06d das telas. Acima de 6 dígitos
+    devolve 0 — quem chamou usa a sequencial da empresa.
+    """
+    s = re.sub(r"\D", "", str(valor or ""))
+    if not s or len(s.lstrip("0")) > 6:
+        return 0
+    try:
+        return int(s)
+    except ValueError:
+        return 0
+
+
+def _xmli_aplicar_s2205(f, ev):
+    """Aplica a alteração cadastral em cima do que já se sabe do funcionário.
+
+    Fora do importador, quem também usa é a Etapa 2 (planilha de conferência):
+    a regra de o que o S-2205 altera tem que ser a MESMA nos dois.
+    Devolve o que mudou, para a planilha poder mostrar só isso.
+    """
+    mudou = {}
+    for col, tag in (("nome", "nmTrab"), ("estciv", "estCiv"),
+                     ("grauinstr", "grauInstr"), ("racacor", "racaCor")):
+        v = _xmli_txt(ev, tag)
+        if v:
+            f[col] = mudou[col] = v
+    ender = _xmli_ache(ev, "brasil")
+    if ender is not None:
+        for col, tag in (("ender_dsclograd", "dscLograd"), ("ender_nrlograd", "nrLograd"),
+                         ("ender_bairro", "bairro"), ("ender_cep", "cep"),
+                         ("ender_codmunic", "codMunic"), ("ender_uf", "uf")):
+            v = _xmli_txt(ender, tag)
+            if v:
+                f[col] = mudou[col] = re.sub(r"\D", "", v) if col == "ender_cep" else v
+    return mudou
+
+
+def _xmli_aplicar_s2206(f, ev):
+    """Aplica a alteração contratual. Mesma dupla função do _xmli_aplicar_s2205."""
+    mudou = {}
+    contr = _xmli_ache(ev, "infoContrato")
+    remun = _xmli_ache(contr, "remuneracao") if contr is not None else None
+    horc  = _xmli_ache(contr, "horContratual") if contr is not None else None
+    for col, tag, el in (("nmcargo", "nmCargo", contr), ("cbofuncao", "CBOCargo", contr),
+                         ("codcateg", "codCateg", contr)):
+        v = _xmli_txt(el, tag) if el is not None else ""
+        if v:
+            f[col] = mudou[col] = v
+    if remun is not None:
+        v = _xmli_txt(remun, "vrSalFx")
+        if v:
+            f["vrsalfx"] = mudou["vrsalfx"] = _xmli_cent(v)
+        u = _xmli_txt(remun, "undSalFixo")
+        if u:
+            f["undsalfixo"] = mudou["undsalfixo"] = _XMLI_UND_SAL.get(
+                u, f.get("undsalfixo") or "M")
+    if horc is not None:
+        v = _xmli_txt(horc, "qtdHrsSem")
+        if v:
+            f["qtdhrssem"] = mudou["qtdhrssem"] = v
+            try:
+                f["qtdhrsmes"] = mudou["qtdhrsmes"] = str(
+                    int(round(float(v.replace(",", ".")) * 5)))
+            except ValueError:
+                pass
+    f["_alterado_em"] = _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf"))
+    return mudou
+
+
 def _xmli_processar(arquivos, id_cliente, id_empresa, cnpj_empresa):
     """Lê os XMLs e monta empresa + funcionários (sem gravar nada)."""
     eventos, ignorados = [], []
@@ -19369,6 +19515,28 @@ def _xmli_processar(arquivos, id_cliente, id_empresa, cnpj_empresa):
     if not eventos:
         return {"abort": True,
                 "abort_msg": "Nenhum XML de evento do eSocial foi encontrado nos arquivos enviados."}
+
+    # ── Trava de CNPJ: os XMLs têm que ser da empresa ativa ────────────────
+    # O destino é a empresa ativa da sessão, e não há seletor na tela. Sem esta
+    # conferência, estar no cliente errado (o mesmo nome de empresa pode existir
+    # em mais de um cliente) despejava a base de uma empresa dentro da outra sem
+    # aviso — e como o importador só INCLUI, desfazer é apagar um a um.
+    # Mesma regra do importador de consignados: raiz do CNPJ (8 dígitos), para
+    # matriz e filiais entrarem juntas.
+    raiz_emp = re.sub(r"\D", "", str(cnpj_empresa or ""))[:8]
+    raizes_xml = set()
+    for e in eventos:
+        nr = re.sub(r"\D", "", _xmli_txt(e["ev"], "nrInsc") or "")
+        if nr:
+            raizes_xml.add(nr[:8].zfill(8))
+    if raiz_emp and raizes_xml:
+        difs = {x for x in raizes_xml if x != raiz_emp.zfill(8)}
+        if difs:
+            return {"abort": True,
+                    "abort_msg": (f"Os XMLs são da empresa {', '.join(sorted(difs))} e a "
+                                  f"empresa ativa é {raiz_emp} — CNPJ diferente. "
+                                  "Importação cancelada. Troque de cliente/empresa e "
+                                  "tente de novo.")}
 
     # ── Empresa (só leitura, para você conferir) ──
     empresa = {}
@@ -19419,45 +19587,10 @@ def _xmli_processar(arquivos, id_cliente, id_empresa, cnpj_empresa):
         f["_arquivos"].append(e["arquivo"])
 
         if tipo == "S-2205":                        # alteração cadastral
-            for col, tag in (("nome", "nmTrab"), ("estciv", "estCiv"),
-                             ("grauinstr", "grauInstr"), ("racacor", "racaCor")):
-                v = _xmli_txt(ev, tag)
-                if v:
-                    f[col] = v
-            ender = _xmli_ache(ev, "brasil")
-            if ender is not None:
-                for col, tag in (("ender_dsclograd", "dscLograd"), ("ender_nrlograd", "nrLograd"),
-                                 ("ender_bairro", "bairro"), ("ender_cep", "cep"),
-                                 ("ender_codmunic", "codMunic"), ("ender_uf", "uf")):
-                    v = _xmli_txt(ender, tag)
-                    if v:
-                        f[col] = re.sub(r"\D", "", v) if col == "ender_cep" else v
+            _xmli_aplicar_s2205(f, ev)
 
         elif tipo == "S-2206":                      # alteração contratual
-            contr = _xmli_ache(ev, "infoContrato")
-            remun = _xmli_ache(contr, "remuneracao") if contr is not None else None
-            horc  = _xmli_ache(contr, "horContratual") if contr is not None else None
-            for col, tag, el in (("nmcargo", "nmCargo", contr), ("cbofuncao", "CBOCargo", contr),
-                                 ("codcateg", "codCateg", contr)):
-                v = _xmli_txt(el, tag) if el is not None else ""
-                if v:
-                    f[col] = v
-            if remun is not None:
-                v = _xmli_txt(remun, "vrSalFx")
-                if v:
-                    f["vrsalfx"] = _xmli_cent(v)
-                u = _xmli_txt(remun, "undSalFixo")
-                if u:
-                    f["undsalfixo"] = _XMLI_UND_SAL.get(u, f.get("undsalfixo") or "M")
-            if horc is not None:
-                v = _xmli_txt(horc, "qtdHrsSem")
-                if v:
-                    f["qtdhrssem"] = v
-                    try:
-                        f["qtdhrsmes"] = str(int(round(float(v.replace(",", ".")) * 5)))
-                    except ValueError:
-                        pass
-            f["_alterado_em"] = _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf"))
+            _xmli_aplicar_s2206(f, ev)
 
         elif tipo == "S-2230":                       # afastamento temporário
             # Afastamento não mora no tab_cad: vira registro no tab_eventos
@@ -19539,10 +19672,7 @@ def _xmli_processar(arquivos, id_cliente, id_empresa, cnpj_empresa):
         # 2) matrícula só para quem vai entrar: a do XML se estiver livre,
         #    senão a próxima da empresa.
         if item["status"] == "ok":
-            try:
-                mat_xml = int(re.sub(r"\D", "", item.get("matricula_es") or "") or 0)
-            except ValueError:
-                mat_xml = 0
+            mat_xml = _mat_do_es(item.get("matricula_es"))
             if mat_xml and mat_xml not in mats_usadas:
                 item["matricula"] = mat_xml
             else:
@@ -19607,11 +19737,17 @@ def importar_xml_esocial():
     """Tela de importação de XMLs do eSocial para o cadastro."""
     if not session.get("logado"):
         return redirect("/")
+    # O aviso de destino precisa identificar o CLIENTE, não só a empresa: o
+    # admin importa impersonando, e o mesmo nome de empresa pode existir em mais
+    # de um cliente — aí só o nome não diz para onde os funcionários vão.
     return render_template(
         "F10_Importar_XML_eSocial.html",
         versao=ler_versao(),
         nome=session.get("nome", ""),
         empresa=session.get("empresa_info", ""),
+        cliente_info=session.get("cliente_info", ""),
+        id_cliente=session.get("id_cliente", ""),
+        cnpj_empresa=_fmt_cnpj(session.get("cnpj_empresa", "")),
         anomes_atual=str(session.get("anomes_atual") or ""),
     )
 
@@ -19660,6 +19796,20 @@ def api_importar_xml_gravar():
     if erro:
         return erro
     id_cliente, id_empresa = d["id_cliente"], d["id_empresa"]
+
+    # Trava da Etapa 0: empresa que JÁ TEM funcionário não recebe importação de
+    # base. Importar por cima duplicaria gente e misturaria duas origens de
+    # cadastro; quem quiser incluir um funcionário isolado usa a tela do
+    # cadastro. -1 = não deu para contar, e aí não se libera no escuro.
+    n_atual = _dxml_conta_funcionarios(id_empresa, id_cliente)
+    if n_atual != 0:
+        return jsonify({"ok": False, "msg": (
+            f"A empresa já tem {n_atual} funcionário(s) cadastrado(s) — importação "
+            "bloqueada. A importação de base só entra em empresa vazia."
+            if n_atual > 0 else
+            "Não deu para conferir quantos funcionários a empresa já tem. "
+            "Importação bloqueada por segurança.")})
+
     try:
         res = _xmli_processar(d["arquivos"], id_cliente, id_empresa, d["cnpj"])
     except Exception as e:
@@ -19684,7 +19834,8 @@ def api_importar_xml_gravar():
 
     try:
         for i in range(0, len(registros), 200):
-            supabase.table("tab_cad").insert(registros[i:i + 200]).execute()
+            supabase.table("tab_cad").insert(
+                _pxml_uniformiza(registros[i:i + 200])).execute()
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:250]}"})
 
@@ -24338,11 +24489,15 @@ def _parse_dwn_response(xml_resp):
             out["status"]["cdResp"] = txt
         elif tag == "descResposta":
             out["status"]["descResp"] = txt
-    # Cada <evento Id="..."> com o XML do evento dentro (ou um child <eSocial>)
+    # O retorno real é <arquivos><arquivo><status/><evt Id="..."><eSocial>...
+    # A tag é **evt**, não "evento" — procurar só por "evento" devolvia lista
+    # vazia com cdResposta 201 "Evento encontrado" (mesma família do bug do
+    # _parse_ide_response, que procurava ideEvento em vez de identificadorEvt).
+    # "evento" fica aceito por segurança, caso algum ambiente devolva assim.
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
-        if el.tag.split("}")[-1] != "evento":
+        if el.tag.split("}")[-1] not in ("evt", "evento"):
             continue
         evt_id = el.get("Id") or el.get("id") or ""
         # O conteúdo é tipicamente o XML completo do evento eSocial — pega o primeiro filho elemento
@@ -32082,11 +32237,19 @@ def api_empresa_do_certificado():
         return jsonify({"ok": True, "parcial": True, "dados": dados, "msg": dados["aviso"]})
 
     class_trib = _xmli_txt(ev, "classTrib")
+
+    # natJurid vem do eSocial com 4 dígitos ("2305"); o select da tela usa o
+    # formato do IBGE com hífen ("230-5"). Sem converter, o _certPoe descarta
+    # como "opção inexistente" e o campo fica vazio sem avisar ninguém.
+    nat_jur = _xmli_txt(ev, "natJurid") or ""
+    if len(nat_jur) == 4 and nat_jur.isdigit():
+        nat_jur = f"{nat_jur[:3]}-{nat_jur[3]}"
+
     dados.update({
         # nmRazao do S-1000 é a fonte oficial; o CN do certificado fica de reserva
         "razaosocial":   _xmli_txt(ev, "nmRazao") or razao,
         "class_trib":    class_trib,
-        "nat_juridica":  _xmli_txt(ev, "natJurid"),
+        "nat_juridica":  nat_jur,
         "ind_coop":      _xmli_txt(ev, "indCoop"),
         "ind_constr":    _xmli_txt(ev, "indConstr"),
         "ind_des_folha": _xmli_txt(ev, "indDesFolha"),
@@ -48185,6 +48348,32 @@ def admin_clientes():
                            and _esta_online(c.get("datahora_ultima_atividade")))
             _dl = (c.get("data_limite") or "").strip()
             c["limite_vencido"]        = bool(_dl) and _dl < mes_atual
+
+        # Quem está travado por senha errada. O bloqueio é do USUÁRIO
+        # (tab_usuario), então um cliente pode ter uns travados e outros não.
+        travados = {}
+        try:
+            for u in (supabase.table("tab_usuario")
+                      .select("id_cliente, nome, cpf, tentativas_login, bloqueado_ate")
+                      .execute().data or []):
+                seg = _segundos_bloqueio(u)
+                tent = int(u.get("tentativas_login") or 0)
+                if not seg and not tent:
+                    continue
+                t = travados.setdefault(u.get("id_cliente"),
+                                        {"bloqueados": 0, "com_erro": 0, "minutos": 0,
+                                         "quem": []})
+                if seg:
+                    t["bloqueados"] += 1
+                    t["minutos"] = max(t["minutos"], max(1, -(-seg // 60)))
+                else:
+                    t["com_erro"] += 1
+                t["quem"].append(f"{(u.get('nome') or u.get('cpf') or '?')}"
+                                 f" ({tent} erro(s))")
+        except Exception as e:
+            print(f"[ADMIN] bloqueios: {e}")
+        for c in clientes:
+            c["trava"] = travados.get(c["id_cliente"])
     except Exception:
         clientes = []
     return render_template(
@@ -48193,6 +48382,93 @@ def admin_clientes():
         nome=session.get("nome", ""),
         clientes=clientes,
     )
+
+
+def _travados_do_sistema():
+    """Quem está travado por senha errada, em todos os clientes."""
+    try:
+        usuarios = (supabase.table("tab_usuario")
+                    .select("cpf, nome, id_cliente, titular, tentativas_login, bloqueado_ate")
+                    .execute().data or [])
+        nomes_cli = {c["id_cliente"]: (c.get("nome") or "")
+                     for c in (supabase.table("tab_cliente")
+                               .select("id_cliente, nome").execute().data or [])}
+    except Exception as e:
+        print(f"[ADMIN] _travados_do_sistema: {e}")
+        return []
+    fora = []
+    for u in usuarios:
+        seg = _segundos_bloqueio(u)
+        tent = int(u.get("tentativas_login") or 0)
+        if not seg and not tent:
+            continue
+        cpf = str(u.get("cpf") or "")
+        fora.append({
+            "cpf": cpf,
+            "cpf_fmt": (f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}" if len(cpf) == 11 else cpf),
+            "nome": (u.get("nome") or "").strip() or "(sem nome)",
+            "id_cliente": u.get("id_cliente"),
+            "cliente": nomes_cli.get(u.get("id_cliente"), ""),
+            "titular": str(u.get("titular") or "") == "S",
+            "tentativas": tent,
+            "bloqueado": bool(seg),
+            "minutos": max(1, -(-seg // 60)) if seg else 0,
+        })
+    fora.sort(key=lambda x: (not x["bloqueado"], x["cliente"].upper(), x["nome"].upper()))
+    return fora
+
+
+@app.route("/admin_desbloquear")
+def admin_desbloquear():
+    """Tela do card: todo mundo travado no sistema, em uma lista só."""
+    if not session.get("logado"):
+        return redirect("/")
+    if not _pode_admin():
+        return redirect("/menu")
+    return render_template("F10_Admin_Desbloquear.html",
+                           versao=ler_versao(), nome=session.get("nome", ""),
+                           travados=_travados_do_sistema(),
+                           max_tentativas=MAX_TENTATIVAS_LOGIN)
+
+
+@app.route("/api/admin_desbloquear", methods=["POST"])
+def api_admin_desbloquear():
+    """Libera quem errou a senha: zera tentativas e bloqueio. Aceita um CPF
+    (uma pessoa) ou um id_cliente (todos daquele cliente). Só ADMIN — o próprio
+    cliente não tem como se destravar."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    if not _pode_admin():
+        return jsonify({"ok": False, "msg": "Sem permissão."}), 403
+    d = request.get_json(silent=True) or {}
+    cpf_alvo = re.sub(r"\D", "", str(d.get("cpf") or ""))
+    try:
+        id_cliente = int(d.get("id_cliente") or 0)
+    except (TypeError, ValueError):
+        id_cliente = 0
+    if not id_cliente and not cpf_alvo:
+        return jsonify({"ok": False, "msg": "Informe o cliente ou o CPF."})
+    try:
+        q = supabase.table("tab_usuario").select("cpf, nome, tentativas_login, bloqueado_ate")
+        q = q.eq("cpf", cpf_alvo) if cpf_alvo else q.eq("id_cliente", id_cliente)
+        alvos = q.execute().data or []
+        travados = [u for u in alvos
+                    if _segundos_bloqueio(u) or int(u.get("tentativas_login") or 0)]
+        if not travados:
+            return jsonify({"ok": True, "liberados": 0,
+                            "msg": "Ninguém estava bloqueado aqui."})
+        for u in travados:
+            (supabase.table("tab_usuario")
+             .update({"tentativas_login": 0, "bloqueado_ate": None})
+             .eq("cpf", u["cpf"]).execute())
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": f"Falha ao desbloquear: {str(ex)[:180]}"})
+    nomes = ", ".join((u.get("nome") or u.get("cpf") or "?") for u in travados)
+    alvo = f"CPF {cpf_alvo}" if cpf_alvo else f"cliente {id_cliente}"
+    gravar_log("DESBLOQUEIO", f"liberou login ({alvo}): {nomes}"[:200])
+    return jsonify({"ok": True, "liberados": len(travados), "quem": nomes,
+                    "msg": f"{len(travados)} login(s) liberado(s): {nomes}",
+                    "restam": _travados_do_sistema()})
 
 
 @app.route("/api/admin_online")
@@ -53409,6 +53685,13 @@ NFSE_URLS = {
 # Pasta onde os PDFs (DANFSE) das notas são salvos automaticamente.
 PASTA_NF_PDF = r'C:\Dropbox\NFs'
 
+# Dados do tomador que a TabCLI_NF não guarda (inscrição municipal e telefone).
+# Regra fixa por CodCLI, como a do 614 mais abaixo. Vale tanto na emissão (vão
+# no DPS) quanto na reimpressão do DANFSe, inclusive de notas antigas.
+NFSE_TOMADOR_EXTRA = {
+    690: {"im": "004470-9", "fone": "8131177150"},   # ARMAZEM CORAL
+}
+
 
 def _nfse_nome_pdf(numero, cod, nome_cli):
     """Nome de arquivo do PDF: NFSe_<numero>_<cliente>.pdf (sanitizado)."""
@@ -53535,7 +53818,7 @@ def _nfse_cliente_por_cnpj(caminho, cnpj):
             f'DRIVER={{Microsoft Access Driver (*.mdb, *.accdb)}};DBQ={caminho};')
         cur = conn.cursor()
         cur.execute("""SELECT Endereco_Tipo, Endereco_Rua, Endereco_Numero,
-                              Endereco_Complemento, Endereco_Bairro, Endereco_CEP
+                              Endereco_Complemento, Endereco_Bairro, Endereco_CEP, CodCLI
                        FROM TabCLI_NF WHERE CNPJ_CPF = ?""", str(cnpj))
         row = cur.fetchone()
         conn.close()
@@ -53547,39 +53830,45 @@ def _nfse_cliente_por_cnpj(caminho, cnpj):
             "cpl":    str(row[3] or "").strip(),
             "bairro": str(row[4] or "").strip(),
             "cep":    str(row[5] or "").strip(),
+            "cod":    row[6],
         }
     except Exception:
         return None
 
 
 def _nfse_gerar_pdf(nfse_xml, chave=""):
-    """DANFSe em PDF, com dois complementos que o XML da NFS-e não tem:
+    """DANFSe em PDF, com o que o XML da NFS-e não tem:
       - o NOME do município do tomador (o XML só traz o código IBGE) — pelo CEP;
       - o endereço inteiro, quando a nota é ANTERIOR à mudança que passou a enviar
-        o endereço sempre — buscado na TabCLI_NF pelo CNPJ/CPF do tomador."""
+        o endereço sempre — buscado na TabCLI_NF pelo CNPJ/CPF do tomador;
+      - inscrição municipal e telefone do tomador (NFSE_TOMADOR_EXTRA), que a
+        TabCLI_NF não guarda."""
     import nfse_nacional as nfx
     NS = "{http://www.sped.fazenda.gov.br/nfse}"
-    tom_mun, tom_end = "", None
+    tom_mun, tom_end, tom_im, tom_fone = "", None, "", ""
     try:
         from lxml import etree as _et
         _raiz = _et.fromstring(nfse_xml.encode('utf-8') if isinstance(nfse_xml, str) else nfse_xml)
         _cep_el = _raiz.find(f".//{NS}toma/{NS}end/{NS}endNac/{NS}CEP")
         _cep = _cep_el.text if (_cep_el is not None and _cep_el.text) else ""
-        if not _cep:
-            # Nota sem endereço no XML → completa pelo cadastro.
-            _doc_el = _raiz.find(f".//{NS}toma/{NS}CNPJ")
-            if _doc_el is None:
-                _doc_el = _raiz.find(f".//{NS}toma/{NS}CPF")
-            _caminho = _arquivo_nf()
-            if _doc_el is not None and _doc_el.text and _caminho:
-                tom_end = _nfse_cliente_por_cnpj(_caminho, _re_digits(_doc_el.text))
-                if tom_end:
-                    _cep = tom_end.get("cep") or ""
+        _doc_el = _raiz.find(f".//{NS}toma/{NS}CNPJ")
+        if _doc_el is None:
+            _doc_el = _raiz.find(f".//{NS}toma/{NS}CPF")
+        _caminho = _arquivo_nf()
+        if _doc_el is not None and _doc_el.text and _caminho:
+            _cli = _nfse_cliente_por_cnpj(_caminho, _re_digits(_doc_el.text))
+            if _cli:
+                _extra = NFSE_TOMADOR_EXTRA.get(_cli.get("cod")) or {}
+                tom_im, tom_fone = _extra.get("im", ""), _extra.get("fone", "")
+                if not _cep:                     # nota antiga, sem <end> no XML
+                    tom_end = _cli
+                    _cep = _cli.get("cep") or ""
         if _cep:
             tom_mun = _nfse_mun_uf_do_cep(_cep)
     except Exception:
         pass
-    return nfx.gerar_danfse_pdf(nfse_xml, chave, tom_mun=tom_mun, tom_end=tom_end)
+    return nfx.gerar_danfse_pdf(nfse_xml, chave, tom_mun=tom_mun, tom_end=tom_end,
+                                tom_im=tom_im, tom_fone=tom_fone)
 
 
 def _nfse_ensure_log(caminho):
@@ -53834,6 +54123,10 @@ def api_admin_nf_emitir():
         tom_ibge=tom_ibge, tom_cep=cli['cep'], tom_lgr=cli['lgr'],
         tom_nro=cli['nro'], tom_cpl=cli['cpl'], tom_bairro=cli['bairro'],
     )
+    _extra = NFSE_TOMADOR_EXTRA.get(int(cod)) if str(cod).isdigit() else None
+    if _extra:
+        d['tom_im']   = _extra.get('im', '')
+        d['tom_fone'] = _extra.get('fone', '')
 
     try:
         xml, iddps = nfx.montar_dps(d)
@@ -54784,6 +55077,235 @@ def api_admin_backup_progresso():
 
 
 # =========================================================
+# ADMIN — APAGAR CLIENTE / EMPRESA
+# =========================================================
+# Operação sem volta: exige estar na conta da F10 (não vale impersonando),
+# digitar CONFIRMO e passa antes por uma prévia com a contagem de cada tabela.
+# Grava um JSON com TUDO o que vai sumir; se o backup falhar, não apaga.
+# A lista de tabelas sai do mesmo lugar que o "Copiar Base para Teste" usa, mais
+# as que só existem no escopo do cliente.
+# Só o que é MESMO da empresa. Feriados, horários, sindicatos e preferências têm
+# id_empresa mas são do CLIENTE (é assim que o "Copiar Base" os trata, escopo
+# "cli") e podem estar em uso pelas outras empresas dele — apagar junto com uma
+# empresa deixaria as irmãs apontando para horário/sindicato que sumiu.
+_APAGA_EMPRESA = [
+    ("tab_acidente", "Acidentes (CAT)"), ("tab_anomes", "Períodos (Ano/Mês)"),
+    ("tab_cad", "Funcionários"), ("tab_cc", "Centros de custo"),
+    ("tab_dependentes", "Dependentes"), ("tab_esocial", "Histórico eSocial"),
+    ("tab_eventos", "Eventos"), ("tab_filial", "Filiais"),
+    ("tab_mov", "Movimentos"), ("tab_mov_fixo", "Movimentos fixos"),
+    ("tab_pensao", "Pensões"), ("tab_total", "Totais de folha"),
+    ("tab_log", "Log de uso"), ("tab_empresa", "A EMPRESA"),
+]
+# Só quando o cliente inteiro vai embora: o que é dele, não de uma empresa.
+_APAGA_CLIENTE_EXTRA = [
+    ("tab_aux_feriados", "Feriados"), ("tab_aux_horarios", "Horários"),
+    ("tab_aux_sindicatos", "Sindicatos"), ("tab_tabela_cli", "Preferências"),
+    ("tab_funcao_cli", "Funções / Cargos"), ("tab_rubrica", "Rubricas / Verbas"),
+    ("tab_procurador", "Procuradores"), ("tab_rel_gerador", "Config. de relatórios"),
+    ("tab_aviso_lido", "Avisos lidos"), ("tab_usuario", "Usuários"),
+    ("tab_cliente", "O CLIENTE"),
+]
+
+
+def _apaga_gate(id_cliente, escopo=None, id_empresa=None):
+    """Mensagem de erro se a operação não pode acontecer; None se pode.
+
+    O `escopo` vem explícito da tela ('cliente' ou 'empresa'). Antes o servidor
+    deduzia pelo id_empresa, e um valor vazio/zero virava "cliente inteiro" em
+    silêncio — a diferença entre apagar UMA empresa e apagar TUDO não pode
+    depender de um campo que chegou falsy.
+    """
+    if not _pode_admin():
+        return "Só a conta da F10 apaga base — e não vale impersonando um cliente."
+    if not id_cliente:
+        return "Cliente não informado."
+    if int(id_cliente) == ID_CLIENTE_F10:
+        return "A conta da F10 (0004) não pode ser apagada por aqui."
+    if int(id_cliente) == int(session.get("id_cliente") or 0):
+        return "Este é o cliente em que você está logado. Troque de cliente antes."
+    if escopo not in ("cliente", "empresa"):
+        return "Escolha o que apagar: o cliente inteiro ou uma empresa."
+    if escopo == "empresa":
+        if not id_empresa:
+            return "Empresa não informada."
+        # A empresa TEM que ser desse cliente — senão o filtro não acha nada e,
+        # pior, um id trocado poderia apontar para a empresa de outra conta.
+        try:
+            r = (supabase.table("tab_empresa").select("id_empresa")
+                 .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente)
+                 .limit(1).execute())
+            if not r.data:
+                return f"A empresa {id_empresa} não é do cliente {id_cliente}."
+        except Exception as ex:
+            return f"Não deu para conferir a empresa: {str(ex)[:120]}"
+    return None
+
+
+# Com "preservar a empresa" fica de pé a estrutura dela: o cadastro, os centros
+# de custo, as filiais e os períodos (a folha aberta). Só o conteúdo vai embora,
+# e a empresa segue pronta para uso — inclusive para receber base de novo.
+_APAGA_PRESERVA = {"tab_empresa", "tab_cc", "tab_filial", "tab_anomes"}
+
+
+def _apaga_plano(id_empresa, preservar=False):
+    """Tabelas a varrer, na ordem de apagar (filhas primeiro, dona por último)."""
+    if id_empresa:
+        if preservar:
+            return [x for x in _APAGA_EMPRESA if x[0] not in _APAGA_PRESERVA]
+        return _APAGA_EMPRESA
+    return _APAGA_EMPRESA[:-1] + [("tab_empresa", "EMPRESAS")] + _APAGA_CLIENTE_EXTRA
+
+
+def _apaga_ler(tabela, id_cliente, id_empresa=None):
+    """Todas as linhas que a operação vai apagar (paginado)."""
+    linhas, ini = [], 0
+    while True:
+        q = supabase.table(tabela).select("*").eq("id_cliente", id_cliente)
+        if id_empresa and tabela != "tab_cliente":
+            q = q.eq("id_empresa", id_empresa)
+        if tabela == "tab_cliente":
+            q = supabase.table(tabela).select("*").eq("id_cliente", id_cliente)
+        r = q.range(ini, ini + 999).execute()
+        lote = r.data or []
+        linhas.extend(lote)
+        if len(lote) < 1000:
+            return linhas
+        ini += 1000
+
+
+@app.route("/admin_apagar")
+def admin_apagar():
+    if not session.get("logado"):
+        return redirect("/")
+    if not _pode_admin():
+        return redirect("/menu")
+    try:
+        clientes = (supabase.table("tab_cliente").select("id_cliente, nome, cpf")
+                    .order("nome").execute().data or [])
+        empresas = (supabase.table("tab_empresa")
+                    .select("id_empresa, id_cliente, cnpj, razaosocial, nome_fantasia")
+                    .order("razaosocial").execute().data or [])
+    except Exception:
+        clientes, empresas = [], []
+    for e in empresas:
+        e["cnpj_fmt"] = _fmt_cnpj(e.get("cnpj") or "")
+        e["nome"] = (e.get("razaosocial") or e.get("nome_fantasia") or "—").strip()
+    return render_template("F10_Admin_Apagar.html",
+                           versao=ler_versao(), nome=session.get("nome", ""),
+                           clientes=clientes, empresas=empresas,
+                           id_cliente_sessao=session.get("id_cliente"),
+                           id_cliente_f10=ID_CLIENTE_F10)
+
+
+@app.route("/api/admin_apagar/previa", methods=["POST"])
+def api_admin_apagar_previa():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    d = request.get_json(silent=True) or {}
+    id_cliente = int(d.get("id_cliente") or 0)
+    escopo = str(d.get("escopo") or "")
+    id_empresa = (int(d.get("id_empresa") or 0) or None) if escopo == "empresa" else None
+    preservar = bool(d.get("preservar_empresa")) and escopo == "empresa"
+    erro = _apaga_gate(id_cliente, escopo, id_empresa)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    linhas, total = [], 0
+    for tab, rotulo in _apaga_plano(id_empresa, preservar):
+        try:
+            n = len(_apaga_ler(tab, id_cliente, id_empresa))
+        except Exception as ex:
+            return jsonify({"ok": False, "msg": f"Falha ao ler {tab}: {str(ex)[:150]}"})
+        total += n
+        if n:
+            linhas.append({"tabela": tab, "rotulo": rotulo, "qtd": n})
+    mantidas = []
+    if preservar:
+        for tab, rotulo in _APAGA_EMPRESA:
+            if tab in _APAGA_PRESERVA:
+                try:
+                    n = len(_apaga_ler(tab, id_cliente, id_empresa))
+                except Exception:
+                    n = 0
+                if n:
+                    mantidas.append({"tabela": tab, "rotulo": rotulo, "qtd": n})
+    return jsonify({"ok": True, "linhas": linhas, "total": total,
+                    "mantidas": mantidas, "preservar": preservar,
+                    "escopo": "empresa" if id_empresa else "cliente"})
+
+
+@app.route("/api/admin_apagar/executar", methods=["POST"])
+def api_admin_apagar_executar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    d = request.get_json(silent=True) or {}
+    id_cliente = int(d.get("id_cliente") or 0)
+    escopo = str(d.get("escopo") or "")
+    id_empresa = (int(d.get("id_empresa") or 0) or None) if escopo == "empresa" else None
+    preservar = bool(d.get("preservar_empresa")) and escopo == "empresa"
+    erro = _apaga_gate(id_cliente, escopo, id_empresa)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    if str(d.get("confirmacao") or "").strip().upper() != "CONFIRMO":
+        return jsonify({"ok": False, "msg": 'Digite CONFIRMO para apagar.'})
+
+    # 1) Backup de tudo antes de tocar em qualquer linha. Sem backup, não apaga.
+    dump, total = {}, 0
+    for tab, _rot in _apaga_plano(id_empresa, preservar):
+        try:
+            dump[tab] = _apaga_ler(tab, id_cliente, id_empresa)
+            total += len(dump[tab])
+        except Exception as ex:
+            return jsonify({"ok": False, "msg": f"Falha ao ler {tab} para o backup: "
+                                                f"{str(ex)[:150]} — nada foi apagado."})
+
+    # A conta tem que bater com a da prévia: se mudou entre uma coisa e outra
+    # (outra janela mexendo, seleção trocada), quem manda é a prévia que a
+    # pessoa leu antes de digitar CONFIRMO.
+    try:
+        previsto = int(d.get("total_previsto"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Refaça a prévia antes de apagar."})
+    if previsto != total:
+        return jsonify({"ok": False, "msg": (
+            f"A base mudou desde a prévia ({previsto} linha(s) na tela, {total} agora). "
+            "Nada foi apagado — refaça a prévia.")})
+    carimbo = _agora_brasilia().strftime("%Y%m%d-%H%M%S")
+    alvo = f"cliente{id_cliente}" + (f"_empresa{id_empresa}" if id_empresa else "")
+    pasta = os.path.join("C:\\", "Folha10-Simples", "CopiaBase", "_apagados")
+    caminho = os.path.join(pasta, f"{carimbo}_{alvo}.json")
+    try:
+        os.makedirs(pasta, exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as fh:
+            json.dump({"quando": carimbo, "id_cliente": id_cliente,
+                       "id_empresa": id_empresa, "dados": dump}, fh, ensure_ascii=False)
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": f"Não deu para gravar o backup em {pasta} "
+                                            f"({str(ex)[:120]}) — nada foi apagado."})
+
+    # 2) Apaga, das filhas para a dona.
+    apagados, falhas = [], []
+    for tab, rotulo in _apaga_plano(id_empresa, preservar):
+        if not dump.get(tab):
+            continue
+        try:
+            q = supabase.table(tab).delete().eq("id_cliente", id_cliente)
+            if id_empresa and tab != "tab_cliente":
+                q = q.eq("id_empresa", id_empresa)
+            q.execute()
+            apagados.append({"tabela": tab, "rotulo": rotulo, "qtd": len(dump[tab])})
+        except Exception as ex:
+            falhas.append({"tabela": tab, "erro": str(ex)[:150]})
+
+    gravar_log("APAGAR-BASE",
+               f"{'esvaziou' if preservar else 'apagou'} "
+               f"{'empresa ' + str(id_empresa) + ' do ' if id_empresa else ''}"
+               f"cliente {id_cliente}: {total} linha(s); backup {os.path.basename(caminho)}")
+    return jsonify({"ok": True, "total": total, "apagados": apagados, "preservar": preservar,
+                    "falhas": falhas, "backup": caminho})
+
+
+# =========================================================
 # MIGRAÇÃO — DESCOMPACTAR XML DO eSOCIAL (etapa 1 da importação)
 # =========================================================
 # Os ZIPs são baixados à mão no portal do eSocial (menu Download) e ficam em
@@ -54799,11 +55321,24 @@ def _dxml():
     return M
 
 
+def _dxml_pode():
+    """Quem usa a esteira do XML: a equipe da F10, INCLUSIVE impersonando.
+
+    PEGA: `_pode_admin()` devolve False de propósito enquanto se está dentro de
+    um cliente (é a regra do módulo Administrador). Só que aqui entrar no
+    cliente é o passo 0 do trabalho — marcar o cliente na Etapa 0 impersona.
+    Sem esta função, o primeiro clique derrubava tudo com "Sem permissão".
+    `_pode_impersonar()` continua valendo lá dentro porque olha o admin
+    original guardado na sessão.
+    """
+    return _pode_admin() or _pode_impersonar()
+
+
 def _dxml_gate():
     """(erro_json, None) se não pode; (None, modulo) se pode."""
     if not session.get('logado'):
         return jsonify({'ok': False, 'msg': 'Sessão expirada.'}), None
-    if not _pode_admin():
+    if not _dxml_pode():
         return jsonify({'ok': False, 'msg': 'Sem permissão.'}), None
     if _RUNNING_RENDER:
         return jsonify({'ok': False, 'msg': 'Recurso local: no servidor não existe a '
@@ -54818,17 +55353,21 @@ def _dxml_gate():
 def admin_descompactar_xml():
     if not session.get('logado'):
         return redirect('/')
-    if not _pode_admin():
+    if not _dxml_pode():           # vale também impersonando — ver _dxml_pode
         return redirect('/menu')
     try:
         M = _dxml()
         origem, destino, etapa1, nomes = M.ORIGEM, M.DESTINO, M.ETAPA1, M.NOMES
+        planilhas = M.PLANILHAS
     except Exception:
         origem, destino, nomes = r'C:\XMLeSocial\XMLzip', r'C:\XMLeSocial\XML', {}
+        planilhas = r'C:\XMLeSocial\Planilhas'
         etapa1 = ['S-1000', 'S-2200', 'S-2205', 'S-2206', 'S-2230', 'S-2299', 'S-3000']
     return render_template('F10_Admin_Descompactar_XML.html',
                            versao=ler_versao(), nome=session.get('nome', ''),
-                           origem=origem, destino=destino, etapa1=etapa1, nomes=nomes,
+                           origem=origem, destino=destino, planilhas=planilhas,
+                           etapa1=etapa1, nomes=nomes, alvo=_dxml_destino(),
+                           pode_trocar_cliente=_pode_impersonar(),
                            no_render=_RUNNING_RENDER)
 
 
@@ -54847,6 +55386,379 @@ def api_descompactar_xml_analisar():
                         pular_excluidos=not d.get('manter_excluidos'))
     except Exception as ex:
         return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
+    return jsonify(r)
+
+
+def _dxml_pastas(M, d):
+    """Pastas de trabalho da Etapa 1 e quantos arquivos ja existem em cada uma.
+    A descompactação só começa com as duas vazias — sobra de uma rodada anterior
+    se mistura com a nova sem ninguém perceber."""
+    return M.pastas_de_trabalho(destino=(d.get('destino') or M.DESTINO).strip())
+
+
+def _dxml_empresa_na_base(cnpj_raiz):
+    """O que a base do Folha10 sabe do CNPJ dos ZIPs.
+
+    O S-1000 do eSocial não traz razão social — só o CNPJ. O nome tem que sair
+    daqui, e é ele que deixa a conferência com cara de gente: 'é a empresa X do
+    cliente Y' em vez de oito dígitos.
+    """
+    raiz = re.sub(r"\D", "", str(cnpj_raiz or ""))[:8]
+    if not raiz:
+        return {"consultou": True, "empresas": []}
+    achadas = []
+    try:
+        r = (supabase.table("tab_empresa")
+             .select("id_empresa, id_cliente, cnpj, razaosocial, nome_fantasia")
+             .like("cnpj", f"{raiz}%").execute())
+        for e in (r.data or []):
+            achadas.append({
+                "id_empresa": e.get("id_empresa"),
+                "id_cliente": e.get("id_cliente"),
+                "cnpj": _dxml().formatar_cnpj(e.get("cnpj")),
+                "nome": (e.get("razaosocial") or e.get("nome_fantasia") or "").strip(),
+            })
+    except Exception as ex:
+        # Consulta que falhou NÃO pode aparecer como "não existe essa empresa" —
+        # é o mesmo engano que esta tela inteira existe para evitar.
+        return {"consultou": False, "empresas": [], "erro": str(ex)[:120]}
+    return {"consultou": True, "empresas": achadas}
+
+
+def _dxml_destino():
+    """Cliente/empresa para onde esta importação vai — a Etapa 0.
+
+    É a empresa ATIVA da sessão: a Etapa 3 grava nela e não tem seletor próprio.
+    Definir isso antes de tudo é o que evita descompactar, conferir e só então
+    descobrir que era outro cliente.
+    """
+    cnpj = re.sub(r"\D", "", str(session.get("cnpj_empresa") or ""))
+    try:
+        fmt = _dxml().formatar_cnpj(cnpj) if cnpj else ""
+    except Exception:                    # sem o módulo, o CNPJ cru já identifica
+        fmt = cnpj
+    return {
+        "id_cliente": session.get("id_cliente"),
+        "cliente": (session.get("cliente_info") or "").strip(),
+        "id_empresa": session.get("id_empresa"),
+        "empresa": (session.get("empresa_info") or "").strip(),
+        "cnpj": cnpj,
+        "cnpj_fmt": fmt,
+        "tem_empresa": bool(cnpj),
+    }
+
+
+def _dxml_empregador(cnpj_raiz, eventos):
+    """Empregador do jeito que a tela e a planilha mostram."""
+    b = _dxml_empresa_na_base(cnpj_raiz)
+    return {"cnpj": cnpj_raiz, "cnpj_fmt": _dxml().formatar_cnpj(cnpj_raiz),
+            "eventos": eventos, "na_base": b["empresas"], "base_off": not b["consultou"]}
+
+
+def _dxml_conta_funcionarios(id_empresa, id_cliente):
+    """Quantos funcionários a empresa já tem (qualquer situação)."""
+    try:
+        q = (supabase.table("tab_cad").select("matricula", count="exact")
+             .eq("id_empresa", id_empresa))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        r = q.limit(1).execute()
+        return int(r.count or 0)
+    except Exception:
+        return -1                       # -1 = não deu para contar (≠ zero!)
+
+
+def _dxml_situacao(id_cliente, cnpj_raiz):
+    """O que dá para importar deste CNPJ para este cliente.
+
+    Três situações, decididas aqui e obedecidas pela tela:
+      nova            — o cliente não tem essa empresa: entra o S-1000 (criando
+                        a empresa) e os funcionários;
+      so_funcionarios — a empresa já existe e está vazia: o S-1000 NÃO entra,
+                        senão sobrescreveria o cadastro que já foi conferido;
+      bloqueado       — a empresa já tem funcionário: importar de novo duplicaria
+                        gente, então não importa nada.
+    """
+    raiz = re.sub(r"\D", "", str(cnpj_raiz or ""))[:8]
+    fora = {"cnpj_raiz": raiz, "empresa": None, "funcionarios": 0, "modo": "nova"}
+    if not raiz or not id_cliente:
+        fora["modo"] = "indefinido"
+        return fora
+    try:
+        r = (supabase.table("tab_empresa")
+             .select("id_empresa, cnpj, razaosocial, nome_fantasia, anomes_atual, anomes_tipo")
+             .eq("id_cliente", id_cliente).like("cnpj", f"{raiz}%")
+             .limit(1).execute())
+    except Exception as ex:
+        fora["modo"] = "indefinido"
+        fora["erro"] = str(ex)[:120]
+        return fora
+    if not r.data:
+        return fora                     # empresa nova neste cliente
+    row = r.data[0]
+    fora["empresa"] = {
+        "id_empresa": row.get("id_empresa"),
+        "nome": (row.get("razaosocial") or row.get("nome_fantasia") or "").strip(),
+        "cnpj": row.get("cnpj"),
+        "cnpj_fmt": _dxml().formatar_cnpj(row.get("cnpj")),
+        "anomes_atual": row.get("anomes_atual"),
+        "anomes_tipo": row.get("anomes_tipo"),
+    }
+    n = _dxml_conta_funcionarios(row.get("id_empresa"), id_cliente)
+    fora["funcionarios"] = n
+    if n < 0:
+        fora["modo"] = "indefinido"     # sem saber quantos, não libera nada
+    else:
+        fora["modo"] = "bloqueado" if n else "so_funcionarios"
+    return fora
+
+
+@app.route('/api/descompactar_xml/clientes')
+def api_descompactar_xml_clientes():
+    """Lista de clientes para escolher o destino (Etapa 0).
+
+    A lista só aparece para quem está NA CASA — sessão no cliente 4 (equipe F10)
+    ou no 6 (bases de teste). Estando dentro de um cliente, o destino é ele
+    mesmo: a tela não tira ninguém de onde já está trabalhando. Hoje só o admin
+    importa; se um dia o próprio cliente for importar, é aqui que se libera.
+    """
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    if not _dxml_pode():
+        return jsonify({'ok': False, 'msg': 'Sem permissão.'}), 403
+    atual = session.get('id_cliente')
+    em_casa = str(atual) in (str(ID_CLIENTE_F10), str(CLIENTE_TESTE_ID))
+    if not (_pode_impersonar() and em_casa):
+        return jsonify({'ok': True, 'pode_trocar': False, 'mostrar_lista': False,
+                        'id_cliente': atual,
+                        'clientes': [{'id_cliente': atual,
+                                      'nome': session.get('cliente_info') or ''}]})
+    try:
+        r = (supabase.table('tab_cliente').select('id_cliente, nome')
+             .order('nome').execute())
+        clientes = [{'id_cliente': c.get('id_cliente'), 'nome': (c.get('nome') or '').strip()}
+                    for c in (r.data or [])]
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'Não deu para ler os clientes: {str(ex)[:120]}'})
+    return jsonify({'ok': True, 'pode_trocar': True, 'mostrar_lista': True,
+                    'clientes': clientes, 'id_cliente': atual,
+                    'cliente_teste': CLIENTE_TESTE_ID})
+
+
+def _dxml_ativar_empresa(sit):
+    """Põe na sessão a empresa que a situação encontrou (ou tira, se não há).
+
+    É daqui que sai o `id_empresa` que a Etapa 3 grava — por isso tem que valer
+    em TODO caminho que descobre a empresa, não só quando se troca de cliente.
+    Foi o que faltava: abrindo a tela com o cliente já certo, ninguém chamava a
+    rota /situacao e a Etapa 3 reclamava que a empresa não existia.
+    """
+    emp = (sit or {}).get('empresa')
+    if emp:
+        session['empresa_info'] = emp['nome'] or 'Empresa'
+        session['cnpj_empresa'] = emp['cnpj'] or ''
+        session['id_empresa'] = emp['id_empresa']
+        session['anomes_atual'] = str(emp.get('anomes_atual') or '')
+        session['anomes_tipo'] = str(emp.get('anomes_tipo') or '')
+        session['anomes_situacao'] = ''
+    else:
+        for k in ('cnpj_empresa', 'id_empresa', 'empresa_info',
+                  'anomes_atual', 'anomes_tipo', 'anomes_situacao'):
+            session.pop(k, None)
+    return sit
+
+
+@app.route('/api/descompactar_xml/situacao', methods=['POST'])
+def api_descompactar_xml_situacao():
+    """Situação do CNPJ dos arquivos dentro do cliente escolhido.
+
+    Também acerta a EMPRESA ATIVA da sessão: quando a empresa já existe, é nela
+    que a Etapa 3 vai gravar; quando não existe, a sessão fica sem empresa —
+    ela ainda vai ser criada a partir do S-1000.
+    """
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    if not _dxml_pode():
+        return jsonify({'ok': False, 'msg': 'Sem permissão.'}), 403
+    d = request.get_json(silent=True) or {}
+    id_cliente = session.get('id_cliente')
+    sit = _dxml_ativar_empresa(_dxml_situacao(id_cliente, d.get('cnpj')))
+    sit['ok'] = True
+    sit['destino'] = _dxml_destino()
+    return jsonify(sit)
+
+
+RAZAO_PROVISORIA = "Razão Social Provisória"
+
+
+def _dxml_empresa_do_s1000(ident, id_cliente):
+    """Monta a linha do tab_empresa a partir do S-1000/S-1005 dos ZIPs.
+
+    O S-1000 não tem razão social (o governo identifica a empresa pelo CNPJ),
+    então ela entra como provisória e o usuário corrige no cadastro. O CNPJ
+    completo vem do S-1005 — inventar o final do CNPJ seria pior que faltar.
+    """
+    s = ident.get("s1000") or {}
+    raiz = (ident.get("empresas") or [{}])[0].get("cnpj") or ""
+    estabs = [c for c in (ident.get("estabelecimentos_num") or []) if c.startswith(raiz)]
+    if not estabs:
+        return None, ("Não achei o CNPJ completo nos ZIPs (falta o S-1005). "
+                      "Cadastre a empresa pela tela de empresas e volte aqui.")
+    # Matriz primeiro: é ela que o Folha10 usa como empresa.
+    cnpj = next((c for c in estabs if c[8:12] == "0001"), estabs[0])
+
+    nat = re.sub(r"\D", "", s.get("natJurid") or "")
+    if len(nat) == 4:                       # eSocial manda '3085', a tela usa '308-5'
+        nat = f"{nat[:3]}-{nat[3]}"
+    class_trib = s.get("classTrib") or ""
+    linha = {
+        "id_cliente": id_cliente, "tp_insc": "1", "cnpj": cnpj,
+        "razaosocial": RAZAO_PROVISORIA,
+        "class_trib": class_trib,
+        "nat_juridica": nat,
+        "ind_coop": s.get("indCoop") or "",
+        "ind_constr": s.get("indConstr") or "",
+        "ind_des_folha": s.get("indDesFolha") or "",
+        "ind_porte": s.get("indPorte") or "",
+        # Contato/telefone/e-mail do S-1000 ficam de fora: são campos da tela do
+        # S-1000, não colunas do cadastro da empresa.
+        # Deduzido do classTrib, como faz a empresa pelo certificado.
+        "ind_simples": "S" if class_trib in _CLASSTRIB_SIMPLES else "N",
+    }
+    return {k: v for k, v in linha.items() if v != ""}, None
+
+
+@app.route('/api/descompactar_xml/criar_empresa', methods=['POST'])
+def api_descompactar_xml_criar_empresa():
+    """Cria a empresa do cliente a partir do S-1000 (Etapa 0, modo 'nova')."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    id_cliente = session.get('id_cliente')
+    if not id_cliente:
+        return jsonify({'ok': False, 'msg': 'Escolha o cliente antes.'})
+
+    d = request.get_json(silent=True) or {}
+    try:
+        ident = M.identificar_empresa((d.get('origem') or M.ORIGEM).strip(),
+                                      (d.get('de') or '').strip(), (d.get('ate') or '').strip())
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
+    if not ident.get('ok') or not ident.get('empresas'):
+        return jsonify({'ok': False, 'msg': ident.get('msg') or 'Não identifiquei a empresa nos ZIPs.'})
+
+    # Só cria no modo 'nova': se a empresa já existe, criar de novo duplicaria.
+    sit = _dxml_situacao(id_cliente, ident['empresas'][0]['cnpj'])
+    if sit['modo'] != 'nova':
+        return jsonify({'ok': False, 'msg': 'A empresa já existe neste cliente.', 'situacao': sit})
+
+    linha, msg = _dxml_empresa_do_s1000(ident, id_cliente)
+    if not linha:
+        return jsonify({'ok': False, 'msg': msg})
+
+    lic = _estado_licenca(id_cliente)
+    if lic['sem_licenca']:
+        return jsonify({'ok': False, 'msg': 'A licença deste cliente está zerada.'})
+    if lic['qtd_empresas'] > 0 and (lic['atual_empresas'] + 1) > lic['qtd_empresas']:
+        return jsonify({'ok': False, 'msg': (
+            f"Licença do cliente permite {lic['qtd_empresas']} empresa(s) e já há "
+            f"{lic['atual_empresas']}.")})
+
+    descartados = []
+    try:
+        r = supabase.table('tab_empresa').insert(linha).execute()
+    except Exception as ex:
+        # Coluna que não existe não pode matar uma migração no meio: tenta de
+        # novo com o mínimo e diz o que ficou de fora.
+        minimo = {k: linha[k] for k in ('id_cliente', 'tp_insc', 'cnpj', 'razaosocial',
+                                        'ind_simples') if k in linha}
+        descartados = sorted(set(linha) - set(minimo))
+        try:
+            r = supabase.table('tab_empresa').insert(minimo).execute()
+        except Exception as ex2:
+            return jsonify({'ok': False, 'msg': f'Não deu para criar a empresa: {str(ex2)[:200]}'
+                                                f' (1ª tentativa: {str(ex)[:120]})'})
+
+    id_empresa = (r.data[0].get('id_empresa') if r.data else None)
+    if not id_empresa:
+        return jsonify({'ok': False, 'msg': 'O banco não devolveu o id_empresa.'})
+
+    # Mesma condução do cadastro normal: CC 001 e a primeira folha aberta.
+    try:
+        _criar_cc_padrao(id_cliente, id_empresa)
+        ano_mes = _abrir_folha_inicial(id_cliente, id_empresa)
+    except Exception as ex:
+        ano_mes = ''
+        descartados.append(f'CC/folha: {str(ex)[:80]}')
+
+    session['empresa_info'] = RAZAO_PROVISORIA
+    session['cnpj_empresa'] = linha['cnpj']
+    session['id_empresa'] = id_empresa
+    session['anomes_atual'] = ano_mes or ''
+    session['anomes_tipo'] = 'N' if ano_mes else ''
+    session['anomes_situacao'] = 'A' if ano_mes else ''
+    gravar_log('XML-EMPRESA', f"empresa {id_empresa} criada do S-1000 "
+                              f"({linha['cnpj']}) para o cliente {id_cliente}")
+    return jsonify({'ok': True, 'id_empresa': id_empresa, 'cnpj': linha['cnpj'],
+                    'razaosocial': RAZAO_PROVISORIA, 'folha': ano_mes,
+                    'descartados': descartados,
+                    'situacao': _dxml_situacao(id_cliente, ident['empresas'][0]['cnpj']),
+                    'destino': _dxml_destino()})
+
+
+@app.route('/api/descompactar_xml/empresa', methods=['POST'])
+def api_descompactar_xml_empresa():
+    """De quem são os ZIPs. Roda antes de tudo — inclusive da Etapa 1."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    try:
+        r = M.identificar_empresa((d.get('origem') or M.ORIGEM).strip(),
+                                  (d.get('de') or '').strip(), (d.get('ate') or '').strip())
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
+    if not r.get('ok'):
+        return jsonify(r)
+    r['empresas'] = [_dxml_empregador(e['cnpj'], e['eventos']) for e in r.get('empresas', [])]
+    # Origem × destino na mesma resposta: é comparando os dois que se percebe
+    # que os ZIPs são de uma empresa e a sessão está em outra.
+    # O que dá para importar deste CNPJ para o cliente que está na sessão — e a
+    # empresa encontrada já vira a ativa, senão a Etapa 3 ficaria sem id_empresa.
+    r['situacao'] = _dxml_ativar_empresa(
+        _dxml_situacao(session.get('id_cliente'),
+                       (r['empresas'][0]['cnpj'] if r['empresas'] else '')))
+    r['destino'] = _dxml_destino()
+    raizes = {e['cnpj'] for e in r['empresas']}
+    r['bate'] = bool(r['destino']['cnpj']) and r['destino']['cnpj'][:8] in raizes
+    return jsonify(r)
+
+
+@app.route('/api/descompactar_xml/pastas', methods=['POST'])
+def api_descompactar_xml_pastas():
+    """O que já existe nas pastas de destino (XML e planilhas). Não grava."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    pastas = _dxml_pastas(M, request.get_json(silent=True) or {})
+    return jsonify({'ok': True, 'pastas': pastas,
+                    'total': sum(p['qtd'] for p in pastas)})
+
+
+@app.route('/api/descompactar_xml/limpar', methods=['POST'])
+def api_descompactar_xml_limpar():
+    """Esvazia as pastas de trabalho — só depois do OK do usuário na tela."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    try:
+        r = M.limpar_pastas(destino=(d.get('destino') or M.DESTINO).strip())
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'})
+    if not r.get('ok'):
+        return jsonify({'ok': False, 'msg': 'Não deu para apagar: '
+                                            + ' · '.join(r.get('erros') or [])})
     return jsonify(r)
 
 
@@ -54890,6 +55802,23 @@ def api_descompactar_xml_extrair():
         'sobrescrever': bool(d.get('sobrescrever')),
         'pular_excluidos': not d.get('manter_excluidos'),
     }
+    # Trava: sem confirmar de que empresa são os ZIPs, não descompacta. Conferir
+    # a planilha inteira da empresa errada custa uma tarde.
+    # Exige o CLIENTE, não a empresa: em base nova a empresa ainda vai nascer do
+    # S-1000, então cobrar empresa ativa aqui travaria justamente o caso novo.
+    if not session.get('id_cliente'):
+        return jsonify({'ok': False, 'precisa_empresa': True,
+                        'msg': 'Etapa 0: escolha o cliente de destino antes.'})
+    if not d.get('empresa_ok'):
+        return jsonify({'ok': False, 'precisa_empresa': True,
+                        'msg': 'Confirme antes de que empresa são estes ZIPs.'})
+    # Trava: nada começa com arquivo sobrando nas pastas de trabalho. A tela
+    # pergunta se pode apagar; sem o OK dela (pastas_ok) não passa daqui.
+    cheias = [p for p in _dxml_pastas(M, d) if p['qtd']]
+    if cheias and not d.get('pastas_ok'):
+        return jsonify({'ok': False, 'precisa_limpar': True, 'pastas': cheias,
+                        'msg': 'Pastas de trabalho com arquivos: '
+                               + ' · '.join(f"{p['pasta']} ({p['qtd']})" for p in cheias)})
     job_id = uuid.uuid4().hex[:12]
     _dxml_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
     threading.Thread(target=_dxml_rodar, args=(job_id, M, kw), daemon=True).start()
@@ -54904,6 +55833,950 @@ def api_descompactar_xml_progresso():
     if not job:
         return jsonify({'ok': False, 'msg': 'Job não encontrado'})
     return jsonify({'ok': True, **job})
+
+
+# =========================================================
+# MIGRAÇÃO — ETAPA 2: PLANILHAS DOS XMLs (só conferência)
+# =========================================================
+# Lê o que a Etapa 1 deixou em C:\XMLeSocial\XML e gera uma planilha por layout
+# em C:\XMLeSocial\Planilhas, mais a consolidada — que mostra como o funcionário
+# fica depois de aplicar as alterações em cima da admissão, que é o que a
+# importação vai gravar.
+# NÃO toca no banco: aqui só se confere. A leitura do XML é a mesma do
+# importador (_xmli_*), senão a planilha mostraria uma coisa e a importação
+# gravaria outra.
+_PXML_LAYOUTS = ("S-2200", "S-2205", "S-2206", "S-2230", "S-2299")
+
+# Motivo 15 do S-2230 é FÉRIAS. No Folha10 férias não é afastamento: mora no
+# tab_eventos com op1=3 (a tela de férias filtra por ele), enquanto afastamento
+# é op1=6. Sem separar, as férias importadas não apareceriam em lugar nenhum.
+_PXML_MOT_FERIAS = "15"
+
+# Colunas com nome de campo do tab_cad — a Etapa 3 vai ler daqui, então o
+# rótulo bonito vai na 1ª linha e o nome do campo na 2ª.
+_PXML_ROTULOS = {
+    "arquivo": "Arquivo XML", "cpf": "CPF", "nome": "Nome", "sexo": "Sexo",
+    "racacor": "Raça/cor", "estciv": "Estado civil", "grauinstr": "Grau de instrução",
+    "dtnascto": "Nascimento", "paisnascto": "País de nascimento", "paisnac": "Nacionalidade",
+    "nomemae": "Nome da mãe", "ender_dsclograd": "Logradouro", "ender_nrlograd": "Número",
+    "ender_complemento": "Complemento", "ender_bairro": "Bairro", "ender_cep": "CEP",
+    "ender_codmunic": "Município (IBGE)", "ender_uf": "UF",
+    "matricula_es": "Matrícula eSocial", "dtadm": "Admissão",
+    "tpadmissao": "Tipo de admissão", "indadmissao": "Indicativo de admissão",
+    "tpregjor": "Regime de jornada", "natatividade": "Natureza da atividade",
+    "codcateg": "Categoria", "nmcargo": "Nome do cargo", "cbofuncao": "CBO",
+    "vrsalfx": "Salário", "undsalfixo": "Unidade do salário",
+    "qtdhrssem": "Horas semanais", "qtdhrsmes": "Horas mensais",
+    "tpjornada": "Tipo de jornada", "tmpparc": "Tempo parcial",
+    "tpcontr": "Tipo de contrato", "cnpjsindcategprof": "CNPJ do sindicato",
+    "dtalteracao": "Data da alteração", "dtef": "Data de efeito",
+    "eventos": "Eventos aplicados", "qtd_2205": "Alt. cadastrais",
+    "qtd_2206": "Alt. contratuais", "ultima_alteracao": "Última alteração",
+    "sem_admissao": "Sem o S-2200",
+    "situacao": "Situação", "datarescisao": "Data da rescisão",
+    "motrescisao": "Motivo da rescisão", "qtd_afast": "Afastamentos/férias",
+    "tipo": "Tipo", "op1": "op1", "op2": "Motivo (op2)",
+    "data1i": "Início", "data1f": "Fim", "campotxt1": "campotxt1",
+    "campotxt4": "Observação", "aberto": "Em aberto",
+    "cpf_titular": "CPF do funcionário", "tpdep": "Tipo de dependente",
+    "cpfdep": "CPF do dependente", "depirrf": "IRRF", "depsf": "Salário-família",
+    "inctrabf": "Inc. trabalhista", "sexodep": "Sexo (palpite)",
+    "origem": "Veio do", "qtd_dependentes": "Dependentes",
+}
+_PXML_DATAS = {"dtnascto", "dtadm", "dtalteracao", "dtef", "ultima_alteracao",
+               "datarescisao", "data1i", "data1f", "data_entrega"}
+
+# Tudo o que o S-2200 traz, na ordem em que se confere: quem é, onde mora e o
+# contrato. Vale também para a consolidada.
+_PXML_COLS_2200 = [
+    "cpf", "nome", "matricula_es", "dtadm", "dtnascto", "sexo", "racacor", "estciv",
+    "grauinstr", "nomemae", "paisnascto", "paisnac",
+    "ender_dsclograd", "ender_nrlograd", "ender_complemento", "ender_bairro",
+    "ender_cep", "ender_codmunic", "ender_uf",
+    "codcateg", "nmcargo", "cbofuncao", "vrsalfx", "undsalfixo",
+    "qtdhrssem", "qtdhrsmes", "tpjornada", "tmpparc", "tpcontr",
+    "tpadmissao", "indadmissao", "tpregjor", "natatividade", "cnpjsindcategprof",
+]
+_PXML_COLS_2205 = ["arquivo", "cpf", "dtalteracao", "nome", "estciv", "grauinstr",
+                   "racacor", "ender_dsclograd", "ender_nrlograd", "ender_bairro",
+                   "ender_cep", "ender_codmunic", "ender_uf"]
+_PXML_COLS_2206 = ["arquivo", "cpf", "dtalteracao", "dtef", "codcateg", "nmcargo",
+                   "cbofuncao", "vrsalfx", "undsalfixo", "qtdhrssem", "qtdhrsmes"]
+# Uma linha por AFASTAMENTO (período), não por evento: o início e o retorno vêm
+# em S-2230 separados, e é o período casado que vira registro no tab_eventos.
+_PXML_COLS_2230 = ["cpf", "tipo", "op1", "op2", "data1i", "data1f", "aberto",
+                   "campotxt1", "campotxt4", "arquivo"]
+_PXML_COLS_2299 = ["arquivo", "cpf", "datarescisao", "motrescisao"]
+# Dependentes: nomes de coluna do tab_dependentes, para a Etapa 3 ler direto.
+# `sexodep` é palpite (o eSocial não manda) — dá para corrigir aqui antes de importar.
+_PXML_COLS_DEP = ["cpf_titular", "nome", "tpdep", "dtnascto", "cpfdep", "depirrf",
+                  "depsf", "inctrabf", "sexodep", "origem", "arquivo"]
+
+
+def _pxml_data_br(v):
+    """'20231213' → '13/12/2023'. Planilha de conferência é lida por gente."""
+    s = re.sub(r"\D", "", str(v or ""))
+    if len(s) == 8:
+        return f"{s[6:8]}/{s[4:6]}/{s[:4]}"
+    if len(s) == 6:
+        return f"{s[4:6]}/{s[:4]}"
+    return s
+
+
+def _pxml_celula(col, valor):
+    """Valor já no formato em que vai para a célula."""
+    if valor in (None, ""):
+        return ""
+    if col in _PXML_DATAS:
+        return _pxml_data_br(valor)
+    if col == "vrsalfx":
+        return round((valor or 0) / 100.0, 2)      # tab_cad guarda centavos
+    if col.startswith("qtd_"):
+        return int(valor or 0)                     # contagem: número, para somar
+    return str(valor)
+
+
+def _pxml_planilha(caminho, aba, colunas, linhas, empresa=None):
+    """Grava uma planilha .xlsx de conferência.
+
+    Tudo entra como TEXTO de propósito: o Excel come o zero à esquerda de CPF,
+    PIS e CEP e ainda transforma código longo em notação científica. A única
+    exceção é o salário, que é número para poder somar.
+
+    Toda planilha leva uma aba **Empresa** dizendo de quem são os dados — foi
+    exatamente o que faltou quando a planilha era de outra empresa e ninguém
+    percebeu olhando para as colunas.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = aba[:31]
+    cinza = PatternFill("solid", fgColor="F1F5F9")
+    for i, col in enumerate(colunas, 1):
+        c1 = ws.cell(row=1, column=i, value=_PXML_ROTULOS.get(col, col))
+        c1.font = Font(bold=True, size=10)
+        c1.fill = cinza
+        c1.alignment = Alignment(vertical="center", wrap_text=True)
+        c2 = ws.cell(row=2, column=i, value=col)
+        c2.font = Font(size=8, color="808080")
+        c2.fill = cinza
+        larg = max(len(_PXML_ROTULOS.get(col, col)) + 2, 11)
+        ws.column_dimensions[get_column_letter(i)].width = min(larg, 34)
+    for r, linha in enumerate(linhas, 3):
+        for i, col in enumerate(colunas, 1):
+            cel = ws.cell(row=r, column=i, value=_pxml_celula(col, linha.get(col)))
+            cel.number_format = ("#,##0.00" if col == "vrsalfx"
+                                 else "0" if col.startswith("qtd_") else "@")
+            cel.alignment = Alignment(vertical="center")
+    ws.freeze_panes = "A3"
+    if linhas:
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(colunas))}{len(linhas) + 2}"
+
+    if empresa:
+        wsE = wb.create_sheet("Empresa")
+        wsE.column_dimensions["A"].width = 24
+        wsE.column_dimensions["B"].width = 60
+        for i, (rot, val) in enumerate(empresa, 1):
+            a = wsE.cell(row=i, column=1, value=rot)
+            a.font = Font(bold=True, size=10)
+            b = wsE.cell(row=i, column=2, value=str(val))
+            b.number_format = "@"
+            b.alignment = Alignment(wrap_text=True, vertical="center")
+    wb.save(caminho)
+
+
+def _pxml_arquivos(pasta):
+    """XMLs da pasta de trabalho, descendo as subpastas por layout."""
+    fora = []
+    for raiz, _dirs, arqs in os.walk(pasta):
+        fora.extend(os.path.join(raiz, a) for a in arqs if a.lower().endswith(".xml"))
+    return sorted(fora)
+
+
+def _pxml_montar(pasta, progresso=None):
+    """Lê os XMLs e monta as linhas de cada planilha. Não grava nada."""
+    caminhos = _pxml_arquivos(pasta)
+    if not caminhos:
+        return {"ok": False, "msg": f"Nenhum .xml em {pasta} — rode a Etapa 1 antes."}
+
+    eventos, fora_do_escopo, ilegiveis = [], 0, []
+    raizes = {}                      # CNPJ raiz do empregador → quantos eventos
+    for i, caminho in enumerate(caminhos, 1):
+        if progresso and (i % 50 == 0 or i == len(caminhos)):
+            progresso(int(70 * i / len(caminhos)), f"lendo {i}/{len(caminhos)} XMLs")
+        try:
+            with open(caminho, "rb") as fh:
+                dados = fh.read()
+            tipo, ev = _xmli_evento(dados)
+        except OSError as e:
+            ilegiveis.append(f"{os.path.basename(caminho)}: {e}")
+            continue
+        # De quem é este XML: todo evento traz ideEmpregador. Conferido aqui de
+        # novo porque a pasta pode ter sobrado de outra empresa.
+        if ev is not None:
+            raiz = re.sub(r"\D", "", _xmli_txt(ev, "nrInsc"))[:8]
+            if raiz:
+                raizes[raiz] = raizes.get(raiz, 0) + 1
+        if tipo not in _PXML_LAYOUTS:
+            fora_do_escopo += 1
+            continue
+        eventos.append({"arquivo": os.path.basename(caminho), "tipo": tipo, "ev": ev,
+                        "ordem": _xmli_ordem(tipo, ev)})
+    if not eventos:
+        return {"ok": False, "msg": f"Nenhum S-2200/S-2205/S-2206 em {pasta} "
+                                    f"({len(caminhos)} XMLs lidos)."}
+
+    l2200, l2205, l2206, l2299 = [], [], [], []
+    funcs = {}
+    # Ordem cronológica: a alteração só faz sentido em cima da admissão, e duas
+    # alterações do mesmo campo têm que entrar na ordem em que aconteceram.
+    for i, e in enumerate(sorted(eventos, key=lambda x: (x["ordem"], x["arquivo"])), 1):
+        if progresso and (i % 50 == 0 or i == len(eventos)):
+            progresso(70 + int(25 * i / len(eventos)), f"montando {i}/{len(eventos)} eventos")
+        tipo, ev = e["tipo"], e["ev"]
+        cpf = _xmli_cpf_do_evento(ev)
+        if not cpf or cpf == "00000000000":
+            continue
+
+        if tipo == "S-2200":
+            f = _xmli_ler_s2200(ev, "")
+            f["arquivo"] = e["arquivo"]
+            f["_dep"] = [dict(d, origem="S-2200", arquivo=e["arquivo"])
+                         for d in _xmli_ler_dependentes(ev)]
+            l2200.append(dict(f))
+            antes = funcs.get(cpf) or {}
+            f["eventos"] = ["S-2200"]
+            f["qtd_2205"] = antes.get("qtd_2205", 0)
+            f["qtd_2206"] = antes.get("qtd_2206", 0)
+            if antes:                      # readmissão: vale a admissão mais nova
+                f["eventos"] = antes.get("eventos", []) + ["S-2200"]
+            funcs[cpf] = f
+            continue
+
+        f = funcs.get(cpf)
+        if f is None:
+            # Alteração sem a admissão na pasta — acontece quando o download não
+            # pegou o mês da admissão. Entra na consolidada marcada, para não
+            # sumir da conferência.
+            f = {"cpf": cpf, "eventos": [], "qtd_2205": 0, "qtd_2206": 0,
+                 "sem_admissao": "SIM"}
+            funcs[cpf] = f
+        f["eventos"] = f.get("eventos", []) + [tipo]
+
+        if tipo == "S-2230":
+            # Mesma regra do importador: o início abre, o fim fecha o aberto
+            # mais recente e a alteração troca o motivo. Só que aqui o resultado
+            # vira linha de planilha — e é dela que a Etapa 3 vai gravar.
+            a = _xmli_ler_s2230(ev)
+            lista = f.setdefault("_afast", [])
+            if a.get("dt_ini"):
+                mot = a.get("motivo") or ""
+                c1, c4 = _xmli_afast_extras(mot, a)
+                lista.append({"cpf": cpf, "op2": mot, "data1i": a["dt_ini"], "data1f": "",
+                              "campotxt1": c1 or "", "campotxt4": c4 or "",
+                              "arquivo": e["arquivo"]})
+            if a.get("motivo_alt"):
+                for x in reversed(lista):
+                    if not x["data1f"]:
+                        x["op2"] = a["motivo_alt"]
+                        if x["op2"] not in ("01", "03"):
+                            x["campotxt1"] = ""
+                        if x["op2"] != "21":
+                            x["campotxt4"] = ""
+                        break
+            if a.get("dt_fim"):
+                alvo = next((x for x in reversed(lista) if not x["data1f"]), None)
+                if alvo is not None:
+                    alvo["data1f"] = a["dt_fim"]
+                else:
+                    f.setdefault("_afast_orfaos", []).append(a["dt_fim"])
+            continue
+
+        if tipo == "S-2299":
+            f["datarescisao"] = _xmli_data(_xmli_txt(ev, "dtDeslig"))
+            mtv = _xmli_txt(ev, "mtvDeslig")
+            if mtv:
+                f["motrescisao"] = mtv
+                f["motdesligamento"] = mtv
+            f["situacao"] = "D"
+            l2299.append({"arquivo": e["arquivo"], "cpf": cpf,
+                          "datarescisao": f["datarescisao"], "motrescisao": mtv})
+            continue
+
+        if tipo == "S-2205":
+            mudou = _xmli_aplicar_s2205(f, ev)
+            f["qtd_2205"] = f.get("qtd_2205", 0) + 1
+            # A alteração cadastral manda o bloco <trabalhador> INTEIRO, então
+            # a lista de dependentes que ela traz é a lista atual e substitui.
+            # Evento sem nenhum <dependente> NÃO limpa a lista: pode ser evento
+            # de outra coisa, e apagar dependente calado é pior que manter.
+            deps = _xmli_ler_dependentes(ev)
+            if deps:
+                f["_dep"] = [dict(d, origem="S-2205", arquivo=e["arquivo"]) for d in deps]
+            linha = {"arquivo": e["arquivo"], "cpf": cpf,
+                     "dtalteracao": _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf"))}
+            linha.update(mudou)
+            l2205.append(linha)
+        else:                               # S-2206
+            mudou = _xmli_aplicar_s2206(f, ev)
+            f["qtd_2206"] = f.get("qtd_2206", 0) + 1
+            linha = {"arquivo": e["arquivo"], "cpf": cpf,
+                     "dtalteracao": _xmli_data(_xmli_txt(ev, "dtAlteracao")),
+                     "dtef": _xmli_data(_xmli_txt(ev, "dtEf"))}
+            linha.update(mudou)
+            l2206.append(linha)
+        f["ultima_alteracao"] = max(str(f.get("ultima_alteracao") or ""),
+                                    _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf")) or "")
+
+    consolidada, l2230, ldep = [], [], []
+    for cpf in sorted(funcs, key=lambda c: (funcs[c].get("nome") or "zzz", c)):
+        f = dict(funcs[cpf])
+        for d in (f.get("_dep") or []):
+            ldep.append({**d, "cpf_titular": cpf})
+        f["qtd_dependentes"] = len(f.get("_dep") or [])
+        evs = f.get("eventos") or []
+        f["eventos"] = " + ".join(f"{evs.count(t)}× {t}" if evs.count(t) > 1 else t
+                                  for t in sorted(set(evs)))
+        f["sem_admissao"] = f.get("sem_admissao") or ""
+        f["situacao"] = f.get("situacao") or "A"
+        afast = f.get("_afast") or []
+        f["qtd_afast"] = len(afast)
+        for a in afast:
+            ferias = (a.get("op2") or "") == _PXML_MOT_FERIAS
+            l2230.append({**a, "tipo": "Férias" if ferias else "Afastamento",
+                          "op1": 3 if ferias else 6,
+                          "aberto": "" if a.get("data1f") else "SIM"})
+        consolidada.append(f)
+    l2230.sort(key=lambda x: (x["cpf"], x["data1i"]))
+
+    return {"ok": True, "xmls": len(caminhos), "fora_do_escopo": fora_do_escopo,
+            "ilegiveis": ilegiveis[:5],
+            "empregadores": [_dxml_empregador(c, n)
+                             for c, n in sorted(raizes.items(), key=lambda x: -x[1])],
+            "planilhas": [
+                {"arquivo": "Funcionarios.xlsx", "aba": "Funcionários",
+                 "titulo": "Consolidada — como o funcionário fica",
+                 "colunas": _PXML_COLS_2200 + ["situacao", "datarescisao", "motrescisao",
+                                               "eventos", "qtd_2205", "qtd_2206", "qtd_afast",
+                                               "qtd_dependentes", "ultima_alteracao",
+                                               "sem_admissao"],
+                 "linhas": consolidada},
+                {"arquivo": "S-2200.xlsx", "aba": "S-2200",
+                 "titulo": "S-2200 — admissões (uma linha por evento)",
+                 "colunas": ["arquivo"] + _PXML_COLS_2200, "linhas": l2200},
+                {"arquivo": "S-2205.xlsx", "aba": "S-2205",
+                 "titulo": "S-2205 — alterações cadastrais (em branco = não mexeu)",
+                 "colunas": _PXML_COLS_2205, "linhas": l2205},
+                {"arquivo": "S-2206.xlsx", "aba": "S-2206",
+                 "titulo": "S-2206 — alterações contratuais (em branco = não mexeu)",
+                 "colunas": _PXML_COLS_2206, "linhas": l2206},
+                {"arquivo": "S-2230.xlsx", "aba": "S-2230",
+                 "titulo": "S-2230 — férias (op1=3) e afastamentos (op1=6), um por período",
+                 "colunas": _PXML_COLS_2230, "linhas": l2230},
+                {"arquivo": "S-2299.xlsx", "aba": "S-2299",
+                 "titulo": "S-2299 — desligamentos",
+                 "colunas": _PXML_COLS_2299, "linhas": l2299},
+                {"arquivo": "Dependentes.xlsx", "aba": "Dependentes",
+                 "titulo": "Dependentes (S-2200 e S-2205) — o sexo é palpite, confira",
+                 "colunas": _PXML_COLS_DEP, "linhas": ldep},
+            ]}
+
+
+def _pxml_gerar(pasta_xml, pasta_saida, progresso=None):
+    """Etapa 2 inteira: lê a pasta dos XMLs e grava as planilhas."""
+    if not os.path.isdir(pasta_xml):
+        return {"ok": False, "msg": f"Pasta dos XMLs não existe: {pasta_xml}"}
+    r = _pxml_montar(pasta_xml, progresso=progresso)
+    if not r.get("ok"):
+        return r
+    try:
+        os.makedirs(pasta_saida, exist_ok=True)
+    except OSError as e:
+        return {"ok": False, "msg": f"Não deu para criar {pasta_saida}: {e}"}
+
+    # Carimbo de origem que vai na aba Empresa de todas as planilhas.
+    emps = r.get("empregadores") or []
+    carimbo = [("Gerado em", datetime.now().strftime("%d/%m/%Y %H:%M")),
+               ("Pasta dos XMLs", pasta_xml),
+               ("XMLs lidos", r["xmls"])]
+    for e in emps:
+        nomes = " / ".join(x["nome"] for x in e["na_base"] if x["nome"])
+        if not nomes:
+            nomes = ("não deu para consultar a base do Folha10" if e.get("base_off")
+                     else "não existe empresa com este CNPJ na base do Folha10")
+        carimbo.append((f"Empregador {e['cnpj_fmt']}", f"{nomes} — {e['eventos']} evento(s)"))
+    if len(emps) > 1:
+        carimbo.append(("ATENÇÃO", "a pasta tem XMLs de mais de um CNPJ"))
+
+    saida = []
+    for p in r["planilhas"]:
+        caminho = os.path.join(pasta_saida, p["arquivo"])
+        if progresso:
+            progresso(95, f"gravando {p['arquivo']}")
+        try:
+            _pxml_planilha(caminho, p["aba"], p["colunas"], p["linhas"], empresa=carimbo)
+        except PermissionError:
+            return {"ok": False, "msg": f"{p['arquivo']} está aberto no Excel — "
+                                        "feche a planilha e gere de novo."}
+        saida.append({"arquivo": p["arquivo"], "titulo": p["titulo"],
+                      "linhas": len(p["linhas"]), "colunas": len(p["colunas"])})
+    return {"ok": True, "pasta": pasta_saida, "xmls": r["xmls"],
+            "fora_do_escopo": r["fora_do_escopo"], "ilegiveis": r["ilegiveis"],
+            "empregadores": emps, "planilhas": saida}
+
+
+# =========================================================
+# ETAPA 3 — IMPORTAR AS PLANILHAS PARA A BASE
+# =========================================================
+# Lê o que a Etapa 2 gravou em C:\XMLeSocial\Planilhas e joga na base do
+# CLIENTE e da EMPRESA escolhidos na Etapa 0 — nunca da sessão "por acaso":
+# id_cliente e id_empresa entram em TODA linha, de tab_cad e de tab_eventos.
+# Ordem: Funcionarios.xlsx (que já é o S-2200 atualizado pelos S-2205/S-2206 e
+# com o desligamento do S-2299) e depois S-2230.xlsx (férias op1=3 e
+# afastamentos op1=6).
+def _pxml_ler_planilha(caminho):
+    """Planilha da Etapa 2 → lista de dicionários, pela 2ª linha do cabeçalho
+    (que é onde está o nome do campo; a 1ª é o rótulo em português)."""
+    if not os.path.isfile(caminho):
+        return None
+    from openpyxl import load_workbook
+    wb = load_workbook(caminho, read_only=True, data_only=True)
+    ws = wb[wb.sheetnames[0]]
+    linhas = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if len(linhas) < 3:
+        return []
+    cols = [str(c or "").strip() for c in linhas[1]]
+    fora = []
+    for row in linhas[2:]:
+        d = {c: ("" if v is None else v) for c, v in zip(cols, row) if c}
+        if any(str(v).strip() for v in d.values()):
+            fora.append(d)
+    return fora
+
+
+def _pxml_data_num(v):
+    """'13/12/2023' → '20231213' (o tab_cad guarda AAAAMMDD)."""
+    s = re.sub(r"\D", "", str(v or ""))
+    if len(s) == 8 and "/" in str(v):
+        return s[4:8] + s[2:4] + s[:2]
+    return s if len(s) in (6, 8) else ""
+
+
+def _pxml_cent(v):
+    """Salário da planilha (reais) → centavos."""
+    if v in (None, ""):
+        return 0
+    if isinstance(v, (int, float)):
+        return int(round(float(v) * 100))
+    return _xmli_cent(v)
+
+
+def _pxml_ajusta_colunas(rec, mat):
+    """Acerta o que o XML traz num formato que a coluna do tab_cad não aceita.
+
+    `qtdHrsSem` vem '44.00' do eSocial e a coluna guarda '44' (varchar(2)) — com
+    o ponto, o insert do lote inteiro morre com 22001.
+
+    A `matricula_es` fica como veio, de propósito: ela é a matrícula que o
+    GOVERNO já tem no vínculo. Trocar pela matrícula nova do Folha10 faria os
+    próximos eventos (S-2206, S-2299) irem com outra matrícula e o eSocial não
+    reconhecer o vínculo. A coluna aguenta — na produção já há valores de 26
+    caracteres.
+    """
+    for col in ("qtdhrssem", "qtdhrsmes"):
+        if rec.get(col):
+            so_num = re.sub(r"\D", "", str(rec[col]).split(",")[0].split(".")[0])
+            rec[col] = so_num.lstrip("0") or "0"
+    return rec
+
+
+# Colunas que o tab_cad exige preenchidas (levantadas da própria base: nenhuma
+# linha de produção tem NULL nelas). O XML nem sempre traz todas — S-2200 antigo
+# vem sem cargo, por exemplo —, e um NULL derruba o lote inteiro. Cada uma entra
+# com um valor NEUTRO, nunca inventado: vazio para texto, zero para número.
+_PXML_OBRIG = {
+    "cbofuncao": "", "nmcargo": "", "matricula_es": "", "codcateg": "",
+    "undsalfixo": "M", "vrsalfx": 0, "tpcontr": "1", "tpjornada": "9",
+    "tmpparc": "0", "hornoturno": "N", "sexo": "", "racacor": "", "estciv": "",
+    "dtnascto": "", "dtadm": "", "tpadmissao": "1", "indadmissao": "1",
+    "tpregjor": "1", "natatividade": "1", "banco_numero": "000",
+    "ind_imigrante": "N", "deffisica": "N", "defvisual": "N", "defauditiva": "N",
+    "defmental": "N", "defintelectual": "N", "reabreadap": "N", "indaprend": "0",
+    "sem_adiantamento": False,
+    # 105 = Brasil: é o valor de 100% da base e o default do próprio eSocial.
+    "paisnascto": "105", "paisnac": "105",
+}
+# Destas ninguém precisa saber: são o default da casa, não faltou nada no XML.
+_PXML_OBRIG_ESTRUT = {"hornoturno", "banco_numero", "ind_imigrante", "deffisica",
+                      "defvisual", "defauditiva", "defmental", "defintelectual",
+                      "reabreadap", "indaprend", "sem_adiantamento", "tpjornada",
+                      "tmpparc", "tpcontr", "tpadmissao", "indadmissao", "tpregjor",
+                      "natatividade", "paisnascto", "paisnac", "undsalfixo"}
+
+
+# Códigos de contrato com domínio fechado no banco (CHECK) e no cadastro. O XML
+# antigo traz valores que o leiaute atual extinguiu — `tpJornada=1` era "horário
+# diário e folga fixos" e hoje não existe: o insert do lote morre com 23514.
+# Fora do domínio, entra o valor "genérico" do próprio Folha10 e a tela avisa.
+_PXML_DOMINIO = {
+    "tpjornada":   ({"2", "3", "4", "5", "6", "7", "9"}, "9"),   # 9 = demais tipos
+    "tmpparc":     ({"0", "1", "2", "3"}, "0"),
+    "tpcontr":     ({"1", "2", "3"}, "1"),
+    "tpadmissao":  ({"1", "2", "3", "4", "6", "7"}, "1"),
+    "indadmissao": ({"1", "2", "3"}, "1"),
+    "tpregjor":    ({"1", "2", "3", "4"}, "1"),
+    "undsalfixo":  ({"M", "H", "D"}, "M"),
+}
+
+
+def _pxml_aplica_dominio(rec, trocou):
+    """Troca código fora do domínio pelo genérico, anotando o que trocou."""
+    for col, (validos, padrao) in _PXML_DOMINIO.items():
+        v = str(rec.get(col) or "").strip()
+        if v and v not in validos:
+            trocou[f"{col} {v}→{padrao}"] = trocou.get(f"{col} {v}→{padrao}", 0) + 1
+            rec[col] = padrao
+    return rec
+
+
+def _pxml_nome_reduzido(nome):
+    """nomer no padrão da casa: primeiro nome + último sobrenome, até 30."""
+    partes = [p for p in str(nome or "").split() if p]
+    if not partes:
+        return ""
+    curto = partes[0] if len(partes) == 1 else f"{partes[0]} {partes[-1]}"
+    return curto[:30]
+
+
+def _pxml_completa_obrigatorios(rec, faltou):
+    """Preenche o que a coluna exige e o XML não trouxe. Anota o que preencheu."""
+    if not rec.get("nomer"):
+        rec["nomer"] = _pxml_nome_reduzido(rec.get("nome"))
+    for col, neutro in _PXML_OBRIG.items():
+        if rec.get(col) in (None, ""):
+            rec[col] = neutro
+            faltou[col] = faltou.get(col, 0) + 1
+    return rec
+
+
+def _aquisitivo_das_ferias(dtadm, gozos):
+    """Período aquisitivo de cada gozo (data2i/data2f). O S-2230 só manda o gozo.
+
+    Os aquisitivos correm de 12 em 12 meses a partir da ADMISSÃO. Para cada
+    gozo entra aquele cujo **período concessivo** o contém — os 12 meses após o
+    fim do aquisitivo (CLT art. 134).
+
+    PEGA: encadear "o próximo aquisitivo" a partir da admissão, como a tela faz
+    ao lançar férias uma a uma, só funciona com a vida inteira do funcionário na
+    mão. Aqui não é o caso: os ZIPs do portal cobrem poucos anos, e quem foi
+    admitido em 2004 com gozo em 2020 recebia o aquisitivo de 2004/2005.
+    Sem candidato (gozo muito atrasado), fica o próximo ainda não usado.
+    """
+    def d(s):
+        s = re.sub(r"\D", "", str(s or ""))
+        try:
+            return date(int(s[:4]), int(s[4:6]), int(s[6:8])) if len(s) == 8 else None
+        except ValueError:
+            return None
+
+    def s8(x):
+        return x.strftime("%Y%m%d") if x else None
+
+    def mais_um_ano_menos_1(x):
+        try:
+            return x.replace(year=x.year + 1) - timedelta(days=1)
+        except ValueError:                       # 29/02
+            return x + timedelta(days=364)
+
+    adm = d(dtadm)
+    if not adm:
+        return [(None, None) for _ in gozos]
+
+    # Aquisitivos da admissão até bem depois do último gozo.
+    limite = max([d(g.get("data1i")) for g in gozos if d(g.get("data1i"))] or [adm])
+    periodos, ini = [], adm
+    while ini <= limite and len(periodos) < 80:
+        fim = mais_um_ano_menos_1(ini)
+        periodos.append((ini, fim))
+        ini = fim + timedelta(days=1)
+    if not periodos:
+        periodos = [(adm, mais_um_ano_menos_1(adm))]
+
+    fora, usado = [], -1
+    for g in gozos:
+        gi = d(g.get("data1i"))
+        if not gi:
+            fora.append((None, None))
+            continue
+        # Concessivo: fim do aquisitivo antes do gozo, e no máximo 12 meses antes.
+        escolhido = next((k for k, (pi, pf) in enumerate(periodos)
+                          if k > usado and pf < gi and mais_um_ano_menos_1(pf) >= gi), None)
+        if escolhido is None:
+            escolhido = min(usado + 1, len(periodos) - 1)
+        usado = escolhido
+        pi, pf = periodos[escolhido]
+        fora.append((s8(pi), s8(pf)))
+    return fora
+
+
+def _pxml_uniformiza(linhas):
+    """Todas as linhas do lote com o MESMO conjunto de chaves.
+
+    PEGA: o PostgREST recusa insert em lote com chaves diferentes entre os
+    objetos — `PGRST102 All object keys must match`. Como cada registro só
+    levava o que tinha (campotxt1 em uns, não em outros), o lote inteiro de
+    férias/afastamentos morria calado enquanto o tab_cad passava.
+    """
+    todas = set()
+    for l in linhas:
+        todas.update(l.keys())
+    return [{k: l.get(k) for k in todas} for l in linhas]
+
+
+def _pxml_diagnostico(registros):
+    """Campos mais compridos do lote — para o erro dizer onde apertou."""
+    tam = {}
+    for r in registros:
+        for k, v in r.items():
+            if isinstance(v, str):
+                tam[k] = max(tam.get(k, 0), len(v))
+    piores = sorted(tam.items(), key=lambda x: -x[1])[:6]
+    return ", ".join(f"{k}={n}" for k, n in piores)
+
+
+def _pxml_importar(pasta, id_cliente, id_empresa, cnpj_empresa, progresso=None):
+    """Grava as planilhas na base. Devolve o resumo do que entrou."""
+    def _p(pct, etapa):
+        if progresso:
+            progresso(pct, etapa)
+
+    _p(2, "lendo as planilhas")
+    func = _pxml_ler_planilha(os.path.join(pasta, "Funcionarios.xlsx"))
+    if func is None:
+        return {"ok": False, "msg": "Funcionarios.xlsx não existe — rode a Etapa 2 antes."}
+    if not func:
+        return {"ok": False, "msg": "Funcionarios.xlsx está vazia."}
+    afast = _pxml_ler_planilha(os.path.join(pasta, "S-2230.xlsx")) or []
+
+    if not id_cliente or not id_empresa:
+        return {"ok": False, "msg": "Sem cliente/empresa de destino (Etapa 0)."}
+
+    # A empresa TEM que ser do cliente escolhido. Um par cliente/empresa errado
+    # gravaria a base inteira no lugar errado, e nada aqui denunciaria depois.
+    try:
+        r_emp = (supabase.table("tab_empresa").select("id_empresa, razaosocial, cnpj")
+                 .eq("id_empresa", id_empresa).eq("id_cliente", id_cliente)
+                 .limit(1).execute())
+        if not r_emp.data:
+            return {"ok": False, "msg": (f"A empresa {id_empresa} não é do cliente "
+                                         f"{id_cliente}. Refaça a Etapa 0.")}
+    except Exception as e:
+        return {"ok": False, "msg": f"Não deu para conferir a empresa de destino: {str(e)[:150]}"}
+
+    # Trava da Etapa 0 outra vez, agora na hora de gravar: base só entra em
+    # empresa vazia. Vale também para quem chegou aqui por outro caminho.
+    n_atual = _dxml_conta_funcionarios(id_empresa, id_cliente)
+    if n_atual != 0:
+        return {"ok": False, "msg": (
+            f"A empresa já tem {n_atual} funcionário(s) — importação bloqueada."
+            if n_atual > 0 else
+            "Não deu para conferir quantos funcionários a empresa já tem.")}
+
+    filial = re.sub(r"\D", "", str(cnpj_empresa or ""))[8:14]
+    _p(10, "montando os funcionários")
+
+    registros, pulados, mat_por_cpf, faltou, trocou = [], [], {}, {}, {}
+    usadas, prox = set(), 1
+    for f in func:
+        cpf = re.sub(r"\D", "", str(f.get("cpf") or "")).zfill(11)
+        if not cpf or cpf == "00000000000":
+            pulados.append({"cpf": "", "motivo": "linha sem CPF"})
+            continue
+        if str(f.get("sem_admissao") or "").strip().upper() in ("SIM", "S", "X"):
+            # Sem S-2200 não há cadastro: só alteração não cria funcionário.
+            pulados.append({"cpf": cpf, "motivo": "sem o S-2200 (admissão fora do período)"})
+            continue
+
+        # Matrícula: a do eSocial quando é número curto e está livre; senão a
+        # próxima da empresa (ver _mat_do_es — a do eSocial costuma ser chave).
+        mat = _mat_do_es(f.get("matricula_es"))
+        if not mat or mat in usadas:
+            while prox in usadas:
+                prox += 1
+            mat = prox
+            prox += 1
+        usadas.add(mat)
+        mat_por_cpf[cpf] = mat
+
+        rec = {"id_cliente": id_cliente, "id_empresa": id_empresa,   # <<< o essencial
+               "matricula": mat, "cpf": cpf,
+               "centrocusto": "001", "filial": filial}
+        for col in _XMLI_COLS:
+            if col in ("matricula", "cpf", "centrocusto", "filial"):
+                continue
+            v = f.get(col)
+            if v in (None, ""):
+                continue
+            if col in _PXML_DATAS:
+                v = _pxml_data_num(v)
+            elif col == "vrsalfx":
+                v = _pxml_cent(v)
+            else:
+                v = str(v).strip()
+            if v not in (None, "", 0):
+                rec[col] = v
+        rec.setdefault("situacao", "A")
+        rec = _pxml_aplica_dominio(_pxml_ajusta_colunas(rec, mat), trocou)
+        registros.append(_pxml_completa_obrigatorios(rec, faltou))
+
+    if not registros:
+        return {"ok": False, "msg": "Nenhum funcionário para gravar.", "pulados": pulados}
+
+    _p(35, f"gravando {len(registros)} funcionário(s)")
+    try:
+        for i in range(0, len(registros), 200):
+            supabase.table("tab_cad").insert(
+                _pxml_uniformiza(registros[i:i + 200])).execute()
+    except Exception as e:
+        return {"ok": False,
+                "msg": (f"Erro ao gravar o tab_cad: {str(e)[:230]}"
+                        f" — maiores campos do lote: {_pxml_diagnostico(registros)}")}
+
+    # ── Férias (op1=3) e afastamentos (op1=6) ──
+    _p(70, "montando férias e afastamentos")
+    eventos, ev_pulados, ev_truncados = [], [], []
+    for a in afast:
+        cpf = re.sub(r"\D", "", str(a.get("cpf") or "")).zfill(11)
+        mat = mat_por_cpf.get(cpf)
+        d1i = _pxml_data_num(a.get("data1i"))
+        if not mat or not d1i:
+            ev_pulados.append({"cpf": cpf, "motivo": "funcionário não importado"
+                                                     if not mat else "sem data de início"})
+            continue
+        try:
+            op1 = int(str(a.get("op1") or 6).strip() or 6)
+        except ValueError:
+            op1 = 6
+        linha = {"id_cliente": id_cliente, "id_empresa": id_empresa,  # <<< o essencial
+                 "matricula": mat, "op1": op1,
+                 "op2": str(a.get("op2") or "").strip(),
+                 "data1i": d1i, "data1f": _pxml_data_num(a.get("data1f")) or None,
+                 "folha": int(d1i[:6])}
+        for c in ("campotxt1", "campotxt4"):
+            v = str(a.get(c) or "").strip()
+            if v:
+                # campotxt4 guarda a observação do afastamento (motivo 21) e a
+                # coluna é varchar(100) — o eSocial aceita bem mais que isso.
+                if len(v) > 100:
+                    ev_truncados.append(c)
+                linha[c] = v[:100]
+        eventos.append(linha)
+
+    # ── Dependentes (S-2200 + S-2205) ──
+    _p(80, "montando os dependentes")
+    deps, dep_pulados = [], 0
+    for d in (_pxml_ler_planilha(os.path.join(pasta, "Dependentes.xlsx")) or []):
+        cpf = re.sub(r"\D", "", str(d.get("cpf_titular") or "")).zfill(11)
+        mat = mat_por_cpf.get(cpf)
+        if not mat or not str(d.get("nome") or "").strip():
+            dep_pulados += 1
+            continue
+        try:
+            tp = int(re.sub(r"\D", "", str(d.get("tpdep") or "")) or 0)
+        except ValueError:
+            tp = 0
+        sexo = str(d.get("sexodep") or "").strip().upper()[:1]
+        deps.append({
+            "id_cliente": id_cliente, "id_empresa": id_empresa,   # <<< o essencial
+            "matricula": mat,
+            "nome": str(d.get("nome") or "").strip()[:30],
+            "tpdep": tp,
+            "dtnascto": _pxml_data_num(d.get("dtnascto")),
+            "cpfdep": re.sub(r"\D", "", str(d.get("cpfdep") or "")),
+            "depirrf": (str(d.get("depirrf") or "N").strip().upper() or "N")[:1],
+            "depsf": (str(d.get("depsf") or "N").strip().upper() or "N")[:1],
+            "inctrabf": (str(d.get("inctrabf") or "N").strip().upper() or "N")[:1],
+            # sexodep é NOT NULL com CHECK (M/F) e o eSocial não manda: fica o
+            # palpite da planilha, que dá para corrigir lá antes de importar.
+            "sexodep": sexo if sexo in ("M", "F") else "M",
+        })
+
+    dep_grav, dep_erro = 0, ""
+    if deps:
+        _p(88, f"gravando {len(deps)} dependente(s)")
+        try:
+            for i in range(0, len(deps), 200):
+                supabase.table("tab_dependentes").insert(
+                    _pxml_uniformiza(deps[i:i + 200])).execute()
+            dep_grav = len(deps)
+        except Exception as e:
+            dep_erro = str(e)[:200]
+
+    # Férias precisam do período aquisitivo (data2i/data2f) e dos dias (ref1):
+    # o S-2230 não manda nada disso, e sem eles a Ficha mostra o gozo solto.
+    # op2 sai: nas férias ele não é o motivo do eSocial (a tela grava vazio).
+    dtadm_por_mat = {r["matricula"]: r.get("dtadm") for r in registros}
+    for mat in {e["matricula"] for e in eventos if e["op1"] == 3}:
+        ferias = sorted((e for e in eventos if e["op1"] == 3 and e["matricula"] == mat),
+                        key=lambda x: x["data1i"])
+        for ev, (aq_i, aq_f) in zip(ferias,
+                                    _aquisitivo_das_ferias(dtadm_por_mat.get(mat), ferias)):
+            ev["data2i"], ev["data2f"] = aq_i, aq_f
+            ev["op2"] = None
+            # ref1 = dias de gozo. Sem data de fim (férias em aberto no XML) não
+            # dá para contar, e chutar 1 dia seria pior que deixar em branco.
+            if ev.get("data1f"):
+                try:
+                    di = datetime.strptime(ev["data1i"], "%Y%m%d")
+                    df = datetime.strptime(ev["data1f"], "%Y%m%d")
+                    ev["ref1"] = (df - di).days + 1
+                except (TypeError, ValueError):
+                    pass
+
+    ev_grav, ev_erro = 0, ""
+    if eventos:
+        _p(85, f"gravando {len(eventos)} férias/afastamento(s)")
+        try:
+            for i in range(0, len(eventos), 200):
+                supabase.table("tab_eventos").insert(
+                    _pxml_uniformiza(eventos[i:i + 200])).execute()
+            ev_grav = len(eventos)
+        except Exception as e:
+            # O cadastro já entrou; não se desfaz por causa do complemento.
+            ev_erro = str(e)[:200]
+
+    _p(100, "concluído")
+    demitidos = sum(1 for r in registros if r.get("situacao") == "D")
+    return {"ok": True, "id_cliente": id_cliente, "id_empresa": id_empresa,
+            "gravados": len(registros), "demitidos": demitidos,
+            "ferias": sum(1 for e in eventos if e["op1"] == 3),
+            "afastamentos": sum(1 for e in eventos if e["op1"] != 3),
+            "eventos_gravados": ev_grav, "eventos_erro": ev_erro,
+            "dependentes": dep_grav, "dep_pulados": dep_pulados, "dep_erro": dep_erro,
+            "ev_truncados": len(ev_truncados),
+            "completados": sorted(((k, n) for k, n in faltou.items()
+                                   if k not in _PXML_OBRIG_ESTRUT), key=lambda x: -x[1])[:8],
+            "trocados": sorted(trocou.items(), key=lambda x: -x[1])[:8],
+            "pulados": pulados[:20], "qtd_pulados": len(pulados),
+            "ev_pulados": ev_pulados[:10], "qtd_ev_pulados": len(ev_pulados)}
+
+
+_pxml_imp_jobs = {}
+
+
+def _pxml_imp_rodar(job_id, pasta, id_cliente, id_empresa, cnpj):
+    job = _pxml_imp_jobs[job_id]
+
+    def prog(pct, etapa):
+        job['pct'] = pct
+        job['etapa'] = etapa
+
+    try:
+        job['resultado'] = _pxml_importar(pasta, id_cliente, id_empresa, cnpj, progresso=prog)
+    except Exception as ex:
+        job['resultado'] = {'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'}
+    job['pct'] = 100
+    job['done'] = True
+
+
+@app.route('/api/descompactar_xml/importar', methods=['POST'])
+def api_descompactar_xml_importar():
+    """Etapa 3: joga as planilhas na base do cliente/empresa da Etapa 0."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    if not d.get('empresa_ok'):
+        return jsonify({'ok': False, 'precisa_empresa': True,
+                        'msg': 'Confirme o cliente na Etapa 0 antes de importar.'})
+    alvo = _dxml_destino()
+    if not alvo['id_cliente'] or not alvo['tem_empresa']:
+        return jsonify({'ok': False, 'msg': 'Escolha o cliente e crie/selecione a empresa antes.'})
+    job_id = uuid.uuid4().hex[:12]
+    _pxml_imp_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
+    threading.Thread(target=_pxml_imp_rodar,
+                     args=(job_id, (d.get('planilhas') or M.PLANILHAS).strip(),
+                           alvo['id_cliente'], alvo['id_empresa'], alvo['cnpj']),
+                     daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id, 'destino': alvo})
+
+
+@app.route('/api/descompactar_xml/importar/progresso')
+def api_descompactar_xml_importar_progresso():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    job = _pxml_imp_jobs.get(request.args.get('job', '').strip())
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
+
+
+_pxml_jobs = {}
+
+
+def _pxml_rodar(job_id, pasta_xml, pasta_saida):
+    job = _pxml_jobs[job_id]
+
+    def prog(pct, etapa):
+        job['pct'] = pct
+        job['etapa'] = etapa
+
+    try:
+        job['resultado'] = _pxml_gerar(pasta_xml, pasta_saida, progresso=prog)
+    except Exception as ex:
+        job['resultado'] = {'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'}
+    job['pct'] = 100
+    job['done'] = True
+
+
+@app.route('/api/planilhas_xml/gerar', methods=['POST'])
+def api_planilhas_xml_gerar():
+    """Dispara a Etapa 2. Só lê XML e grava .xlsx — não encosta no banco."""
+    erro, M = _dxml_gate()
+    if erro:
+        return erro
+    d = request.get_json(silent=True) or {}
+    # Mesma trava da Etapa 1: a pasta pode ter sobrado de outra empresa.
+    # Exige o CLIENTE, não a empresa: em base nova a empresa ainda vai nascer do
+    # S-1000, então cobrar empresa ativa aqui travaria justamente o caso novo.
+    if not session.get('id_cliente'):
+        return jsonify({'ok': False, 'precisa_empresa': True,
+                        'msg': 'Etapa 0: escolha o cliente de destino antes.'})
+    if not d.get('empresa_ok'):
+        return jsonify({'ok': False, 'precisa_empresa': True,
+                        'msg': 'Confirme antes de que empresa são estes XMLs.'})
+    pasta_xml = (d.get('destino') or M.DESTINO).strip()
+    saida = (d.get('planilhas') or M.PLANILHAS).strip()
+    job_id = uuid.uuid4().hex[:12]
+    _pxml_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
+    threading.Thread(target=_pxml_rodar, args=(job_id, pasta_xml, saida), daemon=True).start()
+    return jsonify({'ok': True, 'job_id': job_id})
+
+
+@app.route('/api/planilhas_xml/progresso')
+def api_planilhas_xml_progresso():
+    if not session.get('logado'):
+        return jsonify({'ok': False}), 401
+    job = _pxml_jobs.get(request.args.get('job', '').strip())
+    if not job:
+        return jsonify({'ok': False, 'msg': 'Job não encontrado'})
+    return jsonify({'ok': True, **job})
+
+
+@app.route('/planilhas_xml/abrir')
+def planilhas_xml_abrir():
+    """Abre a pasta das planilhas no Explorer (recurso local, como a Etapa 1)."""
+    if not session.get('logado') or not _dxml_pode() or _RUNNING_RENDER:
+        return jsonify({'ok': False, 'msg': 'Indisponível aqui.'})
+    try:
+        os.startfile(_dxml().PLANILHAS)          # noqa: S606 — Windows, pasta fixa
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)[:200]})
+    return jsonify({'ok': True})
 
 
 # =========================================================

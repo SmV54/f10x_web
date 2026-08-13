@@ -154,7 +154,14 @@ tbody tr:last-child td { border-bottom: none; }
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
-        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+        <!-- Etapa 3 da esteira do XML do eSocial: o menu tem um card só, e é de lá
+             que se chega aqui. O caminho de volta tem que existir. -->
+        <button class="btn-voltar-topo" onclick="window.location.href='/admin_descompactar_xml'"
+                title="Etapas 1 e 2: descompactar e conferir">&#8592; Etapas 1-2</button>
+        <!-- Sair da esteira volta para a conta da F10 (0004); o botão de cima
+             continua dentro do cliente, que é onde a importação grava. -->
+        <button class="btn-voltar-topo" onclick="window.location.href='/parar_impersonar'"
+                title="Sai e volta para o cliente 0004">&#8592; Menu</button>
     </div>
 </div>
 
@@ -162,8 +169,18 @@ tbody tr:last-child td { border-bottom: none; }
 
     <div class="alerta alerta-aviso" id="avisoDestino">
         <span>⚠️</span>
-        <div>Os funcionários serão gravados na empresa <strong>{{ empresa }}</strong>, que é a
-        empresa ativa da sessão. Se o destino for outro, troque de cliente/empresa antes de importar.</div>
+        <div>
+            Os funcionários serão gravados em:
+            <div style="margin:6px 0 0 0; line-height:1.7">
+                <strong>Cliente:</strong> {{ id_cliente }} — {{ cliente_info or '(sem nome)' }}<br>
+                <strong>Empresa:</strong> {{ empresa or '(nenhuma empresa selecionada)' }}
+                {% if cnpj_empresa %}<br><strong>CNPJ:</strong> {{ cnpj_empresa }}{% endif %}
+            </div>
+            <div style="margin-top:6px">
+                É o cliente e a empresa ativos da sessão. Se o destino for outro, troque de
+                cliente/empresa antes de importar — XML de outro CNPJ é recusado.
+            </div>
+        </div>
     </div>
 
     <!-- CARD: Upload -->

@@ -31,6 +31,10 @@ for _s in (sys.stdout, sys.stderr):
 
 ORIGEM  = r"C:\XMLeSocial\XMLzip"
 DESTINO = r"C:\XMLeSocial\XML"
+# As planilhas geradas a partir dos XMLs. Entra aqui porque a Etapa 1 so pode
+# comecar com as duas pastas de trabalho VAZIAS: sobra de uma rodada anterior se
+# mistura com a nova e ninguem percebe.
+PLANILHAS = r"C:\XMLeSocial\Planilhas"
 
 # Nome do arquivo dentro do ZIP: ID<...>.S-2200.xml
 RE_LAYOUT = re.compile(r"\.(S-\d{4})\.xml$", re.I)
@@ -43,6 +47,132 @@ RE_COMPET = re.compile(r"(20\d{4})")
 # milhares de arquivos e a tag e sempre plana.
 RE_RECIBO = re.compile(rb"<nrRecibo>([^<]+)</nrRecibo>")
 RE_RECEVT = re.compile(rb"<nrRecEvt>([^<]+)</nrRecEvt>")
+
+
+# Quem é o empregador dos ZIPs. PEGA: o S-1000 do eSocial NAO tem razao social —
+# so o CNPJ raiz em ideEmpregador/nrInsc (o governo ja sabe o nome pelo CNPJ).
+# O nome tem que vir de fora: do cadastro do Folha10 (quem chama cruza) ou, como
+# pista, do certificado que assinou. Regex pelo mesmo motivo do recibo.
+RE_NRINSC = re.compile(rb"<nrInsc>([^<]+)</nrInsc>")
+RE_X509   = re.compile(rb"<X509Certificate>([^<]+)</X509Certificate>")
+
+
+def tag_do_xml(dados, nome):
+    """Texto de uma tag plana do XML. Sem parser: sao milhares de arquivos."""
+    m = re.search(("<%s>([^<]*)</%s>" % (nome, nome)).encode("ascii"), dados or b"")
+    return m.group(1).decode("utf-8", "replace").strip() if m else ""
+
+
+# O que o S-1000 tem que serve para ABRIR a empresa no Folha10. Nao tem razao
+# social — ela entra provisoria e o usuario corrige no cadastro.
+S1000_CAMPOS = ("classTrib", "natJurid", "indCoop", "indConstr", "indDesFolha",
+                "indPorte", "nmCtt", "cpfCtt", "email", "foneFixo", "foneCel",
+                "iniValid")
+
+
+def dados_s1000(dados):
+    return {k: tag_do_xml(dados, k) for k in S1000_CAMPOS}
+
+
+def assinante_do_xml(dados):
+    """Nome do certificado que assinou o evento.
+
+    CUIDADO: e quem TRANSMITIU, que muitas vezes e o contador/procurador e nao a
+    empresa — nos ZIPs de teste o empregador e 04866946 e quem assina e outro
+    CNPJ. Serve so como pista para reconhecer de quem e a pasta.
+    """
+    m = RE_X509.search(dados or b"")
+    if not m:
+        return {}
+    try:
+        import base64
+        from cryptography import x509
+        cert = x509.load_der_x509_certificate(base64.b64decode(m.group(1)))
+        cn = cert.subject.get_attributes_for_oid(x509.NameOID.COMMON_NAME)[0].value
+    except Exception:
+        return {}
+    nome, _, doc = str(cn).partition(":")
+    return {"nome": nome.strip(), "cnpj": re.sub(r"\D", "", doc)[:14]}
+
+
+def formatar_cnpj(v):
+    """'12345678' -> '12.345.678'; 14 digitos -> '12.345.678/0001-99'."""
+    s = re.sub(r"\D", "", str(v or ""))
+    if len(s) >= 14:
+        return f"{s[:2]}.{s[2:5]}.{s[5:8]}/{s[8:12]}-{s[12:14]}"
+    if len(s) == 8:
+        return f"{s[:2]}.{s[2:5]}.{s[5:8]}"
+    return s
+
+
+def identificar_empresa(origem, de="", ate=""):
+    """De quem sao os ZIPs — antes de descompactar qualquer coisa.
+
+    Sem isso da para passar a tarde conferindo a planilha da empresa errada.
+    Le os S-1000 e S-1005 (poucos arquivos): o S-1000 da o CNPJ raiz do
+    empregador e o S-1005 os CNPJs completos dos estabelecimentos. Sem eles, cai
+    para uma amostra de qualquer evento — todo evento traz ideEmpregador.
+    """
+    zips = listar_zips(origem, de, ate)
+    if not zips:
+        return {"ok": False, "msg": f"Nenhum .zip em {origem}"
+                                    + (" no período informado." if (de or ate) else ".")}
+
+    raizes, estabs, assinante = {}, {}, {}
+    s1000, s1000_arq = {}, ""
+
+    def anotar(dados):
+        nonlocal assinante
+        achou = False
+        for bruto in RE_NRINSC.findall(dados or b""):
+            d = re.sub(r"\D", "", bruto.decode("ascii", "ignore"))
+            if len(d) == 14:
+                estabs[d] = estabs.get(d, 0) + 1
+                d = d[:8]
+            elif len(d) != 8:
+                continue
+            if not achou:                     # 1 evento conta 1 vez para a raiz
+                raizes[d] = raizes.get(d, 0) + 1
+                achou = True
+        if not assinante:
+            assinante = assinante_do_xml(dados) or {}
+
+    so_tabelas = lambda n: bool(re.search(r"\.S-100[05]\.xml$", n, re.I))
+    for nz in zips:
+        for nome, dados in iter_xmls(os.path.join(origem, nz), filtro_nome=so_tabelas):
+            if not (nome and dados):
+                continue
+            anotar(dados)
+            # O nome do arquivo do portal e ID<cnpj><AAAAMMDDHHMMSS><seq>, entao a
+            # ordem alfabetica maior e o S-1000 mais recente — o que vale hoje.
+            if re.search(r"\.S-1000\.xml$", nome, re.I) and nome > s1000_arq:
+                s1000_arq, s1000 = nome, dados_s1000(dados)
+
+    fonte = "S-1000 / S-1005"
+    if not raizes:                            # sem tabelas: amostra de qualquer evento
+        fonte = "amostra de eventos"
+        vistos = 0
+        for nz in zips:
+            for nome, dados in iter_xmls(os.path.join(origem, nz)):
+                if nome and dados:
+                    anotar(dados)
+                    vistos += 1
+                if vistos >= 20:
+                    break
+            if vistos >= 20:
+                break
+
+    if assinante.get("cnpj"):
+        assinante["cnpj_fmt"] = formatar_cnpj(assinante["cnpj"])
+    return {
+        "ok": True, "fonte": fonte, "zips": len(zips),
+        "empresas": [{"cnpj": c, "cnpj_fmt": formatar_cnpj(c), "eventos": n}
+                     for c, n in sorted(raizes.items(), key=lambda x: -x[1])],
+        "estabelecimentos": [formatar_cnpj(c) for c in sorted(estabs)],
+        "estabelecimentos_num": sorted(estabs),
+        "s1000": s1000, "s1000_arquivo": s1000_arq,
+        "assinante": assinante,
+    }
 
 
 def recibo_proprio(dados):
@@ -111,6 +241,48 @@ NOMES = {
     "S-5012": "Totais de IRRF por empresa",
     "S-5013": "Totais de FGTS por empresa",
 }
+
+
+def arquivos_da_pasta(pasta):
+    """Todos os arquivos de dentro da pasta, descendo as subpastas."""
+    if not os.path.isdir(pasta):
+        return []
+    fora = []
+    for raiz, _dirs, arqs in os.walk(pasta):
+        fora.extend(os.path.join(raiz, a) for a in arqs)
+    return fora
+
+
+def pastas_de_trabalho(destino=DESTINO, planilhas=PLANILHAS):
+    """O que ja existe nas pastas que a Etapa 1 vai gravar."""
+    return [{"pasta": p, "qtd": len(arquivos_da_pasta(p))}
+            for p in (destino, planilhas)]
+
+
+def limpar_pastas(destino=DESTINO, planilhas=PLANILHAS):
+    """Esvazia as pastas de trabalho — apaga o CONTEUDO, nunca a pasta em si.
+
+    So roda depois de o usuario confirmar na tela (ou responder --limpar no CLI).
+    """
+    apagados, erros = 0, []
+    for pasta in (destino, planilhas):
+        if not os.path.isdir(pasta):
+            continue
+        for caminho in arquivos_da_pasta(pasta):
+            try:
+                os.remove(caminho)
+                apagados += 1
+            except OSError as e:
+                erros.append(f"{os.path.basename(caminho)}: {e}")
+        # O modo "uma subpasta por layout" deixa varias subpastas para tras.
+        for raiz, _dirs, _arqs in os.walk(pasta, topdown=False):
+            if os.path.normpath(raiz) == os.path.normpath(pasta):
+                continue
+            try:
+                os.rmdir(raiz)
+            except OSError:
+                pass
+    return {"ok": not erros, "apagados": apagados, "erros": erros[:5]}
 
 
 def normalizar_layouts(itens):
@@ -317,7 +489,45 @@ def main():
     ap.add_argument("--manter-excluidos", action="store_true", dest="manter_excluidos",
                     help="extrai tambem o que foi anulado por um S-3000 "
                          "(padrao: nao extrai)")
+    ap.add_argument("--limpar", action="store_true",
+                    help="esvazia as pastas de trabalho (XML e Planilhas) antes de "
+                         "extrair; sem isso, pasta com arquivo aborta a extracao")
     args = ap.parse_args()
+
+    # De quem sao os ZIPs, antes de tudo. Na tela isso e uma pergunta; aqui, ao
+    # menos, sai impresso antes de gravar qualquer arquivo.
+    emp = identificar_empresa(args.origem, args.de, args.ate)
+    if emp.get("ok"):
+        print("=" * 70, flush=True)
+        for e in emp["empresas"]:
+            print(f"Empregador: {e['cnpj_fmt']}  ({e['eventos']} evento(s), "
+                  f"por {emp['fonte']})", flush=True)
+        if len(emp["empresas"]) > 1:
+            print("[ATENCAO] os ZIPs tem mais de um CNPJ.", flush=True)
+        if emp.get("estabelecimentos"):
+            print("Estabelecimentos: " + ", ".join(emp["estabelecimentos"]), flush=True)
+        if emp.get("assinante", {}).get("nome"):
+            print(f"Assinado por: {emp['assinante']['nome']} "
+                  f"{emp['assinante'].get('cnpj_fmt','')} (pode ser o contador)", flush=True)
+
+    # Pasta de trabalho com sobra da rodada anterior nao entra calada no meio da
+    # nova: ou se manda apagar (--limpar), ou nao comeca.
+    if not args.listar:
+        cheias = [p for p in pastas_de_trabalho(destino=args.destino) if p["qtd"]]
+        if cheias and not args.limpar:
+            print("[ABORTADO] pasta de trabalho com arquivo:", flush=True)
+            for p in cheias:
+                print(f"  {p['pasta']}  ({p['qtd']} arquivo(s))", flush=True)
+            print("Esvazie a mao ou rode de novo com --limpar.", flush=True)
+            sys.exit(1)
+        if cheias:
+            r = limpar_pastas(destino=args.destino)
+            print(f"Pastas de trabalho esvaziadas: {r['apagados']} arquivo(s) apagado(s).",
+                  flush=True)
+            for e in r["erros"]:
+                print(f"[ERRO] {e}", flush=True)
+            if not r["ok"]:
+                sys.exit(1)
 
     querer = normalizar_layouts(args.layouts)
     if args.preset:
