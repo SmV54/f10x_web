@@ -7696,6 +7696,8 @@ VR_FERIAS_PROP = 49    # FERIAS PROPORCIONAIS
 VR_FERIAS_AVISO= 44    # FERIAS RESCISAO AVISO PREVIO
 VR_TERCO_FERIAS= 42    # 1/3 FERIAS (sobre 43 + 44 + 49)
 VR_AVISO_IND   = 61    # AVISO PREVIO (indenizado)
+VR_ART_479     = 63    # ART 479 DA CLT  — provento (empregador rompe o contrato a termo)
+VR_ART_480     = 64    # ART 480 DA CLT  — desconto (empregado rompe o contrato a termo)
 VR_INSS        = 101   # INSS (saldo)
 VR_INSS_13     = 104   # INSS 13.SAL. RESC.
 VR_IRRF        = 120   # IRRF
@@ -8167,6 +8169,39 @@ def api_calc_rescisao_calcular():
             from datetime import timedelta as _td
             dt_proj = dt_resc + _td(days=dias_aviso)
 
+        # ── Rescisão ANTECIPADA de contrato a termo (motivos 03 e 04) ──
+        # Art. 481: havendo cláusula assecuratória do direito recíproco de
+        # rescisão, valem as regras do prazo indeterminado — aviso prévio e multa
+        # de 40% —, e NÃO se aplica o art. 479/480. O contrato guarda a cláusula
+        # em ref3 (1 = tem).
+        # Sem cláusula:
+        #   art. 479 — o empregador paga METADE da remuneração dos dias que
+        #              faltavam até o termo (verba 63, provento);
+        #   art. 480 — o empregado indeniza o empregador, e o §1º limita essa
+        #              indenização à do art. 479, ou seja, o mesmo valor
+        #              (verba 64, desconto).
+        art479 = art480 = 0
+        dias_faltantes = 0
+        clau_assec = False
+        if motivo in ("03", "04"):
+            try:
+                _ct = (supabase.table("tab_eventos").select("data1f, ref3")
+                       .eq("id_empresa", id_empresa).eq("matricula", mat)
+                       .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                       .order("id", desc=True).limit(1).execute().data) or []
+                if _ct:
+                    clau_assec = str(_ct[0].get("ref3") or "0").strip() == "1"
+                    dt_fim_ct = _dparse(_ct[0].get("data1f"))
+                    if dt_fim_ct and dt_fim_ct > dt_resc and not clau_assec:
+                        dias_faltantes = (dt_fim_ct - dt_resc).days
+                        _metade = round(sal_mes / 30 * dias_faltantes / 2)
+                        if motivo == "03":
+                            art479 = _metade
+                        else:
+                            art480 = _metade
+            except Exception as _e_ct:
+                print(f"[rescisao] art.479/480 mat={mat}: {_e_ct}")
+
         # ── Proventos ──
         # Saldo de salário pela convenção do mês comercial: o divisor é sempre 30,
         # então o mês de 31 dias trabalhado inteiro paga 30/30 (salário cheio) —
@@ -8309,8 +8344,10 @@ def api_calc_rescisao_calcular():
         g_irrf_13    = 0 if _enc0 else irrf_13
         g_fgts_val   = 0 if _enc0 else fgts_val
 
-        total_prov = saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
-        total_desc = g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
+        total_prov = (saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
+                      + art479)
+        total_desc = (g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
+                      + art480)
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -8337,6 +8374,8 @@ def api_calc_rescisao_calcular():
         if fer_venc:  recs.append({**base_mov, "cod_verba": VR_FERIAS_VENC,  "qtd": venc_qtd, "valor": fer_venc})
         if fer_prop:  recs.append({**base_mov, "cod_verba": VR_FERIAS_PROP,  "qtd": avos_fer, "valor": fer_prop})
         if terco_fer: recs.append({**base_mov, "cod_verba": VR_TERCO_FERIAS, "qtd": 0,        "valor": terco_fer})
+        if art479:    recs.append({**base_mov, "cod_verba": VR_ART_479,      "qtd": dias_faltantes, "valor": art479})
+        if art480:    recs.append({**base_mov, "cod_verba": VR_ART_480,      "qtd": dias_faltantes, "valor": art480})
         if g_inss_saldo:recs.append({**base_mov, "cod_verba": VR_INSS,       "qtd": 0, "valor": g_inss_saldo})
         if g_inss_13: recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": g_inss_13})
         if g_irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,       "qtd": 0, "valor": g_irrf_saldo})
@@ -8389,6 +8428,8 @@ def api_calc_rescisao_calcular():
             "avos_fer": avos_fer, "fer_prop": fer_prop,
             "venc_qtd": venc_qtd, "fer_venc": fer_venc, "terco_fer": terco_fer,
             "venc_det": venc_det,
+            "art479": art479, "art480": art480,
+            "dias_faltantes": dias_faltantes, "clau_assec": clau_assec,
             "venc_estimado": venc_estimado,
             "venc_periodos": [(x.strftime("%d/%m/%Y"), y.strftime("%d/%m/%Y"))
                               for x, y in venc_periodos],
@@ -8641,6 +8682,39 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     f"(Vencidas {_B(r['fer_venc'])} + Proporcionais {_B(r['fer_prop'])})"
                     f" ÷ 3 = <b>{_B(r['terco_fer'])}</b>",
                 ]))
+            # 0006C — Contrato a termo rompido antes do fim (art. 479 / 480)
+            if r.get("motivo") in ("03", "04"):
+                _dias_f = int(r.get("dias_faltantes") or 0)
+                if r.get("clau_assec"):
+                    e.append(_etapa("ETAPA 3067 - CONTRATO A TERMO ROMPIDO ANTES DO FIM", [
+                        "O contrato tem <b>cláusula assecuratória do direito recíproco de "
+                        "rescisão</b>.",
+                        "Art. 481 da CLT: valem as regras do contrato por prazo indeterminado "
+                        "&#8212; aviso prévio e multa de FGTS.",
+                        "<b>Não</b> se aplica a indenização do art. 479/480.",
+                    ]))
+                elif r.get("art479"):
+                    e.append(_etapa("ETAPA 3067 - INDENIZACAO DO ART. 479 DA CLT", [
+                        "Sem cláusula assecuratória, e quem rompeu foi o <b>empregador</b>.",
+                        f"Faltavam <b>{_dias_f} dia(s)</b> para o termo do contrato.",
+                        f"Salário {_B(r['sal_mes'])} &#247; 30 &#215; {_dias_f} dia(s) "
+                        f"&#247; 2 = <b>{_B(r['art479'])}</b> (verba {VR_ART_479:04d})",
+                        "Verba indenizatória: <b>não</b> entra nas bases de INSS, IRRF nem FGTS.",
+                    ]))
+                elif r.get("art480"):
+                    e.append(_etapa("ETAPA 3067 - INDENIZACAO DO ART. 480 DA CLT", [
+                        "Sem cláusula assecuratória, e quem rompeu foi o <b>empregado</b>.",
+                        f"Faltavam <b>{_dias_f} dia(s)</b> para o termo do contrato.",
+                        f"Salário {_B(r['sal_mes'])} &#247; 30 &#215; {_dias_f} dia(s) "
+                        f"&#247; 2 = <b>{_B(r['art480'])}</b> DESCONTADO (verba {VR_ART_480:04d})",
+                        "O §1º do art. 480 limita a indenização à do art. 479 &#8212; por isso "
+                        "o mesmo valor.",
+                    ]))
+                else:
+                    e.append(_etapa("ETAPA 3067 - CONTRATO A TERMO ROMPIDO ANTES DO FIM", [],
+                                    na="não foi encontrado contrato com data de término "
+                                       "posterior à rescisão — nada a indenizar"))
+
             # 0006B — Verbas manuais lançadas
             det_man = r.get("manuais_det") or []
             if det_man:
@@ -8773,6 +8847,8 @@ _TRCT_VERBAS = {
     44:  ("Férias sobre o Aviso Prévio",             "P"),
     49:  ("Férias Proporcionais",                    "P"),
     61:  ("Aviso Prévio Indenizado",                 "P"),
+    63:  ("Indenização do Art. 479 da CLT",          "P"),
+    64:  ("Indenização do Art. 480 da CLT",          "D"),
     101: ("INSS sobre o Saldo de Salário",           "D"),
     104: ("INSS sobre o 13º Salário",                "D"),
     120: ("IRRF sobre a Rescisão",                   "D"),
