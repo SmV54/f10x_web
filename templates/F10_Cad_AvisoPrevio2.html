@@ -260,7 +260,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
     </div>
 
-    {# ── PRAZO ── dois avisos prévio distintos ── #}
+    {# ── PRAZO ── dois avisos prévio distintos ──
+       Contrato a termo não tem aviso prévio: o contrato acaba no prazo ou é
+       antecipado com a indenização do art. 479/480. Mostrar "30 dias" aqui
+       seria anunciar um direito que não existe nesta rescisão. #}
+    {% if cond_especial != 'T' %}
     <div class="pref-card" id="card-prazo">
         <div class="pref-secao-titulo"><span>Aviso Prévio</span></div>
         <div class="prazo-body">
@@ -291,8 +295,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
         </div>
     </div>
+    {% endif %}
 
-    {# ── TIPO ── #}
+    {# ── TIPO ── (mesma razão: some no contrato a termo) #}
+    {% if cond_especial != 'T' %}
     <div class="pref-card" id="card-tipo">
         <div class="pref-secao-titulo"><span>Parâmetros</span></div>
 
@@ -307,9 +313,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
 
     </div><!-- /pref-card -->
+    {% endif %}
 
     {# ── DATAS ── #}
     <div class="pref-card" id="card-datas">
+        {% if cond_especial == 'T' %}
+        <div class="pref-secao-titulo"><span>Contrato por Prazo Determinado</span></div>
+        <div class="datas-grid">
+            <div class="data-item">
+                <div class="data-lbl">Data da Rescisão</div>
+                <div class="data-val accent">{{ data_aviso_fmt }}</div>
+            </div>
+        </div>
+        <div style="margin-top:10px;padding:9px 13px;background:#eff6ff;border:1px solid #bfdbfe;
+                    border-radius:8px;font-size:12.5px;color:#1e40af;line-height:1.5;">
+            Contrato a termo <strong>não tem aviso prévio</strong>: ele acaba no prazo ou é
+            rompido antes, com a indenização do art. 479/480. Na tela da rescisão os motivos
+            ficam limitados a 03, 04 e 06.
+        </div>
+        {% else %}
         <div class="pref-secao-titulo"><span>Período do Aviso</span></div>
         <div class="datas-grid">
             <div class="data-item">
@@ -325,6 +347,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="data-val accent" id="txt-fim">{{ data_fim_fmt }}</div>
             </div>
         </div>
+        {% endif %}
     </div>
 
     <form method="POST" action="/cad_aviso_previo2?mat={{ funcionario.matricula }}&data_aviso={{ data_aviso }}&tipo_aviso={{ tipo_aviso }}&quem_aviso={{ quem_aviso }}&cond_especial={{ cond_especial }}" id="frm-aviso">
@@ -386,15 +409,19 @@ function isoDate(d) {
 }
 
 function recalcular() {
-    var tipo = document.querySelector('input[name="tipo_aviso"]:checked').value;
-    document.getElementById('inp-tipo').value = tipo;
+    // O tipo aqui e um input HIDDEN (a escolha foi feita no passo 1), nao um
+    // radio: o seletor ':checked' nao casava com nada e a funcao morria na
+    // primeira linha a cada carga da tela.
+    var ini = document.getElementById('txt-inicio');
+    var fim = document.getElementById('txt-fim');
+    if (!ini || !fim) return;          // contrato a termo: nao ha periodo de aviso
 
     var dIni = addDays(DATA_AVISO, 1);
     var dFim = addDays(DATA_AVISO, PRAZO);
 
-    document.getElementById('txt-inicio').textContent = fmtDate(dIni);
-    document.getElementById('txt-fim').textContent    = fmtDate(dFim);
-    document.getElementById('inp-data-fim').value     = isoDate(dFim);
+    ini.textContent = fmtDate(dIni);
+    fim.textContent = fmtDate(dFim);
+    document.getElementById('inp-data-fim').value = isoDate(dFim);
 }
 
 document.addEventListener('DOMContentLoaded', recalcular);
@@ -439,27 +466,32 @@ function iniciarTour() {
                     side: 'bottom', align: 'start',
                 }
             },
-            {
+            // Contrato a termo nao tem prazo nem tipo de aviso: esses dois cards
+            // nao existem na tela, e um passo apontando para elemento ausente
+            // trava o tour.
+            ...(!!document.querySelector('#card-prazo') ? [{
                 element: '#card-prazo',
                 popover: {
                     title: '⏱️ Prazos do Aviso Prévio',
                     description: '1º Aviso Prévio: 30 dias (ou 15 dias em Acordo) — trabalhado ou indenizado. 2º Aviso (Lei 12.506/2011): dias calculados pelo tempo de serviço, sempre convertido em dinheiro como verba separada.',
                     side: 'bottom', align: 'start',
                 }
-            },
-            {
+            }] : []),
+            ...(!!document.querySelector('#card-tipo') ? [{
                 element: '#card-tipo',
                 popover: {
                     title: '🔀 Trabalhado / Indenizado',
                     description: 'Confirma o tipo do 1º aviso prévio. Se Trabalhado, o funcionário segue prestando serviço. Se Indenizado, é dispensado e recebe os dias em dinheiro.',
                     side: 'bottom', align: 'start',
                 }
-            },
+            }] : []),
             {
                 element: '#card-datas',
                 popover: {
-                    title: '📅 Período do Aviso',
-                    description: 'Data do aviso, início do cumprimento (dia seguinte) e data de desligamento calculada com base no prazo do 1º aviso prévio.',
+                    title: COND === 'T' ? '📅 Contrato por Prazo Determinado' : '📅 Período do Aviso',
+                    description: COND === 'T'
+                        ? 'Data em que o contrato a termo se encerra ou é rompido. Não há período de aviso prévio a cumprir.'
+                        : 'Data do aviso, início do cumprimento (dia seguinte) e data de desligamento calculada com base no prazo do 1º aviso prévio.',
                     side: 'top', align: 'start',
                 }
             },
