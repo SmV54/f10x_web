@@ -421,6 +421,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
         </div>
 
+        {# Explica por que os itens somem quando o contrato chega ao termo #}
+        <div id="nota-fim-contrato" style="display:none;margin-top:4px;padding:9px 13px;
+             background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;
+             font-size:12.5px;color:#1e40af;line-height:1.5;"></div>
+
     </div><!-- /pref-card -->
 
     <div class="rodape">
@@ -445,6 +450,8 @@ const FOLHA_YM   = '{{ folha_ym }}';   // "YYYY-MM"
 const MAT        = '{{ funcionario.matricula if funcionario else "" }}';
 // Contrato por prazo determinado lancado (tab_eventos op1=1/op2=167)
 const TEM_CONTRATO = {{ 'true' if tem_contrato else 'false' }};
+const CONTRATO_FIM = '{{ contrato_fim }}';   // "AAAA-MM-DD" do fim do contrato
+const CONTRATO_FMT = '{{ contrato_fmt }}';   // "DD/MM/AAAA" para mostrar
 const DTADM      = '{{ funcionario.dtadm_fmt if funcionario else "" }}'; // DD/MM/AAAA
 const ANOS_SERV  = {{ funcionario.anos if funcionario else 0 }};
 
@@ -530,7 +537,29 @@ function aplicarCond() {
     var rowTipo    = document.getElementById('row-tipo');
     if (!rowTipo) return;
     rowTipo.style.display = algumaCond ? 'none' : '';
+
+    // Contrato que chega ao FIM do prazo: ninguem "deu" aviso, o contrato
+    // simplesmente acabou. O item 3 sai. Na ANTECIPACAO ele continua valendo,
+    // porque quem rompeu define o motivo (03 empregador x 04 empregado) e a
+    // indenizacao do art. 479 ou 480.
+    var rowQuem = document.getElementById('row-quem');
+    var nota    = document.getElementById('nota-fim-contrato');
+    if (rowQuem) {
+        rowQuem.style.display = noFimDoContrato() ? 'none' : '';
+        if (nota) {
+            nota.style.display = noFimDoContrato() ? 'block' : 'none';
+            nota.innerHTML = 'Rescisão no <strong>término do contrato</strong> ('
+                           + CONTRATO_FMT + '): não há aviso prévio nem quem o tenha dado.';
+        }
+    }
     renumerar();
+}
+
+function noFimDoContrato() {
+    var ct = document.getElementById('cond_T');
+    if (!ct || !ct.checked || !CONTRATO_FIM) return false;
+    var el = document.getElementById('data_aviso');
+    return !!el && el.value === CONTRATO_FIM;
 }
 
 function renumerar() {
@@ -546,7 +575,12 @@ function renumerar() {
 
 document.addEventListener('DOMContentLoaded', function() {
     var el = document.getElementById('data_aviso');
-    if (el) el.addEventListener('change', validarData);
+    if (el) {
+        el.addEventListener('change', validarData);
+        // A data decide se e termino do contrato ou antecipacao: reavalia a tela.
+        el.addEventListener('change', aplicarCond);
+        el.addEventListener('input',  aplicarCond);
+    }
     validarData();
     atualizarAP1();
     document.querySelectorAll('input[name="quem_aviso"]').forEach(function(r) {

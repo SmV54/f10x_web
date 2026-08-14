@@ -5507,17 +5507,25 @@ def cad_aviso_previo():
     # Contrato por prazo determinado lançado (op1=1/op2=167). Sem ele não faz
     # sentido marcar "Contrato Temporário" na condição especial: a rescisão
     # antecipada e o término do contrato se apoiam na data de fim registrada.
-    tem_contrato = False
+    tem_contrato   = False
+    contrato_fim   = ""      # AAAA-MM-DD, para o JS comparar com a data do aviso
+    contrato_fmt   = ""      # DD/MM/AAAA, para mostrar na tela
     if funcionario:
         try:
+            # Prorrogação grava um novo evento; o mais recente manda na data de fim.
             r_ct = (supabase.table("tab_eventos")
-                    .select("id")
+                    .select("id, data1f")
                     .eq("id_empresa", _get_id_empresa())
                     .eq("matricula", mat_int)
                     .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                    .order("id", desc=True)
                     .limit(1)
                     .execute())
             tem_contrato = bool(r_ct.data)
+            _f = str((r_ct.data or [{}])[0].get("data1f") or "")
+            if len(_f) == 8 and _f.isdigit():
+                contrato_fim = f"{_f[:4]}-{_f[4:6]}-{_f[6:]}"
+                contrato_fmt = f"{_f[6:]}/{_f[4:6]}/{_f[:4]}"
         except Exception:
             pass
 
@@ -5539,6 +5547,8 @@ def cad_aviso_previo():
         funcionario=funcionario,
         ja_tem_aviso=ja_tem_aviso,
         tem_contrato=tem_contrato,
+        contrato_fim=contrato_fim,
+        contrato_fmt=contrato_fmt,
         erro=request.args.get("erro", ""),
         mat_raw=mat_raw,
         data_hoje=p_data_aviso,
@@ -5640,14 +5650,22 @@ def cad_aviso_previo2():
         if cond_especial == "T":
             # A tela já barra, mas a gravação não pode depender do JavaScript:
             # sem o contrato lançado não há data de término em que se apoiar.
-            _tem_ct = False
+            _ct_fim = ""
             try:
-                _tem_ct = bool((supabase.table("tab_eventos").select("id")
-                                .eq("id_empresa", id_empresa).eq("matricula", mat_int)
-                                .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
-                                .limit(1).execute().data) or [])
+                _ct = (supabase.table("tab_eventos").select("id, data1f")
+                       .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                       .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                       .order("id", desc=True).limit(1).execute().data) or []
+                _tem_ct = bool(_ct)
+                _ct_fim = str((_ct or [{}])[0].get("data1f") or "")
             except Exception:
                 _tem_ct = False
+            # Contrato que chega ao termo: ninguém deu aviso, o contrato acabou.
+            # A tela esconde o item 3; aqui a descrição acompanha, senão ficaria
+            # gravado "Empresa" numa rescisão em que nenhuma parte avisou nada.
+            if _tem_ct and _ct_fim and data_aviso_int and int(_ct_fim) == data_aviso_int:
+                quem_aviso = "X"
+                quem_map["X"] = "Término do Contrato"
             if not _tem_ct:
                 gravar_log("AVISO-ERRO", "Contrato Temporario sem contrato lancado",
                            matricula=mat_int)
@@ -5753,7 +5771,9 @@ def cad_aviso_previo2_ok():
         except Exception:
             return s_iso
 
-    quem_desc = {"E": "Empresa", "F": "Funcionário", "A": "Acordo"}
+    # "X" = contrato a termo que chegou ao fim: ninguém deu o aviso.
+    quem_desc = {"E": "Empresa", "F": "Funcionário", "A": "Acordo",
+                 "X": "Término do Contrato"}
     tipo_desc = {"T": "Trabalhado", "I": "Indenizado"}
 
     return render_template(
