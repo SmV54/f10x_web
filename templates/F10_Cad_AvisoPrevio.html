@@ -479,7 +479,7 @@ function processar() {
     var cond     = condChk ? condChk.value : 'N';
     if (cond === 'T' && !TEM_CONTRATO) {
         f10Alert('Marque o Contrato Temporário somente depois de lançar o '
-               + '<strong>Contrato por Prazo Determinado</strong> deste funcionário.',
+               + 'Contrato por Prazo Determinado deste funcionário.',
                  { titulo: '⚠ Contrato não encontrado', tipo: 'aviso', okText: 'Entendi' });
         return;
     }
@@ -518,7 +518,7 @@ function condChange(chk) {
         chk.checked = false;
         aplicarCond();
         f10Alert(
-            'Este funcionário não tem <strong>Contrato por Prazo Determinado</strong> lançado. '
+            'Este funcionário não tem Contrato por Prazo Determinado lançado. '
           + 'Cadastre o contrato antes de marcar esta condição — é a data de término dele que '
           + 'define se a rescisão é o fim do contrato ou uma antecipação.',
             { titulo: '⚠ Contrato não encontrado', tipo: 'aviso', okText: 'Entendi' }
@@ -591,8 +591,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (ct && ct.checked && !TEM_CONTRATO) ct.checked = false;
     aplicarCond();
     {% if erro == 'sem_contrato' %}
-    f10Alert('A gravação foi cancelada: este funcionário não tem <strong>Contrato por Prazo '
-           + 'Determinado</strong> lançado, e sem ele não há data de término em que a rescisão '
+    f10Alert('A gravação foi cancelada: este funcionário não tem Contrato por Prazo '
+           + 'Determinado lançado, e sem ele não há data de término em que a rescisão '
            + 'possa se apoiar.',
              { titulo: '⚠ Contrato não encontrado', tipo: 'aviso', okText: 'Entendi' });
     {% endif %}
