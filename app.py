@@ -535,9 +535,39 @@ def _aplicar_cert_esocial(empresa):
             empresa["_tra_nrinsc"] = tra_nr
             return empresa
 
-    # Fallback: certificado próprio, transmissor = próprio empregador (atual)
+    # FILIAL HERDA O CERTIFICADO DA MATRIZ da mesma raiz (mesmo cliente).
+    # O eSocial tem UM empregador por RAIZ de CNPJ — os estabelecimentos são
+    # lotações dentro dele —, e quem assina por todos é o e-CNPJ da MATRIZ
+    # (ordem 0001). Sem isto o usuário teria de subir o mesmo .pfx em cada
+    # filial; pior, subir o da própria filial parecia o certo e a remessa
+    # voltava recusada com "Assinante inválido" (ver _conferir_assinante_esocial).
+    # Só herda se a matriz TIVER certificado: sem ele, mantém o que já havia e
+    # deixa a conferência explicar o que falta.
+    if len(cnpj_emp_raw) == 14 and cnpj_emp_raw[8:12] != "0001" and empresa.get("id_cliente"):
+        try:
+            raiz = cnpj_emp_raw[:8]
+            for mz in (supabase.table("tab_empresa")
+                       .select("cnpj, cert_cnpj, cert_pfx_b64, cert_senha_enc, cert_validade")
+                       .eq("id_cliente", empresa["id_cliente"])
+                       .execute().data or []):
+                mz_cnpj = re.sub(r"\D", "", mz.get("cnpj") or "")
+                if (len(mz_cnpj) == 14 and mz_cnpj[:8] == raiz and mz_cnpj[8:12] == "0001"
+                        and mz.get("cert_pfx_b64") and mz.get("cert_senha_enc")):
+                    empresa["cert_pfx_b64"]   = mz["cert_pfx_b64"]
+                    empresa["cert_senha_enc"] = mz["cert_senha_enc"]
+                    empresa["cert_cnpj"]      = re.sub(r"\D", "", mz.get("cert_cnpj") or "") or mz_cnpj
+                    if mz.get("cert_validade"):
+                        empresa["cert_validade"] = mz["cert_validade"]
+                    empresa["_cert_herdado"]  = mz_cnpj      # só para log/diagnóstico
+                    break
+        except Exception as e:
+            print(f"[cert] não deu para herdar o certificado da matriz: {e}")
+
+    # Transmissor: o próprio empregador. Quando a filial herdou o certificado da
+    # matriz, quem transmite é a MATRIZ — é o CNPJ dono do certificado, e é essa
+    # a combinação que já funciona nas empresas com remessa aceita.
     empresa["_tra_tpinsc"] = "1"
-    empresa["_tra_nrinsc"] = cnpj_emp_raw
+    empresa["_tra_nrinsc"] = empresa.get("_cert_herdado") or cnpj_emp_raw
     return empresa
 
 
