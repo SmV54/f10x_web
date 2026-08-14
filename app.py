@@ -23147,6 +23147,25 @@ def api_fap_gravar():
 
 
 # =========================================================
+# FAVICON — icone da aba do navegador
+# =========================================================
+@app.route("/favicon.ico")
+def favicon():
+    """Todo navegador pede /favicon.ico sozinho, sem ninguem mandar. Servir o
+    arquivo aqui evita o 404 a cada visita e poe o "10" do logo na aba."""
+    return send_file(os.path.join(app.root_path, "static", "favicon.ico"),
+                     mimetype="image/vnd.microsoft.icon", max_age=60 * 60 * 24 * 30)
+
+
+@app.route("/apple-touch-icon.png")
+@app.route("/apple-touch-icon-precomposed.png")
+def apple_touch_icon():
+    """iPhone/iPad pedem estes dois caminhos ao salvar o site na tela inicial."""
+    return send_file(os.path.join(app.root_path, "static", "favicon-180.png"),
+                     mimetype="image/png", max_age=60 * 60 * 24 * 30)
+
+
+# =========================================================
 # HANDLER DE ERRO GLOBAL — retorna JSON em vez de HTML
 # =========================================================
 @app.errorhandler(500)
@@ -23158,6 +23177,13 @@ def handle_500(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    # 404, 405, 413... sao HTTPException e NAO sao erro do servidor. Sem esta
+    # saida, qualquer URL inexistente virava 500 com traceback no log — o que
+    # acontecia a cada visita, porque o navegador pede /favicon.ico sozinho.
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return jsonify({"ok": False, "msg": e.description}), e.code
+
     import traceback
     tb = traceback.format_exc()
     print("=== EXCEÇÃO NÃO TRATADA ===\n", tb)
