@@ -299,7 +299,13 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
             <div class="topo-versao">Versão: {{ versao }}</div>
         </div>
+        {# Vindo da tela de calculo da rescisao, o Voltar devolve para la — e de
+           la que se recalcula depois de mexer nas verbas. #}
+        {% if volta == 'calc_rescisao' %}
+        <button class="btn-voltar-topo" onclick="window.location.href='/calc_rescisao'">&#8592; Calcular Rescisão</button>
+        {% else %}
         <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+        {% endif %}
     </div>
 </div>
 

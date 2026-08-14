@@ -48,7 +48,11 @@ tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #f8fafc; }
 .vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
 
-.barra-acao { display: flex; justify-content: center; margin: 20px 0; }
+.barra-acao { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
+.btn-movresc { display: inline-flex; align-items: center; gap: 6px; background: #fff; color: #1e3a5f;
+               border: 2px solid #1e3a5f; font-size: 14px; font-weight: 700; padding: 10px 20px;
+               border-radius: 10px; cursor: pointer; text-decoration: none; transition: .15s; }
+.btn-movresc:hover { background: #1e3a5f; color: #fff; }
 .btn-calcular { background: #166534; color: #fff; border: none; font-size: 15px; font-weight: 700; padding: 12px 30px; border-radius: 10px; cursor: pointer; transition: .15s; }
 .btn-calcular:hover { background: #14532d; }
 .btn-calcular:disabled { opacity: .5; cursor: default; }
@@ -144,6 +148,16 @@ tbody tr:hover { background: #f8fafc; }
     {% if not modo_trct and not modo_memoria %}
     <div class="barra-acao">
         <button class="btn-calcular" id="btnCalc" onclick="calcular()">🖩 Calcular Rescisão</button>
+        {# Mesma tela do movimento, forcando folha_tipo R e listando so os
+           desligados do mes. Lancar, alterar ou excluir por la marca a rescisao
+           como PENDENTE — por isso a volta cai direto aqui, para recalcular. #}
+        <a class="btn-movresc" href="/cad_mov_rescisao?volta=calc_rescisao">
+            📝 Movimento Mês Rescisão
+        </a>
+    </div>
+    <div style="text-align:center;font-size:12px;color:#64748b;margin:-8px 0 18px;">
+        Lançou, alterou ou excluiu uma verba? Clique em <strong>Calcular Rescisão</strong>
+        de novo para que ela entre no cálculo.
     </div>
     {% endif %}
 

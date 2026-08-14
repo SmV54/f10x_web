@@ -18757,6 +18757,7 @@ def cad_mov_rescisao():
         folha_tipo_ativa="R",
         funcionarios=funcionarios,
         verbas=verbas,
+        volta=request.args.get("volta", ""),
     )
 
 
