@@ -270,6 +270,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
     {% endif %}
 
+    {% if erro == 'motivo_contrato' %}
+    <div class="alerta-sem-aviso">
+        <strong>Motivo incompatível com o contrato a termo</strong> — o aviso prévio deste
+        funcionário foi registrado como <strong>Contrato Temporário</strong>, então o motivo
+        precisa ser 03, 04 ou 06. Gravar outro faria a rescisão pagar multa de FGTS que não
+        é devida no término de um contrato por prazo determinado.
+    </div>
+    {% endif %}
+
     {# ── FORMULÁRIO ── #}
     <div class="card">
         <div class="card-titulo">Dados da Demissão</div>
@@ -287,9 +296,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <select class="motivo-select" id="motivo_desligamento" name="motivo_desligamento" required>
                         <option value="">— Selecione o motivo —</option>
                         {% for m in motivos %}
-                        <option value="{{ m.codigo }}">{{ m.codigo }} — {{ m.texto }}</option>
+                        <option value="{{ m.codigo }}"
+                            {% if motivo_sugerido and m.codigo == motivo_sugerido %}selected{% endif %}>
+                            {{ m.codigo }} — {{ m.texto }}</option>
                         {% endfor %}
                     </select>
+
+                    {% if motivo_nota %}
+                    <div style="margin-top:8px;padding:9px 13px;background:#eff6ff;
+                                border:1px solid #bfdbfe;border-radius:8px;
+                                font-size:12.5px;color:#1e40af;line-height:1.5;">
+                        {{ motivo_nota|safe }}
+                    </div>
+                    {% endif %}
 
                     <div class="alerta-justa-causa" id="alertaJustaCausa">
                         <strong>⚠️ Atenção: demissão por justa causa é rara.</strong>

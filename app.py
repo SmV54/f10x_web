@@ -7121,6 +7121,23 @@ def cad_rescisao():
         if anomes_atual and anomes_data != anomes_atual:
             return redirect(f"/cad_rescisao?mat={mat_int}&erro=data_fora_folha")
 
+        # Contrato a termo no aviso prévio só combina com os motivos 03, 04 e 06.
+        # A tela já restringe a lista, mas gravar motivo 02 aqui pagaria multa de
+        # 40% de FGTS num término de contrato — o erro mais caro deste fluxo.
+        if motivo_codigo and motivo_codigo not in ("03", "04", "06"):
+            try:
+                _av = (supabase.table("tab_eventos").select("campotxt3")
+                       .eq("id_empresa", _get_id_empresa()).eq("matricula", mat_int)
+                       .eq("op1", 9).order("data1i", desc=True).limit(1)
+                       .execute().data) or []
+                if (_av or [{}])[0].get("campotxt3") == "Contrato Temporário":
+                    gravar_log("RESCISAO-ERRO",
+                               f"motivo {motivo_codigo} incompativel com contrato a termo",
+                               matricula=mat_int)
+                    return redirect(f"/cad_rescisao?mat={mat_int}&erro=motivo_contrato")
+            except Exception:
+                pass
+
         # Busca nome para o log
         nome_func = ""
         try:
@@ -7184,7 +7201,7 @@ def cad_rescisao():
     data_demissao_sugerida = ""
     try:
         r_av = (supabase.table("tab_eventos")
-                .select("data1i, campotxt1, campotxt2, ref1, ref2")
+                .select("data1i, campotxt1, campotxt2, campotxt3, ref1, ref2")
                 .eq("id_empresa", id_empresa)
                 .eq("matricula", mat_int)
                 .eq("op1", 9)
@@ -7201,6 +7218,7 @@ def cad_rescisao():
                 "data1i_fmt": data1i_fmt,
                 "campotxt1":  av.get("campotxt1") or "",
                 "campotxt2":  av.get("campotxt2") or "",
+                "campotxt3":  av.get("campotxt3") or "",
                 "ref1":       ref1,
                 "ref2":       ref2,
             }
@@ -7235,6 +7253,48 @@ def cad_rescisao():
     except Exception:
         pass
 
+    # ── O aviso prévio já disse que rescisão é esta; o motivo tem de acompanhar ──
+    # Contrato a termo é o caso fechado: só cabem 03, 04 e 06, e a lista é
+    # RESTRINGIDA. Nas demais condições a lista continua inteira e o sistema
+    # apenas SUGERE — justa causa e falecimento têm motivo próprio, e um aviso
+    # comum pode acabar em rescisão indireta ou culpa recíproca, que são
+    # escolhas legítimas do usuário.
+    motivo_sugerido = ""
+    motivo_nota     = ""
+    _cond = (aviso or {}).get("campotxt3") or ""
+    _quem = (aviso or {}).get("campotxt2") or ""
+
+    if _cond == "Contrato Temporário":
+        _no_termo = (_quem == "Término do Contrato")
+        if not _no_termo:
+            # Registros anteriores a 14/08/2026 não gravavam "Término do Contrato":
+            # compara a data do aviso com o fim do contrato para descobrir.
+            try:
+                _ct = (supabase.table("tab_eventos").select("data1f")
+                       .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                       .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                       .order("id", desc=True).limit(1).execute().data) or []
+                _fim = str((_ct or [{}])[0].get("data1f") or "")
+                _no_termo = bool(_fim) and _fim == str(av.get("data1i") or "")
+            except Exception:
+                pass
+        motivos = [m for m in motivos if str(m.get("codigo")) in ("03", "04", "06")]
+        if _no_termo:
+            motivo_sugerido = "06"
+            motivo_nota = ("O aviso prévio registrou o <b>término do contrato no prazo</b>. "
+                           "Só os motivos de contrato a termo aparecem aqui.")
+        else:
+            motivo_sugerido = "04" if _quem == "Funcionário" else "03"
+            motivo_nota = ("O aviso prévio registrou <b>contrato a termo rompido antes do fim</b>. "
+                           "Só os motivos de contrato a termo aparecem aqui — confira de quem "
+                           "partiu a iniciativa.")
+    elif _cond == "Justa Causa":
+        motivo_sugerido = "01"
+    elif _cond == "Falecimento":
+        motivo_sugerido = "10"
+    else:
+        motivo_sugerido = {"Empresa": "02", "Funcionário": "07", "Acordo": "33"}.get(_quem, "")
+
     erro = request.args.get("erro", "")
     return render_template(
         "F10_Rescisao_Gravar.html",
@@ -7246,6 +7306,8 @@ def cad_rescisao():
         sem_aviso=sem_aviso,
         data_demissao_sugerida=data_demissao_sugerida,
         motivos=motivos,
+        motivo_sugerido=motivo_sugerido,
+        motivo_nota=motivo_nota,
         mat=mat_int,
         erro=erro,
     )
