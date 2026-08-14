@@ -16108,6 +16108,35 @@ def api_funcionarios_lista():
         except Exception as e:
             print(f"[funcionarios_lista] contratos: {e}")
 
+    # Contexto aviso prévio: data de término do Contrato de Experiência (o mesmo
+    # evento op1=1/op2=167). Quem está em experiência muda a conversa — o aviso
+    # prévio pode ser dispensa antecipada ou o simples término do contrato.
+    contrato_fim = {}
+    if _contexto == "aviso_previo":
+        try:
+            _off = 0
+            while True:   # PostgREST corta em 1000 linhas por consulta
+                _ch = (supabase.table("tab_eventos")
+                       .select("id, matricula, data1f")
+                       .eq("id_empresa", id_empresa)
+                       .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                       .order("id")
+                       .range(_off, _off + 999)
+                       .execute().data or [])
+                for _e in _ch:
+                    _m = _e.get("matricula")
+                    _d = str(_e.get("data1f") or "")
+                    if _m is None or len(_d) != 8:
+                        continue
+                    # order("id") crescente: o último lido é a prorrogação mais nova
+                    contrato_fim[int(_m)] = f"{_d[6:]}/{_d[4:6]}/{_d[:4]}"
+                if len(_ch) < 1000:
+                    break
+                _off += 1000
+        except Exception as e:
+            print(f"[funcionarios_lista] contrato de experiencia: {e}")
+            contrato_fim = {}
+
     # Contexto exame médico: data do exame mais recente de cada funcionário, para
     # a última coluna da lista. Sem isso o usuário não tem como saber, na hora de
     # escolher, quem está com o periódico vencendo e quem acabou de fazer.
@@ -16204,6 +16233,7 @@ def api_funcionarios_lista():
             "pensoes":      pensoes_por_mat.get(mat_int, []),
             "exame_data":   (lambda d: f"{d[6:8]}/{d[4:6]}/{d[:4]}" if d else "")(
                                 exame_ult.get(mat_int, "")),
+            "contrato_fim": contrato_fim.get(mat_int, ""),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})
