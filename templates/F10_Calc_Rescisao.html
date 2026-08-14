@@ -151,11 +151,11 @@ tbody tr:hover { background: #f8fafc; }
         {# Mesma tela do movimento, forcando folha_tipo R e listando so os
            desligados do mes. Lancar, alterar ou excluir por la marca a rescisao
            como PENDENTE — por isso a volta cai direto aqui, para recalcular. #}
-        <a class="btn-movresc" href="/cad_mov_rescisao?volta=calc_rescisao">
+        <a class="btn-movresc" id="btnMovResc" href="/cad_mov_rescisao?volta=calc_rescisao">
             📝 Movimento Mês Rescisão
         </a>
     </div>
-    <div style="text-align:center;font-size:12px;color:#64748b;margin:-8px 0 18px;">
+    <div id="avisoMovResc" style="text-align:center;font-size:12px;color:#64748b;margin:-8px 0 18px;">
         Lançou, alterou ou excluiu uma verba? Clique em <strong>Calcular Rescisão</strong>
         de novo para que ela entre no cálculo.
     </div>
@@ -239,6 +239,16 @@ async function calcularAutomatico() {
         try { res.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {}
     }
 }
+// Sair para o movimento no meio de um calculo deixaria a rescisao pela metade:
+// o atalho (e o aviso que fala em recalcular) some enquanto roda e volta no fim,
+// em qualquer desfecho — sucesso, erro do servidor ou queda de comunicacao.
+function mostrarMovResc(mostrar) {
+    ['btnMovResc', 'avisoMovResc'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = mostrar ? '' : 'none';
+    });
+}
+
 async function calcular() {
     const btn = document.getElementById('btnCalc');
     const msg = document.getElementById('msg');
@@ -248,6 +258,7 @@ async function calcular() {
         return;
     }
     btn.disabled = true; btn.textContent = 'Calculando...';
+    mostrarMovResc(false);
     msg.innerHTML = '';
     document.getElementById('cardResult').style.display = 'none';   // esconde o Resultado enquanto (re)calcula
     try {
@@ -258,6 +269,7 @@ async function calcular() {
         if (!d.ok) {
             msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>${d.msg || 'Erro no cálculo.'}</div></div>`;
             btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
+            mostrarMovResc(true);
             return;
         }
         const body = document.getElementById('resBody');
@@ -292,9 +304,11 @@ async function calcular() {
         msg.innerHTML = `<div class="alerta alerta-ok"><span>✅</span><div><strong>${d.total} rescisão(ões)</strong> calculada(s) e gravada(s).</div></div>`;
         btn.textContent = '🖩 Recalcular';
         btn.disabled = false;
+        mostrarMovResc(true);
     } catch (e) {
         msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Erro de comunicação.</div></div>`;
         btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
+        mostrarMovResc(true);
     }
 }
 
