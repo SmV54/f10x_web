@@ -1275,6 +1275,11 @@ def menu():
     cert_validade_fmt = ""
     cert_herdado_de   = ""       # CNPJ da matriz, quando a filial herdou
     cert_eh_filial    = False    # filial SEM matriz de quem herdar
+    # Faixa dispensada no ✕: fica escondida até a próxima entrada no sistema.
+    # Em tela pequena ela cobria os cards do menu, e voltava a cada navegação.
+    # Guardado POR EMPRESA — trocar de empresa mostra de novo, porque a
+    # situação do certificado é outra. O login faz session.clear().
+    cert_oculto = (session.get("cert_banner_oculto") == session.get("id_empresa"))
     try:
         _cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
         if _cnpj_emp:
@@ -1332,10 +1337,22 @@ def menu():
         cert_validade_fmt=cert_validade_fmt,
         cert_herdado_de=cert_herdado_de,
         cert_eh_filial=cert_eh_filial,
+        cert_oculto=cert_oculto,
         eh_admin_f10=(_pode_impersonar() or bool(session.get("cpf_admin_original"))),
         mostra_admin=_pode_admin(),
         sou_titular=_sou_titular(),
     )
+
+@app.route("/api/ocultar_banner_cert", methods=["POST"])
+def api_ocultar_banner_cert():
+    """O ✕ da faixa do certificado no menu. Marca na SESSÃO, não no navegador:
+    o usuário fecha uma vez e ela não volta a cada ida e volta de tela. Some só
+    até a próxima entrada no sistema, porque o login faz session.clear()."""
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    session["cert_banner_oculto"] = session.get("id_empresa")
+    return jsonify({"ok": True})
+
 
 # =========================================================
 # COMPRAR / RENOVAR LICENCA  — mostra qtd empresas e funcionarios

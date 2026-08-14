@@ -1470,6 +1470,9 @@ function iniciarTour() {
 
 </script>
 
+{# Fechada no ✕, a faixa some até a próxima entrada no sistema: em tela pequena
+   ela cobre os cards do menu, e voltar a cada navegação atrapalhava o clique. #}
+{% if not cert_oculto %}
 {% if cert_status == 'ausente' %}
 <div class="banner-cert ausente" id="bannerCert">
     <span class="icone">📄</span>
@@ -1487,7 +1490,7 @@ function iniciarTour() {
         {% endif %}
     </span>
     <a class="btn-cert" href="/config_certificado">{% if cert_eh_filial %}Ver certificado{% else %}Enviar certificado{% endif %}</a>
-    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+    <button class="fechar" onclick="fecharBannerCert()" title="Ocultar">✕</button>
 </div>
 {% elif cert_status == 'vencido' %}
 <div class="banner-cert vencido" id="bannerCert">
@@ -1499,7 +1502,7 @@ function iniciarTour() {
         {% else %}Envie um novo certificado A1 para voltar a transmitir ao eSocial.{% endif %}
     </span>
     <a class="btn-cert" href="/config_certificado">Ativar o Novo Certificado</a>
-    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+    <button class="fechar" onclick="fecharBannerCert()" title="Ocultar">✕</button>
 </div>
 {% elif cert_status == 'vence_em' %}
 <div class="banner-cert vence" id="bannerCert">
@@ -1510,7 +1513,7 @@ function iniciarTour() {
         Providencie a renovação agora para não interromper o envio ao eSocial.
     </span>
     <a class="btn-cert" href="/config_certificado">Ativar o Novo Certificado</a>
-    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+    <button class="fechar" onclick="fecharBannerCert()" title="Ocultar">✕</button>
 </div>
 {% elif cert_herdado_de %}
 <div class="banner-cert herdado" id="bannerCert">
@@ -1522,9 +1525,21 @@ function iniciarTour() {
         estabelecimentos, então não é preciso cadastrar um aqui.
     </span>
     <a class="btn-cert" href="/config_certificado">Ver certificado</a>
-    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+    <button class="fechar" onclick="fecharBannerCert()" title="Ocultar">✕</button>
 </div>
 {% endif %}
+{% endif %}{# /cert_oculto #}
+
+<script>
+// Some da tela na hora e avisa o servidor, para nao voltar a cada navegacao.
+// A marca fica na SESSAO: reaparece so na proxima entrada no sistema (ou ao
+// trocar de empresa, que tem outra situacao de certificado).
+function fecharBannerCert() {
+    var b = document.getElementById('bannerCert');
+    if (b) b.style.display = 'none';
+    fetch('/api/ocultar_banner_cert', { method: 'POST' }).catch(function () {});
+}
+</script>
 
 {% if licenca_fmt %}
 <span class="label-licenca {{ licenca_classe }}" title="Data limite e limites contratados da licença">
