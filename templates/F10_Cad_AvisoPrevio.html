@@ -443,6 +443,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <script>
 const FOLHA_YM   = '{{ folha_ym }}';   // "YYYY-MM"
 const MAT        = '{{ funcionario.matricula if funcionario else "" }}';
+// Contrato por prazo determinado lancado (tab_eventos op1=1/op2=167)
+const TEM_CONTRATO = {{ 'true' if tem_contrato else 'false' }};
 const DTADM      = '{{ funcionario.dtadm_fmt if funcionario else "" }}'; // DD/MM/AAAA
 const ANOS_SERV  = {{ funcionario.anos if funcionario else 0 }};
 
@@ -468,6 +470,12 @@ function processar() {
     var quem     = document.querySelector('input[name="quem_aviso"]:checked').value;
     var condChk  = document.querySelector('.chk-cond:checked');
     var cond     = condChk ? condChk.value : 'N';
+    if (cond === 'T' && !TEM_CONTRATO) {
+        f10Alert('Marque o Contrato Temporário somente depois de lançar o '
+               + '<strong>Contrato por Prazo Determinado</strong> deste funcionário.',
+                 { titulo: '⚠ Contrato não encontrado', tipo: 'aviso', okText: 'Entendi' });
+        return;
+    }
     var p = new URLSearchParams();
     p.set('mat',           MAT);
     p.set('data_aviso',    dataAviso);
@@ -497,6 +505,42 @@ function condChange(chk) {
             if (c !== chk) c.checked = false;
         });
     }
+    // Contrato Temporario exige o contrato ja lancado: a data de fim dele e que
+    // define o termino ou a antecipacao. Sem contrato, nao deixa marcar.
+    if (chk.id === 'cond_T' && chk.checked && !TEM_CONTRATO) {
+        chk.checked = false;
+        aplicarCond();
+        f10Alert(
+            'Este funcionário não tem <strong>Contrato por Prazo Determinado</strong> lançado. '
+          + 'Cadastre o contrato antes de marcar esta condição — é a data de término dele que '
+          + 'define se a rescisão é o fim do contrato ou uma antecipação.',
+            { titulo: '⚠ Contrato não encontrado', tipo: 'aviso', okText: 'Entendi' }
+        );
+        return;
+    }
+    aplicarCond();
+}
+
+// Com Contrato Temporario nao existe aviso previo trabalhado ou indenizado: o
+// contrato acaba no termo (ou e antecipado, com a indenizacao do art. 479/480).
+// O item 2 sai da tela e os numeros restantes se reorganizam.
+function aplicarCond() {
+    var contrato = document.getElementById('cond_T');
+    var rowTipo  = document.getElementById('row-tipo');
+    if (!rowTipo) return;
+    rowTipo.style.display = (contrato && contrato.checked) ? 'none' : '';
+    renumerar();
+}
+
+function renumerar() {
+    var n = 0;
+    ['row-data', 'row-tipo', 'row-quem', 'row-cond'].forEach(function(id) {
+        var row = document.getElementById(id);
+        if (!row || row.style.display === 'none') return;
+        n += 1;
+        var num = row.querySelector('.opcao-num');
+        if (num) num.textContent = n;
+    });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -507,6 +551,16 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('input[name="quem_aviso"]').forEach(function(r) {
         r.addEventListener('change', atualizarAP1);
     });
+    // Estado inicial: volta da tela 2 pode chegar com Contrato Temporario marcado.
+    var ct = document.getElementById('cond_T');
+    if (ct && ct.checked && !TEM_CONTRATO) ct.checked = false;
+    aplicarCond();
+    {% if erro == 'sem_contrato' %}
+    f10Alert('A gravação foi cancelada: este funcionário não tem <strong>Contrato por Prazo '
+           + 'Determinado</strong> lançado, e sem ele não há data de término em que a rescisão '
+           + 'possa se apoiar.',
+             { titulo: '⚠ Contrato não encontrado', tipo: 'aviso', okText: 'Entendi' });
+    {% endif %}
 });
 
 function iniciarTour() {

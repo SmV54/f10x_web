@@ -5504,6 +5504,23 @@ def cad_aviso_previo():
         except Exception:
             pass
 
+    # Contrato por prazo determinado lançado (op1=1/op2=167). Sem ele não faz
+    # sentido marcar "Contrato Temporário" na condição especial: a rescisão
+    # antecipada e o término do contrato se apoiam na data de fim registrada.
+    tem_contrato = False
+    if funcionario:
+        try:
+            r_ct = (supabase.table("tab_eventos")
+                    .select("id")
+                    .eq("id_empresa", _get_id_empresa())
+                    .eq("matricula", mat_int)
+                    .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                    .limit(1)
+                    .execute())
+            tem_contrato = bool(r_ct.data)
+        except Exception:
+            pass
+
     hoje        = _date.today().strftime("%Y-%m-%d")
     anomes      = str(session.get("anomes_atual") or "")
     folha_ym    = f"{anomes[:4]}-{anomes[4:6]}" if len(anomes) == 6 else ""
@@ -5521,6 +5538,8 @@ def cad_aviso_previo():
         empresa=session.get("empresa_info", ""),
         funcionario=funcionario,
         ja_tem_aviso=ja_tem_aviso,
+        tem_contrato=tem_contrato,
+        erro=request.args.get("erro", ""),
         mat_raw=mat_raw,
         data_hoje=p_data_aviso,
         p_tipo_aviso=p_tipo_aviso,
@@ -5609,6 +5628,27 @@ def cad_aviso_previo2():
         quem_map = {"E": "Empresa", "F": "Funcionário", "A": "Acordo"}
         tipo_map = {"T": "Trabalhado", "I": "Indenizado"}
         cond_map = {"J": "Justa Causa", "T": "Contrato Temporário", "F": "Falecimento"}
+
+        # Contrato Temporário não tem aviso prévio: o contrato acaba no termo ou
+        # é antecipado (indenização do art. 479/480). A tela esconde a escolha,
+        # mas um "Indenizado" vindo de uma seleção anterior faria a rescisão
+        # pagar a verba 61 indevidamente — ver _MOTIVO_RESC.
+        if cond_especial == "T":
+            tipo_aviso_post = "T"
+            # A tela já barra, mas a gravação não pode depender do JavaScript:
+            # sem o contrato lançado não há data de término em que se apoiar.
+            _tem_ct = False
+            try:
+                _tem_ct = bool((supabase.table("tab_eventos").select("id")
+                                .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                                .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
+                                .limit(1).execute().data) or [])
+            except Exception:
+                _tem_ct = False
+            if not _tem_ct:
+                gravar_log("AVISO-ERRO", "Contrato Temporario sem contrato lancado",
+                           matricula=mat_int)
+                return redirect(f"/cad_aviso_previo?mat={mat_int}&erro=sem_contrato")
 
         campotxt1 = tipo_map.get(tipo_aviso_post, "Trabalhado")
         campotxt2 = quem_map.get(quem_aviso, "Empresa")
