@@ -864,9 +864,10 @@ document.addEventListener('DOMContentLoaded', () => {
         esconder.forEach(el => { if (el) el.style.display = 'none'; });
     }
 
-    // Contextos de seleção de 1 por vez (ex.: dependentes): esconde os controles
-    // de marcar/desmarcar todos e "selecionar visíveis" — não fazem sentido p/ 1.
-    if (ctx.ocultarSelMassa) {
+    // Contextos de seleção de 1 por vez (ex.: dependentes, aviso prévio): esconde
+    // os controles de marcar/desmarcar todos e "selecionar visíveis" — não fazem
+    // sentido para uma escolha única e só levavam ao erro no Continuar.
+    if (ctx.ocultarSelMassa || ctx.maxSel === 1) {
         [
             document.querySelector('.sel-todos-label'),
             document.getElementById('btn-sel-visiveis'),
@@ -1187,8 +1188,9 @@ function renderLista(lista) {
         return;
     }
 
-    // Auto-selecionar quando sobra exatamente 1 resultado
-    if (lista.length === 1) selectedMats.add(lista[0].matricula);
+    // Auto-selecionar quando sobra exatamente 1 resultado. Via marcar() para que
+    // numa tela de escolha unica ele SUBSTITUA quem estava marcado antes da busca.
+    if (lista.length === 1) marcar(lista[0].matricula);
 
     body.innerHTML = lista.map(f => {
         const sel = selectedMats.has(f.matricula);
@@ -1245,7 +1247,8 @@ function renderLista(lista) {
 
     // Botão "Selecionar visíveis": aparece quando busca tem texto e há 2+ resultados
     // (nunca no modo de seleção única com avanço direto)
-    if (btnSel) btnSel.style.display = (!ctx.autoAvancar && busca && lista.length > 1) ? '' : 'none';
+    const podeSelMassa = !ctx.autoAvancar && !ctx.ocultarSelMassa && ctx.maxSel !== 1;
+    if (btnSel) btnSel.style.display = (podeSelMassa && busca && lista.length > 1) ? '' : 'none';
 
     atualizarContagem();
 }
@@ -1322,15 +1325,27 @@ function toggleRow(mat) {
         return;
     }
     if (selectedMats.has(mat)) selectedMats.delete(mat);
-    else selectedMats.add(mat);
+    else marcar(mat);
     applyRowState(mat);
 }
 
 function chkChange(chk, mat) {
     if (ctx.autoAvancar) { toggleRow(mat); return; }
-    if (chk.checked) selectedMats.add(mat);
+    if (chk.checked) marcar(mat);
     else selectedMats.delete(mat);
     applyRowState(mat);
+}
+
+// Telas de 1 funcionario so (maxSel 1) se comportam como radio: marcar outro
+// troca o escolhido em vez de somar. Antes dava para marcar varios e o erro so
+// aparecia la no Continuar, depois de a pessoa ja ter feito a escolha errada.
+function marcar(mat) {
+    if (ctx.maxSel === 1) {
+        const anteriores = Array.from(selectedMats).filter(m => m !== mat);
+        selectedMats.clear();
+        anteriores.forEach(applyRowState);   // limpa a marcacao das linhas antigas
+    }
+    selectedMats.add(mat);
 }
 
 function selecionarTodos(chkTodos) {
