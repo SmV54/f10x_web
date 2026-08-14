@@ -540,6 +540,52 @@ def _aplicar_cert_esocial(empresa):
     empresa["_tra_nrinsc"] = cnpj_emp_raw
     return empresa
 
+
+def _conferir_assinante_esocial(empresa):
+    """O certificado desta empresa consegue assinar pela RAIZ do CNPJ?
+
+    Todo evento sai com ideEmpregador/nrInsc = RAIZ do CNPJ (8 dígitos). O eSocial
+    só aceita quem representa essa raiz: o e-CNPJ da MATRIZ (ordem 0001), um e-CPF
+    de representante legal, ou um procurador com procuração eletrônica. Certificado
+    de FILIAL é outra inscrição e volta com "Assinante inválido. Assinante não
+    possui perfil de procuração eletrônica ... ou não consta como representante
+    legal da empresa" — foi o que derrubou o primeiro S-2200 da WMS (filial 0002).
+
+    Confirmado na base em 14/08/2026: TODA empresa com remessa aceita assina com
+    certificado de ordem 0001; TODAS as de certificado de filial têm zero aceitas.
+
+    Retorna (ok, msg). Na dúvida deixa passar — só reprova o caso comprovado.
+    """
+    # Procuração eletrônica: quem valida é o portal do eSocial. Não dá para
+    # conferir daqui, então segue o jogo.
+    if ((empresa.get("cert_modo") or "").strip().lower() == "procuracao"
+            and empresa.get("id_procurador")):
+        return True, ""
+
+    cnpj = re.sub(r"\D", "", empresa.get("cnpj") or "")
+    cert = re.sub(r"\D", "", empresa.get("cert_cnpj") or "")
+
+    # e-CPF (11 dígitos) pode ser o representante legal; sem dado não se reprova.
+    if len(cnpj) != 14 or len(cert) != 14:
+        return True, ""
+
+    raiz = cnpj[:8]
+    if cert[:8] == raiz and cert[8:12] == "0001":
+        return True, ""
+
+    if cert[:8] != raiz:
+        detalhe = f"o certificado cadastrado é de outro CNPJ ({_fmt_cnpj(cert)})"
+    else:
+        detalhe = f"o certificado cadastrado é o da filial {cert[8:12]} ({_fmt_cnpj(cert)})"
+
+    return False, (
+        f"Certificado não habilitado para esta empresa: {detalhe}, mas o evento vai "
+        f"ao eSocial em nome da raiz {raiz}. O eSocial exige o e-CNPJ da MATRIZ "
+        f"({raiz}/0001) ou uma procuração eletrônica — com o certificado da filial "
+        f"a remessa volta recusada como \"Assinante inválido\". Cadastre o certificado "
+        f"da matriz em eSocial → Certificado Digital, ou configure quem transmite em "
+        f"eSocial → Cert. de Procurador.")
+
 # =========================================================
 # CONFIG CADASTRO / EMAIL / WHATSAPP
 # =========================================================
@@ -17739,6 +17785,12 @@ def api_esocial_s2220_enviar():
 
     # ── 6. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -26503,6 +26555,12 @@ def api_esocial_s1000_enviar():
 
     # ── 4. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -26727,6 +26785,12 @@ def api_esocial_s1000_excluir():
 
     # ── 4. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -27023,6 +27087,12 @@ def api_esocial_s1005_enviar():
 
     # ── 4. Certificado + assinatura ───────────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -27799,6 +27869,12 @@ def api_esocial_s1010_enviar():
 
     # ── 5. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -28501,6 +28577,12 @@ def _s1020_enviar_impl():
 
     # ── 4. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -28926,6 +29008,12 @@ def api_esocial_s2200_enviar():
 
     # ── 5. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -29461,6 +29549,12 @@ def api_esocial_s2300_enviar():
 
     # ── 5. Validar certificado e assinar ──────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -30147,6 +30241,12 @@ def api_esocial_s2205_enviar():
 
     # ── Validar certificado e assinar ──────────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -30975,6 +31075,12 @@ def api_esocial_s2206_enviar():
 
     # ── Validar certificado e assinar ──────────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -31399,6 +31505,12 @@ def api_esocial_s2299_enviar():
 
     # ── Validar certificado e assinar ──────────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -31603,6 +31715,12 @@ def api_esocial_s2399_enviar():
     _xml_save(f"{_pref}_1_evento.xml", xml_str)
 
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -33849,6 +33967,12 @@ def api_esocial_s1200_enviar():
 
     # 6. Validar certificado e assinar
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -34582,6 +34706,12 @@ def _s1210_enviar_impl():
 
     # 7. Validar certificado e assinar
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -35163,6 +35293,12 @@ def api_esocial_s1299_enviar():
 
     # Validar certificado e assinar
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -36659,6 +36795,12 @@ def api_esocial_s1298_enviar():
 
     # Validar certificado e assinar
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
@@ -37111,6 +37253,12 @@ def api_esocial_s3000_enviar():
 
     # ── 5. Validar certificado e assinar ───────────────────
     _aplicar_cert_esocial(empresa)
+    # Conferencia do assinante ANTES de assinar/transmitir (ver
+    # _conferir_assinante_esocial): evita queimar a remessa num "Assinante invalido".
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return jsonify({"ok": False, "msg": _msg_ass})
+
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
