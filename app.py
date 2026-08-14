@@ -571,6 +571,26 @@ def _aplicar_cert_esocial(empresa):
     return empresa
 
 
+def _esocial_delete():
+    """DELETE em tab_esocial que NUNCA remove remessa com recibo.
+
+    Remessa com recibo é o comprovante de um evento ACEITO pelo eSocial. Apagar
+    aqui não desfaz nada lá: o evento continua no governo, o reenvio volta com
+    [106] duplicidade e o sistema passa a achar que nunca foi enviado. Foi o que
+    travou o S-1210 da empresa 39 em 14/08/2026 — 17 recibos tiveram de ser
+    recuperados dos XMLs do Storage e regravados à mão.
+
+    O filtro vai na PRÓPRIA consulta, não numa conferência antes: assim protege
+    mesmo que um caminho novo esqueça de conferir. Vale para TODOS os layouts —
+    não há exceção. Para anular um evento aceito existe o S-3000, que marca
+    observacao_erro='EXCLUIDO' e preserva o recibo.
+
+    Use no lugar do delete direto na tabela.
+    """
+    return (supabase.table("tab_esocial").delete()
+            .or_("recibo.is.null,recibo.eq."))
+
+
 def _conferir_assinante_esocial(empresa):
     """O certificado desta empresa consegue assinar pela RAIZ do CNPJ?
 
@@ -7619,7 +7639,7 @@ def cancelar_rescisao():
                 rec = (row.get("recibo") or "").strip()
                 obs = (row.get("observacao_erro") or "").strip().upper()
                 if not rec and obs != "EXCLUIDO":
-                    (supabase.table("tab_esocial").delete()
+                    (_esocial_delete()
                      .eq("id_esocial", row["id_esocial"]).execute())
         except Exception:
             pass
@@ -13931,10 +13951,14 @@ def api_limpeza_executar():
     resultados = {}
     for tbl in _LIMPEZA_TABELAS:
         try:
-            supabase.table(tbl).delete() \
-                .eq("id_cliente", id_cliente) \
-                .eq("id_empresa", id_empresa) \
-                .eq("matricula", matricula).execute()
+            # tab_esocial sai pelo delete seguro: remessa com recibo NUNCA é
+            # apagada, nem aqui. As regras da limpeza já barram quem tem evento
+            # aceito, mas o laço é genérico e não pode ser a única defesa.
+            q = (_esocial_delete() if tbl == "tab_esocial"
+                 else supabase.table(tbl).delete())
+            q.eq("id_cliente", id_cliente) \
+             .eq("id_empresa", id_empresa) \
+             .eq("matricula", matricula).execute()
             resultados[tbl] = "ok"
         except Exception as e:
             resultados[tbl] = f"erro: {e}"
@@ -17845,7 +17869,7 @@ def api_exame_med_excluir():
                 supabase.table("tab_esocial").update({"codigo2": 0}) \
                     .eq("id_esocial", row["id_esocial"]).eq("id_empresa", id_empresa).execute()
             else:
-                supabase.table("tab_esocial").delete() \
+                _esocial_delete() \
                     .eq("id_esocial", row["id_esocial"]).eq("id_empresa", id_empresa).execute()
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
@@ -21676,7 +21700,7 @@ def api_acidente_excluir():
             if (row.get("recibo") or "").strip():
                 return jsonify({"ok": False, "msg": "Acidente já possui recibo eSocial — não pode ser excluído."})
         # Remove remessa pendente e depois o acidente
-        supabase.table("tab_esocial").delete() \
+        _esocial_delete() \
             .eq("id_empresa", id_empresa).eq("layout", "2210").eq("codigo2", id_ac).execute()
         supabase.table("tab_acidente").delete() \
             .eq("id", id_ac).eq("id_empresa", id_empresa).execute()
@@ -22983,7 +23007,7 @@ def exec_cancelar_aumento():
 
         # 7. Apaga todas as remessas S-2206 do período (sem recibo, validado acima)
         if tem_s2206:
-            supabase.table("tab_esocial").delete() \
+            _esocial_delete() \
                 .eq("id_empresa", id_empresa) \
                 .eq("matricula", mat) \
                 .eq("layout", "2206") \
@@ -33458,7 +33482,7 @@ def api_esocial_excluir():
             return jsonify({"ok": False, "msg": ("Remessa aguardando processamento no eSocial — pode "
                                                  "já ter sido aceita. Clique em Re-consultar antes de excluir.")})
 
-        supabase.table("tab_esocial").delete().eq("id_esocial", id_esocial).execute()
+        _esocial_delete().eq("id_esocial", id_esocial).execute()
 
         gravar_log("ESOCIAL",
                    f"Remessa S-{r.get('layout')} id={id_esocial} excluída pelo usuário",
@@ -34880,26 +34904,16 @@ def _s1210_enviar_impl():
                    .not_.is_("recibo", "null")
                    .neq("recibo", "")
                    .limit(1).execute())
-        recibo_s1200 = (r_s1200.data[0]["recibo"].strip() if r_s1200.data else "")
+        # A liberação provisória de 14/08/2026 foi revertida no mesmo dia, depois
+        # de os 17 recibos perdidos da empresa 39 serem recuperados dos XMLs do
+        # Storage e regravados. A regra volta a valer: sem o S-1200 aceito, o
+        # S-1210 não vai.
+        if not r_s1200.data:
+            return jsonify({"ok": False,
+                            "msg": "S-1200 ainda não enviado. Envie o S-1200 primeiro."})
+        recibo_s1200 = r_s1200.data[0]["recibo"].strip()
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar S-1200: {e}"})
-
-    # LIBERAÇÃO PROVISÓRIA (14/08/2026, a pedido): sem o recibo do S-1200 o envio
-    # SEGUE, apenas registrando no log.
-    #
-    # Por que dá para liberar: o recibo do S-1200 nunca entrou no XML do S-1210 —
-    # o parâmetro chega ao gerador e não é usado em lugar nenhum. O vínculo entre
-    # os dois eventos é o ideDmDev, não o recibo. A trava era conferência nossa.
-    #
-    # Por que precisou: reabrir a folha apagou remessas de S-1200 que JÁ TINHAM
-    # RECIBO (empresa 39, 14/08). Os eventos continuam no eSocial — o reenvio
-    # volta com [106] duplicidade —, mas o registro local sumiu e o S-1210 ficava
-    # preso por um pré-requisito que existe, só não está mais anotado aqui.
-    if not recibo_s1200:
-        gravar_log("ESOCIAL",
-                   f"S-1210 liberado sem recibo do S-1200: mat={matricula} anomes={ano_mes} "
-                   f"tipo={folha_tipo}",
-                   matricula=matricula)
 
     # 3. Funcionário
     try:
