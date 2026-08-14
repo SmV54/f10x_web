@@ -25889,8 +25889,10 @@ _TIPOS_FOLHA_JUNTAS = ("N", "A")
 def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
     """Verbas de uma folha, agregadas por cod_verba. [] se a folha não tem nada."""
     try:
+        # instfinanc/nrdoc: identificam o contrato do empréstimo consignado e
+        # viram o grupo <descFolha> do S-1200 nas rubricas de natureza 9253.
         q = (supabase.table("tab_mov")
-             .select("cod_verba, valor")
+             .select("cod_verba, valor, instfinanc, nrdoc")
              .eq("id_empresa", id_empresa)
              .eq("matricula", matricula)
              .eq("folha", int(ano_mes))
@@ -25898,11 +25900,15 @@ def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
              .eq("situacao", "A"))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        agg = {}
+        agg, emprest = {}, {}
         for r in (q.execute().data or []):
             c = str(r.get("cod_verba") or "")
             agg[c] = agg.get(c, 0) + int(r.get("valor") or 0)
-        return [{"cod_verba": k, "valor": v} for k, v in agg.items() if v != 0]
+            _if, _nd = (r.get("instfinanc") or "").strip(), (r.get("nrdoc") or "").strip()
+            if _if or _nd:
+                emprest[c] = {"instfinanc": _if, "nrdoc": _nd}
+        return [{"cod_verba": k, "valor": v, **emprest.get(k, {})}
+                for k, v in agg.items() if v != 0]
     except Exception as e:
         print(f"[_mov_agregado_folha] mat={matricula} {ano_mes}/{folha_tipo} erro: {e}")
         return []
@@ -26126,12 +26132,29 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
             val = int(item.get('valor') or 0)
             if cod and val != 0:
                 _cod_fmt = _fmt_cod_rubr(cod, ftipo)
+                # <descFolha> — obrigatório nas rubricas de natureza 9253
+                # (Empréstimos Consignados - desconto), do Programa Crédito do
+                # Trabalhador. Sem ele o evento volta com [8] "Grupo 'Informações
+                # de desconto do empréstimo em folha' deve ser preenchido" e
+                # [1988] apontando o contrato que o governo já conhece.
+                # tpDesc 1 = eConsignado. A instituição e o contrato vêm do
+                # tab_mov, gravados pela importação dos consignados.
+                _inst = re.sub(r'\D', '', str(item.get('instfinanc') or ''))
+                _nrdoc = str(item.get('nrdoc') or '').strip()
+                desc_folha = ""
+                if _inst and _nrdoc:
+                    desc_folha = f"""
+              <descFolha>
+                <tpDesc>1</tpDesc>
+                <instFinanc>{x(_inst)}</instFinanc>
+                <nrDoc>{x(_nrdoc)}</nrDoc>
+              </descFolha>"""
                 out += f"""
             <itensRemun>
               <codRubr>{x(_cod_fmt)}</codRubr>
               <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
               <vrRubr>{fmt_brl(val)}</vrRubr>
-              <indApurIR>{ind_apur_ir}</indApurIR>
+              <indApurIR>{ind_apur_ir}</indApurIR>{desc_folha}
             </itensRemun>"""
         return out
 
@@ -31015,12 +31038,25 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
             # o S-1010 registrou (mesmo erro [269] que derrubou o S-1200 em
             # julho). Ver _fmt_cod_rubr e [reference_esocial_codrubr].
             _cod_fmt = _fmt_cod_rubr(cod, 'R')
+            # <descFolha>: mesma exigência do S-1200 para rubrica de natureza
+            # 9253 (consignado do Programa Crédito do Trabalhador). Sem ele a
+            # rescisão de quem tem empréstimo volta com o erro [8]/[1988].
+            _inst  = re.sub(r'\D', '', str(item.get('instfinanc') or ''))
+            _nrdoc = str(item.get('nrdoc') or '').strip()
+            _desc_folha = ""
+            if _inst and _nrdoc:
+                _desc_folha = f"""
+                <descFolha>
+                  <tpDesc>1</tpDesc>
+                  <instFinanc>{x(_inst)}</instFinanc>
+                  <nrDoc>{x(_nrdoc)}</nrDoc>
+                </descFolha>"""
             det_xml += f"""
               <detVerbas>
                 <codRubr>{x(_cod_fmt)}</codRubr>
                 <ideTabRubr>{x(_cod_fmt)}</ideTabRubr>
                 <vrRubr>{fmt_brl(val)}</vrRubr>
-                <indApurIR>0</indApurIR>
+                <indApurIR>0</indApurIR>{_desc_folha}
               </detVerbas>"""
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -31755,7 +31791,7 @@ def api_esocial_s2299_enviar():
     mov_items = []
     try:
         q_mov = (supabase.table("tab_mov")
-                 .select("cod_verba, valor")
+                 .select("cod_verba, valor, instfinanc, nrdoc")   # contrato → <descFolha>
                  .eq("id_empresa", id_empresa)
                  .eq("matricula", int(matricula))
                  .eq("folha_tipo", "R").eq("situacao", "A"))
