@@ -427,6 +427,10 @@ body.menu-numerado .nav-item::before {
 .banner-cert.vencido {
     background: #fee2e2; color: #7f1d1d; border: 1px solid #dc2626;
 }
+/* Filial que assina com o certificado da matriz: aviso, nao alarme. */
+.banner-cert.herdado {
+    background: #eff6ff; color: #1e3a8a; border: 1px solid #93c5fd;
+}
 .banner-cert .icone { font-size: 22px; line-height: 1; flex-shrink: 0; }
 .banner-cert .msg   { flex: 1 1 auto; }
 .banner-cert .msg strong { font-weight: 700; }
@@ -1489,9 +1493,10 @@ function iniciarTour() {
 <div class="banner-cert vencido" id="bannerCert">
     <span class="icone">⛔</span>
     <span class="msg">
-        <strong>Certificado A1 vencido</strong> em {{ cert_validade_fmt }}
-        ({{ (-cert_dias) if cert_dias is not none else 0 }} dia(s) atrás).
-        Envie um novo certificado A1 para voltar a transmitir ao eSocial.
+        <strong>Certificado A1{% if cert_herdado_de %} da matriz {{ cert_herdado_de }}{% endif %} vencido</strong>
+        em {{ cert_validade_fmt }} ({{ (-cert_dias) if cert_dias is not none else 0 }} dia(s) atrás).
+        {% if cert_herdado_de %}Envie o novo certificado na empresa matriz para voltar a transmitir ao eSocial.
+        {% else %}Envie um novo certificado A1 para voltar a transmitir ao eSocial.{% endif %}
     </span>
     <a class="btn-cert" href="/config_certificado">Ativar o Novo Certificado</a>
     <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
@@ -1500,10 +1505,23 @@ function iniciarTour() {
 <div class="banner-cert vence" id="bannerCert">
     <span class="icone">⏳</span>
     <span class="msg">
-        <strong>Seu certificado A1 vence em {{ cert_dias }} dia(s)</strong> ({{ cert_validade_fmt }}).
+        <strong>{% if cert_herdado_de %}O certificado A1 da matriz vence{% else %}Seu certificado A1 vence{% endif %}
+        em {{ cert_dias }} dia(s)</strong> ({{ cert_validade_fmt }}){% if cert_herdado_de %} — matriz {{ cert_herdado_de }}{% endif %}.
         Providencie a renovação agora para não interromper o envio ao eSocial.
     </span>
     <a class="btn-cert" href="/config_certificado">Ativar o Novo Certificado</a>
+    <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
+</div>
+{% elif cert_herdado_de %}
+<div class="banner-cert herdado" id="bannerCert">
+    <span class="icone">🏢</span>
+    <span class="msg">
+        <strong>Esta é uma filial — os envios ao eSocial usam o certificado da matriz
+        {{ cert_herdado_de }}.</strong>
+        É assim que o eSocial funciona: um único certificado assina por todos os
+        estabelecimentos, então não é preciso cadastrar um aqui.
+    </span>
+    <a class="btn-cert" href="/config_certificado">Ver certificado</a>
     <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
 </div>
 {% endif %}
