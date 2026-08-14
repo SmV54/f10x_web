@@ -34880,12 +34880,26 @@ def _s1210_enviar_impl():
                    .not_.is_("recibo", "null")
                    .neq("recibo", "")
                    .limit(1).execute())
-        if not r_s1200.data:
-            return jsonify({"ok": False,
-                            "msg": "S-1200 ainda não enviado. Envie o S-1200 primeiro."})
-        recibo_s1200 = r_s1200.data[0]["recibo"].strip()
+        recibo_s1200 = (r_s1200.data[0]["recibo"].strip() if r_s1200.data else "")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar S-1200: {e}"})
+
+    # LIBERAÇÃO PROVISÓRIA (14/08/2026, a pedido): sem o recibo do S-1200 o envio
+    # SEGUE, apenas registrando no log.
+    #
+    # Por que dá para liberar: o recibo do S-1200 nunca entrou no XML do S-1210 —
+    # o parâmetro chega ao gerador e não é usado em lugar nenhum. O vínculo entre
+    # os dois eventos é o ideDmDev, não o recibo. A trava era conferência nossa.
+    #
+    # Por que precisou: reabrir a folha apagou remessas de S-1200 que JÁ TINHAM
+    # RECIBO (empresa 39, 14/08). Os eventos continuam no eSocial — o reenvio
+    # volta com [106] duplicidade —, mas o registro local sumiu e o S-1210 ficava
+    # preso por um pré-requisito que existe, só não está mais anotado aqui.
+    if not recibo_s1200:
+        gravar_log("ESOCIAL",
+                   f"S-1210 liberado sem recibo do S-1200: mat={matricula} anomes={ano_mes} "
+                   f"tipo={folha_tipo}",
+                   matricula=matricula)
 
     # 3. Funcionário
     try:
