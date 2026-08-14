@@ -929,6 +929,15 @@ function concluir2(res) {
     `<tr><td class="cod">${p.arquivo}</td><td>${p.titulo}</td>
          <td class="num">${p.linhas}</td></tr>`).join('');
   const obs = [];
+  // Rubricas do S-1010: o de-para com o nosso tab_rubrica é o que a Etapa 4 vai
+  // usar; aqui é só conferência, nada foi gravado.
+  const rb = res.rubricas || {};
+  const cxRub = rb.total ? `<div class="modo modo-so" style="margin-top:8px;">
+      <b>Verbas (S-1010): ${rb.total} do eSocial × ${rb.candidatas} nossas</b>
+      ✓ ${rb.achadas} com correspondente · ⚠️ <b>${rb.nao_achadas} não encontradas</b>
+      · ${rb.informativas} informativas (bases, não são verbas).
+      Confira a <span class="cam">S-1010.xlsx</span> — <b>nada foi gravado no tab_rubrica</b>.
+    </div>` : '';
   if (res.fora_do_escopo) obs.push(`${res.fora_do_escopo} XML(s) de outros layouts ficaram de fora`);
   (res.ilegiveis || []).forEach(x => obs.push('não deu para ler ' + x));
   // Repete de quem são os dados: é o que faltava para não conferir a planilha
@@ -944,6 +953,7 @@ function concluir2(res) {
      <table><thead><tr><th style="width:150px;">Planilha</th><th>Conteúdo</th>
        <th class="num" style="width:70px;">Linhas</th></tr></thead>
        <tbody>${linhas}</tbody></table>
+     ${cxRub}
      ${obs.length ? '<div class="mut" style="margin-top:8px;">' + obs.join(' · ') + '</div>' : ''}`;
   el('resumo2').textContent = 'Confira as planilhas antes da importação.';
 }

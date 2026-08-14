@@ -158,6 +158,10 @@ def montar_dps(d):
             E(toma, "CPF", tom_ins)
         else:
             E(toma, "CNPJ", tom_ins.zfill(14))
+        # Ordem exigida pelo XSD (TCInfoPessoa): CNPJ/CPF → CAEPF → IM → xNome
+        #                                        → end → fone → email
+        if d.get("tom_im"):
+            E(toma, "IM", so_digitos(d["tom_im"])[:15])
         E(toma, "xNome", _txt(d.get("tom_nome") or "TOMADOR"))
         # Endereço do tomador: enviado SEMPRE que o cadastro tem os dados completos.
         # (Antes só ia com ISS retido — obrigatório, senão E0237 — ou tomador CPF;
@@ -177,6 +181,9 @@ def montar_dps(d):
             if d.get("tom_cpl"):
                 E(end, "xCpl", _txt(d["tom_cpl"]))
             E(end, "xBairro", _txt(d["tom_bairro"]))
+        _fone = so_digitos(d.get("tom_fone"))
+        if 6 <= len(_fone) <= 20:                 # TSTelefone: [0-9]{6,20}
+            E(toma, "fone", _fone)
         if d.get("tom_email"):
             E(toma, "email", _txt(d["tom_email"]))
 
@@ -369,12 +376,23 @@ def _fmt_brl(v):
     return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _fmt_fone(v):
+    """(81) 3117-7150 / (81) 91234-5678. Devolve como veio se não for 10/11 díg."""
+    d = so_digitos(v)
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    return str(v or "")
+
+
 def _fmt_chave(c):
     d = re.sub(r"\D", "", str(c or ""))
     return " ".join(d[i:i+4] for i in range(0, len(d), 4))
 
 
-def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None):
+def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None,
+                     tom_im="", tom_fone=""):
     """Gera o DANFSE (PDF auxiliar) a partir do XML da NFS-e. Retorna bytes do PDF.
 
     tom_mun: "CIDADE - UF" do tomador (o XML só traz o código IBGE do município).
@@ -382,7 +400,11 @@ def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None):
     tom_end: endereço do tomador vindo do CADASTRO, usado SÓ quando o XML não tem
              o grupo <end> (notas emitidas antes de o endereço passar a ser enviado
              sempre). Dict com lgr/nro/cpl/bairro/cep. É o mesmo que o portal
-             nacional faz no DANFSe dele: completa o tomador pelo CNPJ."""
+             nacional faz no DANFSe dele: completa o tomador pelo CNPJ.
+    tom_im / tom_fone: inscrição municipal e telefone do tomador vindos do
+             cadastro (a TabCLI_NF não tem esses campos; hoje é regra fixa por
+             cliente no app.py). Prevalecem sobre o que está no XML, para o
+             mesmo cliente sair igual nas notas novas e nas antigas."""
     from lxml import etree
     from io import BytesIO
     from reportlab.lib.pagesizes import A4
@@ -478,7 +500,8 @@ def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None):
     xtribmun = g(f"{inf}/{{}}xTribMun") or xtrib
     cnbs     = g(f"{dps}/{{}}serv/{{}}cServ/{{}}cNBS")
     loc_prest = g(f"{inf}/{{}}xLocPrestacao") or loc_emi
-    t_im     = g(f"{dps}/{{}}toma/{{}}IM")
+    t_im     = tom_im or g(f"{dps}/{{}}toma/{{}}IM")
+    t_fone   = tom_fone or g(f"{dps}/{{}}toma/{{}}fone")
     opsimp   = g(f"{dps}/{{}}prest/{{}}regTrib/{{}}opSimpNac")
     regapsn  = g(f"{dps}/{{}}prest/{{}}regTrib/{{}}regApTribSN")
     regesp   = g(f"{dps}/{{}}prest/{{}}regTrib/{{}}regEspTrib")
@@ -618,7 +641,8 @@ def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None):
     # ── Emitente / Prestador ──
     e_end = f"{e_lgr}, {e_nro}" + (f", {e_cpl}" if e_cpl else "") + (f", {e_bai}" if e_bai else "")
     block("EMITENTE DA NFS-e — Prestador do Serviço", [
-        [("CNPJ / CPF / NIF", _fmt_doc(e_cnpj)), ("Inscrição Municipal", e_im), ("Telefone", e_fone)],
+        [("CNPJ / CPF / NIF", _fmt_doc(e_cnpj)), ("Inscrição Municipal", e_im),
+         ("Telefone", _fmt_fone(e_fone) if e_fone else "-")],
         [("Nome / Nome Empresarial", e_nome)],
         [("E-mail", e_mail)],
         [("Endereço", e_end)],
@@ -631,7 +655,8 @@ def gerar_danfse_pdf(nfse_xml_str, chave="", tom_mun="", tom_end=None):
     t_end = (f"{t_lgr}, {t_nro}" + (f", {t_cpl}" if t_cpl else "") + (f", {t_bai}" if t_bai else "")) \
             if t_lgr else "-"
     block("TOMADOR DO SERVIÇO", [
-        [("CNPJ / CPF / NIF", _fmt_doc(t_doc)), ("Inscrição Municipal", t_im or "-"), ("Telefone", "-")],
+        [("CNPJ / CPF / NIF", _fmt_doc(t_doc)), ("Inscrição Municipal", t_im or "-"),
+         ("Telefone", _fmt_fone(t_fone) if t_fone else "-")],
         [("Nome / Nome Empresarial", t_nome or "-")],
         [("E-mail", t_mail or "-")],
         [("Endereço", t_end)],

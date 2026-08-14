@@ -7,9 +7,11 @@ envia o formulario antes do captcha resolver, inclusive o do certificado digital
 script assume dali. Nao existe versao 100% automatica, nem aqui nem no Render.
 
 FASE 1 (este arquivo, comando "recon"): abre o navegador, espera voce logar e
-chegar na tela de Download, e despeja a estrutura da pagina (HTML, print e todos
-os campos) em __portal_recon/. NAO ENVIA NADA. Serve para escrever a fase 2 em
-cima da tela real.
+despeja a estrutura da pagina (HTML, print e todos os campos) em __portal_recon/.
+NAO ENVIA NADA. Serve para escrever a fase 2 em cima da tela real. Captura
+QUANTAS telas voce quiser na mesma sessao — o login e que custa (captcha
+manual), a captura nao. A fase 2 precisa de duas: a de PEDIR a solicitacao e a
+de CONSULTAR/baixar o ZIP.
 
 FASE 2 ("solicitar"): dispara uma solicitacao "Todos os eventos de um
 determinado periodo" por mes, do mes atual retroagindo. Ainda nao implementada —
@@ -45,19 +47,40 @@ FLAGS_SEM_MIDIA = ["--use-fake-device-for-media-stream",
                    "--mute-audio", "--disable-audio-input"]
 
 
-def cert_do_banco(cnpj):
+def cert_do_banco(cnpj, id_empresa=None):
     """Le o .pfx e a senha do tab_empresa. So funciona no ambiente onde o
-    certificado foi gravado (a senha e cifrada com a FLASK_SECRET_KEY)."""
+    certificado foi gravado (a senha e cifrada com a FLASK_SECRET_KEY).
+
+    O MESMO CNPJ pode estar cadastrado em varios clientes (a base e multi-cliente,
+    e a mesma empresa aparece de novo numa base de teste). O certificado costuma
+    estar em uma so dessas linhas, entao a busca filtra por quem TEM certificado
+    e fica com a validade mais longa. --id-empresa resolve na mao se precisar.
+    """
     supa = os.getenv("SUPABASE_URL", "").rstrip("/")
     key  = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
-    r = requests.get(f"{supa}/rest/v1/tab_empresa",
-                     params={"select": "razaosocial,cert_pfx_b64,cert_senha_enc",
-                             "cnpj": f"eq.{re.sub(r'[^0-9]', '', cnpj)}"},
-                     headers={"apikey": key, "Authorization": f"Bearer {key}"},
+    sel  = "id_empresa,id_cliente,razaosocial,cert_validade,cert_pfx_b64,cert_senha_enc"
+    hdr  = {"apikey": key, "Authorization": f"Bearer {key}"}
+    par  = {"select": sel, "cnpj": f"eq.{re.sub(r'[^0-9]', '', cnpj)}"}
+    if id_empresa:
+        par["id_empresa"] = f"eq.{int(id_empresa)}"
+    r = requests.get(f"{supa}/rest/v1/tab_empresa", params=par, headers=hdr,
                      verify=False, timeout=30)
-    linha = (r.json() or [None])[0]
-    if not linha or not linha.get("cert_pfx_b64"):
-        raise SystemExit(f"!! empresa {cnpj} sem certificado em tab_empresa")
+    todas = r.json() or []
+    comcert = [l for l in todas if l.get("cert_pfx_b64") and l.get("cert_senha_enc")]
+    comcert.sort(key=lambda l: str(l.get("cert_validade") or ""), reverse=True)
+
+    if not comcert:
+        print(f"!! nenhuma das {len(todas)} empresa(s) com CNPJ {cnpj} tem certificado:")
+        for l in todas:
+            print(f"   id_empresa={l.get('id_empresa')} id_cliente={l.get('id_cliente')} "
+                  f"{(l.get('razaosocial') or '')[:40]}")
+        raise SystemExit("   suba o certificado na tela do eSocial ou use --pfx/--senha")
+
+    linha = comcert[0]
+    if len(todas) > 1:
+        print(f"{len(todas)} empresas com o CNPJ {cnpj}; usando a que tem certificado: "
+              f"id_empresa={linha['id_empresa']} (cliente {linha['id_cliente']}, "
+              f"vence {linha.get('cert_validade')})")
     from cryptography.fernet import Fernet
     raw = (os.getenv("FLASK_SECRET_KEY", "F10default") + "_cert_v1").encode()
     senha = Fernet(base64.urlsafe_b64encode(hashlib.sha256(raw).digest())
@@ -116,7 +139,7 @@ def recon(args):
         cert_pem, key_pem, c = cert_para_pem(pfx, args.senha or "")
         print(f"Certificado: {c.subject.rfc4514_string()[:70]}")
     elif args.cnpj:
-        pfx, senha = cert_do_banco(args.cnpj)
+        pfx, senha = cert_do_banco(args.cnpj, getattr(args, "id_empresa", None))
         cert_pem, key_pem, c = cert_para_pem(pfx, senha)
         print(f"Certificado: {c.subject.rfc4514_string()[:70]}")
     else:
@@ -138,44 +161,60 @@ def recon(args):
         pg.goto(URL_LOGIN, wait_until="domcontentloaded")
 
         print("\n" + "=" * 70)
-        print("O navegador abriu. Faca o login (certificado + captcha) e navegue")
-        print("ate a tela de DOWNLOAD, no ponto de PEDIR uma solicitacao nova.")
-        print("Nao precisa enviar nada — so deixe a tela aberta.")
-        print("Quando estiver la, volte AQUI e tecle ENTER.")
+        print("O navegador abriu. Faca o login (certificado + captcha).")
+        print("Depois navegue por UMA tela de cada vez e volte aqui para capturar.")
+        print("")
+        print("A fase 2 precisa de DUAS telas, entao capture as duas na mesma")
+        print("sessao de login (o captcha so pede uma vez):")
+        print("  1) DOWNLOAD -> no ponto de PEDIR uma solicitacao nova")
+        print("     (com o Tipo de Solicitacao 'Todos os eventos ... de um")
+        print("      determinado periodo' ja escolhido, para os campos de data")
+        print("      e a opcao 'Todos' aparecerem)")
+        print("  2) CONSULTAR -> a lista das solicitacoes, onde aparece")
+        print("     'Solicitado' e o link/botao que baixa o ZIP")
+        print("")
+        print("Nao precisa enviar nada — so deixe cada tela aberta e tecle ENTER.")
         print("=" * 70)
-        input("\n>>> ENTER quando a tela de Download estiver aberta: ")
 
-        linhas = [f"# recon do portal do eSocial — {stamp}",
-                  f"# url:    {pg.url}",
-                  f"# titulo: {pg.title()}", ""]
-        print(f"\nCapturando: {pg.url}")
+        # Varias capturas por sessao: o login e o gargalo (captcha manual), entao
+        # nao faz sentido gastar um login por tela.
+        n = 0
+        while True:
+            rotulo = input("\n>>> nome desta tela (ex.: solicitar, consultar) "
+                           "— ENTER vazio encerra: ").strip()
+            if not rotulo:
+                break
+            rotulo = re.sub(r"[^A-Za-z0-9_-]", "_", rotulo)[:30] or f"tela{n}"
+            n += 1
+            pref = f"{rotulo}_{stamp}"
 
-        pg.screenshot(path=os.path.join(OUT_DIR, f"tela_{stamp}.png"), full_page=True)
-        with open(os.path.join(OUT_DIR, f"pagina_{stamp}.html"), "w", encoding="utf-8") as f:
-            f.write(pg.content())
+            linhas = [f"# recon do portal do eSocial — {stamp} — tela '{rotulo}'",
+                      f"# url:    {pg.url}",
+                      f"# titulo: {pg.title()}", ""]
+            print(f"Capturando '{rotulo}': {pg.url}")
 
-        # A tela pode estar dentro de iframe — percorre todos os frames.
-        for i, fr in enumerate(pg.frames):
-            linhas.append(f"\n--- FRAME {i}: {fr.url[:120]}")
-            descrever(fr, f"[f{i}]", linhas)
-            if fr != pg.main_frame:
-                try:
-                    with open(os.path.join(OUT_DIR, f"frame{i}_{stamp}.html"),
-                              "w", encoding="utf-8") as f:
-                        f.write(fr.content())
-                except Exception:
-                    pass
+            pg.screenshot(path=os.path.join(OUT_DIR, f"{pref}.png"), full_page=True)
+            with open(os.path.join(OUT_DIR, f"{pref}.html"), "w", encoding="utf-8") as f:
+                f.write(pg.content())
 
-        campos = os.path.join(OUT_DIR, f"campos_{stamp}.txt")
-        with open(campos, "w", encoding="utf-8") as f:
-            f.write("\n".join(linhas))
+            # A tela pode estar dentro de iframe — percorre todos os frames.
+            for i, fr in enumerate(pg.frames):
+                linhas.append(f"\n--- FRAME {i}: {fr.url[:120]}")
+                descrever(fr, f"[f{i}]", linhas)
+                if fr != pg.main_frame:
+                    try:
+                        with open(os.path.join(OUT_DIR, f"{pref}_frame{i}.html"),
+                                  "w", encoding="utf-8") as f:
+                            f.write(fr.content())
+                    except Exception:
+                        pass
 
-        print(f"\nGravado em {OUT_DIR}:")
-        print(f"  tela_{stamp}.png      — print da tela")
-        print(f"  pagina_{stamp}.html   — HTML completo")
-        print(f"  campos_{stamp}.txt    — campos e opcoes de cada frame")
-        print(f"\n{len(pg.frames)} frame(s). Navegador continua aberto.")
-        input(">>> ENTER para fechar: ")
+            with open(os.path.join(OUT_DIR, f"{pref}_campos.txt"), "w", encoding="utf-8") as f:
+                f.write("\n".join(linhas))
+            print(f"  -> {pref}.png / .html / _campos.txt  ({len(pg.frames)} frame(s))")
+
+        print(f"\n{n} tela(s) capturada(s) em {OUT_DIR}")
+        input(">>> ENTER para fechar o navegador: ")
         br.close()
 
 
@@ -185,6 +224,8 @@ def main():
     ap.add_argument("--pfx",   help="caminho do .pfx do certificado A1")
     ap.add_argument("--senha", help="senha do .pfx")
     ap.add_argument("--cnpj",  help="pega o certificado do tab_empresa por CNPJ")
+    ap.add_argument("--id-empresa", dest="id_empresa", type=int,
+                    help="desempata quando o mesmo CNPJ esta em mais de um cliente")
     ap.add_argument("--meses", type=int, default=60,
                     help="fase 2: quantos meses retroagir a partir do mes atual")
     args = ap.parse_args()

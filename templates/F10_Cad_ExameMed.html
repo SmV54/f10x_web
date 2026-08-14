@@ -234,6 +234,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
         <div class="opcao-linha">
             <div></div>
+            <div class="opcao-label">Tipo do Exame (ASO)</div>
+            <div class="opcao-valor">
+                <select id="tpExame" class="select-field" style="width:260px;">
+                    {% for cod, desc in tp_exames.items() %}
+                    <option value="{{ cod }}">{{ cod }} — {{ desc }}</option>
+                    {% endfor %}
+                </select>
+                <span class="hint" id="hint-tpExame">Vai ao eSocial como <b>tpExameOcup</b> do S-2220.</span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
             <div class="opcao-label">Resultado do Exame</div>
             <div class="opcao-valor">
                 <div class="radio-group">
@@ -401,8 +414,13 @@ async function carregarFuncionario() {
             </div>`;
             // Marcar Inicial apenas se admitido na folha ativa
             const admAnomes = (f.dtadm || '').slice(0, 6);
-            const ordemVal  = (ANOMES && admAnomes === ANOMES) ? '1' : '2';
+            const admNaFolha = !!(ANOMES && admAnomes === ANOMES);
+            const ordemVal  = admNaFolha ? '1' : '2';
             document.querySelector(`input[name="ordem"][value="${ordemVal}"]`).checked = true;
+            // Admitido na folha ativa => sugere Admissional; senão, Periódico.
+            // Em modo edição o valor gravado manda (carregarParaEdicao roda depois).
+            const tpEl = document.getElementById('tpExame');
+            if (tpEl && !ID_EVENTO) tpEl.value = admNaFolha ? '0' : '1';
         } else {
             wrap.innerHTML = '<span style="color:#ef4444;font-size:12px;">Funcionário não encontrado.</span>';
         }
@@ -575,6 +593,15 @@ async function gravar() {
         return;
     }
 
+    const tpExameEl = document.getElementById('tpExame');
+    const tpExame   = tpExameEl ? tpExameEl.value : '';
+    if (!tpExame) {
+        tpExameEl.classList.add('erro');
+        document.getElementById('hint-tpExame').textContent = 'Obrigatório';
+        showToast('Selecione o Tipo do Exame (ASO).', 'erro');
+        return;
+    }
+
     const resultado     = document.querySelector('input[name="resultado"]:checked')?.value || '1';
     const ind_resultado = document.querySelector('input[name="ind_resultado"]:checked')?.value || '1';
     const ordem         = document.querySelector('input[name="ordem"]:checked')?.value || '1';
@@ -582,6 +609,7 @@ async function gravar() {
     const payload = {
         matricula:        MAT,
         dt_exame:         dtExame,
+        tp_exame:         tpExame,
         resultado:        resultado,
         ind_resultado:    ind_resultado,
         ordem:            ordem,
@@ -662,6 +690,10 @@ async function carregarParaEdicao() {
         // Ordem
         const ordEl = document.querySelector(`input[name="ordem"][value="${ex.ordem || '1'}"]`);
         if (ordEl) ordEl.checked = true;
+
+        // Tipo do Exame (ASO)
+        const tpEdEl = document.getElementById('tpExame');
+        if (tpEdEl && ex.tp_exame) tpEdEl.value = ex.tp_exame;
 
         // Procedimento
         document.getElementById('codProcedimento').value = ex.proc || '';

@@ -302,7 +302,7 @@ function renderItem(e) {
                 <span class="badge ${resBadge}">${esc(resLabel)}</span>
                 <span class="badge ${ordBadge}">${esc(ordLabel)}</span>
             </div>
-            <div class="exam-detalhe">Procedimento: <strong>${esc(e.proc)}</strong>${e.folha ? ' &nbsp;·&nbsp; Folha: ' + esc(e.folha) : ''}</div>
+            <div class="exam-detalhe">Tipo: <strong>${esc(e.tp_exame_desc || '—')}</strong> &nbsp;·&nbsp; Procedimento: <strong>${esc(e.proc)}</strong>${e.folha ? ' &nbsp;·&nbsp; Folha: ' + esc(e.folha) : ''}</div>
             <div class="exam-medico">Dr. ${esc(e.nome_medico || '—')} &nbsp;·&nbsp; CRM ${esc(e.crm || '—')}/${esc(e.uf_crm || '—')}</div>
         </div>
         <div class="exam-acoes">${acoes}</div>

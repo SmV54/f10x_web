@@ -3034,6 +3034,7 @@ def rel_exame_med_pdf():
             f"{int(mat or 0):06d}",
             nomes_map.get(mat, "—"),
             f"{d[6:8]}/{d[4:6]}/{d[:4]}" if len(d) == 8 else d,
+            _TP_EXAME_OCUP[_exame_tp_ocup(ev)],
             str(ev.get("campotxt1") or ""),
             res[:30],
             txt4[:30].strip(),
@@ -3044,9 +3045,9 @@ def rel_exame_med_pdf():
     if mat_filtro:
         sub.append(f"Matrícula: {mat_filtro:06d}")
     return _pdf_tabela("Exames Médicos",
-                       ["Mat.", "Funcionário", "Data", "Procedimento", "Resultado",
-                        "Médico", "CRM"],
-                       [2.0, 7.0, 2.5, 4.0, 3.5, 4.5, 2.2], rows,
+                       ["Mat.", "Funcionário", "Data", "Tipo do ASO", "Procedimento",
+                        "Resultado", "Médico", "CRM"],
+                       [2.0, 6.0, 2.3, 3.5, 3.2, 2.5, 4.0, 2.2], rows,
                        str(session.get("empresa_info") or ""),
                        _fmt_cnpj(session.get("cnpj_empresa", "")),
                        subtitulo=" · ".join(sub), landscape=True,
@@ -13205,6 +13206,27 @@ def api_funcionario_incluir():
                 "matricula":  mat,
                 "codigo2":    0,
             }).execute()
+
+            # Admissão DENTRO da folha ativa → nasce também a remessa do S-2220
+            # (ASO admissional). Ela fica com codigo2 = 0 ("Sem Exame") até o
+            # usuário gravar o exame em Eventuais → Exame Médico, que preenche
+            # o codigo2 desta mesma linha em vez de criar outra.
+            _dtadm_es = re.sub(r"\D", "", str(d.get("dtAdm") or ""))
+            if (layout_es == "2200" and len(_dtadm_es) == 8
+                    and len(anomes_am) == 6 and _dtadm_es[:6] == anomes_am):
+                supabase.table("tab_esocial").insert({
+                    "id_cliente": id_cliente,
+                    "id_empresa": id_empresa,
+                    "data_cad":   agora.strftime("%Y%m%d"),
+                    "hora_cad":   agora.strftime("%H%M"),
+                    "id_remessa": f"{agora.strftime('%Y%m%d%H%M%S')}2220",
+                    "ano_mes":    int(anomes_am),
+                    "folha_tipo": folha_tipo_es,
+                    "layout":     "2220",
+                    "matricula":  mat,
+                    "flag1":      "I",
+                    "codigo2":    0,
+                }).execute()
     except Exception:
         pass  # falha no eSocial não desfaz a inclusão do funcionário
 
@@ -16930,6 +16952,37 @@ def cad_acidente():
 
 
 # =========================================================
+# EXAME MÉDICO — tpExameOcup (tipo do ASO) do S-2220
+# =========================================================
+# Gravado em tab_eventos.campotxt2 como "tpExame=N", junto do resAso/indResult.
+# NÃO confundir com a "Ordem do Exame" (ordExame), que diz se o procedimento é o
+# inicial ou um sequencial DENTRO do mesmo ASO.
+_TP_EXAME_OCUP = {
+    "0": "Admissional",
+    "1": "Periódico",
+    "2": "Retorno ao Trabalho",
+    "3": "Mudança de Função",
+    "4": "Monitoração Pontual",
+    "9": "Demissional",
+}
+
+
+def _exame_tp_ocup(exame):
+    """tpExameOcup de um exame (tab_eventos op1=106).
+
+    Exames gravados antes deste campo existir não têm o "tpExame=" no
+    campotxt2: para eles vale a dedução histórica pela Ordem do Exame
+    (1 = admissional, qualquer outra = periódico)."""
+    _p = dict(seg.split("=", 1) for seg in
+              str(exame.get("campotxt2") or "").split("/") if "=" in seg)
+    tp = str(_p.get("tpExame") or "").strip()
+    if tp in _TP_EXAME_OCUP:
+        return tp
+    ordem = str(exame.get("campotxt3") or "").replace("ORDEM=", "").strip() or "2"
+    return "0" if ordem == "1" else "1"
+
+
+# =========================================================
 # EXAME MÉDICO — TELA
 # =========================================================
 @app.route("/cad_exame_med")
@@ -16976,6 +17029,7 @@ def cad_exame_med():
         tab27=tab27,
         uf_empresa=uf_empresa,
         id_evento=id_evento,
+        tp_exames=_TP_EXAME_OCUP,
     )
 
 
@@ -17058,6 +17112,7 @@ def api_exame_med_gravar():
     resultado        = str(data.get("resultado")  or "1").strip()  # "1" ou "2"
     ind_resultado    = str(data.get("ind_resultado") or "1").strip()  # "1"-"4"
     ordem            = str(data.get("ordem")      or "1").strip()  # "1" ou "2"
+    tp_exame         = str(data.get("tp_exame")   or "").strip()   # tpExameOcup do S-2220
     cod_procedimento = str(data.get("cod_procedimento") or "").strip()
     observacao       = str(data.get("observacao") or "").strip() or None
     nome_medico      = str(data.get("nome_medico") or "").strip()
@@ -17077,6 +17132,8 @@ def api_exame_med_gravar():
         return jsonify({"ok": False, "msg": "CRM não informado."})
     if not uf_crm or len(uf_crm) != 2:
         return jsonify({"ok": False, "msg": "UF do CRM inválida."})
+    if tp_exame not in _TP_EXAME_OCUP:
+        return jsonify({"ok": False, "msg": "Tipo do exame (ASO) não informado."})
 
     try:
         mat_int = int(matricula)
@@ -17103,7 +17160,7 @@ def api_exame_med_gravar():
             "op2":         1,
             "data1i":      dt_exame,
             "campotxt1":   cod_procedimento[:4],
-            "campotxt2":   f"resAso={resultado}/indResult={ind_resultado}",
+            "campotxt2":   f"resAso={resultado}/indResult={ind_resultado}/tpExame={tp_exame}",
             "campotxt3":   f"ORDEM={ordem}",
             "campotxt4":   campotxt4,
         }).execute()
@@ -17113,26 +17170,50 @@ def api_exame_med_gravar():
 
     id_evento = ((r_ev.data or [{}])[0]).get("id")
 
-    # Remessa eSocial S-2220
+    # Remessa eSocial S-2220. Se a admissão já criou a linha "Sem Exame"
+    # (codigo2 = 0), aproveita ela em vez de gerar uma segunda remessa.
     try:
         agora_es = _agora_brasilia()
-        supabase.table("tab_esocial").insert({
-            "id_cliente": id_cliente,
-            "id_empresa": id_empresa,
-            "data_cad":   agora_es.strftime("%Y%m%d"),
-            "hora_cad":   agora_es.strftime("%H%M"),
-            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-            "ano_mes":    folha_int,
-            "layout":     "2220",
-            "matricula":  mat_int,
-            "flag1":      "I",
-            "codigo2":    id_evento,
-        }).execute()
+        id_pend  = None
+        try:
+            for _p in (supabase.table("tab_esocial")
+                       .select("id_esocial, codigo2, recibo")
+                       .eq("id_empresa", id_empresa)
+                       .eq("layout", "2220")
+                       .eq("matricula", mat_int)
+                       .eq("ano_mes", folha_int)
+                       .execute().data or []):
+                _c2 = str(_p.get("codigo2") or "").strip()
+                if (_c2 in ("", "0")) and not (_p.get("recibo") or "").strip():
+                    id_pend = _p.get("id_esocial")
+                    break
+        except Exception:
+            id_pend = None
+
+        if id_pend:
+            supabase.table("tab_esocial").update({
+                "codigo2":  id_evento,
+                "data_cad": agora_es.strftime("%Y%m%d"),
+                "hora_cad": agora_es.strftime("%H%M"),
+            }).eq("id_esocial", id_pend).eq("id_empresa", id_empresa).execute()
+        else:
+            supabase.table("tab_esocial").insert({
+                "id_cliente": id_cliente,
+                "id_empresa": id_empresa,
+                "data_cad":   agora_es.strftime("%Y%m%d"),
+                "hora_cad":   agora_es.strftime("%H%M"),
+                "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                "ano_mes":    folha_int,
+                "layout":     "2220",
+                "matricula":  mat_int,
+                "flag1":      "I",
+                "codigo2":    id_evento,
+            }).execute()
     except Exception:
         pass  # falha no eSocial não desfaz o exame
 
     obs_log = (
-        f"Exame: proc={cod_procedimento} result={resultado} ordem={ordem} "
+        f"Exame: proc={cod_procedimento} tp={tp_exame} result={resultado} ordem={ordem} "
         f"data={dt_exame} med={nome_medico[:30]} CRM={crm}/{uf_crm}"
     )
     if observacao:
@@ -17203,6 +17284,8 @@ def api_exame_med_listar():
                 "resultado":    resultado,
                 "ind_resultado": ind_resultado,
                 "ordem":        ordem,
+                "tp_exame":      _exame_tp_ocup(e),
+                "tp_exame_desc": _TP_EXAME_OCUP[_exame_tp_ocup(e)],
                 "nome_medico":  nome_med,
                 "crm":          crm_med,
                 "uf_crm":       uf_med,
@@ -17229,6 +17312,7 @@ def api_exame_med_alterar():
     resultado        = str(data.get("resultado")       or "1").strip()
     ind_resultado    = str(data.get("ind_resultado")   or "1").strip()
     ordem            = str(data.get("ordem")           or "1").strip()
+    tp_exame         = str(data.get("tp_exame")        or "").strip()
     cod_procedimento = str(data.get("cod_procedimento") or "").strip()
     nome_medico      = str(data.get("nome_medico")     or "").strip()
     crm              = str(data.get("crm")             or "").strip()
@@ -17248,6 +17332,8 @@ def api_exame_med_alterar():
         return jsonify({"ok": False, "msg": "CRM não informado."})
     if not uf_crm or len(uf_crm) != 2:
         return jsonify({"ok": False, "msg": "UF do CRM inválida."})
+    if tp_exame not in _TP_EXAME_OCUP:
+        return jsonify({"ok": False, "msg": "Tipo do exame (ASO) não informado."})
 
     mat_int    = int(matricula)
     id_empresa = _get_id_empresa()
@@ -17285,7 +17371,7 @@ def api_exame_med_alterar():
         supabase.table("tab_eventos").update({
             "data1i":    dt_exame,
             "campotxt1": cod_procedimento[:4],
-            "campotxt2": f"resAso={resultado}/indResult={ind_resultado}",
+            "campotxt2": f"resAso={resultado}/indResult={ind_resultado}/tpExame={tp_exame}",
             "campotxt3": f"ORDEM={ordem}",
             "campotxt4": campotxt4,
         }).eq("id", id_ev).eq("id_empresa", id_empresa).execute()
@@ -17300,7 +17386,7 @@ def api_exame_med_alterar():
             "id_empresa":      id_empresa,
             "cpf_usuario":     session.get("cpf"),
             "menu":            "EXAME-ALT",
-            "observacao":      f"id:{id_ev} proc={cod_procedimento} data={dt_exame} med={nome_medico[:30]} CRM={crm}/{uf_crm}"[:200],
+            "observacao":      f"id:{id_ev} proc={cod_procedimento} tp={tp_exame} data={dt_exame} med={nome_medico[:30]} CRM={crm}/{uf_crm}"[:200],
             "ano_mes":         int(anomes_log) if anomes_log else None,
             "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
             "matricula":       mat_int,
@@ -17350,7 +17436,7 @@ def api_exame_med_excluir():
 
         # Verificar recibo eSocial
         r_es = (supabase.table("tab_esocial")
-                .select("recibo")
+                .select("id_esocial, ano_mes, recibo")
                 .eq("id_empresa", id_empresa)
                 .eq("layout", "2220")
                 .eq("codigo2", id_ev)
@@ -17362,10 +17448,25 @@ def api_exame_med_excluir():
         supabase.table("tab_eventos").delete() \
             .eq("id", id_ev).eq("id_empresa", id_empresa).execute()
 
-        supabase.table("tab_esocial").delete() \
-            .eq("id_empresa", id_empresa) \
-            .eq("layout", "2220") \
-            .eq("codigo2", id_ev).execute()
+        # Se a remessa é da competência em que o funcionário foi admitido, ela
+        # nasceu junto com o S-2200: volta para "Sem Exame" em vez de sumir, para
+        # não apagar a cobrança do ASO admissional.
+        _dtadm = ""
+        try:
+            _dtadm = re.sub(r"\D", "", str((supabase.table("tab_cad")
+                     .select("dtadm").eq("id_empresa", id_empresa)
+                     .eq("matricula", mat_int).limit(1)
+                     .execute().data or [{}])[0].get("dtadm") or ""))
+        except Exception:
+            _dtadm = ""
+
+        for row in (r_es.data or []):
+            if len(_dtadm) == 8 and str(row.get("ano_mes") or "") == _dtadm[:6]:
+                supabase.table("tab_esocial").update({"codigo2": 0}) \
+                    .eq("id_esocial", row["id_esocial"]).eq("id_empresa", id_empresa).execute()
+            else:
+                supabase.table("tab_esocial").delete() \
+                    .eq("id_esocial", row["id_esocial"]).eq("id_empresa", id_empresa).execute()
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
 
@@ -17415,8 +17516,6 @@ def _gerar_xml_s2220(exame, func, empresa, tpAmb="1"):
 
     cpf       = dg(func.get('cpf', '')).zfill(11)
     mat_es    = _mat_es(func)
-    nis       = dg(func.get('nis') or func.get('pis') or '')
-    nis_xml   = f"\n      <nisTrab>{x(nis)}</nisTrab>" if nis else ''
 
     # Dados do exame — extraídos dos campos do tab_eventos
     dt_aso    = d8(exame.get('data1i'))
@@ -17426,8 +17525,7 @@ def _gerar_xml_s2220(exame, func, empresa, tpAmb="1"):
     ind_result = _p.get('indResult', '1')
     txt3      = str(exame.get('campotxt3') or '')
     ordem     = txt3.replace('ORDEM=', '').strip() or '2'
-    # tpExameOcup: 0=Admissional (ordem 1), 1=Periódico (ordem 2+)
-    tp_exame  = '0' if ordem == '1' else '1'
+    tp_exame  = _exame_tp_ocup(exame)
     txt4      = str(exame.get('campotxt4') or '')
     nm_med    = txt4[:50].strip()
     nr_crm    = txt4[50:60].strip()
@@ -17435,12 +17533,15 @@ def _gerar_xml_s2220(exame, func, empresa, tpAmb="1"):
     proc      = str(exame.get('campotxt1') or '').strip()
 
     obs_raw   = str(exame.get('observacao') or '').strip()
-    obs_xml   = f"\n        <obsProc>{x(obs_raw)}</obsProc>" if obs_raw else ''
+    obs_xml   = f"\n          <obsProc>{x(obs_raw)}</obsProc>" if obs_raw else ''
 
+    # Leiaute S-1.3: dentro de exMedOcup vem o grupo <aso>, e dentro dele a
+    # ordem e' dtAso > resAso > exame > medico. O ideVinculo do S-1.x nao tem
+    # mais nisTrab (so cpfTrab + matricula), como nos demais eventos S-2xxx.
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_02_00"
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_02_00 evtMonit_v_S_01_02_00.xsd">
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtMonit/v_S_01_03_00 evtMonit_v_S_01_03_00.xsd">
   <evtMonit Id="{evt_id}">
     <ideEvento>
       <indRetif>1</indRetif>
@@ -17453,24 +17554,26 @@ def _gerar_xml_s2220(exame, func, empresa, tpAmb="1"):
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
     <ideVinculo>
-      <cpfTrab>{x(cpf)}</cpfTrab>{nis_xml}
+      <cpfTrab>{x(cpf)}</cpfTrab>
       <matricula>{x(mat_es)}</matricula>
     </ideVinculo>
     <exMedOcup>
       <tpExameOcup>{x(tp_exame)}</tpExameOcup>
-      <dtAso>{x(dt_aso)}</dtAso>
-      <resAso>{x(res_aso)}</resAso>
-      <medico>
-        <nmMed>{x(nm_med)}</nmMed>
-        <nrCRM>{x(nr_crm)}</nrCRM>
-        <ufCRM>{x(uf_crm)}</ufCRM>
-      </medico>
-      <exame>
-        <dtExm>{x(dt_aso)}</dtExm>
-        <procRealizado>{x(proc)}</procRealizado>{obs_xml}
-        <ordExame>{x(ordem)}</ordExame>
-        <indResult>{x(ind_result)}</indResult>
-      </exame>
+      <aso>
+        <dtAso>{x(dt_aso)}</dtAso>
+        <resAso>{x(res_aso)}</resAso>
+        <exame>
+          <dtExm>{x(dt_aso)}</dtExm>
+          <procRealizado>{x(proc)}</procRealizado>{obs_xml}
+          <ordExame>{x(ordem)}</ordExame>
+          <indResult>{x(ind_result)}</indResult>
+        </exame>
+        <medico>
+          <nmMed>{x(nm_med)}</nmMed>
+          <nrCRM>{x(nr_crm)}</nrCRM>
+          <ufCRM>{x(uf_crm)}</ufCRM>
+        </medico>
+      </aso>
     </exMedOcup>
   </evtMonit>
 </eSocial>"""
@@ -17501,6 +17604,9 @@ def api_esocial_s2220_xml():
             return Response("Registro não encontrado.", status=404, mimetype="text/plain")
 
         id_ev = es.get("codigo2")
+        if str(id_ev or "").strip() in ("", "0"):
+            return Response("Esta remessa ainda não tem exame registrado — não há XML a gerar.",
+                            status=400, mimetype="text/plain")
         exame = (supabase.table("tab_eventos")
                  .select("*").eq("id", id_ev).eq("id_empresa", id_empresa)
                  .limit(1).execute().data or [{}])[0]
@@ -17555,8 +17661,11 @@ def api_esocial_s2220_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
 
     # ── 2. Exame (tab_eventos) ────────────────────────────
+    id_ev = es.get("codigo2")
+    if str(id_ev or "").strip() in ("", "0"):
+        return jsonify({"ok": False, "msg": "Esta remessa nasceu junto com a admissão e ainda não tem exame. "
+                                            "Registre o ASO em Eventuais → Exame Médico antes de enviar."})
     try:
-        id_ev = es.get("codigo2")
         exame = (supabase.table("tab_eventos").select("*")
                  .eq("id", id_ev).eq("id_empresa", id_empresa)
                  .limit(1).execute().data or [{}])[0]
@@ -17695,6 +17804,240 @@ def api_esocial_s2220_enviar():
         "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
                 else obs_erro or f"Recibo: {recibo_final}"),
     })
+
+
+# =========================================================
+# eSocial S-2220 — API: re-consultar lote aguardando
+# =========================================================
+@app.route("/api/esocial_s2220_reconsultar", methods=["POST"])
+def api_esocial_s2220_reconsultar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    import time
+
+    id_empresa = _get_id_empresa()
+    cnpj_emp   = so_numeros(session.get("cnpj_empresa", ""))
+    data       = request.get_json(force=True) or {}
+    id_reg     = data.get("id_esocial")
+    tpAmb      = str(data.get("tpAmb", "1"))
+
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+
+    try:
+        r_es = (supabase.table("tab_esocial")
+                .select("observacao_erro, matricula")
+                .eq("id_esocial", int(id_reg))
+                .eq("id_empresa", id_empresa)
+                .eq("layout", "2220")
+                .limit(1).execute())
+        if not r_es.data:
+            return jsonify({"ok": False, "msg": "Registro não encontrado."})
+        obs = (r_es.data[0].get("observacao_erro") or "")
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)})
+
+    if not obs.startswith("AGUARDANDO:"):
+        return jsonify({"ok": False, "msg": "Registro não está aguardando."})
+
+    protocolo_envio = obs[len("AGUARDANDO:"):]
+
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        empresa = r_emp.data[0] if r_emp.data else {}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    _aplicar_cert_esocial(empresa)
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+
+    _, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+
+    recibo_final = ""
+    obs_erro     = ""
+    cd_resp      = ""
+
+    for _ in range(3):
+        time.sleep(10)
+        soap_cons = _soap_consultar(protocolo_envio)
+        try:
+            resp_cons = _http_post_cert(url_consulta, soap_cons, pfx_bytes, senha_str, _SA_CONSULTAR)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+        try:
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro ao analisar: {e}"
+            break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"[{cd_resp}] {resultado.get('descResposta','')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    upd = {"recibo": recibo_final}
+    if aguardando:
+        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+    elif obs_erro:
+        upd["observacao_erro"] = obs_erro[:295]
+    else:
+        upd["observacao_erro"] = ""
+    supabase.table("tab_esocial").update(upd)\
+        .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
+
+    return jsonify({
+        "ok":         bool(recibo_final) and not obs_erro,
+        "aguardando": aguardando,
+        "nr_rec":     recibo_final,
+        "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". É indispensável checar o retorno.' if aguardando
+                else obs_erro or f"Recibo: {recibo_final}"),
+    })
+
+
+# =========================================================
+# eSocial S-2220 — TELA DE LISTAGEM
+# =========================================================
+@app.route("/esocial_s2220")
+def esocial_s2220():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_empresa   = _get_id_empresa()
+    anomes_atual = str(session.get("anomes_atual") or "")
+    f_sit        = request.args.get("sit", "").strip().upper()
+    f_mes        = request.args.get("mes", "").strip().lower()   # "" = folha ativa | "todos"
+
+    rows = []
+    try:
+        q = (supabase.table("tab_esocial")
+             .select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("layout", "2220"))
+        if f_mes != "todos" and len(anomes_atual) == 6:
+            q = q.eq("ano_mes", int(anomes_atual))
+        rows = (q.order("data_cad", desc=True)
+                 .order("hora_cad", desc=True)
+                 .execute().data or [])
+    except Exception:
+        rows = []
+
+    # Nomes dos funcionários
+    mats  = list({r["matricula"] for r in rows if r.get("matricula")})
+    nomes = {}
+    if mats:
+        try:
+            for f in (supabase.table("tab_cad")
+                      .select("matricula, nome")
+                      .eq("id_empresa", id_empresa)
+                      .in_("matricula", mats)
+                      .execute().data or []):
+                nomes[f["matricula"]] = f.get("nome", "")
+        except Exception:
+            pass
+
+    # Dados do exame (tab_eventos) — codigo2 guarda o id do evento op1=106
+    ids_ev = list({int(r["codigo2"]) for r in rows
+                   if str(r.get("codigo2") or "0").isdigit() and int(r["codigo2"]) > 0})
+    exames = {}
+    if ids_ev:
+        try:
+            for e in (supabase.table("tab_eventos")
+                      .select("id, data1i, campotxt1, campotxt2, campotxt3, campotxt4")
+                      .eq("id_empresa", id_empresa)
+                      .in_("id", ids_ev)
+                      .execute().data or []):
+                exames[e["id"]] = e
+        except Exception:
+            pass
+
+    def _d8(v):
+        s = str(v or "").strip()
+        return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
+
+    _SIT_MAP = {
+        "E": ("Enviado",    "sit-enviado"),
+        "X": ("Com Erro",   "sit-erro"),
+        "W": ("Aguardando", "sit-aguardando"),
+        "G": ("Gerado",     "sit-gerado"),
+        "A": ("Sem Exame",  "sit-semexame"),
+        "P": ("Pendente",   "sit-pendente"),
+    }
+    contagens = {k: 0 for k in _SIT_MAP}
+
+    for r in rows:
+        r["_nome"]        = nomes.get(r.get("matricula"), "—")
+        r["_datacad_fmt"] = _d8(r.get("data_cad"))
+        _hg = str(r.get("hora_grava") or "").strip()
+        _dg = str(r.get("data_grava") or "").strip()
+        if len(_dg) == 8 and len(_hg) >= 4:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]} {_hg[0:2]}:{_hg[2:4]}"
+        elif len(_dg) == 8:
+            r["_envio_fmt"] = f"{_dg[6:8]}/{_dg[4:6]}/{_dg[2:4]}"
+        else:
+            r["_envio_fmt"] = ""
+
+        # ── Dados do exame ────────────────────────────────
+        _cod = r.get("codigo2")
+        ex   = exames.get(int(_cod)) if str(_cod or "0").isdigit() and int(_cod) > 0 else None
+        if ex:
+            r["_dtaso_fmt"] = _d8(ex.get("data1i"))
+            r["_tipo"] = _TP_EXAME_OCUP[_exame_tp_ocup(ex)]
+            _t4 = str(ex.get("campotxt4") or "")
+            _nm = _t4[:50].strip()
+            _uf = _t4[60:62].strip()
+            r["_medico"] = f"{_nm} ({_t4[50:60].strip()}/{_uf})" if _nm else "—"
+            r["_tem_exame"] = True
+        else:
+            r["_dtaso_fmt"] = ""
+            r["_tipo"]      = "Admissional"
+            r["_medico"]    = "—"
+            r["_tem_exame"] = False
+
+        recibo = (r.get("recibo") or "").strip()
+        obs    = (r.get("observacao_erro") or "").strip()
+        dgrava = (r.get("data_grava") or "").strip()
+
+        if recibo:                          s = "E"
+        elif obs.startswith("AGUARDANDO:"): s = "W"
+        elif obs:                           s = "X"
+        elif not r["_tem_exame"]:           s = "A"   # remessa criada na admissão, exame ainda não registrado
+        elif dgrava:                        s = "G"
+        else:                               s = "P"
+        r["_sit"]       = s
+        r["_sit_label"] = _SIT_MAP[s][0]
+        r["_sit_class"] = _SIT_MAP[s][1]
+        contagens[s] = contagens.get(s, 0) + 1
+
+    if f_sit:
+        rows = [r for r in rows if r["_sit"] == f_sit]
+
+    return render_template(
+        "F10_eSocial_S2220.html",
+        versao=ler_versao(),
+        empresa=session.get("empresa_info", ""),
+        cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
+        rows=rows, total=len(rows),
+        anomes_atual=anomes_atual,
+        f_sit=f_sit, f_mes=f_mes, contagens=contagens,
+        folha_aberta_esocial=_folha_aberta_no_esocial(),
+    )
 
 
 # =========================================================
@@ -17877,6 +18220,7 @@ def rel_exame_med():
                 "resultado":    res,
                 "ind_resultado": ind_resultado,
                 "ordem":        ordem,
+                "tp_exame_desc": _TP_EXAME_OCUP[_exame_tp_ocup(ev)],
                 "nome_medico":  txt4[:50].strip(),
                 "crm":          txt4[50:60].strip(),
                 "uf_crm":       txt4[60:62].strip(),
@@ -19149,6 +19493,7 @@ def api_consignado_resc_importar():
 _XMLI_EVENTOS = {
     "evtInfoEmpregador": "S-1000",
     "evtTabEstab":       "S-1005",
+    "evtTabRubrica":     "S-1010",
     "evtTabLotacao":     "S-1020",
     "evtAdmissao":       "S-2200",
     "evtAltCadastral":   "S-2205",
@@ -31543,7 +31888,7 @@ def esocial_fila():
         "2200": ("S-2200", "Admissão",      "/esocial_s2200",    True),
         "2205": ("S-2205", "Alt.Cadastral", "/esocial_s2205",    True),
         "2206": ("S-2206", "Alt.Contrato",  "/esocial_s2206",    True),
-        "2220": ("S-2220", "Saúde",         "/cad_exame_med",    True),
+        "2220": ("S-2220", "Saúde",         "/esocial_s2220",    True),
         "2230": ("S-2230", "Afastamento",   "/cad_afastamento",  True),
         "2299": ("S-2299", "Desligamento",  "#",                 True),
         "2300": ("S-2300", "Início TSVE",   "/esocial_fila",     True),
@@ -55845,7 +56190,7 @@ def api_descompactar_xml_progresso():
 # NÃO toca no banco: aqui só se confere. A leitura do XML é a mesma do
 # importador (_xmli_*), senão a planilha mostraria uma coisa e a importação
 # gravaria outra.
-_PXML_LAYOUTS = ("S-2200", "S-2205", "S-2206", "S-2230", "S-2299")
+_PXML_LAYOUTS = ("S-1010", "S-2200", "S-2205", "S-2206", "S-2230", "S-2299")
 
 # Motivo 15 do S-2230 é FÉRIAS. No Folha10 férias não é afastamento: mora no
 # tab_eventos com op1=3 (a tela de férias filtra por ele), enquanto afastamento
@@ -55878,6 +56223,11 @@ _PXML_ROTULOS = {
     "tipo": "Tipo", "op1": "op1", "op2": "Motivo (op2)",
     "data1i": "Início", "data1f": "Fim", "campotxt1": "campotxt1",
     "campotxt4": "Observação", "aberto": "Em aberto",
+    "dsc_es": "Verba no eSocial", "cod_es": "Código no eSocial", "nat_es": "Natureza (eSocial)",
+    "tp_es": "Tipo (1=venc 2=desc)", "inc_cp": "Inc. INSS", "inc_irrf": "Inc. IRRF",
+    "inc_fgts": "Inc. FGTS", "inc_sind": "Inc. sindical", "ini_valid": "Válida desde",
+    "excluida": "Excluída", "versoes": "Lançamentos", "f10_cod": "Nosso código", "f10_nome": "Nossa rubrica",
+    "f10_origem": "Vem de", "f10_casou_por": "Casou por", "f10_nota": "Nota",
     "cpf_titular": "CPF do funcionário", "tpdep": "Tipo de dependente",
     "cpfdep": "CPF do dependente", "depirrf": "IRRF", "depsf": "Salário-família",
     "inctrabf": "Inc. trabalhista", "sexodep": "Sexo (palpite)",
@@ -55911,6 +56261,149 @@ _PXML_COLS_2299 = ["arquivo", "cpf", "datarescisao", "motrescisao"]
 # `sexodep` é palpite (o eSocial não manda) — dá para corrigir aqui antes de importar.
 _PXML_COLS_DEP = ["cpf_titular", "nome", "tpdep", "dtnascto", "cpfdep", "depirrf",
                   "depsf", "inctrabf", "sexodep", "origem", "arquivo"]
+# S-1010: a verba como o eSocial a conhece + a nossa correspondente no
+# tab_rubrica. As colunas f10_* são o palpite do sistema, para conferir.
+# O de-para vem primeiro e junto — código do eSocial, nosso código e nossa
+# verba lado a lado —, que é o que se confere linha a linha. O resto do eSocial
+# (natureza, tipo, incidências) fica depois, para consulta.
+_PXML_COLS_1010 = ["dsc_es", "cod_es", "f10_cod", "f10_nome",
+                   "f10_casou_por", "f10_nota", "f10_origem",
+                   "nat_es", "tp_es", "inc_cp", "inc_irrf", "inc_fgts", "inc_sind",
+                   "ini_valid", "versoes", "excluida", "arquivo"]
+
+
+def _xmli_ler_s1010(ev):
+    """evtTabRubrica → a rubrica como o eSocial a conhece.
+
+    O evento vem em <inclusao>, <alteracao> ou <exclusao>; o codRubr é a chave
+    do sistema de origem (costuma ser uma string longa, não o nosso número).
+    """
+    ide = _xmli_ache(ev, "ideRubrica")
+    dad = _xmli_ache(ev, "dadosRubrica")
+
+    def _limpo(s):
+        # A origem gravou entidade dentro do texto ("13&#186; Salario"), então
+        # o parser do XML não desfaz. Sem isso a conferência lê código no lugar
+        # do "º".
+        return re.sub(r"&#(\d+);", lambda m: chr(int(m.group(1))), str(s or "")).strip()
+    acao = ("exclusao" if _xmli_ache(ev, "exclusao") is not None else
+            "alteracao" if _xmli_ache(ev, "alteracao") is not None else "inclusao")
+    return {
+        "acao": acao,
+        "cod_es": _xmli_txt(ide, "codRubr"),
+        "ide_tab": _xmli_txt(ide, "ideTabRubr"),
+        "ini_valid": _xmli_txt(ide, "iniValid"),
+        "dsc_es": _limpo(_xmli_txt(dad, "dscRubr")) if dad is not None else "",
+        "nat_es": _xmli_txt(dad, "natRubr") if dad is not None else "",
+        "tp_es": _xmli_txt(dad, "tpRubr") if dad is not None else "",
+        "inc_cp": _xmli_txt(dad, "codIncCP") if dad is not None else "",
+        "inc_irrf": _xmli_txt(dad, "codIncIRRF") if dad is not None else "",
+        "inc_fgts": _xmli_txt(dad, "codIncFGTS") if dad is not None else "",
+        "inc_sind": _xmli_txt(dad, "codIncSIND") if dad is not None else "",
+    }
+
+
+def _texto_chave(s):
+    """Descrição sem acento, sem pontuação e sem as abreviações de sempre —
+    'SAL.FAMILIA' e 'Salário Família' têm que casar."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(s or "")).encode("ascii", "ignore").decode()
+    t = re.sub(r"[^A-Za-z0-9 ]+", " ", t).upper()
+    trocas = {"SAL": "SALARIO", "VLR": "VALOR", "ADIC": "ADICIONAL", "ADIANT": "ADIANTAMENTO",
+              "DESC": "DESCONTO", "HS": "HORAS", "HE": "HORA EXTRA", "INDENIZ": "INDENIZADO",
+              "FER": "FERIAS", "GRAT": "GRATIFICACAO", "REEMB": "REEMBOLSO", "PROP": "PROPORCIONAL",
+              "COMPL": "COMPLEMENTO", "REF": "REFEICAO", "TRANSP": "TRANSPORTE"}
+    return " ".join(trocas.get(p, p) for p in t.split() if p)
+
+
+def _pxml_casar_rubricas(rubricas, id_cliente):
+    """Acha, para cada rubrica do eSocial, a nossa correspondente no tab_rubrica.
+
+    Procura entre as rubricas do CLIENTE e as PADRÃO do sistema (id_cliente=0).
+    A natureza do eSocial (es03_nat_rubr × natRubr) é o critério forte: é o
+    mesmo código oficial dos dois lados. O nome só desempata, porque cada
+    escritório escreve "SAL.FAMILIA" de um jeito.
+    """
+    from difflib import SequenceMatcher
+    nossas = []
+    try:
+        for c in ([0, id_cliente] if id_cliente else [0]):
+            r = (supabase.table("tab_rubrica")
+                 .select("cod_rubr, dsc_rubr, dsc_rubr_resumido, tp_rubr, es03_nat_rubr, "
+                         "situacao, id_cliente")
+                 .eq("id_cliente", c).execute())
+            nossas.extend(r.data or [])
+    except Exception as e:
+        print(f"[S-1010] não deu para ler o tab_rubrica: {e}")
+        return rubricas, {"erro": str(e)[:150]}
+
+    for n in nossas:
+        n["_chave"] = _texto_chave(n.get("dsc_rubr") or n.get("dsc_rubr_resumido"))
+
+    por_cod = {}
+    for n in nossas:
+        por_cod.setdefault(str(n.get("cod_rubr")), n)
+
+    achadas, informativas = 0, 0
+    for rb in rubricas:
+        alvo = _texto_chave(rb.get("dsc_es"))
+        nat = str(rb.get("nat_es") or "").strip()
+        tp = str(rb.get("tp_es") or "").strip()
+
+        # tpRubr 3 e 4 são rubricas INFORMATIVAS (bases de cálculo, "BASE INSS
+        # DE FERIAS"). Não existem no nosso cadastro de verbas e não devem
+        # entrar na conta das que faltam.
+        if tp in ("3", "4"):
+            informativas += 1
+            rb.update({"f10_cod": "", "f10_nome": "", "f10_origem": "",
+                       "f10_casou_por": "informativa (não é verba)", "f10_nota": 0})
+            continue
+
+        # PEGA BOA: quando a base veio do Folha10 (Desktop), o codRubr é o NOSSO
+        # número com um sufixo de contexto — 0042-FER / 0042-RES / 0042-FOL.
+        # Esse de-para é direto e vale mais que qualquer semelhança de nome.
+        # O sufixo é livre (FOL, FER, RES, 13S…): o que vale é o número antes
+        # do separador. Sem separador, aceita só se o código inteiro for número.
+        m = re.match(r"^0*(\d{1,6})(?:[-._][A-Z0-9]{1,5})?$",
+                     str(rb.get("cod_es") or "").strip().upper())
+        if m and por_cod.get(str(int(m.group(1)))):
+            n = por_cod[str(int(m.group(1)))]
+            achadas += 1
+            rb.update({"f10_cod": n.get("cod_rubr"),
+                       "f10_nome": (n.get("dsc_rubr") or "").strip(),
+                       "f10_origem": "padrão" if n.get("id_cliente") == 0 else "do cliente",
+                       "f10_casou_por": "código no codRubr", "f10_nota": 2})
+            continue
+
+        melhor, melhor_nota, motivo = None, 0.0, ""
+        for n in nossas:
+            # Tipo diferente (vencimento × desconto) não é a mesma verba.
+            if tp and str(n.get("tp_rubr") or "").strip() and str(n["tp_rubr"]).strip() != tp:
+                continue
+            sim = SequenceMatcher(None, alvo, n["_chave"]).ratio() if alvo and n["_chave"] else 0
+            mesma_nat = bool(nat) and str(n.get("es03_nat_rubr") or "").strip() == nat
+            nota = sim + (0.5 if mesma_nat else 0)          # natureza vale meio ponto
+            if nota > melhor_nota:
+                melhor, melhor_nota, motivo = n, nota, (
+                    "natureza + nome" if mesma_nat and sim >= 0.6 else
+                    "natureza" if mesma_nat else "nome")
+        # Sem natureza igual, só o nome muito parecido convence.
+        vale = melhor is not None and (melhor_nota >= 0.5 + 0.4 or melhor_nota >= 0.72)
+        if vale:
+            achadas += 1
+            rb.update({"f10_cod": melhor.get("cod_rubr"),
+                       "f10_nome": (melhor.get("dsc_rubr") or "").strip(),
+                       "f10_origem": "padrão" if melhor.get("id_cliente") == 0 else "do cliente",
+                       "f10_casou_por": motivo,
+                       "f10_nota": round(min(melhor_nota, 1.5), 2)})
+        else:
+            rb.update({"f10_cod": "", "f10_nome": "", "f10_origem": "",
+                       "f10_casou_por": "NÃO ENCONTRADA",
+                       "f10_nota": round(melhor_nota, 2) if melhor else 0})
+    return rubricas, {"achadas": achadas, "total": len(rubricas),
+                      "informativas": informativas, "candidatas": len(nossas),
+                      "nao_achadas": len(rubricas) - achadas - informativas,
+                      "descricoes": len({_texto_chave(r.get("dsc_es")) for r in rubricas})}
 
 
 def _pxml_data_br(v):
@@ -55996,7 +56489,7 @@ def _pxml_arquivos(pasta):
     return sorted(fora)
 
 
-def _pxml_montar(pasta, progresso=None):
+def _pxml_montar(pasta, progresso=None, id_cliente=None):
     """Lê os XMLs e monta as linhas de cada planilha. Não grava nada."""
     caminhos = _pxml_arquivos(pasta)
     if not caminhos:
@@ -56030,6 +56523,7 @@ def _pxml_montar(pasta, progresso=None):
                                     f"({len(caminhos)} XMLs lidos)."}
 
     l2200, l2205, l2206, l2299 = [], [], [], []
+    rubricas = {}                    # codRubr → última versão da rubrica
     funcs = {}
     # Ordem cronológica: a alteração só faz sentido em cima da admissão, e duas
     # alterações do mesmo campo têm que entrar na ordem em que aconteceram.
@@ -56037,6 +56531,37 @@ def _pxml_montar(pasta, progresso=None):
         if progresso and (i % 50 == 0 or i == len(eventos)):
             progresso(70 + int(25 * i / len(eventos)), f"montando {i}/{len(eventos)} eventos")
         tipo, ev = e["tipo"], e["ev"]
+
+        if tipo == "S-1010":
+            # Rubrica não tem CPF: é tabela do empregador. Fica UMA linha por
+            # codRubr — a ÚLTIMA versão dela. "Última" = maior iniValid e, no
+            # empate, a transmitida por último (o nome do arquivo do portal
+            # começa com ID+CNPJ+AAAAMMDDHHMMSS, então ordena sozinho).
+            # Os S-1010 anulados por um S-3000 nem chegam aqui: a Etapa 1 já os
+            # deixa fora da pasta (só entram se você marcar "extrair também os
+            # anulados"). A exclusão pelo próprio S-1010 (<exclusao>) marca a
+            # linha em vez de sumir com ela, para aparecer na conferência.
+            rb = _xmli_ler_s1010(ev)
+            if rb["cod_es"]:
+                rb["arquivo"] = e["arquivo"]
+                antes = rubricas.get(rb["cod_es"])
+                versao = (rb.get("ini_valid") or "", e["arquivo"])
+                if rb["acao"] == "exclusao":
+                    if antes:
+                        antes["excluida"] = "SIM"
+                    else:
+                        rb["excluida"] = "SIM"
+                        rb["_versao"], rb["_qtd"] = versao, 1
+                        rubricas[rb["cod_es"]] = rb
+                elif antes is None or versao >= antes.get("_versao", ("", "")):
+                    rb["excluida"] = (antes or {}).get("excluida", "")
+                    rb["_versao"] = versao
+                    rb["_qtd"] = (antes or {}).get("_qtd", 0) + 1
+                    rubricas[rb["cod_es"]] = rb
+                else:
+                    antes["_qtd"] = antes.get("_qtd", 0) + 1
+            continue
+
         cpf = _xmli_cpf_do_evento(ev)
         if not cpf or cpf == "00000000000":
             continue
@@ -56131,6 +56656,14 @@ def _pxml_montar(pasta, progresso=None):
         f["ultima_alteracao"] = max(str(f.get("ultima_alteracao") or ""),
                                     _xmli_data(_xmli_txt(ev, "dtAlteracao", "dtEf")) or "")
 
+    # Rubricas do S-1010 × as nossas. Só monta a planilha — gravar no
+    # tab_rubrica é passo separado, depois de o usuário conferir.
+    for _r in rubricas.values():
+        _r["versoes"] = _r.pop("_qtd", 1)          # quantos S-1010 essa verba teve
+        _r.pop("_versao", None)
+    _p_rub = sorted(rubricas.values(), key=lambda x: (x.get("dsc_es") or "").upper())
+    _p_rub, resumo_rub = _pxml_casar_rubricas(_p_rub, id_cliente)
+
     consolidada, l2230, ldep = [], [], []
     for cpf in sorted(funcs, key=lambda c: (funcs[c].get("nome") or "zzz", c)):
         f = dict(funcs[cpf])
@@ -56153,7 +56686,7 @@ def _pxml_montar(pasta, progresso=None):
     l2230.sort(key=lambda x: (x["cpf"], x["data1i"]))
 
     return {"ok": True, "xmls": len(caminhos), "fora_do_escopo": fora_do_escopo,
-            "ilegiveis": ilegiveis[:5],
+            "ilegiveis": ilegiveis[:5], "rubricas": resumo_rub,
             "empregadores": [_dxml_empregador(c, n)
                              for c, n in sorted(raizes.items(), key=lambda x: -x[1])],
             "planilhas": [
@@ -56179,17 +56712,20 @@ def _pxml_montar(pasta, progresso=None):
                 {"arquivo": "S-2299.xlsx", "aba": "S-2299",
                  "titulo": "S-2299 — desligamentos",
                  "colunas": _PXML_COLS_2299, "linhas": l2299},
+                {"arquivo": "S-1010.xlsx", "aba": "S-1010",
+                 "titulo": "S-1010 — verbas do eSocial × as nossas (confira antes de gravar)",
+                 "colunas": _PXML_COLS_1010, "linhas": _p_rub},
                 {"arquivo": "Dependentes.xlsx", "aba": "Dependentes",
                  "titulo": "Dependentes (S-2200 e S-2205) — o sexo é palpite, confira",
                  "colunas": _PXML_COLS_DEP, "linhas": ldep},
             ]}
 
 
-def _pxml_gerar(pasta_xml, pasta_saida, progresso=None):
+def _pxml_gerar(pasta_xml, pasta_saida, progresso=None, id_cliente=None):
     """Etapa 2 inteira: lê a pasta dos XMLs e grava as planilhas."""
     if not os.path.isdir(pasta_xml):
         return {"ok": False, "msg": f"Pasta dos XMLs não existe: {pasta_xml}"}
-    r = _pxml_montar(pasta_xml, progresso=progresso)
+    r = _pxml_montar(pasta_xml, progresso=progresso, id_cliente=id_cliente)
     if not r.get("ok"):
         return r
     try:
@@ -56225,7 +56761,7 @@ def _pxml_gerar(pasta_xml, pasta_saida, progresso=None):
                       "linhas": len(p["linhas"]), "colunas": len(p["colunas"])})
     return {"ok": True, "pasta": pasta_saida, "xmls": r["xmls"],
             "fora_do_escopo": r["fora_do_escopo"], "ilegiveis": r["ilegiveis"],
-            "empregadores": emps, "planilhas": saida}
+            "empregadores": emps, "rubricas": r.get("rubricas") or {}, "planilhas": saida}
 
 
 # =========================================================
@@ -56718,7 +57254,7 @@ def api_descompactar_xml_importar_progresso():
 _pxml_jobs = {}
 
 
-def _pxml_rodar(job_id, pasta_xml, pasta_saida):
+def _pxml_rodar(job_id, pasta_xml, pasta_saida, id_cliente=None):
     job = _pxml_jobs[job_id]
 
     def prog(pct, etapa):
@@ -56726,7 +57262,8 @@ def _pxml_rodar(job_id, pasta_xml, pasta_saida):
         job['etapa'] = etapa
 
     try:
-        job['resultado'] = _pxml_gerar(pasta_xml, pasta_saida, progresso=prog)
+        job['resultado'] = _pxml_gerar(pasta_xml, pasta_saida, progresso=prog,
+                                       id_cliente=id_cliente)
     except Exception as ex:
         job['resultado'] = {'ok': False, 'msg': f'{type(ex).__name__}: {str(ex)[:200]}'}
     job['pct'] = 100
@@ -56753,7 +57290,9 @@ def api_planilhas_xml_gerar():
     saida = (d.get('planilhas') or M.PLANILHAS).strip()
     job_id = uuid.uuid4().hex[:12]
     _pxml_jobs[job_id] = {'pct': 0, 'etapa': 'iniciando…', 'done': False, 'resultado': None}
-    threading.Thread(target=_pxml_rodar, args=(job_id, pasta_xml, saida), daemon=True).start()
+    threading.Thread(target=_pxml_rodar,
+                     args=(job_id, pasta_xml, saida, session.get('id_cliente')),
+                     daemon=True).start()
     return jsonify({'ok': True, 'job_id': job_id})
 
 

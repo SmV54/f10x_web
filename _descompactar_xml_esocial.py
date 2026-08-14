@@ -205,7 +205,7 @@ PRESETS = {
 # O que a Etapa 1 da tela traz marcado. Menos que o preset "cadastro" de
 # proposito: e so o que a importacao usa hoje. S-1000 entra porque na base nova
 # a empresa pode nem existir; S-3000 porque e ele que diz o que esta morto.
-ETAPA1 = ["S-1000", "S-2200", "S-2205", "S-2206", "S-2230", "S-2299", "S-3000"]
+ETAPA1 = ["S-1000", "S-1010", "S-2200", "S-2205", "S-2206", "S-2230", "S-2299", "S-3000"]
 
 # Rotulo de cada layout, para a tela nao mostrar so o codigo seco.
 NOMES = {

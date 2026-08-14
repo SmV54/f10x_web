@@ -182,7 +182,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 
     <div class="tabela-card">
         {% if registros %}
-        {% set num_cols = 9 %}
+        {% set num_cols = 10 %}
         <table>
             <thead>
                 <tr class="cab-print-row">
@@ -204,6 +204,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
                     <th>Nome</th>
                     <th class="td-data">Data</th>
                     <th class="td-proc">Proced.</th>
+                    <th>Tipo do ASO</th>
                     <th>Resultado</th>
                     <th>Ordem</th>
                     <th>Médico / CRM-UF</th>
@@ -218,6 +219,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
                     <td>{{ r.nome }}</td>
                     <td class="td-data">{{ r.data_fmt }}</td>
                     <td class="td-proc">{{ r.proc }}</td>
+                    <td>{{ r.tp_exame_desc }}</td>
                     <td>
                         {% if r.resultado == '2' %}
                             <span class="badge-tipo badge-inapto">Inapto</span>
