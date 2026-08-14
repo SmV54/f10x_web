@@ -1470,12 +1470,19 @@ function iniciarTour() {
 <div class="banner-cert ausente" id="bannerCert">
     <span class="icone">📄</span>
     <span class="msg">
+        {% if cert_eh_filial %}
+        <strong>A matriz ainda não tem certificado digital.</strong>
+        Esta é uma filial, e quem assina os envios ao eSocial é sempre o certificado
+        <strong>A1</strong> da <strong>matriz</strong> (o CNPJ terminado em 0001) — um só atende
+        todas as filiais. Cadastre o certificado na empresa matriz; não é preciso enviar um aqui.
+        {% else %}
         <strong>Certificado digital não cadastrado.</strong>
         Para transmitir eventos ao eSocial (S-1000, S-1210, etc.) você precisa enviar um certificado
         <strong>A1</strong> (arquivo .pfx / .p12 emitido em nome desta empresa). O certificado
         <strong>A3</strong> (cartão/token) não é suportado.
+        {% endif %}
     </span>
-    <a class="btn-cert" href="/config_certificado">Enviar certificado</a>
+    <a class="btn-cert" href="/config_certificado">{% if cert_eh_filial %}Ver certificado{% else %}Enviar certificado{% endif %}</a>
     <button class="fechar" onclick="document.getElementById('bannerCert').style.display='none'" title="Ocultar">✕</button>
 </div>
 {% elif cert_status == 'vencido' %}

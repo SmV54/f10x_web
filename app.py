@@ -1254,18 +1254,29 @@ def menu():
     except Exception:
         esocial_pend = {}
 
-    # Status do certificado digital A1 da empresa atual (para banner no menu)
+    # Status do certificado digital A1 da empresa atual (para banner no menu).
+    # Passa pelo _aplicar_cert_esocial para enxergar o MESMO certificado que o
+    # envio vai usar: a filial que herda o da matriz não pode ver "certificado
+    # não cadastrado", porque o dela foi apagado de propósito.
     cert_status       = "ok"     # ok | ausente | vence_em | vencido
     cert_dias         = None
     cert_validade_fmt = ""
+    cert_herdado_de   = ""       # CNPJ da matriz, quando a filial herdou
+    cert_eh_filial    = False    # filial SEM matriz de quem herdar
     try:
         _cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
         if _cnpj_emp:
             _rc = (supabase.table("tab_empresa")
-                   .select("cert_pfx_b64, cert_validade")
+                   .select("*")
                    .eq("cnpj", _cnpj_emp)
                    .limit(1).execute())
             _row = (_rc.data or [{}])[0]
+            if _row:
+                _aplicar_cert_esocial(_row)
+            _herd = so_numeros(_row.get("_cert_herdado") or "")
+            cert_herdado_de = _fmt_cnpj(_herd) if _herd else ""
+            cert_eh_filial  = (len(_cnpj_emp) == 14 and _cnpj_emp[8:12] != "0001"
+                               and not _herd)
             _pfx = _row.get("cert_pfx_b64") or ""
             _val = _row.get("cert_validade") or ""
             if not _pfx:
@@ -1307,6 +1318,8 @@ def menu():
         cert_status=cert_status,
         cert_dias=cert_dias,
         cert_validade_fmt=cert_validade_fmt,
+        cert_herdado_de=cert_herdado_de,
+        cert_eh_filial=cert_eh_filial,
         eh_admin_f10=(_pode_impersonar() or bool(session.get("cpf_admin_original"))),
         mostra_admin=_pode_admin(),
         sou_titular=_sou_titular(),
@@ -37442,13 +37455,17 @@ def config_certificado():
     cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
     cert_atual = {}
     try:
+        # select("*") + _aplicar_cert_esocial: a filial mostra o certificado da
+        # MATRIZ, que é o que o envio realmente usa. Sem isso a tela diria que
+        # não há certificado justamente onde ele foi apagado de propósito.
         r = (supabase.table("tab_empresa")
-             .select("cert_titular, cert_cnpj, cert_validade")
+             .select("*")
              .eq("cnpj", cnpj_emp)
              .limit(1)
              .execute())
         if r.data:
             d = r.data[0]
+            _aplicar_cert_esocial(d)
             v = d.get("cert_validade") or ""
             if v:
                 from datetime import date as _date
@@ -37462,6 +37479,8 @@ def config_certificado():
                     "dias_restantes": dias_restantes,
                     "vencido":        dias_restantes < 0,
                     "alerta":         0 <= dias_restantes <= 30,
+                    "herdado_de":     _fmt_cnpj(so_numeros(d.get("_cert_herdado") or ""))
+                                      if d.get("_cert_herdado") else "",
                 }
     except Exception:
         pass

@@ -164,8 +164,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
   {% if cert_atual %}
   <div class="card">
     <div class="card-titulo">
-      ✅ Certificado instalado
+      {% if cert_atual.herdado_de %}🏢 Certificado da matriz{% else %}✅ Certificado instalado{% endif %}
     </div>
+    {% if cert_atual.herdado_de %}
+    <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 14px;
+                margin-bottom:14px;font-size:12.5px;color:#1e40af;line-height:1.6;">
+      Esta filial usa o certificado da <strong>matriz {{ cert_atual.herdado_de }}</strong>.
+      É assim que o eSocial funciona: um único certificado assina por todos os estabelecimentos,
+      então <strong>não é preciso instalar um certificado aqui</strong>.
+      Para trocar ou renovar, faça isso na empresa matriz.
+    </div>
+    {% endif %}
     <div class="cert-grid">
       <span class="cert-label">Titular</span>
       <span class="cert-value nome">{{ cert_atual.titular }}</span>
@@ -186,7 +195,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         {% endif %}
       </span>
     </div>
+    {% if not cert_atual.herdado_de %}
     <button class="btn-remover" onclick="removerCert()">🗑 Remover certificado</button>
+    {% endif %}
   </div>
   {% endif %}
 
