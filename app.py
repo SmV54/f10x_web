@@ -56320,10 +56320,10 @@ _PXML_COLS_DEP = ["cpf_titular", "nome", "tpdep", "dtnascto", "cpfdep", "depirrf
                   "depsf", "inctrabf", "sexodep", "origem", "arquivo"]
 # S-1010: a verba como o eSocial a conhece + a nossa correspondente no
 # tab_rubrica. As colunas f10_* são o palpite do sistema, para conferir.
-# O de-para vem primeiro e junto — código do eSocial, nosso código e nossa
-# verba lado a lado —, que é o que se confere linha a linha. O resto do eSocial
+# O de-para vem primeiro, PAREADO POR TIPO: os dois códigos lado a lado e
+# depois os dois nomes, que é como se confere linha a linha. O resto do eSocial
 # (natureza, tipo, incidências) fica depois, para consulta.
-_PXML_COLS_1010 = ["dsc_es", "cod_es", "f10_cod", "f10_nome",
+_PXML_COLS_1010 = ["cod_es", "f10_cod", "dsc_es", "f10_nome",
                    "f10_casou_por", "f10_nota", "f10_origem",
                    "nat_es", "tp_es", "inc_cp", "inc_irrf", "inc_fgts", "inc_sind",
                    "ini_valid", "versoes", "excluida", "arquivo"]
