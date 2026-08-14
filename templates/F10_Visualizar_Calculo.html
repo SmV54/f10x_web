@@ -217,6 +217,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     padding: 10px 24px;
     position: sticky; top: 58px; z-index: 100;
 }
+/* Caminho de volta ao cálculo da rescisão (modo=rescisao) */
+.volta-resc {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    flex-wrap: wrap; background: #f0fdf4; border-bottom: 2px solid #86efac;
+    padding: 10px 24px;
+}
+.volta-resc-txt { display: flex; flex-direction: column; gap: 2px; }
+.volta-resc-txt strong { font-size: 13px; color: #166534; }
+.volta-resc-txt span  { font-size: 12px; color: #15803d; }
+.volta-resc-btn {
+    display: inline-flex; align-items: center; gap: 6px; background: #166534; color: #fff;
+    font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 8px;
+    text-decoration: none; white-space: nowrap; transition: .15s;
+}
+.volta-resc-btn:hover { background: #14532d; }
 .aviso-icone { font-size: 20px; flex-shrink: 0; }
 .aviso-corpo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .aviso-titulo {
@@ -301,9 +316,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
             <span class="topo-versao">Versão: {{ versao }}</span>
         </div>
-        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">← Voltar</button>
+        {# Vindo da rescisão, o Voltar devolve para o cálculo — é de lá que se
+           recalcula e se emite TRCT e memória. #}
+        <button class="btn-voltar-topo"
+                onclick="window.location.href='{% if modo_rescisao %}/calc_rescisao{% else %}/menu{% endif %}'">
+            ← {% if modo_rescisao %}Calcular Rescisão{% else %}Voltar{% endif %}
+        </button>
     </div>
 </div>
+
+{% if modo_rescisao %}
+<div class="volta-resc">
+    <div class="volta-resc-txt">
+        <strong>Visualização da Rescisão</strong>
+        <span>Conferindo os valores? Volte ao cálculo para recalcular, emitir a TRCT ou a memória.</span>
+    </div>
+    <a class="volta-resc-btn" href="/calc_rescisao">🖩 Voltar para Calcular Rescisão</a>
+</div>
+{% endif %}
 
 {% if folha_sit_label != 'Fechada' %}
 <div class="aviso-nao-definitivo" id="avisoNaoDefinitivo">
