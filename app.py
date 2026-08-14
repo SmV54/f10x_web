@@ -15944,6 +15944,35 @@ def api_funcionarios_lista():
         except Exception as e:
             print(f"[funcionarios_lista] contratos: {e}")
 
+    # Contexto exame médico: data do exame mais recente de cada funcionário, para
+    # a última coluna da lista. Sem isso o usuário não tem como saber, na hora de
+    # escolher, quem está com o periódico vencendo e quem acabou de fazer.
+    exame_ult = {}
+    if _contexto == "exame_med":
+        try:
+            _off = 0
+            while True:   # PostgREST corta em 1000 linhas por consulta
+                _ch = (supabase.table("tab_eventos")
+                       .select("matricula, data1i")
+                       .eq("id_empresa", id_empresa)
+                       .eq("op1", 106)
+                       .range(_off, _off + 999)
+                       .execute().data or [])
+                for _e in _ch:
+                    _m = _e.get("matricula")
+                    _d = str(_e.get("data1i") or "")
+                    if _m is None or len(_d) != 8:
+                        continue
+                    _m = int(_m)
+                    if _d > exame_ult.get(_m, ""):
+                        exame_ult[_m] = _d
+                if len(_ch) < 1000:
+                    break
+                _off += 1000
+        except Exception as e:
+            print(f"[funcionarios_lista] ultimo exame: {e}")
+            exame_ult = {}
+
     # Contexto pensão: marca na lista quem JÁ tem pensão ativa, para o usuário
     # saber de cara que aquele clique é edição, não cadastro novo.
     pensao_mats = set()
@@ -16009,6 +16038,8 @@ def api_funcionarios_lista():
             "aviso_previo": (mat_int in aviso_mats),
             "tem_pensao":   (mat_int in pensao_mats),
             "pensoes":      pensoes_por_mat.get(mat_int, []),
+            "exame_data":   (lambda d: f"{d[6:8]}/{d[4:6]}/{d[:4]}" if d else "")(
+                                exame_ult.get(mat_int, "")),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})

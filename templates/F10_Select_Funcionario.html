@@ -637,6 +637,10 @@ const CONTEXTOS = {
         maxSel:        1,
         msgMaxSel:     'Para registrar exame médico, selecione apenas 1 funcionário',
         semFiltros:    true,         // esconde o painel de Filtros — só a lista
+        // A lista já vem só com ativos, então o selo "Ativo" não informa nada:
+        // a última coluna vira a data do exame mais recente.
+        apiUrl:        '/api/funcionarios_lista?contexto=exame_med',
+        colExame:      true,         // última coluna = data do último exame
     },
     acidente: {
         titulo:        'Acidente de Trabalho — Selecionar Funcionário',
@@ -862,9 +866,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Contextos que trocam a última coluna (Situação → data de um evento)
-    if (ctx.colAviso || ctx.colResc) {
+    if (ctx.colAviso || ctx.colResc || ctx.colExame) {
         const lbl = document.getElementById('col-sit-label');
-        if (lbl) lbl.textContent = ctx.colAviso ? 'Aviso Prévio' : 'Data Rescisão';
+        if (lbl) lbl.textContent = ctx.colAviso ? 'Aviso Prévio'
+                                 : ctx.colResc  ? 'Data Rescisão'
+                                 : 'Último Exame';
     } else if (CONTEXTO === 'pensao') {
         const lbl = document.getElementById('col-sit-label');
         if (lbl) lbl.textContent = 'Pensão';
@@ -1188,6 +1194,11 @@ function renderLista(lista) {
             sitCell = f.resc_data
                 ? '<span class="lc-data-col" title="Data da rescisão">' + f.resc_data + '</span>'
                 : '<span class="lc-data-col">—</span>';
+        } else if (ctx.colExame) {
+            // última coluna mostra a DATA do exame mais recente (contexto exame médico)
+            sitCell = f.exame_data
+                ? '<span class="lc-data-col" title="Data do último exame médico">' + f.exame_data + '</span>'
+                : '<span class="lc-data-col" title="Sem exame registrado">—</span>';
         } else if (CONTEXTO === 'pensao') {
             // Aqui a lista já vem só com ativos (f_situacao 'A'), então o selo
             // "Ativo" não informa nada. A coluna vira AÇÃO: quem já tem pensão
