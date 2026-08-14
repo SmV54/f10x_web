@@ -594,6 +594,18 @@ def _conferir_assinante_esocial(empresa):
 
     cnpj = re.sub(r"\D", "", empresa.get("cnpj") or "")
     cert = re.sub(r"\D", "", empresa.get("cert_cnpj") or "")
+    eh_filial = len(cnpj) == 14 and cnpj[8:12] != "0001"
+
+    # Nenhum certificado — nem próprio, nem herdado da matriz (esta função roda
+    # DEPOIS do _aplicar_cert_esocial). Numa filial, o genérico "Certificado
+    # digital não configurado" manda o usuário procurar arquivo no lugar errado:
+    # o .pfx tem de ser cadastrado na MATRIZ.
+    if eh_filial and not empresa.get("cert_pfx_b64"):
+        return False, (
+            f"A matriz ainda não tem certificado digital. Quem assina os envios ao eSocial é "
+            f"sempre o certificado A1 da MATRIZ ({cnpj[:8]}/0001) — um só atende todas as "
+            f"filiais. Cadastre o certificado na empresa matriz, em eSocial → Certificado "
+            f"Digital; não é preciso enviar um nesta filial.")
 
     # e-CPF (11 dígitos) pode ser o representante legal; sem dado não se reprova.
     if len(cnpj) != 14 or len(cert) != 14:
