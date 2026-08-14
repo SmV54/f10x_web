@@ -155,6 +155,21 @@ tbody tr:hover { background: #f8fafc; }
             📝 Movimento Mês Rescisão
         </a>
     </div>
+
+    {# Quem ja tem rescisao calculada nao precisa recalcular so para chegar a
+       Visualizacao ou a Memoria: os dois atalhos ficam disponiveis na abertura
+       da tela. Antes eles so existiam dentro do card de resultado, que aparece
+       apenas depois de rodar o calculo naquela mesma visita — voltar da
+       Visualizacao deixava a tela sem caminho de ida. #}
+    {% set calculados = funcs | selectattr('calculado') | list %}
+    {% if calculados %}
+    <div class="barra-acao" id="atalhosCalc" style="margin-top:-6px;">
+        <a class="btn-visu-resc" href="/visualizar_calculo?modo=rescisao">👁 Visualizar Rescisão</a>
+        <a class="btn-visu-resc btn-mem-resc"
+           href="{% if calculados|length == 1 %}/api/memoria_rescisao_pdf/{{ calculados[0].matricula }}{% else %}/calc_rescisao?modo=memoria{% endif %}"
+           {% if calculados|length == 1 %}target="_blank"{% endif %}>📄 Memória de Cálculo</a>
+    </div>
+    {% endif %}
     <div id="avisoMovResc" style="text-align:center;font-size:12px;color:#64748b;margin:-8px 0 18px;">
         Lançou, alterou ou excluiu uma verba? Clique em <strong>Calcular Rescisão</strong>
         de novo para que ela entre no cálculo.
@@ -249,6 +264,14 @@ function mostrarMovResc(mostrar) {
     });
 }
 
+// Atalhos de Visualizar/Memoria da abertura da tela. Somem durante o calculo e,
+// no sucesso, NAO voltam: o card de resultado ja traz os mesmos dois botoes, e
+// duplicar confundiria. Num erro voltam, porque ali nada novo apareceu.
+function mostrarAtalhosCalc(mostrar) {
+    const el = document.getElementById('atalhosCalc');
+    if (el) el.style.display = mostrar ? '' : 'none';
+}
+
 async function calcular() {
     const btn = document.getElementById('btnCalc');
     const msg = document.getElementById('msg');
@@ -259,6 +282,7 @@ async function calcular() {
     }
     btn.disabled = true; btn.textContent = 'Calculando...';
     mostrarMovResc(false);
+    mostrarAtalhosCalc(false);
     msg.innerHTML = '';
     document.getElementById('cardResult').style.display = 'none';   // esconde o Resultado enquanto (re)calcula
     try {
@@ -270,6 +294,7 @@ async function calcular() {
             msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>${d.msg || 'Erro no cálculo.'}</div></div>`;
             btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
             mostrarMovResc(true);
+            mostrarAtalhosCalc(true);
             return;
         }
         const body = document.getElementById('resBody');
@@ -309,6 +334,7 @@ async function calcular() {
         msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Erro de comunicação.</div></div>`;
         btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
         mostrarMovResc(true);
+        mostrarAtalhosCalc(true);
     }
 }
 
