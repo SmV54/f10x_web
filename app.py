@@ -5629,12 +5629,15 @@ def cad_aviso_previo2():
         tipo_map = {"T": "Trabalhado", "I": "Indenizado"}
         cond_map = {"J": "Justa Causa", "T": "Contrato Temporário", "F": "Falecimento"}
 
-        # Contrato Temporário não tem aviso prévio: o contrato acaba no termo ou
-        # é antecipado (indenização do art. 479/480). A tela esconde a escolha,
-        # mas um "Indenizado" vindo de uma seleção anterior faria a rescisão
-        # pagar a verba 61 indevidamente — ver _MOTIVO_RESC.
-        if cond_especial == "T":
+        # Nenhuma condição especial tem aviso prévio trabalhado/indenizado: justa
+        # causa e falecimento não geram aviso, e o contrato a termo acaba no prazo
+        # ou é antecipado (indenização do art. 479/480). A tela esconde a escolha,
+        # mas um "Indenizado" vindo de uma seleção anterior faria a rescisão pagar
+        # a verba 61 indevidamente — _MOTIVO_RESC decide pelo campotxt1.
+        if cond_especial in ("J", "T", "F"):
             tipo_aviso_post = "T"
+
+        if cond_especial == "T":
             # A tela já barra, mas a gravação não pode depender do JavaScript:
             # sem o contrato lançado não há data de término em que se apoiar.
             _tem_ct = False

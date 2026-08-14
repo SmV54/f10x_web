@@ -521,14 +521,15 @@ function condChange(chk) {
     aplicarCond();
 }
 
-// Com Contrato Temporario nao existe aviso previo trabalhado ou indenizado: o
-// contrato acaba no termo (ou e antecipado, com a indenizacao do art. 479/480).
-// O item 2 sai da tela e os numeros restantes se reorganizam.
+// Nenhuma condicao especial tem aviso previo trabalhado ou indenizado: na justa
+// causa e no falecimento nao ha aviso, e o contrato a termo acaba no prazo (ou e
+// antecipado, com a indenizacao do art. 479/480). Marcada qualquer uma delas, o
+// item 2 sai da tela e os numeros restantes se reorganizam.
 function aplicarCond() {
-    var contrato = document.getElementById('cond_T');
-    var rowTipo  = document.getElementById('row-tipo');
+    var algumaCond = !!document.querySelector('.chk-cond:checked');
+    var rowTipo    = document.getElementById('row-tipo');
     if (!rowTipo) return;
-    rowTipo.style.display = (contrato && contrato.checked) ? 'none' : '';
+    rowTipo.style.display = algumaCond ? 'none' : '';
     renumerar();
 }
 
