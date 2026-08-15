@@ -9549,6 +9549,21 @@ def landing_petshop():
     return send_file(caminho)
 
 
+@app.route("/apresentacao")
+def apresentacao_90s():
+    """Apresentação de 90 segundos do sistema, em slides. Pública, sem login.
+
+    Mesmo desenho do /petshop: um HTML pronto e autossuficiente, servido direto.
+    É o link do comercial — abre em qualquer celular, roda sozinho, não pede
+    conta nenhuma e não aparece em busca (meta robots noindex no arquivo).
+
+    Existe porque mandar o arquivo por WhatsApp é frágil: o visualizador do
+    aplicativo não executa JavaScript, e ali a apresentação passa sem som.
+    Pelo link, o navegador é de verdade e toca a trilha."""
+    caminho = os.path.join(os.path.dirname(__file__), "apresentacao_90s.html")
+    return send_file(caminho)
+
+
 @app.route("/manual_pdf")
 def manual_pdf():
     """Manual do Usuário em PDF, aberto pelo botão do menu.
