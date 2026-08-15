@@ -840,7 +840,7 @@ kbd{
       <div class="tela esquerda-maior">
         <div>
           <p class="eyebrow">O problema</p>
-          <h2>Dois medos, todo m&ecirc;s.</h2>
+          <h2>Dois problemas, todo m&ecirc;s.</h2>
           <div class="tela-lista">
             <div><i>SIST</i><span>
               <span class="frase"><b>O sistema mora numa m&aacute;quina s&oacute;.</b></span>
@@ -946,7 +946,7 @@ kbd{
       <div class="tela esquerda-maior">
         <div>
           <p class="eyebrow">Relat&oacute;rios</p>
-          <h2>O relat&oacute;rio que faltava.</h2>
+          <h2>Gerador de Relat&oacute;rio &mdash; monte o seu em segundos.</h2>
           <p class="lede">
             <span class="frase">Voc&ecirc; escolhe o per&iacute;odo, o filtro e as se&ccedil;&otilde;es.</span>
             <span class="frase">Cadastro, totais, movimento, eventos, dependentes.</span>
@@ -1062,14 +1062,14 @@ kbd{
 
   <div id="jsmorto">&#9834; toque no bot&atilde;o abaixo para ouvir a trilha</div>
   <noscript><style>#jsmorto{display:block !important}</style></noscript>
-  <audio id="narracao" preload="none" src="/static/apresentacao_narracao.wav"></audio>
+  <audio id="narracao" preload="auto" src="/static/apresentacao_narracao.wav"></audio>
   <div id="aviso" role="status"></div>
   <div class="bar">
     <button id="play" class="primary" type="button">▶ Rodar 90 s</button>
     <button id="prev" type="button">← Anterior</button>
     <button id="next" type="button">Próximo →</button>
     <button id="reset" type="button">Reiniciar</button>
-    <button id="narrar" type="button">&#128266; Com narra&ccedil;&atilde;o</button>
+    <button id="narrar" type="button" aria-pressed="true">&#128266; Narra&ccedil;&atilde;o ligada</button>
     <button id="som" type="button" aria-pressed="true">♪ Música ligada</button>
     <span id="dicasom">&#9834; toque na tela para ligar o som</span>
     <span class="hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>espaço</kbd> rodar</span>
@@ -1288,31 +1288,69 @@ kbd{
      A voz mora no servidor (é grande demais para viajar dentro do arquivo),
      então só existe quando a apresentação é aberta pelo link do site. Sem o
      arquivo, o botão simplesmente some. Com narração, a trilha abaixa para
-     não brigar com a voz — os dois correm em tempo real e ficam juntos. */
+     não brigar com a voz — os dois correm em tempo real e ficam juntos.
+
+     Nasce ligada, junto com a música: quem abre o link ouve a apresentação
+     sem procurar botão nenhum. O navegador ainda pode recusar o áudio antes
+     de um toque na tela — regra dele, não escolha daqui —, e nesse caso a
+     tentativa falha calada e o primeiro toque liga tudo. O botão virou uma
+     chave: desliga a voz e devolve a trilha ao volume cheio. */
   var narr = document.getElementById('narracao');
   var narrBtn = document.getElementById('narrar');
-  var comNarracao = false;
+  var comNarracao = !!narr;
+  var VOL_COM_VOZ = 0.30;          // trilha recuada atrás da voz
+  var VOL_SEM_VOZ = VOLUME;        // trilha sozinha, no volume cheio
+  VOLUME = comNarracao ? VOL_COM_VOZ : VOL_SEM_VOZ;
 
   if (narr) {
     narr.addEventListener('error', function(){
+      comNarracao = false;
+      VOLUME = VOL_SEM_VOZ;
+      if (master && actx) master.gain.value = musicaOn ? VOLUME : 0.0001;
       if (narrBtn) narrBtn.style.display = 'none';
     });
   } else if (narrBtn) {
     narrBtn.style.display = 'none';
   }
 
-  narrBtn.addEventListener('click', function(){
-    manual();
-    show(0);
-    base = 0;
-    comNarracao = true;
-    VOLUME = 0.30;                 // trilha recuada atrás da voz
+  function decorrido(){
+    return playing ? base + (agora() - t0) / 1000 : base;
+  }
+
+  /* Toca a voz a partir do ponto em que a apresentação está, para o caso de
+     ela começar atrasada (áudio barrado até o primeiro toque). Recusa não
+     merece aviso na tela: o toque seguinte chama isto de novo. */
+  function narracaoToca(){
+    if (!comNarracao || !narr) return;
+    try {
+      var onde = decorrido();
+      if (Math.abs(narr.currentTime - onde) > 0.6) narr.currentTime = onde;
+      var p = narr.play();
+      if (p && p.then) p.then(function(){ if (dicaSom) dicaSom.className = 'sumiu'; },
+                              function(){ /* barrado; volta no primeiro gesto */ });
+    } catch (e) { /* idem */ }
+  }
+
+  function narracaoPara(){
+    if (!narr) return;
+    try { narr.pause(); } catch (e) { /* nada a pausar */ }
+  }
+
+  function narrRotulo(){
+    if (!narrBtn) return;
+    narrBtn.setAttribute('aria-pressed', comNarracao ? 'true' : 'false');
+    narrBtn.innerHTML = comNarracao ? '&#128266; Narra&ccedil;&atilde;o ligada'
+                                    : '&#128264; Narra&ccedil;&atilde;o desligada';
+  }
+
+  if (narrBtn) narrBtn.addEventListener('click', function(){
+    comNarracao = !comNarracao;
+    narrRotulo();
+    VOLUME = comNarracao ? VOL_COM_VOZ : VOL_SEM_VOZ;
     if (master && actx) master.gain.value = musicaOn ? VOLUME : 0.0001;
-    play();
-    if (narr) {
-      try { narr.currentTime = 0; var p = narr.play(); if (p && p.catch) p.catch(function(){}); }
-      catch (e) { avisar('narração indisponível'); }
-    }
+    if (!comNarracao) narracaoPara();
+    else if (playing) narracaoToca();
+    else play();
   });
 
 
@@ -1393,11 +1431,11 @@ kbd{
     if (raf) clearInterval(raf);
     raf = setInterval(tick, 80);
     tick();
-    // O som só é montado depois que o usuário tocou em algo. Sem gesto,
-    // navegador nenhum deixa tocar áudio — e tentar aqui, na abertura
-    // automática, só geraria erro à toa.
-    if (gestoFeito) ligarSom();
-    if (comNarracao && narr) { try { var q = narr.play(); if (q && q.catch) q.catch(function(){}); } catch (e) {} }
+    // Música e voz são tentadas de saída, sem esperar toque nenhum. Onde o
+    // navegador permitir, a apresentação já abre falando; onde não permitir,
+    // a recusa é silenciosa e o primeiro toque na tela liga as duas.
+    ligarSom();
+    narracaoToca();
   }
 
   function stop(){
@@ -1405,7 +1443,7 @@ kbd{
     if (raf) { clearInterval(raf); raf = null; }
     playBtn.textContent = '▶ Rodar 90 s';
     if (actx) { try { actx.suspend(); } catch (e) { /* nada a pausar */ } }
-    if (comNarracao && narr) { try { narr.pause(); } catch (e) {} }
+    narracaoPara();
   }
 
   function toggle(){
@@ -1415,17 +1453,32 @@ kbd{
 
   /* navegar na mão sai do modo cronometrado: para o relógio e corta a música,
      senão o acorde continuaria correndo sozinho, fora do slide na tela */
+  /* Passar slide na mão sai do modo cronometrado, e a voz não tem como
+     acompanhar: ela é uma gravação corrida de 90 s. Por isso a narração
+     desliga aqui — mas o botão passa a mostrar isso, e um clique a traz
+     de volta do começo. */
   function manual(){
     stop();
     musicaPara();
     if (narr) { try { narr.pause(); narr.currentTime = 0; } catch (e) {} }
     comNarracao = false;
+    VOLUME = VOL_SEM_VOZ;
+    narrRotulo();
+  }
+
+  /* Reiniciar volta ao slide 1 parado, como antes, só que rearmando a voz:
+     o Play seguinte sai de novo com narração, que é o estado normal. */
+  function rearmarNarracao(){
+    if (!narr) return;
+    comNarracao = true;
+    VOLUME = VOL_COM_VOZ;
+    narrRotulo();
   }
 
   playBtn.addEventListener('click', toggle);
   document.getElementById('next').addEventListener('click', function(){ manual(); show(idx + 1); });
   document.getElementById('prev').addEventListener('click', function(){ manual(); show(idx - 1); });
-  document.getElementById('reset').addEventListener('click', function(){ manual(); show(0); });
+  document.getElementById('reset').addEventListener('click', function(){ manual(); show(0); rearmarNarracao(); });
 
   document.addEventListener('keydown', function(e){
     if (e.key === 'ArrowRight' || e.key === 'PageDown'){ manual(); show(idx + 1); e.preventDefault(); }
@@ -1443,8 +1496,9 @@ kbd{
 
   /* ---------- arranque automático ----------
      Depender de um toque no botão foi o que travou no celular. Agora a
-     apresentação começa sozinha ao abrir. O som é a única coisa que ainda
-     precisa de um toque, porque é regra do navegador, não escolha minha. */
+     apresentação começa sozinha ao abrir, e já tenta abrir falando: música e
+     narração saem juntas. Onde o navegador barrar o áudio sem um toque —
+     regra dele, não escolha minha — o primeiro toque na tela liga as duas. */
   var gestoFeito = false;
 
   function ligarSom(){
@@ -1458,7 +1512,7 @@ kbd{
     if (gestoFeito) return;
     gestoFeito = true;
     if (dicaSom) dicaSom.className = 'sumiu';
-    if (playing) ligarSom();
+    if (playing) { ligarSom(); narracaoToca(); }
   }
   document.addEventListener('pointerdown', primeiroGesto, true);
   document.addEventListener('touchstart', primeiroGesto, true);
