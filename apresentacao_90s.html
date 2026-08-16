@@ -170,6 +170,9 @@ body{
 @media (prefers-reduced-motion: reduce){
   .slide{animation:none}
   .seg i{transition:none !important}
+  /* quem pediu menos movimento não leva o pulso dos destaques; a narração
+     continua igual, só o cartão para de crescer */
+  .chip,.tela-lista>div{animation:none !important}
 }
 
 /* ---------- type ---------- */
@@ -765,6 +768,65 @@ kbd{
   .shot-faixa{aspect-ratio:16/5}
 }
 
+/* ---------- destaque acompanhando a narração ----------
+   Nos slides 3 e 4 a voz enumera os itens um a um. O item citado cresce e
+   volta, para o olho achar na tela o que o ouvido está ouvindo.
+
+   O atraso de cada item NÃO é chutado: sai do próprio gerador da narração,
+   que pergunta à voz em que segundo cada palavra é dita e escreve o bloco
+   marcado logo abaixo. Mudou o roteiro? Rode `python _gerar_narracao.py`
+   de novo: áudio e destaques são gerados na mesma passada e só ficam
+   certos juntos.
+
+   É "scale", não largura nem forro: o item cresce por cima dos vizinhos e
+   a grade não se mexe -- crescer de verdade empurraria os dez cartões e o
+   slide inteiro tremeria. O z-index sobe junto porque, sem ele, o cartão
+   seguinte pinta por cima da beirada de quem cresceu. E é "both", para
+   cada item ficar parado até chegar a vez dele. */
+@keyframes destacar{
+  0%{transform:none;z-index:0}
+  30%{transform:scale(var(--cresce,1.08));z-index:2;
+      border-color:var(--brand);
+      box-shadow:0 10px 24px -14px rgba(31,111,208,.55)}
+  100%{transform:none;z-index:0}
+}
+.slide:nth-of-type(3) .chip{position:relative}
+/* nos cinco passos o item é uma linha de texto, não um cartão: cresce menos
+   e a partir da esquerda, senão a frase desliza para os dois lados */
+.slide:nth-of-type(4) .tela-lista>div{transform-origin:left center;--cresce:1.05}
+
+/* DESTAQUES-INICIO — bloco gerado por _gerar_narracao.py, não editar à mão */
+/* pulso de cada item, no segundo em que a voz o cita */
+.slide:nth-of-type(3).on .chip:nth-child(1){animation:destacar .85s both 1.90s}
+.slide:nth-of-type(3).on .chip:nth-child(2){animation:destacar .85s both 2.81s}
+.slide:nth-of-type(3).on .chip:nth-child(3){animation:destacar .85s both 3.69s}
+.slide:nth-of-type(3).on .chip:nth-child(4){animation:destacar .85s both 4.69s}
+.slide:nth-of-type(3).on .chip:nth-child(5){animation:destacar .85s both 5.79s}
+.slide:nth-of-type(3).on .chip:nth-child(6){animation:destacar .85s both 6.97s}
+.slide:nth-of-type(3).on .chip:nth-child(7){animation:destacar .85s both 7.61s}
+.slide:nth-of-type(3).on .chip:nth-child(8){animation:destacar .85s both 8.41s}
+.slide:nth-of-type(3).on .chip:nth-child(9){animation:destacar .85s both 9.35s}
+.slide:nth-of-type(3).on .chip:nth-child(10){animation:destacar .85s both 10.22s}
+.slide:nth-of-type(4).on .tela-lista>div:nth-child(1){animation:destacar .85s both 1.81s}
+.slide:nth-of-type(4).on .tela-lista>div:nth-child(2){animation:destacar .85s both 2.75s}
+.slide:nth-of-type(4).on .tela-lista>div:nth-child(3){animation:destacar .85s both 3.61s}
+.slide:nth-of-type(4).on .tela-lista>div:nth-child(4){animation:destacar .85s both 4.40s}
+.slide:nth-of-type(4).on .tela-lista>div:nth-child(5){animation:destacar .85s both 5.14s}
+/* modo sem JavaScript: os mesmos 96s, em porcentagem */
+html:not(.js) .slide{animation-duration:96s}
+@keyframes cena1{0%{opacity:1}7.292%{opacity:0}100%{opacity:0}}
+@keyframes cena2{0%{opacity:0}7.292%{opacity:1}15.625%{opacity:0}100%{opacity:0}}
+@keyframes cena3{0%{opacity:0}15.625%{opacity:1}30.208%{opacity:0}100%{opacity:0}}
+@keyframes cena4{0%{opacity:0}30.208%{opacity:1}39.583%{opacity:0}100%{opacity:0}}
+@keyframes cena5{0%{opacity:0}39.583%{opacity:1}47.917%{opacity:0}100%{opacity:0}}
+@keyframes cena6{0%{opacity:0}47.917%{opacity:1}56.250%{opacity:0}100%{opacity:0}}
+@keyframes cena7{0%{opacity:0}56.250%{opacity:1}64.583%{opacity:0}100%{opacity:0}}
+@keyframes cena8{0%{opacity:0}64.583%{opacity:1}75.000%{opacity:0}100%{opacity:0}}
+@keyframes cena9{0%{opacity:0}75.000%{opacity:1}82.292%{opacity:0}100%{opacity:0}}
+@keyframes cena10{0%{opacity:0}82.292%{opacity:1}89.583%{opacity:0}100%{opacity:0}}
+@keyframes cena11{0%{opacity:0}89.583%{opacity:1}100%{opacity:1}}
+/* DESTAQUES-FIM */
+
 /* ---------- impressão / PDF: os 8 slides viram 8 páginas ---------- */
 @media print{
   @page{ size:A4 landscape; margin:11mm; }
@@ -878,7 +940,7 @@ kbd{
     </section>
 
     <!-- 3 -->
-    <section class="slide" data-dur="9">
+    <section class="slide" data-dur="14">
       <p class="eyebrow">O que &eacute;</p>
       <h2>Dez m&oacute;dulos, um menu s&oacute;.</h2>
       <div class="chips chips-10">
@@ -898,7 +960,7 @@ kbd{
     </section>
 
     <!-- 4 -->
-    <section class="slide" data-dur="8">
+    <section class="slide" data-dur="9">
       <div class="tela esquerda-maior">
         <div>
           <p class="eyebrow">Como funciona</p>
