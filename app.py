@@ -33996,6 +33996,59 @@ def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_v
     return out
 
 
+# =========================================================
+# DISPENSA DA CONFERENCIA DE S-1010 ANTES DO S-1200
+# =========================================================
+# Pares (id_cliente, competencia) em que a conferencia previa de S-1010 nao
+# roda e o S-1200 sai assim mesmo. Pedido em 17/08/2026 para o cliente 0030
+# em 07/2026: as rubricas dele JA existem no eSocial -- o reenvio volta com
+# "[537] Ja existe no sistema registro com mesmo codigo de identificacao" --,
+# mas os recibos nao estao gravados aqui, entao a conferencia as considera
+# pendentes e trava um S-1200 que na verdade tem tudo o que precisa.
+#
+# So dispensa a conferencia do S-1010. A do S-1020 continua valendo, e o
+# governo continua conferindo do lado dele: se faltar rubrica de verdade, o
+# evento e recusado la. Isto tira a trava local, nao a exigencia real.
+S1010_CHECK_DISPENSADO = {(30, "202607")}
+
+_cliente_por_empresa = {}      # cache do processo, evita repetir a consulta
+
+
+def _cliente_da_empresa(id_empresa):
+    """id_cliente dono da empresa. 0 se nao achar."""
+    try:
+        ie = int(id_empresa or 0)
+    except (TypeError, ValueError):
+        return 0
+    if ie in _cliente_por_empresa:
+        return _cliente_por_empresa[ie]
+    val = 0
+    try:
+        r = (supabase.table("tab_empresa").select("id_cliente")
+             .eq("id_empresa", ie).limit(1).execute().data or [])
+        if r:
+            val = int(r[0].get("id_cliente") or 0)
+    except Exception as e:
+        print(f"[S1010 dispensa] nao consegui achar o cliente da empresa {ie}: {e}")
+    _cliente_por_empresa[ie] = val
+    return val
+
+
+def _s1010_check_dispensado(id_empresa, ano_mes):
+    """True quando a conferencia previa de S-1010 nao deve rodar."""
+    if not S1010_CHECK_DISPENSADO:
+        return False
+    # A sessao ja sabe o cliente na maioria das chamadas; a consulta ao banco
+    # so acontece fora de request (rotina, script).
+    try:
+        cli = int(session.get("id_cliente") or 0)
+    except Exception:
+        cli = 0
+    if not cli:
+        cli = _cliente_da_empresa(id_empresa)
+    return (cli, str(ano_mes or "")) in S1010_CHECK_DISPENSADO
+
+
 def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
     """Verbas lancadas na folha que ainda NAO tem S-1010 aceito.
 
@@ -34007,7 +34060,13 @@ def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
       folha de 2026-06, entao recibo com ini_valid depois da competencia da
       folha nao vale;
     - verba informativa (codigo >= 9900) fica de fora — ela nao vai no S-1200.
+
+    Devolve vazio, sem conferir nada, nos pares (cliente, competencia) de
+    S1010_CHECK_DISPENSADO. Fica aqui, no ponto unico onde a lista nasce, para
+    valer nos tres lugares que chamam esta funcao de uma vez so.
     """
+    if _s1010_check_dispensado(id_empresa, ano_mes):
+        return []
     try:
         mov = _mov_da_folha(id_empresa, ano_mes, folha_tipo, campos="cod_verba")
     except Exception as e:
