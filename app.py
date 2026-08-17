@@ -7768,6 +7768,66 @@ def _sem_encargos(id_cliente):
 
 
 # =========================================================
+# VERBA 161 ABATENDO A BASE DO IRRF — cliente 0030, só 07/2026
+# =========================================================
+# Regra de um cliente e de uma competência só, pedida em 17/08/2026: no
+# cliente 0030 a verba 161 (adiantamento quinzenal) é subtraída da base do
+# IRRF. Fora dessas duas condições nada muda.
+#
+# Isto é EXCEÇÃO, não o normal: adiantamento quinzenal não mexe na base — o
+# imposto incide sobre a remuneração cheia no fechamento do mês, e a 161 é
+# só o registro do que já foi pago. Por isso a competência entra na chave:
+# sem ela, a regra vazaria para 08/2026 no primeiro cálculo do mês seguinte.
+#
+# Quem quiser estender: acrescente o par (cliente, competência) ao conjunto.
+IRRF_ABATE_V161 = {(30, "202607")}
+
+
+def _irrf_abate_v161(id_cliente, anomes):
+    """True quando a verba 161 deve abater a base do IRRF nesta folha."""
+    try:
+        return (int(id_cliente or 0), str(anomes or "")) in IRRF_ABATE_V161
+    except (TypeError, ValueError):
+        return False
+
+
+def _folha_tipo_mov_de(anomes_tipo):
+    """Tipo usado no tab_mov a partir do tipo da folha ('N' fora de F e R)."""
+    return "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+
+
+def _irrf_v161_por_mat(id_empresa, id_cliente, anomes, folha_tipo_mov):
+    """{matrícula: valor da 161 em centavos} — vazio quando a regra não vale.
+
+    Vem do tab_mov e não do mmVmm do cálculo porque, na hora em que a base do
+    IRRF é montada, a 161 ainda não existe lá: o adiantamento só vira a verba
+    160 bem depois (ETAPA 1140), e as 161-164 são removidas do cálculo para
+    não descontar duas vezes.
+    """
+    if not _irrf_abate_v161(id_cliente, anomes):
+        return {}
+    por_mat = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, valor")
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", folha_tipo_mov)
+             .eq("situacao",   "A")
+             .eq("cod_verba",  161))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            m = int(r.get("matricula") or 0)
+            por_mat[m] = por_mat.get(m, 0) + int(r.get("valor") or 0)
+    except Exception as e:
+        # Silenciar aqui zeraria o abatimento sem ninguém perceber, e a folha
+        # sairia com IRRF a mais parecendo certa.
+        print(f"[V161] falhou ao ler a verba 161 da empresa {id_empresa}: {e}")
+    return por_mat
+
+
+# =========================================================
 # CLIENTES SEM REPOUSO REMUNERADO (DSR) — verbas 0025 e 0027
 # =========================================================
 # Mesma ideia e, hoje, o mesmo cliente 0038: não quer o Repouso Remunerado
@@ -39484,7 +39544,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     periculosidades = _calc_etapa7_periculosidade(id_empresa, anomes, id_cliente=id_cliente)
     mov_fixo_lista  = _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=id_cliente)
     # folha_tipo em tab_mov: N=Normal; 1/A (13°) também usam "N"; F e R são fluxos distintos
-    _folha_tipo_mov = "N" if anomes_tipo not in ("F", "R") else anomes_tipo
+    _folha_tipo_mov = _folha_tipo_mov_de(anomes_tipo)
     tab_mov_dict    = _calc_etapa9_tab_mov(id_empresa, anomes,
                                            folha_tipo=_folha_tipo_mov,
                                            id_cliente=id_cliente)
@@ -39569,6 +39629,11 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
         pass
     rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
                                    "unid": "V", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
+
+    # Exceção do cliente 0030 em 07/2026 (ver IRRF_ABATE_V161). Fica separado
+    # do _adiant_por_mat de propósito: aquele soma 161-164, e aqui é só a 161.
+    _v161_por_mat = _irrf_v161_por_mat(id_empresa, id_cliente, anomes,
+                                       _folha_tipo_mov)
 
     # ── Pré-carga da INSUFICIÊNCIA DE SALDO do mês anterior (verba 551) ───────
     # O líquido nunca sai negativo: o que faltar vira 551 (provento) e no mês
@@ -41038,6 +41103,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 val for cod, val in mmVmm.items()
                 if rubricas_info.get(cod, {}).get("inc_irrf") == "11" and val > 0
             )
+            # Cliente 0030 em 07/2026: a verba 161 abate a base (IRRF_ABATE_V161).
+            # Entra aqui, na bruta, para valer nos dois métodos (completo e
+            # simplificado) e também no redutor da isenção, que parte dela.
+            _v161_abate = int(_v161_por_mat.get(matr, 0))
+            if _v161_abate > 0:
+                base_irrf_bruta = max(0, base_irrf_bruta - _v161_abate)
             num_dep_irrf     = dep_irrf_count.get(matr, 0)
             dep_irrf_dedval  = int(tabela_legais.get("irrf_dep_dedu") or 0) if tabela_legais else 0
             dep_irrf_total   = num_dep_irrf * dep_irrf_dedval
@@ -41223,7 +41294,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ]))
             elems.append(e11_tbl)
             elems.append(_mem_passo('base_irrf',
-                f"rendimentos tributáveis = {_fmt_brl(int(base_irrf_bruta))}"))
+                f"rendimentos tributáveis = {_fmt_brl(int(base_irrf_bruta))}"
+                + (f"  (já abatida a verba 161: -{_fmt_brl(_v161_abate)})"
+                   if _v161_abate > 0 else "")))
             elems.append(_mem_passo('irrf', 'os dois métodos calculados e comparados abaixo'))
             # Marcador de decisão (nível 2): diz qual dos dois caminhos venceu e
             # por quê. No Desktop é o "<<<--- MELHOR ESTE".
@@ -46781,6 +46854,16 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         else:
             descontos.append(linha)
             total_desc += val
+
+    # Cliente 0030 em 07/2026: a verba 161 abate a base do IRRF (ver
+    # IRRF_ABATE_V161). O laço acima remonta a base somando os proventos, e
+    # a 161 não passa por ele — é desconto, e no cálculo ela nem chega a
+    # virar verba da folha. Sem este abatimento o Resumo mostraria uma base
+    # maior do que a gravada no tab_total, e os dois relatórios brigariam.
+    if _irrf_abate_v161(id_cliente, anomes):
+        base_irrf = max(0, base_irrf - sum(
+            _irrf_v161_por_mat(id_empresa, id_cliente, anomes,
+                               _folha_tipo_mov_de(anomes_tipo)).values()))
 
     liquido  = total_prov - total_desc
     inss_val = totais.get(101, {}).get("valor", 0)
