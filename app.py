@@ -7768,25 +7768,34 @@ def _sem_encargos(id_cliente):
 
 
 # =========================================================
-# VERBA 161 ABATENDO A BASE DO IRRF — cliente 0030, só 07/2026
+# ADIANTAMENTO QUINZENAL ABATENDO A BASE DO IRRF — cliente 0030, só 07/2026
 # =========================================================
-# Regra de um cliente e de uma competência só, pedida em 17/08/2026: no
-# cliente 0030 a verba 161 (adiantamento quinzenal) é subtraída da base do
-# IRRF. Fora dessas duas condições nada muda.
+# Regra de um cliente e de uma competência só, pedida em 17/08/2026: nas
+# empresas do cliente 0030 as verbas do adiantamento quinzenal (161 a 164)
+# são subtraídas da base do IRRF. Fora dessas duas condições nada muda.
+#
+# Começou só na 161 e passou a valer para as quatro no mesmo dia. São as
+# quatro parcelas do mesmo adiantamento — tratar uma diferente das outras
+# faria o abatimento depender de em qual parcela o valor foi lançado.
 #
 # Isto é EXCEÇÃO, não o normal: adiantamento quinzenal não mexe na base — o
-# imposto incide sobre a remuneração cheia no fechamento do mês, e a 161 é
-# só o registro do que já foi pago. Por isso a competência entra na chave:
-# sem ela, a regra vazaria para 08/2026 no primeiro cálculo do mês seguinte.
+# imposto incide sobre a remuneração cheia no fechamento do mês, e as 161-164
+# são só o registro do que já foi pago. Por isso a competência entra na
+# chave: sem ela, a regra vazaria para 08/2026 no primeiro cálculo do mês
+# seguinte.
 #
 # Quem quiser estender: acrescente o par (cliente, competência) ao conjunto.
-IRRF_ABATE_V161 = {(30, "202607")}
+IRRF_ABATE_ADTO = {(30, "202607")}
+
+# As mesmas quatro verbas da pré-carga do adiantamento (ETAPA 1140). Ficam
+# aqui em cima para os dois lugares lerem a mesma lista.
+VERBAS_ADTO_QUINZENAL = [161, 162, 163, 164]
 
 
-def _irrf_abate_v161(id_cliente, anomes):
-    """True quando a verba 161 deve abater a base do IRRF nesta folha."""
+def _irrf_abate_adto(id_cliente, anomes):
+    """True quando o adiantamento quinzenal abate a base do IRRF nesta folha."""
     try:
-        return (int(id_cliente or 0), str(anomes or "")) in IRRF_ABATE_V161
+        return (int(id_cliente or 0), str(anomes or "")) in IRRF_ABATE_ADTO
     except (TypeError, ValueError):
         return False
 
@@ -7796,15 +7805,20 @@ def _folha_tipo_mov_de(anomes_tipo):
     return "N" if anomes_tipo not in ("F", "R") else anomes_tipo
 
 
-def _irrf_v161_por_mat(id_empresa, id_cliente, anomes, folha_tipo_mov):
-    """{matrícula: valor da 161 em centavos} — vazio quando a regra não vale.
+def _irrf_adto_por_mat(id_empresa, id_cliente, anomes, folha_tipo_mov):
+    """{matrícula: soma das verbas 161-164 em centavos}. Vazio se a regra não vale.
 
     Vem do tab_mov e não do mmVmm do cálculo porque, na hora em que a base do
-    IRRF é montada, a 161 ainda não existe lá: o adiantamento só vira a verba
-    160 bem depois (ETAPA 1140), e as 161-164 são removidas do cálculo para
-    não descontar duas vezes.
+    IRRF é montada, essas verbas ainda não existem lá: o adiantamento só vira
+    a verba 160 bem depois (ETAPA 1140), e as 161-164 são removidas do cálculo
+    para não descontar duas vezes.
+
+    Os filtros são de propósito os mesmos da pré-carga do adiantamento
+    (situacao='A'), para abater exatamente aquilo que a folha desconta. Em
+    07/2026 havia 38 lançamentos com situacao='D' que não descontam nada e,
+    portanto, também não podem abater imposto.
     """
-    if not _irrf_abate_v161(id_cliente, anomes):
+    if not _irrf_abate_adto(id_cliente, anomes):
         return {}
     por_mat = {}
     try:
@@ -7814,7 +7828,7 @@ def _irrf_v161_por_mat(id_empresa, id_cliente, anomes, folha_tipo_mov):
              .eq("folha",      int(anomes))
              .eq("folha_tipo", folha_tipo_mov)
              .eq("situacao",   "A")
-             .eq("cod_verba",  161))
+             .in_("cod_verba", VERBAS_ADTO_QUINZENAL))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         for r in (q.execute().data or []):
@@ -7823,7 +7837,8 @@ def _irrf_v161_por_mat(id_empresa, id_cliente, anomes, folha_tipo_mov):
     except Exception as e:
         # Silenciar aqui zeraria o abatimento sem ninguém perceber, e a folha
         # sairia com IRRF a mais parecendo certa.
-        print(f"[V161] falhou ao ler a verba 161 da empresa {id_empresa}: {e}")
+        print(f"[ADTO-IRRF] falhou ao ler as verbas 161-164 "
+              f"da empresa {id_empresa}: {e}")
     return por_mat
 
 
@@ -39630,10 +39645,12 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     rubricas_info.setdefault(160, {"tp": "2", "dsc": "Desconto Adiantamento Quinzenal",
                                    "unid": "V", "inc_cp": "", "inc_irrf": "", "inc_fgts": ""})
 
-    # Exceção do cliente 0030 em 07/2026 (ver IRRF_ABATE_V161). Fica separado
-    # do _adiant_por_mat de propósito: aquele soma 161-164, e aqui é só a 161.
-    _v161_por_mat = _irrf_v161_por_mat(id_empresa, id_cliente, anomes,
-                                       _folha_tipo_mov)
+    # Exceção do cliente 0030 em 07/2026 (ver IRRF_ABATE_ADTO). Hoje lê as
+    # mesmas verbas do _adiant_por_mat, mas continua separado de propósito:
+    # aquilo é o desconto na folha, isto é a base de um imposto — se um dia o
+    # desconto mudar de critério, o imposto não deve mudar junto sem querer.
+    _adto_irrf_por_mat = _irrf_adto_por_mat(id_empresa, id_cliente, anomes,
+                                            _folha_tipo_mov)
 
     # ── Pré-carga da INSUFICIÊNCIA DE SALDO do mês anterior (verba 551) ───────
     # O líquido nunca sai negativo: o que faltar vira 551 (provento) e no mês
@@ -41103,12 +41120,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 val for cod, val in mmVmm.items()
                 if rubricas_info.get(cod, {}).get("inc_irrf") == "11" and val > 0
             )
-            # Cliente 0030 em 07/2026: a verba 161 abate a base (IRRF_ABATE_V161).
-            # Entra aqui, na bruta, para valer nos dois métodos (completo e
-            # simplificado) e também no redutor da isenção, que parte dela.
-            _v161_abate = int(_v161_por_mat.get(matr, 0))
-            if _v161_abate > 0:
-                base_irrf_bruta = max(0, base_irrf_bruta - _v161_abate)
+            # Cliente 0030 em 07/2026: o adiantamento quinzenal (verbas
+            # 161-164) abate a base (ver IRRF_ABATE_ADTO). Entra aqui, na
+            # bruta, para valer nos dois métodos (completo e simplificado) e
+            # também no redutor da isenção, que parte dela.
+            _adto_abate = int(_adto_irrf_por_mat.get(matr, 0))
+            if _adto_abate > 0:
+                base_irrf_bruta = max(0, base_irrf_bruta - _adto_abate)
             num_dep_irrf     = dep_irrf_count.get(matr, 0)
             dep_irrf_dedval  = int(tabela_legais.get("irrf_dep_dedu") or 0) if tabela_legais else 0
             dep_irrf_total   = num_dep_irrf * dep_irrf_dedval
@@ -41295,8 +41313,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(e11_tbl)
             elems.append(_mem_passo('base_irrf',
                 f"rendimentos tributáveis = {_fmt_brl(int(base_irrf_bruta))}"
-                + (f"  (já abatida a verba 161: -{_fmt_brl(_v161_abate)})"
-                   if _v161_abate > 0 else "")))
+                + (f"  (já abatido o adiantamento quinzenal, verbas 161-164: "
+                   f"-{_fmt_brl(_adto_abate)})" if _adto_abate > 0 else "")))
             elems.append(_mem_passo('irrf', 'os dois métodos calculados e comparados abaixo'))
             # Marcador de decisão (nível 2): diz qual dos dois caminhos venceu e
             # por quê. No Desktop é o "<<<--- MELHOR ESTE".
@@ -46855,14 +46873,14 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
             descontos.append(linha)
             total_desc += val
 
-    # Cliente 0030 em 07/2026: a verba 161 abate a base do IRRF (ver
-    # IRRF_ABATE_V161). O laço acima remonta a base somando os proventos, e
-    # a 161 não passa por ele — é desconto, e no cálculo ela nem chega a
-    # virar verba da folha. Sem este abatimento o Resumo mostraria uma base
+    # Cliente 0030 em 07/2026: o adiantamento quinzenal abate a base do IRRF
+    # (ver IRRF_ABATE_ADTO). O laço acima remonta a base somando os proventos,
+    # e as 161-164 não passam por ele — são desconto, e no cálculo nem chegam
+    # a virar verba da folha. Sem este abatimento o Resumo mostraria uma base
     # maior do que a gravada no tab_total, e os dois relatórios brigariam.
-    if _irrf_abate_v161(id_cliente, anomes):
+    if _irrf_abate_adto(id_cliente, anomes):
         base_irrf = max(0, base_irrf - sum(
-            _irrf_v161_por_mat(id_empresa, id_cliente, anomes,
+            _irrf_adto_por_mat(id_empresa, id_cliente, anomes,
                                _folha_tipo_mov_de(anomes_tipo)).values()))
 
     liquido  = total_prov - total_desc
