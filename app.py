@@ -26456,10 +26456,91 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
 # =========================================================
 # eSocial S-1210 — GERADOR DE XML
 # =========================================================
+# Códigos de incidência de IRRF que marcam pensão alimentícia na rubrica. É
+# a presença de qualquer um deles na folha que torna o grupo <penAlim>
+# obrigatório no S-1210 — a regra é do leiaute, não nossa.
+_INC_IRRF_PENSAO = {"51", "52", "53", "54"}
+
+
+def _pen_alim_do_trabalhador(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
+    """Beneficiários da pensão do trabalhador: [{"cpf", "valor"}] em centavos.
+
+    O valor sai das RUBRICAS da folha com incidência de IRRF 51-54, que é o
+    mesmo gatilho que o governo usa para exigir o grupo. Assim o que é
+    declarado bate exatamente com o que foi descontado.
+
+    O CPF sai do cadastro: tab_pensao aponta os beneficiários por
+    dep_benef1..9, e esses números são o **id** do tab_dependentes — não a
+    matrícula. Confundir os dois foi fácil no cliente 0030, onde o dependente
+    de id 112 pertence à matrícula 125 e existe também uma matrícula 112.
+
+    Com mais de um beneficiário o total é rateado igualmente: o cadastro
+    guarda uma fórmula por responsável, não um valor por beneficiário.
+    """
+    try:
+        q = (supabase.table("tab_mov").select("cod_verba, valor")
+             .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+             .eq("folha", int(ano_mes)).eq("folha_tipo", folha_tipo)
+             .eq("situacao", "A"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        mov = q.execute().data or []
+        if not mov:
+            return []
+
+        cods = sorted({int(m.get("cod_verba") or 0) for m in mov})
+        rubs = (supabase.table("tab_rubrica")
+                .select("cod_rubr, tpn_inc_irrf, tpr_inc_irrf, tpf_inc_irrf, tp1_inc_irrf")
+                .in_("cod_rubr", cods)
+                .in_("id_cliente", [0, id_cliente or 0]).execute().data or [])
+        campo = {"N": "tpn_inc_irrf", "R": "tpr_inc_irrf",
+                 "F": "tpf_inc_irrf", "1": "tp1_inc_irrf",
+                 "A": "tp1_inc_irrf"}.get(str(folha_tipo or "N").upper()[:1],
+                                          "tpn_inc_irrf")
+        de_pensao = {int(r["cod_rubr"]) for r in rubs
+                     if str(r.get(campo) or "").strip() in _INC_IRRF_PENSAO}
+        total = sum(int(m.get("valor") or 0) for m in mov
+                    if int(m.get("cod_verba") or 0) in de_pensao)
+        if total <= 0:
+            return []
+
+        pens = (supabase.table("tab_pensao").select("*")
+                .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                .eq("situacao", "A").execute().data or [])
+        ids_benef = []
+        for p in pens:
+            for n in range(1, 10):
+                v = p.get("dep_benef%d" % n)
+                if v:
+                    ids_benef.append(int(v))
+        ids_benef = list(dict.fromkeys(ids_benef))
+        if not ids_benef:
+            print(f"[penAlim] mat {matricula}: R$ {total/100:.2f} de pensão na "
+                  f"folha, mas nenhum beneficiário em tab_pensao")
+            return []
+
+        deps = (supabase.table("tab_dependentes").select("id, cpfdep, nome")
+                .in_("id", ids_benef).execute().data or [])
+        cpfs = [(d.get("cpfdep") or "").strip() for d in deps
+                if (d.get("cpfdep") or "").strip()]
+        if not cpfs:
+            print(f"[penAlim] mat {matricula}: beneficiário sem CPF no cadastro")
+            return []
+
+        # Rateio igual, com a sobra dos centavos no primeiro — a soma tem que
+        # fechar com o desconto, senão o gov acusa diferença no S-5002.
+        base, resto = divmod(total, len(cpfs))
+        return [{"cpf": c, "valor": base + (resto if i == 0 else 0)}
+                for i, c in enumerate(cpfs)]
+    except Exception as e:
+        print(f"[penAlim] falhou para a matrícula {matricula}: {e}")
+        return []
+
+
 def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
                      recibo_s1200, totais, mov_items=None, rubr_map=None,
                      deps_irrf=None, vlr_ded_dep_cent=0, pgtos=None,
-                     ind_retif="1", nr_recibo_retif=""):
+                     ind_retif="1", nr_recibo_retif="", pen_alim=None):
     """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho).
 
     pgtos: lista de pagamentos do MESMO trabalhador na MESMA competência, cada um
@@ -26556,9 +26637,16 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     # ── infoIRComplem ───────────────────────────────────────────────────
     # Bloco usado pelo gov para conciliar a retencao de IRRF no S-5002.
     # Gera quando ha dependente IRRF cadastrado (depirrf='S').
+    #
+    # O grupo <penAlim> é OBRIGATÓRIO quando alguma rubrica da folha tem
+    # incidência de IRRF 51 a 54 (pensão alimentícia) — sem ele o gov recusa
+    # com "[8] Grupo 'Informação dos beneficiários da pensão alimentícia'
+    # deve ser preenchido". Ele entra DEPOIS do <dedDepen>: no schema a
+    # sequência é dedDepen (51) → penAlim (55) → previdCompl (59).
     deps_irrf = deps_irrf or []
+    pen_alim  = pen_alim or []
     info_ir_xml = ""
-    if deps_irrf:
+    if deps_irrf or pen_alim:
         info_dep_xml = ""
         ded_depen_xml = ""
         for _d in deps_irrf:
@@ -26578,11 +26666,27 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
             <cpfDep>{x(_cpfd)}</cpfDep>
             <vlrDedDep>{fmt_brl(vlr_ded_dep_cent)}</vlrDedDep>
           </dedDepen>"""
-        if info_dep_xml or ded_depen_xml:
+        # tpRend segue o tipo da folha: 11 mensal, 12 décimo terceiro, 13 férias.
+        _TP_REND = {"N": "11", "1": "12", "A": "12", "F": "13", "R": "11"}
+        _tp_rend = _TP_REND.get(str(folha_tipo or "N").upper()[:1], "11")
+        pen_alim_xml = ""
+        for _p in pen_alim:
+            _cpfb = dg(_p.get("cpf") or "").zfill(11)
+            _vlrb = int(_p.get("valor") or 0)
+            if len(_cpfb) != 11 or _vlrb <= 0:
+                continue           # o schema exige CPF e valor maior que zero
+            pen_alim_xml += f"""
+          <penAlim>
+            <tpRend>{_tp_rend}</tpRend>
+            <cpfDep>{x(_cpfb)}</cpfDep>
+            <vlrDedPenAlim>{fmt_brl(_vlrb)}</vlrDedPenAlim>
+          </penAlim>"""
+
+        if info_dep_xml or ded_depen_xml or pen_alim_xml:
             info_ir_xml = f"""
       <infoIRComplem>{info_dep_xml}
         <infoIRCR>
-          <tpCR>056107</tpCR>{ded_depen_xml}
+          <tpCR>056107</tpCR>{ded_depen_xml}{pen_alim_xml}
         </infoIRCR>
       </infoIRComplem>"""
 
@@ -35289,6 +35393,10 @@ def _s1210_enviar_impl():
     _qtd_dep     = int(totais.get("qtd_irrf_dependentes") or 0)
     vlr_ded_dep_cent = (_vlr_dep_tot // _qtd_dep) if _qtd_dep > 0 else 0
 
+    # 4a-bis. Beneficiarios da pensao alimenticia (grupo <penAlim>).
+    pen_alim = _pen_alim_do_trabalhador(id_empresa, session.get("id_cliente"),
+                                        int(matricula), int(ano_mes), folha_tipo)
+
     # 4b. Movimento do trabalhador (rubricas) — vai virar <detPgtoFl> no XML
     mov_items = []
     try:
@@ -35374,6 +35482,7 @@ def _s1210_enviar_impl():
                                    deps_irrf=deps_irrf,
                                    vlr_ded_dep_cent=vlr_ded_dep_cent,
                                    pgtos=_pgtos,
+                                   pen_alim=pen_alim,
                                    ind_retif=_ind_retif_lp,
                                    nr_recibo_retif=_recibo_lp_existente)
     except Exception as e:
