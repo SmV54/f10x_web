@@ -300,6 +300,78 @@ def _storage_listar(prefixo, pagina=100):
     return todos
 
 
+# Quantas idas ao Storage podem correr juntas. O tempo de cada uma é quase
+# todo espera de rede, não processamento, então subir isso não briga com o
+# resto do servidor — mas 12 já derruba o relógio o bastante e não corre o
+# risco de o Supabase começar a recusar por excesso de conexões.
+_STORAGE_PARALELO = 12
+
+
+def _storage_baixar_varios(paths, workers=_STORAGE_PARALELO):
+    """Baixa vários arquivos do bucket ao mesmo tempo. Devolve {path: texto}.
+
+    Por que existe: a Verificação baixava 116 XMLs um atrás do outro. Cada um
+    leva meio segundo de rede — sozinho não é nada, em fila vira 55 segundos,
+    e o worker do gunicorn morre aos 30. O que chegava na tela então não era
+    JSON, era a página de erro do servidor: "Unexpected token '<'".
+
+    Quem não baixar sai do dicionário em vez de derrubar o lote: uma tela de
+    conferência tem que conseguir mostrar o que deu certo.
+    """
+    import time as _time
+    from concurrent.futures import ThreadPoolExecutor
+
+    def baixar(p):
+        # A conexão com o Storage é compartilhada, e sob carga ela às vezes
+        # cai no meio ("Server disconnected"). Sem repetir, esse arquivo
+        # simplesmente sumiria da conferência: a tela mostraria uma diferença
+        # que não existe, sem nada escrito indicando que faltou um XML.
+        # Errado em silêncio é pior do que devagar.
+        for tentativa in range(3):
+            try:
+                d = _supabase_storage.storage.from_(_ESOC_BUCKET).download(p)
+                return p, (d.decode("utf-8", errors="replace")
+                           if isinstance(d, bytes) else str(d))
+            except Exception as e:
+                if tentativa == 2:
+                    print(f"[storage get] desisti de {p}: {e}")
+                    return p, None
+                _time.sleep(0.4 * (tentativa + 1))
+        return p, None
+
+    paths = list(dict.fromkeys(paths))      # sem repetir, mantendo a ordem
+    if not paths:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(workers, len(paths))) as ex:
+        saida = {p: t for p, t in ex.map(baixar, paths) if t is not None}
+    if len(saida) < len(paths):
+        print(f"[storage get] {len(paths) - len(saida)} de {len(paths)} "
+              f"arquivos não vieram")
+    return saida
+
+
+def _storage_em_paralelo(funcao, itens, workers=_STORAGE_PARALELO):
+    """Roda a mesma função sobre vários itens ao mesmo tempo, na ordem.
+
+    Serve para os envios (upload), que sofrem do mesmo mal dos downloads.
+    O que estourar vira None na posição, para o chamador decidir.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    def seguro(item):
+        try:
+            return funcao(item)
+        except Exception as e:
+            print(f"[storage par] {e}")
+            return None
+
+    itens = list(itens)
+    if not itens:
+        return []
+    with ThreadPoolExecutor(max_workers=min(workers, len(itens))) as ex:
+        return list(ex.map(seguro, itens))
+
+
 def _xml_erro_save(_pref, etapa, msg, exc=None):
     """Grava um XML pequeno com a mensagem de erro do envio.
     Permite rastrear no viewer onde o fluxo de envio parou.
@@ -36008,14 +36080,24 @@ def _verif_salvar_xml(id_empresa, ano_mes, tp_evt, evt_id, xml_str, id_cliente=N
     tp_safe = (tp_evt or "S-5XXX").replace("-", "")
     rel    = f"{pref}/{tp_safe}_{safe_id}.xml"
     data   = xml_str.encode("utf-8") if isinstance(xml_str, str) else xml_str
-    try:
-        _supabase_storage.storage.from_(_ESOC_BUCKET).upload(
-            path=rel, file=data,
-            file_options={"content-type": "application/xml", "upsert": "true"})
-        return rel
-    except Exception as e:
-        print(f"[VERIF storage] erro upload {rel}: {e}")
-        return ""
+    # Repete pelo mesmo motivo do download em lote: estes uploads agora saem
+    # vários ao mesmo tempo, e a conexão compartilhada às vezes cai. Um XML
+    # que não subiu é um S-5xxx a menos na conferência — e a tela acusaria
+    # uma diferença inventada, sem dizer que faltou arquivo.
+    import time as _time
+    for tentativa in range(4):
+        try:
+            _supabase_storage.storage.from_(_ESOC_BUCKET).upload(
+                path=rel, file=data,
+                file_options={"content-type": "application/xml",
+                              "upsert": "true"})
+            return rel
+        except Exception as e:
+            if tentativa == 3:
+                print(f"[VERIF storage] desisti do upload {rel}: {e}")
+                return ""
+            _time.sleep(0.5 * (tentativa + 1))
+    return ""
 
 
 # =========================================================
@@ -36063,6 +36145,11 @@ def _extrair_s5xxx_do_xml(xml_str):
             xml_inner = etree.tostring(el, encoding="unicode")
         out.append({"tpEvt": mapa[tag], "id": evt_id, "xml": xml_inner})
     return out
+
+
+# Teto de conversas com o gov numa mesma requisição. Cada uma leva segundos,
+# e elas são a única parte do fluxo cujo tempo não depende de nós.
+_VERIF_MAX_RECONSULTAS = 8
 
 
 def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
@@ -36257,30 +36344,44 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
     baixados = 0
     arquivos_lidos = []
     reconsultados = 0
+    _reconsulta_sobrou = 0
     debug_tags_global = set()
+
+    # Todos os retornos de uma vez, em paralelo. Um atrás do outro isto levava
+    # 55 segundos e o worker do gunicorn morre aos 30 — a tela recebia a
+    # página de erro do servidor no lugar do JSON. São 64 arquivos numa
+    # empresa de 36 trabalhadores, menos do que o laço abaixo baixava em fila.
+    _xmls = _storage_baixar_varios(
+        [info["path"] for key in cands for info in cands[key]])
+    _a_subir = []          # (tpEvt, id, xml) — sobem juntos depois do laço
+
     for key in sorted(cands):
         _tentados = []
         _primeiro = True
         for info in cands[key]:
-            try:
-                data = _supabase_storage.storage.from_(_ESOC_BUCKET).download(info["path"])
-                xml_str = (data.decode("utf-8", errors="replace")
-                           if isinstance(data, bytes) else str(data))
-            except Exception as e:
-                erros.append(f"{info['nome']}: erro ao baixar — {e}")
+            xml_str = _xmls.get(info["path"])
+            if xml_str is None:
+                erros.append(f"{info['nome']}: erro ao baixar")
                 continue
             eventos = _extrair_s5xxx_do_xml(xml_str)
             _tentados.append(info["nome"])
             # Retorno mais recente sem evento: pergunta de novo ao gov, com o
             # protocolo do próprio envio. Só na 1ª tentativa de cada
             # trabalhador — as remessas anteriores ficam como estão.
-            if not eventos and _primeiro:
+            # Cada re-consulta é uma conversa com o gov, de segundos, e não
+            # havia limite: numa empresa em que muita gente ainda estava "em
+            # processamento", só elas já passavam do tempo da requisição e a
+            # tela caía no mesmo erro. Com teto, o que sobrar fica para o
+            # próximo clique — o texto abaixo avisa que sobrou.
+            if not eventos and _primeiro and reconsultados < _VERIF_MAX_RECONSULTAS:
                 _novo = _reconsultar_remessa(info, xml_str)
                 if _novo:
                     reconsultados += 1
                     _ev2 = _extrair_s5xxx_do_xml(_novo)
                     if _ev2:
                         eventos, xml_str = _ev2, _novo
+            elif not eventos and _primeiro:
+                _reconsulta_sobrou += 1
             _primeiro = False
             if not eventos:
                 # diagnóstico — lista tags evt* desse arquivo
@@ -36295,13 +36396,13 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
                 except Exception:
                     pass
                 continue      # envio sem S-5xxx (ex.: consulta voltou [101]) → tenta o anterior
+            # Os S-5xxx não sobem aqui: vão para uma fila e sobem todos
+            # juntos no fim. Um upload de cada vez são outros 19 segundos, e
+            # o orçamento da requisição é curto (ver o download em paralelo).
             for ev in eventos:
-                if not ev["tpEvt"].startswith("S-50"):
-                    continue
-                p = _verif_salvar_xml(id_empresa, anomes_atual, ev["tpEvt"],
-                                      ev["id"] or info["matricula"], ev["xml"], id_cliente)
-                if p:
-                    baixados += 1
+                if ev["tpEvt"].startswith("S-50"):
+                    _a_subir.append((ev["tpEvt"], ev["id"] or info["matricula"],
+                                     ev["xml"]))
             arquivos_lidos.append({
                 "layout": info["layout"], "matricula": info["matricula"],
                 "nome": info["nome"], "eventos": len(eventos),
@@ -36315,6 +36416,20 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
                 "nome": (_tentados[0] if _tentados else ""), "eventos": 0,
                 "tentativas": len(_tentados),
             })
+
+    # Sobe os S-5xxx todos ao mesmo tempo. Quem falhar não conta como
+    # baixado — e o print de dentro do _verif_salvar_xml diz qual foi.
+    # Menos simultâneos que os downloads de propósito: subir arquivo pesa mais
+    # na conexão, e a 12 o Supabase começou a cortar ("Server disconnected").
+    _subidos = _storage_em_paralelo(
+        lambda ev: _verif_salvar_xml(id_empresa, anomes_atual, ev[0], ev[1],
+                                     ev[2], id_cliente),
+        _a_subir, workers=6)
+    baixados = sum(1 for p in _subidos if p)
+    if baixados < len(_a_subir):
+        erros.append(f"{len(_a_subir) - baixados} de {len(_a_subir)} "
+                     f"eventos S-5xxx não subiram para o Storage — "
+                     f"clique em Consultar de novo antes de conferir.")
 
     gravar_log("ESOCIAL",
                f"Verificação: {len(arquivos_lidos)} arquivo(s) lido(s), "
@@ -36331,10 +36446,15 @@ def _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual):
         "debug_tags":    sorted(debug_tags_global),
         "total_erros":   len(erros),
         "erros":         erros[:50],
+        "sobraram":      _reconsulta_sobrou,
         "msg":           (f"{baixados} evento(s) S-5xxx extraído(s) de "
                           f"{len(arquivos_lidos)} arquivo(s) S-1200/S-1210"
                           + (f" · {reconsultados} re-consulta(s) ao eSocial."
-                             if reconsultados else ".")),
+                             if reconsultados else ".")
+                          + (f" Faltaram {_reconsulta_sobrou} trabalhador(es) "
+                             f"para consultar no eSocial — clique de novo em "
+                             f"Consultar para continuar de onde parou."
+                             if _reconsulta_sobrou else "")),
     }
 
 
@@ -36352,7 +36472,17 @@ def api_esocial_verificacao_consultar():
     anomes_atual = str(session.get("anomes_atual") or "")
     if not anomes_atual or len(anomes_atual) != 6:
         return jsonify({"ok": False, "msg": "Folha ativa inválida."})
-    return jsonify(_atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual))
+    # Sem este try, qualquer exceção aqui vira a página de erro do Flask — e a
+    # tela, que espera JSON, mostra "Unexpected token '<'", que não diz nada a
+    # quem está usando. Melhor devolver a mensagem de verdade.
+    try:
+        return jsonify(_atualizar_pasta_verificacao(id_empresa, id_cliente,
+                                                    anomes_atual))
+    except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()
+        return jsonify({"ok": False,
+                        "msg": f"Erro ao consultar os retornos: {e}"})
 
 
 # =========================================================
@@ -36632,16 +36762,17 @@ def _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo):
     except Exception as e:
         return False, {"ok": False, "msg": f"Erro Storage: {e}"}
 
+    # Os XMLs da pasta vêm todos de uma vez, em paralelo: são dezenas, e um
+    # atrás do outro passavam do tempo que o servidor dá para a requisição.
+    nomes = [(it.get("name") or "") for it in items
+             if (it.get("name") or "").lower().endswith(".xml")]
+    _xmls = _storage_baixar_varios([f"{pref}/{nm}" for nm in nomes])
+
     por_cpf = {}
-    for it in items:
-        nm = it.get("name") or ""
-        if not nm.lower().endswith(".xml"):
-            continue
+    for nm in nomes:
         tp_raw = nm.split("_", 1)[0]
-        try:
-            data = _supabase_storage.storage.from_(_ESOC_BUCKET).download(f"{pref}/{nm}")
-            xml_str = data.decode("utf-8") if isinstance(data, bytes) else data
-        except Exception:
+        xml_str = _xmls.get(f"{pref}/{nm}")
+        if xml_str is None:
             continue
         if tp_raw == "S5001":
             r = _parse_s5001(xml_str)
@@ -36796,7 +36927,16 @@ def api_esocial_verificacao_comparar():
         _atualizar_pasta_verificacao(id_empresa, id_cliente, anomes_atual)
     except Exception as _e:
         print(f"[VERIF] auto-refresh falhou: {_e}")
-    ok, payload = _montar_comparativo_verif(id_empresa, id_cliente, anomes_atual, folha_tipo)
+    # O comparativo em si também precisa da rede toda, e o que ele devolver
+    # tem que ser JSON até quando dá errado: a tela lê com r.json() e uma
+    # página de erro do Flask aparece lá como "Unexpected token '<'".
+    try:
+        ok, payload = _montar_comparativo_verif(id_empresa, id_cliente,
+                                                anomes_atual, folha_tipo)
+    except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()
+        return jsonify({"ok": False, "msg": f"Erro ao montar o comparativo: {e}"})
     return jsonify(payload)
 
 
