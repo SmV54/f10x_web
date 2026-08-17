@@ -7759,6 +7759,22 @@ def cancelar_rescisao():
 CLIENTES_SEM_ENCARGOS = {38}
 
 
+def _cod_inst_financ(valor):
+    """Código COMPE da instituição financeira, com os 3 dígitos que o eSocial exige.
+
+    O <instFinanc> do grupo descFolha (S-1200/S-2299, eConsignado) é o código
+    de 3 dígitos do banco — não o CNPJ. A planilha do Crédito do Trabalhador
+    traz a coluna como NÚMERO, então o Banco do Brasil chega como 1 e o
+    Original como 79: o Excel come os zeros à esquerda. Mandar assim volta
+    com "[17] ... TS_instFinanc ... The Pattern constraint failed".
+
+    Mais de 3 dígitos não é truncado de propósito: cortar produziria outro
+    banco em silêncio, e é melhor o evento ser recusado com o valor à vista.
+    """
+    so_dig = re.sub(r"\D", "", str(valor or ""))
+    return so_dig.zfill(3) if 0 < len(so_dig) <= 3 else so_dig
+
+
 def _sem_encargos(id_cliente):
     """True quando o cliente não recolhe INSS/IRRF/FGTS (CLIENTES_SEM_ENCARGOS)."""
     try:
@@ -19261,7 +19277,10 @@ def _consig_processar(file_bytes, id_cliente, id_empresa, anomes, cnpj_empresa):
         # Coluna opcional: layout antigo pode não ter.
         estab_pl = "".join(ch for ch in str(cel(rowt, "numeroInscricaoEstabelecimento") or "")
                            if ch.isdigit())[:14]
-        if_cod = str(cel(rowt, "ifConcessora.codigo") or "").strip()[:3]
+        # zfill(3): a coluna vem como número na planilha, então o Banco do
+        # Brasil chega como 1 e o Original como 79. O eSocial exige os 3
+        # dígitos do código COMPE (ver _cod_inst_financ).
+        if_cod = _cod_inst_financ(cel(rowt, "ifConcessora.codigo"))[:3]
         if_desc = str(cel(rowt, "ifConcessora.descricao") or "").strip()
         contrato_s = str(contrato or "").strip()
         # _consig_num aguenta o texto do .csv ("176,29" ou "176.29") e o
@@ -19832,7 +19851,8 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
             raizes.add(cnpj_pl[:8].zfill(8))
 
         cpf_pl   = "".join(ch for ch in str(cel(rowt, "cpf") or "") if ch.isdigit()).zfill(11)
-        if_cod   = str(cel(rowt, "ifConcessora.codigo") or "").strip()[:3]
+        # Mesmo motivo do outro importador: ver _cod_inst_financ.
+        if_cod   = _cod_inst_financ(cel(rowt, "ifConcessora.codigo"))[:3]
         if_desc  = str(cel(rowt, "ifConcessora.descricao") or "").strip()
         comp_ini = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaInicioDesconto"))
         datafim  = _consig_mmyyyy_to_yyyymm(cel(rowt, "competenciaFimDesconto"))
@@ -26348,7 +26368,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
                 # [1988] apontando o contrato que o governo já conhece.
                 # tpDesc 1 = eConsignado. A instituição e o contrato vêm do
                 # tab_mov, gravados pela importação dos consignados.
-                _inst = re.sub(r'\D', '', str(item.get('instfinanc') or ''))
+                _inst = _cod_inst_financ(item.get('instfinanc'))
                 _nrdoc = str(item.get('nrdoc') or '').strip()
                 desc_folha = ""
                 if _inst and _nrdoc:
@@ -31250,7 +31270,7 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
             # <descFolha>: mesma exigência do S-1200 para rubrica de natureza
             # 9253 (consignado do Programa Crédito do Trabalhador). Sem ele a
             # rescisão de quem tem empréstimo volta com o erro [8]/[1988].
-            _inst  = re.sub(r'\D', '', str(item.get('instfinanc') or ''))
+            _inst  = _cod_inst_financ(item.get('instfinanc'))
             _nrdoc = str(item.get('nrdoc') or '').strip()
             _desc_folha = ""
             if _inst and _nrdoc:
