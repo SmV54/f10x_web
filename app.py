@@ -26798,8 +26798,13 @@ def esocial_s1000():
              .select("*")
              .eq("id_empresa", id_empresa)
              .eq("layout", "1000"))
+        # Filtra pela COMPETÊNCIA, não pela data em que a remessa foi criada.
+        # Era data_cad, e isso escondia o caso mais comum: a folha de julho é
+        # processada em agosto, então a remessa nasce com data_cad de agosto e
+        # sumia da lista da folha 07. Em 17/08/2026 estavam invisíveis assim
+        # 950 remessas de S-1010, 17 de S-1020, 6 de S-1005 e 5 de S-1000.
         if anomes_folha.isdigit() and len(anomes_folha) == 6:
-            q = q.gte("data_cad", anomes_folha + "01").lte("data_cad", anomes_folha + "31")
+            q = q.eq("ano_mes", int(anomes_folha))
         rows = (q.order("data_cad", desc=True)
                  .order("hora_cad", desc=True)
                  .execute().data or [])
@@ -27444,8 +27449,9 @@ def esocial_s1005():
     try:
         q = (supabase.table("tab_esocial").select("*")
              .eq("id_empresa", id_empresa).eq("layout", "1005"))
+        # Pela competência, não pela data de criação (ver comentário no S-1000).
         if _am.isdigit() and len(_am) == 6:
-            q = q.gte("data_cad", _am + "01").lte("data_cad", _am + "31")
+            q = q.eq("ano_mes", int(_am))
         rows = (q.order("data_cad", desc=True).order("hora_cad", desc=True).execute().data or [])
     except Exception:
         rows = []
@@ -27978,8 +27984,13 @@ def esocial_s1010():
              .select("*")
              .eq("id_empresa", id_empresa)
              .eq("layout", "1010"))
+        # Filtra pela COMPETÊNCIA, não pela data em que a remessa foi criada.
+        # Era data_cad, e isso escondia o caso mais comum: a folha de julho é
+        # processada em agosto, então a remessa nasce com data_cad de agosto e
+        # sumia da lista da folha 07. Em 17/08/2026 estavam invisíveis assim
+        # 950 remessas de S-1010, 17 de S-1020, 6 de S-1005 e 5 de S-1000.
         if anomes_folha.isdigit() and len(anomes_folha) == 6:
-            q = q.gte("data_cad", anomes_folha + "01").lte("data_cad", anomes_folha + "31")
+            q = q.eq("ano_mes", int(anomes_folha))
         rows = (q.order("data_cad", desc=True)
                  .order("hora_cad", desc=True)
                  .execute().data or [])
@@ -28771,8 +28782,13 @@ def esocial_s1020():
              .select("*")
              .eq("id_empresa", id_empresa)
              .eq("layout", "1020"))
+        # Filtra pela COMPETÊNCIA, não pela data em que a remessa foi criada.
+        # Era data_cad, e isso escondia o caso mais comum: a folha de julho é
+        # processada em agosto, então a remessa nasce com data_cad de agosto e
+        # sumia da lista da folha 07. Em 17/08/2026 estavam invisíveis assim
+        # 950 remessas de S-1010, 17 de S-1020, 6 de S-1005 e 5 de S-1000.
         if anomes_folha.isdigit() and len(anomes_folha) == 6:
-            q = q.gte("data_cad", anomes_folha + "01").lte("data_cad", anomes_folha + "31")
+            q = q.eq("ano_mes", int(anomes_folha))
         rows = (q.order("data_cad", desc=True)
                  .order("hora_cad", desc=True)
                  .execute().data or [])
