@@ -23401,9 +23401,10 @@ def exec_cancelar_ferias():
          .eq("folha_tipo", "F")
          .execute())
 
-        # 6. Cancela S-2230 vinculado ao evento
-        (supabase.table("tab_esocial")
-         .delete()
+        # 6. Cancela o S-2230 vinculado ao evento — só se ainda não foi
+        #    aceito. Com recibo, o afastamento existe no eSocial e some daqui
+        #    não o desfaz lá: o certo é o S-3000.
+        (_esocial_delete()
          .eq("id_empresa", id_empresa)
          .eq("layout",     "2230")
          .eq("codigo2",    int(id_ev))
@@ -39993,10 +39994,20 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     # Apaga registros calculados anteriores desta folha antes de recalcular
     _limpar_folha_calculada(id_cliente, id_empresa, anomes, _folha_tipo_mov)
 
-    # Apaga S-1200 e S-1210 desta folha antes de recalcular
+    # Apaga as remessas S-1200/S-1210 SEM RECIBO desta folha antes de
+    # recalcular — elas serão geradas de novo com os valores novos.
+    #
+    # Quem já tem recibo NÃO é apagado (por isso o _esocial_delete): o evento
+    # está aceito no governo, e sumir com o registro aqui não desfaz nada lá —
+    # só faz o sistema achar que nunca foi enviado, e o reenvio volta com
+    # [106] duplicidade. Evento aceito se corrige com retificação (indRetif=2),
+    # que precisa exatamente do recibo que este delete apagava.
+    #
+    # Era um delete cru e foi o que apagou os 36 S-1200/S-1210 já aceitos da
+    # empresa 39 em 07/2026, sem deixar rastro no log — a exclusão silenciosa
+    # que ninguém achava porque não estava no histórico do usuário.
     try:
-        (supabase.table("tab_esocial")
-         .delete()
+        (_esocial_delete()
          .eq("id_cliente", id_cliente)
          .eq("id_empresa", id_empresa)
          .eq("ano_mes", int(anomes))
@@ -54031,8 +54042,12 @@ def _imp_esocial_f10(caminho, id_cliente):
 
         if not deletado:
             try:
-                (supabase.table('tab_esocial')
-                 .delete()
+                # Limpa o que havia antes de importar, menos as remessas com
+                # recibo: elas são comprovante de evento aceito no eSocial e
+                # não podem ser apagadas por nenhum caminho. Na prática a
+                # migração roda em base nova, onde não há recibo — a guarda
+                # existe para o caso de alguém reimportar sobre base usada.
+                (_esocial_delete()
                  .eq('id_cliente', id_cliente)
                  .eq('id_empresa', id_empresa)
                  .execute())
