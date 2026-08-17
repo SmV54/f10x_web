@@ -60,6 +60,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .alerta.alerta-ok {
     background: #f0fdf4; border-color: #bbf7d0; color: #166534;
 }
+.btn-recuperar {
+    background: #2a7de1; color: #fff; border: 0; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.btn-recuperar:hover:not(:disabled) { background: #1f63b4; }
+.btn-recuperar:disabled { opacity: .6; cursor: default; }
 
 /* ── FOLHA BADGE ── */
 .folha-badge {
@@ -230,6 +236,26 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 
   {% if folha_ativa %}
   <div class="folha-badge">&#128197; Folha ativa: {{ folha_ativa }}</div>
+  {% endif %}
+
+  {# Eventos que o governo aceitou mas cujo registro se perdeu (a reabertura
+     recria a fila zerada) nao aparecem na lista de baixo, porque a exclusao
+     precisa do numero do recibo. Sem este bloco a tela simplesmente nao
+     mostra os periodicos, e o usuario conclui que excluir S-1200/S-1210 nao
+     e possivel. O recibo esta nos XMLs de retorno guardados. #}
+  {% if periodicos_sem_recibo %}
+  <div class="alerta" id="secaoRecibos">
+    <strong>&#128257; {{ periodicos_sem_recibo }} remessa(s) S-1200/S-1210 sem recibo.</strong>
+    Se esses eventos já foram enviados e aceitos, o recibo está nos XMLs de
+    retorno guardados — o número só vem na <em>consulta</em> ao eSocial, não na
+    resposta do envio, e por isso pode ter se perdido. Este botão lê os XMLs e
+    recria aqui os eventos aceitos, com o recibo, sem falar com o governo.
+    <div style="margin-top:10px">
+      <button type="button" class="btn-recuperar" id="btnRecuperar"
+              onclick="recuperarRecibos()">Restaurar eventos aceitos do Storage</button>
+      <span id="msgRecuperar" style="margin-left:10px; font-size:12px"></span>
+    </div>
+  </div>
   {% endif %}
 
   <!-- PASSO 1 — Layout -->
@@ -546,6 +572,35 @@ async function enviarSelecionados() {
 
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Le os XMLs de retorno ja guardados e recria aqui os eventos que o governo
+// aceitou, com o recibo. Nao fala com o eSocial, nao altera as remessas
+// pendentes e nao duplica (a chave e o proprio recibo). Recarrega a pagina
+// quando cria algo, senao a lista continuaria mostrando o estado velho.
+async function recuperarRecibos() {
+  const btn = document.getElementById('btnRecuperar');
+  const msg = document.getElementById('msgRecuperar');
+  btn.disabled = true;
+  msg.textContent = 'Lendo os retornos guardados…';
+  try {
+    const r = await fetch('/api/esocial_recuperar_recibos', { method: 'POST' });
+    const d = await r.json();
+    if (!d.ok) {
+      msg.textContent = '❌ ' + (d.msg || 'Erro.');
+      btn.disabled = false;
+      return;
+    }
+    msg.textContent = (d.criados ? '✔ ' : '') + d.msg;
+    if (d.criados > 0) {
+      setTimeout(() => window.location.reload(), 2500);
+    } else {
+      btn.disabled = false;
+    }
+  } catch (e) {
+    msg.textContent = '❌ Falha: ' + e;
+    btn.disabled = false;
+  }
 }
 </script>
 

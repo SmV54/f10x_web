@@ -37761,9 +37761,27 @@ def esocial_s3000():
     estado_esocial = _folha_estado_esocial(id_empresa, anomes_atual)
     folha_aberta_esocial = estado_esocial["aberta"]
 
+    # S-1200/S-1210 aceitos pelo governo mas sem o recibo gravado aqui não
+    # aparecem na lista acima — a tela só oferece o que tem recibo. Sem este
+    # aviso o usuário conclui que a exclusão de periódicos não existe.
+    periodicos_sem_recibo = 0
+    if anomes_atual:
+        try:
+            periodicos_sem_recibo = sum(
+                1 for r in (supabase.table("tab_esocial")
+                            .select("recibo")
+                            .eq("id_empresa", id_empresa)
+                            .eq("ano_mes", int(anomes_atual))
+                            .in_("layout", ["1200", "1210"])
+                            .execute().data or [])
+                if not (r.get("recibo") or "").strip())
+        except Exception:
+            periodicos_sem_recibo = 0
+
     return render_template(
         "F10_eSocial_S3000.html",
         estado_esocial=estado_esocial,
+        periodicos_sem_recibo=periodicos_sem_recibo,
         versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),
@@ -37773,6 +37791,205 @@ def esocial_s3000():
         anomes_atual=anomes_atual,
         folha_aberta_esocial=folha_aberta_esocial,
     )
+
+
+# =========================================================
+# eSocial — API: recuperar recibos de S-1200/S-1210 já aceitos
+# =========================================================
+@app.route("/api/esocial_recuperar_recibos", methods=["POST"])
+def api_esocial_recuperar_recibos():
+    """Restaura no tab_esocial os S-1200/S-1210 que o governo aceitou e cujo
+    registro se perdeu, lendo o recibo dos XMLs de retorno já no Storage.
+
+    Por que existe: em 07/2026 da empresa 39, 36 eventos foram enviados e
+    aceitos (os S-5001/5002/5003 voltaram), mas depois da reabertura o
+    tab_esocial só tinha remessas NOVAS, pendentes, criadas no dia — as
+    linhas dos eventos aceitos, com seus recibos, sumiram. Sem recibo:
+
+      - o S-3000 não oferece o evento para exclusão;
+      - a retificação do S-1200 (indRetif=2) não tem o nrRecibo obrigatório.
+
+    E as duas coisas são necessárias em ordem: o S-1210 aponta para o S-1200,
+    então o 1210 precisa ser excluído antes de o 1200 ser retificado.
+
+    INSERE linhas históricas; nunca altera as pendentes. Carimbar o recibo
+    numa remessa que ainda não foi enviada a faria parecer transmitida, e ela
+    nunca mais sairia. Idempotente pelo recibo: clicar duas vezes não duplica.
+
+    Só aceita retorno com cdResposta 201 e perApur igual ao da folha ativa.
+    É leitura no Storage e insert aqui; não fala com o eSocial.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa   = _get_id_empresa()
+    id_cliente   = session.get("id_cliente")
+    anomes_atual = str(session.get("anomes_atual") or "")
+    if not anomes_atual or len(anomes_atual) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa inválida."})
+
+    try:
+        # ── 1. o que já existe aqui ────────────────────────────────
+        # A chave do tab_esocial é id_esocial — a tabela não tem coluna "id".
+        recibos_conhecidos, pendentes = set(), 0
+        for r in (supabase.table("tab_esocial")
+                  .select("id_esocial, layout, matricula, recibo, data_grava")
+                  .eq("id_empresa", id_empresa)
+                  .eq("ano_mes", int(anomes_atual))
+                  .in_("layout", ["1200", "1210"])
+                  .execute().data or []):
+            rec = (r.get("recibo") or "").strip()
+            if rec:
+                recibos_conhecidos.add(rec)
+            else:
+                pendentes += 1
+
+        # ── 2. onde procurar os retornos ───────────────────────────
+        # Mesma lógica da Verificação: a pasta do próprio período mais a de
+        # cada data em que houve envio — a remessa pode ter saído noutro mês.
+        diretorios = set()
+        try:
+            diretorios.add(_xml_dir_rel(
+                id_empresa, datetime.strptime(anomes_atual + "01", "%Y%m%d"),
+                id_cliente))
+        except Exception:
+            pass
+        # As datas gravadas nas linhas ajudam, mas não bastam: no caso que
+        # motivou isto, as linhas dos eventos ENVIADOS já não existem, e as
+        # que restaram têm data_grava nula. Por isso varre também mês a mês,
+        # do período até hoje — o envio quase sempre sai no mês seguinte, e
+        # a pasta do Storage é a do dia do envio, não a da competência.
+        for r in (supabase.table("tab_esocial")
+                  .select("data_grava, data_cad")
+                  .eq("id_empresa", id_empresa)
+                  .eq("ano_mes", int(anomes_atual))
+                  .in_("layout", ["1200", "1210"])
+                  .execute().data or []):
+            for campo in ("data_grava", "data_cad"):
+                dg = (r.get(campo) or "").strip()
+                if len(dg) == 8 and dg.isdigit():
+                    try:
+                        diretorios.add(_xml_dir_rel(
+                            id_empresa, datetime.strptime(dg, "%Y%m%d"),
+                            id_cliente))
+                    except Exception:
+                        pass
+
+        try:
+            _mes = datetime.strptime(anomes_atual + "01", "%Y%m%d")
+            _hoje = _agora_brasilia()
+            for _ in range(12):          # trava: no máximo um ano de pastas
+                diretorios.add(_xml_dir_rel(id_empresa, _mes, id_cliente))
+                if (_mes.year, _mes.month) >= (_hoje.year, _hoje.month):
+                    break
+                _mes = (_mes.replace(day=28) + timedelta(days=7)).replace(day=1)
+        except Exception:
+            pass
+
+        rx = re.compile(r"^S(1200|1210)_([^_]+)_(\d{8})_(\d{6})_6_",
+                        re.IGNORECASE)
+        candidatos = []
+        for d in sorted(diretorios):
+            for it in (_storage_listar(d) or []):
+                nm = it.get("name") or ""
+                m = rx.match(nm)
+                if m and nm.lower().endswith(".xml"):
+                    mat = m.group(2).lstrip("0") or m.group(2)
+                    candidatos.append({
+                        "path": f"{d}/{nm}", "layout": m.group(1),
+                        "matricula": mat,
+                        "data": m.group(3), "hora": m.group(4),
+                        "dt": m.group(3) + m.group(4)})
+        if not candidatos:
+            return jsonify({"ok": True, "criados": 0,
+                            "msg": "Não há arquivo de consulta (_6_) de "
+                                   "S-1200/S-1210 no Storage para esta folha. "
+                                   "Rode a consulta do eSocial antes."})
+
+        # ── 3. lê os retornos e extrai o recibo ────────────────────
+        # Do mais recente para o mais antigo, e o primeiro que trouxer recibo
+        # aceito vale: a consulta mais nova costuma voltar "[101] em
+        # processamento", sem número, enquanto a anterior já trouxe o recibo.
+        xmls = _storage_baixar_varios([c["path"] for c in candidatos])
+        candidatos.sort(key=lambda c: c["dt"], reverse=True)
+        achados, recusados = {}, []
+        for c in candidatos:
+            chave = (c["layout"], c["matricula"])
+            if chave in achados:
+                continue
+            xml = xmls.get(c["path"]) or ""
+            cod = re.search(r"<cdResposta>(.*?)</cdResposta>", xml)
+            rec = re.search(r"<nrRecibo>(.*?)</nrRecibo>", xml)
+            if not rec or not rec.group(1).strip():
+                continue
+            if not cod or cod.group(1).strip() != "201":
+                recusados.append(f"S-{c['layout']} mat {c['matricula']}: "
+                                 f"cdResposta {cod.group(1) if cod else '?'}")
+                continue
+            # O período do XML tem que ser o da folha: um retorno de outra
+            # competência traria o recibo errado, e recibo errado numa
+            # exclusão S-3000 apaga o evento de outro mês.
+            per = re.search(r"<perApur>(.*?)</perApur>", xml)
+            if per and per.group(1).strip().replace("-", "") != anomes_atual:
+                recusados.append(f"S-{c['layout']} mat {c['matricula']}: retorno "
+                                 f"de {per.group(1).strip()}, não de {anomes_atual}")
+                continue
+            achados[chave] = {"recibo": rec.group(1).strip(),
+                              "data": c["data"], "hora": c["hora"]}
+
+        # ── 4. cria a linha histórica de cada evento aceito ────────
+        folha_tipo = _folha_tipo_mov_de(str(session.get("anomes_tipo") or "N"))
+        criados, ja_tinha, erros = 0, 0, []
+        for (layout, mat), info in sorted(achados.items()):
+            if info["recibo"] in recibos_conhecidos:
+                ja_tinha += 1          # já restaurado num clique anterior
+                continue
+            try:
+                supabase.table("tab_esocial").insert({
+                    "id_cliente": id_cliente,
+                    "id_empresa": id_empresa,
+                    "ano_mes":    int(anomes_atual),
+                    "layout":     layout,
+                    "matricula":  int(mat),
+                    "recibo":     info["recibo"],
+                    # Datas do envio de verdade, tiradas do nome do arquivo:
+                    # a linha representa o que aconteceu naquele dia, não hoje.
+                    "data_cad":   info["data"],
+                    "hora_cad":   info["hora"][:4],
+                    "data_grava": info["data"],
+                    "hora_grava": info["hora"][:4],
+                    "id_remessa": info["data"] + info["hora"],
+                    "folha_tipo": folha_tipo,
+                    "codigo2":    0,
+                }).execute()
+                recibos_conhecidos.add(info["recibo"])
+                criados += 1
+            except Exception as e:
+                erros.append(f"S-{layout} mat {mat}: {e}")
+
+        if criados:
+            gravar_log("ESOCIAL",
+                       f"Recibos restaurados do Storage: {criados} evento(s) "
+                       f"S-1200/S-1210 aceitos da folha {anomes_atual}.",
+                       ano_mes=anomes_atual)
+
+        if criados:
+            msg = (f"{criados} evento(s) aceito(s) restaurado(s) com o recibo. "
+                   f"Agora eles aparecem como Enviados — dá para excluir o "
+                   f"S-1210 pelo S-3000 e retificar o S-1200.")
+        elif ja_tinha:
+            msg = (f"Nada a fazer: os {ja_tinha} recibos encontrados já "
+                   f"estavam registrados aqui.")
+        else:
+            msg = ("Nenhum retorno com recibo aceito foi encontrado nos XMLs "
+                   "desta folha.")
+        return jsonify({"ok": True, "criados": criados, "ja_tinha": ja_tinha,
+                        "pendentes": pendentes, "recusados": recusados[:20],
+                        "erros": erros[:20], "msg": msg})
+    except Exception as e:
+        import traceback as _tb
+        _tb.print_exc()
+        return jsonify({"ok": False, "msg": f"Erro ao recuperar recibos: {e}"})
 
 
 # =========================================================
