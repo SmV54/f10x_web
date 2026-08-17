@@ -12279,17 +12279,27 @@ _SIT_FOLHA_LABEL = {
 }
 
 
-def _folha_aberta_no_esocial(id_empresa=None, ano_mes=None):
-    """True se a folha do período está Aberta no eSocial.
+def _folha_estado_esocial(id_empresa=None, ano_mes=None):
+    """Estado da folha no eSocial e o evento que a deixou assim.
+
+    Devolve {"aberta": bool, "layout": "1298"|"1299"|"", "quando": "dd/mm/aaaa
+    hh:mm"}. Layout vazio quer dizer que nunca houve fechamento — aberta desde
+    sempre.
 
     Regra: olha o ÚLTIMO evento entre S-1299 (fechamento) e S-1298 (reabertura)
-    com recibo no período. Se o último for S-1298 a folha está reaberta;
-    se for S-1299 está fechada; se não houver nenhum dos dois, está aberta."""
+    com recibo no período. Se o último for S-1298 a folha está reaberta; se for
+    S-1299 está fechada; se não houver nenhum dos dois, está aberta.
+
+    O evento vem junto do bool porque só "fechada" não explica nada a quem
+    está na tela: foi essa falta que fez o usuário achar, em 17/08/2026, que o
+    sistema estivesse ignorando um S-1298 que ele acabara de enviar.
+    """
+    vazio = {"aberta": True, "layout": "", "quando": ""}
     try:
         ie = id_empresa or _get_id_empresa()
         am = str(ano_mes or session.get("anomes_atual") or "").strip()
         if not am or len(am) != 6:
-            return True
+            return vazio
         r = (supabase.table("tab_esocial")
              .select("layout, data_grava, hora_grava")
              .eq("id_empresa", ie)
@@ -12302,11 +12312,23 @@ def _folha_aberta_no_esocial(id_empresa=None, ano_mes=None):
              .limit(1)
              .execute())
         if not r.data:
-            return True
+            return vazio
+        reg = r.data[0]
+        lay = str(reg.get("layout") or "")
+        d   = str(reg.get("data_grava") or "").strip()
+        h   = str(reg.get("hora_grava") or "").strip()
+        quando = f"{d[6:8]}/{d[4:6]}/{d[0:4]}" if len(d) == 8 else ""
+        if quando and len(h) >= 4:
+            quando += f" às {h[0:2]}:{h[2:4]}"
         # Aberta se o último evento foi S-1298 (reabertura); fechada se S-1299.
-        return str(r.data[0].get("layout") or "") == "1298"
+        return {"aberta": lay == "1298", "layout": lay, "quando": quando}
     except Exception:
-        return True
+        return vazio
+
+
+def _folha_aberta_no_esocial(id_empresa=None, ano_mes=None):
+    """True se a folha do período está Aberta no eSocial."""
+    return _folha_estado_esocial(id_empresa, ano_mes)["aberta"]
 
 
 def _validar_folha_para_envio_esocial(layout, ano_mes=None, folha_tipo="N"):
@@ -37733,10 +37755,15 @@ def esocial_s3000():
         else:
             r["_sit"], r["_sit_label"], r["_sit_class"] = "X", "Com Erro",  "sit-erro"
 
-    folha_aberta_esocial = _folha_aberta_no_esocial(id_empresa, anomes_atual)
+    # Estado completo, e não só o sim/não: a tela mostra qual evento deixou a
+    # folha assim, para o usuário não ter que adivinhar se o S-1298 que ele
+    # acabou de enviar foi considerado.
+    estado_esocial = _folha_estado_esocial(id_empresa, anomes_atual)
+    folha_aberta_esocial = estado_esocial["aberta"]
 
     return render_template(
         "F10_eSocial_S3000.html",
+        estado_esocial=estado_esocial,
         versao=ler_versao(),
         empresa=session.get("empresa_info", ""),
         cnpj_fmt=_fmt_cnpj(session.get("cnpj_empresa", "")),

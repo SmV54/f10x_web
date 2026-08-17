@@ -56,6 +56,10 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
     font-size: 13px; color: #9a3412; line-height: 1.6;
 }
 .alerta strong { font-weight: 700; }
+/* Folha aberta: o aviso deixa de ser advertencia e vira confirmacao. */
+.alerta.alerta-ok {
+    background: #f0fdf4; border-color: #bbf7d0; color: #166534;
+}
 
 /* ── FOLHA BADGE ── */
 .folha-badge {
@@ -204,8 +208,24 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
 
 <div class="conteudo">
 
-  <div class="alerta" id="secaoAlerta">
-    <strong>Atenção:</strong> Só é possível excluir eventos da folha ativa que esteja <strong>Aberta no eSocial</strong> (sem S-1299 enviado). A operação não pode ser desfeita.
+  {# Mostra o estado ATUAL, e nao a regra generica. Antes esta caixa dizia
+     sempre "so e possivel excluir se a folha estiver aberta", o que num
+     periodo ja reaberto parecia recusa e fazia o usuario achar que o S-1298
+     nao tinha sido considerado. #}
+  <div class="alerta {% if folha_aberta_esocial %}alerta-ok{% endif %}" id="secaoAlerta">
+    {% if folha_aberta_esocial %}
+      <strong>&#10003; Folha aberta no eSocial</strong> — exclusão liberada.
+      {% if estado_esocial and estado_esocial.layout == '1298' %}
+        Reaberta pelo S-1298{% if estado_esocial.quando %} recebido em {{ estado_esocial.quando }}{% endif %}.
+      {% else %}
+        Nenhum S-1299 (fechamento) foi enviado neste período.
+      {% endif %}
+      A operação não pode ser desfeita.
+    {% else %}
+      <strong>&#9888; Folha fechada no eSocial</strong> — exclusão bloqueada.
+      Fechada pelo S-1299{% if estado_esocial and estado_esocial.quando %} recebido em {{ estado_esocial.quando }}{% endif %}.
+      Envie o S-1298 (Reabertura) antes de excluir eventos.
+    {% endif %}
   </div>
 
   {% if folha_ativa %}
@@ -315,7 +335,7 @@ function iniciarTour() {
             element: '#secaoAlerta',
             popover: {
                 title: 'Atenção: Operação Irreversível',
-                description: 'A exclusão via S-3000 não pode ser desfeita. Só é possível excluir eventos que já foram enviados e têm recibo, e somente da folha ativa Aberta no eSocial (sem S-1299).',
+                description: 'Esta faixa mostra o estado ATUAL da folha no eSocial e qual evento a deixou assim. Verde: aberta, exclusão liberada. Laranja: fechada pelo S-1299 — envie o S-1298 (Reabertura) antes. A exclusão não pode ser desfeita, e só alcança eventos que já foram enviados e têm recibo.',
             }
         },
         {
