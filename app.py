@@ -34031,6 +34031,17 @@ def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_v
 # evento e recusado la. Isto tira a trava local, nao a exigencia real.
 S1010_CHECK_DISPENSADO = {(30, "202607")}
 
+# Mesma história com a LOTAÇÃO. No cliente 0030 / empresa 0029 a lotação 001
+# ja esta declarada e vigente no eSocial — o reenvio do S-1020 volta com
+# "[537] Ja existe no sistema registro com mesmo codigo de identificacao
+# (chave) em periodo de vigencia conflitante" —, mas [537] nao devolve
+# recibo, entao a conferencia local a considera nao declarada e barra o
+# S-1200 antes de gerar qualquer XML (por isso nem havia XML para consultar).
+#
+# Conjuntos separados de proposito: dispensar a conferencia de rubrica nao
+# deve arrastar a de lotacao junto, nem o contrario.
+S1020_CHECK_DISPENSADO = {(30, "202607")}
+
 _cliente_por_empresa = {}      # cache do processo, evita repetir a consulta
 
 
@@ -34054,9 +34065,9 @@ def _cliente_da_empresa(id_empresa):
     return val
 
 
-def _s1010_check_dispensado(id_empresa, ano_mes):
-    """True quando a conferencia previa de S-1010 nao deve rodar."""
-    if not S1010_CHECK_DISPENSADO:
+def _check_dispensado(conjunto, id_empresa, ano_mes):
+    """True quando (cliente da empresa, competencia) esta no conjunto."""
+    if not conjunto:
         return False
     # A sessao ja sabe o cliente na maioria das chamadas; a consulta ao banco
     # so acontece fora de request (rotina, script).
@@ -34066,7 +34077,17 @@ def _s1010_check_dispensado(id_empresa, ano_mes):
         cli = 0
     if not cli:
         cli = _cliente_da_empresa(id_empresa)
-    return (cli, str(ano_mes or "")) in S1010_CHECK_DISPENSADO
+    return (cli, str(ano_mes or "")) in conjunto
+
+
+def _s1010_check_dispensado(id_empresa, ano_mes):
+    """True quando a conferencia previa de S-1010 nao deve rodar."""
+    return _check_dispensado(S1010_CHECK_DISPENSADO, id_empresa, ano_mes)
+
+
+def _s1020_check_dispensado(id_empresa, ano_mes):
+    """True quando a conferencia previa de S-1020 nao deve rodar."""
+    return _check_dispensado(S1020_CHECK_DISPENSADO, id_empresa, ano_mes)
 
 
 def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
@@ -34137,7 +34158,12 @@ def _lotacoes_folha_sem_s1020(id_empresa, ano_mes, folha_tipo=None):
     olha remessas que ja existem).
 
     Devolve lista de codigos de lotacao ordenada. Vigencia conta, igual ao S-1010.
+
+    Devolve vazio, sem conferir nada, nos pares (cliente, competencia) de
+    S1020_CHECK_DISPENSADO — ver o comentario la para o motivo.
     """
+    if _s1020_check_dispensado(id_empresa, ano_mes):
+        return []
     try:
         mov = _mov_da_folha(id_empresa, ano_mes, folha_tipo, campos="matricula")
     except Exception as e:
