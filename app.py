@@ -28922,6 +28922,10 @@ def api_esocial_s1020_gravar():
     agora = _agora_brasilia()
     try:
         r = supabase.table("tab_esocial").insert({
+            # id_cliente faltava aqui: era o ÚNICO insert de tab_esocial que
+            # não o gravava, e por isso as remessas de S-1020 nasciam órfãs —
+            # 9 linhas assim em 21.505 até 17/08/2026, todas deste layout.
+            "id_cliente":      session.get("id_cliente"),
             "id_empresa":      id_empresa,
             "data_cad":        agora.strftime("%Y%m%d"),
             "hora_cad":        agora.strftime("%H%M"),
