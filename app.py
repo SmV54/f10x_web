@@ -28999,7 +28999,14 @@ def api_esocial_s1020_gravar():
     ini_valid  = data.get("ini_valid", "").strip()
     fim_valid  = data.get("fim_valid", "").strip()
     tpAmb      = str(data.get("tpAmb", "1"))
-    cod_lotacao = data.get("codLotacao", "01").strip()
+    # Sem valor-padrao de proposito. Com o "01" que estava aqui, um pedido que
+    # nao mandasse codLotacao passava pela validacao logo abaixo e gerava um
+    # S-1020 declarando a lotacao "01" — que quase nenhuma empresa usa (dos
+    # 207 cadastros, 202 tem centro de custo de tres digitos e 190 sao "001").
+    # O S-1200 continuava barrado por falta de lotacao declarada, depois de
+    # alguem ter criado o S-1020 achando que resolveu. Vazio faz a validacao
+    # abaixo recusar, que e o certo.
+    cod_lotacao = data.get("codLotacao", "").strip()
     tp_lotacao  = data.get("tpLotacao", "01").strip()
     fpas        = data.get("fpas", "").strip()
     cod_tercs   = data.get("codTercs", "").strip()

@@ -376,7 +376,7 @@ tr:hover td { background: #f8fafc; }
                 <div class="form-group">
                     <label class="form-label">Código da Lotação *</label>
                     <input type="text" id="f-cod-lot" class="form-input mono" maxlength="30"
-                           value="01" placeholder="Ex: 01">
+                           value="001" placeholder="Ex: 001">
                     <span class="form-hint">Até 30 caracteres alfanuméricos</span>
                 </div>
                 <div class="form-group">
@@ -478,7 +478,12 @@ function abrirModal() {
     document.getElementById('f-tp-op').value    = 'inclusao';
     document.getElementById('f-ini-valid').value = '';
     document.getElementById('f-fim-valid').value = '';
-    document.getElementById('f-cod-lot').value   = '01';
+    // 001, nao 01: o codLotacao tem que casar com o tab_cad.centrocusto do
+    // funcionario, e ali o padrao sao tres digitos -- 202 dos 207 cadastros,
+    // 190 deles exatamente '001'. Com '01' o S-1020 saía declarando uma
+    // lotacao que a folha nao usa, e o S-1200 continuava sendo barrado por
+    // falta de lotacao declarada mesmo depois de alguem ter criado o S-1020.
+    document.getElementById('f-cod-lot').value   = '001';
     document.getElementById('f-tp-lot').value    = '01';
     document.getElementById('f-fpas').value      = FPAS_EMPRESA || '';
     document.getElementById('f-cod-tercs').value = CODTERCS_EMPRESA || '';
