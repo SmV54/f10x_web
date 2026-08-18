@@ -125,25 +125,28 @@ def main():
             # clicar no módulo já aberto FECHA o painel -- e sairia um print
             # do menu vazio, igual ao anterior, sem erro nenhum para avisar.
             for chave in chaves:
+                # Recarrega antes de cada módulo. Algumas seções levam a
+                # outra página em vez de trocar a lista ao lado, e a partir
+                # dali não existe mais menu nenhum: o módulo seguinte falhava
+                # dizendo que o cartão não existe, e os oito depois dele
+                # também. Um recarregamento custa um segundo e apaga o
+                # assunto.
+                pg.goto(BASE + "/static/_menu_para_print.html",
+                        wait_until="networkidle", timeout=20000)
+                pg.wait_for_timeout(700)
                 alvo = pg.query_selector('[data-modulo="%s"]' % chave)
                 if not alvo:
                     erros.append("cartão %r não existe no menu" % chave)
                     continue
-                pg.evaluate("() => { if (typeof fecharPanel === 'function') fecharPanel(); }")
-                pg.wait_for_timeout(200)
                 alvo.click()
                 pg.wait_for_timeout(900)
-                arq = os.path.join(PASTA, "_menu_%s.jpg" % chave)
-                pg.screenshot(path=arq, type="jpeg", quality=75)
-                feitos.append((chave, arq))
-
-                # Onde está cada botão da gaveta, em porcentagem da foto.
-                # É o que permite o botão crescer no segundo em que a voz o
-                # cita. Vão os dois níveis: as seções da coluna da esquerda
-                # (todas visíveis) e os itens da seção aberta -- os itens das
-                # outras seções não estão na foto, e narrar o que não está na
-                # tela é pior do que não narrar.
-                botoes[chave] = pg.evaluate("""() => {
+                # Uma foto POR SEÇÃO. A gaveta mostra as seções todas na
+                # coluna da esquerda, mas só os itens da seção aberta -- e a
+                # demonstração precisa mostrar os itens de cada uma conforme
+                # a voz passa por elas. Com uma foto só, citar "Tabelas
+                # Auxiliares" acendia o nome da seção e a lista ao lado
+                # continuava sendo a da seção anterior.
+                medir = """() => {
                     const w = innerWidth, h = innerHeight, fora = [];
                     const pega = (sel, tipo) =>
                       [...document.querySelectorAll(sel)].forEach(e => {
@@ -153,10 +156,46 @@ def main():
                           left: r.left / w * 100, top: r.top / h * 100,
                           width: r.width / w * 100, height: r.height / h * 100});
                       });
-                    pega('.nav-secao-btn', 'secao');
-                    pega('#navItens a, #navItens button, .nav-item', 'item');
+                    pega(ARG, TIPO);
                     return fora;
-                }""")
+                }"""
+                secoes = pg.query_selector_all(".nav-secao-btn")
+                lista = pg.evaluate(medir.replace("ARG", "'.nav-secao-btn'")
+                                         .replace("TIPO", "'secao'"))
+                # Cada botão de seção aponta para a SUA foto: citar "Tabelas
+                # Auxiliares" tem que mostrar a lista de Tabelas Auxiliares.
+                # A posição não muda de foto para foto -- a coluna da
+                # esquerda fica onde está --, mas o retrato ao lado sim.
+                for j, s in enumerate(lista):
+                    s["secao"] = j
+
+                for i in range(max(1, len(secoes))):
+                    if secoes:
+                        # Reconsulta a cada volta: clicar numa seção remonta o
+                        # painel, e a lista guardada antes do clique aponta
+                        # para elementos que já saíram da página.
+                        vivas = pg.query_selector_all(".nav-secao-btn")
+                        if i >= len(vivas):
+                            erros.append("%s: seção %d levou para fora do menu"
+                                         % (chave, i))
+                            break
+                        vivas[i].click()
+                        pg.wait_for_timeout(650)
+                        if "_menu_para_print" not in pg.url:
+                            erros.append("%s: a seção %d abre uma tela, não uma"
+                                         " lista -- foto pulada" % (chave, i))
+                            break
+                    arq = (os.path.join(PASTA, "_menu_%s.jpg" % chave) if i == 0
+                           else os.path.join(PASTA, "_menu_%s_s%d.jpg" % (chave, i)))
+                    pg.screenshot(path=arq, type="jpeg", quality=75)
+                    feitos.append(("%s seção %d" % (chave, i), arq))
+                    itens = pg.evaluate(
+                        medir.replace("ARG", "'#navItens a, #navItens button, .nav-item'")
+                             .replace("TIPO", "'item'"))
+                    for it in itens:
+                        it["secao"] = i
+                    lista += itens
+                botoes[chave] = lista
             b.close()
     finally:
         if os.path.exists(tmp):
@@ -168,9 +207,10 @@ def main():
     print("cartões de módulo no menu: %d  (posições em %s)" % (cartoes, CARTOES))
     print("botões medidos por módulo (%s):" % BOTOES)
     for k, v in botoes.items():
-        print("  %-14s %d seções, %d itens" % (
+        print("  %-14s %d seções, %d itens (em %d fotos)" % (
             k, sum(1 for b in v if b["tipo"] == "secao"),
-            sum(1 for b in v if b["tipo"] == "item")))
+            sum(1 for b in v if b["tipo"] == "item"),
+            len({b["secao"] for b in v if b["tipo"] == "item"}) or 1))
     for nome, arq in feitos:
         print("  %-16s %5.0f KB  %s" % (nome, os.path.getsize(arq) / 1024, arq))
     if erros:

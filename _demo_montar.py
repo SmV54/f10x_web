@@ -45,6 +45,17 @@ LOGIN_CAMPOS = [
 ]
 LOGIN_BOTAO = 57.4
 
+# O cabeçalho padrão de toda tela do sistema traz, no canto esquerdo, o nome
+# de quem está logado -- e os prints foram tirados com a conta real. Numa
+# demonstração que vai para link público isso é o nome de uma pessoa
+# aparecendo em cinquenta telas. A tarja cobre exatamente aquele retângulo.
+#
+# Não são números escolhidos no olho: varri os prints procurando os pixels
+# escuros na faixa do cabeçalho, e em todos eles o nome ocupa x 29..159,
+# y 28..36, sobre o mesmo verde. Medido em `_medir_cabecalho`, no histórico.
+NOME_TARJA = {"left": 1.9, "top": 2.4, "width": 10.6, "height": 2.3,
+              "fundo": "#A1D9BE", "texto": "CLIENTE EXEMPLO"}
+
 # Conexões não tem nenhuma tela pronta e Diversos tem 1 de 5. Módulo vazio num
 # vídeo de venda joga contra, então os dois saem do corpo e viram uma frase de
 # promessa no fecho. Para mostrá-los assim mesmo, basta esvaziar este conjunto.
@@ -125,6 +136,64 @@ def esc(s):
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
+# Abaixo desta proporção de tinta, o print é considerado uma tela vazia e não
+# é escolhido para o desfile. Não é um número inventado: medi os prints e a
+# separação é limpa -- as telas que só têm o cabeçalho e um aviso ("Nenhuma
+# Folha Ativa definida", listas sem registro) ficam entre 0,01% e 1,1%; as
+# que têm conteúdo de verdade, entre 3,3% e 13%. Nada cai perto da linha.
+TINTA_MINIMA = 2.5
+CACHE_TINTA = "_demo_densidade.json"
+
+
+def tinta_dos_prints(caminhos):
+    """Quanto de cada print não é fundo branco, em porcentagem.
+
+    Existe porque print vazio não dá erro: a tela abre, o navegador tira a
+    foto, o arquivo tem 25 KB e a demonstração exibe orgulhosamente um aviso
+    vermelho em campo branco. Só se descobre assistindo.
+
+    O resultado fica em cache pela data do arquivo -- são mais de cem
+    imagens, e elas só mudam quando alguém recaptura.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return {}
+    cache = {}
+    if os.path.exists(CACHE_TINTA):
+        try:
+            cache = json.load(io.open(CACHE_TINTA, encoding="utf-8"))
+        except ValueError:
+            cache = {}
+    saida, mudou = {}, False
+    for c in caminhos:
+        chave = "%s|%d" % (c.replace("\\", "/"), os.path.getmtime(c))
+        if chave not in cache:
+            im = Image.open(c).convert("L").resize((240, 150))
+            # A faixa do cabeçalho fica de fora: ela é colorida em toda tela,
+            # inclusive nas vazias, e sozinha já passaria de qualquer limiar.
+            px = list(im.crop((0, 14, 240, 150)).getdata())
+            cache[chave] = round(
+                sum(1 for p in px if p < 232) / float(len(px)) * 100, 2)
+            mudou = True
+        saida[c] = cache[chave]
+    if mudou:
+        io.open(CACHE_TINTA, "w", encoding="utf-8").write(
+            json.dumps(cache, ensure_ascii=False, indent=1))
+    return saida
+
+
+def tarja_do_nome():
+    """Cobre o nome de quem estava logado quando o print foi tirado.
+
+    Só nas telas exibidas em tamanho cheio: numa telinha de 60px o nome já é
+    ilegível, e a tarja apareceria como um risco colorido sem motivo.
+    """
+    return ('<span class="tarja-nome" style="left:%(left)s%%;top:%(top)s%%;'
+            'width:%(width)s%%;height:%(height)s%%;background:%(fundo)s">'
+            '%(texto)s</span>' % NOME_TARJA)
+
+
 def img_ou_moldura(tela, classe="tiro"):
     """<img> quando o print existe; moldura com o nome quando não.
 
@@ -142,8 +211,9 @@ def img_ou_moldura(tela, classe="tiro"):
         # imagem quando o slide aparecia -- e como o slide aparece e some em
         # segundos, cada troca mostrava o quadro vazio antes de preencher.
         # Era metade do "piscar" entre uma tela e outra.
-        return ('<div class="%s"><img src="%s" alt="%s"></div>'
-                % (classe, caminho.replace("\\", "/"), esc(tela["nome"])))
+        return ('<div class="%s"><img src="%s" alt="%s">%s</div>'
+                % (classe, caminho.replace("\\", "/"), esc(tela["nome"]),
+                   tarja_do_nome() if "grande" in classe else ""))
     return ('<div class="%s falta"><span>%s</span></div>'
             % (classe, esc(tela["nome"])))
 
@@ -192,26 +262,49 @@ def bloco_gaveta(mod, telas):
     """
     foto = os.path.join(PASTA_PRINTS, "_menu_%s.jpg" % mod["chave"])
     if os.path.exists(foto):
+        botoes = botoes_da_gaveta(mod["chave"])
+
+        def foto_da(sec):
+            """A foto com aquela seção aberta; a da seção 0 se não existir."""
+            if sec:
+                f = os.path.join(PASTA_PRINTS,
+                                 "_menu_%s_s%d.jpg" % (mod["chave"], sec))
+                if os.path.exists(f):
+                    return f
+            return foto
+
+        # As fotos ficam todas empilhadas, e a que aparece é a da seção que a
+        # voz está citando. Com uma foto só, dizer "Tabelas Auxiliares"
+        # acendia o nome da seção e a lista ao lado continuava sendo a de
+        # Funcionário -- o espectador via o destaque apontar para uma coisa e
+        # a tela mostrar outra.
+        secs = sorted({b.get("secao", 0) for b in botoes})
+        imgs = "".join(
+            '<img class="foto%s" data-sec="%d" src="%s" alt="Menu — %s">'
+            % (" on" if s == secs[0] else "", s,
+               foto_da(s).replace("\\", "/"), esc(mod["titulo"]))
+            for s in secs)
+
         # Cada realce carrega, como fundo, o PEDAÇO da foto onde o botão
-        # está. É o que faz o botão crescer de verdade quando é citado: uma
-        # moldura só aumentaria a borda, e o botão continuaria do mesmo
-        # tamanho lá embaixo. As contas são a fórmula padrão de recorte por
-        # porcentagem: o fundo é ampliado na razão inversa do tamanho da
-        # janelinha, e deslocado na proporção do espaço que sobra.
-        src = foto.replace("\\", "/")
+        # está -- da foto DA SUA SEÇÃO. É o que faz o botão crescer de
+        # verdade quando é citado: uma moldura só aumentaria a borda, e o
+        # botão continuaria do mesmo tamanho lá embaixo. As contas são a
+        # fórmula padrão de recorte por porcentagem: o fundo é ampliado na
+        # razão inversa do tamanho da janelinha, e deslocado na proporção do
+        # espaço que sobra.
         realces = "".join(
-            '<span class="brealce %s" style="left:%.2f%%;top:%.2f%%;'
-            'width:%.2f%%;height:%.2f%%;background-image:url(%s);'
+            '<span class="brealce %s" data-sec="%d" style="left:%.2f%%;'
+            'top:%.2f%%;width:%.2f%%;height:%.2f%%;background-image:url(%s);'
             'background-size:%.2f%% %.2f%%;background-position:%.2f%% %.2f%%">'
             '</span>'
-            % (b["tipo"], b["left"], b["top"], b["width"], b["height"], src,
+            % (b["tipo"], b.get("secao", 0), b["left"], b["top"], b["width"],
+               b["height"], foto_da(b.get("secao", 0)).replace("\\", "/"),
                10000.0 / b["width"], 10000.0 / b["height"],
                b["left"] / max(0.01, 100 - b["width"]) * 100,
                b["top"] / max(0.01, 100 - b["height"]) * 100)
-            for b in botoes_da_gaveta(mod["chave"]))
+            for b in botoes)
         return ('<div class="cheia"><div class="tiro grande quadro-gaveta">'
-                '<img src="%s" alt="Menu — %s">%s</div></div>'
-                % (foto.replace("\\", "/"), esc(mod["titulo"]), realces))
+                '%s%s</div></div>' % (imgs, realces))
 
     secoes, ordem = {}, []
     for t in telas:
@@ -239,6 +332,10 @@ def bloco_gaveta(mod, telas):
 # sequência, mostram como o sistema é; o contador no fim diz o tamanho do
 # módulo sem precisar exibir as outras trinta e uma.
 MOSAICO_PASSOS = 3
+
+# Abaixo disto o contador não aparece: "+2 telas neste módulo" ocupa uma cena
+# inteira para dizer quase nada, e ainda sugere que o módulo é pequeno.
+CONTADOR_MINIMO = 4
 
 
 # Para que serve cada módulo, na linha do cartão do menu. Curto de propósito:
@@ -331,15 +428,31 @@ def bloco_mosaico(telas, dur):
     """
     prontas = [t for t in telas if t["ok"]]
     com_print = [t for t in prontas if os.path.exists(arquivo_do(t))]
-    amostra = (com_print or prontas)[:MOSAICO_PASSOS]
-    resto = len(prontas) - len(amostra)
+    tinta = tinta_dos_prints([arquivo_do(t) for t in com_print])
+    # Primeiro as que têm conteúdo; print vazio só entra se não houver outro.
+    cheias = [t for t in com_print
+              if tinta.get(arquivo_do(t), 100) >= TINTA_MINIMA]
+    fila = cheias or com_print or prontas
+    amostra = fila[:MOSAICO_PASSOS]
+    sobrando = [t for t in prontas if t not in amostra]
+    resto = len(sobrando)
 
     passos = ['<div class="passo">%s<figcaption>%s</figcaption></div>'
               % (img_ou_moldura(t, "tiro grande"), esc(t["nome"]))
               for t in amostra]
-    if resto > 0:
-        passos.append('<div class="passo contador"><b>+%d</b>'
-                      '<span>telas neste módulo</span></div>' % resto)
+    if resto >= CONTADOR_MINIMO:
+        # O número sozinho é uma afirmação; com as telinhas atrás vira prova.
+        # São pequenas de propósito -- ninguém vai lê-las, e não é para ler:
+        # é para ver que existem.
+        telinhas = "".join(
+            ('<i style="background-image:url(%s)"></i>'
+             % arquivo_do(t).replace("\\", "/"))
+            if os.path.exists(arquivo_do(t)) else '<i class="vazia"></i>'
+            for t in sobrando)
+        passos.append('<div class="passo contador">'
+                      '<div class="conta"><b>+%d</b>'
+                      '<span>telas neste módulo</span></div>'
+                      '<div class="telinhas">%s</div></div>' % (resto, telinhas))
     return ('<div class="desfile" data-passo="%.2f">%s</div>'
             % (dur / max(1, len(passos)), "".join(passos)))
 
@@ -474,6 +587,22 @@ def main():
     else:
         print("\nTodos os prints no lugar.")
 
+    # Print vazio não dá erro nenhum, e é o defeito que mais aparece no vídeo.
+    existentes = [t for t in telas
+                  if t["ok"] and os.path.exists(arquivo_do(t))]
+    tinta = tinta_dos_prints([arquivo_do(t) for t in existentes])
+    vazias = sorted(((tinta[arquivo_do(t)], t["nome"]) for t in existentes
+                     if tinta.get(arquivo_do(t), 100) < TINTA_MINIMA))
+    if vazias:
+        print("\n%d print(s) saíram praticamente em branco — tela sem registro,"
+              "\nou capturada sem folha aberta no cliente. Ficam fora do desfile,"
+              "\nmas ainda contam. Vale abrir uma folha no cliente teste e"
+              "\nrecapturar:" % len(vazias))
+        for pct, nome in vazias[:12]:
+            print("   %5.2f%%  %s" % (pct, nome))
+        if len(vazias) > 12:
+            print("   ... e mais %d." % (len(vazias) - 12))
+
 
 MOLDE = r"""<!doctype html>
 <html lang="pt-BR">
@@ -595,16 +724,35 @@ h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--brand
 .passo .tiro.grande{max-height:100%;max-width:100%}
 .passo .tiro.grande img{max-height:calc(100vh - 250px);width:auto}
 .passo figcaption{font-size:clamp(12px,1.4vw,18px);color:var(--ink-2);margin:0}
-/* O "+31 telas": diz o tamanho do modulo sem precisar mostrar as trinta e uma. */
-.passo.contador b{font-size:clamp(56px,10vw,150px);color:var(--brand);
+/* O "+31 telas", com as telinhas atras: o numero afirma, as telinhas provam. */
+.passo.contador{gap:clamp(14px,2.5vw,32px)}
+.passo.contador .conta{text-align:center}
+.passo.contador b{display:block;font-size:clamp(48px,8vw,120px);color:var(--brand);
   line-height:1;letter-spacing:-.04em}
-.passo.contador span{font-size:clamp(14px,1.8vw,24px);color:var(--ink-2)}
+.passo.contador span{font-size:clamp(13px,1.6vw,21px);color:var(--ink-2)}
+.telinhas{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;
+  max-width:min(96%,1100px)}
+.telinhas i{width:clamp(46px,5.4vw,84px);aspect-ratio:16/10;border-radius:4px;
+  border:1px solid var(--rule);background:var(--panel) center top/cover no-repeat;
+  animation:sobe .5s both;animation-delay:calc(var(--i,0)*.02s)}
+.telinhas i.vazia{border-style:dashed;opacity:.5}
 .mosaico figure{margin:0;animation:sobe .7s both;animation-delay:calc(var(--i)*.09s)}
 @keyframes sobe{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
 .tiro{border:1px solid var(--rule);border-radius:7px;overflow:hidden;background:#fff;
   line-height:0;box-shadow:var(--shadow)}
 .tiro img{display:block;width:100%;height:auto}
+.tiro{position:relative}
+/* A tarja imita o proprio cabecalho: mesmo verde, mesmo caixa alta, mesmo
+   tamanho. De longe nao se percebe que foi coberto -- e de perto tambem nao,
+   que e o ponto.
+   Nada de container-type aqui: ja tentei, e a contencao faz a caixa parar de
+   acompanhar a imagem -- a foto some. O tamanho sai da altura do palco, que
+   e o que limita a foto, igual aos campos do login. */
+.tarja-nome{position:absolute;display:flex;align-items:center;
+  font-size:clamp(6px, calc((100vh - 250px) * .0122), 14px);
+  letter-spacing:.03em;color:#3C5A4C;font-family:var(--sans);
+  overflow:hidden;white-space:nowrap}
 .tiro.mini{aspect-ratio:16/10;display:grid;place-items:center}
 .tiro.mini img{height:100%;width:100%;object-fit:cover;object-position:top center}
 .tiro.falta{aspect-ratio:16/10;display:grid;place-items:center;background:var(--panel);
@@ -664,6 +812,13 @@ figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
   border-color:var(--brand);background:var(--brand-soft);box-shadow:var(--shadow)}
 /* ---- gaveta: o botao citado cresce sobre a foto do menu de verdade ---- */
 .quadro-gaveta{position:relative}
+/* As fotos das secoes empilhadas: a primeira ocupa o espaco, as outras ficam
+   por cima dela, invisiveis, ate a voz chegar na secao delas. */
+.quadro-gaveta .foto{display:block}
+.quadro-gaveta .foto:not(:first-child){position:absolute;inset:0;
+  width:100%;height:100%}
+.quadro-gaveta .foto{opacity:0;transition:opacity .3s}
+.quadro-gaveta .foto.on{opacity:1}
 .brealce{position:absolute;border-radius:8px;pointer-events:none;opacity:0;
   outline:2px solid var(--brand);outline-offset:-1px;
   background-repeat:no-repeat;background-color:var(--stage);
@@ -814,9 +969,17 @@ function acender(fase, desde) {
   // volta, entao a ordem da fala nao e a ordem em que os botoes estao la.
   const quais = ((fonte && fonte.dataset.alvos) || '')
     .split(',').filter(s => s !== '').map(Number);
+  const fotos = [...fase.querySelectorAll('.quadro-gaveta .foto')];
   const por = (alvo) => {
     alvos.forEach(c => c.classList.remove('aceso'));
     alvo.classList.add('aceso');
+    // Troca a foto para a da secao do botao citado, se houver uma.
+    if (fotos.length > 1 && alvo.dataset.sec !== undefined) {
+      const s = alvo.dataset.sec;
+      const tem = fotos.some(f => f.dataset.sec === s);
+      fotos.forEach(f => f.classList.toggle('on',
+        tem ? f.dataset.sec === s : f === fotos[0]));
+    }
     if (legenda) {
       legenda.querySelector('b').textContent = alvo.dataset.nome || '';
       legenda.querySelector('span').textContent = alvo.dataset.pq || '';
@@ -935,9 +1098,28 @@ function parar() {
   voz.pause();
 }
 
+// As setas andam de FASE, nao de slide. Um slide de modulo tem tres fases
+// (gaveta, telas, tela cheia), entao voltar um slide inteiro jogava o
+// espectador quase meio minuto para tras -- longe demais para reveja um
+// trecho. De fase em fase o passo fica em torno de um terco disso.
+function bordas() {
+  const b = [];
+  CENAS.forEach((c, n) => {
+    let t = INICIO[n];
+    if (!c.passos.length) { b.push(t); return; }
+    c.passos.forEach(p => { b.push(t); t += p; });
+  });
+  return b;
+}
+function andar(dir) {
+  const b = bordas(), t = agora() - 0.35;   // margem: senao "voltar" repete a fase
+  let i = 0;
+  while (i + 1 < b.length && b[i + 1] <= t) i++;
+  irPara(b[Math.max(0, Math.min(b.length - 1, i + dir))]);
+}
 document.getElementById('btPlay').onclick = () => rodando ? parar() : rodar();
-document.getElementById('btProx').onclick = () => irPara(INICIO[Math.min(mostrando + 1, slides.length - 1)]);
-document.getElementById('btAnt').onclick  = () => irPara(INICIO[Math.max(mostrando - 1, 0)]);
+document.getElementById('btProx').onclick = () => andar(1);
+document.getElementById('btAnt').onclick  = () => andar(-1);
 document.addEventListener('keydown', e => {
   if (e.key === 'ArrowRight') document.getElementById('btProx').click();
   if (e.key === 'ArrowLeft')  document.getElementById('btAnt').click();
