@@ -1,0 +1,694 @@
+{
+ "cadastros": [
+  {
+   "tipo": "secao",
+   "texto": "Funcionário",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Tabelas Auxiliares",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Pensão Alimentícia",
+   "left": 17.01388888888889,
+   "top": 37.15277777777778,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Empresa",
+   "left": 17.01388888888889,
+   "top": 40.708333333333336,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "👤 Incluir Funcionário",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "✏️ Alterar Funcionário",
+   "left": 47.986111111111114,
+   "top": 30.930555555555557,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "👨‍👩‍👧 Dependentes",
+   "left": 31.319444444444443,
+   "top": 36.70833333333333,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📄 Ficha de Registro",
+   "left": 31.319444444444443,
+   "top": 42.486111111111114,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🧹 Limpar Funcionário",
+   "left": 31.319444444444443,
+   "top": 48.26388888888889,
+   "width": 16.11111111111111,
+   "height": 4
+  }
+ ],
+ "novafolha": [
+  {
+   "tipo": "secao",
+   "texto": "Folha",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "📅 Novo Mês/Ano",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 9.643012152777777,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🔄 Outro Mês/Ano",
+   "left": 41.51801215277778,
+   "top": 30.930555555555557,
+   "width": 9.942491319444445,
+   "height": 4
+  }
+ ],
+ "eventuais": [
+  {
+   "tipo": "secao",
+   "texto": "Férias",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Salários",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Rescisão",
+   "left": 17.01388888888889,
+   "top": 37.15277777777778,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Contrato Temporário",
+   "left": 17.01388888888889,
+   "top": 40.708333333333336,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Afastamentos",
+   "left": 17.01388888888889,
+   "top": 44.26388888888889,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Faltas",
+   "left": 17.01388888888889,
+   "top": 47.81944444444444,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Exame Médico",
+   "left": 17.01388888888889,
+   "top": 51.37500000000001,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Insalubridade/Periculosidade",
+   "left": 17.01388888888889,
+   "top": 54.93055555555556,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "FAP",
+   "left": 17.01388888888889,
+   "top": 58.486111111111114,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "🏖️ Lançar Férias",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 9.254557291666666,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📝 Lançar Movimento Férias",
+   "left": 41.12955729166667,
+   "top": 30.930555555555557,
+   "width": 14.059244791666666,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🖩 Calcular Férias",
+   "left": 55.744357638888886,
+   "top": 30.930555555555557,
+   "width": 9.23611111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📄 Memória de Cálculo",
+   "left": 65.53602430555556,
+   "top": 30.930555555555557,
+   "width": 11.70681423611111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🧾 Recibo de Férias",
+   "left": 31.319444444444443,
+   "top": 35.81944444444444,
+   "width": 10.411241319444445,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "❌ Cancelar Férias",
+   "left": 42.28624131944444,
+   "top": 35.81944444444444,
+   "width": 10.116102430555555,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📋 Funcionários em Férias",
+   "left": 52.95789930555556,
+   "top": 35.81944444444444,
+   "width": 13.094618055555557,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📆 Programação de Férias",
+   "left": 66.60807291666667,
+   "top": 35.81944444444444,
+   "width": 13.135850694444445,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "⏰ Férias Vencidas",
+   "left": 31.319444444444443,
+   "top": 40.708333333333336,
+   "width": 10.20724826388889,
+   "height": 4
+  }
+ ],
+ "movimento": [
+  {
+   "tipo": "secao",
+   "texto": "Lançamentos",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Listagens",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Adiantamento Quinzenal",
+   "left": 17.01388888888889,
+   "top": 37.15277777777778,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "✏️ Lançar Eventos",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 10.032552083333334,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🏦 Importar Consignados",
+   "left": 41.907552083333336,
+   "top": 30.930555555555557,
+   "width": 12.967664930555555,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "⏱️ Importar Ponto",
+   "left": 55.43077256944444,
+   "top": 30.930555555555557,
+   "width": 9.970703125,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📈 Horas Extras",
+   "left": 65.95703125,
+   "top": 30.930555555555557,
+   "width": 8.946397569444445,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📉 Faltas e Atrasos",
+   "left": 31.319444444444443,
+   "top": 35.81944444444444,
+   "width": 10.25173611111111,
+   "height": 4
+  }
+ ],
+ "movimentofixo": [
+  {
+   "tipo": "secao",
+   "texto": "Lançamentos",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Listagens",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "📌 Movimentos Fixos",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 11.16427951388889,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "⏹️ Excluir / Parar Mov. Fixo",
+   "left": 43.03927951388889,
+   "top": 30.930555555555557,
+   "width": 13.669704861111112,
+   "height": 4
+  }
+ ],
+ "calculo": [
+  {
+   "tipo": "secao",
+   "texto": "Folha Mensal",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Adiantamento Quinzenal",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "▶️ Calcular Folha",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 9.634331597222221,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "👁️ Visualizar Cálculo",
+   "left": 41.50933159722222,
+   "top": 30.930555555555557,
+   "width": 11.075303819444445,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📄 Memória de Cálculo",
+   "left": 53.14019097222222,
+   "top": 30.930555555555557,
+   "width": 11.70681423611111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🔁 Cálculo Individual",
+   "left": 65.40256076388889,
+   "top": 30.930555555555557,
+   "width": 11.209852430555555,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "⚠️ Verificar Inconsistências",
+   "left": 31.319444444444443,
+   "top": 35.81944444444444,
+   "width": 13.918185763888888,
+   "height": 4
+  }
+ ],
+ "relatorios": [
+  {
+   "tipo": "secao",
+   "texto": "Cadastros",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Eventos",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Eventuais",
+   "left": 17.01388888888889,
+   "top": 37.15277777777778,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Folha de Pagamento",
+   "left": 17.01388888888889,
+   "top": 40.708333333333336,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Gerador de Relatório",
+   "left": 17.01388888888889,
+   "top": 44.26388888888889,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Sistema",
+   "left": 17.01388888888889,
+   "top": 47.81944444444444,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "",
+   "left": 17.01388888888889,
+   "top": 51.37500000000001,
+   "width": 13.125,
+   "height": 2
+  },
+  {
+   "tipo": "item",
+   "texto": "👥 Lista de Funcionários",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "💼 Funções / Cargos",
+   "left": 47.986111111111114,
+   "top": 30.930555555555557,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📑 Rubricas (Verbas)",
+   "left": 64.65277777777779,
+   "top": 30.930555555555557,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "👨‍👩‍👧 Dependentes",
+   "left": 31.319444444444443,
+   "top": 35.81944444444444,
+   "width": 16.11111111111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📄 Ficha de Registro",
+   "left": 31.319444444444443,
+   "top": 41.59722222222222,
+   "width": 16.11111111111111,
+   "height": 4
+  }
+ ],
+ "conexoes": [
+  {
+   "tipo": "secao",
+   "texto": "Pagamento Bancário",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "💳 CNAB 240 — Crédito em Conta",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 16.290147569444443,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📲 CNAB 240 — PIX",
+   "left": 48.16514756944444,
+   "top": 30.930555555555557,
+   "width": 10.41232638888889,
+   "height": 4
+  }
+ ],
+ "esocial": [
+  {
+   "tipo": "secao",
+   "texto": "Tabelas",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Eventos Não Periódicos",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Eventos Periódicos",
+   "left": 17.01388888888889,
+   "top": 37.15277777777778,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Exclusão de Eventos",
+   "left": 17.01388888888889,
+   "top": 40.708333333333336,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Certificado Digital",
+   "left": 17.01388888888889,
+   "top": 44.26388888888889,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Remessas",
+   "left": 17.01388888888889,
+   "top": 47.81944444444444,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Consultas",
+   "left": 17.01388888888889,
+   "top": 51.37500000000001,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "✅ S-2200 Admissão",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 11.089409722222223,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "✏️ S-2205 Alt. Dados Cadastrais",
+   "left": 42.96440972222222,
+   "top": 30.930555555555557,
+   "width": 15.883246527777779,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📝 S-2206 Alt. Contrato",
+   "left": 59.40321180555556,
+   "top": 30.930555555555557,
+   "width": 12.28298611111111,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🩺 S-2220 Monitoramento da Saúde (ASO)",
+   "left": 31.319444444444443,
+   "top": 35.81944444444444,
+   "width": 20.01193576388889,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🏥 S-2230 Afastamento",
+   "left": 51.886935763888886,
+   "top": 35.81944444444444,
+   "width": 12.319878472222221,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🚪 S-2299 Desligamento",
+   "left": 64.76236979166666,
+   "top": 35.81944444444444,
+   "width": 12.47287326388889,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🎓 S-2300 Início TSVE (Estagiário)",
+   "left": 31.319444444444443,
+   "top": 40.708333333333336,
+   "width": 16.66449652777778,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🏁 S-2399 Término TSVE (Estag./Diretor)",
+   "left": 48.53949652777778,
+   "top": 40.708333333333336,
+   "width": 19.33159722222222,
+   "height": 4
+  }
+ ],
+ "diversos": [
+  {
+   "tipo": "secao",
+   "texto": "Sistema",
+   "left": 17.01388888888889,
+   "top": 30.041666666666668,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "secao",
+   "texto": "Dados",
+   "left": 17.01388888888889,
+   "top": 33.59722222222222,
+   "width": 13.125,
+   "height": 3.5555555555555554
+  },
+  {
+   "tipo": "item",
+   "texto": "⚙️ Configurações",
+   "left": 31.319444444444443,
+   "top": 30.930555555555557,
+   "width": 9.635416666666668,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "🔑 Usuários e Permissões",
+   "left": 41.510416666666664,
+   "top": 30.930555555555557,
+   "width": 13.060980902777777,
+   "height": 4
+  },
+  {
+   "tipo": "item",
+   "texto": "📋 Log de Auditoria",
+   "left": 55.126953125,
+   "top": 30.930555555555557,
+   "width": 10.266927083333334,
+   "height": 4
+  }
+ ]
+}

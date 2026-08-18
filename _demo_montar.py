@@ -32,6 +32,7 @@ NARRACAO = os.path.join("static", "demo_narracao.mp3")
 PRINT_LOGIN = os.path.join(PASTA_PRINTS, "_login.jpg")
 PRINT_MENU = os.path.join(PASTA_PRINTS, "_menu.jpg")
 CARTOES_MENU = "_demo_menu_cards.json"
+BOTOES_MENU = "_demo_menu_botoes.json"
 SAIDA = "demo_comercial.html"
 
 # Onde os campos ficam na FOTO da tela de login, em porcentagem da imagem.
@@ -147,6 +148,39 @@ def img_ou_moldura(tela, classe="tiro"):
             % (classe, esc(tela["nome"])))
 
 
+def botoes_da_gaveta(chave):
+    """Os botões medidos na foto da gaveta daquele módulo. [] se não houver."""
+    if not os.path.exists(BOTOES_MENU):
+        return []
+    return json.load(io.open(BOTOES_MENU, encoding="utf-8")).get(chave, [])
+
+
+def _limpo(s):
+    """Sem emoji, sem acento, minúsculo -- para casar rótulo com roteiro."""
+    s = unicodedata.normalize("NFD", str(s or "").lower())
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9/ ]+", " ", s)).strip()
+
+
+def indice_do_botao(chave, rotulo):
+    """Posição do botão cujo rótulo bate com `rotulo`, na gaveta do módulo.
+
+    O roteiro aponta para o botão pelo NOME, não pelo número: número mudaria
+    silenciosamente no dia em que um item entrasse no menu, e o destaque
+    passaria a acender o botão errado sem ninguém perceber.
+    """
+    alvo = _limpo(rotulo)
+    for i, b in enumerate(botoes_da_gaveta(chave)):
+        if alvo in _limpo(b["texto"]):
+            return i
+    raise SystemExit(
+        "ERRO: na gaveta de %r não existe botão com %r.\n"
+        "      O que existe: %s\n"
+        "      (se o menu mudou, rode antes: python _demo_menu_print.py)"
+        % (chave, rotulo,
+           ", ".join(b["texto"] for b in botoes_da_gaveta(chave)) or "nada"))
+
+
 def bloco_gaveta(mod, telas):
     """A gaveta do módulo aberta.
 
@@ -158,9 +192,26 @@ def bloco_gaveta(mod, telas):
     """
     foto = os.path.join(PASTA_PRINTS, "_menu_%s.jpg" % mod["chave"])
     if os.path.exists(foto):
-        return ('<div class="cheia"><div class="tiro grande">'
-                '<img src="%s" alt="Menu — %s"></div></div>'
-                % (foto.replace("\\", "/"), esc(mod["titulo"])))
+        # Cada realce carrega, como fundo, o PEDAÇO da foto onde o botão
+        # está. É o que faz o botão crescer de verdade quando é citado: uma
+        # moldura só aumentaria a borda, e o botão continuaria do mesmo
+        # tamanho lá embaixo. As contas são a fórmula padrão de recorte por
+        # porcentagem: o fundo é ampliado na razão inversa do tamanho da
+        # janelinha, e deslocado na proporção do espaço que sobra.
+        src = foto.replace("\\", "/")
+        realces = "".join(
+            '<span class="brealce %s" style="left:%.2f%%;top:%.2f%%;'
+            'width:%.2f%%;height:%.2f%%;background-image:url(%s);'
+            'background-size:%.2f%% %.2f%%;background-position:%.2f%% %.2f%%">'
+            '</span>'
+            % (b["tipo"], b["left"], b["top"], b["width"], b["height"], src,
+               10000.0 / b["width"], 10000.0 / b["height"],
+               b["left"] / max(0.01, 100 - b["width"]) * 100,
+               b["top"] / max(0.01, 100 - b["height"]) * 100)
+            for b in botoes_da_gaveta(mod["chave"]))
+        return ('<div class="cheia"><div class="tiro grande quadro-gaveta">'
+                '<img src="%s" alt="Menu — %s">%s</div></div>'
+                % (foto.replace("\\", "/"), esc(mod["titulo"]), realces))
 
     secoes, ordem = {}, []
     for t in telas:
@@ -181,27 +232,13 @@ def bloco_gaveta(mod, telas):
             % (esc(mod["icone"]), esc(mod["titulo"]), "".join(partes)))
 
 
-def colunas_do_mosaico(n):
-    """Quantas colunas cabem, para as miniaturas saírem o maior possível.
-
-    Não dá para deixar no CSS: o auto-fill usa uma largura mínima fixa e os
-    módulos vão de 3 telas (Movimento Fixo) a 36 (Eventuais). Com um número
-    só, ou as 36 estouram o palco, ou as 3 viram selos perdidos num campo
-    vazio -- foi o que aconteceu com Cadastros, 18 telas espremidas em oito
-    colunas ocupando metade da altura.
-
-    Aqui o número de telas é conhecido na geração, então procura-se a menor
-    quantidade de colunas (= maior miniatura) cujas linhas ainda cabem na
-    altura do palco.
-    """
-    LARG, ALT, GAP, LEGENDA = 1370, 660, 10, 20
-    for c in range(2, 13):
-        larg = (LARG - (c - 1) * GAP) / c
-        alt = larg * 10 / 16 + LEGENDA
-        linhas = -(-n // c)                    # teto da divisão
-        if linhas * (alt + GAP) <= ALT:
-            return c
-    return 12
+# Quantas telas o módulo mostra nesta fase -- UMA DE CADA VEZ, em tamanho
+# cheio. Já foram seis lado a lado, e antes disso as trinta e seis: em grade,
+# cada tela ficava com 160 a 440px e não dava para ler nada. Uma parede de
+# retângulos borrados não prova volume nenhum, só cansa. Três, grandes e em
+# sequência, mostram como o sistema é; o contador no fim diz o tamanho do
+# módulo sem precisar exibir as outras trinta e uma.
+MOSAICO_PASSOS = 3
 
 
 # Para que serve cada módulo, na linha do cartão do menu. Curto de propósito:
@@ -282,15 +319,29 @@ def bloco_login():
             % (PRINT_LOGIN.replace("\\", "/"), campos, LOGIN_BOTAO))
 
 
-def bloco_mosaico(telas):
-    """Todas as telas do módulo em miniatura, entrando em cascata."""
+def bloco_mosaico(telas, dur):
+    """Um desfile das telas do módulo: uma de cada vez, em tamanho cheio.
+
+    Prefere as que já têm print -- uma moldura vazia entre três é quase a
+    fase inteira em branco.
+
+    O tempo de cada passo sai daqui, e não do CSS, porque a fase dura o que a
+    frase dela durou: dividir por igual no navegador exigiria o navegador
+    saber a duração, que é justamente o que ele não sabe.
+    """
     prontas = [t for t in telas if t["ok"]]
-    celulas = "".join(
-        '<figure style="--i:%d">%s<figcaption>%s</figcaption></figure>'
-        % (i, img_ou_moldura(t, "tiro mini"), esc(t["nome"]))
-        for i, t in enumerate(prontas))
-    return ('<div class="mosaico" style="grid-template-columns:repeat(%d,1fr)">'
-            '%s</div>' % (colunas_do_mosaico(len(prontas)), celulas))
+    com_print = [t for t in prontas if os.path.exists(arquivo_do(t))]
+    amostra = (com_print or prontas)[:MOSAICO_PASSOS]
+    resto = len(prontas) - len(amostra)
+
+    passos = ['<div class="passo">%s<figcaption>%s</figcaption></div>'
+              % (img_ou_moldura(t, "tiro grande"), esc(t["nome"]))
+              for t in amostra]
+    if resto > 0:
+        passos.append('<div class="passo contador"><b>+%d</b>'
+                      '<span>telas neste módulo</span></div>' % resto)
+    return ('<div class="desfile" data-passo="%.2f">%s</div>'
+            % (dur / max(1, len(passos)), "".join(passos)))
 
 
 def bloco_tela(mod_chave, telas):
@@ -366,15 +417,20 @@ def main():
         fases = (voz[mod["chave"]]["fases"] if mod["chave"] in voz
                  else [T_GAVETA, T_MOSAICO, T_TELA])
         dur = round(sum(fases), 2)
+        v = voz.get(mod["chave"], {})
+        marca = ' data-luz="%s" data-alvos="%s"' % (
+            ",".join("%.2f" % s for s in v.get("luz", [])),
+            ",".join(str(a) for a in v.get("alvos", [])))
         slides.append((dur, """
       <section class="slide modulo" data-dur="%s" data-fases="%s" data-mod="%s">
-        <div class="fase fase-gaveta">%s</div>
+        <div class="fase fase-gaveta"%s>%s</div>
         <div class="fase fase-mosaico"><h3>%s — %d telas</h3>%s</div>
         <div class="fase fase-tela">%s</div>
       </section>""" % (dur, ",".join(str(f) for f in fases),
-                       esc(mod["chave"]), bloco_gaveta(mod, do_mod),
+                       esc(mod["chave"]), marca, bloco_gaveta(mod, do_mod),
                        esc(mod["titulo"]), len(prontas),
-                       bloco_mosaico(do_mod), bloco_tela(mod["chave"], do_mod))))
+                       bloco_mosaico(do_mod, fases[1]),
+                       bloco_tela(mod["chave"], do_mod))))
         roteiro.append((mod["titulo"], len(prontas), dur))
 
     fora = [m for m in dados["modulos"] if m["chave"] in MODULOS_NO_FECHO]
@@ -522,12 +578,27 @@ h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--brand
 /* As colunas vem escritas no proprio elemento, calculadas por modulo -- ver
    colunas_do_mosaico(). O align-content centra o que sobra: com 3 telas o
    bloco fica no meio do palco, e nao encostado no alto. */
-/* O h3 e o mosaico dividem a fase. Sem isto o mosaico pedia 100% da altura
+/* O h3 e o desfile dividem a fase. Sem isto o desfile pedia 100% da altura
    INTEIRA, o titulo empurrava tudo para baixo, e o que devia estar centrado
    aparecia com um vao no alto. */
 .fase-mosaico{display:flex;flex-direction:column}
-.mosaico{display:grid;gap:10px;align-content:center;justify-content:center;
-  flex:1;min-height:0;overflow:hidden}
+/* Uma tela de cada vez, todas empilhadas no mesmo lugar. Empilhar (e nao
+   esconder com display:none) e o que permite a troca ser uma dissolucao. */
+.desfile{position:relative;flex:1;min-height:0}
+/* Como na troca de slide: o que entra espera o que sai terminar. Com os dois
+   meio transparentes ao mesmo tempo, duas telas claras somadas davam um
+   clarao e liam-se as duas de uma vez. */
+.passo{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:8px;
+  opacity:0;transition:opacity .3s ease}
+.passo.on{opacity:1;transition:opacity .35s ease .28s}
+.passo .tiro.grande{max-height:100%;max-width:100%}
+.passo .tiro.grande img{max-height:calc(100vh - 250px);width:auto}
+.passo figcaption{font-size:clamp(12px,1.4vw,18px);color:var(--ink-2);margin:0}
+/* O "+31 telas": diz o tamanho do modulo sem precisar mostrar as trinta e uma. */
+.passo.contador b{font-size:clamp(56px,10vw,150px);color:var(--brand);
+  line-height:1;letter-spacing:-.04em}
+.passo.contador span{font-size:clamp(14px,1.8vw,24px);color:var(--ink-2)}
 .mosaico figure{margin:0;animation:sobe .7s both;animation-delay:calc(var(--i)*.09s)}
 @keyframes sobe{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
@@ -539,6 +610,13 @@ figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
 .tiro.falta{aspect-ratio:16/10;display:grid;place-items:center;background:var(--panel);
   border-style:dashed;line-height:1.4}
 .tiro.falta span{font-size:11px;color:var(--ink-3);padding:8px;text-align:center}
+/* O "+28 telas": diz o tamanho do modulo sem precisar mostrar as 28. */
+.tiro.mais{aspect-ratio:16/10;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:2px;background:var(--brand-soft);
+  border-color:var(--brand);box-shadow:none}
+.tiro.mais b{font-size:clamp(26px,3.6vw,48px);color:var(--brand);line-height:1}
+.tiro.mais span{font-size:clamp(10px,1.1vw,14px);color:var(--ink-2)}
+.mosaico figcaption{text-align:center}
 .cheia{position:relative;height:100%;display:grid;place-items:center}
 .cheia .tiro.grande{max-height:100%;max-width:100%}
 .cheia .tiro.grande img{max-height:calc(100vh - 190px);width:auto}
@@ -584,6 +662,19 @@ figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
    com o cartao seria pior: o cliente perde a nocao de quantos modulos sao. */
 .mcard.aceso{opacity:1;transform:translateY(-4px) scale(1.04);
   border-color:var(--brand);background:var(--brand-soft);box-shadow:var(--shadow)}
+/* ---- gaveta: o botao citado cresce sobre a foto do menu de verdade ---- */
+.quadro-gaveta{position:relative}
+.brealce{position:absolute;border-radius:8px;pointer-events:none;opacity:0;
+  outline:2px solid var(--brand);outline-offset:-1px;
+  background-repeat:no-repeat;background-color:var(--stage);
+  transform:scale(1);transform-origin:center;
+  transition:opacity .2s, transform .3s cubic-bezier(.34,1.4,.5,1), box-shadow .3s}
+/* Cresce de verdade, com os proprios pixels: o olho segue o que cresce muito
+   antes de ler o que mudou de cor. A sombra descola o botao da pagina, para
+   parecer que ele subiu e nao que apareceu um retangulo em cima. */
+.brealce.aceso{opacity:1;transform:scale(1.45);
+  box-shadow:0 10px 30px -8px rgba(12,23,38,.45)}
+.brealce.secao.aceso{transform:scale(1.3)}
 /* ---- tela de login: o texto vai por cima dos campos da propria foto ---- */
 .quadro-login{position:relative}
 /* O tamanho da letra acompanha a altura da foto, que e o que o palco limita.
@@ -667,42 +758,81 @@ function agora() {
   return base + (rodando ? (performance.now() - t0) / 1000 : 0);
 }
 
-function mostrarFase(slide, i) {
+// `desde` = quantos segundos ja se passaram DENTRO da fase. Em reproducao
+// normal e zero. Vale quando se pula para o meio de uma cena: sem isso os
+// destaques eram agendados a partir do instante do pulo, e o botao que a voz
+// ja tinha citado acendia varios segundos depois -- ou nunca, se a fase
+// acabasse antes.
+function mostrarFase(slide, i, desde) {
+  desde = desde || 0;
   const fases = [...slide.querySelectorAll('.fase')];
   fases.forEach((f, k) => f.classList.toggle('on', k === i));
   const f = fases[i];
   if (f && (f.classList.contains('fase-tela') || f.classList.contains('fase-login')))
     digitar(f);
-  if (f && f.classList.contains('fase-menu')) acender(f);
+  if (f && (f.classList.contains('fase-menu') || f.classList.contains('fase-gaveta')))
+    acender(f, desde);
+  if (f && f.classList.contains('fase-mosaico')) desfilar(f, desde);
+}
+
+// Passa as telas do modulo uma de cada vez. O tempo de cada passo vem escrito
+// no data-passo, calculado na geracao: a fase dura o que a frase dela durou,
+// e so quem monta o HTML sabe disso.
+let passos = [];
+function desfilar(fase, desde) {
+  desde = desde || 0;
+  passos.forEach(clearTimeout); passos = [];
+  const quadros = [...fase.querySelectorAll('.passo')];
+  if (!quadros.length) return;
+  const passo = parseFloat(fase.querySelector('.desfile').dataset.passo || '3');
+  const por = k => quadros.forEach((q, j) => q.classList.toggle('on', j === k));
+  const agora = Math.min(quadros.length - 1, Math.floor(desde / passo));
+  por(agora);
+  for (let k = agora + 1; k < quadros.length; k++)
+    passos.push(setTimeout(() => por(k), (k * passo - desde) * 1000));
 }
 
 // Acende um cartao do menu por vez, no segundo em que a voz cita o modulo.
 // Os segundos vem medidos da propria narracao (data-luz), nao cronometrados
 // no olho: mexeu no texto, regere o audio e eles se reajustam sozinhos.
 let luzes = [];
-function acender(fase) {
+function acender(fase, desde) {
+  desde = desde || 0;
   luzes.forEach(clearTimeout); luzes = [];
   // Dois desenhos possiveis: o realce sobre a foto do menu de verdade, ou os
   // cartoes desenhados (reserva, quando o print ainda nao existe).
-  const alvos = [...fase.querySelectorAll('.mrealce, .mcard')];
+  const alvos = [...fase.querySelectorAll('.mrealce, .mcard, .brealce')];
   const legenda = fase.querySelector('.mlegenda');
-  const fonte = fase.querySelector('[data-luz]');
+  // data-luz pode estar na propria fase (gaveta) ou num filho (menu).
+  const fonte = fase.dataset.luz !== undefined ? fase : fase.querySelector('[data-luz]');
   alvos.forEach(c => c.classList.remove('aceso'));
   if (legenda) legenda.classList.remove('on');
   const quando = ((fonte && fonte.dataset.luz) || '')
     .split(',').filter(Boolean).map(Number);
+  // Sem data-alvos, o n-esimo instante acende o n-esimo elemento. Com ele,
+  // acende o que a lista mandar: na gaveta a voz pula de secao para item e
+  // volta, entao a ordem da fala nao e a ordem em que os botoes estao la.
+  const quais = ((fonte && fonte.dataset.alvos) || '')
+    .split(',').filter(s => s !== '').map(Number);
+  const por = (alvo) => {
+    alvos.forEach(c => c.classList.remove('aceso'));
+    alvo.classList.add('aceso');
+    if (legenda) {
+      legenda.querySelector('b').textContent = alvo.dataset.nome || '';
+      legenda.querySelector('span').textContent = alvo.dataset.pq || '';
+      legenda.classList.add('on');
+    }
+  };
+  let jaPassou = null;
   quando.forEach((s, i) => {
-    if (!alvos[i]) return;
-    luzes.push(setTimeout(() => {
-      alvos.forEach(c => c.classList.remove('aceso'));
-      alvos[i].classList.add('aceso');
-      if (legenda) {
-        legenda.querySelector('b').textContent = alvos[i].dataset.nome || '';
-        legenda.querySelector('span').textContent = alvos[i].dataset.pq || '';
-        legenda.classList.add('on');
-      }
-    }, s * 1000));
+    const alvo = alvos[quais.length ? quais[i] : i];
+    if (!alvo) return;
+    // O que ja deveria ter acendido nao entra na fila: acende de uma vez o
+    // ultimo deles, que e onde a voz esta agora.
+    if (s <= desde) { jaPassou = alvo; return; }
+    luzes.push(setTimeout(() => por(alvo), (s - desde) * 1000));
   });
+  if (jaPassou) por(jaPassou);
 }
 
 // Digita letra por letra. O texto vem do data-txt para o HTML continuar
@@ -746,14 +876,25 @@ function pintar(t) {
   }
   const passos = CENAS[n].passos;
   if (passos.length) {
-    let f = 0, acc = INICIO[n];
-    for (let i = 0; i < passos.length; i++) { if (t >= acc) f = i; acc += passos[i]; }
-    if (f !== faseAtual) { faseAtual = f; mostrarFase(slides[n], f); }
+    let f = 0, acc = INICIO[n], inicioFase = INICIO[n];
+    for (let i = 0; i < passos.length; i++) {
+      if (t >= acc) { f = i; inicioFase = acc; }
+      acc += passos[i];
+    }
+    if (f !== faseAtual) {
+      faseAtual = f;
+      mostrarFase(slides[n], f, Math.max(0, t - inicioFase));
+    }
   }
   barra.style.width = Math.min(100, t / TOTAL * 100) + '%';
 }
 
 function irPara(t) {
+  // Forca a fase a ser remontada mesmo que seja a MESMA de antes: pintar so
+  // reage a troca de fase, entao pular de um ponto a outro dentro dela
+  // mantinha a digitacao e o desfile no cronograma velho -- a tela continuava
+  // desfilando a partir de onde estava, nao de onde a voz esta.
+  faseAtual = -1;
   base = Math.max(0, Math.min(t, TOTAL)); t0 = performance.now();
   if (voz.readyState > 0) { try { voz.currentTime = base; } catch (e) {} }
   pintar(base);

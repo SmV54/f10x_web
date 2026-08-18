@@ -103,14 +103,73 @@ FECHO = (
     "Folha dez simples ponto com ponto bê erre."
 )
 
+# O que a voz destaca na GAVETA de cada módulo: (palavra dita, rótulo do
+# botão). O botão é apontado pelo nome, nunca pelo número -- ver
+# indice_do_botao(). E só entra aqui o que está VISÍVEL na foto: a gaveta
+# mostra as seções todas, mas só os itens da seção aberta. Narrar um item de
+# outra seção faria o realce cair em cima de nada.
+MARCAS_GAVETA = {
+    "cadastros": [
+        ("Funcionário", "Funcionário"), ("inclui", "Incluir Funcionário"),
+        ("altera", "Alterar Funcionário"), ("dependentes", "Dependentes"),
+        ("ficha", "Ficha de Registro"), ("Tabelas", "Tabelas Auxiliares"),
+        ("Pensão", "Pensão Alimentícia"), ("Empresa", "Empresa"),
+    ],
+    "novafolha": [
+        ("Novo", "Novo Mês/Ano"), ("Outro", "Outro Mês/Ano"),
+    ],
+    "eventuais": [
+        ("Férias", "Férias"), ("lança", "Lançar Férias"),
+        ("calcula", "Calcular Férias"), ("recibo", "Recibo de Férias"),
+        ("cancelar", "Cancelar Férias"), ("Salários", "Salários"),
+        ("Rescisão", "Rescisão"), ("Contrato", "Contrato Temporário"),
+        ("Afastamentos", "Afastamentos"), ("Faltas", "Faltas"),
+        ("Exame", "Exame Médico"), ("Insalubridade", "Insalubridade"),
+        ("FAP", "FAP"),
+    ],
+    "movimento": [
+        ("Lançar", "Lançar Eventos"), ("Consignados", "Importar Consignados"),
+        ("Ponto", "Importar Ponto"), ("Horas", "Horas Extras"),
+        ("Faltas", "Faltas e Atrasos"), ("Listagens", "Listagens"),
+        ("Adiantamento", "Adiantamento Quinzenal"),
+    ],
+    "movimentofixo": [
+        ("Movimentos", "Movimentos Fixos"), ("Excluir", "Excluir / Parar"),
+        ("Listagens", "Listagens"),
+    ],
+    "calculo": [
+        ("Calcular", "Calcular Folha"), ("Visualizar", "Visualizar Cálculo"),
+        ("Memória", "Memória de Cálculo"), ("Individual", "Cálculo Individual"),
+        ("Verificar", "Verificar Inconsistências"),
+        ("Adiantamento", "Adiantamento Quinzenal"),
+    ],
+    "relatorios": [
+        ("Cadastros", "Cadastros"), ("Eventos", "Eventos"),
+        ("Eventuais", "Eventuais"), ("Folha", "Folha de Pagamento"),
+        ("Gerador", "Gerador de Relatório"), ("Sistema", "Sistema"),
+        ("Lista", "Lista de Funcionários"), ("Funções", "Funções"),
+        ("Rubricas", "Rubricas"), ("Dependentes", "Dependentes"),
+        ("Ficha", "Ficha de Registro"),
+    ],
+    "esocial": [
+        ("Tabelas", "Tabelas"), ("Periódicos", "Eventos Não Periódicos"),
+        ("Periódicos", "Eventos Periódicos"), ("Exclusão", "Exclusão de Eventos"),
+        ("Certificado", "Certificado Digital"), ("Remessas", "Remessas"),
+        ("Consultas", "Consultas"), ("Admissão", "Admissão"),
+        ("Desligamento", "Desligamento"),
+    ],
+}
+
 ROTEIRO = {
     "cadastros": [
-        "Tudo começa no cadastro. Dezoito telas num menu só: funcionário, "
-        "dependentes, funções, horários, sindicatos, vale transporte, "
-        "rubricas, centros de custo, filiais e a própria empresa.",
+        "A gaveta de Cadastros abre em quatro partes. Em Funcionário você "
+        "inclui, altera, lança dependentes e imprime a ficha de registro. "
+        "Tabelas Auxiliares guarda a função, o horário, o sindicato e a "
+        "verba. Ainda tem Pensão Alimentícia, e os dados da Empresa.",
 
         "Cada uma abre no mesmo padrão: o filtro em cima, a lista no meio, "
-        "e o botão que vira PDF ao lado.",
+        "e o botão que vira PDF ao lado. Quem aprendeu uma tela aprendeu "
+        "todas — é o mesmo desenho do começo ao fim do sistema.",
 
         "Na inclusão do funcionário, o cadastro já segue o leiaute do "
         "eSocial: é o mesmo que vai virar a admissão. Cargo, código da "
@@ -118,24 +177,26 @@ ROTEIRO = {
         "antes. Nada é digitado duas vezes.",
     ],
     "novafolha": [
-        "A folha de cada mês nasce aqui: abrir a competência, trocar de mês, "
-        "fechar, reabrir.",
+        "A folha de cada mês nasce aqui. Novo Mês abre a competência; "
+        "Outro Mês troca para uma que já existe.",
 
         "O mês aberto aparece no cabeçalho de todas as telas, com a situação "
-        "ao lado: aberta, calculada ou fechada.",
+        "ao lado: aberta, calculada ou fechada. Não tem como lançar no mês "
+        "errado sem perceber, porque o mês está sempre à vista.",
 
         "Ao abrir o mês, os cadastros, os movimentos fixos e os afastamentos "
         "vêm juntos. Folha fechada trava o cálculo e libera o eSocial; "
         "reabrir é um clique, e fica registrado no log de operações.",
     ],
     "eventuais": [
-        "Eventuais é o módulo mais largo, trinta e seis telas: férias, "
-        "alteração de salário, aviso prévio, rescisão, contrato de "
-        "experiência, afastamentos, acidente de trabalho, faltas, exames "
-        "médicos e insalubridade.",
+        "Eventuais abre em nove partes. Em Férias você lança, calcula, tira "
+        "o recibo e ainda pode cancelar. Ao lado: Salários, Rescisão, "
+        "Contrato Temporário, Afastamentos, Faltas, Exame Médico, "
+        "Insalubridade e o FAP.",
 
         "Cada assunto tem o ciclo inteiro: lançar, calcular, imprimir o "
-        "recibo, listar e cancelar. Porque errar acontece.",
+        "recibo, listar e cancelar. Porque errar acontece, e desfazer "
+        "precisa ser tão simples quanto fazer.",
 
         "Nas férias, informe o início e os dias. O sistema acha o período "
         "aquisitivo, calcula o um terço, o abono e as médias, e emite o "
@@ -143,58 +204,70 @@ ROTEIRO = {
         "no modelo da portaria.",
     ],
     "movimento": [
-        "No movimento do mês entram as verbas que variam: horas extras, "
-        "faltas, adicionais, comissões, e os consignados importados da "
-        "planilha do banco.",
+        "No movimento do mês: Lançar Eventos, para a verba avulsa. "
+        "Importar Consignados, da planilha do banco. Importar Ponto, "
+        "Horas Extras, Faltas e Atrasos. Do lado, as Listagens e o "
+        "Adiantamento Quinzenal.",
 
         "Lance para um funcionário, ou para vários de uma vez. A listagem "
-        "mostra tudo o que entrou, antes de calcular.",
+        "mostra tudo o que entrou antes de calcular — conferir na hora sai "
+        "bem mais barato do que corrigir depois.",
 
         "Digite o código da verba, ou procure pelo nome. Quantidade ou "
         "valor: o sistema sabe qual dos dois aquela verba pede. E o descanso "
         "semanal sobre a hora extra sai sozinho, na verba certa.",
     ],
     "movimentofixo": [
-        "O que se repete todo mês entra uma vez só: vale transporte, plano "
-        "de saúde, empréstimo, pensão.",
+        "O que se repete todo mês entra uma vez só. Movimentos Fixos "
+        "cadastra o vale transporte, o plano de saúde, o empréstimo. "
+        "Excluir ou Parar encerra quando aquele desconto acabar. E as "
+        "Listagens mostram o que está valendo.",
 
-        "Três telas: cadastrar, listar, e parar quando acabar. Com data de "
-        "fim, sem apagar o histórico.",
+        "Cadastrar, listar, e parar quando acabar. Sempre com data de fim, "
+        "sem apagar o histórico: o que já foi descontado continua lá, do "
+        "jeito que saiu na folha daquele mês.",
 
         "O fixo entra em toda folha até a data de término, e aparece no "
         "contracheque como qualquer outra verba.",
     ],
     "calculo": [
-        "Calcular é um botão. A folha inteira, ou um funcionário só, e o "
-        "adiantamento quinzenal com recibo próprio.",
+        "Calcular Folha roda o mês inteiro. Visualizar mostra o resultado. "
+        "A Memória abre a conta linha por linha. O Individual refaz um "
+        "funcionário só, e Verificar Inconsistências avisa antes. Ao lado, "
+        "o Adiantamento Quinzenal.",
 
         "Instituto, imposto de renda, fundo de garantia e salário família "
         "saem das tabelas legais embutidas. O mês da folha escolhe a tabela "
-        "que valia naquele mês.",
+        "que valia naquele mês, então recalcular uma competência antiga não "
+        "usa a tabela de hoje.",
 
         "E quando o valor não bate, a memória de cálculo mostra a conta, "
         "linha por linha: a base, a alíquota, a dedução e o resultado. É o "
         "que responde à pergunta do cliente sem você abrir uma planilha.",
     ],
     "relatorios": [
-        "Dezenove relatórios prontos: folha de pagamento, contracheque, "
-        "resumo, relação dos líquidos, ficha financeira, recibo de pensão e "
-        "o log de operações.",
+        "Relatórios abre por assunto: Cadastros, Eventos, Eventuais, "
+        "Folha de Pagamento, o Gerador e o Sistema. Só nos cadastros já "
+        "saem a Lista de Funcionários, as Funções, as Rubricas, os "
+        "Dependentes e a Ficha de Registro.",
 
         "Todos saem em PDF, com o mesmo cabeçalho, filtrados por período, "
-        "filial ou centro de custo.",
+        "filial ou centro de custo. E o filtro que você montou hoje fica "
+        "salvo para o mês que vem.",
 
         "Faltou algum? O gerador monta o seu: escolha as verbas, as colunas "
         "e a ordem, salve o modelo e rode todo mês. E o resumo fecha a folha "
         "com proventos, descontos, líquido e o custo da empresa.",
     ],
     "esocial": [
-        "O eSocial é nativo, não é exportação. Vinte e três telas: as "
-        "tabelas do empregador, as rubricas, as lotações, a admissão, o "
-        "desligamento, a remuneração, os pagamentos e o fechamento do mês.",
+        "O eSocial é nativo, não é exportação. Abre em sete partes: as "
+        "Tabelas, os eventos Não Periódicos, os Periódicos, a Exclusão, o "
+        "Certificado Digital, as Remessas e as Consultas. Nos não "
+        "periódicos ficam a Admissão e o Desligamento.",
 
         "Admitiu, calculou ou demitiu, a remessa entra na fila sozinha. "
-        "Transmitir é sempre uma ação sua: nada sai daqui sem você mandar.",
+        "Mas transmitir é sempre uma ação sua: nada sai daqui sem você "
+        "mandar. Nem por engano, nem por automatismo.",
 
         "Na fila você vê o arquivo, envia, e o recibo do governo volta "
         "gravado ao lado do evento. E a verificação compara o que o eSocial "
@@ -330,7 +403,7 @@ def main():
     print("cena                 fase       fala   +respiro")
     print("-" * 52)
     for chave, titulo, falas in lista:
-        fases, luz = [], []
+        fases, luz, alvos = [], [], []
         for i, fala in enumerate(falas):
             arq = os.path.join(tmp, "%s_%d.mp3" % (chave, i))
             palavras = falar(fala, arq)
@@ -346,6 +419,13 @@ def main():
             # também onde o áudio dela começa -- os dois relógios batem.
             if chave == "menu" and i == 0:
                 luz = [seg + antes for seg, _ in casar(palavras, MARCAS_MENU)]
+            # Fase 0 de um módulo é a gaveta: os botões citados crescem nela.
+            elif i == 0 and chave in MARCAS_GAVETA:
+                marcas = [(p, montar.indice_do_botao(chave, r))
+                          for p, r in MARCAS_GAVETA[chave]]
+                casadas = casar(palavras, marcas)
+                luz = [seg for seg, _ in casadas]
+                alvos = [i_botao for _, i_botao in casadas]
             partes.append(arq)
             inicio.append(t + antes)
             fases.append(round(antes + d + folga, 2))
@@ -357,7 +437,9 @@ def main():
                 "fases": fases, "dur": round(sum(fases), 2)}
         if luz:
             cena["luz"] = luz
-            print("%-20.20s %d cartões, de %.1fs a %.1fs dentro da cena"
+            if alvos:
+                cena["alvos"] = alvos
+            print("%-20.20s %d destaques, de %.1fs a %.1fs dentro da cena"
                   % ("", len(luz), luz[0], luz[-1]))
         slides.append(cena)
 

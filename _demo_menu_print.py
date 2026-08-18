@@ -38,6 +38,7 @@ BASE = "http://127.0.0.1:5000"
 PASTA = os.path.join("static", "demo")
 SAIDA = os.path.join(PASTA, "_menu.jpg")
 CARTOES = "_demo_menu_cards.json"
+BOTOES = "_demo_menu_botoes.json"
 INVENTARIO = "_demo_telas.json"
 LARGURA, ALTURA = 1440, 900
 
@@ -79,7 +80,7 @@ def main():
         chaves = [m["chave"] for m in
                   json.load(io.open(INVENTARIO, encoding="utf-8"))["modulos"]]
 
-    feitos, erros = [], []
+    feitos, erros, botoes = [], [], {}
     try:
         with sync_playwright() as p:
             b = p.chromium.launch()
@@ -135,12 +136,41 @@ def main():
                 arq = os.path.join(PASTA, "_menu_%s.jpg" % chave)
                 pg.screenshot(path=arq, type="jpeg", quality=75)
                 feitos.append((chave, arq))
+
+                # Onde está cada botão da gaveta, em porcentagem da foto.
+                # É o que permite o botão crescer no segundo em que a voz o
+                # cita. Vão os dois níveis: as seções da coluna da esquerda
+                # (todas visíveis) e os itens da seção aberta -- os itens das
+                # outras seções não estão na foto, e narrar o que não está na
+                # tela é pior do que não narrar.
+                botoes[chave] = pg.evaluate("""() => {
+                    const w = innerWidth, h = innerHeight, fora = [];
+                    const pega = (sel, tipo) =>
+                      [...document.querySelectorAll(sel)].forEach(e => {
+                        const r = e.getBoundingClientRect();
+                        if (r.width < 5 || r.height < 5) return;
+                        fora.push({tipo: tipo, texto: e.textContent.trim(),
+                          left: r.left / w * 100, top: r.top / h * 100,
+                          width: r.width / w * 100, height: r.height / h * 100});
+                      });
+                    pega('.nav-secao-btn', 'secao');
+                    pega('#navItens a, #navItens button, .nav-item', 'item');
+                    return fora;
+                }""")
             b.close()
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
 
+    io.open(BOTOES, "w", encoding="utf-8").write(
+        json.dumps(botoes, ensure_ascii=False, indent=1))
+
     print("cartões de módulo no menu: %d  (posições em %s)" % (cartoes, CARTOES))
+    print("botões medidos por módulo (%s):" % BOTOES)
+    for k, v in botoes.items():
+        print("  %-14s %d seções, %d itens" % (
+            k, sum(1 for b in v if b["tipo"] == "secao"),
+            sum(1 for b in v if b["tipo"] == "item")))
     for nome, arq in feitos:
         print("  %-16s %5.0f KB  %s" % (nome, os.path.getsize(arq) / 1024, arq))
     if erros:
