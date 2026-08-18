@@ -152,6 +152,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 }
 
 /* lista multi-seleção */
+.func-demitido { margin-left: auto; font-size: 11px; color: #9f1239;
+  background: #fff1f2; border: 1px solid #fecdd3; border-radius: 20px;
+  padding: 1px 9px; white-space: nowrap; }
 .func-lista-wrap {
     border: 2px solid var(--border); border-radius: 10px; overflow: hidden;
     transition: border-color .25s, box-shadow .25s;
@@ -419,10 +422,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="lay-card-em-breve">Em breve</div>
       </div>
 
-      <div class="lay-card lay-2299 lay-card-disabled" data-layout="2299" data-tipo="func">
+      <div class="lay-card lay-2299" data-layout="2299" data-tipo="func" onclick="selecionarLayout(this)">
         <div class="lay-card-code">S-2299</div>
         <div class="lay-card-desc">Desligamento</div>
-        <div class="lay-card-em-breve">Em breve</div>
       </div>
 
     </div>
@@ -497,14 +499,23 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
           <span class="func-contador" id="funcContador">Nenhum selecionado</span>
         </div>
         <div class="func-lista" id="funcLista">
+          {# data-sit separa ativos de demitidos: o S-2299 lista os que saíram,
+             todo o resto lista os que ficaram. Quem filtra é o filtrarFuncs(). #}
           {% for f in funcionarios %}
-          <label class="func-item">
+          {% set _sit = (f.situacao or 'A')|upper %}
+          {% set _dtr = (f.datarescisao or '')|string %}
+          <label class="func-item" data-sit="{{ _sit }}">
             <input type="checkbox" value="{{ f.matricula }}" class="func-chk" onchange="atualizarSelecao()">
             <span class="func-mat">{{ '%06d' % f.matricula }}</span>
             <span class="func-nome">{{ f.nome }}</span>
+            {% if _sit == 'D' %}
+            <span class="func-demitido">demitido{% if _dtr|length == 8 %} em {{ _dtr[6:8] }}/{{ _dtr[4:6] }}/{{ _dtr[0:4] }}{% endif %}</span>
+            {% endif %}
           </label>
           {% endfor %}
         </div>
+        <div id="funcVazio" style="display:none;padding:14px 16px;font-size:13px;
+             color:#9a5b06;background:#fbeeda;border-top:1px solid #f0d9ae;"></div>
       </div>
 
       <div style="display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap;">
@@ -738,7 +749,8 @@ function selecionarLayout(card) {
     document.getElementById('formFunc').style.display    = 'block';
     document.getElementById('formTabela').style.display  = 'none';
     document.getElementById('avisoPeriodico').style.display = 'none';
-    atualizarSelecao();
+    document.getElementById('funcBusca').value = '';
+    filtrarFuncs();
     setTimeout(() => {
       const wrap = document.getElementById('funcListaWrap');
       wrap.classList.add('destaque');
@@ -845,11 +857,30 @@ function _atualizarBotaoTabela() {
 }
 
 /* ── Funcionários ── */
+// A lista traz ativos e demitidos, e o layout decide quem aparece: o S-2299
+// e sobre quem saiu, todo o resto e sobre quem ficou. Misturar os dois faria
+// o operador criar uma admissao para um demitido sem perceber -- e o erro so
+// apareceria la no eSocial, devolvido pelo governo.
+function _sitDoLayout() { return layoutAtual === '2299' ? 'D' : 'A'; }
+
 function filtrarFuncs() {
-  const q = document.getElementById('funcBusca').value.toLowerCase();
+  const q    = document.getElementById('funcBusca').value.toLowerCase();
+  const sit  = _sitDoLayout();
+  let visiveis = 0;
   document.querySelectorAll('.func-item').forEach(item => {
-    item.style.display = item.textContent.toLowerCase().includes(q) ? '' : 'none';
+    const cabe = item.dataset.sit === sit && item.textContent.toLowerCase().includes(q);
+    item.style.display = cabe ? '' : 'none';
+    if (cabe) visiveis++;
+    if (!cabe) { const c = item.querySelector('.func-chk'); if (c) c.checked = false; }
   });
+  const aviso = document.getElementById('funcVazio');
+  if (aviso) {
+    aviso.style.display = visiveis ? 'none' : 'block';
+    aviso.textContent = sit === 'D'
+      ? 'Nenhum funcionário demitido nesta empresa. O S-2299 sai da rescisão: registre e calcule a rescisão, e a remessa nasce sozinha.'
+      : 'Nenhum funcionário ativo encontrado.';
+  }
+  atualizarSelecao();
 }
 
 function toggleTodos() {
@@ -906,17 +937,24 @@ async function criarRemessa(btn) {
     } catch(e) { erros.push(`${nome}: falha de comunicação`); }
   }
 
+  // Para onde mandar o operador depois de criar. A Fila envia quase tudo, mas
+  // nao o S-2299: ele nao esta na lista branca do envio em lote (ver o
+  // checkbox da F10_eSocial_Fila.html) e sai pela tela propria. Mandar para a
+  // Fila deixaria a remessa la, visivel e sem botao nenhum que a envie.
+  const _DESTINO = { '2299': ['/esocial_s2299', 'Ver na tela do S-2299'] };
+  const _dest = _DESTINO[layoutAtual] || ['/esocial_fila', 'Ver na Fila de Remessas'];
+
   div.style.display = 'block';
   if (erros.length === 0) {
     div.className = 'resultado ok';
     div.innerHTML = `&#10003; <strong>${criados.length} remessa(s) S-${layoutAtual} criada(s):</strong><br>`
       + criados.map(c=>`&nbsp;&nbsp;• ${c.nome} (id ${c.id})`).join('<br>')
-      + `<br><a href="/esocial_fila">&#8594; Ver na Fila de Remessas</a>`;
+      + `<br><a href="${_dest[0]}">&#8594; ${_dest[1]}</a>`;
   } else if (criados.length > 0) {
     div.className = 'resultado ok';
     div.innerHTML = `&#10003; ${criados.length} criada(s), ${erros.length} com erro:<br>`
       + erros.map(e=>`&nbsp;&nbsp;&#10007; ${e}`).join('<br>')
-      + `<br><a href="/esocial_fila">&#8594; Ver na Fila</a>`;
+      + `<br><a href="${_dest[0]}">&#8594; ${_dest[1]}</a>`;
   } else {
     div.className = 'resultado erro'; div.textContent = erros.join('; ');
   }

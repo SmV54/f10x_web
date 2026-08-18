@@ -33267,11 +33267,16 @@ def esocial_gerador():
     funcionarios = []
     try:
         funcionarios = (supabase.table("tab_cad")
-                        .select("matricula, nome, situacao")
+                        .select("matricula, nome, situacao, datarescisao")
                         .eq("id_empresa", id_empresa)
                         .order("nome")
                         .execute().data or [])
-        funcionarios = [f for f in funcionarios if str(f.get("situacao") or "A") == "A"]
+        # Os demitidos vêm junto -- antes a lista era só de ativos, e o
+        # S-2299 (Desligamento) é justamente sobre quem saiu: o card ficaria
+        # aceso com uma lista onde a pessoa procurada nunca aparece. Quem
+        # separa é a tela, pelo layout escolhido.
+        funcionarios = [f for f in funcionarios
+                        if str(f.get("situacao") or "A").upper() in ("A", "D")]
     except Exception:
         pass
 
@@ -33671,6 +33676,45 @@ def api_esocial_gerador_criar():
         if layout == "2300" and 0 < _cat < 700:
             return jsonify({"ok": False, "msg": f"Categoria {_cat} é empregado. "
                             "Use o S-2200, não o S-2300."})
+
+    # S-2299 pelo Gerador: só para quem JÁ TEM RESCISÃO REGISTRADA.
+    #
+    # O caminho normal do desligamento não passa por aqui: o cálculo da
+    # rescisão grava a remessa sozinho (_gravar_ou_atualizar_s2299). Este
+    # card existe para o caso em que aquela linha se perdeu -- foi excluída,
+    # ou o S-3000 a tirou -- e seria preciso recalcular a rescisão inteira só
+    # para ter o efeito colateral de regravá-la.
+    #
+    # A trava é o ponto do card: sem data de rescisão o envio quebra lá na
+    # frente, na hora de montar o XML, que é o pior lugar para descobrir.
+    # Aqui a recusa é imediata e diz o que fazer.
+    if layout == "2299" and matricula:
+        try:
+            _rd = (supabase.table("tab_cad")
+                   .select("codcateg,datarescisao,nome")
+                   .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                   .limit(1).execute())
+            _f = (_rd.data or [{}])[0]
+        except Exception as e:
+            return jsonify({"ok": False, "msg": f"Erro ao ler o funcionário: {e}"})
+
+        _dtr = str(_f.get("datarescisao") or "").strip()
+        if not _dtr or _dtr in ("0", "00000000"):
+            return jsonify({"ok": False, "msg": (
+                "Este funcionário não tem rescisão registrada, e o S-2299 sai "
+                "dela: o desligamento carrega a data e as verbas rescisórias. "
+                "Registre a rescisão e calcule — a remessa é criada sozinha, "
+                "sem precisar do Gerador.")})
+
+        try:
+            _catd = int(str(_f.get("codcateg") or "0").strip() or "0")
+        except (ValueError, TypeError):
+            _catd = 0
+        if _catd >= 700:
+            return jsonify({"ok": False, "msg": (
+                f"Categoria {_catd} é trabalhador sem vínculo (TSVE): o "
+                "término dele é o S-2399, não o S-2299. Esse evento é criado "
+                "pelo cálculo da rescisão.")})
 
     if layout == "1010" and not rubricas:
         return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica para o S-1010."})
