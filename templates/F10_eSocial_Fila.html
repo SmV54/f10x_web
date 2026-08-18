@@ -307,7 +307,7 @@ tr:hover td { background: #f8fafc; }
 .prog-row  { display: none; }
 .prog-cell { padding: 4px 12px 10px !important; }
 .prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 5px; overflow: hidden; margin-bottom: 4px; }
-.prog-bar  { height: 5px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+.prog-bar  { height: 5px; border-radius: 20px; background: #2a7de1; width: 0%; transition: width .4s ease; }
 .prog-label{ font-size: 11px; color: #64748b; font-family: var(--mono); }
 
 .vazio { padding: 40px; text-align: center; color: #94a3b8; font-size: 13px; }
@@ -857,7 +857,7 @@ async function _enviarFila(btn) {
   btn.textContent = 'Enviando…';
   progRow.style.display = 'table-row';
   bar.style.width       = '5%';
-  bar.style.background  = 'var(--accent)';
+  bar.style.background  = '#2a7de1';
   lbl.textContent       = 'Iniciando…';
 
   let etapaIdx = 0;
@@ -1056,4 +1056,11 @@ async function _reconsultar(id, btn) {
 </script>
 <script src="/static/f10_dialog.js"></script>
 </body>
-</html>
+</html>/* Azul fixo, de proposito: a barra NAO acompanha o --accent da tela.
+   Cada tela do eSocial tem a sua cor de identidade (o S-2299 e vermelho,
+   o S-1020 e indigo, a Fila e verde-azulado) e a barra herdava isso --
+   entao o mesmo processamento aparecia vermelho numa tela e azul noutra,
+   como se estivesse dando erro antes de comecar. Andando e sempre azul;
+   a cor so muda no fim, e ai ela quer dizer alguma coisa: verde com
+   recibo, laranja aguardando o protocolo, vermelho recusado. */
+

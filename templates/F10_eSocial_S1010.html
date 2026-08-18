@@ -243,7 +243,14 @@ tr:hover td { background: #f8fafc; }
 .prog-row { display: none; }
 .prog-cell { padding: 6px 14px 10px !important; }
 .prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
-.prog-bar { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+/* Azul fixo, de proposito: a barra NAO acompanha o --accent da tela.
+   Cada tela do eSocial tem a sua cor de identidade (o S-2299 e vermelho,
+   o S-1020 e indigo, a Fila e verde-azulado) e a barra herdava isso --
+   entao o mesmo processamento aparecia vermelho numa tela e azul noutra,
+   como se estivesse dando erro antes de comecar. Andando e sempre azul;
+   a cor so muda no fim, e ai ela quer dizer alguma coisa: verde com
+   recibo, laranja aguardando o protocolo, vermelho recusado. */
+.prog-bar { height: 6px; border-radius: 20px; background: #2a7de1; width: 0%; transition: width .4s ease; }
 .prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
 
 /* MODAL RELATÓRIO */
@@ -793,7 +800,7 @@ async function reconsultarS1010(id, btnEl) {
 
     btnEl.disabled = true;
     progRow.style.display = 'table-row';
-    bar.style.background = 'var(--accent)';
+    bar.style.background = '#2a7de1';
     bar.style.width = '30%';
     lbl.textContent = '🔍 Consultando resultado no eSocial…';
 

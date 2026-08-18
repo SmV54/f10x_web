@@ -184,7 +184,14 @@ tr:hover td { background: #f8fafc; }
 .prog-row { display: none; }
 .prog-cell { padding: 6px 14px 10px !important; }
 .prog-bar-wrap { background: #f1f5f9; border-radius: 20px; height: 6px; overflow: hidden; margin-bottom: 4px; }
-.prog-bar { height: 6px; border-radius: 20px; background: var(--accent); width: 0%; transition: width .4s ease; }
+/* Azul fixo, de proposito: a barra NAO acompanha o --accent da tela.
+   Cada tela do eSocial tem a sua cor de identidade (o S-2299 e vermelho,
+   o S-1020 e indigo, a Fila e verde-azulado) e a barra herdava isso --
+   entao o mesmo processamento aparecia vermelho numa tela e azul noutra,
+   como se estivesse dando erro antes de comecar. Andando e sempre azul;
+   a cor so muda no fim, e ai ela quer dizer alguma coisa: verde com
+   recibo, laranja aguardando o protocolo, vermelho recusado. */
+.prog-bar { height: 6px; border-radius: 20px; background: #2a7de1; width: 0%; transition: width .4s ease; }
 .prog-label { font-size: 11px; color: #64748b; font-family: var(--mono); }
 
 /* ── RESULTADO INLINE ── */
@@ -590,7 +597,10 @@ async function _retificar(id, btn) {
   return _enviar(id, btn, false, true);
 }
 
-async function _enviar(id, btn, suppressBanner, retificar) {
+// forcarS1010: repete o envio depois de o operador confirmar o aviso das
+// verbas nao declaradas. Nao entra em enviarTodos/enviarSelecionados de
+// proposito -- em lote seria um dialogo por trabalhador.
+async function _enviar(id, btn, suppressBanner, retificar, forcarS1010) {
   // Checagem de pré-requisitos antes de qualquer animação
   if (!_prereqConfirmado) {
     const ok = await _confirmarPrereqS1200();
@@ -624,6 +634,7 @@ async function _enviar(id, btn, suppressBanner, retificar) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb, forcar: _prereqConfirmado,
+                             forcar_s1010: !!forcarS1010,
                              retificar: !!retificar }),
     });
     const data = await r.json();
@@ -665,12 +676,24 @@ async function _enviar(id, btn, suppressBanner, retificar) {
       // competência da linha pode ser outra que não a do filtro, então isto
       // pega o que a conferência prévia não viu.
       if ((data.prereq_s1010 || data.prereq_s1020) && !suppressBanner) {
-        const irFila = await f10Confirm(data.msg, {
-          titulo: data.prereq_s1020 ? 'Lotação não declarada (S-1020)'
-                                    : 'Verbas não declaradas (S-1010)',
-          tipo: 'aviso', okText: 'Ir para a Fila', cancelText: 'Fechar',
-        });
-        if (irFila) window.location.href = '/esocial_fila';
+        // O S-1010 tem saida: a conferencia local nao enxerga rubrica que ja
+        // esta declarada no governo (o [537] nao devolve recibo), e nesse caso
+        // ela trava um S-1200 que esta inteiro. A lotacao nao tem: la a recusa
+        // e certa, e o botao so gastaria a viagem.
+        if (data.pode_forcar) {
+          const seguir = await f10Confirm(data.msg, {
+            titulo: 'Verbas não declaradas (S-1010)', tipo: 'aviso',
+            okText: 'Enviar mesmo assim', cancelText: 'Fechar',
+          });
+          if (seguir) return _enviar(id, btn, suppressBanner, retificar, true);
+        } else {
+          const irFila = await f10Confirm(data.msg, {
+            titulo: data.prereq_s1020 ? 'Lotação não declarada (S-1020)'
+                                      : 'Verbas não declaradas (S-1010)',
+            tipo: 'aviso', okText: 'Ir para a Fila', cancelText: 'Fechar',
+          });
+          if (irFila) window.location.href = '/esocial_fila';
+        }
       }
     }
   } catch(e) {

@@ -34177,7 +34177,17 @@ def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_v
 # So dispensa a conferencia do S-1010. A do S-1020 continua valendo, e o
 # governo continua conferindo do lado dele: se faltar rubrica de verdade, o
 # evento e recusado la. Isto tira a trava local, nao a exigencia real.
-S1010_CHECK_DISPENSADO = {(30, "202607")}
+#
+# REATIVADA em 18/08/2026 a pedido: o conjunto voltou a ficar VAZIO, entao a
+# conferencia roda para todo mundo de novo. Para dispensar outra vez, basta
+# repor o par -- {(30, "202607")} era o valor anterior.
+#
+# O que isso custa hoje, medido antes de reativar: no cliente 0030 em 202607,
+# cinco empresas voltam a ser barradas -- 29 (22 verbas), 34 (19), 38 (13),
+# 35 (11) e 37 (1). Sao as rubricas que ja existem no eSocial mas cujo
+# reenvio volta com [537], que nao devolve recibo; a conferencia local nao
+# tem como saber que estao la e as trata como pendentes.
+S1010_CHECK_DISPENSADO = set()
 
 # Mesma história com a LOTAÇÃO. No cliente 0030 / empresa 0029 a lotação 001
 # ja esta declarada e vigente no eSocial — o reenvio do S-1020 volta com
@@ -34606,10 +34616,19 @@ def api_esocial_s1200_enviar():
     data       = request.get_json(force=True) or {}
     id_reg     = data.get("id_esocial")
     tpAmb      = str(data.get("tpAmb", "1"))
-    # Confirmar o aviso de remessas pendentes NÃO libera as tabelas: lotação sem
-    # S-1020 e verba sem S-1010 são recusa certa do eSocial, e essas duas barram
-    # o envio sempre — não há "enviar mesmo assim" para elas.
+    # Confirmar o aviso de remessas pendentes NÃO libera as tabelas: são coisas
+    # diferentes, e uma flag só faria o "ok" de um aviso destravar o outro sem
+    # que ninguém tivesse decidido isso.
     forcar     = bool(data.get("forcar"))
+    # Verba sem S-1010: virou aviso com escape em 18/08/2026. Continua sendo
+    # quase sempre recusa do eSocial, mas há um caso real em que a conferência
+    # local erra e não tem como acertar: a rubrica JÁ está declarada no governo
+    # e o reenvio volta com [537], que não devolve recibo. Sem recibo gravado
+    # aqui ela é contada como pendente para sempre, e o S-1200 fica travado por
+    # uma pendência que não existe. Quem sabe disso é o operador.
+    #
+    # A lotação (S-1020) continua sem escape: lá a recusa é certa.
+    forcar_1010 = bool(data.get("forcar_s1010"))
 
     if not id_reg:
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
@@ -34670,9 +34689,9 @@ def api_esocial_s1200_enviar():
     #     dele nao diz QUAL faltou. Aqui a gente descobre antes, ja deixa as
     #     remessas prontas na Fila e diz o que enviar. A checagem de pendentes
     #     logo acima nao cobre isto: ela so olha S-1010 que ja existem.
-    #     Sem escapatoria: enviar assim so gastaria a viagem ate o gov.
+    #     Ha um escape (forcar_s1010) — ver o comentario la em cima.
     _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo)
-    if _falta:
+    if _falta and not forcar_1010:
         _am   = str(ano_mes)
         _novas = _criar_s1010_pendentes(session.get("id_cliente"), id_empresa,
                                         _falta, f"{_am[:4]}-{_am[4:6]}", tpAmb)
@@ -34680,12 +34699,34 @@ def api_esocial_s1200_enviar():
         return jsonify({
             "ok": False,
             "prereq_s1010": True,
+            "pode_forcar": True,
             "verbas": _falta,
             "msg": (f"{len(_falta)} verba(s) desta folha ainda não foram declaradas "
                     f"no eSocial (S-1010):\n  {_lista}\n\n"
                     f"{_novas} remessa(s) S-1010 foram criadas na Fila. "
-                    "Envie o S-1010 primeiro e depois repita o S-1200."),
+                    "O caminho normal é enviar o S-1010 primeiro e repetir o "
+                    "S-1200.\n\nSe estas rubricas já estiverem declaradas no "
+                    "eSocial — o reenvio volta com [537], que não devolve "
+                    "recibo —, dá para seguir assim mesmo: o governo confere "
+                    "do lado dele."),
         })
+
+    if _falta:
+        # Seguiu por decisão do operador. Fica no log COM as rubricas: se o
+        # evento voltar recusado, é aqui que se descobre por quê, sem ter de
+        # reconstruir depois o que faltava naquele momento.
+        # A lista vai cortada: o gravar_log engole a excecao, entao uma
+        # observacao longa demais para a coluna sumiria em silencio -- justo
+        # o registro que so se procura quando o evento volta recusado. Nas
+        # ultimas 500 linhas da tab_log a maior tem 145 caracteres; 22 codigos
+        # passariam de 170. A contagem, que e o que importa, fica sempre.
+        _cods = [str(v["cod_rubr"]) for v in _falta]
+        _txt  = ", ".join(_cods[:14]) + (" e mais %d" % (len(_cods) - 14)
+                                         if len(_cods) > 14 else "")
+        gravar_log("ESOCIAL",
+                   "S-1200 enviado sem conferencia de S-1010 (forcado) — "
+                   "%d verba(s): %s" % (len(_falta), _txt),
+                   matricula=int(matricula) if matricula else None)
 
     # 2. Dados do funcionário
     try:
