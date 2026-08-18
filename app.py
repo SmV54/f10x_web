@@ -7524,6 +7524,26 @@ def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha
     # TSVE / não-empregado = categoria >= 700 (CI, sócio, diretor, estagiário,
     # bolsista etc.) → S-2399. Empregado (< 700) → S-2299.
     layout = "2399" if _categ_n >= 700 else "2299"
+
+    # Rescisao de outra competencia nao gera evento aqui. Acontece quando se
+    # calcula em julho a rescisao de quem saiu em maio: a remessa nascia com
+    # ano_mes de julho e a data de desligamento de maio dentro do XML. O
+    # caminho e abrir a competencia do desligamento e calcular por la.
+    # So vale para o S-2299 (empregado); o S-2399 do TSVE segue como estava.
+    if layout == "2299":
+        try:
+            _rf = (supabase.table("tab_cad").select("datarescisao")
+                   .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                   .limit(1).execute())
+            _fora = _evento_fora_da_competencia("2299", (_rf.data or [{}])[0], anomes_am)
+        except Exception as e:
+            print(f"[S2299] nao consegui conferir a competencia da rescisao: {e}")
+            _fora = None
+        if _fora:
+            gravar_log("ESOCIAL", "S-2299 nao gerado: %s" % _fora[:110],
+                       matricula=mat_int)
+            return
+
     agora_es    = _dt.now()
     ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
     try:
@@ -33723,6 +33743,25 @@ def api_esocial_gerador_criar():
                 "término dele é o S-2399, não o S-2299. Esse evento é criado "
                 "pelo cálculo da rescisão.")})
 
+    # Evento de trabalhador so na competencia em que o fato aconteceu.
+    # Vale para os cinco layouts de _LAYOUTS_NA_COMPETENCIA; a data de cada um
+    # esta em _ROTULO_DATA_EVENTO. Aqui, no Gerador, e onde mais escapava: a
+    # remessa nascia com o ano_mes da folha ativa qualquer que fosse a data do
+    # fato, e o descompasso so aparecia na recusa do governo.
+    if layout in _LAYOUTS_NA_COMPETENCIA:
+        _f = {}
+        if matricula:
+            try:
+                _rf = (supabase.table("tab_cad").select("dtadm,datarescisao,nome")
+                       .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                       .limit(1).execute())
+                _f = (_rf.data or [{}])[0]
+            except Exception as e:
+                return jsonify({"ok": False, "msg": f"Erro ao ler o funcionário: {e}"})
+        _fora = _evento_fora_da_competencia(layout, _f, anomes_atual)
+        if _fora:
+            return jsonify({"ok": False, "fora_competencia": True, "msg": _fora})
+
     if layout == "1010" and not rubricas:
         return jsonify({"ok": False, "msg": "Selecione ao menos uma rubrica para o S-1010."})
 
@@ -34262,6 +34301,70 @@ def _s1010_check_dispensado(id_empresa, ano_mes):
 def _s1020_check_dispensado(id_empresa, ano_mes):
     """True quando a conferencia previa de S-1020 nao deve rodar."""
     return _check_dispensado(S1020_CHECK_DISPENSADO, id_empresa, ano_mes)
+
+
+# =========================================================
+# EVENTO FORA DA COMPETENCIA ATIVA
+# =========================================================
+# Os eventos de trabalhador so podem ser gerados na competencia em que o fato
+# aconteceu. Gerar um S-2200 de admissao de maio dentro da folha de julho
+# produz um evento que o eSocial recusa ou, pior, aceita com a data errada --
+# e desfazer isso la e trabalhoso.
+#
+# A data que conta muda por layout, e e por isso que a regra mora numa funcao
+# so em vez de espalhada pelos chamadores:
+#   S-2200  admissao        tab_cad.dtadm
+#   S-2299  desligamento    tab_cad.datarescisao
+#   S-2205  alt. cadastral  a data de HOJE (a alteracao e agora)
+#   S-2206  alt. contrato   a data de HOJE
+#   S-2230  afastamento     a data de HOJE (o gerador ainda nao existe)
+_LAYOUTS_NA_COMPETENCIA = {"2200", "2205", "2206", "2230", "2299"}
+
+_ROTULO_DATA_EVENTO = {
+    "2200": ("admissão",              "dtadm"),
+    "2299": ("rescisão",              "datarescisao"),
+    "2205": ("alteração cadastral",   None),
+    "2206": ("alteração de contrato", None),
+    "2230": ("afastamento",           None),
+}
+
+
+def _anomes_do_evento(layout, func):
+    """AAAAMM em que o fato aconteceu, ou "" se nao der para saber.
+
+    Sem campo proprio (2205/2206/2230) o fato e agora: a alteracao esta sendo
+    feita neste instante, entao vale o mes de hoje -- e nao o da folha ativa,
+    que e justamente o que se quer comparar.
+    """
+    _, campo = _ROTULO_DATA_EVENTO.get(str(layout), (None, None))
+    if not campo:
+        return _agora_brasilia().strftime("%Y%m")
+    return _anomes_admissao((func or {}).get(campo))
+
+
+def _evento_fora_da_competencia(layout, func, anomes_atual):
+    """Mensagem explicando a recusa, ou None quando o evento pode ser gerado."""
+    layout = str(layout or "")
+    if layout not in _LAYOUTS_NA_COMPETENCIA:
+        return None
+    comp = re.sub(r"\D", "", str(anomes_atual or ""))[:6]
+    if len(comp) != 6:
+        return None                     # sem competencia ativa nao da para julgar
+    am = _anomes_do_evento(layout, func)
+    if not am:
+        rotulo, campo = _ROTULO_DATA_EVENTO.get(layout, ("evento", None))
+        if campo:
+            return (f"O funcionário está sem data de {rotulo} no cadastro, "
+                    f"e o S-{layout} sai dela.")
+        return None
+    if am == comp:
+        return None
+    rotulo = _ROTULO_DATA_EVENTO.get(layout, ("evento", None))[0]
+    def _fmt(x):
+        return f"{x[4:6]}/{x[:4]}"
+    return (f"A {rotulo} é de {_fmt(am)} e a folha aberta é {_fmt(comp)}. "
+            f"O S-{layout} só pode ser gerado na competência em que o fato "
+            f"aconteceu — abra {_fmt(am)} em Nova Folha e gere por lá.")
 
 
 def _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo="N"):
