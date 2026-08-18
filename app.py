@@ -34178,16 +34178,25 @@ def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_v
 # governo continua conferindo do lado dele: se faltar rubrica de verdade, o
 # evento e recusado la. Isto tira a trava local, nao a exigencia real.
 #
-# REATIVADA em 18/08/2026 a pedido: o conjunto voltou a ficar VAZIO, entao a
-# conferencia roda para todo mundo de novo. Para dispensar outra vez, basta
-# repor o par -- {(30, "202607")} era o valor anterior.
+# >>> TEMPORARIO — REPOR PARA set() QUANDO OS RECIBOS ENTRAREM <<<
 #
-# O que isso custa hoje, medido antes de reativar: no cliente 0030 em 202607,
-# cinco empresas voltam a ser barradas -- 29 (22 verbas), 34 (19), 38 (13),
-# 35 (11) e 37 (1). Sao as rubricas que ja existem no eSocial mas cujo
-# reenvio volta com [537], que nao devolve recibo; a conferencia local nao
-# tem como saber que estao la e as trata como pendentes.
-S1010_CHECK_DISPENSADO = set()
+# 18/08/2026: reativada de manha (conjunto vazio) e dispensada de novo a
+# pedido, no mesmo dia, para o cliente 0030 destravar a folha de 07/2026.
+# Medido: cinco empresas voltavam a ser barradas -- 29 (22 verbas), 34 (19),
+# 38 (13), 35 (11) e 37 (1) -- por rubricas que JA existem no eSocial mas cujo
+# reenvio volta com [537], que nao devolve recibo.
+#
+# Isto e um curativo com data para sair. O conserto de verdade e buscar os
+# recibos das rubricas no proprio eSocial e grava-los aqui: a consulta de
+# identificadores devolve id + nrRec, e o codRubr ("0001-FOL") so aparece
+# baixando o XML do evento -- 40 IDs por chamada, num orcamento de 10
+# solicitacoes por DIA. As empresas 35/36/37/38 dividem a raiz 46717232 e o
+# S-1010 e por raiz, entao uma varredura serve as tres travadas.
+#
+# Enquanto isso, o envio AVULSO tem o escape "Enviar mesmo assim"
+# (forcar_s1010), que nao depende deste conjunto. O envio em LOTE nao tem —
+# e por isso a dispensa continua sendo a forma de liberar a folha inteira.
+S1010_CHECK_DISPENSADO = {(30, "202607")}
 
 # Mesma história com a LOTAÇÃO. No cliente 0030 / empresa 0029 a lotação 001
 # ja esta declarada e vigente no eSocial — o reenvio do S-1020 volta com
