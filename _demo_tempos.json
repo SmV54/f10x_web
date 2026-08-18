@@ -1,0 +1,130 @@
+{
+ "total": 362.01,
+ "voz": "pt-BR-ThalitaMultilingualNeural",
+ "slides": [
+  {
+   "chave": "abertura",
+   "titulo": "Abertura",
+   "fases": [
+    22.32
+   ],
+   "dur": 22.32
+  },
+  {
+   "chave": "login",
+   "titulo": "Login",
+   "fases": [
+    12.51
+   ],
+   "dur": 12.51
+  },
+  {
+   "chave": "menu",
+   "titulo": "Menu",
+   "fases": [
+    32.84
+   ],
+   "dur": 32.84,
+   "luz": [
+    2.26,
+    6.06,
+    8.5,
+    12.35,
+    16.85,
+    19.01,
+    20.69,
+    23.2,
+    26.01,
+    28.86
+   ]
+  },
+  {
+   "chave": "cadastros",
+   "titulo": "Cadastros",
+   "fases": [
+    14.52,
+    7.75,
+    17.05
+   ],
+   "dur": 39.32
+  },
+  {
+   "chave": "novafolha",
+   "titulo": "Nova Folha",
+   "fases": [
+    7.34,
+    8.42,
+    14.7
+   ],
+   "dur": 30.46
+  },
+  {
+   "chave": "eventuais",
+   "titulo": "Eventuais",
+   "fases": [
+    15.38,
+    9.36,
+    16.76
+   ],
+   "dur": 41.5
+  },
+  {
+   "chave": "movimento",
+   "titulo": "Movimento Mês",
+   "fases": [
+    10.27,
+    8.08,
+    14.46
+   ],
+   "dur": 32.81
+  },
+  {
+   "chave": "movimentofixo",
+   "titulo": "Movimento Fixo",
+   "fases": [
+    7.87,
+    8.42,
+    8.24
+   ],
+   "dur": 24.53
+  },
+  {
+   "chave": "calculo",
+   "titulo": "Cálculo",
+   "fases": [
+    8.25,
+    11.04,
+    14.26
+   ],
+   "dur": 33.55
+  },
+  {
+   "chave": "relatorios",
+   "titulo": "Relatórios",
+   "fases": [
+    11.52,
+    7.63,
+    15.42
+   ],
+   "dur": 34.57
+  },
+  {
+   "chave": "esocial",
+   "titulo": "eSocial",
+   "fases": [
+    14.78,
+    10.17,
+    15.7
+   ],
+   "dur": 40.65
+  },
+  {
+   "chave": "fecho",
+   "titulo": "Fecho",
+   "fases": [
+    16.95
+   ],
+   "dur": 16.95
+  }
+ ]
+}

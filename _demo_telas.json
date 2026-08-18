@@ -1,0 +1,1416 @@
+{
+ "modulos": [
+  {
+   "chave": "cadastros",
+   "titulo": "Cadastros",
+   "icone": "🗄️"
+  },
+  {
+   "chave": "novafolha",
+   "titulo": "Nova Folha",
+   "icone": "📅"
+  },
+  {
+   "chave": "eventuais",
+   "titulo": "Eventuais",
+   "icone": "🗓️"
+  },
+  {
+   "chave": "movimento",
+   "titulo": "Movimento Mês",
+   "icone": "🔄"
+  },
+  {
+   "chave": "movimentofixo",
+   "titulo": "Movimento Fixo",
+   "icone": "📌"
+  },
+  {
+   "chave": "calculo",
+   "titulo": "Cálculo",
+   "icone": "🖩"
+  },
+  {
+   "chave": "relatorios",
+   "titulo": "Relatórios",
+   "icone": "🖨️"
+  },
+  {
+   "chave": "conexoes",
+   "titulo": "Conexões",
+   "icone": "🏦"
+  },
+  {
+   "chave": "esocial",
+   "titulo": "eSocial",
+   "icone": "📃"
+  },
+  {
+   "chave": "diversos",
+   "titulo": "Diversos",
+   "icone": "🧩"
+  }
+ ],
+ "telas": [
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Funcionário",
+   "icone": "👤",
+   "nome": "Incluir Funcionário",
+   "href": "/cad_funcionario",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Funcionário",
+   "icone": "✏️",
+   "nome": "Alterar Funcionário",
+   "href": "/cad_funcionario?modo=alteracao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Funcionário",
+   "icone": "👨‍👩‍👧",
+   "nome": "Dependentes",
+   "href": "/select_funcionario?contexto=dep",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Funcionário",
+   "icone": "📄",
+   "nome": "Ficha de Registro",
+   "href": "/select_funcionario?contexto=ficha",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Funcionário",
+   "icone": "🧹",
+   "nome": "Limpar Funcionário",
+   "href": "/limpeza_funcionario",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "💼",
+   "nome": "Funções / Cargos",
+   "href": "/cad_funcao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "🕐",
+   "nome": "Horários de Trabalho",
+   "href": "/cad_horario",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "🤝",
+   "nome": "Sindicatos",
+   "href": "/cad_sindicato",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "🚌",
+   "nome": "Vale Transporte",
+   "href": "/cad_vt",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "📑",
+   "nome": "Rubricas (Verbas)",
+   "href": "/cad_verba",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "📅",
+   "nome": "Feriados",
+   "href": "/cad_feriado",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "🏷️",
+   "nome": "Centros de Custo",
+   "href": "/cad_cc",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "🏢",
+   "nome": "Filiais",
+   "href": "/cad_filial",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "👥",
+   "nome": "Usuários da Conta",
+   "href": "/cad_usuario",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Tabelas Auxiliares",
+   "icone": "🏙️",
+   "nome": "Cidades",
+   "href": "#",
+   "ok": false,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Pensão Alimentícia",
+   "icone": "⚖️",
+   "nome": "Cadastro da Pensionista",
+   "href": "/select_funcionario?contexto=pensao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Pensão Alimentícia",
+   "icone": "🧮",
+   "nome": "Fórmulas",
+   "href": "/pensao_formulas",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Empresa",
+   "icone": "🏢",
+   "nome": "Nova Empresa",
+   "href": "/f10_cad_empresa",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Empresa",
+   "icone": "✏️",
+   "nome": "Alterar Esta Empresa",
+   "href": "/alterar_empresa",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "novafolha",
+   "modulo_titulo": "Nova Folha",
+   "secao": "Folha",
+   "icone": "📅",
+   "nome": "Novo Mês/Ano",
+   "href": "/cad_anomes",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "novafolha",
+   "modulo_titulo": "Nova Folha",
+   "secao": "Folha",
+   "icone": "🔄",
+   "nome": "Outro Mês/Ano",
+   "href": "/cad_anomes?modo=trocar",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "novafolha",
+   "modulo_titulo": "Nova Folha",
+   "secao": "Folha",
+   "icone": "🔓",
+   "nome": "Reabrir esta Folha Calculada",
+   "href": "/reabrir_folha",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "novafolha",
+   "modulo_titulo": "Nova Folha",
+   "secao": "Folha",
+   "icone": "🔒",
+   "nome": "Fechar esta Folha Calculada",
+   "href": "/fechar_folha",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "novafolha",
+   "modulo_titulo": "Nova Folha",
+   "secao": "Folha",
+   "icone": "🔓",
+   "nome": "Reabrir esta Folha Fechada",
+   "href": "/reabrir_folha",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "🏖️",
+   "nome": "Lançar Férias",
+   "href": "/select_funcionario?contexto=ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "📝",
+   "nome": "Lançar Movimento Férias",
+   "href": "/cad_mov_ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "🖩",
+   "nome": "Calcular Férias",
+   "href": "/calc_ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "📄",
+   "nome": "Memória de Cálculo",
+   "href": "/memoria_ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "🧾",
+   "nome": "Recibo de Férias",
+   "href": "/recibo_ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "❌",
+   "nome": "Cancelar Férias",
+   "href": "/cad_cancelar_ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "📋",
+   "nome": "Funcionários em Férias",
+   "href": "/lista_ferias",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "📆",
+   "nome": "Programação de Férias",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Férias",
+   "icone": "⏰",
+   "nome": "Férias Vencidas",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Salários",
+   "icone": "💹",
+   "nome": "Alteração de Salário",
+   "href": "/select_funcionario?contexto=aumento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Salários",
+   "icone": "↩️",
+   "nome": "Cancelar Alteração",
+   "href": "/cad_cancelar_aumento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Salários",
+   "icone": "📊",
+   "nome": "Relatório de Salários",
+   "href": "/relatorios_config?rel=sal_aumento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "📢",
+   "nome": "Aviso Prévio",
+   "href": "/select_funcionario?contexto=aviso_previo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "📄",
+   "nome": "Listagem de Aviso Prévio",
+   "href": "/lista_aviso_previo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "✍️",
+   "nome": "Registrar Rescisão",
+   "href": "/select_funcionario?contexto=rescisao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "📝",
+   "nome": "Movimento Mês Rescisão",
+   "href": "/cad_mov_rescisao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "🖩",
+   "nome": "Calcular Rescisão",
+   "href": "/calc_rescisao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "📋",
+   "nome": "TRCT - Emissão Rescisão",
+   "href": "/calc_rescisao?modo=trct",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "🧮",
+   "nome": "Memória Cálculo Rescisão",
+   "href": "/calc_rescisao?modo=memoria",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "📄",
+   "nome": "Listagem dos Demitidos",
+   "href": "/lista_demitidos",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "❌",
+   "nome": "Cancelar Aviso Prévio",
+   "href": "/select_funcionario?contexto=cancelar_aviso_previo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Rescisão",
+   "icone": "❌",
+   "nome": "Cancelar Rescisão",
+   "href": "/select_funcionario?contexto=cancelar_rescisao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Contrato Temporário",
+   "icone": "📃",
+   "nome": "Contrato / Prorrogação",
+   "href": "/select_funcionario?contexto=contrato",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Contrato Temporário",
+   "icone": "📄",
+   "nome": "Relação dos Contratos",
+   "href": "/lista_contratos",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Contrato Temporário",
+   "icone": "🖶",
+   "nome": "Imprimir Contrato de Experiência",
+   "href": "/select_funcionario?contexto=contrato_pdf",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Afastamentos",
+   "icone": "🏥",
+   "nome": "Lançar Afastamento",
+   "href": "/select_funcionario?contexto=afastamento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Afastamentos",
+   "icone": "🚨",
+   "nome": "Acidente — Informar CAT",
+   "href": "/select_funcionario?contexto=acidente",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Afastamentos",
+   "icone": "✏️",
+   "nome": "Acidente — Alterar/Excluir",
+   "href": "/select_funcionario?contexto=alt_acidente",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Afastamentos",
+   "icone": "📋",
+   "nome": "Acidente — Ficha",
+   "href": "/select_funcionario?contexto=ficha_acidente",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Afastamentos",
+   "icone": "📋",
+   "nome": "Funcionários Afastados",
+   "href": "/lista_afastados",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Afastamentos",
+   "icone": "🤱",
+   "nome": "Lic. Maternidade/Paternidade",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Faltas",
+   "icone": "📉",
+   "nome": "Incluir Faltas",
+   "href": "/select_funcionario?contexto=falta",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Faltas",
+   "icone": "🗑️",
+   "nome": "Excluir Faltas",
+   "href": "/select_funcionario?contexto=excluir_falta",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Faltas",
+   "icone": "📋",
+   "nome": "Listagem de Faltas",
+   "href": "/rel_config_faltas",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Exame Médico",
+   "icone": "🩺",
+   "nome": "Registrar Exame Médico",
+   "href": "/select_funcionario?contexto=exame_med",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Exame Médico",
+   "icone": "✏️",
+   "nome": "Alterar / Excluir Exame Médico",
+   "href": "/select_funcionario?contexto=alt_exame_med",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Exame Médico",
+   "icone": "📋",
+   "nome": "Listagem de Exames Médicos",
+   "href": "/rel_config_exame_med",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "Insalubridade/Periculosidade",
+   "icone": "⚗️",
+   "nome": "Insalubridade / Periculosidade",
+   "href": "/select_funcionario?contexto=insalub_pericu",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "eventuais",
+   "modulo_titulo": "Eventuais",
+   "secao": "FAP",
+   "icone": "🛡️",
+   "nome": "FAP — Fator Acidentário de Prevenção",
+   "href": "/cad_fap",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Lançamentos",
+   "icone": "✏️",
+   "nome": "Lançar Eventos",
+   "href": "/cad_mov",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Lançamentos",
+   "icone": "🏦",
+   "nome": "Importar Consignados",
+   "href": "/consignado_importar",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Lançamentos",
+   "icone": "⏱️",
+   "nome": "Importar Ponto",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Lançamentos",
+   "icone": "📈",
+   "nome": "Horas Extras",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Lançamentos",
+   "icone": "📉",
+   "nome": "Faltas e Atrasos",
+   "href": "/select_funcionario?contexto=falta",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Listagens",
+   "icone": "📋",
+   "nome": "Listagem de Movimento",
+   "href": "/rel_config_mov",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "💰",
+   "nome": "Calcular",
+   "href": "/calcular_adiantamento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "📋",
+   "nome": "Listagem",
+   "href": "/listagem_adiantamentos",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimento",
+   "modulo_titulo": "Movimento Mês",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "✏️",
+   "nome": "Alterar ou Excluir",
+   "href": "/listagem_adiantamentos?acao=editar",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimentofixo",
+   "modulo_titulo": "Movimento Fixo",
+   "secao": "Lançamentos",
+   "icone": "📌",
+   "nome": "Movimentos Fixos",
+   "href": "/mov_fixo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimentofixo",
+   "modulo_titulo": "Movimento Fixo",
+   "secao": "Lançamentos",
+   "icone": "⏹️",
+   "nome": "Excluir / Parar Mov. Fixo",
+   "href": "/mov_fixo_encerrar",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "movimentofixo",
+   "modulo_titulo": "Movimento Fixo",
+   "secao": "Listagens",
+   "icone": "📋",
+   "nome": "Listagem de Mov. Fixos",
+   "href": "/rel_mov_fixo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Folha Mensal",
+   "icone": "▶️",
+   "nome": "Calcular Folha",
+   "href": "/calcular_folha",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Folha Mensal",
+   "icone": "👁️",
+   "nome": "Visualizar Cálculo",
+   "href": "/visualizar_calculo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Folha Mensal",
+   "icone": "📄",
+   "nome": "Memória de Cálculo",
+   "href": "/memoria_calculo",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Folha Mensal",
+   "icone": "🔁",
+   "nome": "Cálculo Individual",
+   "href": "/calcular_folha_individual",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Folha Mensal",
+   "icone": "⚠️",
+   "nome": "Verificar Inconsistências",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "💰",
+   "nome": "Calcular Adiantamento",
+   "href": "/calcular_adiantamento",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "✏️",
+   "nome": "Informar Adiantamento",
+   "href": "/informar_adiantamento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "📋",
+   "nome": "Listagem de Adiantamentos",
+   "href": "/listagem_adiantamentos",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "✏️",
+   "nome": "Alterar ou Excluir",
+   "href": "/listagem_adiantamentos?acao=editar",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "calculo",
+   "modulo_titulo": "Cálculo",
+   "secao": "Adiantamento Quinzenal",
+   "icone": "🧾",
+   "nome": "Recibo do Adiantamento",
+   "href": "/recibo_adiantamento",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Cadastros",
+   "icone": "👥",
+   "nome": "Lista de Funcionários",
+   "href": "/rel_lista_funcionarios",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Cadastros",
+   "icone": "💼",
+   "nome": "Funções / Cargos",
+   "href": "/relatorios_config?rel=funcoes",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Cadastros",
+   "icone": "📑",
+   "nome": "Rubricas (Verbas)",
+   "href": "/relatorios_config?rel=verbas",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Cadastros",
+   "icone": "👨‍👩‍👧",
+   "nome": "Dependentes",
+   "href": "/relatorios_config?rel=dependentes",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Cadastros",
+   "icone": "📄",
+   "nome": "Ficha de Registro",
+   "href": "/select_funcionario?contexto=ficha",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Eventos",
+   "icone": "🏖️",
+   "nome": "Listagem de Férias",
+   "href": "/relatorios_config?rel=ferias_func",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Eventos",
+   "icone": "📉",
+   "nome": "Listagem de Faltas",
+   "href": "/rel_config_faltas",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Eventuais",
+   "icone": "💹",
+   "nome": "Salários / Aumento",
+   "href": "/relatorios_config?rel=sal_aumento",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "🖨️",
+   "nome": "Folha de Pagamento",
+   "href": "/relatorio_folha",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "🧾",
+   "nome": "Contracheque",
+   "href": "/contracheque",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "💵",
+   "nome": "Relação dos Líquidos",
+   "href": "/rel_liquidos",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "⚖️",
+   "nome": "Recibo de Pensão",
+   "href": "/recibo_pensao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "📊",
+   "nome": "Resumo da Folha",
+   "href": "/resumo_folha",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "📋",
+   "nome": "Relação de N Verbas",
+   "href": "/config_rel_verbas",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Folha de Pagamento",
+   "icone": "📅",
+   "nome": "Ficha Financeira",
+   "href": "/rel_ficha_financeira",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Gerador de Relatório",
+   "icone": "🗂️",
+   "nome": "Gerador de Relatório",
+   "href": "/gerador_relatorio",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Sistema",
+   "icone": "📋",
+   "nome": "Log de Operações",
+   "href": "/relatorios_config?rel=log",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "Sistema",
+   "icone": "📄",
+   "nome": "Remessas eSocial",
+   "href": "/relatorios_config?rel=esocial_remessas",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "relatorios",
+   "modulo_titulo": "Relatórios",
+   "secao": "",
+   "icone": "🖨️",
+   "nome": "Todos os Relatórios",
+   "href": "/relatorios",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "conexoes",
+   "modulo_titulo": "Conexões",
+   "secao": "Pagamento Bancário",
+   "icone": "💳",
+   "nome": "CNAB 240 — Crédito em Conta",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "conexoes",
+   "modulo_titulo": "Conexões",
+   "secao": "Pagamento Bancário",
+   "icone": "📲",
+   "nome": "CNAB 240 — PIX",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Tabelas",
+   "icone": "🏢",
+   "nome": "S-1000 Dados do Empregador",
+   "href": "/esocial_s1000",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Tabelas",
+   "icone": "🏭",
+   "nome": "S-1005 Estabelecimentos",
+   "href": "/esocial_s1005",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Tabelas",
+   "icone": "📑",
+   "nome": "S-1010 Rubricas",
+   "href": "/esocial_s1010",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Tabelas",
+   "icone": "💼",
+   "nome": "S-1020 Lotações Tributárias",
+   "href": "/esocial_s1020",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "✅",
+   "nome": "S-2200 Admissão",
+   "href": "/esocial_s2200",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "✏️",
+   "nome": "S-2205 Alt. Dados Cadastrais",
+   "href": "/esocial_s2205",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "📝",
+   "nome": "S-2206 Alt. Contrato",
+   "href": "/esocial_s2206",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "🩺",
+   "nome": "S-2220 Monitoramento da Saúde (ASO)",
+   "href": "/esocial_s2220",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "🏥",
+   "nome": "S-2230 Afastamento",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "🚪",
+   "nome": "S-2299 Desligamento",
+   "href": "/esocial_s2299",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "🎓",
+   "nome": "S-2300 Início TSVE (Estagiário)",
+   "href": "/esocial_fila",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Não Periódicos",
+   "icone": "🏁",
+   "nome": "S-2399 Término TSVE (Estag./Diretor)",
+   "href": "/esocial_fila",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Periódicos",
+   "icone": "💰",
+   "nome": "S-1200 Remuneração",
+   "href": "/esocial_s1200",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Periódicos",
+   "icone": "💳",
+   "nome": "S-1210 Pagamentos",
+   "href": "/esocial_s1210",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Periódicos",
+   "icone": "🔓",
+   "nome": "S-1298 Reabertura",
+   "href": "/esocial_s1298",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Periódicos",
+   "icone": "🔒",
+   "nome": "S-1299 Fechamento",
+   "href": "/esocial_s1299",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Eventos Periódicos",
+   "icone": "⚖️",
+   "nome": "Verificação Folha10 × eSocial",
+   "href": "/esocial_verificacao",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Exclusão de Eventos",
+   "icone": "🗑️",
+   "nome": "S-3000 Exclusão",
+   "href": "/esocial_s3000",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Certificado Digital",
+   "icone": "🔑",
+   "nome": "Certificado Digital",
+   "href": "/config_certificado",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Certificado Digital",
+   "icone": "🤝",
+   "nome": "Cert. de Procurador",
+   "href": "/config_procurador",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Remessas",
+   "icone": "➕",
+   "nome": "Gerador Manual de Remessa",
+   "href": "/esocial_gerador",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Remessas",
+   "icone": "📤",
+   "nome": "Fila de Remessas",
+   "href": "/esocial_fila",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Remessas",
+   "icone": "📄",
+   "nome": "Listagem das Remessas",
+   "href": "/relatorios_config?rel=esocial_remessas",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Remessas",
+   "icone": "⚠️",
+   "nome": "Pendências e Erros",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "esocial",
+   "modulo_titulo": "eSocial",
+   "secao": "Consultas",
+   "icone": "🔎",
+   "nome": "Consultar Tabelas no eSocial",
+   "href": "/esocial_consulta",
+   "ok": true,
+   "repetida": false
+  },
+  {
+   "modulo": "diversos",
+   "modulo_titulo": "Diversos",
+   "secao": "Sistema",
+   "icone": "⚙️",
+   "nome": "Configurações",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "diversos",
+   "modulo_titulo": "Diversos",
+   "secao": "Sistema",
+   "icone": "🔑",
+   "nome": "Usuários e Permissões",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "diversos",
+   "modulo_titulo": "Diversos",
+   "secao": "Sistema",
+   "icone": "📋",
+   "nome": "Log de Auditoria",
+   "href": "/relatorios_config?rel=log",
+   "ok": true,
+   "repetida": true
+  },
+  {
+   "modulo": "diversos",
+   "modulo_titulo": "Diversos",
+   "secao": "Dados",
+   "icone": "💾",
+   "nome": "Backup",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  },
+  {
+   "modulo": "diversos",
+   "modulo_titulo": "Diversos",
+   "secao": "Dados",
+   "icone": "📤",
+   "nome": "Exportar Dados",
+   "href": "#",
+   "ok": false,
+   "repetida": true
+  }
+ ]
+}

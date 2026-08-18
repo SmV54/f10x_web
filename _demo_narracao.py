@@ -33,6 +33,8 @@ import re
 import subprocess
 import sys
 
+import unicodedata
+
 import edge_tts
 
 import _demo_montar as montar
@@ -41,8 +43,12 @@ VOZ = "pt-BR-ThalitaMultilingualNeural"
 RATE = "+0%"
 SAIDA = os.path.join("static", "demo_narracao.mp3")
 TEMPOS = "_demo_tempos.json"
-RESPIRO = 0.7          # segundos de silêncio no fim de cada fase
-RESPIRO_SLIDE = 1.0    # respiro maior na virada de slide
+# Os respiros são o ritmo da demonstração. Ficaram curtos na primeira versão
+# (0,7 e 1,0) e ela saiu apressada: uma frase emendava na outra e a troca de
+# módulo passava sem o espectador perceber que mudou de assunto.
+RESPIRO = 1.1          # segundos de silêncio no fim de cada fase
+RESPIRO_SLIDE = 2.0    # respiro maior na virada de slide
+ATRASO_INICIAL = 1.5   # silêncio antes da primeira palavra, para a capa entrar
 
 # A fala de cada cena. As chaves dos módulos são as do menu -- se um módulo
 # entrar ou sair do inventário, o script para e diz qual, em vez de narrar
@@ -57,6 +63,38 @@ ABERTURA = (
     "recibo do eSocial, num sistema só. E sempre à vista, no alto de toda "
     "tela: a empresa, o mês que está aberto e a validade do certificado."
 )
+
+LOGIN = (
+    "Entrar é o CPF e uma senha de seis dígitos. Cada pessoa do escritório "
+    "tem o seu acesso, com o que pode ver e o que pode mudar, e tudo o que "
+    "ela faz fica registrado no log."
+)
+
+# O passeio pelo menu: a voz apresenta os dez módulos na ordem em que estão
+# na tela, e cada cartão acende quando é citado. A palavra-gatilho de cada um
+# está em MARCAS_MENU, e o instante sai da própria fala -- por isso mexer
+# neste texto obriga a regerar o áudio, senão os cartões acendem fora de hora.
+MENU = (
+    "O sistema inteiro cabe num menu. "
+    "Cadastros guarda o funcionário, a função e a empresa. "
+    "Nova Folha abre e fecha o mês. "
+    "Eventuais cuida de férias, rescisão e afastamento. "
+    "Movimento é o que muda a cada mês: hora extra, falta, comissão. "
+    "Fixo é o que se repete sozinho. "
+    "Cálculo roda a folha. "
+    "Relatórios põem tudo em PDF. "
+    "Conexões levam o pagamento ao banco. "
+    "O eSocial monta e transmite a remessa. "
+    "E Diversos guarda o log."
+)
+
+# (palavra dita, posição do cartão no menu). "Movimento" e "Fixo" são cartões
+# diferentes, e a busca anda sempre para a frente -- por isso funciona.
+MARCAS_MENU = [
+    ("Cadastros", 1), ("Nova", 2), ("Eventuais", 3), ("Movimento", 4),
+    ("Fixo", 5), ("Cálculo", 6), ("Relatórios", 7), ("Conexões", 8),
+    ("eSocial", 9), ("Diversos", 10),
+]
 
 FECHO = (
     "As conexões bancárias, com remessa em CNAB e PIX, estão chegando. "
@@ -183,14 +221,55 @@ def duracao(caminho):
 
 
 def falar(texto, destino):
-    """Grava o mp3 do trecho. Devolve nada -- aqui não há destaque a casar."""
+    """Grava o mp3 do trecho e devolve [(segundo, palavra), ...] do que disse.
+
+    Vai pela API e não pela linha de comando por causa do
+    boundary="WordBoundary". Sem ele -- e é o padrão -- a voz devolve a frase
+    inteira num evento só, e não daria para saber quando ela chega em
+    "Relatórios". É disso que sai o instante em que cada cartão do menu
+    acende: medido na fala de verdade, não cronometrado no olho.
+    """
     async def rodar():
-        c = edge_tts.Communicate(texto, VOZ, rate=RATE)
+        c = edge_tts.Communicate(texto, VOZ, rate=RATE,
+                                 boundary="WordBoundary")
+        palavras = []
         with open(destino, "wb") as f:
             async for ch in c.stream():
                 if ch["type"] == "audio":
                     f.write(ch["data"])
-    asyncio.run(rodar())
+                elif ch["type"] == "WordBoundary":
+                    # offset vem em unidades de 100 nanossegundos
+                    palavras.append((ch["offset"] / 1e7, ch["text"]))
+        return palavras
+
+    return asyncio.run(rodar())
+
+
+def simples(s):
+    """Sem acento e em minúscula, para casar "cálculo" com o que a voz disse."""
+    return "".join(c for c in unicodedata.normalize("NFD", s.lower())
+                   if not unicodedata.combining(c))
+
+
+def casar(palavras, marcas):
+    """Liga cada destaque ao segundo em que a palavra foi dita.
+
+    Procura sempre para a frente, nunca do começo: é o que permite repetir a
+    mesma palavra apontando para cartões diferentes.
+    """
+    saida, k = [], 0
+    for palavra, alvo in marcas:
+        p = simples(palavra)
+        while k < len(palavras) and simples(palavras[k][1]) != p:
+            k += 1
+        if k >= len(palavras):
+            raise SystemExit(
+                "ERRO: a voz nunca disse %r -- confira a grafia no roteiro.\n"
+                "      Ela disse: %s"
+                % (palavra, " ".join(w for _, w in palavras)))
+        saida.append((round(palavras[k][0], 2), alvo))
+        k += 1
+    return saida
 
 
 def cenas():
@@ -209,7 +288,9 @@ def cenas():
     dados = json.load(io.open(montar.INVENTARIO, encoding="utf-8"))
     telas = dados["telas"]
 
-    lista = [("abertura", "Abertura", [ABERTURA])]
+    lista = [("abertura", "Abertura", [ABERTURA]),
+             ("login", "Login", [LOGIN]),
+             ("menu", "Menu", [MENU])]
     vistos = set()
     for mod in dados["modulos"]:
         if mod["chave"] in montar.MODULOS_NO_FECHO:
@@ -249,24 +330,36 @@ def main():
     print("cena                 fase       fala   +respiro")
     print("-" * 52)
     for chave, titulo, falas in lista:
-        fases = []
+        fases, luz = [], []
         for i, fala in enumerate(falas):
             arq = os.path.join(tmp, "%s_%d.mp3" % (chave, i))
-            falar(fala, arq)
+            palavras = falar(fala, arq)
             d = duracao(arq)
             # O respiro é maior na última fase da cena: é ali que o slide
             # inteiro troca, e emendar a fala de um módulo no outro sem
             # pausa faz a demonstração soar apressada.
             folga = RESPIRO_SLIDE if i == len(falas) - 1 else RESPIRO
+            # Antes da primeira palavra vai um silêncio: sem ele a voz começa
+            # junto com a capa, ainda em transição, e atropela a abertura.
+            antes = ATRASO_INICIAL if not partes else 0.0
+            # Os cartões do menu acendem contados da ENTRADA DA CENA, que é
+            # também onde o áudio dela começa -- os dois relógios batem.
+            if chave == "menu" and i == 0:
+                luz = [seg + antes for seg, _ in casar(palavras, MARCAS_MENU)]
             partes.append(arq)
-            inicio.append(t)
-            fases.append(round(d + folga, 2))
-            t += d + folga
+            inicio.append(t + antes)
+            fases.append(round(antes + d + folga, 2))
+            t += antes + d + folga
             nome = ["gaveta", "mosaico", "tela"][i] if len(falas) == 3 else "-"
             print("%-20.20s %-9s %5.1fs   %5.1fs"
-                  % (titulo if i == 0 else "", nome, d, d + folga))
-        slides.append({"chave": chave, "titulo": titulo,
-                       "fases": fases, "dur": round(sum(fases), 2)})
+                  % (titulo if i == 0 else "", nome, d, fases[-1]))
+        cena = {"chave": chave, "titulo": titulo,
+                "fases": fases, "dur": round(sum(fases), 2)}
+        if luz:
+            cena["luz"] = luz
+            print("%-20.20s %d cartões, de %.1fs a %.1fs dentro da cena"
+                  % ("", len(luz), luz[0], luz[-1]))
+        slides.append(cena)
 
     # Um arquivo só: cada trecho é atrasado até o segundo em que a fase entra
     # e todos são somados. Como não se sobrepõem, somar não mistura nada.

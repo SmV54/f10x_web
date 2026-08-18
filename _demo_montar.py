@@ -17,16 +17,32 @@ Sai:    demo_comercial.html
 Rodar:  python _demo_montar.py
 """
 
+import base64
 import io
 import json
 import os
 import re
 import unicodedata
+from datetime import datetime
 
 INVENTARIO = "_demo_telas.json"
 TEMPOS = "_demo_tempos.json"
 PASTA_PRINTS = os.path.join("static", "demo")
+NARRACAO = os.path.join("static", "demo_narracao.mp3")
+PRINT_LOGIN = os.path.join(PASTA_PRINTS, "_login.jpg")
+PRINT_MENU = os.path.join(PASTA_PRINTS, "_menu.jpg")
+CARTOES_MENU = "_demo_menu_cards.json"
 SAIDA = "demo_comercial.html"
+
+# Onde os campos ficam na FOTO da tela de login, em porcentagem da imagem.
+# Porcentagem e nao pixel porque a foto e redimensionada para caber no palco:
+# em pixel, o texto digitado descolaria do campo em qualquer tela diferente
+# daquela em que o print foi tirado.
+LOGIN_CAMPOS = [
+    ("cpf",   "123.456.789-09", 37.9),
+    ("senha", "••••••",         45.9),
+]
+LOGIN_BOTAO = 57.4
 
 # Conexões não tem nenhuma tela pronta e Diversos tem 1 de 5. Módulo vazio num
 # vídeo de venda joga contra, então os dois saem do corpo e viram uma frase de
@@ -68,6 +84,22 @@ T_GAVETA, T_MOSAICO, T_TELA = 12, 10, 20
 T_ABERTURA, T_FECHO = 24, 22
 
 
+def audio_embutido():
+    """A narração como data: URI, dentro do próprio HTML.
+
+    Custa uns 3 MB no arquivo e vale cada um deles. Com o mp3 do lado de
+    fora, bastava a página ser aberta de outra pasta, movida, copiada ou
+    enviada para alguém, e ela rodava MUDA -- sem erro, sem aviso, sem
+    nada. Foi exatamente o que aconteceu aqui: o áudio estava certo, tocava
+    quando testado, e mesmo assim não saía som. Embutido não há caminho para
+    dar errado, e é também o que permite mandar um arquivo só para o cliente.
+    """
+    if not os.path.exists(NARRACAO):
+        return ""
+    b64 = base64.b64encode(io.open(NARRACAO, "rb").read()).decode("ascii")
+    return "data:audio/mpeg;base64," + b64
+
+
 def tempos_da_voz():
     """Os tempos medidos na narração, por chave de cena. {} se não houver."""
     if not os.path.exists(TEMPOS):
@@ -93,17 +125,43 @@ def esc(s):
 
 
 def img_ou_moldura(tela, classe="tiro"):
-    """<img> quando o print existe; moldura com o nome quando não."""
+    """<img> quando o print existe; moldura com o nome quando não.
+
+    O caminho é RELATIVO, e é preciso que seja. Com a barra na frente
+    ("/static/demo/x.jpg") o navegador procura na raiz do disco quando a
+    página é aberta como arquivo -- que é como ela é vista. O print existia,
+    o <img> apontava para ele, e mesmo assim a tela saía vazia: todos os
+    prints capturados sumiam de uma vez, sem nada no lugar além da moldura
+    tracejada de "ainda não capturei". Foi o que fez a demonstração parecer
+    piscar entre quadros vazios.
+    """
     caminho = arquivo_do(tela)
     if os.path.exists(caminho):
-        return ('<div class="%s"><img src="/%s" alt="%s" loading="lazy"></div>'
+        # Sem loading="lazy", de proposito. Com ele o navegador so buscava a
+        # imagem quando o slide aparecia -- e como o slide aparece e some em
+        # segundos, cada troca mostrava o quadro vazio antes de preencher.
+        # Era metade do "piscar" entre uma tela e outra.
+        return ('<div class="%s"><img src="%s" alt="%s"></div>'
                 % (classe, caminho.replace("\\", "/"), esc(tela["nome"])))
     return ('<div class="%s falta"><span>%s</span></div>'
             % (classe, esc(tela["nome"])))
 
 
 def bloco_gaveta(mod, telas):
-    """A gaveta do módulo aberta, com as seções e todos os itens."""
+    """A gaveta do módulo aberta.
+
+    Usa a FOTO da gaveta de verdade quando ela existe (a que o
+    _demo_menu_print.py tira abrindo o menu pelo próprio código dele). A
+    versão desenhada abaixo continua como reserva: ela lista item por item,
+    o que é útil enquanto os prints não existem, mas nunca vai ser igual ao
+    menu -- e num vídeo de venda a diferença aparece.
+    """
+    foto = os.path.join(PASTA_PRINTS, "_menu_%s.jpg" % mod["chave"])
+    if os.path.exists(foto):
+        return ('<div class="cheia"><div class="tiro grande">'
+                '<img src="%s" alt="Menu — %s"></div></div>'
+                % (foto.replace("\\", "/"), esc(mod["titulo"])))
+
     secoes, ordem = {}, []
     for t in telas:
         if t["secao"] not in secoes:
@@ -123,6 +181,107 @@ def bloco_gaveta(mod, telas):
             % (esc(mod["icone"]), esc(mod["titulo"]), "".join(partes)))
 
 
+def colunas_do_mosaico(n):
+    """Quantas colunas cabem, para as miniaturas saírem o maior possível.
+
+    Não dá para deixar no CSS: o auto-fill usa uma largura mínima fixa e os
+    módulos vão de 3 telas (Movimento Fixo) a 36 (Eventuais). Com um número
+    só, ou as 36 estouram o palco, ou as 3 viram selos perdidos num campo
+    vazio -- foi o que aconteceu com Cadastros, 18 telas espremidas em oito
+    colunas ocupando metade da altura.
+
+    Aqui o número de telas é conhecido na geração, então procura-se a menor
+    quantidade de colunas (= maior miniatura) cujas linhas ainda cabem na
+    altura do palco.
+    """
+    LARG, ALT, GAP, LEGENDA = 1370, 660, 10, 20
+    for c in range(2, 13):
+        larg = (LARG - (c - 1) * GAP) / c
+        alt = larg * 10 / 16 + LEGENDA
+        linhas = -(-n // c)                    # teto da divisão
+        if linhas * (alt + GAP) <= ALT:
+            return c
+    return 12
+
+
+# Para que serve cada módulo, na linha do cartão do menu. Curto de propósito:
+# quem lê é o espectador, de longe, enquanto a voz explica o mesmo.
+PARA_QUE_SERVE = {
+    "cadastros":     "funcionário, função, empresa",
+    "novafolha":     "abre e fecha o mês",
+    "eventuais":     "férias, rescisão, afastamento",
+    "movimento":     "o que muda a cada mês",
+    "movimentofixo": "o que se repete sozinho",
+    "calculo":       "roda a folha",
+    "relatorios":    "tudo em PDF",
+    "conexoes":      "pagamento no banco",
+    "esocial":       "monta e transmite",
+    "diversos":      "log de auditoria",
+}
+
+
+def bloco_menu(modulos, luz):
+    """O menu com os dez módulos, cada um acendendo quando a voz o cita.
+
+    Em cima da FOTO do menu de verdade, quando ela existe. O realce não é
+    posicionado no olho: o _demo_menu_print.py pergunta ao navegador onde
+    cada cartão ficou, no mesmo instante em que tira o print, e grava em
+    porcentagem. Mudou o menu de lugar, o realce vai junto.
+
+    Sem a foto, cai na grade desenhada mais abaixo -- que serve, mas nunca
+    vai ser igual ao menu de verdade.
+    """
+    titulos = {m["chave"]: m["titulo"] for m in modulos}
+    if os.path.exists(PRINT_MENU) and os.path.exists(CARTOES_MENU):
+        pos = json.load(io.open(CARTOES_MENU, encoding="utf-8"))
+        realces = "".join(
+            '<span class="mrealce" data-nome="%s" data-pq="%s" style="left:%.2f%%;'
+            'top:%.2f%%;width:%.2f%%;height:%.2f%%"></span>'
+            % (esc(titulos.get(c["chave"], c["chave"])),
+               esc(PARA_QUE_SERVE.get(c["chave"], "")),
+               c["left"], c["top"], c["width"], c["height"])
+            for c in pos)
+        return ('<div class="menu-foto" data-luz="%s">'
+                '<div class="tiro grande quadro-menu">'
+                '<img src="%s" alt="Menu do sistema">%s</div>'
+                '<div class="mlegenda"><b></b><span></span></div></div>'
+                % (",".join("%.2f" % s for s in luz),
+                   PRINT_MENU.replace("\\", "/"), realces))
+
+    cards = "".join(
+        '<div class="mcard"><span class="mic">%s</span>'
+        '<b>%s</b><span class="mpq">%s</span></div>'
+        % (esc(m.get("icone", "")), esc(m["titulo"]),
+           esc(PARA_QUE_SERVE.get(m["chave"], "")))
+        for m in modulos)
+    return ('<div class="menu-cena"><h3>Um menu, dez módulos</h3>'
+            '<div class="menu-grade" data-luz="%s">%s</div></div>'
+            % (",".join("%.2f" % s for s in luz), cards))
+
+
+def bloco_login():
+    """A tela de login com CPF e senha sendo digitados, e o Entrar acendendo.
+
+    O texto vai POR CIMA dos campos da propria foto, posicionado em
+    porcentagem -- nao e um cartao flutuante como nos outros modulos. Aqui
+    vale o esforco a mais: e a primeira coisa que o cliente ve, e digitar num
+    campo que nao e o campo da tela entregaria a encenacao na hora.
+    """
+    if not os.path.exists(PRINT_LOGIN):
+        return ('<div class="cheia"><div class="tiro falta"><span>Tela de login'
+                ' — falta o print (static/demo/_login.jpg)</span></div></div>')
+    campos = "".join(
+        '<span class="campo %s" data-txt="%s" style="top:%.1f%%">'
+        '<span class="valor"><span></span><i></i></span></span>'
+        % (classe, esc(txt), topo)
+        for classe, txt, topo in LOGIN_CAMPOS)
+    return ('<div class="cheia"><div class="tiro grande quadro-login">'
+            '<img src="%s" alt="Tela de login">%s'
+            '<span class="botao-sobre" style="top:%.1f%%"></span>'
+            '</div></div>'
+            % (PRINT_LOGIN.replace("\\", "/"), campos, LOGIN_BOTAO))
+
+
 def bloco_mosaico(telas):
     """Todas as telas do módulo em miniatura, entrando em cascata."""
     prontas = [t for t in telas if t["ok"]]
@@ -130,7 +289,8 @@ def bloco_mosaico(telas):
         '<figure style="--i:%d">%s<figcaption>%s</figcaption></figure>'
         % (i, img_ou_moldura(t, "tiro mini"), esc(t["nome"]))
         for i, t in enumerate(prontas))
-    return '<div class="mosaico">%s</div>' % celulas
+    return ('<div class="mosaico" style="grid-template-columns:repeat(%d,1fr)">'
+            '%s</div>' % (colunas_do_mosaico(len(prontas)), celulas))
 
 
 def bloco_tela(mod_chave, telas):
@@ -179,6 +339,25 @@ def main():
         </div>
       </section>""" % t_abertura))
 
+    # O login vem logo depois da capa: a demonstracao entra no sistema na
+    # frente de quem assiste, em vez de aparecer ja logada do nada.
+    t_login = voz["login"]["dur"] if "login" in voz else 14
+    slides.append((t_login, """
+      <section class="slide" data-dur="%s" data-fases="%s">
+        <div class="fase fase-login">%s</div>
+      </section>""" % (t_login, t_login, bloco_login())))
+
+    # O passeio pelo menu, antes de entrar em módulo nenhum: é aqui que o
+    # cliente entende o mapa. Mostra os dez, inclusive os dois que ainda não
+    # têm tela pronta -- no menu eles existem, e escondê-los seria mentir.
+    t_menu = voz["menu"]["dur"] if "menu" in voz else 36
+    slides.append((t_menu, """
+      <section class="slide" data-dur="%s" data-fases="%s">
+        <div class="fase fase-menu">%s</div>
+      </section>""" % (t_menu, t_menu,
+                       bloco_menu(dados["modulos"],
+                                  voz.get("menu", {}).get("luz", [])))))
+
     for mod in modulos:
         do_mod = [t for t in telas if t["modulo"] == mod["chave"]]
         prontas = [t for t in do_mod if t["ok"]]
@@ -210,15 +389,22 @@ def main():
                        (" Chegando: " + promessa + ".") if promessa else "")))
 
     total = round(sum(d for d, _ in slides), 2)
+    audio = audio_embutido()
+    carimbo = datetime.now().strftime("gerado %d/%m %H:%M")
     html = MOLDE.replace("{{SLIDES}}", "".join(s for _, s in slides)) \
-                .replace("{{TOTAL}}", str(total))
+                .replace("{{TOTAL}}", str(total)) \
+                .replace("{{CARIMBO}}", carimbo) \
+                .replace("{{AUDIO}}", audio)
     io.open(SAIDA, "w", encoding="utf-8", newline="").write(html)
 
     faltam = sum(1 for t in telas
                  if t["ok"] and not t["repetida"] and not os.path.exists(arquivo_do(t)))
-    print("%s gerado — %d slides, %.0f s (%d min %02d s)%s"
+    print("%s gerado — %d slides, %.0f s (%d min %02d s), %.1f MB%s"
           % (SAIDA, len(slides), total, int(total) // 60, int(total) % 60,
+             os.path.getsize(SAIDA) / 1048576,
              "" if voz else "   [tempos fixos, sem narração]"))
+    print("   %s   narração %s"
+          % (carimbo, "embutida no HTML" if audio else "AUSENTE"))
     for titulo, n, dur in roteiro:
         print("   %-16s %2d telas  %.0fs" % (titulo, n, dur))
     if fora:
@@ -273,17 +459,33 @@ body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);
 .rail{display:flex;align-items:center;gap:clamp(10px,2vw,20px);flex-wrap:wrap}
 .mark{font-weight:700;letter-spacing:-.02em;font-size:15px;white-space:nowrap}
 .mark b{color:var(--brand)}
+/* A hora em que este arquivo foi gerado. Existe para responder numa olhada
+   a pergunta que custou caro aqui: "e a versao nova que voce esta vendo?" */
+.mark em{font-style:normal;font-weight:400;font-size:10.5px;color:var(--ink-3);
+  margin-left:6px}
 .track{flex:1 1 240px;height:3px;background:var(--rule);border-radius:2px;overflow:hidden}
 .track i{display:block;height:100%;width:0;background:var(--brand)}
+.voznota{font-size:11.5px;color:var(--ink-3);white-space:nowrap}
+.voznota.ruim{color:var(--amber);font-weight:600;white-space:normal}
 .ctrl{display:flex;gap:8px}
 .ctrl button{font:inherit;font-size:12px;padding:6px 12px;border:1px solid var(--rule);
   border-radius:7px;background:var(--stage);color:var(--ink);cursor:pointer}
 .ctrl button:hover{border-color:var(--brand);color:var(--brand)}
 .palco{flex:1;position:relative;background:var(--stage);border:1px solid var(--rule);
        border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
+/* A troca de slide era um corte seco: o de fora sumia e o de dentro aparecia
+   no mesmo quadro, e com dez trocas em cinco minutos a demonstracao parecia
+   piscar. Os dois estao empilhados no mesmo lugar, entao basta a transicao
+   para virar dissolucao. */
+/* A troca de slide era um corte seco. Com a transicao simples os dois ficavam
+   meio transparentes ao mesmo tempo, um por cima do outro, e a sobreposicao
+   de dois prints claros dava um clarao -- trocou um piscar por outro. Por
+   isso o que entra espera o que sai terminar: sai em .45s, entra depois. */
 .slide{position:absolute;inset:0;padding:clamp(18px,3vw,40px);opacity:0;
-       pointer-events:none;display:flex;flex-direction:column;gap:14px;overflow:hidden}
-.slide.on{opacity:1;pointer-events:auto}
+       pointer-events:none;display:flex;flex-direction:column;gap:14px;overflow:hidden;
+       transition:opacity .45s ease}
+.slide.on{opacity:1;pointer-events:auto;transition:opacity .5s ease .4s}
+@media (prefers-reduced-motion: reduce){.slide,.fase{transition:none}}
 h1{font-size:clamp(30px,4.4vw,58px);margin:0;letter-spacing:-.03em}
 h2{font-size:clamp(24px,3.4vw,44px);margin:0;letter-spacing:-.02em}
 h3{font-size:clamp(15px,1.9vw,22px);margin:0 0 10px;color:var(--ink-2)}
@@ -317,9 +519,16 @@ h4{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--brand
 .gaveta ul{list-style:none;margin:0;padding:0;display:grid;gap:3px}
 .gaveta li{font-size:12.5px;color:var(--ink-2);line-height:1.45}
 .gaveta li.nao{opacity:.42}
-.mosaico{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
-  align-content:start;height:100%;overflow:hidden}
-.mosaico figure{margin:0;animation:sobe .5s both;animation-delay:calc(var(--i)*.05s)}
+/* As colunas vem escritas no proprio elemento, calculadas por modulo -- ver
+   colunas_do_mosaico(). O align-content centra o que sobra: com 3 telas o
+   bloco fica no meio do palco, e nao encostado no alto. */
+/* O h3 e o mosaico dividem a fase. Sem isto o mosaico pedia 100% da altura
+   INTEIRA, o titulo empurrava tudo para baixo, e o que devia estar centrado
+   aparecia com um vao no alto. */
+.fase-mosaico{display:flex;flex-direction:column}
+.mosaico{display:grid;gap:10px;align-content:center;justify-content:center;
+  flex:1;min-height:0;overflow:hidden}
+.mosaico figure{margin:0;animation:sobe .7s both;animation-delay:calc(var(--i)*.09s)}
 @keyframes sobe{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
 .tiro{border:1px solid var(--rule);border-radius:7px;overflow:hidden;background:#fff;
@@ -344,6 +553,58 @@ figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
 .campo .valor i{width:1.5px;height:16px;background:var(--brand);opacity:0}
 .campo.digitando .valor i{animation:pisca .9s steps(1) infinite}
 @keyframes pisca{0%,50%{opacity:1}51%,100%{opacity:0}}
+/* ---- o menu de verdade, com o realce andando de cartao em cartao ---- */
+.menu-foto{display:flex;flex-direction:column;gap:14px;height:100%;
+  align-items:center;justify-content:center}
+.quadro-menu{position:relative}
+.mrealce{position:absolute;border:2px solid var(--brand);border-radius:10px;
+  background:rgba(31,111,208,.12);opacity:0;transform:scale(.94);
+  transition:opacity .3s, transform .3s;pointer-events:none}
+.mrealce.aceso{opacity:1;transform:scale(1)}
+/* A legenda fica FORA da foto, embaixo. Por cima taparia o proprio menu, e
+   e o menu que se quer mostrar. */
+.mlegenda{min-height:2.6em;text-align:center;opacity:0;transition:opacity .3s}
+.mlegenda.on{opacity:1}
+.mlegenda b{display:block;font-size:clamp(16px,2vw,26px);color:var(--brand)}
+.mlegenda span{font-size:clamp(12px,1.3vw,17px);color:var(--ink-2)}
+/* ---- reserva: os dez cartoes desenhados, quando nao ha foto do menu ---- */
+.menu-cena{display:flex;flex-direction:column;height:100%}
+/* As linhas seguem o conteudo, nao a altura do palco: com 1fr os cartoes
+   esticavam ate o pe da tela e o texto boiava no meio de um vazio. */
+.menu-grade{display:grid;gap:clamp(10px,1.6vw,22px);flex:1;min-height:0;
+  grid-template-columns:repeat(5,1fr);align-content:center}
+.mcard{border:1px solid var(--rule);border-radius:12px;background:var(--panel);
+  padding:clamp(10px,1.4vw,18px);display:flex;flex-direction:column;gap:5px;
+  justify-content:center;opacity:.5;transition:opacity .4s, transform .4s,
+  border-color .4s, box-shadow .4s}
+.mcard .mic{font-size:clamp(20px,2.6vw,34px);line-height:1}
+.mcard b{font-size:clamp(12px,1.35vw,19px);letter-spacing:-.01em}
+.mcard .mpq{font-size:clamp(10px,1.05vw,14px);color:var(--ink-2);line-height:1.35}
+/* O cartao citado cresce e ganha cor; os outros continuam la, apagados. Some
+   com o cartao seria pior: o cliente perde a nocao de quantos modulos sao. */
+.mcard.aceso{opacity:1;transform:translateY(-4px) scale(1.04);
+  border-color:var(--brand);background:var(--brand-soft);box-shadow:var(--shadow)}
+/* ---- tela de login: o texto vai por cima dos campos da propria foto ---- */
+.quadro-login{position:relative}
+/* O tamanho da letra acompanha a altura da foto, que e o que o palco limita.
+   Nao use container-type aqui: o inline-size aplica contencao e a caixa
+   parou de acompanhar a imagem -- a tela de login saia toda branca. */
+/* O fundo branco nao e enfeite: o campo da FOTO ja vem com o texto de
+   ajuda escrito dentro ("Senha (6 dígitos)"), e sem cobri-lo os pontinhos
+   da senha apareciam por cima da frase, um sobre o outro. */
+.fase-login .campo{position:absolute;left:39.4%;width:21.2%;height:4%;
+  display:flex;align-items:center;background:#fff;
+  font-size:clamp(9px, calc((100vh - 190px) * .0167), 24px)}
+.fase-login .campo .valor{border:0;background:none;padding:0;min-height:0;
+  font-family:var(--mono);font-size:inherit;color:#1a2c44}
+.fase-login .campo .valor i{height:1.15em;background:#1F6FD0}
+.botao-sobre{position:absolute;left:38.7%;width:22.5%;height:4.7%;border-radius:6px;
+  box-shadow:0 0 0 0 rgba(31,111,208,.55);opacity:0}
+.fase-login.pronto .botao-sobre{animation:apertar 1.1s ease .2s 2;opacity:1}
+@keyframes apertar{
+  0%{box-shadow:0 0 0 0 rgba(31,111,208,.55)}
+  70%{box-shadow:0 0 0 14px rgba(31,111,208,0)}
+  100%{box-shadow:0 0 0 0 rgba(31,111,208,0)}}
 .fecho{justify-content:center}
 @media (max-width:820px){
   .cab-demo{grid-template-columns:1fr}
@@ -354,8 +615,9 @@ figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
 <body>
 <div class="deck">
   <div class="rail">
-    <div class="mark">Folha10<b>-Simples</b></div>
+    <div class="mark">Folha10<b>-Simples</b> <em id="carimbo">{{CARIMBO}}</em></div>
     <div class="track"><i id="barra"></i></div>
+    <span class="voznota" id="estadoVoz"></span>
     <div class="ctrl">
       <button id="btPlay">▶ Rodar</button>
       <button id="btAnt">‹</button>
@@ -364,7 +626,7 @@ figcaption{font-size:10.5px;color:var(--ink-3);margin-top:4px;line-height:1.3}
   </div>
   <div class="palco" id="palco">{{SLIDES}}</div>
 </div>
-<audio id="voz" src="static/demo_narracao.mp3" preload="auto"></audio>
+<audio id="voz" src="{{AUDIO}}" preload="auto"></audio>
 <script>
 // Motor dos slides. Cada <section> diz quanto dura em data-dur; os blocos de
 // modulo tem tres fases internas (gaveta, mosaico, tela cheia) que se revezam
@@ -408,26 +670,64 @@ function agora() {
 function mostrarFase(slide, i) {
   const fases = [...slide.querySelectorAll('.fase')];
   fases.forEach((f, k) => f.classList.toggle('on', k === i));
-  if (fases[i] && fases[i].classList.contains('fase-tela')) digitar(fases[i]);
+  const f = fases[i];
+  if (f && (f.classList.contains('fase-tela') || f.classList.contains('fase-login')))
+    digitar(f);
+  if (f && f.classList.contains('fase-menu')) acender(f);
+}
+
+// Acende um cartao do menu por vez, no segundo em que a voz cita o modulo.
+// Os segundos vem medidos da propria narracao (data-luz), nao cronometrados
+// no olho: mexeu no texto, regere o audio e eles se reajustam sozinhos.
+let luzes = [];
+function acender(fase) {
+  luzes.forEach(clearTimeout); luzes = [];
+  // Dois desenhos possiveis: o realce sobre a foto do menu de verdade, ou os
+  // cartoes desenhados (reserva, quando o print ainda nao existe).
+  const alvos = [...fase.querySelectorAll('.mrealce, .mcard')];
+  const legenda = fase.querySelector('.mlegenda');
+  const fonte = fase.querySelector('[data-luz]');
+  alvos.forEach(c => c.classList.remove('aceso'));
+  if (legenda) legenda.classList.remove('on');
+  const quando = ((fonte && fonte.dataset.luz) || '')
+    .split(',').filter(Boolean).map(Number);
+  quando.forEach((s, i) => {
+    if (!alvos[i]) return;
+    luzes.push(setTimeout(() => {
+      alvos.forEach(c => c.classList.remove('aceso'));
+      alvos[i].classList.add('aceso');
+      if (legenda) {
+        legenda.querySelector('b').textContent = alvos[i].dataset.nome || '';
+        legenda.querySelector('span').textContent = alvos[i].dataset.pq || '';
+        legenda.classList.add('on');
+      }
+    }, s * 1000));
+  });
 }
 
 // Digita letra por letra. O texto vem do data-txt para o HTML continuar
 // legivel e para o campo poder ser reiniciado quantas vezes for preciso.
 function digitar(fase) {
   const campos = [...fase.querySelectorAll('.campo')];
+  fase.classList.remove('pronto');
   campos.forEach(c => {
     c.querySelector('.valor span').textContent = '';
     c.classList.remove('digitando');
   });
   let atrasoCampo = 600;
-  campos.forEach(c => {
+  campos.forEach((c, k) => {
     setTimeout(() => {
       c.classList.add('digitando');
       const txt = c.dataset.txt || '', alvo = c.querySelector('.valor span');
       let i = 0;
       const bate = setInterval(() => {
         alvo.textContent = txt.slice(0, ++i);
-        if (i >= txt.length) { clearInterval(bate); c.classList.remove('digitando'); }
+        if (i >= txt.length) {
+          clearInterval(bate); c.classList.remove('digitando');
+          // Terminou o ultimo campo: no login e a deixa para o Entrar
+          // acender, como se o usuario tivesse apertado.
+          if (k === campos.length - 1) fase.classList.add('pronto');
+        }
       }, 70);
     }, atrasoCampo);
     atrasoCampo += 600 + (c.dataset.txt || '').length * 70 + 500;
@@ -465,10 +765,25 @@ function tique() {
   pintar(t);
 }
 
+// A narracao falhando calada era o pior dos mundos: a demonstracao rodava
+// muda, no ritmo certo mas sem motivo aparente, e quem assistia achava que
+// nem havia voz. Agora o motivo aparece escrito ao lado da barra.
+const nota = document.getElementById('estadoVoz');
+function dizer(txt, ruim) {
+  nota.textContent = txt || '';
+  nota.classList.toggle('ruim', !!ruim);
+}
+voz.addEventListener('playing', () => dizer(''));
+voz.addEventListener('error', () => dizer(
+  'sem narração: não achei static/demo_narracao.mp3 — rode  python _demo_narracao.py', true));
+
 function rodar() {
   rodando = true; t0 = performance.now();
   document.getElementById('btPlay').textContent = '❚❚ Pausar';
-  voz.play().catch(() => {});   // celular so libera audio depois de um toque
+  // O navegador so libera som depois de um gesto seu, e recusa calado. O
+  // catch transforma a recusa em recado -- outro clique costuma resolver.
+  voz.play().then(() => dizer('')).catch(() => dizer(
+    'som bloqueado pelo navegador — clique em Rodar mais uma vez', true));
   clearInterval(laco); laco = setInterval(tique, 100);
 }
 

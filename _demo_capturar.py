@@ -97,6 +97,15 @@ def main():
         except Exception:
             pass
 
+        # A propria tela de login e a primeira cena da demonstracao, com o
+        # CPF e a senha sendo digitados. O print dela tem que sair AGORA,
+        # antes do login: depois de entrar, essa tela nao existe mais.
+        login_jpg = os.path.join(PASTA, "_login.jpg")
+        if args.refazer or not os.path.exists(login_jpg):
+            pagina.wait_for_timeout(500)
+            pagina.screenshot(path=login_jpg, type="jpeg", quality=QUALIDADE)
+            print(" Tela de login guardada (%s).\n" % login_jpg)
+
         print(" >>> ABRIU UMA JANELA NOVA DO CHROMIUM, na tela de login.")
         print("     É NELA que você entra — não no seu navegador de sempre.")
         print("     Se não estiver à vista, procure na barra de tarefas.")
