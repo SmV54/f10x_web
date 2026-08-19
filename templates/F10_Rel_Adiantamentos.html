@@ -82,6 +82,17 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .card-titulo-right { font-size: 11px; font-weight: 400; color: #94a3b8; }
 
+/* BOTÃO PDF */
+.btn-pdf {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 30px; padding: 0 16px; border-radius: 8px;
+    background: #dc2626; color: #fff; font-weight: 700; font-size: 12px;
+    border: none; cursor: pointer; text-decoration: none; transition: 0.15s;
+    white-space: nowrap;
+}
+.btn-pdf:hover { background: #b91c1c; }
+.btn-pdf:disabled { opacity: 0.4; cursor: not-allowed; }
+
 /* ── TABELA ── */
 .tabela-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
@@ -183,7 +194,10 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
     <div class="card">
         <div class="card-titulo">
             <span>Adiantamentos lançados</span>
-            <span class="card-titulo-right">{% if modo_edicao %}Verbas 161–164 · ✏️ altera o valor · 🗑 exclui{% else %}Verbas 161–164 · somente consulta{% endif %}</span>
+            <span style="display:flex;align-items:center;gap:14px;">
+                <span class="card-titulo-right">{% if modo_edicao %}Verbas 161–164 · ✏️ altera o valor · 🗑 exclui{% else %}Verbas 161–164 · somente consulta{% endif %}</span>
+                <button class="btn-pdf" id="btnPdf" onclick="gerarPDF()" disabled>&#128438; Imprimir em PDF</button>
+            </span>
         </div>
 
         <div class="tabela-wrap">
@@ -241,6 +255,7 @@ async function carregar() {
 
     tbody.innerHTML = `<tr><td colspan="${NCOLS}"><div class="estado-central"><div class="spinner"></div>Carregando…</div></td></tr>`;
     rodape.style.display = 'none';
+    habilitarPdf(false);
     document.getElementById('resumoFiltro').textContent = '';
 
     try {
@@ -266,6 +281,17 @@ async function carregar() {
     }
 }
 
+function gerarPDF() {
+    const folha = document.getElementById('selFolha').value || ANOMES_ATUAL;
+    window.open(`/rel_adiantamentos_pdf?folha=${folha}`, '_blank');
+}
+
+// O PDF so faz sentido com linhas na tela: sem registro, botao apagado.
+function habilitarPdf(ligado) {
+    const b = document.getElementById('btnPdf');
+    if (b) b.disabled = !ligado;
+}
+
 function renderTabela(lista) {
     const tbody = document.getElementById('corpoTabela');
     let total = 0;
@@ -289,6 +315,7 @@ function renderTabela(lista) {
     atualizarTotal(total);
     document.getElementById('resumoFiltro').textContent = `${lista.length} registro${lista.length !== 1 ? 's' : ''}`;
     document.getElementById('rodape').style.display = 'flex';
+    habilitarPdf(true);
 }
 
 function atualizarTotal(total) {

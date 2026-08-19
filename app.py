@@ -61016,22 +61016,10 @@ def listagem_adiantamentos():
     )
 
 
-@app.route("/api/adiantamento_listagem")
-def api_adiantamento_listagem():
-    if not session.get("logado"):
-        return jsonify({"ok": False, "msg": "Sessão expirada."})
-    id_empresa = _get_id_empresa()
-    id_cliente = session.get("id_cliente")
-
-    folha_str = request.args.get("folha", "").strip()
-    if not folha_str:
-        return jsonify({"ok": False, "msg": "Folha não informada."})
-    try:
-        folha = int(folha_str)
-    except ValueError:
-        return jsonify({"ok": False, "msg": "Folha inválida."})
-
-    # Registros de adiantamento do tab_mov
+def _adiantamentos_da_folha(id_empresa, id_cliente, folha):
+    """Adiantamentos quinzenais (161-164) de uma folha, com nome do funcionário e
+    descrição da verba. Usada pela listagem na tela E pelo PDF: as duas leem daqui
+    para nunca mostrarem coisas diferentes. Retorna (registros, erro)."""
     try:
         r_mov = (supabase.table("tab_mov")
                  .select("id, matricula, cod_verba, valor")
@@ -61044,10 +61032,10 @@ def api_adiantamento_listagem():
                  .execute())
         registros_raw = r_mov.data or []
     except Exception as e:
-        return jsonify({"ok": False, "msg": str(e)[:200]})
+        return [], str(e)[:200]
 
     if not registros_raw:
-        return jsonify({"ok": True, "registros": []})
+        return [], None
 
     # Nomes dos funcionários
     mats = list({r["matricula"] for r in registros_raw if r.get("matricula")})
@@ -61086,8 +61074,66 @@ def api_adiantamento_listagem():
         }
         for r in registros_raw
     ]
+    return registros, None
 
+
+@app.route("/api/adiantamento_listagem")
+def api_adiantamento_listagem():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    folha_str = request.args.get("folha", "").strip()
+    if not folha_str:
+        return jsonify({"ok": False, "msg": "Folha não informada."})
+    try:
+        folha = int(folha_str)
+    except ValueError:
+        return jsonify({"ok": False, "msg": "Folha inválida."})
+
+    registros, erro = _adiantamentos_da_folha(id_empresa, id_cliente, folha)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
     return jsonify({"ok": True, "registros": registros})
+
+
+@app.route("/rel_adiantamentos_pdf")
+def rel_adiantamentos_pdf():
+    """PDF da listagem de adiantamentos quinzenais — mesmas colunas da tela."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    folha_str = (request.args.get("folha") or "").strip() or str(session.get("anomes_atual") or "")
+    try:
+        folha = int(folha_str)
+    except ValueError:
+        folha = 0
+
+    registros, _erro = _adiantamentos_da_folha(id_empresa, id_cliente, folha) if folha else ([], None)
+
+    rows = [[f"{int(r['matricula']):04d}",
+             r["nome"] or "—",
+             f"{r['cod_verba']} — {r['dsc_rubr'] or '—'}",
+             _fmt_brl(r["valor"] or 0)]
+            for r in registros]
+
+    total = sum((r["valor"] or 0) for r in registros)
+    sub   = f"Folha {_folha_br(folha)}"
+    if registros:
+        sub += f" · {len(registros)} lançamento(s) · Total {_fmt_brl(total)}"
+    else:
+        sub += " · nenhum adiantamento lançado"
+
+    return _pdf_tabela("Listagem de Adiantamentos Quinzenais",
+                       ["Mat.", "Funcionário", "Verba", "Valor"],
+                       [1.8, 7.9, 4.8, 2.5], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=sub,
+                       filename=f"Adiantamentos_{folha or 'folha'}.pdf")
 
 
 # ── Edição / exclusão do adiantamento quinzenal ──────────
