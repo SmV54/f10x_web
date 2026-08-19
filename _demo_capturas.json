@@ -1,29 +1,16 @@
 {
  "capturadas": [
   {
-   "modulo": "novafolha",
-   "modulo_titulo": "Nova Folha",
-   "secao": "Folha",
-   "icone": "📅",
-   "nome": "Novo Mês/Ano",
-   "href": "/cad_anomes",
+   "modulo": "cadastros",
+   "modulo_titulo": "Cadastros",
+   "secao": "Pensão Alimentícia",
+   "icone": "🧮",
+   "nome": "Fórmulas",
+   "href": "/pensao_formulas",
    "ok": true,
    "repetida": false,
-   "arquivo": "static\\demo\\novafolha_cad_anomes.jpg",
-   "url_final": "http://127.0.0.1:5000/cad_anomes",
-   "voltou": false
-  },
-  {
-   "modulo": "novafolha",
-   "modulo_titulo": "Nova Folha",
-   "secao": "Folha",
-   "icone": "🔄",
-   "nome": "Outro Mês/Ano",
-   "href": "/cad_anomes?modo=trocar",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\novafolha_cad_anomes_modo_trocar.jpg",
-   "url_final": "http://127.0.0.1:5000/cad_anomes?modo=trocar",
+   "arquivo": "static\\demo\\cadastros_pensao_formulas.jpg",
+   "url_final": "http://127.0.0.1:5000/pensao_formulas",
    "voltou": false
   },
   {
@@ -56,45 +43,6 @@
    "modulo": "eventuais",
    "modulo_titulo": "Eventuais",
    "secao": "Férias",
-   "icone": "🏖️",
-   "nome": "Lançar Férias",
-   "href": "/select_funcionario?contexto=ferias",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_select_funcionario_contexto_ferias.jpg",
-   "url_final": "http://127.0.0.1:5000/select_funcionario?contexto=ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Férias",
-   "icone": "📝",
-   "nome": "Lançar Movimento Férias",
-   "href": "/cad_mov_ferias",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_cad_mov_ferias.jpg",
-   "url_final": "http://127.0.0.1:5000/cad_mov_ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Férias",
-   "icone": "🖩",
-   "nome": "Calcular Férias",
-   "href": "/calc_ferias",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_calc_ferias.jpg",
-   "url_final": "http://127.0.0.1:5000/calc_ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Férias",
    "icone": "📄",
    "nome": "Memória de Cálculo",
    "href": "/memoria_ferias",
@@ -102,149 +50,6 @@
    "repetida": false,
    "arquivo": "static\\demo\\eventuais_memoria_ferias.jpg",
    "url_final": "http://127.0.0.1:5000/memoria_ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Férias",
-   "icone": "🧾",
-   "nome": "Recibo de Férias",
-   "href": "/recibo_ferias",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_recibo_ferias.jpg",
-   "url_final": "http://127.0.0.1:5000/recibo_ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Férias",
-   "icone": "❌",
-   "nome": "Cancelar Férias",
-   "href": "/cad_cancelar_ferias",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_cad_cancelar_ferias.jpg",
-   "url_final": "http://127.0.0.1:5000/cad_cancelar_ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Férias",
-   "icone": "📋",
-   "nome": "Funcionários em Férias",
-   "href": "/lista_ferias",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_lista_ferias.jpg",
-   "url_final": "http://127.0.0.1:5000/lista_ferias",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Salários",
-   "icone": "💹",
-   "nome": "Alteração de Salário",
-   "href": "/select_funcionario?contexto=aumento",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_select_funcionario_contexto_aumento.jpg",
-   "url_final": "http://127.0.0.1:5000/select_funcionario?contexto=aumento",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Salários",
-   "icone": "↩️",
-   "nome": "Cancelar Alteração",
-   "href": "/cad_cancelar_aumento",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_cad_cancelar_aumento.jpg",
-   "url_final": "http://127.0.0.1:5000/cad_cancelar_aumento",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Salários",
-   "icone": "📊",
-   "nome": "Relatório de Salários",
-   "href": "/relatorios_config?rel=sal_aumento",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_relatorios_config_rel_sal_aumento.jpg",
-   "url_final": "http://127.0.0.1:5000/relatorios_config?rel=sal_aumento",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "📢",
-   "nome": "Aviso Prévio",
-   "href": "/select_funcionario?contexto=aviso_previo",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_select_funcionario_contexto_aviso_previo.jpg",
-   "url_final": "http://127.0.0.1:5000/select_funcionario?contexto=aviso_previo",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "📄",
-   "nome": "Listagem de Aviso Prévio",
-   "href": "/lista_aviso_previo",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_lista_aviso_previo.jpg",
-   "url_final": "http://127.0.0.1:5000/lista_aviso_previo",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "✍️",
-   "nome": "Registrar Rescisão",
-   "href": "/select_funcionario?contexto=rescisao",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_select_funcionario_contexto_rescisao.jpg",
-   "url_final": "http://127.0.0.1:5000/select_funcionario?contexto=rescisao",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "📝",
-   "nome": "Movimento Mês Rescisão",
-   "href": "/cad_mov_rescisao",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_cad_mov_rescisao.jpg",
-   "url_final": "http://127.0.0.1:5000/cad_mov_rescisao",
-   "voltou": false
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "🖩",
-   "nome": "Calcular Rescisão",
-   "href": "/calc_rescisao",
-   "ok": true,
-   "repetida": false,
-   "arquivo": "static\\demo\\eventuais_calc_rescisao.jpg",
-   "url_final": "http://127.0.0.1:5000/calc_rescisao",
    "voltou": false
   },
   {
@@ -259,9 +64,7 @@
    "arquivo": "static\\demo\\eventuais_calc_rescisao_modo_trct.jpg",
    "url_final": "http://127.0.0.1:5000/calc_rescisao?modo=trct",
    "voltou": false
-  }
- ],
- "erros": [
+  },
   {
    "modulo": "eventuais",
    "modulo_titulo": "Eventuais",
@@ -271,7 +74,9 @@
    "href": "/calc_rescisao?modo=memoria",
    "ok": true,
    "repetida": false,
-   "erro": "Page.wait_for_timeout: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\eventuais_calc_rescisao_modo_memoria.jpg",
+   "url_final": "http://127.0.0.1:5000/calc_rescisao?modo=memoria",
+   "voltou": false
   },
   {
    "modulo": "eventuais",
@@ -282,293 +87,9 @@
    "href": "/lista_demitidos",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "❌",
-   "nome": "Cancelar Aviso Prévio",
-   "href": "/select_funcionario?contexto=cancelar_aviso_previo",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Rescisão",
-   "icone": "❌",
-   "nome": "Cancelar Rescisão",
-   "href": "/select_funcionario?contexto=cancelar_rescisao",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Contrato Temporário",
-   "icone": "📃",
-   "nome": "Contrato / Prorrogação",
-   "href": "/select_funcionario?contexto=contrato",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Contrato Temporário",
-   "icone": "📄",
-   "nome": "Relação dos Contratos",
-   "href": "/lista_contratos",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Contrato Temporário",
-   "icone": "🖶",
-   "nome": "Imprimir Contrato de Experiência",
-   "href": "/select_funcionario?contexto=contrato_pdf",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Afastamentos",
-   "icone": "🏥",
-   "nome": "Lançar Afastamento",
-   "href": "/select_funcionario?contexto=afastamento",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Afastamentos",
-   "icone": "🚨",
-   "nome": "Acidente — Informar CAT",
-   "href": "/select_funcionario?contexto=acidente",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Afastamentos",
-   "icone": "✏️",
-   "nome": "Acidente — Alterar/Excluir",
-   "href": "/select_funcionario?contexto=alt_acidente",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Afastamentos",
-   "icone": "📋",
-   "nome": "Acidente — Ficha",
-   "href": "/select_funcionario?contexto=ficha_acidente",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Afastamentos",
-   "icone": "📋",
-   "nome": "Funcionários Afastados",
-   "href": "/lista_afastados",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Faltas",
-   "icone": "📉",
-   "nome": "Incluir Faltas",
-   "href": "/select_funcionario?contexto=falta",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Faltas",
-   "icone": "🗑️",
-   "nome": "Excluir Faltas",
-   "href": "/select_funcionario?contexto=excluir_falta",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Faltas",
-   "icone": "📋",
-   "nome": "Listagem de Faltas",
-   "href": "/rel_config_faltas",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Exame Médico",
-   "icone": "🩺",
-   "nome": "Registrar Exame Médico",
-   "href": "/select_funcionario?contexto=exame_med",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Exame Médico",
-   "icone": "✏️",
-   "nome": "Alterar / Excluir Exame Médico",
-   "href": "/select_funcionario?contexto=alt_exame_med",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Exame Médico",
-   "icone": "📋",
-   "nome": "Listagem de Exames Médicos",
-   "href": "/rel_config_exame_med",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "Insalubridade/Periculosidade",
-   "icone": "⚗️",
-   "nome": "Insalubridade / Periculosidade",
-   "href": "/select_funcionario?contexto=insalub_pericu",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "eventuais",
-   "modulo_titulo": "Eventuais",
-   "secao": "FAP",
-   "icone": "🛡️",
-   "nome": "FAP — Fator Acidentário de Prevenção",
-   "href": "/cad_fap",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimento",
-   "modulo_titulo": "Movimento Mês",
-   "secao": "Lançamentos",
-   "icone": "✏️",
-   "nome": "Lançar Eventos",
-   "href": "/cad_mov",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimento",
-   "modulo_titulo": "Movimento Mês",
-   "secao": "Lançamentos",
-   "icone": "🏦",
-   "nome": "Importar Consignados",
-   "href": "/consignado_importar",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimento",
-   "modulo_titulo": "Movimento Mês",
-   "secao": "Listagens",
-   "icone": "📋",
-   "nome": "Listagem de Movimento",
-   "href": "/rel_config_mov",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimento",
-   "modulo_titulo": "Movimento Mês",
-   "secao": "Adiantamento Quinzenal",
-   "icone": "💰",
-   "nome": "Calcular",
-   "href": "/calcular_adiantamento",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimento",
-   "modulo_titulo": "Movimento Mês",
-   "secao": "Adiantamento Quinzenal",
-   "icone": "📋",
-   "nome": "Listagem",
-   "href": "/listagem_adiantamentos",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimento",
-   "modulo_titulo": "Movimento Mês",
-   "secao": "Adiantamento Quinzenal",
-   "icone": "✏️",
-   "nome": "Alterar ou Excluir",
-   "href": "/listagem_adiantamentos?acao=editar",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimentofixo",
-   "modulo_titulo": "Movimento Fixo",
-   "secao": "Lançamentos",
-   "icone": "📌",
-   "nome": "Movimentos Fixos",
-   "href": "/mov_fixo",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "movimentofixo",
-   "modulo_titulo": "Movimento Fixo",
-   "secao": "Lançamentos",
-   "icone": "⏹️",
-   "nome": "Excluir / Parar Mov. Fixo",
-   "href": "/mov_fixo_encerrar",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\eventuais_lista_demitidos.jpg",
+   "url_final": "http://127.0.0.1:5000/lista_demitidos",
+   "voltou": false
   },
   {
    "modulo": "movimentofixo",
@@ -579,7 +100,9 @@
    "href": "/rel_mov_fixo",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\movimentofixo_rel_mov_fixo.jpg",
+   "url_final": "http://127.0.0.1:5000/rel_mov_fixo",
+   "voltou": false
   },
   {
    "modulo": "calculo",
@@ -590,139 +113,9 @@
    "href": "/calcular_folha",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "calculo",
-   "modulo_titulo": "Cálculo",
-   "secao": "Folha Mensal",
-   "icone": "👁️",
-   "nome": "Visualizar Cálculo",
-   "href": "/visualizar_calculo",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "calculo",
-   "modulo_titulo": "Cálculo",
-   "secao": "Folha Mensal",
-   "icone": "📄",
-   "nome": "Memória de Cálculo",
-   "href": "/memoria_calculo",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "calculo",
-   "modulo_titulo": "Cálculo",
-   "secao": "Folha Mensal",
-   "icone": "🔁",
-   "nome": "Cálculo Individual",
-   "href": "/calcular_folha_individual",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "calculo",
-   "modulo_titulo": "Cálculo",
-   "secao": "Adiantamento Quinzenal",
-   "icone": "✏️",
-   "nome": "Informar Adiantamento",
-   "href": "/informar_adiantamento",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "calculo",
-   "modulo_titulo": "Cálculo",
-   "secao": "Adiantamento Quinzenal",
-   "icone": "🧾",
-   "nome": "Recibo do Adiantamento",
-   "href": "/recibo_adiantamento",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Cadastros",
-   "icone": "👥",
-   "nome": "Lista de Funcionários",
-   "href": "/rel_lista_funcionarios",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Cadastros",
-   "icone": "💼",
-   "nome": "Funções / Cargos",
-   "href": "/relatorios_config?rel=funcoes",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Cadastros",
-   "icone": "📑",
-   "nome": "Rubricas (Verbas)",
-   "href": "/relatorios_config?rel=verbas",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Cadastros",
-   "icone": "👨‍👩‍👧",
-   "nome": "Dependentes",
-   "href": "/relatorios_config?rel=dependentes",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Eventos",
-   "icone": "🏖️",
-   "nome": "Listagem de Férias",
-   "href": "/relatorios_config?rel=ferias_func",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Folha de Pagamento",
-   "icone": "🖨️",
-   "nome": "Folha de Pagamento",
-   "href": "/relatorio_folha",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Folha de Pagamento",
-   "icone": "🧾",
-   "nome": "Contracheque",
-   "href": "/contracheque",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\calculo_calcular_folha.jpg",
+   "url_final": "http://127.0.0.1:5000/calcular_folha",
+   "voltou": false
   },
   {
    "modulo": "relatorios",
@@ -733,7 +126,9 @@
    "href": "/rel_liquidos",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\relatorios_rel_liquidos.jpg",
+   "url_final": "http://127.0.0.1:5000/rel_liquidos",
+   "voltou": false
   },
   {
    "modulo": "relatorios",
@@ -744,29 +139,9 @@
    "href": "/recibo_pensao",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Folha de Pagamento",
-   "icone": "📊",
-   "nome": "Resumo da Folha",
-   "href": "/resumo_folha",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Folha de Pagamento",
-   "icone": "📋",
-   "nome": "Relação de N Verbas",
-   "href": "/config_rel_verbas",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\relatorios_recibo_pensao.jpg",
+   "url_final": "http://127.0.0.1:5000/recibo_pensao",
+   "voltou": false
   },
   {
    "modulo": "relatorios",
@@ -777,73 +152,9 @@
    "href": "/rel_ficha_financeira",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Gerador de Relatório",
-   "icone": "🗂️",
-   "nome": "Gerador de Relatório",
-   "href": "/gerador_relatorio",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Sistema",
-   "icone": "📋",
-   "nome": "Log de Operações",
-   "href": "/relatorios_config?rel=log",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "Sistema",
-   "icone": "📄",
-   "nome": "Remessas eSocial",
-   "href": "/relatorios_config?rel=esocial_remessas",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "relatorios",
-   "modulo_titulo": "Relatórios",
-   "secao": "",
-   "icone": "🖨️",
-   "nome": "Todos os Relatórios",
-   "href": "/relatorios",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Tabelas",
-   "icone": "🏢",
-   "nome": "S-1000 Dados do Empregador",
-   "href": "/esocial_s1000",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Tabelas",
-   "icone": "🏭",
-   "nome": "S-1005 Estabelecimentos",
-   "href": "/esocial_s1005",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\relatorios_rel_ficha_financeira.jpg",
+   "url_final": "http://127.0.0.1:5000/rel_ficha_financeira",
+   "voltou": false
   },
   {
    "modulo": "esocial",
@@ -854,7 +165,9 @@
    "href": "/esocial_s1010",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\esocial_esocial_s1010.jpg",
+   "url_final": "http://127.0.0.1:5000/esocial_s1010",
+   "voltou": false
   },
   {
    "modulo": "esocial",
@@ -865,117 +178,9 @@
    "href": "/esocial_s1020",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Não Periódicos",
-   "icone": "✅",
-   "nome": "S-2200 Admissão",
-   "href": "/esocial_s2200",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Não Periódicos",
-   "icone": "✏️",
-   "nome": "S-2205 Alt. Dados Cadastrais",
-   "href": "/esocial_s2205",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Não Periódicos",
-   "icone": "📝",
-   "nome": "S-2206 Alt. Contrato",
-   "href": "/esocial_s2206",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Não Periódicos",
-   "icone": "🩺",
-   "nome": "S-2220 Monitoramento da Saúde (ASO)",
-   "href": "/esocial_s2220",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Não Periódicos",
-   "icone": "🚪",
-   "nome": "S-2299 Desligamento",
-   "href": "/esocial_s2299",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Não Periódicos",
-   "icone": "🎓",
-   "nome": "S-2300 Início TSVE (Estagiário)",
-   "href": "/esocial_fila",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Periódicos",
-   "icone": "💰",
-   "nome": "S-1200 Remuneração",
-   "href": "/esocial_s1200",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Periódicos",
-   "icone": "💳",
-   "nome": "S-1210 Pagamentos",
-   "href": "/esocial_s1210",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Periódicos",
-   "icone": "🔓",
-   "nome": "S-1298 Reabertura",
-   "href": "/esocial_s1298",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Eventos Periódicos",
-   "icone": "🔒",
-   "nome": "S-1299 Fechamento",
-   "href": "/esocial_s1299",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\esocial_esocial_s1020.jpg",
+   "url_final": "http://127.0.0.1:5000/esocial_s1020",
+   "voltou": false
   },
   {
    "modulo": "esocial",
@@ -986,51 +191,9 @@
    "href": "/esocial_verificacao",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Exclusão de Eventos",
-   "icone": "🗑️",
-   "nome": "S-3000 Exclusão",
-   "href": "/esocial_s3000",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Certificado Digital",
-   "icone": "🔑",
-   "nome": "Certificado Digital",
-   "href": "/config_certificado",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Certificado Digital",
-   "icone": "🤝",
-   "nome": "Cert. de Procurador",
-   "href": "/config_procurador",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
-  },
-  {
-   "modulo": "esocial",
-   "modulo_titulo": "eSocial",
-   "secao": "Remessas",
-   "icone": "➕",
-   "nome": "Gerador Manual de Remessa",
-   "href": "/esocial_gerador",
-   "ok": true,
-   "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\esocial_esocial_verificacao.jpg",
+   "url_final": "http://127.0.0.1:5000/esocial_verificacao",
+   "voltou": false
   },
   {
    "modulo": "esocial",
@@ -1041,7 +204,10 @@
    "href": "/esocial_consulta",
    "ok": true,
    "repetida": false,
-   "erro": "Page.goto: Target page, context or browser has been closed"
+   "arquivo": "static\\demo\\esocial_esocial_consulta.jpg",
+   "url_final": "http://127.0.0.1:5000/esocial_consulta",
+   "voltou": false
   }
- ]
+ ],
+ "erros": []
 }

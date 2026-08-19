@@ -137,11 +137,19 @@ def esc(s):
 
 
 # Abaixo desta proporção de tinta, o print é considerado uma tela vazia e não
-# é escolhido para o desfile. Não é um número inventado: medi os prints e a
-# separação é limpa -- as telas que só têm o cabeçalho e um aviso ("Nenhuma
-# Folha Ativa definida", listas sem registro) ficam entre 0,01% e 1,1%; as
-# que têm conteúdo de verdade, entre 3,3% e 13%. Nada cai perto da linha.
-TINTA_MINIMA = 2.5
+# é escolhido para o desfile.
+#
+# A medida é da FAIXA DE CONTEÚDO -- do fim do cabeçalho até 45% da altura --,
+# não da página inteira. Medir a página toda funcionou enquanto eram 38 prints
+# e o cliente teste estava vazio; com 109 telas e a base populada, o rodapé
+# branco de toda tela (que é a metade de baixo) diluía o conteúdo e telas boas
+# porém enxutas caíam junto com as vazias: Fechar Folha com o botão pronto
+# dava 1,14%, Cancelar Férias com duas linhas dava 1,17% -- os dois abaixo de
+# um limiar de 2,5%. Na faixa de conteúdo a separação volta a ser limpa:
+# telas boas ficam entre 2,5% e 5%, e as realmente vazias abaixo de 1,8%
+# (Verificação eSocial 0,48%, Cancelar Alteração 1,15%, Ficha Financeira
+# 1,72%).
+TINTA_MINIMA = 2.3
 CACHE_TINTA = "_demo_densidade.json"
 
 
@@ -167,12 +175,17 @@ def tinta_dos_prints(caminhos):
             cache = {}
     saida, mudou = {}, False
     for c in caminhos:
-        chave = "%s|%d" % (c.replace("\\", "/"), os.path.getmtime(c))
+        # O "v2" no fim da chave invalida o cache antigo: a medida mudou de
+        # página inteira para faixa de conteúdo, e valor velho misturado com
+        # valor novo classificaria pela régua errada.
+        chave = "%s|%d|v2" % (c.replace("\\", "/"), os.path.getmtime(c))
         if chave not in cache:
             im = Image.open(c).convert("L").resize((240, 150))
             # A faixa do cabeçalho fica de fora: ela é colorida em toda tela,
             # inclusive nas vazias, e sozinha já passaria de qualquer limiar.
-            px = list(im.crop((0, 14, 240, 150)).getdata())
+            # O rodapé também: da metade da tela para baixo quase tudo é
+            # branco, em tela cheia ou vazia -- só dilui a conta.
+            px = list(im.crop((0, 14, 240, 68)).getdata())
             cache[chave] = round(
                 sum(1 for p in px if p < 232) / float(len(px)) * 100, 2)
             mudou = True

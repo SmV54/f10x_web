@@ -21,6 +21,12 @@ Rodar:  python _demo_capturar.py
         python _demo_capturar.py --refazer     (ignora o que já capturou)
         python _demo_capturar.py --so cadastros (um módulo só)
 
+Para rodar sozinho (recaptura em lote, sem ninguém na frente da tela):
+        python _demo_capturar.py --refazer --auto-login --headless                --cpf 11111111111 --senha ****** --empresa 15
+A senha não fica escrita neste arquivo de propósito -- vem por parâmetro.
+Sem --empresa, toda tela do menu cai em /selecionar_empresa e o print sai
+vazio.
+
 Saída:  static/demo/<modulo>_<slug>.jpg  +  _demo_capturas.json (o relatório)
 """
 
@@ -57,13 +63,76 @@ def carregar():
     return json.load(io.open(INVENTARIO, encoding="utf-8"))
 
 
+def _esperar_login_na_tela(pagina, navegador):
+    """Caminho manual: mostra o aviso e espera a pessoa entrar."""
+    print(" >>> ABRIU UMA JANELA NOVA DO CHROMIUM, na tela de login.")
+    print("     É NELA que você entra — não no seu navegador de sempre.")
+    print("     Se não estiver à vista, procure na barra de tarefas.")
+    print("     Depois de logar, deixe a janela quieta: fechá-la aborta.")
+    print("     Esperando até %d minutos...\n" % (ESPERA_LOGIN // 60))
+
+    # Espera o login: enquanto a tela ainda tiver campo de senha, é porque
+    # não entrou. Assim funciona qualquer que seja a rota do menu.
+    # O except separa duas coisas que antes se confundiam: ESPERAR demais
+    # (ninguém logou) e a JANELA MORRER (browser fechado, processo em
+    # segundo plano). A primeira versão dizia "ninguém logou" para os dois
+    # casos, e um Chromium encerrado em 3 segundos virava um falso
+    # "esperei 15 minutos" — mentira que custa tempo de quem lê.
+    import time as _t
+    _ini = _t.time()
+    try:
+        pagina.wait_for_selector("input[type=password]",
+                                 state="detached",
+                                 timeout=ESPERA_LOGIN * 1000)
+    except Exception as e:
+        gasto = _t.time() - _ini
+        try:
+            navegador.close()
+        except Exception:
+            pass
+        if gasto < ESPERA_LOGIN * 0.9:
+            raise SystemExit(
+                "\nA janela do navegador morreu depois de %.0f segundos —\n"
+                "não foi falta de login. Erro: %s\n\n"
+                "Isto acontece quando o script roda em segundo plano ou\n"
+                "sem sessão gráfica. Rode direto no SEU terminal, numa\n"
+                "janela normal do Prompt/PowerShell:\n"
+                "    python _demo_capturar.py" % (gasto, str(e).split("\n")[0][:120]))
+        raise SystemExit(
+            "\nNinguém logou em %d minutos, então nada foi capturado.\n"
+            "Causas comuns:\n"
+            "  - a janela do Chromium abriu atrás das outras e passou batido;\n"
+            "  - o login foi feito no navegador de sempre, e não nela;\n"
+            "  - a janela foi fechada antes de entrar.\n"
+            "Rode de novo: python _demo_capturar.py"
+            % (ESPERA_LOGIN // 60))
+    print(" Logado. Começando.\n")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--refazer", action="store_true",
                     help="captura de novo mesmo o que já existe")
     ap.add_argument("--so", default="", metavar="MODULO",
                     help="captura só um módulo (cadastros, esocial, ...)")
+    # Login automático: existe para a captura poder rodar sozinha (recaptura
+    # em lote, sem ninguém na frente da tela). O caminho normal continua sendo
+    # o manual -- por isso a senha NÃO fica escrita aqui, vem por parâmetro.
+    ap.add_argument("--auto-login", action="store_true",
+                    help="entra sozinho pela API, sem esperar o login na tela")
+    ap.add_argument("--cpf", default="", help="CPF do login automático")
+    ap.add_argument("--senha", default="", help="senha do login automático")
+    ap.add_argument("--empresa", default="", metavar="ID",
+                    help="id_empresa a selecionar depois do login automático")
+    ap.add_argument("--headless", action="store_true",
+                    help="sem janela; só faz sentido com --auto-login")
     args = ap.parse_args()
+
+    if args.auto_login and not (args.cpf and args.senha):
+        raise SystemExit("ERRO: --auto-login precisa de --cpf e --senha.")
+    if args.headless and not args.auto_login:
+        raise SystemExit("ERRO: --headless sem --auto-login não entra em lugar "
+                         "nenhum -- ninguém vê a tela para digitar a senha.")
 
     dados = carregar()
     telas = [t for t in dados["telas"] if t["ok"] and not t["repetida"]]
@@ -89,7 +158,7 @@ def main():
     feitas, pulos, erros = [], [], []
 
     with sync_playwright() as p:
-        navegador = p.chromium.launch(headless=False)
+        navegador = p.chromium.launch(headless=bool(args.headless))
         pagina = navegador.new_page(viewport={"width": LARGURA, "height": ALTURA})
         pagina.goto(BASE + "/", timeout=30000)
         try:
@@ -106,48 +175,39 @@ def main():
             pagina.screenshot(path=login_jpg, type="jpeg", quality=QUALIDADE)
             print(" Tela de login guardada (%s).\n" % login_jpg)
 
-        print(" >>> ABRIU UMA JANELA NOVA DO CHROMIUM, na tela de login.")
-        print("     É NELA que você entra — não no seu navegador de sempre.")
-        print("     Se não estiver à vista, procure na barra de tarefas.")
-        print("     Depois de logar, deixe a janela quieta: fechá-la aborta.")
-        print("     Esperando até %d minutos...\n" % (ESPERA_LOGIN // 60))
-
-        # Espera o login: enquanto a tela ainda tiver campo de senha, é porque
-        # não entrou. Assim funciona qualquer que seja a rota do menu.
-        # O except separa duas coisas que antes se confundiam: ESPERAR demais
-        # (ninguém logou) e a JANELA MORRER (browser fechado, processo em
-        # segundo plano). A primeira versão dizia "ninguém logou" para os dois
-        # casos, e um Chromium encerrado em 3 segundos virava um falso
-        # "esperei 15 minutos" — mentira que custa tempo de quem lê.
-        import time as _t
-        _ini = _t.time()
-        try:
-            pagina.wait_for_selector("input[type=password]",
-                                     state="detached",
-                                     timeout=ESPERA_LOGIN * 1000)
-        except Exception as e:
-            gasto = _t.time() - _ini
-            try:
+        if args.auto_login:
+            # Entra pela mesma API que a tela usa, com o cookie ficando na
+            # própria janela do Playwright. Depois escolhe a empresa: sem
+            # isso, TODA tela do menu cai em /selecionar_empresa e o print
+            # sai vazio -- que foi o que aconteceu na primeira rodada.
+            r = pagina.evaluate("""async ([cpf, senha]) => {
+                const r = await fetch('/fazer_login', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({cpf: cpf, senha: senha})});
+                return await r.json();
+            }""", [args.cpf, args.senha])
+            if not (r or {}).get("ok"):
                 navegador.close()
-            except Exception:
-                pass
-            if gasto < ESPERA_LOGIN * 0.9:
-                raise SystemExit(
-                    "\nA janela do navegador morreu depois de %.0f segundos —\n"
-                    "não foi falta de login. Erro: %s\n\n"
-                    "Isto acontece quando o script roda em segundo plano ou\n"
-                    "sem sessão gráfica. Rode direto no SEU terminal, numa\n"
-                    "janela normal do Prompt/PowerShell:\n"
-                    "    python _demo_capturar.py" % (gasto, str(e).split("\n")[0][:120]))
-            raise SystemExit(
-                "\nNinguém logou em %d minutos, então nada foi capturado.\n"
-                "Causas comuns:\n"
-                "  - a janela do Chromium abriu atrás das outras e passou batido;\n"
-                "  - o login foi feito no navegador de sempre, e não nela;\n"
-                "  - a janela foi fechada antes de entrar.\n"
-                "Rode de novo: python _demo_capturar.py"
-                % (ESPERA_LOGIN // 60))
-        print(" Logado. Começando.\n")
+                raise SystemExit("\nLogin automático recusado: %s"
+                                 % (r or {}).get("msg", "sem resposta"))
+            print(" Login automático: ok.")
+            if args.empresa:
+                r2 = pagina.evaluate("""async (id) => {
+                    const r = await fetch('/api/selecionar_empresa', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({id_empresa: id})});
+                    return await r.json();
+                }""", int(args.empresa))
+                if not (r2 or {}).get("ok"):
+                    navegador.close()
+                    raise SystemExit("\nEmpresa %s não selecionada: %s"
+                                     % (args.empresa, (r2 or {}).get("msg", "?")))
+                print(" Empresa %s selecionada." % args.empresa)
+            print("")
+        else:
+            _esperar_login_na_tela(pagina, navegador)
 
         for i, t in enumerate(telas, 1):
             arquivo = os.path.join(PASTA, "%s_%s.jpg"
