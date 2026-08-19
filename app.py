@@ -34224,7 +34224,10 @@ def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_v
 # governo continua conferindo do lado dele: se faltar rubrica de verdade, o
 # evento e recusado la. Isto tira a trava local, nao a exigencia real.
 #
-# >>> TEMPORARIO — REPOR PARA set() QUANDO OS RECIBOS ENTRAREM <<<
+# >>> REATIVADA em 19/08/2026 a pedido: os dois conjuntos voltaram a set(),
+#     ou seja, a conferencia previa roda de novo para todo mundo. Se alguma
+#     empresa do cliente 0030 voltar a ser barrada por rubrica que JA existe
+#     no eSocial, o caminho e buscar os recibos (abaixo), nao redispensar. <<<
 #
 # 18/08/2026: reativada de manha (conjunto vazio) e dispensada de novo a
 # pedido, no mesmo dia, para o cliente 0030 destravar a folha de 07/2026.
@@ -34242,7 +34245,7 @@ def _mov_da_folha(id_empresa, ano_mes, folha_tipo=None, campos="matricula, cod_v
 # Enquanto isso, o envio AVULSO tem o escape "Enviar mesmo assim"
 # (forcar_s1010), que nao depende deste conjunto. O envio em LOTE nao tem —
 # e por isso a dispensa continua sendo a forma de liberar a folha inteira.
-S1010_CHECK_DISPENSADO = {(30, "202607")}
+S1010_CHECK_DISPENSADO = set()
 
 # Mesma história com a LOTAÇÃO. No cliente 0030 / empresa 0029 a lotação 001
 # ja esta declarada e vigente no eSocial — o reenvio do S-1020 volta com
@@ -34253,7 +34256,7 @@ S1010_CHECK_DISPENSADO = {(30, "202607")}
 #
 # Conjuntos separados de proposito: dispensar a conferencia de rubrica nao
 # deve arrastar a de lotacao junto, nem o contrario.
-S1020_CHECK_DISPENSADO = {(30, "202607")}
+S1020_CHECK_DISPENSADO = set()
 
 _cliente_por_empresa = {}      # cache do processo, evita repetir a consulta
 
