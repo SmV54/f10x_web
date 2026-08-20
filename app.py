@@ -2302,6 +2302,7 @@ def preferencias():
     prefs = {
         "ordem_rel":     _get_pref("ordem_rel",     "mat"),
         "menu_num": _get_pref("menu_num", "S"),
+        "adto_insalub":  _get_pref("adto_insalub",  "N"),
     }
     return render_template("F10_Preferencias.html", prefs=prefs, **_ctx_relatorio())
 
@@ -58856,6 +58857,48 @@ def planilhas_xml_abrir():
 # =========================================================
 # ADIANTAMENTO QUINZENAL
 # =========================================================
+# Parâmetro "Adiantamento Quinzenal: Incluir a Insalubridade na Base"
+# (Preferências, código adto_insalub). Default N — a base é só o salário.
+#
+# Ligado, o percentual (da empresa ou individual) passa a incidir sobre
+# salário + insalubridade do mês. Quem tem VALOR fixo de adiantamento não muda:
+# ali não existe base, o valor é o que foi digitado.
+#
+# A insalubridade sai de _adicionais_do_mes — a mesma fonte que férias, 13º e
+# rescisão usam — então o valor do adiantamento bate com o que a folha lança na
+# verba 30. Empresa sem insalubridade não sente diferença nenhuma com o
+# parâmetro ligado, porque o adicional é zero.
+def _adto_base_insalub():
+    """True quando o parâmetro manda somar a insalubridade à base."""
+    return str(_get_pref("adto_insalub", "N") or "N").upper().startswith("S")
+
+
+def _adto_bases(id_empresa, id_cliente, anomes, funcionarios):
+    """{matricula: base do adiantamento em centavos}.
+
+    funcionarios: lista de dicts com 'matricula' e 'vrsalfx'.
+    Uma varredura de eventos só (via _adicionais_cache), não uma por
+    funcionário.
+    """
+    bases = {int(f.get("matricula") or 0): int(f.get("vrsalfx") or 0)
+             for f in (funcionarios or [])}
+    if not bases or not _adto_base_insalub():
+        return bases
+    try:
+        ev_cache, mov_cache = _adicionais_cache(id_empresa, id_cliente, anomes)
+        for f in funcionarios:
+            mat = int(f.get("matricula") or 0)
+            if not mat:
+                continue
+            adics = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat,
+                                       int(f.get("vrsalfx") or 0),
+                                       eventos_cache=ev_cache, mov_cache=mov_cache)
+            bases[mat] = bases.get(mat, 0) + int(adics.get(VERBA_INSALUBRIDADE) or 0)
+    except Exception as e:
+        print(f"[adto] insalubridade na base falhou: {e}")
+    return bases
+
+
 @app.route("/informar_adiantamento")
 def informar_adiantamento():
     if not session.get("logado"):
@@ -58902,6 +58945,12 @@ def informar_adiantamento():
     except Exception:
         pass
 
+    # Base do % — igual à do cálculo, senão o "Estimado" da tela mente.
+    com_insalub = _adto_base_insalub()
+    _bases = _adto_bases(id_empresa, session.get("id_cliente"), anomes, funcionarios)
+    for f in funcionarios:
+        f["base"] = _bases.get(int(f.get("matricula") or 0), f.get("vrsalfx") or 0)
+
     return render_template(
         "F10_Mov_Adiantamento.html",
         versao=ler_versao(),
@@ -58911,6 +58960,7 @@ def informar_adiantamento():
         folha_tipo_ativa=folha_tipo,
         per_empresa=per_empresa,
         funcionarios=funcionarios,
+        base_com_insalub=com_insalub,
     )
 
 
@@ -59219,6 +59269,7 @@ def calcular_adiantamento():
         total_com=0,
         total_funcs=0,
         total_fmt="R$ 0,00",
+        base_com_insalub=False,
     )
     if not anomes:
         return render_template("F10_Calc_Adiantamento.html", **ctx)
@@ -59304,6 +59355,11 @@ def calcular_adiantamento():
                  .eq("situacao",   "A")
                  .order("nomer")
                  .execute())
+        # Base do % — a mesma de /api/calcular_adiantamento. Sem isto a previa
+        # mostraria um total e a gravacao escreveria outro quando o parametro
+        # adto_insalub esta ligado.
+        com_insalub = _adto_base_insalub()
+        bases = _adto_bases(id_empresa, id_cliente, anomes, r_cad.data or [])
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
             dtadm_anomes = _anomes_admissao(dtadm_raw)
@@ -59311,6 +59367,7 @@ def calcular_adiantamento():
                 continue
             nome      = (f.get("nome") or f.get("nomer") or "").strip()
             vrsalfx   = f.get("vrsalfx") or 0
+            base      = bases.get(int(f.get("matricula") or 0), vrsalfx)
             per_ind   = f.get("per_adianta")
             val_fixo  = f.get("valor_adianta")
 
@@ -59331,10 +59388,10 @@ def calcular_adiantamento():
                 valor_calc = int(val_fixo)
                 modo_desc  = "Valor fixo"
             elif per_ind is not None:
-                valor_calc = round(vrsalfx * int(per_ind) / 100)
+                valor_calc = round(base * int(per_ind) / 100)
                 modo_desc  = f"{per_ind}% individual"
             elif per_empresa is not None:
-                valor_calc = round(vrsalfx * int(per_empresa) / 100)
+                valor_calc = round(base * int(per_empresa) / 100)
                 modo_desc  = f"{per_empresa}% empresa"
             else:
                 valor_calc = None
@@ -59389,6 +59446,7 @@ def calcular_adiantamento():
         total_com=len(com_adianta),
         total_funcs=len(funcionarios),
         total_fmt=_fmt_reais(total_cents),
+        base_com_insalub=com_insalub,
     )
     return render_template("F10_Calc_Adiantamento.html", **ctx)
 
@@ -59490,6 +59548,9 @@ def api_calcular_adiantamento():
                  .eq("id_empresa", id_empresa)
                  .eq("situacao",   "A")
                  .execute())
+        # Base do percentual: salário, ou salário + insalubridade quando o
+        # parâmetro adto_insalub está ligado. Uma varredura para todos.
+        bases = _adto_bases(id_empresa, id_cliente, anomes, r_cad.data or [])
         for f in (r_cad.data or []):
             dtadm_raw = str(f.get("dtadm") or "")
             dtadm_anomes = _anomes_admissao(dtadm_raw)
@@ -59519,12 +59580,14 @@ def api_calcular_adiantamento():
                 pulou_adm += 1
                 continue
 
+            base = bases.get(int(mat or 0), vrsalfx)
+
             if val_fixo is not None:
-                valor = int(val_fixo)
+                valor = int(val_fixo)          # valor digitado: não tem base
             elif per_ind is not None:
-                valor = round(vrsalfx * int(per_ind) / 100)
+                valor = round(base * int(per_ind) / 100)
             elif per_empresa is not None:
-                valor = round(vrsalfx * int(per_empresa) / 100)
+                valor = round(base * int(per_empresa) / 100)
             else:
                 continue  # sem adiantamento configurado
 

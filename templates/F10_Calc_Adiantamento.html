@@ -248,6 +248,12 @@ tbody td { padding: 9px 14px; font-size: 12px; color: #1e293b; }
 <div class="card">
     <div class="card-titulo">
         <span>Prévia do Cálculo</span>
+        {% if base_com_insalub %}
+        <span style="font-size:11px;font-weight:400;color:#b45309;"
+              title="Parâmetro ligado em Preferências. O percentual incide sobre salário + insalubridade.">
+            · o % incide sobre salário + insalubridade
+        </span>
+        {% endif %}
         <span class="badge-verba {% if verba_usar == 161 %}v161{% endif %}">
             Verba {{ verba_usar }}{% if dsc_verba %} — {{ dsc_verba }}{% endif %}
         </span>

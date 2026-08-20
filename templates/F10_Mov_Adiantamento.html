@@ -350,6 +350,12 @@ tbody td { padding: 8px 12px; font-size: 12px; color: #1e293b; }
     <div class="card-titulo">
         <span id="tituloFuncionarios">Funcionários</span>
         <span id="contadorFunc" style="font-size:11px;font-weight:400;color:#64748b;"></span>
+        {% if base_com_insalub %}
+        <span style="font-size:11px;font-weight:400;color:#b45309;"
+              title="Parâmetro ligado em Preferências. O percentual incide sobre salário + insalubridade.">
+            · o % incide sobre salário + insalubridade
+        </span>
+        {% endif %}
     </div>
 
     <div class="tabela-wrap">
@@ -452,6 +458,9 @@ function renderizarTabela(manterValores) {
     FUNCIONARIOS.forEach(f => {
         const salCents = f.vrsalfx || 0;
         const salFmt   = fmtReais(salCents);
+        // Base do %: igual à do cálculo. Só difere do salário quando o
+        // parâmetro "Incluir a Insalubridade na Base" está ligado.
+        const baseCents = (f.base != null) ? f.base : salCents;
         const tr       = document.createElement('tr');
 
         let celEntrada = '';
@@ -465,7 +474,7 @@ function renderizarTabela(manterValores) {
                 </span>
             </td>`;
             celEstimado = `<td class="td-est" id="est-${f.matricula}">
-                ${pct !== null ? fmtReais(Math.round(salCents * pct / 100)) : '—'}
+                ${pct !== null ? fmtReais(Math.round(baseCents * pct / 100)) : '—'}
             </td>`;
 
         } else if (modoAtivo === 'P') {
@@ -474,11 +483,11 @@ function renderizarTabela(manterValores) {
                 <input type="number" class="inp-pct-row" min="0" max="60"
                        value="${pctVal}" placeholder="vazio = empresa · 0 = não adianta"
                        title="Vazio: herda o % da empresa. Zero: não adianta nada."
-                       data-mat="${f.matricula}" data-sal="${salCents}"
+                       data-mat="${f.matricula}" data-sal="${baseCents}"
                        oninput="calcEstimado(this)" onblur="validarPct(this)">
                 <span class="sufixo-pct">%</span>
             </td>`;
-            const estInicial = pctVal !== '' ? fmtReais(Math.round(salCents * pctVal / 100)) : '—';
+            const estInicial = pctVal !== '' ? fmtReais(Math.round(baseCents * pctVal / 100)) : '—';
             celEstimado = `<td class="td-est" id="est-${f.matricula}">${estInicial}</td>`;
 
         } else { // V
@@ -678,7 +687,7 @@ function atualizarTotal() {
         const pct = _getPctEmpresa();
         if (pct !== null) {
             FUNCIONARIOS.forEach(f => {
-                total += Math.round((f.vrsalfx || 0) * pct / 100);
+                total += Math.round(((f.base != null ? f.base : f.vrsalfx) || 0) * pct / 100);
             });
             valido = true;
         }

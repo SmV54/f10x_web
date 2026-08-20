@@ -44,17 +44,27 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 }
 .btn-voltar-topo:hover { border-color: var(--accent); color: #1e293b; }
 
-.conteudo { max-width: 820px; margin: 20px auto; padding: 0 24px 60px; }
+/* Largura pensada para o maior titulo caber numa linha so
+   ("Adiantamento Quinzenal: Incluir a Insalubridade na Base"). */
+.conteudo { max-width: 1000px; margin: 20px auto; padding: 0 24px 60px; }
 
 .pref-card {
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 10px 14px; margin-bottom: 8px;
-    display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto;
+    display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
     align-items: center; gap: 14px;
 }
 .pref-card-info { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .pref-card-titulo {
     font-size: 13px; font-weight: 600; color: #1e293b;
+    white-space: nowrap;
+}
+
+/* Tela estreita: o titulo passa a ter a linha inteira e as opcoes descem. */
+@media (max-width: 900px) {
+    .pref-card { grid-template-columns: 1fr; gap: 8px; }
+    .pref-card-titulo { white-space: normal; }
+    .feedback { justify-self: start; }
 }
 .pref-card-help {
     position: relative;
@@ -167,6 +177,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <span class="feedback" id="fbNum"></span>
     </div>
 
+    <!-- Preferência 3: Insalubridade na base do adiantamento quinzenal -->
+    <div class="pref-card">
+        <div class="pref-card-info">
+            <span class="pref-card-titulo">Adiantamento Quinzenal: Incluir a Insalubridade na Base</span>
+            <span class="pref-card-help">?<span class="tip">Define sobre o que incide o percentual do adiantamento quinzenal. Não: só o salário (padrão). Sim: salário + insalubridade do mês. Não muda nada para quem tem VALOR fixo de adiantamento, nem para empresas sem insalubridade.</span></span>
+        </div>
+        <div class="opcoes-row" id="adtoInsalubOpcoes">
+            <label class="opc-card {% if prefs.adto_insalub != 'S' %}sel{% endif %}" data-val="N" title="O percentual incide só sobre o salário">
+                <input type="radio" name="adto_insalub" value="N" {% if prefs.adto_insalub != 'S' %}checked{% endif %}>
+                <span>Não</span>
+            </label>
+            <label class="opc-card {% if prefs.adto_insalub == 'S' %}sel{% endif %}" data-val="S" title="O percentual incide sobre salário + insalubridade">
+                <input type="radio" name="adto_insalub" value="S" {% if prefs.adto_insalub == 'S' %}checked{% endif %}>
+                <span>Sim</span>
+            </label>
+        </div>
+        <span class="feedback" id="fbAdtoInsalub"></span>
+    </div>
+
 </div>
 
 <script>
@@ -221,6 +250,7 @@ function bindOpcoes(grupoSel, codigo, fbId) {
 }
 bindOpcoes('#ordemOpcoes',    'ordem_rel',     'fbOrdem');
 bindOpcoes('#numeradoOpcoes', 'menu_num', 'fbNum');
+bindOpcoes('#adtoInsalubOpcoes', 'adto_insalub', 'fbAdtoInsalub');
 </script>
 
 <script src="/static/f10_dialog.js"></script>
