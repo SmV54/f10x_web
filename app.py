@@ -5813,7 +5813,8 @@ def cad_aviso_previo2():
 
         return redirect(f"/cad_aviso_previo2_ok?mat={mat_int}&quem={quem_aviso}"
                         f"&tipo={tipo_aviso_post}&data_aviso={data_aviso}"
-                        f"&data_fim={data_fim}&prazo={prazo_normal}")
+                        f"&data_fim={data_fim}&prazo={prazo_normal}"
+                        f"&cond={cond_especial}")
 
     # ── Calcular datas usando apenas o 1º AP (prazo_normal) ──
     data_inicio_fmt = ""
@@ -5873,6 +5874,7 @@ def cad_aviso_previo2_ok():
     data_aviso = request.args.get("data_aviso", "")
     data_fim   = request.args.get("data_fim", "")
     prazo      = request.args.get("prazo", "30")
+    cond       = request.args.get("cond", "N")
 
     def _fmt(s_iso):
         try:
@@ -5886,6 +5888,11 @@ def cad_aviso_previo2_ok():
                  "X": "Término do Contrato"}
     tipo_desc = {"T": "Trabalhado", "I": "Indenizado"}
 
+    # Justa causa (J), falecimento (F) e contrato que chegou ao termo (quem="X")
+    # não geram aviso prévio: o evento existe só para a rescisão saber a data.
+    # Nesses casos a tela não oferece a emissão do papel.
+    tem_documento = (quem in ("E", "F", "A")) and cond not in ("J", "F")
+
     return render_template(
         "F10_Cad_AvisoPrevio2_OK.html",
         versao=ler_versao(),
@@ -5893,12 +5900,347 @@ def cad_aviso_previo2_ok():
         empresa=session.get("empresa_info", ""),
         mat=mat_raw,
         mat_fmt=str(mat_raw).zfill(6),
+        tem_documento=tem_documento,
         quem_desc=quem_desc.get(quem, quem),
         tipo_desc=tipo_desc.get(tipo, tipo),
         data_aviso_fmt=_fmt(data_aviso),
         data_fim_fmt=_fmt(data_fim),
         prazo=prazo,
     )
+
+
+# =========================================================
+# AVISO PRÉVIO — O DOCUMENTO (PDF)
+# Só sai para quem tem aviso prévio registrado na folha ATUAL
+# (tab_eventos.op1=9 e folha == anomes_atual). Aviso de folha
+# antiga já virou rescisão — o papel dele foi emitido na época.
+# =========================================================
+_AVISO_MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
+                "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+
+def _aviso_previo_doc_dados(id_cliente, id_empresa, mat, anomes):
+    """Junta empregador + funcionário + o aviso da folha atual para o papel.
+
+    Devolve (dados, erro). Só considera o evento op1=9 gravado NESTA folha:
+    é o mesmo recorte do Cancelar Aviso Prévio, e é o que o usuário acabou de
+    registrar quando chega aqui pelo botão da tela de confirmação.
+    """
+    if not anomes:
+        return None, "Nenhuma folha ativa. Abra o mês antes de emitir o aviso prévio."
+
+    try:
+        r_ev = (supabase.table("tab_eventos")
+                .select("data1i, ref1, ref2, campotxt1, campotxt2, campotxt3")
+                .eq("id_empresa", id_empresa).eq("matricula", mat)
+                .eq("op1", 9).eq("folha", int(anomes))
+                .order("id", desc=True).limit(1).execute())
+    except Exception as e:
+        return None, f"Erro ao ler o aviso prévio: {e}"
+    if not r_ev.data:
+        folha_fmt = f"{str(anomes)[4:6]}/{str(anomes)[:4]}"
+        return None, ("Este funcionário não tem aviso prévio registrado na folha "
+                      f"{folha_fmt}. Registre por Eventuais → Aviso Prévio.")
+    ev = r_ev.data[0]
+
+    quem = str(ev.get("campotxt2") or "").strip()
+    tipo = str(ev.get("campotxt1") or "").strip()
+    cond = str(ev.get("campotxt3") or "").strip()
+
+    # Justa causa, falecimento e contrato que chegou ao termo não têm aviso
+    # prévio: ninguém avisou nada, o contrato acabou por outro motivo. O evento
+    # op1=9 existe só para a rescisão saber a data — papel não há.
+    if cond in ("Justa Causa", "Falecimento") or quem == "Término do Contrato":
+        motivo = cond or quem
+        return None, (f"Rescisão por {motivo}: não há aviso prévio a emitir. "
+                      "O documento vale para dispensa pela empresa, pedido de "
+                      "demissão ou acordo.")
+
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, cpf, dtadm, vrsalfx, "
+                     "nmcargo, cbofuncao")
+             .eq("id_empresa", id_empresa).eq("matricula", mat)
+             .limit(1).execute())
+    except Exception as e:
+        return None, f"Erro ao ler o funcionário: {e}"
+    if not r.data:
+        return None, "Funcionário não encontrado."
+    cad = r.data[0]
+
+    # Nome do cargo digitado vence; em branco, cai no nome da função pelo CBO
+    # (mesma regra da Ficha de Registro e do Contrato de Experiência).
+    funcao = str(cad.get("nmcargo") or "").strip()
+    if not funcao and cad.get("cbofuncao"):
+        try:
+            rf = (supabase.table("tab_funcao_cli")
+                  .select("nome_resumido")
+                  .eq("id_cliente", id_cliente)
+                  .eq("cbo_codigo", str(cad["cbofuncao"]).strip())
+                  .eq("situacao", "A").limit(1).execute())
+            if rf.data:
+                funcao = str(rf.data[0].get("nome_resumido") or "").strip()
+        except Exception:
+            pass
+
+    papel = _empregador_papel(id_cliente, id_empresa)
+
+    # Datas: o aviso começa no dia seguinte ao da comunicação e corre pelo prazo
+    # gravado em ref1 (30 dias, ou 15 no acordo) — o mesmo cálculo da tela 2 e da
+    # tela de confirmação, para o papel não divergir delas.
+    d_aviso   = str(ev.get("data1i") or "").zfill(8)
+    prazo     = int(ev.get("ref1") or 0)
+    prazo_lei = int(ev.get("ref2") or 0)
+    ini_fmt = fim_fmt = data_extenso = ""
+    if len(d_aviso) == 8 and d_aviso.isdigit() and prazo > 0:
+        try:
+            d_av  = date(int(d_aviso[:4]), int(d_aviso[4:6]), int(d_aviso[6:]))
+            d_ini = d_av + timedelta(days=1)
+            d_fim = d_ini + timedelta(days=prazo - 1)
+            ini_fmt = d_ini.strftime("%d/%m/%Y")
+            fim_fmt = d_fim.strftime("%d/%m/%Y")
+            data_extenso = (f"{d_av.day} de {_AVISO_MESES[d_av.month - 1]} "
+                            f"de {d_av.year}")
+        except Exception:
+            pass
+
+    return {
+        "razao":     papel["razao"],
+        "cnpj":      papel["cnpj"],
+        "endereco":  papel["endereco"],
+        "cidade":    papel["cidade"],
+        "nome":      (cad.get("nome") or cad.get("nomer") or "").strip() or "—",
+        "cpf":       _cpf_br(cad.get("cpf")) or "—",
+        "funcao":    funcao or "—",
+        "matricula": mat,
+        "dtadm":     str(cad.get("dtadm") or "").zfill(8),
+        "quem":      quem or "Empresa",
+        "tipo":      tipo or "Trabalhado",
+        "cond":      cond,
+        "data_aviso":   _fmt_dt(d_aviso),
+        "data_extenso": data_extenso,
+        "data_inicio":  ini_fmt,
+        "data_fim":     fim_fmt,
+        "prazo":        prazo,
+        "prazo_lei":    prazo_lei,
+        "folha_fmt":    f"{str(anomes)[4:6]}/{str(anomes)[:4]}",
+    }, None
+
+
+@app.route("/aviso_previo_pdf")
+@app.route("/aviso_previo_pdf/<int:mat>")
+def aviso_previo_pdf(mat=None):
+    if not session.get("logado"):
+        return redirect("/")
+
+    # Sem matrícula no caminho, veio da tela de seleção, que navega com "?mats=".
+    # A tela limita a 1, mas se vier mais de uma vale a primeira.
+    if mat is None:
+        _m = (request.args.get("mats") or request.args.get("mat") or "").split(",")[0]
+        _m = re.sub(r"\D", "", _m)
+        if not _m:
+            return Response("<p style='font-family:sans-serif;padding:24px'>"
+                            "Selecione um funcionário para emitir o aviso prévio.</p>",
+                            mimetype="text/html")
+        mat = int(_m)
+
+    from io import BytesIO
+    from flask import make_response
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    d, erro = _aviso_previo_doc_dados(session.get("id_cliente"),
+                                      _get_id_empresa(), mat,
+                                      session.get("anomes_atual"))
+    if erro:
+        return Response(f"<p style='font-family:sans-serif;padding:24px'>{erro}</p>",
+                        mimetype="text/html")
+
+    PRETO = colors.HexColor("#111827")
+    st_tit = ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=12,
+                            alignment=1, textColor=PRETO, leading=16)
+    st_txt = ParagraphStyle("x", fontName="Helvetica", fontSize=9,
+                            textColor=PRETO, leading=13, alignment=4)
+    st_qua = ParagraphStyle("q", fontName="Helvetica", fontSize=9,
+                            textColor=PRETO, leading=13)
+    st_ass = ParagraphStyle("a", fontName="Helvetica", fontSize=8,
+                            alignment=1, textColor=PRETO, leading=11)
+
+    def linha_cheia():
+        t = Table([[""]], colWidths=[17 * cm], rowHeights=[1])
+        t.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.8, PRETO)]))
+        return t
+
+    def item(num, texto):
+        return Table([[Paragraph(f"<b>{num}</b>", st_qua), Paragraph(texto, st_txt)]],
+                     colWidths=[0.9 * cm, 16.1 * cm],
+                     style=TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"),
+                                       ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                       ("BOTTOMPADDING", (0, 0), (-1, -1), 6)]))
+
+    # ── Partes: quem deu o aviso encabeça o papel ──
+    do_func = (d["quem"] == "Funcionário")
+    bloco_emp = [
+        Paragraph(f"<b>EMPREGADOR:</b> {d['razao']}", st_qua),
+        Paragraph(f"<b>CNPJ:</b> {d['cnpj']}", st_qua),
+        Paragraph(f"<b>ENDEREÇO:</b> {d['endereco']}", st_qua),
+    ]
+    bloco_fun = [
+        Paragraph(f"<b>EMPREGADO:</b> {d['nome']}", st_qua),
+        Paragraph(f"<b>CPF:</b> {d['cpf']} &nbsp;&nbsp;&nbsp; "
+                  f"<b>Matrícula:</b> {int(d['matricula']):06d}", st_qua),
+        Paragraph(f"<b>FUNÇÃO:</b> {d['funcao']} &nbsp;&nbsp;&nbsp; "
+                  f"<b>Admissão:</b> {_fmt_dt(d['dtadm'])}", st_qua),
+    ]
+    primeiro, segundo = (bloco_fun, bloco_emp) if do_func else (bloco_emp, bloco_fun)
+
+    titulo = {
+        "Empresa":     "AVISO PRÉVIO — DISPENSA SEM JUSTA CAUSA",
+        "Funcionário": "AVISO PRÉVIO — PEDIDO DE DEMISSÃO",
+        "Acordo":      "AVISO PRÉVIO — RESCISÃO POR ACORDO (ART. 484-A DA CLT)",
+    }.get(d["quem"], "AVISO PRÉVIO")
+
+    story = [Paragraph(titulo, st_tit), Spacer(1, 8), linha_cheia(), Spacer(1, 4)]
+    story += primeiro
+    story += [Spacer(1, 4), linha_cheia(), Spacer(1, 4)]
+    story += segundo
+    story += [Spacer(1, 4), linha_cheia(), Spacer(1, 12)]
+
+    indenizado = (d["tipo"] == "Indenizado")
+    _n = [0]
+
+    def num():
+        _n[0] += 1
+        return f"{_n[0]:02d} -"
+
+    # ── Corpo: muda com quem avisou e se o aviso é trabalhado ou indenizado ──
+    if d["quem"] == "Funcionário":
+        story.append(item(num(),
+            "Pela presente, comunico ao EMPREGADOR o meu <b>PEDIDO DE DEMISSÃO</b> "
+            f"do emprego, a partir de <b>{d['data_aviso']}</b>, nos termos do "
+            "artigo 487 da CLT."))
+        if indenizado:
+            story.append(item(num(),
+                f"Solicito a dispensa do cumprimento do aviso prévio de "
+                f"<b>{d['prazo']} dias</b>, ciente de que o EMPREGADOR poderá "
+                "descontar das verbas rescisórias o valor correspondente ao "
+                "período não trabalhado (art. 487, § 2º, da CLT). A data "
+                f"projetada do término do aviso é <b>{d['data_fim']}</b>."))
+        else:
+            story.append(item(num(),
+                f"Cumprirei o aviso prévio de <b>{d['prazo']} dias</b>, "
+                f"trabalhando no período de <b>{d['data_inicio']}</b> a "
+                f"<b>{d['data_fim']}</b>, data do efetivo desligamento."))
+    elif d["quem"] == "Acordo":
+        story.append(item(num(),
+            "EMPREGADOR e EMPREGADO ajustam, de comum acordo, a extinção do "
+            "contrato de trabalho, nos termos do <b>artigo 484-A da CLT</b>, "
+            f"com a comunicação feita em <b>{d['data_aviso']}</b>."))
+        if indenizado:
+            story.append(item(num(),
+                f"O aviso prévio é <b>INDENIZADO pela metade</b> — "
+                f"<b>{d['prazo']} dias</b> (art. 484-A, inciso I, da CLT) —, "
+                "ficando o EMPREGADO dispensado do seu cumprimento. A data "
+                f"projetada do término do aviso é <b>{d['data_fim']}</b>."))
+        else:
+            story.append(item(num(),
+                f"O aviso prévio será <b>TRABALHADO</b> por <b>{d['prazo']} dias</b>, "
+                f"no período de <b>{d['data_inicio']}</b> a <b>{d['data_fim']}</b>, "
+                "data do efetivo desligamento."))
+        story.append(item(num(),
+            "Na rescisão por acordo, a indenização sobre o saldo do FGTS é devida "
+            "pela metade, a movimentação da conta fica limitada a 80% do depositado "
+            "e não há direito ao Seguro-Desemprego (art. 484-A, §§ 1º e 2º, da CLT)."))
+    else:
+        story.append(item(num(),
+            "Pela presente, e nos termos dos <b>artigos 487 e seguintes da CLT</b>, "
+            "comunicamos a V.Sa. a rescisão do seu contrato de trabalho, "
+            "<b>sem justa causa</b>, por iniciativa do EMPREGADOR, com aviso dado "
+            f"em <b>{d['data_aviso']}</b>."))
+        if indenizado:
+            story.append(item(num(),
+                f"O aviso prévio de <b>{d['prazo']} dias</b> é <b>INDENIZADO</b>: "
+                "V.Sa. fica dispensado(a) do seu cumprimento, sem prejuízo da "
+                "remuneração correspondente. O último dia de trabalho é "
+                f"<b>{d['data_aviso']}</b> e a data projetada do término do aviso, "
+                f"para todos os efeitos legais, é <b>{d['data_fim']}</b>."))
+        else:
+            story.append(item(num(),
+                f"O aviso prévio de <b>{d['prazo']} dias</b> será <b>TRABALHADO</b> "
+                f"no período de <b>{d['data_inicio']}</b> a <b>{d['data_fim']}</b>, "
+                "data em que se dará o efetivo desligamento."))
+            story.append(item(num(),
+                "Durante o aviso prévio trabalhado a jornada fica reduzida em "
+                "<b>2 (duas) horas diárias</b>, ou, por opção do EMPREGADO, o "
+                "trabalho pode ser dispensado por <b>7 (sete) dias corridos</b> ao "
+                "final do período, sem prejuízo do salário (art. 488 da CLT). "
+                "Assinale a opção escolhida:"))
+            story.append(Table(
+                [[Paragraph("(&nbsp;&nbsp;&nbsp;) Redução de 2 horas diárias", st_qua),
+                  Paragraph("(&nbsp;&nbsp;&nbsp;) 7 dias corridos ao final", st_qua)]],
+                colWidths=[8.05 * cm, 8.05 * cm], hAlign="RIGHT",
+                style=TableStyle([("LEFTPADDING", (0, 0), (-1, -1), 0),
+                                  ("BOTTOMPADDING", (0, 0), (-1, -1), 8)])))
+        if d["prazo_lei"] > 0:
+            story.append(item(num(),
+                f"Ao prazo acima somam-se <b>{d['prazo_lei']} dias</b> de acréscimo "
+                "pelo tempo de serviço (<b>Lei 12.506/2011</b>), indenizados e "
+                "projetados na data de saída para todos os efeitos legais."))
+
+    story.append(item(num(),
+        "As verbas rescisórias serão pagas no prazo do artigo 477, § 6º, da CLT, "
+        "contra a entrega do Termo de Rescisão do Contrato de Trabalho."))
+
+    story += [
+        Spacer(1, 6),
+        Paragraph("O presente aviso é emitido em duas vias, ficando a primeira com "
+                  "o EMPREGADOR e a segunda com o EMPREGADO.", st_txt),
+        Spacer(1, 14),
+        Paragraph(f"{d['cidade']}, {d['data_extenso'] or d['data_aviso']}.", st_qua),
+        Spacer(1, 22),
+    ]
+
+    vazio = "_" * 42
+    story.append(Table(
+        [[Paragraph(vazio, st_ass), Paragraph(vazio, st_ass)],
+         [Paragraph("<b>EMPREGADOR</b>", st_ass), Paragraph("<b>EMPREGADO</b>", st_ass)],
+         [Paragraph(d["razao"], st_ass), Paragraph(d["nome"], st_ass)],
+         [Paragraph("&nbsp;", st_ass), Paragraph("&nbsp;", st_ass)],
+         [Paragraph(vazio, st_ass), Paragraph(vazio, st_ass)],
+         [Paragraph("<b>TESTEMUNHA</b>", st_ass), Paragraph("<b>TESTEMUNHA</b>", st_ass)]],
+        colWidths=[8.5 * cm, 8.5 * cm],
+        style=TableStyle([("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                          ("TOPPADDING", (0, 0), (-1, -1), 1),
+                          ("BOTTOMPADDING", (0, 0), (-1, -1), 1)])))
+
+    # Quem dá ciência do recebimento é a outra parte: o aviso da empresa é
+    # recebido pelo empregado, e o pedido de demissão é recebido pela empresa.
+    recebedor = "EMPREGADOR" if do_func else "EMPREGADO"
+    story += [
+        Spacer(1, 16),
+        Paragraph("Recebi a via deste aviso prévio em ____/____/________ &nbsp;&nbsp; "
+                  f"{recebedor}: ____________________________________", st_qua),
+    ]
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2 * cm, rightMargin=2 * cm,
+                            topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                            title="Aviso Prévio")
+    doc.build(story)
+    buf.seek(0)
+
+    gravar_log("AVISO-PREVIO", f"Aviso previo emitido em PDF: {d['nome'][:30]}",
+               matricula=mat)
+
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="AvisoPrevio_{int(mat):06d}.pdf"')
+    return resp
 
 
 # =========================================================
@@ -14627,6 +14969,66 @@ CONTRATO_EXP_PRORROGACAO_TXT = (
 )
 
 
+def _empregador_papel(id_cliente, id_empresa):
+    """Razao social, CNPJ e endereco do empregador para os documentos em papel
+    (contrato de experiencia, aviso previo...).
+
+    O tab_empresa NAO guarda endereco (conferido no banco em 08/08/2026 — 61
+    colunas, nenhuma de endereco). O app resolve isso pela BrasilAPI, com o
+    endereco cadastral da Receita — mesmo caminho do /api/empresa_endereco. Os
+    get() de coluna ficam como primeira tentativa porque base migrada do
+    Desktop pode ter esses campos.
+    """
+    try:
+        re_ = (supabase.table("tab_empresa")
+               .select("*")
+               .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+               .limit(1).execute())
+        emp = (re_.data or [{}])[0]
+    except Exception:
+        emp = {}
+
+    e_logr = emp.get("end_logradouro") or emp.get("logradouro") or ""
+    e_nr   = emp.get("end_nrlogr") or emp.get("nrlograd") or ""
+    e_cmp  = emp.get("end_complemento") or emp.get("complemento") or ""
+    e_bai  = emp.get("end_bairro") or emp.get("bairro") or ""
+    e_cid  = (emp.get("end_cidade_nome") or emp.get("cidade_nome")
+              or emp.get("cidade") or emp.get("municipio") or "")
+    e_uf   = emp.get("end_uf") or emp.get("uf") or ""
+
+    if not e_logr and not e_cid:
+        _cnpj_num = so_numeros(emp.get("cnpj") or session.get("cnpj_empresa", ""))
+        if _cnpj_num:
+            try:
+                _rr = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{_cnpj_num}",
+                                   timeout=6,
+                                   headers={"User-Agent": "Folha10-Simples/1.0"})
+                if _rr.status_code == 200:
+                    _j    = _rr.json()
+                    e_logr = _j.get("logradouro") or ""
+                    e_nr   = _j.get("numero") or ""
+                    e_cmp  = _j.get("complemento") or ""
+                    e_bai  = _j.get("bairro") or ""
+                    e_cid  = _j.get("municipio") or ""
+                    e_uf   = _j.get("uf") or ""
+            except Exception as e:
+                print(f"[papel empregador] endereco pela BrasilAPI: {e}")
+
+    endereco = ", ".join([p for p in [e_logr, (f"nº {e_nr}" if e_nr else ""),
+                                      e_cmp, e_bai] if p])
+    if e_cid:
+        endereco = f"{endereco} — {e_cid}/{e_uf}" if endereco else f"{e_cid}/{e_uf}"
+
+    return {
+        "razao":    (emp.get("razaosocial") or emp.get("nome_fantasia")
+                     or str(session.get("empresa_info") or "")).strip() or "—",
+        "cnpj":     _fmt_cnpj(emp.get("cnpj") or session.get("cnpj_empresa", "")),
+        "endereco": endereco or "—",
+        "cidade":   e_cid or "—",
+        "uf":       e_uf or "",
+    }
+
+
 def _contrato_exp_dados(id_cliente, id_empresa, mat):
     """Junta empresa + funcionario + contrato para montar o PDF.
 
@@ -14651,14 +15053,7 @@ def _contrato_exp_dados(id_cliente, id_empresa, mat):
         return None, ("Este funcionario nao tem contrato de experiencia lancado. "
                       "Lance por Eventuais -> Contrato por Prazo Determinado.")
 
-    try:
-        re_ = (supabase.table("tab_empresa")
-               .select("*")
-               .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
-               .limit(1).execute())
-        emp = (re_.data or [{}])[0]
-    except Exception:
-        emp = {}
+    papel = _empregador_papel(id_cliente, id_empresa)
 
     # Jornada: o resumo legivel que a propria tela de cadastro mostra.
     jornada = ""
@@ -14686,48 +15081,11 @@ def _contrato_exp_dados(id_cliente, id_empresa, mat):
         except Exception:
             pass
 
-    # Endereco do empregador: o tab_empresa NAO guarda endereco (conferido no
-    # banco em 08/08/2026 — 61 colunas, nenhuma de endereco). O app resolve
-    # isso pela BrasilAPI, com o endereco cadastral da Receita — mesmo caminho
-    # do /api/empresa_endereco. Os get() de coluna ficam como primeira tentativa
-    # porque base migrada do Desktop pode ter esses campos.
-    e_logr = emp.get("end_logradouro") or emp.get("logradouro") or ""
-    e_nr   = emp.get("end_nrlogr") or emp.get("nrlograd") or ""
-    e_cmp  = emp.get("end_complemento") or emp.get("complemento") or ""
-    e_bai  = emp.get("end_bairro") or emp.get("bairro") or ""
-    e_cid  = (emp.get("end_cidade_nome") or emp.get("cidade_nome")
-              or emp.get("cidade") or emp.get("municipio") or "")
-    e_uf   = emp.get("end_uf") or emp.get("uf") or ""
-
-    if not e_logr and not e_cid:
-        _cnpj_num = so_numeros(emp.get("cnpj") or session.get("cnpj_empresa", ""))
-        if _cnpj_num:
-            try:
-                _rr = requests.get(f"https://brasilapi.com.br/api/cnpj/v1/{_cnpj_num}",
-                                   timeout=6,
-                                   headers={"User-Agent": "Folha10-Simples/1.0"})
-                if _rr.status_code == 200:
-                    _j    = _rr.json()
-                    e_logr = _j.get("logradouro") or ""
-                    e_nr   = _j.get("numero") or ""
-                    e_cmp  = _j.get("complemento") or ""
-                    e_bai  = _j.get("bairro") or ""
-                    e_cid  = _j.get("municipio") or ""
-                    e_uf   = _j.get("uf") or ""
-            except Exception as e:
-                print(f"[contrato exp] endereco pela BrasilAPI: {e}")
-
-    endereco = ", ".join([p for p in [e_logr, (f"nº {e_nr}" if e_nr else ""),
-                                      e_cmp, e_bai] if p])
-    if e_cid:
-        endereco = f"{endereco} — {e_cid}/{e_uf}" if endereco else f"{e_cid}/{e_uf}"
-
     return {
-        "razao":     (emp.get("razaosocial") or emp.get("nome_fantasia")
-                      or str(session.get("empresa_info") or "")).strip() or "—",
-        "cnpj":      _fmt_cnpj(emp.get("cnpj") or session.get("cnpj_empresa", "")),
-        "endereco":  endereco or "—",
-        "cidade":    e_cid or "—",
+        "razao":     papel["razao"],
+        "cnpj":      papel["cnpj"],
+        "endereco":  papel["endereco"],
+        "cidade":    papel["cidade"],
         "nome":      (cad.get("nome") or cad.get("nomer") or "").strip() or "—",
         "cpf":       _cpf_br(cad.get("cpf")),
         "funcao":    funcao or "—",
@@ -16508,6 +16866,34 @@ def api_funcionarios_lista():
         except Exception as e:
             print(f"[funcionarios_lista] contratos: {e}")
 
+    # Contexto imprimir aviso prévio: só entra na lista quem tem aviso prévio
+    # registrado NESTA folha (op1=9 e folha == anomes_atual) — aviso de folha
+    # antiga já virou rescisão, e o papel dele saiu na época. Fora ficam também
+    # justa causa, falecimento e término de contrato: o evento existe para a
+    # rescisão saber a data, mas ninguém avisou nada, então não há o que emitir.
+    aviso_doc = {}
+    if _contexto == "aviso_previo_pdf":
+        _anomes = str(session.get("anomes_atual") or "")
+        if _anomes:
+            try:
+                r_ap = (supabase.table("tab_eventos")
+                        .select("matricula, data1i, campotxt2, campotxt3")
+                        .eq("id_empresa", id_empresa)
+                        .eq("op1", 9).eq("folha", int(_anomes))
+                        .order("id")
+                        .execute())
+                for _e in (r_ap.data or []):
+                    if _e.get("matricula") is None:
+                        continue
+                    _cond = str(_e.get("campotxt3") or "").strip()
+                    _quem = str(_e.get("campotxt2") or "").strip()
+                    if _cond in ("Justa Causa", "Falecimento") or _quem == "Término do Contrato":
+                        continue
+                    _d = str(_e.get("data1i") or "").zfill(8)
+                    aviso_doc[int(_e["matricula"])] = _fmt_dt(_d) if len(_d) == 8 else ""
+            except Exception as e:
+                print(f"[funcionarios_lista] aviso previo do mes: {e}")
+
     # Contexto aviso prévio: data de término do Contrato de Experiência (o mesmo
     # evento op1=1/op2=167). Quem está em experiência muda a conversa — o aviso
     # prévio pode ser dispensa antecipada ou o simples término do contrato.
@@ -16621,6 +17007,8 @@ def api_funcionarios_lista():
             mat_int = 0
         if _contexto == "contrato_pdf" and mat_int not in contrato_mats:
             continue
+        if _contexto == "aviso_previo_pdf" and mat_int not in aviso_doc:
+            continue
         funcionarios.append({
             "matricula": f.get("matricula"),
             "nome":      nome,
@@ -16629,6 +17017,7 @@ def api_funcionarios_lista():
             "codcateg":  str(f.get("codcateg") or ""),
             "cbofuncao": str(f.get("cbofuncao") or ""),
             "aviso_previo": (mat_int in aviso_mats),
+            "aviso_data":   aviso_doc.get(mat_int, ""),
             "tem_pensao":   (mat_int in pensao_mats),
             "pensoes":      pensoes_por_mat.get(mat_int, []),
             "exame_data":   (lambda d: f"{d[6:8]}/{d[4:6]}/{d[:4]}" if d else "")(

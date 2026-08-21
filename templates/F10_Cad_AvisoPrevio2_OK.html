@@ -95,6 +95,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
 }
 .btn-rescisao:hover { background: #14532d; }
+
+/* Oferta de emissão do documento — o passo natural depois de gravar:
+   o papel é o que vai ser assinado pelo funcionário. */
+.oferta-doc {
+    background: #f8fafc; border: 1px dashed #bfdbfe;
+    border-radius: 12px; padding: 18px 20px; margin-bottom: 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; text-align: left; flex-wrap: wrap;
+}
+.oferta-txt   { font-size: 13px; color: #374151; line-height: 1.5; flex: 1 1 260px; }
+.oferta-txt b { color: #1e293b; }
+.btn-imprimir {
+    background: #2a7de1; border: none; color: white;
+    font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 22px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+}
+.btn-imprimir:hover { background: #1a5fb8; }
 </style>
 </head>
 
@@ -147,6 +166,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="rl-val">{{ prazo }} dias</span>
             </div>
         </div>
+
+        {% if tem_documento %}
+        <div class="oferta-doc">
+            <div class="oferta-txt">
+                <b>Emitir o documento do aviso prévio</b><br>
+                Duas vias em PDF, com o texto do aviso e o espaço das assinaturas.
+                Depois é só reemitir por <i>Eventuais &#8594; Emitir Aviso Prévio</i>.
+            </div>
+            <a class="btn-imprimir" href="/aviso_previo_pdf/{{ mat }}" target="_blank">
+                &#128438; Emitir Aviso Prévio
+            </a>
+        </div>
+        {% endif %}
 
         <div class="btns">
             <a class="btn-rescisao" href="/cad_rescisao?mat={{ mat }}">&#9998; Registrar Rescisão</a>

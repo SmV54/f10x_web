@@ -630,9 +630,19 @@ const modulos = {
                 { icone: '↩️', nome: 'Cancelar Alteração',     href: '/cad_cancelar_aumento',                         ok: true },
                 { icone: '📊', nome: 'Relatório de Salários',  href: '/relatorios_config?rel=sal_aumento',            ok: true },
             ]},
-            { nome: 'Rescisão', itens: [
+            // semAtalho: com a folha Calculada/Fechada o menu reduz a seção aos
+            // itens permiteFolhaBloqueada, e aqui sobra só o "Emitir Aviso Prévio".
+            // Sem isto, clicar em Rescisão pularia os cards e cairia direto na
+            // emissão do aviso, escondendo o resto do assunto.
+            { nome: 'Rescisão', semAtalho: true, itens: [
                 // ── Linha 1: ASSUNTO Aviso Prévio (sem o Cancelar) ──
-                { icone: '📢', nome: 'Aviso Prévio',           href: '/select_funcionario?contexto=aviso_previo',          ok: true, classe: 'nav-fix' },
+                // Cada card diz o que faz: 'Registrar' grava o aviso na folha e
+                // 'Emitir' tira o documento. O nome solto 'Aviso Prévio' entrava
+                // direto no registro sem o usuário escolher.
+                { icone: '📢', nome: 'Registrar Aviso Prévio',  href: '/select_funcionario?contexto=aviso_previo',          ok: true, classe: 'nav-fix' },
+                // Só emite o que já está registrado nesta folha — não mexe em
+                // nada, por isso vale também com a folha Calculada/Fechada.
+                { icone: '🖶', nome: 'Emitir Aviso Prévio',     href: '/select_funcionario?contexto=aviso_previo_pdf',      ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 { icone: '📄', nome: 'Listagem de Aviso Prévio', href: '/lista_aviso_previo',                              ok: true, classe: 'nav-fix' },
                 // ── Linha 2: ASSUNTO Rescisão (sem o Cancelar) ──
                 { icone: '✍️', nome: 'Registrar Rescisão',     href: '/select_funcionario?contexto=rescisao',              ok: true, classe: 'nav-fix', quebraLinha: true },

@@ -746,6 +746,24 @@ const CONTEXTOS = {
         apiUrl:        '/api/funcionarios_lista?contexto=aviso_previo',
         colContrato:   true,
     },
+    aviso_previo_pdf: {
+        titulo:        'Emitir Aviso Prévio — Selecionar Funcionário',
+        subtitulo:     'Somente funcionários com aviso prévio registrado no mês da folha atual são exibidos',
+        tituloCurto:   'Selecionar — Emitir Aviso',
+        // A rota do PDF aceita "?mats=", que é como esta tela navega.
+        proximo:       '/aviso_previo_pdf',
+        // a lista traz SÓ quem tem aviso prévio lançado nesta folha
+        apiUrl:        '/api/funcionarios_lista?contexto=aviso_previo_pdf',
+        // 'all' porque quem já teve a rescisão registrada continua podendo
+        // tirar a 2ª via do aviso que foi dado neste mesmo mês.
+        f_situacao:    'all',
+        semFiltros:    true,         // esconde o painel de Filtros — só a lista
+        colAviso:      true,         // última coluna = data do aviso prévio
+        novaAba:       true,         // o PDF abre em aba separada
+        maxSel:        1,
+        msgMaxSel:     'Para emitir o aviso prévio, selecione apenas 1 funcionário',
+        msgVazio:      'Nenhum funcionário com aviso prévio registrado no mês da folha atual.',
+    },
     rescisao: {
         titulo:        'Rescisão — Selecionar Funcionário',
         subtitulo:     'Funcionários com aviso prévio registrado neste mês ou no mês anterior',
@@ -1374,6 +1392,13 @@ function continuar() {
         return;
     }
     const mats = Array.from(selectedMats).sort((a,b)=>a-b).join(',');
+    // Contexto que termina em PDF abre em aba separada: a tela de seleção fica
+    // de pé, pronta para o próximo funcionário, e o Voltar do navegador não
+    // cai no papel. Sem overlay — esta aba não vai a lugar nenhum.
+    if (ctx.novaAba) {
+        window.open(ctx.proximo + '?mats=' + mats, '_blank');
+        return;
+    }
     const ov = document.getElementById('loading-overlay');
     if (ov) { ov.style.display = 'flex'; }
     window.location.href = ctx.proximo + '?mats=' + mats;
