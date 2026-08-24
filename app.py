@@ -44967,11 +44967,24 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                               Paragraph("", st_info_hdr),
                               Paragraph("", st_info_hdr)]]
                 for vi in func["verbas_info"]:
+                    # As informativas vem no formato CRU do agg (cod/qtd/val
+                    # numericos), nao no formato da tela (qtd_fmt/val_fmt). Passar
+                    # o int direto pro Paragraph quebrava o PDF inteiro com
+                    # "'int' object has no attribute 'split'".
+                    _vi_qtd = int(vi.get("qtd") or 0)
+                    if vi.get("unid") == "H" and _vi_qtd > 0:
+                        vi_qtd_txt = f"{_vi_qtd // 60}h{_vi_qtd % 60:02d}"
+                    elif vi.get("unid") == "D" and _vi_qtd > 0:
+                        vi_qtd_txt = f"{_vi_qtd} dia{'s' if _vi_qtd != 1 else ''}"
+                    elif int(vi.get("cod") or 0) in _VERBAS_QTD_DIAS and _vi_qtd > 0:
+                        vi_qtd_txt = f"{_vi_qtd} dia{'s' if _vi_qtd != 1 else ''}"
+                    else:
+                        vi_qtd_txt = ""
                     info_rows.append([
-                        Paragraph(vi["cod"],     st_info_cod),
-                        Paragraph(vi["dsc"],     st_info_dsc),
-                        Paragraph(vi["qtd_fmt"], st_info_cod),
-                        Paragraph(vi["val_fmt"], st_info_val),
+                        Paragraph(f"{int(vi.get('cod') or 0):04d}", st_info_cod),
+                        Paragraph(str(vi.get("dsc") or ""),         st_info_dsc),
+                        Paragraph(vi_qtd_txt,                       st_info_cod),
+                        Paragraph(_fmt_brl(int(vi.get("val") or 0)), st_info_val),
                     ])
                 COLS_INFO = [COLS[0], COLS[1]+COLS[2], COLS[3], COLS[4]]
                 i_tbl = Table(info_rows, colWidths=COLS_INFO)
