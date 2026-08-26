@@ -27226,6 +27226,33 @@ def _ctx_esocial():
 # =========================================================
 # eSocial S-1000 — GERADOR DE XML
 # =========================================================
+def _empresa_es_aliases(empresa):
+    """Copia os campos do eSocial de tab_empresa para os nomes curtos.
+
+    Em tab_empresa as colunas se chamam es08_classtributaria, es_ind_coop,
+    es_ind_constr, es_ind_des_folha e es_ind_porte — NAO existe class_trib,
+    ind_coop e companhia. O gerador do S-1000 e a tela liam os nomes curtos,
+    achavam None e caiam no default: toda empresa saia declarada com
+    <classTrib>01</classTrib>, fosse qual fosse o cadastro. A empresa 57, por
+    exemplo, e' 04 e ia como 01.
+
+    Preenche no proprio dicionario, sem sobrescrever o que ja' vier definido.
+    Devolve o mesmo dicionario, por comodidade de encadeamento."""
+    if not isinstance(empresa, dict):
+        return empresa
+    de_para = {
+        "class_trib":    "es08_classtributaria",
+        "ind_coop":      "es_ind_coop",
+        "ind_constr":    "es_ind_constr",
+        "ind_des_folha": "es_ind_des_folha",
+        "ind_porte":     "es_ind_porte",
+    }
+    for curto, real in de_para.items():
+        if not str(empresa.get(curto) or "").strip():
+            empresa[curto] = empresa.get(real) or ""
+    return empresa
+
+
 def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, contato_cpf):
     """Gera string XML do S-1000 (Informações do Empregador/Contribuinte).
     tp_op: 'inclusao' ou 'alteracao'
@@ -27264,17 +27291,19 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
     def x(v):
         return _esc(str(v or ''))
 
+    _empresa_es_aliases(empresa)
+
     cnpj_emp  = dg(empresa.get('cnpj', ''))
     cnpj_raiz = cnpj_emp[:8]
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
-    class_trib = str(empresa.get('class_trib') or '01').zfill(2)
+    class_trib = str(empresa.get('class_trib') or '').strip().zfill(2)
     ind_coop   = str(empresa.get('ind_coop') or '').strip()
     ind_constr = str(empresa.get('ind_constr') or '').strip()
     ind_des    = str(empresa.get('ind_des_folha') or '0').strip() or '0'
-    ind_porte  = str(empresa.get('ind_porte') or '').strip()
-    ind_opt    = str(empresa.get('ind_opt_reg_eletron') or '0').strip() or '0'
+    ind_porte  = str(empresa.get('ind_porte') or '').strip().upper()
+    ind_opt    = '0'     # sem campo no cadastro: ninguem optou pelo registro eletronico
 
     # indCoop e indConstr sao OPCIONAIS na S-1.x e so valem para cooperativa e
     # para construtora. Mandar "0" para quem nao e nem uma coisa nem outra ja
@@ -27283,7 +27312,17 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
     ind_coop_xml   = f"\n          <indCoop>{x(ind_coop)}</indCoop>" if ind_coop not in ('', '0') else ''
     ind_constr_xml = f"\n          <indConstr>{x(ind_constr)}</indConstr>" if ind_constr not in ('', '0') else ''
-    ind_porte_xml  = f"\n          <indPorte>{x(ind_porte)}</indPorte>" if ind_porte else ''
+    # indPorte so' aceita "S" (ME/EPP). Qualquer outro valor no cadastro fica
+    # de fora — o campo e' opcional e mandar lixo derruba o evento inteiro.
+    ind_porte_xml  = f"\n          <indPorte>S</indPorte>" if ind_porte == 'S' else ''
+
+    if not class_trib.strip('0'):
+        raise ValueError(
+            # sem "→": o handler global imprime a mensagem e U+2192 estoura o
+            # console cp1252 do Windows (mesmo motivo do comentário em _cert_decrypt)
+            "Empresa sem Classificacao Tributaria no cadastro. Preencha-a em "
+            "Cadastros / Empresa antes de enviar o S-1000 - sem ela o evento "
+            "sairia com uma classificacao inventada.")
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v_S_01_03_00"
@@ -27429,8 +27468,11 @@ def esocial_s1000():
         '08': '08 — Órgão Público', '09': '09 — RPPS',
         '21': '21 — Emp. Doméstico', '22': '22 — Emp. Dom. MEI',
     }
-    ct = str(empresa.get('class_trib') or '').zfill(2)
-    empresa['_class_trib_label'] = _CLASS_TRIB.get(ct, ct or '—')
+    # Os campos do eSocial moram nas colunas es_*; sem o de-para a tela dizia
+    # "não preenchido" em cadastro que estava certo.
+    _empresa_es_aliases(empresa)
+    ct = str(empresa.get('class_trib') or '').strip().zfill(2)
+    empresa['_class_trib_label'] = _CLASS_TRIB.get(ct, ct if ct.strip('0') else '—')
 
     cnpj_fmt = _fmt_cnpj(cnpj_emp) if len(cnpj_emp) == 14 else cnpj_emp
 
@@ -28000,19 +28042,21 @@ def api_esocial_s1000_excluir():
 def esocial_s1005():
     if not session.get("logado"): return redirect("/")
     ctx = _ctx_esocial()
-    # Endereço + dados da empresa cadastrada (usados no S-1005)
+    # CNAE preponderante da empresa (o unico dado do cadastro que o S-1005 usa).
+    #
+    # Este select pedia tambem logradouro/nrlograd/bairro/uf/cep, colunas que
+    # NAO existem em tab_empresa (a tabela nao guarda endereco). O PostgREST
+    # respondia "column tab_empresa.logradouro does not exist", o except comia
+    # o erro e a tela dizia "CNAE preponderante: nao cadastrado" mesmo com o
+    # CNAE preenchido — e o envio, que le o CNAE por conta propria, ia bem.
+    # O erro nao aparecia porque o except era mudo.
     empresa = {}
     try:
-        r = supabase.table("tab_empresa").select("logradouro,nrlograd,bairro,uf,cep,cnae")\
+        r = supabase.table("tab_empresa").select("cnae")\
             .eq("id_empresa", _get_id_empresa()).limit(1).execute()
         empresa = r.data[0] if r.data else {}
-    except Exception:
-        pass
-    end = " ".join(filter(None, [
-        empresa.get("logradouro"), empresa.get("nrlograd"),
-        empresa.get("bairro"), empresa.get("uf"),
-    ]))
-    ctx["endereco_empresa"] = end or "—"
+    except Exception as e:
+        print(f"[S1005 tela] nao consegui ler o CNAE da empresa: {e}")
     ctx["cnae_empresa"]     = so_numeros(empresa.get("cnae", "")) or ""
     _am = str(session.get("anomes_atual") or "")
     ctx["ini_valid_fmt"]    = f"{_am[4:6]}/{_am[:4]}" if len(_am) == 6 else "—"
