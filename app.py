@@ -5903,6 +5903,8 @@ def cad_aviso_previo2_ok():
         tem_documento=tem_documento,
         quem_desc=quem_desc.get(quem, quem),
         tipo_desc=tipo_desc.get(tipo, tipo),
+        tipo=tipo,                      # cru: a tela troca o rotulo da data por ele
+
         data_aviso_fmt=_fmt(data_aviso),
         data_fim_fmt=_fmt(data_fim),
         prazo=prazo,
@@ -27228,6 +27230,29 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
     """Gera string XML do S-1000 (Informações do Empregador/Contribuinte).
     tp_op: 'inclusao' ou 'alteracao'
     ini_valid / fim_valid: 'YYYY-MM'
+
+    Leiaute S-1.3 (evtInfoEmpregador_v_S_01_03_00), o mesmo de todos os outros
+    eventos do sistema. O gerador nasceu na versão 2.5 e ficou para trás; a
+    simplificação do eSocial tirou vários campos que aquele leiaute exigia, e
+    mandá-los volta com "[17] A estrutura do arquivo XML está em desconformidade
+    com o esquema XSD":
+
+      · ideEvento    — só tpAmb, procEmi e verProc. indRetif SAIU (retificação
+                       de evento de tabela é <alteracao>, não indRetif).
+      · infoCadastro — nmRazao e natJurid SAÍRAM (o governo já tem os dois pelo
+                       CNPJ) e o grupo <contato> também: na S-1.x T_contato só
+                       tem fonePrinc/emailPrinc e nem existe no S-1000. O
+                       contato do empregador agora se mantém no portal.
+      · A ORDEM mudou: indPorte vem ANTES de indOptRegEletron.
+
+    Sequência válida de infoCadastro (todos os demais são opcionais e ficam de
+    fora enquanto não houver campo no cadastro):
+        classTrib, indCoop?, indConstr?, indDesFolha, indOpcCP?, indPorte?,
+        indOptRegEletron, cnpjEFR?, dtTrans11096?, indTribFolhaPisPasep?,
+        indPertIRRF?, dadosIsencao?, infoOrgInternacional?
+
+    contato_nome / contato_cpf continuam na assinatura porque a tela ainda os
+    coleta e grava no PARAMS da remessa, mas NÃO vão mais para o XML.
     """
     import re as _re2
     from xml.sax.saxutils import escape as _esc
@@ -27244,25 +27269,28 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
 
-    nm_razao   = x(empresa.get('razaosocial', ''))
     class_trib = str(empresa.get('class_trib') or '01').zfill(2)
-    nat_jurid  = str(empresa.get('nat_juridica') or '').strip()
-    ind_coop   = str(empresa.get('ind_coop') or '0')
-    ind_constr = str(empresa.get('ind_constr') or '0')
-    ind_des    = str(empresa.get('ind_des_folha') or '0')
+    ind_coop   = str(empresa.get('ind_coop') or '').strip()
+    ind_constr = str(empresa.get('ind_constr') or '').strip()
+    ind_des    = str(empresa.get('ind_des_folha') or '0').strip() or '0'
     ind_porte  = str(empresa.get('ind_porte') or '').strip()
+    ind_opt    = str(empresa.get('ind_opt_reg_eletron') or '0').strip() or '0'
 
+    # indCoop e indConstr sao OPCIONAIS na S-1.x e so valem para cooperativa e
+    # para construtora. Mandar "0" para quem nao e nem uma coisa nem outra ja
+    # rendeu recusa por regra ("nao deve ser preenchido"), entao so vao quando
+    # o cadastro disser algo diferente de 0.
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
-    nat_jurid_xml = f"\n          <natJurid>{x(nat_jurid)}</natJurid>" if nat_jurid else ''
-    ind_porte_xml = f"\n          <indPorte>{x(ind_porte)}</indPorte>" if ind_porte else ''
+    ind_coop_xml   = f"\n          <indCoop>{x(ind_coop)}</indCoop>" if ind_coop not in ('', '0') else ''
+    ind_constr_xml = f"\n          <indConstr>{x(ind_constr)}</indConstr>" if ind_constr not in ('', '0') else ''
+    ind_porte_xml  = f"\n          <indPorte>{x(ind_porte)}</indPorte>" if ind_porte else ''
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v02_05_00"
+<eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v02_05_00 evtInfoEmpregador_v02_05_00.xsd">
+         xsi:schemaLocation="http://www.esocial.gov.br/schema/evt/evtInfoEmpregador/v_S_01_03_00 evtInfoEmpregador_v_S_01_03_00.xsd">
   <evtInfoEmpregador Id="{evt_id}">
     <ideEvento>
-      <indRetif>1</indRetif>
       <tpAmb>{x(tpAmb)}</tpAmb>
       <procEmi>1</procEmi>
       <verProc>{_verproc_str()}</verProc>
@@ -27277,16 +27305,9 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
           <iniValid>{x(ini_valid)}</iniValid>{fim_valid_xml}
         </idePeriodo>
         <infoCadastro>
-          <nmRazao>{nm_razao}</nmRazao>
-          <classTrib>{x(class_trib)}</classTrib>{nat_jurid_xml}
-          <indCoop>{x(ind_coop)}</indCoop>
-          <indConstr>{x(ind_constr)}</indConstr>
-          <indDesFolha>{x(ind_des)}</indDesFolha>
-          <indOptRegEletron>0</indOptRegEletron>{ind_porte_xml}
-          <contato>
-            <nmCtt>{x(contato_nome)}</nmCtt>
-            <cpfCtt>{dg(contato_cpf)}</cpfCtt>
-          </contato>
+          <classTrib>{x(class_trib)}</classTrib>{ind_coop_xml}{ind_constr_xml}
+          <indDesFolha>{x(ind_des)}</indDesFolha>{ind_porte_xml}
+          <indOptRegEletron>{x(ind_opt)}</indOptRegEletron>
         </infoCadastro>
       </{tp_op}>
     </infoEmpregador>
@@ -27352,8 +27373,17 @@ def esocial_s1000():
         r["_datagrava_fmt"] = _d8(r.get("data_grava"))
         r["_tp_op_label"]   = "Inclusão" if str(r.get("codigo2") or "1") == "1" else "Alteração"
 
-        # Parse stored PARAMS from observacao_erro
-        obs = (r.get("observacao_erro") or "").strip()
+        # observacao_erro guarda "PARAMS:{...}" e, depois de um envio, ganha o
+        # status colado: "PARAMS:{...}|mensagem" (mesmo formato do S-1010/1020).
+        obs_full = (r.get("observacao_erro") or "").strip()
+        if "|" in obs_full:
+            _p0, _s0 = obs_full.split("|", 1)
+            obs      = _p0 if _p0.startswith("PARAMS:") else ""
+            status   = _s0 if _p0.startswith("PARAMS:") else obs_full
+        elif obs_full.startswith("PARAMS:"):
+            obs, status = obs_full, ""
+        else:
+            obs, status = "", obs_full
         r["_ini_valid"] = ""
         r["_fim_valid"] = ""
         r["_ctt_nome"]  = ""
@@ -27374,19 +27404,20 @@ def esocial_s1000():
         recibo = (r.get("recibo") or "").strip()
         dgrava = (r.get("data_grava") or "").strip()
 
-        if recibo and obs == "EXCLUIDO":
+        if recibo and status == "EXCLUIDO":
             s = "D"
         elif recibo:
             s = "E"
-        elif obs.startswith("AGUARDANDO:"):
+        elif status.startswith("AGUARDANDO:"):
             s = "W"
-            r["_protocolo"] = obs[len("AGUARDANDO:"):]
-        elif obs and not obs.startswith("PARAMS:"):
+            r["_protocolo"] = status[len("AGUARDANDO:"):]
+        elif status:
             s = "X"
         elif dgrava:
             s = "G"
         else:
             s = "P"
+        r["_erro_msg"] = status if s == "X" else ""
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
@@ -27436,9 +27467,11 @@ def api_esocial_s1000_gravar():
 
     if not ini_valid or len(ini_valid) != 7 or ini_valid[4] != '-':
         return jsonify({"ok": False, "msg": "Período de início inválido (use AAAA-MM)."})
-    if not ctt_nome:
-        return jsonify({"ok": False, "msg": "Nome do contato obrigatório."})
-    if len(so_numeros(ctt_cpf)) != 11:
+    # O contato deixou de existir no S-1000 a partir do leiaute S-1.0 (hoje se
+    # mantem no portal do eSocial), entao nao trava mais a gravacao: se vier
+    # preenchido fica guardado no PARAMS, so para consulta aqui. O CPF, quando
+    # informado, continua tendo de ser um CPF.
+    if ctt_cpf and len(so_numeros(ctt_cpf)) != 11:
         return jsonify({"ok": False, "msg": "CPF do contato inválido (deve ter 11 dígitos)."})
 
     codigo2 = 1 if tp_op == "inclusao" else 2
@@ -27505,8 +27538,10 @@ def api_esocial_s1000_xml():
     except Exception as e:
         return Response(str(e), status=500, mimetype="text/plain")
 
-    # Parse stored params
-    obs = (es.get("observacao_erro") or "").strip()
+    # Parse stored params. Depois de um envio recusado a coluna vira
+    # "PARAMS:{...}|mensagem do erro" (ver _obs_upd no envio), entao o PARAMS
+    # e sempre o pedaco ANTES do primeiro '|'.
+    obs = (es.get("observacao_erro") or "").strip().split("|")[0]
     params = {}
     if obs.startswith("PARAMS:"):
         try:
@@ -27586,13 +27621,33 @@ def api_esocial_s1000_enviar():
         return jsonify({"ok": False, "msg": f"Erro ao buscar registro: {e}"})
 
     # Parse stored params
-    obs = (es.get("observacao_erro") or "").strip()
+    # O PARAMS e o pedaco ANTES do primeiro '|' — ver _obs_upd logo abaixo.
+    _params_raw = (es.get("observacao_erro") or "").strip().split("|")[0]
+    obs    = _params_raw
     params = {}
     if obs.startswith("PARAMS:"):
         try:
             params = _json.loads(obs[7:])
         except Exception:
             pass
+    else:
+        _params_raw = ""
+
+    def _obs_upd(msg):
+        """Grava o status SEM perder o PARAMS.
+
+        Antes as mensagens de erro sobrescreviam a coluna inteira, e com isso
+        o registro perdia ini/fim/contato: o proximo Reenviar morria em
+        "Parametros de envio nao encontrados. Recrie o registro." — por isso
+        cada tentativa exigia criar uma remessa nova. Mesmo formato ja usado
+        no S-1010/S-1020: "PARAMS:{...}|mensagem". A coluna e varchar(300),
+        entao a mensagem e capada pelo que sobrar.
+        """
+        msg = str(msg or "")
+        if _params_raw:
+            avail = max(0, 300 - len(_params_raw) - 1)   # 1 = separador '|'
+            return f"{_params_raw}|{msg[:avail]}"[:300]
+        return msg[:295]
 
     ini_valid = params.get("ini", "")
     fim_valid = params.get("fim", "")
@@ -27672,7 +27727,7 @@ def api_esocial_s1000_enviar():
     except Exception as e:
         detalhe = str(e)
         supabase.table("tab_esocial").update({
-            "observacao_erro": f"Erro no envio: {detalhe[:200]}",
+            "observacao_erro": _obs_upd(f"Erro no envio: {detalhe[:200]}"),
             "data_grava": _agora_brasilia().strftime("%Y%m%d"),
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
         _xml_erro_save(_pref, 4, f"Erro no envio: {detalhe}")
@@ -27686,7 +27741,7 @@ def api_esocial_s1000_enviar():
     agora = _agora_brasilia()
     if not protocolo_envio:
         supabase.table("tab_esocial").update({
-            "observacao_erro": analise["erro"][:295],
+            "observacao_erro": _obs_upd(analise["erro"]),
             "data_grava":      agora.strftime("%Y%m%d"),
             "hora_grava":      agora.strftime("%H%M"),
         }).eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
@@ -27736,11 +27791,13 @@ def api_esocial_s1000_enviar():
 
     upd = {"recibo": recibo_final}
     if aguardando:
-        upd["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
+        upd["observacao_erro"] = _obs_upd(f"AGUARDANDO:{protocolo_envio}")
     elif obs_erro:
-        upd["observacao_erro"] = obs_erro[:295]
+        upd["observacao_erro"] = _obs_upd(obs_erro)
     else:
-        upd["observacao_erro"] = ""
+        # Deu certo: fica so o PARAMS, que e o que a tela le para mostrar
+        # o periodo e o contato da remessa.
+        upd["observacao_erro"] = _params_raw
     supabase.table("tab_esocial").update(upd)\
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
@@ -27780,7 +27837,10 @@ def api_esocial_s1000_deletar():
         if (r_es.data[0].get("recibo") or "").strip():
             return jsonify({"ok": False,
                             "msg": "Registro já foi enviado ao eSocial. Use 'Excluir via S-3000'."})
-        if (r_es.data[0].get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
+        # O status vem depois do '|', quando o PARAMS foi preservado.
+        _obs_ex = (r_es.data[0].get("observacao_erro") or "").strip()
+        _st_ex  = _obs_ex.split("|", 1)[1] if "|" in _obs_ex else _obs_ex
+        if _st_ex.startswith("AGUARDANDO:"):
             return jsonify({"ok": False,
                             "msg": "Remessa aguardando processamento no eSocial — use Re-consultar antes de excluir."})
     except Exception as e:
@@ -29378,6 +29438,11 @@ def esocial_s1020():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
+        # Marcada como "ja declarada" na tela do S-1200: mostra como tal, senao
+        # o recibo ficticio passaria por recibo vindo do governo.
+        r["_considerada"] = _recibo_s1020_ficticio(recibo)
+        if r["_considerada"]:
+            r["_sit_label"] = "Considerada"
 
     cnpj_fmt = _fmt_cnpj(cnpj_emp) if len(cnpj_emp) == 14 else cnpj_emp
 
@@ -29822,7 +29887,10 @@ def api_esocial_s1020_deletar():
                 .limit(1).execute())
         if not r_es.data:
             return jsonify({"ok": False, "msg": "Registro não encontrado."})
-        if (r_es.data[0].get("recibo") or "").strip():
+        _rec_ex = (r_es.data[0].get("recibo") or "").strip()
+        # O recibo ficticio ("Considerar ja enviada") nunca saiu daqui, entao
+        # apagar e so desfazer a marcacao — ao contrario do recibo de verdade.
+        if _rec_ex and not _recibo_s1020_ficticio(_rec_ex):
             return jsonify({"ok": False,
                             "msg": "Registro já enviado ao eSocial. Não é possível apagar localmente."})
         if (r_es.data[0].get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
@@ -34937,6 +35005,120 @@ def _criar_s1010_pendentes(id_cliente, id_empresa, verbas, ini_valid, tpAmb="1")
     return criadas
 
 
+# Recibo FICTICIO da lotacao "considerada ja enviada". NUNCA vai para o
+# governo: e so um marcador local para a conferencia previa do S-1200 parar de
+# acusar. Serve a empresa que ja opera no eSocial ha anos: la a lotacao esta
+# declarada, aqui nao existe registro dela, e reenviar o S-1020 volta com
+# "[537] Ja existe no sistema registro com mesmo codigo de identificacao
+# (chave) em periodo de vigencia conflitante" — que NAO devolve recibo. Sem
+# recibo a conferencia nunca se da por satisfeita e o S-1200 fica barrado para
+# sempre. Este marcador quebra esse circulo sem inventar envio nenhum.
+RECIBO_S1020_FICTICIO   = "1.01.1111111111111"
+S1020_MARCA_CONSIDERADA = "CONSIDERADA_ENVIADA"
+
+
+def _recibo_s1020_ficticio(recibo):
+    """True quando o recibo e o marcador local de 'considerada ja enviada'."""
+    return str(recibo or "").strip() == RECIBO_S1020_FICTICIO
+
+
+def _marcar_s1020_declaradas(id_cliente, id_empresa, lotacoes, ini_valid, tpAmb="1"):
+    """Marca lotacoes como JA DECLARADAS no eSocial — sem gerar nem enviar XML.
+
+    Aproveita a remessa 1020 que o proprio envio do S-1200 ja criou na Fila
+    (grava nela o recibo ficticio); se nao houver nenhuma para o codigo, cria
+    uma ja marcada. A partir dai _s1020_declaradas enxerga a lotacao.
+
+    Nao exige FPAS: o evento nao vai ser montado, entao o cadastro incompleto
+    nao pode impedir o operador de destravar a folha.
+
+    Devolve (marcadas, erro)."""
+    import json as _json
+
+    fpas, cod_tercs = _fpas_tercs_empresa(id_empresa)
+
+    # Remessas 1020 que ja existem, por codLotacao. Entre duas do mesmo codigo
+    # fica a que AINDA NAO tem recibo — reaproveitar essa nao perde nada.
+    por_cod = {}
+    try:
+        for r in _esocial_rows_layout(id_empresa, "1020",
+                                      "id_esocial, recibo, observacao_erro"):
+            obs = str(r.get("observacao_erro") or "").split("|")[0]
+            if not obs.startswith("PARAMS:"):
+                continue
+            try:
+                cod = str(_json.loads(obs[7:]).get("codLotacao") or "").strip()
+            except Exception:
+                continue
+            if not cod:
+                continue
+            ant = por_cod.get(cod)
+            if ant is None or ((ant.get("recibo") or "").strip()
+                               and not (r.get("recibo") or "").strip()):
+                por_cod[cod] = r
+    except Exception as e:
+        print(f"[S1020 marcar] falha ao ler remessas existentes: {e}")
+        return 0, "Não foi possível conferir as remessas S-1020 já existentes."
+
+    agora    = _agora_brasilia()
+    marcadas = 0
+    for cod in lotacoes:
+        cod = str(cod or "").strip()
+        if not cod:
+            continue
+        row    = por_cod.get(cod)
+        p_dict = {"ini": ini_valid, "fim": "", "tpAmb": str(tpAmb),
+                  "codLotacao": cod, "tpLotacao": "01",
+                  "fpas": fpas or "", "codTercs": cod_tercs or ""}
+        try:
+            if row is not None:
+                if (row.get("recibo") or "").strip():
+                    continue          # ja tem recibo (de verdade ou marcado)
+                # Preserva o PARAMS que ja estava gravado; so puxa a vigencia
+                # para tras se ela comecar depois da competencia pedida, senao
+                # a conferencia continuaria acusando a mesma lotacao.
+                obs = str(row.get("observacao_erro") or "").split("|")[0]
+                try:
+                    p_old   = _json.loads(obs[7:])
+                    ini_old = str(p_old.get("ini") or "")
+                    if not ini_old or ini_old > ini_valid:
+                        p_old["ini"] = ini_valid
+                    p_dict = p_old
+                except Exception:
+                    pass
+                p = _json.dumps(p_dict, ensure_ascii=False)
+                supabase.table("tab_esocial").update({
+                    "recibo":          RECIBO_S1020_FICTICIO,
+                    "observacao_erro": f"PARAMS:{p}|{S1020_MARCA_CONSIDERADA}"[:300],
+                    "data_grava":      agora.strftime("%Y%m%d"),
+                    "hora_grava":      agora.strftime("%H%M"),
+                }).eq("id_esocial", int(row["id_esocial"])) \
+                  .eq("id_empresa", id_empresa).execute()
+            else:
+                p = _json.dumps(p_dict, ensure_ascii=False)
+                supabase.table("tab_esocial").insert({
+                    "id_cliente":      id_cliente,
+                    "id_empresa":      id_empresa,
+                    "data_cad":        agora.strftime("%Y%m%d"),
+                    "hora_cad":        agora.strftime("%H%M"),
+                    "data_grava":      agora.strftime("%Y%m%d"),
+                    "hora_grava":      agora.strftime("%H%M"),
+                    "layout":          "1020",
+                    "ano_mes":         int(ini_valid.replace("-", "")),
+                    "folha_tipo":      "I",
+                    "operacao":        "I",
+                    "recibo":          RECIBO_S1020_FICTICIO,
+                    "observacao_erro": f"PARAMS:{p}|{S1020_MARCA_CONSIDERADA}"[:300],
+                }).execute()
+            marcadas += 1
+        except Exception as e:
+            print(f"[S1020 marcar] falha na lotacao {cod}: {e}")
+
+    if not marcadas:
+        return 0, "Nenhuma lotação foi marcada — confira a tela Tabelas → S-1020."
+    return marcadas, ""
+
+
 def _criar_s1020_pendentes(id_cliente, id_empresa, lotacoes, ini_valid, tpAmb="1"):
     """Cria as remessas S-1020 (inclusao) das lotacoes que faltam. Nao envia.
 
@@ -35113,6 +35295,46 @@ def api_esocial_s1200_criar_pendencias():
     return jsonify({"ok": not erro, "msg": msg})
 
 
+@app.route("/api/esocial_s1020_marcar_declarada", methods=["POST"])
+def api_esocial_s1020_marcar_declarada():
+    """"Considerar já enviada": a lotação já está declarada no eSocial, mas o
+    Folha10 não tem o recibo dela. Grava o recibo fictício e libera o S-1200.
+
+    Recalcula a lista no servidor (não confia no que o navegador mandou) e não
+    transmite nada — o eSocial nem fica sabendo desta marcação."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    data       = request.get_json(force=True) or {}
+    anomes     = _s1200_anomes_check(data.get("anomes"))
+    tpAmb      = str(data.get("tpAmb", "1"))
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Competência não identificada."})
+
+    falta = _lotacoes_folha_sem_s1020(id_empresa, int(anomes), None)
+    if not falta:
+        return jsonify({"ok": True, "marcadas": 0,
+                        "msg": "As lotações desta folha já estão declaradas no eSocial."})
+
+    ini_valid = f"{anomes[:4]}-{anomes[4:6]}"
+    n, erro   = _marcar_s1020_declaradas(id_cliente, id_empresa, falta, ini_valid, tpAmb)
+    if erro:
+        return jsonify({"ok": False, "marcadas": n, "msg": erro})
+
+    gravar_log("ESOCIAL", f"S-1020 considerado já enviado — lotação(ões) "
+                          f"{', '.join(falta)} na competência {anomes}")
+    return jsonify({
+        "ok": True, "marcadas": n, "lotacoes": falta,
+        "msg": (f"{n} lotação(ões) marcada(s) como já declarada(s) no eSocial: "
+                + "  ·  ".join(falta) + ".\n\n"
+                f"Foi gravado o recibo {RECIBO_S1020_FICTICIO}, que NÃO veio do "
+                "governo — serve só para o Folha10 parar de cobrar o S-1020. "
+                "Agora é só repetir o envio do S-1200."),
+    })
+
+
 # =========================================================
 # eSocial S-1200 — API: gerar + assinar + enviar + consultar
 # =========================================================
@@ -35193,8 +35415,11 @@ def api_esocial_s1200_enviar():
         _msg += _erro20 if _erro20 else (
             f"{_n20} remessa(s) S-1020 foram criadas na Fila. "
             "Envie o S-1020 primeiro e depois repita o S-1200.")
+        # anomes vai junto: a competencia da LINHA pode nao ser a do filtro da
+        # tela, e e ela que o "Considerar ja enviada" precisa marcar.
         return jsonify({"ok": False, "prereq_s1020": True,
-                        "lotacoes": _falta_lot, "msg": _msg})
+                        "lotacoes": _falta_lot, "anomes": str(ano_mes),
+                        "msg": _msg})
 
     # 1.c Verbas da folha ainda nao declaradas no S-1010.
     #     O gov rejeita o S-1200 que cita rubrica desconhecida, e a mensagem
@@ -56979,20 +57204,25 @@ def api_admin_copiar_clientes():
         return jsonify({'ok': False, 'msg': str(ex)})
 
 
+def _admin_empresas_do_cliente(id_cliente):
+    """Empresas do cliente no formato que as listas do Admin esperam
+    ({id_empresa, cnpj, nome}). Usado pela tela Copiar Base e pela Copia Ano/Mes."""
+    r = (supabase.table("tab_empresa")
+         .select("id_empresa, cnpj, razaosocial, nome_fantasia")
+         .eq("id_cliente", id_cliente)
+         .order("razaosocial").execute())
+    return [{"id_empresa": e.get("id_empresa"),
+             "cnpj": e.get("cnpj", ""),
+             "nome": e.get("razaosocial") or e.get("nome_fantasia") or "Empresa"}
+            for e in (r.data or [])]
+
+
 @app.route('/api/admin_copiar_base/empresas/<int:id_cliente>')
 def api_admin_copiar_empresas(id_cliente):
     if not session.get('logado'): return jsonify({'ok': False}), 401
     if not _pode_admin(): return jsonify({'ok': False}), 403
     try:
-        r = (supabase.table("tab_empresa")
-             .select("id_empresa, cnpj, razaosocial, nome_fantasia")
-             .eq("id_cliente", id_cliente)
-             .order("razaosocial").execute())
-        empresas = [{"id_empresa": e.get("id_empresa"),
-                     "cnpj": e.get("cnpj", ""),
-                     "nome": e.get("razaosocial") or e.get("nome_fantasia") or "Empresa"}
-                    for e in (r.data or [])]
-        return jsonify({'ok': True, 'empresas': empresas})
+        return jsonify({'ok': True, 'empresas': _admin_empresas_do_cliente(id_cliente)})
     except Exception as ex:
         return jsonify({'ok': False, 'msg': str(ex)})
 
@@ -57055,6 +57285,646 @@ def api_admin_copiar_progresso():
         return jsonify({'ok': False, 'msg': 'Job não encontrado'})
     return jsonify({'ok': True, **job})
 
+
+# =========================================================
+# ADMINISTRADOR — Copia Ano/Mês (tab_anomes) entre clientes
+# =========================================================
+# Copia LINHAS de tab_anomes de uma empresa de ORIGEM para uma empresa de
+# DESTINO. Mexe só em tab_anomes: não leva funcionários, movimento nem totais —
+# é o registro do período, para o destino passar a enxergar aquelas folhas.
+#
+# Regras (as mesmas do SQL manual que esta tela substitui):
+#   • a ORIGEM nunca é alterada (só leitura);
+#   • toda linha entra com o id_cliente/id_empresa do DESTINO e situacao 'A';
+#   • qtd_calculos e data_hora_calculo entram ZERADOS: são o carimbo de um
+#     cálculo que aconteceu na ORIGEM. Copiados, fariam o relatório da folha do
+#     destino exibir "Último cálculo: N. X em <data>" de um cálculo que nunca
+#     rodou ali (ver _get_calc_info);
+#   • os demais campos (ano_mes, tipo, datas de falta) vêm iguais da origem —
+#     daí ler a linha inteira com select("*") em vez de listar coluna por
+#     coluna: coluna nova em tab_anomes passa a ser copiada sozinha;
+#   • período que o destino JÁ tiver (mesmo ano_mes + mesmo tipo) é PULADO, e
+#     não sobrescrito. Dá para rodar a tela de novo sem duplicar folha.
+_ANOMES_TIPO_LABEL = {"N": "Normal", "F": "Férias", "R": "Rescisão",
+                      "1": "13º Sal.", "A": "Adiant. 13º"}
+
+# Campos que quem manda é o DESTINO, não a origem. 'id' é serial: sai fora para
+# o banco gerar o do destino.
+_ANOMES_NAO_COPIA = ("id", "id_cliente", "id_empresa", "situacao",
+                     "qtd_calculos", "data_hora_calculo")
+
+
+def _anomes_chave(linha):
+    """(ano_mes, tipo) normalizados — a chave que identifica uma folha dentro da
+    empresa. ano_mes vem como texto em umas telas e int em outras; str() nos dois
+    lados evita que '202603' e 202603 passem por folhas diferentes."""
+    return (str(linha.get("ano_mes") or "").strip(),
+            str(linha.get("tipo") or "N").strip() or "N")
+
+
+@app.route('/admin_copiar_anomes')
+def admin_copiar_anomes():
+    if not session.get('logado'):
+        return redirect('/')
+    if not _pode_admin():
+        return redirect('/menu')
+    return render_template('F10_Admin_Copiar_Anomes.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''))
+
+
+@app.route('/api/admin_copiar_anomes/clientes')
+def api_admin_copiar_anomes_clientes():
+    """Todos os clientes. Diferente da tela da Base para Teste, aqui nenhum
+    cliente é escondido: o de teste pode ser tanto origem quanto destino."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        r = (supabase.table("tab_cliente")
+             .select("id_cliente, nome")
+             .order("nome").execute())
+        return jsonify({'ok': True, 'clientes': r.data or []})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_copiar_anomes/empresas/<int:id_cliente>')
+def api_admin_copiar_anomes_empresas(id_cliente):
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        return jsonify({'ok': True, 'empresas': _admin_empresas_do_cliente(id_cliente)})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_copiar_anomes/periodos/<int:id_cliente>/<int:id_empresa>')
+def api_admin_copiar_anomes_periodos(id_cliente, id_empresa):
+    """Períodos que a empresa tem em tab_anomes, para o operador marcar quais
+    copiar. Vai com tipo e situação porque o mesmo mês pode ter mais de uma
+    folha (Normal, Férias, Rescisão, 13º) e elas são linhas diferentes."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        linhas = _copia_fetch_all("tab_anomes",
+                                  {"id_cliente": id_cliente, "id_empresa": id_empresa})
+        periodos = []
+        for x in linhas:
+            am, tp = _anomes_chave(x)
+            if len(am) != 6 or not am.isdigit():
+                continue
+            sit = str(x.get("situacao") or "").strip()
+            periodos.append({
+                "ano_mes":    am,
+                "tipo":       tp,
+                "tipo_label": _ANOMES_TIPO_LABEL.get(tp, tp),
+                "situacao":   sit,
+                "sit_label":  _SIT_FOLHA_LABEL.get(sit, sit or "—"),
+                "label":      f"{am[4:6]}/{am[0:4]}",
+            })
+        periodos.sort(key=lambda p: (p["ano_mes"], p["tipo"]), reverse=True)
+        return jsonify({'ok': True, 'periodos': periodos})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': str(ex)})
+
+
+@app.route('/api/admin_copiar_anomes/executar', methods=['POST'])
+def api_admin_copiar_anomes_executar():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    body = request.get_json(silent=True) or {}
+    try:
+        cli_orig = int(body.get('id_cliente_origem') or 0)
+        emp_orig = int(body.get('id_empresa_origem') or 0)
+        cli_dest = int(body.get('id_cliente_destino') or 0)
+        emp_dest = int(body.get('id_empresa_destino') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'msg': 'Cliente/empresa inválidos'})
+
+    if not (cli_orig and emp_orig):
+        return jsonify({'ok': False, 'msg': 'Selecione o cliente e a empresa de ORIGEM'})
+    if not (cli_dest and emp_dest):
+        return jsonify({'ok': False, 'msg': 'Selecione o cliente e a empresa de DESTINO'})
+    if emp_orig == emp_dest:
+        return jsonify({'ok': False, 'msg': 'A empresa de destino não pode ser a mesma da origem'})
+
+    pedidos = body.get('periodos') or []
+    if not isinstance(pedidos, list) or not pedidos:
+        return jsonify({'ok': False, 'msg': 'Marque pelo menos um período para copiar'})
+    alvo = {_anomes_chave(p) for p in pedidos if isinstance(p, dict)}
+    if not alvo:
+        return jsonify({'ok': False, 'msg': 'Lista de períodos inválida'})
+
+    try:
+        # A empresa de destino tem de ser MESMO do cliente de destino. Sem esta
+        # conferência, um id_empresa escolhido fora de hora gravaria a folha com
+        # um par (id_cliente, id_empresa) que não existe — e ela sumiria das
+        # telas, que filtram sempre pelos dois.
+        conf = (supabase.table("tab_empresa")
+                .select("id_empresa, id_cliente, razaosocial, nome_fantasia,"
+                        " anomes_atual, anomes_tipo")
+                .eq("id_empresa", emp_dest).limit(1).execute().data or [])
+        if not conf:
+            return jsonify({'ok': False, 'msg': 'Empresa de destino não encontrada'})
+        if int(conf[0].get("id_cliente") or 0) != cli_dest:
+            return jsonify({'ok': False,
+                            'msg': 'A empresa de destino não pertence ao cliente de destino'})
+
+        origem  = _copia_fetch_all("tab_anomes",
+                                   {"id_cliente": cli_orig, "id_empresa": emp_orig})
+        destino = _copia_fetch_all("tab_anomes",
+                                   {"id_cliente": cli_dest, "id_empresa": emp_dest})
+        ja_tem = {_anomes_chave(d) for d in destino}
+
+        def _rotulo(ch):
+            return {"ano_mes": ch[0], "label": f"{ch[0][4:6]}/{ch[0][0:4]}",
+                    "tipo": ch[1], "tipo_label": _ANOMES_TIPO_LABEL.get(ch[1], ch[1])}
+
+        novas, copiados, pulados, vistos = [], [], [], set()
+        for o in origem:
+            ch = _anomes_chave(o)
+            if ch not in alvo or ch in vistos:
+                continue
+            vistos.add(ch)
+            if ch in ja_tem:
+                pulados.append(_rotulo(ch))
+                continue
+            linha = {k: v for k, v in o.items() if k not in _ANOMES_NAO_COPIA}
+            linha["id_cliente"] = cli_dest
+            linha["id_empresa"] = emp_dest
+            linha["situacao"]   = "A"
+            # Folha nova no destino: nenhum cálculo rodou ainda. O contador vai a
+            # 0 e a data a NULL — 0 não cabe num timestamp.
+            linha["qtd_calculos"]      = 0
+            linha["data_hora_calculo"] = None
+            novas.append(linha)
+            copiados.append(_rotulo(ch))
+
+        gravados = _copia_insert_lotes("tab_anomes", novas) if novas else 0
+
+        # Pedidos que a origem não tinha (tela aberta há muito tempo, folha
+        # apagada no meio do caminho).
+        nao_achados = [_rotulo(c) for c in sorted(alvo - vistos)]
+
+        emp_nome = conf[0].get("razaosocial") or conf[0].get("nome_fantasia") or "Empresa"
+        am_atual = str(conf[0].get("anomes_atual") or "")
+        return jsonify({
+            'ok': True,
+            'gravados': gravados,
+            'copiados': copiados,
+            'pulados': pulados,
+            'nao_achados': nao_achados,
+            'destino_nome': emp_nome,
+            'destino_anomes_atual': (f"{am_atual[4:6]}/{am_atual[0:4]}"
+                                     if len(am_atual) == 6 else am_atual),
+            'destino_anomes_tipo': _ANOMES_TIPO_LABEL.get(
+                str(conf[0].get("anomes_tipo") or ""), str(conf[0].get("anomes_tipo") or "")),
+        })
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f"{type(ex).__name__}: {str(ex)[:250]}"})
+
+
+# =========================================================
+# ADMINISTRADOR — Planilha de vendas (Vendas-F10S.xlsx)
+# =========================================================
+# Recurso LOCAL: grava no disco da máquina onde o Folha10 está rodando.
+#
+# Por que não é o webhook que escreve: o webhook do Asaas cai no Render (Linux),
+# onde não existe C:\Folha10-Simples. Então a planilha NÃO é escrita no ato do
+# pagamento — quem escreve é esta tela, rodando na máquina do escritório.
+#
+# Nenhuma venda se perde no meio: a fonte da verdade é o banco, não o arquivo. O
+# webhook já grava, ANTES de creditar a licença, uma linha em tab_log com
+# menu='PAGTO_ASAAS' (é a marca de idempotência dele — ver webhook_asaas). Essa
+# linha tem tudo o que a planilha precisa: cliente, data/hora, e o texto
+# "Pagamento Asaas <id> valor=<v> E<empresas> F<funcionarios> M<meses>". A tela
+# lê essas linhas, compara com o que a planilha já tem e acrescenta o que faltar.
+# Rodando de novo depois de um mês, entram de uma vez todas as vendas do mês.
+PASTA_VENDAS = r'C:\Folha10-Simples'
+ARQ_VENDAS   = os.path.join(PASTA_VENDAS, 'Vendas-F10S.xlsx')
+
+_VENDAS_ABA      = "Vendas"
+_VENDAS_ABA_CTRL = "_controle"   # aba oculta: guarda o id da cobrança de cada
+                                 # linha, que é como a tela sabe o que já entrou
+                                 # sem sujar as 6 colunas da planilha.
+_VENDAS_COLUNAS = [
+    ("Data da Venda",              14, "DD/MM/YYYY"),
+    ("Número do Cliente",          17, "000000"),
+    ("Mês comprado",               13, "0"),
+    ("Quantidade de Empresas",     21, "0"),
+    ("Quantidade de Funcionários", 25, "0"),
+    ("Valor da Venda",             15, 'R$ #,##0.00'),
+]
+
+# Venda paga POR FORA (PIX na mão, dinheiro, transferência): entra em tab_log com
+# menu proprio, NUNCA com o do Asaas. Escrever "PAGTO_ASAAS" numa venda que nao
+# passou pelo Asaas mentiria sobre o canal do pagamento e, pior, entraria no meio
+# da marca de idempotencia e da trava de tempo do webhook (ver webhook_asaas) —
+# uma venda manual de hoje poderia barrar um PIX legitimo do mesmo cliente.
+# tab_log.menu e varchar(12): "PAGTO_MANUAL" tem 12 exatos. Nao aumentar.
+_MENU_PAGTO_MANUAL = "PAGTO_MANUAL"
+
+# "Pagamento Asaas pay_123 valor=297.0 E2 F18 M3 nova_data_limite=2026-11"
+# "Pagamento manual man_ab12cd34 valor=1481.38 E9 F102 M1 data=2026-08-01"
+_RE_VENDA = re.compile(
+    r"Pagamento (?:Asaas|manual)\s+(\S+)\s+valor=(\S*)\s+E(\d+)\s+F(\d+)\s+M(\d+)")
+
+# Na venda manual a data do pagamento nao e a data em que ela foi lancada — o PIX
+# caiu dia 01 e o lancamento e' feito dia 25. Por isso ela viaja na observacao.
+_RE_VENDA_DATA = re.compile(r"\bdata=(\d{4})-(\d{2})-(\d{2})\b")
+
+
+def _vendas_do_log():
+    """Vendas pagas, da mais antiga para a mais nova, lidas de tab_log.
+
+    Linha que não casar com o texto do webhook é ignorada em silêncio: tab_log é
+    log, não tabela de vendas — um dia pode ter uma linha PAGTO_ASAAS escrita à
+    mão, e ela não pode derrubar a planilha inteira."""
+    linhas, ini, passo = [], 0, 1000
+    while True:
+        r = (supabase.table("tab_log")
+             .select("id, id_cliente, observacao, data_hora_grava")
+             .in_("menu", [_MENU_PAGTO_ASAAS, _MENU_PAGTO_MANUAL])
+             .order("id")
+             .range(ini, ini + passo - 1).execute())
+        lote = r.data or []
+        linhas.extend(lote)
+        if len(lote) < passo:
+            break
+        ini += passo
+
+    vendas = []
+    for x in linhas:
+        m = _RE_VENDA.search(str(x.get("observacao") or ""))
+        if not m:
+            continue
+        obs = str(x.get("observacao") or "")
+        try:
+            quando = datetime.strptime(str(x.get("data_hora_grava") or "").strip(),
+                                       "%Y%m%d %H%M")
+        except ValueError:
+            continue
+        md = _RE_VENDA_DATA.search(obs)
+        if md:   # venda manual: vale a data do pagamento, nao a do lancamento
+            try:
+                quando = datetime(int(md.group(1)), int(md.group(2)), int(md.group(3)))
+            except ValueError:
+                pass
+        try:
+            valor = float(str(m.group(2)).replace(",", "."))
+        except ValueError:
+            valor = None
+        vendas.append({
+            "payment_id":   m.group(1),
+            "data":         quando,
+            "data_br":      quando.strftime("%d/%m/%Y"),
+            "id_cliente":   int(x.get("id_cliente") or 0),
+            "meses":        int(m.group(5)),
+            "empresas":     int(m.group(3)),
+            "funcionarios": int(m.group(4)),
+            "valor":        valor,
+        })
+    vendas.sort(key=lambda v: (v["data"], v["payment_id"]))
+    return vendas
+
+
+def _vendas_nova_planilha():
+    """Pasta de trabalho zerada, só com o cabeçalho e a aba de controle."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = _VENDAS_ABA
+    cinza = PatternFill("solid", fgColor="F1F5F9")
+    for i, (rotulo, larg, _fmt) in enumerate(_VENDAS_COLUNAS, 1):
+        c = ws.cell(row=1, column=i, value=rotulo)
+        c.font = Font(bold=True, size=10)
+        c.fill = cinza
+        c.alignment = Alignment(vertical="center", wrap_text=True)
+        ws.column_dimensions[get_column_letter(i)].width = larg
+    ws.freeze_panes = "A2"
+
+    wsc = wb.create_sheet(_VENDAS_ABA_CTRL)
+    wsc["A1"] = "cobranca_asaas"
+    wsc["B1"] = "lancado_em"
+    wsc.column_dimensions["A"].width = 28
+    wsc.column_dimensions["B"].width = 20
+    wsc.sheet_state = "hidden"
+    return wb, ws, wsc
+
+
+_VENDAS_ABA_TOT = "Totais"
+
+
+def _vendas_aba_totais(wb, ws):
+    """(Re)monta a aba Totais a partir das datas da aba Vendas.
+
+    As células são FÓRMULAS, não números prontos de propósito: corrigindo um
+    valor na aba Vendas, o total se acerta sozinho no Excel — sem precisar
+    voltar no Folha10 e mandar lançar de novo.
+
+    A aba é refeita do zero a cada gravação, e não só acrescentada: venda de um
+    mês novo tem de virar linha nova, e o intervalo das fórmulas cresce junto
+    com a planilha."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    if _VENDAS_ABA_TOT in wb.sheetnames:
+        del wb[_VENDAS_ABA_TOT]
+    # Entra logo depois de Vendas, antes da aba oculta de controle.
+    wst = wb.create_sheet(_VENDAS_ABA_TOT, 1)
+
+    cinza = PatternFill("solid", fgColor="F1F5F9")
+    negrito = Font(bold=True, size=10)
+    for col, larg in zip("ABC", (16, 12, 16)):
+        wst.column_dimensions[col].width = larg
+
+    fim = ws.max_row
+    if fim < 2:
+        wst["A1"] = "Nenhuma venda lançada ainda."
+        return wst
+
+    # Datas que a aba Vendas tem hoje. Linha digitada à mão com texto no lugar
+    # da data fica de fora da contagem — não dá para saber de que mês ela é.
+    meses, anos = set(), set()
+    for (cel,) in ws.iter_rows(min_row=2, max_row=fim, min_col=1, max_col=1):
+        v = cel.value
+        if hasattr(v, "year") and hasattr(v, "month"):
+            meses.add((v.year, v.month))
+            anos.add(v.year)
+
+    dt = f"Vendas!$A$2:$A${fim}"      # coluna Data da Venda
+    vl = f"Vendas!$F$2:$F${fim}"      # coluna Valor da Venda
+
+    def bloco(titulo, linha, chaves, monta_filtro, rotulo):
+        c = wst.cell(row=linha, column=1, value=titulo)
+        c.font = Font(bold=True, size=11)
+        linha += 1
+        for i, cab in enumerate(("Período", "Vendas", "Valor total"), 1):
+            h = wst.cell(row=linha, column=i, value=cab)
+            h.font = negrito
+            h.fill = cinza
+            h.alignment = Alignment(vertical="center")
+        linha += 1
+        ini = linha
+        for ch in chaves:
+            f = monta_filtro(ch)
+            wst.cell(row=linha, column=1, value=rotulo(ch))
+            wst.cell(row=linha, column=2,
+                     value=f"=SUMPRODUCT({f})").number_format = "0"
+            wst.cell(row=linha, column=3,
+                     value=f"=SUMPRODUCT({f}*{vl})").number_format = "R$ #,##0.00"
+            linha += 1
+        if chaves:
+            t = wst.cell(row=linha, column=1, value="Total")
+            t.font = negrito
+            wst.cell(row=linha, column=2,
+                     value=f"=SUM(B{ini}:B{linha - 1})").number_format = "0"
+            wst.cell(row=linha, column=2).font = negrito
+            wst.cell(row=linha, column=3,
+                     value=f"=SUM(C{ini}:C{linha - 1})").number_format = "R$ #,##0.00"
+            wst.cell(row=linha, column=3).font = negrito
+            linha += 1
+        return linha + 1
+
+    prox = bloco("Por mês", 1, sorted(meses),
+                 lambda am: f"(YEAR({dt})={am[0]})*(MONTH({dt})={am[1]})",
+                 lambda am: f"{am[1]:02d}/{am[0]}")
+    bloco("Por ano", prox, sorted(anos),
+          lambda a: f"(YEAR({dt})={a})",
+          lambda a: str(a))
+    return wst
+
+
+def _vendas_add_linha(ws, wsc, v, agora):
+    """Uma venda vira uma linha na planilha e uma no controle."""
+    from openpyxl.styles import Alignment
+
+    valores = [v["data"].date(), v["id_cliente"], v["meses"],
+               v["empresas"], v["funcionarios"], v["valor"]]
+    r = ws.max_row + 1
+    for i, ((_rot, _larg, fmt), val) in enumerate(zip(_VENDAS_COLUNAS, valores), 1):
+        c = ws.cell(row=r, column=i, value=val)
+        c.number_format = fmt
+        c.alignment = Alignment(vertical="center")
+    rc = wsc.max_row + 1
+    wsc.cell(row=rc, column=1, value=v["payment_id"])
+    wsc.cell(row=rc, column=2, value=agora.strftime("%d/%m/%Y %H:%M"))
+
+
+def _vendas_gravadas(wsc):
+    """Cobranças que a planilha já tem, lidas da aba de controle."""
+    return {str(c[0].value).strip() for c in wsc.iter_rows(min_row=2, max_col=1)
+            if c[0].value}
+
+
+def _vendas_atualizar_arquivo(vendas, refazer=False):
+    """Cria ou completa C:\\Folha10-Simples\\Vendas-F10S.xlsx.
+
+    Por padrão só ACRESCENTA o que falta — quem mexeu na planilha à mão não
+    perde o que fez. `refazer=True` reescreve o arquivo do zero a partir do
+    banco, para quando ela sair do lugar."""
+    from openpyxl import load_workbook
+
+    if not os.path.isdir(PASTA_VENDAS):
+        return {"ok": False, "msg": (f"A pasta {PASTA_VENDAS} não existe nesta máquina. "
+                                     f"Esta tela grava no disco de quem está rodando o "
+                                     f"Folha10 — abra o sistema na máquina do escritório.")}
+
+    agora = _agora_brasilia()
+    novas, ja_tinha = [], set()
+    if refazer or not os.path.exists(ARQ_VENDAS):
+        wb, ws, wsc = _vendas_nova_planilha()
+    else:
+        try:
+            wb = load_workbook(ARQ_VENDAS)
+        except Exception as ex:
+            return {"ok": False, "msg": (f"Não consegui abrir a planilha: {str(ex)[:150]}. "
+                                         f"Se ela estiver aberta no Excel, feche e tente de novo.")}
+        ws = wb[_VENDAS_ABA] if _VENDAS_ABA in wb.sheetnames else wb.worksheets[0]
+        if _VENDAS_ABA_CTRL in wb.sheetnames:
+            wsc = wb[_VENDAS_ABA_CTRL]
+            ja_tinha = _vendas_gravadas(wsc)
+        else:
+            # Planilha feita à mão, sem controle: cria a aba e trata tudo o que já
+            # está lá como desconhecido. Rodar "refazer" resolve, se duplicar.
+            wsc = wb.create_sheet(_VENDAS_ABA_CTRL)
+            wsc["A1"] = "cobranca_asaas"
+            wsc["B1"] = "lancado_em"
+            wsc.sheet_state = "hidden"
+
+    for v in vendas:
+        if v["payment_id"] in ja_tinha:
+            continue
+        _vendas_add_linha(ws, wsc, v, agora)
+        novas.append(v)
+
+    _vendas_aba_totais(wb, ws)
+    try:
+        wb.save(ARQ_VENDAS)
+    except PermissionError:
+        return {"ok": False, "msg": ("A planilha está aberta no Excel — feche o arquivo "
+                                     "Vendas-F10S.xlsx e clique de novo.")}
+    except Exception as ex:
+        return {"ok": False, "msg": f"Falha ao gravar: {str(ex)[:180]}"}
+
+    return {"ok": True, "arquivo": ARQ_VENDAS, "refeita": bool(refazer),
+            "novas": len(novas), "no_arquivo": max(ws.max_row - 1, 0),
+            "lancadas": [{"data": v["data_br"], "cliente": v["id_cliente"],
+                          "meses": v["meses"], "empresas": v["empresas"],
+                          "funcionarios": v["funcionarios"], "valor": v["valor"]}
+                         for v in novas]}
+
+
+@app.route('/admin_vendas')
+def admin_vendas():
+    if not session.get('logado'):
+        return redirect('/')
+    if not _pode_admin():
+        return redirect('/menu')
+    return render_template('F10_Admin_Vendas.html',
+                           versao=ler_versao(),
+                           nome=session.get('nome', ''),
+                           arquivo=ARQ_VENDAS)
+
+
+@app.route('/api/admin_vendas/listar')
+def api_admin_vendas_listar():
+    """Vendas do banco + o que a planilha desta máquina já tem."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    try:
+        vendas = _vendas_do_log()
+        existe = os.path.exists(ARQ_VENDAS)
+        ja_tinha = set()
+        if existe:
+            try:
+                from openpyxl import load_workbook
+                wb = load_workbook(ARQ_VENDAS, read_only=True)
+                if _VENDAS_ABA_CTRL in wb.sheetnames:
+                    ja_tinha = _vendas_gravadas(wb[_VENDAS_ABA_CTRL])
+                wb.close()
+            except Exception as ex:
+                print(f"[VENDAS] nao consegui ler a planilha: {ex}")
+        total = sum(v["valor"] or 0 for v in vendas)
+        return jsonify({
+            'ok': True,
+            'arquivo': ARQ_VENDAS,
+            'existe': existe,
+            'pasta_ok': os.path.isdir(PASTA_VENDAS),
+            'total_vendas': len(vendas),
+            'total_valor': round(total, 2),
+            'faltando': sum(1 for v in vendas if v["payment_id"] not in ja_tinha),
+            'vendas': [{"data": v["data_br"], "cliente": v["id_cliente"],
+                        "meses": v["meses"], "empresas": v["empresas"],
+                        "funcionarios": v["funcionarios"], "valor": v["valor"],
+                        "na_planilha": v["payment_id"] in ja_tinha}
+                       for v in reversed(vendas)],
+        })
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f"{type(ex).__name__}: {str(ex)[:250]}"})
+
+
+@app.route('/api/admin_vendas/gravar', methods=['POST'])
+def api_admin_vendas_gravar():
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(_vendas_atualizar_arquivo(_vendas_do_log(),
+                                                 refazer=bool(body.get('refazer'))))
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f"{type(ex).__name__}: {str(ex)[:250]}"})
+
+
+@app.route('/api/admin_vendas/manual', methods=['POST'])
+def api_admin_vendas_manual():
+    """Registra no BANCO uma venda paga por fora (PIX na mão, dinheiro).
+
+    Vai para tab_log com menu=PAGTO_MANUAL. Ficando no banco e não só na
+    planilha, ela sobrevive ao "Refazer do zero" e aparece em qualquer máquina.
+
+    NÃO credita licença: mexe só no registro da venda. Quem paga por fora tem a
+    licença ajustada na tela Licença de Uso, e misturar as duas coisas aqui faria
+    esta tela creditar mês em cima de um crédito que já foi dado na mão."""
+    if not session.get('logado'): return jsonify({'ok': False}), 401
+    if not _pode_admin(): return jsonify({'ok': False}), 403
+    body = request.get_json(silent=True) or {}
+
+    try:
+        id_cliente   = int(body.get('id_cliente') or 0)
+        meses        = int(body.get('meses') or 0)
+        empresas     = int(body.get('empresas') or 0)
+        funcionarios = int(body.get('funcionarios') or 0)
+        valor        = float(str(body.get('valor') or '0').replace(',', '.'))
+    except (TypeError, ValueError):
+        return jsonify({'ok': False, 'msg': 'Números inválidos'})
+
+    data_br = str(body.get('data') or '').strip()
+    try:
+        quando = datetime.strptime(data_br, "%d/%m/%Y")
+    except ValueError:
+        return jsonify({'ok': False, 'msg': 'Data da venda inválida (use dd/mm/aaaa)'})
+
+    if id_cliente <= 0:
+        return jsonify({'ok': False, 'msg': 'Informe o número do cliente'})
+    if meses <= 0 or empresas <= 0 or funcionarios <= 0:
+        return jsonify({'ok': False, 'msg': 'Meses, empresas e funcionários têm de ser maiores que zero'})
+    if valor <= 0:
+        return jsonify({'ok': False, 'msg': 'Informe o valor da venda'})
+
+    try:
+        # O cliente tem de existir — venda lançada num número errado vira uma
+        # linha órfã na planilha, sem ninguém para conferir depois.
+        cli = (supabase.table("tab_cliente").select("id_cliente, nome")
+               .eq("id_cliente", id_cliente).limit(1).execute().data or [])
+        if not cli:
+            return jsonify({'ok': False, 'msg': f'Cliente {id_cliente:06d} não existe'})
+
+        ref = "man_" + uuid.uuid4().hex[:12]
+        obs = (f"Pagamento manual {ref} valor={valor} "
+               f"E{empresas} F{funcionarios} M{meses} "
+               f"data={quando.strftime('%Y-%m-%d')}")
+        nota = str(body.get('nota') or '').strip()
+        if nota:
+            obs = (obs + " obs=" + nota)[:200]
+
+        supabase.table("tab_log").insert({
+            "id_cliente":      id_cliente,
+            "id_empresa":      None,
+            "cpf_usuario":     session.get('cpf') or "",
+            "menu":            _MENU_PAGTO_MANUAL,
+            "observacao":      obs[:200],
+            "ano_mes":         None,
+            "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
+        }).execute()
+
+        return jsonify({'ok': True, 'ref': ref, 'data': data_br,
+                        'cliente': id_cliente,
+                        'nome': (cli[0].get('nome') or '').strip()})
+    except Exception as ex:
+        return jsonify({'ok': False, 'msg': f"{type(ex).__name__}: {str(ex)[:250]}"})
+
+
+@app.route('/api/admin_vendas/baixar')
+def api_admin_vendas_baixar():
+    """Planilha montada na hora, do banco, e mandada para download. Serve para
+    quando o Folha10 está rodando no Render — lá não há disco C: para gravar."""
+    if not session.get('logado'): return redirect('/')
+    if not _pode_admin(): return redirect('/menu')
+    agora = _agora_brasilia()
+    wb, ws, wsc = _vendas_nova_planilha()
+    for v in _vendas_do_log():
+        _vendas_add_linha(ws, wsc, v, agora)
+    _vendas_aba_totais(wb, ws)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return send_file(buf, as_attachment=True, download_name="Vendas-F10S.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument."
+                              "spreadsheetml.sheet")
 
 # =========================================================
 # ADMINISTRADOR — Baixar cópia (backup) do Supabase para disco local

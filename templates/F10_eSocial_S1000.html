@@ -362,7 +362,7 @@ tr:hover td { background: #f8fafc; }
                         {% if r.get('recibo') %}
                             <div class="recibo-cell">{{ r.recibo }}</div>
                         {% elif r._sit == 'X' %}
-                            <div class="erro-cell">{{ (r.get('observacao_erro') or '')[:120] }}</div>
+                            <div class="erro-cell">{{ (r._erro_msg or '')[:120] }}</div>
                         {% elif r._sit == 'W' %}
                             <div class="data-cell" style="color:#9a3412;">Aguardando...</div>
                         {% else %}
@@ -448,14 +448,18 @@ tr:hover td { background: #f8fafc; }
                     <span class="form-hint">Deixe em branco se sem prazo</span>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Nome do Contato *</label>
+                    <label class="form-label">Nome do Contato <span style="font-weight:400;color:#94a3b8;">(opcional)</span></label>
                     <input type="text" id="f-ctt-nome" class="form-input" maxlength="70"
                            placeholder="Nome completo do responsável">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">CPF do Contato *</label>
+                    <label class="form-label">CPF do Contato <span style="font-weight:400;color:#94a3b8;">(opcional)</span></label>
                     <input type="text" id="f-ctt-cpf" class="form-input mono" maxlength="14"
                            placeholder="000.000.000-00">
+                </div>
+                <div style="grid-column:1/-1; font-size:11px; color:#64748b; margin-top:-4px;">
+                    O contato saiu do S-1000 no leiaute S-1.0 &mdash; hoje ele se mantém no
+                    portal do eSocial. Se preencher, fica guardado só aqui no Folha10.
                 </div>
             </div>
 
@@ -494,9 +498,12 @@ tr:hover td { background: #f8fafc; }
                         <div class="review-val">{{ empresa.get('ind_des_folha') or '0' }}</div>
                     </div>
                 </div>
-                {% if not empresa.get('razaosocial') or not empresa.get('class_trib') or not empresa.get('nat_juridica') %}
+                {# Razão social e natureza jurídica saíram do S-1000 no leiaute
+                   S-1.0 — o governo já tem as duas pelo CNPJ. Só a
+                   classificação tributária ainda vai no XML. #}
+                {% if not empresa.get('class_trib') %}
                 <div style="margin-top:10px; padding:8px 10px; background:#fef2f2; border:1px solid #fca5a5; border-radius:6px; font-size:11px; color:#991b1b;">
-                    ⚠ Os campos em vermelho são obrigatórios para o eSocial. Complete-os no cadastro da empresa antes de enviar.
+                    ⚠ A Classificação Tributária é obrigatória para o eSocial. Complete-a no cadastro da empresa antes de enviar.
                 </div>
                 {% endif %}
             </div>
@@ -589,8 +596,9 @@ function gravarS1000() {
     const btn  = document.getElementById('btn-gravar');
 
     if (!ini)             { showModalMsg('Informe o período de início de validade.', false); return; }
-    if (!nome)            { showModalMsg('Informe o nome do contato.', false); return; }
-    if (cpf.length !== 11){ showModalMsg('CPF inválido — informe 11 dígitos.', false); return; }
+    // Contato saiu do S-1000 no leiaute S-1.0: não vai mais no XML, então não
+    // trava a gravação. Se for informado, o CPF ainda tem de ser um CPF.
+    if (cpf && cpf.length !== 11){ showModalMsg('CPF inválido — informe 11 dígitos.', false); return; }
 
     btn.disabled = true;
     btn.innerHTML = '<span class="spin"></span> Gravando...';

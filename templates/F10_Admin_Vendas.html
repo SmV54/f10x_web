@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendas do Folha10-Simples</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  /* Cabeçalho */
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn-voltar:hover { background: #374151; }
+
+  .wrap { max-width: 1020px; margin: 26px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; margin-bottom: 14px; color: #111827; display: flex;
+             align-items: center; gap: 8px; }
+
+  .nota { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+          border-radius: 10px; padding: 14px 16px; font-size: 13.5px; line-height: 1.55;
+          margin-bottom: 18px; }
+  .nota b { color: #1e3a8a; }
+  .arq { font-family: Consolas, monospace; font-size: 12.5px; background: #fff;
+         border: 1px solid #dbeafe; border-radius: 6px; padding: 2px 7px; }
+
+  /* Painel de números */
+  .nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+          gap: 12px; margin-bottom: 16px; }
+  .num-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px 14px; }
+  .num-box .rot { font-size: 11.5px; color: #6b7280; text-transform: uppercase;
+                  letter-spacing: .04em; }
+  .num-box .val { font-size: 22px; font-weight: 600; margin-top: 3px;
+                  font-variant-numeric: tabular-nums; }
+  .num-box.falta { border-color: #fcd34d; background: #fffbeb; }
+  .num-box.falta .val { color: #b45309; }
+
+  .acoes { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .btn { border: none; border-radius: 9px; padding: 12px 20px; font-size: 14px;
+         font-weight: 600; cursor: pointer; }
+  .btn-1 { background: #16a34a; color: #fff; }
+  .btn-1:hover { background: #15803d; }
+  .btn-1:disabled { background: #a7d7b6; cursor: not-allowed; }
+  .btn-2 { background: #fff; color: #374151; border: 1px solid #d1d5db; }
+  .btn-2:hover { background: #f3f4f6; }
+  .refazer { display: flex; align-items: center; gap: 7px; font-size: 13px;
+             color: #6b7280; margin-left: auto; }
+
+  /* Tabela */
+  .tab-box { max-height: 420px; overflow-y: auto; border: 1px solid #e5e7eb;
+             border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { position: sticky; top: 0; background: #f8fafc; color: #6b7280;
+             font-weight: 600; text-align: left; padding: 8px 11px;
+             border-bottom: 1px solid #e5e7eb; }
+  td { padding: 7px 11px; border-bottom: 1px solid #f3f4f6; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.pendente { background: #fffbeb; }
+  .pin { font-size: 11px; padding: 1px 8px; border-radius: 10px; }
+  .pin.ok   { background: #f0fdf4; color: #166534; }
+  .pin.pend { background: #fef3c7; color: #92400e; }
+  .vazio { color: #9ca3af; font-size: 13px; padding: 14px; }
+
+  /* Formulário de venda paga por fora */
+  .form-man { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
+              gap: 12px; align-items: end; }
+  .form-man label { display: block; font-size: 12px; font-weight: 600; color: #374151;
+                    margin-bottom: 5px; }
+  .form-man input { width: 100%; padding: 9px 11px; border: 1px solid #d1d5db;
+                    border-radius: 8px; font-size: 14px; }
+  .form-man input:focus { outline: none; border-color: #2a7de1; }
+  .btn-man { background: #2a7de1; color: #fff; }
+  .btn-man:hover { background: #1d5fb0; }
+  .btn-man:disabled { background: #a9c8ea; cursor: not-allowed; }
+
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 12px 14px; font-size: 14px; margin-top: 14px; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 12px 14px; font-size: 14px; margin-top: 14px; }
+  .mut { color: #9ca3af; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">💰 Vendas do Folha10-Simples</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="nota">
+      As vendas ficam registradas no banco no momento em que o PIX é pago. Esta tela lê essas
+      vendas e <b>completa a planilha</b> <span class="arq">{{ arquivo }}</span> com o que ainda
+      não estiver lá — o que você já tiver escrito na planilha à mão não se perde.
+      <br><br>
+      O arquivo é gravado no disco <b>desta máquina</b>. O pagamento em si chega no servidor,
+      que não tem a pasta C:\Folha10-Simples — por isso a planilha se atualiza quando você abre
+      esta tela rodando o Folha10 aqui, e não no instante do pagamento. Nenhuma venda se perde
+      no meio: elas ficam guardadas no banco até serem lançadas.
+    </div>
+
+    <div class="card">
+      <h2>Situação</h2>
+      <div class="nums" id="nums">
+        <div class="num-box"><div class="rot">Carregando…</div><div class="val">—</div></div>
+      </div>
+      <div class="acoes">
+        <button class="btn btn-1" id="btnGravar" disabled onclick="gravar()">
+          Lançar na planilha
+        </button>
+        <button class="btn btn-2" onclick="location.href='/api/admin_vendas/baixar'">
+          ⬇ Baixar uma cópia
+        </button>
+        <label class="refazer" title="Apaga a planilha e escreve tudo de novo, do banco">
+          <input type="checkbox" id="refazer"> Refazer do zero
+        </label>
+      </div>
+      <div id="msg"></div>
+    </div>
+
+    <div class="card">
+      <h2>Venda paga por fora</h2>
+      <div class="mut" style="margin-bottom:14px;">
+        PIX na mão, dinheiro, transferência — venda que não passou pelo Asaas e por isso não
+        chegou sozinha. Lançando aqui ela fica <b>no banco</b>, não só na planilha: sobrevive ao
+        &ldquo;Refazer do zero&rdquo; e aparece em qualquer máquina.
+        Isto <b>não mexe na licença do cliente</b> — só registra a venda.
+      </div>
+      <div class="form-man">
+        <div><label>Data da venda</label>
+             <input id="mData" placeholder="dd/mm/aaaa" maxlength="10"></div>
+        <div><label>Nº do cliente</label>
+             <input id="mCliente" inputmode="numeric" placeholder="30"></div>
+        <div><label>Mês comprado</label>
+             <input id="mMeses" inputmode="numeric" value="1"></div>
+        <div><label>Empresas</label>
+             <input id="mEmpresas" inputmode="numeric" placeholder="1"></div>
+        <div><label>Funcionários</label>
+             <input id="mFunc" inputmode="numeric" placeholder="1"></div>
+        <div><label>Valor (R$)</label>
+             <input id="mValor" inputmode="decimal" placeholder="1481,38"></div>
+        <div><button class="btn btn-man" id="btnManual" onclick="lancarManual()"
+                     style="width:100%;padding:10px;">Lançar venda</button></div>
+      </div>
+      <div id="msgManual"></div>
+    </div>
+
+    <div class="card">
+      <h2>Vendas registradas <span class="mut" id="resumoTab" style="font-weight:400;"></span></h2>
+      <div class="tab-box">
+        <table>
+          <thead>
+            <tr>
+              <th>Data da Venda</th>
+              <th class="num">Cliente</th>
+              <th class="num">Mês comprado</th>
+              <th class="num">Empresas</th>
+              <th class="num">Funcionários</th>
+              <th class="num">Valor</th>
+              <th>Na planilha</th>
+            </tr>
+          </thead>
+          <tbody id="corpo">
+            <tr><td colspan="7" class="vazio">Carregando…</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="mut" style="margin-top:6px;">Em amarelo, o que ainda não foi lançado na planilha.</div>
+    </div>
+  </div>
+
+<script>
+const el = id => document.getElementById(id);
+const pad6 = n => String(n).padStart(6, '0');
+const moeda = v => (v === null || v === undefined)
+  ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+let ESTADO = null;
+
+function carregar() {
+  fetch('/api/admin_vendas/listar').then(r => r.json()).then(d => {
+    if (!d.ok) { erro(d.msg || 'Falha ao ler as vendas'); return; }
+    ESTADO = d;
+    pintarNums(d);
+    pintarTabela(d.vendas || []);
+    el('btnGravar').disabled = !d.pasta_ok || !(d.faltando || el('refazer').checked);
+  }).catch(e => erro(String(e)));
+}
+
+function pintarNums(d) {
+  const faltando = d.faltando || 0;
+  el('nums').innerHTML = `
+    <div class="num-box"><div class="rot">Vendas no banco</div><div class="val">${d.total_vendas}</div></div>
+    <div class="num-box"><div class="rot">Faturamento</div><div class="val">${moeda(d.total_valor)}</div></div>
+    <div class="num-box ${faltando ? 'falta' : ''}">
+      <div class="rot">Falta lançar</div><div class="val">${faltando}</div></div>
+    <div class="num-box"><div class="rot">Planilha</div>
+      <div class="val" style="font-size:15px;padding-top:5px;">
+        ${d.pasta_ok ? (d.existe ? 'já existe' : 'ainda não criada') : 'pasta não encontrada'}</div></div>`;
+  if (!d.pasta_ok) {
+    erro(`A pasta ${d.arquivo.replace(/\\[^\\]*$/, '')} não existe nesta máquina. `
+       + `Abra o Folha10 na máquina do escritório, ou use "Baixar uma cópia".`);
+  }
+}
+
+function pintarTabela(vendas) {
+  const corpo = el('corpo');
+  if (!vendas.length) {
+    corpo.innerHTML = '<tr><td colspan="7" class="vazio">Nenhuma venda paga registrada até agora.</td></tr>';
+    el('resumoTab').textContent = '';
+    return;
+  }
+  corpo.innerHTML = vendas.map(v => `
+    <tr class="${v.na_planilha ? '' : 'pendente'}">
+      <td>${v.data}</td>
+      <td class="num">${pad6(v.cliente)}</td>
+      <td class="num">${v.meses}</td>
+      <td class="num">${v.empresas}</td>
+      <td class="num">${v.funcionarios}</td>
+      <td class="num">${moeda(v.valor)}</td>
+      <td>${v.na_planilha ? '<span class="pin ok">lançada</span>'
+                          : '<span class="pin pend">pendente</span>'}</td>
+    </tr>`).join('');
+  el('resumoTab').textContent = `— ${vendas.length} venda(s), da mais recente para a mais antiga`;
+}
+
+el('refazer').addEventListener('change', () => {
+  if (!ESTADO) return;
+  el('btnGravar').disabled = !ESTADO.pasta_ok
+                          || !(ESTADO.faltando || el('refazer').checked);
+  el('btnGravar').textContent = el('refazer').checked
+    ? 'Refazer a planilha do zero' : 'Lançar na planilha';
+});
+
+function gravar() {
+  const btn = el('btnGravar');
+  const refazer = el('refazer').checked;
+  if (refazer && !confirm('A planilha vai ser reescrita do zero, a partir do banco. '
+                        + 'Qualquer coisa digitada nela à mão se perde. Confirma?')) return;
+  btn.disabled = true;
+  const antes = btn.textContent;
+  btn.textContent = 'Gravando…';
+  el('msg').innerHTML = '';
+
+  fetch('/api/admin_vendas/gravar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refazer })
+  }).then(r => r.json()).then(d => {
+    btn.textContent = antes;
+    if (!d.ok) { erro(d.msg || 'Falha ao gravar'); btn.disabled = false; return; }
+    el('msg').innerHTML =
+      `<div class="ok-box">✅ ${d.refeita ? 'Planilha refeita' : 'Planilha atualizada'} —
+         <b>${d.novas}</b> venda(s) lançada(s), <b>${d.no_arquivo}</b> linha(s) no arquivo.<br>
+         <span class="mut">${d.arquivo}</span></div>`;
+    el('refazer').checked = false;
+    btn.textContent = 'Lançar na planilha';
+    carregar();
+  }).catch(e => { btn.textContent = antes; btn.disabled = false; erro(String(e)); });
+}
+
+function lancarManual() {
+  const btn = document.getElementById('btnManual');
+  const campos = {
+    data:         document.getElementById('mData').value.trim(),
+    id_cliente:   document.getElementById('mCliente').value.trim(),
+    meses:        document.getElementById('mMeses').value.trim(),
+    empresas:     document.getElementById('mEmpresas').value.trim(),
+    funcionarios: document.getElementById('mFunc').value.trim(),
+    valor:        document.getElementById('mValor').value.trim(),
+  };
+  const msg = document.getElementById('msgManual');
+  msg.innerHTML = '';
+  btn.disabled = true;
+  const antes = btn.textContent;
+  btn.textContent = 'Lançando…';
+
+  fetch('/api/admin_vendas/manual', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(campos)
+  }).then(r => r.json()).then(d => {
+    btn.textContent = antes;
+    btn.disabled = false;
+    if (!d.ok) {
+      msg.innerHTML = `<div class="erro-box">❌ ${d.msg || 'Falha ao lançar'}</div>`;
+      return;
+    }
+    msg.innerHTML = `<div class="ok-box">✅ Venda de ${d.data} lançada para o cliente
+       ${pad6(d.cliente)}${d.nome ? ' — ' + d.nome : ''}. Agora é só clicar em
+       <b>Lançar na planilha</b>.</div>`;
+    ['mData','mCliente','mEmpresas','mFunc','mValor'].forEach(
+      id => document.getElementById(id).value = '');
+    document.getElementById('mMeses').value = '1';
+    carregar();
+  }).catch(e => {
+    btn.textContent = antes; btn.disabled = false;
+    msg.innerHTML = `<div class="erro-box">❌ ${e}</div>`;
+  });
+}
+
+function erro(msg) {
+  el('msg').innerHTML = `<div class="erro-box">❌ ${msg}</div>`;
+}
+
+carregar();
+</script>
+</body>
+</html>

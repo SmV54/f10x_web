@@ -281,7 +281,7 @@ tr:hover td { background: #f8fafc; }
                     </td>
                     <td>
                         {% if r.get('recibo') %}
-                            <div class="recibo-cell">{{ r.recibo }}</div>
+                            <div class="recibo-cell"{% if r._considerada %} style="color:#b45309;" title="Recibo fictício — a lotação foi marcada como já declarada no eSocial pela tela do S-1200. Não veio do governo."{% endif %}>{{ r.recibo }}{% if r._considerada %} *{% endif %}</div>
                         {% elif r._sit == 'X' %}
                             <div class="erro-cell">{{ ((r.get('observacao_erro') or '').split('|')[-1] if '|' in (r.get('observacao_erro') or '') else (r.get('observacao_erro') or ''))[:120] }}</div>
                         {% elif r._sit == 'W' %}

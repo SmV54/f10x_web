@@ -343,7 +343,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="data-val accent" id="txt-inicio">{{ data_inicio_fmt }}</div>
             </div>
             <div class="data-item">
-                <div class="data-lbl">Fim / Desligamento</div>
+                {# "Projetado" e' o termo do aviso INDENIZADO: o funcionario para
+                   de trabalhar na data do aviso e a data la' na frente e' uma
+                   projecao (Sumula 371 do TST, dtProjFimAPI do S-2299). No
+                   trabalhado ele cumpre o aviso e a data final e' o desligamento
+                   mesmo. O rotulo unico dizia "Desligamento" nos dois. #}
+                <div class="data-lbl">
+                    {%- if tipo_aviso == 'I' -%}
+                        Aviso Prévio Projetado
+                    {%- else -%}
+                        Fim do Aviso / Desligamento
+                    {%- endif -%}
+                </div>
                 <div class="data-val accent" id="txt-fim">{{ data_fim_fmt }}</div>
             </div>
         </div>
@@ -491,7 +502,9 @@ function iniciarTour() {
                     title: COND === 'T' ? '📅 Contrato por Prazo Determinado' : '📅 Período do Aviso',
                     description: COND === 'T'
                         ? 'Data em que o contrato a termo se encerra ou é rompido. Não há período de aviso prévio a cumprir.'
-                        : 'Data do aviso, início do cumprimento (dia seguinte) e data de desligamento calculada com base no prazo do 1º aviso prévio.',
+                        : (TIPO === 'I'
+                            ? 'Data do aviso, início da contagem (dia seguinte) e a data projetada do fim do aviso prévio — no indenizado o funcionário não cumpre o aviso, mas a projeção conta para as verbas.'
+                            : 'Data do aviso, início do cumprimento (dia seguinte) e data de desligamento calculada com base no prazo do 1º aviso prévio.'),
                     side: 'top', align: 'start',
                 }
             },

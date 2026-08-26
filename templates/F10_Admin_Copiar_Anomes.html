@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Copia Ano/Mês entre clientes</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+
+  /* Cabeçalho */
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 12px 28px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .badge-admin { background: #dcfce7; color: #166534; font-weight: 600; font-size: 12px;
+                 padding: 5px 12px; border-radius: 20px; letter-spacing: .03em; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+  .btn-voltar:hover { background: #374151; }
+
+  .wrap { max-width: 980px; margin: 26px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+  .card h2 { font-size: 15px; margin-bottom: 14px; color: #111827; display: flex;
+             align-items: center; gap: 8px; }
+
+  .nota { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af;
+          border-radius: 10px; padding: 14px 16px; font-size: 13.5px; line-height: 1.55;
+          margin-bottom: 18px; }
+  .nota b { color: #1e3a8a; }
+
+  /* Origem | Destino lado a lado */
+  .lados { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px) { .lados { grid-template-columns: 1fr; } }
+  .lado h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+             margin-bottom: 12px; padding-bottom: 7px; border-bottom: 2px solid #e5e7eb; }
+  .lado.origem  h3 { color: #6b7280; border-bottom-color: #d1d5db; }
+  .lado.destino h3 { color: #b45309; border-bottom-color: #fcd34d; }
+
+  label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #374151; }
+  .campo { margin-bottom: 16px; }
+  .busca { width: 100%; padding: 8px 11px; border: 1px solid #d1d5db; border-radius: 8px;
+           font-size: 13px; margin-bottom: 6px; }
+
+  /* Listas de seleção (checklist de seleção única) */
+  .lista-sel { max-height: 190px; overflow-y: auto; border: 1px solid #d1d5db; border-radius: 8px; }
+  .lista-item { display: flex; align-items: center; gap: 9px; padding: 8px 12px; font-size: 13.5px;
+                cursor: pointer; border-bottom: 1px solid #f1f3f5; }
+  .lista-item:last-child { border-bottom: none; }
+  .lista-item:hover { background: #f8fafc; }
+  .lista-item.sel { background: #eff6ff; }
+  .lista-item input { margin: 0; flex: 0 0 auto; }
+  .lista-item .lid { font-variant-numeric: tabular-nums; color: #6b7280; font-weight: 600; }
+  .lista-vazio { color: #9ca3af; font-size: 13px; padding: 10px 12px; }
+
+  /* Lista de períodos */
+  .per-acoes { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .per-acoes button { font-size: 12px; padding: 5px 10px; border: 1px solid #d1d5db;
+                      background: #fff; border-radius: 6px; cursor: pointer; color: #374151; }
+  .per-acoes button:hover { background: #f3f4f6; }
+  .per-box { max-height: 260px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px;
+             padding: 8px 10px; display: grid;
+             grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 3px 14px; }
+  .per-box label { display: flex; align-items: center; gap: 7px; font-weight: 400;
+                   font-size: 13px; margin: 0; padding: 3px 2px; cursor: pointer; }
+  .per-box label.tem { color: #9ca3af; }
+  .per-mes { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .per-tag { font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #f3f4f6;
+             color: #4b5563; }
+  .per-sit { font-size: 11px; color: #9ca3af; margin-left: auto; }
+  .per-vazio { color: #9ca3af; font-size: 13px; }
+
+  .btn-exec { width: 100%; background: #b45309; color: #fff; border: none; border-radius: 9px;
+              padding: 13px; font-size: 14.5px; font-weight: 600; cursor: pointer; }
+  .btn-exec:hover { background: #92400e; }
+  .btn-exec:disabled { background: #e5d3b3; cursor: not-allowed; }
+
+  /* Resultado */
+  #resultado { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 6px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; }
+  th { color: #6b7280; font-weight: 600; }
+  .ok-box { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; border-radius: 9px;
+            padding: 12px 14px; font-size: 14px; margin-bottom: 10px; }
+  .aviso-box { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 9px;
+               padding: 10px 14px; font-size: 13px; margin-top: 10px; }
+  .erro-box { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 9px;
+              padding: 12px 14px; font-size: 14px; }
+  .mut { color: #9ca3af; font-size: 12px; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div><span class="badge-admin">🛡️ ADMIN</span></div>
+    <div class="topo-titulo">🗓️ Copia Ano/Mês entre clientes</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="nota">
+      Copia os <b>períodos (Ano/Mês) de tab_anomes</b> de uma empresa para outra — só o registro
+      da folha, <b>sem</b> funcionários, movimento ou totais. Toda folha copiada entra no destino
+      como <b>Aberta</b> e <b>sem cálculo nenhum</b> (o contador e a data do último cálculo vão
+      zerados); os demais campos vêm iguais aos da origem. A base de origem
+      <b>nunca é alterada</b>, e o período que o destino já tiver (mesmo mês e mesmo tipo) é
+      <b>pulado</b>, nunca sobrescrito.
+    </div>
+
+    <div class="card">
+      <div class="lados">
+        <div class="lado origem">
+          <h3>1 · Origem (de onde copiar)</h3>
+          <div class="campo">
+            <label>Cliente</label>
+            <input class="busca" id="buscaCliOrig" placeholder="Filtrar por nome ou código…" oninput="filtrar('listaCliOrig', this.value)">
+            <div class="lista-sel" id="listaCliOrig"><div class="lista-vazio">Carregando clientes…</div></div>
+          </div>
+          <div class="campo">
+            <label>Empresa</label>
+            <div class="lista-sel" id="listaEmpOrig"><div class="lista-vazio">Selecione o cliente primeiro</div></div>
+          </div>
+        </div>
+
+        <div class="lado destino">
+          <h3>2 · Destino (onde gravar)</h3>
+          <div class="campo">
+            <label>Cliente</label>
+            <input class="busca" id="buscaCliDest" placeholder="Filtrar por nome ou código…" oninput="filtrar('listaCliDest', this.value)">
+            <div class="lista-sel" id="listaCliDest"><div class="lista-vazio">Carregando clientes…</div></div>
+          </div>
+          <div class="campo">
+            <label>Empresa</label>
+            <div class="lista-sel" id="listaEmpDest"><div class="lista-vazio">Selecione o cliente primeiro</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3 · Períodos a copiar <span class="mut" id="periodosResumo" style="font-weight:400;"></span></h2>
+      <div class="per-acoes">
+        <button type="button" onclick="marcarPeriodos(true)">Marcar todos</button>
+        <button type="button" onclick="marcarPeriodos(false)">Desmarcar todos</button>
+        <button type="button" onclick="marcarSoNormais()">Só as folhas Normais</button>
+        <span class="mut" id="periodosAviso"></span>
+      </div>
+      <div class="per-box" id="periodosBox">
+        <span class="per-vazio">Escolha a empresa de ORIGEM para listar os períodos.</span>
+      </div>
+      <div class="mut" style="margin-top:6px;">
+        Em cinza, os períodos que a empresa de DESTINO já tem — vêm desmarcados e são pulados.
+      </div>
+    </div>
+
+    <div class="card">
+      <button class="btn-exec" id="btnExec" disabled onclick="executar()">Copiar os períodos marcados</button>
+      <div class="mut" id="resumoExec" style="margin-top:9px;text-align:center;"></div>
+    </div>
+
+    <div class="card" id="resultado"></div>
+  </div>
+
+<script>
+const pad6 = n => String(n).padStart(6, '0');
+const el = id => document.getElementById(id);
+
+// { origem: {cli, emp}, destino: {cli, emp} }
+const sel = { origem: { cli: null, emp: null }, destino: { cli: null, emp: null } };
+let PERIODOS = [];        // períodos da ORIGEM
+let JA_NO_DESTINO = new Set();   // chaves "anomes|tipo" que o destino já tem
+
+const chave = p => p.ano_mes + '|' + p.tipo;
+
+// ── Clientes: a mesma lista nos dois lados ──
+fetch('/api/admin_copiar_anomes/clientes').then(r => r.json()).then(d => {
+  ['listaCliOrig', 'listaCliDest'].forEach(alvo => {
+    const box = el(alvo);
+    if (!d.ok) { box.innerHTML = '<div class="lista-vazio">Erro: ' + (d.msg || '') + '</div>'; return; }
+    if (!d.clientes.length) { box.innerHTML = '<div class="lista-vazio">Nenhum cliente</div>'; return; }
+    const grupo = alvo === 'listaCliOrig' ? 'cliOrig' : 'cliDest';
+    box.innerHTML = d.clientes.map(c =>
+      `<label class="lista-item" data-id="${c.id_cliente}" data-busca="${pad6(c.id_cliente)} ${(c.nome || '').toLowerCase()}">
+         <input type="radio" name="${grupo}">
+         <span class="lid">${pad6(c.id_cliente)}</span><span>${c.nome || '(sem nome)'}</span>
+       </label>`).join('');
+    const lado = alvo === 'listaCliOrig' ? 'origem' : 'destino';
+    box.querySelectorAll('.lista-item').forEach(it =>
+      it.addEventListener('click', () => escolherCliente(lado, Number(it.dataset.id), it)));
+  });
+});
+
+function filtrar(idLista, texto) {
+  const t = (texto || '').trim().toLowerCase();
+  el(idLista).querySelectorAll('.lista-item').forEach(it => {
+    it.style.display = (!t || (it.dataset.busca || '').includes(t)) ? '' : 'none';
+  });
+}
+
+function escolherCliente(lado, id, itemEl) {
+  sel[lado].cli = id;
+  sel[lado].emp = null;
+  const boxCli = el(lado === 'origem' ? 'listaCliOrig' : 'listaCliDest');
+  boxCli.querySelectorAll('.lista-item').forEach(x => x.classList.remove('sel'));
+  if (itemEl) { itemEl.classList.add('sel'); itemEl.querySelector('input').checked = true; }
+
+  const boxEmp = el(lado === 'origem' ? 'listaEmpOrig' : 'listaEmpDest');
+  boxEmp.innerHTML = '<div class="lista-vazio">Carregando empresas…</div>';
+  aoTrocarSelecao(lado);
+
+  fetch('/api/admin_copiar_anomes/empresas/' + id).then(r => r.json()).then(d => {
+    if (!d.ok) { boxEmp.innerHTML = '<div class="lista-vazio">Erro: ' + (d.msg || '') + '</div>'; return; }
+    if (!d.empresas.length) { boxEmp.innerHTML = '<div class="lista-vazio">Cliente sem empresas</div>'; return; }
+    const grupo = lado === 'origem' ? 'empOrig' : 'empDest';
+    boxEmp.innerHTML = d.empresas.map(e =>
+      `<label class="lista-item" data-id="${e.id_empresa}">
+         <input type="radio" name="${grupo}">
+         <span class="lid">${pad6(e.id_empresa)}</span><span>${e.nome}${e.cnpj ? ' · ' + e.cnpj : ''}</span>
+       </label>`).join('');
+    const itens = boxEmp.querySelectorAll('.lista-item');
+    itens.forEach(it => it.addEventListener('click', () => escolherEmpresa(lado, Number(it.dataset.id), it)));
+    if (itens.length === 1) escolherEmpresa(lado, Number(itens[0].dataset.id), itens[0]);
+  });
+}
+
+function escolherEmpresa(lado, id, itemEl) {
+  sel[lado].emp = id;
+  const boxEmp = el(lado === 'origem' ? 'listaEmpOrig' : 'listaEmpDest');
+  boxEmp.querySelectorAll('.lista-item').forEach(x => x.classList.remove('sel'));
+  if (itemEl) { itemEl.classList.add('sel'); itemEl.querySelector('input').checked = true; }
+  aoTrocarSelecao(lado);
+}
+
+// Origem manda na lista de períodos; destino manda em quais já existem.
+function aoTrocarSelecao(lado) {
+  if (lado === 'origem') { PERIODOS = []; carregarPeriodos(); }
+  else { JA_NO_DESTINO = new Set(); carregarJaNoDestino(); }
+  avaliar();
+}
+
+function carregarPeriodos() {
+  const box = el('periodosBox');
+  if (!(sel.origem.cli && sel.origem.emp)) {
+    box.innerHTML = '<span class="per-vazio">Escolha a empresa de ORIGEM para listar os períodos.</span>';
+    atualizarResumo(); return;
+  }
+  box.innerHTML = '<span class="per-vazio">Carregando períodos…</span>';
+  fetch(`/api/admin_copiar_anomes/periodos/${sel.origem.cli}/${sel.origem.emp}`)
+    .then(r => r.json()).then(d => {
+      if (!d.ok) { box.innerHTML = '<span class="per-vazio">Erro: ' + (d.msg || '') + '</span>'; return; }
+      PERIODOS = d.periodos || [];
+      pintarPeriodos();
+    }).catch(() => { box.innerHTML = '<span class="per-vazio">Erro ao carregar períodos</span>'; });
+}
+
+function carregarJaNoDestino() {
+  if (!(sel.destino.cli && sel.destino.emp)) { pintarPeriodos(); return; }
+  fetch(`/api/admin_copiar_anomes/periodos/${sel.destino.cli}/${sel.destino.emp}`)
+    .then(r => r.json()).then(d => {
+      JA_NO_DESTINO = new Set(d.ok ? (d.periodos || []).map(chave) : []);
+      pintarPeriodos();
+    }).catch(() => pintarPeriodos());
+}
+
+function pintarPeriodos() {
+  const box = el('periodosBox');
+  if (!PERIODOS.length) {
+    box.innerHTML = (sel.origem.cli && sel.origem.emp)
+      ? '<span class="per-vazio">Esta empresa não tem nenhum período em tab_anomes.</span>'
+      : '<span class="per-vazio">Escolha a empresa de ORIGEM para listar os períodos.</span>';
+    atualizarResumo(); return;
+  }
+  // O que o destino já tem vem desmarcado e em cinza — marcá-lo não faria nada,
+  // o servidor pula de qualquer jeito.
+  box.innerHTML = PERIODOS.map(p => {
+    const tem = JA_NO_DESTINO.has(chave(p));
+    return `<label class="${tem ? 'tem' : ''}" title="${tem ? 'O destino já tem esta folha' : ''}">
+       <input type="checkbox" class="per-chk" value="${chave(p)}" ${tem ? '' : 'checked'} onchange="atualizarResumo()">
+       <span class="per-mes">${p.label}</span>
+       <span class="per-tag">${p.tipo_label}</span>
+       <span class="per-sit">${tem ? 'já existe' : p.sit_label}</span>
+     </label>`;
+  }).join('');
+  atualizarResumo();
+}
+
+function marcarPeriodos(estado) {
+  document.querySelectorAll('.per-chk').forEach(c => c.checked = estado);
+  atualizarResumo();
+}
+function marcarSoNormais() {
+  document.querySelectorAll('.per-chk').forEach(c => c.checked = c.value.endsWith('|N'));
+  atualizarResumo();
+}
+function marcados() {
+  return Array.from(document.querySelectorAll('.per-chk:checked')).map(c => {
+    const [ano_mes, tipo] = c.value.split('|');
+    return { ano_mes, tipo };
+  });
+}
+function atualizarResumo() {
+  el('periodosResumo').textContent = PERIODOS.length
+    ? `— ${marcados().length} de ${PERIODOS.length} marcado(s)` : '';
+  const jaMarcados = marcados().filter(p => JA_NO_DESTINO.has(p.ano_mes + '|' + p.tipo)).length;
+  el('periodosAviso').textContent = jaMarcados
+    ? `${jaMarcados} já existe(m) no destino e será(ão) pulado(s)` : '';
+  avaliar();
+}
+
+function avaliar() {
+  const completo = sel.origem.cli && sel.origem.emp && sel.destino.cli && sel.destino.emp;
+  const mesmaEmpresa = completo && sel.origem.emp === sel.destino.emp;
+  const qtd = marcados().length;
+  el('btnExec').disabled = !(completo && !mesmaEmpresa && qtd);
+  let msg = '';
+  if (!completo)             msg = 'Escolha cliente e empresa nos dois lados.';
+  else if (mesmaEmpresa)     msg = '⚠ A empresa de destino é a mesma da origem.';
+  else if (!qtd)             msg = 'Marque pelo menos um período.';
+  else msg = `Vai gravar até ${qtd} período(s) na empresa ${pad6(sel.destino.emp)} `
+           + `(cliente ${pad6(sel.destino.cli)}), todos como Abertos.`;
+  el('resumoExec').textContent = msg;
+}
+
+function executar() {
+  const btn = el('btnExec');
+  btn.disabled = true;
+  btn.textContent = 'Copiando…';
+  el('resultado').style.display = 'none';
+
+  fetch('/api/admin_copiar_anomes/executar', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id_cliente_origem:  sel.origem.cli,
+      id_empresa_origem:  sel.origem.emp,
+      id_cliente_destino: sel.destino.cli,
+      id_empresa_destino: sel.destino.emp,
+      periodos: marcados()
+    })
+  }).then(r => r.json()).then(d => {
+    btn.textContent = 'Copiar os períodos marcados';
+    if (!d.ok) { mostrarErro(d.msg || 'Falha ao copiar'); avaliar(); return; }
+    finalizar(d);
+  }).catch(e => {
+    btn.textContent = 'Copiar os períodos marcados';
+    mostrarErro(String(e)); avaliar();
+  });
+}
+
+function finalizar(res) {
+  const box = el('resultado');
+  box.style.display = 'block';
+  const linhas = (res.copiados || []).map(i =>
+    `<tr><td>${i.label}</td><td>${i.tipo_label}</td><td>Aberta</td></tr>`).join('');
+  const tabela = linhas
+    ? `<table><thead><tr><th>Ano/Mês</th><th>Tipo</th><th>Situação</th></tr></thead><tbody>${linhas}</tbody></table>`
+    : '';
+  const lista = arr => arr.map(i => `${i.label} (${i.tipo_label})`).join(' · ');
+  const pulados = (res.pulados || []).length
+    ? `<div class="aviso-box">↷ Pulado(s), o destino já tinha: ${lista(res.pulados)}</div>` : '';
+  const faltando = (res.nao_achados || []).length
+    ? `<div class="aviso-box">⚠ Não encontrado(s) na origem: ${lista(res.nao_achados)}</div>` : '';
+  const atual = res.destino_anomes_atual
+    ? `<div class="mut" style="margin-top:9px;">A empresa de destino está posicionada em
+         <b>${res.destino_anomes_atual}${res.destino_anomes_tipo ? ' · ' + res.destino_anomes_tipo : ''}</b>
+         (tab_empresa.anomes_atual). Esta tela não mexe nisso — troque pela tela de folha, se precisar.</div>`
+    : '';
+  box.innerHTML =
+    `<div class="ok-box">✅ <b>${res.gravados}</b> período(s) gravado(s) em
+       <b>${res.destino_nome}</b> (empresa ${pad6(sel.destino.emp)}, cliente ${pad6(sel.destino.cli)}).</div>
+     ${tabela}${pulados}${faltando}${atual}`;
+  // Recarrega o que o destino tem agora: rodar de novo já mostra tudo em cinza.
+  carregarJaNoDestino();
+}
+
+function mostrarErro(msg) {
+  const box = el('resultado');
+  box.style.display = 'block';
+  box.innerHTML = `<div class="erro-box">❌ ${msg}</div>`;
+}
+</script>
+</body>
+</html>

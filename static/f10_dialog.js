@@ -87,7 +87,7 @@
 }
 .f10dlg-acoes {
     padding: 12px 22px 18px;
-    display: flex; justify-content: flex-end; gap: 10px;
+    display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
     background: #f8fafc;
     border-top: 1px solid #e5e7eb;
 }
@@ -101,6 +101,11 @@
     background: #fff; color: #374151; border-color: #cbd5e1;
 }
 .f10dlg-btn-cancel:hover { background: #f1f5f9; border-color: #94a3b8; }
+/* Terceiro botao (opts.extraText): acao alternativa, nem OK nem Cancelar. */
+.f10dlg-btn-extra {
+    background: #fff; color: #1d4ed8; border-color: #93c5fd;
+}
+.f10dlg-btn-extra:hover { background: #eff6ff; border-color: #2a7de1; }
 .f10dlg-btn-ok-info,
 .f10dlg-btn-ok-sucesso { background: #2a7de1; color: #fff; }
 .f10dlg-btn-ok-info:hover,
@@ -272,6 +277,17 @@
       btnOk.onclick = () => { fechar(); resolve(true); };
 
       acoes.appendChild(btnCancel);
+      // Terceiro botao OPCIONAL: so aparece quando opts.extraText vem
+      // preenchido, e resolve com opts.extraValue (padrao 'extra'). Quem nao
+      // usa a opcao continua recebendo so true/false, como sempre.
+      if (opts.extraText) {
+        const btnExtra = document.createElement('button');
+        btnExtra.className = 'f10dlg-btn f10dlg-btn-extra';
+        btnExtra.textContent = opts.extraText;
+        if (opts.extraTitle) btnExtra.title = opts.extraTitle;
+        btnExtra.onclick = () => { fechar(); resolve(opts.extraValue || 'extra'); };
+        acoes.appendChild(btnExtra);
+      }
       acoes.appendChild(btnOk);
       btnOk.focus();
 

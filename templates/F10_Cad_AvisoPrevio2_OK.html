@@ -158,7 +158,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="rl-val">{{ data_aviso_fmt }}</span>
             </div>
             <div class="rl-item">
-                <span class="rl-lbl">Data de Desligamento</span>
+                <span class="rl-lbl">
+                    {%- if tipo == 'I' -%}
+                        Aviso Prévio Projetado
+                    {%- else -%}
+                        Data de Desligamento
+                    {%- endif -%}
+                </span>
                 <span class="rl-val">{{ data_fim_fmt }}</span>
             </div>
             <div class="rl-item">

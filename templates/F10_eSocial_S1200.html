@@ -519,6 +519,45 @@ function _anomesTela() {
   return (!v || v === 'all') ? '{{ anomes_atual }}' : v;
 }
 
+// Empresa que já opera no eSocial há anos tem a lotação declarada LÁ, mas não
+// aqui — e o reenvio do S-1020 volta com [537] (vigência conflitante), que não
+// devolve recibo. "Considerar já enviada" grava um recibo fictício só para a
+// conferência local parar de barrar. Uma vez por carga da tela: assim um engano
+// na conferência não vira um laço de diálogo.
+let _s1020JaConsiderado = false;
+
+async function _considerarS1020Enviada(anomes) {
+  let d;
+  try {
+    const r = await fetch('/api/esocial_s1020_marcar_declarada', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ anomes: anomes || _anomesTela(), tpAmb: _getTpAmb() }),
+    });
+    d = await r.json();
+  } catch (e) {
+    d = { ok: false, msg: 'Falha de comunicação: ' + e };
+  }
+  if (d.ok) _s1020JaConsiderado = true;
+  await f10Alert(d.msg || 'Nada a fazer.', {
+    titulo: 'Lotação (S-1020)',
+    tipo:   d.ok ? 'sucesso' : 'aviso',
+  });
+  return !!d.ok;
+}
+
+// Botão extra do diálogo: só quando a pendência é de LOTAÇÃO e a marcação
+// ainda não foi usada nesta carga da tela.
+function _opcaoConsiderarS1020(temFalta1020) {
+  if (!temFalta1020 || _s1020JaConsiderado) return {};
+  return {
+    extraText:  'Considerar já enviada',
+    extraValue: 'considerar',
+    extraTitle: 'A lotação já está declarada no eSocial, mas o Folha10 não tem o recibo dela. '
+              + 'Grava um recibo fictício e libera o S-1200 — nada é transmitido.',
+  };
+}
+
 async function _confirmarPrereqS1200() {
   if (_prereqConfirmado) return true;
 
@@ -545,14 +584,21 @@ async function _confirmarPrereqS1200() {
       ? (falta1010.length ? 'Tabelas não declaradas (S-1020 e S-1010)'
                           : 'Lotação não declarada (S-1020)')
       : 'Verbas não declaradas (S-1010)';
-    const criar = await f10Confirm(
-      cd.msg + '\n\nO S-1200 só pode ser enviado depois que isso for resolvido.', {
-      titulo:     titulo,
-      tipo:       'aviso',
-      okText:     'Criar as remessas',
-      cancelText: 'Fechar',
-    });
-    if (criar) await _criarPendenciasS1200();
+    const resp = await f10Confirm(
+      cd.msg + '\n\nO S-1200 só pode ser enviado depois que isso for resolvido.',
+      Object.assign({
+        titulo:     titulo,
+        tipo:       'aviso',
+        okText:     'Criar as remessas',
+        cancelText: 'Fechar',
+      }, _opcaoConsiderarS1020(falta1020.length)));
+    if (resp === 'considerar') {
+      // Marcou a lotação: reconfere. Sobrando só verba, o diálogo volta sem o
+      // botão extra (falta1020 vazio) — não tem como ficar em laço.
+      if (await _considerarS1020Enviada(_anomesTela())) return _confirmarPrereqS1200();
+      return false;
+    }
+    if (resp) await _criarPendenciasS1200();
     return false;
   }
 
@@ -687,12 +733,19 @@ async function _enviar(id, btn, suppressBanner, retificar, forcarS1010) {
           });
           if (seguir) return _enviar(id, btn, suppressBanner, retificar, true);
         } else {
-          const irFila = await f10Confirm(data.msg, {
+          const resp = await f10Confirm(data.msg, Object.assign({
             titulo: data.prereq_s1020 ? 'Lotação não declarada (S-1020)'
                                       : 'Verbas não declaradas (S-1010)',
             tipo: 'aviso', okText: 'Ir para a Fila', cancelText: 'Fechar',
-          });
-          if (irFila) window.location.href = '/esocial_fila';
+          }, _opcaoConsiderarS1020(!!data.prereq_s1020)));
+          if (resp === 'considerar') {
+            // data.anomes é a competência DA LINHA, que pode não ser a do filtro.
+            if (await _considerarS1020Enviada(data.anomes)) {
+              return _enviar(id, btn, suppressBanner, retificar, forcarS1010);
+            }
+            return;
+          }
+          if (resp) window.location.href = '/esocial_fila';
         }
       }
     }
