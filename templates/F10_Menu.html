@@ -389,6 +389,15 @@ body.menu-numerado .nav-item::before {
     font-size: 12px; color: #9a3412; font-weight: 500; line-height: 1.5;
     width: 100%;
 }
+/* Card de acao dentro do aviso: o aviso diz o que falta, o card leva la */
+.nav-aviso-acao {
+    display: inline-flex; align-items: center; gap: 7px; margin-top: 9px;
+    padding: 8px 13px; border-radius: 7px; text-decoration: none;
+    background: #fff; border: 1px solid #f97316; color: #9a3412;
+    font-size: 12px; font-weight: 700; transition: all .15s;
+}
+.nav-aviso-acao:hover { background: #ffedd5; border-color: #ea580c; color: #7c2d12; }
+.nav-aviso-acao .seta { font-weight: 400; opacity: .65; }
 .nav-vazio {
     color: #94a3b8; font-size: 13px; font-style: italic;
     padding: 24px 20px;
@@ -1293,6 +1302,18 @@ function folhaNaoAberta() {
     return !(FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X');
 }
 
+// O aviso de folha bloqueada dizia o que falta e parava por ai — o usuario
+// tinha de sair do painel e procurar a tela sozinho. Este card leva direto ao
+// proximo passo: da folha Calculada e fechar; das outras, calcular antes.
+// /fechar_folha e so a tela de confirmacao (quem fecha e o POST /api/folha/fechar),
+// entao clicar aqui nao fecha nada sem o usuario mandar.
+function acaoAvisoFolha() {
+    if (FOLHA_SITUACAO === 'C')
+        return `<a class="nav-aviso-acao" href="/fechar_folha">🔒 Fechar esta Folha Calculada <span class="seta">→</span></a>`;
+    if (FOLHA_SITUACAO === 'F') return '';
+    return `<a class="nav-aviso-acao" href="/calcular_folha">▶️ Calcular a Folha <span class="seta">→</span></a>`;
+}
+
 function mostrarAvisoFolha(motivo) {
     const sitLbl = rotuloSituacaoFolha();
     if (motivo === 'pos_s1299') {
@@ -1300,7 +1321,8 @@ function mostrarAvisoFolha(motivo) {
     } else if (motivo === 'calculada') {
         navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — esta opção só está disponível com a folha <strong>Calculada</strong> ou <strong>Fechada</strong>.`;
     } else if (motivo === 'fechada') {
-        navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — eventos periódicos do eSocial só podem ser enviados com a folha <strong>Fechada</strong>.`;
+        navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — eventos periódicos do eSocial só podem ser enviados com a folha <strong>Fechada</strong>.`
+                           + `<br>` + acaoAvisoFolha();
     } else {
         navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — esta opção só está disponível com a folha <strong>Aberta</strong>.`;
     }
