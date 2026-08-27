@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Consultar Trabalhador no eSocial</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:#a0d9be; --navy-line:#70c4a0; --accent:#2a7de1;
+    --text-head:#1e293b; --text-sub:#374151; --bg:#f0f2f6; --surface:#fff;
+    --border:#dde3ec; --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--sans);background:var(--bg);color:#374151;min-height:100vh;}
+.topo{background:var(--navy);border-bottom:1px solid var(--navy-line);padding:0 28px;
+    display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:0 32px;min-height:64px;position:sticky;top:0;z-index:10;}
+.topo-versao{font-family:var(--mono);font-size:10px;font-weight:700;color:#374151;margin-top:2px;}
+.topo-titulo{font-size:16px;font-weight:600;color:var(--text-head);text-align:center;display:flex;align-items:center;justify-content:center;gap:12px;}
+.topo-empresa{font-size:15px;font-weight:600;color:#111827;}
+.topo-nome{font-size:11px;color:var(--text-sub);margin-top:2px;}
+.btn-voltar-topo{margin-left:16px;background:transparent;border:1px solid var(--navy-line);color:var(--text-sub);
+    font-size:12px;padding:5px 12px;border-radius:6px;cursor:pointer;font-family:var(--sans);transition:.15s;white-space:nowrap;}
+.btn-voltar-topo:hover{border-color:var(--accent);color:var(--text-head);}
+.conteudo{max-width:1040px;margin:24px auto;padding:0 20px 60px;}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;margin-bottom:20px;overflow:hidden;}
+.card-titulo{background:#f8fafc;border-bottom:1px solid var(--border);padding:10px 20px;font-size:13px;font-weight:600;color:#374151;}
+.card-body{padding:18px 20px;}
+.linha{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;}
+.campo{display:flex;flex-direction:column;gap:5px;}
+.lbl{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;}
+.inp{font-family:var(--sans);font-size:13px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:#fff;}
+select.inp{min-width:300px;}
+input.cpf{font-family:var(--mono);width:150px;}
+input.dt{font-family:var(--mono);width:150px;}
+.btn{background:var(--accent);border:none;color:#fff;font-size:13px;font-weight:600;padding:9px 20px;border-radius:8px;cursor:pointer;font-family:var(--sans);transition:.15s;}
+.btn:hover{filter:brightness(1.08);}
+.btn:disabled{background:#cbd5e1;cursor:not-allowed;filter:none;}
+.btn-mini{background:#fff;border:1px solid var(--accent);color:var(--accent);font-size:11px;font-weight:600;
+    padding:4px 10px;border-radius:6px;cursor:pointer;font-family:var(--sans);white-space:nowrap;}
+.btn-mini:hover{background:#eff6ff;}
+.btn-mini:disabled{border-color:#cbd5e1;color:#94a3b8;cursor:not-allowed;background:#f8fafc;}
+.hint{font-size:12px;color:#64748b;margin-top:12px;line-height:1.55;}
+.hint b{color:#475569;}
+.alerta{padding:11px 16px;border-radius:10px;font-size:13px;margin-bottom:14px;line-height:1.55;display:flex;gap:9px;align-items:flex-start;}
+.a-erro{background:#fef2f2;color:#991b1b;border:1px solid #fecaca;}
+.a-ok{background:#ecfdf5;color:#065f46;border:1px solid #a7f3d0;}
+.a-vazio{background:#fffbeb;color:#92400e;border:1px solid #fde68a;}
+.tabela-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;}
+table{border-collapse:collapse;width:100%;font-size:12px;}
+thead th{background:#f8fafc;color:#475569;font-weight:600;text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;}
+tbody td{padding:7px 10px;border-bottom:1px solid #f1f5f9;white-space:nowrap;vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+.mono{font-family:var(--mono);}
+.oculto{display:none;}
+.spin{font-size:13px;color:#64748b;}
+.achado{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:13px;margin-bottom:12px;}
+.achado dt{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;align-self:center;}
+.achado dd{font-family:var(--mono);color:#1e293b;}
+.achado dd.forte{font-size:16px;font-weight:600;color:#0f172a;}
+.vazio-mat{color:#b45309;font-weight:600;font-family:var(--sans);}
+pre.xml{background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:11px;line-height:1.5;
+    padding:14px 16px;border-radius:10px;overflow:auto;max-height:340px;white-space:pre;}
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo"><span>Admin — Consultar Trabalhador no eSocial</span></div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="card">
+        <div class="card-titulo">Quem procurar</div>
+        <div class="card-body">
+            <div class="linha" style="margin-bottom:14px;">
+                <div class="campo" style="flex:1;">
+                    <label class="lbl">Funcionário desta empresa</label>
+                    <select id="sel-func" class="inp" onchange="escolherFunc()">
+                        <option value="">— escolha para preencher o CPF e o mês da admissão —</option>
+                        {% for f in funcionarios %}
+                        <option value="{{ f.cpf }}" data-adm="{{ f.dtadm }}" data-mates="{{ f.matricula_es or '' }}"
+                                data-cat="{{ f.codcateg or '' }}" data-mat="{{ f.matricula }}">
+                            {{ '%06d'|format(f.matricula) }} — {{ f.nome }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="linha">
+                <div class="campo">
+                    <label class="lbl">CPF</label>
+                    <input type="text" id="cpf" class="inp cpf" maxlength="14" placeholder="000.000.000-00"
+                           oninput="mascaraCPF(this)">
+                </div>
+                <div class="campo">
+                    <label class="lbl">De</label>
+                    <input type="date" id="dt_ini" class="inp dt" value="{{ dt_ini }}">
+                </div>
+                <div class="campo">
+                    <label class="lbl">Até</label>
+                    <input type="date" id="dt_fim" class="inp dt" value="{{ dt_fim }}">
+                </div>
+                <button class="btn" id="btn-consultar" onclick="consultar()">🔎 Consultar no eSocial</button>
+                <span class="spin oculto" id="spin">Falando com o eSocial…</span>
+            </div>
+            <div class="hint">
+                Pergunta ao eSocial <b>quais eventos daquele CPF</b> existem no Ambiente Nacional no período —
+                S-2200 (admissão), S-2300 (TSVE), S-2206, S-2299… Depois, no botão <b>Ver matrícula</b> de cada
+                linha, o XML do evento é baixado e a <b>matrícula registrada</b> aparece. É essa matrícula que o
+                S-1200 tem que informar; quando não bate, o gov devolve o erro <span class="mono">[312]</span>.
+                Se a consulta vier <b>vazia</b>, o trabalhador não existe lá — e aí o S-1200 vai <b>sem</b> a tag
+                matrícula, com o grupo de informações complementares.
+                <br><br>
+                <b>Cotas do serviço:</b> o eSocial libera <b>10 solicitações por dia</b> por empresa, e cada
+                consulta ou download gasta uma. O período não pode passar de <b>31 dias</b> (mire no mês da
+                admissão). Entre os dias <b>1 e 7</b> de cada mês o serviço fica bloqueado. Nada é enviado ou
+                alterado — é só leitura, com o certificado digital da empresa.
+            </div>
+        </div>
+    </div>
+
+    <div id="resultado" class="oculto">
+        <div class="card">
+            <div class="card-titulo"><span id="res-titulo">Resultado</span></div>
+            <div class="card-body">
+                <div id="alertas"></div>
+                <div class="tabela-wrap" id="tab-wrap" style="display:none;">
+                    <table>
+                        <thead>
+                            <tr><th>#</th><th>Tipo</th><th>ID do Evento</th><th>Recibo</th><th>Período</th><th></th></tr>
+                        </thead>
+                        <tbody id="corpo"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="detalhe" class="oculto">
+        <div class="card">
+            <div class="card-titulo">O que o eSocial tem registrado</div>
+            <div class="card-body">
+                <div id="det-alertas"></div>
+                <dl class="achado" id="det-campos"></dl>
+                <pre class="xml" id="det-xml"></pre>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const FUNC_SEL = document.getElementById('sel-func');
+
+function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function mascaraCPF(el){
+    let v = el.value.replace(/\D/g,'').substring(0,11);
+    if (v.length > 9)      v = v.replace(/^(\d{3})(\d{3})(\d{3})(\d{1,2})$/,'$1.$2.$3-$4');
+    else if (v.length > 6) v = v.replace(/^(\d{3})(\d{3})(\d{1,3})$/,'$1.$2.$3');
+    else if (v.length > 3) v = v.replace(/^(\d{3})(\d{1,3})$/,'$1.$2');
+    el.value = v;
+}
+
+// Escolher o funcionário preenche o CPF e joga a janela de 31 dias em cima do
+// mês da admissão — é lá que mora o S-2200/S-2300 que interessa.
+function escolherFunc(){
+    const op = FUNC_SEL.selectedOptions[0];
+    if(!op || !op.value) return;
+    document.getElementById('cpf').value = op.value;
+    mascaraCPF(document.getElementById('cpf'));
+    const adm = (op.dataset.adm || '').replace(/\D/g,'');
+    if(adm.length === 8){
+        const ano = adm.slice(0,4), mes = adm.slice(4,6);
+        const ultimo = new Date(parseInt(ano,10), parseInt(mes,10), 0).getDate();
+        document.getElementById('dt_ini').value = `${ano}-${mes}-01`;
+        document.getElementById('dt_fim').value = `${ano}-${mes}-${String(ultimo).padStart(2,'0')}`;
+    }
+}
+
+async function chamar(payload){
+    const r = await fetch('/api/admin_esocial_consulta_trabalhador',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+    });
+    return await r.json();
+}
+
+async function consultar(){
+    const cpf = document.getElementById('cpf').value.replace(/\D/g,'');
+    const btn = document.getElementById('btn-consultar');
+    document.getElementById('detalhe').classList.add('oculto');
+    btn.disabled = true;
+    document.getElementById('spin').classList.remove('oculto');
+    let d;
+    try{
+        d = await chamar({cpf: cpf, tpAmb: '1',
+                          dt_ini: document.getElementById('dt_ini').value,
+                          dt_fim: document.getElementById('dt_fim').value});
+    }catch(e){
+        d = {ok:false, msg:'Falha na consulta: ' + e};
+    }finally{
+        btn.disabled = false;
+        document.getElementById('spin').classList.add('oculto');
+    }
+    render(d);
+}
+
+function statusLinha(d){
+    const s = d.status || {};
+    return s.cdResp ? `<br><span class="mono">[${esc(s.cdResp)}]</span> ${esc(s.descResp||'')}` : '';
+}
+
+function render(d){
+    document.getElementById('resultado').classList.remove('oculto');
+    const alertas = document.getElementById('alertas');
+    const wrap    = document.getElementById('tab-wrap');
+    const corpo   = document.getElementById('corpo');
+    corpo.innerHTML = ''; wrap.style.display = 'none';
+    document.getElementById('res-titulo').textContent =
+        'Resultado — CPF ' + (d.cpf || document.getElementById('cpf').value);
+
+    if(!d.ok){
+        alertas.innerHTML = `<div class="alerta a-erro">⛔ <div>${esc(d.msg||'Erro na consulta.')}${statusLinha(d)}</div></div>`;
+        return;
+    }
+    if(!d.total){
+        alertas.innerHTML = `<div class="alerta a-vazio">⚠️ <div>Nenhum evento deste CPF no eSocial entre
+            <b>${esc(d.periodo||'')}</b>.<br>Ou o trabalhador nunca foi registrado no Ambiente Nacional — e nesse
+            caso o S-1200 vai <b>sem</b> a tag matrícula —, ou o evento está em outro mês: mude o período e
+            consulte de novo (cada tentativa gasta 1 das 10 solicitações do dia).${statusLinha(d)}</div></div>`;
+        return;
+    }
+
+    alertas.innerHTML = `<div class="alerta a-ok">✓ <div><b>${d.total}</b> evento(s) encontrado(s) para este CPF
+        em <b>${esc(d.periodo||'')}</b>. Clique em <b>Ver matrícula</b> no evento de admissão/ingresso
+        (S-2200 ou S-2300) para ler o que está registrado lá.${statusLinha(d)}</div></div>`;
+
+    let html = '';
+    d.eventos.forEach((ev,i)=>{
+        html += `<tr>
+            <td class="mono">${i+1}</td>
+            <td class="mono">${esc(ev.tpEvt||'—')}</td>
+            <td class="mono">${esc(ev.id)}</td>
+            <td class="mono">${esc(ev.nrRecEvt||'—')}</td>
+            <td class="mono">${esc(ev.perApur||'—')}</td>
+            <td><button class="btn-mini" onclick="baixar(this,'${esc(ev.id)}')">Ver matrícula</button></td>
+        </tr>`;
+    });
+    corpo.innerHTML = html;
+    wrap.style.display = '';
+}
+
+async function baixar(btn, id){
+    const cpf = document.getElementById('cpf').value.replace(/\D/g,'');
+    document.querySelectorAll('.btn-mini').forEach(b => b.disabled = true);
+    btn.textContent = 'Baixando…';
+    let d;
+    try{
+        d = await chamar({cpf: cpf, id: id, tpAmb: '1'});
+    }catch(e){
+        d = {ok:false, msg:'Falha no download: ' + e};
+    }finally{
+        document.querySelectorAll('.btn-mini').forEach(b => b.disabled = false);
+        btn.textContent = 'Ver matrícula';
+    }
+
+    const box = document.getElementById('detalhe');
+    const al  = document.getElementById('det-alertas');
+    const cps = document.getElementById('det-campos');
+    const xml = document.getElementById('det-xml');
+    box.classList.remove('oculto');
+    box.scrollIntoView({behavior:'smooth', block:'nearest'});
+
+    if(!d.ok){
+        al.innerHTML = `<div class="alerta a-erro">⛔ <div>${esc(d.msg||'Erro no download.')}${statusLinha(d)}</div></div>`;
+        cps.innerHTML = ''; xml.textContent = '';
+        return;
+    }
+
+    const i = d.info || {};
+    const mat = (i.matricula || '').trim();
+    al.innerHTML = mat
+        ? `<div class="alerta a-ok">✓ <div>No eSocial este trabalhador está registrado com a matrícula
+             <b class="mono">${esc(mat)}</b>. É exatamente isso que o campo <b>Matrícula eSocial</b> do cadastro
+             precisa ter — e é o que o S-1200 vai informar.</div></div>`
+        : `<div class="alerta a-vazio">⚠️ <div>O evento <b>${esc(i.tpEvt||'')}</b> foi registrado <b>sem
+             matrícula</b>. Deixe o campo <b>Matrícula eSocial</b> do cadastro <b>em branco</b>: o S-1200 tem
+             que ir sem a tag matrícula, com o grupo de informações complementares.</div></div>`;
+
+    cps.innerHTML = `
+        <dt>Evento</dt><dd>${esc(i.tpEvt||'—')}</dd>
+        <dt>Matrícula</dt><dd class="forte">${mat ? esc(mat) : '<span class="vazio-mat">(sem matrícula)</span>'}</dd>
+        <dt>Categoria</dt><dd>${esc(i.codCateg||'—')}</dd>
+        <dt>Nome</dt><dd>${esc(i.nmTrab||'—')}</dd>
+        <dt>Nascimento</dt><dd>${esc(i.dtNascto||'—')}</dd>
+        <dt>Início</dt><dd>${esc(i.dtInicio||'—')}</dd>`;
+    xml.textContent = d.xml || '';
+}
+</script>
+</body>
+</html>

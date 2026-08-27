@@ -345,6 +345,14 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .resultado-ok { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d; }
 .resultado-erro { padding: 10px 16px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px; font-size: 12.5px; color: #991b1b; line-height: 1.6; }
 .resultado-erro ul { margin: 4px 0 0 16px; }
+/* Aviso de salario abaixo do minimo — some quando o valor esta em ordem */
+.aviso-piso {
+    display: none; margin: 10px 0 0; padding: 10px 14px;
+    background: #fef2f2; border: 1px solid #ef4444; border-left-width: 5px;
+    border-radius: 8px; font-size: 12.5px; color: #991b1b; line-height: 1.55;
+}
+.aviso-piso b { font-weight: 700; }
+.aviso-piso .dica { display: block; margin-top: 4px; color: #b45309; }
 .ico { display: block; width: 15px; height: 15px; flex-shrink: 0; }
 
 /* ── RESPONSIVE ───────────────────────────────────────── */
@@ -658,12 +666,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                            {% else %}
                            oninput="apenasNumeros(this,10)"
                            onfocus="limparSalario(this); showHint(this,'Valor da remuneração base do trabalhador.\nDigite só os dígitos, com os centavos — o sistema formata sozinho. Ex.: 150000 vira R$ 1.500,00.\nO rótulo muda conforme a categoria (Salário, Bolsa Estágio ou Pró-labore).')"
-                           onblur="formatarSalario(this); clearHint()"
+                           onblur="formatarSalario(this); conferirPisoSalario(); clearHint()"
                            {% endif %}>
                 </div>
                 <div class="campo">
                     <label>Unidade</label>
-                    <select id="UndSalFixo"
+                    <select id="UndSalFixo" onchange="conferirPisoSalario()"
                             onfocus="showHint(this,'Unidade a que o valor do salário se refere.\nM – Mensal (mais comum) | H – Por hora | D – Por dia.')" onblur="clearHint()">
                         <option value="M">M — Mensal</option>
                         <option value="H">H — Hora</option>
@@ -723,6 +731,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 </div>
                 {% endif %}
             </div>
+
+            <div class="aviso-piso" id="avisoPisoSalario"></div>
 
             <!-- Bloco do objeto determinante — só aparece se tpContr = 3.
                  Término e Cláusula saíram daqui: eram campos mortos (o payload ia
@@ -1015,7 +1025,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <div class="campo campo-mono campo-centro">
                         <label>Hs. Mensais</label>
                         <input type="text" id="qtdHrsMes" maxlength="3" value="220"
-                               oninput="apenasNumeros(this,3)"
+                               oninput="apenasNumeros(this,3)" onblur="conferirPisoSalario()"
                                onfocus="showHint(this,'Quantidade de horas mensais. Máximo: 220')" onblur="clearHint()">
                     </div>
                     <div class="campo">
@@ -1411,6 +1421,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 const MODO           = '{{ modo }}';
 const FOLHA_SITUACAO = '{{ folha_situacao }}';
 const ANOMES_ATUAL   = '{{ anomes_atual }}';   // ex.: "202604"
+const SM_CENTAVOS    = parseInt('{{ sm_centavos }}' || '0', 10) || 0;
 let funcionarioId = null;
 
 /* ── HINT ───────────────────────────────────────────────── */
@@ -1490,6 +1501,83 @@ function formatarSalario(campo) {
 
 function limparSalario(campo) {
     campo.value = campo.value.replace(/\./g, '').replace(',', '');
+}
+
+/* ── PISO: SALÁRIO ABAIXO DO MÍNIMO ──────────────────────
+   O campo é preenchido em centavos: quem digita 2500 pensando em R$ 2.500,00
+   grava R$ 25,00. Já aconteceu — um pró-labore entrou 100x menor e só apareceu
+   na linha de bases do relatório da folha. O aviso compara com o SM vigente
+   (do período da folha ativa) e, no horista/diarista, com o SM proporcional. */
+function _salCentavos() {
+    const v = (document.getElementById('vrSalFx')?.value || '').replace(/\./g, '').replace(',', '');
+    const n = parseInt(v.replace(/\D/g, ''), 10);
+    return isNaN(n) ? 0 : n;
+}
+
+function _brlCent(c) {
+    return 'R$ ' + (c / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Devolve {sal, piso, ref} quando o valor está abaixo do piso; senão null.
+function _abaixoDoMinimo() {
+    if (!SM_CENTAVOS) return null;                 // sem tabela legal: não inventa piso
+    const sal = _salCentavos();
+    if (!sal) return null;                         // vazio ou zero: outra validação cuida
+    const und = document.getElementById('UndSalFixo')?.value || 'M';
+    const hrs = parseInt(document.getElementById('qtdHrsMes')?.value || '220', 10) || 220;
+    let piso, ref;
+    if (und === 'H') {
+        piso = Math.round(SM_CENTAVOS / 220);
+        ref  = `${_brlCent(SM_CENTAVOS)} / 220h = ${_brlCent(piso)} por hora`;
+    } else if (und === 'D') {
+        piso = Math.round(SM_CENTAVOS / 30);
+        ref  = `${_brlCent(SM_CENTAVOS)} / 30 dias = ${_brlCent(piso)} por dia`;
+    } else if (hrs > 0 && hrs < 220) {
+        // Jornada parcial: o piso é proporcional às horas contratadas — cobrar o
+        // mínimo cheio de quem faz 120h/mês seria alarme falso.
+        piso = Math.round(SM_CENTAVOS * hrs / 220);
+        ref  = `${_brlCent(SM_CENTAVOS)} × ${hrs}h/220h = ${_brlCent(piso)} por mês`;
+    } else {
+        piso = SM_CENTAVOS;
+        ref  = `${_brlCent(SM_CENTAVOS)} por mês`;
+    }
+    return sal < piso ? { sal, piso, ref } : null;
+}
+
+// Categorias sem piso legal: bolsa de estágio (901) e pró-labore (700-799).
+// Continuam avisando — o erro de digitação acontece igual —, mas sem afirmar
+// que o valor é ilegal.
+function _catSemPiso() {
+    const cat = parseInt((document.getElementById('codCateg')?.value || '0'), 10) || 0;
+    return cat === 901 || (cat >= 700 && cat <= 799);
+}
+
+function conferirPisoSalario() {
+    const box = document.getElementById('avisoPisoSalario');
+    const el  = document.getElementById('vrSalFx');
+    if (!box) return null;
+    const r = _abaixoDoMinimo();
+    if (!r) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        if (el && !el.readOnly && _salCentavos()) _marcarOk(el);
+        return null;
+    }
+    const rotulo = (document.getElementById('lbl-salario')?.textContent || 'Salário')
+                       .replace(' (R$)', '');
+    box.innerHTML =
+        `⚠️ <b>${rotulo} abaixo do salário mínimo.</b> Valor informado: `
+      + `<b>${_brlCent(r.sal)}</b> — o mínimo vigente é ${r.ref}.`
+      + `<span class="dica">O campo é em centavos: digitar <b>${r.sal}</b> grava `
+      + `${_brlCent(r.sal)}; se o certo for ${_brlCent(r.sal * 100)}, digite `
+      + `<b>${r.sal * 100}</b>.`
+      + (_catSemPiso()
+            ? ' Nesta categoria o valor pode mesmo ficar abaixo do mínimo — confira antes de gravar.'
+            : '')
+      + `</span>`;
+    box.style.display = 'block';
+    if (el) _marcarErro(el);
+    return r;
 }
 
 // No modo alteração a matrícula é somente leitura: é a chave do funcionário e não
@@ -1748,6 +1836,7 @@ function ajustarBolsaEstagio() {
     else if (['721','722','723'].includes(cat))     lbl.textContent = 'Pró-labore (R$)';
     else                                            lbl.textContent = 'Salário (R$)';
     ajustarEstagio();
+    conferirPisoSalario();   // o rótulo e o texto do aviso mudam com a categoria
 }
 
 /* Seção Estágio (S-2300) só aparece para a categoria 901 (estagiário). */
@@ -2184,6 +2273,37 @@ async function salvarFuncionario() {
         painel.innerHTML = `<div class="resultado-erro"><strong>Busque o funcionário antes de salvar.</strong></div>`;
         painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
         return;
+    }
+
+    // ── Salário abaixo do mínimo: confirma antes de gravar ──
+    // Só na inclusão — na alteração o campo é somente leitura e o aviso na tela
+    // já basta; perguntar aqui seria cobrar do usuário algo que ele não pode
+    // corrigir por esta tela.
+    if (MODO !== 'alteracao') {
+        const _piso = conferirPisoSalario();
+        if (_piso) {
+            const _rotulo = (document.getElementById('lbl-salario')?.textContent || 'Salário')
+                                .replace(' (R$)', '');
+            const _linhas = [
+                `${_rotulo} informado: ${_brlCent(_piso.sal)}.`,
+                `Isso está ABAIXO do salário mínimo vigente (${_piso.ref}).`,
+                `O campo é preenchido em centavos: digitar ${_piso.sal} grava `
+                    + `${_brlCent(_piso.sal)}. Se o certo for ${_brlCent(_piso.sal * 100)}, `
+                    + `o que se digita é ${_piso.sal * 100}.`,
+                _catSemPiso()
+                    ? 'Nesta categoria o valor pode mesmo ficar abaixo do mínimo.'
+                    : 'Um salário abaixo do mínimo vai para a folha e para o eSocial como está.',
+                `Confirma gravar com ${_brlCent(_piso.sal)}?`,
+            ];
+            const _ok = await f10Confirm(_linhas.join('\n\n'),
+                { titulo: 'Salário abaixo do mínimo', tipo: 'aviso',
+                  okText: `Sim, é ${_brlCent(_piso.sal)}`, cancelText: 'Voltar e corrigir' });
+            if (!_ok) {
+                document.getElementById('vrSalFx')?.focus();
+                painel.innerHTML = '';
+                return;
+            }
+        }
     }
 
     // ── Admissão anterior à Folha Ativa: confirma e decide o S-2200 ──

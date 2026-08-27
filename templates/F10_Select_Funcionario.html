@@ -207,6 +207,8 @@ body.sel-unico .lista-row { cursor: pointer; }
 .badge-demitido { display: inline-block; background: #fff1f2; color: #9f1239; border: 1px solid #fda4af; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; }
 .badge-aviso    { display: inline-block; background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .badge-pensao   { display: inline-block; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.badge-adicional     { display: inline-block; background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.badge-sem-adicional { color: #cbd5e1; font-size: 12px; }
 /* .lc-sit empilha os selos em coluna; aqui os dois ficam na MESMA linha. */
 .sit-linha { display: inline-flex; align-items: center; gap: 5px; }
 .btn-nova-pensao {
@@ -804,13 +806,30 @@ const CONTEXTOS = {
     },
     insalub_pericu: {
         titulo:        'Insalubridade / Periculosidade — Selecionar Funcionário',
-        subtitulo:     'Selecione o funcionário para incluir ou cancelar insalubridade / periculosidade',
+        subtitulo:     'Selecione o funcionário para incluir ou encerrar insalubridade / periculosidade',
         tituloCurto:   'Selecionar — Insalub./Pericu.',
         proximo:       '/cad_insalub_pericu',
+        apiUrl:        '/api/funcionarios_lista?contexto=insalub_pericu',
+        colAdicional:  true,      // última coluna: quem já recebe adicional
         f_situacao:    'A',
         maxSel:        1,
         msgMaxSel:     'Selecione apenas 1 funcionário por vez',
         filtrarAdmMax: true,
+    },
+    // Mesma tela de destino do insalub_pericu, mas a lista traz SÓ quem tem
+    // adicional ativo — é o caminho de quem já sabe que veio encerrar.
+    encerrar_adicional: {
+        titulo:        'Encerrar Insalubridade / Periculosidade — Selecionar Funcionário',
+        subtitulo:     'Só aparecem os funcionários com adicional ativo hoje',
+        tituloCurto:   'Selecionar — Encerrar Adicional',
+        proximo:       '/cad_insalub_pericu?acao=encerrar',
+        apiUrl:        '/api/funcionarios_lista?contexto=encerrar_adicional',
+        colAdicional:  true,
+        f_situacao:    'A',
+        semFiltros:    true,
+        maxSel:        1,
+        msgMaxSel:     'Encerre o adicional de um funcionário por vez',
+        msgVazio:      'Nenhum funcionário com insalubridade ou periculosidade ativa nesta empresa.',
     },
     ficha: {
         titulo:        'Ficha de Registro — Selecionar Funcionário',
@@ -902,6 +921,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (CONTEXTO === 'pensao') {
         const lbl = document.getElementById('col-sit-label');
         if (lbl) lbl.textContent = 'Pensão';
+    } else if (ctx.colAdicional) {
+        const lbl = document.getElementById('col-sit-label');
+        if (lbl) lbl.textContent = 'Adicional Ativo';
     }
 
     syncRescisaoDisponivel();
@@ -1228,6 +1250,16 @@ function renderLista(lista) {
             sitCell = f.exame_data
                 ? '<span class="lc-data-col" title="Data do último exame médico">' + f.exame_data + '</span>'
                 : '<span class="lc-data-col" title="Sem exame registrado">—</span>';
+        } else if (ctx.colAdicional) {
+            // Quem já recebe adicional aparece marcado: é o que dizia, antes de
+            // abrir a ficha, que ali há algo a encerrar.
+            const ad = f.adicionais || [];
+            sitCell = ad.length
+                ? '<span class="sit-linha">' + ad.map(a =>
+                      '<span class="badge-adicional" title="' + a.tipo +
+                      (a.desde ? ' desde ' + a.desde : '') + '">' +
+                      a.curto + (a.pct ? ' ' + a.pct : '') + '</span>').join('') + '</span>'
+                : '<span class="badge-sem-adicional">—</span>';
         } else if (CONTEXTO === 'pensao') {
             // Aqui a lista já vem só com ativos (f_situacao 'A'), então o selo
             // "Ativo" não informa nada. A coluna vira AÇÃO: quem já tem pensão
@@ -1396,12 +1428,13 @@ function continuar() {
     // de pé, pronta para o próximo funcionário, e o Voltar do navegador não
     // cai no papel. Sem overlay — esta aba não vai a lugar nenhum.
     if (ctx.novaAba) {
-        window.open(ctx.proximo + '?mats=' + mats, '_blank');
+        window.open(ctx.proximo + (ctx.proximo.includes('?') ? '&' : '?') + 'mats=' + mats, '_blank');
         return;
     }
     const ov = document.getElementById('loading-overlay');
     if (ov) { ov.style.display = 'flex'; }
-    window.location.href = ctx.proximo + '?mats=' + mats;
+    // O destino pode já ter query string própria (ex.: ?acao=encerrar).
+    window.location.href = ctx.proximo + (ctx.proximo.includes('?') ? '&' : '?') + 'mats=' + mats;
 }
 
 /* ── Toast ── */

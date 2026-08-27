@@ -16010,6 +16010,12 @@ def cad_funcionario():
     modo  = request.args.get("modo",  "inclusao")
     aviso = request.args.get("aviso", "")
 
+    # Salario minimo vigente — a tela avisa quando o valor digitado fica abaixo.
+    # O campo de salario e' em centavos: digitar 2500 pensando em R$ 2.500,00
+    # grava R$ 25,00, e foi assim que um pro-labore entrou 100x menor.
+    _anomes_sm  = str(session.get("anomes_atual") or "") or _agora_brasilia().strftime("%Y%m")
+    sm_centavos = _get_sm_centavos(_anomes_sm)
+
     return render_template(
         "F10_Cad_Funcionario.html",
         versao=ler_versao(),
@@ -16029,6 +16035,7 @@ def cad_funcionario():
         aviso=aviso,
         folha_situacao=str(session.get("anomes_situacao") or ""),
         anomes_atual=str(session.get("anomes_atual") or ""),
+        sm_centavos=sm_centavos,
     )
 
 
@@ -16999,6 +17006,39 @@ def api_funcionarios_lista():
         except Exception:
             pensao_mats, pensoes_por_mat = set(), {}
 
+    # Contextos de insalubridade/periculosidade: quem tem adicional ATIVO
+    # (evento op1=31/41 sem data de encerramento). Sem isto a lista de seleção
+    # não dizia quem já recebe, e a única forma de descobrir era abrir um a um —
+    # foi assim que a opção de encerrar ficou invisível.
+    adic_por_mat = {}
+    if _contexto in ("insalub_pericu", "encerrar_adicional"):
+        try:
+            r_ad = (supabase.table("tab_eventos")
+                    .select("id, matricula, op1, data1i, ref1")
+                    .eq("id_empresa", id_empresa)
+                    .in_("op1", [31, 41])
+                    .is_("data1f", "null")
+                    .order("data1i")
+                    .execute())
+            for _e in (r_ad.data or []):
+                _m = _e.get("matricula")
+                if _m is None:
+                    continue
+                try:
+                    _pct = f"{int(_e.get('ref1') or 0) / 100:g}%"
+                except (TypeError, ValueError):
+                    _pct = ""
+                _d = str(_e.get("data1i") or "")
+                adic_por_mat.setdefault(int(_m), []).append({
+                    "tipo":  "Insalubridade" if int(_e.get("op1") or 0) == 31 else "Periculosidade",
+                    "curto": "Insalub." if int(_e.get("op1") or 0) == 31 else "Pericu.",
+                    "pct":   _pct,
+                    "desde": f"{_d[6:8]}/{_d[4:6]}/{_d[:4]}" if len(_d) == 8 else "",
+                })
+        except Exception as e:
+            print(f"[funcionarios_lista] adicionais ativos: {e}")
+            adic_por_mat = {}
+
     funcionarios = []
     for f in rows:
         if so_com_ferias and not _categoria_tem_ferias(f.get("codcateg")):
@@ -17012,6 +17052,9 @@ def api_funcionarios_lista():
         if _contexto == "contrato_pdf" and mat_int not in contrato_mats:
             continue
         if _contexto == "aviso_previo_pdf" and mat_int not in aviso_doc:
+            continue
+        # Tela de encerrar: só entra quem tem adicional ativo para encerrar.
+        if _contexto == "encerrar_adicional" and mat_int not in adic_por_mat:
             continue
         funcionarios.append({
             "matricula": f.get("matricula"),
@@ -17027,6 +17070,7 @@ def api_funcionarios_lista():
             "exame_data":   (lambda d: f"{d[6:8]}/{d[4:6]}/{d[:4]}" if d else "")(
                                 exame_ult.get(mat_int, "")),
             "contrato_fim": contrato_fim.get(mat_int, ""),
+            "adicionais":   adic_por_mat.get(mat_int, []),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})
@@ -23874,10 +23918,12 @@ def cad_insalub_pericu():
     if not session.get("logado"):
         return redirect("/")
 
+    _ctx_volta = ("encerrar_adicional" if request.args.get("acao") == "encerrar"
+                  else "insalub_pericu")
     mats_raw = request.args.get("mats", "").strip()
     mats = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()]
     if len(mats) != 1:
-        return redirect("/select_funcionario?contexto=insalub_pericu")
+        return redirect(f"/select_funcionario?contexto={_ctx_volta}")
 
     matricula  = mats[0]
     id_empresa = _get_id_empresa()
@@ -23895,7 +23941,7 @@ def cad_insalub_pericu():
         pass
 
     if not func:
-        return redirect("/select_funcionario?contexto=insalub_pericu")
+        return redirect(f"/select_funcionario?contexto={_ctx_volta}")
 
     def _buscar_ativo(op1):
         try:
@@ -23930,6 +23976,11 @@ def cad_insalub_pericu():
     anomes = str(session.get("anomes_atual") or "")
     data_default = f"01/{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else ""
 
+    # ?acao=encerrar vem do card "Encerrar Insalub./Pericu." do menu: a tela abre
+    # com o formulario de encerramento ja' aberto, em vez de exigir que o usuario
+    # ache o checkbox depois de ter dito, no card, que era isso que queria.
+    acao = "encerrar" if request.args.get("acao") == "encerrar" else ""
+
     return render_template(
         "F10_Cad_InsalubPericu.html",
         versao=ler_versao(),
@@ -23942,6 +23993,7 @@ def cad_insalub_pericu():
         insalub_ativo=insalub_ativo,
         pericu_ativo=pericu_ativo,
         data_default=data_default,
+        acao=acao,
     )
 
 
@@ -25675,19 +25727,29 @@ def _soap_consultar(protocolo):
 _ES_PATH_CONS_IDE = "/servicos/empregador/dwlcirurgico/WsConsultarIdentificadoresEventos.svc"
 _ES_PATH_DOWNLOAD = "/servicos/empregador/dwlcirurgico/WsSolicitarDownloadEventos.svc"
 
-_NS_SVC_CIE_TRAB  = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/trabalhador/v1_0_0"
-_NS_SVC_CIE_EMP   = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/empregador/v1_0_0"
+# Namespace do SERVICO de consulta: e UM SO para as tres operacoes
+# (Tabela/Empregador/Trabalhador) — elas partilham o mesmo contrato WCF.
+_NS_SVC_CIE       = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/v1_0_0"
 _NS_SVC_DWN       = "http://www.esocial.gov.br/servicos/empregador/download/solicitacao/v1_0_0"
-_SA_CIE_TRAB      = _NS_SVC_CIE_TRAB + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTrabalhador"
-_SA_CIE_EMP       = _NS_SVC_CIE_EMP  + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosEmpregador"
+_SA_CIE_TRAB      = _NS_SVC_CIE + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTrabalhador"
+_SA_CIE_EMP       = _NS_SVC_CIE + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosEmpregador"
 _SA_DWN           = _NS_SVC_DWN      + "/ServicoSolicitarDownloadEventos/SolicitarDownloadEventosPorId"
 
 
 def _soap_consultar_ide_trab(cnpj_raiz, cpf_trab, dt_ini, dt_fim, tp_evt="",
                              pfx_bytes=None, senha_str=None):
     """SOAP: ConsultarIdentificadoresEventosTrabalhador (busca IDs de S-2xxx/S-5001/5002/5003).
-    dt_ini/dt_fim no formato YYYY-MM-DD. tp_evt vazio = busca todos os tipos disponíveis.
+    dt_ini/dt_fim: YYYY-MM-DD (a hora é completada aqui) ou já com a hora.
+    tp_evt vazio = busca todos os tipos disponíveis.
     pfx_bytes/senha_str: obrigatórios na prática — o eSocial recusa a consulta sem assinatura."""
+    # No schema desta consulta dtIni/dtFim sao xs:dateTIME, nao xs:date: mandar
+    # "2026-07-31" volta [417] "The string '2026-07-31' is not a valid DateTime
+    # value" — e como o erro chega junto com uma lista vazia, parece "nenhum
+    # evento encontrado". A data pura vira o primeiro e o ultimo instante do dia.
+    if len(str(dt_ini)) == 10:
+        dt_ini = f"{dt_ini}T00:00:00"
+    if len(str(dt_fim)) == 10:
+        dt_fim = f"{dt_fim}T23:59:59"
     tp_evt_xml = f"<tpEvt>{tp_evt}</tpEvt>" if tp_evt else ""
     body_xml = (
         f'<eSocial xmlns="http://www.esocial.gov.br/schema/consulta/identificadores-eventos/trabalhador/v1_0_0">'
@@ -25704,12 +25766,17 @@ def _soap_consultar_ide_trab(cnpj_raiz, cpf_trab, dt_ini, dt_fim, tp_evt="",
     )
     if pfx_bytes:
         body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
+    # Envelope no namespace UNIFICADO do servico e com o wrapper
+    # <consultaEventosTrabalhador> — igual ao da variante de tabela, que e a
+    # unica que ja rodava em producao. Com o namespace "/trabalhador/" (o do
+    # XML de dentro) o gov devolve SOAP Fault a:ActionNotSupported; conferido
+    # no WSDL e no _puxar_esocial_funcionarios.py, que passou em 10/08/2026.
     return (
-        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_CIE_TRAB}">'
+        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:v1="{_NS_SVC_CIE}">'
         f"<soapenv:Header/><soapenv:Body>"
-        f"<ser:ConsultarIdentificadoresEventosTrabalhador><ser:consulta>"
+        f"<v1:ConsultarIdentificadoresEventosTrabalhador><v1:consultaEventosTrabalhador>"
         f"{body_xml}"
-        f"</ser:consulta></ser:ConsultarIdentificadoresEventosTrabalhador>"
+        f"</v1:consultaEventosTrabalhador></v1:ConsultarIdentificadoresEventosTrabalhador>"
         f"</soapenv:Body></soapenv:Envelope>"
     )
 
@@ -25730,12 +25797,13 @@ def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur, pfx_bytes=None, senha_s
     )
     if pfx_bytes:
         body_xml = _assinar_xml_consulta(body_xml, pfx_bytes, senha_str)
+    # Mesmo namespace unificado da consulta de trabalhador/tabela (ver acima).
     return (
-        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:ser="{_NS_SVC_CIE_EMP}">'
+        f'<soapenv:Envelope xmlns:soapenv="{_NS_SOAP}" xmlns:v1="{_NS_SVC_CIE}">'
         f"<soapenv:Header/><soapenv:Body>"
-        f"<ser:ConsultarIdentificadoresEventosEmpregador><ser:consulta>"
+        f"<v1:ConsultarIdentificadoresEventosEmpregador><v1:consultaEventosEmpregador>"
         f"{body_xml}"
-        f"</ser:consulta></ser:ConsultarIdentificadoresEventosEmpregador>"
+        f"</v1:consultaEventosEmpregador></v1:ConsultarIdentificadoresEventosEmpregador>"
         f"</soapenv:Body></soapenv:Envelope>"
     )
 
@@ -25743,8 +25811,8 @@ def _soap_consultar_ide_emp(cnpj_raiz, tp_evt, per_apur, pfx_bytes=None, senha_s
 # Consulta de eventos de TABELA (S-1000, S-1005, S-1010, S-1020, S-1070).
 # Namespace do serviço é UNIFICADO (sem o segmento /tabela) — as 3 variantes
 # (Tabela/Empregador/Trabalhador) partilham o mesmo contrato WCF. (Ref.: ACBr)
-_NS_SVC_CIE_TAB = "http://www.esocial.gov.br/servicos/empregador/consulta/identificadores-eventos/v1_0_0"
-_SA_CIE_TAB     = _NS_SVC_CIE_TAB + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTabela"
+_NS_SVC_CIE_TAB = _NS_SVC_CIE
+_SA_CIE_TAB     = _NS_SVC_CIE + "/ServicoConsultarIdentificadoresEventos/ConsultarIdentificadoresEventosTabela"
 
 
 def _soap_consultar_ide_tab(cnpj_raiz, tp_evt, pfx_bytes=None, senha_str=None):
@@ -26755,6 +26823,43 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
     ind_simples_xml = (f"\n            <indSimples>{ind_simples_val}</indSimples>"
                        if ind_simples_val else "")
 
+    # ── infoComplem / infoComplCont ─────────────────────────────────────────
+    # Sem <matricula> significa que o trabalhador NAO tem S-2300 ativo no
+    # Ambiente Nacional — e' o caso do socio/empresario (723), que nao e'
+    # obrigado ao TSVE-Inicio. Ai o leiaute exige o grupo <infoComplem> (nome e
+    # nascimento) com <infoComplCont> (CBO) dentro do ideTrabalhador. Sem ele o
+    # gov devolve [8] "Grupo 'Informacoes complementares contratuais do
+    # trabalhador' deve ser preenchido", junto com o [312] da matricula vazia.
+    #
+    # Os dois andam JUNTOS: quem informa matricula nao manda infoComplem, e quem
+    # omite a matricula tem de mandar. Por isso o mesmo _sem_mat_es decide os dois.
+    info_complem_xml = ""
+    if _sem_mat_es:
+        _nm_trab  = str(func.get('nome') or '').strip()
+        _dtn      = dg(func.get('dtnascto'))
+        _dtn_fmt  = f"{_dtn[:4]}-{_dtn[4:6]}-{_dtn[6:8]}" if len(_dtn) == 8 else ""
+        _cbo_trab = dg(func.get('cbofuncao'))
+        if not (_nm_trab and _dtn_fmt and _cbo_trab):
+            raise ValueError(
+                f"Funcionário {func.get('matricula')} é categoria {codcateg} sem matrícula "
+                "no eSocial: para montar o grupo Informações Complementares do S-1200 o "
+                "cadastro precisa de Nome, Data de Nascimento e CBO da Função."
+            )
+        # natAtividade so' e' exigida com classTrib 06/07 (e 21/22 com remuneracao
+        # ligada a CAEPF, que o Folha10 nao gera). Fora disso volta como campo
+        # proibido. qtdDiasTrab e' exclusivo de classTrib 22 + natAtividade 2,
+        # entao nao entra aqui.
+        _nat_ativ_compl = (f"\n          <natAtividade>{x(func.get('natatividade') or '1')}</natAtividade>"
+                           if class_trib in ('06', '07') else "")
+        info_complem_xml = f"""
+      <infoComplem>
+        <nmTrab>{x(_nm_trab)}</nmTrab>
+        <dtNascto>{_dtn_fmt}</dtNascto>
+        <infoComplCont>
+          <codCBO>{x(_cbo_trab)}</codCBO>{_nat_ativ_compl}
+        </infoComplCont>
+      </infoComplem>"""
+
     # codRubr / ideTabRubr: formato "NNNN-XXX" — 4 dígitos + traço + origem da
     # folha (FOL = folha, FER = férias). É assim que a tabela de rubricas do
     # empregador está registrada no eSocial (S-1010 gerado pelo Folha10 Desktop),
@@ -26860,9 +26965,6 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
       </infoPerApur>
     </dmDev>"""
 
-    nis_trab = dg(func.get('nis') or func.get('pis') or '')
-    nis_xml  = f"\n      <nisTrab>{x(nis_trab)}</nisTrab>" if nis_trab else ""
-
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtRemun/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -26881,7 +26983,7 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
     <ideTrabalhador>
-      <cpfTrab>{x(cpf)}</cpfTrab>{nis_xml}
+      <cpfTrab>{x(cpf)}</cpfTrab>{info_complem_xml}
     </ideTrabalhador>{dmdev_xml}
   </evtRemun>
 </eSocial>"""
@@ -34110,6 +34212,233 @@ def api_esocial_consulta_tabela():
         "eventos": parsed.get("ids", []),
         "total":   len(parsed.get("ids", [])),
     })
+
+
+# =========================================================
+# ADMIN — eSocial: consultar UM trabalhador pelo CPF
+# =========================================================
+# Fica no modulo Administrador de proposito: o servico de consulta por
+# trabalhador nunca rodou em producao neste sistema (o envelope estava com o
+# namespace errado ate 27/08/2026), a cota e de 10 solicitacoes por dia por
+# empresa, e um erro aqui queima cota de um cliente. Enquanto nao houver
+# confirmacao de que o gov processa, so a equipe F10 usa.
+#
+# Serve para descobrir o que o Ambiente Nacional tem daquele CPF — em especial
+# a MATRICULA com que o trabalhador foi registrado, que precisa ser identica no
+# S-1200 (e o erro [312] quando nao bate). Sao duas etapas, e cada uma gasta 1
+# das 10 solicitacoes diarias que o gov permite por empresa:
+#   sem "id" no payload → consulta os identificadores do periodo (lista eventos)
+#   com "id"            → baixa o XML daquele evento e le a matricula
+def _es_extrair_ide_trabalhador(xml_evt):
+    """Do XML de um evento de trabalhador, tira o que identifica o vinculo."""
+    dados = {"tpEvt": "", "matricula": "", "codCateg": "", "nmTrab": "",
+             "cpf": "", "dtNascto": "", "dtInicio": ""}
+    if not xml_evt:
+        return dados
+    bruto = xml_evt.encode("utf-8") if isinstance(xml_evt, str) else xml_evt
+    tipo, ev = _xmli_evento(bruto)
+    if not tipo or ev is None:
+        return dados
+    dados["tpEvt"] = tipo
+    # A matricula mora em lugares diferentes conforme o evento (vinculo no
+    # S-2200, infoTSVInicio no S-2300); o primeiro descendente resolve os dois.
+    dados["matricula"] = _xmli_txt(ev, "matricula")
+    dados["codCateg"]  = _xmli_txt(ev, "codCateg")
+    dados["nmTrab"]    = _xmli_txt(ev, "nmTrab")
+    dados["cpf"]       = _xmli_txt(ev, "cpfTrab")
+    dados["dtNascto"]  = _xmli_txt(ev, "dtNascto")
+    dados["dtInicio"]  = _xmli_txt(ev, "dtAdm", "dtInicio", "dtIniTSVE")
+    return dados
+
+
+@app.route("/api/admin_esocial_consulta_trabalhador", methods=["POST"])
+def api_admin_esocial_consulta_trabalhador():
+    """Consulta (ou baixa) eventos de um trabalhador no eSocial. Só leitura."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    if not _pode_admin():
+        return jsonify({"ok": False, "msg": "Disponível apenas no módulo Administrador."})
+
+    data   = request.get_json(force=True) or {}
+    cpf    = re.sub(r"\D", "", str(data.get("cpf") or ""))
+    tpAmb  = str(data.get("tpAmb", "1"))
+    id_evt = str(data.get("id") or "").strip()
+    tp_evt = str(data.get("tp_evt") or "").strip().upper()
+    dt_ini = str(data.get("dt_ini") or "").strip()
+    dt_fim = str(data.get("dt_fim") or "").strip()
+
+    if len(cpf) != 11:
+        return jsonify({"ok": False, "msg": "Informe um CPF com 11 dígitos."})
+
+    from datetime import date as _date
+
+    def _dt(txt):
+        try:
+            return _date(int(txt[:4]), int(txt[5:7]), int(txt[8:10]))
+        except Exception:
+            return None
+
+    if not id_evt:
+        d1, d2 = _dt(dt_ini), _dt(dt_fim)
+        if not d1 or not d2:
+            return jsonify({"ok": False, "msg": "Informe o período da consulta (data inicial e final)."})
+        if d2 < d1:
+            return jsonify({"ok": False, "msg": "A data final não pode ser anterior à inicial."})
+        # Intervalo maior que 31 dias volta com cdResposta 410.
+        if (d2 - d1).days > 31:
+            return jsonify({"ok": False, "msg":
+                "O eSocial só aceita consulta de até 31 dias por vez. Reduza o período — "
+                "para achar a admissão, normalmente basta o mês em que ela aconteceu."})
+
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    if not cnpj_emp:
+        return jsonify({"ok": False, "msg": "Empresa sem CNPJ na sessão."})
+    try:
+        r_emp = (supabase.table("tab_empresa").select("*")
+                 .eq("cnpj", cnpj_emp).limit(1).execute())
+        if not r_emp.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+        empresa = r_emp.data[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    _aplicar_cert_esocial(empresa)
+    pfx_b64   = empresa.get("cert_pfx_b64")
+    senha_enc = empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        return jsonify({"ok": False,
+                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+    try:
+        pfx_bytes = base64.b64decode(pfx_b64)
+        senha_str = _cert_decrypt(senha_enc)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o certificado: {str(e)[:150]}"})
+
+    raiz     = re.sub(r"\D", "", cnpj_emp)[:8]
+    base_url = _ES_BASE_PROD_DWN if tpAmb == "1" else _ES_BASE_HOMOL
+
+    def _erro_amigavel(e):
+        txt = str(e)
+        # Entre os dias 1 e 7 a Produção devolve HTTP 500 com corpo vazio — a
+        # dica de data tem que sair daqui, o gov não escreve o motivo.
+        if "HTTP 500" in txt and datetime.now().day <= 7:
+            return ("O eSocial não aceita solicitação de consulta/download entre os dias "
+                    "1 e 7 do mês. Tente a partir do dia 8.")
+        if "HTTP 500" in txt and ("<html" in txt.lower() or "Server Error" in txt):
+            return "O serviço de consulta do eSocial está fora do ar. Tente mais tarde."
+        return f"Erro ao falar com o eSocial: {txt[:200]}"
+
+    def _checar_cota(status):
+        cd   = (status or {}).get("cdResp", "")
+        desc = (status or {}).get("descResp", "") or ""
+        if cd == "405" or "solicitações por dia" in desc:
+            return ("A cota de 10 solicitações por dia do eSocial já foi usada nesta empresa. "
+                    "O contador zera amanhã.")
+        if cd == "403":
+            return ("O eSocial bloqueia consultas entre os dias 1 e 7 do mês. "
+                    "Tente a partir do dia 8.")
+        # Qualquer cdResposta fora da familia 2xx e' recusa. Sem esta linha um
+        # erro de estrutura [417] chegava na tela como "nenhum evento
+        # encontrado", que manda o usuario procurar em outro mes a toa.
+        if cd and not cd.startswith("2"):
+            return (f"O eSocial recusou a consulta [{cd}]: {desc}" if desc
+                    else f"O eSocial recusou a consulta [{cd}].")
+        return ""
+
+    # ── Etapa 2: baixar o XML de um evento já identificado ─────────────────
+    if id_evt:
+        try:
+            resp = _http_post_cert(base_url + _ES_PATH_DOWNLOAD,
+                                   _soap_download_evt(raiz, [id_evt], pfx_bytes, senha_str),
+                                   pfx_bytes, senha_str, _SA_DWN)
+        except Exception as e:
+            return jsonify({"ok": False, "msg": _erro_amigavel(e)})
+        d    = _parse_dwn_response(resp)
+        cota = _checar_cota(d.get("status"))
+        if cota:
+            return jsonify({"ok": False, "msg": cota, "status": d.get("status", {})})
+        if d.get("erro") or not d.get("eventos"):
+            return jsonify({"ok": False,
+                            "msg": d.get("erro") or "O eSocial não devolveu o XML do evento."})
+        xml_evt = d["eventos"][0].get("xml_str") or d["eventos"][0].get("xml") or ""
+        info    = _es_extrair_ide_trabalhador(xml_evt)
+        gravar_log("ESOCIAL-C",
+                   f"Download {info.get('tpEvt') or id_evt} do CPF {cpf}: "
+                   f"matricula='{info.get('matricula')}' categoria={info.get('codCateg')}")
+        return jsonify({"ok": True, "modo": "download", "info": info, "xml": xml_evt})
+
+    # ── Etapa 1: listar os identificadores do período ──────────────────────
+    try:
+        resp = _http_post_cert(base_url + _ES_PATH_CONS_IDE,
+                               _soap_consultar_ide_trab(raiz, cpf, dt_ini, dt_fim, tp_evt,
+                                                        pfx_bytes, senha_str),
+                               pfx_bytes, senha_str, _SA_CIE_TRAB)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": _erro_amigavel(e)})
+
+    p    = _parse_ide_response(resp)
+    cota = _checar_cota(p.get("status"))
+    if cota:
+        return jsonify({"ok": False, "msg": cota, "status": p.get("status", {})})
+    if p.get("erro"):
+        return jsonify({"ok": False, "msg": p["erro"], "status": p.get("status", {})})
+
+    eventos = p.get("ids", [])
+    gravar_log("ESOCIAL-C",
+               f"Consulta trabalhador CPF {cpf} de {dt_ini} a {dt_fim}: {len(eventos)} evento(s)")
+    return jsonify({
+        "ok":       True,
+        "modo":     "consulta",
+        "cpf":      cpf,
+        "periodo":  f"{dt_ini} a {dt_fim}",
+        "ambiente": "Produção" if tpAmb == "1" else "Produção Restrita",
+        "status":   p.get("status", {}),
+        "eventos":  eventos,
+        "total":    len(eventos),
+    })
+
+
+# =========================================================
+# ADMIN — TELA: consulta de trabalhador pelo CPF
+# =========================================================
+@app.route("/admin_esocial_consulta_trabalhador")
+def admin_esocial_consulta_trabalhador():
+    if not session.get("logado"):
+        return redirect("/")
+    if not _pode_admin():
+        return redirect("/menu")
+    # Sugestão de período: o mês da folha ativa. Quem procura a admissão troca
+    # para o mês em que ela aconteceu — a janela do gov é de 31 dias.
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) == 6:
+        ano, mes = int(anomes[:4]), int(anomes[4:6])
+    else:
+        _hoje = _agora_brasilia()
+        ano, mes = _hoje.year, _hoje.month
+    import calendar as _cal
+    dt_ini = f"{ano:04d}-{mes:02d}-01"
+    dt_fim = f"{ano:04d}-{mes:02d}-{_cal.monthrange(ano, mes)[1]:02d}"
+
+    funcionarios = []
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula,nome,cpf,dtadm,matricula_es,codcateg")
+             .eq("id_empresa", _get_id_empresa())
+             .eq("situacao", "A")
+             .order("nome").execute())
+        funcionarios = r.data or []
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_Admin_Esocial_Consulta_Trabalhador.html",
+        versao=ler_versao(),
+        empresa=session.get("empresa_info", ""),
+        nome=session.get("nome", ""),
+        dt_ini=dt_ini,
+        dt_fim=dt_fim,
+        funcionarios=funcionarios,
+    )
 
 
 # =========================================================

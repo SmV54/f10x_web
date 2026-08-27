@@ -188,7 +188,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <div class="conteudo">
 
     <div class="rel-header">
-        <a class="btn-voltar" href="/select_funcionario?contexto=insalub_pericu">&#8592; Selecionar</a>
+        <a class="btn-voltar" href="/select_funcionario?contexto={{ 'encerrar_adicional' if acao == 'encerrar' else 'insalub_pericu' }}">&#8592; Selecionar</a>
         <div>
             <div class="rel-titulo">Insalubridade / Periculosidade</div>
             <div class="rel-subtitulo">Inclua ou cancele o registro para o funcionário selecionado</div>
@@ -199,7 +199,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <div class="card">
         <div class="card-titulo">
             <span>Funcionário</span>
-            <a class="btn-voltar" href="/select_funcionario?contexto=insalub_pericu" style="font-size:11px;padding:3px 10px;">&#8592; Alterar seleção</a>
+            <a class="btn-voltar" href="/select_funcionario?contexto={{ 'encerrar_adicional' if acao == 'encerrar' else 'insalub_pericu' }}" style="font-size:11px;padding:3px 10px;">&#8592; Alterar seleção</a>
         </div>
         <div class="func-row">
             <span class="f-mat">{{ mat_fmt }}</span>
@@ -342,6 +342,20 @@ const ID_EV_PERICU   = '{{ pericu_ativo.id  if pericu_ativo  else "" }}';
 const TEM_INSALUB    = {{ 'true' if insalub_ativo else 'false' }};
 const TEM_PERICU     = {{ 'true' if pericu_ativo  else 'false' }};
 const DATA_DEFAULT   = '{{ data_default }}';
+const ACAO           = '{{ acao }}';   // 'encerrar' quando veio do card Encerrar
+
+// Quem chegou pelo card "Encerrar" já disse o que quer: a tela abre com o
+// formulário de encerramento pronto, em vez de pedir mais um clique no
+// checkbox. Só marca o que existe — se o funcionário tem só um dos dois
+// adicionais, o outro nem tem checkbox na página.
+window.addEventListener('DOMContentLoaded', () => {
+    if (ACAO !== 'encerrar') return;
+    [['insalub', TEM_INSALUB], ['pericu', TEM_PERICU]].forEach(([tipo, tem]) => {
+        if (!tem) return;
+        const chk = document.getElementById(`acao_${tipo}_cancelar`);
+        if (chk) { chk.checked = true; toggleForm(tipo, 'cancelar', true); }
+    });
+});
 
 function mascaraData(el) {
     let v = el.value.replace(/\D/g, '');

@@ -692,7 +692,11 @@ const modulos = {
                 { icone: '📋', nome: 'Listagem de Exames Médicos',    href: '/rel_config_exame_med',                     ok: true },
             ]},
             { nome: 'Insalubridade/Periculosidade', itens: [
-                { icone: '⚗️', nome: 'Insalubridade / Periculosidade', href: '/select_funcionario?contexto=insalub_pericu', ok: true },
+                { icone: '⚗️', nome: 'Incluir / Consultar',  href: '/select_funcionario?contexto=insalub_pericu',     ok: true },
+                // A lista deste vem só com quem tem adicional ativo, e a tela
+                // abre com o encerramento pronto. Antes, encerrar era um
+                // checkbox escondido dentro do card de incluir.
+                { icone: '⏹️', nome: 'Encerrar Adicional',   href: '/select_funcionario?contexto=encerrar_adicional', ok: true },
             ]},
             { nome: 'FAP', itens: [
                 { icone: '🛡️', nome: 'FAP — Fator Acidentário de Prevenção', href: '/cad_fap', ok: true },
@@ -706,9 +710,9 @@ const modulos = {
             { nome: 'Lançamentos', itens: [
                 { icone: '✏️', nome: 'Lançar Eventos',  href: '/cad_mov', ok: true },
                 { icone: '🏦', nome: 'Importar Consignados', href: '/consignado_importar', ok: true },
-                { icone: '⏱️', nome: 'Importar Ponto',  href: '#' },
-                { icone: '📈', nome: 'Horas Extras',     href: '#' },
-                { icone: '📉', nome: 'Faltas e Atrasos', href: '/select_funcionario?contexto=falta' },
+                // Faltas tem casa em Eventuais (Incluir/Excluir/Listagem). Aqui e' so
+                // atalho: abre AQUELA secao, em vez de duplicar um destino diferente.
+                { icone: '📉', nome: 'Faltas', irPara: { modulo: 'eventuais', secao: 'Faltas' } },
             ]},
             { nome: 'Listagens', itens: [
                 { icone: '📋', nome: 'Listagem de Movimento', href: '/rel_config_mov', ok: true },
@@ -899,6 +903,9 @@ const modulos = {
             ]},
             { nome: 'eSocial', itens: [
                 { icone: '📄', nome: 'Visualizar XML', href: '/admin_esocial_xml', ok: true },
+                // Consulta por CPF: fica no Admin ate' se confirmar que o gov
+                // processa. Cada tentativa gasta cota do cliente (10/dia).
+                { icone: '👤', nome: 'Consultar Trabalhador (CPF)', href: '/admin_esocial_consulta_trabalhador', ok: true },
             ]},
             { nome: 'Base para Teste', itens: [
                 { icone: '🧪', nome: 'Copiar Base p/ BASE DE TESTE', href: '/admin_copiar_base', ok: true },
@@ -1102,6 +1109,21 @@ function selecionarModulo(cardEl, id) {
     navPanel.style.display = 'block';
 }
 
+// Atalho para uma seção de OUTRO módulo. O assunto continua morando num lugar
+// só; o card apenas abre aquela seção, sem duplicar itens nem inventar um
+// destino diferente do que o módulo dono oferece.
+function irParaSecao(idModulo, nomeSecao) {
+    const card = document.querySelector('.modulo-card[data-modulo="' + idModulo + '"]');
+    if (!card) return;
+    // selecionarModulo alterna: se o módulo já fosse o ativo, fecharia o painel.
+    moduloAtivo = null;
+    selecionarModulo(card, idModulo);
+    const idx = (secoesAtivas || []).findIndex(sec => sec.nome === nomeSecao);
+    if (idx >= 0) selecionarSecao(idx);
+    // idx < 0 acontece quando a folha bloqueada reduziu as seções — aí o aviso
+    // do próprio módulo já está na tela, e é ele que o usuário precisa ler.
+}
+
 function itemBloqueado(item) {
     const folhaAberta  = FOLHA_SITUACAO === 'A' || FOLHA_SITUACAO === 'X';
     const folhaFechada = FOLHA_SITUACAO === 'F';
@@ -1196,6 +1218,20 @@ function renderItens(itens) {
             a.className = 'nav-item bloqueado';
             a.href = '#';
             a.addEventListener('click', e => { e.preventDefault(); mostrarAvisoFolha(motivoBloq); });
+        } else if (item.irPara) {
+            a.className = 'nav-item';
+            a.href = '#';
+            a.addEventListener('click', e => {
+                e.preventDefault();
+                // stopPropagation NAO e' decoracao: irParaSecao refaz o painel e
+                // este proprio <a> sai do DOM. Quando o clique termina de subir
+                // ate o document, o listener que fecha o painel pergunta
+                // e.target.closest('#navPanel') — e um elemento ja' solto
+                // responde null, entao ele fechava o painel que acabara de
+                // abrir. Era isso que fazia o atalho "nao ir" para as Faltas.
+                e.stopPropagation();
+                irParaSecao(item.irPara.modulo, item.irPara.secao);
+            });
         } else if (item.ok && item.loading) {
             a.className = 'nav-item';
             a.href = '#';
