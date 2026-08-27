@@ -67,7 +67,8 @@ CREATE TABLE tab_mov_fixo (
 
     -- ------------------------------------------------------------------
     -- Período de vigência  (YYYYMM)
-    -- Mutuamente exclusivo com qtd_parcelas / qtd_parcelas_before
+    -- folha_inicial é mutuamente exclusiva com qtd_parcelas;
+    -- folha_final é o encerramento e convive com qualquer um dos modos
     -- ------------------------------------------------------------------
     folha_inicial   INTEGER                             -- mês de início
                         CHECK (folha_inicial BETWEEN 190001 AND 209912),
@@ -130,12 +131,11 @@ CREATE TABLE tab_mov_fixo (
 
     -- ------------------------------------------------------------------
     -- Restrição: parcelas e período de folha são mutuamente exclusivos
+    -- folha_final fica de fora: não é vigência, é o encerramento gravado
+    -- pelo botão "Parar", e vale para os dois modos.
     -- ------------------------------------------------------------------
     CONSTRAINT chk_parcelas_ou_periodo CHECK (
-        NOT (
-            qtd_parcelas IS NOT NULL
-            AND (folha_inicial IS NOT NULL OR folha_final IS NOT NULL)
-        )
+        NOT (qtd_parcelas IS NOT NULL AND folha_inicial IS NOT NULL)
     )
 );
 
@@ -159,15 +159,23 @@ CREATE INDEX idx_mov_fixo_cod_verba
 -- =====================================================================
 -- categoria foi criada como CHAR(1); códigos da Tab.01 eSocial têm 3 dígitos
 ALTER TABLE tab_mov_fixo ALTER COLUMN categoria TYPE VARCHAR(3);
+-- a trava antiga barrava folha_final no modo parcelas (ver _alterar_chk_parcelas_ou_periodo.sql)
+ALTER TABLE tab_mov_fixo DROP CONSTRAINT IF EXISTS chk_parcelas_ou_periodo;
+ALTER TABLE tab_mov_fixo ADD CONSTRAINT chk_parcelas_ou_periodo CHECK (
+    NOT (qtd_parcelas IS NOT NULL AND folha_inicial IS NOT NULL)
+);
 -- =====================================================================
 
 -- =====================================================================
 -- Observações de negócio
 -- =====================================================================
 -- 1. MODO PARCELAS vs. MODO PERÍODO:
---    - Parcelas: preencher qtd_parcelas; folha_inicial e folha_final ficam NULL.
+--    - Parcelas: preencher qtd_parcelas; folha_inicial fica NULL.
 --      qtd_parcelas_before indica quantas já foram descontadas (controle de progresso).
 --    - Período: preencher folha_inicial e/ou folha_final; qtd_parcelas fica NULL.
+--    - folha_final vale nos dois modos: é a última folha em que o movimento
+--      ainda é lançado, gravada pelo botão "Parar" (o cálculo pula o registro
+--      quando a folha passa dela, sem apagar nada do histórico).
 --
 -- 2. FILTROS DE GRUPO:
 --    Se matricula for NULL, o movimento se aplica ao grupo definido pelos

@@ -3819,17 +3819,19 @@ def rel_mov_fixo_pdf():
         pass
 
     def _vig(r):
-        if r.get("qtd_parcelas"):
-            restam = (r.get("qtd_parcelas") or 0) - (r.get("qtd_parcelas_before") or 0)
-            return f"{restam}/{r['qtd_parcelas']} parc."
-        fi = r.get("folha_inicial") or 0
-        ff = r.get("folha_final")   or 0
         def _fmt(v):
             if not v:
                 return "?"
             if v == 999912:
                 return "Indef."
             return f"{v % 100:02d}/{v // 100}"
+        ff = r.get("folha_final") or 0
+        if r.get("qtd_parcelas"):
+            restam = (r.get("qtd_parcelas") or 0) - (r.get("qtd_parcelas_before") or 0)
+            txt = f"{restam}/{r['qtd_parcelas']} parc."
+            # Folha final no modo parcelas = o "Parar" encerrou antes do fim.
+            return f"{txt} (parado {_fmt(ff)})" if ff and ff != 999912 else txt
+        fi = r.get("folha_inicial") or 0
         return f"{_fmt(fi)} → {_fmt(ff)}"
 
     def _fval(c):
@@ -24414,7 +24416,9 @@ def _obs_mov_fixo(cod_verba, valor, payload):
     qtd = payload.get("qtd_parcelas")
     if qtd:
         before = payload.get("qtd_parcelas_before") or 0
-        partes.append(f"Parc:{qtd} ja:{before}")
+        ff_p   = payload.get("folha_final")
+        parado = f" ate:{ff_p % 100:02d}/{ff_p // 100}" if ff_p and ff_p != 999912 else ""
+        partes.append(f"Parc:{qtd} ja:{before}{parado}")
     else:
         fi = payload.get("folha_inicial")
         ff = payload.get("folha_final")
@@ -25082,6 +25086,22 @@ def api_mov_fixo_alterar():
         "dt_gravacao":         _agora_brasilia().strftime("%Y%m%d %H%M"),
     }
 
+    # No modo parcelas a tela nao tem campo de folha final — quem grava essa data
+    # e o "Parar". Sem preservar o que ja esta no banco, alterar o valor de um
+    # movimento parado o ressuscitaria sem ninguem pedir. So vale quando o
+    # registro ja era de parcelas: se ele veio do modo periodo, a folha final
+    # era vigencia e morre junto com a troca de modo.
+    if campos["qtd_parcelas"] and campos["folha_final"] is None:
+        try:
+            r_atual = (supabase.table("tab_mov_fixo").select("qtd_parcelas, folha_final")
+                       .eq("id", id_reg).eq("id_empresa", id_empresa)
+                       .eq("id_cliente", id_cliente).limit(1).execute())
+            atual = (r_atual.data or [{}])[0]
+            if atual.get("qtd_parcelas"):
+                campos["folha_final"] = atual.get("folha_final")
+        except Exception:
+            pass
+
     try:
         supabase.table("tab_mov_fixo").update(campos) \
             .eq("id", id_reg).eq("id_empresa", id_empresa).eq("id_cliente", id_cliente).execute()
@@ -25169,7 +25189,9 @@ def api_mov_fixo_parar():
         folha_final = int(data.get("folha_final") or 0)
     except (ValueError, TypeError):
         folha_final = 0
-    if not (190001 <= folha_final <= 999912) or not (1 <= folha_final % 100 <= 12):
+    # O teto e 209912 porque e ate onde a coluna aceita no banco; passar disso
+    # so trocaria esta mensagem por um erro de check constraint na cara do usuario.
+    if not (190001 <= folha_final <= 209912) or not (1 <= folha_final % 100 <= 12):
         return jsonify({"ok": False, "msg": "Última folha inválida (MM/AAAA)."})
 
     try:
@@ -41794,8 +41816,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 tp_s      = "Provento" if ri["tp"] == "1" else "Desconto"
                 dsc_s     = ri["dsc"] or f"Verba {cod_v:04d}"
 
-                # ── verificação por parcelas (apenas quando qtd > 0 e sem folha_final) ──
-                if qp is not None and int(qp) > 0 and not ff:
+                # ── verificação por parcelas (modo parcelas, qtd > 0) ──
+                # folha_final nao desliga esta contagem: ela e o encerramento do
+                # "Parar" (ja tratado na etapa 8) e pode conviver com as parcelas.
+                if qp is not None and int(qp) > 0:
                     try:
                         q_parc = (supabase.table("tab_mov")
                                   .select("folha, valor")

@@ -1062,8 +1062,14 @@ function renderAlvo(r) {
 function renderVigencia(r) {
     if (r.qtd_parcelas) {
         const rest = r.qtd_parcelas - (r.qtd_parcelas_before || 0);
+        // No modo parcelas a folha final so aparece quando o "Parar" encerrou o
+        // movimento antes de as parcelas acabarem — e o que importa mostrar.
+        const parou = r.folha_final && r.folha_final !== 999912;
+        const linha2 = parou
+            ? `parado em ${formatFolha(r.folha_final)}`
+            : `${rest} restante(s)`;
         return `<span style="font-size:11px;">${r.qtd_parcelas_before||0}/${r.qtd_parcelas} parcelas</span>
-                <br><span style="font-size:10px;color:#64748b;">${rest} restante(s)</span>`;
+                <br><span style="font-size:10px;color:#64748b;">${linha2}</span>`;
     }
     const ini = r.folha_inicial ? formatFolha(r.folha_inicial) : '—';
     const fim = r.folha_final && r.folha_final !== 999912 ? formatFolha(r.folha_final) : null;
