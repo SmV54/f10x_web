@@ -309,6 +309,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="resumo-val txt" style="font-size:14px;">
                     {% if tipo_aviso == 'I' %}Indenizado{% else %}Trabalhado{% endif %}
                 </span>
+                {% if aviso_disp == 'S' %}
+                <div style="margin-top:8px;padding:9px 13px;background:#f0fdf4;
+                     border:1px solid #86efac;border-radius:8px;font-size:12.5px;
+                     color:#166534;line-height:1.5;">
+                    <strong>Aviso prévio dispensado pela empresa.</strong>
+                    Os 30 dias não cumpridos <strong>não serão descontados</strong> na
+                    rescisão.
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -348,8 +357,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                    projecao (Sumula 371 do TST, dtProjFimAPI do S-2299). No
                    trabalhado ele cumpre o aviso e a data final e' o desligamento
                    mesmo. O rotulo unico dizia "Desligamento" nos dois. #}
+                {# No PEDIDO de demissão não há projeção: quem deve o aviso é o
+                   funcionário, e o que ele não cumpre vira desconto (ou é
+                   dispensado), nunca tempo de serviço a mais. #}
                 <div class="data-lbl">
-                    {%- if tipo_aviso == 'I' -%}
+                    {%- if tipo_aviso == 'I' and quem_aviso == 'F' -%}
+                        Fim do Aviso não Cumprido
+                    {%- elif tipo_aviso == 'I' -%}
                         Aviso Prévio Projetado
                     {%- else -%}
                         Fim do Aviso / Desligamento
@@ -361,8 +375,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         {% endif %}
     </div>
 
-    <form method="POST" action="/cad_aviso_previo2?mat={{ funcionario.matricula }}&data_aviso={{ data_aviso }}&tipo_aviso={{ tipo_aviso }}&quem_aviso={{ quem_aviso }}&cond_especial={{ cond_especial }}" id="frm-aviso">
+    <form method="POST" action="/cad_aviso_previo2?mat={{ funcionario.matricula }}&data_aviso={{ data_aviso }}&tipo_aviso={{ tipo_aviso }}&quem_aviso={{ quem_aviso }}&cond_especial={{ cond_especial }}&aviso_disp={{ aviso_disp }}" id="frm-aviso">
         <input type="hidden" name="tipo_aviso" id="inp-tipo" value="{{ tipo_aviso }}">
+        <input type="hidden" name="aviso_disp" value="{{ aviso_disp }}">
         <input type="hidden" name="data_fim"   id="inp-data-fim" value="{{ data_fim_val }}">
 
         <div class="rodape">
@@ -390,6 +405,7 @@ const MAT         = '{{ funcionario.matricula if funcionario else "" }}';
 const TIPO        = '{{ tipo_aviso }}';
 const QUEM        = '{{ quem_aviso }}';
 const COND        = '{{ cond_especial }}';
+const DISP        = '{{ aviso_disp }}';
 const PRAZO       = {{ prazo_normal }};   // apenas 1º AP para cálculo de datas
 
 // ── Link Voltar ──
@@ -398,7 +414,8 @@ document.getElementById('lnk-voltar').href =
     '&data_aviso=' + DATA_AVISO +
     '&tipo_aviso=' + TIPO +
     '&quem_aviso=' + QUEM +
-    '&cond_especial=' + COND;
+    '&cond_especial=' + COND +
+    '&aviso_disp=' + DISP;
 
 function addDays(isoDate, n) {
     var d = new Date(isoDate + 'T00:00:00');
@@ -503,7 +520,9 @@ function iniciarTour() {
                     description: COND === 'T'
                         ? 'Data em que o contrato a termo se encerra ou é rompido. Não há período de aviso prévio a cumprir.'
                         : (TIPO === 'I'
-                            ? 'Data do aviso, início da contagem (dia seguinte) e a data projetada do fim do aviso prévio — no indenizado o funcionário não cumpre o aviso, mas a projeção conta para as verbas.'
+                            ? (QUEM === 'F'
+                                ? 'Data do aviso, início da contagem (dia seguinte) e o fim do período não cumprido. No pedido de demissão o aviso NÃO projeta: ele é descontado do funcionário, ou dispensado pela empresa.'
+                                : 'Data do aviso, início da contagem (dia seguinte) e a data projetada do fim do aviso prévio — no indenizado o funcionário não cumpre o aviso, mas a projeção conta para as verbas.')
                             : 'Data do aviso, início do cumprimento (dia seguinte) e data de desligamento calculada com base no prazo do 1º aviso prévio.'),
                     side: 'top', align: 'start',
                 }

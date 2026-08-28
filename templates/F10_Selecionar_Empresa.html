@@ -172,24 +172,31 @@ body {
 
 <script>
 async function selecionar(id_empresa) {
+    const el = document.getElementById('msgErro');
+    function erro(txt) { el.textContent = txt; el.style.display = 'block'; }
     try {
         const r = await fetch('/api/selecionar_empresa', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id_empresa })
         });
-        const d = await r.json();
-        if (d.ok) {
-            window.location.href = d.redirect || '/menu';
-        } else {
-            const el = document.getElementById('msgErro');
-            el.textContent = d.msg || 'Erro ao selecionar empresa.';
-            el.style.display = 'block';
-        }
-    } catch {
-        const el = document.getElementById('msgErro');
-        el.textContent = 'Erro de conexão. Tente novamente.';
-        el.style.display = 'block';
+        // Resposta que nao e' JSON = pagina de erro do servidor. Isto ficava
+        // dentro do try do fetch, entao o r.json() estourado caia no catch de
+        // REDE e a tela dizia "Erro de conexao" — escondendo o status real.
+        let d = null;
+        try { d = await r.json(); } catch (eJson) { d = null; }
+
+        if (d && d.ok) { window.location.href = d.redirect || '/menu'; return; }
+
+        if (d && d.msg)          erro(d.msg);
+        else if (r.status === 401) erro('Sessao expirada. Faca login novamente.');
+        else if (!r.ok)          erro('HTTP ' + r.status + ' — erro no servidor ao abrir a '
+                                    + 'empresa. Veja o log do servico no Render.');
+        else                     erro('Resposta inesperada do servidor.');
+    } catch (e) {
+        // Aqui e' o unico caso que realmente e' rede: o fetch nem completou.
+        erro('Sem resposta do servidor (' + (e.message || 'falha de rede') + '). '
+           + 'Tente novamente em alguns segundos.');
     }
 }
 </script>

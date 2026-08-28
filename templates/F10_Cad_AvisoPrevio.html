@@ -138,6 +138,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     margin-top: 3px; accent-color: var(--accent); cursor: pointer;
     width: 15px; height: 15px; flex-shrink: 0;
 }
+.sep-disp {
+    padding-left: 24px; margin-left: 2px;
+    border-left: 1px dashed #cbd5e1;
+}
+.chk-disp {
+    appearance: none; -webkit-appearance: none;
+    width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px;
+    border: 2px solid #94a3b8; border-radius: 4px;
+    cursor: pointer; position: relative; transition: 0.15s;
+}
+.chk-disp:checked { background: #16a34a; border-color: #16a34a; }
+.chk-disp:checked::after {
+    content: ''; position: absolute; left: 3px; top: 0px;
+    width: 4px; height: 8px; border: solid #fff;
+    border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
 .chk-cond {
     appearance: none; -webkit-appearance: none;
     width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px;
@@ -386,6 +402,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                             <small>Lei 13.467/2017</small>
                         </span>
                     </label>
+                    {# Dispensa do desconto: fica NESTA linha porque qualifica o
+                       pedido de demissão — não é uma quarta opção de quem avisou.
+                       Só aparece com "Funcionário" marcado. #}
+                    <label class="opcao-inline sep-disp" id="wrap-disp" style="display:none;">
+                        <input type="checkbox" class="chk-disp" id="aviso_disp"
+                               {% if p_aviso_disp == 'S' %}checked{% endif %} onchange="dispChange()">
+                        <span class="opcao-inline-label">
+                            <strong>Dispensar o Aviso Prévio</strong>
+                            <small>Não desconta o aviso na rescisão</small>
+                        </span>
+                    </label>
+                </div>
+                <div id="nota-disp" style="display:none;margin-top:9px;padding:9px 13px;
+                     background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;
+                     font-size:12.5px;color:#1e40af;line-height:1.5;">
+                    No pedido de demissão sem cumprir o aviso, a empresa desconta da rescisão
+                    os <strong>30 dias</strong> não trabalhados (art. 487, § 2º, da CLT).
+                    Marque <strong>Dispensar</strong> se a empresa abriu mão desse desconto:
+                    a rescisão não desconta o aviso e não projeta a data no 13º nem nas férias.
                 </div>
             </div>
         </div>
@@ -489,6 +524,8 @@ function processar() {
     p.set('tipo_aviso',    tipo);
     p.set('quem_aviso',    quem);
     p.set('cond_especial', cond);
+    var disp = document.getElementById('aviso_disp');
+    p.set('aviso_disp', (disp && disp.checked && tipo === 'I' && quem === 'F') ? 'S' : 'N');
     window.location.href = '/cad_aviso_previo2?' + p.toString();
 }
 
@@ -503,6 +540,37 @@ function atualizarAP1() {
     } else {
         dias.textContent = '30 dias';
         obs.textContent  = '(máx. 30 dias — ou 15 dias se Acordo)';
+    }
+}
+
+// A dispensa so faz sentido no PEDIDO de demissao: e' o funcionario quem deve o
+// aviso. Trocar para Empresa ou Acordo tira a opcao da linha e a DESMARCA — uma
+// marca escondida seria gravada sem o usuario ver.
+function aplicarDisp() {
+    var wrap = document.getElementById('wrap-disp');
+    var nota = document.getElementById('nota-disp');
+    if (!wrap) return;
+    var quemEl = document.querySelector('input[name="quem_aviso"]:checked');
+    var cabe   = !document.querySelector('.chk-cond:checked')
+              && quemEl && quemEl.value === 'F';
+    wrap.style.display = cabe ? '' : 'none';
+    if (nota) nota.style.display = cabe ? 'block' : 'none';
+    if (!cabe) {
+        var chk = document.getElementById('aviso_disp');
+        if (chk) chk.checked = false;
+    }
+}
+
+// Dispensar o aviso e' dispensar o CUMPRIMENTO dele: o funcionario para de
+// trabalhar na data do aviso. Marcar com "Trabalhado" selecionado seria uma
+// contradicao — o tipo acompanha.
+function dispChange() {
+    var chk = document.getElementById('aviso_disp');
+    if (!chk || !chk.checked) return;
+    var ind = document.querySelector('input[name="tipo_aviso"][value="I"]');
+    if (ind && !ind.checked) {
+        ind.checked = true;
+        atualizarAP1();
     }
 }
 
@@ -552,6 +620,7 @@ function aplicarCond() {
                            + CONTRATO_FMT + '): não há aviso prévio nem quem o tenha dado.';
         }
     }
+    aplicarDisp();
     renumerar();
 }
 
@@ -585,6 +654,13 @@ document.addEventListener('DOMContentLoaded', function() {
     atualizarAP1();
     document.querySelectorAll('input[name="quem_aviso"]').forEach(function(r) {
         r.addEventListener('change', atualizarAP1);
+        r.addEventListener('change', aplicarDisp);
+    });
+    document.querySelectorAll('input[name="tipo_aviso"]').forEach(function(r) {
+        r.addEventListener('change', function() {
+            var chk = document.getElementById('aviso_disp');
+            if (chk && chk.checked && r.value === 'T' && r.checked) chk.checked = false;
+        });
     });
     // Estado inicial: volta da tela 2 pode chegar com Contrato Temporario marcado.
     var ct = document.getElementById('cond_T');
@@ -675,6 +751,16 @@ function iniciarTour() {
                 popover: {
                     title: '👥 Quem deu o Aviso',
                     description: '"Empresa": demissão sem justa causa — gera verbas rescisórias completas. "Funcionário": pedido de demissão — sem multa do FGTS. "Acordo" (Lei 13.467/2017): aviso de 15 dias e metade da multa do FGTS.',
+                    side: 'left', align: 'center',
+                }
+            },
+            {
+                element: (document.getElementById('wrap-disp')
+                          && document.getElementById('wrap-disp').style.display !== 'none')
+                         ? '#wrap-disp' : '#row-quem',
+                popover: {
+                    title: '🤝 Dispensar o Aviso Prévio',
+                    description: 'Aparece ao marcar "Funcionário". No pedido de demissão sem cumprir o aviso, a empresa desconta os 30 dias não trabalhados (art. 487, § 2º, da CLT). Marque para dispensar esse desconto: a rescisão não desconta o aviso e não projeta a data no 13º nem nas férias.',
                     side: 'left', align: 'center',
                 }
             },

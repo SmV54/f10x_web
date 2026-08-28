@@ -1095,8 +1095,29 @@ def selecionar_empresa():
 
 @app.route("/api/selecionar_empresa", methods=["POST"])
 def api_selecionar_empresa():
+    """Abre a empresa na sessão.
+
+    Exceção aqui NÃO pode virar a página HTML de erro do Flask: a tela faz
+    r.json() na resposta, um 500 estoura no parse e cai no catch, que escrevia
+    "Erro de conexão" — erro de SERVIDOR disfarçado de erro de rede, sem nada
+    na tela que dissesse o que houve. Por isso o corpo roda em
+    _selecionar_empresa() e qualquer falha volta como JSON com a mensagem.
+    """
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Não autenticado"}), 401
+    try:
+        return _selecionar_empresa()
+    except Exception as e:
+        # print vai para o log do Render; gravar_log só funciona se o banco
+        # estiver de pé — que é justamente o que costuma faltar aqui.
+        print(f"[selecionar_empresa] ERRO: {type(e).__name__}: {e}")
+        gravar_log("SEL-EMPRESA", f"Erro: {type(e).__name__}: {str(e)[:170]}")
+        return jsonify({"ok": False,
+                        "msg": f"Erro no servidor ao abrir a empresa — "
+                               f"{type(e).__name__}: {str(e)[:200]}"})
+
+
+def _selecionar_empresa():
     data       = request.get_json() or {}
     id_empresa = data.get("id_empresa")
     id_cliente = session.get("id_cliente")
@@ -5650,6 +5671,9 @@ def cad_aviso_previo():
     p_tipo_aviso    = request.args.get("tipo_aviso",    "T")
     p_quem_aviso    = request.args.get("quem_aviso",    "E")
     p_cond_especial = request.args.get("cond_especial", "N")
+    # Dispensa do desconto do aviso: so faz sentido no pedido de demissao com
+    # aviso NAO cumprido. Voltar da tela 2 pode chegar com ela ja marcada.
+    p_aviso_disp    = request.args.get("aviso_disp", "N")
 
     return render_template(
         "F10_Cad_AvisoPrevio.html",
@@ -5667,6 +5691,7 @@ def cad_aviso_previo():
         p_tipo_aviso=p_tipo_aviso,
         p_quem_aviso=p_quem_aviso,
         p_cond_especial=p_cond_especial,
+        p_aviso_disp=p_aviso_disp,
         folha_ym=folha_ym,
         folha_fmt=folha_fmt,
     )
@@ -5684,6 +5709,7 @@ def cad_aviso_previo2():
     tipo_aviso    = request.args.get("tipo_aviso", "T").strip()    # T/I
     quem_aviso    = request.args.get("quem_aviso", "E").strip()    # E/F/A
     cond_especial = request.args.get("cond_especial", "N").strip() # N/J/T/F
+    aviso_disp    = request.args.get("aviso_disp", "N").strip()    # S/N
 
     mat_int = int(mat_raw) if mat_raw.isdigit() else None
 
@@ -5783,14 +5809,26 @@ def cad_aviso_previo2():
                            matricula=mat_int)
                 return redirect(f"/cad_aviso_previo?mat={mat_int}&erro=sem_contrato")
 
+        # A dispensa do desconto do aviso só existe numa combinação: pedido de
+        # demissão em que o funcionário NÃO cumpre o aviso. Nos demais casos não
+        # há desconto a dispensar, e gravar a marca deixaria em tab_eventos uma
+        # dispensa que a rescisão ignora. Vem do form (a tela 2 reenvia o que a
+        # tela 1 marcou); a query string fica de reserva.
+        disp_post = (request.form.get("aviso_disp", aviso_disp) or "N").strip().upper()[:1]
+        if quem_aviso != "F" or tipo_aviso_post != "I":
+            disp_post = "N"
+
         campotxt1 = tipo_map.get(tipo_aviso_post, "Trabalhado")
         campotxt2 = quem_map.get(quem_aviso, "Empresa")
         campotxt3 = cond_map.get(cond_especial) or None  # None se sem condição especial
+        campotxt4 = "Dispensado" if disp_post == "S" else None
 
         data_aviso_br = f"{data_aviso[8:10]}/{data_aviso[5:7]}/{data_aviso[:4]}"
         obs = f"Aviso Prévio {campotxt2}: {campotxt1}, Data: {data_aviso_br}"
         if campotxt3:
             obs += f", {campotxt3}"
+        if campotxt4:
+            obs += ", aviso dispensado (sem desconto na rescisão)"
 
         try:
             supabase.table("tab_eventos").insert({
@@ -5806,6 +5844,7 @@ def cad_aviso_previo2():
                 "campotxt1":  campotxt1,
                 "campotxt2":  campotxt2,
                 "campotxt3":  campotxt3,
+                "campotxt4":  campotxt4,
             }).execute()
         except Exception as e:
             gravar_log("AVISO-ERRO", str(e)[:200], matricula=mat_int)
@@ -5816,7 +5855,7 @@ def cad_aviso_previo2():
         return redirect(f"/cad_aviso_previo2_ok?mat={mat_int}&quem={quem_aviso}"
                         f"&tipo={tipo_aviso_post}&data_aviso={data_aviso}"
                         f"&data_fim={data_fim}&prazo={prazo_normal}"
-                        f"&cond={cond_especial}")
+                        f"&cond={cond_especial}&disp={disp_post}")
 
     # ── Calcular datas usando apenas o 1º AP (prazo_normal) ──
     data_inicio_fmt = ""
@@ -5862,6 +5901,7 @@ def cad_aviso_previo2():
         data_fim_val=data_fim_val,
         prazo_normal=prazo_normal,
         prazo_lei=prazo_lei,
+        aviso_disp=aviso_disp,
     )
 
 
@@ -5877,6 +5917,7 @@ def cad_aviso_previo2_ok():
     data_fim   = request.args.get("data_fim", "")
     prazo      = request.args.get("prazo", "30")
     cond       = request.args.get("cond", "N")
+    disp       = request.args.get("disp", "N")
 
     def _fmt(s_iso):
         try:
@@ -5906,10 +5947,12 @@ def cad_aviso_previo2_ok():
         quem_desc=quem_desc.get(quem, quem),
         tipo_desc=tipo_desc.get(tipo, tipo),
         tipo=tipo,                      # cru: a tela troca o rotulo da data por ele
+        quem=quem,                      # idem: no pedido de demissao nao ha projecao
 
         data_aviso_fmt=_fmt(data_aviso),
         data_fim_fmt=_fmt(data_fim),
         prazo=prazo,
+        aviso_disp=disp,
     )
 
 
@@ -5935,7 +5978,7 @@ def _aviso_previo_doc_dados(id_cliente, id_empresa, mat, anomes):
 
     try:
         r_ev = (supabase.table("tab_eventos")
-                .select("data1i, ref1, ref2, campotxt1, campotxt2, campotxt3")
+                .select("data1i, ref1, ref2, campotxt1, campotxt2, campotxt3, campotxt4")
                 .eq("id_empresa", id_empresa).eq("matricula", mat)
                 .eq("op1", 9).eq("folha", int(anomes))
                 .order("id", desc=True).limit(1).execute())
@@ -6021,6 +6064,7 @@ def _aviso_previo_doc_dados(id_cliente, id_empresa, mat, anomes):
         "quem":      quem or "Empresa",
         "tipo":      tipo or "Trabalhado",
         "cond":      cond,
+        "disp":      str(ev.get("campotxt4") or "").strip().lower().startswith("dispens"),
         "data_aviso":   _fmt_dt(d_aviso),
         "data_extenso": data_extenso,
         "data_inicio":  ini_fmt,
@@ -6126,13 +6170,20 @@ def aviso_previo_pdf(mat=None):
             "Pela presente, comunico ao EMPREGADOR o meu <b>PEDIDO DE DEMISSÃO</b> "
             f"do emprego, a partir de <b>{d['data_aviso']}</b>, nos termos do "
             "artigo 487 da CLT."))
-        if indenizado:
+        if indenizado and d.get("disp"):
             story.append(item(num(),
                 f"Solicito a dispensa do cumprimento do aviso prévio de "
-                f"<b>{d['prazo']} dias</b>, ciente de que o EMPREGADOR poderá "
-                "descontar das verbas rescisórias o valor correspondente ao "
-                "período não trabalhado (art. 487, § 2º, da CLT). A data "
-                f"projetada do término do aviso é <b>{d['data_fim']}</b>."))
+                f"<b>{d['prazo']} dias</b>. O EMPREGADOR <b>DISPENSA</b> o "
+                "cumprimento e <b>renuncia ao desconto</b> do período não "
+                "trabalhado que lhe caberia pelo art. 487, § 2º, da CLT — nada "
+                "será abatido das verbas rescisórias a esse título."))
+        elif indenizado:
+            story.append(item(num(),
+                f"Solicito a dispensa do cumprimento do aviso prévio de "
+                f"<b>{d['prazo']} dias</b>, ciente de que o EMPREGADOR "
+                "descontará das verbas rescisórias o valor correspondente aos "
+                f"<b>{d['prazo']} dias</b> não trabalhados "
+                "(art. 487, § 2º, da CLT)."))
         else:
             story.append(item(num(),
                 f"Cumprirei o aviso prévio de <b>{d['prazo']} dias</b>, "
@@ -8262,7 +8313,8 @@ VR_FERIAS_VENC = 43    # FERIAS VENCIDAS RESCISAO
 VR_FERIAS_PROP = 49    # FERIAS PROPORCIONAIS
 VR_FERIAS_AVISO= 44    # FERIAS RESCISAO AVISO PREVIO
 VR_TERCO_FERIAS= 42    # 1/3 FERIAS (sobre 43 + 44 + 49)
-VR_AVISO_IND   = 61    # AVISO PREVIO (indenizado)
+VR_AVISO_IND   = 61    # AVISO PREVIO (indenizado)   — provento (empresa deve o aviso)
+VR_AVISO_EMP   = 60    # AVISO PREVIO EMPREGADO      — desconto (empregado deve o aviso)
 VR_ART_479     = 63    # ART 479 DA CLT  — provento (empregador rompe o contrato a termo)
 VR_ART_480     = 64    # ART 480 DA CLT  — desconto (empregado rompe o contrato a termo)
 VR_INSS        = 101   # INSS (saldo)
@@ -8716,23 +8768,38 @@ def api_calc_rescisao_calcular():
         motivo = str(cad.get("motrescisao") or "").zfill(2)
         tem_13, tem_fer, multa_pct = _MOTIVO_RESC.get(motivo, (True, True, 0))
 
-        # aviso prévio (op1=9)
+        # aviso prévio (op1=9). campotxt1 = Trabalhado/Indenizado,
+        # campotxt2 = quem avisou, campotxt4 = "Dispensado" quando a empresa
+        # abriu mão de descontar o aviso que o funcionário não cumpriu.
         aviso_ind, dias_aviso = False, 0
+        aviso_quem, aviso_disp, dias_aviso_ref1 = "", False, 0
         try:
             r_av = (supabase.table("tab_eventos")
-                    .select("campotxt1, campotxt2, ref1, ref2, data1i")
+                    .select("campotxt1, campotxt2, campotxt4, ref1, ref2, data1i")
                     .eq("id_empresa", id_empresa).eq("matricula", mat).eq("op1", 9)
                     .order("data1i", desc=True).limit(1).execute())
             if r_av.data:
                 ev = r_av.data[0]
                 aviso_ind = str(ev.get("campotxt1") or "").strip().lower().startswith("inden")
-                dias_aviso = int(ev.get("ref1") or 0) + int(ev.get("ref2") or 0)
+                dias_aviso_ref1 = int(ev.get("ref1") or 0)
+                dias_aviso = dias_aviso_ref1 + int(ev.get("ref2") or 0)
+                aviso_quem = str(ev.get("campotxt2") or "").strip()
+                aviso_disp = str(ev.get("campotxt4") or "").strip().lower().startswith("dispens")
         except Exception:
             pass
 
-        # projeção do aviso indenizado (avança a data p/ avos)
+        # Quem PEDE demissão não recebe aviso prévio: se não cumpre o período, é
+        # ele quem indeniza a empresa (art. 487, § 2º, da CLT). O aviso troca de
+        # lado — sai a verba 61 (provento) e entra a 60 (desconto).
+        aviso_pedido = aviso_quem == "Funcionário"
+
+        # Projeção do aviso indenizado (avança a data para os avos de 13º e
+        # férias). Só projeta o aviso que a EMPRESA deve (ou o acordo): a
+        # projeção é tempo de serviço pago sem exigir trabalho. No pedido de
+        # demissão não há nada a projetar — nem quando a empresa dispensa o
+        # desconto, porque perdoar a cobrança não devolve tempo de casa.
         dt_proj = dt_resc
-        if aviso_ind and dias_aviso > 0:
+        if aviso_ind and dias_aviso > 0 and not aviso_pedido:
             from datetime import timedelta as _td
             dt_proj = dt_resc + _td(days=dias_aviso)
 
@@ -8785,12 +8852,20 @@ def api_calc_rescisao_calcular():
 
         dias_saldo = min(dt_resc.day, 30)
         saldo = round(sal_mes_ad * dias_saldo / 30)
-        # aviso prévio indenizado (acordo=50%)
+        # aviso prévio indenizado PELA EMPRESA (acordo=50%) — provento
         aviso_val = 0
-        if aviso_ind and dias_aviso > 0:
+        if aviso_ind and dias_aviso > 0 and not aviso_pedido:
             aviso_val = round(sal_mes_ad * dias_aviso / 30)
             if multa_pct == 20:   # acordo 484-A → aviso 50%
                 aviso_val = round(aviso_val / 2)
+        # Pedido de demissão sem cumprir o aviso → DESCONTO (verba 60). Descontam-se
+        # só os 30 dias do aviso legal (ref1): o acréscimo da Lei 12.506/2011
+        # (ref2, 3 dias por ano de casa) é direito de quem RECEBE o aviso, não
+        # obrigação de quem o deve. Se a empresa dispensou, não desconta nada.
+        aviso_desc, dias_aviso_desc = 0, 0
+        if aviso_ind and aviso_pedido and not aviso_disp and dias_aviso_ref1 > 0:
+            dias_aviso_desc = dias_aviso_ref1
+            aviso_desc = round(sal_mes_ad * dias_aviso_desc / 30)
         # médias variáveis (férias = 12 meses; 13º = só ano corrente)
         medias, medias_13, medias_info = _media_variaveis(mat, sal_hora_c)
         med_total    = sum(medias.values())      # média p/ férias (últimos 11 + mês da rescisão ÷ 12)
@@ -8913,8 +8988,10 @@ def api_calc_rescisao_calcular():
 
         total_prov = (saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
                       + art479)
+        # A verba 60 não tem incidência de INSS/IRRF/FGTS (tab_rubrica: R=N/N/N/N),
+        # por isso entra só no total de descontos, depois das bases já fechadas.
         total_desc = (g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
-                      + art480)
+                      + art480 + aviso_desc)
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -8936,6 +9013,7 @@ def api_calc_rescisao_calcular():
         recs = []
         if saldo:     recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dias_saldo, "valor": saldo})
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
+        if aviso_desc:recs.append({**base_mov, "cod_verba": VR_AVISO_EMP,    "qtd": dias_aviso_desc, "valor": aviso_desc})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
         if d13:       recs.append({**base_mov, "cod_verba": VR_13_PROP,      "qtd": avos_13,  "valor": d13})
         if fer_venc:  recs.append({**base_mov, "cod_verba": VR_FERIAS_VENC,  "qtd": venc_qtd, "valor": fer_venc})
@@ -8968,11 +9046,14 @@ def api_calc_rescisao_calcular():
             supabase.table("tab_total").insert(rec_tot).execute()
         except Exception:
             pass
+        _log_av = (f" avisoDesc={_fmt_brl(aviso_desc)}({dias_aviso_desc}d)" if aviso_desc
+                   else (" avisoDispensado" if (aviso_ind and aviso_pedido and aviso_disp) else ""))
         gravar_log("CALC_RES",
                    f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
                    f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
                    f"INSS={_fmt_brl(g_inss_saldo+g_inss_13)} IRRF={_fmt_brl(g_irrf_saldo+g_irrf_13)} "
-                   f"Liq={_fmt_brl(liquido)}" + (" [cliente sem encargos]" if _enc0 else ""),
+                   f"Liq={_fmt_brl(liquido)}" + _log_av
+                   + (" [cliente sem encargos]" if _enc0 else ""),
                    matricula=mat)
 
         # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no cálculo.
@@ -8988,6 +9069,8 @@ def api_calc_rescisao_calcular():
             "resc_data_fmt": dt_resc.strftime("%d/%m/%Y"),
             "dt_proj_fmt": dt_proj.strftime("%d/%m/%Y"),
             "motivo": motivo, "aviso_ind": aviso_ind, "dias_aviso": dias_aviso,
+            "aviso_quem": aviso_quem, "aviso_pedido": aviso_pedido, "aviso_disp": aviso_disp,
+            "aviso_desc": aviso_desc, "dias_aviso_desc": dias_aviso_desc,
             "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dias_saldo,
             "dia_resc_real": dt_resc.day,
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
@@ -9019,7 +9102,9 @@ def api_calc_rescisao_calcular():
             "saldo_fmt": _fmt_brl(saldo), "d13_fmt": _fmt_brl(d13), "fer_fmt": _fmt_brl(fer_prop),
             "venc_fmt": _fmt_brl(fer_venc) if fer_venc else "—", "venc_qtd": venc_qtd,
             "terco_fmt": _fmt_brl(terco_fer) if terco_fer else "—",
-            "aviso_fmt": _fmt_brl(aviso_val) if aviso_val else "—",
+            # coluna única "Aviso": o desconto do art. 487, § 2º sai com sinal
+            "aviso_fmt": (_fmt_brl(aviso_val) if aviso_val
+                          else ("-" + _fmt_brl(aviso_desc) if aviso_desc else "—")),
             "med_fmt": _fmt_brl(med_total) if med_total else "—",
             "inss_fmt": _fmt_brl(g_inss_saldo + g_inss_13), "irrf_fmt": _fmt_brl(g_irrf_saldo + g_irrf_13),
             "fgts_fmt": _fmt_brl(g_fgts_val), "prov_fmt": _fmt_brl(total_prov),
@@ -9138,8 +9223,20 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             sal = int(r["sal_mes"])
 
             # 0001 — Dados
-            aviso_txt = (f"Aviso prévio INDENIZADO ({r['dias_aviso']} dias)" if r["aviso_ind"]
-                         else "Sem aviso prévio indenizado")
+            if r.get("aviso_desc"):
+                aviso_txt = (f"Aviso prévio NÃO CUMPRIDO pelo funcionário — "
+                             f"{r['dias_aviso_desc']} dias descontados")
+            elif r["aviso_ind"] and r.get("aviso_disp"):
+                aviso_txt = "Aviso prévio DISPENSADO pela empresa — sem desconto"
+            elif r["aviso_ind"] and r.get("aviso_pedido"):
+                aviso_txt = "Aviso prévio não cumprido — sem desconto"
+            elif r["aviso_ind"]:
+                aviso_txt = f"Aviso prévio INDENIZADO ({r['dias_aviso']} dias)"
+            else:
+                aviso_txt = "Sem aviso prévio indenizado"
+            lin_proj = f"{aviso_txt}   Data projetada (avos): {r['dt_proj_fmt']}"
+            if r.get("aviso_pedido"):
+                lin_proj += "  (pedido de demissão: o aviso não projeta)"
             _und  = str(r.get("und_sal") or "M")
             _qhm  = int(r.get("qtd_hrs_mes") or 220)
             _shora = int(round(r.get("sal_hora") or 0))
@@ -9152,7 +9249,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 lin_shora = (f"Salário-hora = {_B(sal)} ÷ {_qhm} h/mês = <b>{_B(_shora)}/hora</b>")
             e.append(_etapa("ETAPA 3010 - DADOS DA RESCISAO", [
                 f"Data da rescisão: {r['resc_data_fmt']}   Motivo: {r['motivo']}",
-                f"{aviso_txt}   Data projetada (avos): {r['dt_proj_fmt']}",
+                lin_proj,
                 lin_sal,
                 lin_shora,
             ]))
@@ -9162,12 +9259,24 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 _lin_saldo.append(f"Rescisão no dia {r['dia_resc_real']}: pela convenção do mês "
                                   "comercial (divisor 30) o mês inteiro paga 30/30 = salário cheio")
             e.append(_etapa("ETAPA 3020 - SALDO DE SALARIO", _lin_saldo))
-            # 0003 — Aviso prévio indenizado
+            # 0003 — Aviso prévio: provento da empresa OU desconto do empregado
             if r["aviso_val"]:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [
                     f"Salário {_B(sal)} × {r['dias_aviso']} dias / 30 = <b>{_B(r['aviso_val'])}</b>"
                     + ("  (acordo 484-A: 50%)" if r["multa_pct"] == 20 else ""),
                 ]))
+            elif r.get("aviso_desc"):
+                e.append(_etapa("ETAPA 3030 - AVISO PREVIO DESCONTADO (VERBA 60)", [
+                    "Pedido de demissão sem cumprir o aviso: é o funcionário quem "
+                    "indeniza a empresa (art. 487, § 2º, da CLT)",
+                    f"Salário {_B(sal)} × {r['dias_aviso_desc']} dias / 30 = "
+                    f"<b>{_B(r['aviso_desc'])}</b>  (desconto)",
+                    "Descontam-se só os 30 dias do aviso legal: o acréscimo da Lei "
+                    "12.506/2011 é direito de quem RECEBE o aviso, não de quem o deve",
+                ]))
+            elif r["aviso_ind"] and r.get("aviso_disp"):
+                e.append(_etapa("ETAPA 3030 - AVISO PREVIO", [],
+                                na="a empresa dispensou o aviso não cumprido — nada a descontar"))
             else:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [],
                                 na="aviso trabalhado ou não devido neste motivo"))
@@ -9413,6 +9522,7 @@ _TRCT_VERBAS = {
     43:  ("Férias Vencidas",                         "P"),
     44:  ("Férias sobre o Aviso Prévio",             "P"),
     49:  ("Férias Proporcionais",                    "P"),
+    60:  ("Aviso Prévio Indenizado pelo Empregado",  "D"),
     61:  ("Aviso Prévio Indenizado",                 "P"),
     63:  ("Indenização do Art. 479 da CLT",          "P"),
     64:  ("Indenização do Art. 480 da CLT",          "D"),
@@ -9591,7 +9701,7 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
                 ref = f"{qtd}/12"
             elif cod == 43:
                 ref = f"{qtd} período{'s' if qtd > 1 else ''}"
-            elif cod == 61:
+            elif cod in (60, 61):
                 ref = f"{qtd} dias"
             else:
                 ref = str(qtd)
@@ -32817,12 +32927,17 @@ def api_esocial_s2299_enviar():
     dr = str(func.get("datarescisao") or "")
     try:
         r_av = (supabase.table("tab_eventos")
-                .select("campotxt1, ref1, ref2, data1i")
+                .select("campotxt1, campotxt2, ref1, ref2, data1i")
                 .eq("id_empresa", id_empresa).eq("matricula", int(matricula)).eq("op1", 9)
                 .order("data1i", desc=True).limit(1).execute())
         if r_av.data:
             ev = r_av.data[0]
-            if str(ev.get("campotxt1") or "").strip().lower().startswith("inden"):
+            # indPagtoAPI = aviso indenizado PAGO pelo empregador. No pedido de
+            # demissão não cumprido é o empregado quem indeniza: não há aviso pago
+            # nem data projetada a informar ao eSocial.
+            _quem_av = str(ev.get("campotxt2") or "").strip()
+            if (str(ev.get("campotxt1") or "").strip().lower().startswith("inden")
+                    and _quem_av != "Funcionário"):
                 ind_api = "S"
                 dias = int(ev.get("ref1") or 0) + int(ev.get("ref2") or 0)
                 if len(dr) == 8 and dias > 0:

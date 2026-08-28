@@ -153,13 +153,21 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="rl-lbl">Tipo</span>
                 <span class="rl-val txt">{{ tipo_desc }}</span>
             </div>
+            {% if aviso_disp == 'S' %}
+            <div class="rl-item">
+                <span class="rl-lbl">Desconto do Aviso</span>
+                <span class="rl-val txt">Dispensado pela empresa</span>
+            </div>
+            {% endif %}
             <div class="rl-item">
                 <span class="rl-lbl">Data do Aviso</span>
                 <span class="rl-val">{{ data_aviso_fmt }}</span>
             </div>
             <div class="rl-item">
                 <span class="rl-lbl">
-                    {%- if tipo == 'I' -%}
+                    {%- if tipo == 'I' and quem == 'F' -%}
+                        Fim do Aviso não Cumprido
+                    {%- elif tipo == 'I' -%}
                         Aviso Prévio Projetado
                     {%- else -%}
                         Data de Desligamento
