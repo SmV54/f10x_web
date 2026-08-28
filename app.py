@@ -24851,15 +24851,37 @@ def _mf_fmt_anomes(v):
     return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else "—"
 
 
-def _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes, cod_verba, matricula=None):
-    """O movimento fixo ja gerou lancamento em ALGUMA folha anterior a anomes?
+def _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes, cod_verba, matricula=None,
+                       folha_inicial=None, qtd_parcelas=None, qtd_parcelas_before=0):
+    """Este registro de movimento fixo ja gerou lancamento em folha anterior?
 
     Lancamento de mov_fixo entra no tab_mov com origem='F'. Se existe um desses
     numa folha passada, o movimento ja produziu efeito no historico e nao pode
     mais ser excluido — o caminho e "parar" (folha_final), que preserva o que ja
-    foi pago. Registro de grupo (matricula nula) vale por qualquer funcionario,
-    entao a checagem ignora a matricula nesse caso.
+    foi pago.
+
+    O tab_mov NAO guarda de qual registro do tab_mov_fixo veio a linha: so
+    origem='F' e o codigo da verba. Perguntar apenas pela verba confundia
+    registros diferentes — e num registro de GRUPO, que tem matricula nula, a
+    consulta ignorava a matricula e casava com o lancamento de qualquer
+    funcionario. Na empresa 33 isso travava a exclusao de qualquer grupo da
+    verba 1003, porque tres registros INDIVIDUAIS dessa verba ja tinham rodado.
+    Por isso a pergunta agora se apoia no que o proprio registro sabe de si:
+
+      modo parcelas — qtd_parcelas_before > 0 e prova direta de que rodou. Zero
+                      NAO prova o contrario: alterar um registro de periodo para
+                      parcelas zera a contagem e apaga a folha_inicial, entao um
+                      registro que ja lancou pode chegar aqui zerado (e o caso do
+                      883 da empresa 33). Por isso o zero cai na consulta abaixo;
+      modo periodo  — a busca fica limitada a folha >= folha_inicial: um
+                      movimento que comeca em 08/2026 nao pode ter lancado em
+                      07/2026, entao a janela fica vazia e ele volta a ser
+                      excluivel.
+
+    Continua conservador: na duvida bloqueia, e sobra o "parar".
     """
+    if qtd_parcelas and int(qtd_parcelas_before or 0) > 0:
+        return True
     try:
         q = (supabase.table("tab_mov")
              .select("id")
@@ -24871,6 +24893,8 @@ def _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes, cod_verba, matricula=None
              .limit(1))
         if matricula is not None:
             q = q.eq("matricula", int(matricula))
+        if folha_inicial:
+            q = q.gte("folha", int(folha_inicial))
         return bool((q.execute().data or []))
     except Exception as e:
         # Sem resposta confiavel, o seguro e tratar como "ja rodou": bloqueia a
@@ -24917,14 +24941,16 @@ def _mov_fixo_marcar_pode_excluir(regs, anomes, id_empresa, id_cliente):
         print(f"[mov_fixo] {len(candidatos)} candidatos a exclusao — checagem ignorada")
         return
 
-    cache = {}
+    # Sem cache por (matricula, verba): a resposta agora depende tambem da
+    # vigencia e das parcelas do registro, entao dois registros da mesma verba
+    # podem legitimamente responder diferente.
     for rec in candidatos:
-        cv   = int(rec.get("cod_verba") or 0)
-        mat  = rec.get("matricula")
-        chave = (mat, cv)
-        if chave not in cache:
-            cache[chave] = _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes, cv, mat)
-        rec["pode_excluir"] = not cache[chave]
+        rec["pode_excluir"] = not _mov_fixo_ja_rodou(
+            id_empresa, id_cliente, anomes,
+            int(rec.get("cod_verba") or 0), rec.get("matricula"),
+            folha_inicial=rec.get("folha_inicial"),
+            qtd_parcelas=rec.get("qtd_parcelas"),
+            qtd_parcelas_before=rec.get("qtd_parcelas_before"))
 
 
 @app.route("/api/mov_fixo_listar")
@@ -25311,7 +25337,10 @@ def api_mov_fixo_excluir():
                                    f"(início {_mf_fmt_anomes(fi)}). Use 'Parar' — a exclusão "
                                    "apagaria um lançamento que já faz parte do histórico."})
         if _mov_fixo_ja_rodou(id_empresa, id_cliente, anomes,
-                              rec.get("cod_verba"), rec.get("matricula")):
+                              rec.get("cod_verba"), rec.get("matricula"),
+                              folha_inicial=rec.get("folha_inicial"),
+                              qtd_parcelas=rec.get("qtd_parcelas"),
+                              qtd_parcelas_before=rec.get("qtd_parcelas_before")):
             return jsonify({"ok": False, "bloqueado": "parar",
                             "msg": "Este movimento já foi lançado em folha anterior. "
                                    "Use 'Parar' para encerrá-lo sem mexer no histórico."})

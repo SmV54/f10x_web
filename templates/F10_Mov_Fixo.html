@@ -1074,7 +1074,8 @@ function renderVigencia(r) {
     const ini = r.folha_inicial ? formatFolha(r.folha_inicial) : '—';
     const fim = r.folha_final && r.folha_final !== 999912 ? formatFolha(r.folha_final) : null;
     return `<span style="font-size:11px;">${ini} →${fim ? ' ' + fim : ''}</span>`
-         + (!fim ? `<br><span style="font-size:10px;color:#64748b;">Por tempo indeterminado</span>` : '');
+         + `<br><span style="font-size:10px;color:#64748b;">${
+              fim ? 'parado em ' + fim : 'Por tempo indeterminado'}</span>`;
 }
 
 // Encerrado = tem folha_final que já passou desta folha; não lança mais nada.

@@ -400,7 +400,8 @@ function renderVigencia(r) {
     const ini = r.folha_inicial ? formatFolha(r.folha_inicial) : '—';
     const fim = (r.folha_final && r.folha_final !== 999912) ? formatFolha(r.folha_final) : null;
     return `<span style="font-size:11px;">${ini}${fim ? ' → ' + fim : ' →'}</span>`
-         + (!fim ? `<br><span style="font-size:10px;color:#64748b;">Indeterminado</span>` : '');
+         + `<br><span style="font-size:10px;color:#64748b;">${
+              fim ? 'parado em ' + fim : 'Indeterminado'}</span>`;
 }
 
 // Ja encerrado = tem folha_final que nao passa desta folha: nao lanca mais nada.
@@ -411,7 +412,8 @@ function jaEncerrado(r) {
 
 function renderSituacao(r) {
     if (jaEncerrado(r))
-        return `<span class="badge badge-fim">Encerrado em ${formatFolha(r.folha_final)}</span>`;
+        return `<span class="badge badge-fim">⏹️ PARADO em ${formatFolha(r.folha_final)}</span>
+                <br><span style="font-size:10px;color:#64748b;">não lança mais nada</span>`;
     if (r.pode_excluir)
         return `<span class="badge badge-novo">Incluído nesta folha</span>
                 <br><span style="font-size:10px;color:#64748b;">nunca lançado</span>`;
@@ -434,13 +436,22 @@ function renderLista() {
     // gravada, entao nao da para afirmar aqui se pegam este funcionario.
     if (fMat) regs = regs.filter(r => String(r.matricula || '') === fMat);
     if (fVer) regs = regs.filter(r => String(r.cod_verba) === fVer);
+    // Os parados continuam cadastrados: some-los sem dizer nada fazia o
+    // movimento "desaparecer" depois de parado, e quem procurava por ele nao
+    // entendia se tinha sido excluido. Agora a quantidade escondida e' avisada.
+    const ocultos = verEnc ? 0 : regs.filter(jaEncerrado).length;
     if (!verEnc) regs = regs.filter(r => !jaEncerrado(r));
 
     document.getElementById('lista-titulo').textContent =
         `📌 Movimentos Fixos — folha ${formatFolha(ANOMES_ATUAL)}`;
 
     if (!regs.length) {
-        el.innerHTML = '<div class="vazio">Nenhum movimento fixo para os filtros escolhidos.</div>';
+        el.innerHTML = '<div class="vazio">Nenhum movimento fixo ativo para os filtros escolhidos.'
+            + (ocultos
+                ? '<br><br><b>' + ocultos + ' já parado(s)</b> não aparece(m) aqui — marque '
+                + '<b>“Mostrar já encerrados”</b> acima para ver a data em que foi parado.'
+                : '')
+            + '</div>';
         return;
     }
 
@@ -473,7 +484,9 @@ function renderLista() {
         </tr></thead>
         <tbody>${rows}</tbody>
     </table>
-    <div class="tabela-rodape">${regs.length} movimento(s)</div></div>`;
+    <div class="tabela-rodape">${regs.length} movimento(s)${
+        ocultos ? ` · ${ocultos} já parado(s) fora da lista — marque “Mostrar já encerrados”` : ''
+    }</div></div>`;
 }
 
 async function carregarLista() {
