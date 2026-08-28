@@ -462,7 +462,7 @@ tr:hover td { background: #f8fafc; }
 
           <td style="padding-right:0;">
             {# Só as que dá para enviar em lote ganham checkbox. #}
-            {% if r._sit in ('X', 'G', 'P') and r.layout in ('1005', '1010', '1020', '2200', '2220', '2300', '2399', '1200', '1210', '1298', '1299') %}
+            {% if r._sit in ('X', 'G', 'P') and r.layout in ('1005', '1010', '1020', '2200', '2220', '2230', '2300', '2399', '1200', '1210', '1298', '1299') %}
             <input type="checkbox" class="row-check" data-id="{{ r.id_esocial }}"
                    data-layout="{{ r.layout }}" onchange="_atualizarSelec()">
             {% endif %}
@@ -474,6 +474,11 @@ tr:hover td { background: #f8fafc; }
             <span style="font-weight:600;font-size:13px;margin-left:6px;">{{ '%06d' % (r.matricula or 0) }}</span>
             <span style="color:#e2e8f0;margin:0 3px;">·</span>
             <span class="nome-trunc" title="{{ r._nome }}">{{ r._nome }}</span>
+            {% if r._fase_2230 %}
+            <span style="margin-left:6px;padding:1px 7px;border-radius:5px;font-size:10.5px;
+                         font-weight:700;background:#eef2ff;color:#4338ca;border:1px solid #c7d2fe;"
+                  title="Parte do afastamento que esta remessa informa">{{ r._fase_2230 }}</span>
+            {% endif %}
             {% elif r._verba_cod %}
             <span style="font-family:var(--mono);font-weight:700;font-size:13px;margin-left:6px;color:#70c4a0;">{{ r._verba_cod }}</span>
             {% if r._verba_dsc %}<span style="font-size:12px;color:#475569;margin-left:5px;">{{ r._verba_dsc }}</span>{% endif %}
@@ -526,7 +531,7 @@ tr:hover td { background: #f8fafc; }
                       title="Re-consultar o protocolo no eSocial"
                       onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-              {% if r.layout in ('1005', '1010', '1020', '2200', '2220', '2300', '2399', '1200', '1210', '1298', '1299') %}
+              {% if r.layout in ('1005', '1010', '1020', '2200', '2220', '2230', '2300', '2399', '1200', '1210', '1298', '1299') %}
               <button class="btn-ir"
                       data-id="{{ r.id_esocial }}"
                       data-layout="{{ r.layout }}"
@@ -549,7 +554,7 @@ tr:hover td { background: #f8fafc; }
                       data-lay="{{ r._lay_codigo }}"
                       onclick="_excluir(this)">&#10005; Excluir</button>
               {% endif %}
-              {% if r.layout in ('2200', '2300', '2399') %}
+              {% if r.layout in ('2200', '2230', '2300', '2399') %}
               <a class="btn-verxml" href="/api/esocial_xml_ver?id={{ r.id_esocial }}" target="_blank"
                  title="Abrir o XML do evento (1_evento) numa nova aba">&#128196; Ver XML</a>
               {% endif %}
@@ -877,6 +882,7 @@ async function _enviarFila(btn) {
     '2300': '/api/esocial_s2300_enviar',
     '2399': '/api/esocial_s2399_enviar',
     '2220': '/api/esocial_s2220_enviar',
+    '2230': '/api/esocial_s2230_enviar',
     '1200': '/api/esocial_s1200_enviar',
     '1210': '/api/esocial_s1210_enviar',
     '1298': '/api/esocial_s1298_enviar',
