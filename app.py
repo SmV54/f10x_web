@@ -19127,6 +19127,11 @@ def api_esocial_s2220_reconsultar():
 # no mesmo evento.
 _S2230_MOT_FERIAS = "15"     # Férias — Tabela 18 do eSocial
 
+# Rótulo do flag1 na Fila e no PDF dela. Diz o FATO, não só a fase: "Afast." e
+# "Férias" são afastamentos diferentes para quem confere a lista, ainda que o
+# eSocial mande os dois no mesmo evento.
+_S2230_FASE_LBL = {"S": "Afast. saída", "R": "Afast. retorno", "F": "Férias"}
+
 
 def _s2230_dados_afast(es, ev):
     """(codMotAfast, dt_ini, dt_fim, infoMesmoMtv, tpAcidTransito, observacao).
@@ -33967,8 +33972,7 @@ def esocial_fila():
         # As remessas de saida e de retorno do MESMO afastamento sao duas linhas
         # identicas na tela (mesmo layout, mesma matricula, mesma competencia).
         # O flag1 e' o que as distingue — sem ele nao da' para saber qual enviar.
-        r["_fase_2230"]   = ({"S": "saída", "R": "retorno", "F": "férias"}
-                             .get(str(r.get("flag1") or "").upper()[:1], "")
+        r["_fase_2230"]   = (_S2230_FASE_LBL.get(str(r.get("flag1") or "").upper()[:1], "")
                              if str(r.get("layout") or "") == "2230" else "")
         r["_lay_href"]    = info[2]
         r["_lay_func"]    = info[3]
@@ -34157,6 +34161,12 @@ def rel_esocial_fila_pdf():
         info = _LAY.get(lay, (f"S-{lay}", ""))
         r["_lay_codigo"] = info[0]
         r["_lay_desc"]   = info[1]
+        # O S-2230 serve a tres fatos distintos. Sem dizer qual, duas linhas do
+        # mesmo funcionario saem identicas no papel — mesmo layout, mesma
+        # matricula, mesma competencia.
+        if lay == "2230":
+            r["_lay_desc"] = (_S2230_FASE_LBL.get(str(r.get("flag1") or "").upper()[:1], "")
+                              or r["_lay_desc"])
         r["_nome"]       = nomes.get(r.get("matricula"), "") if r.get("matricula") else ""
         r["_datacad"]    = _d8(r.get("data_cad"))
         _hg = str(r.get("hora_grava") or "").strip()
