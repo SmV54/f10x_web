@@ -7710,7 +7710,10 @@ def cad_rescisao():
             dtadm_fmt = f"{dtadm[6:8]}/{dtadm[4:6]}/{dtadm[0:4]}" if len(dtadm) == 8 else dtadm
             sal = f.get("vrsalfx") or 0
             try:
-                sal_fmt = f"R$ {float(sal):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                # vrsalfx e' em CENTAVOS: sem o /100 um salario de R$ 1.621,00
+                # (162100) aparecia como R$ 162.100,00. Mesma conversao das
+                # telas de aviso previo e da ficha do funcionario.
+                sal_fmt = "R$ " + f"{sal/100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             except Exception:
                 sal_fmt = str(sal)
             funcionario = {
