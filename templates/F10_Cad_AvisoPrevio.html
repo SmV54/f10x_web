@@ -341,13 +341,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="opcao-label">Data do Aviso Prévio</div>
                 <input type="date" id="data_aviso" class="input-std"
                     value="{{ data_hoje }}"
-                    min="{{ folha_ym }}-01"
+                    min="{{ folha_ym_ant or folha_ym }}-01"
                     max="{{ folha_ym }}-31"
                     style="min-width:160px;"
                     onchange="validarData()">
                 <div class="aviso-data-erro" id="erro-data">
-                    &#9888; A data deve estar dentro da folha ativa ({{ folha_fmt }})
+                    &#9888; A data deve estar na folha ativa ({{ folha_fmt }}){% if folha_ant_fmt %}
+                    ou na anterior ({{ folha_ant_fmt }}){% endif %}
                 </div>
+                {% if folha_ant_fmt %}
+                <div style="margin-top:6px;font-size:11.5px;color:#64748b;line-height:1.5;">
+                    O aviso de 30 dias dado no fim de {{ folha_ant_fmt }} só vira rescisão em
+                    {{ folha_fmt }} — por isso a data de {{ folha_ant_fmt }} é aceita aqui.
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -481,7 +488,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
 <script>
-const FOLHA_YM   = '{{ folha_ym }}';   // "YYYY-MM"
+const FOLHA_YM   = '{{ folha_ym }}';       // "YYYY-MM" da folha ativa
+const FOLHA_YM_A = '{{ folha_ym_ant }}';   // "YYYY-MM" da folha anterior
 const MAT        = '{{ funcionario.matricula if funcionario else "" }}';
 // Contrato por prazo determinado lancado (tab_eventos op1=1/op2=167)
 const TEM_CONTRATO = {{ 'true' if tem_contrato else 'false' }};
@@ -495,7 +503,10 @@ function validarData() {
     var erro = document.getElementById('erro-data');
     if (!el || !FOLHA_YM) return true;
     var val = el.value;  // "YYYY-MM-DD"
-    var ok  = val && val.slice(0, 7) === FOLHA_YM;
+    var mes = val ? val.slice(0, 7) : '';
+    // Folha ativa ou a imediatamente anterior: o aviso trabalhado dado no fim
+    // do mes tem o desligamento — e a rescisao — so' no mes seguinte.
+    var ok  = !!val && (mes === FOLHA_YM || (!!FOLHA_YM_A && mes === FOLHA_YM_A));
     el.classList.toggle('erro', !ok);
     erro.style.display = (!ok && val) ? 'block' : 'none';
     return ok;
@@ -666,6 +677,11 @@ document.addEventListener('DOMContentLoaded', function() {
     var ct = document.getElementById('cond_T');
     if (ct && ct.checked && !TEM_CONTRATO) ct.checked = false;
     aplicarCond();
+    {% if erro == 'data_fora' %}
+    f10Alert('A gravação foi cancelada: a data do aviso tem de estar na folha ativa '
+           + '({{ folha_fmt }}){% if folha_ant_fmt %} ou na anterior ({{ folha_ant_fmt }}){% endif %}.',
+             { titulo: '⚠ Data fora da janela', tipo: 'aviso', okText: 'Entendi' });
+    {% endif %}
     {% if erro == 'sem_contrato' %}
     f10Alert('A gravação foi cancelada: este funcionário não tem Contrato por Prazo '
            + 'Determinado lançado, e sem ele não há data de término em que a rescisão '

@@ -5666,6 +5666,12 @@ def cad_aviso_previo():
     anomes      = str(session.get("anomes_atual") or "")
     folha_ym    = f"{anomes[:4]}-{anomes[4:6]}" if len(anomes) == 6 else ""
     folha_fmt   = f"{anomes[4:6]}/{anomes[:4]}"  if len(anomes) == 6 else ""
+    # O aviso de 30 dias dado no fim do mes so vira rescisao no mes seguinte, e
+    # a folha em que ele foi dado ja fechou quando se vai registra-lo. A tela
+    # aceita o mes anterior por isso — a mesma janela de api_funcionarios_com_aviso.
+    _am_ant       = _anomes_menos_um(anomes) if len(anomes) == 6 else 0
+    folha_ym_ant  = f"{str(_am_ant)[:4]}-{str(_am_ant)[4:6]}" if _am_ant else ""
+    folha_ant_fmt = f"{str(_am_ant)[4:6]}/{str(_am_ant)[:4]}" if _am_ant else ""
     # Se vier de volta da tela 2, restaura os campos
     p_data_aviso    = request.args.get("data_aviso",    hoje)
     p_tipo_aviso    = request.args.get("tipo_aviso",    "T")
@@ -5694,6 +5700,8 @@ def cad_aviso_previo():
         p_aviso_disp=p_aviso_disp,
         folha_ym=folha_ym,
         folha_fmt=folha_fmt,
+        folha_ym_ant=folha_ym_ant,
+        folha_ant_fmt=folha_ant_fmt,
     )
 
 
@@ -5772,6 +5780,19 @@ def cad_aviso_previo2():
                 return None
 
         data_aviso_int = _dt_to_int(data_aviso)
+
+        # Mesma janela da tela, conferida aqui: a data do aviso tem de cair na
+        # folha ativa ou na imediatamente anterior. A tela ja barra, mas o POST
+        # aceita query string montada a mao — e uma data fora da janela geraria
+        # um aviso que a selecao da rescisao nunca encontraria.
+        _am  = str(anomes_int or "")
+        _amA = str(_anomes_menos_um(_am)) if len(_am) == 6 else ""
+        if len(_am) == 6 and data_aviso_int:
+            if str(data_aviso_int)[:6] not in (_am, _amA):
+                gravar_log("AVISO-ERRO",
+                           f"Data {data_aviso} fora da folha {_am} e da anterior {_amA}",
+                           matricula=mat_int)
+                return redirect(f"/cad_aviso_previo?mat={mat_int}&erro=data_fora")
 
         quem_map = {"E": "Empresa", "F": "Funcionário", "A": "Acordo"}
         tipo_map = {"T": "Trabalhado", "I": "Indenizado"}
