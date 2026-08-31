@@ -8471,6 +8471,29 @@ def _dparse(s):
     return None
 
 
+def _transf_ferias_no_mes(id_empresa, anomes):
+    """Matrículas com férias ENCOSTANDO no mês da folha ativa.
+
+    Encostar, e não começar dentro: quem saiu em 25/07 e volta em 13/08 está de
+    férias em agosto. Reaproveita o _lista_ferias_dados, que já resolve isso.
+
+    Filtrar pelo mês é o ponto: o Desktop pergunta pelas férias DA COMPETÊNCIA
+    (Verifica_FERIAS com o período da folha). Olhar o histórico inteiro faria o
+    aviso aparecer para quase todo mundo, e aviso que aparece sempre ninguém lê.
+    """
+    if len(str(anomes or "")) != 6:
+        return set()
+    try:
+        ano, mes = int(anomes[:4]), int(anomes[4:6])
+        ini8 = f"{ano:04d}{mes:02d}01"
+        ult = calendar.monthrange(ano, mes)[1]
+        fim8 = f"{ano:04d}{mes:02d}{ult:02d}"
+        return {int(f.get("matricula") or 0)
+                for f in _lista_ferias_dados(id_empresa, ini8, fim8)}
+    except Exception:
+        return set()
+
+
 def _resc_desligados_mes(id_empresa, id_cliente, anomes):
     """Funcionários com a rescisão REGISTRADA no mês da folha ativa.
 
@@ -12534,11 +12557,17 @@ IS_FIELD_NUM = [
     ("is_hora_extra",         "19"),
 ]
 
-def gravar_log(menu, observacao, ano_mes=None, matricula=None):
+def gravar_log(menu, observacao, ano_mes=None, matricula=None, id_empresa=None):
+    """Grava no log da empresa ATIVA, ou na que `id_empresa` disser.
+
+    O parametro existe para a transferencia entre empresas: o mesmo fato tem
+    que aparecer no log das duas, e quem le o log da empresa de destino
+    precisa achar de onde o funcionario veio.
+    """
     try:
         rec = {
             "id_cliente":      session.get("id_cliente"),
-            "id_empresa":      _get_id_empresa(),
+            "id_empresa":      id_empresa if id_empresa is not None else _get_id_empresa(),
             "cpf_usuario":     session.get("cpf"),
             "menu":            menu[:12],
             "observacao":      observacao,
@@ -16120,6 +16149,544 @@ def rel_esocial_remessas():
 # =========================================================
 # FUNCIONÁRIOS — TELA
 # =========================================================
+# =========================================================
+# TRANSFERÊNCIA DE FUNCIONÁRIO ENTRE EMPRESAS
+#
+# Mesma rotina do Folha10 Desktop (Gravacao_Transferencia_Funcionario_Entre_
+# Empresas, em SR_Gravacao.vb). O que ela faz, em duas metades:
+#
+#   NA EMPRESA DESTINO   nasce um funcionário novo, com a matrícula informada,
+#                        levando TODO o histórico: cadastro, dependentes,
+#                        eventos, movimento e totais de todas as folhas, e as
+#                        pensões. No cadastro ficam gravados de onde ele veio
+#                        (empresa e matrícula de origem) e a data da
+#                        transferência. Ele entra alocado na MATRIZ.
+#   NA EMPRESA ORIGEM    o funcionário é desligado: situação 'D', data de
+#                        demissão = data da transferência, motivo 31
+#                        (transferência) e as mesmas marcas de para onde foi.
+#                        O histórico dele CONTINUA aqui.
+#
+# Duas regras daqui são diferentes do Desktop, por decisão de 31/08/2026:
+#
+#   MOVIMENTO DO MÊS     vai para a nova empresa e é APAGADO na origem — mas
+#                        só depois de perguntar. O usuário responde na hora de
+#                        confirmar, e a resposta manda: dizendo que não, o
+#                        movimento do mês fica onde está e a transferência
+#                        segue sem ele.
+#   MOVIMENTO FIXO       vai, mas SÓ o que está preso àquela matrícula. O de
+#                        grupo — o que vale para todos os funcionários, e que
+#                        no tab_mov_fixo tem matricula nula — não passa: ele é
+#                        uma regra da empresa de origem, não do funcionário.
+#                        (No Desktop nenhum movimento fixo ia.)
+#
+# O aviso prévio não precisa de tratamento próprio: ele mora no tab_eventos
+# (op1 = 9), e os eventos vão inteiros.
+#
+# Esta primeira parte faz só a escolha e a CONFERÊNCIA: nada é gravado. As
+# críticas são as mesmas do Desktop (Teste_Erro_Frm400_EVENTOS_TRANSFERENCIA).
+# =========================================================
+TRANSF_MOTIVO_DEMISSAO = 31        # motivo "transferência" no desligamento
+
+
+def _transf_contar(tabela, id_cliente, id_empresa, matricula, extra=None):
+    """Quantas linhas daquele funcionário existem na tabela.
+
+    matricula=None conta as linhas SEM matrícula — os movimentos fixos de
+    grupo. `extra` afina a consulta (a competência, por exemplo).
+    Devolve -1 quando a leitura falha: a tela mostra "?" em vez de fingir que
+    não há nada, que num resumo de transferência seria pior do que o erro.
+    """
+    try:
+        q = (supabase.table(tabela).select("*", count="exact")
+             .eq("id_empresa", id_empresa).limit(1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        q = q.is_("matricula", "null") if matricula is None else q.eq("matricula", matricula)
+        if extra is not None:
+            q = extra(q)
+        return q.execute().count or 0
+    except Exception:
+        return -1
+
+
+def _transf_proxima_matricula(id_cliente, id_empresa):
+    """Próxima matrícula livre da empresa: a maior que existe + 1."""
+    try:
+        q = (supabase.table("tab_cad").select("matricula")
+             .eq("id_empresa", id_empresa).order("matricula", desc=True).limit(1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        d = q.execute().data or []
+        return int((d[0].get("matricula") or 0) if d else 0) + 1
+    except Exception:
+        return 0
+
+
+@app.route("/api/transferir_funcionario/proxima_matricula")
+def api_transferir_funcionario_proxima():
+    """Sugere a matrícula livre na empresa de DESTINO (a maior de lá + 1)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False})
+    dest = str(request.args.get("id_destino") or "").strip()
+    if not dest.isdigit():
+        return jsonify({"ok": False})
+    prox = _transf_proxima_matricula(session.get("id_cliente"), int(dest))
+    return jsonify({"ok": prox > 0, "proxima": prox})
+
+
+@app.route("/transferir_funcionario")
+def transferir_funcionario():
+    """Tela da transferência: escolhe quem vai, para onde e com que matrícula."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+
+    # Só os ATIVOS: quem já está demitido não se transfere.
+    funcs = []
+    # Quem está de férias no mês vem marcado, para o aviso aparecer no instante
+    # em que o funcionário é escolhido — sem ida ao servidor.
+    com_ferias = _transf_ferias_no_mes(id_empresa, anomes)
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, dtadm")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .order("matricula").execute())
+        for f in (r.data or []):
+            m = int(f.get("matricula") or 0)
+            d = str(f.get("dtadm") or "")
+            funcs.append({
+                "matricula": m, "mat_fmt": f"{m:06d}",
+                "nome": (f.get("nome") or f.get("nomer") or "").strip(),
+                "dtadm": f"{d[6:8]}/{d[4:6]}/{d[0:4]}" if len(d) == 8 else "—",
+                "tem_ferias": m in com_ferias,
+            })
+    except Exception:
+        funcs = []
+
+    # Destinos possíveis: as outras empresas do MESMO cliente.
+    destinos = [e for e in _listar_empresas(id_cliente)
+                if e["id_empresa"] != id_empresa]
+
+    # Data sugerida: o dia 1 da folha ativa. Sai daqui e não do relógio do
+    # navegador — a transferência tem que cair dentro da competência aberta, e
+    # quem sabe qual é ela é o servidor.
+    data_sugerida = f"01/{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""
+
+    # Com um destino só ele já vem escolhido, então a matrícula também já vem
+    # sugerida aqui, no HTML. Deixar isso para o JS obrigaria um clique que não
+    # existe (o onchange do select nunca dispara) e o campo abriria vazio.
+    # Com mais de um destino não há o que sugerir antes de saber para onde vai:
+    # aí quem preenche é o JS, ao escolher a empresa.
+    mat_sugerida = ""
+    if len(destinos) == 1:
+        _p = _transf_proxima_matricula(id_cliente, destinos[0]["id_empresa"])
+        if _p > 0:
+            mat_sugerida = f"{_p:06d}"
+
+    return render_template("F10_Transferir_Funcionario.html", **_ctx_relatorio(),
+                           anomes_atual=anomes, funcs=funcs, destinos=destinos,
+                           data_sugerida=data_sugerida, mat_sugerida=mat_sugerida,
+                           folha_situacao=(_refresh_situacao_folha()
+                                           if len(anomes) == 6 else ""))
+
+
+# Tabelas que acompanham o funcionário, na ordem em que são copiadas. O
+# tab_cad vai antes de todas, à parte: sem ele o funcionário não existe no
+# destino. O tab_mov leva um filtro — o movimento da competência ativa fica.
+_TRANSF_TABELAS = ("tab_dependentes", "tab_eventos", "tab_mov", "tab_total",
+                   "tab_pensao", "tab_acidente", "tab_mov_fixo")
+
+
+def _transf_criticar(id_cliente, id_empresa, anomes, d):
+    """Críticas da transferência. Devolve (erros, avisos, dados).
+
+    As mesmas do Folha10 Desktop (Teste_Erro_Frm400_EVENTOS_TRANSFERENCIA).
+    Roda igual na conferência e na gravação: o que o navegador manda nunca é
+    a última palavra.
+    """
+    erros, avisos, dados = [], [], {}
+
+    mat_txt  = str(d.get("matricula") or "").strip()
+    dest_txt = str(d.get("id_destino") or "").strip()
+    data_br  = str(d.get("data") or "").strip()          # dd/mm/aaaa
+    novo_txt = str(d.get("matricula_nova") or "").strip()
+
+    if not mat_txt.isdigit():
+        erros.append("Escolha o funcionário que vai ser transferido.")
+    if not dest_txt.isdigit():
+        erros.append("Escolha a empresa de destino.")
+    elif int(dest_txt) == id_empresa:
+        erros.append("A empresa de destino é a mesma de origem.")
+
+    dnum, data8 = "".join(ch for ch in data_br if ch.isdigit()), ""
+    if len(dnum) != 8:
+        erros.append("Informe a data da transferência (dd/mm/aaaa).")
+    else:
+        data8 = dnum[4:8] + dnum[2:4] + dnum[0:2]        # aaaammdd
+        try:
+            datetime.strptime(data8, "%Y%m%d")
+        except ValueError:
+            erros.append(f"Data da transferência inválida: {data_br}.")
+            data8 = ""
+    if data8 and data8[:6] != anomes:
+        erros.append(f"A data da transferência tem que estar dentro da folha "
+                     f"{anomes[4:6]}/{anomes[:4]}.")
+
+    if not novo_txt.isdigit() or int(novo_txt) <= 0:
+        erros.append("Informe a matrícula que o funcionário terá na nova empresa.")
+
+    if erros:
+        return erros, avisos, dados
+
+    mat, id_dest, mat_nova = int(mat_txt), int(dest_txt), int(novo_txt)
+
+    try:
+        q = (supabase.table("tab_cad").select("*")
+             .eq("id_empresa", id_empresa).eq("matricula", mat).limit(1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        cad = (q.execute().data or [])
+    except Exception as e:
+        return [f"Erro ao ler o cadastro: {str(e)[:150]}"], avisos, dados
+    if not cad:
+        return [f"Matrícula {mat:06d} não existe nesta empresa."], avisos, dados
+    cad = cad[0]
+    if str(cad.get("situacao") or "") != "A":
+        erros.append(f"Matrícula {mat:06d} não está ativa nesta empresa.")
+
+    try:
+        q = (supabase.table("tab_cad").select("matricula, nome, nomer")
+             .eq("id_empresa", id_dest).eq("matricula", mat_nova).limit(1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        ocupada = (q.execute().data or [])
+    except Exception as e:
+        return [f"Erro ao conferir o destino: {str(e)[:150]}"], avisos, dados
+    if ocupada:
+        _n = (ocupada[0].get("nome") or ocupada[0].get("nomer") or "").strip()
+        erros.append(f"A matrícula {mat_nova:06d} já existe na empresa de destino"
+                     + (f" — {_n}." if _n else "."))
+
+    # Empresa de destino: precisa existir e ser do mesmo cliente.
+    destino = next((e for e in _listar_empresas(id_cliente)
+                    if e["id_empresa"] == id_dest), None)
+    if destino is None:
+        erros.append("A empresa de destino não é deste cliente.")
+
+    # Aviso, não impede: férias NO MÊS da folha — o mesmo critério do Desktop.
+    if mat in _transf_ferias_no_mes(id_empresa, anomes):
+        avisos.append("Este funcionário tem férias lançadas no mês. A sugestão "
+                      "é cancelar as férias antes de transferir.")
+
+    dados = {"mat": mat, "id_dest": id_dest, "mat_nova": mat_nova,
+             "data8": data8, "data_br": data_br, "cad": cad, "destino": destino}
+    return erros, avisos, dados
+
+
+@app.route("/api/transferir_funcionario/conferir", methods=["POST"])
+def api_transferir_funcionario_conferir():
+    """Roda as críticas da transferência e diz o que seria levado. NÃO grava."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if str(session.get("anomes_situacao") or "") in ("C", "F"):
+        return jsonify({"ok": False,
+                        "msg": "A folha precisa estar Aberta para transferir."})
+
+    erros, avisos, dd = _transf_criticar(id_cliente, id_empresa, anomes,
+                                         request.get_json(silent=True) or {})
+    if erros:
+        return jsonify({"ok": False, "erros": erros, "avisos": avisos})
+
+    mat, id_dest = dd["mat"], dd["id_dest"]
+    cad = dd["cad"]
+
+    # ── O que vai e o que fica ──
+    folha_int = int(anomes)
+    mov_todos = _transf_contar("tab_mov", id_cliente, id_empresa, mat)
+    mov_mes   = _transf_contar("tab_mov", id_cliente, id_empresa, mat,
+                               lambda q: q.eq("folha", folha_int))
+    # O movimento do mês fica: some do que vai, sem virar número negativo se
+    # alguma das duas contagens tiver falhado.
+    mov_vai = (mov_todos - mov_mes) if (mov_todos >= 0 and mov_mes >= 0) else -1
+
+    leva = {
+        "dependentes": _transf_contar("tab_dependentes", id_cliente, id_empresa, mat),
+        "eventos":     _transf_contar("tab_eventos",     id_cliente, id_empresa, mat),
+        "movimento":   mov_vai,
+        "totais":      _transf_contar("tab_total",       id_cliente, id_empresa, mat),
+        "pensoes":     _transf_contar("tab_pensao",      id_cliente, id_empresa, mat),
+        "acidentes":   _transf_contar("tab_acidente",    id_cliente, id_empresa, mat),
+        "mov_fixo":    _transf_contar("tab_mov_fixo",    id_cliente, id_empresa, mat),
+    }
+    fica = {
+        "mov_mes":         mov_mes,
+        "mov_fixo_grupo":  _transf_contar("tab_mov_fixo", id_cliente, id_empresa, None),
+    }
+
+    if mov_mes > 0:
+        avisos.append(f"O funcionário tem {mov_mes} lançamento(s) de movimento na folha "
+                      f"{anomes[4:6]}/{anomes[:4]}. Você vai ser perguntado se leva "
+                      f"esse movimento: levando, ele é lançado na nova empresa e "
+                      f"APAGADO aqui.")
+    if fica["mov_fixo_grupo"] > 0:
+        avisos.append(f"Existem {fica['mov_fixo_grupo']} movimento(s) fixo(s) de grupo "
+                      f"(valem para todos os funcionários). Esses não passam — só vai o "
+                      f"movimento fixo preso à matrícula.")
+    # Notas são só informação — não entram na confirmação, que é para o que o
+    # usuário precisa ACEITAR antes de gravar.
+    notas = ["Na nova empresa o funcionário entra alocado na MATRIZ — confira o "
+             "centro de custo depois da transferência.",
+             "A transferência gera as remessas do eSocial: S-2299 (desligamento) "
+             "na empresa de origem e S-2200 (admissão) na de destino. As duas "
+             "nascem na Fila, para envio."]
+
+    return jsonify({
+        "ok": True, "avisos": avisos, "notas": notas,
+        "origem":  {"matricula": mat,
+                    "nome": (cad.get("nome") or cad.get("nomer") or "").strip(),
+                    "empresa": session.get("empresa_info", "")},
+        "destino": {"matricula": dd["mat_nova"], "empresa": dd["destino"]["nome"]},
+        "data": dd["data_br"], "leva": leva, "fica": fica,
+        "motivo_demissao": TRANSF_MOTIVO_DEMISSAO,
+    })
+
+
+def _transf_copiar(tabela, id_cliente, id_org, mat, id_dst, mat_nova, extra=None):
+    """Copia as linhas do funcionário para a empresa de destino.
+
+    Devolve (quantas, erro). A linha vai inteira, trocando só a empresa e a
+    matrícula — copiar campo a campo obrigaria a mexer aqui toda vez que uma
+    coluna nova nascesse, e a coluna esquecida sumiria calada na transferência.
+    """
+    try:
+        q = (supabase.table(tabela).select("*")
+             .eq("id_empresa", id_org).eq("matricula", mat))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if extra is not None:
+            q = extra(q)
+        linhas = q.execute().data or []
+    except Exception as e:
+        return 0, f"{tabela}: não consegui ler ({str(e)[:120]})"
+
+    if not linhas:
+        return 0, ""
+
+    novas = []
+    for ln in linhas:
+        nova = {k: v for k, v in ln.items()
+                if k not in ("id", "created_at", "updated_at")}
+        nova["id_empresa"] = id_dst
+        # A matrícula é integer na maioria das tabelas e varchar no
+        # tab_acidente: escreve no mesmo tipo que a linha de origem usa.
+        nova["matricula"] = (str(mat_nova) if isinstance(ln.get("matricula"), str)
+                             else mat_nova)
+        novas.append(nova)
+    try:
+        supabase.table(tabela).insert(novas).execute()
+    except Exception as e:
+        return 0, f"{tabela}: não consegui gravar ({str(e)[:120]})"
+    return len(novas), ""
+
+
+def _transf_desfazer(id_cliente, id_dst, mat_nova):
+    """Apaga do destino tudo o que a transferência criou.
+
+    Usado quando a cópia falha no meio: sem transação no Supabase, é isto que
+    evita deixar meio funcionário na empresa nova. Roda em ordem inversa, e o
+    cadastro por último.
+    """
+    for tabela in tuple(reversed(_TRANSF_TABELAS)) + ("tab_cad",):
+        try:
+            q = (supabase.table(tabela).delete()
+                 .eq("id_empresa", id_dst).eq("matricula", mat_nova))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            q.execute()
+        except Exception as e:
+            print(f"[transferencia] falha ao desfazer {tabela}: {str(e)[:120]}")
+
+
+@app.route("/api/transferir_funcionario/executar", methods=["POST"])
+def api_transferir_funcionario_executar():
+    """Faz a transferência.
+
+    Ordem de propósito: primeiro CRIA tudo no destino, e só quando isso termina
+    é que mexe na origem. Não há transação no Supabase — se a cópia falhar no
+    meio, o que foi criado é apagado e a origem nem chegou a ser tocada. O pior
+    caso vira "não transferiu", nunca "transferiu pela metade".
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if str(session.get("anomes_situacao") or "") in ("C", "F"):
+        return jsonify({"ok": False,
+                        "msg": "A folha precisa estar Aberta para transferir."})
+
+    _corpo = request.get_json(silent=True) or {}
+    erros, _avisos, dd = _transf_criticar(id_cliente, id_empresa, anomes, _corpo)
+    if erros:
+        return jsonify({"ok": False, "erros": erros})
+    # Escolha do usuário na confirmação: leva o movimento da competência ativa
+    # para a nova empresa (e apaga aqui) ou deixa como está.
+    levar_mov = bool(_corpo.get("levar_mov"))
+
+    mat, id_dest, mat_nova = dd["mat"], dd["id_dest"], dd["mat_nova"]
+    data8, cad, destino = dd["data8"], dd["cad"], dd["destino"]
+    nome_func = (cad.get("nome") or cad.get("nomer") or "").strip()
+    cnpj_org  = "".join(ch for ch in str(session.get("cnpj_empresa") or "")
+                        if ch.isdigit())
+    cnpj_dst  = "".join(ch for ch in str(destino.get("cnpj") or "") if ch.isdigit())
+
+    # ── 1) o cadastro no destino ──
+    novo = {k: v for k, v in cad.items()
+            if k not in ("id", "created_at", "updated_at")}
+    novo.update({
+        "id_empresa":   id_dest,
+        "matricula":    mat_nova,
+        "situacao":     "A",
+        # Vínculo novo: nada de rescisão vem junto.
+        "datarescisao": None, "motrescisao": None, "motdesligamento": None,
+        # De onde veio — é o que o S-2200 leva no grupo de sucessão de vínculo.
+        "tpadmissao":     "2",          # transferência (mesmo grupo econômico)
+        "dttransf":       data8,
+        "cnpjtransf":     cnpj_org,
+        "matriculatransf": mat,          # integer no tab_cad
+        # Matrícula do eSocial é a de LÁ: a nova empresa registra a sua.
+        "matricula_es":   None,
+        # Matriz da empresa de destino (posições 9 a 14 do CNPJ), igual ao
+        # Desktop. Filial se acerta depois, junto com o centro de custo.
+        "filial":         (cnpj_dst[8:14] if len(cnpj_dst) >= 14 else None),
+    })
+    try:
+        supabase.table("tab_cad").insert(novo).execute()
+    except Exception as e:
+        return jsonify({"ok": False,
+                        "msg": f"Não consegui criar o cadastro na empresa de destino: "
+                               f"{str(e)[:180]}. Nada foi alterado."})
+
+    # ── 2) o resto do histórico ──
+    folha_int = int(anomes)
+    copiado, erro = {}, ""
+    for tabela in _TRANSF_TABELAS:
+        # O movimento da competência ativa só vai se o usuário mandou. Nas
+        # outras folhas vai sempre — é histórico, e histórico acompanha.
+        extra = (lambda q: q.neq("folha", folha_int)) \
+            if (tabela == "tab_mov" and not levar_mov) else None
+        n, erro = _transf_copiar(tabela, id_cliente, id_empresa, mat,
+                                 id_dest, mat_nova, extra)
+        copiado[tabela] = n
+        if erro:
+            break
+
+    if erro:
+        _transf_desfazer(id_cliente, id_dest, mat_nova)
+        gravar_log("TRANSFERENCIA", f"DESFEITA (mat {mat:06d} -> {mat_nova:06d}): {erro}",
+                   ano_mes=anomes, matricula=mat)
+        return jsonify({"ok": False,
+                        "msg": f"A transferência foi desfeita: {erro}. "
+                               f"O funcionário continua inteiro na empresa de origem."})
+
+    # ── 3) só agora a origem: desligamento por transferência ──
+    aviso_origem = ""
+    try:
+        (supabase.table("tab_cad").update({
+            "situacao":        "D",
+            # Tipos conferidos no schema: datarescisao é char(8) e motrescisao
+            # varchar(2) — vão como texto, não como número.
+            "datarescisao":    data8,
+            "motrescisao":     str(TRANSF_MOTIVO_DEMISSAO),
+            "dttransf":        data8,
+            "cnpjtransf":      cnpj_dst,
+            "matriculatransf": mat_nova,
+        }).eq("id_empresa", id_empresa).eq("matricula", mat).execute())
+    except Exception as e:
+        # O destino já está pronto. Desfazer aqui seria pior: melhor entregar
+        # com o aviso de que falta desligar na origem.
+        aviso_origem = (f"O funcionário foi criado na empresa de destino, mas NÃO "
+                        f"consegui desligá-lo na origem ({str(e)[:120]}). "
+                        f"Faça o desligamento pela tela de Rescisão.")
+
+    # O movimento do mês já foi copiado para o destino: apagar aqui é o segundo
+    # tempo da mudança. Só depois da cópia ter dado certo — na ordem inversa o
+    # lançamento sumiria das duas empresas se a cópia falhasse.
+    if levar_mov and not aviso_origem:
+        try:
+            q = (supabase.table("tab_mov").delete()
+                 .eq("id_empresa", id_empresa).eq("matricula", mat)
+                 .eq("folha", folha_int))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            q.execute()
+        except Exception as e:
+            aviso_origem = (f"O movimento do mês foi lançado na nova empresa, mas NÃO "
+                            f"consegui apagá-lo aqui ({str(e)[:120]}). Confira o "
+                            f"movimento desta empresa: ele está em duplicidade.")
+
+    # ── 4) eSocial: S-2299 na origem, S-2200 (ou S-2300) no destino ──
+    folha_tipo_es = "1" if str(session.get("anomes_tipo") or "") in ("1", "A") else "N"
+    try:
+        if not aviso_origem:
+            _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes,
+                                       folha_tipo_es, cad.get("codcateg"))
+    except Exception as e:
+        print(f"[transferencia] S-2299 nao gerado: {str(e)[:120]}")
+    try:
+        _categ = int(str(cad.get("codcateg") or "0").strip() or 0)
+    except (TypeError, ValueError):
+        _categ = 0
+    try:
+        agora_es = _agora_brasilia()
+        supabase.table("tab_esocial").insert({
+            "id_cliente": id_cliente, "id_empresa": id_dest,
+            "data_cad":   agora_es.strftime("%Y%m%d"),
+            "hora_cad":   agora_es.strftime("%H%M"),
+            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+            "ano_mes":    int(anomes), "folha_tipo": folha_tipo_es,
+            # Mesma regra da inclusão: não-empregado (categoria >= 700) é S-2300.
+            "layout":     "2300" if _categ >= 700 else "2200",
+            "matricula":  mat_nova, "codigo2": 0,
+        }).execute()
+    except Exception as e:
+        print(f"[transferencia] S-2200 nao gerado: {str(e)[:120]}")
+
+    # O mesmo fato nas duas pontas: quem abrir o log da empresa de destino
+    # precisa achar de onde o funcionário veio, e não só a origem saber para
+    # onde ele foi.
+    gravar_log("TRANSFERENCIA",
+               f"{nome_func[:30]}: SAIU {mat:06d} desta empresa para "
+               f"{mat_nova:06d} em {destino['nome'][:30]} em {dd['data_br']} "
+               f"(desligado motivo {TRANSF_MOTIVO_DEMISSAO}; movimento do mês "
+               f"{'levado' if levar_mov else 'mantido aqui'})",
+               ano_mes=anomes, matricula=mat)
+    gravar_log("TRANSFERENCIA",
+               f"{nome_func[:30]}: ENTROU {mat_nova:06d} vindo de "
+               f"{str(session.get('empresa_info') or '')[:30]}, matrícula "
+               f"{mat:06d}, em {dd['data_br']}",
+               ano_mes=anomes, matricula=mat_nova, id_empresa=id_dest)
+
+    return jsonify({
+        "ok": True, "copiado": copiado, "aviso_origem": aviso_origem,
+        "levou_mov": levar_mov,
+        "msg": (f"{nome_func} foi transferido para {destino['nome']} com a "
+                f"matrícula {mat_nova:06d}. Na origem ficou desligado em "
+                f"{dd['data_br']}, motivo {TRANSF_MOTIVO_DEMISSAO}."
+                + (" O movimento do mês foi junto e apagado aqui."
+                   if levar_mov else " O movimento do mês ficou nesta empresa.")),
+    })
+
+
 @app.route("/cad_funcionario")
 def cad_funcionario():
     if not session.get("logado"):
@@ -27014,6 +27581,29 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
     _objdet     = str(_contr.get('objdet') or func.get('objdet') or '').strip()[:255]
     duracao_xml = _duracao_xml(tpcontr, _dtterm_fmt, _clauassec, x(_objdet))
 
+    # ── <sucessaoVinc> ──
+    # Obrigatorio quando o vinculo NASCE de uma transferencia (tpAdmissao 2, 3,
+    # 4 ou 7): diz de qual empregador o trabalhador veio, com que matricula e
+    # em que data. Sem ele o evento volta rejeitado — o grupo e' condicionado
+    # ao proprio tpAdmissao no schema.
+    # Os tres campos ja' existiam no tab_cad (a tela de cadastro pede "CNPJ da
+    # empresa anterior" e "Matricula anterior"); o que faltava era sair no XML.
+    # Admissao normal (tpAdmissao 1) nao emite nada: a string fica vazia.
+    sucessao_xml = ""
+    if tpadmissao in ("2", "3", "4", "7"):
+        _cnpj_ant = re.sub(r"[^0-9]", "", str(func.get("cnpjtransf") or ""))
+        _mat_ant  = str(func.get("matriculatransf") or "").strip()
+        _dt_transf = fmt_d8(func.get("dttransf"))
+        # tpInsc 1 = CNPJ. Raiz (8) quando e' so' a raiz; senao o CNPJ inteiro.
+        _tp_ant = "1"
+        _matric_xml = f"\n        <matricAnt>{x(_mat_ant)}</matricAnt>" if _mat_ant else ""
+        sucessao_xml = f"""
+      <sucessaoVinc>
+        <tpInsc>{_tp_ant}</tpInsc>
+        <nrInsc>{x(_cnpj_ant)}</nrInsc>{_matric_xml}
+        <dtTransf>{x(_dt_transf)}</dtTransf>
+      </sucessaoVinc>"""
+
     # Blocos opcionais
     nomemae_xml = f"\n        <nomeMae>{x(nomemae)}</nomeMae>" if nomemae else ''
     compl_xml   = f"\n          <complemento>{x(compl)}</complemento>" if compl else ''
@@ -27108,7 +27698,7 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
           <horNoturno>{x(hornoturno)}</horNoturno>
           <dscJorn>Jornada de trabalho conforme contrato</dscJorn>
         </horContratual>
-      </infoContrato>
+      </infoContrato>{sucessao_xml}
     </vinculo>
   </evtAdmissao>
 </eSocial>"""

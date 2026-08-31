@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Transferir Funcionário entre Empresas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 24px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+.topo-esq { display: flex; flex-direction: column; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #111827; }
+.topo-nome { font-size: 11px; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-badge { display: inline-block; margin-top: 4px; font-size: 11px; background: #70c4a0; color: #374151; border-radius: 10px; padding: 2px 10px; }
+.topo-dir { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar-topo { background: transparent; border: 1px solid #70c4a0; color: #374151; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+.container { max-width: 900px; margin: 24px auto; padding: 0 18px 60px; }
+.alerta { border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+.alerta-aviso { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.alerta-ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.alerta-erro { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.alerta ul { margin: 6px 0 0; padding-left: 18px; }
+
+.card { background: white; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; }
+.card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+.card-body { padding: 16px 20px; }
+
+.linha { display: grid; grid-template-columns: 190px 1fr; align-items: center; gap: 12px; margin-bottom: 14px; }
+.linha label { font-size: 13px; font-weight: 600; color: #334155; }
+.linha .dica { font-size: 11.5px; color: #64748b; margin-top: 4px; }
+select, input[type=text] {
+    width: 100%; max-width: 460px; padding: 8px 10px; font-size: 13px;
+    border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1f2937;
+}
+select:focus, input[type=text]:focus { outline: none; border-color: #2a7de1; }
+input.curto { max-width: 160px; font-family: 'IBM Plex Mono', monospace; }
+
+.barra-acao { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
+.btn-conferir { background: #1e3a5f; color: #fff; border: none; font-size: 14px; font-weight: 700; padding: 11px 26px; border-radius: 10px; cursor: pointer; transition: .15s; }
+.btn-conferir:hover { background: #2a7de1; }
+.btn-conferir:disabled { opacity: .5; cursor: default; }
+.btn-transferir { background: #166534; color: #fff; border: none; font-size: 14px; font-weight: 700; padding: 11px 26px; border-radius: 10px; cursor: pointer; }
+.btn-transferir:disabled { opacity: .45; cursor: not-allowed; }
+.rodape { margin-top: 16px; display: flex; justify-content: flex-end; }
+.btn-menu { height: 36px; padding: 0 20px; border-radius: 8px; background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px; border: none; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+.btn-menu:hover { background: #d1d5db; }
+
+/* Resumo do que a transferência faz */
+.mov { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.mov-cx { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px; background: #f8fafc; }
+.mov-cx h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #475569; }
+.mov-cx .quem { font-size: 13px; font-weight: 600; color: #0f172a; margin-bottom: 8px; }
+.mov-cx ul { margin: 0; padding-left: 16px; font-size: 12.5px; color: #334155; }
+.mov-cx li { margin-bottom: 3px; }
+.mov-cx .n { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
+@media (max-width: 700px) { .mov { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div>
+        <div class="topo-titulo">Transferir Funcionário entre Empresas</div>
+        {% if anomes_atual %}<div style="text-align:center;"><span class="topo-badge">Folha {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span></div>{% endif %}
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="container">
+
+{% if folha_situacao in ('C','F') %}
+    <div class="alerta alerta-aviso"><span>⚠️</span><div>A folha está <strong>{{ 'Calculada' if folha_situacao=='C' else 'Fechada' }}</strong>. Reabra a folha para transferir.</div></div>
+{% elif not destinos %}
+    {# Transferência é entre empresas do mesmo cliente: com uma só, não há destino. #}
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>Este cliente tem <strong>uma empresa só</strong>. A transferência só existe entre empresas do mesmo cliente.</div></div>
+{% elif not funcs %}
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>Nenhum funcionário <strong>ativo</strong> nesta empresa. Quem já está demitido não se transfere.</div></div>
+{% else %}
+
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>
+        A transferência leva o funcionário e <strong>todo o histórico</strong> para a outra empresa —
+        cadastro, dependentes, eventos, movimento, totais, pensões e acidentes — com a matrícula nova.
+        Na empresa de origem ele é <strong>desligado com motivo 31 (transferência)</strong> na data informada,
+        e o histórico dele continua lá.
+        <br>O movimento <strong>do mês</strong> vai junto e é apagado aqui — mas você é perguntado antes.
+        O que <strong>não</strong> vai é o movimento fixo <strong>de grupo</strong>: só passa o que está preso à matrícula.
+        Na nova empresa ele entra alocado na <strong>matriz</strong>.
+    </div></div>
+
+    <div class="card">
+        <div class="card-header"><h2>Transferência</h2></div>
+        <div class="card-body">
+
+            <div class="linha">
+                <label for="selFunc">Funcionário</label>
+                <div>
+                    <select id="selFunc" onchange="escolheuFuncionario()">
+                        <option value="">— escolha —</option>
+                        {% for f in funcs %}
+                        <option value="{{ f.matricula }}" data-ferias="{{ 1 if f.tem_ferias else 0 }}">{{ f.mat_fmt }} — {{ f.nome }} (adm. {{ f.dtadm }})</option>
+                        {% endfor %}
+                    </select>
+                    <div class="dica">Só os ativos desta empresa.</div>
+                </div>
+            </div>
+
+            <div class="linha">
+                <label for="selDest">Empresa de destino</label>
+                <div>
+                    <select id="selDest" onchange="sugerirMatricula()">
+                        {# Com um destino só não há o que escolher: já vem marcado,
+                           e o "— escolha —" só apareceria para ser ignorado. #}
+                        {% if destinos|length > 1 %}<option value="">— escolha —</option>{% endif %}
+                        {% for e in destinos %}
+                        <option value="{{ e.id_empresa }}"{% if destinos|length == 1 %} selected{% endif %}>{{ e.nome }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="dica">{% if destinos|length == 1 %}A única outra empresa deste cliente.{% else %}As outras empresas deste cliente.{% endif %}</div>
+                </div>
+            </div>
+
+            <div class="linha">
+                <label for="txtData">Data da transferência</label>
+                <div>
+                    <input type="text" id="txtData" class="curto" maxlength="10" placeholder="dd/mm/aaaa"
+                           value="{{ data_sugerida }}" oninput="mascaraData(this)" onchange="limparResultado()">
+                    <div class="dica">Sugerido o dia 1 da folha {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}; pode trocar, desde que caia dentro dela. É a data do desligamento na origem.</div>
+                </div>
+            </div>
+
+            <div class="linha">
+                <label for="txtMatNova">Matrícula na nova empresa</label>
+                <div>
+                    <input type="text" id="txtMatNova" class="curto" maxlength="6"
+                           value="{{ mat_sugerida }}"
+                           oninput="this.value=this.value.replace(/\D/g,'')" onchange="limparResultado()"
+                           onfocus="sugerirMatricula()">
+                    <div class="dica" id="dicaMat">{% if destinos|length == 1 %}A próxima livre em {{ destinos[0].nome }}; pode trocar.{% else %}Ao escolher a empresa de destino, aparece aqui a próxima livre dela.{% endif %}</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    {# Ferias e' o unico aviso que ja' da' para dar na hora da escolha — vem
+       marcado em cada opcao do select. Aparece aqui, logo abaixo dos campos,
+       e nao espera o clique em Transferir. #}
+    <div id="avisoFerias"></div>
+
+    {# O quadro e os avisos ficam ACIMA do botao: o "confira antes de
+       confirmar" tem que estar no caminho dos olhos ANTES do clique, nao
+       depois dele. #}
+    <div id="resultado"></div>
+    <div id="msg"></div>
+
+    <div class="barra-acao">
+        {# Um botao so', como no Desktop: ele mesmo roda as criticas, mostra o
+           que vai acontecer e pergunta antes de gravar. #}
+        <button class="btn-transferir" id="btnTransferir" onclick="transferir()">
+            ➜ Transferir
+        </button>
+    </div>
+
+    <div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
+{% endif %}
+
+</div>
+
+<script>
+/* Primeira parte do módulo: escolha e CONFERÊNCIA. Nada é gravado.
+   As críticas são as mesmas do Folha10 Desktop
+   (Teste_Erro_Frm400_EVENTOS_TRANSFERENCIA). */
+
+function esc(s) {
+    return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function mascaraData(el) {
+    let v = el.value.replace(/\D/g, '').slice(0, 8);
+    if (v.length > 4)      v = v.slice(0, 2) + '/' + v.slice(2, 4) + '/' + v.slice(4);
+    else if (v.length > 2) v = v.slice(0, 2) + '/' + v.slice(2);
+    el.value = v;
+    limparResultado();
+}
+
+/* Escolheu o funcionario: alem de invalidar a conferencia anterior, avisa na
+   hora se ele tem ferias no mes. Vem do proprio <option>, entao nao ha ida ao
+   servidor nem espera. */
+function escolheuFuncionario() {
+    limparResultado();
+    const sel = document.getElementById('selFunc');
+    const op  = sel.selectedOptions[0];
+    const cx  = document.getElementById('avisoFerias');
+    if (op && op.dataset.ferias === '1') {
+        cx.innerHTML = '<div class="alerta alerta-aviso"><span>⚠️</span><div>' +
+            '<strong>' + esc(op.text) + '</strong> tem f\u00e9rias lan\u00e7adas neste m\u00eas. ' +
+            'A sugest\u00e3o \u00e9 cancelar as f\u00e9rias antes de transferir.</div></div>';
+    } else {
+        cx.innerHTML = '';
+    }
+}
+
+function limparResultado() {
+    document.getElementById('msg').innerHTML = '';
+    document.getElementById('resultado').innerHTML = '';
+}
+
+function listaHtml(itens) {
+    return '<ul>' + itens.map(t => '<li>' + esc(t) + '</li>').join('') + '</ul>';
+}
+
+/* -1 = não deu para contar (erro de leitura); mostra assim, sem inventar zero. */
+function qtd(n) {
+    return n < 0 ? '?' : n;
+}
+
+/* Ao escolher o destino, ja' sugere a proxima matricula livre DE LA — a maior
+   que existe naquela empresa + 1. E so' sugestao: quem digitar outra manda, e a
+   conferencia diz se esta ocupada. */
+async function sugerirMatricula(forcar) {
+    const dest = document.getElementById('selDest').value;
+    const campo = document.getElementById('txtMatNova');
+    /* Chamada pelo onfocus do campo tambem: ali so' preenche se estiver vazio,
+       para nao apagar o que a pessoa digitou. */
+    if (forcar !== false && campo.value.trim() !== '' && document.activeElement === campo) return;
+    limparResultado();
+    if (!dest) { campo.value = ''; return; }
+    try {
+        const r = await fetch('/api/transferir_funcionario/proxima_matricula?id_destino=' + dest);
+        const d = await r.json();
+        /* Empresa sem ninguem ainda: o servidor devolve 1, e aqui vira 000001 —
+           a matricula aparece com 6 posicoes em todo o sistema. */
+        if (d.ok && d.proxima) campo.value = String(d.proxima).padStart(6, '0');
+    } catch (e) { /* sem sugestao: a pessoa digita */ }
+}
+
+/* Destino ja' escolhido na abertura (o caso de um destino so'): a matricula
+   precisa ser sugerida aqui, porque o onchange do select nao chega a disparar. */
+document.addEventListener('DOMContentLoaded', function () {
+    const sel = document.getElementById('selDest');
+    if (sel && sel.value) sugerirMatricula(true);
+});
+
+/* Roda as criticas no servidor e desenha o quadro do que vai acontecer.
+   Devolve os dados quando passa, ou null quando reprova — e ai a propria
+   funcao ja' deixou o motivo na tela. Nada e' gravado aqui. */
+async function conferir(dados) {
+    const msg = document.getElementById('msg');
+    limparResultado();
+    try {
+        const r = await fetch('/api/transferir_funcionario/conferir', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(dados)
+        });
+        const d = await r.json();
+
+        if (!d.ok) {
+            const itens = d.erros || [d.msg || 'Não foi possível conferir.'];
+            msg.innerHTML = '<div class="alerta alerta-erro"><span>❌</span><div>' +
+                '<strong>A transferência não pode ser feita assim:</strong>' +
+                listaHtml(itens) + '</div></div>';
+            if (d.avisos && d.avisos.length) {
+                msg.innerHTML += '<div class="alerta alerta-aviso"><span>⚠️</span><div>' +
+                    listaHtml(d.avisos) + '</div></div>';
+            }
+            return null;
+        }
+
+        const o = d.origem, t = d.destino, L = d.leva, F = d.fica;
+        let html = '<div class="card"><div class="card-header"><h2>O que a transferência vai fazer</h2></div>' +
+                   '<div class="card-body"><div class="mov">' +
+            '<div class="mov-cx"><h3>Sai de</h3>' +
+              '<div class="quem">' + String(o.matricula).padStart(6, '0') + ' — ' + esc(o.nome) + '</div>' +
+              '<div style="font-size:12.5px;color:#475569;margin-bottom:8px;">' + esc(o.empresa) + '</div>' +
+              '<ul>' +
+                '<li>Desligado em <span class="n">' + esc(d.data) + '</span></li>' +
+                '<li>Motivo <span class="n">' + d.motivo_demissao + '</span> — transferência</li>' +
+                '<li>Movimento do mês <span class="n">' + qtd(F.mov_mes) + '</span> — ' +
+                    (F.mov_mes > 0 ? '<b>perguntado ao confirmar</b>' : '—') + '</li>' +
+                '<li>Mov. fixo de grupo <span class="n">' + qtd(F.mov_fixo_grupo) + '</span> — <b>fica</b></li>' +
+                '<li>Todo o histórico continua nesta empresa</li>' +
+                '<li>Remessa <span class="n">S-2299</span> na Fila</li>' +
+              '</ul></div>' +
+            '<div class="mov-cx"><h3>Entra em</h3>' +
+              '<div class="quem">' + String(t.matricula).padStart(6, '0') + ' — ' + esc(o.nome) + '</div>' +
+              '<div style="font-size:12.5px;color:#475569;margin-bottom:8px;">' + esc(t.empresa) + '</div>' +
+              '<ul>' +
+                '<li>Dependentes <span class="n">' + qtd(L.dependentes) + '</span></li>' +
+                '<li>Eventos <span class="n">' + qtd(L.eventos) + '</span></li>' +
+                '<li>Movimento <span class="n">' + qtd(L.movimento) + '</span></li>' +
+                '<li>Totais <span class="n">' + qtd(L.totais) + '</span></li>' +
+                '<li>Pensões <span class="n">' + qtd(L.pensoes) + '</span></li>' +
+                '<li>Acidentes <span class="n">' + qtd(L.acidentes) + '</span></li>' +
+                '<li>Mov. fixo da matrícula <span class="n">' + qtd(L.mov_fixo) + '</span></li>' +
+                '<li>Remessa <span class="n">S-2200</span> na Fila</li>' +
+              '</ul></div>' +
+            '</div></div></div>';
+        document.getElementById('resultado').innerHTML = html;
+
+        /* avisos = o que o usuario tem que aceitar (vao para a confirmacao).
+           notas  = informacao do que a rotina faz (ficam so' aqui). */
+        let cx = '';
+        if (d.avisos && d.avisos.length) {
+            cx += '<div class="alerta alerta-aviso"><span>⚠️</span><div>' +
+                  '<strong>Confira antes de confirmar:</strong>' +
+                  listaHtml(d.avisos) + '</div></div>';
+        }
+        if (d.notas && d.notas.length) {
+            cx += '<div class="alerta alerta-aviso"><span>ℹ️</span><div>' +
+                  listaHtml(d.notas) + '</div></div>';
+        }
+        msg.innerHTML = cx;
+        return d;
+    } catch (e) {
+        msg.innerHTML = '<div class="alerta alerta-erro"><span>❌</span><div>Erro de comunicação.</div></div>';
+        return null;
+    }
+}
+
+/* A gravacao cria tudo no destino primeiro e so' depois desliga na origem.
+   Falhando no meio, o que foi criado e' apagado e a origem continua inteira —
+   por isso da' para oferecer o "tentar de novo" sem medo. */
+async function transferir() {
+    const btn = document.getElementById('btnTransferir');
+    const msg = document.getElementById('msg');
+    const dados = {
+        matricula:      document.getElementById('selFunc').value,
+        id_destino:     document.getElementById('selDest').value,
+        data:           document.getElementById('txtData').value,
+        matricula_nova: document.getElementById('txtMatNova').value
+    };
+
+    /* 1) critica e desenha o quadro. Reprovou, para aqui: o motivo ja' esta na
+          tela e nada foi gravado. */
+    btn.disabled = true; btn.textContent = 'Conferindo...';
+    const d0 = await conferir(dados);
+    if (!d0) { btn.disabled = false; btn.textContent = '➜ Transferir'; return; }
+
+    /* 2) o movimento da competencia ativa e' decisao do usuario, e por isso e'
+          uma pergunta propria: levar (e apagar aqui) ou deixar como esta. So'
+          aparece quando existe movimento no mes. */
+    let levarMov = false;
+    const nMes = (d0.fica && d0.fica.mov_mes > 0) ? d0.fica.mov_mes : 0;
+    if (nMes > 0) {
+        levarMov = await f10Confirm(
+            "Este funcion\u00e1rio tem " + nMes + " lan\u00e7amento(s) de movimento na " +
+            "folha deste m\u00eas.\n\nLevar esse movimento para a nova empresa? " +
+            "Ele \u00e9 lan\u00e7ado l\u00e1 e APAGADO aqui.\n\n" +
+            "Respondendo N\u00e3o, o movimento fica nesta empresa e a " +
+            "transfer\u00eancia segue sem ele.",
+            {titulo: 'Movimento do m\u00eas', tipo: 'aviso',
+             okText: 'Levar', cancelText: 'Deixar aqui'});
+    }
+
+    /* 3) com o quadro na tela, a ultima palavra e' do usuario. Os avisos vao
+          DENTRO da confirmacao: sao o que ele precisa aceitar, e ler no meio
+          da tela nao e' aceitar. */
+    const linhas = [
+        'Transferir ' + document.getElementById('selFunc').selectedOptions[0].text,
+        'para ' + d0.destino.empresa + ', matricula ' +
+            String(d0.destino.matricula).padStart(6, '0') + '.',
+        'Na empresa de origem ele fica DESLIGADO em ' + d0.data +
+            ' com motivo 31 (transferencia).'
+    ];
+    if (nMes > 0) {
+        linhas.push('\u2022 Movimento do mes (' + nMes + '): ' +
+                    (levarMov ? 'VAI junto e e apagado aqui.'
+                              : 'FICA nesta empresa.'));
+    }
+    (d0.avisos || []).forEach(function (a) { linhas.push('\u2022 ' + a); });
+    const ok = await f10Confirm(linhas.join('\n\n'), {
+        titulo: 'Confirmar a transferencia', tipo: 'aviso',
+        okText: 'Transferir', cancelText: 'Cancelar'
+    });
+    if (!ok) { btn.disabled = false; btn.textContent = '➜ Transferir'; return; }
+
+    /* 3) grava. O servidor critica tudo de novo antes de encostar no banco. */
+    btn.textContent = 'Transferindo...';
+    try {
+        const r = await fetch('/api/transferir_funcionario/executar', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(Object.assign({levar_mov: levarMov}, dados))
+        });
+        const d = await r.json();
+        if (!d.ok) {
+            const itens = d.erros || [d.msg || 'Nao foi possivel transferir.'];
+            msg.innerHTML = '<div class="alerta alerta-erro"><span>❌</span><div>' +
+                listaHtml(itens) + '</div></div>';
+            btn.disabled = false; btn.textContent = '➜ Transferir';
+            return;
+        }
+        document.getElementById('resultado').innerHTML = '';
+        msg.innerHTML = '<div class="alerta alerta-ok"><span>✅</span><div>' +
+            esc(d.msg) + '<br>As remessas <strong>S-2299</strong> (origem) e ' +
+            '<strong>S-2200</strong> (destino) estao na Fila do eSocial.</div></div>';
+        if (d.aviso_origem) {
+            msg.innerHTML += '<div class="alerta alerta-aviso"><span>⚠️</span><div>' +
+                esc(d.aviso_origem) + '</div></div>';
+        }
+        setTimeout(() => window.location.reload(), 4000);
+    } catch (e) {
+        msg.innerHTML = '<div class="alerta alerta-erro"><span>❌</span><div>Erro de comunicacao. ' +
+            'Confira na empresa de destino se o funcionario foi criado antes de tentar de novo.</div></div>';
+        btn.disabled = false; btn.textContent = '➜ Transferir';
+    }
+}
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

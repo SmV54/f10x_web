@@ -578,6 +578,10 @@ const modulos = {
                 { icone: '👨‍👩‍👧', nome: 'Dependentes',        href: '/select_funcionario?contexto=dep',    ok: true, classe: 'nav-fix', quebraLinha: true },
                 { icone: '📄', nome: 'Ficha de Registro',    href: '/select_funcionario?contexto=ficha', ok: true, classe: 'nav-fix', quebraLinha: true },
                 { icone: '🧹', nome: 'Limpar Funcionário',   href: '/limpeza_funcionario',               ok: true, classe: 'nav-fix', quebraLinha: true },
+                // Leva o funcionario e todo o historico para outra empresa do
+                // mesmo cliente, e o desliga na origem com motivo 31. Mesma
+                // rotina do Folha10 Desktop (Menu Eventuais > X).
+                { icone: '🔄', nome: 'Transferir Funcionário entre Empresas', href: '/transferir_funcionario', ok: true, classe: 'nav-fix2l' },
             ]},
             { nome: 'Tabelas Auxiliares', itens: [
                 { icone: '💼', nome: 'Funções / Cargos',     href: '/cad_funcao',    ok: true },
