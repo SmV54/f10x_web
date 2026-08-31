@@ -839,7 +839,12 @@ const modulos = {
                 { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '🩺', nome: 'S-2220 Monitoramento da Saúde (ASO)', href: '/esocial_s2220', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '🏥', nome: 'S-2230 Afastamento',            href: '#' },
+                // O S-2230 nao tem tela propria: nasce na tela de Afastamento e e'
+                // enviado pela Fila, igual ao S-2300 e ao S-2399. O card ficou como
+                // '#' (cinza, sem clique) do tempo em que o envio nao existia — hoje
+                // existe (/api/esocial_s2230_enviar) e so' faltava o destino. Vai
+                // direto para a Fila ja' filtrada no layout.
+                { icone: '🏥', nome: 'S-2230 Afastamento',            href: '/esocial_fila?layout=2230', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '🎓', nome: 'S-2300 Início TSVE (Estagiário)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '🏁', nome: 'S-2399 Término TSVE (Estag./Diretor)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aviso' },
