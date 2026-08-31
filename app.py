@@ -10276,7 +10276,7 @@ def _atualizar_lead_rest(lead_id, campos):
         requests.patch(f"{SUPABASE_URL}/rest/v1/tab_lead?id=eq.{lead_id}",
                        headers=headers, json=campos, timeout=15)
     except Exception as e:
-        print(f"[LEAD/petshop] update REST falhou: {e}")
+        print(f"[LEAD] update REST falhou: {e}")
 
 
 def _msg_boasvindas_lead(nome, empresa):
@@ -10284,9 +10284,9 @@ def _msg_boasvindas_lead(nome, empresa):
     loja = (empresa or "").strip()
     loja_txt = f" do {loja}" if loja else ""
     return (
-        f"Olá {primeiro}! 🐾\n\n"
+        f"Olá {primeiro}!\n\n"
         f"Recebemos o seu cadastro{loja_txt} no Folha10-Simples — que bom ter você por aqui!\n\n"
-        f"Falta só criar seu acesso para liberar o teste grátis de julho/2026 — leva menos de 1 minuto:\n"
+        f"Falta só criar seu acesso para liberar o teste do seu primeiro mês — leva menos de 1 minuto:\n"
         f"www.folha10-simples.com.br/cadastro\n\n"
         f"Qualquer dúvida, pode responder esta mensagem que a gente te ajuda.\n"
         f"Equipe Folha10-Simples"
@@ -10337,11 +10337,14 @@ def manual_pdf():
                      download_name="Manual_do_Usuario_Folha10_Simples.pdf")
 
 
-@app.route("/lead_petshop", methods=["POST"])
-def lead_petshop():
-    """Recebe o formulário da landing: valida, dispara o WhatsApp de boas-vindas
-    (opt-in já dado no formulário) e grava o lead em tab_lead para o admin ver.
-    Rota PÚBLICA de propósito — o visitante do anúncio não tem login."""
+def _receber_lead(nicho, origem, msg_faltou):
+    """Miolo das landings: valida o formulário, grava o lead em tab_lead e
+    dispara o WhatsApp de boas-vindas (opt-in já dado no formulário).
+
+    De uma landing para outra só muda o nicho e a palavra que aparece na
+    mensagem de erro — por isso as rotas chamam esta função em vez de
+    repetir o mesmo código. Quem chama é rota PÚBLICA de propósito: o
+    visitante do anúncio não tem login."""
     data = request.get_json(silent=True) or request.form or {}
 
     nome     = (data.get("nome") or "").strip()
@@ -10351,7 +10354,7 @@ def lead_petshop():
     optin    = bool(data.get("optin"))
 
     if not nome or not empresa or len(whatsapp) < 10 or "@" not in email:
-        return jsonify({"ok": False, "msg": "Preencha nome, pet-shop, WhatsApp e e-mail válidos."}), 400
+        return jsonify({"ok": False, "msg": msg_faltou}), 400
     if not optin:
         return jsonify({"ok": False, "msg": "É preciso autorizar o contato para continuar."}), 400
 
@@ -10359,13 +10362,13 @@ def lead_petshop():
     agora = _agora_brasilia().isoformat(timespec="seconds")
 
     lead = {
-        "nicho": "petshop",
+        "nicho": nicho,
         "nome": nome,
         "empresa": empresa,
         "whatsapp": tel,
         "email": email,
         "optin": optin,
-        "origem": "landing_petshop",
+        "origem": origem,
         "status": "novo",
         "whatsapp_ok": False,
         "datahora": agora,
@@ -10380,16 +10383,16 @@ def lead_petshop():
         lead_id, erro_insert = _inserir_lead_rest(lead)
         if lead_id is not None:
             break
-        print(f"[LEAD/petshop] insert REST falhou (tentativa {tentativa}): {erro_insert}")
+        print(f"[LEAD/{nicho}] insert REST falhou (tentativa {tentativa}): {erro_insert}")
     if lead_id is None:
         # fallback: nunca perde o contato, mesmo que o Supabase esteja fora
         try:
             fb = os.path.join(os.path.dirname(__file__), "leads_fallback.csv")
             with open(fb, "a", encoding="utf-8") as f:
                 f.write(f"{agora}\t{nome}\t{empresa}\t{tel}\t{email}\n")
-            print(f"[LEAD/petshop] lead salvo no fallback CSV: {nome} | {tel}")
+            print(f"[LEAD/{nicho}] lead salvo no fallback CSV: {nome} | {tel}")
         except Exception as e:
-            print(f"[LEAD/petshop] ERRO ate no fallback: {e} | {nome}|{tel}|{email}")
+            print(f"[LEAD/{nicho}] ERRO ate no fallback: {e} | {nome}|{tel}|{email}")
 
     # 2) só então dispara o WhatsApp de boas-vindas (secundário) e marca o resultado
     zap_ok, zap_det = _enviar_whatsapp_texto(tel, _msg_boasvindas_lead(nome, empresa))
@@ -10400,6 +10403,34 @@ def lead_petshop():
         })
 
     return jsonify({"ok": True})
+
+
+@app.route("/lead_petshop", methods=["POST"])
+def lead_petshop():
+    return _receber_lead("petshop", "landing_petshop",
+                         "Preencha nome, pet-shop, WhatsApp e e-mail válidos.")
+
+
+@app.route("/site")
+def landing_empresas():
+    """Landing page pública para PEQUENAS EMPRESAS - o site do produto.
+
+    Mesmo desenho do /petshop: um HTML pronto e autossuficiente, servido
+    direto, sem template nem login. É o link para mandar no WhatsApp.
+
+    Está em /site, e não na raiz, porque a raiz é a tela de login: quem já é
+    cliente digita o domínio e espera entrar no sistema. No dia em que esta
+    página virar a porta de entrada, é aqui que a troca acontece (e o
+    noindex do cabeçalho do HTML sai junto)."""
+    caminho = os.path.join(os.path.dirname(__file__), "landing_empresas.html")
+    return send_file(caminho)
+
+
+@app.route("/lead_site", methods=["POST"])
+def lead_site():
+    return _receber_lead("pequenas", "landing_site",
+                         "Preencha nome, empresa, WhatsApp e e-mail válidos.")
+
 
 # =========================================================
 # CADASTRO - API PREVALIDAR

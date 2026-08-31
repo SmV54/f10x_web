@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Folha10-Simples · Folha de pagamento com eSocial para pequenas empresas</title>
+<meta name="description" content="Folha de pagamento, eSocial, férias, 13º e rescisão para pequenas empresas. Tudo no navegador, sem instalar nada. Processe o primeiro mês sem custo.">
+
+<!-- PROVISORIO: enquanto a pagina nao for aprovada, fica fora da busca.
+     Quando ela virar o site oficial, APAGUE a linha abaixo. -->
+<meta name="robots" content="noindex, nofollow">
+
+<link rel="icon" href="/static/favicon.ico">
+<link rel="apple-touch-icon" href="/static/favicon-180.png">
+
+<!-- previa do link quando o endereco for colado no WhatsApp -->
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:url" content="https://www.folha10-simples.com.br/site">
+<meta property="og:title" content="Folha10-Simples — a folha fecha no navegador, o eSocial vai junto">
+<meta property="og:description" content="Folha de pagamento com eSocial para pequenas empresas. Sem instalar nada. Processe o primeiro mês sem custo.">
+<meta property="og:image" content="https://www.folha10-simples.com.br/static/logo.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<style>
+
+  :root{
+    --ink:#101826; --text:#334155; --muted:#64748b; --faint:#94a3b8;
+    --line:#e6ebf2; --line-strong:#d3dbe6;
+    --bg:#ffffff; --surface:#ffffff; --surface-2:#f6f8fb; --surface-3:#eef2f8;
+    --blue:#2a7de1; --blue-ink:#1f63b8;
+    --coral:#f26b4e; --coral-ink:#d5502f; --coral-soft:#fff1ec;
+    --green:#16a34a; --green-soft:#e7f6ec;
+    --shadow: 0 1px 2px rgba(16,24,38,.04), 0 8px 28px -12px rgba(16,24,38,.16);
+    --shadow-lg: 0 30px 60px -28px rgba(16,24,38,.32);
+    --r: 16px; --r-sm: 11px;
+    --maxw: 1120px;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --ink:#f1f5f9; --text:#c3ccd9; --muted:#93a1b5; --faint:#6b7a91;
+      --line:#222f42; --line-strong:#2c3a50;
+      --bg:#0c1220; --surface:#111a2b; --surface-2:#0f1728; --surface-3:#16223a;
+      --blue:#549bf0; --blue-ink:#7db4f4;
+      --coral:#fb8563; --coral-ink:#fda183; --coral-soft:#241612;
+      --green:#3ec77e; --green-soft:#12241a;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 34px -14px rgba(0,0,0,.6);
+      --shadow-lg: 0 34px 70px -30px rgba(0,0,0,.75);
+    }
+  }
+  :root[data-theme="light"]{
+    --ink:#101826; --text:#334155; --muted:#64748b; --faint:#94a3b8;
+    --line:#e6ebf2; --line-strong:#d3dbe6;
+    --bg:#ffffff; --surface:#ffffff; --surface-2:#f6f8fb; --surface-3:#eef2f8;
+    --blue:#2a7de1; --blue-ink:#1f63b8;
+    --coral:#f26b4e; --coral-ink:#d5502f; --coral-soft:#fff1ec;
+    --green:#16a34a; --green-soft:#e7f6ec;
+  }
+  :root[data-theme="dark"]{
+    --ink:#f1f5f9; --text:#c3ccd9; --muted:#93a1b5; --faint:#6b7a91;
+    --line:#222f42; --line-strong:#2c3a50;
+    --bg:#0c1220; --surface:#111a2b; --surface-2:#0f1728; --surface-3:#16223a;
+    --blue:#549bf0; --blue-ink:#7db4f4;
+    --coral:#fb8563; --coral-ink:#fda183; --coral-soft:#241612;
+    --green:#3ec77e; --green-soft:#12241a;
+  }
+
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:var(--sans); font-size:17px; line-height:1.6;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  }
+  img{max-width:100%}
+  a{color:var(--blue); text-decoration:none}
+  h1,h2,h3{color:var(--ink); margin:0; line-height:1.1; letter-spacing:-.02em; text-wrap:balance}
+  p{margin:0}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .eyebrow{
+    font-size:14.5px; font-weight:700; letter-spacing:0;
+    color:var(--coral-ink); display:inline-flex; align-items:center; gap:8px;
+  }
+
+  /* ---------- top bar ---------- */
+  header.bar{
+    position:sticky; top:0; z-index:50;
+    background:color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter:saturate(150%) blur(10px);
+    border-bottom:1px solid var(--line);
+  }
+  .bar-inner{display:flex; align-items:center; justify-content:space-between; height:64px}
+  /* A marca e a mesma imagem do sistema (/static/logo.png), na mesma altura
+     que o menu principal usa. No escuro o traco preto do desenho sumiria, por
+     isso ali ela ganha um leve clareamento. */
+  .brand{display:flex; align-items:center; gap:10px}
+  .brand img{height:34px; width:auto; display:block}
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]) .brand img{filter:invert(1) hue-rotate(180deg) brightness(1.08)}
+  }
+  :root[data-theme="dark"] .brand img{filter:invert(1) hue-rotate(180deg) brightness(1.08)}
+  .bar .cta-mini{display:none}
+
+  /* ---------- buttons ---------- */
+  .btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:9px;
+    font-family:inherit; font-size:16px; font-weight:700; letter-spacing:-.01em;
+    padding:14px 22px; border-radius:12px; border:1px solid transparent; cursor:pointer;
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease; white-space:nowrap;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--coral); color:#fff; box-shadow:0 10px 24px -12px var(--coral)}
+  .btn-primary:hover{background:var(--coral-ink)}
+  .btn-ghost{background:transparent; color:var(--ink); border-color:var(--line-strong)}
+  .btn-ghost:hover{border-color:var(--blue); color:var(--blue)}
+  .btn-lg{padding:17px 30px; font-size:17.5px}
+
+  /* ---------- hero ---------- */
+  .hero{position:relative; overflow:hidden}
+  .hero::before{
+    content:""; position:absolute; inset:0; z-index:-1;
+    background:
+      radial-gradient(60% 55% at 88% 8%, color-mix(in srgb, var(--coral) 15%, transparent), transparent 70%),
+      radial-gradient(55% 50% at 6% 92%, color-mix(in srgb, var(--blue) 13%, transparent), transparent 72%);
+  }
+  .hero-texto{padding:0 24px 64px}
+  /* A frase tem ~50 caracteres. Para caber numa linha so ela precisa da
+     largura inteira do miolo, e o tamanho segue a largura da janela: acima
+     de 1120 px a fonte para de crescer porque o texto ja encostou na borda. */
+  .hero-titulo{
+    font-size:clamp(21px, 3.5vw, 40px); font-weight:850; letter-spacing:-.02em;
+    line-height:1.15; padding-top:60px; margin-bottom:20px; text-wrap:pretty;
+  }
+  .hero h1 .accent{color:var(--coral)}
+  /* Sem o contracheque ao lado, o texto tem a largura inteira do miolo e a
+     frase cabe numa linha so. Nada de max-width aqui: qualquer limite que
+     eu inventasse voltaria a quebrar a linha antes da hora. */
+  /* A frase encolheu para dividir a linha com o botao: os dois somam ~880px
+     e o miolo tem 1072px. Em tela estreita o flex-wrap joga o botao para
+     baixo sozinho, em vez de espremer o texto. */
+  .hero .lead{font-size:clamp(15px,1.35vw,17.5px); color:var(--text)}
+  .hero-linha{display:flex; align-items:center; gap:22px; flex-wrap:wrap; margin-top:4px}
+  .hero-linha .btn{flex:none}
+  .hero-cta{display:flex; flex-wrap:wrap; gap:14px; margin:26px 0 18px}
+  /* A nota de rodape do botao: e o (*) que ele carrega. Sem visto verde -
+     o asterisco ja e a amarracao, e o verde aqui prometeria confirmacao. */
+  .nota{color:var(--muted); font-size:14.5px; text-wrap:balance}
+  .ast{font-weight:800; opacity:.85}
+
+  /* ---------- generic section ---------- */
+  section{padding:76px 0}
+  /* Sem limite de largura: qualquer medida que eu fixasse aqui quebraria um
+     dos titulos em duas linhas. O miolo da pagina (1120px) ja e o teto - o
+     maior titulo, com 45 caracteres a 38px, ocupa ~855px e sobra folga. */
+  .sec-head{margin-bottom:44px}
+  .sec-head h2{font-size:clamp(26px,3.4vw,38px); font-weight:800; margin:14px 0 12px}
+  .sec-head p{font-size:18px; color:var(--muted)}
+  .band-soft{background:var(--surface-2); border-top:1px solid var(--line); border-bottom:1px solid var(--line)}
+
+  /* steps */
+  /* Os cinco passos sao LINHAS, nao colunas. Em coluna cada um teria uns
+     200px de largura: "Afastamentos, Ferias, Horas Extras, etc." quebraria
+     em tres pedacos. Em linha sobram ~840px para o texto e cada frase cabe
+     inteira - que e o ponto de uma lista de passos. */
+  .steps{display:flex; flex-direction:column; counter-reset:step; border-top:1px solid var(--line)}
+  .step{
+    display:grid; grid-template-columns:44px 150px 1fr; gap:20px;
+    align-items:center; padding:16px 0; border-bottom:1px solid var(--line);
+  }
+  .step .num{
+    counter-increment:step; font-variant-numeric:tabular-nums;
+    width:44px; height:44px; border-radius:12px; display:grid; place-items:center;
+    font-weight:850; font-size:19px; color:#fff; background:linear-gradient(135deg,var(--blue),var(--blue-ink));
+    box-shadow:var(--shadow);
+  }
+  .step .num::before{content:counter(step)}
+  .step h3{font-size:18px; font-weight:800}
+  .step p{color:var(--muted); font-size:15.5px}
+  /* p{margin:0} vale para a pagina inteira: quando um passo tem duas linhas,
+     a segunda precisa deste respiro para nao encostar na primeira. */
+  .step p + p{margin-top:4px}
+
+  /* feature list */
+  /* Mesmo desenho dos cinco passos: uma linha por item, separadas por
+     filete. Em tres colunas, frases como a do 13o salario quebravam em
+     quatro pedacos. */
+  .feats{display:flex; flex-direction:column; border-top:1px solid var(--line)}
+  .feat{
+    display:grid; grid-template-columns:26px 1fr; gap:16px; align-items:start;
+    padding:15px 0; border-bottom:1px solid var(--line);
+  }
+  .feat .ck{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--green-soft);color:var(--green); margin-top:1px}
+  .feat .ck svg{width:15px;height:15px;fill:currentColor}
+  .feat b{color:var(--ink); font-weight:700; display:block; font-size:16px}
+  .feat p{color:var(--muted); font-size:15.5px}
+  .feat b + p{margin-top:3px}
+  .feat p + p{margin-top:4px}
+
+  /* footer */
+  footer{border-top:1px solid var(--line); padding:44px 0; background:var(--surface-2)}
+  .foot{display:flex; align-items:center; justify-content:space-between; gap:20px; flex-wrap:wrap}
+  .foot .brand img{height:30px}
+  .foot .links{display:flex; gap:22px; flex-wrap:wrap; color:var(--muted); font-size:14px}
+  /* Era ".foot .fine", mas o <p class="fine"> e IRMAO do .foot, nao filho:
+     a regra nunca pegava e o texto do rodape saia com 17px, do tamanho do
+     corpo da pagina. Herdado da landing do pet-shop, que tem o mesmo erro. */
+  footer .fine{color:var(--faint); font-size:13px; margin-top:14px}
+  footer .fine + .fine{margin-top:6px}
+  .zap-link{display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-weight:700}
+  .zap-link svg{width:17px; height:17px; fill:var(--green); flex:none}
+  .zap-link:hover{color:var(--green)}
+
+  /* reveal */
+  .reveal{opacity:0; transform:translateY(16px); transition:opacity .6s ease, transform .6s ease}
+  .reveal.in{opacity:1; transform:none}
+  @media (prefers-reduced-motion: reduce){
+    html{scroll-behavior:auto}
+    .reveal{opacity:1; transform:none; transition:none}
+  }
+
+  @media (max-width: 900px){
+    .bar .cta-mini{display:inline-flex}
+  }
+  @media (max-width: 560px){
+    body{font-size:16px}
+    .wrap{padding:0 18px}
+    .hero-cta .btn{flex:1}
+  }
+
+  /* ================= ajustes desta pagina (pequenas empresas) ================= */
+
+  /* No celular o numero fica na primeira coluna e o texto desce para baixo
+     do titulo, em vez de espremer as tres colunas. */
+  @media (max-width: 760px){
+    .step{grid-template-columns:44px 1fr; row-gap:4px; align-items:start}
+    .step-txt{grid-column:2}
+  }
+
+  /* barra do topo com dois botoes */
+  /* A barra ja era grudada no topo (position:sticky la em cima), entao a
+     frase acompanha a rolagem junto com a logo. Some antes de espremer os
+     botoes: em tela estreita quem manda e o "Testar gratis". */
+  .bar-brand{display:flex; align-items:center; gap:14px; min-width:0}
+  .bar-tagline{
+    color:var(--muted); font-size:14px; font-weight:600; white-space:nowrap;
+    padding-left:14px; border-left:1px solid var(--line-strong);
+  }
+  @media (max-width: 1040px){ .bar-tagline{display:none} }
+
+  /* "Ja sou Cliente" e botao, nao texto solto: ao lado de um botao cheio,
+     um link simples encostava nele e parecia legenda, nao escolha. */
+  .bar-actions{display:flex; align-items:center; gap:16px}
+  .bar-actions .btn{padding:10px 18px; font-size:15px}
+
+  /* Azul lavado, o azul do circulo da logomarca. Nao pode ser verde: nesta
+     pagina verde e o visto de confirmado, o WhatsApp e a tela de sucesso.
+     E nao pode ser coral: o coral e do "Testar gratis", que precisa ganhar.
+     A mistura com transparente vale nos dois temas - no escuro o --blue ja
+     e mais claro, entao a mesma regra continua legivel. */
+  .btn-cliente{
+    background:color-mix(in srgb, var(--blue) 13%, transparent);
+    color:var(--blue-ink);
+    border-color:color-mix(in srgb, var(--blue) 34%, transparent);
+  }
+  .btn-cliente:hover{
+    background:color-mix(in srgb, var(--blue) 22%, transparent);
+    border-color:var(--blue);
+  }
+
+  /* quem faz o sistema */
+  .autor{
+    display:grid; grid-template-columns:auto 1fr; gap:22px; align-items:center;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--r);
+    padding:30px; box-shadow:var(--shadow);
+  }
+  .autor .sel{
+    width:64px; height:64px; border-radius:16px; flex:none; display:grid; place-items:center;
+    background:linear-gradient(135deg,var(--blue),var(--blue-ink)); color:#fff; box-shadow:var(--shadow);
+  }
+  .autor .sel svg{width:32px; height:32px; fill:#fff}
+  .autor h3{font-size:18px; font-weight:800; margin-bottom:6px}
+  .autor p{color:var(--muted); font-size:15.5px}
+  /* A primeira frase tem 108 caracteres e a coluna de texto tem ~926px:
+     cabe numa linha so, desde que ela seja um paragrafo separado. */
+  .autor p + p{margin-top:9px}
+
+  /* botao do whatsapp */
+
+  @media (max-width: 900px){
+  }
+  @media (max-width: 560px){
+    .link-entrar{display:none}
+    .steps{grid-template-columns:1fr}
+    .autor{grid-template-columns:1fr; text-align:center; justify-items:center}
+  }
+
+  /* ---------- a tela de verdade, numa moldura de navegador ----------
+     A imagem foi tirada com 1440 px de largura: encolhida para caber num
+     celular, os nomes dos modulos ficariam ilegiveis. Por isso ela tem
+     largura minima e o corpo da janela rola de lado quando a tela e
+     estreita - o dedo arrasta, em vez de espremer. */
+  .tela{padding-top:0; padding-bottom:66px}
+  .tela-head{max-width:none; text-align:center; margin-bottom:30px}
+  .tela-head h2{font-size:clamp(19px,2.2vw,26px); font-weight:800}
+  /* A seta aponta para a janela logo abaixo. Acompanha o tamanho da letra
+     (em, nao px) para nao virar um icone gigante quando o titulo encolhe. */
+  .seta{width:.9em; height:.9em; fill:var(--coral); vertical-align:-.1em; margin-left:.2em}
+  .janela{
+    border:1px solid var(--line-strong); border-radius:14px; overflow:hidden;
+    background:var(--surface); box-shadow:var(--shadow-lg);
+  }
+  .janela-topo{
+    display:flex; align-items:center; gap:7px; padding:11px 14px;
+    background:var(--surface-3); border-bottom:1px solid var(--line);
+  }
+  .janela-topo span{width:11px; height:11px; border-radius:50%; background:var(--line-strong); flex:none}
+  .janela-topo em{
+    font-style:normal; margin-left:10px; font-size:12.5px; color:var(--muted);
+    font-family:ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .janela-corpo{overflow-x:auto}
+  /* height:auto e obrigatorio: a imagem carrega width/height no HTML (para o
+     navegador reservar o espaco antes de baixar), e sem esta linha ele estica
+     a largura mantendo a altura de 241px - a foto sai achatada. */
+  .janela-corpo img{display:block; width:100%; height:auto; min-width:820px}
+  .legenda{margin-top:16px; text-align:center; color:var(--muted); font-size:14.5px}
+  .legenda b{color:var(--ink); font-weight:700}
+</style>
+</head>
+
+<body>
+
+<!-- svg defs: simbolos reaproveitados na pagina inteira -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="doc" viewBox="0 0 24 24">
+    <path d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm8 1.5V8h4.5L14 3.5zM8 12h8v1.8H8V12zm0 3.6h8v1.8H8v-1.8zM8 8.4h3.5v1.8H8V8.4z"/>
+  </symbol>
+  <symbol id="ck" viewBox="0 0 24 24">
+    <path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/>
+  </symbol>
+  <symbol id="zap" viewBox="0 0 24 24">
+    <path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2zm0 1.9a8.1 8.1 0 1 1-4.2 15l-.3-.2-3 .8.8-2.9-.2-.3A8.1 8.1 0 0 1 12 3.9zm-3.3 4c-.2 0-.5.1-.7.4-.2.3-.9.9-.9 2.1s.9 2.4 1 2.6c.1.2 1.7 2.8 4.3 3.8 2.1.8 2.6.7 3 .6.6-.1 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.1-.3-.2-.6-.3-.3-.2-1.7-.9-2-1-.2-.1-.4-.1-.6.1-.2.3-.7.9-.8 1.1-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.2-.6-1.6-.8-2.1-.2-.5-.4-.5-.6-.5h-.5z"/>
+  </symbol>
+  <symbol id="seta" viewBox="0 0 24 24">
+    <path d="M11 3h2v12.2l4.6-4.6L19 12l-7 7-7-7 1.4-1.4L11 15.2z"/>
+  </symbol>
+</svg>
+
+<header class="bar">
+  <div class="wrap bar-inner">
+    <div class="bar-brand">
+      <div class="brand">
+        <img src="/static/logo.png" alt="Folha10-Simples - Sistema de Folha de Pagamento">
+      </div>
+      <span class="bar-tagline">Folha de pagamento com eSocial para pequenas empresas</span>
+    </div>
+    <div class="bar-actions">
+      <a href="/login" class="btn btn-cliente link-entrar">Já sou Cliente</a>
+      <a href="/cadastro" class="btn btn-primary">Testar grátis</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- HERO -->
+  <section class="hero" style="padding-top:0">
+    <div class="wrap hero-texto">
+      <h1 class="hero-titulo">Folha de Pagamento Completa focada em <span class="accent">Simplicidade</span></h1>
+      <div class="hero-linha">
+        <p class="lead">Do cadastro do funcionário ao recibo do eSocial numa sequência simples e rápida.</p>
+        <a href="#como" class="btn btn-ghost">Ver como funciona</a>
+      </div>
+      <div class="hero-cta">
+        <a href="/cadastro" class="btn btn-primary btn-lg">Processar 1º Mês <span class="ast">(*)</span></a>
+      </div>
+      <p class="nota">(*) Sem instalar nada, sem custo nem compromisso e com Suporte.</p>
+    </div>
+  </section>
+
+  <!-- A TELA DE VERDADE -->
+  <section class="tela">
+    <div class="wrap">
+      <div class="sec-head tela-head reveal">
+        <h2>Este é o Menu Principal — Resolva tudo aqui <svg class="seta" viewBox="0 0 24 24"><use href="#seta"/></svg></h2>
+      </div>
+
+      <div class="janela reveal">
+        <div class="janela-topo">
+          <span></span><span></span><span></span>
+          <em>folha10-simples.com.br/menu</em>
+        </div>
+        <div class="janela-corpo">
+          <img src="/static/demo/_menu.jpg" width="1440" height="241" loading="lazy"
+               alt="Menu principal do Folha10-Simples: os dez módulos do sistema e a competência aberta no alto da tela.">
+        </div>
+      </div>
+      <p class="legenda">A tela que abre depois do login: <b>dez módulos, um menu só</b> — e a competência em que você está trabalhando sempre à vista.</p>
+    </div>
+  </section>
+
+  <!-- COMO FUNCIONA -->
+  <section id="como">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Como funciona</span>
+        <h2>Apenas 5 passos mensais</h2>
+        <p>Não muda de um mês para o outro. Quem aprendeu uma vez, fecha a folha sozinho.</p>
+      </div>
+      <div class="steps">
+        <div class="step reveal">
+          <div class="num"></div><h3>Cadastrar</h3>
+          <div class="step-txt"><p>Novos Funcionários.</p></div>
+        </div>
+        <div class="step reveal">
+          <div class="num"></div><h3>Lançar</h3>
+          <div class="step-txt">
+            <p>Afastamentos, Férias, Horas Extras, etc.</p>
+            <p>O que se repete fica automático.</p>
+          </div>
+        </div>
+        <div class="step reveal">
+          <div class="num"></div><h3>Calcular</h3>
+          <div class="step-txt"><p>INSS, IRRF, FGTS e reflexos, com as tabelas legais pré-gravadas (Erro=Zero).</p></div>
+        </div>
+        <div class="step reveal">
+          <div class="num"></div><h3>Conferir</h3>
+          <div class="step-txt"><p>Folha, Resumo e Contracheques na Tela. Se ok tem opção de gerar em PDF.</p></div>
+        </div>
+        <div class="step reveal">
+          <div class="num"></div><h3>Enviar</h3>
+          <div class="step-txt"><p>A remessa para o eSocial é muito simples. Envia e recebe a resposta.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- O QUE VEM JUNTO -->
+  <section class="band-soft">
+    <div class="wrap">
+      <div class="sec-head reveal">
+        <span class="eyebrow">Tudo incluído</span>
+        <h2>Uma folha completa — não uma versão reduzida.</h2>
+      </div>
+      <div class="feats">
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><use href="#ck"/></svg></span><div><b>Multiempresa</b><p>Pode processar até 9999 empresas por cada cliente.</p></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><use href="#ck"/></svg></span><div><b>eSocial nativo</b><p>O evento nasce na folha e entra na fila sozinho. Recebe e guarda o recibo.</p><p>Compara o que foi remetido para o eSocial com a sua Folha.</p></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><use href="#ck"/></svg></span><div><b>Eventuais</b><p>Cálculo e emissão de Férias, Rescisão, Adiantamento Quinzenal e 13º Salário.</p></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><use href="#ck"/></svg></span><div><b>Gerador de relatórios</b><p>Você monta o seu, salva o modelo e roda igual todo mês.</p></div></div>
+        <div class="feat reveal"><span class="ck"><svg viewBox="0 0 24 24"><use href="#ck"/></svg></span><div><b>Atualização contínua</b><p>Você acorda com a versão nova sem instalar nada.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- NUMEROS + AUTOR -->
+  <section>
+    <div class="wrap">
+      <div class="autor reveal">
+        <span class="sel"><svg viewBox="0 0 24 24"><use href="#doc"/></svg></span>
+        <div>
+          <h3>Produzido com a Tecnologia mais recente</h3>
+          <p>O Folha10-Simples é a versão web, totalmente nova, do consagrado Folha10 Desktop usado por milhares de empresas.</p><p>Desenvolvido após o eSocial. Sem informações desnecessárias nem tabelas do tipo “de-para”.</p><p>Produzido por quem trabalha apenas com Folha de Pagamento há mais de 20 anos. Especialização e Foco Total.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CADASTRO -->
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="brand">
+        <img src="/static/logo.png" alt="Folha10-Simples - Sistema de Folha de Pagamento">
+      </div>
+      <div class="links">
+        <a href="https://www.folha10-simples.com.br">folha10-simples.com.br</a>
+        <a href="#como">Como funciona</a>
+        <a href="/apresentacao?voltar=/site">Apresentação de 90s</a>
+        <a href="/login">Entrar no sistema</a>
+      </div>
+    </div>
+    <p class="fine">© 2026 Folha10-Simples · Folha de pagamento com eSocial na web para pequenas empresas.</p>
+    <p class="fine">Produzido por Comsist Computação e Sistemas Ltda, CNPJ 08.777.252/0001-33</p>
+    <p class="fine">
+      <a class="zap-link" href="https://wa.me/5581988182000?text=Ol%C3%A1%21%20Preciso%20de%20suporte%20do%20Folha10-Simples." target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24"><use href="#zap"/></svg> Suporte: 81-9-8818-2000
+      </a>
+    </p>
+  </div>
+</footer>
+
+<script>
+  // Scroll reveal (respeita prefers-reduced-motion via CSS)
+  (function(){
+    var els = document.querySelectorAll('.reveal');
+    if(!('IntersectionObserver' in window)){ els.forEach(function(e){e.classList.add('in')}); return; }
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, {threshold:.12, rootMargin:'0px 0px -40px 0px'});
+    els.forEach(function(e){ io.observe(e); });
+  })();
+
+</script>
+
+</body>
+</html>
