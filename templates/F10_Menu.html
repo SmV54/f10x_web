@@ -307,6 +307,14 @@ body.menu-numerado .nav-item::before {
 .card-ajuda-badge:hover { background: #16a34a; border-color: #16a34a; color: #fff; opacity: 1; }
 /* Cards de largura uniforme (usado na seção Rescisão) — alinha em grade */
 .nav-item.nav-fix { min-width: 232px; justify-content: flex-start; }
+/* Igual ao nav-fix, mas com o nome quebrando em duas linhas DENTRO da mesma
+   largura, para o nome comprido nao esticar o card e desalinhar a grade.
+   Quebra sozinho (white-space normal) em vez de <br> no nome: o nome tambem
+   vai para mensagens de texto puro, onde a tag apareceria escrita. */
+.nav-item.nav-fix2l {
+    min-width: 232px; max-width: 232px; justify-content: flex-start;
+    white-space: normal; line-height: 1.25;
+}
 
 /* ── CARD TROCAR EMPRESA ── */
 .card-trocar-emp {
@@ -655,6 +663,11 @@ const modulos = {
                 { icone: '📄', nome: 'Listagem de Aviso Prévio', href: '/lista_aviso_previo',                              ok: true, classe: 'nav-fix' },
                 // ── Linha 2: ASSUNTO Rescisão (sem o Cancelar) ──
                 { icone: '✍️', nome: 'Registrar Rescisão',     href: '/select_funcionario?contexto=rescisao',              ok: true, classe: 'nav-fix', quebraLinha: true },
+                // Planilha do empréstimo consignado DA RESCISÃO (a que traz o
+                // percentual da garantia): entra direto no movimento da rescisão,
+                // verbas 700+. Só serve para quem já tem a rescisão registrada -
+                // a própria tela lista esses e trava o resto.
+                { icone: '💳', nome: 'Importar Empréstimo Consignado para Rescisão', href: '/emprestimo_rescisao', ok: true, classe: 'nav-fix2l' },
                 { icone: '📝', nome: 'Movimento Mês Rescisão', href: '/cad_mov_rescisao', ok: true, classe: 'nav-fix' },
                 { icone: '🖩', nome: 'Calcular Rescisão',      href: '/calc_rescisao', ok: true, classe: 'nav-fix' },
                 { icone: '📋', nome: 'TRCT - Emissão Rescisão', href: '/calc_rescisao?modo=trct', ok: true, classe: 'nav-fix' },

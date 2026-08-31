@@ -8471,6 +8471,39 @@ def _dparse(s):
     return None
 
 
+def _resc_desligados_mes(id_empresa, id_cliente, anomes):
+    """Funcionários com a rescisão REGISTRADA no mês da folha ativa.
+
+    Registrada = situacao 'D' com datarescisao dentro do anomes. É esta a lista
+    que abre o assunto rescisão: a tela do cálculo, a do TRCT e a da importação
+    do empréstimo. O 'calculado' diz se a rescisão já foi calculada (tem linha
+    no tab_total do tipo R) — quem depende da base do cálculo olha essa marca.
+    """
+    if len(str(anomes or "")) != 6:
+        return []
+    funcs = []
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, situacao, datarescisao, motrescisao")
+             .eq("id_empresa", id_empresa).eq("situacao", "D").order("matricula").execute())
+        calc_set = _rescisao_calculada_mats(id_empresa, id_cliente, int(anomes))
+        for f in (r.data or []):
+            dr = str(f.get("datarescisao") or "")
+            if dr[:6] != anomes:
+                continue
+            m = int(f.get("matricula") or 0)
+            funcs.append({
+                "matricula": m, "mat_fmt": f"{m:06d}",
+                "nome": (f.get("nome") or f.get("nomer") or "").strip(),
+                "resc_data": f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 else "—",
+                "motivo": str(f.get("motrescisao") or ""),
+                "calculado": m in calc_set,
+            })
+    except Exception:
+        return []
+    return funcs
+
+
 @app.route("/calc_rescisao")
 def calc_rescisao():
     """Tela do cálculo da rescisão — lista os desligados do mês da folha ativa."""
@@ -8480,29 +8513,7 @@ def calc_rescisao():
     id_cliente = session.get("id_cliente")
     anomes     = str(session.get("anomes_atual") or "")
     def_ini, def_fim = _mes_atual_intervalo() if len(anomes) != 6 else (None, None)
-    # desligados com datarescisao no mês da folha ativa
-    funcs = []
-    if len(anomes) == 6:
-        try:
-            r = (supabase.table("tab_cad")
-                 .select("matricula, nome, nomer, situacao, datarescisao, motrescisao")
-                 .eq("id_empresa", id_empresa).eq("situacao", "D").order("matricula").execute())
-            # matrículas já calculadas (tab_total R) = "Calculada"; senão "Pendente"
-            calc_set = _rescisao_calculada_mats(id_empresa, id_cliente, int(anomes))
-            for f in (r.data or []):
-                dr = str(f.get("datarescisao") or "")
-                if dr[:6] != anomes:
-                    continue
-                m = int(f.get("matricula") or 0)
-                funcs.append({
-                    "matricula": m, "mat_fmt": f"{m:06d}",
-                    "nome": (f.get("nome") or f.get("nomer") or "").strip(),
-                    "resc_data": f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 else "—",
-                    "motivo": str(f.get("motrescisao") or ""),
-                    "calculado": m in calc_set,
-                })
-        except Exception:
-            funcs = []
+    funcs = _resc_desligados_mes(id_empresa, id_cliente, anomes)
     folha_situacao = _refresh_situacao_folha() if len(anomes) == 6 else ""
     modo = request.args.get("modo")
     # ?auto=<matricula> vem da tela "Rescisão Registrada": já calcula aquele
@@ -8606,21 +8617,34 @@ def api_calc_rescisao_calcular():
     # Verbas manuais (origem='M') da rescisão do mês, por matrícula. Não são
     # apagadas pelo recálculo; aqui entram nas bases (INSS/IRRF/FGTS) e totais.
     manual_mov = {}
-    try:
-        q_man = (supabase.table("tab_mov")
-                 .select("id, matricula, cod_verba, valor, qtd")
-                 .eq("id_empresa", id_empresa)
-                 .eq("folha",      folha_int)
-                 .eq("folha_tipo", "R")
-                 .eq("origem",     "M")
-                 .eq("situacao",   "A"))
+
+    def _ler_manuais(campos):
+        q = (supabase.table("tab_mov")
+             .select(campos)
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      folha_int)
+             .eq("folha_tipo", "R")
+             .eq("origem",     "M")
+             .eq("situacao",   "A"))
         if id_cliente:
-            q_man = q_man.eq("id_cliente", id_cliente)
-        for row in (q_man.execute().data or []):
-            m = int(row.get("matricula") or 0)
-            manual_mov.setdefault(m, []).append(row)
-    except Exception:
-        pass
+            q = q.eq("id_cliente", id_cliente)
+        return q.execute().data or []
+
+    try:
+        _linhas_man = _ler_manuais("id, matricula, cod_verba, valor, qtd, consig_garantia")
+    except Exception as e_man:
+        # Banco ainda sem a coluna consig_garantia (ver
+        # _criar_col_consig_garantia.sql): lê sem ela, em vez de deixar a
+        # rescisão inteira sem NENHUMA verba manual — o desconto do empréstimo
+        # não é apurado, mas salário, pensão e o resto continuam entrando.
+        print(f"[calc_rescisao] manuais sem consig_garantia: {str(e_man)[:120]}")
+        try:
+            _linhas_man = _ler_manuais("id, matricula, cod_verba, valor, qtd")
+        except Exception as e_man2:
+            print(f"[calc_rescisao] erro ao ler as verbas manuais: {str(e_man2)[:120]}")
+            _linhas_man = []
+    for row in _linhas_man:
+        manual_mov.setdefault(int(row.get("matricula") or 0), []).append(row)
 
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
 
@@ -8935,10 +8959,25 @@ def api_calc_rescisao_calcular():
         sal_dia_man = (sal_mes / _dias_folha_man) if _dias_folha_man else 0.0
 
         man_prov = man_desc = add_inss = add_irrf = add_fgts = 0
+        # Descontos que saem da base do empréstimo consignado (as pensões; os
+        # impostos são calculados aqui e entram mais abaixo).
+        pens_desc = 0
+        # Empréstimos importados antes do cálculo — resolvidos depois do laço.
+        consig_pend = []
         manuais_det = []
         for row in manual_mov.get(mat, []):
             cod_m = int(row.get("cod_verba") or 0)
             qtd_m = int(row.get("qtd") or 0)
+            # Empréstimo consignado da rescisão (700-749) importado ANTES do
+            # cálculo: veio com a garantia (percentual e saldo devedor) e sem
+            # valor. O desconto é uma fatia das verbas rescisórias, que só
+            # fecham lá embaixo — a linha espera ali.
+            # Sem `consig_garantia` é empréstimo lançado com o valor já pronto
+            # (ou verba digitada à mão): segue pelo caminho normal.
+            if _eh_verba_consignado(cod_m) and \
+                    _consig_resc_le_garantia(row.get("consig_garantia"))[0] > 0:
+                consig_pend.append(row)
+                continue
             ri_m = _rubr_full.get(cod_m, {"tp": "1", "unid": "V", "icp": "", "iir": "", "ift": ""})
             unid_m = ri_m.get("unid", "V")
             # verba H/D: valor = qtd × salário-hora/dia (ignora valor gravado, que
@@ -8972,6 +9011,11 @@ def api_calc_rescisao_calcular():
                 if ri_m["ift"] in ("11", "S"):       add_fgts += val_m; incs.append("FGTS")
             else:                                     # desconto
                 man_desc += val_m
+                # CONSIG_RESC_REDUTORAS (definida com o importador) lista o que
+                # sai da base do consignado: dela, só as pensões podem ser
+                # manuais — INSS e IRRF são calculados logo abaixo.
+                if cod_m in CONSIG_RESC_REDUTORAS:
+                    pens_desc += val_m
             manuais_det.append({"cod": cod_m, "dsc": _rubr_desc.get(cod_m, f"Verba {cod_m:04d}"),
                                 "tp": "P" if eh_prov else "D", "val": val_m,
                                 "unid": unid_m, "qtd": qtd_m, "det": det_m,
@@ -9010,8 +9054,52 @@ def api_calc_rescisao_calcular():
         g_irrf_13    = 0 if _enc0 else irrf_13
         g_fgts_val   = 0 if _enc0 else fgts_val
 
+        # ── Empréstimo consignado importado antes do cálculo (700-749) ──
+        # A verba já está no movimento, como uma digitada, mas sem valor: o
+        # desconto é uma fatia das verbas rescisórias, e elas só existem agora.
+        # De cada contrato vêm o percentual da garantia e o saldo devedor, que é
+        # o teto — os dois no campo `consig_garantia` (ver _consig_resc_garantia).
+        # Base igual à do Folha10 Desktop: proventos menos INSS, INSS do 13º,
+        # IRRF e as pensões — o IRRF do 13º fica de fora de propósito, para os
+        # dois sistemas darem o mesmo valor.
+        # Recalcula a cada rodada: mexeu numa verba da rescisão, o desconto do
+        # empréstimo se ajusta sozinho no próximo cálculo.
         total_prov = (saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
                       + art479)
+
+        if consig_pend:
+            # Reaproveita o total_prov acima de propósito: provento novo na
+            # rescisão tem que entrar na base do empréstimo pelo mesmo caminho,
+            # sem ninguém precisar lembrar de mexer aqui também.
+            _base_700 = total_prov - (g_inss_saldo + g_inss_13 + g_irrf_saldo + pens_desc)
+            for row in consig_pend:
+                cod_m = int(row.get("cod_verba") or 0)
+                # _perc x100 (766 = 7,66%); _teto = saldo devedor em centavos
+                _perc, _teto = _consig_resc_le_garantia(row.get("consig_garantia"))
+                val_m = int(_base_700 * _perc / 10000 + 0.5) if _base_700 > 0 else 0
+                if val_m > _teto:
+                    val_m = _teto
+                if val_m < 0:
+                    val_m = 0
+                # Grava o valor apurado na própria verba: é por ele que a TRCT,
+                # a Visualização e o eSocial leem o desconto.
+                if val_m != int(row.get("valor") or 0) and row.get("id"):
+                    try:
+                        supabase.table("tab_mov").update({"valor": val_m}).eq("id", row["id"]).execute()
+                    except Exception:
+                        pass
+                if not val_m:
+                    continue
+                man_desc += val_m
+                _pc_txt = f"{_perc / 100:.2f}".replace(".", ",")
+                manuais_det.append({
+                    "cod": cod_m, "dsc": _rubr_desc.get(cod_m, f"Verba {cod_m:04d}"),
+                    "tp": "D", "val": val_m, "unid": "V", "qtd": 0,
+                    "det": (f"{_pc_txt}% de {_fmt_brl(_base_700)}"
+                            + (f"  (limitado ao saldo devedor {_fmt_brl(_teto)})"
+                               if _teto and val_m == _teto else "")),
+                    "inc": "—"})
+
         # A verba 60 não tem incidência de INSS/IRRF/FGTS (tab_rubrica: R=N/N/N/N),
         # por isso entra só no total de descontos, depois das bases já fechadas.
         total_desc = (g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
@@ -20680,18 +20768,58 @@ def api_consignado_pdf():
 # A verba entra com origem='M' de propósito: o recálculo da rescisão só apaga
 # as calculadas (origem='C'), então o desconto sobrevive ao recálculo e entra
 # nos totais como verba manual. Mesma conta do Folha10 Desktop.
+#
+# IMPORTAR ANTES DE CALCULAR: a importação não espera a rescisão estar
+# calculada. Ela lança a verba 700 no movimento como se fosse digitada e guarda
+# o percentual da garantia e o saldo devedor em `consig_garantia`. Quem
+# fecha o valor é o cálculo da rescisão (ver "Empréstimo consignado importado
+# antes do cálculo", em api_calc_rescisao_calcular): o desconto é uma fatia das
+# verbas rescisórias, que só existem depois do cálculo. Como o cálculo refaz a
+# conta a cada rodada, mexer numa verba da rescisão ajusta o empréstimo sozinho.
+# Importando com a rescisão já calculada, a prévia mostra o valor pronto — mas
+# quem manda continua sendo o cálculo.
 # =========================================================
 # Descontos que saem da base. Lista igual à do Desktop — o IRRF do 13º (122)
 # não entra, e isso é de propósito, para os dois sistemas darem o mesmo valor.
 CONSIG_RESC_REDUTORAS = (VR_INSS, VR_INSS_13, VR_IRRF, 281, 282, 283)
 
 
-def _consig_resc_base(id_cliente, id_empresa, folha_int, mat):
-    """Base do desconto das verbas 700 na rescisão.
+def _consig_resc_garantia(perc_x100, saldo_cent):
+    """Empacota a garantia do contrato no campo `consig_garantia` do tab_mov.
 
-    base = total dos proventos da rescisão JÁ CALCULADA − INSS − INSS 13º
-           − IRRF − as três pensões alimentícias.
-    Retorna (base, total_prov, reducoes, erro_msg) — tudo em centavos.
+    São os dois números que a importação entrega ao cálculo da rescisão. Campo
+    char, no mesmo estilo do esocial_recibo do Folha10 Desktop — só dígitos,
+    zeros à esquerda:
+
+         1 - 6   percentual da garantia x100    000766 = 7,66%
+         7 - 20  saldo devedor em centavos      00000000123456
+
+    Usado SÓ no movimento da rescisão (folha_tipo 'R'). Na importação mensal
+    fica nulo: lá não existe garantia, o valor da parcela vem pronto.
+    """
+    return f"{max(0, int(perc_x100)):06d}{max(0, int(saldo_cent)):014d}"
+
+
+def _consig_resc_le_garantia(valor):
+    """Desempacota `consig_garantia` → (percentual x100, saldo em centavos).
+
+    (0, 0) quando o campo está vazio ou curto — verba que não veio desta
+    importação, e que por isso o cálculo não recalcula.
+    """
+    s = "".join(ch for ch in str(valor or "") if ch.isdigit())
+    if len(s) < 20:
+        return 0, 0
+    return int(s[0:6]), int(s[6:20])
+
+
+def _consig_resc_base(id_cliente, id_empresa, folha_int, mat):
+    """Base do desconto das verbas 700 na rescisão, quando ela já foi calculada.
+
+    base = total dos proventos da rescisão − INSS − INSS 13º − IRRF − as três
+           pensões alimentícias.
+    Retorna (calculada, base, total_prov, reducoes, erro_msg) — em centavos.
+    Rescisão ainda não calculada não é erro: volta calculada=False e a
+    importação segue, deixando o valor para o cálculo apurar.
     """
     try:
         q = (supabase.table("tab_total")
@@ -20702,10 +20830,9 @@ def _consig_resc_base(id_cliente, id_empresa, folha_int, mat):
             q = q.eq("id_cliente", id_cliente)
         linhas = q.execute().data or []
     except Exception as e:
-        return 0, 0, 0, f"Erro ao ler o total da rescisão: {str(e)[:150]}"
+        return False, 0, 0, 0, f"Erro ao ler o total da rescisão: {str(e)[:150]}"
     if not linhas:
-        return 0, 0, 0, ("A rescisão deste funcionário ainda não foi calculada. "
-                         "Calcule a rescisão antes de importar os consignados.")
+        return False, 0, 0, 0, ""
     total_prov = int(linhas[0].get("valor_total_proventos") or 0)
 
     reducoes = 0
@@ -20722,7 +20849,7 @@ def _consig_resc_base(id_cliente, id_empresa, folha_int, mat):
     except Exception:
         pass
 
-    return total_prov - reducoes, total_prov, reducoes, ""
+    return True, total_prov - reducoes, total_prov, reducoes, ""
 
 
 def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
@@ -20771,17 +20898,14 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
     nome_cad = (cad.get("nomer") or cad.get("nome") or "").strip()
     cpf_cad = "".join(ch for ch in str(cad.get("cpf") or "") if ch.isdigit()).zfill(11)
 
-    # ── Base do cálculo (a rescisão precisa estar calculada) ──
-    base, total_prov, reducoes, erro = _consig_resc_base(id_cliente, id_empresa,
-                                                         folha_int, mat)
+    # ── Base do cálculo ──
+    # Só existe com a rescisão calculada, e não é obrigatória: sem ela a
+    # importação segue e o valor sai no cálculo. Com ela, a prévia já mostra
+    # quanto cada contrato vai descontar.
+    calculada, base, total_prov, reducoes, erro = _consig_resc_base(
+        id_cliente, id_empresa, folha_int, mat)
     if erro:
         return {"abort": True, "abort_msg": erro}
-    if base <= 0:
-        return {"abort": True,
-                "abort_msg": (f"A base do cálculo está "
-                              f"{'zerada' if base == 0 else 'negativa'}: proventos "
-                              f"{_consig_brl(total_prov)} − reduções {_consig_brl(reducoes)}. "
-                              f"Nada foi alterado.")}
 
     # ── Linhas da planilha ──
     cnpj_emp8 = "".join(ch for ch in str(cnpj_empresa or "") if ch.isdigit())[:8].zfill(8)
@@ -20822,6 +20946,9 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
 
         # Percentual da garantia (coluna V) e saldo devedor (coluna T).
         perc = _consig_num(cel(rowt, "garantia.percVerbaRescisoriaGarantia")) or 0.0
+        # x100, como o percentual é guardado no tab_mov e usado pelo cálculo:
+        # a prévia tem que fechar no centavo com o que o cálculo vai apurar.
+        perc_x100 = int(round(perc * 100))
         saldo_txt = str(cel(rowt, "valorSaldoDevedor") or "").strip()
         tem_saldo = saldo_txt != ""
         _sd = _consig_num(saldo_txt)
@@ -20829,10 +20956,15 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
 
         # Mesma conta do Desktop: base × % , arredondando para cima no 0,5;
         # o saldo devedor é o teto. Sem saldo informado, não desconta nada.
-        valor_cent = int(base * perc / 100 + 0.5)
-        if valor_cent > saldo_cent:
-            valor_cent = saldo_cent
-        if valor_cent < 0:
+        # Sem base ainda (rescisão não calculada), a verba é gravada zerada e
+        # quem apura é o cálculo — por isso o percentual e o saldo vão junto.
+        if calculada and base > 0:
+            valor_cent = int(base * perc_x100 / 10000 + 0.5)
+            if valor_cent > saldo_cent:
+                valor_cent = saldo_cent
+            if valor_cent < 0:
+                valor_cent = 0
+        else:
             valor_cent = 0
 
         item = {
@@ -20847,6 +20979,7 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
             "parcela_atual": parcatual,
             "parcelas_total": ptotal,
             "percentual": perc,
+            "perc_x100": perc_x100,
             "saldo_centavos": saldo_cent,
             "tem_saldo": tem_saldo,
             "valor_centavos": valor_cent,
@@ -20920,6 +21053,7 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
         "abort": False,
         "matricula": mat,
         "nome": nome_cad,
+        "calculada": calculada,
         "base": base,
         "total_proventos": total_prov,
         "reducoes": reducoes,
@@ -20930,6 +21064,7 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
             "total": len(linhas), "erro": n_erro, "sem_saldo": n_sem_saldo,
             "ignoradas": ignoradas, "lancamentos": len(para_gravar),
             "descontado": sum(it["valor_centavos"] for it in para_gravar),
+            "base_zerada": bool(calculada and base <= 0),
             "ja_existentes": ja_existe,
         },
     }
@@ -20956,6 +21091,29 @@ def _consig_resc_argumentos():
             "id_empresa": _get_id_empresa()}, None
 
 
+@app.route("/emprestimo_rescisao")
+def emprestimo_rescisao():
+    """Importar a planilha de empréstimo consignado DA RESCISÃO.
+
+    Tela própria, fora do cálculo: no Folha10 Desktop o botão fica na rescisão
+    do funcionário, e não dentro do cálculo. Aqui vale a mesma regra — a opção
+    só existe para quem tem a rescisão REGISTRADA no mês da folha ativa.
+
+    O desconto sai de base × percentual da garantia, e a base é o total dos
+    proventos da rescisão. Por isso quem ainda não teve a rescisão calculada
+    aparece na lista, mas com o botão travado: é o que a pessoa precisa ver
+    para saber o que falta fazer.
+    """
+    if not session.get("logado"):
+        return redirect("/")
+    anomes = str(session.get("anomes_atual") or "")
+    funcs = _resc_desligados_mes(_get_id_empresa(), session.get("id_cliente"), anomes)
+    return render_template("F10_Emprestimo_Rescisao.html", **_ctx_relatorio(),
+                           anomes_atual=anomes, funcs=funcs,
+                           folha_situacao=(_refresh_situacao_folha()
+                                           if len(anomes) == 6 else ""))
+
+
 @app.route("/api/consignado_resc/preview", methods=["POST"])
 def api_consignado_resc_preview():
     """Prévia da importação dos consignados na rescisão (não grava nada)."""
@@ -20974,6 +21132,7 @@ def api_consignado_resc_preview():
         it.pop("dt_contrato_key", None)
     return jsonify({"ok": True, "anomes": dados["anomes"],
                     "matricula": res["matricula"], "nome": res["nome"],
+                    "calculada": res["calculada"],
                     "base": res["base"], "total_proventos": res["total_proventos"],
                     "reducoes": res["reducoes"], "has_error": res["has_error"],
                     "resumo": res["resumo"], "linhas": res["linhas"]})
@@ -21018,6 +21177,13 @@ def api_consignado_resc_importar():
             "origem":        "M",
             "controle":      0,
             "os":            0,
+            # Percentual da garantia e saldo devedor, empacotados. É por eles
+            # que o cálculo da rescisão apura o valor depois, e é por este campo
+            # preenchido que ele reconhece a linha. Só existe na rescisão.
+            "consig_garantia": _consig_resc_garantia(it["perc_x100"],
+                                                     it["saldo_centavos"]),
+            # Daqui para baixo, os mesmos campos da importação da folha mensal:
+            # é de instfinanc + nrdoc que sai o <descFolha> do eSocial.
             "instfinanc":    it["if_codigo"] or None,
             "nrdoc":         it["contrato"] or None,
             "parcelaatual":  it["parcela_atual"] or None,
@@ -21035,20 +21201,42 @@ def api_consignado_resc_importar():
         q.execute()
         supabase.table("tab_mov").insert(registros).execute()
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}"})
+        # A coluna nova é o erro esperado numa base que ainda não rodou o
+        # script — vale dizer o que fazer, em vez de mostrar o texto do banco.
+        # O delete acima já rodou: as 700-749 anteriores foram apagadas, então
+        # a mensagem também precisa avisar disso.
+        _err = str(e)
+        if "consig_garantia" in _err:
+            _err = ("O banco ainda não tem a coluna tab_mov.consig_garantia. "
+                    "Rode o script _criar_col_consig_garantia.sql no Supabase e "
+                    "importe de novo — as verbas 700-749 que existiam nesta "
+                    "rescisão foram apagadas.")
+        else:
+            _err = (f"Erro ao gravar: {_err[:200]} — as verbas 700-749 que "
+                    f"existiam nesta rescisão foram apagadas.")
+        return jsonify({"ok": False, "msg": _err})
 
     total_desc = sum(r["valor"] for r in registros)
     gravar_log("RESC-CONS",
                f"Consignados da rescisão: {len(registros)} verba(s) "
                f"{CONSIG_VERBA_INI}+ = {_consig_brl(total_desc)} "
-               f"(base {_consig_brl(res['base'])}) na folha {anomes}.",
+               + (f"(base {_consig_brl(res['base'])})" if res["calculada"]
+                  else "(valor a apurar no cálculo)")
+               + f" na folha {anomes}.",
                ano_mes=anomes, matricula=mat)
 
+    if res["calculada"]:
+        msg = (f"{len(registros)} empréstimo(s) importado(s) — "
+               f"total descontado {_consig_brl(total_desc)}. "
+               f"A rescisão vai ser recalculada.")
+    else:
+        msg = (f"{len(registros)} empréstimo(s) lançado(s) no movimento da "
+               f"rescisão. O desconto de cada um é apurado quando você "
+               f"calcular a rescisão.")
+
     return jsonify({"ok": True, "matricula": mat, "n_lancamentos": len(registros),
-                    "descontado": total_desc,
-                    "msg": (f"{len(registros)} empréstimo(s) importado(s) — "
-                            f"total descontado {_consig_brl(total_desc)}. "
-                            f"A rescisão vai ser recalculada.")})
+                    "descontado": total_desc, "calculada": res["calculada"],
+                    "msg": msg})
 
 
 # =========================================================
