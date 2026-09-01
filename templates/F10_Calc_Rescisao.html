@@ -64,6 +64,7 @@ tbody tr:hover { background: #f8fafc; }
 .st-calc { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #dcfce7; color: #166534; }
 .st-pend { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #fef3c7; color: #92400e; }
 .st-bloq { display: inline-block; font-size: 11px; font-weight: 600; color: #b45309; white-space: nowrap; }
+.st-transf { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #dbeafe; color: #1e40af; }
 .btn-visu-resc { display: inline-flex; align-items: center; gap: 8px; background: #166534; color: #fff; font-size: 14px; font-weight: 700; padding: 10px 20px; border-radius: 10px; text-decoration: none; transition: .15s; }
 .btn-visu-resc:hover { background: #14532d; }
 .btn-mem-resc { background: #1e3a5f; }
@@ -112,10 +113,10 @@ tbody tr:hover { background: #f8fafc; }
                 {% if modo_trct %}<th class="r">TRCT</th>{% elif modo_memoria %}<th class="r">Memória</th>{% endif %}</tr></thead>
             <tbody>
                 {% for f in funcs %}
-                <tr>{% if not modo_trct and not modo_memoria %}<td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" checked></td>{% endif %}<td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{% if f.motivo|string == '01' %}<span class="motivo-jc" title="Justa causa — confira se é isso mesmo">{{ f.motivo }} ⚠️</span>{% else %}{{ f.motivo }}{% endif %}</td>
-                    <td class="r">{% if f.calculado %}<span class="st-calc">Calculada</span>{% else %}<span class="st-pend">Pendente</span>{% endif %}</td>
-                    {% if modo_trct %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/trct_pdf/{{ f.matricula }}" target="_blank">📄 TRCT</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>
-                    {% elif modo_memoria %}<td class="r">{% if f.calculado %}<a class="btn-trct" href="/api/memoria_rescisao_pdf/{{ f.matricula }}" target="_blank">📄 Memória</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>{% endif %}</tr>
+                <tr>{% if not modo_trct and not modo_memoria %}<td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" {% if not f.transferencia %}checked{% endif %}></td>{% endif %}<td class="mat">{{ f.mat_fmt }}</td><td>{{ f.nome }}</td><td class="mat">{{ f.resc_data }}</td><td class="mat">{% if f.motivo|string == '01' %}<span class="motivo-jc" title="Justa causa — confira se é isso mesmo">{{ f.motivo }} ⚠️</span>{% else %}{{ f.motivo }}{% endif %}</td>
+                    <td class="r">{% if f.transferencia %}<span class="st-transf" title="Transferência entre empresas: a rescisão é zerada, não há o que calcular">Transferência</span>{% elif f.calculado %}<span class="st-calc">Calculada</span>{% else %}<span class="st-pend">Pendente</span>{% endif %}</td>
+                    {% if modo_trct %}<td class="r">{% if f.transferencia %}<span class="st-bloq" title="Transferência não gera este documento">—</span>{% elif f.calculado %}<a class="btn-trct" href="/trct_pdf/{{ f.matricula }}" target="_blank">📄 TRCT</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>
+                    {% elif modo_memoria %}<td class="r">{% if f.transferencia %}<span class="st-bloq" title="Transferência não gera este documento">—</span>{% elif f.calculado %}<a class="btn-trct" href="/api/memoria_rescisao_pdf/{{ f.matricula }}" target="_blank">📄 Memória</a>{% else %}<span class="st-bloq" title="Recalcule a rescisão antes de imprimir">🔒 recalcular</span>{% endif %}</td>{% endif %}</tr>
                 {% endfor %}
             </tbody>
         </table>

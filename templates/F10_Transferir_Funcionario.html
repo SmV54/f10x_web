@@ -100,7 +100,7 @@ input.curto { max-width: 160px; font-family: 'IBM Plex Mono', monospace; }
     <div class="alerta alerta-aviso"><span>ℹ️</span><div>
         A transferência leva o funcionário e <strong>todo o histórico</strong> para a outra empresa —
         cadastro, dependentes, eventos, movimento, totais, pensões e acidentes — com a matrícula nova.
-        Na empresa de origem ele é <strong>desligado com motivo 31 (transferência)</strong> na data informada,
+        Na empresa de origem ele é <strong>desligado com motivo 11 (transferência)</strong> na data informada,
         e o histórico dele continua lá.
         <br>O movimento <strong>do mês</strong> vai junto e é apagado aqui — mas você é perguntado antes.
         O que <strong>não</strong> vai é o movimento fixo <strong>de grupo</strong>: só passa o que está preso à matrícula.
@@ -382,7 +382,7 @@ async function transferir() {
         'para ' + d0.destino.empresa + ', matricula ' +
             String(d0.destino.matricula).padStart(6, '0') + '.',
         'Na empresa de origem ele fica DESLIGADO em ' + d0.data +
-            ' com motivo 31 (transferencia).'
+            ' com motivo 11 (transferencia).'
     ];
     if (nMes > 0) {
         linhas.push('\u2022 Movimento do mes (' + nMes + '): ' +

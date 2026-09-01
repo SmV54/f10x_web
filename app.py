@@ -7777,6 +7777,10 @@ def cad_rescisao():
         r_mot = (supabase.table("tab_tabela_total")
                  .select("codigo, texto")
                  .eq("num_tabela", 19)
+                 # A linha "DOC" é o cabeçalho da tabela, não um motivo: sem o
+                 # filtro ela virava a última opção do combo e daria para gravar
+                 # motrescisao = "DOC". A tela de afastamento já filtrava.
+                 .neq("codigo", "DOC")
                  .order("codigo")
                  .execute())
         if r_mot.data:
@@ -8515,12 +8519,18 @@ def _resc_desligados_mes(id_empresa, id_cliente, anomes):
             if dr[:6] != anomes:
                 continue
             m = int(f.get("matricula") or 0)
+            # Transferência não gera cálculo: a rescisão é zerada e nunca vai
+            # ganhar linha no tab_total, então ficaria "Pendente" para sempre.
+            # A tela mostra o estado próprio em vez de cobrar um cálculo que
+            # não existe — e não some da lista, que ainda há S-2299 a enviar.
+            _mot_t = str(f.get("motrescisao") or "").strip().zfill(2)
             funcs.append({
                 "matricula": m, "mat_fmt": f"{m:06d}",
                 "nome": (f.get("nome") or f.get("nomer") or "").strip(),
                 "resc_data": f"{dr[6:8]}/{dr[4:6]}/{dr[0:4]}" if len(dr) == 8 else "—",
                 "motivo": str(f.get("motrescisao") or ""),
                 "calculado": m in calc_set,
+                "transferencia": _mot_t == str(TRANSF_MOTIVO_DEMISSAO).zfill(2),
             })
     except Exception:
         return []
@@ -16185,7 +16195,13 @@ def rel_esocial_remessas():
 # Esta primeira parte faz só a escolha e a CONFERÊNCIA: nada é gravado. As
 # críticas são as mesmas do Desktop (Teste_Erro_Frm400_EVENTOS_TRANSFERENCIA).
 # =========================================================
-TRANSF_MOTIVO_DEMISSAO = 31        # motivo "transferência" no desligamento
+# Tabela 19 do eSocial: 11 = "Transferência de empregado para empresa do mesmo
+# grupo empresarial". Aqui o motrescisao JÁ É o código da Tabela 19; quem usa 31
+# é o Desktop, que guarda código interno herdado da RAIS/SEFIP e traduz só na
+# hora de gerar o XML. Copiar o 31 para cá não dava erro de código inválido — o
+# 31 existe na Tabela 19 e significa "Reversão de reintegração", ou seja, o
+# desligamento sairia declarado como outra coisa.
+TRANSF_MOTIVO_DEMISSAO = 11        # motivo "transferência" no desligamento
 
 
 def _transf_contar(tabela, id_cliente, id_empresa, matricula, extra=None):
