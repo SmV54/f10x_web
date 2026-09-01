@@ -16592,7 +16592,7 @@ def api_transferir_funcionario_executar():
 
     if erro:
         _transf_desfazer(id_cliente, id_dest, mat_nova)
-        gravar_log("TRANSFERENCIA", f"DESFEITA (mat {mat:06d} -> {mat_nova:06d}): {erro}",
+        gravar_log("TRANSF-EMP", f"DESFEITA (mat {mat:06d} -> {mat_nova:06d}): {erro}",
                    ano_mes=anomes, matricula=mat)
         return jsonify({"ok": False,
                         "msg": f"A transferência foi desfeita: {erro}. "
@@ -16661,16 +16661,18 @@ def api_transferir_funcionario_executar():
     except Exception as e:
         print(f"[transferencia] S-2200 nao gerado: {str(e)[:120]}")
 
+    # TRANSF-EMP e nao TRANSFERENCIA: o gravar_log corta o menu em 12 posicoes
+    # (menu[:12]) e o nome longo aparecia truncado como "TRANSFERENCI".
     # O mesmo fato nas duas pontas: quem abrir o log da empresa de destino
     # precisa achar de onde o funcionário veio, e não só a origem saber para
     # onde ele foi.
-    gravar_log("TRANSFERENCIA",
+    gravar_log("TRANSF-EMP",
                f"{nome_func[:30]}: SAIU {mat:06d} desta empresa para "
                f"{mat_nova:06d} em {destino['nome'][:30]} em {dd['data_br']} "
                f"(desligado motivo {TRANSF_MOTIVO_DEMISSAO}; movimento do mês "
                f"{'levado' if levar_mov else 'mantido aqui'})",
                ano_mes=anomes, matricula=mat)
-    gravar_log("TRANSFERENCIA",
+    gravar_log("TRANSF-EMP",
                f"{nome_func[:30]}: ENTROU {mat_nova:06d} vindo de "
                f"{str(session.get('empresa_info') or '')[:30]}, matrícula "
                f"{mat:06d}, em {dd['data_br']}",
