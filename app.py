@@ -33336,6 +33336,13 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
             f"Funcionário {func.get('matricula')} sem data de desligamento "
             "(datarescisao) — obrigatória no S-2299.")
 
+    # TRANSFERÊNCIA ENTRE EMPRESAS (motivo 31). Três desvios no S-2299, todos
+    # como o Desktop já faz em produção no MESMO layout v_S_01_03_00
+    # (SR_eSocial_2022.vb): indPagtoAPI = 'N', <sucessaoVinc> com o CNPJ de
+    # destino, e <verbasResc> OMITIDO — transferência não paga verba nenhuma,
+    # quem paga é a empresa de destino.
+    _transf = (mtv == str(TRANSF_MOTIVO_DEMISSAO).zfill(2))
+
     # aviso prévio indenizado
     ind_api = str(ind_pagto_api or 'N').strip().upper()
     if ind_api not in ('S', 'N'):
@@ -33343,6 +33350,25 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
     api_xml = ""
     if ind_api == 'S' and dt_proj_fim_api:
         api_xml = f"\n      <dtProjFimAPI>{fmt_d8(dt_proj_fim_api)}</dtProjFimAPI>"
+    if _transf:
+        ind_api = 'N'
+        api_xml = ""
+
+    # <sucessaoVinc>: para qual empresa o vínculo foi sucedido. Sem ele o
+    # eSocial não sabe que o contrato continua e trata como demissão comum.
+    # O dado já vem gravado pela própria transferência (tab_cad.cnpjtransf).
+    suc_xml = ""
+    if _transf:
+        _cnpj_suc = dg(func.get('cnpjtransf') or '')
+        if not _cnpj_suc:
+            raise ValueError(
+                f"Funcionário {func.get('matricula')} foi desligado por "
+                f"transferência (motivo {mtv}) mas está sem o CNPJ da empresa "
+                "de destino (cnpjtransf) — obrigatório no <sucessaoVinc>.")
+        suc_xml = ("\n      <sucessaoVinc>"
+                   "\n        <tpInsc>1</tpInsc>"
+                   f"\n        <nrInsc>{x(_cnpj_suc)}</nrInsc>"
+                   "\n      </sucessaoVinc>")
 
     # pensão alimentícia (0=não há, 1=%, 2=valor, 3=ambos)
     pens = str(pens_alim or '0').strip()
@@ -33354,7 +33380,9 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
 
     # codLotacao = centrocusto do funcionário
     cod_lotacao = str(func.get('centrocusto') or '').strip()
-    if not cod_lotacao:
+    # Na transferência o grupo que usa o codLotacao (verbasResc) nem chega a
+    # sair, então cobrar centro de custo aqui travaria o evento à toa.
+    if not cod_lotacao and not _transf:
         raise ValueError(
             f"Funcionário {func.get('matricula')} sem 'centrocusto' — "
             "necessário para o codLotacao do S-2299.")
@@ -33402,6 +33430,25 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
                 <indApurIR>0</indApurIR>{_desc_folha}
               </detVerbas>"""
 
+    # O grupo <verbasResc> só sai quando há verba. Na transferência não há
+    # nenhuma, e o Desktop omite o grupo inteiro do mesmo jeito (o "OK = 0"
+    # quando motivodemissao = 31). Grupo vazio o eSocial rejeita.
+    verbas_xml = ""
+    if det_xml and not _transf:
+        verbas_xml = f"""
+      <verbasResc>
+        <dmDev>
+          <ideDmDev>{mat_es}00</ideDmDev>
+          <infoPerApur>
+            <ideEstabLot>
+              <tpInsc>1</tpInsc>
+              <nrInsc>{x(cnpj_emp)}</nrInsc>
+              <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}{info_ag_nocivo_xml}
+            </ideEstabLot>
+          </infoPerApur>
+        </dmDev>
+      </verbasResc>"""
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtDeslig/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -33425,19 +33472,7 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
       <mtvDeslig>{x(mtv)}</mtvDeslig>
       <dtDeslig>{x(dt_des)}</dtDeslig>
       <indPagtoAPI>{ind_api}</indPagtoAPI>{api_xml}
-      <pensAlim>{x(pens)}</pensAlim>{pens_extra}
-      <verbasResc>
-        <dmDev>
-          <ideDmDev>{mat_es}00</ideDmDev>
-          <infoPerApur>
-            <ideEstabLot>
-              <tpInsc>1</tpInsc>
-              <nrInsc>{x(cnpj_emp)}</nrInsc>
-              <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}{info_ag_nocivo_xml}
-            </ideEstabLot>
-          </infoPerApur>
-        </dmDev>
-      </verbasResc>
+      <pensAlim>{x(pens)}</pensAlim>{pens_extra}{suc_xml}{verbas_xml}
     </infoDeslig>
   </evtDeslig>
 </eSocial>"""
@@ -34145,7 +34180,11 @@ def api_esocial_s2299_enviar():
         mov_items = q_mov.execute().data or []
     except Exception:
         mov_items = []
-    if not mov_items:
+    # Transferência (motivo 31) não paga verba nenhuma: quem paga é a empresa
+    # de destino. Exigir verba aqui travava o S-2299 da transferência pedindo
+    # "calcule a rescisão antes de enviar" — e não havia rescisão a calcular.
+    _mtv_func = str(func.get("motrescisao") or "").strip().zfill(2)
+    if not mov_items and _mtv_func != str(TRANSF_MOTIVO_DEMISSAO).zfill(2):
         return jsonify({"ok": False, "msg": "Rescisão sem verbas calculadas — calcule a rescisão antes de enviar o S-2299."})
 
     # Aviso prévio indenizado (op1=9): indPagtoAPI='S' + dtProjFimAPI projetada
