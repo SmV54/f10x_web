@@ -46923,7 +46923,11 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     ("BACKGROUND",    (0,0),(-1,0),  colors.HexColor("#fff7ed")),
                     ("LINEABOVE",     (0,0),(-1,0),  0.5, colors.HexColor("#fdba74")),
                     ("LINEBELOW",     (0,0),(-1,0),  0.3, colors.HexColor("#fdba74")),
-                    ("ALIGN",         (3,0),(3,-1),  "RIGHT"),
+                    # O título mora na célula do "Cód", que tem 1,3 cm. Sem o SPAN
+                    # o ReportLab quebrava "ADIANTAMENTO QUINZENAL" dentro dessa
+                    # largura, uma letra por linha, do lado de fora do quadro.
+                    ("SPAN",          (0,0),(-1,0)),
+                    ("ALIGN",         (3,1),(3,-1),  "RIGHT"),
                 ]))
                 elementos.append(ad_tbl)
 
@@ -46970,7 +46974,8 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     ("BOTTOMPADDING", (0,0),(-1,-1), 1),
                     ("LINEABOVE",     (0,0),(-1,0),  0.5, colors.HexColor("#cbd5e1")),
                     ("LINEBELOW",     (0,0),(-1,0),  0.3, C_BORD),
-                    ("ALIGN",         (2,0),(-1,-1), "RIGHT"),
+                    ("SPAN",          (0,0),(-1,0)),   # mesmo motivo do bloco acima
+                    ("ALIGN",         (2,1),(-1,-1), "RIGHT"),
                 ]))
                 elementos.append(i_tbl)
 
