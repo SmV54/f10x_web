@@ -875,6 +875,17 @@ html:not(.js) .slide{animation-duration:96s}
   .banner{padding:11px 14px}
   .banner p{font-size:12.5px}
 }
+
+  /* Voltar ao site: so aparece quando a apresentacao e aberta com ?voltar=,
+     isto e, quando alguem chegou nela vindo de uma pagina nossa. Pelo link
+     solto do WhatsApp o parametro nao existe e o botao nem nasce. */
+  #voltar{
+    display:none; align-items:center; text-decoration:none;
+    background:#16a34a; color:#fff; border:0; border-radius:8px;
+    padding:8px 14px; font:inherit; font-weight:700; cursor:pointer;
+  }
+  #voltar.aparece{display:inline-flex}
+  #voltar:hover{background:#13853d}
 </style>
 
 </head>
@@ -1147,6 +1158,7 @@ html:not(.js) .slide{animation-duration:96s}
     <button id="reset" type="button">Reiniciar</button>
     <button id="narrar" type="button" aria-pressed="true">&#128266; Narra&ccedil;&atilde;o ligada</button>
     <button id="som" type="button" aria-pressed="true">♪ Música ligada</button>
+    <a id="voltar" href="#" hidden>&#8592; Voltar ao site</a>
     <span id="dicasom">&#9834; toque na tela para ligar o som</span>
     <span class="hint"><kbd>←</kbd> <kbd>→</kbd> navegar · <kbd>espaço</kbd> rodar</span>
   </div>
@@ -1481,7 +1493,7 @@ html:not(.js) .slide{animation-duration:96s}
   function tick(){
     if (!playing) return;
     var sec = base + (agora() - t0) / 1000;
-    if (sec >= total){ paint(total); stop(); musicaPara(); return; }
+    if (sec >= total){ paint(total); stop(); musicaPara(); mostrarVoltar(); return; }
     var want = 0, acc = 0;
     for (var i = 0; i < durs.length; i++){
       if (sec >= acc) want = i;
@@ -1575,6 +1587,29 @@ html:not(.js) .slide{animation-duration:96s}
      apresentação começa sozinha ao abrir, e já tenta abrir falando: música e
      narração saem juntas. Onde o navegador barrar o áudio sem um toque —
      regra dele, não escolha minha — o primeiro toque na tela liga as duas. */
+  /* ---------- voltar para a pagina de origem ----------
+     Quem chega pelo site abre /apresentacao?voltar=/site. Terminados os
+     90 s, o botao aparece com esse endereco. Sem o parametro (o link que
+     voce manda no WhatsApp) nada muda: nao ha para onde voltar. Aceita
+     apenas caminho interno - "/algo" -, para o endereco da barra nao virar
+     um jeito de mandar o visitante para fora. A contrabarra entra na
+     mesma proibicao: o navegador trata "/\" igual a "//", entao "/\site.com"
+     mandaria o visitante para fora do nosso dominio. */
+  var voltarBtn = document.getElementById('voltar');
+  function destinoVoltar(){
+    var m = /[?&]voltar=([^&]*)/.exec(window.location.search || '');
+    if (!m) return null;
+    var alvo = decodeURIComponent(m[1] || '');
+    return /^\/[^\/\\]/.test(alvo) ? alvo : null;
+  }
+  function mostrarVoltar(){
+    var alvo = destinoVoltar();
+    if (!alvo || !voltarBtn) return;
+    voltarBtn.setAttribute('href', alvo);
+    voltarBtn.hidden = false;
+    voltarBtn.className = 'aparece';
+  }
+
   var gestoFeito = false;
 
   function ligarSom(){
