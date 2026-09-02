@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Replicar Movimento</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.badge-folha-topo {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #fff; color: #111827; border: 2px solid #86efac;
+}
+.badge-sem-folha { color: #991b1b; border-color: #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 1100px; margin: 24px auto; padding: 0 20px 60px; }
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; margin-bottom: 24px; overflow: hidden;
+}
+.card-titulo {
+    background: #f8fafc; border-bottom: 1px solid var(--border);
+    padding: 10px 20px; font-size: 13px; font-weight: 600; color: #374151;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+
+/* ── DE → PARA ── */
+.depara {
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    padding: 18px 20px; border-bottom: 1px solid var(--border); background: #fbfdfc;
+}
+.depara-box { text-align: center; }
+.depara-rot { font-size: 10px; font-weight: 600; text-transform: uppercase;
+              letter-spacing: 0.08em; color: #94a3b8; }
+.depara-val { font-family: var(--mono); font-size: 22px; font-weight: 600; color: #1e293b; }
+.depara-sub { font-size: 11px; color: #64748b; margin-top: 2px; }
+.depara-seta { font-size: 26px; color: #70c4a0; }
+
+/* ── 2 COLUNAS ── */
+.form-layout { display: grid; grid-template-columns: 4fr 6fr; min-height: 320px; }
+.col-sep { border-right: 1px solid var(--border); }
+.col-funcs, .col-previa { padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.col-subtitle {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+}
+.busca-inp {
+    width: 100%; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 7px; font-family: var(--sans); font-size: 12px; outline: none;
+    transition: border-color 0.15s;
+}
+.busca-inp:focus { border-color: var(--accent); }
+.lista-scroll {
+    flex: 1; max-height: 300px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 8px; background: #fafbfc;
+}
+.func-item {
+    display: flex; align-items: center; gap: 7px;
+    padding: 5px 9px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    transition: background 0.1s;
+}
+.func-item:last-child { border-bottom: none; }
+.func-item:hover { background: #eff6ff; }
+.func-item input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.func-mat  { font-family: var(--mono); font-size: 10px; color: #94a3b8; flex-shrink: 0; }
+.func-nome { font-size: 12px; font-weight: 500; color: #1e293b; line-height: 1.2; flex: 1; }
+.func-qtd  { font-family: var(--mono); font-size: 10px; color: #64748b; flex-shrink: 0; }
+.lista-vazio { padding: 14px; font-size: 12px; color: #94a3b8; text-align: center; }
+.col-acoes { display: flex; align-items: center; gap: 6px; }
+.btn-mini {
+    background: #f1f5f9; border: 1px solid #e2e8f0; color: #475569;
+    font-size: 11px; padding: 3px 9px; border-radius: 5px; cursor: pointer;
+    font-family: var(--sans); white-space: nowrap;
+}
+.btn-mini:hover { background: #e2e8f0; }
+.sel-count { font-size: 11px; color: #64748b; margin-left: auto; white-space: nowrap; }
+
+/* ── PRÉVIA ── */
+.previa-scroll { flex: 1; max-height: 300px; overflow-y: auto;
+                 border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+.previa-scroll table { width: 100%; border-collapse: collapse; }
+.previa-scroll thead th {
+    position: sticky; top: 0; background: #f1f5f9; padding: 7px 10px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #64748b; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.previa-scroll tbody tr { border-bottom: 1px solid #f1f5f9; }
+.previa-scroll tbody tr:last-child { border-bottom: none; }
+.previa-scroll tbody td { padding: 6px 10px; font-size: 12px; color: #1e293b; }
+.td-mat   { font-family: var(--mono); font-size: 11px; width: 66px; color: #64748b; }
+.td-cod   { font-family: var(--mono); font-size: 11px; width: 46px; color: #475569; }
+.td-valor { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: right; white-space: nowrap; }
+.tag-h { font-family: var(--mono); font-size: 9px; font-weight: 700; padding: 1px 5px;
+         border-radius: 4px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+
+/* ── RODAPÉ / AÇÃO ── */
+.acao-rodape {
+    padding: 14px 20px; border-top: 1px solid var(--border); background: #f8fafc;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.btn-replicar {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 11px 22px; font-family: var(--sans); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: 0.15s; display: inline-flex; align-items: center; gap: 7px;
+}
+.btn-replicar:hover { background: #1a5fb8; }
+.btn-replicar:disabled { background: #94a3b8; cursor: not-allowed; }
+.resumo-acao { font-size: 12px; color: #64748b; }
+
+/* ── AVISOS ── */
+.aviso {
+    padding: 11px 16px; border-radius: 10px; font-size: 13px;
+    margin-bottom: 18px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.aviso-amarelo { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.aviso-azul    { background: #f0f7ff; border: 1px solid #bfdbfe; color: #1e40af; }
+.aviso-verm    { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.aviso .cresce { flex: 1; min-width: 200px; }
+.btn-desfazer {
+    background: #fff; color: #b91c1c; border: 1px solid #fca5a5; border-radius: 7px;
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    padding: 6px 14px; cursor: pointer; white-space: nowrap;
+}
+.btn-desfazer:hover { background: #fee2e2; }
+
+.ign-lista { padding: 4px 0; }
+.ign-item { display: flex; gap: 10px; padding: 6px 20px; font-size: 12px;
+            border-bottom: 1px solid #f8fafc; color: #475569; }
+.ign-item:last-child { border-bottom: none; }
+.ign-item .mat { font-family: var(--mono); font-size: 11px; color: #94a3b8; width: 66px; flex-shrink: 0; }
+.ign-item .motivo { color: #92400e; }
+.vazio { padding: 36px 24px; text-align: center; color: #94a3b8; font-size: 14px; }
+.msg-form { font-size: 12px; padding: 7px 12px; border-radius: 6px; display: none; }
+.msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
+</style>
+</head>
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{{ empresa }}</span>
+        <span class="topo-nome">{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Replicar Movimento do Mês Anterior</span>
+        {% if anomes_atual %}
+        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_situacao %} · {{ {'A':'Aberta','X':'Aberta','C':'Calculada','F':'Fechada'}.get(folha_situacao, folha_situacao) }}{% endif %}</span>
+        {% else %}
+        <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
+        {% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    {% if not anomes_atual %}
+    <div class="aviso aviso-verm">⚠️ <span class="cresce">Nenhuma folha ativa. Abra a competência pelo menu <strong>Mês/Ano</strong>.</span></div>
+
+    {% elif folha_tipo_ativa != 'N' %}
+    <div class="aviso aviso-verm">⚠️ <span class="cresce">A folha ativa é de <strong>{{ {'F':'Férias','R':'Rescisão','A':'Adiantamento 13º','1':'13º Salário'}.get(folha_tipo_ativa, folha_tipo_ativa) }}</strong>. A réplica só vale para a folha <strong>Normal</strong>.</span></div>
+
+    {% elif folha_situacao not in ('A', 'X') %}
+    <div class="aviso aviso-verm">⚠️ <span class="cresce">A folha está <strong>{{ {'C':'Calculada','F':'Fechada'}.get(folha_situacao, folha_situacao) }}</strong>. Reabra pelo menu <strong>Mês/Ano</strong> para poder replicar.</span></div>
+
+    {% elif not folha_origem %}
+    <div class="aviso aviso-amarelo">ℹ️ <span class="cresce">Não consegui identificar o mês anterior à folha ativa.</span></div>
+
+    {% else %}
+
+    {% if not linhas %}
+    <div class="aviso aviso-amarelo">ℹ️ <span class="cresce">Não há movimento digitado em <strong>{{ folha_origem[4:6] }}/{{ folha_origem[:4] }}</strong> para copiar{% if ignorados %} — o que existia lá ficou de fora pelos motivos listados abaixo{% endif %}. A réplica traz sempre o <strong>mês imediatamente anterior</strong> ao da folha ativa, e só ele.</span></div>
+    {% endif %}
+
+    {% if ja_replicado %}
+    <div class="aviso aviso-amarelo" id="banner-ja">
+        🔁 <span class="cresce">Esta folha já tem <strong id="ja-qtd">{{ ja_replicado }}</strong> lançamento(s) vindos de uma réplica (lote <code>{{ lote_replica }}</code>). Replicar de novo <strong>substitui</strong> esses lançamentos.</span>
+        <button class="btn-desfazer" onclick="excluirReplica()">🗑️ Excluir a réplica</button>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="depara">
+            <div class="depara-box">
+                <div class="depara-rot">Copiar de</div>
+                <div class="depara-val">{{ folha_origem[4:6] }}/{{ folha_origem[:4] }}</div>
+                <div class="depara-sub">{{ linhas|length }} lançamento(s) digitado(s)</div>
+            </div>
+            <div class="depara-seta">&#8594;</div>
+            <div class="depara-box">
+                <div class="depara-rot">Para a folha ativa</div>
+                <div class="depara-val">{{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</div>
+                <div class="depara-sub">{{ funcionarios|length }} funcionário(s) elegível(is)</div>
+            </div>
+        </div>
+
+        <div class="form-layout">
+            <!-- ── COL 1: FUNCIONÁRIOS ── -->
+            <div class="col-funcs col-sep">
+                <div class="col-subtitle">Funcionários</div>
+                <input type="text" id="busca-func" class="busca-inp"
+                       placeholder="Buscar…" oninput="filtrarFuncionarios()">
+                <div class="lista-scroll" id="func-lista"></div>
+                <div class="col-acoes">
+                    <button class="btn-mini" onclick="selecionarTodos()">Todos</button>
+                    <button type="button" class="btn-mini" data-f10-visiveis style="display:none;" onclick="f10SelecionarVisiveis()"></button>
+                    <button class="btn-mini" onclick="limparSelecao()">Limpar</button>
+                    <span id="sel-count" class="sel-count">0 selecionado(s)</span>
+                </div>
+            </div>
+
+            <!-- ── COL 2: PRÉVIA ── -->
+            <div class="col-previa">
+                <div class="col-subtitle">O que vai ser copiado</div>
+                <div class="previa-scroll" id="previa-box"></div>
+                <div id="msg-form" class="msg-form"></div>
+            </div>
+        </div>
+
+        <div class="acao-rodape">
+            <button id="btn-replicar" class="btn-replicar" onclick="replicar()" disabled>
+                🔁 Replicar para {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
+            </button>
+            <span class="resumo-acao" id="resumo-acao">Selecione ao menos um funcionário.</span>
+        </div>
+    </div>
+
+    {% if ignorados %}
+    <div class="card">
+        <div class="card-titulo"><span>Ficou de fora ({{ ignorados|length }})</span></div>
+        <div class="ign-lista">
+            {% for ig in ignorados %}
+            <div class="ign-item">
+                <span class="mat">{{ '%06d'|format(ig.matricula) }}</span>
+                <span style="flex:1;">{{ ig.nome }}{% if ig.cod_verba %} — verba {{ '%04d'|format(ig.cod_verba) }}{% endif %}</span>
+                <span class="motivo">{{ ig.motivo }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% endif %}
+</div>
+
+<script>
+const LINHAS       = {{ linhas       | tojson | safe }};
+const FUNCIONARIOS = {{ funcionarios | tojson | safe }};
+const TP_LABEL = {'1':'Provento','2':'Desconto','3':'Informativa','4':'Info. Dedutora'};
+
+let selecionados = new Set();
+
+function fmtMat(m) { return String(m).padStart(6, '0'); }
+
+function qtdLinhas(mat) {
+    return LINHAS.filter(l => l.matricula === mat).length;
+}
+
+function renderFuncionarios() {
+    const box = document.getElementById('func-lista');
+    if (!box) return;
+    if (!FUNCIONARIOS.length) {
+        box.innerHTML = '<div class="lista-vazio">Nenhum funcionário com movimento para copiar.</div>';
+        return;
+    }
+    box.innerHTML = FUNCIONARIOS.map(f => `
+        <label class="func-item" data-nome="${(f.nome || '').toUpperCase()}" data-mat="${f.matricula}">
+            <input type="checkbox" value="${f.matricula}" onchange="marcar(this)">
+            <span class="func-mat">${fmtMat(f.matricula)}</span>
+            <span class="func-nome">${f.nome || '—'}</span>
+            <span class="func-qtd">${qtdLinhas(f.matricula)}</span>
+        </label>`).join('');
+}
+
+function filtrarFuncionarios() {
+    const t = (document.getElementById('busca-func').value || '').toUpperCase();
+    document.querySelectorAll('#func-lista .func-item').forEach(el => {
+        const casa = el.dataset.nome.includes(t) || el.dataset.mat.includes(t);
+        el.style.display = casa ? '' : 'none';
+    });
+    if (window.f10MarcarUnicoFuncionario) window.f10MarcarUnicoFuncionario();
+}
+
+function marcar(chk) {
+    const m = parseInt(chk.value, 10);
+    if (chk.checked) selecionados.add(m); else selecionados.delete(m);
+    atualizar();
+}
+
+function selecionarTodos() {
+    document.querySelectorAll('#func-lista input[type="checkbox"]').forEach(c => {
+        c.checked = true; selecionados.add(parseInt(c.value, 10));
+    });
+    atualizar();
+}
+
+function limparSelecao() {
+    document.querySelectorAll('#func-lista input[type="checkbox"]').forEach(c => c.checked = false);
+    selecionados.clear();
+    atualizar();
+}
+
+function linhasSelecionadas() {
+    return LINHAS.filter(l => selecionados.has(l.matricula));
+}
+
+function atualizar() {
+    const n     = selecionados.size;
+    const linhas = linhasSelecionadas();
+    document.getElementById('sel-count').textContent = n + ' selecionado(s)';
+
+    const box = document.getElementById('previa-box');
+    if (!linhas.length) {
+        box.innerHTML = '<div class="lista-vazio">Marque os funcionários à esquerda para ver o que será copiado.</div>';
+    } else {
+        box.innerHTML = `
+        <table>
+          <thead><tr>
+            <th>Mat.</th><th>Funcionário</th><th>Cód.</th><th>Verba</th><th style="text-align:right;">Qtd / Valor</th>
+          </tr></thead>
+          <tbody>
+            ${linhas.map(l => `
+              <tr>
+                <td class="td-mat">${fmtMat(l.matricula)}</td>
+                <td>${l.nome}</td>
+                <td class="td-cod">${String(l.cod_verba).padStart(4, '0')}</td>
+                <td>${l.dsc_rubr || '—'} ${l.unid_verba !== 'V' ? `<span class="tag-h">${l.unid_verba}</span>` : ''}</td>
+                <td class="td-valor">${l.entrada_fmt}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    }
+
+    const btn = document.getElementById('btn-replicar');
+    btn.disabled = (linhas.length === 0);
+    document.getElementById('resumo-acao').textContent = linhas.length
+        ? `${linhas.length} lançamento(s) de ${n} funcionário(s).`
+        : 'Selecione ao menos um funcionário.';
+}
+
+function msg(texto, ok) {
+    const el = document.getElementById('msg-form');
+    el.className = 'msg-form ' + (ok ? 'msg-ok' : 'msg-err');
+    el.textContent = texto;
+    el.style.display = 'block';
+}
+
+async function replicar(substituir) {
+    const btn = document.getElementById('btn-replicar');
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/mov_replicar_gravar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matriculas: Array.from(selecionados),
+                substituir: !!substituir
+            })
+        });
+        const d = await r.json();
+        if (!d.ok && d.ja_replicado) {
+            const sim = await f10Confirm(
+                `Esta folha já tem ${d.ja_replicado} lançamento(s) replicado(s).\n\n` +
+                `Continuar apaga os anteriores (lote ${'{{ lote_replica }}'}) e grava a nova réplica. ` +
+                `O que foi digitado à mão não é tocado.`,
+                { titulo: 'Já existe uma réplica', tipo: 'aviso', okText: 'Substituir' });
+            if (sim) return replicar(true);
+            btn.disabled = false;
+            return;
+        }
+        if (!d.ok) { msg(d.msg || 'Não foi possível replicar.', false); btn.disabled = false; return; }
+        await f10Alert(d.msg + '\n\nLançamentos gravados com o lote {{ lote_replica }} — dá para excluir todos de uma vez por esta tela.',
+                       { titulo: 'Movimento replicado' });
+        window.location.reload();
+    } catch (e) {
+        msg('Erro de comunicação: ' + e, false);
+        btn.disabled = false;
+    }
+}
+
+async function excluirReplica() {
+    const sim = await f10Confirm(
+        'Excluir TODOS os lançamentos que vieram da réplica (lote {{ lote_replica }}) nesta folha?\n\n' +
+        'O movimento digitado à mão não é tocado.',
+        { titulo: 'Excluir a réplica', tipo: 'perigo', okText: 'Excluir' });
+    if (!sim) return;
+    try {
+        const r = await fetch('/api/mov_replicar_excluir', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+        });
+        const d = await r.json();
+        await f10Alert(d.msg || (d.ok ? 'Réplica excluída.' : 'Não foi possível excluir.'),
+                       { titulo: d.ok ? 'Réplica excluída' : 'Atenção' });
+        if (d.ok) window.location.reload();
+    } catch (e) {
+        await f10Alert('Erro de comunicação: ' + e, { titulo: 'Atenção' });
+    }
+}
+
+/* ── INIT ── */
+renderFuncionarios();
+atualizar();
+</script>
+<script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_autoselect.js"></script>
+</body>
+</html>

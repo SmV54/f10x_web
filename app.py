@@ -23148,6 +23148,419 @@ def api_tab_mov_excluir():
 
 
 # =========================================================
+# REPLICAR MOVIMENTO — do mês anterior para a folha ativa
+# =========================================================
+# Copia o movimento DIGITADO (origem='M') da folha Normal do MÊS ANTERIOR para
+# a folha ativa, do funcionário escolhido ou de todos. Só o mês anterior: se ele
+# estiver vazio, não há o que replicar — a rotina não sai procurando movimento
+# em meses mais antigos.
+#
+# O LOTE é a marca da réplica: tudo que esta rotina grava vai com
+# tab_mov.lote = MOV_REPLICA_LOTE. É por ele que a tela sabe que a folha já
+# recebeu uma réplica, e é por ele que ela desfaz — o que foi digitado à mão
+# continua com lote 0 e não é tocado.
+#
+# O lote não é campo livre: o cálculo grava nele o acesso_f10a do movimento
+# fixo, e a Verificação conta as parcelas do empréstimo filtrando por
+# lote + verba + matrícula. 112233 fica fora da faixa que o Access do Folha10
+# Desktop gera, por isso não entra naquela contagem.
+MOV_REPLICA_LOTE = 112233
+
+# Consignados (700..749) também entram no tab_mov com origem='M', mas vêm da
+# planilha do banco e carregam contrato, parcela e data final. Replicar
+# repetiria a parcela do mês passado — quem importa consignado tem rotina
+# própria, e é ela que sabe qual é a parcela do mês.
+_REPL_CONSIG_INI = 700
+_REPL_CONSIG_FIM = 749
+
+
+def _repl_folha_origem(id_cliente, id_empresa, anomes_atual):
+    """A folha de origem é SEMPRE o mês imediatamente anterior ao ativo.
+
+    A primeira versão procurava a última folha que tivesse movimento digitado,
+    caindo para trás quando o mês anterior estava vazio — com a folha ativa em
+    09/2026 e nada em 08/2026, ela oferecia 05/2026. Isso não é replicar o mês
+    anterior, é ressuscitar movimento velho. Mês anterior vazio significa que
+    não há o que replicar, e a tela diz isso.
+    """
+    try:
+        return _anomes_menos_um(anomes_atual)
+    except Exception:
+        return 0
+
+
+def _repl_ja_replicado(id_cliente, id_empresa, anomes):
+    """Quantos lançamentos da folha ativa vieram de uma réplica anterior."""
+    try:
+        r = (supabase.table("tab_mov")
+             .select("id")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", "N")
+             .eq("situacao",   "A")
+             .eq("lote",       MOV_REPLICA_LOTE)
+             .execute())
+        return len(r.data or [])
+    except Exception:
+        return 0
+
+
+def _repl_apagar(id_cliente, id_empresa, anomes):
+    """Apaga a réplica da folha ativa. Só as linhas do lote — o que foi
+    digitado à mão tem lote 0 e fica onde está."""
+    (supabase.table("tab_mov").delete()
+     .eq("id_cliente", id_cliente)
+     .eq("id_empresa", id_empresa)
+     .eq("folha",      int(anomes))
+     .eq("folha_tipo", "N")
+     .eq("lote",       MOV_REPLICA_LOTE)
+     .execute())
+
+
+def _repl_montar(id_cliente, id_empresa, anomes, folha_orig):
+    """Monta o que dá para replicar da folha de origem para a folha ativa.
+
+    Devolve (linhas, funcionarios, ignorados):
+      linhas      — um dicionário por lançamento copiável, já com o valor
+                    recalculado quando a verba é de Hora ou de Diária;
+      funcionarios— quem aparece nas linhas, para a coluna de seleção;
+      ignorados   — o que ficou de fora e por quê, para avisar na tela.
+    """
+    linhas, ignorados = [], []
+    if not folha_orig:
+        return linhas, [], ignorados
+
+    try:
+        r = (supabase.table("tab_mov")
+             .select("matricula, cod_verba, qtd, valor")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(folha_orig))
+             .eq("folha_tipo", "N")
+             .eq("situacao",   "A")
+             .eq("origem",     "M")
+             .order("matricula")
+             .execute())
+        origem_rows = r.data or []
+    except Exception:
+        return linhas, [], ignorados
+    if not origem_rows:
+        return linhas, [], ignorados
+
+    # ── o que a folha ativa JÁ tem digitado ──
+    # Se o funcionário já tem aquela verba lançada neste mês, a réplica não
+    # entra: duas linhas da mesma verba somam no cálculo e o pagamento sairia
+    # em dobro. As linhas de uma réplica anterior (lote MOV_REPLICA_LOTE) não
+    # contam — elas são apagadas antes de a nova ser gravada.
+    ja_na_folha = set()
+    try:
+        r_at = (supabase.table("tab_mov")
+                .select("matricula, cod_verba, lote")
+                .eq("id_cliente", id_cliente)
+                .eq("id_empresa", id_empresa)
+                .eq("folha",      int(anomes))
+                .eq("folha_tipo", "N")
+                .eq("situacao",   "A")
+                .eq("origem",     "M")
+                .execute())
+        for x in (r_at.data or []):
+            if int(x.get("lote") or 0) == MOV_REPLICA_LOTE:
+                continue
+            ja_na_folha.add((int(x.get("matricula") or 0), int(x.get("cod_verba") or 0)))
+    except Exception:
+        pass
+
+    # ── funcionários que ainda podem receber movimento na folha ativa ──
+    # Mesma regra da tela de lançamento: ativo e admitido até o mês da folha.
+    # Quem foi desligado está com situacao='D' e cai fora sozinho — no mês do
+    # desligamento o movimento dele vai para a folha de Rescisão, não para esta.
+    ativos = {}
+    try:
+        r_cad = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, dtadm")
+                 .eq("id_empresa", id_empresa)
+                 .eq("situacao", "A")
+                 .order("nomer")
+                 .execute())
+        for f in (r_cad.data or []):
+            dtadm = str(f.get("dtadm") or "")
+            if len(dtadm) >= 6 and anomes and dtadm[:6] > anomes:
+                continue
+            ativos[int(f.get("matricula") or 0)] = (f.get("nomer") or f.get("nome") or "").strip()
+    except Exception:
+        pass
+
+    # ── verbas: descrição, unidade e as que não podem ser digitadas ──
+    cods = sorted({int(x.get("cod_verba") or 0) for x in origem_rows})
+    verbas_map = {}
+    try:
+        r_v = (supabase.table("tab_rubrica")
+               .select("cod_rubr, dsc_rubr, unid_verba, tp_rubr, is_nao_digitar, id_cliente")
+               .in_("id_cliente", [0, id_cliente])
+               .in_("cod_rubr",   cods)
+               .eq("situacao", "A")
+               .execute())
+        for v in (r_v.data or []):
+            cod = int(v.get("cod_rubr") or 0)
+            if cod not in verbas_map or v.get("id_cliente") != 0:
+                verbas_map[cod] = {
+                    "dsc_rubr":       v.get("dsc_rubr") or "",
+                    "unid_verba":     v.get("unid_verba") or "V",
+                    "tp_rubr":        v.get("tp_rubr") or "",
+                    "is_nao_digitar": bool(v.get("is_nao_digitar")),
+                }
+    except Exception:
+        pass
+
+    # ── salário do mês da folha ATIVA, para as verbas de Hora e de Diária ──
+    # O tab_mov guarda o valor já calculado com o salário do mês de origem. Se
+    # houve aumento no meio, copiar o valor levaria o valor velho: aqui a qtd é
+    # que é copiada, e o valor sai do salário de agora — igual ao lançamento.
+    sal_hora, sal_dia = {}, {}
+    precisa_sal = any((verbas_map.get(int(x.get("cod_verba") or 0), {}).get("unid_verba") in ("H", "D"))
+                      for x in origem_rows)
+    if precisa_sal and ativos:
+        try:
+            r_s = (supabase.table("tab_cad")
+                   .select("matricula, vrsalfx, undsalfixo, qtdhrsmes")
+                   .eq("id_empresa", id_empresa)
+                   .in_("matricula", list(ativos.keys()))
+                   .execute())
+            dias_mes = _dias_no_mes_total(anomes)
+            for emp in (r_s.data or []):
+                m         = int(emp.get("matricula") or 0)
+                vrsalfx   = int(emp.get("vrsalfx") or 0)
+                undsalfix = (emp.get("undsalfixo") or "M").upper()
+                qtdhrsmes = int(emp.get("qtdhrsmes") or 0) or 220
+                if undsalfix == "H":
+                    sal_hora[m] = vrsalfx
+                    sal_mes     = vrsalfx * qtdhrsmes
+                else:
+                    sal_hora[m] = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+                    sal_mes     = vrsalfx
+                sal_dia[m] = (sal_mes / dias_mes) if dias_mes else 0.0
+        except Exception:
+            pass
+
+    vistos_fora = set()
+    for row in origem_rows:
+        mat = int(row.get("matricula") or 0)
+        cod = int(row.get("cod_verba") or 0)
+        qtd = int(row.get("qtd") or 0)
+        val = int(row.get("valor") or 0)
+
+        if mat not in ativos:
+            if mat not in vistos_fora:
+                vistos_fora.add(mat)
+                ignorados.append({"matricula": mat, "nome": "—", "cod_verba": None,
+                                  "motivo": "não está mais ativo na folha"})
+            continue
+
+        vi = verbas_map.get(cod)
+        if _REPL_CONSIG_INI <= cod <= _REPL_CONSIG_FIM:
+            ignorados.append({"matricula": mat, "nome": ativos[mat], "cod_verba": cod,
+                              "motivo": "consignado — use a importação do banco"})
+            continue
+        if vi is None:
+            ignorados.append({"matricula": mat, "nome": ativos[mat], "cod_verba": cod,
+                              "motivo": "verba não está mais ativa"})
+            continue
+        if vi["is_nao_digitar"]:
+            ignorados.append({"matricula": mat, "nome": ativos[mat], "cod_verba": cod,
+                              "motivo": "verba não pode ser digitada"})
+            continue
+        if (mat, cod) in ja_na_folha:
+            ignorados.append({"matricula": mat, "nome": ativos[mat], "cod_verba": cod,
+                              "motivo": "já lançada nesta folha"})
+            continue
+
+        unid = vi["unid_verba"]
+        if unid == "H" and qtd > 0:
+            valor_novo = int(round(qtd / 60 * sal_hora.get(mat, 0)))
+        elif unid == "D" and qtd > 0:
+            valor_novo = int(round(qtd * sal_dia.get(mat, 0)))
+        else:
+            valor_novo = val
+
+        if unid == "H":
+            entrada_fmt = f"{qtd // 60:02d}:{qtd % 60:02d}"
+        elif unid == "D":
+            entrada_fmt = f"{qtd} dia(s)"
+        else:
+            entrada_fmt = ("R$ " + f"{valor_novo / 100:,.2f}"
+                           .replace(",", "X").replace(".", ",").replace("X", "."))
+
+        linhas.append({
+            "matricula":   mat,
+            "nome":        ativos[mat],
+            "cod_verba":   cod,
+            "dsc_rubr":    vi["dsc_rubr"],
+            "unid_verba":  unid,
+            "tp_rubr":     vi["tp_rubr"],
+            "qtd":         qtd,
+            "valor":       valor_novo,
+            "valor_antes": val,
+            "entrada_fmt": entrada_fmt,
+        })
+
+    funcionarios, vistos = [], set()
+    for ln in linhas:
+        if ln["matricula"] in vistos:
+            continue
+        vistos.add(ln["matricula"])
+        funcionarios.append({"matricula": ln["matricula"], "nome": ln["nome"]})
+    funcionarios.sort(key=lambda f: f["nome"])
+
+    return linhas, funcionarios, ignorados
+
+
+@app.route("/mov_replicar")
+def mov_replicar():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
+    situacao   = _refresh_situacao_folha() if len(anomes) == 6 else ""
+
+    folha_orig = _repl_folha_origem(id_cliente, id_empresa, anomes) if len(anomes) == 6 else 0
+    linhas, funcionarios, ignorados = _repl_montar(id_cliente, id_empresa, anomes, folha_orig)
+
+    return render_template(
+        "F10_Mov_Replicar.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo_ativa=folha_tipo,
+        folha_situacao=situacao,
+        folha_origem=str(folha_orig or ""),
+        linhas=linhas,
+        funcionarios=funcionarios,
+        ignorados=ignorados,
+        ja_replicado=_repl_ja_replicado(id_cliente, id_empresa, anomes) if len(anomes) == 6 else 0,
+        lote_replica=MOV_REPLICA_LOTE,
+    )
+
+
+def _repl_travas():
+    """Checagens que valem para gravar e para excluir. Devolve (erro, dados)."""
+    if not session.get("logado"):
+        return {"ok": False, "msg": "Sessão expirada."}, None
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return {"ok": False, "msg": "Sem folha ativa."}, None
+    if str(session.get("anomes_tipo") or "N").upper()[:1] != "N":
+        return {"ok": False, "msg": "A réplica só vale para a folha Normal."}, None
+    # A trava vale NO SERVIDOR, não só na tela.
+    if _refresh_situacao_folha() not in ("A", "X"):
+        return {"ok": False,
+                "msg": "A folha precisa estar Aberta. Reabra pelo menu Mês/Ano."}, None
+    return None, (session.get("id_cliente"), _get_id_empresa(), anomes)
+
+
+# =========================================================
+# REPLICAR MOVIMENTO — API: gravar
+# =========================================================
+@app.route("/api/mov_replicar_gravar", methods=["POST"])
+def api_mov_replicar_gravar():
+    erro, dados = _repl_travas()
+    if erro:
+        return jsonify(erro)
+    id_cliente, id_empresa, anomes = dados
+    data       = request.get_json(silent=True) or {}
+    matriculas = data.get("matriculas") or []
+    substituir = bool(data.get("substituir"))
+
+    try:
+        mats = {int(m) for m in matriculas}
+    except (TypeError, ValueError):
+        mats = set()
+    if not mats:
+        return jsonify({"ok": False, "msg": "Nenhum funcionário selecionado."})
+
+    folha_orig = _repl_folha_origem(id_cliente, id_empresa, anomes)
+    if not folha_orig:
+        return jsonify({"ok": False, "msg": "Não consegui identificar o mês anterior à folha ativa."})
+
+    ja = _repl_ja_replicado(id_cliente, id_empresa, anomes)
+    if ja and not substituir:
+        return jsonify({"ok": False, "ja_replicado": ja,
+                        "msg": f"Esta folha já tem {ja} lançamento(s) replicado(s)."})
+
+    linhas, _funcs, _ign = _repl_montar(id_cliente, id_empresa, anomes, folha_orig)
+    linhas = [ln for ln in linhas if ln["matricula"] in mats]
+    if not linhas:
+        return jsonify({"ok": False,
+                        "msg": f"Nada a replicar de {str(folha_orig)[4:6]}/{str(folha_orig)[:4]} "
+                               f"para quem foi selecionado."})
+
+    registros = [{
+        "id_cliente": id_cliente,
+        "id_empresa": id_empresa,
+        "situacao":   "A",
+        "matricula":  ln["matricula"],
+        "folha":      int(anomes),
+        "folha_tipo": "N",
+        "cod_verba":  ln["cod_verba"],
+        "qtd":        ln["qtd"],
+        "valor":      ln["valor"],
+        "lote":       MOV_REPLICA_LOTE,
+        "origem":     "M",
+        "controle":   0,
+        "os":         0,
+    } for ln in linhas]
+
+    try:
+        if ja:
+            _repl_apagar(id_cliente, id_empresa, anomes)
+        for i in range(0, len(registros), 500):
+            supabase.table("tab_mov").insert(registros[i:i + 500]).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}"})
+
+    n_func = len({r["matricula"] for r in registros})
+    gravar_log("MOV-REPL",
+               f"Replicados {len(registros)} lançamento(s) de {n_func} funcionário(s) "
+               f"da folha {folha_orig} para {anomes} (lote {MOV_REPLICA_LOTE})")
+    return jsonify({
+        "ok": True,
+        "gravados": len(registros),
+        "funcionarios": n_func,
+        "substituiu": ja,
+        "msg": (f"{len(registros)} lançamento(s) replicado(s) para "
+                f"{n_func} funcionário(s)."),
+    })
+
+
+# =========================================================
+# REPLICAR MOVIMENTO — API: desfazer (apaga pelo lote)
+# =========================================================
+@app.route("/api/mov_replicar_excluir", methods=["POST"])
+def api_mov_replicar_excluir():
+    erro, dados = _repl_travas()
+    if erro:
+        return jsonify(erro)
+    id_cliente, id_empresa, anomes = dados
+
+    ja = _repl_ja_replicado(id_cliente, id_empresa, anomes)
+    if not ja:
+        return jsonify({"ok": False, "msg": "Esta folha não tem lançamentos replicados."})
+    try:
+        _repl_apagar(id_cliente, id_empresa, anomes)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
+
+    gravar_log("MOV-REPL",
+               f"Excluídos {ja} lançamento(s) replicados da folha {anomes} "
+               f"(lote {MOV_REPLICA_LOTE})")
+    return jsonify({"ok": True, "excluidos": ja,
+                    "msg": f"{ja} lançamento(s) replicado(s) excluído(s)."})
+
+
+# =========================================================
 # ACIDENTE — API: data/hora de registro do afastamento vinculado
 # =========================================================
 @app.route("/api/evento_info")
