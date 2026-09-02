@@ -10096,27 +10096,62 @@ def _gravar_usuario_titular(id_cliente, cpf, nome, celular, email, senha):
     return True
 
 
-def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
+# =========================================================
+# CADASTRO — UM CPF SÓ SE CADASTRA UMA VEZ
+# =========================================================
+# A tela já barra o CPF repetido em /prevalidar e /validar, mas a checagem que
+# vale é esta, na hora de gravar: entre digitar o CPF e confirmar o código
+# passam minutos, e duas pessoas podem estar no meio do cadastro ao mesmo
+# tempo. Antes daqui saía um `upsert`, que reescrevia o cliente inteiro — um
+# cliente com seis meses pagos e 40 funcionários contratados voltava para a
+# licença do teste, 1 empresa e 10 funcionários, sem aviso nenhum.
+#
+# Quem já tem conta entra pelo login ou pelo "Esqueci minha senha".
+def inserir_cliente_novo(cpf, nome, celular, email, senha):
+    """Grava o cliente NOVO. Devolve (ok, msg) — a msg vai para a tela."""
     cpf     = so_numeros(cpf)
     celular = so_numeros(celular)
-    # Detecta se ja existe para diferenciar cadastro NOVO de reinscricao.
-    ja_existia = False
+
+    # Sem resposta do banco o cadastro NÃO segue. Recusar custa um "tente de
+    # novo"; deixar passar apaga o contrato de quem já é cliente.
     try:
         _r = (supabase.table("tab_cliente")
               .select("id_cliente")
               .eq("cpf", cpf)
               .limit(1).execute())
-        ja_existia = bool(_r.data)
-    except Exception:
-        ja_existia = False
+    except Exception as e:
+        print(f"[cadastro] checagem de CPF existente falhou: {e}")
+        return False, ("Não consegui confirmar o seu cadastro agora. "
+                       "Tente de novo em alguns instantes.")
+    if _r.data:
+        return False, ("Este CPF já está cadastrado. Entre com a sua senha ou "
+                       "use \"Esqueci minha senha\".")
 
+    # A licença do teste tem que liberar A MESMA competência que a empresa vai
+    # receber aberta, e não o mês do calendário. Quem se cadastra até o dia 5
+    # vem processar o mês que passou (ver _anomes_inicial): com o mês corrente
+    # aqui, o cliente que entrava em 01/09 ganhava agosto na folha e setembro
+    # na licença — dois meses de teste, e o mês liberado não era o que ele veio
+    # processar. Uma regra só para os dois lados.
+    _am_teste = _anomes_inicial()                    # yyyymm
     payload = {
         "cpf": cpf, "nome": nome, "celular": celular, "email": email,
         "senha": senha, "qtd_empresas": 1, "qtd_funcionarios": 10,
-        "data_limite": _agora_brasilia().strftime("%Y-%m"),
+        "data_limite": f"{_am_teste[:4]}-{_am_teste[4:6]}",
         "tentativas_login": 0, "bloqueado_ate": None
     }
-    resp = supabase.table("tab_cliente").upsert(payload).execute()
+    # INSERT, nunca upsert: se o CPF entrou no banco entre a checagem acima e
+    # esta linha, o banco recusa e o cadastro para aqui — em vez de passar por
+    # cima do cliente que chegou primeiro.
+    try:
+        resp = supabase.table("tab_cliente").insert(payload).execute()
+    except Exception as e:
+        _err = str(e)
+        print(f"[cadastro] insert tab_cliente: {_err}")
+        if "23505" in _err or "duplicate" in _err.lower() or "unique" in _err.lower():
+            return False, ("Este CPF já está cadastrado. Entre com a sua senha ou "
+                           "use \"Esqueci minha senha\".")
+        return False, f"Não foi possível concluir o cadastro: {_err[:150]}"
 
     # O login le tab_usuario, entao o cliente recem-cadastrado PRECISA virar
     # usuario titular aqui — sem isso ele nao entra no proprio cadastro.
@@ -10131,29 +10166,29 @@ def inserir_ou_atualizar_cliente(cpf, nome, celular, email, senha):
     except Exception as e:
         print(f"[cadastro] titular em tab_usuario: {e}")
 
-    # Notifica o admin F10 por WhatsApp quando o cadastro for NOVO.
-    if not ja_existia:
-        try:
-            from datetime import datetime as _dt
-            cpf_fmt   = (f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
-                         if len(cpf) == 11 else cpf)
-            cel_fmt   = (f"({celular[:2]}) {celular[2:7]}-{celular[7:]}"
-                         if len(celular) == 11 else celular)
-            agora_fmt = _dt.now().strftime("%d/%m/%Y %H:%M")
-            msg_wa = (
-                "*Folha10 — Novo cliente cadastrado*\n\n"
-                f"Quando: {agora_fmt}\n\n"
-                f"Nome: {nome}\n"
-                f"CPF: {cpf_fmt}\n"
-                f"Celular: {cel_fmt}\n"
-                f"Email: {email}\n"
-            )
-            ok_wa, err_wa = _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg_wa)
-            print(f"[novo_cliente] whatsapp ok={ok_wa} err={err_wa!r}")
-        except Exception as e:
-            print(f"[novo_cliente] excecao ao enviar whatsapp: {e}")
+    # Notifica o admin F10 por WhatsApp. Daqui so' passa cadastro novo — o
+    # CPF repetido para' la' em cima, na checagem antes do insert.
+    try:
+        from datetime import datetime as _dt
+        cpf_fmt   = (f"{cpf[:3]}.{cpf[3:6]}.{cpf[6:9]}-{cpf[9:]}"
+                     if len(cpf) == 11 else cpf)
+        cel_fmt   = (f"({celular[:2]}) {celular[2:7]}-{celular[7:]}"
+                     if len(celular) == 11 else celular)
+        agora_fmt = _dt.now().strftime("%d/%m/%Y %H:%M")
+        msg_wa = (
+            "*Folha10 — Novo cliente cadastrado*\n\n"
+            f"Quando: {agora_fmt}\n\n"
+            f"Nome: {nome}\n"
+            f"CPF: {cpf_fmt}\n"
+            f"Celular: {cel_fmt}\n"
+            f"Email: {email}\n"
+        )
+        ok_wa, err_wa = _enviar_whatsapp_texto(PIX_WA_NOTIF_TEL, msg_wa)
+        print(f"[novo_cliente] whatsapp ok={ok_wa} err={err_wa!r}")
+    except Exception as e:
+        print(f"[novo_cliente] excecao ao enviar whatsapp: {e}")
 
-    return resp
+    return True, ""
 
 def _validar_documento_cad(documento):
     documento = so_numeros(documento)
@@ -10582,12 +10617,17 @@ def confirmar():
         return jsonify({"ok": False, "msg": "Senha inválida", "erros": resultado_senha["erros"]})
 
     try:
-        inserir_ou_atualizar_cliente(
+        ok_cad, msg_cad = inserir_cliente_novo(
             documento, registro["nome"], registro["celular"], registro["email"], senha
         )
     except Exception as e:
         print("Erro ao gravar cliente:", str(e))
         return jsonify({"ok": False, "msg": f"Erro ao gravar no banco: {str(e)}"})
+
+    # CPF já cadastrado (ou banco sem resposta): o código continua valendo, para
+    # o cliente poder tentar de novo sem pedir outro.
+    if not ok_cad:
+        return jsonify({"ok": False, "campo": "cpf", "msg": msg_cad})
 
     del codigos_gerados[documento]
     return jsonify({"ok": True, "msg": "Cadastro realizado com sucesso", "redirect_login": "/login"})
