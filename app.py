@@ -44984,14 +44984,29 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             for _cv_ad in (161, 162, 163, 164):
                 _adiant_dup += int(mmVmm.pop(_cv_ad, 0) or 0)
 
+            # A propria 160 tambem pode estar DIGITADA no movimento (origem 'M').
+            # Ela e o MESMO desconto que as 161-164 representam: somar as duas
+            # cobra o adiantamento duas vezes, derruba o liquido e ainda faz
+            # aparecer uma 551 de insuficiencia sem motivo.
+            # Empresa 53, matricula 2, folha 08/2026: 805,68 digitados na 160 +
+            # 805,68 apurados da 161 = 1.611,36 de desconto. O liquido, que era
+            # +712,34, virou -93,34 e gerou 551 de 93,34.
+            # Quando ha 161-164 na folha, quem manda e o APURADO - a digitada nao
+            # soma. Sem 161-164 (_adiant_v = 0) a 160 digitada continua valendo
+            # sozinha, que e o caso da rescisao e do adiantamento pago por fora.
+            _v160_dig = int(mmVmm.get(160, 0) or 0)
             _adiant_v = int(_adiant_por_mat.get(matr, 0))
             if _adiant_v > 0:
-                mmVmm[160] = mmVmm.get(160, 0) + _adiant_v
+                mmVmm[160] = _adiant_v
                 _ad_linha = (f"Adiantamento Quinzenal (verbas 161-164): {_fmt_brl(_adiant_v)}"
                              f"  »  V160 (desconto) = {_fmt_brl(_adiant_v)}")
                 if _adiant_dup > 0:
                     _ad_linha += (f"   ·   V161-164 lançadas no movimento "
                                   f"({_fmt_brl(_adiant_dup)}) não descontam de novo")
+                if _v160_dig > 0:
+                    _ad_linha += (f"   ·   V160 digitada no movimento "
+                                  f"({_fmt_brl(_v160_dig)}) não soma — é o mesmo "
+                                  f"desconto do adiantamento")
                 _ad_tbl = Table([
                     [Paragraph("ETAPA 1140 - DESCONTO DE ADIANTAMENTO QUINZENAL", st_etapa)],
                     [Paragraph(_ad_linha, st_detalhe)],
