@@ -208,6 +208,9 @@ body.sel-unico .lista-row { cursor: pointer; }
 .badge-aviso    { display: inline-block; background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .badge-pensao   { display: inline-block; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .badge-adicional     { display: inline-block; background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+/* Afastado AGORA (afastamento sem retorno lancado). Ambar, para se separar do
+   verde do "Ativo" na mesma coluna sem competir com o vermelho do demitido. */
+.badge-afastado { display: inline-block; background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .badge-sem-adicional { color: #cbd5e1; font-size: 12px; }
 /* .lc-sit empilha os selos em coluna; aqui os dois ficam na MESMA linha. */
 .sit-linha { display: inline-flex; align-items: center; gap: 5px; }
@@ -603,13 +606,16 @@ const CONTEXTOS = {
     },
     afastamento: {
         titulo:        'Afastamento — Selecionar Funcionários',
-        subtitulo:     'Selecione os funcionários a serem afastados',
+        subtitulo:     'Selecione quem vai ser afastado ou quem está voltando',
         tituloCurto:   'Selecionar — Afastamento',
         proximo:       '/cad_afastamento',
         f_situacao:    'A',
         // Só interessam os ativos, e a busca por nome/matrícula da toolbar já
         // resolve — o painel de filtros ocupava metade da tela sem uso.
         semFiltros:    true,
+        // O contexto na API é o que traz o afast_desde de cada linha.
+        apiUrl:        '/api/funcionarios_lista?contexto=afastamento',
+        colAfastado:   true,         // última coluna = selo de afastado
     },
     contrato: {
         titulo:        'Contrato por Prazo Determinado — Selecionar Funcionário',
@@ -924,6 +930,9 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (ctx.colAdicional) {
         const lbl = document.getElementById('col-sit-label');
         if (lbl) lbl.textContent = 'Adicional Ativo';
+    } else if (ctx.colAfastado) {
+        const lbl = document.getElementById('col-sit-label');
+        if (lbl) lbl.textContent = 'Afastamento';
     }
 
     syncRescisaoDisponivel();
@@ -1250,6 +1259,16 @@ function renderLista(lista) {
             sitCell = f.exame_data
                 ? '<span class="lc-data-col" title="Data do último exame médico">' + f.exame_data + '</span>'
                 : '<span class="lc-data-col" title="Sem exame registrado">—</span>';
+        } else if (ctx.colAfastado) {
+            // A lista já vem só com ativos, então o selo "Ativo" não informava
+            // nada. A coluna passa a dizer QUEM ESTÁ AFASTADO AGORA: é o que
+            // decide o que fazer na tela seguinte — quem está afastado não
+            // aceita afastamento novo, e é dele o retorno a lançar.
+            sitCell = f.afast_desde
+                ? '<span class="badge-afastado" title="Afastado desde ' + f.afast_desde
+                  + (f.afast_motivo ? ' — ' + f.afast_motivo : '')
+                  + '. Selecione para lançar o retorno.">Afastado ' + f.afast_desde + '</span>'
+                : '<span class="badge-ativo">Ativo</span>';
         } else if (ctx.colAdicional) {
             // Quem já recebe adicional aparece marcado: é o que dizia, antes de
             // abrir a ficha, que ali há algo a encerrar.

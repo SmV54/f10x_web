@@ -17917,6 +17917,52 @@ def api_funcionarios_lista():
             print(f"[funcionarios_lista] adicionais ativos: {e}")
             adic_por_mat = {}
 
+    # Contexto afastamento: quem está AFASTADO AGORA, para a lista avisar antes
+    # da escolha. Sem isso a pessoa seleciona, entra na tela seguinte e só ali
+    # descobre que aquele funcionário não aceita afastamento novo (ou que é
+    # dele o retorno a lançar).
+    #
+    # Afastado = tem afastamento (op1=6) sem data de retorno. O op2=203 fica de
+    # fora, como em todo lugar: é registro auxiliar da importação do Folha10
+    # Desktop, sem efeito aqui, e vários nunca vão ser fechados — marcá-los
+    # deixaria o selo aceso para sempre em quem já voltou (ver
+    # api_afastamento_gravar e _lista_afastados_dados).
+    afast_aberto = {}
+    if _contexto == "afastamento":
+        try:
+            r_af = (supabase.table("tab_eventos")
+                    .select("matricula, op2, data1i, data1f")
+                    .eq("id_empresa", id_empresa)
+                    .eq("op1", 6)
+                    .execute())
+            _motivos_af = _motivos_afastamento()
+            for _e in (r_af.data or []):
+                if _e.get("matricula") is None:
+                    continue
+                if str(_e.get("data1f") or "").strip():
+                    continue
+                _op2 = str(_e.get("op2") or "").strip()
+                if _op2 == "203":
+                    continue
+                _m = int(_e["matricula"])
+                _d = str(_e.get("data1i") or "")
+                # Mais de um em aberto (base antiga) — vale o mais recente, que
+                # é o que a próxima volta encerra.
+                if _m in afast_aberto and afast_aberto[_m]["ymd"] >= _d:
+                    continue
+                try:
+                    _cod = f"{int(_op2):02d}"
+                except (TypeError, ValueError):
+                    _cod = _op2
+                afast_aberto[_m] = {
+                    "ymd":    _d,
+                    "desde":  f"{_d[6:8]}/{_d[4:6]}/{_d[:4]}" if len(_d) == 8 else "",
+                    "motivo": f"{_cod} — {_motivos_af.get(_cod, '')}".strip(" —"),
+                }
+        except Exception as e:
+            print(f"[funcionarios_lista] afastamentos em aberto: {e}")
+            afast_aberto = {}
+
     funcionarios = []
     for f in rows:
         if so_com_ferias and not _categoria_tem_ferias(f.get("codcateg")):
@@ -17949,6 +17995,8 @@ def api_funcionarios_lista():
                                 exame_ult.get(mat_int, "")),
             "contrato_fim": contrato_fim.get(mat_int, ""),
             "adicionais":   adic_por_mat.get(mat_int, []),
+            "afast_desde":  afast_aberto.get(mat_int, {}).get("desde", ""),
+            "afast_motivo": afast_aberto.get(mat_int, {}).get("motivo", ""),
         })
 
     return jsonify({"ok": True, "funcionarios": funcionarios})
@@ -42261,17 +42309,75 @@ def _ids_horario_escala(id_cliente):
     return ids
 
 
-def _calc_etapa1_dados(id_empresa):
-    """Busca funcionários e calcula salário hora (Etapa 1)."""
+def _calc_etapa1_dados(id_empresa, anomes=None):
+    """Busca funcionários e calcula salário hora (Etapa 1).
+
+    Com `anomes` (AAAAMM) a lista sai pela COMPETÊNCIA: entra só quem tinha
+    vínculo com ESTA empresa naquele mês. Sem `anomes` sai como sempre saiu —
+    todo mundo com situacao 'A' —, que é o que as telas de lista esperam e o
+    que os chamadores que buscam o demitido à parte já contam que aconteça.
+
+    A REGRA DA COMPETÊNCIA (SMV 03/09/2026)
+
+    1) COMEÇO = dttransf de quem ENTROU por transferência, senão dtadm.
+       Numa transferência o dtadm da empresa de destino é o ORIGINAL — é
+       sucessão de vínculo, e o S-2200 de lá leva a admissão antiga. Ele não
+       diz quando a pessoa passou a ser daquela empresa; quem diz é a
+       dttransf. Sem essa distinção, GENILDO SOARES, que entrou na empresa 53
+       em 01/09/2026 com dtadm de 2022, saiu na folha de 08/2026 daquela
+       empresa com o mês inteiro pago (líquido 1.411,16).
+
+       Só que a dttransf é gravada nos DOIS lados da transferência, e do lado
+       de quem PERDEU o funcionário ela marca a saída, não a entrada — lá ela
+       é igual à datarescisao. Quem separa os dois lados é o tpadmissao: 2 no
+       destino (admissão por transferência), 1 na origem. Tomar a dttransf
+       nos dois lados jogaria o começo do funcionário na empresa de origem
+       para o dia em que ele saiu dela, e ele sumiria da última folha —
+       exatamente o mês que ainda falta pagar.
+
+    2) DESLIGADO NÃO ENTRA, com data de saída no mês da folha ou depois dela
+       (SMV 03/09/2026). A RESCISÃO é o único movimento dele, e os valores que
+       ela apurou ficam de pé.
+
+    A comparação do começo é por AAAAMM, não por dia: o que decide é o MÊS em
+    que a pessoa entrou, e assim não é preciso saber quantos dias tem o mês.
+    """
     linhas = []
+    _am = str(anomes or "").strip()
     try:
-        r = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, dtadm, codcateg, dtnascto, id_tab_horario")
+        q = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, dtadm, "
+                     "codcateg, dtnascto, id_tab_horario, situacao, datarescisao, "
+                     "dttransf, tpadmissao")
              .eq("id_empresa", id_empresa)
-             .eq("situacao", "A")
-             .order("matricula")
-             .execute())
+             .order("matricula"))
+        if not _am:
+            q = q.eq("situacao", "A")
+        r = q.execute()
         for f in (r.data or []):
+            if _am:
+                _dtadm  = str(f.get("dtadm")    or "")
+                _tr     = str(f.get("dttransf") or "")
+                _tpadm  = str(f.get("tpadmissao") or "").strip()
+                # tpadmissao 2 = admitido POR TRANSFERENCIA: e' a dttransf que
+                # diz quando ele passou a ser desta empresa.
+                _comeco = _tr if (_tr and _tpadm not in ("", "1")) else _dtadm
+                if _comeco and _comeco[:6] > _am:
+                    continue                      # ainda não era desta empresa
+                # DESLIGADO NÃO ENTRA, com data de saída no mês ou depois dela.
+                # A rescisão é o único movimento dele, e o que ela já apurou
+                # fica de pé: o funcionário nem chega a ser recalculado, então
+                # o _limpar_folha_calculada (que roda por matrícula, dentro do
+                # laço) não passa por ele e não apaga nada.
+                #
+                # Quem decide é a SITUAÇÃO, não a data. A datarescisao de uma
+                # ficha ATIVA não é confiável — rescisão cancelada deixa a data
+                # para trás, e há ficha ativa com saída anterior à própria
+                # admissão (empresa 18 matrícula 1: admitida 15/07/2026,
+                # datarescisao 13/07/2026, folha de 07/2026 calculada). Ler a
+                # data ali tiraria da folha quem está trabalhando.
+                if str(f.get("situacao") or "") != "A":
+                    continue
             vrsalfx   = int(f.get("vrsalfx")   or 0)
             qtdhrsmes = int(f.get("qtdhrsmes")  or 0)
             und       = (f.get("undsalfixo") or "M").upper()
@@ -45909,7 +46015,11 @@ def calcular_folha_stream():
 
     def run():
         try:
-            linhas = _calc_etapa1_dados(id_empresa)
+            # A competencia so' vai na folha NORMAL. Ferias e rescisao tem
+            # fluxo proprio e listam o funcionario por outro caminho - passar
+            # o anomes aqui tiraria o demitido de dentro da propria rescisao.
+            linhas = _calc_etapa1_dados(
+                id_empresa, anomes=(anomes if anomes_tipo == "N" else None))
             # No modo individual, filtra para a matricula informada.
             if eh_individual:
                 linhas = [l for l in (linhas or [])
