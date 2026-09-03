@@ -42453,6 +42453,11 @@ def _calc_etapa1_dados(id_empresa, anomes=None):
                 "codcateg":     str(f.get("codcateg") or ""),
                 "dtnascto":     str(f.get("dtnascto") or ""),
                 "id_horario":   int(f.get("id_tab_horario") or 0),
+                # Quem chama pela competência precisa saber que este funcionário
+                # já tem desligamento marcado para DEPOIS do mês — ele entra na
+                # folha, mas as telas têm de dizer isso.
+                "situacao":     str(f.get("situacao") or ""),
+                "datarescisao": str(f.get("datarescisao") or ""),
             })
     except Exception:
         pass
@@ -46699,18 +46704,30 @@ def visualizar_calculo():
     if not session.get("logado"):
         return redirect("/")
     id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    _tipo      = str(session.get("anomes_tipo") or "N")
     funcionarios = []
     try:
-        linhas = _calc_etapa1_dados(id_empresa)
+        # A lista tem de ser exatamente quem ENTRA no cálculo da folha, e isso
+        # depende da competência: quem foi transferido para cá depois do mês
+        # não entra, e quem sai depois do mês entra (ver _calc_etapa1_dados).
+        # Só na folha NORMAL — nas outras a lista sai como sempre saiu.
+        linhas = _calc_etapa1_dados(id_empresa,
+                                    anomes=(anomes if _tipo == "N" else None))
         funcionarios = [{"matricula": int(l["matricula"]), "nome": l["nome"],
-                         "demitido": False} for l in (linhas or [])]
+                         # "demitido" continua querendo dizer DESLIGADO NESTE MÊS
+                         # (é ele que manda ler a rescisão em vez da folha
+                         # normal). Quem sai DEPOIS do mês entra na folha
+                         # normal e é marcado à parte, com a data.
+                         "demitido": False,
+                         "dem_fmt":  _d_br(l.get("datarescisao") or "")}
+                        for l in (linhas or [])]
     except Exception:
         pass
     # Inclui os demitidos do mês da folha (situacao='D' com datarescisao no mês)
     # — não aparecem em _calc_etapa1_dados, mas precisam entrar na lista para
     # visualizar a rescisão calculada.
     try:
-        anomes = str(session.get("anomes_atual") or "")
         if len(anomes) == 6 and anomes.isdigit():
             _ano = int(anomes[:4]); _mes = int(anomes[4:6])
             _ult = calendar.monthrange(_ano, _mes)[1]
@@ -46720,7 +46737,8 @@ def visualizar_calculo():
             for d in _lista_demitidos_dados(id_empresa, ini_int, fim_int):
                 if d["matricula"] not in mats_existentes:
                     funcionarios.append({"matricula": d["matricula"],
-                                         "nome": d["nome"], "demitido": True})
+                                         "nome": d["nome"], "demitido": True,
+                                         "dem_fmt": d.get("dem_fmt") or ""})
             funcionarios.sort(key=lambda f: f["matricula"])
     except Exception:
         pass
@@ -46879,6 +46897,23 @@ def api_visualizar_calculo_dados():
                     dtadms.setdefault(m, d.get("adm_raw") or "")
     except Exception:
         pass
+    # Desligamento marcado para DEPOIS do mês da folha: esses ENTRAM no cálculo
+    # normal (trabalharam o mês inteiro), então não estão em demitidos_mes — mas
+    # o card precisa mostrar que a saída já está lançada. Sem isto o único aviso
+    # seria abrir a ficha do funcionário.
+    dem_futura_map = {}
+    try:
+        r_df = (supabase.table("tab_cad").select("matricula, datarescisao")
+                .eq("id_empresa", id_empresa).in_("matricula", sorted(mats_set))
+                .execute())
+        for f in (r_df.data or []):
+            m  = int(f.get("matricula") or 0)
+            dr = str(f.get("datarescisao") or "")
+            if m not in demitidos_mes and len(dr) == 8 and dr[:6] > anomes:
+                dem_futura_map[m] = dr
+    except Exception:
+        dem_futura_map = {}
+
     tipo_por_mat = {m: ("R" if m in demitidos_mes else folha_tipo_mov) for m in mats_set}
     tipos_query  = sorted(set(tipo_por_mat.values())) or [folha_tipo_mov]
 
@@ -47082,6 +47117,10 @@ def api_visualizar_calculo_dados():
             "dtadm":           _dt_br(dtadms.get(mat, "")),
             "demitido":        mat in demitidos_mes,
             "dtdemissao":      _dt_br(demissao_map.get(mat, "")),
+            # Desligamento marcado para DEPOIS desta folha: ele entra no
+            # cálculo do mês, então não é "demitido" aqui — mas o card tem de
+            # dizer que a saída já está lançada, e quando.
+            "dem_futura":      _dt_br(dem_futura_map.get(mat, "")),
             "is_intermitente": is_int,
             "sal_hora_fmt":    _fmt_brl(int(sh_emp)) if is_int and sh_emp else "",
             "info_extra":      " · ".join(info_partes),

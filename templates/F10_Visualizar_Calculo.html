@@ -150,6 +150,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     font-family: var(--mono); font-weight: 700; color: #b91c1c;
     margin: 0 4px;
 }
+/* Desligamento marcado para DEPOIS desta folha: o funcionário ENTRA no
+   cálculo do mês (trabalhou o mês inteiro), então não é o "D" vermelho de
+   quem saiu — é um aviso de que ele já tem data de saída. Âmbar, e a data
+   vai junto para não obrigar a abrir a ficha. */
+.func-sai {
+    font-size: 10px; font-weight: 700; color: #92400e;
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 4px;
+    padding: 0 5px; margin-left: 6px; white-space: nowrap;
+}
 
 .verbas-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .verbas-table th {
@@ -368,7 +377,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             {% for f in funcionarios %}
             <div class="func-item" data-nome="{{ f.nome|lower }}" data-mat="{{ '%06d' % f.matricula }}">
                 <input type="checkbox" id="chk{{ f.matricula }}" value="{{ f.matricula }}" onchange="atualizarTodos()">
-                <label for="chk{{ f.matricula }}"><span class="func-mat">{{ '%06d' % f.matricula }}</span><span class="func-dem">{% if f.demitido %}D{% endif %}</span>— {{ f.nome }}</label>
+                <label for="chk{{ f.matricula }}"><span class="func-mat">{{ '%06d' % f.matricula }}</span><span class="func-dem">{% if f.demitido %}D{% endif %}</span>— {{ f.nome }}{% if not f.demitido and f.dem_fmt %}<span class="func-sai" title="Desligamento em {{ f.dem_fmt }}, depois desta folha — entra no cálculo do mês">sai {{ f.dem_fmt }}</span>{% endif %}</label>
             </div>
             {% else %}
             <div style="padding:16px;font-size:13px;color:var(--sub);">Nenhum funcionário ativo.</div>
@@ -651,7 +660,11 @@ function renderResultados(data) {
             : '';
         const badgeDem = func.demitido
             ? '<span class="badge-tipo badge-tipo-R">Demitido</span>'
-            : '';
+            : (func.dem_futura
+                // Sai depois desta folha: entra no cálculo do mês, mas a saída
+                // já está lançada — o card avisa, com a data.
+                ? `<span class="func-sai" title="Desligamento em ${func.dem_futura}, depois desta folha — entra no cálculo do mês">Sai em ${func.dem_futura}</span>`
+                : '');
         const badgeInterm = func.is_intermitente
             ? `<span class="badge-interm">Cat. 111 — Intermitente${func.sal_hora_fmt ? ' · Sal/h: R$ ' + func.sal_hora_fmt : ''}</span>`
             : '';
