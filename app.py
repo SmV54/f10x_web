@@ -18738,6 +18738,56 @@ def api_afastamento_gravar():
         except (TypeError, ValueError):
             erros.append(f"Matrícula inválida: {mat}")
             continue
+
+        # ── Afastamento que já existe: duas travas (SMV 03/09/2026) ──────────
+        #
+        # 1) REPETIDO: mesma matrícula, mesma data de início e mesmo motivo é o
+        #    mesmo afastamento gravado de novo. A tela não impedia, e cada
+        #    "gravar" criava outra linha no tab_eventos (e outra remessa
+        #    S-2230). Empresa 39, em 09/2026: as matrículas 16, 17 e 80 ficaram
+        #    com 4 linhas repetidas assim, uma delas em três vias.
+        #
+        # 2) OUTRO EM ABERTO: não se lança afastamento para quem ainda está
+        #    afastado. Enquanto o retorno não for informado, o funcionário
+        #    continua fora — um segundo afastamento por cima nem descreve um
+        #    fato possível, e o S-2230 sairia com dois inícios sem fim no meio.
+        #    Primeiro se lança o retorno do que está aberto.
+        #
+        # O op2=203 FICA DE FORA das duas: ele não é motivo de afastamento, é o
+        # registro auxiliar da base migrada que repete o afastamento verdadeiro
+        # com a mesma data (ver _lista_afastados_dados, que também o descarta).
+        # Vários estão sem data de retorno e nunca vão ser fechados — contá-los
+        # como "em aberto" travaria esses funcionários para sempre.
+        try:
+            _q_ja = (supabase.table("tab_eventos").select("id, op2, data1i, data1f")
+                     .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                     .eq("op1", 6))
+            if id_cliente:
+                _q_ja = _q_ja.eq("id_cliente", id_cliente)
+            _afast_ant = [a for a in (_q_ja.execute().data or [])
+                          if str(a.get("op2") or "").strip() != "203"]
+        except Exception:
+            # sem resposta do banco não dá para afirmar que existe — deixa gravar
+            _afast_ant = []
+
+        _repetido = [a for a in _afast_ant
+                     if str(a.get("data1i") or "") == data1i
+                     and str(a.get("op2") or "").strip() == str(motivo).strip()]
+        if _repetido:
+            erros.append(f"Mat {mat_int}: já existe afastamento com início em "
+                         f"{_fmt_dt(data1i)} e motivo {motivo} — não gravado "
+                         f"de novo.")
+            continue
+
+        _abertos = [a for a in _afast_ant if not str(a.get("data1f") or "").strip()]
+        if _abertos:
+            _ab = max(_abertos, key=lambda x: str(x.get("data1i") or ""))
+            erros.append(f"Mat {mat_int}: já existe afastamento EM ABERTO desde "
+                         f"{_fmt_dt(str(_ab.get('data1i') or ''))} (motivo "
+                         f"{_ab.get('op2')}), sem retorno informado. Lance o "
+                         f"retorno antes de registrar um novo afastamento.")
+            continue
+
         try:
             ev_row = {
                 "id_cliente": id_cliente,
