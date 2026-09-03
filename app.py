@@ -47244,24 +47244,36 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
             }
     except Exception:
         pass
-    if mov_data and not func_info:
+    # Quem está na folha mas NÃO está entre os ativos: desligado do mês
+    # (rescisão) e desligado com saída marcada para depois do mês, que entra no
+    # cálculo normal. Sem isto o nome deles não existe no relatório e a linha
+    # sai como "Matr. 000002" — foi o que aconteceu com GENILDO SOARES na folha
+    # de 08/2026 da empresa 39.
+    #
+    # Antes esta busca só rodava com `not func_info`, ou seja, quando NENHUM
+    # ativo tinha sido lido — numa empresa com um ativo sequer ela nunca
+    # acontecia, e é justamente aí que mora o desligado no meio da lista.
+    _sem_nome = [m for m in (mov_data or {}) if m not in func_info]
+    if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx,codcateg")
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,"
+                          "centrocusto,filial,codcateg")
                   .eq("id_empresa", id_empresa)
-                  .in_("matricula", list(mov_data.keys()))
+                  .in_("matricula", _sem_nome)
                   .execute())
             for f in (r2.data or []):
                 mat = int(f.get("matricula") or 0)
                 if not mat:
                     continue
+                _cbo = str(f.get("cbofuncao") or "").strip()
                 func_info[mat] = {
                     "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
                     "dtadm":  str(f.get("dtadm") or ""),
                     "sal":    int(f.get("vrsalfx") or 0),
-                    "funcao": "—",
-                    "cc":     "000",
-                    "filial": "",
+                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "cc":     str(f.get("centrocusto") or "000"),
+                    "filial": str(f.get("filial") or ""),
                     "cat":    int(f.get("codcateg") or 0),
                 }
         except Exception:
