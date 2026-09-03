@@ -18896,6 +18896,240 @@ def api_afastamento_gravar():
     })
 
 
+@app.route("/api/afastamento_abertos")
+def api_afastamento_abertos():
+    """Afastamento EM ABERTO (sem data de retorno) de cada matrícula pedida.
+
+    A tela usa isto para dois fins: liberar o modo Retorno e dizer, em cada
+    funcionário, desde quando ele está afastado e por quê.
+
+    O op2=203 fica de fora, como em toda parte: não é motivo de afastamento,
+    é registro auxiliar vindo da importação do Folha10 Desktop, sem efeito
+    aqui, e vários deles nunca vão receber retorno (ver
+    api_afastamento_gravar e _lista_afastados_dados).
+
+    Se o mesmo funcionário tiver mais de um em aberto — o que a trava da
+    gravação hoje impede, mas a base antiga tem — vale o mais recente: é o
+    que a próxima volta encerra.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    mats = []
+    for _p in str(request.args.get("mats") or "").split(","):
+        _p = _p.strip()
+        if _p.isdigit():
+            mats.append(int(_p))
+    if not mats:
+        return jsonify({"ok": True, "abertos": {}})
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    try:
+        q = (supabase.table("tab_eventos")
+             .select("id, matricula, op2, data1i, data1f, campotxt4")
+             .eq("id_empresa", id_empresa).eq("op1", 6)
+             .in_("matricula", mats))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        linhas = q.execute().data or []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao consultar: {str(e)[:150]}"})
+
+    motivos = _motivos_afastamento()
+    abertos = {}
+    for r in linhas:
+        if str(r.get("data1f") or "").strip():
+            continue
+        _op2 = str(r.get("op2") or "").strip()
+        if _op2 == "203":
+            continue
+        _mat = str(int(r.get("matricula") or 0))
+        _ini = str(r.get("data1i") or "")
+        if _mat in abertos and abertos[_mat]["data1i"] >= _ini:
+            continue
+        try:
+            _cod = f"{int(_op2):02d}"
+        except Exception:
+            _cod = _op2
+        abertos[_mat] = {
+            "id":       r.get("id"),
+            "data1i":   _ini,
+            "op2":      _op2,
+            "motivo":   f"{_cod} — {motivos.get(_cod, '')}".strip(" —"),
+        }
+
+    return jsonify({"ok": True, "abertos": abertos})
+
+
+@app.route("/api/afastamento_retorno_gravar", methods=["POST"])
+def api_afastamento_retorno_gravar():
+    """Informa a DATA DE RETORNO de um afastamento que está em aberto.
+
+    Até 09/2026 o retorno só podia ser dito na Data Fim, no mesmo instante em
+    que o afastamento era lançado. Quem não sabia a data da volta — que é o
+    caso normal — não tinha como completar depois, e o afastamento ficava
+    aberto para sempre. Agora o retorno entra pelo mesmo módulo, como no
+    Folha10 Desktop (FrmAfasta, campo "Data do Retorno").
+
+    SÓ grava sobre afastamento EM ABERTO: sem afastamento aberto não há
+    retorno a informar, e escrever a data de volta por cima de um afastamento
+    já encerrado apagaria a volta anterior.
+
+    Gera o S-2230 de RETORNO (flag1='R') na competência do próprio retorno —
+    não na da folha ativa — e grava no tab_log, igual faz o registro do
+    afastamento.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    sit = str(session.get("anomes_situacao") or "")
+    if sit in ("C", "F"):
+        sit_label = "Calculada" if sit == "C" else "Fechada"
+        return jsonify({"ok": False,
+                        "msg": f"Folha está {sit_label} — registro de retorno não permitido."})
+
+    data = request.get_json(force=True) or {}
+    matriculas = data.get("matriculas", [])
+    data_ret   = str(data.get("data_retorno", "")).strip()
+    _ges       = data.get("gerar_esocial")
+    gerar_es   = True if _ges is None else bool(_ges)
+    retroativo_ok     = bool(data.get("retroativo_ok"))
+    retorno_futuro_ok = bool(data.get("retorno_futuro_ok"))
+
+    if not matriculas:
+        return jsonify({"ok": False, "msg": "Nenhuma matrícula informada."})
+    if len(data_ret) != 8 or not data_ret.isdigit():
+        return jsonify({"ok": False, "msg": "Data do Retorno inválida."})
+
+    anomes_am = str(session.get("anomes_atual") or "")
+    folha_lbl = f"{anomes_am[4:6]}/{anomes_am[0:4]}" if anomes_am else ""
+    if anomes_am and data_ret[:6] > anomes_am:
+        return jsonify({"ok": False,
+                        "msg": f"Data do Retorno posterior à Folha Ativa ({folha_lbl})."})
+    retroativo = bool(anomes_am and data_ret[:6] < anomes_am)
+    if retroativo and not retroativo_ok:
+        return jsonify({"ok": False,
+                        "msg": f"Data do Retorno anterior à Folha Ativa ({folha_lbl}) — "
+                               f"confirmação necessária."})
+    # Volta que ainda não aconteceu: mesma confirmação do lançamento do
+    # afastamento com Data Fim futura — o S-2230 de retorno sai na hora, e se o
+    # afastamento se prolongar o evento tem de ser corrigido no eSocial.
+    if data_ret > _agora_brasilia().strftime("%Y%m%d") and not retorno_futuro_ok:
+        return jsonify({"ok": False, "retorno_futuro": True,
+                        "msg": "Data do Retorno posterior a hoje — confirmação necessária."})
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+
+    gravados  = 0
+    erros     = []
+    avisos_es = []
+    _es_comp  = set()
+
+    for mat in matriculas:
+        try:
+            mat_int = int(mat)
+        except (TypeError, ValueError):
+            erros.append(f"Matrícula inválida: {mat}")
+            continue
+
+        # O afastamento em aberto do funcionário — e só ele. Sem aberto não há
+        # retorno a informar.
+        try:
+            q = (supabase.table("tab_eventos")
+                 .select("id, op2, data1i, data1f")
+                 .eq("id_empresa", id_empresa).eq("matricula", mat_int).eq("op1", 6))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            _abertos = [a for a in (q.execute().data or [])
+                        if not str(a.get("data1f") or "").strip()
+                        and str(a.get("op2") or "").strip() != "203"]
+        except Exception as e:
+            erros.append(f"Mat {mat_int}: erro ao consultar afastamento ({str(e)[:60]})")
+            continue
+
+        if not _abertos:
+            erros.append(f"Mat {mat_int}: não há afastamento em aberto — "
+                         f"retorno não registrado.")
+            continue
+
+        _ev = max(_abertos, key=lambda x: str(x.get("data1i") or ""))
+        _ini = str(_ev.get("data1i") or "")
+        if data_ret < _ini:
+            erros.append(f"Mat {mat_int}: retorno {_fmt_dt(data_ret)} é anterior ao "
+                         f"início do afastamento ({_fmt_dt(_ini)}).")
+            continue
+
+        id_evento = _ev.get("id")
+        try:
+            (supabase.table("tab_eventos").update({"data1f": data_ret})
+             .eq("id", id_evento).eq("id_empresa", id_empresa).execute())
+            gravados += 1
+        except Exception as e:
+            erros.append(f"Mat {mat_int}: {str(e)[:80]}")
+            continue
+
+        # ── S-2230 de RETORNO ───────────────────────────────────────────────
+        if gerar_es:
+            try:
+                # Não gerar duas vezes a mesma remessa: se já existe um S-2230 de
+                # retorno para este evento, o retorno está sendo reinformado e
+                # uma segunda linha viraria evento repetido na Fila.
+                _ja_es = (supabase.table("tab_esocial")
+                          .select("id_esocial")
+                          .eq("id_empresa", id_empresa).eq("layout", "2230")
+                          .eq("codigo2", id_evento).eq("flag1", "R")
+                          .execute().data or [])
+                if _ja_es:
+                    avisos_es.append(f"Mat {mat_int}: S-2230 de retorno já existia — "
+                                     f"não foi criado de novo")
+                else:
+                    agora_es  = _agora_brasilia()
+                    anomes_tp = str(session.get("anomes_tipo") or "")
+                    folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
+                    supabase.table("tab_esocial").insert({
+                        "id_cliente": id_cliente,
+                        "id_empresa": id_empresa,
+                        "data_cad":   agora_es.strftime("%Y%m%d"),
+                        "hora_cad":   agora_es.strftime("%H%M"),
+                        "folha_tipo": folha_tipo_es,
+                        "layout":     "2230",
+                        "matricula":  mat_int,
+                        "codigo2":    id_evento,
+                        "flag1":      "R",
+                        "ano_mes":    int(data_ret[:6]),
+                        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                    }).execute()
+                    _es_comp.add(int(data_ret[:6]))
+            except Exception as e_es:
+                avisos_es.append(f"Mat {mat_int}: {str(e_es)[:120]}")
+
+        gravar_log("AFASTAMENTO-RET",
+                   f"Retorno em {_fmt_dt(data_ret)} do afastamento de "
+                   f"{_fmt_dt(_ini)} mot:{_ev.get('op2')}"
+                   + ("" if gerar_es else " s/S-2230"),
+                   matricula=mat_int)
+
+    if gravados == 0:
+        return jsonify({"ok": False,
+                        "msg": "Nenhum retorno registrado. " + "; ".join(erros)})
+
+    msg = f"Retorno registrado: {gravados} funcionário(s) em {_fmt_dt(data_ret)}."
+    msg += (" S-2230 de retorno gerado." if gerar_es else " S-2230 de retorno NÃO gerado.")
+    _fmt_c = lambda c: f"{str(c)[4:6]}/{str(c)[:4]}"
+    _outras = sorted(c for c in _es_comp if str(c) != anomes_am)
+    if _outras:
+        msg += (" Para enviar, troque o período na Fila do eSocial para "
+                + " e ".join(_fmt_c(c) for c in _outras) + ".")
+    if erros:
+        msg += " Erros: " + "; ".join(erros)
+    if avisos_es:
+        msg += " | eSocial: " + "; ".join(avisos_es)
+    return jsonify({"ok": True, "gravados": gravados, "msg": msg,
+                    "data_retorno": data_ret})
+
+
 # =========================================================
 # ACIDENTE — TELA
 # =========================================================

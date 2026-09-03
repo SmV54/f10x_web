@@ -202,6 +202,38 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .btn-cat-item:hover { background: #b91c1c; }
 .btn-cat-mat { font-family: var(--mono); font-size: 11px; opacity: 0.85; }
 
+/* ── TODOS OS BOTOES DESTA TELA COM O MESMO TAMANHO (SMV 03/09/2026) ──────
+   Cada botao tinha nascido com o seu proprio padding e font-size, e a tela
+   ficou com seis tamanhos diferentes. Aqui a medida e uma so: mesma altura,
+   mesma largura minima, mesmo texto centralizado. As CORES continuam as de
+   cada um (o azul do gravar, o verde da ajuda, o vermelho da CAT) - o que se
+   uniformiza e so' a caixa.
+   Vem depois das regras individuais de proposito: e a ultima palavra sobre
+   tamanho, sem precisar mexer em cada uma delas. */
+.btn-voltar-topo, .btn-voltar, .btn-ajuda-afast,
+.btn-cancelar, .btn-iniciar, .btn-cat-item {
+    box-sizing: border-box;
+    min-width: 180px; height: 38px; padding: 0 18px;
+    font-size: 13px; font-weight: 600; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 8px; white-space: nowrap;
+}
+/* O pilulao da ajuda perde so' o raio, para nao virar uma capsula de 180px */
+.btn-ajuda-afast { border-radius: 8px; }
+
+/* ── RETORNO DO AFASTAMENTO ───────────────────────────────────────────── */
+.lista-abertos { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.aberto-item {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;
+    padding: 7px 12px; font-size: 12px; color: #78350f;
+}
+.aberto-mat  { font-family: var(--mono); font-weight: 700; }
+.aberto-sem  {
+    background: #f1f5f9; border-color: var(--border); color: #64748b;
+}
+.aberto-vazio { font-size: 12px; color: #64748b; }
+
 #toast {
     display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
     z-index: 9999; padding: 12px 24px; border-radius: 10px;
@@ -259,6 +291,31 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="func-resumo-loading">Carregando funcionários selecionados…</div>
             </div>
         </div>
+
+        <!-- Afastamento x Retorno. O modo Retorno só liga quando algum dos
+             selecionados tem afastamento em aberto — sem aberto não há retorno
+             a informar, e é o próprio servidor que recusa. -->
+        <div class="divisor-campos">
+            <span>O que registrar</span>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label">Ação</div>
+            <div class="opcao-valor">
+                <div class="radio-group">
+                    <label><input type="radio" name="acao" value="A" checked
+                                  onchange="trocarAcao()"> Afastamento</label>
+                    <label id="lbl-acao-ret" style="opacity:0.45;">
+                        <input type="radio" name="acao" value="R" id="rad-acao-ret"
+                               disabled onchange="trocarAcao()"> Retorno</label>
+                </div>
+                <span class="hint" id="hint-acao">Verificando afastamentos em aberto…</span>
+            </div>
+        </div>
+
+        <!-- ══════════ AFASTAMENTO ══════════ -->
+        <div id="bloco-afastamento">
 
         <div class="divisor-campos">
             <span>Dados do Afastamento</span>
@@ -363,6 +420,52 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
         </div>
 
+        </div><!-- /bloco-afastamento -->
+
+        <!-- ══════════ RETORNO ══════════ -->
+        <div id="bloco-retorno" style="display:none;">
+
+            <div class="divisor-campos">
+                <span>Retorno do Afastamento</span>
+            </div>
+
+            <div class="opcao-linha">
+                <div></div>
+                <div class="opcao-label">Afastamento em aberto</div>
+                <div class="opcao-valor">
+                    <div id="lista-abertos" class="lista-abertos"></div>
+                </div>
+            </div>
+
+            <div class="opcao-linha">
+                <div></div>
+                <div class="opcao-label">Data do Retorno</div>
+                <div class="opcao-valor">
+                    <input type="text" id="data_retorno" class="input-data"
+                        placeholder="dd/mm/aaaa" maxlength="10"
+                        oninput="mascaraData(this)" onblur="validarDataRetorno()">
+                    <span class="hint" id="hint-retorno"></span>
+                </div>
+            </div>
+
+            <!-- Mesma escolha da tela de afastamento: data retroativa nasce
+                 marcada para NÃO enviar, porque nesse caso o normal é a remessa
+                 já ter ido ou o registro ser só informativo. -->
+            <div class="opcao-linha" id="linha-es-ret" style="display:none;">
+                <div></div>
+                <div class="opcao-label">eSocial &nbsp;<span class="opcional">data retroativa</span></div>
+                <div class="opcao-valor" style="align-items:flex-start;">
+                    <label class="chk-es">
+                        <input type="checkbox" id="chk-nao-env-ret" checked>
+                        <span>Não enviar o S-2230 de <b>retorno</b>
+                            <span class="chk-es-comp" id="comp-es-ret"></span></span>
+                    </label>
+                    <span class="hint">Desmarque para gerar a remessa na Fila do eSocial.</span>
+                </div>
+            </div>
+
+        </div><!-- /bloco-retorno -->
+
     </div><!-- /pref-card -->
 
     <div id="erro-box" style="display:none; margin-bottom:12px; padding:12px 16px;
@@ -392,6 +495,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <polyline points="20 6 9 17 4 12"/>
             </svg>
             Registrar Afastamento
+        </button>
+        <button class="btn-iniciar" id="btn-retorno" onclick="gravarRetorno()" style="display:none;">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Registrar Retorno
         </button>
     </div>
 
@@ -747,7 +856,232 @@ async function gravar() {
     }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RETORNO DO AFASTAMENTO
+// Antes o retorno só podia ser dito na Data Fim, no mesmo instante em que o
+// afastamento era lançado — quem não sabia a data da volta ficava sem como
+// completar depois. O modo Retorno resolve isso dentro do próprio módulo,
+// como no Folha10 Desktop.
+// ═══════════════════════════════════════════════════════════════════════════
+let ABERTOS = {};   // { '16': {id, data1i, op2, motivo} }
+
+async function carregarAbertos() {
+    const hint = document.getElementById('hint-acao');
+    const rad  = document.getElementById('rad-acao-ret');
+    const lbl  = document.getElementById('lbl-acao-ret');
+    if (!matriculas.length) { hint.textContent = ''; return; }
+    try {
+        const r = await fetch('/api/afastamento_abertos?mats=' + MATS_RAW);
+        const d = await r.json();
+        ABERTOS = (d.ok && d.abertos) ? d.abertos : {};
+    } catch(e) {
+        ABERTOS = {};
+        hint.textContent = 'Não foi possível verificar os afastamentos em aberto.';
+        return;
+    }
+
+    const comAberto = matriculas.filter(m => ABERTOS[String(m)]);
+    if (comAberto.length) {
+        rad.disabled = false;
+        lbl.style.opacity = '1';
+        hint.textContent = comAberto.length === matriculas.length
+            ? 'Todos os selecionados estão afastados — marque Retorno para informar a volta.'
+            : `${comAberto.length} de ${matriculas.length} com afastamento em aberto.`;
+        // Se TODOS estão afastados, o afastamento novo seria recusado de
+        // qualquer jeito: já abre no modo Retorno, que é o que resta fazer.
+        if (comAberto.length === matriculas.length) {
+            rad.checked = true;
+            trocarAcao();
+        }
+    } else {
+        rad.disabled = true;
+        lbl.style.opacity = '0.45';
+        hint.textContent = 'Nenhum dos selecionados tem afastamento em aberto.';
+    }
+    montarListaAbertos();
+}
+
+function montarListaAbertos() {
+    const wrap = document.getElementById('lista-abertos');
+    if (!matriculas.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = matriculas.map(m => {
+        const a = ABERTOS[String(m)];
+        const mat = String(m).padStart(6, '0');
+        if (!a) {
+            return `<div class="aberto-item aberto-sem">
+                        <span class="aberto-mat">${mat}</span>
+                        <span>sem afastamento em aberto — o retorno não será gravado</span>
+                    </div>`;
+        }
+        return `<div class="aberto-item">
+                    <span class="aberto-mat">${mat}</span>
+                    <span>afastado desde <b>${fmtBr(a.data1i)}</b></span>
+                    <span>· ${a.motivo || 'motivo ' + a.op2}</span>
+                </div>`;
+    }).join('');
+}
+
+function trocarAcao() {
+    const ret = document.querySelector('input[name="acao"]:checked').value === 'R';
+    document.getElementById('bloco-afastamento').style.display = ret ? 'none' : '';
+    document.getElementById('bloco-retorno').style.display     = ret ? '' : 'none';
+    document.getElementById('btn-gravar').style.display        = ret ? 'none' : '';
+    document.getElementById('btn-retorno').style.display       = ret ? '' : 'none';
+    document.querySelector('.rel-subtitulo').textContent = ret
+        ? 'Informe a data em que o funcionário voltou ao trabalho'
+        : 'Informe as datas e o motivo do afastamento';
+    if (ret) montarListaAbertos();
+}
+
+// A data do retorno tem duas balizas: não pode ser anterior ao início do
+// afastamento (por funcionário, que cada um começou no seu dia) e cai nas
+// mesmas regras de folha da tela de afastamento.
+function validarDataRetorno() {
+    const el   = document.getElementById('data_retorno');
+    const hint = document.getElementById('hint-retorno');
+    el.classList.remove('erro', 'aviso'); hint.textContent = ''; hint.className = 'hint';
+
+    const raw = el.value.replace(/\D/g,'');
+    if (!raw) { atualizarEsRetorno(); return; }
+    const ymd = parseData(el.value);
+    if (!ymd) {
+        el.classList.add('erro'); hint.classList.add('erro');
+        hint.textContent = 'Data inválida'; atualizarEsRetorno(); return;
+    }
+
+    const antes = matriculas.filter(m => {
+        const a = ABERTOS[String(m)];
+        return a && ymd < a.data1i;
+    });
+    if (antes.length) {
+        el.classList.add('erro'); hint.classList.add('erro');
+        hint.textContent = 'Anterior ao início do afastamento de '
+                         + antes.map(m => String(m).padStart(6,'0')).join(', ');
+        atualizarEsRetorno(); return;
+    }
+
+    if (ANOMES && ymd.slice(0,6) > ANOMES) {
+        el.classList.add('erro'); hint.classList.add('erro');
+        hint.textContent = `Posterior à Folha Ativa (${folhaLabel()})`;
+    } else if (ANOMES && ymd.slice(0,6) < ANOMES) {
+        el.classList.add('aviso'); hint.classList.add('aviso');
+        hint.textContent = `Retroativa — anterior à Folha Ativa (${folhaLabel()}); será pedida confirmação`;
+    } else if (ymd > hojeYmd()) {
+        el.classList.add('aviso'); hint.classList.add('aviso');
+        hint.textContent = 'A data ainda não chegou; será pedida confirmação';
+    }
+    atualizarEsRetorno();
+}
+
+function atualizarEsRetorno() {
+    const ymd   = parseData(document.getElementById('data_retorno').value);
+    const retro = ehRetroativa(ymd);
+    document.getElementById('linha-es-ret').style.display = retro ? '' : 'none';
+    document.getElementById('comp-es-ret').textContent =
+        retro ? `(competência ${mesAnoBr(ymd)})` : '';
+    if (!retro) document.getElementById('chk-nao-env-ret').checked = true;
+}
+
+async function gravarRetorno() {
+    const el  = document.getElementById('data_retorno');
+    const ymd = parseData(el.value);
+    if (!ymd) {
+        showToast('Informe a Data do Retorno.', 'erro');
+        el.classList.add('erro'); el.focus(); return;
+    }
+
+    const comAberto = matriculas.filter(m => ABERTOS[String(m)]);
+    if (!comAberto.length) {
+        showToast('Nenhum dos selecionados tem afastamento em aberto.', 'erro');
+        return;
+    }
+
+    const antes = comAberto.filter(m => ymd < ABERTOS[String(m)].data1i);
+    if (antes.length) {
+        showToast('Retorno anterior ao início do afastamento de '
+                  + antes.map(m => String(m).padStart(6,'0')).join(', '), 'erro');
+        return;
+    }
+
+    // Quem não tem afastamento aberto não entra: o servidor recusaria um a um,
+    // mas é melhor a pessoa saber ANTES quem vai ficar de fora.
+    const semAberto = matriculas.filter(m => !ABERTOS[String(m)]);
+    if (semAberto.length) {
+        const ok = await f10Confirm(
+            `${semAberto.length} funcionário(s) selecionado(s) não têm afastamento `
+            + `em aberto e ficarão de fora:\n\n`
+            + semAberto.map(m => '• ' + String(m).padStart(6,'0')).join('\n')
+            + `\n\nRegistrar o retorno apenas para os ${comAberto.length} que estão afastados?`,
+            { titulo: 'Nem todos estão afastados', tipo: 'aviso',
+              okText: 'Sim, registrar', cancelText: 'Cancelar' });
+        if (!ok) return;
+    }
+
+    let gerarEs = true;
+    const retro = ehRetroativa(ymd);
+    if (retro) {
+        gerarEs = !document.getElementById('chk-nao-env-ret').checked;
+        const ok = await f10Confirm(
+            `A Data do Retorno ${fmtBr(ymd)} é anterior ao mês da Folha Ativa `
+            + `(${folhaLabel()}).\n\n`
+            + (gerarEs
+                ? `• S-2230 de retorno SERÁ gerado na competência ${mesAnoBr(ymd)}`
+                : `• S-2230 de retorno NÃO será gerado`)
+            + `\n\nPara mudar isso, cancele e ajuste a caixa do eSocial no formulário.`,
+            { titulo: 'Retorno com data retroativa', tipo: 'aviso',
+              okText: 'Sim, registrar', cancelText: 'Cancelar' });
+        if (!ok) return;
+    }
+
+    let retornoFuturoOk = false;
+    if (ymd > hojeYmd()) {
+        retornoFuturoOk = await f10Confirm(
+            `A Data do Retorno ${fmtBr(ymd)} ainda não chegou.\n\n`
+            + `O S-2230 de retorno é criado na hora, na competência `
+            + `${mesAnoBr(ymd)}. Se o afastamento se prolongar, o evento terá de `
+            + `ser corrigido no eSocial.`,
+            { titulo: 'Retorno com data futura', tipo: 'aviso',
+              okText: 'Registrar mesmo assim', cancelText: 'Voltar e corrigir' });
+        if (!retornoFuturoOk) return;
+    }
+
+    const btn = document.getElementById('btn-retorno');
+    btn.disabled = true; btn.textContent = 'Registrando…';
+    document.getElementById('erro-box').style.display = 'none';
+
+    try {
+        const resp = await fetch('/api/afastamento_retorno_gravar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                matriculas: comAberto,
+                data_retorno: ymd,
+                gerar_esocial: gerarEs,
+                retroativo_ok: retro,
+                retorno_futuro_ok: retornoFuturoOk
+            })
+        });
+        const d = await resp.json();
+        if (d.ok) {
+            showToast(d.msg || `Retorno registrado — ${d.gravados} funcionário(s).`, 'ok');
+            setTimeout(() => { window.location.href = '/select_funcionario?contexto=afastamento'; }, 2200);
+        } else {
+            const msg = d.msg || 'Erro ao registrar o retorno.';
+            showToast(msg, 'erro');
+            const box = document.getElementById('erro-box');
+            box.textContent = '⚠ ' + msg;
+            box.style.display = 'block';
+        }
+    } catch(e) {
+        showToast('Erro de comunicação com o servidor.', 'erro');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Registrar Retorno`;
+    }
+}
+
 carregarResumo();
+carregarAbertos();
 </script>
 
 {% include '_ajuda_estilo.html' %}
