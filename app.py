@@ -44232,33 +44232,58 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ])
                 _st_op5 = ParagraphStyle("op5a", fontName="Helvetica", fontSize=7,
                                          alignment=1, textColor=colors.HexColor("#374151"))
-                # O rotulo da base acompanha o que entrou nela: so' "Salario
-                # Mensal" quando nao ha adicional, e a soma escrita por extenso
-                # quando ha — a memoria tem de mostrar de onde saiu o divisor,
-                # senao o numero nao fecha para quem confere na mao.
-                _base_lbl = "Salario Mensal"
-                if insalub_val and pericu_val:
-                    _base_lbl = "Salario + Insalub. + Pericu."
-                elif insalub_val:
-                    _base_lbl = "Salario + Insalubridade"
-                elif pericu_val:
-                    _base_lbl = "Salario + Periculosidade"
+
+                def _e5_linha(txt):
+                    """Uma linha de texto ocupando as tres colunas da etapa."""
+                    _i = len(e5_rows)
+                    e5_rows.append([Paragraph(txt, st_detalhe), "", ""])
+                    e5_spans.append(("SPAN", (0, _i), (2, _i)))
+
+                # ── 5.1 BASE DO DIA ────────────────────────────────────────
+                # De onde sai o divisor, parcela por parcela. Desde 03/09/2026
+                # a base da falta e o salario MAIS insalubridade e
+                # periculosidade, entao a memoria tem de abrir a soma — senao
+                # o numero nao fecha para quem confere na mao.
+                _parc = [f"Salario {l['sal_mes_fmt']}"]
+                if insalub_val:
+                    _parc.append(f"Insalubridade {_fmt_brl(insalub_val)}")
+                if pericu_val:
+                    _parc.append(f"Periculosidade {_fmt_brl(pericu_val)}")
+                _txt_base = " + ".join(_parc)
+                if len(_parc) > 1:
+                    _txt_base += (f" = {_fmt_brl(base_dia_f)}"
+                                  f"   (adicionais apurados nas ETAPAS 1060 e 1070)")
+                else:
+                    _txt_base += "   (sem adicional de insalubridade ou periculosidade)"
+                _e5_linha(f"5.1 - Base do dia: {_txt_base}")
+
+                # ── 5.2 VALOR DO DIA ───────────────────────────────────────
+                # Sai com 4 casas de proposito: e por ele que a 0132 e a 0139
+                # sao multiplicadas, e com 2 casas a conta escrita aqui nao
+                # bateria com o valor gravado, que usa o numero cheio.
+                if is_intermitente:
+                    _e5_linha("5.2 - Valor do dia: nao se aplica — categoria 111 "
+                              "(intermitente) nao tem salario mensal a ratear")
+                else:
+                    _e5_linha(f"5.2 - Valor do dia: {_fmt_brl(base_dia_f)} / {dias_mes} dias "
+                              f"= {_fmt_brl(val_dia_f, 4)}")
+
+                # ── 5.3 DESCONTO DA 0132 ───────────────────────────────────
+                _dfi = "dia" if qty_inj == 1 else "dias"
+                _e5_linha(f"5.3 - Faltas injustificadas no mes: {qty_inj} {_dfi} "
+                          f"— sao elas, e so' elas, que a 0132 desconta")
                 form5 = Table([
                     [Paragraph("0132-FALTAS", st_detalhe),
                      Paragraph("=", _st_op5),
-                     Paragraph(_base_lbl, st_detalhe),
-                     Paragraph("/", _st_op5),
-                     Paragraph("Dias do Mes", _st_op5),
+                     Paragraph("Valor do dia", _st_op5),
                      Paragraph("x", _st_op5),
-                     Paragraph("Faltas", _st_op5)],
+                     Paragraph("Faltas Injust.", _st_op5)],
                     [Paragraph(_fmt_brl(val_falta), st_detalhe),
                      Paragraph("=", _st_op5),
-                     Paragraph(_fmt_brl(base_dia_f), st_detalhe),
-                     Paragraph("/", _st_op5),
-                     Paragraph(str(dias_mes), _st_op5),
+                     Paragraph(_fmt_brl(val_dia_f, 4), _st_op5),
                      Paragraph("x", _st_op5),
                      Paragraph(str(qty_inj), _st_op5)],
-                ], colWidths=[2.5*cm, 0.4*cm, 3.6*cm, 0.4*cm, 2.0*cm, 0.4*cm, 1.5*cm])
+                ], colWidths=[2.5*cm, 0.4*cm, 2.6*cm, 0.4*cm, 2.0*cm])
                 form5.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
@@ -44268,23 +44293,23 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 idx51b = len(e5_rows)
                 e5_rows.append([form5, "", ""])
                 e5_spans.append(("SPAN", (0, idx51b), (2, idx51b)))
+
+                # ── 5.4 JUSTIFICADAS ───────────────────────────────────────
                 qty_just = len(faltas_func) - qty_inj
                 if qty_just > 0:
                     _dj = "dia" if qty_just == 1 else "dias"
-                    idx52 = len(e5_rows)
-                    e5_rows.append([Paragraph(
-                        f"5.2 - Justificadas: {qty_just} {_dj}   Sem desconto — nao incluidas na Rubrica 132",
-                        st_detalhe), "", ""])
-                    e5_spans.append(("SPAN", (0, idx52), (2, idx52)))
+                    _e5_linha(f"5.4 - Justificadas: {qty_just} {_dj}   Sem desconto — "
+                              f"nao incluidas na Rubrica 132")
+
+                # ── 5.5 REPOUSO PERDIDO (0139) ─────────────────────────────
+                # Mesmo valor-dia da 0132: as duas descontam dia de
+                # remuneracao. Ate 03/09/2026 esta linha escrevia a conta com o
+                # salario puro, e passou a nao bater com o valor gravado.
                 if dsr_val:
                     _ds = "semana" if dsr_sem == 1 else "semanas"
-                    idx53 = len(e5_rows)
-                    e5_rows.append([Paragraph(
-                        f"5.3 - Repouso perdido (Lei 605/49, art. 6o): {dsr_sem} {_ds} "
-                        f"com falta injustificada   0139 = {l['sal_mes_fmt']} / {dias_mes} "
-                        f"x {dsr_sem} = {_fmt_brl(dsr_val)}",
-                        st_detalhe), "", ""])
-                    e5_spans.append(("SPAN", (0, idx53), (2, idx53)))
+                    _e5_linha(f"5.5 - Repouso perdido (Lei 605/49, art. 6o): {dsr_sem} {_ds} "
+                              f"com falta injustificada   0139 = valor do dia "
+                              f"{_fmt_brl(val_dia_f, 4)} x {dsr_sem} = {_fmt_brl(dsr_val)}")
             else:
                 e5_rows  = [[Paragraph("ETAPA 1050 - FALTAS NO MES   Não se aplica — nenhuma falta lançada no mês", st_etapa_na), "", ""]]
                 e5_spans = [("SPAN", (0, 0), (2, 0))]
