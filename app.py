@@ -8596,7 +8596,31 @@ def api_calc_rescisao_calcular():
                      and (not filtro_mats or int(c.get("matricula") or 0) in filtro_mats)]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"})
+
+    # ── TRANSFERÊNCIA (motivo 11) TEM RESCISÃO ZERADA ──────────────────────
+    # Na transferência o contrato NÃO se rompe: há sucessão de vínculo, e
+    # saldo, 13º proporcional, férias proporcionais e multa do FGTS seguem com
+    # a empresa de destino. O S-2299 dela sai sem <verbasResc>, com
+    # <sucessaoVinc> — e a tela /calc_rescisao já diz que "transferência não
+    # gera cálculo: a rescisão é zerada e nunca vai ganhar linha no tab_total".
+    # O cálculo, porém, não sabia disso: o motivo 11 não está no _MOTIVO_RESC e
+    # caía no padrão (True, True, 0), pagando 13º e férias proporcionais. Basta
+    # "Calcular todos" para o transferido do mês entrar junto.
+    _mat_transf = {int(c.get("matricula") or 0) for c in demitidos
+                   if str(c.get("motrescisao") or "").strip().zfill(2)
+                      == str(TRANSF_MOTIVO_DEMISSAO).zfill(2)}
+    if _mat_transf:
+        demitidos = [c for c in demitidos
+                     if int(c.get("matricula") or 0) not in _mat_transf]
+
     if not demitidos:
+        if _mat_transf:
+            return jsonify({"ok": False, "msg":
+                "Nada a calcular: "
+                + ", ".join(f"{m:06d}" for m in sorted(_mat_transf))
+                + (" saiu" if len(_mat_transf) == 1 else " saíram")
+                + " por transferência, e transferência tem rescisão zerada — o "
+                  "vínculo segue na empresa de destino."})
         return jsonify({"ok": False, "msg": "Nenhum desligado no mês para calcular."})
 
     # ── Férias já gozadas (op1=3) — dizem quais períodos aquisitivos já foram
@@ -9265,7 +9289,16 @@ def api_calc_rescisao_calcular():
     _CAMPOS_PDF = {"medias_info", "inss_saldo_det", "inss_13_det", "irrf_saldo_info", "irrf_13_info",
                    "manuais_det"}
     web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
-    return jsonify({"ok": True, "resultados": web, "total": len(web)})
+    _resp = {"ok": True, "resultados": web, "total": len(web)}
+    if _mat_transf:
+        # Quem saiu por transferência foi deixado de fora, e a tela precisa
+        # dizer isso — do contrário some da lista sem explicação.
+        _resp["aviso"] = ("Fora do cálculo: "
+                          + ", ".join(f"{m:06d}" for m in sorted(_mat_transf))
+                          + (" saiu" if len(_mat_transf) == 1 else " saíram")
+                          + " por transferência — rescisão zerada, o vínculo "
+                            "segue na empresa de destino.")
+    return jsonify(_resp)
 
 
 def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados):
@@ -42335,12 +42368,21 @@ def _calc_etapa1_dados(id_empresa, anomes=None):
        para o dia em que ele saiu dela, e ele sumiria da última folha —
        exatamente o mês que ainda falta pagar.
 
-    2) DESLIGADO NÃO ENTRA, com data de saída no mês da folha ou depois dela
-       (SMV 03/09/2026). A RESCISÃO é o único movimento dele, e os valores que
-       ela apurou ficam de pé.
+    2) DESLIGADO no mês da folha ou antes NÃO ENTRA: a RESCISÃO é o único
+       movimento dele naquele mês, e os valores que ela apurou ficam de pé.
+       Quem sai DEPOIS do mês da folha CONTINUA ENTRANDO — trabalhou o mês
+       inteiro, e não há outro lugar que pague esse mês.
 
-    A comparação do começo é por AAAAMM, não por dia: o que decide é o MÊS em
-    que a pessoa entrou, e assim não é preciso saber quantos dias tem o mês.
+       Esse "depois" não é detalhe. A rescisão paga saldo de salário só dos
+       dias do PRÓPRIO mês do desligamento (dias_saldo = min(dia, 30)) e não
+       olha o mês anterior; das verbas manuais ela lê apenas as da folha 'R'.
+       GENILDO SOARES, desligado da empresa 39 em 01/09/2026, teria agosto
+       inteiro sem pagador: fora da folha de 08/2026 por já estar 'D', e na
+       rescisão só 1 dia de setembro (56,33). Vale para toda demissão ou
+       transferência registrada antes de a folha do mês anterior fechar.
+
+    A comparação é por AAAAMM, não por dia: o que decide é o MÊS em que a
+    pessoa entrou ou saiu, e assim não é preciso saber quantos dias tem o mês.
     """
     linhas = []
     _am = str(anomes or "").strip()
@@ -42364,20 +42406,24 @@ def _calc_etapa1_dados(id_empresa, anomes=None):
                 _comeco = _tr if (_tr and _tpadm not in ("", "1")) else _dtadm
                 if _comeco and _comeco[:6] > _am:
                     continue                      # ainda não era desta empresa
-                # DESLIGADO NÃO ENTRA, com data de saída no mês ou depois dela.
-                # A rescisão é o único movimento dele, e o que ela já apurou
-                # fica de pé: o funcionário nem chega a ser recalculado, então
-                # o _limpar_folha_calculada (que roda por matrícula, dentro do
-                # laço) não passa por ele e não apaga nada.
+                # DESLIGADO: fica de fora quando saiu NO MÊS ou ANTES — aí a
+                # rescisão é o único movimento dele, e o que ela apurou fica de
+                # pé (o funcionário nem chega a ser recalculado, então o
+                # _limpar_folha_calculada, que roda por matrícula dentro do
+                # laço, não passa por ele). Quem sai DEPOIS do mês entra.
                 #
-                # Quem decide é a SITUAÇÃO, não a data. A datarescisao de uma
-                # ficha ATIVA não é confiável — rescisão cancelada deixa a data
-                # para trás, e há ficha ativa com saída anterior à própria
+                # A data só é lida de quem NÃO está ativo. A datarescisao de
+                # uma ficha ATIVA não é confiável — rescisão cancelada deixa a
+                # data para trás, e há ficha ativa com saída anterior à própria
                 # admissão (empresa 18 matrícula 1: admitida 15/07/2026,
                 # datarescisao 13/07/2026, folha de 07/2026 calculada). Ler a
                 # data ali tiraria da folha quem está trabalhando.
                 if str(f.get("situacao") or "") != "A":
-                    continue
+                    _resc = str(f.get("datarescisao") or "")
+                    if not _resc:
+                        continue                  # desligado sem data de saída
+                    if _resc[:6] <= _am:
+                        continue                  # saiu no mês ou antes
             vrsalfx   = int(f.get("vrsalfx")   or 0)
             qtdhrsmes = int(f.get("qtdhrsmes")  or 0)
             und       = (f.get("undsalfixo") or "M").upper()

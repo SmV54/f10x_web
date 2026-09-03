@@ -276,6 +276,12 @@ async function calcular() {
         }
         document.getElementById('cardResult').style.display = 'block';
         msg.innerHTML = `<div class="alerta alerta-ok"><span>✅</span><div><strong>${d.total} rescisão(ões)</strong> calculada(s) e gravada(s).</div></div>`;
+        // Quem saiu por TRANSFERÊNCIA não é calculado: a rescisão é zerada e o
+        // vínculo segue na empresa de destino. SOMA ao resultado, não
+        // substitui — sem isso a matrícula sumiria da lista sem explicação.
+        if (d.aviso) {
+            msg.innerHTML += `<div class="alerta alerta-aviso"><span>ℹ️</span><div>${d.aviso}</div></div>`;
+        }
         btn.textContent = '🖩 Recalcular';
         btn.disabled = false;
         mostrarMovResc(true);
