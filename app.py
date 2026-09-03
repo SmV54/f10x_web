@@ -47218,6 +47218,48 @@ def _cods_inc_fgts(folha_tipo):
     return ("S", "11", "12") if str(folha_tipo or "").upper() in ("A", "1") else ("S", "11")
 
 
+def _mats_de_outra_empresa(id_empresa, anomes, id_cliente=None):
+    """Matrículas cujo movimento naquela competência é da EMPRESA ANTERIOR.
+
+    Na transferência, o `_transf_copiar` leva a ficha financeira inteira do
+    funcionário para a empresa de destino — linha por linha, trocando só
+    id_empresa e matricula. O histórico acompanha de propósito: as MÉDIAS de
+    férias e de rescisão são calculadas sobre o tab_mov da empresa onde ele
+    está, e sem elas a média sairia zerada.
+
+    O efeito colateral é que a folha do mês passa a enxergar movimento de
+    competências em que aquele funcionário ainda nem era desta empresa.
+    GENILDO SOARES foi transferido para a empresa 53 em 01/09/2026 e o
+    movimento de 08/2026, que é da empresa 39, aparecia na folha de 08/2026 da
+    53.
+
+    NÃO DÁ PARA SABER PELO tab_mov: a linha copiada fica idêntica a uma
+    nascida ali — mesma origem, mesmo lote, mesmo tudo. Quem sabe é o
+    CADASTRO: `tpadmissao = 2` diz que ele entrou por transferência e
+    `dttransf` diz quando. Antes desse mês, o movimento é da empresa anterior.
+
+    Serve só para a folha DO MÊS. Médias e ficha financeira continuam lendo
+    tudo — lá o histórico é exatamente o que se quer.
+    """
+    fora = set()
+    _am = str(anomes or "").strip()
+    if len(_am) != 6:
+        return fora
+    try:
+        q = (supabase.table("tab_cad").select("matricula, dttransf, tpadmissao")
+             .eq("id_empresa", id_empresa))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for f in (q.execute().data or []):
+            _tr = str(f.get("dttransf") or "")
+            _tp = str(f.get("tpadmissao") or "").strip()
+            if len(_tr) == 8 and _tp not in ("", "1") and _tr[:6] > _am:
+                fora.add(int(f.get("matricula") or 0))
+    except Exception as e:
+        print(f"[mats_outra_empresa] {e}")
+    return fora
+
+
 def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="mat", cnpj_empresa=""):
     _cnpj_dig = ''.join(c for c in cnpj_empresa if c.isdigit())
     def _clean_fil(v):
@@ -47262,6 +47304,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     # 161-164: lidos em dict próprio (linha "Adiantamento Quinzenal" acima das informativas)
     mov_data    = {}
     adiant_data = {}
+    # Movimento herdado da empresa anterior numa transferencia nao e' desta
+    # folha - ver _mats_de_outra_empresa.
+    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
              .select("matricula,cod_verba,qtd,valor")
@@ -47273,7 +47318,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if not mat:
+            if not mat or mat in _mats_fora:
                 continue
             cod = int(reg.get("cod_verba") or 0)
             if cod in (161, 162, 163, 164):
@@ -47638,6 +47683,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     # verbas informativas — não compõem os totais (já abatidos via verba 160).
     mov_data    = {}
     adiant_data = {}
+    # Movimento herdado da empresa anterior numa transferencia nao e' desta
+    # folha - ver _mats_de_outra_empresa.
+    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
              .select("matricula,cod_verba,qtd,valor")
@@ -47649,7 +47697,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if not mat:
+            if not mat or mat in _mats_fora:
                 continue
             cod = int(reg.get("cod_verba") or 0)
             if cod in (161, 162, 163, 164):
@@ -48879,6 +48927,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     # — não entram no rateio de proventos/descontos (já abatidos via verba 160).
     mov_data    = {}
     adiant_data = {}
+    # Movimento herdado da empresa anterior numa transferencia nao e' desta
+    # folha - ver _mats_de_outra_empresa.
+    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
              .select("matricula,cod_verba,qtd,valor")
@@ -48890,7 +48941,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
-            if not mat:
+            if not mat or mat in _mats_fora:
                 continue
             cod = int(reg.get("cod_verba") or 0)
             if cod in (161, 162, 163, 164):
