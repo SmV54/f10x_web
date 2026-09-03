@@ -288,7 +288,7 @@ tr:hover td { background: #f8fafc; }
 
 <div class="topo">
     <div>
-        <div class="topo-empresa">{{ empresa_info }}</div>
+        <div class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa_info }}</div>
         <div class="topo-cnpj">{{ cnpj_fmt }}</div>
     </div>
     <div class="topo-titulo">
@@ -489,7 +489,7 @@ tr:hover td { background: #f8fafc; }
   <div class="modal-painel" style="max-width:900px;">
     <div class="modal-topo">
       <div>
-        <div class="topo-empresa">{{ empresa_info }}</div>
+        <div class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa_info }}</div>
         <div class="topo-cnpj">{{ cnpj_fmt }}</div>
       </div>
       <div class="modal-topo-titulo">📑 Resultado de Envio — S-1010 Rubricas</div>

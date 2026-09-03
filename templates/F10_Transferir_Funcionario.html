@@ -70,8 +70,8 @@ input.curto { max-width: 160px; font-family: 'IBM Plex Mono', monospace; }
 
 <div class="topo">
     <div class="topo-esq">
-        <span class="topo-empresa">{{ empresa }}</span>
-        <span class="topo-nome">{{ nome }}</span>
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div>
         <div class="topo-titulo">Transferir Funcionário entre Empresas</div>

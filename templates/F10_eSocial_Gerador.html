@@ -303,7 +303,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 
 <div class="topo">
   <div>
-    <div class="topo-empresa">{{ empresa }}</div>
+    <div class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</div>
     <div class="topo-cnpj">{{ cnpj_fmt }}</div>
   </div>
   <div class="topo-titulo">

@@ -67,8 +67,8 @@ pre.xml{background:#0f172a;color:#e2e8f0;font-family:var(--mono);font-size:11px;
 
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
-        <span class="topo-empresa">{{ empresa }}</span>
-        <span class="topo-nome">{{ nome }}</span>
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div class="topo-titulo"><span>Admin — Consultar Trabalhador no eSocial</span></div>
     <div style="display:flex;align-items:center;gap:16px;">
