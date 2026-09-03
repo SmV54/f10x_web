@@ -44161,9 +44161,50 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 e4b_tbl.setStyle(_st_e4_zero)
             elems.append(e4b_tbl)
 
+            # ── afastamento x adicionais (insalubridade / periculosidade) ──
+            # Sem trabalho no ambiente insalubre/perigoso nao ha adicional: os
+            # dias de afastamento (atestado da empresa + INSS) saem do calculo.
+            # Mes inteiro afastado = adicional ZERO; afastamento parcial = valor
+            # proporcional aos dias restantes, na mesma logica do salario (1040).
+            #
+            # APURADOS AQUI, antes das faltas, porque o DESCONTO DA FALTA precisa
+            # deles (ver abaixo). As ETAPAS 1060 e 1070 continuam sendo o lugar
+            # onde eles sao gravados e onde a conta e mostrada - la elas apenas
+            # usam o que foi calculado aqui, para nao existirem duas formulas.
+            dias_afast_adic = dias_atestado_total + dias_inss_total
+            dias_adic       = max(0, dias_mes - dias_afast_adic)
+
+            insalub_ev  = insalubridades.get(matr)
+            insalub_int = insalub_val = 0
+            if insalub_ev and dias_adic > 0:
+                insalub_int = int(sm_centavos * (int(insalub_ev.get("ref1") or 0) / 10000))
+                insalub_val = (int(insalub_int * dias_adic / dias_mes)
+                               if (dias_afast_adic > 0 and dias_mes) else insalub_int)
+
+            pericu_ev  = periculosidades.get(matr)
+            pericu_int = pericu_val = 0
+            if pericu_ev and dias_adic > 0:
+                pericu_int = int(l["sal_mes"] * (int(pericu_ev.get("ref1") or 0) / 10000))
+                pericu_val = (int(pericu_int * dias_adic / dias_mes)
+                              if (dias_afast_adic > 0 and dias_mes) else pericu_int)
+
             # ── etapa 5 — faltas no mês ────────────────────
+            # BASE DO DESCONTO = SALARIO + INSALUBRIDADE + PERICULOSIDADE
+            # (SMV 03/09/2026). A falta desconta o DIA, e o dia daquele
+            # funcionario vale o salario mais os adicionais que ele recebe por
+            # trabalhar naquelas condicoes - no dia em que ele falta, nao
+            # trabalhou nem no ambiente insalubre nem no perigoso. Descontar so'
+            # o salario devolveria o adicional de um dia nao trabalhado.
+            #
+            # Vale para a 0132 (falta) e para a 0139 (repouso perdido pela
+            # falta): as duas descontam dia de remuneracao, e seria incoerente
+            # o mesmo dia valer dois valores diferentes na mesma folha.
+            #
+            # Os adicionais entram JA PRORRATEADOS pelo afastamento, que e o
+            # valor que o funcionario de fato recebe no mes.
             faltas_func  = faltas.get(matr, [])
-            val_dia_f    = 0.0 if is_intermitente else (l["sal_mes"] / dias_mes if dias_mes else 0.0)
+            base_dia_f   = l["sal_mes"] + insalub_val + pericu_val
+            val_dia_f    = 0.0 if is_intermitente else (base_dia_f / dias_mes if dias_mes else 0.0)
             qty_inj      = sum(1 for ft in faltas_func if ft.get("op2") == 1)
             val_falta    = int(val_dia_f * qty_inj)
             # 0132 = FALTAS EM DIAS. Ate 05/08/2026 o desconto caia na 0139,
@@ -44191,22 +44232,33 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     ])
                 _st_op5 = ParagraphStyle("op5a", fontName="Helvetica", fontSize=7,
                                          alignment=1, textColor=colors.HexColor("#374151"))
+                # O rotulo da base acompanha o que entrou nela: so' "Salario
+                # Mensal" quando nao ha adicional, e a soma escrita por extenso
+                # quando ha — a memoria tem de mostrar de onde saiu o divisor,
+                # senao o numero nao fecha para quem confere na mao.
+                _base_lbl = "Salario Mensal"
+                if insalub_val and pericu_val:
+                    _base_lbl = "Salario + Insalub. + Pericu."
+                elif insalub_val:
+                    _base_lbl = "Salario + Insalubridade"
+                elif pericu_val:
+                    _base_lbl = "Salario + Periculosidade"
                 form5 = Table([
                     [Paragraph("0132-FALTAS", st_detalhe),
                      Paragraph("=", _st_op5),
-                     Paragraph("Salario Mensal", st_detalhe),
+                     Paragraph(_base_lbl, st_detalhe),
                      Paragraph("/", _st_op5),
                      Paragraph("Dias do Mes", _st_op5),
                      Paragraph("x", _st_op5),
                      Paragraph("Faltas", _st_op5)],
                     [Paragraph(_fmt_brl(val_falta), st_detalhe),
                      Paragraph("=", _st_op5),
-                     Paragraph(l["sal_mes_fmt"], st_detalhe),
+                     Paragraph(_fmt_brl(base_dia_f), st_detalhe),
                      Paragraph("/", _st_op5),
                      Paragraph(str(dias_mes), _st_op5),
                      Paragraph("x", _st_op5),
                      Paragraph(str(qty_inj), _st_op5)],
-                ], colWidths=[2.5*cm, 0.4*cm, 2.5*cm, 0.4*cm, 2.0*cm, 0.4*cm, 1.5*cm])
+                ], colWidths=[2.5*cm, 0.4*cm, 3.6*cm, 0.4*cm, 2.0*cm, 0.4*cm, 1.5*cm])
                 form5.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 1),
@@ -44250,16 +44302,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             ]))
             elems.append(e5_tbl)
 
-            # ── afastamento x adicionais (insalubridade / periculosidade) ──
-            # Sem trabalho no ambiente insalubre/perigoso nao ha adicional: os
-            # dias de afastamento (atestado da empresa + INSS) saem do calculo.
-            # Mes inteiro afastado = adicional ZERO; afastamento parcial = valor
-            # proporcional aos dias restantes, na mesma logica do salario (1040).
-            dias_afast_adic = dias_atestado_total + dias_inss_total
-            dias_adic       = max(0, dias_mes - dias_afast_adic)
-
             # ── etapa 6 — insalubridade ────────────────────
-            insalub_ev = insalubridades.get(matr)
+            # insalub_ev / insalub_int / insalub_val vem da apuracao feita antes
+            # da etapa 5, que precisa deles para a base do desconto da falta.
             _st_e6_zero = TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
@@ -44276,10 +44321,6 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elif insalub_ev:
                 ref1_ev     = int(insalub_ev.get("ref1") or 0)
                 pct_num     = ref1_ev / 100           # e.g. 2000 → 20.0
-                pct_frac    = ref1_ev / 10000         # e.g. 2000 → 0.20
-                insalub_int = int(sm_centavos * pct_frac)   # centavos truncados
-                insalub_val = (int(insalub_int * dias_adic / dias_mes)
-                               if (dias_afast_adic > 0 and dias_mes) else insalub_int)
                 mmVmm[30]   = insalub_val
                 pct_fmt     = f"{pct_num:g}%"
                 _st_op6  = ParagraphStyle("op6a", fontName="Helvetica", fontSize=7,
@@ -44340,7 +44381,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elems.append(e6_tbl)
 
             # ── etapa 7 — periculosidade ───────────────────
-            pericu_ev = periculosidades.get(matr)
+            # pericu_ev / pericu_int / pericu_val vem da apuracao feita antes da
+            # etapa 5, que precisa deles para a base do desconto da falta.
             _st_e7_zero = TableStyle([
                 ("LEFTPADDING",   (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
@@ -44357,10 +44399,6 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             elif pericu_ev:
                 ref1_ev     = int(pericu_ev.get("ref1") or 0)
                 pct_num     = ref1_ev / 100           # e.g. 3000 → 30.0
-                pct_frac    = ref1_ev / 10000         # e.g. 3000 → 0.30
-                pericu_int  = int(l["sal_mes"] * pct_frac)   # centavos truncados
-                pericu_val  = (int(pericu_int * dias_adic / dias_mes)
-                               if (dias_afast_adic > 0 and dias_mes) else pericu_int)
                 mmVmm[31]   = pericu_val
                 pct_fmt     = f"{pct_num:g}%"
                 _st_op7     = ParagraphStyle("op7a", fontName="Helvetica", fontSize=7,
