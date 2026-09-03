@@ -227,12 +227,35 @@ def inject_folha_ativa():
         "P": ("Processada","sit-processada"),
     }
     sit_label, sit_class = sit_map.get(st, ("", ""))
+
+    # Numero do CLIENTE e da EMPRESA, no cabecalho de toda tela (SMV
+    # 03/09/2026). Sai daqui, e nao de cada render_template, porque sao 130
+    # telas: um context_processor entrega as duas variaveis a todas de uma vez,
+    # e as telas sem sessao (login, landing) recebem vazio e nao mostram nada.
+    #
+    # SEIS digitos, que e o formato que o F10_Menu.html ja usava no cabecalho
+    # ("000053 - GALVANISA"): as demais telas passam a repetir o mesmo, e nao
+    # um formato novo.
+    _cli_num = _emp_num = ""
+    if session.get("logado"):
+        try:
+            _c = int(session.get("id_cliente") or 0)
+            _e = int(session.get("id_empresa") or 0)
+            if _c:
+                _cli_num = f"{_c:06d}"
+            if _e:
+                _emp_num = f"{_e:06d}"
+        except (TypeError, ValueError):
+            pass
+
     return {
         "folha_ativa":           folha_fmt,
         "folha_ativa_tipo":      tipo_label,
         "folha_ativa_situacao":  sit_label,
         "folha_ativa_sit_class": sit_class,
         "folha_situacao":        st,
+        "cliente_num":           _cli_num,
+        "empresa_num":           _emp_num,
     }
 
 # =========================================================
@@ -20923,15 +20946,19 @@ def cad_mov():
     funcionarios = []
     try:
         r = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, situacao, dtadm")
+             .select("matricula, nome, nomer, situacao, dtadm, dttransf, tpadmissao")
              .eq("id_empresa", id_empresa)
              .eq("situacao", "A")
              .order("nomer")
              .execute())
         for f in (r.data or []):
-            dtadm_raw = str(f.get("dtadm") or "")
-            # Admitido após o mês da folha → não aparece
-            if len(dtadm_raw) >= 6 and anomes and dtadm_raw[:6] > anomes:
+            # Começou nesta empresa depois do mês da folha → não aparece.
+            # Pelo _comeco_na_empresa, e não pelo dtadm: quem veio por
+            # transferência traz a admissão ORIGINAL, e a comparação direta
+            # com o dtadm deixava o transferido entrar na folha de um mês em
+            # que ele ainda era da empresa anterior.
+            _com = _comeco_na_empresa(f)
+            if len(_com) >= 6 and anomes and _com[:6] > anomes:
                 continue
             nome = (f.get("nomer") or f.get("nome") or "").strip()
             funcionarios.append({
@@ -42398,12 +42425,7 @@ def _calc_etapa1_dados(id_empresa, anomes=None):
         r = q.execute()
         for f in (r.data or []):
             if _am:
-                _dtadm  = str(f.get("dtadm")    or "")
-                _tr     = str(f.get("dttransf") or "")
-                _tpadm  = str(f.get("tpadmissao") or "").strip()
-                # tpadmissao 2 = admitido POR TRANSFERENCIA: e' a dttransf que
-                # diz quando ele passou a ser desta empresa.
-                _comeco = _tr if (_tr and _tpadm not in ("", "1")) else _dtadm
+                _comeco = _comeco_na_empresa(f)
                 if _comeco and _comeco[:6] > _am:
                     continue                      # ainda não era desta empresa
                 # DESLIGADO: fica de fora quando saiu NO MÊS ou ANTES — aí a
@@ -47009,6 +47031,10 @@ def api_visualizar_calculo_dados():
     #  no cálculo de proventos/descontos, mas listá-las no card)
     mov_data = {}
     erro_query = None
+    # Movimento herdado da empresa anterior numa transferência não é desta
+    # folha — ver _mats_de_outra_empresa. O card é alcançável por URL direta,
+    # então o filtro tem de estar aqui também, e não só na lista da tela.
+    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         q = (supabase.table("tab_mov")
              .select("matricula, cod_verba, qtd, valor, origem, folha_tipo")
@@ -47020,6 +47046,8 @@ def api_visualizar_calculo_dados():
             q = q.eq("id_cliente", id_cliente)
         for reg in (q.execute().data or []):
             mat = int(reg.get("matricula") or 0)
+            if mat in _mats_fora:
+                continue
             if mat in mats_set and str(reg.get("folha_tipo") or "N") == tipo_por_mat.get(mat):
                 mov_data.setdefault(mat, []).append(reg)
     except Exception as e_q:
@@ -47218,8 +47246,33 @@ def _cods_inc_fgts(folha_tipo):
     return ("S", "11", "12") if str(folha_tipo or "").upper() in ("A", "1") else ("S", "11")
 
 
+def _comeco_na_empresa(cad_row):
+    """AAAAMMDD em que o funcionário passou a ser DESTA empresa.
+
+    Numa transferência o `dtadm` da empresa de destino é o ORIGINAL — é
+    sucessão de vínculo, e o S-2200 de lá leva a admissão antiga. Ele não diz
+    quando a pessoa chegou naquela empresa; quem diz é a `dttransf`.
+
+    E só do lado de quem RECEBEU: a `dttransf` é gravada nos DOIS lados, e na
+    empresa de ORIGEM ela marca a saída (lá é igual à datarescisao). Quem
+    separa os lados é o `tpadmissao`: 2 no destino, 1 na origem.
+
+    Ler o `dtadm` direto é a armadilha desta base: GENILDO SOARES entrou na
+    empresa 53 em 01/09/2026 com `dtadm` de 2022, e toda tela que comparava o
+    `dtadm` com a competência o dava como funcionário de sempre.
+    """
+    _adm = str(cad_row.get("dtadm")      or "")
+    _tr  = str(cad_row.get("dttransf")   or "")
+    _tp  = str(cad_row.get("tpadmissao") or "").strip()
+    return _tr if (_tr and _tp not in ("", "1")) else _adm
+
+
 def _mats_de_outra_empresa(id_empresa, anomes, id_cliente=None):
-    """Matrículas cujo movimento naquela competência é da EMPRESA ANTERIOR.
+    """Matrículas que ainda NÃO eram desta empresa naquela competência.
+
+    Na prática são os transferidos que chegaram depois — quem foi admitido
+    depois do mês também entra na conta, mas esse não tem movimento nenhum
+    naquela folha, então não há o que filtrar.
 
     Na transferência, o `_transf_copiar` leva a ficha financeira inteira do
     funcionário para a empresa de destino — linha por linha, trocando só
@@ -47246,14 +47299,14 @@ def _mats_de_outra_empresa(id_empresa, anomes, id_cliente=None):
     if len(_am) != 6:
         return fora
     try:
-        q = (supabase.table("tab_cad").select("matricula, dttransf, tpadmissao")
+        q = (supabase.table("tab_cad")
+             .select("matricula, dtadm, dttransf, tpadmissao")
              .eq("id_empresa", id_empresa))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         for f in (q.execute().data or []):
-            _tr = str(f.get("dttransf") or "")
-            _tp = str(f.get("tpadmissao") or "").strip()
-            if len(_tr) == 8 and _tp not in ("", "1") and _tr[:6] > _am:
+            _com = _comeco_na_empresa(f)
+            if len(_com) == 8 and _com[:6] > _am:
                 fora.add(int(f.get("matricula") or 0))
     except Exception as e:
         print(f"[mats_outra_empresa] {e}")
@@ -49430,6 +49483,9 @@ def contracheque():
     # Busca funcionários com movimento no período (para seletor)
     funcionarios = []
     try:
+        # Movimento herdado numa transferência não é desta folha — o seletor
+        # ofereceria contracheque de um mês em que ele era de outra empresa.
+        _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
         q = (supabase.table("tab_mov")
              .select("matricula")
              .eq("id_empresa", id_empresa)
@@ -49439,7 +49495,7 @@ def contracheque():
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         mats = sorted({int(r["matricula"]) for r in (q.execute().data or [])
-                       if r.get("matricula")})
+                       if r.get("matricula") and int(r["matricula"]) not in _mats_fora})
         if mats:
             r2 = (supabase.table("tab_cad")
                   .select("matricula,nome,nomer")
@@ -51011,6 +51067,11 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     # faltas, entao esse rotulo so enganava.
 
     # ── Movimento do mês ──
+    # Movimento herdado da empresa anterior numa transferência não é desta
+    # folha — ver _mats_de_outra_empresa. Aqui o efeito não seria um nome a
+    # mais na lista, e sim o TOTAL do resumo (INSS, FGTS, líquido) inchado com
+    # valores de outra empresa, que é pior por ser invisível.
+    _mats_fora = _mats_de_outra_empresa(id_empresa, anomes, id_cliente)
     try:
         r_mov = (supabase.table("tab_mov")
                  .select("cod_verba,valor,matricula")
@@ -51019,7 +51080,8 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
                  .eq("folha_tipo", anomes_tipo)
                  .eq("situacao", "A")
                  .execute())
-        mov_rows = r_mov.data or []
+        mov_rows = [r for r in (r_mov.data or [])
+                    if int(r.get("matricula") or 0) not in _mats_fora]
     except Exception:
         mov_rows = []
 
