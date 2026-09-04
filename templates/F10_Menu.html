@@ -342,7 +342,11 @@ body.menu-numerado .nav-item::before {
    cada um com o seu "right": assim mudar o rótulo de um não desalinha o
    outro. Preferências continua encostado na borda, como sempre esteve. */
 .cards-canto {
-    position: fixed; top: 104px; right: 24px; z-index: 500;
+    /* top 104px punha a pilula em cima da 1a linha do grid de modulos, que
+       comeca em 112px (topo de 64px + os 48px de margem do .conteudo) — e o
+       ADMIN, ultimo card da linha, e' justamente o da direita. Em 68px ela
+       fica na faixa livre entre o cabecalho e o grid. */
+    position: fixed; top: 68px; right: 24px; z-index: 500;
     display: flex; align-items: center; gap: 8px;
 }
 .card-pref {
