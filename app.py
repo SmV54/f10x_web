@@ -17204,15 +17204,20 @@ def cad_dep():
     matricula  = mats[0]
     id_empresa = _get_id_empresa()
     func_nome  = ""
+    # A admissao vai junto para a tela: a data de entrega dos documentos e'
+    # sugerida pela mais recente entre a admissao e o nascimento do dependente.
+    func_dtadm = ""
     try:
         r = (supabase.table("tab_cad")
-             .select("nome, nomer")
+             .select("nome, nomer, dtadm")
              .eq("id_empresa", id_empresa)
              .eq("matricula", matricula)
              .limit(1)
              .execute())
         if r.data:
             func_nome = (r.data[0].get("nomer") or r.data[0].get("nome") or "").strip()
+            _adm = str(r.data[0].get("dtadm") or "").strip()
+            func_dtadm = _adm if len(_adm) == 8 and _adm.isdigit() else ""
     except Exception:
         pass
     tipos_dep = []
@@ -17233,6 +17238,7 @@ def cad_dep():
         empresa=session.get("empresa_info", ""),
         matricula=matricula,
         func_nome=func_nome,
+        func_dtadm=func_dtadm,
         tipos_dep=tipos_dep,
     )
 
@@ -17847,6 +17853,42 @@ def api_dependente_gravar():
         return jsonify({"ok": False, "msg": "Nome é obrigatório."})
     if not tpDep:
         return jsonify({"ok": False, "msg": "Tipo de dependente é obrigatório."})
+
+    # ── CPF do dependente: obrigatório e conferido ──────────────────────
+    # A Receita exige CPF de dependente de QUALQUER idade desde 2019, e sem
+    # ele o S-1210 nao fecha: o dependente cai fora do <infoDep>/<dedDepen> e,
+    # se for beneficiario de pensao, o <penAlim> também não sai. Sem os dois o
+    # grupo <infoIRComplem> inteiro deixa de ser gerado e o gov recusa com dois
+    # erros [8] de uma vez — foi o que travou o S-1210 da empresa 53/matrícula 1
+    # (dependente ALICY, 04/09/2026) e o da empresa 30/matrícula 52, parado
+    # desde a competência 07/2026 pelo mesmo motivo.
+    # A trava vale só para o cadastro pela tela: a importação do Access e a do
+    # XML do eSocial gravam direto na tabela e não passam por aqui.
+    if not cpfDep:
+        return jsonify({"ok": False, "msg": (
+            "CPF do dependente é obrigatório — sem ele o eSocial recusa o "
+            "S-1210 de quem tem dependente de IRRF ou pensão alimentícia.")})
+    if not validar_cpf(cpfDep):
+        return jsonify({"ok": False, "msg": "CPF do dependente inválido."})
+
+    # Mesmo CPF duas vezes no MESMO funcionário é o mesmo dependente cadastrado
+    # em duplicidade. Entre empresas diferentes não é erro: numa transferência o
+    # dependente existe na empresa antiga e na nova (foi o caso do EDSON, ids
+    # 111 e 146), e barrar isso quebraria a transferência.
+    try:
+        _dup = (supabase.table("tab_dependentes")
+                .select("id, nome")
+                .eq("id_empresa", id_empresa)
+                .eq("matricula", matricula)
+                .eq("cpfdep", cpfDep)
+                .execute().data or [])
+        _dup = [d for d in _dup if not dep_id or int(d["id"]) != int(dep_id)]
+        if _dup:
+            return jsonify({"ok": False, "msg": (
+                f"Este CPF já está cadastrado como dependente deste "
+                f"funcionário ({_dup[0].get('nome') or ''}).")})
+    except Exception as e:
+        print(f"[dependente] falha ao conferir CPF repetido: {e}")
 
     payload = {
         "id_cliente":  id_cliente,

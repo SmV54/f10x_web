@@ -117,6 +117,7 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
     border-color: #2a7de1; box-shadow: 0 0 0 3px rgba(42,125,225,0.1);
 }
 .campo input.erro { border-color: #ef4444; }
+.campo .dica { font-size: 11px; color: #64748b; margin-top: 4px; min-height: 14px; }
 .campo textarea { resize: vertical; min-height: 60px; }
 .campo-mono input { font-family: 'IBM Plex Mono', monospace; letter-spacing: 0.05em; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -291,16 +292,18 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
                             <label>Data de Nascimento</label>
                             <input type="text" id="dep-dtnascto" maxlength="10"
                                 placeholder="DD/MM/AAAA" oninput="mascaraData(this)"
-                                onblur="validarDataCampo(this, 'nasc')">
+                                onblur="validarDataCampo(this, 'nasc'); sugerirEntrega()">
                         </div>
                         <div class="campo campo-mono">
                             <label>Entrega de Docs</label>
                             <input type="text" id="dep-data-entrega" maxlength="10"
-                                placeholder="DD/MM/AAAA" oninput="mascaraData(this)"
+                                placeholder="DD/MM/AAAA"
+                                oninput="mascaraData(this); marcarEntregaDigitada()"
                                 onblur="validarDataCampo(this, 'entrega')">
+                            <div class="dica" id="dica-entrega"></div>
                         </div>
                         <div class="campo campo-mono">
-                            <label>CPF do Dependente</label>
+                            <label>CPF do Dependente *</label>
                             <input type="text" id="dep-cpf" maxlength="14"
                                 placeholder="000.000.000-00" oninput="mascaraCpf(this)"
                                 onblur="validarCpfCampo(this)">
@@ -369,6 +372,7 @@ html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; height:
 
 <script>
 const MATRICULA  = {{ matricula }};
+const FUNC_DTADM = '{{ func_dtadm }}';   // AAAAMMDD do funcionario, ou ''
 const FUNC_LABEL = '{{ "%06d"|format(matricula) }} — {{ func_nome }}';
 
 /* Mapa de tipos de dependente para lookup no JS */
@@ -518,6 +522,48 @@ function onTpDepChange(aplicarDefault) {
     }
 }
 
+/* ── Entrega de Docs: sugestao ──────────────────────────
+   A data sugerida e a MAIS RECENTE entre a admissao do funcionario e o
+   nascimento do dependente — nao se entrega documento de quem ainda nao
+   nasceu, nem antes de a pessoa ser contratada. E so sugestao: assim que o
+   usuario digita no campo, o sistema para de mexer nele.                  */
+let entregaSugerida = true;   // enquanto true, a sugestao pode reescrever
+
+function marcarEntregaDigitada() {
+    entregaSugerida = false;
+    document.getElementById('dica-entrega').textContent = '';
+}
+
+function ymdParaBr(v) {
+    return (v && v.length === 8) ? `${v.slice(6,8)}/${v.slice(4,6)}/${v.slice(0,4)}` : '';
+}
+
+function ymdValido(v) {
+    if (!v || v.length !== 8) return false;
+    const d = new Date(v.slice(0,4), v.slice(4,6) - 1, v.slice(6,8));
+    if (isNaN(d)) return false;
+    const hoje = new Date(); hoje.setHours(0,0,0,0);
+    return d <= hoje;                          // data futura nao sugere nada
+}
+
+function brParaYmd(v) {
+    const n = (v || '').replace(/\D/g,'');
+    return n.length === 8 ? n.slice(4,8) + n.slice(2,4) + n.slice(0,2) : '';
+}
+
+function sugerirEntrega() {
+    if (!entregaSugerida) return;                 // usuario ja escolheu a dele
+    const nasc = brParaYmd(document.getElementById('dep-dtnascto').value);
+    const cand = [FUNC_DTADM, nasc].filter(ymdValido);
+    if (!cand.length) return;
+    const escolhida = cand.sort().pop();          // AAAAMMDD ordena como texto
+    document.getElementById('dep-data-entrega').value = ymdParaBr(escolhida);
+    document.getElementById('dica-entrega').textContent =
+        (escolhida === nasc && escolhida !== FUNC_DTADM)
+            ? 'Sugerido o nascimento do dependente; pode trocar.'
+            : 'Sugerida a admissão do funcionário; pode trocar.';
+}
+
 /* ── Limpar form ────────────────────────────────────── */
 function novoForm() {
     document.getElementById('dep-id').value           = '';
@@ -525,6 +571,8 @@ function novoForm() {
     document.getElementById('dep-tp').value           = '';
     document.getElementById('dep-dtnascto').value     = '';
     document.getElementById('dep-data-entrega').value = '';
+    entregaSugerida = true;
+    document.getElementById('dica-entrega').textContent = '';
     document.getElementById('dep-cpf').value          = '';
     document.getElementById('dep-descdep').value      = '';
     document.getElementById('dep-vinculo-pa').value   = '';
@@ -536,6 +584,7 @@ function novoForm() {
     document.getElementById('form-titulo').textContent    = `Novo Dependente de ${FUNC_LABEL}`;
     document.getElementById('form-subtitulo').textContent = 'Preencha os dados e clique em Gravar';
     document.querySelectorAll('#lista-dep tr').forEach(r => r.classList.remove('selecionado'));
+    sugerirEntrega();
 }
 
 /* ── Editar (carregar linha no form) ────────────────── */
@@ -560,6 +609,9 @@ async function editarDep(id) {
         const de = dep.data_entrega || '';
         document.getElementById('dep-data-entrega').value =
             de.length === 8 ? `${de.slice(6,8)}/${de.slice(4,6)}/${de.slice(0,4)}` : '';
+        // Cadastro que ja existe nao recebe sugestao: o que esta gravado vale.
+        entregaSugerida = false;
+        document.getElementById('dica-entrega').textContent = '';
 
         // CPF
         const cpf = dep.cpfdep || '';
@@ -617,8 +669,15 @@ async function gravarDep() {
     }
 
     const cpfRaw = document.getElementById('dep-cpf').value.replace(/\D/g,'');
-    if (cpfRaw && !validarCPF(cpfRaw)) {
-        showToast('CPF do dependente inválido.', 'erro'); return;
+    // CPF obrigatório: sem ele o eSocial recusa o S-1210 de quem tem dependente
+    // de IRRF ou pensão. O servidor barra do mesmo jeito, esta é só a 1ª porta.
+    if (!cpfRaw) {
+        showToast('Informe o CPF do dependente.', 'erro');
+        document.getElementById('dep-cpf').focus(); return;
+    }
+    if (!validarCPF(cpfRaw)) {
+        showToast('CPF do dependente inválido.', 'erro');
+        document.getElementById('dep-cpf').focus(); return;
     }
 
     const vpRaw = document.getElementById('dep-vinculo-pa').value;
@@ -682,6 +741,9 @@ function showToast(msg, tipo) {
 /* ── Init ───────────────────────────────────────────── */
 document.getElementById('dep-tp').addEventListener('change', function() { onTpDepChange(true); });
 carregarLista();
+// A tela abre com o formulario vazio: ja sugere a data de entrega pela
+// admissao. Quando o nascimento for digitado, a sugestao se ajusta sozinha.
+sugerirEntrega();
 </script>
 <script src="/static/f10_dialog.js"></script>
 </body>
