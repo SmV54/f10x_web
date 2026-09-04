@@ -28836,6 +28836,23 @@ def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
             _if, _nd = (r.get("instfinanc") or "").strip(), (r.get("nrdoc") or "").strip()
             if _if or _nd:
                 emprest[c] = {"instfinanc": _if, "nrdoc": _nd}
+        # ── Adiantamento quinzenal: 160 e 161-164 sao o MESMO desconto ──
+        # As 161-164 registram o adiantamento pago; a 160 e o desconto dele na
+        # folha. Quando as duas aparecem juntas, somar as duas cobra o
+        # adiantamento duas vezes. O calculo da folha ja resolve isso na ETAPA
+        # 1140 — o tab_total fica com um desconto so —, mas o XML lia o tab_mov
+        # cru e mandava os dois.
+        # Empresa 53, matricula 2, folha 08/2026: 805,68 na 160 digitada +
+        # 805,68 apurados da 161 num liquido de 712,34. O eSocial recusou com a
+        # regra 933 (descontos maiores que os proventos em 93,34). A matricula 3
+        # da mesma folha passou pela regra por acaso — os proventos dela cobriam
+        # a duplicidade — e foi aceita com 805,68 de desconto a mais.
+        # Sai a 160: e a 161-164 que o sistema sempre mandou nas folhas com
+        # adiantamento, todas aceitas. Folha que so tem a 160 (rescisao,
+        # adiantamento pago por fora) continua como esta.
+        if any(str(c) in agg for c in VERBAS_ADTO_QUINZENAL):
+            agg.pop("160", None)
+
         return [{"cod_verba": k, "valor": v, **emprest.get(k, {})}
                 for k, v in agg.items() if v != 0]
     except Exception as e:
