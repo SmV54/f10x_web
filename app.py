@@ -32,6 +32,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from supabase import create_client
 from dotenv import load_dotenv
 from services.validacoes import somente_numeros, validar_cpf
+from modelos_contrato import modelo_do_cliente, montar_story
 
 # =========================================================
 # CARREGA VARIÁVEIS DO .env
@@ -12761,6 +12762,84 @@ def _resumo_horario(row):
     return " · ".join(partes) + f" · Total: {_horas_fmt(total)}/sem"
 
 
+# Dia da semana: nome, plural e a preposicao que o contrato usa ("aos sábados",
+# "às segundas-feiras").
+_DIAS_PROSA = [("2a",  "segunda-feira", "segundas-feiras", "às"),
+               ("3a",  "terça-feira",   "terças-feiras",   "às"),
+               ("4a",  "quarta-feira",  "quartas-feiras",  "às"),
+               ("5a",  "quinta-feira",  "quintas-feiras",  "às"),
+               ("6a",  "sexta-feira",   "sextas-feiras",   "às"),
+               ("sab", "sábado",        "sábados",         "aos"),
+               ("dom", "domingo",       "domingos",        "aos")]
+
+
+def _jornada_prosa(row):
+    """Jornada escrita por extenso, para os contratos em papel.
+
+    O _resumo_horario serve para TELA ("Seg–Sex: 07:00–12:00 · Total: 44h/sem").
+    O contrato pede outra coisa: "segunda a sexta-feira, das 07:00 às 12:00 e das
+    13:12 às 17:00, totalizando 44 (quarenta e quatro) horas semanais, com folga
+    aos sábados e domingos". Devolve "" quando o horario nao tem dia trabalhado —
+    quem chama decide o que por no lugar.
+    """
+    dias, total = [], 0.0
+    for chave, nome, plural, prep in _DIAS_PROSA:
+        val = row.get(f"horas_{chave}")
+        # Periodo que comeca e termina na mesma hora nao existe: e' o "00:00 as
+        # 00:00" das bases migradas do Desktop, que preenchem com zero em vez de
+        # branco. Na tela ele nem aparece; no contrato viraria frase sem sentido.
+        segs = [sg for sg in _segmentos_horario(val)
+                if sg[:5] != sg[6:]]
+        dias.append((nome, plural, prep, segs))
+        total += _horas_dia(val)
+
+    # Dias seguidos com a MESMA jornada viram uma faixa so ("de segunda a sexta").
+    grupos = []
+    for nome, plural, prep, segs in dias:
+        if grupos and grupos[-1][3] == segs:
+            grupos[-1][1] = (nome, plural, prep)
+        else:
+            grupos.append([(nome, plural, prep), (nome, plural, prep), None, segs])
+
+    def _faixa(g):
+        (n1, p1, pr1), (n2, _p2, _pr2) = g[0], g[1]
+        if n1 == n2:
+            return f"{pr1} {p1}"
+        # "de segunda a sexta-feira": o primeiro perde o "-feira" quando o ultimo
+        # tambem e' dia util, para nao repetir a palavra.
+        curto = n1[:-6] if (n1.endswith("-feira") and n2.endswith("-feira")) else n1
+        return f"de {curto} a {n2}"
+
+    def _horarios(segs):
+        partes = [f"das {sg.replace('–', ' às ')}" for sg in segs]
+        if len(partes) <= 1:
+            return partes[0] if partes else ""
+        return ", ".join(partes[:-1]) + " e " + partes[-1]
+
+    trabalho = [g for g in grupos if g[3]]
+    if not trabalho:
+        return ""
+    texto = "; ".join(f"{_faixa(g)}, {_horarios(g[3])}" for g in trabalho)
+
+    # Total semanal. So sai por extenso quando fecha em hora cheia — "44 horas e
+    # 30 minutos" por extenso viraria uma frase que ninguem le.
+    minutos = int(round(total * 60))
+    hh, mm = divmod(minutos, 60)
+    if mm:
+        texto += f", totalizando {hh} horas e {mm} minutos semanais"
+    else:
+        texto += f", totalizando {hh} ({_ext_inteiro(hh)}) horas semanais"
+
+    folga = [(p, pr) for (_n, p, pr, segs) in dias if not segs]
+    if folga:
+        nomes = [p for p, _pr in folga]
+        lista = (nomes[0] if len(nomes) == 1
+                 else ", ".join(nomes[:-1]) + " e " + nomes[-1])
+        texto += f", com folga {folga[0][1]} {lista}"
+
+    return texto
+
+
 # =========================================================
 # VERBAS — API INCLUIR
 # =========================================================
@@ -15421,6 +15500,23 @@ def _empregador_papel(id_cliente, id_empresa):
     }
 
 
+def _data8(s):
+    """'AAAAMMDD' -> date, ou None quando nao for data valida."""
+    s = str(s or "").strip()
+    if len(s) != 8 or not s.isdigit():
+        return None
+    try:
+        return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+    except ValueError:
+        return None
+
+
+def _mais_dias(s, n):
+    """'AAAAMMDD' somado de n dias, no mesmo formato. '' se a data nao valer."""
+    d0 = _data8(s)
+    return (d0 + timedelta(days=int(n))).strftime("%Y%m%d") if d0 else ""
+
+
 def _contrato_exp_dados(id_cliente, id_empresa, mat):
     """Junta empresa + funcionario + contrato para montar o PDF.
 
@@ -15448,13 +15544,14 @@ def _contrato_exp_dados(id_cliente, id_empresa, mat):
     papel = _empregador_papel(id_cliente, id_empresa)
 
     # Jornada: o resumo legivel que a propria tela de cadastro mostra.
-    jornada = ""
+    jornada = jornada_prosa = ""
     if cad.get("id_tab_horario"):
         try:
             rh = (supabase.table("tab_aux_horarios").select("*")
                   .eq("id_horario", cad["id_tab_horario"]).limit(1).execute())
             if rh.data:
-                jornada = _resumo_horario(rh.data[0])
+                jornada      = _resumo_horario(rh.data[0])
+                jornada_prosa = _jornada_prosa(rh.data[0])
         except Exception as e:
             print(f"[contrato exp] horario: {e}")
 
@@ -15473,6 +15570,39 @@ def _contrato_exp_dados(id_cliente, id_empresa, mat):
         except Exception:
             pass
 
+    # ── Campos derivados ───────────────────────────────────────────────
+    # So os modelos proprios de cliente usam (modelos_contrato.py). O contrato
+    # padrao do sistema continua lendo os campos crus acima.
+    _dtadm  = str(cad.get("dtadm") or "").zfill(8)
+    _dias   = int(contrato.get("dias") or 0)
+    _dtterm = str(contrato.get("dtterm") or "")
+    _ant    = str(contrato.get("dtterm_ant") or "")
+    _prorrogado = int(contrato.get("prorrogacoes") or 0) > 0
+
+    if _prorrogado and _data8(_ant):
+        # Ja prorrogado: o papel conta o que aconteceu de verdade. O periodo
+        # inicial vai da admissao ao termino ANTERIOR, e o ref1 do evento e' o
+        # prazo do SEGUNDO periodo (ver a rota que grava a prorrogacao).
+        _dias_ini    = ((_data8(_ant) - _data8(_dtadm)).days + 1) if _data8(_dtadm) else 0
+        _dtterm_ini  = _ant
+        _dias_prorr  = _dias
+        _prorr_ini   = _mais_dias(_ant, 1)
+        _prorr_fim   = _dtterm
+    else:
+        # Ainda nao prorrogado: a clausula PREVE a prorrogacao, com o mesmo
+        # numero de dias do primeiro periodo e limitada aos 90 dias do art. 445,
+        # paragrafo unico, da CLT. Contrato que ja nasce com 90 nao tem o que
+        # prorrogar — o trecho sai do papel pelo "tem_prorrogacao".
+        _dias_ini    = _dias
+        _dtterm_ini  = _dtterm
+        _dias_prorr  = min(_dias, max(0, 90 - _dias))
+        _prorr_ini   = _mais_dias(_dtterm, 1) if _dias_prorr else ""
+        _prorr_fim   = _mais_dias(_prorr_ini, _dias_prorr - 1) if _dias_prorr else ""
+
+    _d_adm = _data8(_dtadm)
+    _data_extenso = (f"{_d_adm.day} de {_AVISO_MESES[_d_adm.month - 1]} "
+                     f"de {_d_adm.year}") if _d_adm else ""
+
     return {
         "razao":     papel["razao"],
         "cnpj":      papel["cnpj"],
@@ -15485,12 +15615,33 @@ def _contrato_exp_dados(id_cliente, id_empresa, mat):
         "salario":   f"{(int(cad.get('vrsalfx') or 0) / 100):,.2f}"
                      .replace(",", "X").replace(".", ",").replace("X", "."),
         "jornada":   jornada or "—",
-        "dtadm":     str(cad.get("dtadm") or "").zfill(8),
-        "dias":      int(contrato.get("dias") or 0),
-        "dtterm":    str(contrato.get("dtterm") or ""),
-        "dtterm_ant": str(contrato.get("dtterm_ant") or ""),
+        "dtadm":     _dtadm,
+        "dias":      _dias,
+        "dtterm":    _dtterm,
+        "dtterm_ant": _ant,
         "prorrogacoes": int(contrato.get("prorrogacoes") or 0),
         "matricula": mat,
+
+        # ── derivados, para os modelos proprios ──
+        "uf":            papel["uf"],
+        "cidade_uf":     (f"{papel['cidade']}/{papel['uf']}"
+                          if papel.get("uf") else papel["cidade"]),
+        "endereco_prosa": str(papel["endereco"]).replace(" — ", ", "),
+        "matricula_fmt": f"{int(mat):06d}",
+        "salario_extenso": _valor_extenso(int(cad.get("vrsalfx") or 0)),
+        "jornada_prosa": jornada_prosa or (jornada or "—"),
+        "dtadm_fmt":     _fmt_dt(_dtadm),
+        "data_extenso":  _data_extenso,
+        "dias_inicial":         _dias_ini,
+        "dias_inicial_extenso": _ext_inteiro(_dias_ini),
+        "dtterm_inicial":       _fmt_dt(_dtterm_ini),
+        "tem_prorrogacao":      bool(_dias_prorr and _prorr_ini and _prorr_fim),
+        "dias_prorrog":         _dias_prorr,
+        "dias_prorrog_extenso": _ext_inteiro(_dias_prorr),
+        "dtprorrog_ini":        _fmt_dt(_prorr_ini),
+        "dtprorrog_fim":        _fmt_dt(_prorr_fim),
+        "dias_total":           _dias_ini + _dias_prorr,
+        "dias_total_extenso":   _ext_inteiro(_dias_ini + _dias_prorr),
     }, None
 
 
@@ -15583,35 +15734,41 @@ def contrato_experiencia_pdf(mat=None):
             "agosto", "setembro", "outubro", "novembro", "dezembro"][hoje.month - 1]
     data_assin = f"{hoje.day} de {_mes} de {hoje.year}"
 
-    story = [Paragraph("CONTRATO DE EXPERIÊNCIA", st_tit), Spacer(1, 8)]
-    story += cabec_partes()
+    # Cliente com modelo proprio de contrato (ver modelos_contrato.py) imprime
+    # o texto dele; sem modelo, sai o contrato padrao do sistema, abaixo.
+    _modelo = modelo_do_cliente(session.get("id_cliente"))
+    if _modelo:
+        story = montar_story(_modelo, d)
+    else:
+        story = [Paragraph("CONTRATO DE EXPERIÊNCIA", st_tit), Spacer(1, 8)]
+        story += cabec_partes()
 
-    story += [
-        item("01 -", "Contrato de trabalho por prazo determinado, na modalidade de "
-                     "experiência, nos termos dos artigos 443, 445 e 451 da CLT."),
-        item("02 -", f"O EMPREGADO exercerá as funções de <b>{d['funcao']}</b> "
-                     f"(CBO {d['cbo']})."),
-        item("03 -", f"A remuneração mensal será de <b>R$ {d['salario']}</b>."),
-        item("04 -", f"A jornada de trabalho será de <b>{d['jornada']}</b>, podendo o "
-                     "EMPREGADOR alterá-la de acordo com as necessidades, respeitados "
-                     "os limites legais."),
-        item("05 -", f"O prazo deste contrato é de <b>{d['dias']} dias</b>, com início em "
-                     f"<b>{_fmt_dt(d['dtadm'])}</b> e término em <b>{_fmt_dt(d['dtterm'])}</b>, "
-                     "podendo ser prorrogado uma única vez, mediante termo aditivo "
-                     "assinado pelas partes, desde que a soma dos períodos não "
-                     "ultrapasse 90 dias (art. 445, parágrafo único, da CLT)."),
-        item("06 -", "Permanecendo o EMPREGADO a serviço do EMPREGADOR após o término "
-                     "deste contrato, este passará automaticamente a vigorar por prazo "
-                     "indeterminado."),
-        Spacer(1, 6),
-        Paragraph("E por estarem de pleno acordo, as partes assinam o presente Contrato "
-                  "de Experiência em duas vias, ficando a primeira para o EMPREGADOR e a "
-                  "segunda para o EMPREGADO.", st_txt),
-        Spacer(1, 14),
-        Paragraph(f"{d['cidade']}, {data_assin}.", st_qua),
-        Spacer(1, 22),
-        assinaturas(),
-    ]
+        story += [
+            item("01 -", "Contrato de trabalho por prazo determinado, na modalidade de "
+                         "experiência, nos termos dos artigos 443, 445 e 451 da CLT."),
+            item("02 -", f"O EMPREGADO exercerá as funções de <b>{d['funcao']}</b> "
+                         f"(CBO {d['cbo']})."),
+            item("03 -", f"A remuneração mensal será de <b>R$ {d['salario']}</b>."),
+            item("04 -", f"A jornada de trabalho será de <b>{d['jornada']}</b>, podendo o "
+                         "EMPREGADOR alterá-la de acordo com as necessidades, respeitados "
+                         "os limites legais."),
+            item("05 -", f"O prazo deste contrato é de <b>{d['dias']} dias</b>, com início em "
+                         f"<b>{_fmt_dt(d['dtadm'])}</b> e término em <b>{_fmt_dt(d['dtterm'])}</b>, "
+                         "podendo ser prorrogado uma única vez, mediante termo aditivo "
+                         "assinado pelas partes, desde que a soma dos períodos não "
+                         "ultrapasse 90 dias (art. 445, parágrafo único, da CLT)."),
+            item("06 -", "Permanecendo o EMPREGADO a serviço do EMPREGADOR após o término "
+                         "deste contrato, este passará automaticamente a vigorar por prazo "
+                         "indeterminado."),
+            Spacer(1, 6),
+            Paragraph("E por estarem de pleno acordo, as partes assinam o presente Contrato "
+                      "de Experiência em duas vias, ficando a primeira para o EMPREGADOR e a "
+                      "segunda para o EMPREGADO.", st_txt),
+            Spacer(1, 14),
+            Paragraph(f"{d['cidade']}, {data_assin}.", st_qua),
+            Spacer(1, 22),
+            assinaturas(),
+        ]
 
     # O TERMO DE PRORROGACAO nao sai neste contrato inicial (decisao do Sergio
     # em 08/08/2026): o papel da admissao e so o contrato. O texto esta guardado
@@ -15623,12 +15780,15 @@ def contrato_experiencia_pdf(mat=None):
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=2 * cm, rightMargin=2 * cm,
                             topMargin=1.5 * cm, bottomMargin=1.5 * cm,
-                            title="Contrato de Experiência")
+                            title=((_modelo or {}).get("titulo")
+                                   or "Contrato de Experiência"))
     doc.build(story)
     buf.seek(0)
 
     gravar_log("CONTRATO", f"Contrato de experiencia emitido em PDF: "
-                           f"{d['nome'][:30]}", matricula=mat)
+                           f"{d['nome'][:30]}"
+                           f"{' — modelo ' + _modelo['nome_modelo'] if _modelo else ''}",
+               matricula=mat)
 
     resp = make_response(buf.read())
     resp.headers["Content-Type"] = "application/pdf"
