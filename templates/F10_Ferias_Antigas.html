@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Informar Férias Antigas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-logo    { font-family: var(--mono); font-size: 15px; font-weight: 500; color: #111827; letter-spacing: 0.04em; }
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+.topo-folha-ativa {
+    display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 6px;
+    font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.sit-aberta    { background: #fff; color: #111827; border: 2px solid #86efac; }
+.sit-calculada { background: #fff; color: #111827; border: 2px solid #fde047; }
+.sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
+
+/* ── CONTEÚDO ── */
+.conteudo { max-width: 760px; margin: 36px auto; padding: 0 24px 60px; }
+
+/* ── CABEÇALHO ── */
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+/* ── CARD ── */
+.pref-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; overflow: hidden; margin-bottom: 24px;
+}
+.pref-secao-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 12px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+}
+
+/* ── RESUMO FUNCIONÁRIOS ── */
+.func-resumo-wrap { padding: 12px 20px 14px; }
+.func-resumo-lista { display: flex; flex-direction: column; gap: 1px; }
+.func-resumo-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 10px; background: #f8fafc;
+    border: 1px solid var(--border); border-radius: 7px;
+    font-size: 12px;
+}
+.func-resumo-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; flex-shrink: 0; }
+.func-resumo-nome { font-weight: 500; color: #1e293b; flex-shrink: 0; }
+.func-resumo-hist { font-size: 11px; color: #334155; font-family: var(--mono); font-weight: 500; }
+.func-resumo-hist .hist-label { color: #64748b; font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; margin-left: 4px; font-weight: 600; }
+.func-resumo-hist .hist-periodo { color: #1e293b; font-weight: 600; }
+.func-resumo-hist .hist-sep { color: #94a3b8; margin: 0 6px; }
+.func-resumo-loading { font-size: 12px; color: #94a3b8; padding: 8px 0; }
+.func-resumo-erro   { font-size: 12px; color: #ef4444; padding: 8px 0; }
+
+/* ── DIVISOR ── */
+.divisor-variaveis {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 20px 6px; background: #f8fafc;
+    border-bottom: 1px solid var(--border); border-top: 2px solid var(--border);
+}
+.divisor-variaveis span {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+}
+
+/* ── LINHAS DE OPÇÃO ── */
+.opcao-linha {
+    display: grid; grid-template-columns: 28px 1fr auto;
+    align-items: start; gap: 0 14px; padding: 10px 20px;
+    border-bottom: 1px solid #f1f5f9; transition: background 0.1s;
+}
+.opcao-linha:last-child { border-bottom: none; }
+.opcao-linha:hover { background: #fafbfc; }
+.opcao-num   { font-family: var(--mono); font-size: 10px; color: #94a3b8; margin-right: 4px; }
+.opcao-label {
+    font-size: 13px; font-weight: 500; color: #334155;
+    display: flex; align-items: center; gap: 6px; padding-top: 6px;
+}
+.opcao-valor { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+
+.input-data {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; width: 130px; outline: none;
+    letter-spacing: 0.05em; transition: border-color 0.15s;
+}
+.input-data:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-data.erro  { border-color: #ef4444; background: #fff5f5; }
+.input-data::placeholder { color: #b0b8c8; letter-spacing: 0; font-size: 12px; }
+
+.input-qtd {
+    font-family: var(--mono); font-size: 13px; font-weight: 500;
+    color: #1e293b; background: #fffbeb; border: 1px solid #fcd34d;
+    border-radius: 6px; padding: 5px 10px; width: 80px; outline: none;
+    text-align: center; transition: border-color 0.15s;
+}
+.input-qtd:focus { border-color: var(--accent); background: #f0f7ff; }
+.input-qtd.erro  { border-color: #ef4444; background: #fff5f5; }
+
+.hint      { font-size: 11px; color: #94a3b8; }
+.hint.ok   { color: #16a34a; }
+.hint.erro { color: #ef4444; }
+
+/* ── PERÍODO DE FÉRIAS / ABONO ── */
+.periodo-corpo { padding: 2px 0; }
+.periodo-opcao {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 16px; border-bottom: 1px solid #f1f5f9;
+    cursor: pointer; transition: background 0.1s;
+}
+.periodo-opcao:last-child { border-bottom: none; }
+.periodo-opcao:hover { background: #fafbfc; }
+.periodo-opcao input[type="radio"] {
+    accent-color: var(--accent); flex-shrink: 0; cursor: pointer;
+}
+.periodo-opcao-titulo { font-size: 12px; font-weight: 600; color: #1e293b; display: block; }
+.periodo-opcao-desc   { font-size: 10px; color: #64748b; display: block; }
+
+/* ── RODAPÉ ── */
+.rodape { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; }
+.btn-cancelar {
+    background: var(--surface); border: 1px solid var(--border); color: #64748b;
+    font-size: 13px; font-family: var(--sans); font-weight: 500;
+    padding: 10px 22px; border-radius: 8px; cursor: pointer;
+    transition: 0.15s; text-decoration: none;
+}
+.btn-cancelar:hover { border-color: #94a3b8; color: #374151; }
+.btn-iniciar {
+    background: var(--accent); border: none; color: white;
+    font-size: 13px; font-family: var(--sans); font-weight: 600;
+    padding: 10px 28px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+    display: flex; align-items: center; gap: 8px;
+}
+.btn-iniciar:hover    { background: #1a5fb8; }
+.btn-iniciar:disabled { background: #93c5fd; cursor: not-allowed; }
+
+/* ── TOAST ── */
+#toast {
+    display: none; position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; padding: 12px 24px; border-radius: 10px;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); max-width: 460px; text-align: center; pointer-events: none;
+}
+#toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+#toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+#btnTour {
+    position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: flex;
+    align-items: center; justify-content: center; font-family: var(--sans);
+    transition: background 0.15s;
+}
+#btnTour:hover { background: #1a5fb8; }
+</style>
+<style>
+/* ── AVISO DO QUE ESTA TELA FAZ ── */
+.fa-aviso {
+    margin: 0 20px 14px; padding: 11px 14px;
+    background: #f0f7ff; border: 1px solid #bfdbfe; border-radius: 8px;
+    font-size: 12px; color: #1e40af; line-height: 1.55;
+}
+.fa-aviso b { color: #1e3a8a; }
+
+/* ── TABELA DAS FÉRIAS JÁ REGISTRADAS ── */
+.fa-tabela { width: 100%; border-collapse: collapse; font-size: 12px; }
+.fa-tabela th {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.06em; color: #94a3b8; text-align: left;
+    padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+.fa-tabela td {
+    padding: 7px 10px; border-bottom: 1px solid #f1f5f9;
+    color: #334155; white-space: nowrap;
+}
+.fa-tabela tr:last-child td { border-bottom: none; }
+.fa-tabela .fa-data { font-family: var(--mono); font-size: 11.5px; }
+.fa-tabela .fa-dias { font-family: var(--mono); text-align: center; }
+.fa-selo {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+}
+.fa-selo.antiga   { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.fa-selo.lancada  { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.fa-btn-x {
+    background: #fff; border: 1px solid #fca5a5; color: #b91c1c;
+    font-size: 11px; font-family: var(--sans); font-weight: 600;
+    padding: 3px 9px; border-radius: 6px; cursor: pointer; transition: 0.15s;
+}
+.fa-btn-x:hover     { background: #fee2e2; border-color: #ef4444; }
+.fa-btn-x:disabled  { opacity: 0.4; cursor: not-allowed; }
+.fa-vazio    { padding: 16px 20px; font-size: 12px; color: #94a3b8; }
+.fa-sugestao {
+    font-size: 11px; color: var(--accent); cursor: pointer;
+    text-decoration: underline; background: none; border: none;
+    font-family: var(--sans); padding: 0;
+}
+.fa-func {
+    display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+    font-size: 13px;
+}
+.fa-func-mat  { font-family: var(--mono); font-size: 12px; color: #64748b; }
+.fa-func-nome { font-weight: 600; color: #1e293b; }
+.fa-func-adm  { font-size: 11px; color: #64748b; margin-left: auto; }
+</style>
+
+</head>
+
+<body>
+
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
+        <span>Informar Férias Antigas</span>
+        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; <span style="white-space:nowrap;">{{ folha_ativa_situacao }}</span>{% endif %}</span>{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/select_funcionario?contexto=ferias_antigas">&#8592; Voltar</a>
+        <div>
+            <div class="rel-titulo">Informar Férias Antigas</div>
+            <div class="rel-subtitulo">Férias gozadas antes deste sistema — só o período aquisitivo e o de gozo</div>
+        </div>
+    </div>
+
+    <!-- ── FUNCIONÁRIO ── -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Funcionário</div>
+        <div class="fa-func">
+            <span class="fa-func-mat">{{ '%06d'|format(matricula) }}</span>
+            <span class="fa-func-nome">{{ func_nome or '(sem nome no cadastro)' }}</span>
+            <span class="fa-func-adm" id="fa-adm"></span>
+        </div>
+    </div>
+
+    <!-- ── FÉRIAS JÁ REGISTRADAS ── -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Férias já registradas</div>
+        <div id="fa-lista">
+            <div class="fa-vazio">Carregando…</div>
+        </div>
+    </div>
+
+    <!-- ── INFORMAR ── -->
+    <div class="pref-card">
+        <div class="pref-secao-titulo">Informar férias antigas</div>
+
+        <div class="fa-aviso">
+            Use esta tela só para férias <b>já gozadas antes deste sistema</b>. Ela grava
+            apenas os dois períodos: nada é calculado, nenhum recibo é emitido e
+            <b>nenhum S-2230 é enviado ao eSocial</b>.<br>
+            Elas entram para que o sistema saiba quais períodos aquisitivos já foram
+            consumidos — sem isso a rescisão paga de novo férias vencidas que a empresa
+            já pagou.
+        </div>
+
+        <div class="divisor-variaveis"><span>Período Aquisitivo</span></div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label"><span class="opcao-num">01</span> Início do período aquisitivo</div>
+            <div class="opcao-valor">
+                <input type="text" id="aq_i" class="input-data" placeholder="dd/mm/aaaa"
+                       maxlength="10" oninput="mascaraData(this); aoMudarAqI();">
+                <span class="hint" id="hint-aq"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label"><span class="opcao-num">02</span> Fim do período aquisitivo</div>
+            <div class="opcao-valor">
+                <input type="text" id="aq_f" class="input-data" placeholder="dd/mm/aaaa"
+                       maxlength="10" oninput="mascaraData(this)">
+                <span class="hint" id="hint-aq-f">Sugerido: 1 ano depois do início, menos 1 dia</span>
+            </div>
+        </div>
+
+        <div class="divisor-variaveis"><span>Período de Gozo</span></div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label"><span class="opcao-num">03</span> Início do gozo</div>
+            <div class="opcao-valor">
+                <input type="text" id="gozo_i" class="input-data" placeholder="dd/mm/aaaa"
+                       maxlength="10" oninput="mascaraData(this); calcularDias();">
+                <span class="hint" id="hint-gozo"></span>
+            </div>
+        </div>
+
+        <div class="opcao-linha">
+            <div></div>
+            <div class="opcao-label"><span class="opcao-num">04</span> Fim do gozo</div>
+            <div class="opcao-valor">
+                <input type="text" id="gozo_f" class="input-data" placeholder="dd/mm/aaaa"
+                       maxlength="10" oninput="mascaraData(this); calcularDias();">
+                <span class="hint ok" id="hint-dias"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="rodape">
+        <a class="btn-cancelar" href="/menu">Sair</a>
+        <button class="btn-iniciar" id="btn-gravar" onclick="gravar()">Gravar estas férias</button>
+    </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+const MATRICULA = {{ matricula }};
+const DTADM     = '{{ func_dtadm }}';
+
+function showToast(msg, tipo) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.className = tipo; t.style.display = 'block';
+    setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+function mascaraData(el) {
+    let v = el.value.replace(/\D/g,'');
+    if (v.length > 2) v = v.slice(0,2) + '/' + v.slice(2);
+    if (v.length > 5) v = v.slice(0,5) + '/' + v.slice(5);
+    if (v.length > 10) v = v.slice(0,10);
+    el.value = v;
+}
+
+/* 'dd/mm/aaaa' -> Date, ou null se nao for data de calendario */
+function paraData(br) {
+    const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec((br || '').trim());
+    if (!m) return null;
+    const d = new Date(+m[3], +m[2] - 1, +m[1]);
+    if (d.getFullYear() !== +m[3] || d.getMonth() !== +m[2] - 1 || d.getDate() !== +m[1])
+        return null;
+    return d;
+}
+function paraBR(d) {
+    return String(d.getDate()).padStart(2,'0') + '/' +
+           String(d.getMonth()+1).padStart(2,'0') + '/' + d.getFullYear();
+}
+function iso8paraBR(s) {
+    return (s && s.length === 8) ? s.slice(6,8)+'/'+s.slice(4,6)+'/'+s.slice(0,4) : '';
+}
+
+/* Fim do aquisitivo = inicio + 1 ano - 1 dia. So preenche se estiver vazio:
+   quem digitou algo diferente tem seus motivos e nao pode ser atropelado. */
+function aoMudarAqI() {
+    const d = paraData(document.getElementById('aq_i').value);
+    const campoF = document.getElementById('aq_f');
+    if (d && !campoF.value) {
+        const f = new Date(d.getFullYear() + 1, d.getMonth(), d.getDate());
+        f.setDate(f.getDate() - 1);
+        campoF.value = paraBR(f);
+    }
+}
+
+function calcularDias() {
+    const a = paraData(document.getElementById('gozo_i').value);
+    const b = paraData(document.getElementById('gozo_f').value);
+    const hint = document.getElementById('hint-dias');
+    if (!a || !b) { hint.textContent = ''; return; }
+    const dias = Math.round((b - a) / 86400000) + 1;
+    if (dias < 1)      { hint.className = 'hint erro'; hint.textContent = 'O fim é antes do início'; }
+    else if (dias > 30){ hint.className = 'hint erro'; hint.textContent = dias + ' dias — o máximo são 30'; }
+    else               { hint.className = 'hint ok';   hint.textContent = dias + ' dias de gozo'; }
+}
+
+function desenharLista(itens) {
+    const alvo = document.getElementById('fa-lista');
+    if (!itens || !itens.length) {
+        alvo.innerHTML = '<div class="fa-vazio">Nenhuma férias registrada para este ' +
+                         'funcionário até agora.</div>';
+        document.getElementById('hint-aq').textContent = '';
+        return;
+    }
+    let h = '<table class="fa-tabela"><thead><tr>' +
+            '<th>Período aquisitivo</th><th>Período de gozo</th>' +
+            '<th style="text-align:center">Dias</th><th>Origem</th><th></th>' +
+            '</tr></thead><tbody>';
+    itens.forEach(it => {
+        const selo = it.antiga
+            ? '<span class="fa-selo antiga">Antiga</span>'
+            : '<span class="fa-selo lancada">Lançada</span>';
+        // So o que esta tela gravou sai por aqui: ferias lancadas pelo caminho
+        // normal tem calculo, recibo e S-2230 atras, e se desfazem no Cancelar Ferias.
+        const acao = it.antiga
+            ? '<button class="fa-btn-x" onclick="excluir(' + it.id + ')">Excluir</button>'
+            : '';
+        h += '<tr>' +
+             '<td class="fa-data">' + (it.aq_i || '—') + ' a ' + (it.aq_f || '—') + '</td>' +
+             '<td class="fa-data">' + (it.gozo_i || '—') + ' a ' + (it.gozo_f || '—') + '</td>' +
+             '<td class="fa-dias">' + (it.dias || '—') + '</td>' +
+             '<td>' + selo + '</td>' +
+             '<td style="text-align:right">' + acao + '</td>' +
+             '</tr>';
+    });
+    h += '</tbody></table>';
+    alvo.innerHTML = h;
+
+    // O aquisitivo seguinte comeca no dia seguinte ao ultimo que ja foi gozado.
+    const ultimo = itens[itens.length - 1];
+    const d = paraData(ultimo.aq_f || '');
+    const hint = document.getElementById('hint-aq');
+    if (d) {
+        const prox = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+        hint.innerHTML = 'O último aquisitivo registrado termina em ' + ultimo.aq_f +
+            ' — <button class="fa-sugestao" onclick="usarSugestao(\'' + paraBR(prox) +
+            '\')">usar ' + paraBR(prox) + '</button>';
+    } else {
+        hint.textContent = '';
+    }
+}
+
+function usarSugestao(br) {
+    document.getElementById('aq_i').value = br;
+    document.getElementById('aq_f').value = '';
+    aoMudarAqI();
+}
+
+async function carregarLista() {
+    try {
+        const r = await fetch('/api/ferias_antigas_lista?matricula=' + MATRICULA);
+        const j = await r.json();
+        if (!j.ok) { showToast(j.msg || 'Erro ao carregar.', 'erro'); return; }
+        desenharLista(j.itens);
+    } catch (e) {
+        document.getElementById('fa-lista').innerHTML =
+            '<div class="fa-vazio">Não foi possível carregar as férias já registradas.</div>';
+    }
+}
+
+async function gravar() {
+    const btn = document.getElementById('btn-gravar');
+    const corpo = {
+        matricula: MATRICULA,
+        aq_i:   document.getElementById('aq_i').value,
+        aq_f:   document.getElementById('aq_f').value,
+        gozo_i: document.getElementById('gozo_i').value,
+        gozo_f: document.getElementById('gozo_f').value,
+    };
+    for (const [campo, rotulo] of [['aq_i','Início do período aquisitivo'],
+                                   ['aq_f','Fim do período aquisitivo'],
+                                   ['gozo_i','Início do gozo'],
+                                   ['gozo_f','Fim do gozo']]) {
+        if (!paraData(corpo[campo])) {
+            showToast(rotulo + ': informe uma data válida (dd/mm/aaaa).', 'erro');
+            document.getElementById(campo).focus();
+            return;
+        }
+    }
+    btn.disabled = true; btn.textContent = 'Gravando…';
+    try {
+        const r = await fetch('/api/ferias_antigas_gravar', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(corpo),
+        });
+        const j = await r.json();
+        if (!j.ok) { showToast(j.msg || 'Não foi possível gravar.', 'erro'); return; }
+        showToast(j.msg || 'Registrado.', 'ok');
+        desenharLista(j.itens);
+        ['aq_i','aq_f','gozo_i','gozo_f'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('hint-dias').textContent = '';
+        document.getElementById('aq_i').focus();
+    } catch (e) {
+        showToast('Falha de comunicação ao gravar.', 'erro');
+    } finally {
+        btn.disabled = false; btn.textContent = 'Gravar estas férias';
+    }
+}
+
+async function excluir(id) {
+    if (!confirm('Excluir este registro de férias antigas?')) return;
+    try {
+        const r = await fetch('/api/ferias_antigas_excluir', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({id: id, matricula: MATRICULA}),
+        });
+        const j = await r.json();
+        if (!j.ok) { showToast(j.msg || 'Não foi possível excluir.', 'erro'); return; }
+        showToast(j.msg || 'Excluído.', 'ok');
+        desenharLista(j.itens);
+    } catch (e) {
+        showToast('Falha de comunicação ao excluir.', 'erro');
+    }
+}
+
+if (DTADM) {
+    document.getElementById('fa-adm').textContent = 'Admitido em ' + iso8paraBR(DTADM);
+}
+carregarLista();
+</script>
+
+</body>
+</html>

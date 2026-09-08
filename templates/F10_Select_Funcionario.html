@@ -604,6 +604,19 @@ const CONTEXTOS = {
         apiUrl:        '/api/funcionarios_lista?contexto=ferias',
         msgVazio:      'Nenhum funcionário com direito a registro de férias nesta empresa.',
     },
+    ferias_antigas: {
+        titulo:        'Férias Antigas — Selecionar Funcionário',
+        subtitulo:     'Selecione quem teve férias gozadas antes deste sistema',
+        tituloCurto:   'Selecionar — Férias Antigas',
+        proximo:       '/ferias_antigas',
+        f_situacao:    'A',
+        maxSel:        1,
+        msgMaxSel:     'Para informar férias antigas, selecione apenas 1 funcionário',
+        semFiltros:    true,
+        // mesma lista do contexto ferias: fora intermitente e nao-empregado
+        apiUrl:        '/api/funcionarios_lista?contexto=ferias_antigas',
+        msgVazio:      'Nenhum funcionário com direito a registro de férias nesta empresa.',
+    },
     afastamento: {
         titulo:        'Afastamento — Selecionar Funcionários',
         subtitulo:     'Selecione quem vai ser afastado ou quem está voltando',

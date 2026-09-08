@@ -17995,7 +17995,7 @@ def api_funcionarios_lista():
     # Contexto férias: intermitente (111) e não-empregado (acima de 700 —
     # pró-labore, sócio, diretor, estagiário) não têm férias a registrar.
     _contexto     = request.args.get("contexto", "").strip()
-    so_com_ferias = _contexto == "ferias"
+    so_com_ferias = _contexto in ("ferias", "ferias_antigas")
 
     # Contexto imprimir contrato: so entra na lista quem TEM contrato lancado
     # (evento op1=1/op2=167). Sem isso a tela ofereceria funcionario para quem
@@ -18843,9 +18843,20 @@ def api_ferias_gravar():
                         )
                         raise ValueError("sobreposicao")
 
+            # Para CONTINUAR o mesmo período (opção "não"), a referência é o
+            # gozo mais recente — é a férias que está sendo partida em duas.
             prev = todas_ferias[0] if todas_ferias else None
             prev_data2i = str((prev or {}).get("data2i") or "")
             prev_data2f = str((prev or {}).get("data2f") or "")
+
+            # Para AVANÇAR, não: a referência é o período aquisitivo que termina
+            # mais tarde, venha ele de qual gozo vier. Férias gozadas fora de
+            # ordem — o aquisitivo de 2020 gozado em 2023 e o de 2021 gozado em
+            # 2022 — faziam a conta partir do gozo de 2023, cujo aquisitivo é o
+            # mais ANTIGO, e repetir um período já gozado. Fica visível agora que
+            # dá para informar as férias antigas de uma vez, em qualquer ordem.
+            ultimo_aq = max((str(e.get("data2f") or "") for e in todas_ferias),
+                            default="")
 
             # Calcular período aquisitivo
             data2i_out = None
@@ -18857,8 +18868,8 @@ def api_ferias_gravar():
                 data2f_out = prev_data2f
             else:
                 # auto ou sim: avançar para novo período
-                if prev_data2f:
-                    d_prev = _str_to_date(prev_data2f)
+                if ultimo_aq:
+                    d_prev = _str_to_date(ultimo_aq)
                     if d_prev:
                         d2i = d_prev + timedelta(days=1)
                         data2i_out = _date_to_str(d2i)
@@ -18931,6 +18942,274 @@ def api_ferias_gravar():
     if erros:
         msg += " Erros: " + "; ".join(erros)
     return jsonify({"ok": True, "gravados": gravados, "msg": msg})
+
+
+# =========================================================
+# FÉRIAS ANTIGAS — gozadas antes deste sistema
+# =========================================================
+# Só o período aquisitivo e o de gozo. Não calcula, não gera recibo e não cria
+# remessa de S-2230: a remessa do eSocial nasce no ato do lançamento normal
+# (api_ferias_gravar) e nada varre a tab_eventos depois para gerar remessa
+# atrasada — então basta esta rotina não criar nenhuma.
+#
+# Por que precisa existir: as férias já gozadas dizem quais períodos
+# aquisitivos foram consumidos. Sem elas, quem veio de outro sistema fica com
+# todos os aquisitivos abertos desde a admissão, e a rescisão paga de novo
+# férias vencidas que a empresa já pagou.
+#
+# A marca em `observacao` é o que separa estas linhas de um lançamento de
+# verdade — só as marcadas podem ser excluídas por esta tela.
+FERIAS_ANTIGA_MARCA = "FERIAS ANTERIORES AO SISTEMA"
+
+
+def _fa_para8(txt):
+    """'dd/mm/aaaa' → 'aaaammdd'. Devolve '' se não for data de calendário."""
+    s = re.sub(r"\D", "", str(txt or ""))
+    if len(s) != 8:
+        return ""
+    try:
+        return date(int(s[4:]), int(s[2:4]), int(s[:2])).strftime("%Y%m%d")
+    except ValueError:
+        return ""
+
+
+def _fa_dias(d8i, d8f):
+    """Dias de gozo, contando o primeiro e o último."""
+    a = date(int(d8i[:4]), int(d8i[4:6]), int(d8i[6:]))
+    b = date(int(d8f[:4]), int(d8f[4:6]), int(d8f[6:]))
+    return (b - a).days + 1
+
+
+def _fa_ler(id_cliente, id_empresa, matricula):
+    """Todas as férias do funcionário, das mais antigas para as mais novas."""
+    r = (supabase.table("tab_eventos")
+         .select("id, data1i, data1f, data2i, data2f, ref1, observacao")
+         .eq("id_cliente", id_cliente)
+         .eq("id_empresa", id_empresa)
+         .eq("matricula", matricula)
+         .eq("op1", 3)
+         .order("data1i")
+         .execute())
+    itens = []
+    for ev in (r.data or []):
+        itens.append({
+            "id":     ev.get("id"),
+            "gozo_i": _fmt_dt(ev.get("data1i")),
+            "gozo_f": _fmt_dt(ev.get("data1f")),
+            "aq_i":   _fmt_dt(ev.get("data2i")),
+            "aq_f":   _fmt_dt(ev.get("data2f")),
+            "dias":   int(ev.get("ref1") or 0),
+            "antiga": str(ev.get("observacao") or "") == FERIAS_ANTIGA_MARCA,
+        })
+    return itens
+
+
+@app.route("/ferias_antigas")
+def ferias_antigas():
+    if not session.get("logado"):
+        return redirect("/")
+    mats_raw = request.args.get("mats", "").strip()
+    mats = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()]
+    if len(mats) != 1:
+        return redirect("/select_funcionario?contexto=ferias_antigas")
+    matricula  = mats[0]
+    id_empresa = _get_id_empresa()
+    func_nome, func_dtadm = "", ""
+    try:
+        r = (supabase.table("tab_cad")
+             .select("nome, nomer, dtadm")
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", matricula)
+             .limit(1)
+             .execute())
+        if r.data:
+            func_nome = (r.data[0].get("nomer") or r.data[0].get("nome") or "").strip()
+            _adm = str(r.data[0].get("dtadm") or "").strip()
+            func_dtadm = _adm if len(_adm) == 8 and _adm.isdigit() else ""
+    except Exception:
+        pass
+    return render_template(
+        "F10_Ferias_Antigas.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=str(session.get("anomes_atual") or ""),
+        matricula=matricula,
+        func_nome=func_nome,
+        func_dtadm=func_dtadm,
+    )
+
+
+@app.route("/api/ferias_antigas_lista")
+def api_ferias_antigas_lista():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    try:
+        mat = int(request.args.get("matricula", ""))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Matrícula inválida."})
+    try:
+        itens = _fa_ler(session.get("id_cliente"), _get_id_empresa(), mat)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler as férias: {str(e)[:150]}"})
+    return jsonify({"ok": True, "itens": itens})
+
+
+@app.route("/api/ferias_antigas_gravar", methods=["POST"])
+def api_ferias_antigas_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    sit = str(session.get("anomes_situacao") or "")
+    if sit in ("C", "F"):
+        return jsonify({"ok": False, "msg": "Folha está %s — registro não permitido."
+                                            % ("Calculada" if sit == "C" else "Fechada")})
+
+    dados = request.get_json(force=True) or {}
+    try:
+        mat = int(dados.get("matricula"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Matrícula inválida."})
+
+    aq_i   = _fa_para8(dados.get("aq_i"))
+    aq_f   = _fa_para8(dados.get("aq_f"))
+    gozo_i = _fa_para8(dados.get("gozo_i"))
+    gozo_f = _fa_para8(dados.get("gozo_f"))
+    if not aq_i or not aq_f:
+        return jsonify({"ok": False, "msg": "Período aquisitivo: data inválida."})
+    if not gozo_i or not gozo_f:
+        return jsonify({"ok": False, "msg": "Período de gozo: data inválida."})
+    if aq_f <= aq_i:
+        return jsonify({"ok": False, "msg": "No período aquisitivo o fim tem de ser "
+                                            "depois do início."})
+    if gozo_f < gozo_i:
+        return jsonify({"ok": False, "msg": "No período de gozo o fim não pode ser "
+                                            "antes do início."})
+    if gozo_i < aq_i:
+        return jsonify({"ok": False, "msg": "O gozo começa antes do período aquisitivo "
+                                            "a que pertence."})
+    dias = _fa_dias(gozo_i, gozo_f)
+    if dias > 30:
+        return jsonify({"ok": False, "msg": f"O gozo informado tem {dias} dias; "
+                                            "o máximo são 30."})
+
+    # Esta tela é só para o que já passou. Férias da competência aberta têm de
+    # ir pelo Lançar Férias, que calcula, paga e manda o S-2230.
+    anomes = str(session.get("anomes_atual") or "")
+    if anomes and gozo_i[:6] >= anomes:
+        return jsonify({"ok": False, "msg":
+            f"O gozo começa em {gozo_i[4:6]}/{gozo_i[:4]}, que não é anterior à folha "
+            f"ativa ({anomes[4:6]}/{anomes[:4]}). Para férias desta competência use "
+            "Eventuais → Lançar Férias."})
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+
+    # Não pode ser antes da admissão
+    try:
+        r_cad = (supabase.table("tab_cad").select("dtadm")
+                 .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                 .eq("matricula", mat).limit(1).execute())
+        dtadm = str((r_cad.data or [{}])[0].get("dtadm") or "").strip()
+    except Exception:
+        dtadm = ""
+    if len(dtadm) == 8 and dtadm.isdigit() and gozo_i < dtadm:
+        return jsonify({"ok": False, "msg":
+            f"O gozo começa em {_fmt_dt(gozo_i)}, antes da admissão "
+            f"({_fmt_dt(dtadm)})."})
+
+    # Não pode cair em cima de férias já registradas
+    try:
+        ja = (supabase.table("tab_eventos").select("data1i, data1f")
+              .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+              .eq("matricula", mat).eq("op1", 3).execute()).data or []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao conferir as férias já "
+                                            f"registradas: {str(e)[:120]}"})
+    for ev in ja:
+        d_i, d_f = str(ev.get("data1i") or ""), str(ev.get("data1f") or "")
+        if len(d_i) == 8 and len(d_f) == 8 and gozo_i <= d_f and gozo_f >= d_i:
+            return jsonify({"ok": False, "msg":
+                f"O gozo {_fmt_dt(gozo_i)} a {_fmt_dt(gozo_f)} cai em cima de férias "
+                f"já registradas ({_fmt_dt(d_i)} a {_fmt_dt(d_f)})."})
+
+    try:
+        supabase.table("tab_eventos").insert({
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "matricula":  mat,
+            # A folha é a do próprio gozo, não a folha ativa: assim a linha não
+            # se confunde com um lançamento desta competência em nenhuma
+            # consulta que filtre por folha, e a Ficha mostra quando foi.
+            "folha":      int(gozo_i[:6]),
+            "op1":        3,
+            "data1i":     gozo_i,
+            "data1f":     gozo_f,
+            "data2i":     aq_i,
+            "data2f":     aq_f,
+            "ref1":       dias,
+            "observacao": FERIAS_ANTIGA_MARCA,
+        }).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:150]}"})
+
+    gravar_log("FERIAS ANT", f"INC ferias antiga: gozo {_fmt_dt(gozo_i)}-"
+                             f"{_fmt_dt(gozo_f)} ({dias}d), aquisitivo "
+                             f"{_fmt_dt(aq_i)}-{_fmt_dt(aq_f)}", matricula=mat)
+    try:
+        itens = _fa_ler(id_cliente, id_empresa, mat)
+    except Exception:
+        itens = []
+    return jsonify({"ok": True, "itens": itens,
+                    "msg": f"Férias de {_fmt_dt(gozo_i)} a {_fmt_dt(gozo_f)} "
+                           f"({dias} dias) registradas."})
+
+
+@app.route("/api/ferias_antigas_excluir", methods=["POST"])
+def api_ferias_antigas_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    sit = str(session.get("anomes_situacao") or "")
+    if sit in ("C", "F"):
+        return jsonify({"ok": False, "msg": "Folha está %s — exclusão não permitida."
+                                            % ("Calculada" if sit == "C" else "Fechada")})
+    dados = request.get_json(force=True) or {}
+    try:
+        id_ev = int(dados.get("id"))
+        mat   = int(dados.get("matricula"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Registro inválido."})
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    # Só sai daqui o que esta tela gravou. Férias lançadas pelo caminho normal
+    # têm cálculo, recibo e S-2230 atrás delas — para elas existe o Cancelar
+    # Férias, que desfaz tudo isso junto.
+    try:
+        r = (supabase.table("tab_eventos")
+             .select("id, data1i, data1f, observacao, matricula")
+             .eq("id", id_ev).eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa).eq("op1", 3).limit(1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o registro: {str(e)[:150]}"})
+    linha = (r.data or [None])[0]
+    if not linha or int(linha.get("matricula") or 0) != mat:
+        return jsonify({"ok": False, "msg": "Registro não encontrado."})
+    if str(linha.get("observacao") or "") != FERIAS_ANTIGA_MARCA:
+        return jsonify({"ok": False, "msg": "Estas férias foram lançadas pelo caminho "
+                                            "normal — use Eventuais → Cancelar Férias."})
+    try:
+        supabase.table("tab_eventos").delete().eq("id", id_ev).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:150]}"})
+
+    gravar_log("FERIAS ANT", f"EXC ferias antiga: gozo "
+                             f"{_fmt_dt(linha.get('data1i'))}-"
+                             f"{_fmt_dt(linha.get('data1f'))}", matricula=mat)
+    try:
+        itens = _fa_ler(id_cliente, id_empresa, mat)
+    except Exception:
+        itens = []
+    return jsonify({"ok": True, "itens": itens, "msg": "Registro excluído."})
 
 
 # =========================================================

@@ -638,17 +638,23 @@ const modulos = {
     eventuais: {
         titulo: 'Eventuais', icone: '🗓️', bloqueioFolha: true,
         secoes: [
+            // nav-fix em todos: sem ele cada card fica com a largura do proprio
+            // nome e a secao vira uma escada. Mesmo padrao da Rescisao.
             { nome: 'Férias', itens: [
-                { icone: '🏖️', nome: 'Lançar Férias',          href: '/select_funcionario?contexto=ferias', ok: true, bloqueioFolha: true },
-                { icone: '📝',  nome: 'Lançar Movimento Férias', href: '/cad_mov_ferias',    ok: true, bloqueioFolha: true },
-                { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',         ok: true },
-                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias',       ok: true },
-                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',        ok: true },
-                { icone: '❌',  nome: 'Cancelar Férias',      href: '/cad_cancelar_ferias',  ok: true, bloqueioFolha: true },
+                { icone: '🏖️', nome: 'Lançar Férias',          href: '/select_funcionario?contexto=ferias', ok: true, classe: 'nav-fix', bloqueioFolha: true },
+                // Ferias gozadas antes deste sistema: so o aquisitivo e o gozo,
+                // sem calculo, recibo ou S-2230. Entram para que o proximo
+                // aquisitivo e as ferias vencidas da rescisao saiam certos.
+                { icone: '🗂️', nome: 'Informar Férias Antigas', href: '/select_funcionario?contexto=ferias_antigas', ok: true, classe: 'nav-fix', bloqueioFolha: true },
+                { icone: '📝',  nome: 'Lançar Movimento Férias', href: '/cad_mov_ferias',    ok: true, classe: 'nav-fix', bloqueioFolha: true },
+                { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',         ok: true, classe: 'nav-fix' },
+                { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias',       ok: true, classe: 'nav-fix' },
+                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',        ok: true, classe: 'nav-fix' },
+                { icone: '❌',  nome: 'Cancelar Férias',      href: '/cad_cancelar_ferias',  ok: true, classe: 'nav-fix', bloqueioFolha: true },
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
-                { icone: '📋', nome: 'Funcionários em Férias', href: '/lista_ferias',        ok: true, permiteFolhaBloqueada: true },
-                { icone: '📆', nome: 'Programação de Férias', href: '#' },
-                { icone: '⏰', nome: 'Férias Vencidas',       href: '#' },
+                { icone: '📋', nome: 'Funcionários em Férias', href: '/lista_ferias',        ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
+                { icone: '📆', nome: 'Programação de Férias', href: '#', classe: 'nav-fix' },
+                { icone: '⏰', nome: 'Férias Vencidas',       href: '#', classe: 'nav-fix' },
             ]},
             { nome: 'Salários', itens: [
                 { icone: '💹', nome: 'Alteração de Salário',   href: '/select_funcionario?contexto=aumento',          ok: true },
