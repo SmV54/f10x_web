@@ -29185,6 +29185,15 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
         inst_munic = str(func.get('est_inst_munic') or '')
         inst_uf    = func.get('est_inst_uf', '') or ''
 
+        # O eSocial exige o bairro da instituicao de ensino ("[1] Campo de
+        # preenchimento obrigatorio: Bairro/Distrito"), mas nao ha coluna para
+        # ele: o add_colunas_estagio_s2300.sql criou nove colunas e nenhuma e
+        # bairro, entao a tela tambem nao pergunta. Por decisao do usuario em
+        # 08/09/2026 sai "CENTRO" fixo, para destravar o envio. O .get abaixo ja
+        # le est_inst_bairro se a coluna for criada depois: ai basta acrescentar
+        # o campo na tela e o bairro certo passa a sair sozinho.
+        inst_bairro = str(func.get('est_inst_bairro') or '').strip() or 'CENTRO'
+
         inst_nr_xml  = f"\n            <nrLograd>{x(inst_nr)}</nrLograd>" if inst_nr else ''
         inst_cep_xml = f"\n            <cep>{x(inst_cep)}</cep>" if inst_cep else ''
 
@@ -29196,7 +29205,8 @@ def _gerar_xml_s2300(func, empresa, tpAmb="1"):
             f"\n          <dtPrevTerm>{x(dtprevterm)}</dtPrevTerm>"
             f"\n          <instEnsino>"
             f"\n            <nmRazao>{x(inst_nome)}</nmRazao>"
-            f"\n            <dscLograd>{x(inst_logr)}</dscLograd>{inst_nr_xml}{inst_cep_xml}"
+            f"\n            <dscLograd>{x(inst_logr)}</dscLograd>{inst_nr_xml}"
+            f"\n            <bairro>{x(inst_bairro)}</bairro>{inst_cep_xml}"
             f"\n            <codMunic>{x(inst_munic)}</codMunic>"
             f"\n            <uf>{x(inst_uf)}</uf>"
             f"\n          </instEnsino>"
