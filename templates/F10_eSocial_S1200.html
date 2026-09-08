@@ -525,6 +525,10 @@ function _anomesTela() {
 // conferência local parar de barrar. Uma vez por carga da tela: assim um engano
 // na conferência não vira um laço de diálogo.
 let _s1020JaConsiderado = false;
+// Decisao do operador, tomada uma vez para o lote inteiro: seguir mesmo com
+// verba sem S-1010 gravado aqui. No avulso o escape ja existia; em lote nao
+// havia nenhum, e um dialogo por trabalhador seria impraticavel.
+let _forcarS1010Lote = false;
 
 async function _considerarS1020Enviada(anomes) {
   let d;
@@ -580,18 +584,37 @@ async function _confirmarPrereqS1200() {
 
   // Tabela faltando: o S-1200 não sai. Deixa as remessas prontas na Fila.
   if (falta1020.length || falta1010.length) {
+    const soFalta1010 = falta1010.length && !falta1020.length;
     const titulo = falta1020.length
       ? (falta1010.length ? 'Tabelas não declaradas (S-1020 e S-1010)'
                           : 'Lotação não declarada (S-1020)')
       : 'Verbas não declaradas (S-1010)';
-    const resp = await f10Confirm(
-      cd.msg + '\n\nO S-1200 só pode ser enviado depois que isso for resolvido.',
-      Object.assign({
+    // O terceiro botão é um só, e as duas ofertas nunca disputam: a lotação
+    // não tem escape (lá a recusa do governo é certa), então "Enviar mesmo
+    // assim" só aparece quando o S-1020 está resolvido e sobrou verba.
+    const extra = soFalta1010
+      ? { extraText:  'Enviar mesmo assim',
+          extraValue: 'forcar',
+          extraTitle: 'Segue com as verbas assim mesmo. Serve quando a rubrica já está '
+                    + 'declarada no eSocial e o reenvio volta com [537], que não devolve '
+                    + 'recibo — o Folha10 nunca fica sabendo. O governo confere do lado dele.' }
+      : _opcaoConsiderarS1020(falta1020.length);
+    const aviso = soFalta1010
+      ? '\n\nEnvie o S-1010 primeiro, ou siga assim mesmo se estas rubricas já '
+        + 'estiverem declaradas no eSocial.'
+      : '\n\nO S-1200 só pode ser enviado depois que isso for resolvido.';
+    const resp = await f10Confirm(cd.msg + aviso, Object.assign({
         titulo:     titulo,
         tipo:       'aviso',
         okText:     'Criar as remessas',
         cancelText: 'Fechar',
-      }, _opcaoConsiderarS1020(falta1020.length)));
+      }, extra));
+    if (resp === 'forcar') {
+      // Vale para o lote inteiro: quem decide é o operador, uma vez só.
+      _forcarS1010Lote  = true;
+      _prereqConfirmado = true;
+      return true;
+    }
     if (resp === 'considerar') {
       // Marcou a lotação: reconfere. Sobrando só verba, o diálogo volta sem o
       // botão extra (falta1020 vazio) — não tem como ficar em laço.
@@ -937,7 +960,7 @@ async function _processarLote(btns, btnDisparou) {
     enviados++;
 
     try {
-      await _enviar(id, btn, true);
+      await _enviar(id, btn, true, false, _forcarS1010Lote);
       const sitEl = document.getElementById('sit-' + id);
       const sitTxt = sitEl ? sitEl.textContent.trim() : '';
       if      (sitTxt === 'Enviado')    ok++;

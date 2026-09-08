@@ -37717,16 +37717,67 @@ def _esocial_rows_layout(id_empresa, layout, campos):
     return out
 
 
+_empresas_raiz_cache = {}
+
+
+def _empresas_da_raiz(id_empresa):
+    """Empresas do MESMO cliente que dividem a raiz do CNPJ (8 primeiros).
+
+    O S-1010 e evento de tabela do EMPREGADOR, e empregador no eSocial e a
+    raiz: a filial nao declara rubrica propria — quem declarou foi a matriz, e
+    vale para todas. Conferir so pelo id_empresa fazia a filial ser barrada por
+    rubrica que a irma ja tinha declarado. Na raiz 34895199 (cliente 30,
+    empresas 29/33/34) isso travava 22 das 24 verbas da 29 e 17 das 19 da 34.
+
+    Devolve sempre pelo menos a propria empresa; a lista nao inclui empresa de
+    outro cliente, mesmo que a raiz bata.
+    """
+    try:
+        ie = int(id_empresa or 0)
+    except (TypeError, ValueError):
+        return []
+    if not ie:
+        return []
+    if ie in _empresas_raiz_cache:
+        return _empresas_raiz_cache[ie]
+    irmas = [ie]
+    try:
+        r = (supabase.table("tab_empresa").select("cnpj, id_cliente")
+             .eq("id_empresa", ie).limit(1).execute().data or [])
+        if r:
+            cnpj = so_numeros(str(r[0].get("cnpj") or ""))
+            cli  = r[0].get("id_cliente")
+            raiz = cnpj[:8]
+            if len(raiz) == 8 and cli is not None:
+                r2 = (supabase.table("tab_empresa").select("id_empresa")
+                      .eq("id_cliente", cli).like("cnpj", raiz + "%")
+                      .execute().data or [])
+                irmas = sorted({int(x["id_empresa"]) for x in r2
+                                if x.get("id_empresa") is not None} | {ie})
+    except Exception as e:
+        # Falhou a consulta: segue so com a propria empresa. E o comportamento
+        # antigo — mais restritivo, nunca deixa passar o que nao devia.
+        print(f"[raiz do CNPJ] empresa {ie}: {e}")
+    _empresas_raiz_cache[ie] = irmas
+    return irmas
+
+
 def _s1010_declaradas(id_empresa):
-    """Rubricas com S-1010 ACEITO na empresa -> {cod_rubr: menor ini_valid}.
+    """Rubricas com S-1010 ACEITO -> {cod_rubr: menor ini_valid}.
+
+    Vale por RAIZ de CNPJ, nao por empresa: o S-1010 e tabela do empregador e
+    a filial usa a rubrica que a irma declarou (ver _empresas_da_raiz).
 
     O codigo da rubrica fica na coluna `matricula` do tab_esocial (o S-1010 nao
     tem trabalhador); o ini_valid vem do PARAMS gravado em observacao_erro.
     So conta quem tem recibo — pendente nao protege o S-1200 de nada."""
     import json as _json
     out = {}
+    rows = []
     try:
-        rows = _esocial_rows_layout(id_empresa, "1010", "matricula, recibo, observacao_erro")
+        for _emp in _empresas_da_raiz(id_empresa):
+            rows.extend(_esocial_rows_layout(_emp, "1010",
+                                             "matricula, recibo, observacao_erro"))
     except Exception as e:
         # Devolve None (nao {}) de proposito: dicionario vazio significaria
         # "nenhuma verba declarada" e faria a rotina criar S-1010 para TODAS.
@@ -37759,7 +37810,13 @@ def _s1010_declaradas(id_empresa):
 
 
 def _s1020_declaradas(id_empresa):
-    """Lotacoes com S-1020 ACEITO na empresa -> {codLotacao: menor ini_valid}.
+    """Lotacoes com S-1020 ACEITO -> {codLotacao: menor ini_valid}.
+
+    Vale por RAIZ de CNPJ, como o S-1010: a Tabela de Lotacoes Tributarias
+    tambem e evento do empregador, e o codLotacao e unico dentro da raiz. Na
+    raiz 34895199 a lotacao 001 vigente em 2026-07 estava declarada so na
+    empresa 33, e por isso a 29 e a 34 ficavam barradas em 07/2026 por uma
+    lotacao que o governo ja conhecia (ver _empresas_da_raiz).
 
     O codLotacao nao fica em coluna propria: vem do PARAMS gravado em
     observacao_erro (a tela /esocial_s1020 nao usa a coluna matricula). O envio
@@ -37769,8 +37826,10 @@ def _s1020_declaradas(id_empresa):
     "nenhuma lotacao declarada" e barraria o S-1200 a toa."""
     import json as _json
     out = {}
+    rows = []
     try:
-        rows = _esocial_rows_layout(id_empresa, "1020", "recibo, observacao_erro")
+        for _emp in _empresas_da_raiz(id_empresa):
+            rows.extend(_esocial_rows_layout(_emp, "1020", "recibo, observacao_erro"))
     except Exception as e:
         print(f"[S1020 declaradas] erro={e}")
         return None
