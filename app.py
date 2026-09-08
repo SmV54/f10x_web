@@ -48006,28 +48006,33 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             }
     except Exception:
         pass
-    # fallback: busca pelo menos nome para matrículas sem info
-    if mov_data and not func_info:
+    # Quem esta na folha mas NAO esta entre os ativos: desligado do mes. Antes
+    # esta busca so rodava com `not func_info` - numa empresa com um ativo
+    # sequer ela nunca acontecia, e e' justamente ai que mora o desligado no
+    # meio da lista, saindo como "Matr. 000002" e sem funcao nem centro de
+    # custo. Mesmo caso do GENILDO SOARES em 08/2026 na empresa 39.
+    _sem_nome = [m for m in (mov_data or {}) if m not in func_info]
+    if _sem_nome:
         try:
             r2 = (supabase.table("tab_cad")
-                  .select("matricula,nome,nomer,dtadm,vrsalfx,codcateg")
+                  .select(_cols_cad)
                   .eq("id_empresa", id_empresa)
-                  .in_("matricula", list(mov_data.keys()))
+                  .in_("matricula", _sem_nome)
                   .execute())
             for f in (r2.data or []):
                 mat = int(f.get("matricula") or 0)
                 if not mat:
                     continue
-                nome = str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip()
+                _cbo = str(f.get("cbofuncao") or "").strip()
                 func_info[mat] = {
-                    "nome":   nome,
-                    "dtadm":  str(f.get("dtadm")  or ""),
-                    "sal":    int(f.get("vrsalfx") or 0),
+                    "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
+                    "dtadm":  str(f.get("dtadm")      or ""),
+                    "sal":    int(f.get("vrsalfx")     or 0),
                     "unid":   "M",
-                    "funcao": "—",
-                    "cc":     "000",
-                    "filial": "",
-                    "cat":    int(f.get("codcateg") or 0),
+                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "cc":     str(f.get("centrocusto") or "000"),
+                    "filial": str(f.get("filial")      or ""),
+                    "cat":    int(f.get("codcateg")    or 0),
                 }
         except Exception:
             pass
@@ -49248,6 +49253,36 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             }
     except Exception:
         pass
+    # Quem esta na folha mas NAO esta entre os ativos: desligado do mes
+    # (rescisao) e desligado com saida marcada para depois do mes. Sem isto o
+    # contracheque dele sai com "Matr. 000002" no lugar do nome, e ainda perde
+    # admissao, salario, funcao e categoria (que manda no FGTS) - foi o que
+    # aconteceu com GENILDO SOARES em 08/2026 na empresa 39.
+    _sem_nome = [m for m in (mov_data or {}) if m not in func_info]
+    if _sem_nome:
+        try:
+            r2 = (supabase.table("tab_cad")
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao,"
+                          "centrocusto,filial,codcateg")
+                  .eq("id_empresa", id_empresa)
+                  .in_("matricula", _sem_nome)
+                  .execute())
+            for f in (r2.data or []):
+                mat = int(f.get("matricula") or 0)
+                if not mat:
+                    continue
+                _cbo = str(f.get("cbofuncao") or "").strip()
+                func_info[mat] = {
+                    "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
+                    "dtadm":  str(f.get("dtadm")      or ""),
+                    "sal":    int(f.get("vrsalfx")     or 0),
+                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                    "cc":     str(f.get("centrocusto") or "000"),
+                    "filial": str(f.get("filial")      or ""),
+                    "cat":    int(f.get("codcateg")    or 0),
+                }
+        except Exception:
+            pass
     cbos_unicos = list({fi["funcao"].replace("CBO ","") for fi in func_info.values()
                         if fi["funcao"].startswith("CBO ")})
     if cbos_unicos:
@@ -49984,6 +50019,30 @@ def _gerar_recibo_adiantamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             }
     except Exception:
         pass
+    # Desligado do mes tambem recebeu adiantamento na 1a quinzena: sem isto o
+    # recibo dele sai com "Matr. 000002" no lugar do nome (mesmo caso do
+    # GENILDO SOARES em 08/2026 na empresa 39).
+    _sem_nome = [m for m in (mov_data or {}) if m not in func_info]
+    if _sem_nome:
+        try:
+            r2 = (supabase.table("tab_cad")
+                  .select("matricula,nome,nomer,dtadm,vrsalfx,cbofuncao")
+                  .eq("id_empresa", id_empresa)
+                  .in_("matricula", _sem_nome)
+                  .execute())
+            for f in (r2.data or []):
+                mat = int(f.get("matricula") or 0)
+                if not mat:
+                    continue
+                _cbo = str(f.get("cbofuncao") or "").strip()
+                func_info[mat] = {
+                    "nome":   str(f.get("nome") or f.get("nomer") or f"Matr. {mat:06d}").strip(),
+                    "dtadm":  str(f.get("dtadm")  or ""),
+                    "sal":    int(f.get("vrsalfx") or 0),
+                    "funcao": f"CBO {_cbo}" if _cbo else "—",
+                }
+        except Exception:
+            pass
     cbos_unicos = list({fi["funcao"].replace("CBO ","") for fi in func_info.values()
                         if fi["funcao"].startswith("CBO ")})
     if cbos_unicos:
