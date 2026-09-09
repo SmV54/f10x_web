@@ -16539,12 +16539,12 @@ def transferir_funcionario():
 
     # Destinos possíveis: as outras empresas do MESMO cliente.
     #
-    # A lista mostra os dois códigos e o CNPJ, não só a razão social. O código
-    # do cliente repete em todas as linhas — a transferência é sempre dentro
-    # do mesmo cliente — e está ali como conferência de que a tela é a do
-    # contrato certo; quem distingue um destino do outro é o da empresa. Duas
-    # empresas do mesmo grupo costumam ter razões sociais quase iguais, e
-    # escolher a errada aqui move o funcionário de lugar.
+    # A lista mostra CNPJ e código, não só a razão social: duas empresas do
+    # mesmo grupo costumam ter razões sociais quase iguais, e escolher a
+    # errada aqui move o funcionário de lugar. A ordem é a mesma da tela de
+    # escolher empresa na entrada (F10_Selecionar_Empresa.html) — é onde o
+    # usuário já aprendeu a procurar a empresa, e não há motivo para ler
+    # diferente em cada tela.
     destinos = [{**e, "cnpj_fmt": _fmt_cnpj(e.get("cnpj") or "")}
                 for e in _listar_empresas(id_cliente)
                 if e["id_empresa"] != id_empresa]
@@ -16567,7 +16567,6 @@ def transferir_funcionario():
 
     return render_template("F10_Transferir_Funcionario.html", **_ctx_relatorio(),
                            anomes_atual=anomes, funcs=funcs, destinos=destinos,
-                           id_cliente=id_cliente,
                            data_sugerida=data_sugerida, mat_sugerida=mat_sugerida,
                            folha_situacao=(_refresh_situacao_folha()
                                            if len(anomes) == 6 else ""))
