@@ -293,7 +293,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <input type="radio" name="periodo_ferias" value="auto" checked>
                 <span>
                     <span class="periodo-opcao-titulo">1 — Automático</span>
-                    <span class="periodo-opcao-desc">Se menos de 20 dias: verifica férias anterior do funcionário</span>
+                    <span class="periodo-opcao-desc">Avança para o novo período aquisitivo, a partir do último registrado</span>
                 </span>
             </label>
 
@@ -325,7 +325,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <input type="radio" name="abono_pecuniario" value="auto" checked>
                 <span>
                     <span class="periodo-opcao-titulo">1 — Automático</span>
-                    <span class="periodo-opcao-desc">Férias &lt; 20 dias e abono não pago na anterior</span>
+                    <span class="periodo-opcao-desc">Férias de até 20 dias: paga 10 dias de abono</span>
                 </span>
             </label>
 
@@ -333,7 +333,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <input type="radio" name="abono_pecuniario" value="sim">
                 <span>
                     <span class="periodo-opcao-titulo">2 — Sim para Todos</span>
-                    <span class="periodo-opcao-desc">Paga abono pecuniário (⅓ das férias em dinheiro) para todos os funcionários selecionados</span>
+                    <span class="periodo-opcao-desc">Paga 10 dias de abono (⅓ do período de direito) para todos os funcionários selecionados, mesmo acima de 20 dias</span>
                 </span>
             </label>
 
@@ -661,7 +661,7 @@ function iniciarTour() {
             element: '#card-abono',
             popover: {
                 title: '💰 Abono Pecuniário',
-                description: 'O funcionário pode converter ⅓ das férias em dinheiro (abono pecuniário). "Automático" aplica quando as férias forem menos de 20 dias e não houve abono na anterior. "Sim" ou "Não" forçam a opção para todos.',
+                description: 'O funcionário pode converter em dinheiro ⅓ do período a que tem direito — 10 dias. "Automático" paga quando as férias não passam de 20 dias. "Sim" ou "Não" forçam a opção para todos.',
                 side: 'top', align: 'start',
             }
         },

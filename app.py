@@ -18766,7 +18766,26 @@ def api_ferias_gravar():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "msg": "Quantidade de dias deve ser entre 10 e 30."})
 
-    dias_abono = (qtd // 3) if abono_pecuniario == "sim" else 0
+    # São 10 dias, e não um terço dos dias gozados: o abono é 1/3 do período a
+    # que o funcionário tem DIREITO (30 dias), não das férias que ele tirou.
+    # Com 20 dias de férias o `qtd // 3` daqui pagava 6 -- 60% do devido, e o
+    # recibo saía com cara de certo. O Desktop calcula a verba 45 como
+    # Base / 3 (SR_Ferias.vb), o que dá os mesmos 10 dias, e é a folha que os
+    # clientes conferem há anos.
+    DIAS_ABONO = 30 // 3
+
+    # "auto" é a opção que vem marcada na tela. Ela não era testada em lugar
+    # nenhum e caía no zero: quem deixasse a tela como estava gravava férias
+    # sem abono, sem erro e sem aviso. O corte de 20 dias é o do Desktop, que
+    # zera o abono com QtdDiasFerias > 20 -- 20 dias redondos ainda pagam.
+    #
+    # "sim" continua forçando o pagamento mesmo acima de 20 dias: é uma opção
+    # que o usuário marca a dedo, e o Desktop tem a mesma saída pela verba 45
+    # lançada no movimento.
+    if abono_pecuniario == "sim" or (abono_pecuniario == "auto" and qtd <= 20):
+        dias_abono = DIAS_ABONO
+    else:
+        dias_abono = 0
 
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
