@@ -132,7 +132,7 @@ input.curto { max-width: 160px; font-family: 'IBM Plex Mono', monospace; }
                            e o "— escolha —" só apareceria para ser ignorado. #}
                         {% if destinos|length > 1 %}<option value="">— escolha —</option>{% endif %}
                         {% for e in destinos %}
-                        <option value="{{ e.id_empresa }}"{% if destinos|length == 1 %} selected{% endif %}>{{ e.nome }}</option>
+                        <option value="{{ e.id_empresa }}"{% if destinos|length == 1 %} selected{% endif %}>{{ '%06d'|format(id_cliente|int) }}/{{ '%06d'|format(e.id_empresa|int) }} — {{ e.cnpj_fmt }} — {{ e.nome }}</option>
                         {% endfor %}
                     </select>
                     <div class="dica">{% if destinos|length == 1 %}A única outra empresa deste cliente.{% else %}As outras empresas deste cliente.{% endif %}</div>

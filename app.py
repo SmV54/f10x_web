@@ -16538,7 +16538,15 @@ def transferir_funcionario():
         funcs = []
 
     # Destinos possíveis: as outras empresas do MESMO cliente.
-    destinos = [e for e in _listar_empresas(id_cliente)
+    #
+    # A lista mostra os dois códigos e o CNPJ, não só a razão social. O código
+    # do cliente repete em todas as linhas — a transferência é sempre dentro
+    # do mesmo cliente — e está ali como conferência de que a tela é a do
+    # contrato certo; quem distingue um destino do outro é o da empresa. Duas
+    # empresas do mesmo grupo costumam ter razões sociais quase iguais, e
+    # escolher a errada aqui move o funcionário de lugar.
+    destinos = [{**e, "cnpj_fmt": _fmt_cnpj(e.get("cnpj") or "")}
+                for e in _listar_empresas(id_cliente)
                 if e["id_empresa"] != id_empresa]
 
     # Data sugerida: o dia 1 da folha ativa. Sai daqui e não do relógio do
@@ -16559,6 +16567,7 @@ def transferir_funcionario():
 
     return render_template("F10_Transferir_Funcionario.html", **_ctx_relatorio(),
                            anomes_atual=anomes, funcs=funcs, destinos=destinos,
+                           id_cliente=id_cliente,
                            data_sugerida=data_sugerida, mat_sugerida=mat_sugerida,
                            folha_situacao=(_refresh_situacao_folha()
                                            if len(anomes) == 6 else ""))
