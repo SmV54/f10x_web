@@ -882,6 +882,9 @@ const modulos = {
                 { icone: '➕', nome: 'Gerador Manual de Remessa', href: '/esocial_gerador',                        ok: true, classe: 'acao-gerador' },
                 { icone: '📤', nome: 'Fila de Remessas',          href: '/esocial_fila',                          ok: true },
                 { icone: '📄', nome: 'Listagem das Remessas',     href: '/relatorios_config?rel=esocial_remessas', ok: true },
+                // Por enquanto so' S-2200: e' onde a falta de recibo trava os
+                // eventos seguintes do trabalhador.
+                { icone: '🧾', nome: 'Recuperar Recibo (S-2200)', href: '/esocial_recuperar_recibo', ok: true },
                 { icone: '⚠️', nome: 'Pendências e Erros',        href: '#' },
             ]},
             { nome: 'Consultas', itens: [

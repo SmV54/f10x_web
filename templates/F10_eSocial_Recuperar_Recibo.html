@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Recuperar Recibo — S-2200</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'IBM Plex Sans', -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #f4f6f9; color: #1f2937; }
+  .topo { display: grid; grid-template-columns: auto 1fr auto; align-items: center;
+          gap: 12px; padding: 8px 24px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+  .topo-emp { font-size: 12px; color: #4b5563; line-height: 1.35; }
+  .topo-titulo { text-align: center; font-size: 18px; font-weight: 600; color: #111827; }
+  .topo-dir { display: flex; align-items: center; gap: 16px; }
+  .topo-versao { font-size: 11px; color: #6b7280; }
+  .btn-voltar { background: #111827; color: #fff; border: none; border-radius: 8px;
+                padding: 8px 14px; font-size: 13px; cursor: pointer; }
+
+  .wrap { max-width: 1080px; margin: 16px auto; padding: 0 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 14px 16px; margin-bottom: 12px; }
+  .info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; border-radius: 10px;
+          padding: 11px 13px; font-size: 12.5px; line-height: 1.45; margin-bottom: 12px; }
+  .cota { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 10px;
+          padding: 10px 13px; font-size: 12.5px; line-height: 1.45; margin-bottom: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 9px; border-bottom: 1px solid #f0f0f0;
+           vertical-align: middle; }
+  th { color: #6b7280; font-weight: 600; font-size: 12px; }
+  td.cod { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 12px; color: #64748b; }
+  tr.sem-cpf td { background: #fef2f2; }
+  input[type="date"] { border: 1px solid #d1d5db; border-radius: 6px; padding: 4px 6px;
+                       font-size: 12px; font-family: inherit; }
+  .erro-gov { font-size: 11.5px; color: #b91c1c; display: block; margin-top: 2px;
+              max-width: 340px; }
+
+  .btn { background: #16a34a; color: #fff; border: none; border-radius: 8px;
+         padding: 9px 17px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: #15803d; }
+  .btn:disabled { background: #a7d8b6; cursor: not-allowed; }
+  .btn-sec { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 7px;
+             padding: 7px 13px; font-size: 12.5px; cursor: pointer; }
+  .rodape-sel { display: flex; justify-content: space-between; align-items: center;
+                margin-top: 14px; gap: 12px; flex-wrap: wrap; }
+  .mut { color: #9ca3af; font-size: 12px; }
+  .vazio { padding: 26px; text-align: center; font-size: 13.5px; color: #16a34a; }
+
+  .res { border-radius: 7px; padding: 5px 9px; font-size: 12px; margin-top: 4px; }
+  .res-ok      { background: #dcfce7; color: #166534; }
+  .res-nada    { background: #f3f4f6; color: #4b5563; }
+  .res-erro    { background: #fee2e2; color: #991b1b; }
+  .res-cota    { background: #fef3c7; color: #92400e; }
+  .res-ambiguo { background: #fef3c7; color: #92400e; }
+</style>
+</head>
+<body>
+  <div class="topo">
+    <div class="topo-emp">{{ empresa }}<br><span class="mut">{{ cnpj_fmt }}</span></div>
+    <div class="topo-titulo">🧾 Recuperar Recibo — S-2200</div>
+    <div class="topo-dir">
+      <div style="display:flex;flex-direction:column;align-items:flex-end;">
+        <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">
+        <span class="topo-versao">Versão: {{ versao }}</span>
+      </div>
+      <button class="btn-voltar" onclick="window.location.href='/menu'">↪ Menu</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="info">
+      O recibo pode existir no eSocial e não estar aqui — envio feito pelo Folha 10 antigo,
+      resposta perdida, ou evento que voltou <b>[106] em duplicidade</b> (que é o governo
+      dizendo que já aceitou esse S-2200 antes). Esta tela pergunta ao eSocial, pelo CPF,
+      e grava o número que encontrar.
+    </div>
+    <div class="cota">
+      <b>O eSocial permite 10 consultas por dia, por CNPJ.</b> É uma consulta por trabalhador,
+      então marque poucos de cada vez. Se a cota acabar no meio, quem não foi consultado fica
+      para amanhã — nada se perde.
+    </div>
+
+    {% if pendentes %}
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:34px;"><input type="checkbox" id="todos" onclick="marcarTodos(this)"></th>
+            <th>Matrícula</th><th>Nome</th><th>CPF</th><th>Admissão</th>
+            <th style="width:290px;">Período da consulta</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in pendentes %}
+          <tr id="tr-{{ p.id_esocial }}" class="{% if p.sem_cpf %}sem-cpf{% endif %}">
+            <td><input type="checkbox" class="sel" value="{{ p.id_esocial }}"
+                       data-cpf="{{ p.cpf }}" {% if p.sem_cpf %}disabled{% endif %}
+                       onchange="contar()"></td>
+            <td class="cod">{{ p.mat_fmt }}</td>
+            <td>{{ p.nome }}
+              {% if p.erro %}<span class="erro-gov">{{ p.erro }}</span>{% endif %}
+            </td>
+            <td class="cod">{{ p.cpf_fmt }}{% if p.sem_cpf %}
+              <span class="erro-gov">sem CPF no cadastro — não dá para consultar</span>{% endif %}</td>
+            <td class="cod">{{ p.dtadm_fmt }}</td>
+            <td>
+              <input type="date" id="ini-{{ p.id_esocial }}" value="{{ p.dt_ini }}">
+              <input type="date" id="fim-{{ p.id_esocial }}" value="{{ p.dt_fim }}">
+              <div id="res-{{ p.id_esocial }}"></div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="rodape-sel">
+        <span class="mut" id="contagem">Nenhum selecionado — {{ pendentes|length }} sem recibo.</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-sec" onclick="window.location.reload()">↻ Reler a lista</button>
+          <button class="btn" id="btnBuscar" onclick="buscar()" disabled>Buscar recibo no eSocial</button>
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div class="card">
+      <div class="vazio">✅ Todos os S-2200 desta empresa já têm recibo.</div>
+    </div>
+    {% endif %}
+  </div>
+
+<script>
+// O periodo vem sugerido com o MES DA ADMISSAO, que e' onde o S-2200 cai na
+// janela de 31 dias do gov. Para quem entrou por transferencia a admissao e'
+// antiga -- vem do empregador anterior -- e o operador precisa trocar o mes.
+// Por isso os dois campos ficam editaveis, um por linha.
+function marcados() {
+  return [...document.querySelectorAll('.sel:checked')];
+}
+function contar() {
+  const n = marcados().length;
+  const btn = document.getElementById('btnBuscar');
+  btn.disabled = (n === 0 || n > 10);
+  document.getElementById('contagem').textContent =
+    n === 0 ? 'Nenhum selecionado.'
+            : (n > 10 ? n + ' selecionados — o máximo por dia é 10.'
+                      : n + ' selecionado(s) — serão ' + n + ' consulta(s) da cota do dia.');
+}
+function marcarTodos(cx) {
+  document.querySelectorAll('.sel:not(:disabled)').forEach(c => { c.checked = cx.checked; });
+  contar();
+}
+
+function pintar(id, situacao, msg, recibo) {
+  const classe = { ok: 'res-ok', nada: 'res-nada', erro: 'res-erro',
+                   cota: 'res-cota', ambiguo: 'res-ambiguo',
+                   nao_tentado: 'res-nada' }[situacao] || 'res-nada';
+  const el = document.getElementById('res-' + id);
+  el.innerHTML = '<div class="res ' + classe + '">' +
+                 (recibo ? '✅ ' + recibo : msg) + '</div>';
+}
+
+async function buscar() {
+  const sel = marcados();
+  if (!sel.length) return;
+  const btn = document.getElementById('btnBuscar');
+  btn.disabled = true; btn.textContent = 'Consultando o eSocial…';
+
+  const itens = sel.map(c => ({
+    id_esocial: parseInt(c.value, 10),
+    cpf:        c.dataset.cpf,
+    dt_ini:     document.getElementById('ini-' + c.value).value,
+    dt_fim:     document.getElementById('fim-' + c.value).value
+  }));
+
+  try {
+    const r = await fetch('/api/esocial_recuperar_recibo', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itens: itens, tpAmb: '1' })
+    });
+    const d = await r.json();
+    if (!d.ok) { alert(d.msg || 'Não consegui consultar.'); return; }
+    (d.resultados || []).forEach(x => pintar(x.id_esocial, x.situacao, x.msg, x.recibo));
+    // Quem gravou sai da lista de pendentes; releio para a tela nao mostrar
+    // como pendente quem ja' esta resolvido. So' depois de o operador ler o
+    // resultado -- por isso o confirm, e nao um reload seco.
+    if (d.gravados > 0 && confirm(d.msg + '\n\nAtualizar a lista?')) {
+      window.location.reload();
+    }
+  } catch (e) {
+    alert('Falha na consulta: ' + e);
+  } finally {
+    btn.textContent = 'Buscar recibo no eSocial';
+    contar();
+  }
+}
+</script>
+</body>
+</html>
