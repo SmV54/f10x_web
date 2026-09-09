@@ -701,6 +701,10 @@ const modulos = {
             ]},
             { nome: 'Afastamentos', itens: [
                 { icone: '🏥', nome: 'Lançar Afastamento',           href: '/select_funcionario?contexto=afastamento',    ok: true, bloqueioFolha: true },
+                // Card próprio, ao lado do Lançar: excluir não é uma opção de
+                // dentro do lançamento, é outra tarefa. E ela recusa o que já
+                // foi aceito no eSocial — lá o desfazer é o S-3000.
+                { icone: '🗑️', nome: 'Excluir Afastamento',          href: '/cad_excluir_afastamento',                   ok: true, bloqueioFolha: true },
                 { icone: '🚨', nome: 'Acidente — Informar CAT',      href: '/select_funcionario?contexto=acidente',        ok: true },
                 { icone: '✏️', nome: 'Acidente — Alterar/Excluir',   href: '/select_funcionario?contexto=alt_acidente',    ok: true },
                 { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true },

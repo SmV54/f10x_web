@@ -26399,6 +26399,189 @@ def exec_cancelar_aumento():
 
 
 # =========================================================
+# EXCLUIR AFASTAMENTO — TELA
+#
+# Mesma regra do Cancelar Férias, e pelo mesmo motivo: com o S-2230 aceito, o
+# afastamento existe no eSocial, e apagá-lo daqui não o desfaz lá. Fica o
+# registro no governo sem par no sistema, e quem for conferir depois não tem
+# como saber o que aconteceu. Para anular um evento aceito existe o S-3000.
+#
+# O afastamento pode ter DOIS S-2230 pendurados no mesmo evento (a saída e o
+# retorno). Basta um deles com recibo para travar.
+# =========================================================
+@app.route("/cad_excluir_afastamento")
+def cad_excluir_afastamento():
+    if not session.get("logado"):
+        return redirect("/")
+
+    id_cliente   = session.get("id_cliente")
+    id_empresa   = _get_id_empresa()
+    anomes       = str(session.get("anomes_atual") or "")
+    sit_folha    = _refresh_situacao_folha()
+    folha_aberta = sit_folha in ("A", "X")
+    anomes_fmt   = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else anomes
+
+    linhas, erro = [], None
+    motivos = _motivos_afastamento()
+
+    if anomes and len(anomes) == 6:
+        try:
+            # Os do mês da folha ativa, mais os que continuam ABERTOS de meses
+            # anteriores. Um afastamento sem retorno lançado errado em julho só
+            # aparece se eu o trouxer: pela data ele ficaria fora, e é
+            # justamente o que alguém precisa corrigir.
+            r_mes = (supabase.table("tab_eventos")
+                     .select("id, matricula, data1i, data1f, op2, campotxt4")
+                     .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                     .eq("op1", 6)
+                     .gte("data1i", anomes + "01").lte("data1i", anomes + "31")
+                     .execute().data or [])
+            r_abertos = (supabase.table("tab_eventos")
+                         .select("id, matricula, data1i, data1f, op2, campotxt4")
+                         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                         .eq("op1", 6)
+                         .is_("data1f", "null")
+                         .lt("data1i", anomes + "01")
+                         .execute().data or [])
+            eventos = r_mes + r_abertos
+
+            if eventos:
+                mats_ev = list({ev.get("matricula") for ev in eventos})
+                ids_ev  = [ev["id"] for ev in eventos if ev.get("id")]
+
+                nomes = {f.get("matricula"): (f.get("nome") or "")
+                         for f in (supabase.table("tab_cad")
+                                   .select("matricula, nome")
+                                   .eq("id_empresa", id_empresa)
+                                   .in_("matricula", mats_ev).execute().data or [])}
+
+                # Um evento pode ter mais de um S-2230 (saída e retorno), então
+                # aqui é lista por evento, não um por evento.
+                es_por_ev = {}
+                for es in (supabase.table("tab_esocial")
+                           .select("id_esocial, codigo2, recibo")
+                           .eq("id_empresa", id_empresa).eq("layout", "2230")
+                           .in_("codigo2", ids_ev).execute().data or []):
+                    es_por_ev.setdefault(es.get("codigo2"), []).append(es)
+
+                for ev in sorted(eventos, key=lambda e: (e.get("matricula") or 0,
+                                                         str(e.get("data1i") or ""))):
+                    id_ev = ev.get("id")
+                    mat   = ev.get("matricula")
+                    di    = str(ev.get("data1i") or "")
+                    df    = str(ev.get("data1f") or "")
+                    cod_m = str(ev.get("op2") or "").strip()
+
+                    _es      = es_por_ev.get(id_ev, [])
+                    _recibos = [(e.get("recibo") or "").strip() for e in _es]
+                    _com_rec = [r for r in _recibos if r]
+
+                    excluivel, motivo_bloq = True, ""
+                    if _com_rec:
+                        s2230_label = f"Enviado · {_com_rec[0][:18]}"
+                        excluivel   = False
+                        motivo_bloq = ("S-2230 já enviado ao eSocial com recibo. "
+                                       "Para desfazer lá, use o S-3000.")
+                    elif _es:
+                        s2230_label = f"Pendente ({len(_es)})"
+                    else:
+                        s2230_label = "Sem remessa"
+
+                    if not folha_aberta:
+                        excluivel   = False
+                        motivo_bloq = motivo_bloq or "Folha calculada ou fechada."
+
+                    linhas.append({
+                        "id":          id_ev,
+                        "mat":         mat,
+                        "mat_fmt":     str(mat).zfill(6),
+                        "nome":        nomes.get(mat, ""),
+                        "di_fmt":      _fmt_dt(di),
+                        "df_fmt":      _fmt_dt(df) if df else "—",
+                        "aberto":      not df,
+                        "de_outro_mes": di[:6] != anomes,
+                        "motivo_cod":  cod_m,
+                        "motivo_txt":  motivos.get(cod_m, "") or "—",
+                        "s2230_label": s2230_label,
+                        "excluivel":   excluivel,
+                        "motivo_bloq": motivo_bloq,
+                    })
+        except Exception as e:
+            erro = f"Erro ao buscar dados: {e}"
+
+    return render_template(
+        "F10_ExcluirAfastamento.html",
+        versao=ler_versao(), nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        linhas=linhas, anomes_fmt=anomes_fmt,
+        folha_aberta=folha_aberta, sit_folha=sit_folha, erro=erro,
+        ok_msg=request.args.get("ok", ""), erro_msg=request.args.get("erro", ""),
+    )
+
+
+@app.route("/exec_excluir_afastamento")
+def exec_excluir_afastamento():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from urllib.parse import quote as _quote
+
+    id_ev   = request.args.get("id_ev", "").strip()
+    mat_raw = request.args.get("mat",   "").strip()
+    if not id_ev or not mat_raw:
+        return redirect("/cad_excluir_afastamento")
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    mat        = int(mat_raw)
+    di_log     = ""
+
+    try:
+        if _refresh_situacao_folha() not in ("A", "X"):
+            raise Exception("Folha calculada ou fechada — exclusão não permitida.")
+
+        r_ev = (supabase.table("tab_eventos")
+                .select("id, data1i, data1f")
+                .eq("id", int(id_ev))
+                .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                .eq("matricula", mat).eq("op1", 6)
+                .limit(1).execute())
+        if not r_ev.data:
+            raise Exception("Afastamento não encontrado.")
+        di_log = str(r_ev.data[0].get("data1i") or "")
+
+        # A trava é conferida de novo aqui, e não só na tela: entre carregar a
+        # lista e clicar, a remessa pode ter sido enviada — e o link é uma URL,
+        # que alguém pode repetir.
+        for es in (supabase.table("tab_esocial")
+                   .select("recibo").eq("id_empresa", id_empresa)
+                   .eq("layout", "2230").eq("codigo2", int(id_ev))
+                   .execute().data or []):
+            if (es.get("recibo") or "").strip():
+                raise Exception("S-2230 já enviado ao eSocial com recibo — "
+                                "não pode ser excluído. Use o S-3000.")
+
+        # Primeiro a remessa, depois o evento: o _esocial_delete só apaga o que
+        # não tem recibo, então se algo escapou da conferência acima a remessa
+        # fica de pé — e apagar o evento antes deixaria a remessa órfã, apontando
+        # para um codigo2 que não existe mais.
+        (_esocial_delete()
+         .eq("id_empresa", id_empresa).eq("layout", "2230")
+         .eq("codigo2", int(id_ev)).execute())
+
+        (supabase.table("tab_eventos").delete()
+         .eq("id", int(id_ev))
+         .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+         .eq("matricula", mat).eq("op1", 6).execute())
+
+        gravar_log("AFASTAMENTO", f"EXC afastamento {_fmt_dt(di_log)}", matricula=mat)
+        return redirect("/cad_excluir_afastamento?ok="
+                        + _quote(f"Afastamento de {_fmt_dt(di_log)} excluído."))
+    except Exception as e:
+        return redirect("/cad_excluir_afastamento?erro=" + _quote(str(e)[:180]))
+
+
+# =========================================================
 # CANCELAR FÉRIAS — TELA
 # =========================================================
 @app.route("/cad_cancelar_ferias")
