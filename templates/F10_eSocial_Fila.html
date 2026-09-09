@@ -844,7 +844,16 @@ const _ETAPAS_FILA = [
   [98, 'Consultando resultado…'],
 ];
 
-async function _enviarFila(btn) {
+// Decisao do operador sobre seguir com remessas pre-requisito pendentes. Vale
+// para o lote inteiro: no envio em massa a mesma pendencia apareceria em cada
+// funcionario, e perguntar trinta vezes a mesma coisa nao e' perguntar.
+let _pendentesConfirmado = false;
+
+// forcar: repete o envio depois de o operador dizer que quer seguir mesmo com
+// remessas pre-requisito pendentes. Sem isso o servidor devolvia a pergunta
+// ("Deseja enviar o S-1200 assim mesmo?") e ela virava texto de erro na
+// linha, sem botao nenhum: a pergunta era feita e nao havia como responder.
+async function _enviarFila(btn, forcar) {
   const id     = btn.dataset.id;
   const layout = btn.dataset.layout;
   const anomes = btn.dataset.anomes;
@@ -897,6 +906,7 @@ async function _enviarFila(btn) {
   } else {
     body = { id_esocial: parseInt(id), tpAmb: '1' };
   }
+  if (forcar || _pendentesConfirmado) body.forcar = true;
 
   try {
     const resp = await fetch(APIS[layout], {
@@ -926,6 +936,25 @@ async function _enviarFila(btn) {
         `<button class="btn-reconsultar" onclick="_reconsultar(${newId}, this)">&#8635; Consultar</button>` +
         `<button class="btn-excluir" data-id="${newId}" data-nome="${nome.replace(/"/g,"'")}" data-lay="${laycod}" onclick="_excluir(this)">&#10005; Excluir</button>` +
         `</div>`;
+    } else if (data.warn_pendentes && !forcar) {
+      // Nao e erro: e uma pergunta. O servidor so' quer saber se o operador
+      // aceita mandar o S-1200 antes das remessas que costumam vir primeiro.
+      bar.style.background = '#f59e0b';
+      lbl.textContent      = 'Aguardando sua decisão…';
+      btn.disabled         = false;
+      btn.textContent      = '▶ Enviar';
+      const seguir = await f10Confirm(data.msg || 'Há remessas pendentes.', {
+        titulo:     'Remessas pendentes',
+        tipo:       'aviso',
+        okText:     'Enviar mesmo assim',
+        cancelText: 'Cancelar',
+      });
+      if (seguir) {
+        _pendentesConfirmado = true;
+        return _enviarFila(btn, true);
+      }
+      progRow.style.display = 'none';
+      return;
     } else {
       if (data.traceback) { console.error('Traceback envio eSocial:\n' + data.traceback); }
       lbl.textContent = data.msg || 'Erro ao enviar.';

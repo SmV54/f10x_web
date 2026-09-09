@@ -744,6 +744,22 @@ async function _enviar(id, btn, suppressBanner, retificar, forcarS1010) {
       // Só no envio avulso: em lote seria um diálogo por trabalhador. A
       // competência da linha pode ser outra que não a do filtro, então isto
       // pega o que a conferência prévia não viu.
+      //
+      // Remessas pré-requisito pendentes caem aqui quando a conferência prévia
+      // e o envio discordam — ela olha a competência do filtro, ele olha a
+      // empresa inteira. Sem este ramo a pergunta do servidor virava texto de
+      // erro na tela, e não havia como responder que sim.
+      if (data.warn_pendentes && !suppressBanner) {
+        const seguir = await f10Confirm(data.msg || 'Há remessas pendentes.', {
+          titulo: 'Remessas pendentes', tipo: 'aviso',
+          okText: 'Enviar mesmo assim', cancelText: 'Cancelar',
+        });
+        if (seguir) {
+          _prereqConfirmado = true;   // vale para o lote inteiro
+          return _enviar(id, btn, suppressBanner, retificar, forcarS1010);
+        }
+        return;
+      }
       if ((data.prereq_s1010 || data.prereq_s1020) && !suppressBanner) {
         // O S-1010 tem saida: a conferencia local nao enxerga rubrica que ja
         // esta declarada no governo (o [537] nao devolve recibo), e nesse caso
