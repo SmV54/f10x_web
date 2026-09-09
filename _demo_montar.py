@@ -12,7 +12,7 @@ permite ver a estrutura e o ritmo antes de capturar nada.
 Entra:  _demo_telas.json           (python _demo_inventario.py)
         static/demo/*.jpg          (python _demo_capturar.py)
         _demo_tempos.json          (python _demo_narracao.py)
-Sai:    demo_comercial.html
+Sai:    Comercial/demo_comercial.html
 
 Rodar:  python _demo_montar.py
 """
@@ -33,7 +33,7 @@ PRINT_LOGIN = os.path.join(PASTA_PRINTS, "_login.jpg")
 PRINT_MENU = os.path.join(PASTA_PRINTS, "_menu.jpg")
 CARTOES_MENU = "_demo_menu_cards.json"
 BOTOES_MENU = "_demo_menu_botoes.json"
-SAIDA = "demo_comercial.html"
+SAIDA = os.path.join("Comercial", "demo_comercial.html")
 
 # Onde os campos ficam na FOTO da tela de login, em porcentagem da imagem.
 # Porcentagem e nao pixel porque a foto e redimensionada para caber no palco:
@@ -95,6 +95,10 @@ DIGITACAO = {
 T_GAVETA, T_MOSAICO, T_TELA = 12, 10, 20
 T_ABERTURA, T_FECHO = 24, 22
 
+# Largura em que as telinhas do contador entram embutidas. Elas aparecem
+# com 84 px no maximo; 200 cobre tela retina e ainda e um decimo do peso.
+LARGURA_TELINHA = 200
+
 
 def audio_embutido():
     """A narração como data: URI, dentro do próprio HTML.
@@ -110,6 +114,56 @@ def audio_embutido():
         return ""
     b64 = base64.b64encode(io.open(NARRACAO, "rb").read()).decode("ascii")
     return "data:audio/mpeg;base64," + b64
+
+
+_CACHE_URI = {}
+
+
+def uri_do_print(caminho, largura=0):
+    """O print como data: URI, embutido no HTML.
+
+    Mesmo motivo do audio, e a mesma licao aprendida duas vezes: com o jpg
+    do lado de fora, bastava a pagina mudar de pasta para as telas sumirem.
+    Foi o que aconteceu ao levar o arquivo para Comercial/ -- o caminho
+    relativo passou a apontar para Comercial/static/demo/, os 50 prints
+    sumiram de uma vez e sobrou a moldura vazia. Embutido nao ha pasta que
+    quebre, e e o que permite mandar UM arquivo so para o cliente.
+
+    Sao ~2,7 MB de jpg, ~3,6 MB depois do base64. Cada print entra uma vez:
+    o cache evita reencodar o mesmo menu que aparece em cinco cenas.
+    """
+    if (caminho, largura) in _CACHE_URI:
+        return _CACHE_URI[(caminho, largura)]
+    if not os.path.exists(caminho):
+        return ""
+    bruto = io.open(caminho, "rb").read()
+    if largura:
+        bruto = reduzido(caminho, largura) or bruto
+    uri = "data:image/jpeg;base64," + base64.b64encode(bruto).decode("ascii")
+    _CACHE_URI[(caminho, largura)] = uri
+    return uri
+
+
+def reduzido(caminho, largura):
+    """O print reencodado com essa largura. None se o Pillow nao estiver aqui.
+
+    E para as telinhas do contador, que aparecem com 84 px no maximo. Sao 81
+    prints: em tamanho cheio custariam 4,5 MB de jpg -- 6 MB depois do
+    base64 -- para desenhar quadradinhos que ninguem le. Reduzidas cabem em
+    uma fracao disso, e na tela nao ha diferenca nenhuma.
+
+    Sem Pillow devolve None e o chamador embute o arquivo inteiro: pesado,
+    mas certo. Nunca uma telinha em branco por causa de biblioteca ausente.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return None
+    im = Image.open(caminho).convert("RGB")
+    im.thumbnail((largura, largura * 4), Image.LANCZOS)
+    buf = io.BytesIO()
+    im.save(buf, "JPEG", quality=62, optimize=True)
+    return buf.getvalue()
 
 
 def tempos_da_voz():
@@ -210,11 +264,12 @@ def tarja_do_nome():
 def img_ou_moldura(tela, classe="tiro"):
     """<img> quando o print existe; moldura com o nome quando não.
 
-    O caminho é RELATIVO, e é preciso que seja. Com a barra na frente
-    ("/static/demo/x.jpg") o navegador procura na raiz do disco quando a
-    página é aberta como arquivo -- que é como ela é vista. O print existia,
-    o <img> apontava para ele, e mesmo assim a tela saía vazia: todos os
-    prints capturados sumiam de uma vez, sem nada no lugar além da moldura
+    A imagem vai EMBUTIDA (uri_do_print), não por caminho. Já foi caminho
+    relativo, e todo caminho tinha o mesmo defeito: a página só funcionava
+    de dentro da pasta onde nasceu. Com a barra na frente
+    ("/static/demo/x.jpg") o navegador procurava na raiz do disco; sem ela,
+    ao lado do HTML -- e bastou o arquivo mudar de pasta para que todos os
+    prints capturados sumissem de uma vez, sem nada no lugar além da moldura
     tracejada de "ainda não capturei". Foi o que fez a demonstração parecer
     piscar entre quadros vazios.
     """
@@ -225,7 +280,7 @@ def img_ou_moldura(tela, classe="tiro"):
         # segundos, cada troca mostrava o quadro vazio antes de preencher.
         # Era metade do "piscar" entre uma tela e outra.
         return ('<div class="%s"><img src="%s" alt="%s">%s</div>'
-                % (classe, caminho.replace("\\", "/"), esc(tela["nome"]),
+                % (classe, uri_do_print(caminho), esc(tela["nome"]),
                    tarja_do_nome() if "grande" in classe else ""))
     return ('<div class="%s falta"><span>%s</span></div>'
             % (classe, esc(tela["nome"])))
@@ -295,7 +350,7 @@ def bloco_gaveta(mod, telas):
         imgs = "".join(
             '<img class="foto%s" data-sec="%d" src="%s" alt="Menu — %s">'
             % (" on" if s == secs[0] else "", s,
-               foto_da(s).replace("\\", "/"), esc(mod["titulo"]))
+               uri_do_print(foto_da(s)), esc(mod["titulo"]))
             for s in secs)
 
         # Cada realce carrega, como fundo, o PEDAÇO da foto onde o botão
@@ -307,17 +362,23 @@ def bloco_gaveta(mod, telas):
         # espaço que sobra.
         realces = "".join(
             '<span class="brealce %s" data-sec="%d" style="left:%.2f%%;'
-            'top:%.2f%%;width:%.2f%%;height:%.2f%%;background-image:url(%s);'
+            'top:%.2f%%;width:%.2f%%;height:%.2f%%;background-image:var(--f%d);'
             'background-size:%.2f%% %.2f%%;background-position:%.2f%% %.2f%%">'
             '</span>'
             % (b["tipo"], b.get("secao", 0), b["left"], b["top"], b["width"],
-               b["height"], foto_da(b.get("secao", 0)).replace("\\", "/"),
+               b["height"], b.get("secao", 0),
                10000.0 / b["width"], 10000.0 / b["height"],
                b["left"] / max(0.01, 100 - b["width"]) * 100,
                b["top"] / max(0.01, 100 - b["height"]) * 100)
             for b in botoes)
-        return ('<div class="cheia"><div class="tiro grande quadro-gaveta">'
-                '%s%s</div></div>' % (imgs, realces))
+        # A foto entra UMA VEZ por secao, como variavel CSS no quadro, e
+        # cada realce so aponta para ela. Embutir a imagem dentro de cada
+        # <span> daria o mesmo desenho e um arquivo absurdo: em Cadastros
+        # sao dez botoes citando a mesma foto de 200 KB.
+        fundos = "".join("--f%d:url('%s');" % (s, uri_do_print(foto_da(s)))
+                         for s in secs)
+        return ('<div class="cheia"><div class="tiro grande quadro-gaveta" '
+                'style="%s">%s%s</div></div>' % (fundos, imgs, realces))
 
     secoes, ordem = {}, []
     for t in telas:
@@ -393,7 +454,7 @@ def bloco_menu(modulos, luz):
                 '<img src="%s" alt="Menu do sistema">%s</div>'
                 '<div class="mlegenda"><b></b><span></span></div></div>'
                 % (",".join("%.2f" % s for s in luz),
-                   PRINT_MENU.replace("\\", "/"), realces))
+                   uri_do_print(PRINT_MENU), realces))
 
     cards = "".join(
         '<div class="mcard"><span class="mic">%s</span>'
@@ -426,7 +487,7 @@ def bloco_login():
             '<img src="%s" alt="Tela de login">%s'
             '<span class="botao-sobre" style="top:%.1f%%"></span>'
             '</div></div>'
-            % (PRINT_LOGIN.replace("\\", "/"), campos, LOGIN_BOTAO))
+            % (uri_do_print(PRINT_LOGIN), campos, LOGIN_BOTAO))
 
 
 def bloco_mosaico(telas, dur):
@@ -459,7 +520,7 @@ def bloco_mosaico(telas, dur):
         # é para ver que existem.
         telinhas = "".join(
             ('<i style="background-image:url(%s)"></i>'
-             % arquivo_do(t).replace("\\", "/"))
+             % uri_do_print(arquivo_do(t), LARGURA_TELINHA))
             if os.path.exists(arquivo_do(t)) else '<i class="vazia"></i>'
             for t in sobrando)
         passos.append('<div class="passo contador">'

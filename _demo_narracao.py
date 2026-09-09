@@ -162,7 +162,7 @@ MARCAS_GAVETA = {
 
 ROTEIRO = {
     "cadastros": [
-        "A gaveta de Cadastros abre em quatro partes. Em Funcionário você "
+        "O botão de Cadastros abre em quatro partes. Em Funcionário você "
         "inclui, altera, lança dependentes e imprime a ficha de registro. "
         "Tabelas Auxiliares guarda a função, o horário, o sindicato e a "
         "verba. Ainda tem Pensão Alimentícia, e os dados da Empresa.",
