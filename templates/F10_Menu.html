@@ -699,18 +699,24 @@ const modulos = {
                 // vale também com a folha bloqueada (2ª via, contrato antigo).
                 { icone: '🖶', nome: 'Imprimir Contrato de Experiência', href: '/select_funcionario?contexto=contrato_pdf', ok: true, permiteFolhaBloqueada: true },
             ]},
+            // nav-fix2l em todos: trava a largura em 232px (minimo E maximo), e o
+            // nome comprido quebra em duas linhas em vez de esticar o card. So'
+            // o min-width do nav-fix nao bastava aqui -- "Lic. Maternidade/
+            // Paternidade" e "Acidente - Alterar/Excluir" passavam de 232px e
+            // desalinhavam a secao inteira. A altura se resolve sozinha: a
+            // .nav-itens e flex sem align-items, entao a linha estica junto.
             { nome: 'Afastamentos', itens: [
-                { icone: '🏥', nome: 'Lançar Afastamento',           href: '/select_funcionario?contexto=afastamento',    ok: true, bloqueioFolha: true },
+                { icone: '🏥', nome: 'Lançar Afastamento',           href: '/select_funcionario?contexto=afastamento',    ok: true, classe: 'nav-fix2l', bloqueioFolha: true },
                 // Card próprio, ao lado do Lançar: excluir não é uma opção de
                 // dentro do lançamento, é outra tarefa. E ela recusa o que já
                 // foi aceito no eSocial — lá o desfazer é o S-3000.
-                { icone: '🗑️', nome: 'Excluir Afastamento',          href: '/cad_excluir_afastamento',                   ok: true, bloqueioFolha: true },
-                { icone: '🚨', nome: 'Acidente — Informar CAT',      href: '/select_funcionario?contexto=acidente',        ok: true },
-                { icone: '✏️', nome: 'Acidente — Alterar/Excluir',   href: '/select_funcionario?contexto=alt_acidente',    ok: true },
-                { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true },
+                { icone: '🗑️', nome: 'Excluir Afastamento',          href: '/cad_excluir_afastamento',                   ok: true, classe: 'nav-fix2l', bloqueioFolha: true },
+                { icone: '🚨', nome: 'Acidente — Informar CAT',      href: '/select_funcionario?contexto=acidente',        ok: true, classe: 'nav-fix2l' },
+                { icone: '✏️', nome: 'Acidente — Alterar/Excluir',   href: '/select_funcionario?contexto=alt_acidente',    ok: true, classe: 'nav-fix2l' },
+                { icone: '📋', nome: 'Acidente — Ficha',             href: '/select_funcionario?contexto=ficha_acidente',  ok: true, classe: 'nav-fix2l' },
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
-                { icone: '📋', nome: 'Funcionários Afastados',        href: '/lista_afastados',     ok: true, permiteFolhaBloqueada: true },
-                { icone: '🤱', nome: 'Lic. Maternidade/Paternidade', href: '#' },
+                { icone: '📋', nome: 'Funcionários Afastados',        href: '/lista_afastados',     ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true },
+                { icone: '🤱', nome: 'Lic. Maternidade/Paternidade', href: '#', classe: 'nav-fix2l' },
             ]},
             { nome: 'Faltas', itens: [
                 { icone: '📉', nome: 'Incluir Faltas',    href: '/select_funcionario?contexto=falta',        ok: true, bloqueioFolha: true },
