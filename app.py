@@ -450,6 +450,41 @@ def _mat_es(func):
     return str(func.get("matricula") or "").zfill(6)
 
 
+def _mat_es_anterior(id_cliente, cnpj_ant, mat_ant):
+    """A matrícula do trabalhador COMO O RET DO EMPREGADOR ANTERIOR a conhece.
+
+    O <matricAnt> do <sucessaoVinc> precisa bater exatamente com a matrícula
+    que o S-2200 daquela empresa registrou; sai diferente, o evento volta com o
+    1898 ("deve existir um contrato no RET do Empregador Anterior com matrícula
+    idêntica à ..."). Quem produziu aquele valor lá foi o `_mat_es`, então é ele
+    que decide aqui também — 6 dígitos com zeros à esquerda, salvo quando o
+    cadastro tem `matricula_es` própria, herdada do legado.
+
+    Ia como o inteiro cru do `matriculatransf` ('53'), e o RET tinha '000053'.
+
+    Sem achar o cadastro de origem — empresa de outro cliente, ou já apagada —
+    cai no padrão de 6 dígitos, que é a convenção do sistema.
+    """
+    padrao = str(mat_ant or "").strip().zfill(6)
+    try:
+        emps = (supabase.table("tab_empresa").select("id_empresa, cnpj")
+                .eq("id_cliente", id_cliente).execute())
+        alvo = next((e for e in (emps.data or [])
+                     if so_numeros(e.get("cnpj") or "") == so_numeros(cnpj_ant)), None)
+        if not alvo:
+            return padrao
+        r = (supabase.table("tab_cad").select("matricula, matricula_es")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", alvo["id_empresa"])
+             .eq("matricula", int(mat_ant))
+             .limit(1).execute())
+        if not (r.data or []):
+            return padrao
+        return _mat_es(r.data[0])
+    except Exception:
+        return padrao
+
+
 def _mat6(v):
     """Matrícula com 6 dígitos para o NOME do arquivo XML.
 
@@ -16843,11 +16878,27 @@ def api_transferir_funcionario_executar():
         "dttransf":       data8,
         "cnpjtransf":     cnpj_org,
         "matriculatransf": mat,          # integer no tab_cad
-        # Matrícula do eSocial é a de LÁ: a nova empresa registra a sua.
-        "matricula_es":   None,
+        # Na empresa nova ele é um começo: a matrícula do eSocial é a daqui, no
+        # padrão de 6 dígitos. Ficava nula, e o `_mat_es` chegava ao mesmo valor
+        # pelo zfill(6) — mas por dedução. Escrita, fica verificável qual
+        # matrícula ESTA empresa registrou no RET, que é o que alguém vai
+        # querer conferir no dia em que ele for transferido de novo.
+        #
+        # A matrícula do empregador anterior não vem junto: ela vive no cadastro
+        # de lá, e é de lá que o <matricAnt> a lê — pode ser um código do legado,
+        # do tipo "COL...2753", que não se deduz da matrícula nenhuma.
+        "matricula_es":   f"{mat_nova:06d}",
         # Matriz da empresa de destino (posições 9 a 14 do CNPJ), igual ao
         # Desktop. Filial se acerta depois, junto com o centro de custo.
         "filial":         (cnpj_dst[8:14] if len(cnpj_dst) >= 14 else None),
+        # O estabelecimento é do NOVO empregador e não acompanha o funcionário.
+        # Copiado da origem, o S-2200 declarava como local de trabalho o CNPJ da
+        # empresa anterior e voltava com o 272 ("a inscrição informada deve
+        # corresponder a um estabelecimento do empregador"). Zerados, o XML cai
+        # no `or cnpj_emp` — que é a regra do Desktop, onde o local sai de
+        # xRow_EMP("cnpj") e nunca do cadastro do trabalhador.
+        "lt_tpinsc":      None,
+        "lt_nrinsc":      None,
     })
     try:
         supabase.table("tab_cad").insert(novo).execute()
@@ -28963,10 +29014,13 @@ def _gerar_xml_s2200(func, empresa, tpAmb="1"):
     sucessao_xml = ""
     if tpadmissao in ("2", "3", "4", "7"):
         _cnpj_ant = re.sub(r"[^0-9]", "", str(func.get("cnpjtransf") or ""))
-        _mat_ant  = str(func.get("matriculatransf") or "").strip()
+        _mat_ant  = _mat_es_anterior(func.get("id_cliente"), _cnpj_ant,
+                                     func.get("matriculatransf"))
         _dt_transf = fmt_d8(func.get("dttransf"))
-        # tpInsc 1 = CNPJ. Raiz (8) quando e' so' a raiz; senao o CNPJ inteiro.
-        _tp_ant = "1"
+        # 11 digitos = CPF (tpInsc 2); 14 = CNPJ (tpInsc 1). Ia fixo em "1", e
+        # empregador anterior pessoa fisica voltava rejeitado. Mesma decisao do
+        # Desktop, que escolhe pelo tamanho da inscricao (SR_eSocial_2022.vb).
+        _tp_ant = "2" if len(_cnpj_ant) == 11 else "1"
         _matric_xml = f"\n        <matricAnt>{x(_mat_ant)}</matricAnt>" if _mat_ant else ""
         sucessao_xml = f"""
       <sucessaoVinc>
