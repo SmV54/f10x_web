@@ -53507,16 +53507,27 @@ def api_calc_ferias_calcular():
                 _inc_irrf = str(_r.get("tpn_inc_irrf") or "") not in ("X", "N", "")
             _rubr_inc_fc[_cod] = {"tp": _tp, "inc_cp": _inc_cp, "inc_irrf": _inc_irrf}
 
-        man_prov_cp = 0
-        man_desc_cp = 0
+        # Duas somas, e elas servem a coisas diferentes: as _cp entram na BASE
+        # de INSS/IRRF/FGTS, e por isso só contam as verbas que incidem; as
+        # _tot entram nos PROVENTOS e no LÍQUIDO, onde toda verba lançada
+        # conta, incida ou não. Havia só a primeira, usada para as duas
+        # coisas — então um provento manual sem incidência (quebra de caixa,
+        # ajuda de custo) desaparecia do líquido sem deixar rastro.
+        man_prov_cp  = 0
+        man_desc_cp  = 0
+        man_prov_tot = 0
+        man_desc_tot = 0
         for _mm in man_movs:
             _cod = int(_mm.get("cod_verba") or 0)
             _val = int(_mm.get("valor")    or 0)
             _inf = _rubr_inc_fc.get(_cod, {})
-            if _inf.get("inc_cp"):
-                if _inf.get("tp") == "1":
+            if _inf.get("tp") == "1":
+                man_prov_tot += _val
+                if _inf.get("inc_cp"):
                     man_prov_cp += _val
-                elif _inf.get("tp") == "2":
+            elif _inf.get("tp") == "2":
+                man_desc_tot += _val
+                if _inf.get("inc_cp"):
                     man_desc_cp += _val
 
         # INSS e IRRF: férias + adicionais + 1/3 + médias de variáveis + manuais que incidem (abono é isento)
@@ -53540,7 +53551,18 @@ def api_calc_ferias_calcular():
         g_irrf_val   = 0 if _enc0 else irrf_val
         g_fgts_val   = 0 if _enc0 else fgts_val
 
-        liquido = base_calc - g_inss_val - g_irrf_val + abono_val + terco_abono
+        # Proventos, descontos e líquido saem daqui, e não da base de cálculo.
+        # O total de proventos era sal_ferias + adicionais + 1/3 + abono, e
+        # ficava de fora tudo o que o funcionário também recebeu: as médias de
+        # variáveis e os lançamentos manuais da folha de férias. O recibo então
+        # mostrava proventos menores que o líquido, e não fechava — foi assim
+        # que a QUEBRA DE CAIXA da matrícula 17 sumiu do recibo em 09/2026,
+        # ainda que estivesse na base do INSS e no líquido.
+        total_prov = (sal_ferias + adic_total + terco_const
+                      + sum(medias_variaveis.values()) + man_prov_tot
+                      + abono_val + terco_abono)
+        total_desc = g_inss_val + g_irrf_val + man_desc_tot
+        liquido    = total_prov - total_desc
 
         # ── Apaga apenas registros calculados (origem='C'); preserva manuais (origem='M') ──
         try:
@@ -53628,8 +53650,7 @@ def api_calc_ferias_calcular():
                 return jsonify({"ok": False, "msg": f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}"})
 
         # ── Insere totais em tab_total (folha_tipo='F') ──────────
-        total_prov = sal_ferias + adic_total + terco_const + abono_val + terco_abono
-        total_desc = g_inss_val + g_irrf_val
+        # total_prov / total_desc já vieram calculados junto com o líquido.
         try:
             rec_tot = {
                 "id_cliente":                id_cliente,
@@ -54098,7 +54119,8 @@ def api_recibo_ferias_pdf():
 
     try:
         r_rub = (supabase.table("tab_rubrica")
-                 .select("cod_rubr, dsc_rubr, tp_rubr, inc_ferias, tpf_inc_cp, tpf_inc_irrf")
+                 .select("id_cliente, cod_rubr, dsc_rubr, tp_rubr, inc_ferias, "
+                         "tpf_inc_cp, tpf_inc_irrf, tpn_inc_cp, tpn_inc_irrf")
                  .in_("id_cliente", [0, id_cliente])
                  .eq("situacao", "A")
                  .order("cod_rubr")
@@ -54107,20 +54129,50 @@ def api_recibo_ferias_pdf():
     except Exception:
         rubrics = []
 
-    # Verba férias: provento com inc_ferias preenchido
+    # Mapa por código, com a incidência já resolvida. A rubrica do cliente
+    # vence a padrão (id_cliente 0) quando existem as duas para o mesmo código.
+    # A incidência lê o campo de férias (tpf) e cai no de folha normal (tpn)
+    # quando aquele está vazio — que é o caso comum: a QUEBRA DE CAIXA do
+    # cliente 30 tem tpf nulo e tpn '11'. É a mesma regra do cálculo.
+    def _inc_de(r, campo_f, campo_n):
+        v = str(r.get(campo_f) or "")
+        if v not in ("X", "N", ""):
+            return True
+        return str(r.get(campo_n) or "") not in ("X", "N", "")
+
+    _rubr_map = {}
+    for _r in rubrics:
+        _c = int(_r.get("cod_rubr") or 0)
+        if _c in _rubr_map and int(_r.get("id_cliente") or 0) == 0:
+            continue
+        _rubr_map[_c] = {**_r,
+                         "_inc_cp":   _inc_de(_r, "tpf_inc_cp",   "tpn_inc_cp"),
+                         "_inc_irrf": _inc_de(_r, "tpf_inc_irrf", "tpn_inc_irrf")}
+
+    # Todas por CÓDIGO FIXO, como o abono logo abaixo — e são os mesmos
+    # códigos que o cálculo grava no tab_mov: 41, 42, 103 e 121.
+    #
+    # Antes eram procuradas por incidência ("o primeiro provento com
+    # inc_ferias preenchido"), e isso nunca podia dar certo: inc_ferias não
+    # marca a verba de férias, é um CÓDIGO de incidência, e vale 'NI' em
+    # praticamente todo provento. O teste era verdadeiro para todos, a
+    # varredura é por cod_rubr crescente, e o recibo saía com 0001 SALARIO no
+    # lugar de 0041 FERIAS. Mesma armadilha no INSS e no IRRF.
+    #
+    # O próprio cálculo já tinha desistido de deduzir: "os campos de
+    # incidência são idênticos entre as verbas de férias (47, 103, 121),
+    # tornando impossível distingui-las dinamicamente".
     v_ferias_cod, v_ferias_dsc = _busca_verba(
-        rubrics,
-        lambda r: str(r.get("tp_rubr") or "") == "1" and r.get("inc_ferias")
+        rubrics, lambda r: int(r.get("cod_rubr") or 0) == 41
     )
-    # Verba INSS: desconto com incidência CP em férias
+    v_terco_cod, v_terco_dsc = _busca_verba(
+        rubrics, lambda r: int(r.get("cod_rubr") or 0) == 42
+    )
     v_inss_cod, v_inss_dsc = _busca_verba(
-        rubrics,
-        lambda r: str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_cp")
+        rubrics, lambda r: int(r.get("cod_rubr") or 0) == 103
     )
-    # Verba IRRF: desconto com incidência IRRF em férias
     v_irrf_cod, v_irrf_dsc = _busca_verba(
-        rubrics,
-        lambda r: str(r.get("tp_rubr") or "") == "2" and r.get("tpf_inc_irrf")
+        rubrics, lambda r: int(r.get("cod_rubr") or 0) == 121
     )
     # Verba Abono Pecuniário (0045) e 1/3 s/ Abono (0046) — por código fixo
     v_abono_cod, v_abono_dsc = _busca_verba(
@@ -54166,6 +54218,47 @@ def api_recibo_ferias_pdf():
     LW = W - 3.6*cm   # largura útil
 
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
+
+    # ── O que mais foi lançado na folha de férias ───────────────────────────
+    # O recibo refaz as contas em vez de ler o cálculo, e por isso enxergava
+    # só o que ele mesmo sabe calcular: férias, adicionais, 1/3 e abono. Tudo
+    # o mais que o cálculo gravou — as médias de variáveis (origem C) e os
+    # lançamentos manuais da competência (origem M) — não aparecia em linha
+    # nenhuma, e ainda ficava de fora da base, fazendo o INSS do recibo sair
+    # diferente do que foi realmente descontado.
+    #
+    # Aqui vêm justamente esses: tudo que está no tab_mov e não é uma das
+    # verbas que o próprio recibo já desenha.
+    _VERBAS_PROPRIAS = {41, 42, 45, 46, 103, 121,
+                        VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA}
+    extras_por_mat = {}
+    try:
+        _folha_int = int(anomes)
+        for _m in (supabase.table("tab_mov")
+                   .select("matricula, cod_verba, qtd, valor")
+                   .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                   .eq("folha", _folha_int).eq("folha_tipo", "F")
+                   .eq("situacao", "A")
+                   .in_("matricula", list(cad_map.keys()) or [0])
+                   .execute().data or []):
+            _cod = int(_m.get("cod_verba") or 0)
+            if _cod in _VERBAS_PROPRIAS:
+                continue
+            _r = _rubr_map.get(_cod, {})
+            _tp = str(_r.get("tp_rubr") or "")
+            if _tp not in ("1", "2"):
+                continue          # verba sem cadastro não vira linha inventada
+            extras_por_mat.setdefault(int(_m["matricula"]), []).append({
+                "cod":   _cod,
+                "dsc":   (_r.get("dsc_rubr") or "").strip() or "Verba",
+                "tp":    _tp,
+                "valor": int(_m.get("valor") or 0),
+                "inc_cp":   _r.get("_inc_cp"),
+                "inc_irrf": _r.get("_inc_irrf"),
+            })
+    except Exception as _e_ex:
+        print(f"[recibo_ferias] aviso ao ler lançamentos extras: {_e_ex}")
+
     story = []
 
     for ev in eventos:
@@ -54209,8 +54302,18 @@ def api_recibo_ferias_pdf():
         abono_val   = ((sal_mes * dias_abono) // 30 + adic_abono) if dias_abono else 0
         terco_abono = abono_val // 3 if abono_val else 0
 
+        # Médias de variáveis e lançamentos manuais desta folha de férias.
+        # Entram na base só se incidirem; nos totais e no líquido entram
+        # sempre — mesma separação que o cálculo faz.
+        _extras      = extras_por_mat.get(int(mat), [])
+        ext_prov     = sum(e["valor"] for e in _extras if e["tp"] == "1")
+        ext_desc     = sum(e["valor"] for e in _extras if e["tp"] == "2")
+        ext_prov_cp  = sum(e["valor"] for e in _extras if e["tp"] == "1" and e["inc_cp"])
+        ext_desc_cp  = sum(e["valor"] for e in _extras if e["tp"] == "2" and e["inc_cp"])
+
         # INSS e IRRF incidem sobre férias + adicionais + 1/3 (abono é isento)
-        base_calc   = sal_ferias + adic_total + terco_const
+        base_calc   = (sal_ferias + adic_total + terco_const
+                       + ext_prov_cp - ext_desc_cp)
         inss_val, _, _ = _calc_inss_progressivo(base_calc, tabela)
         fgts_val       = (base_calc * 8) // 100   # FGTS: só sobre férias+1/3
         ndep           = dep_count.get(mat, 0)
@@ -54223,7 +54326,9 @@ def api_recibo_ferias_pdf():
         # bater com o que foi gravado — sem INSS, sem IRRF e sem FGTS.
         if _sem_encargos(id_cliente):
             inss_val = irrf_val = fgts_val = 0
-        liquido        = base_calc - inss_val - irrf_val + abono_val + terco_abono
+        liquido        = (sal_ferias + adic_total + terco_const + ext_prov
+                          + abono_val + terco_abono
+                          - inss_val - irrf_val - ext_desc)
 
         data1i_fmt = _f8(ev.get("data1i"))
         data1f_fmt = _f8(ev.get("data1f"))
@@ -54300,7 +54405,8 @@ def api_recibo_ferias_pdf():
                 return f"{cod}  —  "
             return ""
 
-        total_bruto = sal_ferias + adic_total + terco_const + abono_val + terco_abono
+        total_bruto = (sal_ferias + adic_total + terco_const + ext_prov
+                       + abono_val + terco_abono)
         _DSC_ADIC = {VERBA_INSALUBRIDADE: "Insalubridade",
                      VERBA_PERICULOSIDADE: "Periculosidade",
                      VERBA_RISCO_VIDA: "Risco de Vida"}
@@ -54310,14 +54416,23 @@ def api_recibo_ferias_pdf():
         for _ca, _va in sorted(adics_fer.items()):
             rows.append(lin(f"{str(_ca).zfill(4)}  {_DSC_ADIC.get(_ca, 'Adicional')}  —  "
                             f"({dias} dias)", _brl(_va)))
+        idx_terco = len(rows)
         rows += [
-            lin("1/3 Constitucional",             _brl(terco_const)),
+            lin(f"{_verba_prefix(v_terco_cod, v_terco_dsc)}1/3 Constitucional",
+                _brl(terco_const)),
         ]
+        # Médias de variáveis e lançamentos manuais, cada um na sua linha e com
+        # o próprio código — é o que faltava para o recibo bater com a folha.
+        for _e in sorted(_extras, key=lambda x: (x["tp"], x["cod"])):
+            if _e["tp"] == "1":
+                rows.append(lin(f"{str(_e['cod']).zfill(4)}  {_e['dsc']}",
+                                _brl(_e["valor"])))
         if dias_abono:
             rows += [
                 lin(f"{_verba_prefix(v_abono_cod, v_abono_dsc)}Abono Pecuniário  ({dias_abono} dias)", _brl(abono_val)),
                 lin(f"{_verba_prefix(v_abono3_cod, v_abono3_dsc)}1/3 s/ Abono Pecuniário", _brl(terco_abono)),
             ]
+        idx_bruto = len(rows)
         rows += [
             lin("Total Bruto",                    _brl(total_bruto), bold=True),
             lin(f"{_verba_prefix(v_inss_cod, v_inss_dsc)}( - ) INSS", f"({_brl(inss_val)})"),
@@ -54326,20 +54441,28 @@ def api_recibo_ferias_pdf():
             rows.append(lin(f"( - ) Dedução Dependentes  ({ndep}×)", f"({_brl(dep_total)})"))
         rows += [
             lin(f"{_verba_prefix(v_irrf_cod, v_irrf_dsc)}( - ) IRRF", f"({_brl(irrf_val)})" if irrf_val else "—"),
+        ]
+        for _e in sorted(_extras, key=lambda x: x["cod"]):
+            if _e["tp"] == "2":
+                rows.append(lin(f"{str(_e['cod']).zfill(4)}  ( - ) {_e['dsc']}",
+                                f"({_brl(_e['valor'])})"))
+        rows += [
             lin("Valor Líquido",                  _brl(liquido), bold=True),
             lin("FGTS  (8% — depósito empresa, informativo)", _brl(fgts_val)),
         ]
 
-        # índice dinâmico: "1/3 Constitucional" sempre na pos 1;
-        # "Total Bruto" = 2 (sem abono) ou 4 (com abono)
-        idx_bruto = 4 if dias_abono else 2
+        # Os dois índices são anotados no momento em que a linha entra na
+        # lista (idx_terco / idx_bruto, acima). Eram contados a dedo — "1/3
+        # sempre na 1, bruto na 2 ou na 4" —, e a conta já não fechava com
+        # adicional nenhum lançado: cada um deles empurra a tabela uma linha
+        # para baixo, e o traço saía no meio de outra verba.
         calc_tbl = Table(rows, colWidths=[LW - 3.5*cm, 3.5*cm])
         ts = TableStyle([
             ("TOPPADDING",    (0,0),(-1,-1), 4),
             ("BOTTOMPADDING", (0,0),(-1,-1), 4),
             ("LEFTPADDING",   (0,0),(-1,-1), 8),
             ("RIGHTPADDING",  (0,0),(-1,-1), 8),
-            ("LINEBELOW",     (0,1),          (-1,1),          0.5, BORDA),  # após 1/3
+            ("LINEBELOW",     (0,idx_terco),  (-1,idx_terco),  0.5, BORDA),  # após 1/3
             ("LINEBELOW",     (0,idx_bruto),  (-1,idx_bruto),  1.0, PRETO),  # após bruto
             ("LINEBELOW",     (0,-2),         (-1,-2),         1.0, PRETO),  # após líquido
             ("LINEBELOW",     (0,-1),         (-1,-1),         0.5, BORDA),
