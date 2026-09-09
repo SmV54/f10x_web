@@ -357,6 +357,14 @@ tbody td { padding: 7px 12px; font-size: 12px; vertical-align: middle; }
         <span class="badge-total {% if total == 0 %}vazio{% endif %}">
             {{ total }} remessa{{ 's' if total != 1 else '' }} encontrada{{ 's' if total != 1 else '' }}
         </span>
+        {# Com um funcionário filtrado a ordem se inverte, e a troca precisa
+           aparecer: ordem de lista mudando sem aviso faz quem confere achar
+           que os dados mudaram. #}
+        {% if f_matricula and total > 1 %}
+        <span style="font-size:11.5px;color:#64748b;">
+            ordem cronológica — da mais antiga para a mais recente
+        </span>
+        {% endif %}
         {% if total > 0 %}
         <button class="btn-pdf" onclick="window.open('/rel_esocial_remessas_pdf' + window.location.search, '_blank')">&#128438; Imprimir em PDF</button>
         {% endif %}

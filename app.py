@@ -3565,7 +3565,11 @@ def rel_esocial_remessas_pdf():
             q = q.gte("data_grava", f_remessa_de.replace("-", ""))
         if f_remessa_ate:
             q = q.lte("data_grava", f_remessa_ate.replace("-", ""))
-        raw = q.order("data_cad", desc=True).order("hora_cad", desc=True).execute().data or []
+        # Mesma regra da tela: com um funcionário filtrado, ordem cronológica.
+        # O PDF sair noutra ordem que a tela seria o pior dos dois mundos.
+        _cron = bool(f_matricula)
+        raw = (q.order("data_cad", desc=not _cron)
+                .order("hora_cad", desc=not _cron).execute().data or [])
         for r in raw:
             recibo = (r.get("recibo")          or "").strip()
             obs    = (r.get("observacao_erro") or "").strip()
@@ -16385,7 +16389,16 @@ def rel_esocial_remessas():
             if f_remessa_ate:
                 q = q.lte("data_grava", f_remessa_ate.replace("-", ""))
 
-            data = q.order("data_cad", desc=True).order("hora_cad", desc=True).execute().data or []
+            # Filtrando UM funcionário, a listagem deixa de ser "o que saiu por
+            # último" e passa a ser a história dele: a admissão em cima, o
+            # desligamento embaixo, e no meio o que aconteceu na ordem em que
+            # aconteceu. Do mais recente para o mais antigo isso se lê ao
+            # contrário. Sem o filtro, o padrão continua sendo o recente
+            # primeiro, que é o que interessa em quem opera a Fila.
+            _cronologico = bool(f_matricula)
+            data = (q.order("data_cad", desc=not _cronologico)
+                     .order("hora_cad", desc=not _cronologico)
+                     .execute().data or [])
 
             for r in data:
                 recibo = (r.get("recibo")          or "").strip()
