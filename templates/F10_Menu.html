@@ -59,9 +59,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
    desencontrava a linha de base ao lado do nome. */
 .topo-id      { font-size: 11px; font-weight: 500; color: #9ca3af;
                 font-variant-numeric: tabular-nums; }
-/* ── LABEL LICENÇA FIXO (canto inferior esquerdo) ── */
+/* ── RODAPÉ DA LICENÇA (canto inferior esquerdo) ──
+   O label e o card de comprar ficam lado a lado, na MESMA linha, em vez de
+   empilhados: a pilha ocupava 3 andares (28px, 88px e o banner do certificado
+   em 128px) e em tela baixa o banner acabava por cima dos submenus. Numa linha
+   so, o rodape tem ~38px e o banner desce para 78px.
+   Em tela estreita os dois nao cabem lado a lado: o flex-wrap deixa voltar a
+   empilhar, e a media query la embaixo devolve o banner para cima. */
+.rodape-licenca {
+    position: fixed; bottom: 24px; left: 24px; z-index: 500;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    max-width: calc(100vw - 48px);
+}
 .label-licenca {
-    position: fixed; bottom: 88px; left: 24px; z-index: 500;
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 12px; border-radius: 22px;
     font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
@@ -72,9 +82,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .label-licenca.lic-alerta { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
 .label-licenca .lic-qtd   { font-weight: 800; }
 
-/* ── CARD COMPRAR LICENÇA (canto inferior esquerdo, abaixo do label) ── */
+/* ── CARD COMPRAR LICENÇA (ao lado do label, no .rodape-licenca) ── */
 .card-comprar-licenca {
-    position: fixed; bottom: 28px; left: 24px; z-index: 500;
     background: var(--surface); border: 1px solid var(--border);
     border-radius: 10px; padding: 10px 14px;
     font-size: 13px; font-weight: 600; color: var(--accent);
@@ -431,7 +440,7 @@ body.menu-numerado .nav-item::before {
 
 /* ── BANNER CERTIFICADO A1 ─────────────────────────── */
 .banner-cert {
-    position: fixed; bottom: 128px; left: 24px; right: 24px;
+    position: fixed; bottom: 78px; left: 24px; right: 24px;
     max-width: 760px; z-index: 490;
     display: flex; align-items: center; gap: 14px;
     padding: 10px 16px;
@@ -467,6 +476,9 @@ body.menu-numerado .nav-item::before {
     cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1;
 }
 .banner-cert .fechar:hover { opacity: 1; }
+/* Estreito: o label e o card de licenca nao cabem lado a lado e o rodape volta
+   a ter dois andares — o banner sobe junto para nao ficar por cima dele. */
+@media (max-width: 900px) { .banner-cert { bottom: 128px; } }
 </style>
 </head>
 
@@ -859,27 +871,34 @@ const modulos = {
                 { icone: '📑', nome: 'S-1010 Rubricas',             href: '/esocial_s1010', ok: true, bloqueioFolha: 'aviso' },
                 { icone: '💼', nome: 'S-1020 Lotações Tributárias', href: '/esocial_s1020', ok: true, bloqueioFolha: 'aviso' },
             ]},
+            // nav-fix2l em todos, como na seção Afastamentos: trava a largura em
+            // 232px e deixa o nome comprido quebrar em duas linhas. Sem isso,
+            // "S-2220 Monitoramento da Saúde (ASO)" e "S-2399 Término TSVE
+            // (Estag./Diretor)" esticam o proprio card e desalinham a seção.
             { nome: 'Eventos Não Periódicos', itens: [
-                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '🩺', nome: 'S-2220 Monitoramento da Saúde (ASO)', href: '/esocial_s2220', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '✅', nome: 'S-2200 Admissão',               href: '/esocial_s2200', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
+                { icone: '✏️', nome: 'S-2205 Alt. Dados Cadastrais',  href: '/esocial_s2205', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
+                { icone: '📝', nome: 'S-2206 Alt. Contrato',          href: '/esocial_s2206', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
+                { icone: '🩺', nome: 'S-2220 Monitoramento da Saúde (ASO)', href: '/esocial_s2220', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
                 // O S-2230 nao tem tela propria: nasce na tela de Afastamento e e'
                 // enviado pela Fila, igual ao S-2300 e ao S-2399. O card ficou como
                 // '#' (cinza, sem clique) do tempo em que o envio nao existia — hoje
                 // existe (/api/esocial_s2230_enviar) e so' faltava o destino. Vai
                 // direto para a Fila ja' filtrada no layout.
-                { icone: '🏥', nome: 'S-2230 Afastamento',            href: '/esocial_fila?layout=2230', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '🎓', nome: 'S-2300 Início TSVE (Estagiário)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aviso' },
-                { icone: '🏁', nome: 'S-2399 Término TSVE (Estag./Diretor)', href: '/esocial_fila', ok: true, bloqueioFolha: 'aviso' },
+                { icone: '🏥', nome: 'S-2230 Afastamento',            href: '/esocial_fila?layout=2230', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
+                { icone: '🚪', nome: 'S-2299 Desligamento',           href: '/esocial_s2299', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
+                { icone: '🎓', nome: 'S-2300 Início TSVE (Estagiário)', href: '/esocial_fila', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
+                { icone: '🏁', nome: 'S-2399 Término TSVE (Estag./Diretor)', href: '/esocial_fila', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'aviso' },
             ]},
+            // nav-fix2l em todos, mesmo motivo da seção acima: "Verificação
+            // Folha10 × eSocial" e' bem mais comprido que os quatro S-12xx e,
+            // solto, estica o proprio card e desalinha a linha.
             { nome: 'Eventos Periódicos', itens: [
-                { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true, bloqueioFolha: 'fechada' },
-                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '/esocial_s1210', ok: true, bloqueioFolha: 'fechada' },
-                { icone: '🔓', nome: 'S-1298 Reabertura',  href: '/esocial_s1298', ok: true, bloqueioFolha: 'fechada' },
-                { icone: '🔒', nome: 'S-1299 Fechamento',  href: '/esocial_s1299', ok: true, bloqueioFolha: 'fechada' },
-                { icone: '⚖️', nome: 'Verificação Folha10 × eSocial', href: '/esocial_verificacao', ok: true, bloqueioFolha: 'fechada', requerS1299: true },
+                { icone: '💰', nome: 'S-1200 Remuneração', href: '/esocial_s1200', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'fechada' },
+                { icone: '💳', nome: 'S-1210 Pagamentos',  href: '/esocial_s1210', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'fechada' },
+                { icone: '🔓', nome: 'S-1298 Reabertura',  href: '/esocial_s1298', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'fechada' },
+                { icone: '🔒', nome: 'S-1299 Fechamento',  href: '/esocial_s1299', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'fechada' },
+                { icone: '⚖️', nome: 'Verificação Folha10 × eSocial', href: '/esocial_verificacao', ok: true, classe: 'nav-fix2l', bloqueioFolha: 'fechada', requerS1299: true },
             ]},
             { nome: 'Exclusão de Eventos', itens: [
                 { icone: '🗑️', nome: 'S-3000 Exclusão',               href: '/esocial_s3000', ok: true },
@@ -888,11 +907,15 @@ const modulos = {
                 { icone: '🔑', nome: 'Certificado Digital',   href: '/config_certificado', ok: true },
                 { icone: '🤝', nome: 'Cert. de Procurador',   href: '/config_procurador',  ok: true },
             ]},
+            // nav-fix2l em todos, como nas secoes de Eventos: "Gerador Manual de
+            // Remessa" e "Listagem das Remessas" sao bem mais compridos que a Fila
+            // e, soltos, esticam o proprio card e desalinham a linha. No Gerador a
+            // classe se soma a' acao-gerador, que e' so' a cor.
             { nome: 'Remessas', itens: [
-                { icone: '➕', nome: 'Gerador Manual de Remessa', href: '/esocial_gerador',                        ok: true, classe: 'acao-gerador' },
-                { icone: '📤', nome: 'Fila de Remessas',          href: '/esocial_fila',                          ok: true },
-                { icone: '📄', nome: 'Listagem das Remessas',     href: '/relatorios_config?rel=esocial_remessas', ok: true },
-                { icone: '⚠️', nome: 'Pendências e Erros',        href: '#' },
+                { icone: '➕', nome: 'Gerador Manual de Remessa', href: '/esocial_gerador',                        ok: true, classe: 'acao-gerador nav-fix2l' },
+                { icone: '📤', nome: 'Fila de Remessas',          href: '/esocial_fila',                          ok: true, classe: 'nav-fix2l' },
+                { icone: '📄', nome: 'Listagem das Remessas',     href: '/relatorios_config?rel=esocial_remessas', ok: true, classe: 'nav-fix2l' },
+                { icone: '⚠️', nome: 'Pendências e Erros',        href: '#', classe: 'nav-fix2l' },
             ]},
             { nome: 'Consultas', itens: [
                 { icone: '🔎', nome: 'Consultar Tabelas no eSocial', href: '/esocial_consulta', ok: true },
@@ -1326,7 +1349,10 @@ function renderItens(itens) {
             a.className = 'nav-item em-breve';
             a.href = '#';
         }
-        if (item.classe) a.classList.add(item.classe);
+        // classe aceita mais de uma, separadas por espaco (o Gerador Manual
+        // usa a cor propria E a largura fixa). classList.add recusa string
+        // com espaco, por isso o split.
+        if (item.classe) a.classList.add(...item.classe.trim().split(/\s+/));
         a.innerHTML = `<span>${item.icone}</span> ${item.nome}`;
 
         // Item com remessa pendente no mês ativo → destaque + badge de contagem
@@ -1657,6 +1683,7 @@ function fecharBannerCert() {
 </script>
 
 {% if licenca_fmt %}
+<div class="rodape-licenca">
 <span class="label-licenca {{ licenca_classe }}" title="Data limite e limites contratados da licença">
   🔐 Licença Folha10-Simples até {{ licenca_fmt }} para até
   <span class="lic-qtd">{{ licenca_qtd_empresas|default(0) }}</span>
@@ -1667,6 +1694,7 @@ function fecharBannerCert() {
 <a class="card-comprar-licenca" href="/comprar_licenca" title="Adquira ou renove sua licença">
   💳 Adquira ou renove sua licença →
 </a>
+</div>
 {% endif %}
 
 <div class="cards-canto">
