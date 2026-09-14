@@ -23051,7 +23051,7 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
     # ── Funcionário da tela ──
     try:
         q = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, cpf, situacao, datarescisao")
+             .select("matricula, matricula_es, nome, nomer, cpf, situacao, datarescisao")
              .eq("id_empresa", id_empresa).eq("matricula", mat))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
@@ -23063,6 +23063,17 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
     cad = _d[0]
     nome_cad = (cad.get("nomer") or cad.get("nome") or "").strip()
     cpf_cad = "".join(ch for ch in str(cad.get("cpf") or "") if ch.isdigit()).zfill(11)
+
+    # A coluna "matricula" da planilha e a do eSOCIAL, que no Folha10 mora em
+    # `matricula_es` — nao na `matricula` interna. Elas sao diferentes na
+    # maioria dos cadastros vindos do legado. Antes daqui a comparacao era com a
+    # matricula interna, e por `int()`: alem de casar com a pessoa errada,
+    # estourava nas matriculas alfanumericas ('COL1857061772...') e a planilha
+    # inteira era descartada em silencio, como "de outro funcionario".
+    # _mat_es cai para a matricula interna com 6 digitos quando o cadastro nao
+    # tem matricula_es (funcionario nascido no Folha10-Simples).
+    _mc, _mk = _consig_norm_mat(_mat_es(cad))
+    mats_aceitas = {x for x in (_mc, _mk) if x}
 
     # ── Base do cálculo ──
     # Só existe com a rescisão calculada, e não é obrigatória: sem ela a
@@ -23082,11 +23093,13 @@ def _consig_resc_processar(file_bytes, id_cliente, id_empresa, anomes,
         contrato = cel(rowt, "contrato")
         if mat_raw in (None, "") and contrato in (None, ""):
             continue                                  # linha vazia
-        try:
-            mat_pl = int(str(mat_raw).strip())
-        except (TypeError, ValueError):
-            mat_pl = None
-        if mat_pl != mat:
+        pl_cheia, pl_curta = _consig_norm_mat(mat_raw)
+        bate_mat = bool(mats_aceitas & {pl_cheia, pl_curta}) if pl_cheia else False
+        # Rede de seguranca, a mesma do outro importador: com a matricula_es em
+        # branco ou errada no nosso cadastro, o CPF ainda identifica a pessoa.
+        _cpf_lin = "".join(ch for ch in str(cel(rowt, "cpf") or "") if ch.isdigit()).zfill(11)
+        bate_cpf = (cpf_cad != "00000000000" and _cpf_lin == cpf_cad)
+        if not (bate_mat or bate_cpf):
             ignoradas += 1                            # é de outro funcionário
             continue
 
