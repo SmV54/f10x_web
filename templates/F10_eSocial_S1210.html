@@ -372,10 +372,11 @@ tr:hover td { background: #f8fafc; }
           <td style="font-size:12px;white-space:nowrap;">{{ r._tipo_label }}</td>
           <td>
             {% if r._s1200_enviado %}
-              <span class="sit-badge sit-enviado" title="{{ r._s1200_recibo }}">&#10003; Enviado</span>
+              <span class="sit-badge sit-enviado" title="{{ r._prereq_label }} {{ r._s1200_recibo }}">&#10003; Enviado</span>
             {% else %}
-              <span class="sit-badge sit-ag-s1200">Ag. Envio</span>
+              <span class="sit-badge sit-ag-s1200" title="Falta o {{ r._prereq_label }}">Ag. Envio</span>
             {% endif %}
+            {% if r._resc %}<div style="font-size:10px;color:#64748b;margin-top:2px;">{{ r._prereq_label }}</div>{% endif %}
           </td>
           <td>
             <span class="sit-badge {{ r._sit_class }}" id="sit-{{ r.id_esocial }}">{{ r._sit_label }}</span>
@@ -394,11 +395,11 @@ tr:hover td { background: #f8fafc; }
             {% if r._sit in ('P', 'G', 'X') %}
               <button class="btn-enviar {% if r._sit != 'P' %}reenviar{% endif %}"
                       onclick="_enviar({{ r.id_esocial }}, this)"
-                      {% if not r._s1200_enviado %}title="O S-1200 desta competência não foi detectado como enviado — envie-o antes; caso contrário o eSocial pode recusar o S-1210."{% endif %}>
+                      {% if not r._s1200_enviado %}title="O {{ r._prereq_label }} desta competência não foi detectado como enviado — envie-o antes; caso contrário o eSocial pode recusar o S-1210."{% endif %}>
                 &#9654; {% if r._sit == 'P' %}Enviar{% else %}Reenviar{% endif %}
               </button>
               {% if not r._s1200_enviado %}
-              <span style="color:#9a3412;font-size:10px;font-style:italic;" title="S-1200 não detectado como enviado">&#9888; S-1200?</span>
+              <span style="color:#9a3412;font-size:10px;font-style:italic;" title="{{ r._prereq_label }} não detectado como enviado">&#9888; {{ r._prereq_label }}?</span>
               {% endif %}
             {% elif r._sit == 'W' %}
             <button class="btn-enviar reconsutar"

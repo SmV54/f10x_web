@@ -9,6 +9,7 @@ import calendar
 import uuid
 import base64
 import hashlib
+import hmac
 import random
 import smtplib
 import requests
@@ -1372,6 +1373,16 @@ def menu():
         return redirect("/comprar_licenca?bloqueio=sem_licenca")
     qtd_empresas = len(_listar_empresas(id_cliente)) if id_cliente else 1
 
+    # Planilha de vendas (recurso local): lança sozinho o que o banco tem de
+    # novo, uma vez por login e SÓ no login do Administrador. Fora disso nem
+    # tenta — no Render não existe o disco C: para gravar, e cliente nenhum tem
+    # de pagar uma consulta ao tab_log. Ver _vendas_auto_em_segundo_plano.
+    if (not session.get("vendas_auto_feito")
+            and _pode_admin()
+            and os.path.isdir(PASTA_VENDAS)):
+        session["vendas_auto_feito"] = True
+        _vendas_auto_em_segundo_plano()
+
     # Limites contratados (ja lidos em _estado_licenca) para o label da licenca
     licenca_qtd_empresas     = int(_lic.get("qtd_empresas")     or 0)
     licenca_qtd_funcionarios = int(_lic.get("qtd_funcionarios") or 0)
@@ -2275,9 +2286,18 @@ def menu_demo4():
 # =========================================================
 # FORMATAÇÃO
 # =========================================================
+def _fmt_val(centavos, dec=2):
+    """Valor em centavos no padrão brasileiro, SEM o "R$".
+
+    Para tabela com muitas colunas de valor (Análise de Custo), onde o símbolo
+    repetido em cada célula só rouba largura e atrapalha a leitura da coluna.
+    """
+    return f"{centavos/100:,.{dec}f}".replace(",","X").replace(".",",").replace("X",".")
+
+
 def _fmt_brl(centavos, dec=2):
     """Formata valor em centavos para R$ no padrão brasileiro."""
-    return ("R$ " + f"{centavos/100:,.{dec}f}").replace(",","X").replace(".",",").replace("X",".")
+    return "R$ " + _fmt_val(centavos, dec)
 
 # =========================================================
 # RELATÓRIOS
@@ -7997,6 +8017,67 @@ def _s1299_ativo(id_empresa, ano_mes, folha_tipo):
         return False
 
 
+def _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat_int, anomes_am,
+                                    folha_tipo_es):
+    """Grava (ou atualiza) o S-1210 do PAGAMENTO DAS VERBAS RESCISÓRIAS.
+
+    O desligamento manda dois eventos: o S-2299, que leva as verbas, e o
+    S-1210, que declara o pagamento delas. Antes de 11/09/2026 a rescisão
+    criava só o S-2299, e o pagamento do demitido não aparecia nem na tela do
+    S-1210 nem na Fila — ficava sem ser transmitido.
+
+    A forma é a do Folha10-Desktop, que faz isso há anos (conferido na base da
+    Coral): mesma competência, **folha_tipo "N"** e **flag1 "R"**. O folha_tipo
+    é N porque a rescisão não é folha própria na tab_anomes — só o movimento é
+    marcado 'R' —, e quem diz que este S-1210 é de rescisão é o flag1, do mesmo
+    jeito que no S-2230 ele separa afastamento de retorno. E NÃO se cria S-1200:
+    as verbas rescisórias já vão dentro do S-2299.
+
+    Idempotente: recalcular a rescisão não duplica a remessa.
+    """
+    from datetime import datetime as _dt
+    agora_es    = _dt.now()
+    ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
+    try:
+        existentes = (supabase.table("tab_esocial")
+                      .select("id_esocial, recibo, observacao_erro, flag1")
+                      .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                      .eq("layout", "1210").eq("ano_mes", ano_mes_int)
+                      .execute().data or [])
+    except Exception as e:
+        print(f"[S1210-resc] nao consegui ler a tab_esocial: {e}")
+        return
+    pendente = None
+    for row in existentes:
+        if str(row.get("flag1") or "").upper()[:1] != "R":
+            continue          # esse é o S-1210 da folha normal, não o da rescisão
+        rec = (row.get("recibo") or "").strip()
+        obs = (row.get("observacao_erro") or "").strip().upper()
+        if not rec and obs != "EXCLUIDO":
+            pendente = row
+            break
+    campos = {
+        "data_cad":   agora_es.strftime("%Y%m%d"),
+        "hora_cad":   agora_es.strftime("%H%M"),
+        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+        "ano_mes":    ano_mes_int,
+        "folha_tipo": folha_tipo_es,
+    }
+    try:
+        if pendente:
+            (supabase.table("tab_esocial").update(campos)
+             .eq("id_esocial", pendente["id_esocial"]).execute())
+        else:
+            supabase.table("tab_esocial").insert({
+                **campos,
+                "id_cliente": id_cliente, "id_empresa": id_empresa,
+                "layout": "1210", "matricula": mat_int, "codigo2": 0,
+                "flag1": "R",
+            }).execute()
+    except Exception as e:
+        print(f"[S1210-resc] nao consegui gravar: {e}")
+
+
 def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha_tipo_es,
                                codcateg=None):
     """Grava (ou atualiza) o evento de término na tab_esocial no momento do
@@ -8316,6 +8397,20 @@ IRRF_ABATE_ADTO = {(30, "202607")}
 # aqui em cima para os dois lugares lerem a mesma lista.
 VERBAS_ADTO_QUINZENAL = [161, 162, 163, 164]
 
+# O adiantamento aparece em DOIS lugares, com papeis diferentes:
+#   VERBAS_ADTO_QUINZENAL (161-164) = o adiantamento PAGO, como foi lancado na
+#       quinzena. E o numero que a Analise de Custo mostra na coluna
+#       "Adiantamentos", e o mesmo que o relatorio da Folha exibe em bloco
+#       separado.
+#   VERBAS_DESC_ADIANTAMENTO abaixo = o DESCONTO dele na folha: a 160 (gerada
+#       na ETAPA 1140 a partir das 161-164), a 18 do 13o e a 48/51 de ferias.
+#       E' esse que entra no total de descontos, e por isso e' ele que a
+#       Analise de Custo tira dos "outros descontos".
+# Os dois quase sempre sao iguais, mas nao sempre: quando o funcionario e
+# demitido, o adiantamento fica lancado na folha do mes (161-164) e o desconto
+# sai na folha de rescisao (160).
+VERBAS_DESC_ADIANTAMENTO = (18, 48, 51, 160)
+
 
 def _irrf_abate_adto(id_cliente, anomes):
     """True quando o adiantamento quinzenal abate a base do IRRF nesta folha."""
@@ -8624,21 +8719,35 @@ def calc_rescisao():
                            modo_trct=(modo == "trct"), modo_memoria=(modo == "memoria"))
 
 
-@app.route("/api/calc_rescisao_calcular", methods=["POST"])
-def api_calc_rescisao_calcular():
-    if not session.get("logado"):
-        return jsonify({"ok": False, "msg": "Sessão expirada."})
-    if str(session.get("anomes_situacao") or "") in ("C", "F"):
-        return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para calcular."})
+def _calc_rescisao_nucleo(body, sim=None):
+    """Núcleo do cálculo da rescisão. Devolve (erro, resultados, extras).
 
+    É a REGRA ÚNICA da rescisão: saldo, 13º, férias vencidas e proporcionais,
+    1/3, aviso prévio, art. 479/480, INSS, IRRF e FGTS. A rota
+    /api/calc_rescisao_calcular chama daqui, e a SIMULAÇÃO também — assim as
+    duas nunca divergem quando a lei ou uma verba mudar.
+
+    sim=None  → cálculo real: grava tab_mov, tab_total, o log CALC_RES e o
+                S-2299 na tab_esocial.
+    sim=dict  → SIMULAÇÃO: NADA é gravado (nem log, nem remessa do eSocial). Os
+                dados do desligamento vêm da tela, não do banco:
+                {matricula: {"datarescisao": AAAAMMDD (int), "motivo": "02",
+                             "aviso_ind": bool, "dias_aviso": int,
+                             "aviso_quem": "Empresa"/"Funcionário"/"Acordo",
+                             "saldo_fgts": centavos}}
+
+    extras — "aviso" (transferência deixada de fora) e, na simulação, o que
+    seria gravado, para os PDFs saírem sem passar pelo banco: "movs" (as linhas
+    da tab_mov por matrícula), "tot" (a linha da tab_total) e "cad".
+    """
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
     anomes     = str(session.get("anomes_atual") or "")
     if len(anomes) != 6:
-        return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+        return ("Nenhuma folha ativa.", [], {})
     tabela = _get_tabela_legais(anomes)
     if not tabela:
-        return jsonify({"ok": False, "msg": "Tabela legal (INSS/IRRF) não encontrada para o período."})
+        return ("Tabela legal (INSS/IRRF) não encontrada para o período.", [], {})
 
     folha_int  = int(anomes)
     empresa_nm = str(session.get("empresa_info") or "")
@@ -8646,19 +8755,39 @@ def api_calc_rescisao_calcular():
     dep_count    = _get_dep_irrf_count(id_empresa)
     dep_irrf_ded = int(tabela.get("irrf_dep_dedu") or 0)
 
-    body = request.get_json(silent=True) or {}
     filtro_mats = set(int(x) for x in (body.get("matriculas") or []) if str(x).isdigit())
+    _CAMPOS_CAD = ("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, "
+                   "dtadm, datarescisao, motrescisao")
 
-    # ── Desligados do mês da folha ativa ──
-    try:
-        r_cad = (supabase.table("tab_cad")
-                 .select("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, dtadm, datarescisao, motrescisao")
-                 .eq("id_empresa", id_empresa).eq("situacao", "D").execute())
-        demitidos = [c for c in (r_cad.data or [])
-                     if str(c.get("datarescisao") or "")[:6] == anomes
-                     and (not filtro_mats or int(c.get("matricula") or 0) in filtro_mats)]
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"})
+    if sim:
+        # ── SIMULAÇÃO ── o desligamento não está no banco: quem está sendo
+        # simulado ainda é um ATIVO. A data e o motivo escolhidos na tela entram
+        # no lugar dos campos do cadastro, e daí para baixo o cálculo é o mesmo.
+        try:
+            r_cad = (supabase.table("tab_cad").select(_CAMPOS_CAD)
+                     .eq("id_empresa", id_empresa)
+                     .in_("matricula", sorted(sim.keys())).execute())
+        except Exception as e:
+            return (f"Erro ao buscar cadastros: {e}", [], {})
+        demitidos = []
+        for c in (r_cad.data or []):
+            _s = sim.get(int(c.get("matricula") or 0)) or {}
+            if not _s.get("datarescisao"):
+                continue
+            c = dict(c)
+            c["datarescisao"] = _s["datarescisao"]
+            c["motrescisao"]  = _s.get("motivo") or ""
+            demitidos.append(c)
+    else:
+        # ── Desligados do mês da folha ativa ──
+        try:
+            r_cad = (supabase.table("tab_cad").select(_CAMPOS_CAD)
+                     .eq("id_empresa", id_empresa).eq("situacao", "D").execute())
+            demitidos = [c for c in (r_cad.data or [])
+                         if str(c.get("datarescisao") or "")[:6] == anomes
+                         and (not filtro_mats or int(c.get("matricula") or 0) in filtro_mats)]
+        except Exception as e:
+            return (f"Erro ao buscar cadastros: {e}", [], {})
 
     # ── TRANSFERÊNCIA (motivo 11) TEM RESCISÃO ZERADA ──────────────────────
     # Na transferência o contrato NÃO se rompe: há sucessão de vínculo, e
@@ -8678,13 +8807,13 @@ def api_calc_rescisao_calcular():
 
     if not demitidos:
         if _mat_transf:
-            return jsonify({"ok": False, "msg":
-                "Nada a calcular: "
-                + ", ".join(f"{m:06d}" for m in sorted(_mat_transf))
-                + (" saiu" if len(_mat_transf) == 1 else " saíram")
-                + " por transferência, e transferência tem rescisão zerada — o "
-                  "vínculo segue na empresa de destino."})
-        return jsonify({"ok": False, "msg": "Nenhum desligado no mês para calcular."})
+            return ("Nada a calcular: "
+                    + ", ".join(f"{m:06d}" for m in sorted(_mat_transf))
+                    + (" saiu" if len(_mat_transf) == 1 else " saíram")
+                    + " por transferência, e transferência tem rescisão zerada — o "
+                      "vínculo segue na empresa de destino.", [], {})
+        return (("Nenhum funcionário para simular." if sim
+                 else "Nenhum desligado no mês para calcular."), [], {})
 
     # ── Férias já gozadas (op1=3) — dizem quais períodos aquisitivos já foram
     #    consumidos; o que sobrou completo vira férias vencidas na rescisão ──
@@ -8920,6 +9049,7 @@ def api_calc_rescisao_calcular():
     # Cache dos adicionais: uma leitura para todos os demitidos (ver _adicionais_cache)
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
     resultados = []
+    _extras = {"aviso": "", "movs": {}, "tot": {}, "cad": {}}
     for cad in demitidos:
         mat = int(cad.get("matricula") or 0)
         nome = (cad.get("nome") or cad.get("nomer") or "").strip()
@@ -8941,20 +9071,30 @@ def api_calc_rescisao_calcular():
         # abriu mão de descontar o aviso que o funcionário não cumpriu.
         aviso_ind, dias_aviso = False, 0
         aviso_quem, aviso_disp, dias_aviso_ref1 = "", False, 0
-        try:
-            r_av = (supabase.table("tab_eventos")
-                    .select("campotxt1, campotxt2, campotxt4, ref1, ref2, data1i")
-                    .eq("id_empresa", id_empresa).eq("matricula", mat).eq("op1", 9)
-                    .order("data1i", desc=True).limit(1).execute())
-            if r_av.data:
-                ev = r_av.data[0]
-                aviso_ind = str(ev.get("campotxt1") or "").strip().lower().startswith("inden")
-                dias_aviso_ref1 = int(ev.get("ref1") or 0)
-                dias_aviso = dias_aviso_ref1 + int(ev.get("ref2") or 0)
-                aviso_quem = str(ev.get("campotxt2") or "").strip()
-                aviso_disp = str(ev.get("campotxt4") or "").strip().lower().startswith("dispens")
-        except Exception:
-            pass
+        _sim_f = (sim or {}).get(mat) or {}
+        if sim:
+            # Na simulação não há aviso registrado: Trabalhado/Indenizado, os dias
+            # (30 + 3 por ano, teto de 90) e quem avisou vêm da tela.
+            aviso_ind       = bool(_sim_f.get("aviso_ind"))
+            dias_aviso      = int(_sim_f.get("dias_aviso") or 0)
+            dias_aviso_ref1 = int(_sim_f.get("dias_aviso_ref1") or 0)
+            aviso_quem      = str(_sim_f.get("aviso_quem") or "")
+            aviso_disp      = bool(_sim_f.get("aviso_disp"))
+        else:
+            try:
+                r_av = (supabase.table("tab_eventos")
+                        .select("campotxt1, campotxt2, campotxt4, ref1, ref2, data1i")
+                        .eq("id_empresa", id_empresa).eq("matricula", mat).eq("op1", 9)
+                        .order("data1i", desc=True).limit(1).execute())
+                if r_av.data:
+                    ev = r_av.data[0]
+                    aviso_ind = str(ev.get("campotxt1") or "").strip().lower().startswith("inden")
+                    dias_aviso_ref1 = int(ev.get("ref1") or 0)
+                    dias_aviso = dias_aviso_ref1 + int(ev.get("ref2") or 0)
+                    aviso_quem = str(ev.get("campotxt2") or "").strip()
+                    aviso_disp = str(ev.get("campotxt4") or "").strip().lower().startswith("dispens")
+            except Exception:
+                pass
 
         # Quem PEDE demissão não recebe aviso prévio: se não cumpre o período, é
         # ele quem indeniza a empresa (art. 487, § 2º, da CLT). O aviso troca de
@@ -9116,8 +9256,9 @@ def api_calc_rescisao_calcular():
                 det_m = f"Valor lançado: {_fmt_brl(val_m)}" if val_m else ""
             if not val_m:
                 continue
-            # persiste o valor corrigido no tab_mov (p/ TRCT/Visualizar lerem igual)
-            if val_m != int(row.get("valor") or 0) and row.get("id"):
+            # persiste o valor corrigido no tab_mov (p/ TRCT/Visualizar lerem igual).
+            # Simulação não corrige nada no banco: só usa o valor apurado aqui.
+            if val_m != int(row.get("valor") or 0) and row.get("id") and not sim:
                 try:
                     supabase.table("tab_mov").update({"valor": val_m}).eq("id", row["id"]).execute()
                 except Exception:
@@ -9202,8 +9343,8 @@ def api_calc_rescisao_calcular():
                 if val_m < 0:
                     val_m = 0
                 # Grava o valor apurado na própria verba: é por ele que a TRCT,
-                # a Visualização e o eSocial leem o desconto.
-                if val_m != int(row.get("valor") or 0) and row.get("id"):
+                # a Visualização e o eSocial leem o desconto. Na simulação, não.
+                if val_m != int(row.get("valor") or 0) and row.get("id") and not sim:
                     try:
                         supabase.table("tab_mov").update({"valor": val_m}).eq("id", row["id"]).execute()
                     except Exception:
@@ -9227,18 +9368,19 @@ def api_calc_rescisao_calcular():
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
-        try:
-            (supabase.table("tab_mov").delete()
-             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).eq("matricula", mat)
-             .eq("folha", folha_int).eq("folha_tipo", "R").eq("origem", "C").execute())
-        except Exception:
-            pass
-        try:
-            (supabase.table("tab_total").delete()
-             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).eq("matricula", mat)
-             .eq("folha", folha_int).eq("folha_tipo", "R").execute())
-        except Exception:
-            pass
+        if not sim:
+            try:
+                (supabase.table("tab_mov").delete()
+                 .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).eq("matricula", mat)
+                 .eq("folha", folha_int).eq("folha_tipo", "R").eq("origem", "C").execute())
+            except Exception:
+                pass
+            try:
+                (supabase.table("tab_total").delete()
+                 .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa).eq("matricula", mat)
+                 .eq("folha", folha_int).eq("folha_tipo", "R").execute())
+            except Exception:
+                pass
         base_mov = {"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                     "matricula": mat, "folha": folha_int, "folha_tipo": "R",
                     "lote": 0, "origem": "C", "controle": 0, "os": 0}
@@ -9257,11 +9399,11 @@ def api_calc_rescisao_calcular():
         if g_inss_13: recs.append({**base_mov, "cod_verba": VR_INSS_13,      "qtd": 0, "valor": g_inss_13})
         if g_irrf_saldo:recs.append({**base_mov, "cod_verba": VR_IRRF,       "qtd": 0, "valor": g_irrf_saldo})
         if g_irrf_13: recs.append({**base_mov, "cod_verba": VR_IRRF_13,      "qtd": 0, "valor": g_irrf_13})
-        if recs:
+        if recs and not sim:
             try:
                 supabase.table("tab_mov").insert(recs).execute()
             except Exception as e_ins:
-                return jsonify({"ok": False, "msg": f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}"})
+                return (f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}", [], {})
         rec_tot = {
             "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
             "folha": folha_int, "folha_tipo": "R",
@@ -9274,27 +9416,44 @@ def api_calc_rescisao_calcular():
             "valor_total_descontos": total_desc, "valor_liquido": liquido,
             "os": 0, "controle": 0,
         }
-        try:
-            supabase.table("tab_total").insert(rec_tot).execute()
-        except Exception:
-            pass
-        _log_av = (f" avisoDesc={_fmt_brl(aviso_desc)}({dias_aviso_desc}d)" if aviso_desc
-                   else (" avisoDispensado" if (aviso_ind and aviso_pedido and aviso_disp) else ""))
-        gravar_log("CALC_RES",
-                   f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
-                   f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
-                   f"INSS={_fmt_brl(g_inss_saldo+g_inss_13)} IRRF={_fmt_brl(g_irrf_saldo+g_irrf_13)} "
-                   f"Liq={_fmt_brl(liquido)}" + _log_av
-                   + (" [cliente sem encargos]" if _enc0 else ""),
-                   matricula=mat)
+        if not sim:
+            try:
+                supabase.table("tab_total").insert(rec_tot).execute()
+            except Exception:
+                pass
+        else:
+            # A simulação não grava: o que sairia no banco fica na mão, e é dele
+            # que a TRCT e a memória são montadas (as duas leem dicionários).
+            _extras["movs"][mat] = recs
+            _extras["tot"][mat]  = rec_tot
+            _extras["cad"][mat]  = cad
+        # A simulação não deixa rastro no log: nada aconteceu com o contrato.
+        if not sim:
+            _log_av = (f" avisoDesc={_fmt_brl(aviso_desc)}({dias_aviso_desc}d)" if aviso_desc
+                       else (" avisoDispensado" if (aviso_ind and aviso_pedido and aviso_disp) else ""))
+            gravar_log("CALC_RES",
+                       f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
+                       f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
+                       f"INSS={_fmt_brl(g_inss_saldo+g_inss_13)} IRRF={_fmt_brl(g_irrf_saldo+g_irrf_13)} "
+                       f"Liq={_fmt_brl(liquido)}" + _log_av
+                       + (" [cliente sem encargos]" if _enc0 else ""),
+                       matricula=mat)
 
-        # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no cálculo.
-        _folha_tipo_es = "1" if str(session.get("anomes_tipo") or "") in ("1", "A") else "N"
-        _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes, _folha_tipo_es,
-                                   codcateg=cad.get("codcateg"))
+        # Grava/atualiza o S-2299 (Desligamento) na tab_esocial — só aqui, no
+        # cálculo. A simulação não gera remessa: ninguém foi demitido.
+        if not sim:
+            _folha_tipo_es = "1" if str(session.get("anomes_tipo") or "") in ("1", "A") else "N"
+            _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes, _folha_tipo_es,
+                                       codcateg=cad.get("codcateg"))
+            # O desligamento manda DOIS eventos: o S-2299 com as verbas e o
+            # S-1210 com o pagamento delas. Sem esta linha o demitido nao
+            # aparecia na tela do S-1210 (ver _gravar_ou_atualizar_s1210_resc).
+            _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat, anomes,
+                                            _folha_tipo_es)
 
-        multa_fgts = (0 if _enc0 else
-                      round((int(body.get("saldo_fgts_" + str(mat)) or 0)) * multa_pct / 100))
+        _saldo_fgts = int((_sim_f.get("saldo_fgts") if sim else
+                           body.get("saldo_fgts_" + str(mat))) or 0)
+        multa_fgts = 0 if _enc0 else round(_saldo_fgts * multa_pct / 100)
         resultados.append({
             "matricula": mat, "mat_fmt": f"{mat:06d}", "nome": nome,
             "calc_dhg": _agora_brasilia().strftime("%d/%m/%Y %H:%M"),
@@ -9343,34 +9502,64 @@ def api_calc_rescisao_calcular():
             "desc_fmt": _fmt_brl(total_desc), "liq_fmt": _fmt_brl(liquido),
         })
 
-    try:
-        _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados)
-    except Exception as e_mem:
-        print(f"[gerar_memoria_rescisao] erro: {e_mem}")
+    # A memória de arquivo é do cálculo real: ela APAGA as memórias anteriores da
+    # rescisão e grava as novas na pasta do mês. A simulação não encosta nisso —
+    # o PDF dela é montado na hora, pela rota do documento.
+    if not sim:
+        try:
+            _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados)
+        except Exception as e_mem:
+            print(f"[gerar_memoria_rescisao] erro: {e_mem}")
 
-    # remove campos pesados do JSON (só resumo p/ a tela)
-    _CAMPOS_PDF = {"medias_info", "inss_saldo_det", "inss_13_det", "irrf_saldo_info", "irrf_13_info",
-                   "manuais_det"}
-    web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
-    _resp = {"ok": True, "resultados": web, "total": len(web)}
     if _mat_transf:
         # Quem saiu por transferência foi deixado de fora, e a tela precisa
         # dizer isso — do contrário some da lista sem explicação.
-        _resp["aviso"] = ("Fora do cálculo: "
-                          + ", ".join(f"{m:06d}" for m in sorted(_mat_transf))
-                          + (" saiu" if len(_mat_transf) == 1 else " saíram")
-                          + " por transferência — rescisão zerada, o vínculo "
-                            "segue na empresa de destino.")
+        _extras["aviso"] = ("Fora do cálculo: "
+                            + ", ".join(f"{m:06d}" for m in sorted(_mat_transf))
+                            + (" saiu" if len(_mat_transf) == 1 else " saíram")
+                            + " por transferência — rescisão zerada, o vínculo "
+                              "segue na empresa de destino.")
+    return ("", resultados, _extras)
+
+
+# Campos que só servem à memória de cálculo (listas longas de detalhamento):
+# não vão no JSON da tela.
+_CAMPOS_SO_PDF = {"medias_info", "inss_saldo_det", "inss_13_det",
+                  "irrf_saldo_info", "irrf_13_info", "manuais_det"}
+
+
+@app.route("/api/calc_rescisao_calcular", methods=["POST"])
+def api_calc_rescisao_calcular():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    if str(session.get("anomes_situacao") or "") in ("C", "F"):
+        return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para calcular."})
+
+    erro, resultados, extras = _calc_rescisao_nucleo(request.get_json(silent=True) or {})
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    web = [{k: v for k, v in r.items() if k not in _CAMPOS_SO_PDF} for r in resultados]
+    _resp = {"ok": True, "resultados": web, "total": len(web)}
+    if extras.get("aviso"):
+        _resp["aviso"] = extras["aviso"]
     return jsonify(_resp)
 
 
-def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados):
-    """PDF de memória de cálculo da rescisão por funcionário (detalhada)."""
+def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados,
+                            retornar_story=False, simulado=False):
+    """PDF de memória de cálculo da rescisão por funcionário (detalhada).
+
+    retornar_story=True — usado pela SIMULAÇÃO: não apaga nem grava nada na
+    pasta do mês e não monta PDF nenhum; devolve [(nome, flowables, cabeçalho)]
+    para a TRCT simulada emendar a memória DEPOIS dela, no mesmo arquivo.
+    simulado=True carimba SIMULAÇÃO no cabeçalho de cada página.
+    """
     if not resultados or len(anomes) != 6:
+        return [] if retornar_story else None
+    dest = {} if retornar_story else _memoria_destino(anomes, id_empresa)
+    if not retornar_story and not dest.get("base"):
         return
-    dest = _memoria_destino(anomes, id_empresa)
-    if not dest.get("base"):
-        return
+    saida = []
     ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
     # Mesmos 3 níveis da memória da folha mensal (ver _MEM_COD_AUX): 0 pt a
@@ -9400,8 +9589,9 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                       ("TOPPADDING", (0, 0), (0, 0), 6),
                       ("BOTTOMPADDING", (0, 0), (-1, -1), 3)])
 
-    _memoria_apagar(anomes, id_empresa,
-                    remover_pred=lambda n: "_Rescisao_" in n and n.lower().endswith(".pdf"))
+    if not retornar_story:
+        _memoria_apagar(anomes, id_empresa,
+                        remover_pred=lambda n: "_Rescisao_" in n and n.lower().endswith(".pdf"))
 
     def _B(c): return _fmt_brl(int(c or 0))
     def _fmt_anomes(v):
@@ -9434,11 +9624,14 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
 
     for r in resultados:
         mat = int(r["matricula"]); nome = r["nome"]
-        nome_f = (f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Rescisao_{anomes}"
-                  f"_Matricula_{mat:06d}_em_{ts}.pdf")
+        nome_f = ((f"SIMULADO_Memoria_Rescisao_{mat:06d}_{anomes}.pdf") if simulado else
+                  (f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Rescisao_{anomes}"
+                   f"_Matricula_{mat:06d}_em_{ts}.pdf"))
         try:
             buf = io.BytesIO()
-            titulo_mem = f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — RESCISAO — {mat:06d} — {nome}"
+            titulo_mem = (("SIMULACAO — " if simulado else "")
+                          + f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — "
+                            f"RESCISAO — {mat:06d} — {nome}")
             _agora = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
             _emp = f"{cnpj_fmt} — {empresa_nm}"
 
@@ -9456,6 +9649,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 canvas.setFillColor(colors.HexColor("#94a3b8"))
                 canvas.drawString(xL, doc.bottomMargin * 0.4,
                                   f"Folha10·Simples — versão {ler_versao()}")
+                if simulado:
+                    _tarja_simulado(canvas, doc)
                 canvas.restoreState()
 
             doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2*cm, rightMargin=2*cm,
@@ -9728,10 +9923,14 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             e.append(Paragraph(f"<font color='#b91c1c'>TOTAL DESCONTOS: {_B(r['total_desc'])}</font>", st_tot))
             e.append(Paragraph(f"LIQUIDO A RECEBER: {_B(r['liquido'])}", st_tot))
 
-            doc.build(e, onFirstPage=_hdr, onLaterPages=_hdr)
-            _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
+            if retornar_story:
+                saida.append((nome_f, e, _hdr))
+            else:
+                doc.build(e, onFirstPage=_hdr, onLaterPages=_hdr)
+                _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_r:
             print(f"[memoria_rescisao] mat={mat} erro: {e_r}")
+    return saida if retornar_story else None
 
 
 # =========================================================
@@ -9774,8 +9973,21 @@ _TRCT_VERBAS = {
 }
 
 
-def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, empresa_nm, cnpj_sess):
-    """Monta o PDF da TRCT (réplica do formulário oficial) e devolve os bytes."""
+def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, empresa_nm, cnpj_sess,
+                    simulado=None, anexo=None):
+    """Monta o PDF da TRCT (réplica do formulário oficial) e devolve os bytes.
+
+    simulado — dicionário da Simulação da Rescisão ({"saldo_fgts", "multa_fgts",
+    "multa_pct"}). Sai com a tarja SIMULADO e, no quadro do FGTS, com o saldo
+    que a pessoa digitou e a multa sobre ele — no cálculo real esse saldo não
+    existe no sistema (vem do extrato da Caixa) e o quadro só traz a alíquota.
+
+    anexo — (flowables, cabeçalho) da memória de cálculo, para sair EMENDADA
+    depois da TRCT, no mesmo PDF: quem simula quer o valor e a conta que levou
+    a ele, e dois arquivos separados se perdem um do outro. As páginas da
+    memória têm cabeçalho e margens próprios, por isso o documento passa a ter
+    dois modelos de página em vez de um.
+    """
     from io import BytesIO
     from xml.sax.saxutils import escape as _esc
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -9982,13 +10194,24 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
     _, _, multa_pct = _MOTIVO_RESC.get(motivo, (True, True, 0))
     base_fgts = int(tot.get("valor_base_fgts") or 0)
     fgts_val  = int(tot.get("valor_fgts") or 0)
-    q_fgts = quadro([
+    _obs_fgts = ("O valor da multa rescisória sobre o saldo do FGTS "
+                 "é recolhido via GRRF, conforme extrato da Caixa.")
+    _linhas_fgts = [
         [("29", "Base de Cálculo do FGTS Rescisório (R$)", _money(base_fgts), 2),
          ("30", "FGTS incidente na Rescisão – 8% (R$)", _money(fgts_val), 2),
          ("31", "% Multa Rescisória", (f"{multa_pct}%" if multa_pct else "—"), 2)],
-        [("32", "Observação", "O valor da multa rescisória sobre o saldo do FGTS "
-                              "é recolhido via GRRF, conforme extrato da Caixa.", 6)],
-    ])
+    ]
+    if simulado and int(simulado.get("saldo_fgts") or 0):
+        # Saldo digitado na simulação: só aqui dá para mostrar a multa em reais.
+        _linhas_fgts.append(
+            [("—", "Saldo do FGTS informado (simulação)",
+              _money(int(simulado.get("saldo_fgts") or 0)), 3),
+             ("—", f"Multa Rescisória de {multa_pct}% sobre o saldo informado (R$)",
+              _money(int(simulado.get("multa_fgts") or 0)), 3)])
+        _obs_fgts = ("SIMULAÇÃO — o saldo do FGTS acima foi informado pelo usuário, "
+                     "não veio do extrato da Caixa. Nada foi gravado.")
+    _linhas_fgts.append([("32", "Observação", _obs_fgts, 6)])
+    q_fgts = quadro(_linhas_fgts)
 
     # ── Assinaturas ──
     _sig = ParagraphStyle("sig", fontName="Helvetica", fontSize=8, alignment=1, leading=10)
@@ -10016,9 +10239,13 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
         return [Spacer(1, 6), secbar(txt)]
 
     story = [
-        Paragraph("TERMO DE RESCISÃO DO CONTRATO DE TRABALHO", st_tit),
-        Paragraph(f"Réplica do formulário oficial — Portaria MTE nº 1.057/2012 &nbsp;·&nbsp; "
-                  f"Competência {ref_txt}", st_sub),
+        Paragraph(("SIMULAÇÃO — " if simulado else "")
+                  + "TERMO DE RESCISÃO DO CONTRATO DE TRABALHO", st_tit),
+        Paragraph((("<font color='#b91c1c'><b>DOCUMENTO SIMULADO — SEM VALOR LEGAL. "
+                    "O contrato NÃO foi rescindido e nada foi gravado.</b></font><br/>")
+                   if simulado else "")
+                  + f"Réplica do formulário oficial — Portaria MTE nº 1.057/2012 &nbsp;·&nbsp; "
+                    f"Competência {ref_txt}", st_sub),
         secbar("IDENTIFICAÇÃO DO EMPREGADOR"), q_emp,
         *_sec("IDENTIFICAÇÃO DO TRABALHADOR"), q_trab,
         *_sec("DADOS DO CONTRATO E DO AFASTAMENTO"), q_ctr,
@@ -10026,7 +10253,30 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
         *_sec("FUNDO DE GARANTIA DO TEMPO DE SERVIÇO (FGTS)"), q_fgts,
         Spacer(1, 18), t_sig,
     ]
-    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    def _rodape(canvas, doc):
+        _pdf_num_pagina(canvas, doc)
+        if simulado:
+            _tarja_simulado(canvas, doc)
+
+    if anexo:
+        from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame,
+                                        NextPageTemplate, PageBreak)
+        mem_flow, mem_hdr = anexo
+        # Duas páginas-modelo no mesmo arquivo: a da TRCT (sem cabeçalho, texto
+        # de 18 cm) e a da memória (cabeçalho com empresa/título/data no topo).
+        # A margem esquerda é a mesma nas duas, senão a linha do cabeçalho da
+        # memória sairia deslocada em relação às tabelas dela.
+        doc = BaseDocTemplate(buf, pagesize=A4, title="TRCT",
+                              leftMargin=1.5*cm, rightMargin=1.5*cm,
+                              topMargin=1.4*cm, bottomMargin=1.4*cm)
+        f_trct = Frame(1.5*cm, 1.4*cm, A4[0] - 3*cm, A4[1] - 2.8*cm, id="trct")
+        f_mem  = Frame(1.5*cm, 1.5*cm, A4[0] - 3*cm, A4[1] - 4.3*cm, id="mem")
+        doc.addPageTemplates([PageTemplate(id="trct", frames=[f_trct], onPage=_rodape),
+                              PageTemplate(id="mem",  frames=[f_mem],  onPage=mem_hdr)])
+        story = story + [NextPageTemplate("mem"), PageBreak()] + list(mem_flow)
+        doc.build(story)
+    else:
+        doc.build(story, onFirstPage=_rodape, onLaterPages=_rodape)
     return buf.getvalue()
 
 
@@ -10125,6 +10375,273 @@ def trct_pdf(matricula):
     resp = make_response(pdf)
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = f'inline; filename="TRCT_{matricula:06d}_{anomes}.pdf"'
+    return resp
+
+
+# =========================================================
+# SIMULAÇÃO DA RESCISÃO
+# Calcula a rescisão de quem AINDA ESTÁ TRABALHANDO, para saber quanto
+# custaria demitir. Usa o mesmo núcleo da rescisão de verdade
+# (_calc_rescisao_nucleo) e NADA é gravado: nem verba, nem total, nem log,
+# nem remessa do eSocial, nem memória na pasta do mês. Os dois PDFs (TRCT e
+# memória de cálculo) saem carimbados de SIMULADO e são montados na hora.
+# =========================================================
+
+# Quem avisou sai do motivo, e não de um campo próprio: 07 e 04 são do
+# empregado (o aviso não cumprido vira DESCONTO, art. 487, § 2º), 33 é o
+# acordo do art. 484-A (aviso de 15 dias e metade da multa) e o resto é da
+# empresa. Sem isso daria para marcar "motivo 02 com aviso do funcionário",
+# que não existe.
+_SIM_RESC_QUEM = {"07": "Funcionário", "04": "Funcionário", "33": "Acordo"}
+
+# Motivos que a simulação oferece. Os de contrato a termo (03, 04, 06) dependem
+# do contrato lançado em tab_eventos e ficam de fora: sem a data de término, o
+# art. 479/480 sairia zerado e o número enganaria. Transferência (11) também
+# não entra — tem rescisão zerada.
+_SIM_RESC_MOTIVOS = ("02", "07", "33", "01", "05", "17", "10")
+
+
+def _sim_resc_dias_aviso(dtadm_raw, dt_resc, quem):
+    """Dias do aviso prévio na data simulada — (ref1, ref2), a mesma conta da
+    tela do Aviso Prévio: 15 dias no acordo e 30 nos demais, mais 3 dias por ano
+    de casa, limitados a 60. A diferença é que ali o tempo de casa é contado até
+    HOJE e aqui até a data simulada do desligamento — uma simulação para daqui
+    a seis meses tem seis meses a mais de casa."""
+    s = str(dtadm_raw or "").zfill(8)
+    anos = 0
+    if len(s) == 8 and s.isdigit():
+        try:
+            from datetime import date as _date
+            adm = _date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+            anos = max(0, (dt_resc - adm).days // 365)
+        except Exception:
+            anos = 0
+    return (15 if quem == "Acordo" else 30), min(anos * 3, 60)
+
+
+def _sim_resc_montar(itens):
+    """Monta o dicionário da simulação a partir do que veio da tela.
+
+    Devolve (sim, nomes, erro). Cada item: matrícula, data da rescisão, motivo,
+    aviso Trabalhado/Indenizado e o saldo do FGTS (centavos, opcional).
+    """
+    from datetime import date as _date
+    id_empresa = _get_id_empresa()
+    mats = []
+    for it in (itens or []):
+        m = str(it.get("mat") or "").strip()
+        if m.isdigit():
+            mats.append(int(m))
+    if not mats:
+        return {}, {}, "Selecione ao menos um funcionário para simular."
+
+    try:
+        r = (supabase.table("tab_cad").select("matricula, nome, nomer, dtadm, situacao")
+             .eq("id_empresa", id_empresa).in_("matricula", mats).execute())
+        cads = {int(c.get("matricula") or 0): c for c in (r.data or [])}
+    except Exception as e:
+        return {}, {}, f"Erro ao buscar os funcionários: {str(e)[:150]}"
+
+    sim, nomes = {}, {}
+    for it in (itens or []):
+        m = str(it.get("mat") or "").strip()
+        if not m.isdigit():
+            continue
+        mat = int(m)
+        cad = cads.get(mat)
+        if not cad:
+            return {}, {}, f"Funcionário {mat:06d} não encontrado nesta empresa."
+        try:
+            dt_resc = _date.fromisoformat(str(it.get("data") or "").strip())
+        except Exception:
+            return {}, {}, f"Informe a data da rescisão do funcionário {mat:06d}."
+        motivo = str(it.get("motivo") or "").strip().zfill(2)
+        if motivo not in _SIM_RESC_MOTIVOS:
+            return {}, {}, f"Escolha o motivo do funcionário {mat:06d}."
+        quem = _SIM_RESC_QUEM.get(motivo, "Empresa")
+        # Justa causa (01) e falecimento (10) não têm aviso prévio nenhum — a
+        # tela já esconde a escolha, e aqui ela é ignorada de vez.
+        sem_aviso = motivo in ("01", "10")
+        aviso_ind = (not sem_aviso) and str(it.get("aviso") or "T").upper().startswith("I")
+        ref1, ref2 = _sim_resc_dias_aviso(cad.get("dtadm"), dt_resc, quem)
+        if sem_aviso:
+            ref1 = ref2 = 0
+        _fg = str(it.get("fgts") or "").strip()
+        sim[mat] = {
+            "datarescisao":    int(dt_resc.strftime("%Y%m%d")),
+            "motivo":          motivo,
+            "aviso_ind":       aviso_ind,
+            "dias_aviso":      ref1 + ref2,
+            "dias_aviso_ref1": ref1,
+            "aviso_quem":      quem,
+            "aviso_disp":      False,
+            "saldo_fgts":      int(_fg) if _fg.isdigit() else 0,
+            "data_iso":        dt_resc.isoformat(),
+            "aviso":           "I" if aviso_ind else "T",
+        }
+        nomes[mat] = (cad.get("nome") or cad.get("nomer") or "").strip()
+    return sim, nomes, ""
+
+
+@app.route("/simular_rescisao")
+def simular_rescisao():
+    """Tela da simulação — lista os funcionários ATIVOS para escolher."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    funcs = []
+    try:
+        r = (supabase.table("tab_cad").select("matricula, nome, nomer, dtadm, vrsalfx")
+             .eq("id_empresa", id_empresa).eq("situacao", "A").order("nome").execute())
+        for f in (r.data or []):
+            mat = int(f.get("matricula") or 0)
+            s   = str(f.get("dtadm") or "").zfill(8)
+            funcs.append({
+                "matricula": mat,
+                "mat_fmt":   f"{mat:06d}",
+                "nome":      (f.get("nome") or f.get("nomer") or "").strip(),
+                "dtadm_fmt": (f"{s[6:8]}/{s[4:6]}/{s[:4]}" if len(s) == 8 and s.isdigit() else "—"),
+                "sal_fmt":   _fmt_brl(int(f.get("vrsalfx") or 0)),
+            })
+    except Exception as e:
+        print(f"[simular_rescisao] erro ao listar: {e}")
+
+    # A data sugerida é hoje se hoje estiver dentro da folha ativa; senão, o
+    # último dia dela — as tabelas de INSS/IRRF usadas são sempre as da folha.
+    from datetime import date as _date
+    hoje = _date.today()
+    if len(anomes) == 6 and hoje.strftime("%Y%m") != anomes:
+        import calendar as _cal
+        _a, _m = int(anomes[:4]), int(anomes[4:6])
+        data_sug = f"{_a:04d}-{_m:02d}-{_cal.monthrange(_a, _m)[1]:02d}"
+    else:
+        data_sug = hoje.isoformat()
+
+    return render_template("F10_Simular_Rescisao.html",
+                           versao=ler_versao(),
+                           nome=session.get("nome", ""),
+                           empresa=session.get("empresa_info", ""),
+                           anomes_atual=anomes,
+                           anomes_fmt=(f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else "—"),
+                           funcs=funcs,
+                           data_sug=data_sug,
+                           motivos=[{"codigo": c, "texto": _MOTIVO_DESC_RESC.get(c, c)}
+                                    for c in _SIM_RESC_MOTIVOS])
+
+
+@app.route("/api/simular_rescisao", methods=["POST"])
+def api_simular_rescisao():
+    """Roda o cálculo em modo simulação e devolve o resumo para a tela."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    # Sem trava de folha Aberta/Calculada/Fechada: simulação não grava nada.
+    body = request.get_json(silent=True) or {}
+    sim, nomes, erro = _sim_resc_montar(body.get("itens"))
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    erro, resultados, _extras = _calc_rescisao_nucleo({}, sim=sim)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    web = []
+    for r in resultados:
+        d = {k: v for k, v in r.items() if k not in _CAMPOS_SO_PDF}
+        _s = sim.get(int(r["matricula"])) or {}
+        # Os parâmetros voltam com o resultado: é com eles que os botões de PDF
+        # refazem a simulação na hora de imprimir (nada fica guardado no servidor).
+        d["sim_params"] = {"mat": r["matricula"], "data": _s.get("data_iso", ""),
+                           "motivo": _s.get("motivo", ""), "aviso": _s.get("aviso", "T"),
+                           "fgts": _s.get("saldo_fgts", 0)}
+        d["multa_fmt"] = _fmt_brl(int(r.get("multa_fgts") or 0)) if r.get("multa_fgts") else "—"
+        web.append(d)
+    return jsonify({"ok": True, "resultados": web, "total": len(web)})
+
+
+@app.route("/simular_rescisao_pdf")
+def simular_rescisao_pdf():
+    """PDF de UMA simulação: a rescisão SIMULADA e, emendada nela, a memória
+    de cálculo — um arquivo só, montado na hora.
+
+    A simulação é refeita a partir dos parâmetros da URL em vez de ficar guardada
+    no servidor: o cálculo é determinístico, e o site roda com mais de um
+    processo — um cache em memória não estaria lá na hora de imprimir.
+    """
+    if not session.get("logado"):
+        return redirect("/")
+    item = {"mat":    request.args.get("mat", ""),
+            "data":   request.args.get("data", ""),
+            "motivo": request.args.get("motivo", ""),
+            "aviso":  request.args.get("aviso", "T"),
+            "fgts":   request.args.get("fgts", "0")}
+    sim, nomes, erro = _sim_resc_montar([item])
+    if erro:
+        return erro, 400
+    erro, resultados, extras = _calc_rescisao_nucleo({}, sim=sim)
+    if erro:
+        return erro, 400
+    if not resultados:
+        return "Nada a simular para este funcionário.", 400
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    mat        = int(resultados[0]["matricula"])
+    r0         = resultados[0]
+
+    # A TRCT lê dicionários: em vez do tab_mov/tab_total, recebe o que o
+    # cálculo TERIA gravado (extras), que nunca foi ao banco.
+    cad = dict(extras["cad"].get(mat) or {})
+    try:
+        _rc = (supabase.table("tab_cad").select("*")
+               .eq("id_empresa", id_empresa).eq("matricula", mat).limit(1).execute())
+        if _rc.data:
+            cad = {**_rc.data[0], **cad}      # o desligamento simulado prevalece
+    except Exception:
+        pass
+    try:
+        emp = ((supabase.table("tab_empresa").select("*")
+                .eq("id_empresa", id_empresa).limit(1).execute().data) or [{}])[0]
+    except Exception:
+        emp = {}
+    rubr_desc, rubr_tp = {}, {}
+    try:
+        for row in ((supabase.table("tab_rubrica").select("cod_rubr, dsc_rubr, tp_rubr")
+                     .in_("id_cliente", [0, id_cliente]).execute().data) or []):
+            c = int(row.get("cod_rubr") or 0)
+            rubr_desc[c] = (row.get("dsc_rubr") or "").strip()
+            rubr_tp[c]   = str(row.get("tp_rubr") or "1")
+    except Exception:
+        pass
+
+    # A memória vai EMENDADA na TRCT, no mesmo arquivo: ela não é um documento
+    # à parte, é a conta que explica o número da página anterior.
+    memoria = _gerar_memoria_rescisao(str(session.get("empresa_info") or ""),
+                                      _fmt_cnpj(session.get("cnpj_empresa", "")),
+                                      anomes, id_empresa, resultados,
+                                      retornar_story=True, simulado=True)
+    anexo = (memoria[0][1], memoria[0][2]) if memoria else None
+
+    _s = sim[mat]
+    aviso_ev = {"data1i": _s["datarescisao"],
+                "campotxt1": "Indenizado" if _s["aviso_ind"] else "Trabalhado"}
+    try:
+        pdf = _gerar_trct_pdf(cad, emp, extras["movs"].get(mat) or [],
+                              extras["tot"].get(mat) or {}, rubr_desc, rubr_tp,
+                              anomes, aviso_ev,
+                              str(session.get("empresa_info") or ""),
+                              str(session.get("cnpj_empresa") or ""),
+                              simulado={"saldo_fgts": _s.get("saldo_fgts") or 0,
+                                        "multa_fgts": int(r0.get("multa_fgts") or 0),
+                                        "multa_pct":  int(r0.get("multa_pct") or 0)},
+                              anexo=anexo)
+    except Exception as e_pdf:
+        return f"Erro ao gerar a rescisão simulada: {e_pdf}", 500
+    nome_arq = f"SIMULADO_Rescisao_{mat:06d}_{anomes}.pdf"
+
+    from flask import make_response
+    resp = make_response(pdf)
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
     return resp
 
 
@@ -18041,7 +18558,7 @@ def api_funcionarios_lista():
 
     try:
         q = (supabase.table("tab_cad")
-             .select("matricula, nome, nomer, dtadm, situacao, codcateg, cbofuncao")
+             .select("matricula, nome, nomer, dtadm, situacao, codcateg, cbofuncao, datarescisao")
              .eq("id_empresa", id_empresa)
              .order("matricula"))
         if mats_filter:
@@ -18315,6 +18832,11 @@ def api_funcionarios_lista():
             "nome":      nome,
             "dtadm":     str(f.get("dtadm") or ""),
             "situacao":  situacao,
+            # Data da rescisao (AAAAMMDD) de quem esta demitido. Quem usa hoje e
+            # a alteracao de funcionario: e por ela que a tela sabe se a
+            # demissao foi NESTA folha.
+            "datarescisao": (str(f.get("datarescisao") or "").zfill(8)
+                             if f.get("datarescisao") else ""),
             "codcateg":  str(f.get("codcateg") or ""),
             "cbofuncao": str(f.get("cbofuncao") or ""),
             "aviso_previo": (mat_int in aviso_mats),
@@ -18804,6 +19326,99 @@ def api_funcionario_nome():
 # =========================================================
 # FÉRIAS — API: gravar em tab_eventos
 # =========================================================
+# =========================================================
+# FÉRIAS — regras compartilhadas pelo lançamento e pela simulação
+# =========================================================
+# Moram aqui, e não dentro da rota que grava, porque a simulação precisa das
+# MESMAS regras. Duplicadas, a primeira mudança que entrasse só num lado faria
+# a simulação mentir — e ela sai em PDF, com cara de documento.
+
+# São 10 dias, e não um terço dos dias gozados: o abono é 1/3 do período a que
+# o funcionário tem DIREITO (30 dias), não das férias que ele tirou. Com 20
+# dias de férias o `qtd // 3` pagava 6 -- 60% do devido, e o recibo saía com
+# cara de certo. O Desktop calcula a verba 45 como Base / 3 (SR_Ferias.vb), o
+# que dá os mesmos 10 dias, e é a folha que os clientes conferem há anos.
+FERIAS_DIAS_ABONO = 30 // 3
+
+
+def _ferias_str_to_date(s):
+    s = str(s or '')
+    if len(s) != 8 or not s.isdigit():
+        return None
+    try:
+        return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+    except ValueError:
+        return None
+
+
+def _ferias_date_to_str(d):
+    return d.strftime('%Y%m%d')
+
+
+def _ferias_add_year_minus1(d):
+    try:
+        return d.replace(year=d.year + 1) - timedelta(days=1)
+    except ValueError:
+        return d + timedelta(days=364)
+
+
+def _ferias_dias_abono(abono_pecuniario, qtd):
+    """Dias de abono pecuniário a pagar, pela opção da tela e os dias gozados.
+
+    "auto" é a opção que vem marcada. Ela não era testada em lugar nenhum e
+    caía no zero: quem deixasse a tela como estava gravava férias sem abono,
+    sem erro e sem aviso. O corte de 20 dias é o do Desktop, que zera o abono
+    com QtdDiasFerias > 20 -- 20 dias redondos ainda pagam.
+
+    "sim" força o pagamento mesmo acima de 20 dias: é uma opção que o usuário
+    marca a dedo, e o Desktop tem a mesma saída pela verba 45 no movimento.
+    """
+    if abono_pecuniario == "sim" or (abono_pecuniario == "auto" and qtd <= 20):
+        return FERIAS_DIAS_ABONO
+    return 0
+
+
+def _ferias_periodo_aquisitivo(todas_ferias, dtadm_str, periodo_ferias):
+    """(data2i, data2f) do período aquisitivo destas férias, no formato AAAAMMDD.
+
+    `todas_ferias` são as férias já registradas do funcionário, ORDENADAS por
+    data1i decrescente — a ordem importa para a opção "não".
+
+    Com periodo_ferias="nao" o período anterior é mantido: são férias partidas
+    em duas, e a referência é o gozo mais recente.
+
+    Para AVANÇAR, não: a referência é o período aquisitivo que termina mais
+    tarde, venha ele de qual gozo vier. Férias gozadas fora de ordem — o
+    aquisitivo de 2020 gozado em 2023 e o de 2021 gozado em 2022 — faziam a
+    conta partir do gozo de 2023, cujo aquisitivo é o mais ANTIGO, e repetir um
+    período já gozado. Fica visível agora que dá para informar as férias
+    antigas de uma vez, em qualquer ordem.
+    """
+    prev = todas_ferias[0] if todas_ferias else None
+    prev_data2i = str((prev or {}).get("data2i") or "")
+    prev_data2f = str((prev or {}).get("data2f") or "")
+    ultimo_aq = max((str(e.get("data2f") or "") for e in todas_ferias), default="")
+
+    data2i_out = None
+    data2f_out = None
+    if periodo_ferias == "nao" and prev_data2i and prev_data2f:
+        data2i_out = prev_data2i
+        data2f_out = prev_data2f
+    else:
+        if ultimo_aq:
+            d_prev = _ferias_str_to_date(ultimo_aq)
+            if d_prev:
+                d2i = d_prev + timedelta(days=1)
+                data2i_out = _ferias_date_to_str(d2i)
+                data2f_out = _ferias_date_to_str(_ferias_add_year_minus1(d2i))
+        elif dtadm_str:
+            d_adm = _ferias_str_to_date(dtadm_str)
+            if d_adm:
+                data2i_out = dtadm_str
+                data2f_out = _ferias_date_to_str(_ferias_add_year_minus1(d_adm))
+    return data2i_out, data2f_out
+
+
 @app.route("/api/ferias_gravar", methods=["POST"])
 def api_ferias_gravar():
     if not session.get("logado"):
@@ -18838,49 +19453,13 @@ def api_ferias_gravar():
     except (TypeError, ValueError):
         return jsonify({"ok": False, "msg": "Quantidade de dias deve ser entre 10 e 30."})
 
-    # São 10 dias, e não um terço dos dias gozados: o abono é 1/3 do período a
-    # que o funcionário tem DIREITO (30 dias), não das férias que ele tirou.
-    # Com 20 dias de férias o `qtd // 3` daqui pagava 6 -- 60% do devido, e o
-    # recibo saía com cara de certo. O Desktop calcula a verba 45 como
-    # Base / 3 (SR_Ferias.vb), o que dá os mesmos 10 dias, e é a folha que os
-    # clientes conferem há anos.
-    DIAS_ABONO = 30 // 3
-
-    # "auto" é a opção que vem marcada na tela. Ela não era testada em lugar
-    # nenhum e caía no zero: quem deixasse a tela como estava gravava férias
-    # sem abono, sem erro e sem aviso. O corte de 20 dias é o do Desktop, que
-    # zera o abono com QtdDiasFerias > 20 -- 20 dias redondos ainda pagam.
-    #
-    # "sim" continua forçando o pagamento mesmo acima de 20 dias: é uma opção
-    # que o usuário marca a dedo, e o Desktop tem a mesma saída pela verba 45
-    # lançada no movimento.
-    if abono_pecuniario == "sim" or (abono_pecuniario == "auto" and qtd <= 20):
-        dias_abono = DIAS_ABONO
-    else:
-        dias_abono = 0
+    # Regra em _ferias_dias_abono: a simulação usa a mesma.
+    dias_abono = _ferias_dias_abono(abono_pecuniario, qtd)
 
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
     anomes_am  = str(session.get("anomes_atual") or "")
     folha_int  = int(anomes_am) if anomes_am else None
-
-    def _str_to_date(s):
-        s = str(s or '')
-        if len(s) != 8 or not s.isdigit():
-            return None
-        try:
-            return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
-        except ValueError:
-            return None
-
-    def _date_to_str(d):
-        return d.strftime('%Y%m%d')
-
-    def _add_year_minus1(d):
-        try:
-            return d.replace(year=d.year + 1) - timedelta(days=1)
-        except ValueError:
-            return d + timedelta(days=364)
 
     gravados = 0
     erros    = []
@@ -18934,42 +19513,9 @@ def api_ferias_gravar():
                         )
                         raise ValueError("sobreposicao")
 
-            # Para CONTINUAR o mesmo período (opção "não"), a referência é o
-            # gozo mais recente — é a férias que está sendo partida em duas.
-            prev = todas_ferias[0] if todas_ferias else None
-            prev_data2i = str((prev or {}).get("data2i") or "")
-            prev_data2f = str((prev or {}).get("data2f") or "")
-
-            # Para AVANÇAR, não: a referência é o período aquisitivo que termina
-            # mais tarde, venha ele de qual gozo vier. Férias gozadas fora de
-            # ordem — o aquisitivo de 2020 gozado em 2023 e o de 2021 gozado em
-            # 2022 — faziam a conta partir do gozo de 2023, cujo aquisitivo é o
-            # mais ANTIGO, e repetir um período já gozado. Fica visível agora que
-            # dá para informar as férias antigas de uma vez, em qualquer ordem.
-            ultimo_aq = max((str(e.get("data2f") or "") for e in todas_ferias),
-                            default="")
-
-            # Calcular período aquisitivo
-            data2i_out = None
-            data2f_out = None
-
-            if periodo_ferias == "nao" and prev_data2i and prev_data2f:
-                # Manter período aquisitivo anterior
-                data2i_out = prev_data2i
-                data2f_out = prev_data2f
-            else:
-                # auto ou sim: avançar para novo período
-                if ultimo_aq:
-                    d_prev = _str_to_date(ultimo_aq)
-                    if d_prev:
-                        d2i = d_prev + timedelta(days=1)
-                        data2i_out = _date_to_str(d2i)
-                        data2f_out = _date_to_str(_add_year_minus1(d2i))
-                elif dtadm_str:
-                    d_adm = _str_to_date(dtadm_str)
-                    if d_adm:
-                        data2i_out = dtadm_str
-                        data2f_out = _date_to_str(_add_year_minus1(d_adm))
+            # Regra em _ferias_periodo_aquisitivo: a simulação usa a mesma.
+            data2i_out, data2f_out = _ferias_periodo_aquisitivo(
+                todas_ferias, dtadm_str, periodo_ferias)
 
             r_ev = supabase.table("tab_eventos").insert({
                 "id_cliente": id_cliente,
@@ -29575,6 +30121,18 @@ def _ide_dm_dev(mat_es, folha_tipo):
     return f"{mat_es}{_IDE_DMDEV_SUF.get(str(folha_tipo or 'N').upper(), '00')}"
 
 
+def _ide_dm_dev_resc(mat_es):
+    """ideDmDev do demonstrativo de VERBAS RESCISORIAS — o que vai dentro do
+    S-2299/S-2399 e que o S-1210 do pagamento tem de repetir igual.
+
+    Nao passa pelo _IDE_DMDEV_SUF de proposito: aquele mapa e' dos
+    demonstrativos do S-1200, e o da rescisao mora em outro evento. No
+    Desktop ele e' a propria matricula ("028633"); aqui e' matricula + "00",
+    que e' o que os S-2299 do web ja mandaram e o governo aceitou — mudar
+    agora faria o pagamento nao casar com o desligamento ja aceito."""
+    return f"{mat_es}00"
+
+
 # Folhas que viajam JUNTAS numa remessa só (mesma competência, mesmo trabalhador):
 # a folha normal e o adiantamento do 13º. Elas vão no MESMO <dmDev>/<infoPgto> —
 # um ideDmDev só. A ordem importa: a primeira encontrada define o ideDmDev e o
@@ -30059,7 +30617,8 @@ def _pen_alim_do_trabalhador(id_empresa, id_cliente, matricula, ano_mes, folha_t
 def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
                      recibo_s1200, totais, mov_items=None, rubr_map=None,
                      deps_irrf=None, vlr_ded_dep_cent=0, pgtos=None,
-                     ind_retif="1", nr_recibo_retif="", pen_alim=None):
+                     ind_retif="1", nr_recibo_retif="", pen_alim=None,
+                     tp_pgto=None, ide_dm_dev=None):
     """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho).
 
     pgtos: lista de pagamentos do MESMO trabalhador na MESMA competência, cada um
@@ -30121,10 +30680,12 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     #   1 = pagamento apurado em S-1200  (folha mensal, férias, 13º e adiantamento)
     #   2 = apurado em S-2299 (desligamento) | 3 = apurado em S-2399 (TSVE)
     # Produção do Desktop: o pagamento do 13º (perRef=AAAA) vai com tpPgto=1.
-    # F='4' e R='3' foram MANTIDOS como estavam (fora do escopo desta correção) —
-    # mas são suspeitos: férias também é apurada em S-1200 (deveria ser 1) e
-    # rescisão é apurada em S-2299 (deveria ser 2). Revisar antes de usar.
-    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '4', 'R': '3'}
+    # R passou a '2' em 11/09/2026, quando a rescisão começou a gerar S-1210:
+    # as verbas rescisórias são apuradas no S-2299, não num S-1200 (o Desktop
+    # não cria S-1200 para a rescisão). O TSVE (S-2399) é o '3' — decidido no
+    # envio pela categoria, via tp_pgto. F='4' fica como estava, fora do
+    # escopo, e continua suspeito: férias é apurada em S-1200 (seria 1).
+    _TP_PGTO = {'N': '1', '1': '1', 'A': '1', 'F': '4', 'R': '2'}
 
     # Retificação (mesma regra do S-1200): reenviar um evtPgtos já aceito como
     # original dá erro [106]. indRetif=2 exige o <nrRecibo> do evento original.
@@ -30144,12 +30705,17 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     # ÚNICO <infoPgto>, com o vrLiq SOMADO das folhas da competência.
     _ft_pgto  = str(pgtos[0].get("folha_tipo") or folha_tipo or "N").upper()
     _vr_liq   = sum(int(_pg.get("valor_liquido") or 0) for _pg in pgtos)
+    # tp_pgto/ide_dm_dev: usados pelo pagamento de RESCISÃO, cujo demonstrativo
+    # não está num S-1200 e sim dentro do S-2299 (ou S-2399, no TSVE). Quem
+    # envia sabe qual dos dois é; aqui só não se inventa o valor.
+    _tp_pgto_x  = str(tp_pgto) if tp_pgto else _TP_PGTO.get(_ft_pgto, '1')
+    _ide_dmd_x  = str(ide_dm_dev) if ide_dm_dev else _ide_dm_dev(mat_es, _ft_pgto)
     info_pgto_xml = f"""
       <infoPgto>
         <dtPgto>{x(dtPgto)}</dtPgto>
-        <tpPgto>{x(_TP_PGTO.get(_ft_pgto, '1'))}</tpPgto>
+        <tpPgto>{x(_tp_pgto_x)}</tpPgto>
         <perRef>{_am[:4] if _ft_pgto == '1' else per_apur}</perRef>
-        <ideDmDev>{_ide_dm_dev(mat_es, _ft_pgto)}</ideDmDev>
+        <ideDmDev>{x(_ide_dmd_x)}</ideDmDev>
         <vrLiq>{fmt_brl(_vr_liq)}</vrLiq>
       </infoPgto>"""
 
@@ -35084,7 +35650,7 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
         verbas_xml = f"""
       <verbasResc>
         <dmDev>
-          <ideDmDev>{mat_es}00</ideDmDev>
+          <ideDmDev>{_ide_dm_dev_resc(mat_es)}</ideDmDev>
           <infoPerApur>
             <ideEstabLot>
               <tpInsc>1</tpInsc>
@@ -35216,7 +35782,7 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
         verbas_xml = f"""
       <verbasResc>
         <dmDev>
-          <ideDmDev>{mat_es}00</ideDmDev>
+          <ideDmDev>{_ide_dm_dev_resc(mat_es)}</ideDmDev>
           <codCateg>{x(codcateg)}</codCateg>
           <infoPerApur>
             <ideEstabLot>
@@ -37961,13 +38527,29 @@ def _ultimo_dia_util(ano, mes):
 _S1200_PREREQ_LAYOUTS = ['1005', '1010', '1020', '2200', '2205', '2206', '2210', '2220', '2299']
 
 
-def _s1200_listar_pendentes_prereq(id_empresa):
+def _s1200_listar_pendentes_prereq(id_empresa, anomes=None):
     """Retorna {layout: count} de eventos pré-requisito em situação Pendente/Gerado/Com Erro.
-    Considera pendente: sem recibo E observacao_erro vazia ou de erro (NÃO 'AGUARDANDO:')."""
+    Considera pendente: sem recibo E observacao_erro vazia ou de erro (NÃO 'AGUARDANDO:').
+
+    anomes — competência da remessa do S-1200 / S-1210. Conta SÓ pendência da
+    MESMA competência, e a regra é do usuário (11/09/2026): vale tanto para o
+    mês seguinte quanto para os anteriores.
+
+    O mês seguinte era o problema que apareceu: quem lança a admissão e a
+    demissão do mês corrente antes de fechar a folha do mês anterior via o
+    S-1200 de 08/2026 avisar pendência de S-2200 e S-2299 de 09/2026 —
+    informação que vai com a folha de setembro, não com esta. Aviso que aponta
+    pendência inexistente é aviso que passa a ser sempre ignorado.
+
+    Registro antigo sem `ano_mes` continua contando: sem a competência não há
+    como dizer de que mês ele é, e calar seria esconder pendência de verdade.
+    São poucos na base (empresas 20, 22, 24 e 31).
+    """
     counts = {}
+    lim = str(anomes or "").strip()
     try:
         rows = (supabase.table("tab_esocial")
-                .select("layout, recibo, observacao_erro")
+                .select("layout, recibo, observacao_erro, ano_mes")
                 .eq("id_empresa", id_empresa)
                 .in_("layout", _S1200_PREREQ_LAYOUTS)
                 .execute().data or [])
@@ -37978,6 +38560,9 @@ def _s1200_listar_pendentes_prereq(id_empresa):
                 continue  # já enviado
             if obs.startswith("AGUARDANDO:"):
                 continue  # em consulta
+            am = str(r.get("ano_mes") or "").strip()
+            if lim and am and am != lim:
+                continue  # outra competência — não é pré-requisito desta
             lay = str(r.get("layout") or "").strip()
             counts[lay] = counts.get(lay, 0) + 1
     except Exception as e:
@@ -38677,7 +39262,8 @@ def _s1200_msg_pendentes(counts):
     if not counts:
         return ""
     partes = [f"S-{lay}: {n}" for lay, n in sorted(counts.items())]
-    return ("Há remessas pendentes que normalmente devem ser enviadas antes do S-1200:\n  "
+    return ("Há remessas pendentes desta mesma competência que normalmente "
+            "devem ser enviadas antes do S-1200:\n  "
             + "  ·  ".join(partes)
             + "\n\nDeseja enviar o S-1200 assim mesmo?")
 
@@ -38697,7 +39283,8 @@ def _s1200_msg_prereq(counts, falta_1010, falta_1020):
             + "  ·  ".join(f"{v['cod_rubr']:04d} {v['dsc_rubr']}" for v in falta_1010))
     if counts:
         blocos.append(
-            "Remessas pendentes que normalmente vão antes do S-1200:\n  "
+            "Remessas pendentes desta competência, que normalmente vão antes "
+            "do S-1200:\n  "
             + "  ·  ".join(f"S-{lay}: {n}" for lay, n in sorted(counts.items())))
     return "\n\n".join(blocos)
 
@@ -38725,7 +39312,7 @@ def api_esocial_s1200_check_pendentes():
     id_empresa = _get_id_empresa()
     anomes     = _s1200_anomes_check(request.args.get("anomes"))
 
-    counts = _s1200_listar_pendentes_prereq(id_empresa)
+    counts = _s1200_listar_pendentes_prereq(id_empresa, anomes)
     falta_1010, falta_1020 = [], []
     if anomes:
         # folha_tipo=None: confere a competência inteira (normal, férias,
@@ -38859,17 +39446,6 @@ def api_esocial_s1200_enviar():
     if not id_reg:
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
 
-    # 0. Pré-checagem de remessas pré-requisito pendentes
-    if not forcar:
-        _pend = _s1200_listar_pendentes_prereq(id_empresa)
-        if _pend:
-            return jsonify({
-                "ok":              False,
-                "warn_pendentes":  True,
-                "counts":          _pend,
-                "msg":             _s1200_msg_pendentes(_pend),
-            })
-
     # 1. Registro na tab_esocial
     try:
         r_es = (supabase.table("tab_esocial")
@@ -38891,6 +39467,20 @@ def api_esocial_s1200_enviar():
     ok_val, msg_val = _validar_folha_para_envio_esocial("1200", ano_mes, folha_tipo)
     if not ok_val:
         return jsonify({"ok": False, "msg": msg_val})
+
+    # 1.a Remessas pré-requisito pendentes. Depende da competência DESTA
+    #     remessa (ver _s1200_listar_pendentes_prereq), por isso vem depois de
+    #     ler o registro, e não antes como era até 11/09/2026 — de lá não se
+    #     sabia de que mês era o S-1200 e o aviso contava o mês seguinte.
+    if not forcar:
+        _pend = _s1200_listar_pendentes_prereq(id_empresa, ano_mes)
+        if _pend:
+            return jsonify({
+                "ok":              False,
+                "warn_pendentes":  True,
+                "counts":          _pend,
+                "msg":             _s1200_msg_pendentes(_pend),
+            })
 
     # 1.b Lotacao (centro de custo) da folha ainda nao declarada no S-1020.
     #     Vem antes do S-1010 porque e a pendencia mais grave do cliente novo:
@@ -39422,6 +40012,25 @@ def esocial_s1210():
         # (só exibe aviso), mas registramos para diagnóstico.
         print(f"[esocial_s1210] falha ao montar s1200_map: {e}")
 
+    # Recibos dos desligamentos (S-2299/S-2399): é deles que depende o S-1210
+    # da rescisão, e não do S-1200 — ver _gravar_ou_atualizar_s1210_resc.
+    resc_map = {}
+    try:
+        _mats_r = [r.get("matricula") for r in rows
+                   if str(r.get("flag1") or "").upper()[:1] == "R" and r.get("matricula")]
+        if _mats_r:
+            for _rr in (supabase.table("tab_esocial")
+                        .select("matricula, ano_mes, recibo")
+                        .eq("id_empresa", id_empresa)
+                        .in_("layout", ["2299", "2399"])
+                        .in_("matricula", list(set(_mats_r)))
+                        .execute().data or []):
+                _kr = (_rr.get("matricula"), _rr.get("ano_mes"))
+                if _kr not in resc_map or (_rr.get("recibo") or "").strip():
+                    resc_map[_kr] = _rr
+    except Exception as e:
+        print(f"[esocial_s1210] falha ao montar resc_map: {e}")
+
     def _d8(v):
         s = str(v or "").strip()
         return f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else ""
@@ -39457,12 +40066,23 @@ def esocial_s1210():
         else:
             r["_envio_fmt"] = ""
         r["_periodo"]       = _fmt_anomes(r.get("ano_mes"))
-        r["_tipo_label"]    = _TP_FOLHA.get(str(r.get("folha_tipo") or "N"), str(r.get("folha_tipo") or ""))
+        # flag1 'R' = pagamento das verbas rescisorias. A linha e' gravada com
+        # folha_tipo N (a rescisao nao e' folha propria na tab_anomes), entao
+        # sem esta linha ela apareceria como "Normal" — e o usuario nao teria
+        # como distinguir o pagamento do demitido do pagamento da folha.
+        r["_resc"]          = str(r.get("flag1") or "").upper()[:1] == "R"
+        r["_tipo_label"]    = ("Rescisão" if r["_resc"] else
+                               _TP_FOLHA.get(str(r.get("folha_tipo") or "N"),
+                                             str(r.get("folha_tipo") or "")))
 
+        # O pre-requisito de cada linha: o S-1200 da folha, ou o S-2299/S-2399
+        # quando o pagamento e' o da rescisao (as verbas sao apuradas la).
         _k = (r.get("matricula"), r.get("ano_mes"), str(r.get("folha_tipo") or "N"))
-        s12 = s1200_map.get(_k, {})
+        s12 = (resc_map.get((r.get("matricula"), r.get("ano_mes")), {})
+               if r["_resc"] else s1200_map.get(_k, {}))
         r["_s1200_recibo"]  = (s12.get("recibo") or "").strip()
         r["_s1200_enviado"] = bool(r["_s1200_recibo"])
+        r["_prereq_label"]  = "S-2299" if r["_resc"] else "S-1200"
 
         recibo = (r.get("recibo") or "").strip()
         obs    = (r.get("observacao_erro") or "").strip()
@@ -39606,6 +40226,11 @@ def _s1210_enviar_impl():
     matricula  = es.get("matricula")
     ano_mes    = es.get("ano_mes")
     folha_tipo = str(es.get("folha_tipo") or "N")
+    # flag1 'R' = pagamento das verbas rescisórias (ver
+    # _gravar_ou_atualizar_s1210_resc). Ele muda três coisas neste envio: o
+    # pré-requisito é o S-2299/S-2399 (e não o S-1200), o líquido sai da folha
+    # 'R' do tab_total, e o infoPgto aponta para o dmDev do desligamento.
+    is_resc    = str(es.get("flag1") or "").upper()[:1] == "R"
 
     # dtPgto fixo: último dia ÚTIL (seg-sex) do mês do período (ano_mes)
     try:
@@ -39620,28 +40245,51 @@ def _s1210_enviar_impl():
     if not ok_val:
         return jsonify({"ok": False, "msg": msg_val})
 
-    # 2. Recibo do S-1200 correspondente
+    # 2. Recibo do evento em que o pagamento foi apurado: o S-1200 da folha,
+    #    ou o S-2299/S-2399 quando este S-1210 e' o da rescisao.
+    _lay_apur = "1200"
+    if is_resc:
+        try:
+            _rc = (supabase.table("tab_cad").select("codcateg")
+                   .eq("id_empresa", id_empresa).eq("matricula", matricula)
+                   .limit(1).execute())
+            _cat_r = int(str((_rc.data or [{}])[0].get("codcateg") or "0").strip() or 0)
+        except Exception:
+            _cat_r = 0
+        # Mesma regra do _gravar_ou_atualizar_s2299: >= 700 e' TSVE (S-2399).
+        _lay_apur = "2399" if _cat_r >= 700 else "2299"
     try:
-        r_s1200 = (supabase.table("tab_esocial")
+        _q_apur = (supabase.table("tab_esocial")
                    .select("recibo")
                    .eq("id_empresa", id_empresa)
-                   .eq("layout", "1200")
+                   .eq("layout", _lay_apur)
                    .eq("matricula", matricula)
-                   .eq("ano_mes", int(ano_mes))
-                   .eq("folha_tipo", folha_tipo)
                    .not_.is_("recibo", "null")
-                   .neq("recibo", "")
-                   .limit(1).execute())
+                   .neq("recibo", ""))
+        if not is_resc:
+            _q_apur = (_q_apur.eq("ano_mes", int(ano_mes))
+                              .eq("folha_tipo", folha_tipo))
+        else:
+            # O S-2299 e' evento nao periodico: a competencia dele e' a do
+            # desligamento, que e' a mesma deste S-1210, mas o folha_tipo pode
+            # ter sido gravado como '1' numa folha de 13o. Filtra so' pelo mes.
+            _q_apur = _q_apur.eq("ano_mes", int(ano_mes))
+        r_s1200 = _q_apur.limit(1).execute()
         # A liberação provisória de 14/08/2026 foi revertida no mesmo dia, depois
         # de os 17 recibos perdidos da empresa 39 serem recuperados dos XMLs do
         # Storage e regravados. A regra volta a valer: sem o S-1200 aceito, o
         # S-1210 não vai.
         if not r_s1200.data:
+            if is_resc:
+                return jsonify({"ok": False, "msg": (
+                    f"S-{_lay_apur} (desligamento) ainda não enviado. As verbas "
+                    "rescisórias são apuradas nele, então ele vai primeiro — "
+                    "depois este S-1210 do pagamento.")})
             return jsonify({"ok": False,
                             "msg": "S-1200 ainda não enviado. Envie o S-1200 primeiro."})
         recibo_s1200 = r_s1200.data[0]["recibo"].strip()
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar S-1200: {e}"})
+        return jsonify({"ok": False, "msg": f"Erro ao buscar S-{_lay_apur}: {e}"})
 
     # 3. Funcionário
     try:
@@ -39673,7 +40321,7 @@ def _s1210_enviar_impl():
     except Exception:
         pass
 
-    _ft_row = str(folha_tipo or "N").upper()
+    _ft_row = "R" if is_resc else str(folha_tipo or "N").upper()
     if _ft_row in _TIPOS_FOLHA_JUNTAS:
         _tipos_pgto = [t for t in _TIPOS_FOLHA_JUNTAS
                        if int((_tot_por_folha.get(t) or {}).get("valor_liquido") or 0) != 0]
@@ -39789,6 +40437,13 @@ def _s1210_enviar_impl():
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1210_{_mat6(matricula)}_{_now2.strftime('%Y%m%d_%H%M%S')}")
 
+    # Pagamento de rescisao: o demonstrativo esta no S-2299 (ou S-2399), entao
+    # o tpPgto e' 2 (ou 3) e o ideDmDev e' o do dmDev daquele evento — tem de
+    # sair identico ao que foi transmitido la (ver _ide_dm_dev_resc).
+    _tp_pgto_env = _ide_dmd_env = None
+    if is_resc:
+        _tp_pgto_env = "3" if _lay_apur == "2399" else "2"
+        _ide_dmd_env = _ide_dm_dev_resc(_mat_es(func))
     try:
         xml_str = _gerar_xml_s1210(func, empresa, ano_mes, _tipos_pgto[0], tpAmb,
                                    dtPgto, recibo_s1200, totais,
@@ -39798,7 +40453,9 @@ def _s1210_enviar_impl():
                                    pgtos=_pgtos,
                                    pen_alim=pen_alim,
                                    ind_retif=_ind_retif_lp,
-                                   nr_recibo_retif=_recibo_lp_existente)
+                                   nr_recibo_retif=_recibo_lp_existente,
+                                   tp_pgto=_tp_pgto_env,
+                                   ide_dm_dev=_ide_dmd_env)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -44282,6 +44939,27 @@ def _pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, anomes_fmt="", page_width=17*cm
     return hdr
 
 
+def _tarja_simulado(canvas, doc):
+    """Carimba SIMULADO na diagonal da página.
+
+    Vale para os documentos da Simulação da Rescisão, que saem com a mesma cara
+    dos oficiais e NÃO correspondem a nada gravado: sem a tarja, uma TRCT
+    simulada impressa é indistinguível da verdadeira.
+    """
+    canvas.saveState()
+    canvas.setFont("Helvetica-Bold", 62)
+    try:
+        canvas.setFillColor(colors.HexColor("#dc2626"), alpha=0.13)
+    except TypeError:      # reportlab antigo: sem alpha
+        canvas.setFillColor(colors.HexColor("#fca5a5"))
+    canvas.translate(doc.pagesize[0] / 2, doc.pagesize[1] / 2)
+    canvas.rotate(38)
+    canvas.drawCentredString(0, 0, "SIMULADO")
+    canvas.setFont("Helvetica-Bold", 13)
+    canvas.drawCentredString(0, -34, "SEM VALOR LEGAL — NADA FOI GRAVADO")
+    canvas.restoreState()
+
+
 def _pdf_num_pagina(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 8)
@@ -47266,6 +47944,35 @@ def fechar_folha():
     )
 
 
+# Fechamento FORA do caminho normal: a folha que ainda nao foi calculada so'
+# fecha com esta senha, que e' nossa e nao do cliente.
+#
+# Guardada como SHA-256, e nao em texto puro: o app.py vai para o Git e para o
+# Render, e senha em claro no fonte vaza no primeiro `git log` de quem nao
+# deveria ver. O hash aqui nao revela nada e confere igual.
+#
+# Da' para trocar sem mexer no codigo pondo SENHA_FECHA_SEM_CALCULO no .env
+# (local) ou nas variaveis de ambiente do Render — o valor de la' e' o texto da
+# senha, nao o hash.
+_FECHA_SEM_CALCULO_SHA = "a35412f1dd2df379b3706a11c18703cf792e644f086123f71065a3dd0b442cd1"
+
+
+def _senha_fecha_sem_calculo_confere(senha):
+    """A senha bate? Compara sem vazar o tempo de comparacao."""
+    # Apara os espacos: a tela ja manda aparado, mas quem chama a rota direto
+    # nao manda, e "senha incorreta" por causa de um espaco colado custa caro
+    # de descobrir.
+    senha = str(senha or "").strip()
+    if not senha:
+        return False
+    do_ambiente = str(os.getenv("SENHA_FECHA_SEM_CALCULO") or "")
+    if do_ambiente:
+        return hmac.compare_digest(senha, do_ambiente)
+    return hmac.compare_digest(
+        hashlib.sha256(senha.encode("utf-8")).hexdigest(),
+        _FECHA_SEM_CALCULO_SHA)
+
+
 @app.route("/api/folha/fechar", methods=["POST"])
 def api_folha_fechar():
     if not session.get("logado"):
@@ -47275,8 +47982,24 @@ def api_folha_fechar():
     id_empresa  = _get_id_empresa()
     id_cliente  = session.get("id_cliente")
     sit         = str(session.get("anomes_situacao") or "")
-    if sit != "C":
-        return jsonify({"ok": False, "msg": "Apenas folhas Calculadas podem ser fechadas."})
+    body        = request.get_json(silent=True) or {}
+    senha       = str(body.get("senha") or "")
+
+    # Folha ja fechada nao fecha de novo, com senha ou sem: reabrir e' outra tela.
+    if sit == "F":
+        return jsonify({"ok": False, "msg": "Esta folha já está fechada."})
+
+    sem_calculo = (sit != "C")
+    if sem_calculo:
+        # Toda tentativa deixa rastro, inclusive a que erra a senha: fechar sem
+        # calcular e uma saida de emergencia, e saida de emergencia sem registro
+        # vira porta dos fundos.
+        if not _senha_fecha_sem_calculo_confere(senha):
+            gravar_log("FECHAR", f"Folha {anomes} tipo:{anomes_tipo} - "
+                                 f"SENHA INCORRETA para fechar sem calcular")
+            return jsonify({"ok": False,
+                            "msg": "Senha incorreta. A folha continua como está."})
+
     try:
         supabase.table("tab_anomes").update({"situacao": "F"}) \
             .eq("id_cliente", id_cliente) \
@@ -47286,8 +48009,17 @@ def api_folha_fechar():
             .execute()
         session["anomes_situacao"] = "F"
         folha_fmt = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else anomes
-        gravar_log("FECHAR", f"Folha {anomes} tipo:{anomes_tipo} fechada")
-        return jsonify({"ok": True, "msg": f"Folha {folha_fmt} fechada com sucesso.",
+        if sem_calculo:
+            # O log diz COMO fechou. Meses depois, uma folha fechada sem valor
+            # nenhum tem de ter aqui a explicacao do porque.
+            gravar_log("FECHAR", f"Folha {anomes} tipo:{anomes_tipo} fechada "
+                                 f"SEM CALCULO (situacao era {sit or '?'}) - senha interna")
+            msg = (f"Folha {folha_fmt} fechada SEM ter sido calculada. "
+                   f"O registro ficou no log.")
+        else:
+            gravar_log("FECHAR", f"Folha {anomes} tipo:{anomes_tipo} fechada")
+            msg = f"Folha {folha_fmt} fechada com sucesso."
+        return jsonify({"ok": True, "msg": msg,
                         "sit_class": "sit-fechada", "sit_label": "Fechada"})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:100]})
@@ -48328,6 +49060,14 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         tot_desc = sum(v["val"] for v in verbas if v["tp"] != "1")
         liquido  = tot_prov - tot_desc
         inss_val  = agg.get(101, {}).get("val", 0)
+        # 102 = INSS do contribuinte individual (pró-labore). Quem é CI desconta
+        # na 102, não na 101 — a Análise de Custo soma as duas.
+        inss102_val = agg.get(102, {}).get("val", 0)
+        irrf_val    = agg.get(120, {}).get("val", 0)
+        # Desconto do adiantamento dentro desta folha (160/18/48/51). O valor
+        # PAGO na quinzena vem das 161-164, em adiant_list.
+        adiant_desc_val = sum(agg.get(c, {}).get("val", 0)
+                              for c in VERBAS_DESC_ADIANTAMENTO)
         base_inss = sum(v["val"] for v in verbas if v["tp"]=="1" and v["icp"]=="11")
         base_irrf = irrf_basetabela.get(mat, 0)
         # A categoria manda: 700-799 e 901 nao tem FGTS, menos a 721 (ver _tem_fgts).
@@ -48364,6 +49104,11 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
             "adiant_list": adiant_list,
             "prov":tot_prov, "desc":tot_desc, "liq":liquido,
             "b_inss":base_inss, "b_irrf":base_irrf, "b_fgts":base_fgts, "fgts":fgts_val,
+            # Retidos e categoria — a Análise de Custo precisa deles em número,
+            # não formatados.
+            "inss":inss_val, "inss102":inss102_val, "irrf":irrf_val,
+            "adiant_desc":adiant_desc_val,
+            "cat":int(fi.get("cat") or 0),
         })
 
     def _fdt(s):
@@ -48417,6 +49162,22 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                 "b_irrf_fmt": _fmt_brl(f["b_irrf"]),
                 "b_fgts_fmt": _fmt_brl(f["b_fgts"]),
                 "fgts_fmt":   _fmt_brl(f["fgts"]),
+                # Numéricos (centavos) — a Análise de Custo remonta o custo a
+                # partir daqui, em vez de recalcular a folha de novo.
+                "prov_c":     f["prov"],
+                "desc_c":     f["desc"],
+                "inss_c":     f["inss"],
+                "inss102_c":  f["inss102"],
+                "irrf_c":     f["irrf"],
+                # Adiantamento PAGO (161-164) e o DESCONTO dele nesta folha
+                # (160/18/48/51) — ver VERBAS_DESC_ADIANTAMENTO.
+                "adiant_c":      sum(int(a["val"] or 0)
+                                     for a in f.get("adiant_list", [])),
+                "adiant_desc_c": f["adiant_desc"],
+                "b_inss_c":   f["b_inss"],
+                "b_fgts_c":   f["b_fgts"],
+                "fgts_c":     f["fgts"],
+                "cat":        f["cat"],
                 "verbas": [{
                     "cod":      f"{v['cod']:04d}",
                     "dsc":      v["dsc"],
@@ -49357,6 +50118,388 @@ def rel_liquidos_pdf():
     resp = make_response(buf.read())
     resp.headers["Content-Type"]        = "application/pdf"
     resp.headers["Content-Disposition"] = f'inline; filename="Liquidos_{anomes}.pdf"'
+    return resp
+
+
+# =========================================================
+# ANÁLISE DE CUSTO (por funcionário)
+# =========================================================
+# Custo da competência = o que a empresa DESEMBOLSA por aquele funcionário:
+#
+#   Custo = Líquido + IRRF + INSS retido + Adiantamentos + Outros desc.
+#           \____________________ proventos da folha ____________________/
+#           + FGTS + INSS Empresa
+#
+# Os descontos entram no custo porque já estão DENTRO dos proventos — desconto
+# não barateia a folha, só muda para quem o dinheiro vai (governo, sindicato,
+# pensão, ou o próprio funcionário, que já recebeu adiantado). As colunas
+# "Adiantamentos" e "Outros Desc." existem para o Custo Total fechar com os
+# proventos: sem elas, quem tem adiantamento quinzenal, vale transporte ou
+# pensão apareceria mais barato do que é.
+#
+# O adiantamento ganha coluna própria porque não é dinheiro que ficou com a
+# empresa nem foi para terceiros: é salário que o funcionário já recebeu na
+# quinzena, e é o que explica um líquido baixo numa folha de proventos altos.
+# A coluna traz o adiantamento PAGO (verbas 161-164); os "outros descontos"
+# descontam o DESCONTO dele nesta folha (160/18/48/51). Nas folhas em que os
+# dois batem — a regra — as colunas somam exatamente o Custo Total; quando o
+# funcionário foi demitido e o desconto saiu na rescisão, a linha avisa no
+# detalhe (ver VERBAS_DESC_ADIANTAMENTO).
+#
+# A parte patronal sai dos percentuais de _inss_patronal_perc — os MESMOS do
+# Resumo da Folha — aplicados à base de INSS daquele funcionário. O
+# arredondamento é por funcionário, então o total desta análise pode diferir
+# do Resumo em alguns centavos: lá a alíquota cai uma vez sobre a base da
+# folha inteira.
+def _custo_linhas_patronal(pat, base_inss, is_ci):
+    """Composição da parte patronal do INSS de UM funcionário.
+
+    RAT e terceiros não incidem sobre contribuinte individual (pró-labore); a
+    contribuição patronal de 20%, sim (ver _resumo_folha_dados).
+    """
+    def _lin(label, pct, dec=2, terceiro=False):
+        val_c = round(base_inss * pct / 100)
+        return {"label":       label,
+                "pct":         f"{pct:.{dec}f}".replace(".", ",") + "%",
+                "val_c":       val_c,
+                "val":         _fmt_val(val_c),
+                "is_terceiro": terceiro}
+
+    linhas = []
+    if pat["cp_pct"]:
+        linhas.append(_lin("Contribuição Patronal", pat["cp_pct"]))
+    if not is_ci:
+        if pat["rat_pct"]:
+            linhas.append(_lin(pat["rat_label"], pat["rat_pct"], dec=4))
+        for lbl, p in pat["terceiros"]:
+            linhas.append(_lin(lbl, p, terceiro=True))
+    return linhas
+
+
+def _rel_custo_vazio():
+    """Resumo zerado — a tela precisa das chaves mesmo sem folha para listar."""
+    z = {k: _fmt_val(0) for k in
+         ("liq_fmt", "irrf_fmt", "inss_fmt", "adiant_fmt", "outros_fmt",
+          "prov_fmt", "fgts_fmt",
+          "patronal_fmt", "terceiros_fmt", "encargos_fmt", "custo_fmt",
+          "custo_medio_fmt")}
+    z.update({"anomes_fmt": "", "tipo_lbl": "", "n_func": 0, "sel_nome": "",
+              "comp": [], "regime_label": "", "is_simples_ou_mei": False,
+              "gps_fpas": "—", "enc_pct": "0,00"})
+    return z
+
+
+def _rel_custo_dados(id_empresa, id_cliente, anomes, anomes_tipo, mat_sel=0, ordem="mat"):
+    """(linhas, resumo, funcs_sel) — uma linha de custo por funcionário.
+
+    funcs_sel é a lista completa da folha para o seletor da tela, montada ANTES
+    do filtro: escolher um funcionário não pode esvaziar a própria lista.
+    """
+    dados = _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente,
+                                   ordem=("alfa" if ordem == "alfa" else "mat"),
+                                   cnpj_empresa=str(session.get("cnpj_empresa") or ""))
+    pat = _inss_patronal_perc(id_empresa, anomes, origem="rel_custo")
+
+    todos = [f for cc in dados.get("cc_list", []) for f in cc.get("funcs", [])]
+    funcs_sel = sorted([{"mat": f["mat"], "nome": f["nome"]} for f in todos],
+                       key=lambda x: ((x["nome"] or "").upper() if ordem == "alfa"
+                                      else x["mat"]))
+
+    linhas = []
+    for f in todos:
+        if mat_sel and int(f["mat"]) != mat_sel:
+            continue
+        cat      = int(f.get("cat")       or 0)
+        inss101  = int(f.get("inss_c")    or 0)
+        inss102  = int(f.get("inss102_c") or 0)
+        irrf_c   = int(f.get("irrf_c")    or 0)
+        liq_c    = int(f.get("liq_c")     or 0)
+        prov_c   = int(f.get("prov_c")    or 0)
+        desc_c   = int(f.get("desc_c")    or 0)
+        fgts_c   = int(f.get("fgts_c")    or 0)
+        inss_c   = inss101 + inss102
+        # A coluna mostra o adiantamento PAGO (verbas 161-164). Já o que sai
+        # dos "outros descontos" é o DESCONTO do adiantamento nesta folha
+        # (160/18/48/51): é ele que está dentro do desc_c. Quando o
+        # funcionário foi demitido, o pago fica no mês e o desconto na
+        # rescisão — subtrair o pago deixaria "Outros Desc." negativo.
+        adiant_c      = int(f.get("adiant_c")      or 0)
+        adiant_desc_c = int(f.get("adiant_desc_c") or 0)
+        outros_c = desc_c - inss_c - irrf_c - adiant_desc_c
+        # CI pelo cadastro OU pela rubrica 102 — mesma rede de segurança do
+        # Resumo da Folha, para quem está com codcateg em branco.
+        is_ci    = (700 <= cat <= 799) or inss102 > 0
+
+        det         = _custo_linhas_patronal(pat, int(f.get("b_inss_c") or 0), is_ci)
+        patronal_c  = sum(l["val_c"] for l in det)
+        terceiros_c = sum(l["val_c"] for l in det if l["is_terceiro"])
+        # O custo sai dos PROVENTOS, não da soma das colunas: é a mesma conta,
+        # e assim a linha nunca briga com o relatório da folha.
+        custo_c     = prov_c + fgts_c + patronal_c
+
+        linhas.append({
+            "mat":           f["mat"],
+            "nome":          f["nome"],
+            "funcao":        f["funcao"],
+            "is_ci":         is_ci,
+            "liq_c":         liq_c,      "liq_fmt":       _fmt_val(liq_c),
+            "liq_ok":        liq_c >= 0,
+            "irrf_c":        irrf_c,     "irrf_fmt":      _fmt_val(irrf_c),
+            "inss_c":        inss_c,     "inss_fmt":      _fmt_val(inss_c),
+            "adiant_c":      adiant_c,   "adiant_fmt":    _fmt_val(adiant_c),
+            "adiant_desc_c": adiant_desc_c,
+            "adiant_desc_fmt": _fmt_val(adiant_desc_c),
+            # Pago numa folha e descontado na outra (rescisão): a linha avisa
+            # em vez de deixar a coluna sem par.
+            "adiant_dif":    adiant_c != adiant_desc_c,
+            "outros_c":      outros_c,   "outros_fmt":    _fmt_val(outros_c),
+            "prov_c":        prov_c,     "prov_fmt":      _fmt_val(prov_c),
+            "fgts_c":        fgts_c,     "fgts_fmt":      _fmt_val(fgts_c),
+            "patronal_c":    patronal_c, "patronal_fmt":  _fmt_val(patronal_c),
+            "terceiros_c":   terceiros_c,"terceiros_fmt": _fmt_val(terceiros_c),
+            "encargos_c":    fgts_c + patronal_c,
+            "encargos_fmt":  _fmt_val(fgts_c + patronal_c),
+            "custo_c":       custo_c,    "custo_fmt":     _fmt_val(custo_c),
+            "b_inss_fmt":    _fmt_val(int(f.get("b_inss_c") or 0)),
+            "b_fgts_fmt":    _fmt_val(int(f.get("b_fgts_c") or 0)),
+            "det":           det,
+        })
+
+    if ordem == "alfa":
+        linhas.sort(key=lambda x: (x["nome"] or "").upper())
+    else:
+        linhas.sort(key=lambda x: x["mat"])
+
+    def _soma(campo):
+        return sum(l[campo] for l in linhas)
+
+    # Composição consolidada do INSS Empresa (CP, RAT e cada terceiro). O dict
+    # guarda a ordem de aparição: CP, RAT e depois os terceiros na ordem do
+    # cadastro.
+    comp = {}
+    for l in linhas:
+        for d in l["det"]:
+            c = comp.setdefault(d["label"], {"label": d["label"], "pct": d["pct"],
+                                             "is_terceiro": d["is_terceiro"],
+                                             "val_c": 0})
+            c["val_c"] += d["val_c"]
+    comp_list = [dict(c, val=_fmt_val(c["val_c"])) for c in comp.values()]
+
+    tot_custo = _soma("custo_c")
+    tot_prov  = _soma("prov_c")
+    tot_enc   = _soma("encargos_c")
+    resumo = {
+        "anomes_fmt":      dados.get("anomes_fmt", ""),
+        "tipo_lbl":        dados.get("tipo_lbl",   ""),
+        "n_func":          len(linhas),
+        "sel_nome":        (linhas[0]["nome"] if (mat_sel and linhas) else ""),
+        "liq_fmt":         _fmt_val(_soma("liq_c")),
+        "irrf_fmt":        _fmt_val(_soma("irrf_c")),
+        "inss_fmt":        _fmt_val(_soma("inss_c")),
+        "adiant_fmt":      _fmt_val(_soma("adiant_c")),
+        "outros_fmt":      _fmt_val(_soma("outros_c")),
+        "prov_fmt":        _fmt_val(tot_prov),
+        "fgts_fmt":        _fmt_val(_soma("fgts_c")),
+        "patronal_fmt":    _fmt_val(_soma("patronal_c")),
+        "terceiros_fmt":   _fmt_val(_soma("terceiros_c")),
+        "encargos_fmt":    _fmt_val(tot_enc),
+        "custo_fmt":       _fmt_val(tot_custo),
+        "custo_medio_fmt": _fmt_val(tot_custo // len(linhas)) if linhas else _fmt_val(0),
+        # Encargos sobre os proventos — o "quanto por cento a mais" da folha.
+        "enc_pct":         (f"{tot_enc / tot_prov * 100:.2f}".replace(".", ",")
+                            if tot_prov else "0,00"),
+        "comp":              comp_list,
+        "regime_label":      pat["regime_label"],
+        "is_simples_ou_mei": pat["is_simples_ou_mei"],
+        "gps_fpas":          pat["gps_fpas"],
+    }
+    return linhas, resumo, funcs_sel
+
+
+def _rel_custo_args():
+    """(mat_sel, ordem) do filtro da tela. mat_sel = 0 significa TODOS."""
+    mat = (request.args.get("mat") or "").strip()
+    o   = (request.args.get("ordem") or "mat").strip().lower()
+    return (int(mat) if mat.isdigit() else 0), ("alfa" if o in ("alfa", "nome") else "mat")
+
+
+@app.route("/rel_custo")
+def rel_custo():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    mat_sel, ordem = _rel_custo_args()
+    # Mesma trava da Relação dos Líquidos: com a folha Aberta os valores ainda
+    # mudam a cada lançamento, e custo pela metade engana mais do que ajuda.
+    folha_aberta = _rel_liquidos_folha_aberta()
+
+    linhas, resumo, funcs_sel = [], _rel_custo_vazio(), []
+    if anomes and not folha_aberta:
+        linhas, resumo, funcs_sel = _rel_custo_dados(
+            _get_id_empresa(), session.get("id_cliente"), anomes, anomes_tipo,
+            mat_sel, ordem)
+    return render_template("F10_Rel_Custo.html", **_ctx_relatorio(),
+                           linhas=linhas, resumo=resumo, funcs_sel=funcs_sel,
+                           mat_sel=mat_sel, ordem=ordem, anomes_atual=anomes,
+                           folha_aberta=folha_aberta)
+
+
+@app.route("/rel_custo_pdf")
+def rel_custo_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+
+    from io import BytesIO
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.pagesizes import A4, landscape
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from reportlab.lib.styles import ParagraphStyle
+
+    anomes      = str(session.get("anomes_atual") or "")
+    anomes_tipo = str(session.get("anomes_tipo")  or "N")
+    if not anomes:
+        return "Nenhuma folha ativa.", 400
+    if _rel_liquidos_folha_aberta():
+        return ("A folha está Aberta — calcule a folha antes de emitir a "
+                "Análise de Custo."), 403
+
+    mat_sel, ordem = _rel_custo_args()
+    linhas, resumo, _funcs = _rel_custo_dados(
+        _get_id_empresa(), session.get("id_cliente"), anomes, anomes_tipo,
+        mat_sel, ordem)
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+    titulo     = (f"Análise de Custo — {resumo['anomes_fmt']}"
+                  + (f"  ({resumo['sel_nome']})" if resumo["sel_nome"]
+                     else f"  ({'por Nome' if ordem == 'alfa' else 'por Matrícula'})"))
+
+    def P(txt, fn="Helvetica", fs=7.5, align=0, col=colors.HexColor("#1f2937")):
+        st = ParagraphStyle("x", fontName=fn, fontSize=fs, alignment=align,
+                            textColor=col, leading=fs + 2)
+        return Paragraph(str(txt), st)
+
+    # Dez colunas em paisagem: área útil de 25,7cm com margens de 2cm. Sem o
+    # "R$" em cada célula os valores couberam em colunas mais estreitas, e
+    # sobrou largura para o Adiantamento.
+    cab      = ["Matrícula", "Nome", "Líquido", "IRRF", "INSS Desc.",
+                "Adiant.", "Outros Desc.", "FGTS", "INSS Empresa", "Custo Total"]
+    col_larg = [1.9*cm, 5.4*cm, 2.5*cm, 2.0*cm, 2.2*cm, 2.2*cm, 2.2*cm, 2.2*cm,
+                2.5*cm, 2.6*cm]
+    larg_util = 25.7*cm
+
+    tbl_data = [[P(h, fn="Helvetica-Bold", align=(0 if i < 2 else 2))
+                 for i, h in enumerate(cab)]]
+    for l in linhas:
+        tbl_data.append([
+            P(l["mat"], fn="Courier"),
+            P(l["nome"]),
+            P(l["liq_fmt"],      fn="Courier", align=2,
+              col=colors.HexColor("#1f2937" if l["liq_ok"] else "#b91c1c")),
+            P(l["irrf_fmt"],     fn="Courier", align=2),
+            P(l["inss_fmt"],     fn="Courier", align=2),
+            P(l["adiant_fmt"],   fn="Courier", align=2),
+            P(l["outros_fmt"],   fn="Courier", align=2),
+            P(l["fgts_fmt"],     fn="Courier", align=2),
+            P(l["patronal_fmt"], fn="Courier", align=2),
+            P(l["custo_fmt"],    fn="Courier-Bold", align=2,
+              col=colors.HexColor("#0b1f3a")),
+        ])
+    tbl_data.append([
+        P(""), P(f"TOTAL — {resumo['n_func']} funcionário(s)", fn="Helvetica-Bold"),
+        P(resumo["liq_fmt"],      fn="Courier-Bold", align=2),
+        P(resumo["irrf_fmt"],     fn="Courier-Bold", align=2),
+        P(resumo["inss_fmt"],     fn="Courier-Bold", align=2),
+        P(resumo["adiant_fmt"],   fn="Courier-Bold", align=2),
+        P(resumo["outros_fmt"],   fn="Courier-Bold", align=2),
+        P(resumo["fgts_fmt"],     fn="Courier-Bold", align=2),
+        P(resumo["patronal_fmt"], fn="Courier-Bold", align=2),
+        P(resumo["custo_fmt"],    fn="Courier-Bold", align=2,
+          col=colors.HexColor("#0b1f3a")),
+    ])
+
+    tbl   = Table(tbl_data, colWidths=col_larg, repeatRows=1)
+    n_ult = len(tbl_data) - 1
+    row_bg = [("BACKGROUND", (0, i), (-1, i),
+               colors.HexColor("#f8fafc") if i % 2 == 0 else colors.white)
+              for i in range(1, n_ult)]
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEBELOW",     (0, 1), (-1, -2), 0.3, colors.HexColor("#f1f5f9")),
+        ("LINEABOVE",     (0, n_ult), (-1, n_ult), 0.8, colors.HexColor("#94a3b8")),
+        ("BACKGROUND",    (0, n_ult), (-1, n_ult), colors.HexColor("#f1f5f9")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 4),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ] + row_bg))
+
+    story = [_pdf_cabecalho(titulo, cnpj_fmt, empresa_nm, page_width=larg_util,
+                            data_label="Emitido em"),
+             Spacer(1, 8), tbl, Spacer(1, 14)]
+
+    # Adiantamento pago aqui e descontado em outra folha (rescisão): sem esta
+    # nota as colunas dessas linhas nao somam o Custo Total e parecem erro.
+    _divs = [l["mat"] for l in linhas if l["adiant_dif"]]
+    if _divs:
+        story.append(P("Matrícula(s) " + ", ".join(_divs) + ": o adiantamento das "
+                       "verbas 161-164 foi pago nesta folha, mas descontado em outra "
+                       "(rescisão). Nessas linhas as colunas não somam exatamente o "
+                       "Custo Total.", fs=7, col=colors.HexColor("#92400e")))
+        story.append(Spacer(1, 10))
+
+    # Composição do INSS Empresa — é onde os terceiros aparecem detalhados.
+    # Numa linha só da tabela acima eles não cabem; aqui saem um por um, com o
+    # percentual do cadastro da empresa.
+    comp_data = [[P("INSS Empresa — composição", fn="Helvetica-Bold"),
+                  P("%", fn="Helvetica-Bold", align=2),
+                  P("Valor", fn="Helvetica-Bold", align=2)]]
+    for c in resumo["comp"]:
+        comp_data.append([P(("    " if c["is_terceiro"] else "") + c["label"]),
+                          P(c["pct"], fn="Courier", align=2),
+                          P(c["val"], fn="Courier", align=2)])
+    if not resumo["comp"]:
+        comp_data.append([P(f"Empresa pelo {resumo['regime_label']} — "
+                            f"CP, RAT e terceiros recolhidos pela DAS"),
+                          P("0,00%", fn="Courier", align=2),
+                          P(_fmt_val(0), fn="Courier", align=2)])
+    comp_data.append([P("Total INSS Empresa", fn="Helvetica-Bold"), P(""),
+                      P(resumo["patronal_fmt"], fn="Courier-Bold", align=2)])
+    comp_data.append([P("FGTS depositado", fn="Helvetica-Bold"), P(""),
+                      P(resumo["fgts_fmt"], fn="Courier-Bold", align=2)])
+    comp_data.append([P(f"Encargos sobre a folha ({resumo['enc_pct']}% dos proventos)",
+                        fn="Helvetica-Bold"), P(""),
+                      P(resumo["encargos_fmt"], fn="Courier-Bold", align=2)])
+    comp = Table(comp_data, colWidths=[8.0*cm, 2.2*cm, 3.0*cm])
+    n_c  = len(comp_data) - 1
+    comp.setStyle(TableStyle([
+        ("BACKGROUND",    (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("LINEBELOW",     (0, 0), (-1, 0), 0.5, colors.HexColor("#dbe3ee")),
+        ("LINEABOVE",     (0, n_c - 2), (-1, n_c - 2), 0.8, colors.HexColor("#94a3b8")),
+        ("BACKGROUND",    (0, n_c - 2), (-1, n_c), colors.HexColor("#f8fafc")),
+        ("BOX",           (0, 0), (-1, -1), 0.5, colors.HexColor("#dde3ec")),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 6),
+    ]))
+    story.append(comp)
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=landscape(A4),
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc.build(story, onFirstPage=_pdf_num_pagina, onLaterPages=_pdf_num_pagina)
+    buf.seek(0)
+
+    from flask import make_response
+    resp = make_response(buf.read())
+    resp.headers["Content-Type"]        = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="Custo_{anomes}.pdf"'
     return resp
 
 
@@ -51924,6 +53067,106 @@ def calcular_folha_etapa1_pdf():
 
 
 # =========================================================
+# INSS — PARTE PATRONAL (percentuais do cadastro da empresa)
+# =========================================================
+def _inss_patronal_perc(id_empresa, anomes, origem="inss_patronal"):
+    """Percentuais da parte patronal do INSS desta empresa nesta competência.
+
+    Devolve PERCENTUAIS, não valores: quem chama aplica sobre a base que lhe
+    interessa — a base da folha inteira (Resumo da Folha) ou a base de um
+    funcionário só (Análise de Custo). Com isso os dois relatórios usam a
+    mesma regra e não divergem.
+
+    Simples Nacional (ind_simples = S) e MEI (classTrib 04) recolhem CP, RAT e
+    terceiros pela DAS, nada em GPS: para esses TODOS os percentuais voltam
+    zerados, mesmo que o cadastro tenha terceiros preenchidos.
+
+    RAT = grau de risco (1/2/3 %) × FAP do ano da folha (tab_eventos op1=34,
+    campotxt1 = ano, campotxt2 = fator).
+    """
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("ind_simples,es08_classtributaria,risco,gps_fpas,gps_fpas_perc,"
+                         "gps_saleduc,gps_incra,gps_senai,gps_sesi,"
+                         "gps_senac,gps_sesc,gps_sebrae,gps_dpc,gps_senar,"
+                         "gps_sest,gps_senat,gps_sesco")
+                 .eq("id_empresa", id_empresa)
+                 .limit(1).execute())
+        emp = r_emp.data[0] if r_emp.data else {}
+    except Exception as e:
+        # Nao engolir calado: se o select quebrar, a empresa vira "Geral" e o
+        # patronal aparece indevidamente (foi o que acontecia com class_trib).
+        print(f"[{origem}] falha ao ler tab_empresa {id_empresa}: {e}")
+        emp = {}
+
+    ind_simples = str(emp.get("ind_simples") or "N").upper()
+    # A classificacao tributaria do eSocial fica em es08_classtributaria
+    # (nao existe coluna class_trib em tab_empresa).
+    class_trib  = str(emp.get("es08_classtributaria") or "").zfill(2)
+    # Optante pelo Simples Nacional (campo obrigatorio do cadastro) e MEI
+    # (classTrib 04) tem a contribuicao patronal, o RAT e os terceiros
+    # recolhidos pelo DAS — nada em GPS.
+    is_simples_ou_mei = (ind_simples == "S") or (class_trib == "04")
+    risco_grau  = int(emp.get("risco") or 0)   # 1=1% 2=2% 3=3%
+    rat_pct     = float(risco_grau)             # % numérico direto
+
+    # FAP do ano da folha (op1=34, campotxt1=ano, campotxt2=fator)
+    fap_fator = 1.0
+    if risco_grau:
+        try:
+            r_fap = (supabase.table("tab_eventos")
+                     .select("campotxt2")
+                     .eq("id_empresa", id_empresa)
+                     .eq("op1", 34)
+                     .eq("campotxt1", str(anomes)[:4])
+                     .limit(1).execute())
+            if r_fap.data:
+                fap_fator = round(float(r_fap.data[0].get("campotxt2") or 1.0), 4)
+        except Exception:
+            fap_fator = 1.0
+
+    # RAT ajustado = Grau de Risco × FAP
+    rat_ajustado = round(rat_pct * fap_fator, 4)
+    if risco_grau and fap_fator != 1.0:
+        rat_label = f"RAT — Grau {risco_grau} × FAP {fap_fator:.4f}"
+    elif risco_grau:
+        rat_label = f"RAT — Grau {risco_grau}"
+    else:
+        rat_label = "RAT"
+
+    terceiros = []
+    if not is_simples_ou_mei:
+        for label, campo in [
+            ("Salário Educação", "gps_saleduc"), ("INCRA",   "gps_incra"),
+            ("SENAI",         "gps_senai"),   ("SESI",    "gps_sesi"),
+            ("SENAC",         "gps_senac"),   ("SESC",    "gps_sesc"),
+            ("SEBRAE",        "gps_sebrae"),  ("DPC",     "gps_dpc"),
+            ("SENAR",         "gps_senar"),   ("SEST",    "gps_sest"),
+            ("SENAT",         "gps_senat"),   ("SESCOOP", "gps_sesco"),
+        ]:
+            pct = float(emp.get(campo) or 0)
+            if pct:
+                terceiros.append((label, pct))
+
+    return {
+        "ind_simples":       ind_simples,
+        "class_trib":        class_trib,
+        "is_simples_ou_mei": is_simples_ou_mei,
+        "regime_label": ("MEI" if class_trib == "04"
+                         else ("Simples Nacional" if is_simples_ou_mei else "Geral")),
+        "gps_fpas":          str(emp.get("gps_fpas") or "—"),
+        "fpas_perc":         float(emp.get("gps_fpas_perc") or 0),
+        "risco_grau":        risco_grau,
+        "fap_fator":         fap_fator,
+        "cp_pct":            0.0 if is_simples_ou_mei else 20.0,
+        "rat_pct":           0.0 if is_simples_ou_mei else rat_ajustado,
+        "rat_label":         rat_label,
+        "terceiros":         terceiros,
+        "terceiros_pct":     sum(p for _, p in terceiros),
+    }
+
+
+# =========================================================
 # RESUMO DA FOLHA
 # =========================================================
 def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
@@ -52113,46 +53356,13 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         return f"{num / den * 100:.2f}".replace(".", ",") if den else "0,00"
 
     # ── Empresa (INSS patronal) ──
-    try:
-        r_emp = (supabase.table("tab_empresa")
-                 .select("ind_simples,es08_classtributaria,risco,gps_fpas,gps_fpas_perc,"
-                         "gps_saleduc,gps_incra,gps_senai,gps_sesi,"
-                         "gps_senac,gps_sesc,gps_sebrae,gps_dpc,gps_senar,"
-                         "gps_sest,gps_senat,gps_sesco")
-                 .eq("id_empresa", id_empresa)
-                 .limit(1).execute())
-        emp = r_emp.data[0] if r_emp.data else {}
-    except Exception as e:
-        # Nao engolir calado: se o select quebrar, a empresa vira "Geral" e o
-        # patronal aparece indevidamente (foi o que acontecia com class_trib).
-        print(f"[resumo_folha] falha ao ler tab_empresa {id_empresa}: {e}")
-        emp = {}
-
-    ind_simples = str(emp.get("ind_simples") or "N").upper()
-    # A classificacao tributaria do eSocial fica em es08_classtributaria
-    # (nao existe coluna class_trib em tab_empresa).
-    class_trib  = str(emp.get("es08_classtributaria") or "").zfill(2)
-    # Optante pelo Simples Nacional (campo obrigatorio do cadastro) e MEI
-    # (classTrib 04) tem a contribuicao patronal, o RAT e os terceiros
-    # recolhidos pelo DAS — nada em GPS.
-    is_simples_ou_mei = (ind_simples == "S") or (class_trib == "04")
-    risco_grau  = int(emp.get("risco") or 0)   # 1=1% 2=2% 3=3%
-    rat_pct     = float(risco_grau)             # % numérico direto
-
-    # FAP do ano da folha (op1=34, campotxt1=ano, campotxt2=fator)
-    fap_fator = 1.0
-    if risco_grau:
-        try:
-            r_fap = (supabase.table("tab_eventos")
-                     .select("campotxt2")
-                     .eq("id_empresa", id_empresa)
-                     .eq("op1", 34)
-                     .eq("campotxt1", anomes[:4])
-                     .limit(1).execute())
-            if r_fap.data:
-                fap_fator = round(float(r_fap.data[0].get("campotxt2") or 1.0), 4)
-        except Exception:
-            fap_fator = 1.0
+    # Os percentuais (CP, RAT × FAP e cada terceiro) saem de
+    # _inss_patronal_perc — o mesmo que a Análise de Custo usa, para os dois
+    # relatórios nunca divergirem na regra.
+    pat = _inss_patronal_perc(id_empresa, anomes, origem="resumo_folha")
+    ind_simples       = pat["ind_simples"]
+    class_trib        = pat["class_trib"]
+    is_simples_ou_mei = pat["is_simples_ou_mei"]
 
     # Base da parte patronal: a CP de 20% incide também sobre o pró-labore dos
     # contribuintes individuais; RAT e terceiros, só sobre empregados.
@@ -52173,48 +53383,17 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
     inss_emp_linhas = []
     inss_emp_total  = 0
 
-    fpas_perc = float(emp.get("gps_fpas_perc") or 0)
-
-    # Contribuição Patronal (20%) e RAT — nao se aplicam a Simples Nacional
-    # nem MEI. Para esses regimes, a contribuicao e recolhida pela DAS, nao
-    # pela GPS.
-    if not is_simples_ou_mei:
-        l = _linha_emp("Contribuição Patronal", 20.0, base=base_cp_patronal)
+    # Contribuição Patronal, RAT e terceiros — no Simples Nacional e no MEI os
+    # percentuais voltam zerados de _inss_patronal_perc (recolhimento pela
+    # DAS), e _linha_emp descarta a linha.
+    for _lbl, _perc, _dec, _base in (
+            [("Contribuição Patronal", pat["cp_pct"],  2, base_cp_patronal),
+             (pat["rat_label"],        pat["rat_pct"], 4, None)]
+            + [(lbl, p, 2, None) for lbl, p in pat["terceiros"]]):
+        l = _linha_emp(_lbl, _perc, dec=_dec, base=_base)
         if l:
             inss_emp_linhas.append(l)
             inss_emp_total += l["val_c"]
-
-        # RAT ajustado = Grau de Risco × FAP
-        rat_ajustado = round(rat_pct * fap_fator, 4)
-        if risco_grau and fap_fator != 1.0:
-            rat_label = f"RAT — Grau {risco_grau} × FAP {fap_fator:.4f}"
-        elif risco_grau:
-            rat_label = f"RAT — Grau {risco_grau}"
-        else:
-            rat_label = "RAT"
-        l = _linha_emp(rat_label, rat_ajustado, dec=4)
-        if l:
-            inss_emp_linhas.append(l)
-            inss_emp_total += l["val_c"]
-
-    # Terceiros individuais — somam no total. Para Simples Nacional e MEI,
-    # nenhum dos terceiros e devido pela GPS (todos sao recolhidos pela DAS),
-    # entao ignoramos o que estiver no cadastro.
-    if not is_simples_ou_mei:
-        terceiros = [
-            ("Salário Educação", "gps_saleduc"), ("INCRA",   "gps_incra"),
-            ("SENAI",         "gps_senai"),   ("SESI",    "gps_sesi"),
-            ("SENAC",         "gps_senac"),   ("SESC",    "gps_sesc"),
-            ("SEBRAE",        "gps_sebrae"),  ("DPC",     "gps_dpc"),
-            ("SENAR",         "gps_senar"),   ("SEST",    "gps_sest"),
-            ("SENAT",         "gps_senat"),   ("SESCOOP", "gps_sesco"),
-        ]
-        for label, campo in terceiros:
-            pct = float(emp.get(campo) or 0)
-            l = _linha_emp(label, pct)
-            if l:
-                inss_emp_linhas.append(l)
-                inss_emp_total += l["val_c"]
 
     # Simples Nacional / MEI: CP, RAT e terceiros sao substituidos pelo DAS,
     # entao a parte patronal em GPS e zero. Mostramos uma linha explicita em
@@ -52277,7 +53456,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         "regime_label": ("MEI" if class_trib == "04"
                          else ("Simples Nacional" if is_simples_ou_mei
                                else "Geral")),
-        "gps_fpas":         str(emp.get("gps_fpas") or "—"),
+        "gps_fpas":         pat["gps_fpas"],
     }
 
 
@@ -52796,15 +53975,27 @@ def calc_ferias():
     )
 
 
-def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_brutos):
-    """Grava PDF de memória de cálculo de férias por funcionário em C:\\Folha10-Simples_Memoria."""
+def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_brutos,
+                          retornar_story=False, simulado=False):
+    """Grava PDF de memória de cálculo de férias por funcionário em C:\\Folha10-Simples_Memoria.
+
+    `retornar_story=True` muda o destino, não o conteúdo: em vez de gerar um
+    arquivo por funcionário, devolve [(matricula, nome, elementos)] para quem
+    chamou montar um PDF só. É assim que a simulação emenda as memórias depois
+    da listagem, sem reescrever esta conta toda de novo.
+
+    `simulado=True` carimba SIMULACAO no título de cada memória — uma página
+    solta, impressa, não pode se passar pela memória do cálculo de verdade.
+    """
     if not resultados_brutos or len(anomes) != 6:
-        return
+        return [] if retornar_story else None
 
     anomes_pasta = f"{anomes[:4]}-{anomes[4:6]}"
-    dest = _memoria_destino(anomes, id_empresa)   # local (Windows) ou Storage (Render)
-    if not dest.get("base"):
+    # Sem arquivo para gravar, não há destino a procurar nem pasta a limpar.
+    dest = {} if retornar_story else _memoria_destino(anomes, id_empresa)
+    if not retornar_story and not dest.get("base"):
         return
+    stories = []
 
     ts = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
 
@@ -52847,8 +54038,9 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
 
     # Mantém só a memória do último cálculo: apaga as memórias de FÉRIAS
     # anteriores desta folha/empresa (não arquiva mais).
-    _memoria_apagar(anomes, id_empresa,
-                    remover_pred=lambda n: "_Ferias_" in n and n.lower().endswith(".pdf"))
+    if not retornar_story:
+        _memoria_apagar(anomes, id_empresa,
+                        remover_pred=lambda n: "_Ferias_" in n and n.lower().endswith(".pdf"))
 
     for r in resultados_brutos:
         mat  = int(r["matricula"])
@@ -52885,7 +54077,9 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             und_pdf         = str(r.get("und_pdf") or "M").upper()
 
             buf = io.BytesIO()
-            titulo_mem  = f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — FERIAS — {mat:06d} — {nome}"
+            titulo_mem  = (("SIMULACAO — " if simulado else "")
+                           + f"MEMORIA DE CALCULO — {anomes[4:6]}/{anomes[:4]} — "
+                             f"FERIAS — {mat:06d} — {nome}")
             _agora_hf   = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
             _emp_hf     = f"{cnpj_fmt} — {empresa_nm}"
 
@@ -53389,61 +54583,42 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             elems.append(Spacer(1, 0.5*cm))
             elems.append(tot_tbl)
 
-            doc.build(elems, onFirstPage=_draw_hdr_ferias, onLaterPages=_draw_hdr_ferias)
-            _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
+            if retornar_story:
+                # O título vira um flowable porque o PDF da simulação é um só,
+                # com vários funcionários: um cabeçalho de página por matrícula
+                # não caberia num SimpleDocTemplate de handler único.
+                stories.append((mat, nome, elems))
+            else:
+                doc.build(elems, onFirstPage=_draw_hdr_ferias, onLaterPages=_draw_hdr_ferias)
+                _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_pdf:
             print(f"[gerar_memoria_ferias] mat={mat} erro: {e_pdf}")
+
+    return stories if retornar_story else None
 
 
 # =========================================================
 # CÁLCULO DE FÉRIAS — API
 # =========================================================
-@app.route("/api/calc_ferias_calcular", methods=["POST"])
-def api_calc_ferias_calcular():
-    if not session.get("logado"):
-        return jsonify({"ok": False, "msg": "Sessão expirada."})
+def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
+                        gravar=True):
+    """A conta das férias, separada de quem manda gravá-la.
 
-    sit = str(session.get("anomes_situacao") or "")
-    if sit in ("C", "F"):
-        return jsonify({"ok": False, "msg": "Folha está calculada/fechada — reabra para calcular férias."})
+    Recebe os eventos de férias JÁ prontos — do tab_eventos no cálculo de
+    verdade, ou montados em memória pela simulação (ver _sim_ferias_montar).
 
-    anomes     = str(session.get("anomes_atual") or "")
-    id_empresa = _get_id_empresa()
-    id_cliente = session.get("id_cliente")
+    `gravar=False` faz a mesma conta sem tocar no banco: não limpa o que estava
+    lá, não insere em tab_mov/tab_total e não escreve no log. O que ela TERIA
+    gravado volta dentro de cada resultado, em `recs_mov_pdf` e nos totais.
 
-    if not anomes or len(anomes) != 6:
-        return jsonify({"ok": False, "msg": "Folha ativa não definida."})
+    Devolve (erro, resultados). `erro` é texto e, quando vem preenchido,
+    `resultados` é None.
 
-    empresa_nm = str(session.get("empresa_info") or "")
-    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
-
-    tabela = _get_tabela_legais(anomes)
-    if not tabela:
-        return jsonify({"ok": False, "msg": "Tabela legal (INSS/IRRF) não encontrada para este período."})
-
-    data     = request.get_json(force=True) or {}
-    mats_req = [int(m) for m in data.get("matriculas", []) if str(m).strip().isdigit() or isinstance(m, int)]
-
-    try:
-        q = (
-            supabase.table("tab_eventos")
-            .select("matricula, data1i, data1f, data2i, data2f, ref1, ref2")
-            .eq("id_cliente", id_cliente)
-            .eq("id_empresa", id_empresa)
-            .eq("op1", 3)
-            .gte("data1i", anomes + "01")
-            .lte("data1i", anomes + "31")
-            .order("matricula")
-        )
-        if mats_req:
-            q = q.in_("matricula", mats_req)
-        eventos = q.execute().data or []
-    except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar férias: {e}"})
-
-    if not eventos:
-        return jsonify({"ok": False, "msg": "Nenhum funcionário com férias iniciando neste mês."})
-
+    Por que existe: antes esta conta morava dentro da rota que grava, e a
+    simulação teria de reescrevê-la. Duas contas de férias no mesmo sistema
+    divergem na primeira mudança de regra — e a simulação passaria a mentir em
+    PDF. Aqui a regra muda num lugar só.
+    """
     mats = list({ev["matricula"] for ev in eventos})
 
     try:
@@ -53457,7 +54632,7 @@ def api_calc_ferias_calcular():
         )
         cad_map = {c["matricula"]: c for c in (r_cad.data or [])}
     except Exception as e:
-        return jsonify({"ok": False, "msg": f"Erro ao buscar cadastros: {e}"})
+        return f"Erro ao buscar cadastros: {e}", None
 
     dep_count    = _get_dep_irrf_count(id_empresa)
     dep_irrf_ded = int(tabela.get("irrf_dep_dedu") or 0)
@@ -53761,29 +54936,31 @@ def api_calc_ferias_calcular():
         liquido    = total_prov - total_desc
 
         # ── Apaga apenas registros calculados (origem='C'); preserva manuais (origem='M') ──
-        try:
-            (supabase.table("tab_mov")
-             .delete()
-             .eq("id_cliente", id_cliente)
-             .eq("id_empresa", id_empresa)
-             .eq("matricula",  mat)
-             .eq("folha",      folha_int)
-             .eq("folha_tipo", "F")
-             .eq("origem",     "C")
-             .execute())
-        except Exception:
-            pass
-        try:
-            (supabase.table("tab_total")
-             .delete()
-             .eq("id_cliente", id_cliente)
-             .eq("id_empresa", id_empresa)
-             .eq("matricula",  mat)
-             .eq("folha",      folha_int)
-             .eq("folha_tipo", "F")
-             .execute())
-        except Exception:
-            pass
+        # Simulação não limpa nada: ela não vai gravar no lugar.
+        if gravar:
+            try:
+                (supabase.table("tab_mov")
+                 .delete()
+                 .eq("id_cliente", id_cliente)
+                 .eq("id_empresa", id_empresa)
+                 .eq("matricula",  mat)
+                 .eq("folha",      folha_int)
+                 .eq("folha_tipo", "F")
+                 .eq("origem",     "C")
+                 .execute())
+            except Exception:
+                pass
+            try:
+                (supabase.table("tab_total")
+                 .delete()
+                 .eq("id_cliente", id_cliente)
+                 .eq("id_empresa", id_empresa)
+                 .eq("matricula",  mat)
+                 .eq("folha",      folha_int)
+                 .eq("folha_tipo", "F")
+                 .execute())
+            except Exception:
+                pass
 
         # ── Monta e insere registros em tab_mov ──────────────────
         base_mov = {
@@ -53838,12 +55015,12 @@ def api_calc_ferias_calcular():
         print(f"[calc_ferias] mat={mat} base={base_calc} inss={g_inss_val} irrf={g_irrf_val} "
               f"recs={len(recs_mov)} verbas={[r['cod_verba'] for r in recs_mov]}"
               + (" [cliente sem encargos]" if _enc0 else ""))
-        if recs_mov:
+        if gravar and recs_mov:
             try:
                 supabase.table("tab_mov").insert(recs_mov).execute()
             except Exception as e_ins:
                 print(f"[calc_ferias] ERRO insert tab_mov mat={mat}: {e_ins}")
-                return jsonify({"ok": False, "msg": f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}"})
+                return f"Erro ao gravar movimentos (mat {mat}): {str(e_ins)[:200]}", None
 
         # ── Insere totais em tab_total (folha_tipo='F') ──────────
         # total_prov / total_desc já vieram calculados junto com o líquido.
@@ -53870,19 +55047,21 @@ def api_calc_ferias_calcular():
                 "os":                        0,
                 "controle":                  0,
             }
-            try:
-                supabase.table("tab_total").insert(rec_tot).execute()
-            except Exception:
-                rec_sem_sit = {k: v for k, v in rec_tot.items() if k != "situacao"}
-                supabase.table("tab_total").insert(rec_sem_sit).execute()
+            if gravar:
+                try:
+                    supabase.table("tab_total").insert(rec_tot).execute()
+                except Exception:
+                    rec_sem_sit = {k: v for k, v in rec_tot.items() if k != "situacao"}
+                    supabase.table("tab_total").insert(rec_sem_sit).execute()
         except Exception:
             pass
 
-        gravar_log("CALC_FER",
-                   f"Férias calculadas: {dias}d sal={_fmt_brl(sal_ferias)} 1/3={_fmt_brl(terco_const)} "
-                   f"INSS={_fmt_brl(g_inss_val)} IRRF={_fmt_brl(g_irrf_val)} Liq={_fmt_brl(liquido)}"
-                   + (" [cliente sem encargos]" if _enc0 else ""),
-                   matricula=mat)
+        if gravar:
+            gravar_log("CALC_FER",
+                       f"Férias calculadas: {dias}d sal={_fmt_brl(sal_ferias)} 1/3={_fmt_brl(terco_const)} "
+                       f"INSS={_fmt_brl(g_inss_val)} IRRF={_fmt_brl(g_irrf_val)} Liq={_fmt_brl(liquido)}"
+                       + (" [cliente sem encargos]" if _enc0 else ""),
+                       matricula=mat)
 
         calc_dhg_now = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
         resultados.append({
@@ -53998,6 +55177,61 @@ def api_calc_ferias_calcular():
             ],
         })
 
+
+    return None, resultados
+
+
+@app.route("/api/calc_ferias_calcular", methods=["POST"])
+def api_calc_ferias_calcular():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    sit = str(session.get("anomes_situacao") or "")
+    if sit in ("C", "F"):
+        return jsonify({"ok": False, "msg": "Folha está calculada/fechada — reabra para calcular férias."})
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+
+    if not anomes or len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Folha ativa não definida."})
+
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    tabela = _get_tabela_legais(anomes)
+    if not tabela:
+        return jsonify({"ok": False, "msg": "Tabela legal (INSS/IRRF) não encontrada para este período."})
+
+    data     = request.get_json(force=True) or {}
+    mats_req = [int(m) for m in data.get("matriculas", []) if str(m).strip().isdigit() or isinstance(m, int)]
+
+    try:
+        q = (
+            supabase.table("tab_eventos")
+            .select("matricula, data1i, data1f, data2i, data2f, ref1, ref2")
+            .eq("id_cliente", id_cliente)
+            .eq("id_empresa", id_empresa)
+            .eq("op1", 3)
+            .gte("data1i", anomes + "01")
+            .lte("data1i", anomes + "31")
+            .order("matricula")
+        )
+        if mats_req:
+            q = q.in_("matricula", mats_req)
+        eventos = q.execute().data or []
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao buscar férias: {e}"})
+
+    if not eventos:
+        return jsonify({"ok": False, "msg": "Nenhum funcionário com férias iniciando neste mês."})
+
+    erro, resultados = _calc_ferias_nucleo(anomes, id_empresa, id_cliente,
+                                           eventos, tabela, gravar=True)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+
     try:
         _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados)
     except Exception as e_mem:
@@ -54013,6 +55247,341 @@ def api_calc_ferias_calcular():
     resultados_web = [{k: v for k, v in r.items() if k not in _CAMPOS_PDF} for r in resultados]
     return jsonify({"ok": True, "resultados": resultados_web})
 
+
+# =========================================================
+# SIMULAÇÃO DE FÉRIAS
+# =========================================================
+# Mesmo desenho da Simulação da Rescisão: a tela monta os parâmetros, o cálculo
+# roda pelo NÚCLEO de verdade (_calc_ferias_nucleo com gravar=False) e a saída é
+# só o PDF. Nada vai para tab_eventos, tab_mov, tab_total nem para o log — o
+# funcionário não fica com férias lançadas por ter sido simulado.
+#
+# A simulação não fica guardada no servidor: o PDF refaz a conta a partir dos
+# parâmetros que vieram do formulário. O cálculo é determinístico e o site roda
+# com mais de um processo — um cache em memória não estaria lá na hora de
+# imprimir.
+
+
+def _sim_ferias_montar(itens):
+    """Monta os eventos de férias em memória, no formato que o núcleo espera.
+
+    Devolve (eventos, nomes, erro). Cada item da tela: matrícula, data de
+    início, dias de gozo, abono pecuniário e período aquisitivo.
+
+    O evento montado aqui é gêmeo do que api_ferias_gravar gravaria no
+    tab_eventos — mesmos campos, mesmas regras de abono e de período
+    aquisitivo (ver _ferias_dias_abono e _ferias_periodo_aquisitivo). A
+    diferença é que este nunca vê o banco.
+    """
+    from datetime import date as _date
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+
+    if len(anomes) != 6:
+        return [], {}, "Folha ativa não definida."
+
+    mats = []
+    for it in (itens or []):
+        m = str(it.get("mat") or "").strip()
+        if m.isdigit():
+            mats.append(int(m))
+    if not mats:
+        return [], {}, "Selecione ao menos um funcionário para simular."
+
+    try:
+        r = (supabase.table("tab_cad").select("matricula, nome, nomer, dtadm, situacao")
+             .eq("id_empresa", id_empresa).in_("matricula", mats).execute())
+        cads = {int(c.get("matricula") or 0): c for c in (r.data or [])}
+    except Exception as e:
+        return [], {}, f"Erro ao buscar os funcionários: {str(e)[:150]}"
+
+    eventos, nomes = [], {}
+    for it in (itens or []):
+        m = str(it.get("mat") or "").strip()
+        if not m.isdigit():
+            continue
+        mat = int(m)
+        cad = cads.get(mat)
+        if not cad:
+            return [], {}, f"Funcionário {mat:06d} não encontrado nesta empresa."
+
+        try:
+            d_ini = _date.fromisoformat(str(it.get("data") or "").strip())
+        except Exception:
+            return [], {}, f"Informe a data de início das férias do funcionário {mat:06d}."
+        data1i = d_ini.strftime("%Y%m%d")
+        # Mesma trava do lançamento real: as tabelas de INSS/IRRF e a ficha
+        # financeira usadas são as da folha ativa.
+        if data1i[:6] != anomes:
+            return [], {}, (f"As férias do funcionário {mat:06d} têm de começar dentro "
+                            f"da folha {anomes[4:6]}/{anomes[:4]}.")
+
+        try:
+            dias = int(str(it.get("dias") or "").strip())
+        except (TypeError, ValueError):
+            return [], {}, f"Informe os dias de férias do funcionário {mat:06d}."
+        if not (10 <= dias <= 30):
+            return [], {}, (f"Dias de férias do funcionário {mat:06d}: "
+                            f"tem de ser entre 10 e 30.")
+
+        dtadm_str = str(cad.get("dtadm") or "").zfill(8)
+        d_adm = _ferias_str_to_date(dtadm_str)
+        if d_adm and d_ini < d_adm:
+            return [], {}, (f"Funcionário {mat:06d}: as férias começariam antes da "
+                            f"admissão ({dtadm_str[6:8]}/{dtadm_str[4:6]}/{dtadm_str[:4]}).")
+
+        data1f = (d_ini + timedelta(days=dias - 1)).strftime("%Y%m%d")
+
+        abono   = str(it.get("abono") or "auto").strip().lower()
+        periodo = str(it.get("periodo") or "auto").strip().lower()
+        dias_abono = _ferias_dias_abono(abono, dias)
+
+        # O período aquisitivo sai do histórico REAL do funcionário: é dele que
+        # o núcleo tira os meses da média das variáveis (método MAP).
+        try:
+            r_prev = (supabase.table("tab_eventos")
+                      .select("data1i, data1f, data2i, data2f")
+                      .eq("id_cliente", id_cliente)
+                      .eq("id_empresa", id_empresa)
+                      .eq("matricula", mat)
+                      .eq("op1", 3)
+                      .order("data1i", desc=True)
+                      .execute())
+            todas_ferias = r_prev.data or []
+        except Exception:
+            todas_ferias = []
+        data2i, data2f = _ferias_periodo_aquisitivo(todas_ferias, dtadm_str, periodo)
+
+        nomes[mat] = (cad.get("nomer") or cad.get("nome") or "").strip()
+        eventos.append({
+            "matricula": mat,
+            "data1i":    data1i,
+            "data1f":    data1f,
+            "ref1":      dias,
+            "ref2":      dias_abono if dias_abono else None,
+            "data2i":    data2i,
+            "data2f":    data2f,
+        })
+
+    eventos.sort(key=lambda e: e["matricula"])
+    return eventos, nomes, None
+
+
+@app.route("/simular_ferias")
+def simular_ferias():
+    """Tela da simulação — lista os funcionários ATIVOS para escolher."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    funcs = []
+    try:
+        r = (supabase.table("tab_cad").select("matricula, nome, nomer, dtadm, vrsalfx")
+             .eq("id_empresa", id_empresa).eq("situacao", "A").order("nome").execute())
+        for f in (r.data or []):
+            mat = int(f.get("matricula") or 0)
+            s   = str(f.get("dtadm") or "").zfill(8)
+            funcs.append({
+                "matricula": mat,
+                "mat_fmt":   f"{mat:06d}",
+                "nome":      (f.get("nome") or f.get("nomer") or "").strip(),
+                "dtadm_fmt": (f"{s[6:8]}/{s[4:6]}/{s[:4]}" if len(s) == 8 and s.isdigit() else "—"),
+                "sal_fmt":   _fmt_brl(int(f.get("vrsalfx") or 0)),
+            })
+    except Exception as e:
+        print(f"[simular_ferias] erro ao listar: {e}")
+
+    # As férias têm de COMEÇAR dentro da folha ativa. Hoje, se hoje estiver
+    # nela; senão o primeiro dia dela — e não o último, porque férias que
+    # começam no dia 31 quase não têm o que simular.
+    from datetime import date as _date
+    hoje = _date.today()
+    if len(anomes) == 6 and hoje.strftime("%Y%m") != anomes:
+        data_sug = f"{anomes[:4]}-{anomes[4:6]}-01"
+    else:
+        data_sug = hoje.isoformat()
+
+    return render_template("F10_Simular_Ferias.html",
+                           versao=ler_versao(),
+                           nome=session.get("nome", ""),
+                           empresa=session.get("empresa_info", ""),
+                           anomes_atual=anomes,
+                           anomes_fmt=(f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else "—"),
+                           funcs=funcs,
+                           data_sug=data_sug)
+
+
+def _sim_ferias_pdf_listagem(resultados, anomes, empresa_nm, cnpj_fmt):
+    """A primeira parte do PDF: uma linha por funcionário simulado."""
+    from reportlab.platypus import PageBreak
+
+    st_tit = ParagraphStyle("sf_tit", fontName="Helvetica-Bold", fontSize=12,
+                            spaceAfter=2, textColor=colors.HexColor("#0f172a"))
+    st_sub = ParagraphStyle("sf_sub", fontName="Helvetica", fontSize=8.5,
+                            spaceAfter=10, textColor=colors.HexColor("#475569"))
+    st_cel = ParagraphStyle("sf_cel", fontName="Helvetica", fontSize=7.5, leading=9)
+
+    elems = [
+        Paragraph("SIMULACAO DE FERIAS", st_tit),
+        Paragraph(f"{empresa_nm} — {cnpj_fmt} — Folha {anomes[4:6]}/{anomes[:4]}", st_sub),
+    ]
+
+    cab = ["Matr.", "Nome", "Período de gozo", "Dias", "Abono",
+           "Proventos", "Descontos", "Líquido"]
+    linhas = [cab]
+    t_prov = t_desc = t_liq = 0
+    for r in resultados:
+        t_prov += int(r.get("total_prov") or 0)
+        t_desc += int(r.get("total_desc") or 0)
+        t_liq  += int(r.get("liquido")    or 0)
+        linhas.append([
+            r.get("mat_fmt", ""),
+            Paragraph(str(r.get("nome") or "")[:38], st_cel),
+            f"{r.get('data1i_fmt','')} a {r.get('data1f_fmt','')}",
+            str(r.get("dias") or 0),
+            (str(r.get("dias_abono")) if r.get("dias_abono") else "—"),
+            _fmt_brl(int(r.get("total_prov") or 0)),
+            _fmt_brl(int(r.get("total_desc") or 0)),
+            _fmt_brl(int(r.get("liquido") or 0)),
+        ])
+    if len(resultados) > 1:
+        linhas.append(["", Paragraph("<b>TOTAL</b>", st_cel), "", "", "",
+                       _fmt_brl(t_prov), _fmt_brl(t_desc), _fmt_brl(t_liq)])
+
+    tbl = Table(linhas, repeatRows=1,
+                colWidths=[1.5*cm, 5.4*cm, 3.6*cm, 1.0*cm, 1.2*cm, 2.1*cm, 2.1*cm, 2.1*cm])
+    estilo = [
+        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, -1), 7.5),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.HexColor("#334155")),
+        ("ALIGN",      (3, 0), (-1, -1), "RIGHT"),
+        ("ALIGN",      (0, 0), (0, -1),  "LEFT"),
+        ("VALIGN",     (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING",    (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("GRID",       (0, 0), (-1, -1), 0.4, colors.HexColor("#dbe3ee")),
+    ]
+    if len(resultados) > 1:
+        estilo.append(("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"))
+        estilo.append(("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f8fafc")))
+    tbl.setStyle(TableStyle(estilo))
+    elems.append(tbl)
+    elems.append(Spacer(1, 0.4*cm))
+    elems.append(Paragraph(
+        "Simulacao: nada foi gravado. As ferias NAO estao lancadas, nenhuma verba "
+        "entrou na folha e o eSocial nao foi tocado. As tabelas de INSS/IRRF sao as "
+        "da folha acima e as medias de variaveis vem da ficha financeira real.",
+        st_sub))
+    elems.append(PageBreak())
+    return elems
+
+
+@app.route("/simular_ferias_pdf", methods=["POST"])
+def simular_ferias_pdf():
+    """PDF da simulação: a listagem e, emendadas nela, as memórias de cálculo.
+
+    POST (e não GET com parâmetros na URL, como a rescisão) porque aqui vão
+    vários funcionários de uma vez, cada um com quatro campos — numa URL isso
+    estoura o limite do navegador na primeira dezena de linhas.
+    """
+    if not session.get("logado"):
+        return redirect("/")
+    # Sem trava de folha Aberta/Calculada/Fechada: simulação não grava nada.
+
+    try:
+        itens = json.loads(request.form.get("itens") or "[]")
+    except Exception:
+        itens = []
+
+    eventos, nomes, erro = _sim_ferias_montar(itens)
+    if erro:
+        return erro, 400
+
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
+
+    tabela = _get_tabela_legais(anomes)
+    if not tabela:
+        return "Tabela legal (INSS/IRRF) não encontrada para este período.", 400
+
+    erro, resultados = _calc_ferias_nucleo(anomes, id_empresa, id_cliente,
+                                           eventos, tabela, gravar=False)
+    if erro:
+        return erro, 400
+    if not resultados:
+        return "Nada a simular para estes funcionários.", 400
+
+    from reportlab.platypus import PageBreak
+    st_mem = ParagraphStyle("sf_mem", fontName="Helvetica-Bold", fontSize=10,
+                            spaceAfter=8, textColor=colors.HexColor("#0f172a"))
+
+    elems = _sim_ferias_pdf_listagem(resultados, anomes, empresa_nm, cnpj_fmt)
+
+    # As memórias saem do MESMO gerador do cálculo de verdade, só que devolvendo
+    # os elementos em vez de gravar arquivo (ver _gerar_memoria_ferias).
+    try:
+        memorias = _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa,
+                                         resultados, retornar_story=True,
+                                         simulado=True) or []
+    except Exception as e_mem:
+        print(f"[simular_ferias_pdf] erro nas memorias: {e_mem}")
+        memorias = []
+
+    for i, (mat, nome_f, story) in enumerate(memorias):
+        elems.append(Paragraph(
+            f"SIMULACAO — MEMORIA DE CALCULO — FERIAS — {mat:06d} — {nome_f}", st_mem))
+        elems.extend(story)
+        if i < len(memorias) - 1:
+            elems.append(PageBreak())
+
+    _agora_pdf = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
+    _emp_pdf   = f"{empresa_nm} — {cnpj_fmt}" if cnpj_fmt else empresa_nm
+
+    def _hdr_sim_fer(canvas, doc, _a=_agora_pdf, _e=_emp_pdf):
+        _pdf_num_pagina(canvas, doc)
+        canvas.saveState()
+        xL = doc.leftMargin
+        xR = xL + 17*cm
+        y1 = A4[1] - 0.60*cm
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#374151"))
+        canvas.drawString(xL, y1, _e)
+        canvas.drawRightString(xR, y1, f"Simulado em {_a}")
+        y2 = y1 - 0.50*cm
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.setFillColor(colors.HexColor("#991b1b"))
+        canvas.drawCentredString(xL + 8.5*cm, y2, "SIMULACAO DE FERIAS — NADA FOI GRAVADO")
+        canvas.setStrokeColor(colors.HexColor("#374151"))
+        canvas.setLineWidth(0.5)
+        canvas.line(xL, y2 - 0.28*cm, xR, y2 - 0.28*cm)
+        canvas.setFont("Helvetica", 6.5)
+        canvas.setFillColor(colors.HexColor("#94a3b8"))
+        canvas.drawString(xL, doc.bottomMargin * 0.4,
+                          f"Folha10·Simples — versão {ler_versao()}")
+        canvas.restoreState()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2.8*cm, bottomMargin=1.5*cm)
+    try:
+        doc.build(elems, onFirstPage=_hdr_sim_fer, onLaterPages=_hdr_sim_fer)
+    except Exception as e_pdf:
+        return f"Erro ao gerar a simulação: {e_pdf}", 500
+
+    from flask import make_response
+    nome_arq = (f"SIMULADO_Ferias_{anomes}_"
+                f"{resultados[0]['matricula']:06d}.pdf" if len(resultados) == 1
+                else f"SIMULADO_Ferias_{anomes}.pdf")
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = f'inline; filename="{nome_arq}"'
+    return resp
 
 # =========================================================
 # VISUALIZAR CÁLCULO DE FÉRIAS
@@ -61747,6 +63316,31 @@ def _vendas_atualizar_arquivo(vendas, refazer=False):
                           "meses": v["meses"], "empresas": v["empresas"],
                           "funcionarios": v["funcionarios"], "valor": v["valor"]}
                          for v in novas]}
+
+
+def _vendas_auto_em_segundo_plano():
+    """Lança na planilha o que o banco tem de novo, sem ninguém clicar.
+
+    Chamada uma vez por login do Administrador, lá do Menu (ver menu()). Roda em
+    thread porque a consulta ao tab_log não pode segurar o desenho do Menu.
+
+    Falha CALADA de propósito: com a planilha aberta no Excel o arquivo está
+    travado pelo Windows, e no meio do Menu não há o que pedir ao usuário. A
+    venda continua no banco, que é a fonte da verdade, e entra sozinha na
+    próxima vez que ele entrar no sistema. Erro aqui nunca pode derrubar o Menu.
+    """
+    def _run():
+        try:
+            r = _vendas_atualizar_arquivo(_vendas_do_log())
+        except Exception as ex:
+            print(f"[VENDAS] lançamento automático falhou: {type(ex).__name__}: {ex}")
+            return
+        if not r.get("ok"):
+            print(f"[VENDAS] não deu para lançar agora: {r.get('msg')}")
+        elif r.get("novas"):
+            print(f"[VENDAS] {r['novas']} venda(s) lançada(s) sozinho em {ARQ_VENDAS}")
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 @app.route('/admin_vendas')

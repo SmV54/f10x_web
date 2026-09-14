@@ -749,6 +749,19 @@ const modulos = {
             ]},
             { nome: 'FAP', itens: [
                 { icone: '🛡️', nome: 'FAP — Fator Acidentário de Prevenção', href: '/cad_fap', ok: true },
+            ]},
+            // Secao propria, e nao um card dentro de Rescisao: simular nao e
+            // parte do assunto Rescisao, e outro tipo de tarefa — ver quanto
+            // custaria algo que AINDA NAO foi feito, sem gravar nada. Com a
+            // Simulacao de Ferias a caminho, as duas ficam no mesmo lugar, em
+            // vez de cada uma escondida dentro do seu assunto.
+            // permiteFolhaBloqueada em todas as daqui: nenhuma grava, entao
+            // valem tambem com a folha Calculada ou Fechada.
+            { nome: 'Simulações', itens: [
+                // O nome do card nao repete "Simulacao": quem chegou aqui ja
+                // leu isso no titulo da secao. O card diz o ASSUNTO.
+                { icone: '🔮', nome: 'Rescisão', href: '/simular_rescisao', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
+                { icone: '🏖️', nome: 'Férias', href: '/simular_ferias', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
             ]}
         ]
     },
@@ -826,14 +839,20 @@ const modulos = {
             const secEventuais = { nome: 'Eventuais', itens: [
                 { icone: '💹', nome: 'Salários / Aumento', href: '/relatorios_config?rel=sal_aumento', ok: true },
             ]};
+            // nav-fix2l em todos, como nas secoes do eSocial e de Afastamentos:
+            // trava a largura em 232px (minimo E maximo) e deixa o nome comprido
+            // quebrar em duas linhas. Sem isso cada card fica com a largura do
+            // proprio nome — "Relacao dos Liquidos" e "Relacao de N Verbas"
+            // esticam, "Contracheque" encolhe, e a secao sai toda desalinhada.
             const secFolha = { nome: 'Folha de Pagamento', itens: [
-                { icone: '🖨️', nome: 'Folha de Pagamento',  href: '/relatorio_folha', ok: true, navLoading: true },
-                { icone: '🧾', nome: 'Contracheque',         href: '/contracheque',    ok: true },
-                { icone: '💵', nome: 'Relação dos Líquidos', href: '/rel_liquidos',    ok: true, navLoading: true, bloqueioFolha: 'calculada' },
-                { icone: '⚖️', nome: 'Recibo de Pensão',      href: '/recibo_pensao',   ok: true, bloqueioFolha: 'calculada' },
-                { icone: '📊', nome: 'Resumo da Folha',      href: '/resumo_folha',        ok: true, navLoading: true },
-                { icone: '📋', nome: 'Relação de N Verbas',  href: '/config_rel_verbas',   ok: true },
-                { icone: '📅', nome: 'Ficha Financeira',     href: '/rel_ficha_financeira', ok: true },
+                { icone: '🖨️', nome: 'Folha de Pagamento',  href: '/relatorio_folha', ok: true, classe: 'nav-fix2l', navLoading: true },
+                { icone: '🧾', nome: 'Contracheque',         href: '/contracheque',    ok: true, classe: 'nav-fix2l' },
+                { icone: '💵', nome: 'Relação dos Líquidos', href: '/rel_liquidos',    ok: true, classe: 'nav-fix2l', navLoading: true, bloqueioFolha: 'calculada' },
+                { icone: '⚖️', nome: 'Recibo de Pensão',      href: '/recibo_pensao',   ok: true, classe: 'nav-fix2l', bloqueioFolha: 'calculada' },
+                { icone: '📊', nome: 'Resumo da Folha',      href: '/resumo_folha',        ok: true, classe: 'nav-fix2l', navLoading: true },
+                { icone: '🧮', nome: 'Análise de Custo',     href: '/rel_custo',           ok: true, classe: 'nav-fix2l', navLoading: true, bloqueioFolha: 'calculada' },
+                { icone: '📋', nome: 'Relação de N Verbas',  href: '/config_rel_verbas',   ok: true, classe: 'nav-fix2l' },
+                { icone: '📅', nome: 'Ficha Financeira',     href: '/rel_ficha_financeira', ok: true, classe: 'nav-fix2l' },
             ]};
             const secGerador = { nome: 'Gerador de Relatório', itens: [
                 { icone: '🗂️', nome: 'Gerador de Relatório', href: '/gerador_relatorio', ok: true },

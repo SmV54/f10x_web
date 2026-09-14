@@ -90,6 +90,31 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     display: flex; align-items: center; gap: 10px;
 }
 
+/* Fechar sem calcular: e uma saida de emergencia nossa, nao um recurso do
+   cliente. Discreto de proposito -- cinza, sem cor de acao, embaixo do aviso
+   que explica a regra normal. */
+.bloco-interno {
+    margin-top: 14px; padding: 14px 18px; background: #f8fafc;
+    border: 1px dashed #cbd5e1; border-radius: 8px;
+}
+.bloco-interno-tit {
+    font-size: 12px; font-weight: 700; color: #475569; letter-spacing: .02em;
+    display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+}
+.bloco-interno-txt { font-size: 12px; color: #64748b; margin-bottom: 10px; }
+.bloco-interno-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.campo-senha {
+    border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 10px;
+    font-size: 14px; width: 150px; letter-spacing: .25em; font-family: monospace;
+}
+.campo-senha:focus { outline: none; border-color: #2a7de1; }
+.btn-forcar {
+    background: #7c2d12; color: #fff; border: none; font-size: 13px; font-weight: 700;
+    padding: 8px 18px; border-radius: 8px; cursor: pointer; transition: .15s;
+}
+.btn-forcar:hover { background: #9a3412; }
+.btn-forcar:disabled { opacity: .5; cursor: default; }
+
 .resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac;
                  border-radius: 8px; font-size: 13px; font-weight: 600; color: #15803d;
                  display: flex; align-items: center; gap: 8px; }
@@ -172,6 +197,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
     {% else %}
     <div class="aviso-fechada">&#10007; Apenas folhas com status <strong>&nbsp;Calculada&nbsp;</strong> podem ser fechadas.</div>
+
+    {% if situacao != 'F' %}
+    <div class="bloco-interno">
+        <div class="bloco-interno-tit">🔑 Fechar sem calcular — uso interno</div>
+        <div class="bloco-interno-txt">
+            Fecha o período <strong>do jeito que ele está</strong>, sem cálculo. Os valores
+            não serão gerados, e a folha ficará sem movimento calculado.
+            O uso fica registrado no log.
+        </div>
+        <div class="bloco-interno-linha">
+            <input type="password" class="campo-senha" id="senhaInterna"
+                   placeholder="senha" autocomplete="off" inputmode="numeric"
+                   onkeydown="if(event.key==='Enter'){forcar();}">
+            <button class="btn-forcar" id="btnForcar" onclick="forcar()">Fechar sem calcular</button>
+        </div>
+    </div>
+    <div id="resultado" style="margin-top:14px;"></div>
+    {% endif %}
+
     <div class="rodape" style="margin-top:14px;">
         <a class="btn-menu" id="btnVoltarMenu" href="/menu">&#8592; Voltar ao Menu</a>
     </div>
@@ -208,9 +252,69 @@ function iniciarVoltarMenu(segundos = 10) {
     }, { once: true });
 }
 
-// Se a folha não é Calculada, mostra logo o botão com contagem regressiva
+function pararVoltarMenu() {
+    if (_voltarMenuTimer)    { clearTimeout(_voltarMenuTimer);   _voltarMenuTimer = null; }
+    if (_voltarMenuInterval) { clearInterval(_voltarMenuInterval); _voltarMenuInterval = null; }
+    const btn = document.getElementById('btnVoltarMenu');
+    if (btn) btn.innerHTML = _voltarMenuTextoBase;
+}
+
+// Se a folha não é Calculada, mostra logo o botão com contagem regressiva.
 if (SITUACAO_INICIAL !== 'C') {
-    window.addEventListener('DOMContentLoaded', () => iniciarVoltarMenu(10));
+    window.addEventListener('DOMContentLoaded', () => {
+        iniciarVoltarMenu(10);
+        // Sem isto a contagem arranca a página do ar no meio da digitação da
+        // senha: o campo só aparece nesta situação, justamente a que dispara o
+        // temporizador. Encostou no campo, o temporizador morre.
+        const campo = document.getElementById('senhaInterna');
+        if (campo) campo.addEventListener('focus', pararVoltarMenu, { once: true });
+    });
+}
+
+/* Fechar SEM calcular. Rota e botao sao os mesmos do fechamento normal - o que
+   muda e' a senha que viaja junto. O servidor confere de novo: a tela nao e' a
+   unica porta. */
+async function forcar() {
+    const btn    = document.getElementById('btnForcar');
+    const campo  = document.getElementById('senhaInterna');
+    const painel = document.getElementById('resultado');
+    const senha  = (campo.value || '').trim();
+    pararVoltarMenu();
+    if (!senha) {
+        painel.innerHTML = '<div class="resultado-err">Informe a senha.</div>';
+        campo.focus();
+        return;
+    }
+    btn.disabled = true;
+    painel.innerHTML = '<div class="resultado-ok">Fechando…</div>';
+    try {
+        const res = await fetch('/api/folha/fechar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ senha: senha })
+        });
+        const j = await res.json();
+        if (j.ok) {
+            painel.innerHTML = `<div class="resultado-ok">&#10003; ${j.msg}</div>`;
+            document.querySelector('.bloco-interno').style.display = 'none';
+            const bs = document.getElementById('badgeSit');
+            if (bs) { bs.className = 'badge-sit ' + j.sit_class; bs.textContent = j.sit_label; }
+            const badge = document.querySelector('.topo-folha-ativa');
+            if (badge) {
+                badge.className = badge.className.replace(/\bsit-\w+\b/, j.sit_class);
+                badge.innerHTML = badge.innerHTML.replace(/Aberta|Calculada|Fechada/, j.sit_label);
+            }
+            iniciarVoltarMenu(10);
+        } else {
+            painel.innerHTML = `<div class="resultado-err"><strong>Erro:</strong> ${j.msg}</div>`;
+            btn.disabled = false;
+            campo.value = '';
+            campo.focus();
+        }
+    } catch (e) {
+        painel.innerHTML = `<div class="resultado-err"><strong>Erro de comunicação:</strong> ${e.message}</div>`;
+        btn.disabled = false;
+    }
 }
 
 async function fechar() {
@@ -220,7 +324,11 @@ async function fechar() {
     painel.innerHTML = '<div class="resultado-ok">Fechando…</div>';
 
     try {
-        const res = await fetch('/api/folha/fechar', { method: 'POST' });
+        const res = await fetch('/api/folha/fechar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
         const j   = await res.json();
         if (j.ok) {
             painel.innerHTML = `<div class="resultado-ok">&#10003; ${j.msg}</div>`;

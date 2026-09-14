@@ -339,6 +339,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .lista-func-item.selecionado { background: #dbeafe; font-weight: 600; }
 .lista-func-mat { font-family: var(--mono); color: #4b5e7a; font-size: 12px; min-width: 48px; }
 .lista-func-nome { color: #1e2d3d; }
+/* Demitido nesta folha aparece na lista, mas nao pode se confundir com quem
+   esta ativo: selo vermelho com a data, alinhado a direita. */
+.lista-func-dem {
+    margin-left: auto; font-size: 11px; font-weight: 600; white-space: nowrap;
+    color: #991b1b; background: #fee2e2; border: 1px solid #fecaca;
+    border-radius: 9px; padding: 1px 8px;
+}
 .lista-func-vazio { padding: 10px 14px; font-size: 12px; color: #8a9ab0; font-style: italic; }
 
 /* ── RESULTADO ────────────────────────────────────────── */
@@ -2147,6 +2154,24 @@ function _hideCheckMsg(campo) {
 /* ── LISTA DE FUNCIONÁRIOS (alteração) ──────────────────── */
 let _listaFuncTodos = [];
 
+/* Demitido na folha ATIVA continua aparecendo na alteração.
+   Por quê: a rescisão já foi lançada, mas o cadastro dele ainda é desta folha —
+   e é nela que se corrige um dado que saiu errado no TRCT, na GRRF ou no
+   eSocial. Antes ele sumia da lista no instante em que a rescisão era gravada,
+   e a única saída era reabrir a rescisão para poder mexer no cadastro.
+   Demitido de meses anteriores segue fora: aquele cadastro pertence a uma folha
+   encerrada, e mexer nele agora mudaria um dado que já foi declarado. */
+function demitidoNestaFolha(f) {
+    if (!f || f.situacao !== 'D') return false;
+    const d = String(f.datarescisao || '');
+    return d.length === 8 && ANOMES_ATUAL.length === 6 && d.slice(0, 6) === ANOMES_ATUAL;
+}
+
+function dataBR(aaaammdd) {
+    const d = String(aaaammdd || '');
+    return d.length === 8 ? `${d.slice(6,8)}/${d.slice(4,6)}/${d.slice(0,4)}` : '';
+}
+
 async function carregarListaFuncionarios() {
     const wrap = document.getElementById('lista_func_wrap');
     if (!wrap) return;
@@ -2154,7 +2179,7 @@ async function carregarListaFuncionarios() {
         const r = await fetch('/api/funcionarios_lista');
         const j = await r.json();
         _listaFuncTodos = (j.funcionarios || j.data || j || [])
-            .filter(f => f.situacao !== 'D')
+            .filter(f => f.situacao !== 'D' || demitidoNestaFolha(f))
             .sort((a, b) => parseInt(a.matricula) - parseInt(b.matricula));
         renderizarListaFunc(_listaFuncTodos);
     } catch(e) {
@@ -2182,6 +2207,9 @@ function renderizarListaFunc(lista) {
         <div class="lista-func-item" data-mat="${f.matricula}" onclick="selecionarDaLista(${f.matricula})">
             <span class="lista-func-mat">${String(f.matricula).padStart(6,'0')}</span>
             <span class="lista-func-nome">${f.nome || ''}</span>
+            ${demitidoNestaFolha(f)
+                ? `<span class="lista-func-dem">demitido em ${dataBR(f.datarescisao)}</span>`
+                : ''}
         </div>`).join('');
 }
 
