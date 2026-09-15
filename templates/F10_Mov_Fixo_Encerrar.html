@@ -325,6 +325,28 @@ function nomeCateg(cod) {
     const c = CATEGORIAS.find(x => String(x.codigo) === String(cod));
     return c ? `${cod} — ${c.texto}` : String(cod);
 }
+// Base do valor (espelha _MF_TIPOS_VALOR no app.py): 'V' e reais, o resto e
+// percentual sobre salario / adicionais / minimo, resolvido a cada folha.
+const MF_BASES = {
+    'V':   'Valor em R$',
+    'S':   '% do salário',
+    'SI':  '% do salário + insalubridade',
+    'SP':  '% do salário + periculosidade',
+    'SIP': '% do salário + insalubridade + periculosidade',
+    'I':   '% da insalubridade',
+    'P':   '% da periculosidade',
+    'IP':  '% da insalubridade + periculosidade',
+    'M':   '% do salário mínimo',
+};
+function formatPct(c) {
+    const t = formatValor(c);
+    return t.endsWith(',00') ? t.slice(0, -3) : t;
+}
+function labelValorReg(r) {
+    const t = (r.tipo_valor || 'V').toUpperCase();
+    return t === 'V' ? 'R$ ' + formatValor(r.valor)
+                     : formatPct(r.valor) + (MF_BASES[t] || '%');
+}
 function formatValor(c) { return ((c||0)/100).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 function formatFolha(n) { return n ? `${String(n % 100).padStart(2,'0')}/${Math.floor(n/100)}` : '—'; }
 function parseFolha(s) {
@@ -360,7 +382,7 @@ function descRegistro(id) {
         if (r.categoria)    c.push(`categoria ${r.categoria}`);
         alvo = c.length ? `Grupo (${c.join(', ')})` : 'Grupo — todos os funcionários';
     }
-    return `${alvo}\nVerba ${String(r.cod_verba).padStart(4,'0')} — ${nomeVerba(r.cod_verba)}\nR$ ${formatValor(r.valor)}`;
+    return `${alvo}\nVerba ${String(r.cod_verba).padStart(4,'0')} — ${nomeVerba(r.cod_verba)}\n${labelValorReg(r)}`;
 }
 
 // A coluna diz explicitamente se o movimento e de UM funcionario ou de um grupo,
@@ -465,7 +487,7 @@ function renderLista() {
             <td>${renderAlvo(r)}</td>
             <td><span class="td-cod">${String(r.cod_verba).padStart(4,'0')}</span>
                 <br><span style="font-size:11px;color:#475569;">${nomeVerba(r.cod_verba)}</span></td>
-            <td class="td-val">R$ ${formatValor(r.valor)}</td>
+            <td class="td-val">${labelValorReg(r)}</td>
             <td>${renderVigencia(r)}</td>
             <td>${renderSituacao(r)}</td>
             <td style="white-space:nowrap;">

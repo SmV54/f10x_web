@@ -607,6 +607,33 @@ def _cert_decrypt(token):
             "o arquivo .pfx em eSocial -> Certificado Digital."
         ) from None
 
+# OIDs do DOC-ICP-04, onde a ICP-Brasil guarda a inscricao do titular dentro do
+# otherName da Subject Alternative Name:
+#   2.16.76.1.3.3 -> 14 digitos: o CNPJ da pessoa juridica (e-CNPJ);
+#   2.16.76.1.3.1 -> 8 digitos de data de nascimento + 11 do CPF + 11 do NIS +
+#                    15 do RG (e-CPF). O CPF e a fatia [8:19]: pegar "os 11
+#                    primeiros digitos" traz a data de nascimento;
+#   2.16.76.1.3.4 -> mesma composicao do 3.1, mas do RESPONSAVEL por um e-CNPJ.
+#                    So vale quando nao houver 3.3.
+_OID_ICP_CNPJ     = "2.16.76.1.3.3"
+_OID_ICP_CPF      = "2.16.76.1.3.1"
+_OID_ICP_CPF_RESP = "2.16.76.1.3.4"
+
+
+def _icp_digitos(raw):
+    """Digitos do conteudo de um otherName, sem o cabecalho ASN.1.
+
+    O valor chega em DER: os dois primeiros bytes sao a tag e o tamanho. O byte
+    de tamanho pode ser um algarismo ASCII — 0x37 e o tamanho 55 do 3.1 e vale
+    '7' — entao ele sai ANTES de varrer os digitos, senao entra um algarismo
+    fantasma na frente do CPF e a fatia [8:19] pega o numero errado.
+    """
+    b = raw if isinstance(raw, bytes) else str(raw or "").encode("latin-1", "ignore")
+    if len(b) >= 2 and b[1] == len(b) - 2:
+        b = b[2:]
+    return re.sub(r"\D", "", b.decode("latin-1", "ignore"))
+
+
 def _cert_info(pfx_bytes, senha_str):
     """Valida o .pfx e retorna dict com titular, CNPJ e validade."""
     from cryptography.hazmat.primitives.serialization import pkcs12
@@ -633,34 +660,60 @@ def _cert_info(pfx_bytes, senha_str):
     except Exception:
         cn = ""
 
-    # CNPJ — tenta serialNumber (ICP-Brasil padrão)
+    # ── Inscrição do titular: CNPJ (e-CNPJ) ou CPF (e-CPF) ───────────────
+    #
+    # A SAN vem PRIMEIRO, e nao o serialNumber, porque so ela distingue as duas
+    # coisas com certeza: ha e-CNPJ cujo serialNumber traz o CPF do responsavel,
+    # e cair nele faria o escritorio ser gravado como pessoa fisica.
+    #
+    # Antes daqui so existia "qualquer sequencia de 14 digitos na SAN", o que
+    # deixava o e-CPF de fora inteiro — e a tela do procurador aceita CPF do
+    # contador desde sempre. Era o erro "Nao foi possivel extrair CNPJ/CPF"
+    # (cliente 0061, 15/09/2026).
     cnpj = ""
+    _san_oids = {}
     try:
-        sn = cert.subject.get_attributes_for_oid(NameOID.SERIAL_NUMBER)[0].value
-        digits = re.sub(r"\D", "", sn)
-        if len(digits) in (11, 14):
-            cnpj = digits
+        san = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        for name in san.value:
+            oid = getattr(getattr(name, "type_id", None), "dotted_string", "")
+            if oid:
+                _san_oids[oid] = _icp_digitos(getattr(name, "value", b""))
     except Exception:
         pass
 
-    # Fallback: OID ICP-Brasil 2.16.76.1.3.3 (CNPJ na SAN Other Name)
+    _d = _san_oids.get(_OID_ICP_CNPJ, "")
+    if len(_d) >= 14:
+        cnpj = _d[:14]
+    if not cnpj:
+        for _oid in (_OID_ICP_CPF, _OID_ICP_CPF_RESP):
+            _d = _san_oids.get(_oid, "")
+            if len(_d) >= 19:
+                cnpj = _d[8:19]
+                break
+
+    # serialNumber do subject: o e-CNPJ costuma trazer o CNPJ ali.
     if not cnpj:
         try:
-            san = cert.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-            for name in san.value:
-                val = getattr(name, "value", b"")
-                digits = re.sub(r"\D", "", val.decode("latin-1") if isinstance(val, bytes) else str(val))
-                if len(digits) == 14:
-                    cnpj = digits
-                    break
+            sn = cert.subject.get_attributes_for_oid(NameOID.SERIAL_NUMBER)[0].value
+            digits = re.sub(r"\D", "", sn)
+            if len(digits) in (11, 14):
+                cnpj = digits
         except Exception:
             pass
 
-    # Último recurso: 14 dígitos consecutivos no CN
+    # Último recurso: o número colado no CN ("ESCRITORIO LTDA:12345678000199"
+    # ou "FULANO DE TAL:12345678901").
     if not cnpj:
-        m = re.search(r"\d{14}", cn)
+        m = (re.search(r"(?<!\d)(\d{14})(?!\d)", cn)
+             or re.search(r"(?<!\d)(\d{11})(?!\d)", cn))
         if m:
-            cnpj = m.group(0)
+            cnpj = m.group(1)
+
+    if not cnpj:
+        # Sem isto o diagnostico seria adivinhacao: o log do Render mostra o que
+        # o certificado realmente tem.
+        print(f"[cert] inscricao nao encontrada — CN={cn!r} "
+              f"OIDs na SAN={ {k: len(v) for k, v in _san_oids.items()} }")
 
     # Titular: parte antes dos ":" que alguns CAs colocam no CN
     titular = cn.split(":")[0].strip() if ":" in cn else cn.strip()
@@ -4001,7 +4054,7 @@ def rel_mov_fixo_pdf():
         rows.append([
             alvo,
             f"{int(r.get('cod_verba') or 0):04d} {verbas_map.get(r.get('cod_verba'), '')}",
-            _fval(r.get("valor")),
+            _mf_valor_label(r, curto=True),
             _vig(r),
             regras,
         ])
@@ -27999,8 +28052,41 @@ def rel_mov():
 # =========================================================
 # MOVIMENTO FIXO — helper de observação para tab_log
 # =========================================================
+# A coluna tab_mov_fixo.tipo_valor nasceu depois da tela (ALTER TABLE rodado a
+# mao no Supabase). Se o codigo subir antes do ALTER, gravar mandando a coluna
+# derruba TODA inclusao de movimento fixo — inclusive as em R$, que nao tem nada
+# a ver com a novidade. Entao se confere uma vez, e:
+#   - em R$        -> grava sem o campo, exatamente como antes;
+#   - em percentual-> recusa com o motivo, porque sem a coluna o percentual
+#                     seria gravado como se fosse reais (12,50% viraria R$ 12,50).
+_MF_COL_TIPO = None
+
+
+def _mf_tem_coluna_tipo():
+    global _MF_COL_TIPO
+    if _MF_COL_TIPO is None:
+        try:
+            supabase.table("tab_mov_fixo").select("tipo_valor").limit(1).execute()
+            _MF_COL_TIPO = True
+        except Exception as e:
+            _MF_COL_TIPO = "tipo_valor" not in str(e).lower()
+            if not _MF_COL_TIPO:
+                print("[mov_fixo] banco ainda sem a coluna tipo_valor — "
+                      "percentual indisponivel ate rodar o ALTER TABLE")
+    return _MF_COL_TIPO
+
+
+_MF_MSG_SEM_COLUNA = (
+    "O percentual ainda não está habilitado neste banco: falta criar a coluna "
+    "tipo_valor na tabela tab_mov_fixo. Enquanto isso, lance o valor em R$."
+)
+
+
 def _obs_mov_fixo(cod_verba, valor, payload):
-    partes = [f"Verba:{str(cod_verba).zfill(4)} R${valor/100:,.2f}"]
+    _tp = str((payload or {}).get("tipo_valor") or "V").upper()
+    _vt = (f"R${valor/100:,.2f}" if _tp == "V"
+           else f"{_mf_pct_fmt(valor)}% {_MF_TIPOS_VALOR.get(_tp, _tp)[2:]}")
+    partes = [f"Verba:{str(cod_verba).zfill(4)} {_vt}"]
 
     # Vigência
     qtd = payload.get("qtd_parcelas")
@@ -28535,6 +28621,19 @@ def api_mov_fixo_gravar():
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor deve ser maior que zero."})
 
+    # Base do valor: 'V' = reais (como sempre foi), o resto e percentual sobre
+    # salario / adicionais / minimo (ver _MF_TIPOS_VALOR).
+    tipo_valor = str(data.get("tipo_valor") or "V").upper().strip() or "V"
+    if tipo_valor not in _MF_TIPOS_VALOR:
+        return jsonify({"ok": False, "msg": "Base de cálculo do valor inválida."})
+    if tipo_valor != "V" and valor > 100000:
+        return jsonify({"ok": False, "msg":
+            "Percentual acima de 1.000% — confira o que foi digitado."})
+    if not _mf_tem_coluna_tipo():
+        if tipo_valor != "V":
+            return jsonify({"ok": False, "msg": _MF_MSG_SEM_COLUNA})
+        tipo_valor = None          # grava como antes, sem a coluna
+
     nas_ferias   = str(data.get("nas_ferias",   "0"))
     se_afastado  = str(data.get("se_afastado",  "1"))
     mes_admissao = str(data.get("mes_admissao", "T"))
@@ -28596,6 +28695,8 @@ def api_mov_fixo_gravar():
         "hora_cad":            agora.strftime("%H%M"),
         "dt_gravacao":         agora.strftime("%Y%m%d %H%M"),
     }
+    if tipo_valor:
+        base["tipo_valor"] = tipo_valor
 
     try:
         obs = _obs_mov_fixo(cod_verba, valor, base)
@@ -28646,6 +28747,19 @@ def api_mov_fixo_alterar():
             "Movimento -> Importar Consignados."})
     if valor <= 0:
         return jsonify({"ok": False, "msg": "Valor deve ser maior que zero."})
+
+    # Base do valor: 'V' = reais (como sempre foi), o resto e percentual sobre
+    # salario / adicionais / minimo (ver _MF_TIPOS_VALOR).
+    tipo_valor = str(data.get("tipo_valor") or "V").upper().strip() or "V"
+    if tipo_valor not in _MF_TIPOS_VALOR:
+        return jsonify({"ok": False, "msg": "Base de cálculo do valor inválida."})
+    if tipo_valor != "V" and valor > 100000:
+        return jsonify({"ok": False, "msg":
+            "Percentual acima de 1.000% — confira o que foi digitado."})
+    if not _mf_tem_coluna_tipo():
+        if tipo_valor != "V":
+            return jsonify({"ok": False, "msg": _MF_MSG_SEM_COLUNA})
+        tipo_valor = None          # grava como antes, sem a coluna
 
     nas_ferias   = str(data.get("nas_ferias",   "0"))
     se_afastado  = str(data.get("se_afastado",  "1"))
@@ -28701,6 +28815,8 @@ def api_mov_fixo_alterar():
         "mes_rescisao":        mes_rescisao,
         "dt_gravacao":         _agora_brasilia().strftime("%Y%m%d %H%M"),
     }
+    if tipo_valor:
+        campos["tipo_valor"] = tipo_valor
 
     # No modo parcelas a tela nao tem campo de folha final — quem grava essa data
     # e o "Parar". Sem preservar o que ja esta no banco, alterar o valor de um
@@ -43793,8 +43909,12 @@ def api_procurador_salvar():
     # A inscrição do transmissor é a do TITULAR do certificado do procurador
     nr = re.sub(r"\D", "", info.get("cnpj") or "")
     if len(nr) not in (11, 14):
-        return jsonify({"ok": False, "msg": ("Não foi possível extrair CNPJ/CPF do "
-                        "certificado do procurador. Verifique o arquivo.")})
+        _tit = (info.get("titular") or "").strip()
+        return jsonify({"ok": False, "msg": (
+            "Não foi possível extrair CNPJ/CPF do certificado do procurador"
+            + (f" (titular: {_tit})" if _tit else "")
+            + ". O arquivo precisa ser um e-CNPJ ou e-CPF da ICP-Brasil — "
+              "certificado de outro tipo não serve para procuração no eSocial.")})
     tp = "2" if len(nr) == 11 else "1"
 
     reg = {
@@ -44490,6 +44610,95 @@ VERBA_RISCO_VIDA     = 32
 # op1 do evento de cadastro que origina cada verba. Risco de vida nao tem evento
 # proprio — so existe se for lancado (manual ou movimento fixo).
 _OP1_ADICIONAL = {VERBA_INSALUBRIDADE: 31, VERBA_PERICULOSIDADE: 41}
+
+
+# =========================================================
+# MOVIMENTO FIXO — valor em R$ ou PERCENTUAL sobre uma base
+# =========================================================
+# tab_mov_fixo.tipo_valor diz o que a coluna "valor" guarda:
+#   'V'    -> centavos, como sempre foi (padrao, e o que os registros antigos
+#             trazem: a coluna nasceu com DEFAULT 'V');
+#   outro  -> percentual x100 (12,50% = 1250) sobre a soma dos componentes.
+#
+# As letras se combinam: S = salario, I = insalubridade, P = periculosidade.
+# Entao 'SIP' e o percentual sobre os tres somados. 'M' e o salario minimo da
+# competencia e nao se combina com nada.
+#
+# O ganho do percentual: o calculo rele o movimento fixo a cada folha, entao o
+# valor acompanha o salario sozinho — aumentou o salario, o valor sobe junto. E
+# no lancamento por GRUPO cada funcionario recebe o percentual sobre o SEU
+# salario, o que com valor fixo era impossivel.
+_MF_TIPOS_VALOR = {
+    "V":   "Valor em R$",
+    "S":   "% do salário",
+    "SI":  "% do salário + insalubridade",
+    "SP":  "% do salário + periculosidade",
+    "SIP": "% do salário + insalubridade + periculosidade",
+    "I":   "% da insalubridade",
+    "P":   "% da periculosidade",
+    "IP":  "% da insalubridade + periculosidade",
+    "M":   "% do salário mínimo",
+}
+
+
+def _mf_pct_fmt(v):
+    """Percentual x100 -> texto (1250 -> '12,5'; 1000 -> '10')."""
+    t = f"{(v or 0) / 100:.2f}".replace(".", ",")
+    return t[:-3] if t.endswith(",00") else t
+
+
+# Versao curta, para a coluna estreita do PDF: la o texto nao quebra linha, e
+# "% do salário + insalubridade + periculosidade" invadiria a coluna vizinha.
+_MF_TIPOS_CURTO = {
+    "S": "% salário", "SI": "% sal.+insal.", "SP": "% sal.+peric.",
+    "SIP": "% sal.+ins.+per.", "I": "% insal.", "P": "% peric.",
+    "IP": "% ins.+per.", "M": "% mínimo",
+}
+
+
+def _mf_valor_label(rec, curto=False):
+    """Como o valor deste movimento fixo se le na tela e no relatorio."""
+    tipo = str((rec or {}).get("tipo_valor") or "V").upper().strip() or "V"
+    val  = int((rec or {}).get("valor") or 0)
+    if tipo == "V":
+        return _fmt_brl(val)
+    # o rotulo ja comeca com "%": "12,5" + "% do salário"
+    tab = _MF_TIPOS_CURTO if curto else _MF_TIPOS_VALOR
+    return _mf_pct_fmt(val) + tab.get(tipo, "%")
+
+
+def _mf_base_percentual(tipo, sal_mes_cent, mmVmm, sm_cent):
+    """(base em centavos, texto da composicao) do valor em percentual.
+
+    Insalubridade e periculosidade saem do mmVmm: as ETAPAS 1060 e 1070 rodam
+    ANTES da 1080, entao as duas ja estao calculadas para este mes, com o
+    afastamento e a proporcionalidade delas ja aplicados. E o mesmo caminho que
+    o verbas_somabase da rubrica ja usa.
+
+    O salario entra INTEIRO, e nao o proporcional da admissao: quem decide se o
+    movimento fixo e proporcional e o campo mes_admissao do proprio registro,
+    aplicado logo adiante. Proporcionalizar aqui tambem cobraria duas vezes.
+    """
+    comps, total = [], 0
+    if tipo == "M":
+        total = int(sm_cent or 0)
+        comps.append(("salário mínimo", total))
+    else:
+        if "S" in tipo:
+            v = int(sal_mes_cent or 0); total += v
+            comps.append(("salário", v))
+        if "I" in tipo:
+            v = int(mmVmm.get(VERBA_INSALUBRIDADE, 0) or 0); total += v
+            comps.append(("insalubridade", v))
+        if "P" in tipo:
+            v = int(mmVmm.get(VERBA_PERICULOSIDADE, 0) or 0); total += v
+            comps.append(("periculosidade", v))
+    if not comps:
+        return 0, "base vazia"
+    if len(comps) == 1:
+        return total, f"{_fmt_brl(comps[0][1])} ({comps[0][0]})"
+    return total, (" + ".join(f"{_fmt_brl(v)} ({n})" for n, v in comps)
+                   + f" = {_fmt_brl(total)}")
 
 
 def _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
@@ -46204,6 +46413,19 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
 
                 cod_v     = int(rec.get("cod_verba") or 0)
                 val_bruto = int(rec.get("valor")     or 0)
+                # Valor em percentual (ver _MF_TIPOS_VALOR): vira reais aqui, e
+                # daqui para a frente segue o mesmo caminho do valor digitado —
+                # ferias, afastado e proporcional de admissao valem igual.
+                tipo_mf   = str(rec.get("tipo_valor") or "V").upper().strip() or "V"
+                obs_pct   = ""
+                if tipo_mf != "V":
+                    _base_pct, _det_pct = _mf_base_percentual(
+                        tipo_mf, int(l["sal_mes"]), mmVmm, sm_centavos)
+                    _pct_txt  = _mf_pct_fmt(val_bruto)
+                    val_bruto = int(round(_base_pct * val_bruto / 10000))
+                    # seta, e nao "=": na base composta o texto ja termina com
+                    # "= R$ 2.303,60", e dois "=" seguidos ficam ilegiveis.
+                    obs_pct   = f"{_pct_txt}% de {_det_pct}  ->  {_fmt_brl(val_bruto)}"
                 nas_fer   = str(rec.get("nas_ferias")   or "1")
                 se_afx    = str(rec.get("se_afastado")  or "1")
                 mes_adm_r = str(rec.get("mes_admissao") or "T")
@@ -46294,7 +46516,13 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     return soma, det
                 soma_sb_mf, det_sb_mf = _sb_calc(ri, mmVmm, rubricas_info)
 
-                if unid_mf == "H":
+                if tipo_mf != "V":
+                    # Percentual ja e dinheiro: a unidade da rubrica (hora,
+                    # diaria) nao se aplica — a tela so oferece percentual para
+                    # rubrica em R$, e esta trava vale para o que vier de fora.
+                    val_base = val_bruto
+                    obs_unid = obs_pct
+                elif unid_mf == "H":
                     horas_mf = val_bruto / 100
                     qhm = l.get("qtdhrsmes") or 0
                     if soma_sb_mf > 0 and qhm > 0:

@@ -266,6 +266,28 @@ const TP_CLS   = {'1':'badge-tp-1','2':'badge-tp-2','3':'badge-tp-3','4':'badge-
 })();
 
 // ── HELPERS ──
+// Base do valor (espelha _MF_TIPOS_VALOR no app.py): 'V' e reais, o resto e
+// percentual sobre salario / adicionais / minimo, resolvido a cada folha.
+const MF_BASES = {
+    'V':   'Valor em R$',
+    'S':   '% do salário',
+    'SI':  '% do salário + insalubridade',
+    'SP':  '% do salário + periculosidade',
+    'SIP': '% do salário + insalubridade + periculosidade',
+    'I':   '% da insalubridade',
+    'P':   '% da periculosidade',
+    'IP':  '% da insalubridade + periculosidade',
+    'M':   '% do salário mínimo',
+};
+function formatPct(c) {
+    const t = formatValor(c);
+    return t.endsWith(',00') ? t.slice(0, -3) : t;
+}
+function labelValorReg(r) {
+    const t = (r.tipo_valor || 'V').toUpperCase();
+    return t === 'V' ? 'R$ ' + formatValor(r.valor)
+                     : formatPct(r.valor) + (MF_BASES[t] || '%');
+}
 function formatValor(c) {
     return (c / 100).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
@@ -429,7 +451,7 @@ async function gerar() {
                     ${verbaV ? `<span class="${TP_CLS[verbaV.tp_rubr]||'badge-tp-3'}" style="display:inline-block;padding:1px 5px;border-radius:4px;font-size:9px;font-weight:700;margin-left:4px;">${TP_LABEL[verbaV.tp_rubr]||''}</span>` : ''}
                     <br><span style="font-size:11px;color:#475569;">${nomeVerba(r.cod_verba)}</span>
                 </td>
-                <td class="td-val">R$ ${formatValor(r.valor)}</td>
+                <td class="td-val">${labelValorReg(r)}</td>
                 <td>${renderVigencia(r)}</td>
                 <td>${renderRegras(r, detalhe)}</td>
             </tr>`;

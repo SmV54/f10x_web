@@ -77,6 +77,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .fg input[type="number"]::-webkit-outer-spin-button,
 .fg input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
 .inp-valor { font-family: var(--mono); font-weight: 600; font-size: 15px; text-align: right; }
+/* Valor e base na MESMA linha: a base qualifica o valor, nao e outro campo. */
+.fg.val { flex: 0 0 340px; min-width: 0; }
+.valor-box { display: flex; gap: 6px; align-items: stretch; }
+.valor-box .inp-valor { flex: 1 1 auto; min-width: 0; }
+.valor-box select { flex: 0 0 176px; font-size: 12px; padding: 7px 6px; }
+.valor-box select:disabled { background: #f1f5f9; color: #94a3b8; cursor: not-allowed; }
 
 /* VERBA COMBO */
 .combo-wrap { position: relative; }
@@ -281,10 +287,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="hidden" id="cod_verba">
                     <div class="verba-info" id="verba-info"></div>
                 </div>
-                <div class="fg md">
+                <div class="fg val">
                     <label id="lbl-valor">Valor (R$) *</label>
-                    <input type="text" id="inp-valor" class="inp-valor" placeholder="0,00"
-                           oninput="mascaraValor(this)">
+                    <div class="valor-box">
+                        <input type="text" id="inp-valor" class="inp-valor" placeholder="0,00"
+                               oninput="mascaraValor(this)">
+                        <select id="sel-base" onchange="setBaseValor()"
+                                title="O que o valor digitado significa">
+                            <option value="V">R$ (valor)</option>
+                            <option value="S">% do salário</option>
+                            <option value="SI">% do salário + insal.</option>
+                            <option value="SP">% do salário + peric.</option>
+                            <option value="SIP">% do salário + insal. + peric.</option>
+                            <option value="I">% da insalubridade</option>
+                            <option value="P">% da periculosidade</option>
+                            <option value="IP">% da insal. + peric.</option>
+                            <option value="M">% do salário mínimo</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 
@@ -613,6 +633,63 @@ function filtrarCombo(q) {
     drop.style.display = 'block';
 }
 
+// ── BASE DO VALOR ──
+// Espelha o _MF_TIPOS_VALOR do app.py: o valor digitado ou e reais, ou e um
+// percentual sobre salario / adicionais / minimo. O percentual so' vira numero
+// na hora do calculo, entao ele acompanha o salario mes a mes — e num
+// lancamento de grupo cada funcionario recebe o percentual sobre o dele.
+const MF_BASES = {
+    'V':   'Valor em R$',
+    'S':   '% do salário',
+    'SI':  '% do salário + insalubridade',
+    'SP':  '% do salário + periculosidade',
+    'SIP': '% do salário + insalubridade + periculosidade',
+    'I':   '% da insalubridade',
+    'P':   '% da periculosidade',
+    'IP':  '% da insalubridade + periculosidade',
+    'M':   '% do salário mínimo',
+};
+
+function formatPct(c) {
+    const t = formatValor(c);                 // 1250 -> "12,50"
+    return t.endsWith(',00') ? t.slice(0, -3) : t;
+}
+
+function labelValorReg(r) {
+    const t = (r.tipo_valor || 'V').toUpperCase();
+    return t === 'V' ? 'R$ ' + formatValor(r.valor)
+                     : formatPct(r.valor) + (MF_BASES[t] || '%');
+}
+
+function setBaseValor() {
+    const base = document.getElementById('sel-base').value;
+    const lbl  = document.getElementById('lbl-valor');
+    if (base === 'V') {
+        const unid = verbaSel ? verbaSel.unid_verba : 'V';
+        lbl.textContent = {'V':'Valor (R$) *','H':'Horas *','D':'Diárias *'}[unid] || 'Valor *';
+    } else {
+        lbl.textContent = 'Percentual (%) *';
+    }
+}
+
+// Percentual so' faz sentido em rubrica de VALOR: em hora e diaria aquele campo
+// e quantidade, nao dinheiro. Ao escolher uma dessas, a base volta para R$ e o
+// seletor trava — com o porque no title, para nao parecer defeito.
+function ajustarBasePorUnidade() {
+    const sel  = document.getElementById('sel-base');
+    const unid = verbaSel ? verbaSel.unid_verba : 'V';
+    if (unid !== 'V') {
+        sel.value = 'V';
+        sel.disabled = true;
+        sel.title = 'Verba em ' + (unid === 'H' ? 'horas' : 'diárias')
+                  + ' — o campo é quantidade, não valor. Percentual só em verba de R$.';
+    } else {
+        sel.disabled = false;
+        sel.title = 'O que o valor digitado significa';
+    }
+    setBaseValor();
+}
+
 function selecionarVerba(cod) {
     const v = VERBAS.find(x => x.cod_rubr === cod);
     if (!v) return;
@@ -623,8 +700,7 @@ function selecionarVerba(cod) {
     const info = document.getElementById('verba-info');
     info.textContent = `${TP_LABEL[v.tp_rubr]||v.tp_rubr} · Unidade: ${v.unid_verba === 'V' ? 'Valor (R$)' : v.unid_verba === 'H' ? 'Hora' : 'Diária'}`;
     info.classList.add('show');
-    const lblMap = {'V': 'Valor (R$) *', 'H': 'Horas *', 'D': 'Diárias *'};
-    document.getElementById('lbl-valor').textContent = lblMap[v.unid_verba] || 'Valor *';
+    ajustarBasePorUnidade();
 }
 
 // ── MODOS ──
@@ -766,8 +842,13 @@ function coletarDados() {
     const codVerba = parseInt(document.getElementById('cod_verba').value || '0');
     if (!codVerba) return {ok:false, msg:'Selecione uma verba.'};
 
+    const tipoValor = document.getElementById('sel-base').value || 'V';
     const valor = parseValor(document.getElementById('inp-valor').value);
-    if (!valor) return {ok:false, msg:'Informe o valor (maior que zero).'};
+    if (!valor) return {ok:false, msg: tipoValor === 'V'
+        ? 'Informe o valor (maior que zero).'
+        : 'Informe o percentual (maior que zero).'};
+    if (tipoValor !== 'V' && valor > 100000)
+        return {ok:false, msg:'Percentual acima de 1.000% — confira o que foi digitado.'};
 
     let matriculas = null;
     if (modoAlvo === 'especifico') {
@@ -807,6 +888,7 @@ function coletarDados() {
         payload: {
             cod_verba:           codVerba,
             valor:               valor,
+            tipo_valor:          tipoValor,
             matriculas:          matriculas,
             id_sindicato:        parseInt(document.getElementById('sel-sindicato').value || '0') || null,
             id_funcao:           parseInt(document.getElementById('sel-funcao').value    || '0') || null,
@@ -877,6 +959,8 @@ function resetarForm() {
     document.getElementById('inp-valor').value     = '';
     document.getElementById('verba-info').classList.remove('show');
     document.getElementById('lbl-valor').textContent = 'Valor (R$) *';
+    const _selBase = document.getElementById('sel-base');
+    _selBase.value = 'V'; _selBase.disabled = false;
     verbaSel = null;
 
     document.querySelector('input[name="modo_alvo"][value="especifico"]').checked = true;
@@ -930,7 +1014,9 @@ function editarRegistro(id) {
     document.getElementById('btn-principal').textContent  = '✓ Salvar Alteração';
     document.getElementById('btn-cancelar').style.display = 'inline-flex';
 
-    selecionarVerba(r.cod_verba);
+    selecionarVerba(r.cod_verba);          // ja ajusta a trava por unidade
+    document.getElementById('sel-base').value = (r.tipo_valor || 'V').toUpperCase();
+    setBaseValor();
     document.getElementById('inp-valor').value = formatValor(r.valor);
 
     if (r.matricula) {
@@ -987,7 +1073,7 @@ function editarRegistro(id) {
 // pago: para esse o caminho e Parar, que fecha a vigencia sem apagar nada.
 function _descRegistro(id) {
     const r = LISTA_MAP[id];
-    return r ? `Verba ${String(r.cod_verba).padStart(4,'0')} — R$ ${formatValor(r.valor)}`
+    return r ? `Verba ${String(r.cod_verba).padStart(4,'0')} — ${labelValorReg(r)}`
              : `ID ${id}`;
 }
 
@@ -1116,7 +1202,7 @@ function renderLista(regs) {
             <td>${renderAlvo(r)}</td>
             <td><span class="td-cod">${String(r.cod_verba).padStart(4,'0')}</span>
                 <br><span style="font-size:11px;color:#475569;">${nomeVerba(r.cod_verba)}</span></td>
-            <td class="td-val">R$ ${formatValor(r.valor)}</td>
+            <td class="td-val">${labelValorReg(r)}</td>
             <td>${renderVigencia(r)}</td>
             <td style="font-size:10px;color:#64748b;white-space:nowrap;line-height:1.7;">
                 Férias: ${r.nas_ferias}<br>Afas.: ${r.se_afastado} · Adm: ${r.mes_admissao} · Resc: ${r.mes_rescisao}
@@ -1191,7 +1277,7 @@ function iniciarTour() {
             element: '#inp-valor',
             popover: {
                 title: '💰 Valor (R$)',
-                description: 'Digite o valor fixo que será lançado a cada folha. A máscara formata automaticamente (ex: "15000" → "150,00"). Deve ser maior que zero.',
+                description: 'Digite o valor que será lançado a cada folha. A máscara formata automaticamente (ex: "15000" → "150,00"). Ao lado, escolha o que esse número significa: <b>R$</b> (valor fixo) ou um <b>percentual</b> do salário, dos adicionais de insalubridade/periculosidade ou do salário mínimo. No percentual o valor é recalculado a cada folha — se o salário muda, ele acompanha; e num lançamento de grupo cada funcionário recebe o percentual sobre o salário dele.',
                 side: 'left', align: 'center',
             }
         },
