@@ -820,6 +820,76 @@ def _esocial_delete():
             .or_("recibo.is.null,recibo.eq."))
 
 
+def _msg_cert_ausente(empresa):
+    """Mensagem de "sem certificado" que diz o que FALTA, e nao so' o que falhou.
+
+    O texto generico mandava procurar arquivo quando, muitas vezes, o arquivo ja
+    estava no sistema: no cliente 0065 o procurador (MANOEL, e-CPF) estava
+    importado e a empresa continuava marcada como 'proprio', sem nunca ter sido
+    ligada a ele — e a tela so dizia "Certificado digital nao configurado"
+    (15/09/2026).
+
+    Le a tab_procurador so' quando a empresa esta em 'proprio' e sem .pfx: e' o
+    unico caso em que a resposta depende de ter procurador cadastrado, e isto
+    roda em caminho de erro, nunca no fluxo normal de envio.
+    """
+    emp  = empresa or {}
+    modo = str(emp.get("cert_modo") or "proprio").strip().lower()
+
+    if modo == "procuracao":
+        if not emp.get("id_procurador"):
+            return ("Esta empresa transmite por PROCURAÇÃO, mas nenhum procurador foi "
+                    "escolhido. Abra Cadastro → Empresa, seção \"Transmissão do eSocial\", "
+                    "e selecione o procurador.")
+        # Aqui o certificado do procurador deveria ter sido injetado pelo
+        # _aplicar_cert_esocial. Se nao foi, o registro dele e' que diz o porque —
+        # e afirmar "esta sem certificado" sem olhar seria chute.
+        proc = None
+        try:
+            proc = (supabase.table("tab_procurador")
+                    .select("nome, cert_titular, cert_pfx_b64, ativo")
+                    .eq("id_procurador", int(emp["id_procurador"]))
+                    .limit(1).execute().data or [None])[0]
+        except Exception:
+            proc = None
+        if not proc:
+            return ("O procurador escolhido para esta empresa não existe mais. Escolha "
+                    "outro em Cadastro → Empresa, seção \"Transmissão do eSocial\".")
+        _nm = str(proc.get("nome") or proc.get("cert_titular") or "").strip()
+        if not proc.get("cert_pfx_b64"):
+            return (f"O procurador {_nm or 'escolhido'} está sem certificado guardado. "
+                    "Importe o .pfx dele em eSocial → Certificado de Procurador.")
+        return (f"O certificado do procurador {_nm or 'escolhido'} está cadastrado, mas não "
+                "pôde ser usado nesta transmissão. Reimporte o .pfx em eSocial → "
+                "Certificado de Procurador e tente de novo.")
+
+    procs = []
+    try:
+        _cli = emp.get("id_cliente") or session.get("id_cliente")
+        if _cli:
+            procs = (supabase.table("tab_procurador")
+                     .select("nome, cert_titular")
+                     .eq("id_cliente", _cli)
+                     .eq("ativo", True)
+                     .limit(5).execute().data or [])
+    except Exception:
+        procs = []
+
+    if procs:
+        nomes = ", ".join(n for n in (
+            str(p.get("nome") or p.get("cert_titular") or "").strip() for p in procs) if n)
+        return ("Esta empresa está marcada para usar certificado PRÓPRIO e não tem .pfx "
+                "cadastrado. Já existe procurador cadastrado neste cliente"
+                + (f" ({nomes})" if nomes else "")
+                + " — se a transmissão é por procuração, abra Cadastro → Empresa, seção "
+                  "\"Transmissão do eSocial\", e marque \"Procuração de terceiros\".")
+
+    return ("Certificado digital não configurado. Cadastre o certificado A1 da empresa em "
+            "eSocial → Certificado Digital — ou, se quem transmite é o escritório, importe "
+            "o certificado dele em eSocial → Certificado de Procurador e marque a "
+            "procuração no cadastro da empresa.")
+
+
 def _conferir_assinante_esocial(empresa):
     """O certificado desta empresa consegue assinar pela RAIZ do CNPJ?
 
@@ -21294,8 +21364,8 @@ def api_esocial_s2220_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -21437,7 +21507,7 @@ def api_esocial_s2220_reconsultar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -21758,8 +21828,8 @@ def api_esocial_s2230_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -31617,7 +31687,7 @@ def api_esocial_s1000_enviar():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+                        "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -31852,7 +31922,7 @@ def api_esocial_s1000_excluir():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado."})
+                        "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -32156,7 +32226,7 @@ def api_esocial_s1005_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
 
@@ -32943,7 +33013,7 @@ def api_esocial_s1010_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        msg = "Certificado digital não configurado."
+        msg = _msg_cert_ausente(empresa)
         _xml_erro_save(_pref, 2, msg)
         return jsonify({"ok": False, "msg": msg})
 
@@ -33672,8 +33742,8 @@ def _s1020_enviar_impl():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -34107,7 +34177,7 @@ def api_esocial_s2200_enviar():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+                        "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -34384,7 +34454,7 @@ def api_esocial_s2200_reconsutar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -34648,7 +34718,7 @@ def api_esocial_s2300_enviar():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+                        "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -34838,7 +34908,7 @@ def api_esocial_s2300_reconsultar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -35339,8 +35409,8 @@ def api_esocial_s2205_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -35503,7 +35573,7 @@ def api_esocial_s2205_reconsultar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -36221,8 +36291,8 @@ def api_esocial_s2206_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -36384,7 +36454,7 @@ def api_esocial_s2206_reconsultar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -36660,8 +36730,8 @@ def api_esocial_s2299_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -36870,8 +36940,8 @@ def api_esocial_s2399_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -37030,7 +37100,7 @@ def api_esocial_s2299_reconsultar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -37650,7 +37720,7 @@ def api_esocial_reconsultar_generico():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        return jsonify({"ok": False, "msg": "Certificado não configurado."})
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -37984,7 +38054,7 @@ def api_esocial_consulta_tabela():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+                        "msg": _msg_cert_ausente(empresa)})
     try:
         pfx_bytes = base64.b64decode(pfx_b64)
         senha_str = _cert_decrypt(senha_enc)
@@ -38118,7 +38188,7 @@ def api_admin_esocial_consulta_trabalhador():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+                        "msg": _msg_cert_ausente(empresa)})
     try:
         pfx_bytes = base64.b64decode(pfx_b64)
         senha_str = _cert_decrypt(senha_enc)
@@ -39866,7 +39936,7 @@ def api_esocial_s1200_enviar():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado."})
+                        "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -40680,8 +40750,8 @@ def _s1210_enviar_impl():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -41267,8 +41337,8 @@ def api_esocial_s1299_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -42837,8 +42907,8 @@ def api_esocial_s1298_enviar():
     pfx_b64   = empresa.get("cert_pfx_b64")
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
-        _xml_erro_save(_pref, 2, "Certificado digital não configurado.")
-        return jsonify({"ok": False, "msg": "Certificado digital não configurado."})
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return jsonify({"ok": False, "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
@@ -43518,7 +43588,7 @@ def api_esocial_s3000_enviar():
     senha_enc = empresa.get("cert_senha_enc")
     if not pfx_b64 or not senha_enc:
         return jsonify({"ok": False,
-                        "msg": "Certificado digital não configurado. Acesse eSocial → Certificado Digital."})
+                        "msg": _msg_cert_ausente(empresa)})
 
     pfx_bytes = base64.b64decode(pfx_b64)
     senha_str = _cert_decrypt(senha_enc)
