@@ -43301,6 +43301,14 @@ def api_esocial_recuperar_recibos():
 
     Só aceita retorno com cdResposta 201 e perApur igual ao da folha ativa.
     É leitura no Storage e insert aqui; não fala com o eSocial.
+
+    Também cobre o caso INVERSO, que é o mais comum: o envio saiu, o governo
+    respondeu "lote recebido" com um protocolo — e ninguém consultou o retorno.
+    O recibo fica no eSocial, o sistema acha que nada saiu, e o reenvio volta
+    com [106] duplicidade (cliente 0065, S-1200 de 08/2026, em 15/09/2026). Para
+    esses, a linha pendente volta para AGUARDANDO com o protocolo do envio, que
+    é o que a tela precisa para oferecer o Re-consultar — aí o recibo vem do
+    governo, e não daqui.
     """
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
@@ -43315,8 +43323,10 @@ def api_esocial_recuperar_recibos():
         # ── 1. o que já existe aqui ────────────────────────────────
         # A chave do tab_esocial é id_esocial — a tabela não tem coluna "id".
         recibos_conhecidos, pendentes = set(), 0
+        linhas_por_chave = {}          # (layout, matricula) -> linha pendente
         for r in (supabase.table("tab_esocial")
-                  .select("id_esocial, layout, matricula, recibo, data_grava")
+                  .select("id_esocial, layout, matricula, recibo, "
+                          "observacao_erro, data_grava")
                   .eq("id_empresa", id_empresa)
                   .eq("ano_mes", int(anomes_atual))
                   .in_("layout", ["1200", "1210"])
@@ -43326,6 +43336,8 @@ def api_esocial_recuperar_recibos():
                 recibos_conhecidos.add(rec)
             else:
                 pendentes += 1
+                _ch = (str(r.get("layout") or ""), str(int(r.get("matricula") or 0)))
+                linhas_por_chave.setdefault(_ch, r)
 
         # ── 2. onde procurar os retornos ───────────────────────────
         # Mesma lógica da Verificação: a pasta do próprio período mais a de
@@ -43371,31 +43383,56 @@ def api_esocial_recuperar_recibos():
 
         rx = re.compile(r"^S(1200|1210)_([^_]+)_(\d{8})_(\d{6})_6_",
                         re.IGNORECASE)
-        candidatos = []
+        # _5_resposta e a resposta do ENVIO: traz o protocolo, e nao o recibo.
+        rx5 = re.compile(r"^S(1200|1210)_([^_]+)_(\d{8})_(\d{6})_5_resposta",
+                         re.IGNORECASE)
+        candidatos, envios, consultados = [], [], set()
         for d in sorted(diretorios):
             for it in (_storage_listar(d) or []):
                 nm = it.get("name") or ""
+                if not nm.lower().endswith(".xml"):
+                    continue
                 m = rx.match(nm)
-                if m and nm.lower().endswith(".xml"):
+                if m:
                     mat = m.group(2).lstrip("0") or m.group(2)
                     candidatos.append({
                         "path": f"{d}/{nm}", "layout": m.group(1),
                         "matricula": mat,
                         "data": m.group(3), "hora": m.group(4),
                         "dt": m.group(3) + m.group(4)})
-        if not candidatos:
+                    # Marca o ENVIO que este arquivo consultou: a consulta
+                    # feita logo apos o envio grava com o MESMO layout,
+                    # matricula, data e hora no nome. O Re-consultar avulso
+                    # grava com a hora dele, e por isso nao casa com envio
+                    # nenhum — de proposito: uma consulta posterior pode ser a
+                    # de OUTRO envio (foi o que aconteceu no 0065, onde a
+                    # consulta das 16:35 respondeu [106] sobre o reenvio, e nao
+                    # sobre o envio das 16:30, que era o aceito). Quem impede
+                    # de mexer no que ja' esta resolvido e' o recibo, conferido
+                    # la' embaixo.
+                    consultados.add((m.group(1), mat, m.group(3), m.group(4)))
+                    continue
+                m5 = rx5.match(nm)
+                if m5:
+                    mat = m5.group(2).lstrip("0") or m5.group(2)
+                    envios.append({
+                        "path": f"{d}/{nm}", "layout": m5.group(1),
+                        "matricula": mat,
+                        "data": m5.group(3), "hora": m5.group(4),
+                        "dt": m5.group(3) + m5.group(4)})
+        if not candidatos and not envios:
             return jsonify({"ok": True, "criados": 0,
-                            "msg": "Não há arquivo de consulta (_6_) de "
-                                   "S-1200/S-1210 no Storage para esta folha. "
-                                   "Rode a consulta do eSocial antes."})
+                            "msg": "Não há XML de envio nem de consulta de "
+                                   "S-1200/S-1210 no Storage para esta folha."})
 
         # ── 3. lê os retornos e extrai o recibo ────────────────────
         # Do mais recente para o mais antigo, e o primeiro que trouxer recibo
         # aceito vale: a consulta mais nova costuma voltar "[101] em
         # processamento", sem número, enquanto a anterior já trouxe o recibo.
-        xmls = _storage_baixar_varios([c["path"] for c in candidatos])
-        candidatos.sort(key=lambda c: c["dt"], reverse=True)
         achados, recusados = {}, []
+        xmls = (_storage_baixar_varios([c["path"] for c in candidatos])
+                if candidatos else {})
+        candidatos.sort(key=lambda c: c["dt"], reverse=True)
         for c in candidatos:
             chave = (c["layout"], c["matricula"])
             if chave in achados:
@@ -43450,25 +43487,77 @@ def api_esocial_recuperar_recibos():
             except Exception as e:
                 erros.append(f"S-{layout} mat {mat}: {e}")
 
-        if criados:
+        # ── 5. envios que sairam e nunca foram consultados ─────────
+        # O recibo desses esta no governo, atrelado ao protocolo. Aqui a linha
+        # so' volta para AGUARDANDO: quem fala com o eSocial e o Re-consultar
+        # da tela, que ja sabe tratar retentativa, erro e recibo.
+        #
+        # Do mais ANTIGO para o mais novo, e um por (layout, matricula): quando
+        # houve reenvio, o PRIMEIRO envio e' o que o governo aceitou — os
+        # seguintes e que voltam [106] duplicidade.
+        sem_consulta = [e for e in envios
+                        if (e["layout"], e["matricula"], e["data"], e["hora"])
+                        not in consultados]
+        sem_consulta.sort(key=lambda e: e["dt"])
+        aguardando, ja_aguardando, vistos = 0, 0, set()
+        if sem_consulta:
+            xml5 = _storage_baixar_varios([e["path"] for e in sem_consulta])
+            for e in sem_consulta:
+                chave = (e["layout"], str(int(e["matricula"] or 0)))
+                if chave in vistos:
+                    continue
+                linha = linhas_por_chave.get(chave)
+                if not linha:
+                    continue          # sem linha pendente: nada a marcar
+                x   = xml5.get(e["path"]) or ""
+                cod = re.search(r"<cdResposta>(.*?)</cdResposta>", x)
+                pro = re.search(r"<protocoloEnvio>(.*?)</protocoloEnvio>", x)
+                if not pro or not pro.group(1).strip():
+                    continue
+                if not cod or cod.group(1).strip() != "201":
+                    continue          # lote nem foi recebido: nao ha o que consultar
+                vistos.add(chave)
+                if (linha.get("observacao_erro") or "").strip().startswith("AGUARDANDO:"):
+                    ja_aguardando += 1
+                    continue
+                try:
+                    (supabase.table("tab_esocial")
+                     .update({"observacao_erro": f"AGUARDANDO:{pro.group(1).strip()}"})
+                     .eq("id_esocial", linha["id_esocial"])
+                     .eq("id_empresa", id_empresa).execute())
+                    aguardando += 1
+                except Exception as ex:
+                    erros.append(f"S-{e['layout']} mat {e['matricula']}: {ex}")
+
+        if criados or aguardando:
             gravar_log("ESOCIAL",
-                       f"Recibos restaurados do Storage: {criados} evento(s) "
-                       f"S-1200/S-1210 aceitos da folha {anomes_atual}.",
+                       f"Recibos do Storage na folha {anomes_atual}: "
+                       f"{criados} evento(s) restaurado(s) com recibo, "
+                       f"{aguardando} envio(s) sem consulta reabertos para Re-consultar.",
                        ano_mes=anomes_atual)
 
+        partes = []
         if criados:
-            msg = (f"{criados} evento(s) aceito(s) restaurado(s) com o recibo. "
-                   f"Agora eles aparecem como Enviados — dá para excluir o "
-                   f"S-1210 pelo S-3000 e retificar o S-1200.")
-        elif ja_tinha:
-            msg = (f"Nada a fazer: os {ja_tinha} recibos encontrados já "
-                   f"estavam registrados aqui.")
-        else:
-            msg = ("Nenhum retorno com recibo aceito foi encontrado nos XMLs "
-                   "desta folha.")
+            partes.append(f"{criados} evento(s) aceito(s) restaurado(s) com o recibo — "
+                          f"agora aparecem como Enviados.")
+        if aguardando:
+            partes.append(f"{aguardando} remessa(s) que foram transmitidas e nunca "
+                          f"consultadas voltaram para Aguardando: clique em Re-consultar "
+                          f"nelas para o eSocial devolver o recibo.")
+        if not partes:
+            if ja_tinha:
+                partes.append(f"Nada a fazer: os {ja_tinha} recibos encontrados já "
+                              f"estavam registrados aqui.")
+            elif ja_aguardando:
+                partes.append(f"Nada a fazer: {ja_aguardando} remessa(s) já estão em "
+                              f"Aguardando — clique em Re-consultar nelas.")
+            else:
+                partes.append("Nenhum recibo aceito e nenhum envio sem consulta foi "
+                              "encontrado nos XMLs desta folha.")
         return jsonify({"ok": True, "criados": criados, "ja_tinha": ja_tinha,
+                        "aguardando": aguardando, "ja_aguardando": ja_aguardando,
                         "pendentes": pendentes, "recusados": recusados[:20],
-                        "erros": erros[:20], "msg": msg})
+                        "erros": erros[:20], "msg": " ".join(partes)})
     except Exception as e:
         import traceback as _tb
         _tb.print_exc()
