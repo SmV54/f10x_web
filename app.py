@@ -8033,35 +8033,57 @@ def _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat_int, anomes_am,
     jeito que no S-2230 ele separa afastamento de retorno. E NÃO se cria S-1200:
     as verbas rescisórias já vão dentro do S-2299.
 
-    Idempotente: recalcular a rescisão não duplica a remessa.
+    Idempotente: recalcular a rescisão não duplica a remessa. E aproveita
+    também o S-1210 que a FOLHA tinha lançado para o mês, deixando UMA linha
+    só na competência (ver abaixo).
     """
     from datetime import datetime as _dt
     agora_es    = _dt.now()
     ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
     try:
         existentes = (supabase.table("tab_esocial")
-                      .select("id_esocial, recibo, observacao_erro, flag1")
+                      .select("id_esocial, recibo, observacao_erro, flag1, folha_tipo")
                       .eq("id_empresa", id_empresa).eq("matricula", mat_int)
                       .eq("layout", "1210").eq("ano_mes", ano_mes_int)
                       .execute().data or [])
     except Exception as e:
         print(f"[S1210-resc] nao consegui ler a tab_esocial: {e}")
         return
-    pendente = None
+    # Serve qualquer S-1210 ainda NÃO TRANSMITIDO da mesma competência e do
+    # mesmo folha_tipo: o da própria rescisão (flag1 'R', de um cálculo
+    # anterior) ou o que a folha lançou antes de a demissão ser registrada.
+    #
+    # O eSocial só aceita UM evtPgtos por CPF + perApur — o segundo volta com
+    # [106] duplicidade. E o mês da rescisão nunca tem folha normal junto: o
+    # saldo de salário já vai dentro da própria rescisão (conferido na base em
+    # 15/09/2026: nenhum funcionário tem tab_total 'N' e 'R' no mesmo mês).
+    # Então a linha da folha VIRA a da rescisão, ganhando o flag1 'R' — antes
+    # ela era ignorada aqui e a rescisão lançava uma segunda remessa do mesmo
+    # evento, que aparecia duplicada na tela do S-1210 (empresa 39, matrícula
+    # 77, 09/2026).
+    #
+    # Quem já tem recibo, quem foi EXCLUÍDO por S-3000 e o S-1210 de outra
+    # folha da competência (férias, por exemplo) ficam de fora.
+    _ft_es, _cands = str(folha_tipo_es or "N").upper()[:1], []
     for row in existentes:
-        if str(row.get("flag1") or "").upper()[:1] != "R":
-            continue          # esse é o S-1210 da folha normal, não o da rescisão
-        rec = (row.get("recibo") or "").strip()
-        obs = (row.get("observacao_erro") or "").strip().upper()
-        if not rec and obs != "EXCLUIDO":
-            pendente = row
-            break
+        if (row.get("recibo") or "").strip():
+            continue
+        if (row.get("observacao_erro") or "").strip().upper() == "EXCLUIDO":
+            continue
+        if str(row.get("folha_tipo") or "N").upper()[:1] != _ft_es:
+            continue
+        _cands.append(row)
+    pendente = next((r for r in _cands
+                     if str(r.get("flag1") or "").upper()[:1] == "R"), None)
+    if pendente is None and _cands:
+        pendente = _cands[0]          # o da folha: vira o da rescisão
     campos = {
         "data_cad":   agora_es.strftime("%Y%m%d"),
         "hora_cad":   agora_es.strftime("%H%M"),
         "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
         "ano_mes":    ano_mes_int,
         "folha_tipo": folha_tipo_es,
+        "flag1":      "R",
     }
     try:
         if pendente:
@@ -8072,10 +8094,22 @@ def _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat_int, anomes_am,
                 **campos,
                 "id_cliente": id_cliente, "id_empresa": id_empresa,
                 "layout": "1210", "matricula": mat_int, "codigo2": 0,
-                "flag1": "R",
             }).execute()
     except Exception as e:
         print(f"[S1210-resc] nao consegui gravar: {e}")
+
+    # Sobrou mais de um S-1210 pendente na competência (por exemplo o da folha
+    # e o da rescisão, das versões anteriores desta rotina): fica UM só. Dois
+    # evtPgtos do mesmo CPF no mesmo perApur o governo não aceita — o segundo
+    # volta com [106] duplicidade. O delete é o seguro, que nunca leva remessa
+    # com recibo.
+    _sobra = [r.get("id_esocial") for r in _cands
+              if pendente and r.get("id_esocial") != pendente.get("id_esocial")]
+    if _sobra:
+        try:
+            _esocial_delete().in_("id_esocial", _sobra).execute()
+        except Exception as e:
+            print(f"[S1210-resc] nao consegui limpar duplicata: {e}")
 
 
 def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha_tipo_es,
@@ -45301,31 +45335,98 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     remover_pred=lambda n: n.startswith("Folha10_Memoria_Empresa")
                     and "_Ferias_" not in n and n.lower().endswith(".pdf"))
 
+    # Totais do calculo ANTERIOR, por matricula. Lidos AQUI porque quem os
+    # apaga e a limpeza logo abaixo — e e com eles que o bloco do eSocial, no
+    # fim do laco, decide se o funcionario REALMENTE mudou neste recalculo.
+    #
+    # Motivo: a folha e reaberta e recalculada por causa de UM funcionario, mas
+    # o recalculo passa por todos. Sem esta conferencia, cada pessoa que ja
+    # tinha o S-1200/S-1210 aceito ganhava uma remessa nova — uma retificacao
+    # para a empresa inteira quando so' uma mudou.
+    #
+    # A assinatura sao os valores que o evento declara: proventos, descontos,
+    # liquido, bases e retencoes. Duas verbas trocadas entre si, de mesmo valor
+    # e mesma incidencia, passariam batido — e o limite conhecido deste atalho,
+    # que em troca custa uma leitura so.
+    _ES_SIG_COLS = ("valor_total_proventos", "valor_total_descontos",
+                    "valor_liquido", "valor_base_inss_semlimite",
+                    "valor_inss_retido", "valor_base_fgts", "valor_fgts",
+                    "valor_irrf_basetabela")
+    _tot_ant = {}
+    try:
+        _q_ta = (supabase.table("tab_total")
+                 .select("matricula, " + ", ".join(_ES_SIG_COLS))
+                 .eq("id_empresa", id_empresa)
+                 .eq("folha",      int(anomes))
+                 .eq("folha_tipo", anomes_tipo))
+        if id_cliente:
+            _q_ta = _q_ta.eq("id_cliente", id_cliente)
+        for _r_ta in (_q_ta.execute().data or []):
+            _tot_ant[int(_r_ta.get("matricula") or 0)] = tuple(
+                int(_r_ta.get(_c) or 0) for _c in _ES_SIG_COLS)
+    except Exception as e_ta:
+        # Sem a leitura, todo mundo conta como alterado — o comportamento
+        # antigo. O contrario nunca: deixar de lancar a remessa de quem mudou
+        # seria declaracao a menos no eSocial.
+        _tot_ant = {}
+        print(f"[tab_total anterior] erro: {e_ta}")
+
     # Apaga registros calculados anteriores desta folha antes de recalcular
     _limpar_folha_calculada(id_cliente, id_empresa, anomes, _folha_tipo_mov)
 
-    # Apaga as remessas S-1200/S-1210 SEM RECIBO desta folha antes de
-    # recalcular — elas serão geradas de novo com os valores novos.
+    # Remessas S-1200/S-1210 desta folha que JA existem: o recalculo
+    # REAPROVEITA a que ainda esta pendente, em vez de apagar e lancar outra.
     #
-    # Quem já tem recibo NÃO é apagado (por isso o _esocial_delete): o evento
-    # está aceito no governo, e sumir com o registro aqui não desfaz nada lá —
-    # só faz o sistema achar que nunca foi enviado, e o reenvio volta com
-    # [106] duplicidade. Evento aceito se corrige com retificação (indRetif=2),
-    # que precisa exatamente do recibo que este delete apagava.
+    # A linha pendente e so o marcador da fila: o XML e montado na hora do
+    # envio, com os valores do momento. Apagar e recriar nao muda nada no que
+    # vai para o governo e ainda joga fora o que a linha carrega — o protocolo
+    # de um envio em curso ("AGUARDANDO:<protocolo>" em observacao_erro) e o
+    # flag1 'R' do S-1210 da rescisao. Recalcular tres vezes deixava a folha
+    # com tres remessas diferentes do mesmo evento no historico do usuario.
     #
-    # Era um delete cru e foi o que apagou os 36 S-1200/S-1210 já aceitos da
-    # empresa 39 em 07/2026, sem deixar rastro no log — a exclusão silenciosa
-    # que ninguém achava porque não estava no histórico do usuário.
+    # Quem JA TEM RECIBO fica no _es_env: o evento esta aceito no governo e so
+    # se corrige por retificacao (indRetif=2), que precisa de uma remessa nova
+    # apontando para o recibo — mas so ganha essa remessa quem de fato mudou de
+    # valor neste recalculo (ver _tot_ant, acima).
+    #
+    # Antes isto era um delete de tudo que nao tinha recibo — e, antes de
+    # 17/08/2026, um delete cru, que apagou os 36 S-1200/S-1210 ja aceitos da
+    # empresa 39 em 07/2026 sem deixar rastro no log.
+    _es_pend = {}          # (layout, matricula) -> id_esocial da linha pendente
+    _es_resc = set()       # ("1210", matricula) da rescisao: ocupa o lugar
+    _es_env  = set()       # (layout, matricula) ja aceito no governo
     try:
-        (_esocial_delete()
-         .eq("id_cliente", id_cliente)
-         .eq("id_empresa", id_empresa)
-         .eq("ano_mes", int(anomes))
-         .eq("folha_tipo", anomes_tipo)
-         .in_("layout", ["1200", "1210"])
-         .execute())
-    except Exception:
-        pass
+        for _r_es in (supabase.table("tab_esocial")
+                      .select("id_esocial, layout, matricula, recibo, observacao_erro, flag1")
+                      .eq("id_cliente", id_cliente)
+                      .eq("id_empresa", id_empresa)
+                      .eq("ano_mes", int(anomes))
+                      .eq("folha_tipo", anomes_tipo)
+                      .in_("layout", ["1200", "1210"])
+                      .execute().data or []):
+            _ch_es = (str(_r_es.get("layout") or ""),
+                      int(_r_es.get("matricula") or 0))
+            if (_r_es.get("observacao_erro") or "").strip().upper() == "EXCLUIDO":
+                continue          # anulado por S-3000: e como se nao existisse
+            if (_r_es.get("recibo") or "").strip():
+                _es_env.add(_ch_es)
+                continue          # aceito no governo: nao se mexe
+            if str(_r_es.get("flag1") or "").upper()[:1] == "R":
+                # S-1210 da rescisao. Ele OCUPA o lugar do S-1210 do mes (o
+                # eSocial so aceita um evtPgtos por CPF + perApur), entao a
+                # folha nao lanca outro por cima — mas tambem nao mexe nele:
+                # quem cria e atualiza essa linha, com o liquido da folha 'R' e
+                # o infoPgto apontando para o dmDev do desligamento, e o
+                # calculo da rescisao. Antes, o delete geral daqui levava
+                # embora justamente o flag1 'R'.
+                _es_resc.add(_ch_es)
+                continue
+            _es_pend[_ch_es] = _r_es.get("id_esocial")
+    except Exception as e_es_sel:
+        # Sem a leitura nao da para reaproveitar: o insert abaixo cria tudo de
+        # novo (o comportamento antigo). Falhar aqui nao pode parar o calculo.
+        print(f"[tab_esocial S-1200/1210 SELECT] erro: {e_es_sel}")
+    _es_usadas = set()     # chaves que continuam valendo depois deste calculo
 
     total_linhas = len(linhas)
     for idx, l in enumerate(linhas):
@@ -45333,6 +45434,9 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             on_func(idx, total_linhas, int(l["matricula"] or 0), l["nome"])
         matr    = int(l["matricula"] or 0)
         nome_f  = f"Folha10_Memoria_Empresa_{int(id_empresa):06d}_Folha_{anomes}_Matricula_{matr:06d}_em_{ts}.pdf"
+        # Assinatura do calculo deste funcionario (montada junto com o
+        # rec_total). None = nao deu para calcular: conta como alterado.
+        _sig_nova = None
         try:
             buf = io.BytesIO()
             doc = SimpleDocTemplate(buf, pagesize=A4,
@@ -47444,6 +47548,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     "os":                        0,
                     "controle":                  0,
                 }
+                _sig_nova = tuple(int(rec_total.get(_c) or 0) for _c in _ES_SIG_COLS)
                 try:
                     supabase.table("tab_total").insert(rec_total).execute()
                 except Exception as e1:
@@ -47460,42 +47565,69 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
             if int(total_prov) == 0 and int(total_desc) == 0:
                 print(f"[tab_esocial S-1200/1210 SKIP] mat={matr} sem verbas/totais no mês {anomes}")
             else:
-                try:
-                    agora_es = _agora_brasilia()
-                    supabase.table("tab_esocial").insert([
-                        {
-                            "id_cliente": id_cliente,
-                            "id_empresa": id_empresa,
-                            "data_cad":   agora_es.strftime("%Y%m%d"),
-                            "hora_cad":   agora_es.strftime("%H%M"),
-                            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-                            "ano_mes":    int(anomes),
-                            "folha_tipo": anomes_tipo,
-                            "layout":     "1200",
-                            "matricula":  matr,
-                            "codigo2":    0,
-                        },
-                        {
-                            "id_cliente": id_cliente,
-                            "id_empresa": id_empresa,
-                            "data_cad":   agora_es.strftime("%Y%m%d"),
-                            "hora_cad":   agora_es.strftime("%H%M"),
-                            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-                            "ano_mes":    int(anomes),
-                            "folha_tipo": anomes_tipo,
-                            "layout":     "1210",
-                            "matricula":  matr,
-                            "codigo2":    0,
-                        },
-                    ]).execute()
-                except Exception as e_es:
-                    print(f"[tab_esocial S-1200/1210 INSERT] mat={matr} erro: {e_es}")
+                # Tres situacoes, nesta ordem:
+                #   ja esta na fila (pendente, ou o S-1210 da rescisao) -> a
+                #     remessa que esta la continua valendo, nao se lanca outra;
+                #   ja aceito no governo e o calculo deu o MESMO resultado ->
+                #     nao ha o que retificar, nao se lanca nada;
+                #   qualquer outro caso (nunca enviado, ou os valores mudaram)
+                #     -> lanca a remessa.
+                _mudou = (_sig_nova is None
+                          or matr not in _tot_ant
+                          or _tot_ant[matr] != _sig_nova)
+                _lay_novos = []
+                for _lay in ("1200", "1210"):
+                    _es_usadas.add((_lay, matr))
+                    if (_lay, matr) in _es_pend or (_lay, matr) in _es_resc:
+                        continue
+                    if (_lay, matr) in _es_env and not _mudou:
+                        continue
+                    _lay_novos.append(_lay)
+                if _lay_novos:
+                    try:
+                        agora_es = _agora_brasilia()
+                        supabase.table("tab_esocial").insert([
+                            {
+                                "id_cliente": id_cliente,
+                                "id_empresa": id_empresa,
+                                "data_cad":   agora_es.strftime("%Y%m%d"),
+                                "hora_cad":   agora_es.strftime("%H%M"),
+                                "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                                "ano_mes":    int(anomes),
+                                "folha_tipo": anomes_tipo,
+                                "layout":     _lay_n,
+                                "matricula":  matr,
+                                "codigo2":    0,
+                            }
+                            for _lay_n in _lay_novos
+                        ]).execute()
+                    except Exception as e_es:
+                        print(f"[tab_esocial S-1200/1210 INSERT] mat={matr} erro: {e_es}")
 
             _pg_mem = _mem_cabecalho_pagina(empresa_nm, cnpj_fmt, titulo_mem, _versao_mem)
             doc.build(elems, onFirstPage=_pg_mem, onLaterPages=_pg_mem)
             _salvar_memoria_pdf(dest, nome_f, buf.getvalue())
         except Exception as e_loop:
             _aviso(f"[CALCULO ERRO] mat={matr} erro={e_loop}")
+
+    # Pendente que sobrou de quem NAO gerou remessa neste calculo (ficou sem
+    # verbas no mes, ou o calculo parou nele): essa sim se apaga, senao a Fila
+    # continua cobrando um S-1200 que nao tem o que declarar.
+    #
+    # So mexe em quem passou por este calculo (_mats_calc): no calculo
+    # INDIVIDUAL as linhas sao de um funcionario so, e a limpeza geral levava
+    # junto a remessa pendente de TODOS os outros da folha.
+    # O S-1210 da rescisao (flag1 'R') esta no _es_resc, e nao no _es_pend:
+    # quem cuida dele e o calculo da rescisao, nao o da folha.
+    _mats_calc = {int(l.get("matricula") or 0) for l in linhas}
+    _ids_sobra = [_id_es for _ch, _id_es in _es_pend.items()
+                  if _ch not in _es_usadas and _ch[1] in _mats_calc
+                  and _id_es is not None]
+    if _ids_sobra:
+        try:
+            _esocial_delete().in_("id_esocial", _ids_sobra).execute()
+        except Exception as e_es_del:
+            print(f"[tab_esocial S-1200/1210 DELETE] erro: {e_es_del}")
 
 
 @app.route("/calcular_folha")
