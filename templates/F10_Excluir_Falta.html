@@ -151,16 +151,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 #toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 #toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
-    <div class="topo-titulo">Excluir Falta</div>
+    <div class="topo-titulo">Excluir Falta<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">

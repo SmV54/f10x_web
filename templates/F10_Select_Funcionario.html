@@ -372,10 +372,12 @@ body.sel-unico .lista-row { cursor: pointer; }
 #toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 #toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -383,7 +385,7 @@ body.sel-unico .lista-row { cursor: pointer; }
     </div>
     <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
         <span id="topo-titulo-txt">Selecionar Funcionário</span>
-        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; <span style="white-space:nowrap;">{{ folha_ativa_situacao }}</span>{% endif %}</span>{% endif %}
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-start;">

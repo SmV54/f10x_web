@@ -278,9 +278,11 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 #btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -289,7 +291,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     <div class="topo-titulo">
         <span>Lançamento de Movimento</span>
         {% if anomes_atual %}
-        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_tipo_ativa != 'N' %} · {{ {'F':'Férias','R':'Rescisão'}.get(folha_tipo_ativa,'') }}{% endif %}{% if folha_ativa_situacao %} · {{ folha_ativa_situacao }}{% endif %}</span>
+        {% include "_folha_ativa_badge.html" %}
         {% else %}
         <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
         {% endif %}
@@ -817,7 +819,7 @@ function iniciarTour() {
                 }
             },
             {
-                element: '.badge-folha-topo',
+                element: '.topo-folha-ativa, .badge-folha-topo',
                 popover: {
                     title: '📅 Folha Ativa',
                     description: 'Exibe o mês/ano e situação da folha. Lançamentos só são permitidos com a folha <strong>Aberta</strong>. Se a folha estiver Calculada ou Fechada, reabra-a pelo menu Mês/Ano antes de lançar.',

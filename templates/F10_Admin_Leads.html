@@ -88,12 +88,14 @@ tbody tr:last-child td{border-bottom:none}
 .vazio code{background:#0f172a;color:#e2e8f0;display:block;text-align:left;padding:16px 18px;border-radius:10px;
     font-family:var(--mono);font-size:12.5px;line-height:1.6;margin-top:16px;overflow-x:auto;white-space:pre}
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq"><span class="badge-admin">🐾 LEADS</span></div>
-    <div class="topo-centro"><div class="topo-titulo">Leads Pet-Shop</div></div>
+    <div class="topo-centro"><div class="topo-titulo">Leads Pet-Shop<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">

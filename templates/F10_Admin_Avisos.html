@@ -150,12 +150,14 @@ textarea{resize:vertical;min-height:82px;line-height:1.5}
     cursor:pointer;font-family:var(--sans)}
 .link-mini:hover{text-decoration:underline}
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div><span class="badge-admin">📢 AVISOS</span></div>
-    <div class="topo-centro"><div class="topo-titulo">Quadro de Avisos — Menu dos Clientes</div></div>
+    <div class="topo-centro"><div class="topo-titulo">Quadro de Avisos — Menu dos Clientes<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">

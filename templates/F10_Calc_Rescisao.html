@@ -70,17 +70,19 @@ tbody tr:hover { background: #f8fafc; }
 .btn-mem-resc { background: #1e3a5f; }
 .btn-mem-resc:hover { background: #2a7de1; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div>
-        <div class="topo-titulo">{% if modo_trct %}TRCT - Emissão da Rescisão{% elif modo_memoria %}Memória de Cálculo da Rescisão{% else %}Calcular Rescisão{% endif %}</div>
-        {% if anomes_atual %}<div style="text-align:center;"><span class="topo-badge">Folha {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span></div>{% endif %}
+        <div class="topo-titulo">{% if modo_trct %}TRCT - Emissão da Rescisão{% elif modo_memoria %}Memória de Cálculo da Rescisão{% else %}Calcular Rescisão{% endif %}<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+
     </div>
     <div class="topo-dir">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">

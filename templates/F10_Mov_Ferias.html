@@ -291,9 +291,11 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 #btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(217,119,6,0.50); }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -302,7 +304,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     <div class="topo-titulo">
         <span>Lançamento de Movimento — Férias</span>
         {% if anomes_atual %}
-        <span class="badge-folha-topo">🏖️ FÉRIAS · {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+        {% include "_folha_ativa_badge.html" %}
         {% else %}
         <span class="badge-folha-topo" style="color:#991b1b;border-color:#fca5a5;background:#fff;">Sem folha ativa</span>
         {% endif %}

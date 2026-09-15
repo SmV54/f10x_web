@@ -206,16 +206,18 @@ details.acc[open] .acc-chevron {
 }
 .demo-badge strong { font-weight: 600; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div>
         <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
         <div class="topo-versao">Versão: demo</div>
     </div>
-    <div class="topo-titulo">Menu Principal — Demo Opção B</div>
+    <div class="topo-titulo">Menu Principal — Demo Opção B<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex; align-items:center;">
         <div class="topo-usuario">
             <span class="topo-empresa">Empresa Demo</span>

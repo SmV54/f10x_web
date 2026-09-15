@@ -217,16 +217,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     background: #e6f0fb; border-radius: 3px; padding: 1px 4px;
 }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div>
         <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
         <div class="topo-versao">Versão: demo</div>
     </div>
-    <div class="topo-titulo">Menu Principal</div>
+    <div class="topo-titulo">Menu Principal<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex; align-items:center;">
         <div style="display:flex;flex-direction:column;gap:2px;">
             <span class="topo-empresa">Empresa Demo</span>

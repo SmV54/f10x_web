@@ -211,12 +211,14 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
     word-break: break-word;
 }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div><span class="badge-admin">🛡️ ADMIN</span></div>
-    <div class="topo-titulo">Emissão de Nota Fiscal de Serviço (NFS-e)</div>
+    <div class="topo-titulo">Emissão de Nota Fiscal de Serviço (NFS-e)<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">

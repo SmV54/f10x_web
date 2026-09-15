@@ -161,9 +161,11 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
     padding: 18px 20px; color: #9a3412; font-size: 13px; text-align: center;
 }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -172,14 +174,14 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
     <div class="topo-titulo">
         <span>Adiantamento do 13º Salário</span>
         {% if anomes_atual %}
-        <span class="badge-folha-topo {% if not tipo_ok %}badge-sem-folha{% endif %}">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if tipo_ok %} · Adiant. 13º{% endif %}</span>
+
         {% if tipo_ok %}
         <span id="badgeSit" class="badge-sit badge-sit-{{ folha_situacao|lower or 'a' }}">{{ {'A':'Aberta','X':'Aberta','C':'Calculada','P':'Calculando','F':'Fechada'}.get(folha_situacao, 'Aberta') }}</span>
         {% endif %}
         {% else %}
         <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
         {% endif %}
-    </div>
+    <span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10" class="topo-logo-img" style="height:32px;width:auto;display:block;">

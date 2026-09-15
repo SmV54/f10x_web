@@ -169,9 +169,11 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .msg-ok  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
 .msg-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -180,7 +182,7 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
     <div class="topo-titulo">
         <span>Replicar Movimento do Mês Anterior</span>
         {% if anomes_atual %}
-        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_situacao %} · {{ {'A':'Aberta','X':'Aberta','C':'Calculada','F':'Fechada'}.get(folha_situacao, folha_situacao) }}{% endif %}</span>
+        {% include "_folha_ativa_badge.html" %}
         {% else %}
         <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
         {% endif %}

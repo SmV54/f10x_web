@@ -306,19 +306,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .nav-card-mem-titulo { font-size: 12px; font-weight: 600; color: #1e293b; line-height: 1.3; }
 .nav-card-mem-sub    { font-size: 11px; color: #64748b; margin-top: 2px; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div class="topo-ctr">
-        <span class="topo-titulo">Visualizar Cálculo</span>
-        {% if anomes_atual %}
-        <span class="badge-folha {{ folha_sit_class }}">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_sit_label %} &nbsp;·&nbsp; {{ folha_sit_label }}{% endif %}</span>
-        {% endif %}
+        <span class="topo-titulo">Visualizar Cálculo</span><span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span>
+
     </div>
     <div class="topo-dir">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">

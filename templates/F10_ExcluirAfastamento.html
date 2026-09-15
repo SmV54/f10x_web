@@ -98,9 +98,11 @@ tbody td.nome { font-weight: 600; color: #1e293b; max-width: 200px; overflow: hi
 .bloq-txt { font-size: 11px; color: #94a3b8; font-style: italic; }
 .vazio { padding: 40px; text-align: center; font-size: 14px; color: #94a3b8; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -108,12 +110,8 @@ tbody td.nome { font-weight: 600; color: #1e293b; max-width: 200px; overflow: hi
     </div>
     <div class="topo-titulo">
         <span>Cancelar Férias</span>
-        {% if anomes_fmt %}
-        <span class="topo-badge {% if sit_folha == 'A' or sit_folha == 'X' %}sit-aberta{% elif sit_folha == 'C' %}sit-calculada{% else %}sit-fechada{% endif %}">
-            {{ anomes_fmt }} · {% if sit_folha == 'A' %}Aberta{% elif sit_folha == 'X' %}Aberta{% elif sit_folha == 'C' %}Calculada{% else %}Fechada{% endif %}
-        </span>
-        {% endif %}
-    </div>
+
+    <span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-start;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">

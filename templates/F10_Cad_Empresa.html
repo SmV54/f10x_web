@@ -606,10 +606,12 @@ body {
 }
 #btnTour:hover { transform: scale(1.12); box-shadow: 0 6px 24px rgba(42,125,225,0.50); }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
 <!-- TOPO -->
+{% include "_folha_ativa_tarja.html" %}
 <header class="topo">
     <div style="display:flex; flex-direction:column; align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa_info }}</span>
@@ -617,7 +619,7 @@ body {
     </div>
     <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
         <span>{{ titulo_tela }}</span>
-        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
     </div>
     <div style="display:flex; align-items:center; gap:16px;">
         <div style="display:flex; flex-direction:column; align-items:flex-start;">

@@ -1,0 +1,173 @@
+/* ============================================================
+   INDICADOR DA FOLHA ATIVA — topo de todas as telas
+   ------------------------------------------------------------
+   Um arquivo só, e não o bloco repetido nas 59 telas: era assim
+   que estava, e por isso as quatro situações tinham o mesmo
+   fundo translúcido em todas elas — ninguém ia acertar 59
+   cópias na mão. As telas antigas continuam com o CSS delas no
+   <style>; este arquivo entra DEPOIS, e as regras aqui usam
+   duas classes (.topo-folha-ativa.f10fa), que vencem a antiga
+   por especificidade — não por ordem de carregamento.
+
+   O markup vem de templates/_folha_ativa_badge.html e
+   templates/_folha_ativa_tarja.html; as variáveis, do
+   context_processor inject_folha_ativa (app.py).
+   ============================================================ */
+
+/* ── ETIQUETA ─────────────────────────────────────────────── */
+.topo-folha-ativa.f10fa {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0;
+    background: #ffffff;
+    border: 1.5px solid #0f172a;
+    border-radius: 8px;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.25);
+    color: #0f172a;
+    white-space: nowrap;
+    vertical-align: middle;
+    /* cor da situação: a tarja da esquerda e o selo da direita */
+    --f10fa-cor: #475569;
+}
+
+/* Tarja vertical na cor da situação: é ela que se lê de longe,
+   antes de qualquer letra. */
+.f10fa .f10fa-faixa {
+    width: 5px;
+    flex: none;
+    background: var(--f10fa-cor);
+}
+
+.f10fa .f10fa-corpo {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 4px 11px 5px;
+}
+
+.f10fa .f10fa-rot {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 8.5px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #64748b;
+    line-height: 1.2;
+}
+
+.f10fa .f10fa-mes {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.15;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 13º Mês / Adiant. 13: ao lado do mês, em corpo menor — o
+   mês continua sendo o que salta aos olhos. */
+.f10fa .f10fa-tipo {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-style: normal;
+    font-size: 11px;
+    font-weight: 600;
+    color: #334155;
+    margin-left: 5px;
+}
+
+.f10fa .f10fa-sit {
+    align-self: center;
+    margin: 0 10px 0 2px;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #ffffff;
+    background: var(--f10fa-cor);
+    border-radius: 4px;
+    padding: 3px 8px;
+    opacity: 1;
+}
+
+/* Uma cor por situação. Antes as quatro eram o mesmo branco
+   translúcido — o tour dizia "a cor muda conforme o status" e
+   ela não mudava. */
+.topo-folha-ativa.f10fa.sit-aberta     { --f10fa-cor: #15803d; }
+.topo-folha-ativa.f10fa.sit-calculada  { --f10fa-cor: #1d4ed8; }
+.topo-folha-ativa.f10fa.sit-processada { --f10fa-cor: #b45309; }
+.topo-folha-ativa.f10fa.sit-fechada    { --f10fa-cor: #475569; }
+
+/* Telas em que a etiqueta entrou dentro de um .topo-titulo que NAO e' flex
+   (as 85 que nao tinham indicador nenhum): o invólucro dá o respiro que ali
+   não vem de um gap, e o inline-flex mantém a etiqueta na mesma linha do
+   título. Vazio — sem folha ativa — ele some, e não deixa o espaço sobrando. */
+.f10fa-junto { display: inline-flex; vertical-align: middle; margin-left: 12px; }
+.f10fa-junto:empty { display: none; margin: 0; }
+
+/* ── COMPETÊNCIA ATÍPICA ──────────────────────────────────── */
+/* Fora do mês esperado a etiqueta inteira vira âmbar: muda a
+   cor, não só o texto. Regra de quando acende: app.py,
+   inject_folha_ativa. */
+.topo-folha-ativa.f10fa.f10fa-atipica {
+    background: #fcd34d;
+    border-color: #92400e;
+    --f10fa-cor: #92400e;
+    animation: f10fa-pulso 2.6s ease-in-out infinite;
+}
+.f10fa.f10fa-atipica .f10fa-rot  { color: #78350f; }
+.f10fa.f10fa-atipica .f10fa-mes  { color: #431407; }
+.f10fa.f10fa-atipica .f10fa-tipo { color: #7c2d12; }
+
+@keyframes f10fa-pulso {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(146, 64, 14, 0); }
+    50%      { box-shadow: 0 0 0 4px rgba(146, 64, 14, 0.28); }
+}
+
+/* ── TARJA ────────────────────────────────────────────────── */
+/* Faixa fina logo acima da barra verde, só na competência
+   atípica. Diz em português o que está acontecendo — a etiqueta
+   sozinha avisa que algo mudou, a tarja explica o quê. */
+.f10fa-tarja {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    flex-wrap: wrap;
+    background: #fcd34d;
+    border-bottom: 1px solid #92400e;
+    color: #431407;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 11.5px;
+    font-weight: 600;
+    line-height: 1.35;
+    padding: 3px 16px;
+    text-align: center;
+}
+.f10fa-tarja .f10fa-tarja-marca {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    background: #92400e;
+    color: #ffffff;
+    border-radius: 3px;
+    padding: 1px 6px;
+}
+.f10fa-tarja b {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .topo-folha-ativa.f10fa.f10fa-atipica { animation: none; }
+}
+
+@media (max-width: 620px) {
+    .f10fa .f10fa-mes { font-size: 16px; }
+    .f10fa-tarja { font-size: 11px; padding: 4px 12px; }
+}

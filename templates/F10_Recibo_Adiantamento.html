@@ -116,9 +116,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .btn-gerar:hover { background: var(--accent-dim); }
 .btn-gerar:disabled { background: #94a3b8; cursor: not-allowed; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -126,7 +128,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
     <div class="topo-titulo">
         <span>Recibo de Adiantamento</span>
-        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">{{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div>

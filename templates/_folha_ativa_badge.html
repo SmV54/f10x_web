@@ -1,0 +1,22 @@
+{#
+  Etiqueta da FOLHA ATIVA no topo das telas.
+
+  Um include só para as 59 telas: o markup estava copiado em cada
+  uma, com quatro redações diferentes ("Folha Ativa: 09/2026",
+  "Folha 09/2026", "&#128197; 09/2026"...). Estilo em
+  static/f10_folha_ativa.css; variáveis em inject_folha_ativa (app.py).
+
+  A classe topo-folha-ativa continua no span porque o Menu mexe nela
+  pelo JS (atualizarBadge) e o tour aponta para ela.
+#}
+{%- if folha_ativa -%}
+<span class="topo-folha-ativa f10fa {{ folha_ativa_sit_class }}{% if folha_ativa_atipica %} f10fa-atipica{% endif %}"
+      title="{% if folha_ativa_atipica %}{{ folha_ativa_alerta }} — o mês atual é {{ folha_ativa_hoje }}{% else %}Competência da folha em que você está trabalhando{% endif %}">
+  <span class="f10fa-faixa"></span>
+  <span class="f10fa-corpo">
+    <span class="f10fa-rot">{% if folha_ativa_atipica %}&#9888; {{ folha_ativa_alerta }}{% else %}Competência{% endif %}</span>
+    <span class="f10fa-mes">{{ folha_ativa }}{% if folha_ativa_tipo %}<em class="f10fa-tipo">{{ folha_ativa_tipo }}</em>{% endif %}</span>
+  </span>
+  {%- if folha_ativa_situacao %}<span class="f10fa-sit">{{ folha_ativa_situacao }}</span>{% endif -%}
+</span>
+{%- endif -%}

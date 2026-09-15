@@ -157,9 +157,11 @@ tr:hover td { background: #f8fafc; }
 }
 #btnTour:hover { background: #0f766e; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
   <div>
     <div class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</div>
@@ -174,12 +176,8 @@ tr:hover td { background: #f8fafc; }
       <line x1="10" y1="14" x2="14" y2="14"/>
     </svg>
     eSocial S-2206 — Alteração Contratual
-    {% if anomes_atual|length == 6 %}
-    <span style="font-size:13px;font-weight:500;color:#374151;font-family:var(--mono);">
-      {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
-    </span>
-    {% endif %}
-  </div>
+
+  <span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
   <div style="display:flex;align-items:center;gap:16px;">
     <div>
       <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">

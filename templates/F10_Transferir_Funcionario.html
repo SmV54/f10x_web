@@ -65,17 +65,19 @@ input.curto { max-width: 160px; font-family: 'IBM Plex Mono', monospace; }
 .mov-cx .n { font-family: 'IBM Plex Mono', monospace; font-weight: 600; }
 @media (max-width: 700px) { .mov { grid-template-columns: 1fr; } }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div>
-        <div class="topo-titulo">Transferir Funcionário entre Empresas</div>
-        {% if anomes_atual %}<div style="text-align:center;"><span class="topo-badge">Folha {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span></div>{% endif %}
+        <div class="topo-titulo">Transferir Funcionário entre Empresas<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+
     </div>
     <div class="topo-dir">
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">

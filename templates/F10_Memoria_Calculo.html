@@ -147,22 +147,20 @@ body {
 .pdf-frame { flex: 1; border: none; display: none; background: #525659; }
 .pdf-frame.visivel { display: block; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
   <div class="topo-esq">
     <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
     <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
   </div>
   <div class="topo-ctr">
-    <span class="topo-titulo">Memória de Cálculo</span>
+    <span class="topo-titulo">Memória de Cálculo</span><span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span>
     {% if anomes_atual %}
-    <span class="badge-folha {{ folha_sit_class }}">
-      {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
-      {% if folha_tipo_ativa != 'N' %} · {{ {'F':'Férias','R':'Rescisão','1':'13° Sal'}.get(folha_tipo_ativa,'') }}{% endif %}
-      {% if folha_sit_label %} · {{ folha_sit_label }}{% endif %}
-    </span>
+
     {% else %}
     <span class="badge-folha" style="color:#991b1b;border-color:#fca5a5;">Sem folha ativa</span>
     {% endif %}

@@ -219,7 +219,12 @@ def inject_folha_ativa():
             except Exception:
                 pass
 
-    tipo_label = {"1": "· 13º Mês", "A": "· Adiant. 13"}.get(tp, "")
+    # F e R entraram em 15/09/2026: a etiqueta do topo passou a ser a mesma em
+    # todas as telas, e as de movimento (Cad_Mov, Mov_Ferias...) mostravam
+    # "Férias"/"Rescisão" no badge próprio delas. Sem estes dois a informação
+    # se perderia na troca.
+    tipo_label = {"1": "· 13º Mês", "A": "· Adiant. 13",
+                  "F": "· Férias",  "R": "· Rescisão"}.get(tp, "")
     folha_fmt  = f"{am[4:6]}/{am[0:4]}" if len(am) == 6 else ""
     sit_map = {
         "A": ("Aberta",    "sit-aberta"),
@@ -250,11 +255,50 @@ def inject_folha_ativa():
         except (TypeError, ValueError):
             pass
 
+    # COMPETÊNCIA ATÍPICA — a folha ativa não é a que se espera hoje.
+    #
+    # Errar o mês é o engano mais caro do sistema: lançamento, cálculo e
+    # evento do eSocial saem todos na competência errada, e quase nada disso
+    # se desfaz sozinho. A etiqueta do topo passa a âmbar e uma tarja fina
+    # aparece acima da barra (templates/_folha_ativa_*.html).
+    #
+    # A regra é a do sistema antigo, confirmada pelo usuário em 15/09/2026:
+    #   mês corrente                     -> normal
+    #   mês anterior, até o dia 10       -> normal (é o fechamento de rotina)
+    #   mês anterior, do dia 11 em diante-> acende
+    #   mês futuro, ou mais antigo       -> acende
+    #
+    # A conta é em MESES ABSOLUTOS (ano*12 + mês) para a virada de ano não
+    # virar um caso especial: dezembro/2025 aberto em janeiro/2026 é "mês
+    # anterior", e não "folha antiga".
+    atipica, alerta, hoje_fmt = False, "", ""
+    if len(am) == 6 and am.isdigit():
+        try:
+            _hj      = _agora_brasilia()
+            hoje_fmt = f"{_hj.month:02d}/{_hj.year}"
+            _dif     = (int(am[:4]) * 12 + int(am[4:6])) - (_hj.year * 12 + _hj.month)
+            if _dif == 0 or (_dif == -1 and _hj.day <= 10):
+                pass
+            elif _dif > 0:
+                atipica, alerta = True, "Mês futuro"
+            elif _dif == -1:
+                atipica, alerta = True, "Mês anterior"
+            else:
+                # O texto da tarja muda para este rótulo: em folha antiga ela
+                # não fecha com "Confira antes de lançar" (ver
+                # templates/_folha_ativa_tarja.html).
+                atipica, alerta = True, "Folha antiga"
+        except Exception:
+            atipica, alerta = False, ""
+
     return {
         "folha_ativa":           folha_fmt,
         "folha_ativa_tipo":      tipo_label,
         "folha_ativa_situacao":  sit_label,
         "folha_ativa_sit_class": sit_class,
+        "folha_ativa_atipica":   atipica,
+        "folha_ativa_alerta":    alerta,
+        "folha_ativa_hoje":      hoje_fmt,
         "folha_situacao":        st,
         "cliente_num":           _cli_num,
         "empresa_num":           _emp_num,

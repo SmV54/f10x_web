@@ -203,9 +203,11 @@ tr.tr-liq td { border-top: 2px solid #374151; }
 .vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px;
          background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
   <div>
     <div class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</div>
@@ -213,8 +215,8 @@ tr.tr-liq td { border-top: 2px solid #374151; }
   </div>
   <div class="topo-titulo">
     Folha de Pagamento
-    <span class="badge">{{ anomes_fmt }} — {{ tipo_lbl }}</span>
-  </div>
+
+  <span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
   <div style="display:flex;align-items:center;gap:16px;">
     <div>
       <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">

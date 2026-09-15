@@ -312,10 +312,12 @@
     .sit-calculada { background: #fff; color: #111827; border: 2px solid #fde047; }
     .sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
   </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 <div class="pagina">
 
+  {% include "_folha_ativa_tarja.html" %}
   <div class="topo">
     <div style="display:flex; flex-direction:column; align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa_info }}</span>
@@ -323,7 +325,7 @@
     </div>
     <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
         <span>Cadastro de Rubricas (Verbas)</span>
-        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
     </div>
     <div style="display:flex; align-items:center; gap:16px;">
         <div style="display:flex; flex-direction:column; align-items:flex-start;">
@@ -1194,7 +1196,9 @@
     if (!t) {
       t = document.createElement('div');
       t.id = '_toastFixo';
-      t.style.cssText = 'position:fixed;top:78px;left:50%;transform:translateX(-50%);' +
+      // 92px e nao 78: com a tarja de competencia atipica o cabecalho desce
+      // ~22px, e o aviso passava por cima dele.
+      t.style.cssText = 'position:fixed;top:92px;left:50%;transform:translateX(-50%);' +
         'z-index:3000;padding:13px 26px;border-radius:10px;font-size:14px;font-weight:700;' +
         'color:#fff;box-shadow:0 8px 28px rgba(0,0,0,0.22);display:none;max-width:90vw;text-align:center;';
       document.body.appendChild(t);

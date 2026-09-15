@@ -276,9 +276,11 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .lista-arquivos::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 .viewer-body::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq">
         {% if is_admin %}
@@ -286,7 +288,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
         {% endif %}
     </div>
     <div class="topo-centro">
-        <div class="topo-titulo">Visualizar XML do eSocial</div>
+        <div class="topo-titulo">Visualizar XML do eSocial<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">

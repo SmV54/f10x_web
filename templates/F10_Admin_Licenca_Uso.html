@@ -167,15 +167,17 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .msg-ok  { background: #f0fdf4; border: 1px solid #86efac; color: #15803d; }
 .msg-err { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div>
         <span class="badge-admin">🔑 LICENÇA</span>
     </div>
     <div class="topo-centro">
-        <div class="topo-titulo">Licença de Uso — Administrador</div>
+        <div class="topo-titulo">Licença de Uso — Administrador<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">

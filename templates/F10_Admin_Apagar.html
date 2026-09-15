@@ -78,11 +78,13 @@
                  border-radius: 9px; padding: 9px 12px; font-size: 12.5px; }
   .trabalhando .spin { border-color: #fdba74; border-top-color: #9a3412; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
+  {% include "_folha_ativa_tarja.html" %}
   <div class="topo">
     <div><span class="badge-admin">🛡️ ADMIN</span></div>
-    <div class="topo-titulo">🗑️ Apagar Cliente / Empresa</div>
+    <div class="topo-titulo">🗑️ Apagar Cliente / Empresa<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div class="topo-dir">
       <div style="display:flex;flex-direction:column;align-items:flex-end;">
         <img src="/static/logo.png?v={{ versao }}" alt="logo" style="height:26px;" onerror="this.style.display='none'">

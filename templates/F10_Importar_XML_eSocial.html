@@ -133,9 +133,11 @@ tbody tr:last-child td { border-bottom: none; }
 .oculto { display: none; }
 .spin { font-size: 13px; color: #64748b; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -144,7 +146,7 @@ tbody tr:last-child td { border-bottom: none; }
     <div class="topo-titulo">
         <span>Importar XML do eSocial</span>
         {% if anomes_atual %}
-        <span class="badge-folha-topo">Folha: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}{% if folha_ativa_situacao %} · {{ folha_ativa_situacao }}{% endif %}</span>
+        {% include "_folha_ativa_badge.html" %}
         {% else %}
         <span class="badge-folha-topo badge-sem-folha">Sem folha ativa</span>
         {% endif %}

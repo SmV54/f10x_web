@@ -289,17 +289,19 @@ body {
     font-size: 13px; color: #1e293b;
 }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 <div class="pagina">
 
   <!-- TOPO padrão -->
+  {% include "_folha_ativa_tarja.html" %}
   <div class="topo">
     <div style="display:flex; flex-direction:column; align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa_info }}</span>
         <span class="topo-nome">{{ nome_cliente }}</span>
     </div>
-    <div class="topo-titulo">Adquirir / Renovar Licença</div>
+    <div class="topo-titulo">Adquirir / Renovar Licença<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     <div style="display:flex; align-items:center; gap:16px;">
         <div style="display:flex; flex-direction:column; align-items:flex-start;">
             <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">

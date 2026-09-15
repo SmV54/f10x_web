@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Simulação de Férias</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 24px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+.topo-esq { display: flex; flex-direction: column; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #111827; }
+.topo-nome { font-size: 11px; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-badge { display: inline-block; margin-top: 4px; font-size: 11px; background: #70c4a0; color: #374151; border-radius: 10px; padding: 2px 10px; }
+.topo-dir { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar-topo { background: transparent; border: 1px solid #70c4a0; color: #374151; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+.container { max-width: 1400px; margin: 24px auto; padding: 0 18px 60px; }
+.alerta { border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+.alerta-aviso { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.alerta-erro { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.alerta-sim { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.alerta-linha { align-items: center; }
+.alerta-linha div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1150px) { .alerta-linha div { white-space: normal; } }
+
+.card { background: white; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+.total-badge { font-size: 12px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 8px; padding: 2px 10px; font-weight: 600; }
+.busca { border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; font-size: 12px; width: 240px; }
+.busca:focus { outline: none; border-color: #2a7de1; }
+
+.tabela-rolagem { max-height: 460px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th { background: #eaf1fb; text-align: left; padding: 9px 10px; font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee; white-space: nowrap; font-weight: 600; position: sticky; top: 0; z-index: 2; }
+thead th.c { text-align: center; width: 34px; }
+tbody td { padding: 5px 10px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tbody td.c { text-align: center; width: 34px; }
+tbody td.c input[type=checkbox], thead th.c input { cursor: pointer; width: 16px; height: 16px; accent-color: #166534; }
+tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.marcada { background: #f0fdf4; }
+.vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
+
+/* Os campos das férias ficam NA LINHA do funcionário: cada um simula o seu
+   cenário, com a sua data de início, os seus dias e o seu abono. */
+.campo { border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; font-size: 12px; background: #fff; }
+.campo:focus { outline: none; border-color: #2a7de1; }
+.campo:disabled { background: #f1f5f9; color: #94a3b8; }
+.campo-data { width: 130px; font-family: 'IBM Plex Mono', monospace; }
+.campo-dias { width: 62px; text-align: right; font-family: 'IBM Plex Mono', monospace; }
+.campo-opcao { width: 92px; }
+.fim-fer { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; }
+
+.barra-acao { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
+.btn-simular { background: #1e3a5f; color: #fff; border: none; font-size: 15px; font-weight: 700; padding: 12px 30px; border-radius: 10px; cursor: pointer; transition: .15s; }
+.btn-simular:hover { background: #2a7de1; }
+.btn-simular:disabled { opacity: .5; cursor: default; }
+.rodape { margin-top: 16px; display: flex; justify-content: flex-end; }
+.btn-menu { height: 36px; padding: 0 20px; border-radius: 8px; background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px; border: none; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+.btn-menu:hover { background: #d1d5db; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div>
+        <div class="topo-titulo">Simulação de Férias<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="container">
+
+<div class="alerta alerta-sim alerta-linha">
+    <span>🔮</span>
+    <div><strong>Simulação — nada é gravado.</strong> Mesmo cálculo das férias de verdade, sem lançamento, verba, total, log ou eSocial: a saída é só o PDF, carimbado de <strong>SIMULADO</strong>.</div>
+</div>
+
+{% if not funcs %}
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>Nenhum funcionário ativo nesta empresa para simular.</div></div>
+    <div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
+{% else %}
+
+<div class="alerta alerta-aviso">
+    <span>ℹ️</span>
+    <div>Marque quem quer simular e preencha a linha: <strong>início das férias</strong>,
+        <strong>dias</strong> de gozo (10 a 30), <strong>abono</strong> pecuniário e
+        <strong>período</strong> aquisitivo.<br>
+        As férias têm de começar dentro da folha <strong>{{ anomes_fmt }}</strong> — são as
+        tabelas de INSS e IRRF dela que valem. As médias de variáveis vêm da ficha
+        financeira real, e o período aquisitivo é calculado a partir das férias já
+        registradas do funcionário.
+    </div>
+</div>
+
+<form id="formSim" method="post" action="/simular_ferias_pdf" target="_blank" onsubmit="return montar()">
+<input type="hidden" name="itens" id="itens">
+
+<div class="card">
+    <div class="card-header">
+        <h2>Funcionários ativos</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input class="busca" id="busca" type="search" placeholder="Buscar por nome ou matrícula..." oninput="filtrar()">
+            <span class="total-badge" id="badgeMarcados">0 marcado(s)</span>
+        </div>
+    </div>
+    <div class="tabela-rolagem">
+    <table>
+        <thead><tr>
+            <th class="c"><input type="checkbox" id="chkAll" onchange="marcarTodos(this)" title="Marcar/desmarcar os visíveis"></th>
+            <th>Matrícula</th><th>Nome</th><th>Admissão</th>
+            <th>Início das Férias</th><th>Dias</th><th>Término</th>
+            <th>Abono</th><th>Período</th>
+        </tr></thead>
+        <tbody id="corpoFuncs">
+            {% for f in funcs %}
+            <tr data-busca="{{ (f.mat_fmt ~ ' ' ~ f.nome)|lower }}">
+                <td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" onchange="marcou(this)"></td>
+                <td class="mat">{{ f.mat_fmt }}</td>
+                <td>{{ f.nome }}</td>
+                <td class="mat">{{ f.dtadm_fmt }}</td>
+                <td><input type="date" class="campo campo-data" id="data_{{ f.matricula }}"
+                           value="{{ data_sug }}" onchange="recalcFim({{ f.matricula }})" disabled></td>
+                <td><input type="number" class="campo campo-dias" id="dias_{{ f.matricula }}"
+                           value="30" min="10" max="30" oninput="recalcFim({{ f.matricula }})" disabled></td>
+                <td class="fim-fer" id="fim_{{ f.matricula }}">—</td>
+                <td>
+                    <select class="campo campo-opcao" id="abono_{{ f.matricula }}" disabled>
+                        <option value="auto" selected>Automático</option>
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                    </select>
+                </td>
+                <td>
+                    <select class="campo campo-opcao" id="periodo_{{ f.matricula }}" disabled>
+                        <option value="auto" selected>Avançar</option>
+                        <option value="nao">Manter</option>
+                    </select>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="barra-acao">
+    <button type="submit" class="btn-simular" id="btnSim">🔮 Gerar PDF da Simulação</button>
+</div>
+</form>
+
+<div id="msg"></div>
+
+<div class="alerta alerta-aviso">
+    <span>📄</span>
+    <div>O PDF abre numa aba nova: primeiro a <strong>listagem</strong> das férias simuladas
+        e, em seguida, a <strong>memória de cálculo</strong> de cada funcionário.
+        Ele é gerado na hora e não fica guardado em lugar nenhum.
+    </div>
+</div>
+
+<div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
+{% endif %}
+
+</div>
+
+<script>
+/* "Automático" no abono segue a mesma regra do lançamento real: paga os 10
+   dias com até 20 dias de gozo, e não paga acima disso. Quem quiser forçar
+   escolhe "Sim" a dedo. A conta de verdade está no servidor
+   (_ferias_dias_abono) — aqui é só o rótulo do que vai acontecer. */
+
+function linhaDe(el) { return el.closest('tr'); }
+
+function camposDaLinha(mat) {
+    return ['data_', 'dias_', 'abono_', 'periodo_'].map(p => document.getElementById(p + mat));
+}
+
+function marcou(chk) {
+    const mat = chk.value;
+    const tr  = linhaDe(chk);
+    tr.classList.toggle('marcada', chk.checked);
+    camposDaLinha(mat).forEach(c => { if (c) c.disabled = !chk.checked; });
+    recalcFim(mat);
+    atualizarBadge();
+}
+
+function marcarTodos(src) {
+    document.querySelectorAll('#corpoFuncs tr').forEach(tr => {
+        if (tr.style.display === 'none') return;      // so' os visiveis do filtro
+        const chk = tr.querySelector('.chk-func');
+        if (chk) { chk.checked = src.checked; marcou(chk); }
+    });
+}
+
+function atualizarBadge() {
+    const n = document.querySelectorAll('.chk-func:checked').length;
+    document.getElementById('badgeMarcados').textContent = n + ' marcado(s)';
+}
+
+/* O termino nao e' um campo digitavel: ele E' o inicio mais os dias, e deixar
+   digitar abriria a porta para um periodo que nao fecha com a quantidade. */
+function recalcFim(mat) {
+    const cel = document.getElementById('fim_' + mat);
+    const dt  = document.getElementById('data_' + mat);
+    const dd  = document.getElementById('dias_' + mat);
+    if (!cel || !dt || !dd) return;
+    const chk = document.querySelector('.chk-func[value="' + mat + '"]');
+    if (!chk || !chk.checked || !dt.value) { cel.textContent = '—'; return; }
+    const dias = parseInt(dd.value, 10);
+    if (!(dias >= 10 && dias <= 30)) { cel.textContent = '—'; return; }
+    const d = new Date(dt.value + 'T12:00:00');
+    d.setDate(d.getDate() + dias - 1);
+    cel.textContent = String(d.getDate()).padStart(2, '0') + '/' +
+                      String(d.getMonth() + 1).padStart(2, '0') + '/' + d.getFullYear();
+}
+
+function filtrar() {
+    const q = document.getElementById('busca').value.trim().toLowerCase();
+    document.querySelectorAll('#corpoFuncs tr').forEach(tr => {
+        tr.style.display = (!q || (tr.dataset.busca || '').includes(q)) ? '' : 'none';
+    });
+}
+
+function aviso(txt) {
+    document.getElementById('msg').innerHTML =
+        '<div class="alerta alerta-erro"><span>⚠️</span><div>' + txt + '</div></div>';
+}
+
+/* Monta o JSON antes de enviar. Validar aqui e' conveniencia: o servidor
+   recusa de novo, porque a tela nao e' a unica porta. */
+function montar() {
+    document.getElementById('msg').innerHTML = '';
+    const itens = [];
+    document.querySelectorAll('.chk-func:checked').forEach(chk => {
+        const mat = chk.value;
+        itens.push({
+            mat:     mat,
+            data:    document.getElementById('data_' + mat).value,
+            dias:    document.getElementById('dias_' + mat).value,
+            abono:   document.getElementById('abono_' + mat).value,
+            periodo: document.getElementById('periodo_' + mat).value
+        });
+    });
+    if (!itens.length) { aviso('Marque ao menos um funcionário para simular.'); return false; }
+    for (const it of itens) {
+        if (!it.data) { aviso('Informe o início das férias de todos os marcados.'); return false; }
+        const d = parseInt(it.dias, 10);
+        if (!(d >= 10 && d <= 30)) {
+            aviso('Os dias de férias têm de ser entre 10 e 30 (matrícula ' + it.mat + ').');
+            return false;
+        }
+    }
+    document.getElementById('itens').value = JSON.stringify(itens);
+    return true;
+}
+</script>
+</body>
+</html>

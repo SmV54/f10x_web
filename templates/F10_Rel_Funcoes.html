@@ -195,10 +195,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     .sit-calculada { background: #fff; color: #111827; border: 2px solid #fde047; }
     .sit-fechada   { background: #fff; color: #111827; border: 2px solid #fca5a5; }
   </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div style="display:flex; flex-direction:column; align-items:flex-start;">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
@@ -206,7 +208,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     </div>
     <div class="topo-titulo" style="display:flex;align-items:center;justify-content:center;gap:12px;">
         <span>Relatório — Funções</span>
-        {% if folha_ativa %}<span class="topo-folha-ativa {{ folha_ativa_sit_class }}">Folha Ativa: {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}{% if folha_ativa_situacao %} &nbsp;·&nbsp; {{ folha_ativa_situacao }}{% endif %}</span>{% endif %}
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
     </div>
     <div style="display:flex; align-items:center; gap:16px;">
         <div style="display:flex; flex-direction:column; align-items:flex-start;">

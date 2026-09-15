@@ -346,17 +346,20 @@ body.menu-numerado .nav-item::before {
     flex-wrap: wrap; align-items: center;
 }
 
-/* ── BOTÕES FIXOS DO CANTO (superior direito, abaixo do cabeçalho) ──
-   Manual e Preferências dividem a mesma pílula. Ficam num flex em vez de
-   cada um com o seu "right": assim mudar o rótulo de um não desalinha o
-   outro. Preferências continua encostado na borda, como sempre esteve. */
+/* ── BOTÕES DO CANTO (Manual e Preferências) ──
+   Ficam no FLUXO, encostados à direita, logo acima do grid de módulos — e não
+   mais em position:fixed com um "top" fixo.
+
+   O top fixo era calculado em cima de um cabeçalho de 64px: quando a tarja de
+   competência atípica entrou (ela empurra o cabeçalho para baixo), a pílula
+   ficou por cima do menu. No fluxo não há altura para acertar — a pílula desce
+   sozinha com o que estiver acima dela, com tarja ou sem.
+
+   Um flex para os dois juntos, e não um "right" para cada: mudar o rótulo de
+   um não desalinha o outro. */
 .cards-canto {
-    /* top 104px punha a pilula em cima da 1a linha do grid de modulos, que
-       comeca em 112px (topo de 64px + os 48px de margem do .conteudo) — e o
-       ADMIN, ultimo card da linha, e' justamente o da direita. Em 68px ela
-       fica na faixa livre entre o cabecalho e o grid. */
-    position: fixed; top: 68px; right: 24px; z-index: 500;
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    margin-bottom: 14px;
 }
 .card-pref {
     display: inline-flex; align-items: center; gap: 8px;
@@ -480,10 +483,12 @@ body.menu-numerado .nav-item::before {
    a ter dois andares — o banner sobe junto para nao ficar por cima dele. */
 @media (max-width: 900px) { .banner-cert { bottom: 128px; } }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 
 <body{% if menu_numerado == "S" %} class="menu-numerado"{% endif %}>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-ident" style="display:flex;flex-direction:column;align-items:flex-start;">
         <span class="topo-empresa">{% if id_empresa_hdr %}<span class="topo-id">{{ '%06d'|format(id_empresa_hdr|int) }} - </span>{% endif %}{{ empresa }}</span>
@@ -492,10 +497,7 @@ body.menu-numerado .nav-item::before {
     <div class="topo-titulo">
         <span>Menu Principal</span>
         {% if folha_ativa %}
-        <span class="topo-folha-ativa {{ folha_ativa_sit_class }}">
-            &#128197; {{ folha_ativa }}{% if folha_ativa_tipo %} {{ folha_ativa_tipo }}{% endif %}
-            {% if folha_ativa_situacao %}<span class="topo-folha-sit">{{ folha_ativa_situacao }}</span>{% endif %}
-        </span>
+        {% include "_folha_ativa_badge.html" %}
         {% endif %}
     </div>
     <div style="display:flex;align-items:center;gap:16px;justify-self:end;">
@@ -514,6 +516,18 @@ body.menu-numerado .nav-item::before {
 </div>
 
 <div class="conteudo">
+
+    <div class="cards-canto">
+      <a class="card-pref" href="/manual_pdf" target="_blank" rel="noopener"
+         title="Manual do Usuário — como operar o sistema (PDF)">
+        <span class="card-pref-icone">📘</span>
+        <span class="card-pref-label">Manual</span>
+      </a>
+      <a class="card-pref" href="/preferencias" title="Preferências">
+        <span class="card-pref-icone">⚙️</span>
+        <span class="card-pref-label">Preferências</span>
+      </a>
+    </div>
 
     {# PRIMEIROS PASSOS (cliente novo) — PARA DESFAZER: apague só esta linha #}
     {% include "_primeiros_passos.html" %}
@@ -1472,8 +1486,13 @@ document.addEventListener('click',   e => {
 
     function atualizarBadge(sit, label, css) {
         document.querySelectorAll('.topo-folha-ativa').forEach(el => {
-            el.className = 'topo-folha-ativa ' + css;
-            el.innerHTML = el.innerHTML.replace(/Aberta|Calculando\.\.\.|Calculada|Fechada/, label);
+            // Preserva as classes do indicador novo: f10fa (o visual da
+            // etiqueta) e f10fa-atipica (competencia fora do mes). Trocar o
+            // className inteiro apagava as duas, e a etiqueta voltava ao
+            // estilo antigo no primeiro refresh de status.
+            var atipica = el.classList.contains('f10fa-atipica');
+            el.className = 'topo-folha-ativa f10fa ' + css + (atipica ? ' f10fa-atipica' : '');
+            el.innerHTML = el.innerHTML.replace(/Aberta|Calculando\.\.\.|Calculada|Fechada|Processada/, label);
         });
     }
 
@@ -1515,7 +1534,7 @@ function iniciarTour() {
             element: '.topo-folha-ativa',
             popover: {
                 title: '📅 Folha Ativa',
-                description: 'Mostra o mês/ano e a situação da folha atual: <strong>Aberta</strong> (em lançamento), <strong>Calculada</strong> (processada) ou <strong>Fechada</strong>. A cor muda conforme o status.',
+                description: 'Mostra a competência e a situação da folha em que você está: <strong>Aberta</strong> (em lançamento), <strong>Calculada</strong> (processada) ou <strong>Fechada</strong>. O selo e a tarja lateral mudam de cor conforme a situação. Se a folha não for a do mês esperado, a etiqueta fica âmbar e uma tarja aparece no alto da tela.',
                 side: 'bottom', align: 'center'
             }
         });
@@ -1715,18 +1734,6 @@ function fecharBannerCert() {
 </a>
 </div>
 {% endif %}
-
-<div class="cards-canto">
-  <a class="card-pref" href="/manual_pdf" target="_blank" rel="noopener"
-     title="Manual do Usuário — como operar o sistema (PDF)">
-    <span class="card-pref-icone">📘</span>
-    <span class="card-pref-label">Manual</span>
-  </a>
-  <a class="card-pref" href="/preferencias" title="Preferências">
-    <span class="card-pref-icone">⚙️</span>
-    <span class="card-pref-label">Preferências</span>
-  </a>
-</div>
 
 <script src="/static/f10_dialog.js"></script>
 

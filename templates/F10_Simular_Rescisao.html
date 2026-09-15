@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Simulação da Rescisão</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; font-family: 'IBM Plex Sans', sans-serif; }
+html, body { margin: 0; padding: 0; background: #f4f6f9; color: #1f2937; }
+.topo {
+    background: #a0d9be; border-bottom: 1px solid #70c4a0;
+    padding: 0 28px; display: grid; grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 0 24px; min-height: 64px; position: sticky; top: 0; z-index: 10;
+}
+.topo-esq { display: flex; flex-direction: column; }
+.topo-empresa { font-size: 14px; font-weight: 600; color: #111827; }
+.topo-nome { font-size: 11px; color: #374151; margin-top: 2px; }
+.topo-titulo { font-size: 16px; font-weight: 600; color: #1e293b; text-align: center; }
+.topo-badge { display: inline-block; margin-top: 4px; font-size: 11px; background: #70c4a0; color: #374151; border-radius: 10px; padding: 2px 10px; }
+.topo-dir { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.topo-versao { font-size: 10px; font-weight: 700; color: #374151; }
+.btn-voltar-topo { background: transparent; border: 1px solid #70c4a0; color: #374151; font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer; transition: .15s; white-space: nowrap; }
+.btn-voltar-topo:hover { border-color: #2a7de1; color: #1e293b; }
+
+.container { max-width: 1400px; margin: 24px auto; padding: 0 18px 60px; }
+.alerta { border-radius: 10px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; display: flex; gap: 10px; align-items: flex-start; }
+.alerta-aviso { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
+.alerta-ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+.alerta-erro { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.alerta-sim { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+/* Aviso de uma linha so: em tela estreita ele quebra em vez de sumir. */
+.alerta-linha { align-items: center; }
+.alerta-linha div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1150px) { .alerta-linha div { white-space: normal; } }
+
+.card { background: white; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 2px 10px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 12px 20px; background: #f8fafc; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.card-header h2 { margin: 0; font-size: 14px; color: #0f172a; }
+.total-badge { font-size: 12px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 8px; padding: 2px 10px; font-weight: 600; }
+.busca { border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; font-size: 12px; width: 240px; }
+.busca:focus { outline: none; border-color: #2a7de1; }
+
+.tabela-rolagem { max-height: 460px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th { background: #eaf1fb; text-align: left; padding: 9px 10px; font-size: 11px; color: #334155; border-bottom: 1px solid #dbe3ee; white-space: nowrap; font-weight: 600; position: sticky; top: 0; z-index: 2; }
+thead th.r { text-align: right; }
+thead th.c { text-align: center; width: 34px; }
+tbody td { padding: 5px 10px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+tbody td.c { text-align: center; width: 34px; }
+tbody td.c input[type=checkbox], thead th.c input { cursor: pointer; width: 16px; height: 16px; accent-color: #166534; }
+tbody td.mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; white-space: nowrap; }
+tbody td.r { text-align: right; font-family: 'IBM Plex Mono', monospace; font-size: 12px; white-space: nowrap; }
+tbody td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; font-weight: 700; color: #1d4ed8; white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.marcada { background: #f0fdf4; }
+.vazio { padding: 40px; text-align: center; font-size: 13px; color: #94a3b8; }
+
+/* Os campos do desligamento ficam NA LINHA do funcionário: cada um simula o
+   seu cenário, com a sua data, o seu motivo e o seu saldo de FGTS. */
+.campo { border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 6px; font-size: 12px; background: #fff; }
+.campo:focus { outline: none; border-color: #2a7de1; }
+.campo:disabled { background: #f1f5f9; color: #94a3b8; }
+.campo-data { width: 130px; font-family: 'IBM Plex Mono', monospace; }
+.campo-motivo { width: 210px; }
+.campo-fgts { width: 110px; text-align: right; font-family: 'IBM Plex Mono', monospace; }
+.aviso-grupo { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 6px; overflow: hidden; }
+.aviso-grupo label { font-size: 11px; padding: 4px 8px; cursor: pointer; background: #fff; color: #475569; white-space: nowrap; }
+.aviso-grupo label.on { background: #1e3a5f; color: #fff; font-weight: 600; }
+.aviso-grupo input { display: none; }
+.aviso-na { font-size: 11px; color: #94a3b8; font-style: italic; }
+
+.barra-acao { display: flex; justify-content: center; align-items: center; gap: 12px; margin: 20px 0; flex-wrap: wrap; }
+.btn-simular { background: #1e3a5f; color: #fff; border: none; font-size: 15px; font-weight: 700; padding: 12px 30px; border-radius: 10px; cursor: pointer; transition: .15s; }
+.btn-simular:hover { background: #2a7de1; }
+.btn-simular:disabled { opacity: .5; cursor: default; }
+.rodape { margin-top: 16px; display: flex; justify-content: flex-end; }
+.btn-menu { height: 36px; padding: 0 20px; border-radius: 8px; background: #e5e7eb; color: #111827; font-weight: 700; font-size: 13px; border: none; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; }
+.btn-menu:hover { background: #d1d5db; }
+.selo-sim { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 10px; background: #fee2e2; color: #991b1b; letter-spacing: .04em; }
+
+/* Resultado: sao muitas colunas, e em tela estreita a rolagem horizontal
+   escondia justamente o LIQUIDO, que e o numero que a pessoa foi buscar. Ele
+   fica colado na borda direita e nunca sai de vista. */
+.res-tab td, .res-tab th { padding-left: 8px; padding-right: 8px; }
+.res-tab th.liq-col, .res-tab td.liq {
+    position: sticky; right: 0; z-index: 1;
+    box-shadow: -7px 0 7px -7px rgba(15,23,42,.35);
+}
+.res-tab td.liq { background: #fff; }
+.res-tab th.liq-col { background: #eaf1fb; z-index: 3; }
+.res-tab tbody tr:hover td.liq { background: #f8fafc; }
+
+/* Documentos logo abaixo da tabela: um par de botoes por funcionario, fora da
+   rolagem horizontal — na linha da tabela eles ficavam no fim de 16 colunas. */
+.docs-lista { padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.docs-linha { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+              border: 1px solid #e5e7eb; border-radius: 10px; padding: 8px 12px; background: #fafafa; }
+.docs-nome { font-size: 13px; font-weight: 600; color: #0f172a; margin-right: auto; }
+.docs-mat { font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #64748b; }
+.docs-liq { font-family: 'IBM Plex Mono', monospace; font-size: 12px; font-weight: 700; color: #1d4ed8; }
+.btn-doc { display: inline-flex; align-items: center; gap: 6px; background: #b91c1c; color: #fff;
+           font-size: 12px; font-weight: 700; padding: 7px 14px; border-radius: 8px;
+           text-decoration: none; white-space: nowrap; transition: .15s; }
+.btn-doc:hover { background: #dc2626; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div class="topo-esq">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div>
+        <div class="topo-titulo">Simulação da Rescisão<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+
+    </div>
+    <div class="topo-dir">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <span class="topo-versao">Versão: {{ versao }}</span>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="container">
+
+<div class="alerta alerta-sim alerta-linha">
+    <span>🔮</span>
+    <div><strong>Simulação — nada é gravado.</strong> Mesmo cálculo da rescisão de verdade, sem verba, total, log ou eSocial: o funcionário continua ativo e o PDF sai carimbado de <strong>SIMULADO</strong>.</div>
+</div>
+
+{% if not funcs %}
+    <div class="alerta alerta-aviso"><span>ℹ️</span><div>Nenhum funcionário ativo nesta empresa para simular.</div></div>
+    <div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
+{% else %}
+
+<div class="alerta alerta-aviso">
+    <span>ℹ️</span>
+    <div>Marque quem quer simular e preencha a linha: <strong>data da rescisão</strong>,
+        <strong>motivo</strong>, <strong>aviso prévio</strong> Trabalhado ou Indenizado e,
+        se quiser ver a multa, o <strong>saldo do FGTS</strong> (opcional, do extrato da Caixa).<br>
+        As tabelas de INSS e IRRF usadas são as da folha <strong>{{ anomes_fmt }}</strong>,
+        e as médias de variáveis vêm da ficha financeira dos últimos 12 meses.
+        Verbas manuais (consignado, pensão, adiantamentos) <strong>não entram</strong>:
+        elas só existem depois da rescisão registrada.
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Funcionários ativos</h2>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <input class="busca" id="busca" type="search" placeholder="Buscar por nome ou matrícula..." oninput="filtrar()">
+            <span class="total-badge" id="badgeMarcados">0 marcado(s)</span>
+        </div>
+    </div>
+    <div class="tabela-rolagem">
+    <table>
+        <thead><tr>
+            <th class="c"><input type="checkbox" id="chkAll" onchange="marcarTodos(this)" title="Marcar/desmarcar os visíveis"></th>
+            <th>Matrícula</th><th>Nome</th><th>Admissão</th>
+            <th>Data da Rescisão</th><th>Motivo</th><th>Aviso Prévio</th><th class="r">Saldo do FGTS</th>
+        </tr></thead>
+        <tbody id="corpoFuncs">
+            {% for f in funcs %}
+            <tr data-busca="{{ (f.mat_fmt ~ ' ' ~ f.nome)|lower }}">
+                <td class="c"><input type="checkbox" class="chk-func" value="{{ f.matricula }}" onchange="marcou(this)"></td>
+                <td class="mat">{{ f.mat_fmt }}</td>
+                <td>{{ f.nome }}</td>
+                <td class="mat">{{ f.dtadm_fmt }}</td>
+                <td><input type="date" class="campo campo-data" id="data_{{ f.matricula }}" value="{{ data_sug }}" disabled></td>
+                <td>
+                    <select class="campo campo-motivo" id="motivo_{{ f.matricula }}" onchange="motivoMudou({{ f.matricula }})" disabled>
+                        {% for m in motivos %}
+                        <option value="{{ m.codigo }}" {% if m.codigo == '02' %}selected{% endif %}>{{ m.codigo }} — {{ m.texto }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+                <td>
+                    <span class="aviso-grupo" id="grupo_aviso_{{ f.matricula }}">
+                        <label class="on" id="lbl_T_{{ f.matricula }}">
+                            <input type="radio" name="aviso_{{ f.matricula }}" value="T" checked onchange="avisoMudou({{ f.matricula }})">Trabalhado</label>
+                        <label id="lbl_I_{{ f.matricula }}">
+                            <input type="radio" name="aviso_{{ f.matricula }}" value="I" onchange="avisoMudou({{ f.matricula }})">Indenizado</label>
+                    </span>
+                    <span class="aviso-na" id="aviso_na_{{ f.matricula }}" style="display:none;">não há aviso</span>
+                </td>
+                <td class="r"><input type="text" class="campo campo-fgts" id="fgts_{{ f.matricula }}"
+                                     placeholder="opcional" inputmode="numeric"
+                                     oninput="mascaraMoeda(this)" disabled></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="barra-acao">
+    <button class="btn-simular" id="btnSim" onclick="simular()">🔮 Simular Rescisão</button>
+</div>
+
+<div id="msg"></div>
+
+<div class="card" id="cardResult" style="display:none;">
+    <div class="card-header">
+        <h2>Resultado da simulação <span class="selo-sim">SIMULADO</span></h2>
+        <span class="total-badge" id="resTotal"></span>
+    </div>
+    <div style="overflow:auto;">
+    <table class="res-tab">
+        <thead><tr>
+            <th>Mat.</th><th>Nome</th><th>Rescisão</th>
+            <th class="r">Saldo</th><th class="r">13º</th><th class="r">Fér.Venc.</th><th class="r">Fér.Prop.</th><th class="r">1/3</th>
+            <th class="r">Aviso</th><th class="r">INSS</th><th class="r">IRRF</th><th class="r">FGTS</th>
+            <th class="r">Multa FGTS</th><th class="r liq-col">Líquido</th>
+        </tr></thead>
+        <tbody id="resBody"></tbody>
+    </table>
+    </div>
+    <div style="padding:12px 16px 0;font-size:12px;font-weight:600;color:#0f172a;">
+        Documento da simulação (PDF) — a rescisão e, logo em seguida, a memória de cálculo
+    </div>
+    <div class="docs-lista" id="docsSim"></div>
+    <div style="padding:0 16px 16px;font-size:12px;color:#475569;">
+        A <strong>Multa FGTS</strong> só aparece quando o saldo foi informado — o sistema
+        não tem o saldo da conta vinculada, ele vem do extrato da Caixa.
+        O PDF é gerado na hora e não fica guardado em lugar nenhum.
+    </div>
+</div>
+
+<div class="rodape"><a class="btn-menu" href="/menu">Voltar ao Menu</a></div>
+{% endif %}
+
+</div>
+
+<script>
+/* Motivos sem aviso prévio nenhum: justa causa e falecimento. A escolha
+   Trabalhado/Indenizado some, para não sugerir uma verba que não existe. */
+const SEM_AVISO = ['01', '10'];
+
+function linhaDe(el) { return el.closest('tr'); }
+
+function camposDaLinha(mat) {
+    return [document.getElementById('data_' + mat),
+            document.getElementById('motivo_' + mat),
+            document.getElementById('fgts_' + mat)];
+}
+
+function marcou(chk) {
+    const mat = chk.value;
+    camposDaLinha(mat).forEach(c => { if (c) c.disabled = !chk.checked; });
+    document.querySelectorAll('input[name="aviso_' + mat + '"]').forEach(r => r.disabled = !chk.checked);
+    linhaDe(chk).classList.toggle('marcada', chk.checked);
+    if (chk.checked) motivoMudou(mat);
+    atualizarBadge();
+}
+
+function marcarTodos(src) {
+    document.querySelectorAll('#corpoFuncs tr').forEach(tr => {
+        if (tr.style.display === 'none') return;          // respeita a busca
+        const c = tr.querySelector('.chk-func');
+        if (c) { c.checked = src.checked; marcou(c); }
+    });
+}
+
+function atualizarBadge() {
+    const n = document.querySelectorAll('.chk-func:checked').length;
+    document.getElementById('badgeMarcados').textContent = n + ' marcado(s)';
+}
+
+function avisoMudou(mat) {
+    ['T', 'I'].forEach(t => {
+        const r = document.querySelector('input[name="aviso_' + mat + '"][value="' + t + '"]');
+        const l = document.getElementById('lbl_' + t + '_' + mat);
+        if (l) l.classList.toggle('on', r && r.checked);
+    });
+}
+
+function motivoMudou(mat) {
+    const sel = document.getElementById('motivo_' + mat);
+    const sem = sel && SEM_AVISO.includes(sel.value);
+    const g = document.getElementById('grupo_aviso_' + mat);
+    const na = document.getElementById('aviso_na_' + mat);
+    if (g)  g.style.display  = sem ? 'none' : '';
+    if (na) na.style.display = sem ? '' : 'none';
+}
+
+/* O campo do FGTS guarda centavos e mostra reais: digitar 123456 vira
+   1.234,56. Sem máscara, "1.234,56" e "1234,56" chegariam diferentes ao
+   servidor e a multa sairia errada por um fator de cem. */
+function mascaraMoeda(el) {
+    const cent = (el.value || '').replace(/\D/g, '').replace(/^0+/, '');
+    if (!cent) { el.value = ''; el.dataset.cent = '0'; return; }
+    el.dataset.cent = cent;
+    el.value = (parseInt(cent, 10) / 100)
+        .toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+function filtrar() {
+    const t = (document.getElementById('busca').value || '').toLowerCase().trim();
+    document.querySelectorAll('#corpoFuncs tr').forEach(tr => {
+        tr.style.display = (!t || (tr.dataset.busca || '').includes(t)) ? '' : 'none';
+    });
+}
+
+function paramsPdf(p) {
+    return '/simular_rescisao_pdf?mat=' + p.mat + '&data=' + p.data +
+           '&motivo=' + p.motivo + '&aviso=' + p.aviso + '&fgts=' + p.fgts;
+}
+
+async function simular() {
+    const btn = document.getElementById('btnSim');
+    const msg = document.getElementById('msg');
+    const itens = [];
+    let faltaData = '';
+    document.querySelectorAll('.chk-func:checked').forEach(c => {
+        const mat = c.value;
+        const dt  = document.getElementById('data_' + mat).value;
+        if (!dt) { faltaData = faltaData || mat; return; }
+        const av = document.querySelector('input[name="aviso_' + mat + '"]:checked');
+        itens.push({
+            mat:    parseInt(mat, 10),
+            data:   dt,
+            motivo: document.getElementById('motivo_' + mat).value,
+            aviso:  av ? av.value : 'T',
+            fgts:   document.getElementById('fgts_' + mat).dataset.cent || '0'
+        });
+    });
+    if (faltaData) {
+        msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Informe a data da rescisão do funcionário ${faltaData}.</div></div>`;
+        return;
+    }
+    if (!itens.length) {
+        msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Marque ao menos um funcionário para simular.</div></div>`;
+        return;
+    }
+    btn.disabled = true; btn.textContent = 'Simulando...';
+    msg.innerHTML = '';
+    document.getElementById('cardResult').style.display = 'none';
+    try {
+        const r = await fetch('/api/simular_rescisao', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({itens: itens})
+        });
+        const d = await r.json();
+        if (!d.ok) {
+            msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>${d.msg || 'Erro na simulação.'}</div></div>`;
+            return;
+        }
+        document.getElementById('resBody').innerHTML = (d.resultados || []).map(f => `
+            <tr>
+                <td class="mat">${f.mat_fmt}</td>
+                <td>${f.nome}</td>
+                <td class="mat">${f.resc_data_fmt}</td>
+                <td class="r">${f.saldo_fmt}</td>
+                <td class="r">${f.d13_fmt}</td>
+                <td class="r">${f.venc_fmt || "—"}</td>
+                <td class="r">${f.fer_fmt}</td>
+                <td class="r">${f.terco_fmt || "—"}</td>
+                <td class="r">${f.aviso_fmt}</td>
+                <td class="r">${f.inss_fmt}</td>
+                <td class="r">${f.irrf_fmt}</td>
+                <td class="r">${f.fgts_fmt}</td>
+                <td class="r">${f.multa_fmt}</td>
+                <td class="liq">${f.liq_fmt}</td>
+            </tr>`).join('');
+        /* Um PDF por funcionario: a rescisao SIMULADA e, emendada nela, a
+           memoria de calculo — quem simula quer o valor E a conta que levou a
+           ele, e dois arquivos separados se perdem um do outro. */
+        document.getElementById('docsSim').innerHTML = (d.resultados || []).map(f => `
+            <div class="docs-linha">
+                <span class="docs-mat">${f.mat_fmt}</span>
+                <span class="docs-nome">${f.nome}</span>
+                <span class="docs-liq">Líquido ${f.liq_fmt}</span>
+                <a class="btn-doc" href="${paramsPdf(f.sim_params)}" target="_blank">📄 Rescisão SIMULADO + Memória de Cálculo</a>
+            </div>`).join('');
+        document.getElementById('resTotal').textContent = (d.total || 0) + ' simulado(s)';
+        document.getElementById('cardResult').style.display = 'block';
+        msg.innerHTML = `<div class="alerta alerta-ok"><span>✅</span><div><strong>${d.total} rescisão(ões)</strong> simulada(s). <strong>Nada foi gravado.</strong></div></div>`;
+    } catch (e) {
+        msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>Erro de comunicação.</div></div>`;
+    } finally {
+        btn.disabled = false; btn.textContent = '🔮 Simular Rescisão';
+    }
+}
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

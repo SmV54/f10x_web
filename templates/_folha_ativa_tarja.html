@@ -1,0 +1,16 @@
+{#
+  Tarja de competência atípica — faixa fina logo ACIMA da barra verde.
+  Só aparece quando a folha ativa não é a esperada para hoje; a regra
+  (mês corrente, mais o mês anterior até o dia 10) está no
+  inject_folha_ativa, em app.py. Estilo em static/f10_folha_ativa.css.
+#}
+{%- if folha_ativa and folha_ativa_atipica %}
+<div class="f10fa-tarja" role="status">
+  <span class="f10fa-tarja-marca">{{ folha_ativa_alerta }}</span>
+  {#- "Confira antes de lançar" só nos avisos de mês anterior e mês futuro. Numa
+      folha antiga a pessoa quase sempre entrou para consultar, não para lançar,
+      e a frase virava ruído. O rótulo vem do inject_folha_ativa (app.py) — se
+      ele for reescrito, esta comparação tem que acompanhar. -#}
+  <span>Você está na folha de <b>{{ folha_ativa }}</b>, fora do mês atual (<b>{{ folha_ativa_hoje }}</b>).{% if folha_ativa_alerta != 'Folha antiga' %} Confira antes de lançar.{% endif %}</span>
+</div>
+{% endif -%}

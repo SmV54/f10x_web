@@ -73,16 +73,18 @@ tbody tr.inativo td { color: #94a3b8; }
 .vazio { padding: 30px; text-align: center; font-size: 13px; color: #94a3b8; }
 .msg { margin: 0 20px 14px; font-size: 12px; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq">
         <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
         <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
     </div>
     <div>
-        <div class="topo-titulo">Usuários da Conta</div>
+        <div class="topo-titulo">Usuários da Conta<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
         <div style="text-align:center;"><span class="topo-badge">Até {{ limite }} usuários ativos</span></div>
     </div>
     <div class="topo-dir">

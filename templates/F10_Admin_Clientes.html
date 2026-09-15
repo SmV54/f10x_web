@@ -333,15 +333,17 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
 .lista-clientes::-webkit-scrollbar-thumb,
 .empresas-corpo::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 </style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
 </head>
 <body>
 
+{% include "_folha_ativa_tarja.html" %}
 <div class="topo">
     <div class="topo-esq">
         <span class="badge-admin">🛡️ ADMIN</span>
     </div>
     <div class="topo-centro">
-        <div class="topo-titulo">Lista de Clientes</div>
+        <div class="topo-titulo">Lista de Clientes<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
         <div style="display:flex;flex-direction:column;align-items:flex-end;">
