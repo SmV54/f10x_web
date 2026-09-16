@@ -8790,6 +8790,34 @@ def _conta_avos_resc(dt_ini, dt_fim):
     return min(12, avos)
 
 
+def _avos_resc_detalhe(dt_ini, dt_fim):
+    """Mesma contagem de _conta_avos_resc, mas mostrando o porque de cada mes.
+
+    Existe para a memoria de calculo poder abrir a conta: o contador precisa
+    ver que marco entrou com 12 dias e por isso nao gerou avo, em vez de
+    receber so o numero 5 e ter de adivinhar de onde saiu.
+
+    [{"mes": "03/2026", "d_ini": 20, "d_fim": 31, "dias": 12, "conta": False}]
+    """
+    if not dt_ini or not dt_fim or dt_fim < dt_ini:
+        return []
+    saida, y, m, n = [], dt_ini.year, dt_ini.month, 0
+    while (y < dt_fim.year) or (y == dt_fim.year and m <= dt_fim.month):
+        ult = calendar.monthrange(y, m)[1]
+        d_ini = dt_ini.day if (y == dt_ini.year and m == dt_ini.month) else 1
+        d_fim = dt_fim.day if (y == dt_fim.year and m == dt_fim.month) else ult
+        dias = d_fim - d_ini + 1
+        conta = dias >= 15 and n < 12
+        if conta:
+            n += 1
+        saida.append({"mes": f"{m:02d}/{y}", "d_ini": d_ini, "d_fim": d_fim,
+                      "dias": dias, "conta": conta})
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
+    return saida
+
+
 def _fim_aquisitivo(dt_ini):
     """Último dia do período aquisitivo que começa em dt_ini (1 ano - 1 dia)."""
     from datetime import timedelta as _td
@@ -8797,6 +8825,65 @@ def _fim_aquisitivo(dt_ini):
         return dt_ini.replace(year=dt_ini.year + 1) - _td(days=1)
     except ValueError:                      # 29/02
         return dt_ini.replace(year=dt_ini.year + 1, day=28) - _td(days=1)
+
+
+def _ferias_aquisitivos_resc(dt_adm, dt_ref, eventos_fer):
+    """Onde comeca o periodo aquisitivo EM CURSO e quais ja venceram sem gozo.
+
+    As duas respostas saem daqui juntas, de proposito. Ate 16/09/2026 elas
+    vinham de lugares diferentes e podiam se contradizer:
+
+      _periodos_ferias_vencidas  lia o aquisitivo gravado no gozo (data2f)
+      _inicio_aquisitivo_resc    ignorava o gozo e usava so o aniversario da
+                                 admissao
+
+    Quando o aquisitivo cadastrado nao caia no aniversario — e nao cai sempre:
+    ha base com ferias cujo aquisitivo foi gravado a partir do gozo anterior —
+    sobrava um vao entre o fim das vencidas e o comeco das proporcionais, e
+    esse pedaco nao era pago por ninguem. Num caso real (mat 77 da empresa 39)
+    sumiram 4 avos: as vencidas paravam em 15/12/2025 e as proporcionais so
+    comecavam em 20/03/2026.
+
+    Agora o encadeamento e unico: parte do dia seguinte ao ultimo aquisitivo
+    QUITADO e avanca de 12 em 12 meses. Todo periodo que fechou antes de
+    dt_ref e vencido; o primeiro que nao fechou e o das proporcionais. Sem vao
+    possivel — o fim de um e a vespera do inicio do outro.
+
+    Devolve (ini_curso, vencidos, estimado).
+    """
+    from datetime import timedelta as _td
+    if not dt_adm or not dt_ref:
+        return (dt_adm, [], False)
+
+    ult_fim, ult_gozo, estimado = None, None, False
+    for ev in (eventos_fer or []):
+        d2f = _dparse(ev.get("data2f"))
+        if d2f and (ult_fim is None or d2f > ult_fim):
+            ult_fim = d2f
+        d1i = _dparse(ev.get("data1i"))
+        if d1i and (ult_gozo is None or d1i > ult_gozo):
+            ult_gozo = d1i
+
+    # Lancamento antigo sem data2f: deduz pelo gozo. Quem tira ferias goza
+    # periodo ja fechado, entao o aquisitivo consumido termina na vespera do
+    # aniversario em curso naquela data. E estimativa — sem ela, todo periodo
+    # antigo viraria vencido e a rescisao pagaria ferias ja tiradas.
+    if ult_fim is None and ult_gozo is not None:
+        ult_fim = _inicio_aquisitivo_resc(dt_adm, ult_gozo) - _td(days=1)
+        estimado = True
+
+    p_ini = (ult_fim + _td(days=1)) if ult_fim else dt_adm
+    if p_ini < dt_adm:
+        p_ini = dt_adm
+
+    vencidos = []
+    while len(vencidos) < 20:
+        p_fim = _fim_aquisitivo(p_ini)
+        if p_fim >= dt_ref:          # ainda nao fechou: e o periodo em curso
+            break
+        vencidos.append((p_ini, p_fim))
+        p_ini = p_fim + _td(days=1)
+    return (p_ini, vencidos, estimado)
 
 
 def _periodos_ferias_vencidas(dt_adm, ini_curso, eventos_fer):
@@ -9445,14 +9532,18 @@ def _calc_rescisao_nucleo(body, sim=None):
             ini_ano = dt_adm
         avos_13 = _conta_avos_resc(ini_ano, dt_proj) if tem_13 else 0
         d13 = round((sal_mes_ad + base_media_13) * avos_13 / 12) if avos_13 else 0
-        # férias proporcionais + 1/3 (avos do período aquisitivo em curso)
-        ini_aq = _inicio_aquisitivo_resc(dt_adm, dt_proj) if dt_adm else _date(dt_proj.year, 1, 1)
+        # Férias: o período em curso (proporcionais) e os vencidos saem da MESMA
+        # conta, encadeados — ver _ferias_aquisitivos_resc. Antes vinham de
+        # rotinas separadas que podiam discordar e deixar um vão sem pagar.
+        if dt_adm:
+            ini_aq, venc_periodos, venc_estimado = _ferias_aquisitivos_resc(
+                dt_adm, dt_proj, ferias_por_mat.get(mat, []))
+        else:
+            ini_aq, venc_periodos, venc_estimado = _date(dt_proj.year, 1, 1), [], False
         avos_fer = _conta_avos_resc(ini_aq, dt_proj) if tem_fer else 0
         fer_prop = round((sal_mes_ad + base_media_fer) * avos_fer / 12) if avos_fer else 0
         # férias VENCIDAS: períodos aquisitivos completos sem gozo. São devidas
         # SEMPRE, inclusive na justa causa — o motivo só derruba as proporcionais.
-        venc_periodos, venc_estimado = _periodos_ferias_vencidas(
-            dt_adm, ini_aq, ferias_por_mat.get(mat, []))
         venc_qtd  = len(venc_periodos)
         # Cada período vencido usa a média do PRÓPRIO período aquisitivo
         fer_venc, venc_det = 0, []
@@ -9735,6 +9826,8 @@ def _calc_rescisao_nucleo(body, sim=None):
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
             "avos_fer": avos_fer, "fer_prop": fer_prop,
+            "fer_ini_aq": ini_aq.strftime("%d/%m/%Y") if ini_aq else "",
+            "fer_avos_det": _avos_resc_detalhe(ini_aq, dt_proj) if (tem_fer and ini_aq) else [],
             "venc_qtd": venc_qtd, "fer_venc": fer_venc, "terco_fer": terco_fer,
             "venc_det": venc_det,
             "art479": art479, "art480": art480,
@@ -10062,11 +10155,35 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 e.append(_etapa("ETAPA 3055 - FERIAS VENCIDAS", _lin))
             # 0006 — Férias proporcionais + 1/3 (médias de 12 meses)
             if r["fer_prop"]:
-                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", [
+                _lin_fer = []
+                if r.get("fer_ini_aq"):
+                    _lin_fer.append(
+                        f"Período aquisitivo em curso: de <b>{r['fer_ini_aq']}</b> "
+                        f"até {r['resc_data_fmt']}"
+                        + (f" (projetada: {r['dt_proj_fmt']}, pelo aviso prévio)"
+                           if r.get("dt_proj_fmt") != r.get("resc_data_fmt") else ""))
+                    _lin_fer.append(
+                        "O início é o dia seguinte ao fim do último período aquisitivo "
+                        "já quitado — não é o aniversário de admissão quando as férias "
+                        "gozadas dizem outra coisa.")
+                # Mes a mes: sem isto a memoria dava so o numero de avos, e quem
+                # conferia nao tinha como saber qual mes entrou e qual caiu.
+                _det = r.get("fer_avos_det") or []
+                if _det:
+                    _lin_fer.append("Cada mês com <b>15 dias ou mais</b> vale 1/12 "
+                                    "(art. 146, parágrafo único, da CLT):")
+                    for _d in _det:
+                        _marca = "1/12" if _d["conta"] else "não conta"
+                        _lin_fer.append(
+                            f"&nbsp;&nbsp;&nbsp;{_d['mes']}: dias {_d['d_ini']} a "
+                            f"{_d['d_fim']} = {_d['dias']} dia(s) → <b>{_marca}</b>")
+                _lin_fer.append(f"Total: <b>{r['avos_fer']} avos</b>")
+                _lin_fer.append(
                     f"(Salário {_B(sal)} + Médias {_B(r['med_total'])})"
                     f" × {r['avos_fer']}/12 = <b>{_B(r['fer_prop'])}</b>"
-                    f"   (o 1/3 vai na verba 42)",
-                ]))
+                    f"   (o 1/3 vai na verba 42)")
+                e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", _lin_fer,
+                                passos=[("tempo_serv", "avos do período aquisitivo")]))
             else:
                 e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", [],
                                 na="o motivo da rescisão não gera férias proporcionais"))
