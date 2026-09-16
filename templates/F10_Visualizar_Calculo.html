@@ -213,6 +213,8 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .badge-tipo-N { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
 .badge-tipo-F { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
 .badge-tipo-R { background: #fff7ed; color: #9a3412; border: 1px solid #fdba74; }
+.badge-tipo-A { background: #fefce8; color: #854d0e; border: 1px solid #fde047; }
+.badge-tipo-1 { background: #faf5ff; color: #6b21a8; border: 1px solid #d8b4fe; }
 
 /* ── CABEÇALHO FOLHA ── */
 .cabec-folha {
@@ -484,8 +486,9 @@ window.addEventListener('DOMContentLoaded', function() {
     visualizar();
 });
 
-const TIPO_LABEL = { N: 'Folha Normal', F: 'Férias', R: 'Rescisão' };
-const TIPO_ORD   = { N: 0, F: 1, R: 2 };
+const TIPO_LABEL = { N: 'Folha Normal', F: 'Férias', R: 'Rescisão',
+                     A: 'Adiantamento do 13º', '1': '13º Salário' };
+const TIPO_ORD   = { N: 0, F: 1, R: 2, A: 3, '1': 4 };
 
 const BASES_FIELDS = [
     { key: 'valor_base_inss_semlimite', lbl: 'Base INSS s/ limite'    },

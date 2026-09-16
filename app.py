@@ -177,6 +177,46 @@ def _marcar_presenca():
     except Exception:
         pass      # presenca nunca pode derrubar a requisicao do cliente
 
+# =========================================================
+# NOME DA FOLHA ATIVA  (SMV 16/09/2026)
+# O tipo da folha aparece no badge do topo, nos recibos e em todo relatorio
+# que sai da folha. Antes cada um trazia o seu proprio dicionario: o mesmo
+# tipo "1" era "13o Mes" no badge, "13 Salario" com sinal de GRAU no PDF e
+# "13o Sal." na tabela do eSocial. Agora o nome nasce aqui, num lugar so.
+#
+# NOME    - por extenso, para titulo de relatorio, cabecalho de recibo e badge.
+# CURTO   - para coluna de tabela, onde o nome por extenso quebraria a linha.
+# =========================================================
+_FOLHA_TIPO_NOME = {
+    "N": "Folha Normal",
+    "F": "Férias",
+    "R": "Rescisão",
+    "A": "Adiantamento do 13º",
+    "1": "13º Salário",
+}
+_FOLHA_TIPO_CURTO = {
+    "N": "Normal",
+    "F": "Férias",
+    "R": "Rescisão",
+    "A": "Adiant. 13º",
+    "1": "13º Sal.",
+}
+
+
+def _folha_tipo_label(tp, curto=False):
+    """Nome da folha a partir do tipo (N/F/R/A/1). Tipo desconhecido volta
+    como veio — e melhor mostrar a letra crua do que esconder o problema."""
+    tp = str(tp or "N").upper()[:1]
+    return (_FOLHA_TIPO_CURTO if curto else _FOLHA_TIPO_NOME).get(tp, tp)
+
+
+def _tipo_no_titulo(tp):
+    """Sufixo " · 13º Salário" para titulo de relatorio e cabecalho de
+    recibo. Folha NORMAL nao ganha sufixo: o titulo ja diz o que e."""
+    tp = str(tp or "N").upper()[:1]
+    return "" if tp == "N" else "  ·  " + _folha_tipo_label(tp)
+
+
 @app.context_processor
 def inject_folha_ativa():
     am = str(session.get("anomes_atual") or "")
@@ -223,8 +263,8 @@ def inject_folha_ativa():
     # todas as telas, e as de movimento (Cad_Mov, Mov_Ferias...) mostravam
     # "Férias"/"Rescisão" no badge próprio delas. Sem estes dois a informação
     # se perderia na troca.
-    tipo_label = {"1": "· 13º Mês", "A": "· Adiant. 13",
-                  "F": "· Férias",  "R": "· Rescisão"}.get(tp, "")
+    tipo_label = ("" if str(tp or "N").upper()[:1] == "N"
+                  else "· " + _folha_tipo_label(tp))
     folha_fmt  = f"{am[4:6]}/{am[0:4]}" if len(am) == 6 else ""
     sit_map = {
         "A": ("Aberta",    "sit-aberta"),
@@ -3604,7 +3644,7 @@ def rel_mov_pdf():
     def fmt_brl(c):
         return f"{c / 100:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-    TIPO_LABEL = {"N": "Normal", "F": "Férias", "R": "Rescisão"}
+    TIPO_LABEL = _FOLHA_TIPO_CURTO
     rows = []
     for reg in registros_raw:
         mat  = reg.get("matricula")
@@ -3779,7 +3819,7 @@ def rel_esocial_remessas_pdf():
             _d8(r.get("data_cad")),
             str(mat or "").zfill(6) if mat else "—",
             _LAYOUTS.get(lay, f"S-{lay}" if lay else "—"),
-            "13° Sal." if tp == "1" else "Normal",
+            _folha_tipo_label(tp, curto=True),
             SIT_LABEL.get(r["_sit"], r["_sit"]),
             _d8(r.get("data_grava")),
             (recibo[:25] + "…") if len(recibo) > 25 else (recibo or "—"),
@@ -5018,8 +5058,7 @@ def gerador_relatorio():
                          9:"Aviso Prévio / Rescisão"}
             TPDEP     = ({t["cod"]: t["texto"] for t in tipos_dep_list}
                          if tipos_dep_list else {1:"Cônjuge", 3:"Filho(a)/Enteado(a)", 9:"Pais"})
-            TP_FOLHA  = {"N":"Normal","A":"Adiant. 13º","1":"13º Salário",
-                         "F":"Férias","R":"Rescisão"}
+            TP_FOLHA  = _FOLHA_TIPO_CURTO
 
             mov_col_sums = {c: 0 for c in mov_fields}
             tot_col_sums = {k: 0 for k in tot_fields}
@@ -9361,6 +9400,25 @@ def _calc_rescisao_nucleo(body, sim=None):
 
         dias_saldo = min(dt_resc.day, 30)
         saldo = round(sal_mes_ad * dias_saldo / 30)
+        # O saldo continua sendo calculado sobre a remuneracao CHEIA (salario +
+        # adicionais) — e a base do INSS, do IRRF e do FGTS nao muda em nada.
+        # O que muda e o LANCAMENTO: o adicional sai em verba propria (30/31/32)
+        # em vez de ficar escondido dentro da verba 10.
+        #
+        # Antes de 16/09/2026 ia tudo na 10. Quem lia o TRCT via "9 dias" ao
+        # lado de um valor que, dividido por 9, nao dava o salario-dia de
+        # ninguem — e o eSocial recebia a insalubridade com a natureza da
+        # rubrica do saldo, que e outra coisa.
+        #
+        # saldo_sal sai por DIFERENCA, e nao por uma segunda multiplicacao:
+        # assim a soma das linhas fecha com o saldo ao centavo, sem sobra de
+        # arredondamento.
+        saldo_adics = {}
+        for _c_ad, _v_ad in sorted(adics_mes_r.items()):
+            _parte = round(int(_v_ad) * dias_saldo / 30)
+            if _parte > 0:
+                saldo_adics[_c_ad] = _parte
+        saldo_sal = saldo - sum(saldo_adics.values())
         # aviso prévio indenizado PELA EMPRESA (acordo=50%) — provento
         aviso_val = 0
         if aviso_ind and dias_aviso > 0 and not aviso_pedido:
@@ -9498,7 +9556,11 @@ def _calc_rescisao_nucleo(body, sim=None):
         # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
         irrf_saldo, _red_saldo, _isento_saldo = _irrf_isencao_redutor(
             saldo + add_irrf, irrf_saldo, tabela)
-        base_irrf_13 = max(0, d13 - inss_13)
+        # Dependentes tambem deduzem da base do 13o (SMV 16/09/2026) — um
+        # padrao so com a folha do 13o final. Nao e deducao em dobro: o
+        # saldo e tributacao MENSAL e o 13o e EXCLUSIVA NA FONTE, duas
+        # bases separadas, cada uma com as suas proprias deducoes.
+        base_irrf_13 = max(0, d13 - inss_13 - dep_total)
         irrf_13, irrf_13_info = (_calc_irrf(base_irrf_13, tabela) if d13 else (0, None))
         irrf_13, _red_13, _isento_13 = _irrf_isencao_redutor(d13, irrf_13, tabela)
         # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
@@ -9586,7 +9648,9 @@ def _calc_rescisao_nucleo(body, sim=None):
                     "matricula": mat, "folha": folha_int, "folha_tipo": "R",
                     "lote": 0, "origem": "C", "controle": 0, "os": 0}
         recs = []
-        if saldo:     recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dias_saldo, "valor": saldo})
+        if saldo_sal: recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dias_saldo, "valor": saldo_sal})
+        for _c_ad, _v_ad in sorted(saldo_adics.items()):
+            recs.append({**base_mov, "cod_verba": _c_ad, "qtd": 0, "valor": _v_ad})
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
         if aviso_desc:recs.append({**base_mov, "cod_verba": VR_AVISO_EMP,    "qtd": dias_aviso_desc, "valor": aviso_desc})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
@@ -9664,6 +9728,9 @@ def _calc_rescisao_nucleo(body, sim=None):
             "aviso_quem": aviso_quem, "aviso_pedido": aviso_pedido, "aviso_disp": aviso_disp,
             "aviso_desc": aviso_desc, "dias_aviso_desc": dias_aviso_desc,
             "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dias_saldo,
+            "saldo_sal": saldo_sal, "saldo_adics": saldo_adics,
+            "adic_total": adic_total, "sal_mes_ad": sal_mes_ad,
+            "adic_total_det": dict(adics_mes_r),
             "dia_resc_real": dt_resc.day,
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
@@ -9891,7 +9958,21 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 lin_shora,
             ]))
             # 0002 — Saldo de salário
-            _lin_saldo = [f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = <b>{_B(r['saldo'])}</b>"]
+            _lin_saldo = [f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = "
+                          f"<b>{_B(r.get('saldo_sal', r['saldo']))}</b>  (verba {VR_SALDO})"]
+            # Com adicional, a linha de cima sozinha nao explicava o total: a
+            # memoria dizia "1.690,00 x 9 / 30" e imprimia o valor COM a
+            # insalubridade dentro, que nao fecha na conta de quem confere.
+            for _c_ad, _v_ad in sorted((r.get("saldo_adics") or {}).items()):
+                _mes_ad = int((r.get("adic_total_det") or {}).get(_c_ad, 0))
+                _nome_ad = _DSC_ADICIONAL.get(_c_ad, f"Adicional {_c_ad:04d}")
+                _de = f"{_B(_mes_ad)} × {r['dia_resc']} dias / 30 = " if _mes_ad else ""
+                _lin_saldo.append(f"{_nome_ad}: {_de}<b>{_B(_v_ad)}</b>  (verba {_c_ad})")
+            if r.get("saldo_adics"):
+                _lin_saldo.append(
+                    f"Total do saldo (salário + adicionais) = <b>{_B(r['saldo'])}</b> — "
+                    "é esta soma que entra nas bases de INSS, IRRF e FGTS "
+                    "(Súmula 139 do TST)")
             if int(r.get("dia_resc_real") or 0) > 30:
                 _lin_saldo.append(f"Rescisão no dia {r['dia_resc_real']}: pela convenção do mês "
                                   "comercial (divisor 30) o mês inteiro paga 30/30 = salário cheio")
@@ -10069,7 +10150,10 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             elif r.get("red_saldo"):
                 lin_irrf.append(f"Redutor Lei 15.270/2025 aplicado ao saldo (-{_B(r['red_saldo'])})")
             if r["irrf_13"] or r.get("isento_13"):
-                lin_irrf.append(f"IRRF 13º (base {_B(r['base_irrf_13'])}) = <b>{_B(r['irrf_13'])}</b>")
+                lin_irrf.append(
+                    f"Base 13º - INSS 13º - dependentes "
+                    f"({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_13'])}")
+                lin_irrf.append(f"IRRF 13º = <b>{_B(r['irrf_13'])}</b>")
                 if r.get("isento_13"):
                     lin_irrf.append("13º isento — rendimento até R$ 5.000,00 (Lei 15.270/2025)")
                 elif r.get("red_13"):
@@ -14535,6 +14619,280 @@ def api_anomes_alterar():
 
 
 # =========================================================
+# ANO/MÊS — API EXCLUIR  (SMV 16/09/2026)
+# Folha lancada errada (tipo trocado, mes trocado) nao tinha como sair: a tela
+# so' sabia incluir, alterar e ativar. Sem isso, o jeito era mexer no banco.
+#
+# O TIPO faz parte da chave. Num mesmo ano_mes convivem a folha normal, a de
+# adiantamento e a do 13o — apagar por (empresa, ano_mes) sem o tipo levaria
+# junto a folha certa que divide a competencia com a errada.
+# =========================================================
+# Eventos que saem junto com a folha (op1 de tab_eventos). Sao os que o SMV
+# pediu em 16/09/2026 — ferias, afastamento e falta. Cadastro do funcionario
+# (admissao, aumento, aviso previo...) NAO entra: nao e lancamento de folha.
+_EVENTOS_EXCLUIR_FOLHA = {3: "Férias", 6: "Afastamento", 21: "Falta"}
+
+
+def _periodo_evento_fmt(d1, d2, op1=None):
+    """Periodo do evento para o aviso da exclusao.
+
+    data1f vazia quer dizer coisas diferentes conforme o evento: na FALTA
+    (op1=21) e dia unico — cada falta e um registro de um dia so'; no
+    AFASTAMENTO e' ausencia sem retorno marcado. Sem o op1, a falta sairia
+    como "12/08/2026 — sem retorno", que nao quer dizer nada.
+    """
+    def _br(v):
+        v = re.sub(r"\D", "", str(v or ""))
+        return f"{v[6:8]}/{v[4:6]}/{v[:4]}" if len(v) >= 8 else ""
+    a, b = _br(d1), _br(d2)
+    if a and b:
+        return a if a == b else f"{a} a {b}"
+    if a:
+        return a if int(op1 or 0) == 21 else f"{a} — sem retorno"
+    return "—"
+
+
+def _anomes_excluir_resumo(id_cliente, id_empresa, ano_mes, tipo):
+    """O que sera apagado e o que impede a exclusao. So' conta — nao apaga."""
+    am = int(ano_mes)
+
+    def _conta(tabela, campo_folha):
+        try:
+            q = (supabase.table(tabela).select("*", count="exact")
+                 .eq("id_empresa", id_empresa).eq(campo_folha, am)
+                 .eq("folha_tipo", tipo).limit(1))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            return int(q.execute().count or 0)
+        except Exception:
+            return 0
+
+    # Remessas do eSocial: as que ja tem RECIBO nao podem ser apagadas aqui.
+    # O evento existe no governo; sumir com o recibo no banco tira a unica
+    # forma de retificar ou excluir de la (S-3000). Isso trava a exclusao.
+    enviadas, pendentes = 0, 0
+    try:
+        q = (supabase.table("tab_esocial").select("recibo")
+             .eq("id_empresa", id_empresa).eq("ano_mes", am).eq("folha_tipo", tipo))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            if (r.get("recibo") or "").strip():
+                enviadas += 1
+            else:
+                pendentes += 1
+    except Exception:
+        pass
+
+    try:
+        q = (supabase.table("tab_anomes").select("situacao")
+             .eq("id_empresa", id_empresa).eq("ano_mes", am).eq("tipo", tipo).limit(1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        linha = (q.execute().data or [])
+    except Exception:
+        linha = []
+
+    # Eventos lancados NESTA competencia: ferias, afastamento e falta.
+    #
+    # Dois cuidados que o aviso precisa deixar visiveis:
+    #
+    # 1) tab_eventos.folha guarda a competencia em que o evento foi DIGITADO,
+    #    nao o periodo que ele cobre. Ha afastamento de abril lancado na folha
+    #    de agosto. Por isso a lista mostra o periodo de cada um — quem vai
+    #    apagar precisa reconhecer o que esta prestes a perder.
+    #
+    # 2) tab_eventos NAO tem folha_tipo. Se a competencia tiver mais de uma
+    #    folha (normal + 13o, por exemplo), nao da para saber em qual delas o
+    #    evento foi lancado, e apagar uma leva os eventos da outra. O resumo
+    #    devolve `outras_folhas` para o aviso poder dizer isso na cara.
+    eventos, outras = [], []
+    try:
+        q = (supabase.table("tab_eventos")
+             .select("id, matricula, op1, op2, data1i, data1f")
+             .eq("id_empresa", id_empresa).eq("folha", am)
+             .in_("op1", list(_EVENTOS_EXCLUIR_FOLHA))
+             .order("op1").order("matricula"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for ev in (q.execute().data or []):
+            eventos.append({
+                "id":        int(ev.get("id") or 0),
+                "matricula": int(ev.get("matricula") or 0),
+                "op1":  int(ev.get("op1") or 0),
+                "tipo": _EVENTOS_EXCLUIR_FOLHA.get(int(ev.get("op1") or 0), "Evento"),
+                "periodo": _periodo_evento_fmt(ev.get("data1i"), ev.get("data1f"),
+                                               ev.get("op1")),
+                "recibo": "",
+            })
+    except Exception as e:
+        print(f"[excluir folha eventos] {e}")
+
+    # Ferias e afastamento viram S-2230 no eSocial, e a remessa aponta para o
+    # evento pelo codigo2 (= tab_eventos.id). Evento que JA FOI ACEITO pelo
+    # governo nao pode ser apagado daqui: o S-2230 continuaria la, e sem o
+    # registro local nao ha como retificar nem excluir por S-3000.
+    #
+    # So o layout 2230 serve para isso. O campo codigo2 existe em quase todos
+    # os layouts, mas com outro significado em cada um (no 1010 e a rubrica, no
+    # 1200 e outra coisa) — filtrar sem o layout acusaria envio que nao existe.
+    #
+    # Mesma trava que a exclusao individual de ferias ja fazia (app.py:27595).
+    ids_ev = [e["id"] for e in eventos if e["id"]]
+    if ids_ev:
+        try:
+            q = (supabase.table("tab_esocial").select("codigo2, recibo")
+                 .eq("id_empresa", id_empresa).eq("layout", "2230")
+                 .in_("codigo2", ids_ev))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            por_id = {}
+            for r in (q.execute().data or []):
+                rec = (r.get("recibo") or "").strip()
+                cid = int(r.get("codigo2") or 0)
+                if rec or cid not in por_id:
+                    por_id[cid] = rec
+            for e in eventos:
+                e["recibo"] = por_id.get(e["id"], "")
+        except Exception as e_es:
+            print(f"[excluir folha 2230] {e_es}")
+
+    try:
+        q = (supabase.table("tab_anomes").select("tipo")
+             .eq("id_empresa", id_empresa).eq("ano_mes", am).neq("tipo", tipo))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        outras = [_folha_tipo_label(x.get("tipo")) for x in (q.execute().data or [])]
+    except Exception:
+        outras = []
+
+    return {
+        "existe":    bool(linha),
+        "situacao":  (linha[0].get("situacao") if linha else ""),
+        "mov":       _conta("tab_mov", "folha"),
+        "total":     _conta("tab_total", "folha"),
+        "esocial_pendente": pendentes,
+        "esocial_enviada":  enviadas,
+        "eventos":       eventos,
+        "qtd_eventos":   len(eventos),
+        "outras_folhas": outras,
+    }
+
+
+@app.route("/api/anomes/excluir", methods=["POST"])
+def api_anomes_excluir():
+    """Apaga uma folha inteira: o movimento, os totais e a propria folha.
+
+    `simular: true` devolve so' o resumo — e o que a tela usa para dizer, ANTES
+    de perguntar, quantos lancamentos vao junto.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+
+    data       = request.get_json() or {}
+    ano_mes    = (data.get("ano_mes") or "").strip()
+    tipo       = (data.get("tipo") or "").strip().upper()[:1]
+    simular    = bool(data.get("simular"))
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+
+    if not ano_mes or len(ano_mes) != 6 or not ano_mes.isdigit() or not tipo:
+        return jsonify({"ok": False, "msg": "Dados insuficientes"})
+    if tipo not in ("N", "A", "1", "F", "R"):
+        return jsonify({"ok": False, "msg": f"Tipo de folha inválido: {tipo}"})
+
+    resumo = _anomes_excluir_resumo(id_cliente, id_empresa, ano_mes, tipo)
+    mm_aaaa = f"{ano_mes[4:6]}/{ano_mes[:4]}"
+    nome_folha = f"{mm_aaaa} — {_folha_tipo_label(tipo)}"
+
+    if not resumo["existe"]:
+        return jsonify({"ok": False, "msg": f"Folha {nome_folha} não encontrada."})
+
+    # TRAVA 1 — remessa periodica (S-1200/S-1210) ja aceita pelo governo.
+    if resumo["esocial_enviada"]:
+        return jsonify({"ok": False, "bloqueio": True, "resumo": resumo, "msg": (
+            f"A folha {nome_folha} tem {resumo['esocial_enviada']} remessa(s) do "
+            "eSocial já enviadas e com recibo. Apagar aqui deixaria o evento no "
+            "governo sem como retificar ou excluir. Exclua os eventos pelo "
+            "S-3000 antes de apagar a folha.")})
+
+    # TRAVA 2 — evento (ferias/afastamento) ja aceito pelo governo no S-2230.
+    _enviados = [e for e in resumo["eventos"] if e.get("recibo")]
+    if _enviados:
+        _lista = "; ".join(
+            f"{e['tipo']} da matrícula {e['matricula']:06d} ({e['periodo']})"
+            for e in _enviados[:6])
+        if len(_enviados) > 6:
+            _lista += f"; e mais {len(_enviados) - 6}"
+        return jsonify({"ok": False, "bloqueio": True, "resumo": resumo, "msg": (
+            f"A folha {nome_folha} tem {len(_enviados)} evento(s) já enviados ao "
+            f"eSocial com recibo (S-2230): {_lista}. Apagar aqui deixaria o evento "
+            "no governo sem como retificar ou excluir. Exclua os eventos pelo "
+            "S-3000 antes de apagar a folha.")})
+
+    # TRAVA 3 — e a folha ATIVA da sessao. Apagar debaixo dos pes deixaria o
+    # sistema apontando para folha que nao existe mais.
+    if (str(session.get("anomes_atual") or "") == ano_mes
+            and str(session.get("anomes_tipo") or "").upper()[:1] == tipo):
+        return jsonify({"ok": False, "bloqueio": True, "resumo": resumo, "msg": (
+            f"A folha {nome_folha} é a folha ATIVA. Ative outra folha antes de "
+            "excluir esta.")})
+
+    if simular:
+        return jsonify({"ok": True, "simulado": True, "resumo": resumo,
+                        "nome_folha": nome_folha})
+
+    am = int(ano_mes)
+    apagados = {"mov": resumo["mov"], "total": resumo["total"],
+                "esocial": resumo["esocial_pendente"],
+                "eventos": resumo["qtd_eventos"]}
+    try:
+        for tabela, campo in (("tab_mov", "folha"), ("tab_total", "folha"),
+                              ("tab_esocial", "ano_mes")):
+            q = (supabase.table(tabela).delete()
+                 .eq("id_empresa", id_empresa).eq(campo, am).eq("folha_tipo", tipo))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            q.execute()
+        # Ferias, afastamentos e faltas lancados na competencia. Sem folha_tipo
+        # em tab_eventos: o filtro e' (empresa, folha, op1) — ver o comentario
+        # em _anomes_excluir_resumo.
+        if resumo["qtd_eventos"]:
+            # Primeiro a remessa 2230 PENDENTE de cada evento (aceita nao chega
+            # aqui — a TRAVA 2 barrou). Deixar a remessa apontando para evento
+            # apagado criaria linha orfa na fila do eSocial.
+            _ids = [e["id"] for e in resumo["eventos"] if e.get("id")]
+            if _ids:
+                q = (supabase.table("tab_esocial").delete()
+                     .eq("id_empresa", id_empresa).eq("layout", "2230")
+                     .in_("codigo2", _ids))
+                if id_cliente:
+                    q = q.eq("id_cliente", id_cliente)
+                q.execute()
+            q = (supabase.table("tab_eventos").delete()
+                 .eq("id_empresa", id_empresa).eq("folha", am)
+                 .in_("op1", list(_EVENTOS_EXCLUIR_FOLHA)))
+            if id_cliente:
+                q = q.eq("id_cliente", id_cliente)
+            q.execute()
+        q = (supabase.table("tab_anomes").delete()
+             .eq("id_empresa", id_empresa).eq("ano_mes", am).eq("tipo", tipo))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        q.execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
+
+    gravar_log("EXCLUIR-FOLHA",
+               (f"Folha {ano_mes} tipo:{tipo} EXCLUIDA — "
+                f"tab_mov={apagados['mov']} tab_total={apagados['total']} "
+                f"tab_esocial={apagados['esocial']} "
+                f"eventos(ferias/afast/faltas)={apagados['eventos']}")[:200],
+               ano_mes=am)
+    return jsonify({"ok": True, "apagados": apagados, "nome_folha": nome_folha})
+
+
+# =========================================================
 # ANO/MÊS — API ATIVAR (define como folha ativa na sessão)
 # =========================================================
 @app.route("/api/anomes/ativar", methods=["POST"])
@@ -17142,7 +17500,7 @@ def rel_esocial_remessas():
                 r["_hora_grava_fmt"] = _h4(r.get("hora_grava"))
                 r["_ano_mes_fmt"]    = f"{am[4:6]}/{am[0:4]}" if len(am) == 6 else am
                 r["_layout_fmt"]     = _LAYOUTS.get(lay, f"S-{lay}" if lay else "—")
-                r["_folha_tipo_fmt"] = "13º Sal." if tp == "1" else "Normal"
+                r["_folha_tipo_fmt"] = _folha_tipo_label(tp, curto=True)
                 r["_matricula_fmt"]  = str(mat).zfill(6) if mat else "—"
                 r["_recibo_curto"]   = (recibo[:18] + "…") if len(recibo) > 18 else recibo
 
@@ -28059,7 +28417,7 @@ def rel_mov():
     except Exception:
         pass
 
-    TIPO_LABEL = {"N": "Normal", "F": "Férias", "R": "Rescisão"}
+    TIPO_LABEL = _FOLHA_TIPO_CURTO
     registros  = []
     total_prov = 0
     total_desc = 0
@@ -30417,6 +30775,20 @@ def _ide_dm_dev_resc(mat_es):
 # inteiro).
 _TIPOS_FOLHA_JUNTAS = ("N", "A")
 
+# Folhas que entram no MESMO S-1210 da competência (SMV 16/09/2026). Não é o
+# mesmo conjunto do _TIPOS_FOLHA_JUNTAS, e a diferença importa:
+#
+#   _TIPOS_FOLHA_JUNTAS  -> folhas que dividem o MESMO <dmDev> no S-1200.
+#                           Só N e A: são a mesma apuração mensal.
+#   _TIPOS_PGTO_COMPETENCIA -> folhas cujo PAGAMENTO viaja no mesmo S-1210.
+#                           Entra também o 13º final, que tem demonstrativo
+#                           próprio (apuração anual) mas é pago junto, em
+#                           dezembro, num <infoPgto> separado com perRef=AAAA.
+#
+# Por isso a folha do 13º Final não gera S-1210 própria: o pagamento dela sai
+# no S-1210 da folha mensal da mesma competência.
+_TIPOS_PGTO_COMPETENCIA = ("N", "A", "1")
+
 
 def _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, folha_tipo):
     """Verbas de uma folha, agregadas por cod_verba. [] se a folha não tem nada."""
@@ -30977,17 +31349,47 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
 
     # ideDmDev: identificador do demonstrativo do trabalhador no S-1200 que este
     # pagamento referencia — tem que casar EXATAMENTE com o ideDmDev de lá.
-    # Como o S-1200 passou a mandar UM ÚNICO <dmDev> por trabalhador (folha
-    # mensal + adiantamento do 13º no mesmo demonstrativo), aqui também sai um
-    # ÚNICO <infoPgto>, com o vrLiq SOMADO das folhas da competência.
-    _ft_pgto  = str(pgtos[0].get("folha_tipo") or folha_tipo or "N").upper()
-    _vr_liq   = sum(int(_pg.get("valor_liquido") or 0) for _pg in pgtos)
+    #
+    # Um <infoPgto> por APURAÇÃO, e não um por folha:
+    #
+    #   folha mensal + adiantamento do 13º  -> UM bloco só, com o vrLiq somado.
+    #       Os dois vão no mesmo <dmDev> do S-1200 (mesmo ideDmDev, mesmo
+    #       perApur mensal), então dois blocos dariam erro [106] no gov.
+    #   13º FINAL (folha_tipo "1")          -> bloco PRÓPRIO, com perRef=AAAA e
+    #       o ideDmDev dele (sufixo 14). É apuração ANUAL: mora noutro S-1200.
+    #
+    # É a forma dos XMLs de produção do Desktop citados acima:
+    #   perApur 2022-12 -> infoPgto perRef 2022-12 (mensal) + perRef 2022 (13º)
+    #
+    # Até 16/09/2026 saía sempre UM bloco com tudo somado. Servia enquanto só
+    # existiam N e A; com o 13º final na mesma competência, dezembro sairia com
+    # o 13º escondido dentro do líquido da folha mensal.
+    _grupos    = []          # [(folha_tipo_representante, vrLiq_do_grupo)]
+    _ft_juntas = None
+    _vr_juntas = 0
+    for _pg in pgtos:
+        _t = str(_pg.get("folha_tipo") or folha_tipo or "N").upper()
+        _v = int(_pg.get("valor_liquido") or 0)
+        if _t in _TIPOS_FOLHA_JUNTAS:
+            if _ft_juntas is None:
+                _ft_juntas = _t          # o ideDmDev é o da 1ª folha, como no S-1200
+            _vr_juntas += _v
+        else:
+            _grupos.append((_t, _v))
+    if _ft_juntas is not None:
+        _grupos.insert(0, (_ft_juntas, _vr_juntas))
+    if not _grupos:
+        _grupos = [(str(folha_tipo or "N").upper(), 0)]
+
     # tp_pgto/ide_dm_dev: usados pelo pagamento de RESCISÃO, cujo demonstrativo
     # não está num S-1200 e sim dentro do S-2299 (ou S-2399, no TSVE). Quem
-    # envia sabe qual dos dois é; aqui só não se inventa o valor.
-    _tp_pgto_x  = str(tp_pgto) if tp_pgto else _TP_PGTO.get(_ft_pgto, '1')
-    _ide_dmd_x  = str(ide_dm_dev) if ide_dm_dev else _ide_dm_dev(mat_es, _ft_pgto)
-    info_pgto_xml = f"""
+    # envia sabe qual dos dois é; aqui só não se inventa o valor. Só fazem
+    # sentido com um grupo só — a rescisão nunca vem acompanhada.
+    info_pgto_xml = ""
+    for _ft_pgto, _vr_liq in _grupos:
+        _tp_pgto_x  = str(tp_pgto) if tp_pgto else _TP_PGTO.get(_ft_pgto, '1')
+        _ide_dmd_x  = str(ide_dm_dev) if ide_dm_dev else _ide_dm_dev(mat_es, _ft_pgto)
+        info_pgto_xml += f"""
       <infoPgto>
         <dtPgto>{x(dtPgto)}</dtPgto>
         <tpPgto>{x(_tp_pgto_x)}</tpPgto>
@@ -37292,10 +37694,7 @@ def esocial_fila():
         "G": ("Gerado",     "sit-gerado"),
         "P": ("Pendente",   "sit-pendente"),
     }
-    _TP_FOLHA_FILA = {
-        "N": "Normal", "F": "Férias", "1": "13º Sal.",
-        "A": "Adiant. 13º", "R": "Rescisão",
-    }
+    _TP_FOLHA_FILA = _FOLHA_TIPO_CURTO
 
     def _d8_fila(v):
         s = str(v or "").strip()
@@ -37488,8 +37887,7 @@ def rel_esocial_fila_pdf():
         "3000": ("S-3000", "Exclusão"),
     }
     _SIT_LBL = {"E": "Enviado", "X": "Com Erro", "W": "Aguardando", "G": "Gerado", "P": "Pendente"}
-    _TP_FOLHA_PDF = {"N": "Normal", "F": "Férias", "1": "13º Sal.",
-                     "A": "Adiant. 13º", "R": "Rescisão"}
+    _TP_FOLHA_PDF = _FOLHA_TIPO_CURTO
 
     def _d8(v):
         s = str(v or "").strip()
@@ -38707,7 +39105,7 @@ def esocial_s1200():
             return ""
         return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else str(v or "")
 
-    _TP_FOLHA = {"N": "Normal", "1": "13º Sal.", "A": "Adiant. 13º", "F": "Férias", "R": "Rescisão"}
+    _TP_FOLHA = _FOLHA_TIPO_CURTO
     _SIT = {
         "E": ("Enviado",    "sit-enviado"),
         "D": ("Excluído",   "sit-excluido"),
@@ -40320,7 +40718,7 @@ def esocial_s1210():
             return ""
         return f"{s[4:6]}/{s[:4]}" if len(s) == 6 else str(v or "")
 
-    _TP_FOLHA = {"N": "Normal", "1": "13º Sal.", "A": "Adiant. 13º", "F": "Férias", "R": "Rescisão"}
+    _TP_FOLHA = _FOLHA_TIPO_CURTO
     _SIT = {
         "E": ("Enviado",    "sit-enviado"),
         "D": ("Excluído",   "sit-excluido"),
@@ -40581,8 +40979,9 @@ def _s1210_enviar_impl():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar funcionário: {e}"})
 
-    # 4. Totais do período — um <infoPgto> por folha paga na competência
-    # (normal + adiantamento do 13º), espelhando os <dmDev> do S-1200.
+    # 4. Totais do período — um <infoPgto> por APURAÇÃO paga na competência,
+    # espelhando os <dmDev> do S-1200: folha normal + adiantamento do 13º num
+    # bloco (mesma apuração mensal) e o 13º FINAL noutro (apuração anual).
     _tot_por_folha = {}
     try:
         _qt = (supabase.table("tab_total")
@@ -40599,9 +40998,18 @@ def _s1210_enviar_impl():
         pass
 
     _ft_row = "R" if is_resc else str(folha_tipo or "N").upper()
-    if _ft_row in _TIPOS_FOLHA_JUNTAS:
-        _tipos_pgto = [t for t in _TIPOS_FOLHA_JUNTAS
+    if _ft_row in _TIPOS_PGTO_COMPETENCIA:
+        _tipos_pgto = [t for t in _TIPOS_PGTO_COMPETENCIA
                        if int((_tot_por_folha.get(t) or {}).get("valor_liquido") or 0) != 0]
+        # O 13o FINAL so' entra no pagamento depois que o S-1200 DELE foi
+        # aceito: o <infoPgto> aponta para o ideDmDev daquele demonstrativo, e
+        # apontar para demonstrativo que o gov ainda nao tem derruba o evento
+        # inteiro — levando junto o pagamento da folha mensal, que estava certo.
+        # Sem recibo, dezembro sai so' com o mensal e o 13o vai no proximo envio.
+        if "1" in _tipos_pgto and _ft_row != "1":
+            if not _recibo_s1200_anterior(id_empresa, matricula, ano_mes, "1",
+                                          layout="1200"):
+                _tipos_pgto = [t for t in _tipos_pgto if t != "1"]
     else:
         _tipos_pgto = []
     if not _tipos_pgto:
@@ -44766,6 +45174,9 @@ def _calc_etapa8_mov_fixo(id_empresa, anomes, id_cliente=None):
 VERBA_INSALUBRIDADE  = 30
 VERBA_PERICULOSIDADE = 31
 VERBA_RISCO_VIDA     = 32
+_DSC_ADICIONAL = {VERBA_INSALUBRIDADE:  "Insalubridade",
+                  VERBA_PERICULOSIDADE: "Periculosidade",
+                  VERBA_RISCO_VIDA:     "Risco de Vida"}
 # op1 do evento de cadastro que origina cada verba. Risco de vida nao tem evento
 # proprio — so existe se for lancado (manual ou movimento fixo).
 _OP1_ADICIONAL = {VERBA_INSALUBRIDADE: 31, VERBA_PERICULOSIDADE: 41}
@@ -48071,6 +48482,8 @@ def calcular_folha():
     tp_folha = str(session.get("anomes_tipo") or "N").upper()[:1]
     if tp_folha == "A":
         return redirect("/calcular_adiantamento_13")
+    if tp_folha == "1":
+        return redirect("/calcular_13_final")
     n_calculo, data_calculo = 0, ""
     try:
         am     = str(session.get("anomes_atual") or "")
@@ -48177,7 +48590,8 @@ def calcular_folha_stream():
         bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": "ESP"}, ensure_ascii=False)
         return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
     if tp_folha == "1":
-        msg = "O cálculo do 13º Salário ainda está em construção."
+        msg = ("Esta folha é de 13º SALÁRIO. Use o botão \"Calcular Folha\" "
+               "(menu Cálculo) — o sistema abre a tela do 13º automaticamente.")
         bloqueio = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": "ESP"}, ensure_ascii=False)
         return Response(f"data: {bloqueio}\n\n", mimetype="text/event-stream")
 
@@ -48286,7 +48700,7 @@ def calcular_folha_stream():
                                     on_aviso=lambda msg: q.put(json.dumps({"tipo":"aviso","msg":msg}, ensure_ascii=False)))
 
             try:
-                tipo_desc = {"N": "Normal", "F": "Ferias", "R": "Rescisao"}.get(anomes_tipo, anomes_tipo)
+                tipo_desc = _folha_tipo_label(anomes_tipo, curto=True)
                 if eh_individual:
                     obs_log = (f"Calc INDIVIDUAL folha {anomes} tipo:{tipo_desc} "
                                f"matricula={_mat_indiv}")[:200]
@@ -48436,7 +48850,7 @@ def reabrir_folha():
     anomes_tipo = str(session.get("anomes_tipo") or "N")
     situacao   = _refresh_situacao_folha()
     folha_fmt  = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else "—"
-    tipo_label = {"N": "Normal", "1": "13º Mês", "A": "Adiant. 13º"}.get(anomes_tipo, anomes_tipo)
+    tipo_label = _folha_tipo_label(anomes_tipo)
     sit_map    = {"A": ("Aberta","sit-aberta"), "X": ("Aberta","sit-aberta"),
                   "C": ("Calculada","sit-calculada"), "F": ("Fechada","sit-fechada")}
     sit_label, sit_class = sit_map.get(situacao, ("",""))
@@ -48503,7 +48917,7 @@ def fechar_folha():
     anomes_tipo = str(session.get("anomes_tipo") or "N")
     situacao    = _refresh_situacao_folha()
     folha_fmt   = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else "—"
-    tipo_label  = {"N": "Normal", "1": "13º Mês", "A": "Adiant. 13º"}.get(anomes_tipo, anomes_tipo)
+    tipo_label  = _folha_tipo_label(anomes_tipo)
     sit_map     = {"A": ("Aberta","sit-aberta"), "X": ("Aberta","sit-aberta"),
                    "C": ("Calculada","sit-calculada"), "F": ("Fechada","sit-fechada")}
     sit_label, sit_class = sit_map.get(situacao, ("",""))
@@ -48885,7 +49299,7 @@ def rel_nverbas():
     verbas_sel, rows, totais = _nverbas_build(v_codes, id_empresa, anomes, anomes_tipo, ordem)
 
     folha_fmt  = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else "—"
-    tipo_label = {"N": "Normal", "1": "13º Mês", "A": "Adiant. 13º"}.get(anomes_tipo, anomes_tipo)
+    tipo_label = _folha_tipo_label(anomes_tipo)
 
     # URL para o PDF com os mesmos parâmetros
     pdf_params = "&".join(f"v{i+1}={c}" for i, c in enumerate(v_codes))
@@ -48925,7 +49339,7 @@ def rel_nverbas_pdf():
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(session.get("cnpj_empresa", ""))
     folha_fmt  = f"{anomes[4:6]}/{anomes[0:4]}" if len(anomes) == 6 else "—"
-    tipo_label = {"N": "Normal", "1": "13º Mês", "A": "Adiant. 13º"}.get(anomes_tipo, anomes_tipo)
+    tipo_label = _folha_tipo_label(anomes_tipo)
 
     buf      = _gerar_nverbas_pdf(verbas_sel, rows, totais, empresa_nm, folha_fmt, tipo_label, cnpj_fmt)
     nome_arq = f"RelNVerbas_{anomes}.pdf"
@@ -49476,8 +49890,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     meses_pt = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                 "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
     mes_nm   = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
-    tipo_lbl = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
-                "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    tipo_lbl = _folha_tipo_label(anomes_tipo)
     anomes_fmt = f"{mes_nm} / {ano}"
 
     rubricas_info = {}
@@ -49499,7 +49912,7 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
                     }
     except Exception:
         pass
-    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
+    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13º Sal.",
                   101:"INSS",120:"IRRF"}
     # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO, nao FGTS.
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
@@ -49836,8 +50249,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                       "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
     mes_nm         = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
-    tipo_lbl       = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
-                      "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    tipo_lbl       = _folha_tipo_label(anomes_tipo)
 
     # ── PALETA ────────────────────────────────────────────────────
     C_NAVY   = colors.HexColor("#0b1f3a")
@@ -49906,7 +50318,7 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     }
     except Exception:
         pass
-    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
+    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13º Sal.",
                   101:"INSS",120:"IRRF"}
     # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO, nao FGTS.
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
@@ -50621,6 +51033,7 @@ def rel_liquidos_pdf():
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
     titulo     = (f"Relação dos Líquidos — {resumo['anomes_fmt']}"
+                  f"{_tipo_no_titulo(anomes_tipo)}"
                   f"  ({'por Nome' if ordem == 'alfa' else 'por Matrícula'})")
 
     def P(txt, fn="Helvetica", fs=8, align=0, col=colors.HexColor("#1f2937")):
@@ -50949,6 +51362,7 @@ def rel_custo_pdf():
     empresa_nm = str(session.get("empresa_info") or "")
     cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
     titulo     = (f"Análise de Custo — {resumo['anomes_fmt']}"
+                  + _tipo_no_titulo(anomes_tipo)
                   + (f"  ({resumo['sel_nome']})" if resumo["sel_nome"]
                      else f"  ({'por Nome' if ordem == 'alfa' else 'por Matrícula'})"))
 
@@ -51346,7 +51760,7 @@ def recibo_pensao_pdf():
         # centralizado só dentro da coluna da direita e saía deslocado ~100pt.
         # Empresa/CNPJ à esquerda, competência à direita, na linha de cima.
         cab = Table([[Paragraph(empresa_nm[:60], st_emp),
-                      Paragraph(f"Competência: {comp_curta}", st_sub_r)],
+                      Paragraph(f"Competência: {comp_curta}{_tipo_no_titulo(anomes_tipo)}", st_sub_r)],
                      [Paragraph(f"CNPJ: {cnpj_fmt}", st_sub), ""],
                      [Paragraph("RECIBO DE PENSÃO ALIMENTÍCIA", st_tit), ""]],
                     colWidths=[L*0.62, L*0.38])
@@ -51460,8 +51874,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
     meses_pt       = ["","Janeiro","Fevereiro","Março","Abril","Maio","Junho",
                       "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
     mes_nm         = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
-    tipo_lbl       = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
-                      "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    tipo_lbl       = _folha_tipo_label(anomes_tipo)
     anomes_fmt     = f"{mes_nm.upper()}/{ano}"
     folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
@@ -51536,7 +51949,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                     }
     except Exception:
         pass
-    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13° Sal",
+    _sys_verbs = {1:"Salário",2:"Horas Extras",30:"Férias",31:"13º Sal.",
                   101:"INSS",120:"IRRF"}
     # 139 NAO entra aqui: e DESCONTO REPOUSO REMUNERADO, nao FGTS.
     for cod, tp in [(1,"1"),(2,"1"),(30,"1"),(31,"1"),(101,"2"),(120,"2")]:
@@ -52074,8 +52487,7 @@ def contracheque():
                 "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
     ano, mes  = anomes[:4], anomes[4:6]
     mes_nm    = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
-    tipo_lbl  = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
-                 "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    tipo_lbl  = _folha_tipo_label(anomes_tipo)
     folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
     # Busca funcionários com movimento no período (para seletor)
@@ -52689,8 +53101,7 @@ def recibo_adiantamento():
                 "Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
     ano, mes  = anomes[:4], anomes[4:6]
     mes_nm    = meses_pt[int(mes)] if mes.isdigit() and 1 <= int(mes) <= 12 else mes
-    tipo_lbl  = {"N":"Folha Normal","F":"Férias","R":"Rescisão",
-                 "A":"Adiantamento 13°","1":"13° Salário"}.get(anomes_tipo, anomes_tipo)
+    tipo_lbl  = _folha_tipo_label(anomes_tipo)
     folha_tipo_mov = anomes_tipo if anomes_tipo in ("F", "R", "A", "1") else "N"
 
     # Funcionários com adiantamento lançado nesta folha (verbas 161-164)
@@ -53983,8 +54394,7 @@ def _resumo_folha_dados(id_empresa, id_cliente, anomes, anomes_tipo):
         })
 
     anomes_fmt = f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else anomes
-    tipo_desc  = {"N": "Normal", "F": "Férias", "R": "Rescisão",
-                  "A": "Adiant. 13º", "1": "13º Salário"}.get(anomes_tipo, anomes_tipo)
+    tipo_desc  = _folha_tipo_label(anomes_tipo)
 
     return {
         "anomes_fmt":       anomes_fmt,
@@ -54106,7 +54516,7 @@ def resumo_folha_pdf():
         canvas.drawRightString(xR, y1, agora.strftime("%d/%m/%Y  %H:%M"))
         y2 = y1 - 0.55*cm
         periodo = d["anomes_fmt"]
-        if d["tipo_desc"] != "Normal":
+        if d["tipo_desc"] != "Folha Normal":
             periodo += f"  ·  {d['tipo_desc'].upper()}"
         canvas.setFont("Helvetica-Bold", 12)
         canvas.setFillColor(azul)
@@ -63421,8 +63831,7 @@ def api_admin_copiar_progresso():
 #     coluna: coluna nova em tab_anomes passa a ser copiada sozinha;
 #   • período que o destino JÁ tiver (mesmo ano_mes + mesmo tipo) é PULADO, e
 #     não sobrescrito. Dá para rodar a tela de novo sem duplicar folha.
-_ANOMES_TIPO_LABEL = {"N": "Normal", "F": "Férias", "R": "Rescisão",
-                      "1": "13º Sal.", "A": "Adiant. 13º"}
+_ANOMES_TIPO_LABEL = _FOLHA_TIPO_CURTO
 
 # Campos que quem manda é o DESTINO, não a origem. 'id' é serial: sai fora para
 # o banco gerar o do destino.
@@ -67061,6 +67470,245 @@ def api_calcular_adiantamento():
 
 
 # =========================================================
+# AVOS DO 13o SALARIO  (SMV 16/09/2026)
+# Quantos doze-avos o empregado ganhou no ano. E a mesma conta que serve a
+# TRES coisas, e por isso mora num lugar so':
+#   1) o 13o proporcional (avos/12 do salario + medias);
+#   2) o DIVISOR das medias (soma das variaveis do ano / avos) — nao 12, e
+#      nao o mes da folha;
+#   3) a memoria de calculo, que precisa mostrar mes a mes por que cada avo
+#      entrou ou caiu.
+#
+# REGRA (fechada com o SMV em 16/09/2026, arquivo "Regra dos 15 dias no mes"):
+#
+#   dias do mes com contrato ativo
+#   (-) dias de afastamento que nao contam   -> depende do MOTIVO (tabela 18)
+#   (-) faltas INJUSTIFICADAS (op1=21, op2=1)
+#   (=) 15 ou mais  ->  ganha 1/12 ;  14 ou menos  ->  perde o avo do mes
+#
+# O ponto que o SMV fez questao de fixar: NAO e' uma rotina unica dizendo
+# "dias trabalhados >= 15". Primeiro classifica o motivo da ausencia, depois
+# conta os dias. Sem isso o acidente do trabalho perderia avo igual a uma
+# doenca comum — e sao coisas opostas.
+# =========================================================
+
+# --- Motivos que NAO tiram dia nenhum ---------------------------------
+# O afastamento existe, mas o mes conta inteiro. Ou porque a lei manda contar
+# como tempo de servico (acidente do trabalho, servico militar), ou porque a
+# empresa segue remunerando (ferias, licenca remunerada, maternidade).
+_AFAST13_INTEGRAL = {
+    "01",                           # acidente/doenca DO TRABALHO
+    "10",                           # licenca de servidor COM remuneracao
+    "15",                           # gozo de ferias
+    "16",                           # licenca remunerada
+    "17", "18", "19", "20", "33", "35",   # licenca maternidade (todas as formas)
+    "23",                           # mandato eleitoral COM remuneracao
+    "29",                           # servico militar obrigatorio (art. 4o CLT)
+}
+
+# --- Motivos em que so' os 15 PRIMEIROS dias contam -------------------
+# Doenca comum: os 15 primeiros dias do afastamento sao pagos pela EMPRESA e o
+# contrato nao esta suspenso, entao contam como dia trabalhado. Do 16o em
+# diante quem paga e o INSS, e esse periodo nao gera avo para a empresa (o
+# INSS responde pelo abono anual dele).
+_AFAST13_15_DIAS = {
+    "03",                           # acidente/doenca NAO relacionada ao trabalho
+    "07",                           # acompanhamento de familiar enfermo
+}
+_AFAST13_DIAS_EMPRESA = 15
+
+# Todo o resto (licenca nao remunerada, invalidez, carcere, suspensao
+# disciplinar, qualificacao, mandato sindical, Maria da Penha, os motivos de
+# servidor publico e os de trabalhador avulso) nao gera avo: contrato suspenso
+# ou sem remuneracao da empresa. Fica como DEFAULT, sem lista — motivo novo
+# que a tabela 18 ganhar cai no lado seguro.
+#
+# ATENCAO ao ler as duas listas acima: hoje o _avos13_cache descarta todo
+# afastamento com op2 >= 10 (decisao do SMV em 16/09/2026 — nesta base eles
+# sao informacao extra, nao afastamento). Na pratica, entao, so' os motivos
+# 01 a 09 chegam aqui: 01 (integral) e 03/07 (15 dias). O resto das listas
+# fica valendo como a regra escrita, para o dia em que a base passar a
+# registrar maternidade e licenca como afastamento de verdade.
+
+FALTA_OP1          = 21     # tab_eventos: falta
+FALTA_OP2_INJUST   = 1      # ... injustificada (a justificada, op2=2, nao tira avo)
+AFAST_OP1          = 6      # tab_eventos: afastamento
+AVOS_DIAS_MINIMOS  = 15     # o "15 dias no mes" da Lei 4.090/62
+
+
+def _d8_date(v):
+    """'YYYYMMDD' (ou 'YYYY-MM-DD') -> date. None se nao der."""
+    s = re.sub(r"\D", "", str(v or ""))
+    if len(s) < 8:
+        return None
+    try:
+        return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
+    except ValueError:
+        return None
+
+
+def _avos13_cache(id_empresa, id_cliente, ano):
+    """Afastamentos e faltas do ANO INTEIRO, da empresa inteira, em duas
+    consultas — para nao bater no banco uma vez por funcionario.
+
+    Devolve (afast_por_mat, faltas_por_mat):
+      afast_por_mat  {matricula: [{"cod": "03", "ini": date, "fim": date|None}]}
+      faltas_por_mat {matricula: set(date)}   # so' as INJUSTIFICADAS
+
+    O afastamento NAO e filtrado por ano na consulta de proposito: ele se
+    arrasta por anos (a base tem um de 2022 que so terminou em 2025), e um que
+    comecou em 2024 e continua em aberto pesa no 13o de hoje. O recorte por ano
+    e feito na hora de contar os dias.
+    """
+    motivos_validos = set(_motivos_afastamento().keys())
+    afast, faltas = {}, {}
+
+    def _cod2(v):
+        try:
+            return f"{int(v):02d}"
+        except (TypeError, ValueError):
+            return ""
+
+    try:
+        q = (supabase.table("tab_eventos")
+             .select("matricula, op2, data1i, data1f")
+             .eq("id_empresa", id_empresa)
+             .eq("op1", AFAST_OP1))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for ev in (q.execute().data or []):
+            # op2 >= 10 fica de fora, igual a folha mensal (SMV 16/09/2026):
+            # nesta base sao informacao extra (o 203 e o caso classico —
+            # registro auxiliar que repete o afastamento verdadeiro), nao
+            # afastamento de verdade. Sobram os motivos 01 a 09, que sao os
+            # que a base usa: 01 acidente do trabalho e 03 doenca comum.
+            try:
+                if int(ev.get("op2") or 0) >= 10:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            cod = _cod2(ev.get("op2"))
+            if cod not in motivos_validos:
+                continue
+            d_ini = _d8_date(ev.get("data1i"))
+            if not d_ini:
+                continue
+            mat = int(ev.get("matricula") or 0)
+            if mat:
+                afast.setdefault(mat, []).append(
+                    {"cod": cod, "ini": d_ini, "fim": _d8_date(ev.get("data1f"))})
+    except Exception as e:
+        print(f"[avos13] afastamentos: {e}")
+
+    try:
+        q = (supabase.table("tab_eventos")
+             .select("matricula, data1i")
+             .eq("id_empresa", id_empresa)
+             .eq("op1", FALTA_OP1)
+             .eq("op2", FALTA_OP2_INJUST)
+             .gte("folha", ano * 100 + 1)
+             .lte("folha", ano * 100 + 12))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for ev in (q.execute().data or []):
+            d = _d8_date(ev.get("data1i"))
+            mat = int(ev.get("matricula") or 0)
+            if d and mat:
+                faltas.setdefault(mat, set()).add(d)
+    except Exception as e:
+        print(f"[avos13] faltas: {e}")
+
+    return afast, faltas
+
+
+def _avos13_dias_fora(afastamentos, ano):
+    """Conjunto de DATAS do ano que nao contam como dia trabalhado, olhando o
+    motivo de cada afastamento.
+
+    Devolve (dias:set[date], por_dia:dict[date, str]) — o segundo diz qual
+    motivo tirou cada dia, para a memoria de calculo poder explicar.
+
+    Usa conjunto de datas, e nao soma de dias, porque afastamentos se
+    sobrepoem (retorno e nova entrada no mesmo dia, dois registros para o mesmo
+    periodo) e somar contaria o mesmo dia duas vezes.
+    """
+    d_ini_ano = date(ano, 1, 1)
+    d_fim_ano = date(ano, 12, 31)
+    dias, por_dia = set(), {}
+    for af in (afastamentos or []):
+        cod = af["cod"]
+        if cod in _AFAST13_INTEGRAL:
+            continue                       # nao tira dia nenhum
+        ini = af["ini"]
+        if cod in _AFAST13_15_DIAS:
+            # os 15 primeiros dias do AFASTAMENTO sao da empresa e contam;
+            # o periodo que nao conta comeca no 16o dia.
+            ini = ini + timedelta(days=_AFAST13_DIAS_EMPRESA)
+        fim = af["fim"] or d_fim_ano       # sem data fim = ainda afastado
+        ini = max(ini, d_ini_ano)
+        fim = min(fim, d_fim_ano)
+        d = ini
+        while d <= fim:
+            dias.add(d)
+            por_dia.setdefault(d, cod)
+            d += timedelta(days=1)
+    return dias, por_dia
+
+
+def _avos_13(ano, dtadm, dtresc=None, afastamentos=None, faltas=None,
+             mes_limite=12):
+    """Avos do 13o de UM funcionario no ano.
+
+    dtadm/dtresc  'YYYYMMDD' (dtresc None = ainda trabalhando)
+    mes_limite    ultimo mes a considerar (12 no 13o final; o mes da folha
+                  quando serve de divisor do adiantamento)
+
+    Devolve {"avos": int, "meses": [detalhe por mes]}, com o detalhe que a
+    memoria de calculo imprime:
+      {mes, dias_contrato, dias_fora, dias_faltas, dias_contam, conta, motivo}
+    """
+    d_adm  = _d8_date(dtadm)
+    d_resc = _d8_date(dtresc)
+    fora, fora_motivo = _avos13_dias_fora(afastamentos, ano)
+    faltas = faltas or set()
+
+    avos, meses = 0, []
+    for mes in range(1, max(1, min(12, int(mes_limite or 12))) + 1):
+        ult = calendar.monthrange(ano, mes)[1]
+        ini_mes, fim_mes = date(ano, mes, 1), date(ano, mes, ult)
+        ini = max(ini_mes, d_adm)  if d_adm  else ini_mes
+        fim = min(fim_mes, d_resc) if d_resc else fim_mes
+        if ini > fim:
+            # mes fora do contrato: antes de admitir ou depois de demitir
+            meses.append({"mes": mes, "dias_contrato": 0, "dias_fora": 0,
+                          "dias_faltas": 0, "dias_contam": 0, "conta": False,
+                          "motivo": "fora do contrato"})
+            continue
+        dias_contrato = (fim - ini).days + 1
+        # falta que cai em dia ja afastado nao pode descontar duas vezes:
+        # por isso os dois entram no MESMO conjunto.
+        d_fora   = {d for d in fora   if ini <= d <= fim}
+        d_faltas = {d for d in faltas if ini <= d <= fim} - d_fora
+        dias_contam = dias_contrato - len(d_fora) - len(d_faltas)
+        conta = dias_contam >= AVOS_DIAS_MINIMOS
+        if conta:
+            avos += 1
+            motivo = ""
+        elif d_fora:
+            cods = sorted({fora_motivo[d] for d in d_fora})
+            motivo = "afastamento (motivo " + ", ".join(cods) + ")"
+        elif d_faltas:
+            motivo = f"{len(d_faltas)} falta(s) injustificada(s)"
+        else:
+            motivo = "menos de 15 dias no mes"
+        meses.append({"mes": mes, "dias_contrato": dias_contrato,
+                      "dias_fora": len(d_fora), "dias_faltas": len(d_faltas),
+                      "dias_contam": dias_contam, "conta": conta,
+                      "motivo": motivo})
+    return {"avos": avos, "meses": meses}
+
+
+# =========================================================
 # ADIANTAMENTO DO 13º SALÁRIO  (folha_tipo="A", verba 17)
 # Cálculo: perAdianta13% do salário (percentual por empresa, default 50).
 # Sem INSS/IRRF. (avos: etapa futura)
@@ -67323,9 +67971,19 @@ def _adicionais_adiant13(id_empresa, id_cliente, anomes, mat, sal_mes, perc=50,
 
 def _verbas_media_adiant13(id_cliente):
     """Verbas (proventos) que entram na MÉDIA do adiantamento do 13º.
-    Critério: inc_adto13='S', tp_rubr='1'. Exclui a periculosidade (31), que já
-    é lançada à parte. Verba do cliente sobrepõe a global (id_cliente 0).
-    Retorna (cods:list[int], verbas_hora:set[int], desc_map:dict)."""
+    Critério: inc_adto13 = 'S' ou 'MAN', tp_rubr='1'. Exclui a periculosidade
+    (31), que já é lançada à parte. Verba do cliente sobrepõe a global (0).
+    Retorna (cods:list[int], verbas_hora:set[int], desc_map:dict).
+
+    Ate 16/09/2026 o filtro era so 'S', e a base tem DUAS gramaticas no
+    mesmo campo: 'MAN' (Media desde o Ano) nas rubricas globais e 'S' no
+    legado de alguns clientes. Com so 'S', COMISSOES (15), HORA EXTRA 50%
+    (73), HORA EXTRA 100% (74), ADICIONAL NOTURNO (21/68), PRODUCAO (39) e
+    GORJETAS (390) ficavam de fora: o adiantamento nao pagava media nenhuma
+    para quem usa as rubricas padrao. Le o campo do ADIANTAMENTO, nao o do
+    13o final — a incidencia e cadastrada separada em cada verba e as duas
+    podem legitimamente diferir.
+    """
     try:
         r = (supabase.table("tab_rubrica")
              .select("cod_rubr, unid_verba, tp_rubr, inc_adto13, dsc_rubr, id_cliente")
@@ -67340,7 +67998,7 @@ def _verbas_media_adiant13(id_cliente):
         by_cod[int(row.get("cod_rubr") or 0)] = row
     cods, horas, desc = [], set(), {}
     for cod, row in by_cod.items():
-        if (str(row.get("inc_adto13") or "").upper() == "S"
+        if (str(row.get("inc_adto13") or "").strip().upper() in ("S", "MAN")
                 and str(row.get("tp_rubr") or "") == "1"
                 and cod != VERBA_PERICULOSIDADE):
             cods.append(cod)
@@ -67348,6 +68006,25 @@ def _verbas_media_adiant13(id_cliente):
                 horas.add(cod)
             desc[cod] = (row.get("dsc_rubr") or "").strip()
     return cods, horas, desc
+
+
+def _meses_media_adiant13(ano, mes_folha, f, afast_cache, faltas_cache):
+    """Divisor das medias do adiantamento do 13o: MESES TRABALHADOS no ano ate
+    o mes da folha — nao o numero do mes.
+
+    Ate 16/09/2026 o divisor era `meses = mes_folha`. Quem foi admitido em
+    julho e tirava o adiantamento em novembro tinha a soma de 5 meses de
+    variaveis dividida por 11: media (e adiantamento) a menor. Usa a mesma
+    contagem de avos do 13o final, entao a media do adiantamento e a do 13o
+    falam a mesma lingua.
+
+    Zero avos devolve zero, e _medias_adiant13 ja trata (nao gera media
+    nenhuma) — que e o certo: sem avo nao ha 13o a antecipar.
+    """
+    mat = int(f.get("matricula") or 0)
+    return _avos_13(ano, f.get("dtadm"), f.get("datarescisao"),
+                    afast_cache.get(mat), faltas_cache.get(mat),
+                    mes_limite=mes_folha)["avos"]
 
 
 def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
@@ -67456,24 +68133,9 @@ def _fgts_adiant13(inc_fgts, verba_valores, aliq_fgts=8, id_cliente=None):
 
 
 def _marcar_folha_calculada_adiant13(id_cliente, id_empresa, anomes):
-    """Marca a folha de adiantamento do 13º (tipo 'A') como Calculada em
-    tab_anomes e incrementa qtd_calculos. Retorna o número do cálculo."""
-    n_calc = 1
-    try:
-        r = (supabase.table("tab_anomes").select("qtd_calculos")
-             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
-             .eq("ano_mes", int(anomes)).eq("tipo", "A")
-             .execute().data or [])
-        n_calc = int((r[0].get("qtd_calculos") or 0) if r else 0) + 1
-        (supabase.table("tab_anomes").update({
-            "situacao":          "C",
-            "data_hora_calculo": _agora_brasilia().strftime("%Y%m%d %H%M%S"),
-            "qtd_calculos":      n_calc,
-        }).eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
-          .eq("ano_mes", anomes).eq("tipo", "A").execute())
-    except Exception:
-        pass
-    return n_calc
+    """Marca a folha de adiantamento do 13º (tipo 'A') como Calculada.
+    Atalho para _marcar_folha_calculada, que serve a qualquer tipo de folha."""
+    return _marcar_folha_calculada(id_cliente, id_empresa, anomes, "A")
 
 
 def _esocial_pendencias_adiant13(id_cliente, id_empresa, anomes, matriculas):
@@ -67905,12 +68567,15 @@ def calcular_adiantamento_13():
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
     inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
-    fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+    fi = ano_folha * 100 + 1; ff = int(anomes)
+    # Divisor das medias: por funcionario (ver _meses_media_adiant13).
+    # Afastamentos e faltas do ano inteiro vem em duas consultas so.
+    _af13, _fal13 = _avos13_cache(id_empresa, id_cliente, ano_folha)
 
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
-                 .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                 .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm, datarescisao")
                  .eq("id_empresa", id_empresa)
                  .eq("situacao", "A")
                  .order("nomer")
@@ -67934,6 +68599,7 @@ def calcular_adiantamento_13():
             und     = str(f.get("undsalfixo") or "M").upper()[:1]
             qhm     = int(f.get("qtdhrsmes") or 220) or 220
             sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+            meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
             medias_det = _medias_adiant13(id_cliente, id_empresa, mat_f, sal_hora_c,
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
             medias_tot = sum(d["val"] for d in medias_det)
@@ -67991,7 +68657,10 @@ def api_calcular_adiantamento_13():
     # médias das verbas variáveis (inc_adto13='S') — ano corrente, ÷ mês da folha
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
-    fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+    fi = ano_folha * 100 + 1; ff = int(anomes)
+    # Divisor das medias: por funcionario (ver _meses_media_adiant13).
+    # Afastamentos e faltas do ano inteiro vem em duas consultas so.
+    _af13, _fal13 = _avos13_cache(id_empresa, id_cliente, ano_folha)
 
     # incidência de FGTS por verba (verba 17='S'; periculosidade/médias='11')
     inc_fgts = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
@@ -68040,7 +68709,7 @@ def api_calcular_adiantamento_13():
     mats_es  = []          # matrículas que geram remessa S-1200/S-1210
     try:
         r_cad = (supabase.table("tab_cad")
-                 .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                 .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm, datarescisao")
                  .eq("id_empresa", id_empresa)
                  .eq("situacao", "A")
                  .execute())
@@ -68064,6 +68733,7 @@ def api_calcular_adiantamento_13():
             und     = str(f.get("undsalfixo") or "M").upper()[:1]
             qhm     = int(f.get("qtdhrsmes") or 220) or 220
             sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+            meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
             medias_det = _medias_adiant13(id_cliente, id_empresa, int(mat or 0), sal_hora_c,
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
             medias = {d["cod"]: d["val"] for d in medias_det}
@@ -68254,7 +68924,10 @@ def calcular_adiantamento_13_stream():
     cods_media, verbas_hora, _desc_media = _verbas_media_adiant13(id_cliente)
     inc_fgts   = _inc_fgts_adiant13(id_cliente, [VERBA_ADIANT_13, VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA] + cods_media)
     ano_folha  = int(anomes[:4]); mes_folha = int(anomes[4:6])
-    fi = ano_folha * 100 + 1; ff = int(anomes); meses = mes_folha
+    fi = ano_folha * 100 + 1; ff = int(anomes)
+    # Divisor das medias: por funcionario (ver _meses_media_adiant13).
+    # Afastamentos e faltas do ano inteiro vem em duas consultas so.
+    _af13, _fal13 = _avos13_cache(id_empresa, id_cliente, ano_folha)
 
     q = queue.Queue()
 
@@ -68299,7 +68972,7 @@ def calcular_adiantamento_13_stream():
             dest = _memoria_destino(anomes, id_empresa)
 
             r_cad = (supabase.table("tab_cad")
-                     .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm")
+                     .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, qtdhrsmes, dtadm, datarescisao")
                      .eq("id_empresa", id_empresa).eq("situacao", "A").order("nomer").execute())
             elegiveis = []
             for f in (r_cad.data or []):
@@ -68334,6 +69007,7 @@ def calcular_adiantamento_13_stream():
                 und     = str(f.get("undsalfixo") or "M").upper()[:1]
                 qhm     = int(f.get("qtdhrsmes") or 220) or 220
                 sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+                meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
                 medias_det = _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                                               fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
                 medias = {d["cod"]: d["val"] for d in medias_det}
@@ -68420,6 +69094,894 @@ def calcular_adiantamento_13_stream():
                 "perc": perc, "esocial": n_esocial, "n_calculo": n_calc}})
         except Exception as e:
             _put({"tipo": "erro", "msg": str(e)[:200]})
+        finally:
+            q.put(None)
+
+    threading.Thread(target=run, daemon=True).start()
+
+    @stream_with_context
+    def generate():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {item}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# =========================================================
+# 13o SALARIO FINAL  (folha_tipo="1")   SMV 16/09/2026
+#
+#   13o bruto = (salario + medias do ano) x avos / 12
+#   (-) verba 18: a SOMA das 17 (adiantamento) lancadas no ano
+#   (-) INSS  (verba 101) — base PROPRIA do 13o, tabela progressiva
+#   (-) IRRF  (verba 122) — tributacao EXCLUSIVA, base propria
+#
+# As verbas ja existem em tab_rubrica com o tipo_uso certo (a 11 e a 122 so' na
+# folha "1", a 18 em rescisao e 13o, a 101 em normal/rescisao/13o) — nada de
+# rubrica nova.
+#
+# A forma do INSS e do IRRF e a MESMA da rescisao (_calc_rescisao_nucleo), que
+# esta em producao ha anos: base separada do 13o, e a isencao/redutor da
+# Lei 15.270/2025 aplicada sobre a parcela. Copiar de la, nao deduzir.
+# =========================================================
+VERBA_13_SALARIO   = 11    # 13O. SALARIO                (provento)
+VERBA_13_DESC_ADTO = 18    # DESC.ADIANT.13O.SAL.        (desconto)
+VERBA_13_INSS      = 101   # INSS                        (base propria do 13o)
+VERBA_13_IRRF      = 122   # IMPOSTO DE RENDA 13.SAL     (exclusivo)
+VERBA_ADTO_13_PAGO = 17    # ADIANT.13. SALARIO — o que foi pago no ano
+
+
+def _verbas_media_13(id_cliente):
+    """Verbas que entram na media do 13o.
+
+    A base tem DUAS gramaticas para o mesmo campo, e as duas valem:
+      'MAN' (Media desde o Ano)  — usada nas rubricas globais (id_cliente 0)
+      'S'   (legado sim/nao)     — usada nas rubricas proprias dos clientes
+                                   4, 9, 12 e 14 (horas extras, adic. noturno)
+    Pegar so' uma delas faria metade da carteira perder as medias do 13o.
+
+      'UL'  (Ultimo Lancamento)  — nao e media: vale o ultimo valor lancado no
+                                   ano (o QUINQUENIO, verba 303, e assim).
+      'CN'  (Calculo Normal)     — insalubridade/periculosidade/risco de vida:
+                                   recalculadas sobre a base, nao pela media.
+                                   Saem por _adicionais_13, nao por aqui.
+
+    Devolve (cods_media, verbas_hora, desc_map, cods_ultimo).
+    """
+    try:
+        r = (supabase.table("tab_rubrica")
+             .select("cod_rubr, unid_verba, tp_rubr, inc_13sal, dsc_rubr, id_cliente")
+             .in_("id_cliente", [0, id_cliente])
+             .execute())
+        rows = r.data or []
+    except Exception:
+        rows = []
+    # rubrica do cliente sobrepoe a global de mesmo codigo
+    by_cod = {}
+    for row in sorted(rows, key=lambda x: 0 if int(x.get("id_cliente") or 0) == 0 else 1):
+        by_cod[int(row.get("cod_rubr") or 0)] = row
+
+    adicionais = {VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA}
+    cods, horas, desc, ultimo = [], set(), {}, []
+    for cod, row in by_cod.items():
+        inc = str(row.get("inc_13sal") or "").strip().upper()
+        if str(row.get("tp_rubr") or "") != "1" or cod in adicionais:
+            continue
+        if inc in ("MAN", "S"):
+            cods.append(cod)
+            if str(row.get("unid_verba") or "").upper() == "H":
+                horas.add(cod)
+            desc[cod] = (row.get("dsc_rubr") or "").strip()
+        elif inc == "UL":
+            ultimo.append(cod)
+            desc[cod] = (row.get("dsc_rubr") or "").strip()
+    return cods, horas, desc, ultimo
+
+
+def _ultimo_lancamento_13(id_cliente, id_empresa, mat, fi, ff, cods):
+    """Verba 'UL': vale o ULTIMO valor lancado no ano, nao a media. Devolve
+    {cod: centavos} so' do que ficou > 0."""
+    if not cods:
+        return {}
+    try:
+        r = (supabase.table("tab_mov")
+             .select("cod_verba, valor, folha")
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .eq("matricula", mat).eq("situacao", "A").eq("folha_tipo", "N")
+             .in_("cod_verba", cods).gte("folha", fi).lte("folha", ff)
+             .order("folha").execute())
+        rows = r.data or []
+    except Exception:
+        return {}
+    out = {}
+    for row in rows:                      # ordenado por folha: o ultimo vence
+        v = int(row.get("valor") or 0)
+        if v > 0:
+            out[int(row.get("cod_verba") or 0)] = v
+    return out
+
+
+def _adto13_pago_no_ano(id_cliente, id_empresa, ano, matriculas=None):
+    """Soma das verbas 17 (ADIANT.13.SALARIO) lancadas no ANO, por matricula.
+
+    Varre as folhas NORMAL e de ADIANTAMENTO: a rotina do adiantamento grava
+    com folha_tipo 'A', mas a 17 tambem pode ter sido lancada a mao numa folha
+    normal (o tipo_uso dela e 'N'). Somar so' um dos dois deixaria parcela sem
+    descontar — e o empregado receberia o adiantamento duas vezes.
+
+    Devolve {matricula: centavos}.
+    """
+    fi, ff = ano * 100 + 1, ano * 100 + 12
+    out = {}
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, valor")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("cod_verba", VERBA_ADTO_13_PAGO)
+             .in_("folha_tipo", ["N", "A"])
+             .gte("folha", fi).lte("folha", ff))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if matriculas:
+            q = q.in_("matricula", list(matriculas))
+        for row in (q.execute().data or []):
+            mat = int(row.get("matricula") or 0)
+            if mat:
+                out[mat] = out.get(mat, 0) + int(row.get("valor") or 0)
+    except Exception as e:
+        print(f"[13o] adiantamento pago: {e}")
+    return out
+
+
+def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
+                        afast_cache, faltas_cache, adto_pago,
+                        cods_media, verbas_hora, desc_media, cods_ultimo,
+                        dep_count, dep_irrf_ded, adic_ev=None, adic_mov=None):
+    """13o Salario Final de UM funcionario. So' calcula — nao grava nada.
+
+    Devolve o dicionario que serve tanto a previa da tela quanto a gravacao e a
+    memoria de calculo: avos e o detalhe mes a mes, base, medias, bruto,
+    adiantamento descontado, INSS, IRRF, FGTS e liquido.
+    """
+    mat     = int(f.get("matricula") or 0)
+    sal_mes = _sal_mes_adiant13(f)
+    det_avos = _avos_13(ano, f.get("dtadm"), f.get("datarescisao"),
+                        afast_cache.get(mat), faltas_cache.get(mat), mes_limite=12)
+    avos = det_avos["avos"]
+
+    vrsalfx = int(f.get("vrsalfx") or 0)
+    und     = str(f.get("undsalfixo") or "M").upper()[:1]
+    qhm     = int(f.get("qtdhrsmes") or 220) or 220
+    sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+
+    fi, ff = ano * 100 + 1, ano * 100 + 12
+    # perc=100: a media do 13o e a media cheia. O divisor sao os AVOS — dividir
+    # por 12 quem trabalhou 6 meses reduziria a media pela metade, e a
+    # proporcionalidade ja vem depois, no x avos/12.
+    medias_det = (_medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
+                                   fi, ff, avos, 100, cods_media, verbas_hora,
+                                   desc_media) if avos > 0 else [])
+    medias_tot = sum(d["val"] for d in medias_det)
+    ultimos    = _ultimo_lancamento_13(id_cliente, id_empresa, mat, fi, ff, cods_ultimo) if avos > 0 else {}
+    ultimos_tot = sum(ultimos.values())
+
+    # Adicionais (inc_13sal='CN'): recalculados sobre o salario do mes, como na
+    # folha normal — nao entram por media.
+    adics = _adicionais_do_mes(id_empresa, id_cliente, f"{ano}12", mat, sal_mes,
+                               eventos_cache=adic_ev, mov_cache=adic_mov) if avos > 0 else {}
+    adics_tot = sum(int(v) for v in adics.values())
+
+    base_13  = sal_mes + medias_tot + ultimos_tot + adics_tot
+    bruto_13 = base_13 * avos // 12
+
+    inss_13, inss_det, _ = (_calc_inss_progressivo(bruto_13, tabela) if bruto_13 else (0, [], 0))
+    ndep       = dep_count.get(mat, 0)
+    dep_total  = ndep * dep_irrf_ded
+    base_irrf  = max(0, bruto_13 - inss_13 - dep_total)
+    irrf_13, _irrf_info = (_calc_irrf(base_irrf, tabela) if bruto_13 else (0, None))
+    irrf_13, red_13, isento_13 = _irrf_isencao_redutor(bruto_13, irrf_13, tabela)
+
+    aliq_fgts = _aliq_fgts_adiant13(f)
+    base_fgts = bruto_13
+    fgts_val  = base_fgts * aliq_fgts // 100
+
+    # Cliente sem encargos: continua tudo calculado (a memoria mostra), mas o
+    # que e gravado/descontado vai zerado. As BASES continuam gravadas.
+    _enc0 = _sem_encargos(id_cliente)
+    g_inss = 0 if _enc0 else inss_13
+    g_irrf = 0 if _enc0 else irrf_13
+    g_fgts = 0 if _enc0 else fgts_val
+
+    # Desconto do adiantamento (verba 18): a soma das 17 do ano, mas LIMITADO ao
+    # que sobra DEPOIS do INSS e do IRRF.
+    #
+    # O liquido do 13o nunca pode ser negativo — e a mesma regra que a folha
+    # mensal ja segue (ver VERBA_INSUF_SALDO, app.py:44567). Limitar so' ao
+    # bruto nao basta: os impostos vem depois do adiantamento e empurrariam o
+    # liquido para baixo de zero. Acontece de verdade quando o adiantamento foi
+    # pago sobre o salario cheio e o empregado depois perdeu avos (afastamento
+    # por doenca, por exemplo) — o 13o encolhe, o adiantamento nao.
+    #
+    # O que nao coube fica em adto_residual: e adiantamento pago a maior, que a
+    # empresa tem a receber. Nao se perde nem se esconde — a tela e a memoria
+    # mostram, para quem calcula decidir onde cobrar.
+    adto_total    = int(adto_pago.get(mat, 0))
+    espaco        = max(0, bruto_13 - g_inss - g_irrf)
+    desc_adto     = min(adto_total, espaco)
+    adto_residual = adto_total - desc_adto
+
+    total_desc = desc_adto + g_inss + g_irrf
+    liquido    = bruto_13 - total_desc
+
+    return {
+        "matricula": mat,
+        "nome":      (f.get("nome") or f.get("nomer") or "").strip(),
+        "sal_mes":   sal_mes,
+        "avos":      avos,
+        "meses_det": det_avos["meses"],
+        "medias_det":  medias_det,
+        "medias":      medias_tot,
+        "ultimos":     ultimos,
+        "ultimos_tot": ultimos_tot,
+        "adicionais":  adics,
+        "adicionais_tot": adics_tot,
+        "base_13":   base_13,
+        "bruto_13":  bruto_13,
+        "desc_adto": desc_adto,
+        "adto_pago": adto_total,
+        "adto_residual": adto_residual,
+        "inss":      g_inss,   "inss_calc": inss_13, "inss_det": inss_det,
+        "irrf":      g_irrf,   "irrf_calc": irrf_13,
+        "irrf_base": base_irrf, "irrf_red": red_13, "irrf_isento": isento_13,
+        "dep_qtd":   ndep,     "dep_ded":  dep_total,
+        "base_fgts": base_fgts, "fgts": g_fgts, "aliq_fgts": aliq_fgts,
+        "total_desc": total_desc,
+        "liquido":    liquido,
+    }
+
+
+def _marcar_folha_calculada(id_cliente, id_empresa, anomes, tipo):
+    """Marca a folha como Calculada em tab_anomes e incrementa qtd_calculos.
+    Retorna o numero do calculo. Serve a qualquer tipo de folha."""
+    n_calc = 1
+    try:
+        r = (supabase.table("tab_anomes").select("qtd_calculos")
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .eq("ano_mes", int(anomes)).eq("tipo", tipo)
+             .execute().data or [])
+        n_calc = int((r[0].get("qtd_calculos") or 0) if r else 0) + 1
+        (supabase.table("tab_anomes").update({
+            "situacao":          "C",
+            "data_hora_calculo": _agora_brasilia().strftime("%Y%m%d %H%M%S"),
+            "qtd_calculos":      n_calc,
+        }).eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+          .eq("ano_mes", anomes).eq("tipo", tipo).execute())
+    except Exception:
+        pass
+    return n_calc
+
+
+def _esocial_pendencias_13final(id_cliente, id_empresa, anomes, matriculas):
+    """Cria a pendencia do S-1200 da folha do 13o FINAL (folha_tipo '1').
+
+    So o S-1200, de proposito (SMV 16/09/2026). O 13o tem demonstrativo proprio
+    — apuracao ANUAL, indApuracao=2, ideDmDev com sufixo 14 — mas o PAGAMENTO
+    dele nao e um evento a parte: ele viaja no S-1210 da folha mensal da mesma
+    competencia, num <infoPgto> com perRef=AAAA. Criar um S-1210 aqui geraria
+    dois evtPgtos para o mesmo CPF e periodo, que o gov recusa com erro [106].
+
+    Idempotente: recalcular nao duplica. Retorna quantas linhas criou.
+    """
+    mats = sorted({int(m) for m in (matriculas or []) if str(m or "").strip()})
+    if not mats:
+        return 0
+
+    ano_mes_int = int(anomes)
+    ja_tem = set()
+    try:
+        for r in (supabase.table("tab_esocial")
+                  .select("matricula")
+                  .eq("id_empresa", id_empresa)
+                  .eq("ano_mes", ano_mes_int)
+                  .eq("folha_tipo", "1")
+                  .eq("layout", "1200")
+                  .in_("matricula", mats)
+                  .execute().data or []):
+            ja_tem.add(int(r.get("matricula") or 0))
+    except Exception as e:
+        print(f"[tab_esocial 13final SELECT] erro: {e}")
+        return 0
+
+    agora_es = _agora_brasilia()
+    novos = [{
+        "id_cliente": id_cliente,
+        "id_empresa": id_empresa,
+        "data_cad":   agora_es.strftime("%Y%m%d"),
+        "hora_cad":   agora_es.strftime("%H%M"),
+        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+        "ano_mes":    ano_mes_int,
+        "folha_tipo": "1",
+        "layout":     "1200",
+        "matricula":  mat,
+        "codigo2":    0,
+    } for mat in mats if mat not in ja_tem]
+    if not novos:
+        return 0
+    try:
+        supabase.table("tab_esocial").insert(novos).execute()
+    except Exception as e:
+        print(f"[tab_esocial 13final INSERT] erro: {e}")
+        return 0
+    return len(novos)
+
+
+_MES_ABREV = ["", "jan", "fev", "mar", "abr", "mai", "jun",
+              "jul", "ago", "set", "out", "nov", "dez"]
+
+
+def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
+    """Bytes do PDF de memoria de calculo do 13o Final (1 funcionario).
+
+    `d` e o dicionario devolvido por _calc_13_final_func. A parte que so' esta
+    memoria tem e a TABELA MES A MES dos avos: o contador precisa poder mostrar
+    ao cliente por que agosto contou e setembro nao.
+    """
+    ano        = anomes[:4]
+    st_empresa = ParagraphStyle("me", fontName="Helvetica-Bold", fontSize=12,
+                                alignment=TA_CENTER, spaceAfter=2)
+    st_titulo  = ParagraphStyle("mt", fontName="Helvetica-Bold", fontSize=9,
+                                alignment=TA_CENTER, spaceAfter=2)
+    st_sub     = ParagraphStyle("ms", fontName="Helvetica", fontSize=9,
+                                alignment=TA_CENTER, textColor=colors.HexColor("#64748b"))
+    st_etapa   = ParagraphStyle("met", fontName="Helvetica-Bold", fontSize=8,
+                                spaceBefore=11, spaceAfter=4,
+                                textColor=colors.HexColor("#1e293b"),
+                                backColor=colors.HexColor("#f1f5f9"),
+                                borderPadding=(3, 4, 3, 4), leading=11)
+    st_etapa_na = ParagraphStyle("metna", fontName="Helvetica", fontSize=8,
+                                 spaceBefore=11, spaceAfter=4,
+                                 textColor=colors.HexColor("#64748b"),
+                                 backColor=colors.HexColor("#f8fafc"),
+                                 borderPadding=(3, 4, 3, 4), leading=11)
+    st_passo   = ParagraphStyle("mpa", fontName="Helvetica", fontSize=7.5,
+                                leftIndent=14, spaceBefore=3, spaceAfter=1,
+                                textColor=colors.HexColor("#334155"), leading=10)
+    st_formula = ParagraphStyle("mf", fontName="Helvetica", fontSize=8,
+                                spaceAfter=6, leftIndent=28,
+                                textColor=colors.HexColor("#374151"))
+    st_id      = ParagraphStyle("mid", fontName="Helvetica", fontSize=9, leading=11)
+    st_cell    = ParagraphStyle("mc", fontName="Helvetica", fontSize=7.5,
+                                textColor=colors.HexColor("#374151"))
+    st_cellr   = ParagraphStyle("mcr", parent=st_cell, alignment=TA_RIGHT)
+    st_cellb   = ParagraphStyle("mcb", fontName="Helvetica-Bold", fontSize=7.5)
+    st_cellbr  = ParagraphStyle("mcbr", parent=st_cellb, alignment=TA_RIGHT)
+    st_total   = ParagraphStyle("mtot", fontName="Helvetica-Bold", fontSize=10,
+                                alignment=TA_RIGHT, spaceBefore=10)
+    st_rod     = ParagraphStyle("mrod", fontName="Helvetica", fontSize=7,
+                                alignment=TA_CENTER, textColor=colors.HexColor("#94a3b8"))
+    linha_sep  = TableStyle([("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#e2e8f0")),
+                             ("TOPPADDING", (0, 0), (-1, -1), 0),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 6)])
+    grade = TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#e2e8f0")),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f8fafc")),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ])
+
+    def _mem_passo(chave, complemento=""):
+        cod, nome = _MEM_COD_AUX.get(chave, ("9000", chave))
+        txt = f"<b>{cod}</b> · {nome}"
+        if complemento:
+            txt += f" — {complemento}"
+        return Paragraph(txt, st_passo)
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=2.5*cm, rightMargin=2.5*cm,
+                            topMargin=2.5*cm, bottomMargin=2.5*cm)
+    e = []
+    e.append(Paragraph(empresa_nm, st_empresa))
+    e.append(Paragraph("MEMÓRIA DE CÁLCULO — 13º SALÁRIO", st_titulo))
+    e.append(Paragraph(f"Ano-base: {ano}  ·  Competência da folha: "
+                       f"{anomes[4:6]}/{ano}", st_sub))
+    e.append(Spacer(1, 0.1*cm))
+    e.append(Table([[""]], colWidths=[16*cm], style=linha_sep))
+    idt = Table([[Paragraph(f"<b>Matrícula:</b> {d['matricula']:06d}", st_id),
+                  Paragraph(f"<b>Nome:</b> {d['nome']}", st_id)]], colWidths=[4*cm, 12*cm])
+    idt.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 3),
+                             ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                             ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                             ("RIGHTPADDING", (0, 0), (-1, -1), 0)]))
+    e.append(idt)
+    e.append(Table([[""]], colWidths=[16*cm], style=linha_sep))
+
+    # ETAPA 5010 — os avos, mes a mes
+    e.append(Paragraph(f"ETAPA 5010 — AVOS DO 13º ({d['avos']}/12)", st_etapa))
+    e.append(_mem_passo("afast", "motivo do afastamento decide se o mês conta"))
+    e.append(_mem_passo("faltas", "só a falta INJUSTIFICADA tira dia"))
+    rows = [[Paragraph("<b>Mês</b>", st_cellb),
+             Paragraph("<b>Dias c/ contrato</b>", st_cellbr),
+             Paragraph("<b>Afastado</b>", st_cellbr),
+             Paragraph("<b>Faltas</b>", st_cellbr),
+             Paragraph("<b>Dias que contam</b>", st_cellbr),
+             Paragraph("<b>Avo</b>", st_cellb)]]
+    for m in d["meses_det"]:
+        if m["dias_contrato"] == 0 and not m["conta"]:
+            continue                      # mês fora do contrato: não polui
+        rows.append([
+            Paragraph(_MES_ABREV[m["mes"]], st_cell),
+            Paragraph(str(m["dias_contrato"]), st_cellr),
+            Paragraph(str(m["dias_fora"] or "—"), st_cellr),
+            Paragraph(str(m["dias_faltas"] or "—"), st_cellr),
+            Paragraph(str(m["dias_contam"]), st_cellr),
+            Paragraph("1/12" if m["conta"] else f"— {m['motivo']}", st_cell)])
+    t = Table(rows, colWidths=[1.4*cm, 2.9*cm, 2.0*cm, 1.8*cm, 2.9*cm, 5.0*cm])
+    t.setStyle(grade)
+    e.append(t)
+    e.append(Paragraph(f"Meses com 15 dias ou mais = <b>{d['avos']} avos</b>", st_formula))
+
+    # ETAPA 5020 — base
+    e.append(Paragraph("ETAPA 5020 — BASE DO 13º", st_etapa))
+    e.append(_mem_passo("sal_base", f"salário do mês = {_fmt_brl(d['sal_mes'])}"))
+    if d["medias_det"]:
+        e.append(Paragraph(
+            f"Médias das verbas variáveis (soma do ano ÷ {d['avos']} avos):", st_formula))
+        rows = [[Paragraph("<b>Verba</b>", st_cellb),
+                 Paragraph("<b>Descrição</b>", st_cellb),
+                 Paragraph("<b>Acumulado no ano</b>", st_cellbr),
+                 Paragraph("<b>Média</b>", st_cellbr)]]
+        for md in d["medias_det"]:
+            rows.append([Paragraph(f"{md['cod']:04d}", st_cell),
+                         Paragraph(md["desc"] or "", st_cell),
+                         Paragraph(_fmt_brl(md["soma_val"]), st_cellr),
+                         Paragraph(_fmt_brl(md["val"]), st_cellr)])
+        t = Table(rows, colWidths=[1.6*cm, 7.4*cm, 3.5*cm, 3.5*cm])
+        t.setStyle(grade)
+        e.append(t)
+    for _c, _v in sorted((d.get("ultimos") or {}).items()):
+        e.append(Paragraph(f"Verba {_c:04d} (último lançamento do ano) = "
+                           f"<b>{_fmt_brl(_v)}</b>", st_formula))
+    for _c, _v in sorted((d.get("adicionais") or {}).items()):
+        e.append(Paragraph(f"Adicional verba {_c:04d} = <b>{_fmt_brl(_v)}</b>", st_formula))
+    e.append(Paragraph(
+        f"Base = salário {_fmt_brl(d['sal_mes'])}"
+        + (f" + médias {_fmt_brl(d['medias'])}" if d["medias"] else "")
+        + (f" + último lançamento {_fmt_brl(d['ultimos_tot'])}" if d["ultimos_tot"] else "")
+        + (f" + adicionais {_fmt_brl(d['adicionais_tot'])}" if d["adicionais_tot"] else "")
+        + f" = <b>{_fmt_brl(d['base_13'])}</b>", st_formula))
+    e.append(Paragraph(
+        f"13º bruto = {_fmt_brl(d['base_13'])} × {d['avos']}/12 = "
+        f"<b>{_fmt_brl(d['bruto_13'])}</b>  (verba {VERBA_13_SALARIO})", st_formula))
+
+    # ETAPA 5030 — adiantamento ja pago
+    if d["adto_pago"]:
+        e.append(Paragraph("ETAPA 5030 — ADIANTAMENTO JÁ PAGO", st_etapa))
+        e.append(Paragraph(
+            f"Soma das verbas {VERBA_ADTO_13_PAGO:04d} lançadas em {ano} = "
+            f"{_fmt_brl(d['adto_pago'])}", st_formula))
+        e.append(Paragraph(f"Desconto = <b>{_fmt_brl(d['desc_adto'])}</b>  "
+                           f"(verba {VERBA_13_DESC_ADTO})", st_formula))
+        if d.get("adto_residual"):
+            e.append(Paragraph(
+                f"O adiantamento foi maior do que o 13º comporta. Descontado até "
+                f"zerar o líquido; <b>restam {_fmt_brl(d['adto_residual'])}</b> de "
+                f"adiantamento pago a maior, a receber do empregado.", st_formula))
+    else:
+        e.append(Paragraph("ETAPA 5030 — ADIANTAMENTO JÁ PAGO"
+                           "   Não se aplica — nenhuma verba de adiantamento no ano",
+                           st_etapa_na))
+
+    # ETAPA 5040 — INSS
+    e.append(Paragraph("ETAPA 5040 — INSS DO 13º", st_etapa))
+    e.append(_mem_passo("base_inss", "o 13º tem base PRÓPRIA, separada da folha do mês"))
+    e.append(_mem_passo("inss"))
+    e.append(Paragraph(f"Base {_fmt_brl(d['bruto_13'])} → INSS = "
+                       f"<b>{_fmt_brl(d['inss_calc'])}</b>  (verba {VERBA_13_INSS})",
+                       st_formula))
+
+    # ETAPA 5050 — IRRF
+    e.append(Paragraph("ETAPA 5050 — IRRF DO 13º (tributação exclusiva)", st_etapa))
+    e.append(_mem_passo("base_irrf"))
+    e.append(Paragraph(
+        f"Base = 13º {_fmt_brl(d['bruto_13'])} − INSS {_fmt_brl(d['inss_calc'])}"
+        + (f" − dependentes ({d['dep_qtd']}×{_fmt_brl(d['dep_ded'] // max(1, d['dep_qtd']))})"
+           if d["dep_qtd"] else "")
+        + f" = {_fmt_brl(d['irrf_base'])}", st_formula))
+    if d["irrf_isento"]:
+        e.append(Paragraph("13º isento — rendimento até R$ 5.000,00 "
+                           "(Lei 15.270/2025)", st_formula))
+    elif d["irrf_red"]:
+        e.append(_mem_passo("redutor"))
+        e.append(Paragraph(f"Redutor da Lei 15.270/2025 aplicado "
+                           f"(−{_fmt_brl(d['irrf_red'])})", st_formula))
+    e.append(Paragraph(f"IRRF = <b>{_fmt_brl(d['irrf_calc'])}</b>  "
+                       f"(verba {VERBA_13_IRRF})", st_formula))
+
+    # ETAPA 5060 — FGTS
+    if d["base_fgts"]:
+        e.append(Paragraph("ETAPA 5060 — FGTS", st_etapa))
+        e.append(_mem_passo("fgts"))
+        e.append(Paragraph(f"{_fmt_brl(d['base_fgts'])} × {d['aliq_fgts']}% = "
+                           f"<b>{_fmt_brl(d['fgts'])}</b>", st_formula))
+    else:
+        e.append(Paragraph("ETAPA 5060 — FGTS   Não se aplica — sem base",
+                           st_etapa_na))
+
+    if _sem_encargos(id_cliente):
+        e.append(_mem_passo("sem_enc", "INSS, IRRF e FGTS gravados zerados"))
+
+    # TOTAIS
+    e.append(Paragraph("ETAPA 5070 — TOTAIS", st_etapa))
+    e.append(_mem_passo("totais"))
+    e.append(Paragraph(
+        f"Líquido = {_fmt_brl(d['bruto_13'])} − adiantamento {_fmt_brl(d['desc_adto'])} "
+        f"− INSS {_fmt_brl(d['inss'])} − IRRF {_fmt_brl(d['irrf'])}", st_formula))
+    e.append(Paragraph(f"LÍQUIDO DO 13º = {_fmt_brl(d['liquido'])}", st_total))
+
+    e.append(Spacer(1, 1*cm))
+    e.append(Paragraph(
+        f"Gerado em {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')}  |  Usuario: {usuario}  |  "
+        f"Folha10 Simples {versao}", st_rod))
+    doc.build(e)
+    return buf.getvalue()
+
+
+def _meses_abertos_do_ano(id_empresa, id_cliente, ano, mes_excluir=12):
+    """Meses do ano cuja folha NORMAL existe e ainda NAO esta Fechada.
+
+    O 13o se apoia no ano inteiro: as medias saem das folhas mensais (verbas
+    variaveis somadas de janeiro a dezembro). Folha que nao fechou ainda muda
+    de valor — recalcular ou lancar uma verba a mais move a media e, com ela,
+    o 13o ja gravado. Por isso a tela avisa ANTES de calcular.
+
+    DEZEMBRO fica de fora (mes_excluir): e normal estar aberta, porque o 13o
+    costuma ser calculado junto com ela.
+
+    Mes que NAO TEM folha nenhuma nao entra no aviso: ausencia nao e folha em
+    aberto (empresa que abriu em junho nao tem janeiro a maio, e esta certo).
+
+    Devolve [{"mes": 3, "mes_fmt": "03/2026", "situacao": "A",
+              "situacao_fmt": "Aberta"}], ordenado por mes.
+    """
+    try:
+        rows = (supabase.table("tab_anomes")
+                .select("ano_mes, situacao")
+                .eq("id_empresa", id_empresa)
+                .eq("tipo", "N")
+                .gte("ano_mes", int(ano) * 100 + 1)
+                .lte("ano_mes", int(ano) * 100 + 12)
+                .execute().data or [])
+    except Exception as e:
+        print(f"[13o meses abertos] {e}")
+        return []
+    fora = []
+    for r in rows:
+        am = str(r.get("ano_mes") or "")
+        if len(am) != 6:
+            continue
+        mes = int(am[4:6])
+        if mes == int(mes_excluir):
+            continue
+        sit = str(r.get("situacao") or "").upper()[:1]
+        if sit != "F":
+            fora.append({"mes": mes,
+                         "mes_fmt": f"{am[4:6]}/{am[:4]}",
+                         "situacao": sit,
+                         "situacao_fmt": _SIT_FOLHA_LABEL.get(sit, "indefinida")})
+    fora.sort(key=lambda x: x["mes"])
+    return fora
+
+
+def _ctx_13final(id_empresa, id_cliente, anomes):
+    """Tudo que o calculo do 13o precisa e que NAO muda de funcionario para
+    funcionario. Montado uma vez e passado adiante — sao 8 consultas que, sem
+    isto, virariam 8 por empregado."""
+    ano    = int(anomes[:4])
+    tabela = _get_tabela_legais(anomes)
+    afast, faltas = _avos13_cache(id_empresa, id_cliente, ano)
+    cods_media, verbas_hora, desc_media, cods_ultimo = _verbas_media_13(id_cliente)
+    adic_ev, adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, "1")
+    return {
+        "ano": ano, "tabela": tabela, "afast": afast, "faltas": faltas,
+        "cods_media": cods_media, "verbas_hora": verbas_hora,
+        "desc_media": desc_media, "cods_ultimo": cods_ultimo,
+        "dep_count": _get_dep_irrf_count(id_empresa),
+        "dep_ded":   int((tabela or {}).get("irrf_dep_dedu") or 0),
+        "adic_ev": adic_ev, "adic_mov": adic_mov,
+    }
+
+
+def _funcs_13final(id_empresa):
+    """Quem entra na folha do 13o: ativos, elegiveis (fora o intermitente e as
+    categorias >= 700, que nao tem 13o)."""
+    try:
+        r = (supabase.table("tab_cad")
+             .select("matricula, nome, nomer, codcateg, vrsalfx, undsalfixo, "
+                     "qtdhrsmes, dtadm, datarescisao")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .order("nomer").execute())
+    except Exception:
+        return []
+    return [f for f in (r.data or []) if _elegivel_adiant13(f)]
+
+
+def _calc_13final_lista(id_empresa, id_cliente, anomes):
+    """Calcula o 13o de todo mundo da empresa. So' calcula — nao grava."""
+    ctx   = _ctx_13final(id_empresa, id_cliente, anomes)
+    funcs = _funcs_13final(id_empresa)
+    adto  = _adto13_pago_no_ano(id_cliente, id_empresa, ctx["ano"],
+                                [int(f["matricula"]) for f in funcs])
+    return [
+        _calc_13_final_func(f, ctx["ano"], ctx["tabela"], id_cliente, id_empresa,
+                            ctx["afast"], ctx["faltas"], adto,
+                            ctx["cods_media"], ctx["verbas_hora"], ctx["desc_media"],
+                            ctx["cods_ultimo"], ctx["dep_count"], ctx["dep_ded"],
+                            ctx["adic_ev"], ctx["adic_mov"])
+        for f in funcs
+    ], funcs, ctx
+
+
+@app.route("/calcular_13_final")
+def calcular_13_final():
+    """Previa do 13o Salario Final. Nao grava nada — so' mostra."""
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    folha_tipo = str(session.get("anomes_tipo") or "").upper()[:1]
+
+    ctx = dict(
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo=folha_tipo,
+        tipo_ok=(folha_tipo == "1"),
+        folha_situacao=(_refresh_situacao_folha() if (anomes and folha_tipo == "1") else ""),
+        erro_critico=None,
+        ano_base=anomes[:4] if len(anomes) == 6 else "",
+        meses_abertos=[],
+        qtd_residuo=0,
+        total_residuo_fmt="R$ 0,00",
+        verba_13=VERBA_13_SALARIO,
+        verba_desc=VERBA_13_DESC_ADTO,
+        funcionarios=[],
+        total_funcs=0, total_com=0,
+        total_bruto_fmt="R$ 0,00", total_desc_fmt="R$ 0,00", total_liq_fmt="R$ 0,00",
+    )
+    if not anomes or folha_tipo != "1":
+        return render_template("F10_Calc_13_Final.html", **ctx)
+
+    # Aviso das folhas do ano que nao fecharam (dezembro nao conta).
+    ctx["meses_abertos"] = _meses_abertos_do_ano(
+        id_empresa, id_cliente, anomes[:4], mes_excluir=12)
+
+    try:
+        linhas, _funcs, _c = _calc_13final_lista(id_empresa, id_cliente, anomes)
+    except Exception as ex:
+        ctx["erro_critico"] = f"Erro ao calcular: {str(ex)[:180]}"
+        return render_template("F10_Calc_13_Final.html", **ctx)
+
+    vis = []
+    for d in linhas:
+        # Mes sem avo vira etiqueta na tela: o contador precisa ver o porque
+        # sem abrir a memoria em PDF.
+        motivos = [f"{_MES_ABREV[m['mes']]}: {m['motivo']}"
+                   for m in d["meses_det"]
+                   if not m["conta"] and m["motivo"] != "fora do contrato"]
+        if d.get("adto_residual"):
+            motivos.append(
+                f"adiantamento pago a maior: sobram {_fmt_brl(d['adto_residual'])} a receber")
+        vis.append({
+            "matricula":  d["matricula"],
+            "mat_fmt":    f"{d['matricula']:06d}",
+            "nome":       d["nome"],
+            "avos":       d["avos"],
+            "sal_fmt":    _fmt_brl(d["sal_mes"]),
+            "medias_fmt": _fmt_brl(d["medias"]) if d["medias"] else "—",
+            "base_fmt":   _fmt_brl(d["base_13"]),
+            "bruto":      d["bruto_13"],
+            "bruto_fmt":  _fmt_brl(d["bruto_13"]),
+            "adto_fmt":   _fmt_brl(d["desc_adto"]) if d["desc_adto"] else "—",
+            "inss_fmt":   _fmt_brl(d["inss"]) if d["inss"] else "—",
+            "irrf_fmt":   _fmt_brl(d["irrf"]) if d["irrf"] else "—",
+            "fgts_fmt":   _fmt_brl(d["fgts"]) if d["fgts"] else "—",
+            "liquido":    d["liquido"],
+            "liq_fmt":    _fmt_brl(d["liquido"]),
+            "residuo":    d.get("adto_residual", 0),
+            "motivos":    motivos,
+        })
+    com = [v for v in vis if v["bruto"] > 0]
+    ctx.update(
+        funcionarios=vis,
+        total_funcs=len(vis),
+        total_com=len(com),
+        qtd_residuo=sum(1 for v in vis if v["residuo"]),
+        total_residuo_fmt=_fmt_brl(sum(v["residuo"] for v in vis)),
+        total_bruto_fmt=_fmt_brl(sum(d["bruto_13"] for d in linhas)),
+        total_desc_fmt=_fmt_brl(sum(d["total_desc"] for d in linhas)),
+        total_liq_fmt=_fmt_brl(sum(d["liquido"] for d in linhas)),
+    )
+    return render_template("F10_Calc_13_Final.html", **ctx)
+
+
+@app.route("/api/calcular_13_final_stream")
+def calcular_13_final_stream():
+    """Calcula E GRAVA o 13o Final, emitindo progresso por funcionario (SSE)."""
+    if not session.get("logado"):
+        return Response("data: {}\n\n", mimetype="text/event-stream")
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    folha_tipo = str(session.get("anomes_tipo") or "").upper()[:1]
+    empresa_nm = str(session.get("empresa_info") or "")
+    usuario    = str(session.get("nome") or "")
+    cpf_usuario = session.get("cpf")
+    versao     = ler_versao()
+
+    def _sse_erro(msg):
+        return Response(f"data: {json.dumps({'tipo': 'erro', 'msg': msg}, ensure_ascii=False)}\n\n",
+                        mimetype="text/event-stream")
+
+    if not anomes:
+        return _sse_erro("Nenhuma folha ativa.")
+    if folha_tipo != "1":
+        return _sse_erro("A folha ativa não é do tipo 13º Salário (tipo 1).")
+
+    sit = _refresh_situacao_folha()
+    if sit not in ("A", "X"):
+        msg = {"P": "Folha em cálculo por outro usuário. Aguarde.",
+               "F": "Folha Fechada — reabra antes de calcular."}.get(
+                   sit, "Folha já está calculada.")
+        payload = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": sit}, ensure_ascii=False)
+        return Response(f"data: {payload}\n\n", mimetype="text/event-stream")
+
+    folha_int = int(anomes)
+    VERBAS_13 = [VERBA_13_SALARIO, VERBA_13_DESC_ADTO, VERBA_13_INSS, VERBA_13_IRRF]
+    q = queue.Queue()
+
+    def _put(obj):
+        q.put(json.dumps(obj, ensure_ascii=False))
+
+    def _mov(mat, cod, valor):
+        return {"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                "matricula": int(mat), "folha": folha_int, "folha_tipo": "1",
+                "cod_verba": cod, "qtd": 0, "valor": int(valor), "lote": 0,
+                "origem": "C", "controle": 0, "os": 0}
+
+    def run():
+        try:
+            ctx   = _ctx_13final(id_empresa, id_cliente, anomes)
+            funcs = _funcs_13final(id_empresa)
+            adto  = _adto13_pago_no_ano(id_cliente, id_empresa, ctx["ano"],
+                                        [int(f["matricula"]) for f in funcs])
+            if not ctx["tabela"]:
+                _put({"tipo": "erro", "msg": f"Sem tabela legal vigente para {anomes}."})
+                return
+
+            # Limpa o calculo anterior: so' o que ESTE calculo gera (origem 'C').
+            # Verba lancada a mao na folha do 13o (origem 'M') fica de pe.
+            try:
+                (supabase.table("tab_mov").delete()
+                 .eq("id_empresa", id_empresa).eq("folha", folha_int)
+                 .eq("folha_tipo", "1").in_("cod_verba", VERBAS_13)
+                 .eq("origem", "C").execute())
+                q_del = (supabase.table("tab_total").delete()
+                         .eq("id_empresa", id_empresa).eq("folha", folha_int)
+                         .eq("folha_tipo", "1"))
+                if id_cliente:
+                    q_del = q_del.eq("id_cliente", id_cliente)
+                q_del.execute()
+            except Exception as ex:
+                _put({"tipo": "erro", "msg": f"Erro ao limpar cálculo anterior: {str(ex)[:200]}"})
+                return
+
+            dest      = _memoria_destino(anomes, id_empresa)
+            total     = len(funcs)
+            gravados  = memorias = 0
+            tot_bruto = tot_liq = 0
+            mats_es   = []
+
+            for idx, f in enumerate(funcs, start=1):
+                mat  = int(f.get("matricula") or 0)
+                nome = (f.get("nome") or f.get("nomer") or "").strip()
+                _put({"tipo": "func", "pct": int(idx / total * 100) if total else 100,
+                      "matr": f"{mat:06d}", "nome": nome})
+
+                d = _calc_13_final_func(
+                    f, ctx["ano"], ctx["tabela"], id_cliente, id_empresa,
+                    ctx["afast"], ctx["faltas"], adto, ctx["cods_media"],
+                    ctx["verbas_hora"], ctx["desc_media"], ctx["cods_ultimo"],
+                    ctx["dep_count"], ctx["dep_ded"], ctx["adic_ev"], ctx["adic_mov"])
+                if d["bruto_13"] <= 0:
+                    continue          # sem avos: nao ha 13o a pagar
+
+                recs = [_mov(mat, VERBA_13_SALARIO, d["bruto_13"])]
+                if d["desc_adto"]:
+                    recs.append(_mov(mat, VERBA_13_DESC_ADTO, d["desc_adto"]))
+                if d["inss"]:
+                    recs.append(_mov(mat, VERBA_13_INSS, d["inss"]))
+                if d["irrf"]:
+                    recs.append(_mov(mat, VERBA_13_IRRF, d["irrf"]))
+                try:
+                    supabase.table("tab_mov").insert(recs).execute()
+                    gravados += 1
+                except Exception as ex:
+                    _put({"tipo": "erro", "msg": f"Erro mat {mat}: {str(ex)[:300]}"})
+                    return
+
+                rec_total = {
+                    "id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                    "matricula": mat, "folha": folha_int, "folha_tipo": "1",
+                    # O 13o tem base de INSS PROPRIA: vai nas duas colunas porque
+                    # nao ha, aqui, parcela acima do teto separada da de baixo.
+                    "valor_base_inss_semlimite": int(d["bruto_13"]),
+                    "valor_base_inss_comlimite": int(d["bruto_13"]),
+                    "valor_inss_retido":         int(d["inss"]),
+                    "valor_base_fgts":           int(d["base_fgts"]),
+                    "valor_fgts":                int(d["fgts"]),
+                    "valor_irrf_basetotal":      int(d["bruto_13"]),
+                    "valor_irrf_basetabela":     int(d["irrf_base"]),
+                    "valor_irrf_dependentes":    int(d["dep_ded"]),
+                    "qtd_irrf_dependentes":      int(d["dep_qtd"]),
+                    "valor_salario":             int(d["sal_mes"]),
+                    "valor_total_proventos":     int(d["bruto_13"]),
+                    "valor_total_descontos":     int(d["total_desc"]),
+                    "valor_liquido":             int(d["liquido"]),
+                    "os": 0, "controle": 0,
+                }
+                try:
+                    supabase.table("tab_total").insert(rec_total).execute()
+                except Exception:
+                    try:
+                        supabase.table("tab_total").insert(
+                            {k: v for k, v in rec_total.items() if k != "situacao"}).execute()
+                    except Exception:
+                        pass
+
+                if dest.get("base"):
+                    try:
+                        pdf_bytes = _pdf_memoria_13final(empresa_nm, anomes, d,
+                                                         usuario, versao, id_cliente)
+                        nome_arq = (f"Folha10_Memoria13Final_Empresa_{int(id_empresa):06d}_"
+                                    f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
+                        if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
+                            memorias += 1
+                    except Exception:
+                        pass
+
+                tot_bruto += d["bruto_13"]
+                tot_liq   += d["liquido"]
+                mats_es.append(mat)
+
+            # So' o S-1200: o pagamento vai no S-1210 da folha mensal (ver
+            # _esocial_pendencias_13final).
+            n_esocial = _esocial_pendencias_13final(id_cliente, id_empresa, anomes, mats_es)
+            n_calc    = _marcar_folha_calculada(id_cliente, id_empresa, anomes, "1")
+
+            try:
+                supabase.table("tab_log").insert({
+                    "id_cliente": id_cliente, "id_empresa": id_empresa,
+                    "cpf_usuario": cpf_usuario, "menu": "CALC-13FINAL",
+                    "observacao": (f"Calc 13o Final {anomes} "
+                                   f"Qtd Funcionarios = {gravados}")[:200],
+                    "ano_mes": folha_int, "matricula": None,
+                    "data_hora_grava": _agora_brasilia().strftime("%Y%m%d %H%M"),
+                }).execute()
+            except Exception:
+                pass
+
+            _put({"tipo": "fim", "pct": 100, "resumo": {
+                "gravados": gravados, "total_funcs": total, "memorias": memorias,
+                "pasta": dest.get("label", ""), "total_bruto": tot_bruto,
+                "total_liquido": tot_liq, "esocial": n_esocial, "n_calculo": n_calc}})
+        except Exception as ex:
+            _put({"tipo": "erro", "msg": str(ex)[:200]})
         finally:
             q.put(None)
 

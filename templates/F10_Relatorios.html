@@ -431,23 +431,11 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
         <div class="rel-grid">
 
-            <a class="rel-card em-breve" href="#">
-                <div class="rel-card-icone">1️⃣</div>
-                <div class="rel-card-nome">Adiantamento de 13º</div>
-                <div class="rel-card-desc">Recibos e relação da 1ª parcela do 13º salário</div>
-            </a>
-
-            <a class="rel-card em-breve" href="#">
-                <div class="rel-card-icone">🎁</div>
-                <div class="rel-card-nome">13º Salário Final</div>
-                <div class="rel-card-desc">Recibos e totais do pagamento final do 13º</div>
-            </a>
-
-            <a class="rel-card em-breve" href="#">
-                <div class="rel-card-icone">📊</div>
-                <div class="rel-card-nome">Resumo do 13º</div>
-                <div class="rel-card-desc">Totais de proventos, descontos e encargos do 13º</div>
-            </a>
+            <!-- A folha do 13º nao ganha relatorio proprio (SMV 16/09/2026): com a
+                 folha do 13º ativa, os relatorios e recibos da folha normal ja saem
+                 com os numeros do 13º e dizem no titulo de que folha se trata. Havia
+                 aqui tres cards "em breve" (Adiantamento de 13º, 13º Salário Final e
+                 Resumo do 13º) prometendo uma segunda porta que nao vai existir. -->
 
             <a class="rel-card em-breve" href="#">
                 <div class="rel-card-icone">📋</div>
@@ -536,7 +524,7 @@ function iniciarTour() {
             element: '#grupo-folha',
             popover: {
                 title: '💰 Folha de Pagamento',
-                description: 'Relatórios da folha mensal: resumo de proventos/descontos/líquido, holerites individuais ou em lote, GPS (INSS), FGTS e IRRF.',
+                description: 'Relatórios da folha ativa — mensal, férias, rescisão ou 13º: resumo de proventos/descontos/líquido, holerites individuais ou em lote, GPS (INSS), FGTS e IRRF.',
                 side: 'top', align: 'start',
             }
         },
@@ -544,7 +532,7 @@ function iniciarTour() {
             element: '#grupo-eventuais',
             popover: {
                 title: '📌 Eventuais',
-                description: 'Relatórios de verbas eventuais: adiantamento e pagamento final do 13º salário, resumo do 13º, TRCT (rescisão) e memória de cálculo das verbas rescisórias.',
+                description: 'Relatórios de verbas eventuais: TRCT (rescisão) e memória de cálculo das verbas rescisórias. O 13º sai pelos relatórios da folha: basta ter a folha do 13º ativa.',
                 side: 'top', align: 'start',
             }
         },

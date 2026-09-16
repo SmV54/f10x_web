@@ -190,7 +190,7 @@ tfoot td.liq { text-align: right; font-family: 'IBM Plex Mono', monospace; }
 
     <div class="card">
         <div class="card-header">
-            <h2>Líquidos da folha</h2>
+            <h2>Líquidos da folha{% if resumo.anomes_fmt %} — {{ resumo.anomes_fmt }}{% if resumo.tipo_lbl %} · {{ resumo.tipo_lbl }}{% endif %}{% endif %}</h2>
             <span class="total-badge">{{ resumo.n_func }} funcionário(s)</span>
         </div>
 

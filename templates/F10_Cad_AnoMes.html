@@ -218,6 +218,18 @@
     }
     .btn-cancelar:hover { filter: brightness(0.97); }
 
+    /* Excluir folha: discreto ate o mouse chegar perto. E acao destrutiva,
+       nao pode competir com o clique da linha (que ATIVA a folha). */
+    .btn-excluir-folha {
+      background: transparent; border: 1px solid transparent; border-radius: 6px;
+      color: #cbd5e1; font-size: 13px; line-height: 1; cursor: pointer;
+      padding: 3px 6px; transition: 0.15s;
+    }
+    tr:hover .btn-excluir-folha { color: #94a3b8; }
+    .btn-excluir-folha:hover {
+      background: #fff1f2; border-color: #fecdd3; color: #be123c;
+    }
+
     .rodape-acoes {
       display: flex; gap: 8px; margin-top: 4px;
     }
@@ -377,6 +389,7 @@
                   <th>Ano/Mês</th>
                   <th style="padding-left:18px;">Tipo</th>
                   <th>Situação</th>
+                  <th style="width:44px;"></th>
                 </tr>
               </thead>
               <tbody id="tbodyLista">
@@ -393,8 +406,8 @@
                   <td>
                     <span class="tag-tipo tag-{{ r.tipo }}">
                       {% if r.tipo == 'N' %}Normal
-                      {% elif r.tipo == '1' %}13º Mês
-                      {% else %}Adiant. 13{% endif %}
+                      {% elif r.tipo == '1' %}13º Salário
+                      {% else %}Adiant. 13º{% endif %}
                     </span>
                   </td>
                   <td>
@@ -403,6 +416,10 @@
                       {% elif r.situacao == 'C' %}Calculada
                       {% else %}Fechada{% endif %}
                     </span>
+                  </td>
+                  <td style="text-align:center;">
+                    <button class="btn-excluir-folha" title="Excluir esta folha"
+                            onclick="event.stopPropagation(); excluirFolha(this);">&#128465;</button>
                   </td>
                 </tr>
                 {% endfor %}
@@ -469,11 +486,11 @@
               </label>
               <label class="radio-item">
                 <input type="radio" name="tipo" value="1" onchange="preencherDatasDoMes()">
-                <span>13º Mês</span>
+                <span>13º Salário</span>
               </label>
               <label class="radio-item">
                 <input type="radio" name="tipo" value="A" onchange="preencherDatasDoMes()">
-                <span>Adiant. 13</span>
+                <span>Adiantamento do 13º</span>
               </label>
             </div>
           </div>
@@ -590,8 +607,8 @@
   }
   // Preenche datas de falta conforme o tipo de folha:
   //  - Normal (N): primeiro e último dia do mês selecionado
-  //  - 13º Mês (1): ano inteiro (01/01 a 31/12)
-  //  - Adiant. 13 (A): 01/01 até o último dia do mês selecionado
+  //  - 13º Salário (1): ano inteiro (01/01 a 31/12)
+  //  - Adiantamento do 13º (A): 01/01 até o último dia do mês selecionado
   function preencherDatasDoMes() {
     if (modoAtual !== 'incluir') return;
     const ano = parseInt(document.getElementById('inpAno').value, 10);
@@ -795,6 +812,107 @@
     }
   }
 
+  // ── Excluir Folha ─────────────────────────────────────────
+  // Duas etapas de proposito: primeiro o servidor conta o que vai junto
+  // (movimento, totais, remessas) e barra o que nao pode sair; so' depois a
+  // pergunta. Ninguem apaga folha sem ver o tamanho do estrago.
+  async function excluirFolha(btn) {
+    const tr = btn.closest('tr');
+    const anoMes = tr.dataset.anomes;
+    const tipo   = tr.dataset.tipo;
+    const mmaaaa = anoMes.substring(4, 6) + '/' + anoMes.substring(0, 4);
+
+    let prev;
+    try {
+      const r = await fetch('/api/anomes/excluir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ano_mes: anoMes, tipo: tipo, simular: true })
+      });
+      prev = await r.json();
+    } catch (e) {
+      alerta('Erro de Comunicação', 'Não foi possível contactar o servidor.');
+      return;
+    }
+    if (!prev.ok) {
+      alerta('Não é possível excluir', prev.msg || 'Folha não encontrada.');
+      return;
+    }
+
+    const res    = prev.resumo || {};
+    const evs    = res.eventos || [];
+    const temMov = (res.mov || 0) + (res.total || 0) + (res.esocial_pendente || 0);
+
+    let oque = temMov
+      ? `Serão apagados junto:\n` +
+        `  • ${res.mov || 0} lançamento(s) de movimento\n` +
+        `  • ${res.total || 0} registro(s) de totais\n` +
+        `  • ${res.esocial_pendente || 0} remessa(s) do eSocial ainda não enviadas\n\n`
+      : `Esta folha não tem movimento nem totais lançados.\n\n`;
+
+    // Férias, afastamentos e faltas vão junto — mas cada um é mostrado com o
+    // período, porque o campo que os liga à folha guarda onde foram DIGITADOS,
+    // não o período que cobrem. É aqui que se percebe um afastamento de abril
+    // que foi lançado na folha de agosto.
+    if (evs.length) {
+      const LIMITE = 12;
+      oque += `Foram localizados ${evs.length} evento(s) lançados nesta competência, ` +
+              `que TAMBÉM serão apagados:\n`;
+      evs.slice(0, LIMITE).forEach(function (e) {
+        const mat = String(e.matricula).padStart(6, '0');
+        oque += `  • ${e.tipo} — matrícula ${mat} — ${e.periodo}\n`;
+      });
+      if (evs.length > LIMITE) {
+        oque += `  • ... e mais ${evs.length - LIMITE} evento(s)\n`;
+      }
+      oque += `\n`;
+    } else {
+      oque += `Não há férias, afastamentos ou faltas lançados nesta competência.\n\n`;
+    }
+
+    // Competência com mais de uma folha: os eventos não guardam a qual delas
+    // pertencem, então apagar uma leva os eventos da outra junto.
+    if (evs.length && (res.outras_folhas || []).length) {
+      oque += `ATENÇÃO: a competência ${mmaaaa} também tem a folha ` +
+              `${res.outras_folhas.join(' e ')}. Os eventos acima não guardam a ` +
+              `qual das folhas pertencem — apagar esta leva os eventos da outra ` +
+              `junto.\n\n`;
+    }
+
+    const digitado = await f10Prompt(
+      `Excluir a folha ${prev.nome_folha}?\n\n${oque}` +
+      `Isto NÃO tem volta. Para confirmar, digite a competência: ${mmaaaa}`,
+      { titulo: 'Excluir Folha', tipo: 'erro', okText: 'Excluir', cancelText: 'Cancelar' }
+    );
+    if (digitado === null) return;
+    if ((digitado || '').trim() !== mmaaaa) {
+      alerta('Exclusão cancelada',
+             'A competência digitada não confere com ' + mmaaaa + '. Nada foi apagado.');
+      return;
+    }
+
+    try {
+      const r = await fetch('/api/anomes/excluir', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ano_mes: anoMes, tipo: tipo })
+      });
+      const res2 = await r.json();
+      if (!res2.ok) {
+        alerta('Não foi possível excluir', res2.msg || 'Erro desconhecido.');
+        return;
+      }
+      const a = res2.apagados || {};
+      alerta('Folha Excluída',
+        `A folha ${res2.nome_folha} foi excluída.\n` +
+        `Movimento: ${a.mov || 0}  ·  Totais: ${a.total || 0}  ·  ` +
+        `eSocial: ${a.esocial || 0}  ·  Eventos: ${a.eventos || 0}`,
+        window.location.pathname);
+    } catch (e) {
+      alerta('Erro de Comunicação', 'Não foi possível contactar o servidor.');
+    }
+  }
+
   // ── Modo Incluir ──────────────────────────────────────────
   function modoIncluir() {
     modoAtual = 'incluir';
@@ -866,7 +984,7 @@
   }
 
   function labelTipo(t) {
-    return t === 'N' ? 'Normal' : t === '1' ? '13º Mês' : 'Adiant. 13';
+    return t === 'N' ? 'Normal' : t === '1' ? '13º Salário' : 'Adiantamento do 13º';
   }
 
   // ── Inicialização ─────────────────────────────────────────
