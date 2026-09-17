@@ -29,7 +29,7 @@ from reportlab.lib import colors
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, HRFlowable
 from supabase import create_client
 from dotenv import load_dotenv
 from services.validacoes import somente_numeros, validar_cpf
@@ -201,6 +201,16 @@ _FOLHA_TIPO_CURTO = {
     "A": "Adiant. 13º",
     "1": "13º Sal.",
 }
+# BADGE - a linha grande da etiqueta do topo, quando a folha nao e a Normal.
+# Nao tem "N" de proposito: na folha Normal quem ocupa essa linha e o mes.
+# Segue o nome por extenso, menos o adiantamento: "Adiantamento do 13º" tem 19
+# caracteres e, em caixa alta e corpo 15, empurrava o titulo do cabecalho.
+_FOLHA_TIPO_BADGE = {
+    "F": "Férias",
+    "R": "Rescisão",
+    "A": "Adiant. 13º",
+    "1": "13º Salário",
+}
 
 
 def _folha_tipo_label(tp, curto=False):
@@ -265,6 +275,14 @@ def inject_folha_ativa():
     # se perderia na troca.
     tipo_label = ("" if str(tp or "N").upper()[:1] == "N"
                   else "· " + _folha_tipo_label(tp))
+
+    # Folha que NAO e a Normal (13o, adiantamento, ferias, rescisao): no topo
+    # quem tem que saltar aos olhos e o TIPO, nao a competencia. O 13o Final
+    # aberto em 11/2026 passou despercebido exatamente por isso — o mes vinha
+    # grande e o "· 13º Salário" miudo ao lado (SMV 17/09/2026). Este campo
+    # leva o nome por extenso para a linha grande; o mes sobe para a linha do
+    # rotulo, em corpo menor (templates/_folha_ativa_badge.html).
+    tipo_forte = _FOLHA_TIPO_BADGE.get(str(tp or "N").upper()[:1], "")
     folha_fmt  = f"{am[4:6]}/{am[0:4]}" if len(am) == 6 else ""
     sit_map = {
         "A": ("Aberta",    "sit-aberta"),
@@ -334,6 +352,10 @@ def inject_folha_ativa():
     return {
         "folha_ativa":           folha_fmt,
         "folha_ativa_tipo":      tipo_label,
+        "folha_ativa_tipo_forte": tipo_forte,
+        # Tipo CRU (N/A/1/F/R): quem precisa decidir no codigo usa este, e nao
+        # a comparacao com o rotulo, que muda de redacao.
+        "folha_ativa_tipo_cod":  str(tp or "N").upper()[:1],
         "folha_ativa_situacao":  sit_label,
         "folha_ativa_sit_class": sit_class,
         "folha_ativa_atipica":   atipica,
@@ -14810,6 +14832,17 @@ def _anomes_excluir_resumo(id_cliente, id_empresa, ano_mes, tipo):
     except Exception:
         linha = []
 
+    # Outras folhas da MESMA competencia (tipo diferente). Precisa vir antes
+    # dos eventos: e ela que decide se os eventos sao desta folha ou nao.
+    try:
+        q = (supabase.table("tab_anomes").select("tipo")
+             .eq("id_empresa", id_empresa).eq("ano_mes", am).neq("tipo", tipo))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        outras = [_folha_tipo_label(x.get("tipo")) for x in (q.execute().data or [])]
+    except Exception:
+        outras = []
+
     # Eventos lancados NESTA competencia: ferias, afastamento e falta.
     #
     # Dois cuidados que o aviso precisa deixar visiveis:
@@ -14821,9 +14854,12 @@ def _anomes_excluir_resumo(id_cliente, id_empresa, ano_mes, tipo):
     #
     # 2) tab_eventos NAO tem folha_tipo. Se a competencia tiver mais de uma
     #    folha (normal + 13o, por exemplo), nao da para saber em qual delas o
-    #    evento foi lancado, e apagar uma leva os eventos da outra. O resumo
-    #    devolve `outras_folhas` para o aviso poder dizer isso na cara.
-    eventos, outras = [], []
+    #    evento foi lancado. Antes o resumo so' avisava e apagava assim mesmo —
+    #    e quem abriu o 13o no mes errado perdia, ao desfazer, as ferias e os
+    #    afastamentos da folha Normal do mesmo mes. Agora, havendo outra folha
+    #    na competencia, os eventos FICAM: sao dela. So' quando esta e a unica
+    #    folha do mes e' que nao ha duvida, e ai sim eles saem junto.
+    eventos, mantidos = [], 0
     try:
         q = (supabase.table("tab_eventos")
              .select("id, matricula, op1, op2, data1i, data1f")
@@ -14832,7 +14868,11 @@ def _anomes_excluir_resumo(id_cliente, id_empresa, ano_mes, tipo):
              .order("op1").order("matricula"))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
-        for ev in (q.execute().data or []):
+        _linhas_ev = q.execute().data or []
+        if outras:
+            mantidos = len(_linhas_ev)          # ficam com a folha que continua
+            _linhas_ev = []
+        for ev in _linhas_ev:
             eventos.append({
                 "id":        int(ev.get("id") or 0),
                 "matricula": int(ev.get("matricula") or 0),
@@ -14874,26 +14914,55 @@ def _anomes_excluir_resumo(id_cliente, id_empresa, ano_mes, tipo):
         except Exception as e_es:
             print(f"[excluir folha 2230] {e_es}")
 
-    try:
-        q = (supabase.table("tab_anomes").select("tipo")
-             .eq("id_empresa", id_empresa).eq("ano_mes", am).neq("tipo", tipo))
-        if id_cliente:
-            q = q.eq("id_cliente", id_cliente)
-        outras = [_folha_tipo_label(x.get("tipo")) for x in (q.execute().data or [])]
-    except Exception:
-        outras = []
+    n_mov, n_total = _conta("tab_mov", "folha"), _conta("tab_total", "folha")
 
     return {
         "existe":    bool(linha),
         "situacao":  (linha[0].get("situacao") if linha else ""),
-        "mov":       _conta("tab_mov", "folha"),
-        "total":     _conta("tab_total", "folha"),
+        "mov":       n_mov,
+        "total":     n_total,
         "esocial_pendente": pendentes,
         "esocial_enviada":  enviadas,
         "eventos":       eventos,
         "qtd_eventos":   len(eventos),
+        "eventos_mantidos": mantidos,
         "outras_folhas": outras,
+        # Folha recem-aberta, sem nada lancado em lugar nenhum. E a unica que
+        # pode ser apagada mesmo estando ATIVA (ver TRAVA 3).
+        "vazia": not (n_mov or n_total or pendentes or enviadas or eventos),
     }
+
+
+def _anomes_sucessora(id_cliente, id_empresa, ano_mes, tipo):
+    """Qual folha assume a vez quando a ATIVA e apagada.
+
+    A Normal mais recente — e nela que se trabalha o mes inteiro, e o 13o so'
+    existe por causa dela. Nao ter para onde ir e' a Normal: cair no
+    adiantamento fechado de novembro so' porque e do mes mais alto deixaria o
+    usuario numa folha em que ele nao tem nada a fazer. So' quando nao sobra
+    nenhuma Normal e' que vale a mais recente de qualquer tipo. Devolve a linha
+    de tab_anomes ou None quando nao sobra nenhuma folha.
+    """
+    try:
+        q = (supabase.table("tab_anomes").select("ano_mes, tipo, situacao")
+             .eq("id_empresa", id_empresa))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        linhas = q.execute().data or []
+    except Exception as e:
+        print(f"[ANOMES] _anomes_sucessora: {e}")
+        return None
+    restantes = [x for x in linhas
+                 if not (str(x.get("ano_mes") or "") == str(ano_mes)
+                         and str(x.get("tipo") or "").upper()[:1] == tipo)]
+    if not restantes:
+        return None
+    # reverse=True: as Normais (1) na frente das demais (0) e, dentro de cada
+    # grupo, o ano_mes do maior para o menor.
+    restantes.sort(key=lambda x: (1 if str(x.get("tipo") or "").upper()[:1] == "N" else 0,
+                                  str(x.get("ano_mes") or "")),
+                   reverse=True)
+    return restantes[0]
 
 
 @app.route("/api/anomes/excluir", methods=["POST"])
@@ -14949,15 +15018,35 @@ def api_anomes_excluir():
 
     # TRAVA 3 — e a folha ATIVA da sessao. Apagar debaixo dos pes deixaria o
     # sistema apontando para folha que nao existe mais.
-    if (str(session.get("anomes_atual") or "") == ano_mes
-            and str(session.get("anomes_tipo") or "").upper()[:1] == tipo):
-        return jsonify({"ok": False, "bloqueio": True, "resumo": resumo, "msg": (
-            f"A folha {nome_folha} é a folha ATIVA. Ative outra folha antes de "
-            "excluir esta.")})
+    #
+    # Excecao: folha recem-aberta e VAZIA (nada em tab_mov, tab_total,
+    # tab_esocial nem evento algum). E justamente o caso de quem abriu a folha
+    # no mes ou no tipo errado: incluir ja deixa a nova folha ativa, entao
+    # exigir "ative outra antes" era mandar o usuario desfazer um passo que o
+    # sistema deu sozinho. Aqui a folha sai e outra assume a vez.
+    _e_ativa = (str(session.get("anomes_atual") or "") == ano_mes
+                and str(session.get("anomes_tipo") or "").upper()[:1] == tipo)
+    sucessora = None
+    if _e_ativa:
+        if not resumo["vazia"]:
+            return jsonify({"ok": False, "bloqueio": True, "resumo": resumo, "msg": (
+                f"A folha {nome_folha} é a folha ATIVA e já tem lançamentos. "
+                "Ative outra folha antes de excluir esta.")})
+        sucessora = _anomes_sucessora(id_cliente, id_empresa, ano_mes, tipo)
+        if not sucessora:
+            return jsonify({"ok": False, "bloqueio": True, "resumo": resumo, "msg": (
+                f"A folha {nome_folha} é a folha ATIVA e é a única da empresa. "
+                "Abra a folha correta antes de excluir esta.")})
 
     if simular:
+        _prox = None
+        if sucessora:
+            _am = str(sucessora.get("ano_mes") or "")
+            _prox = (f"{_am[4:6]}/{_am[:4]} — "
+                     f"{_folha_tipo_label(str(sucessora.get('tipo') or 'N'))}")
         return jsonify({"ok": True, "simulado": True, "resumo": resumo,
-                        "nome_folha": nome_folha})
+                        "nome_folha": nome_folha, "era_ativa": _e_ativa,
+                        "proxima_ativa": _prox})
 
     am = int(ano_mes)
     apagados = {"mov": resumo["mov"], "total": resumo["total"],
@@ -15000,13 +15089,34 @@ def api_anomes_excluir():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
 
+    # Era a folha ATIVA (e estava vazia): outra assume a vez. Sem isto o
+    # sistema seguiria apontando para uma folha que nao existe mais.
+    nova = None
+    if sucessora:
+        _am, _tp = str(sucessora.get("ano_mes") or ""), str(sucessora.get("tipo") or "N")
+        try:
+            supabase.table("tab_empresa").update({
+                "anomes_atual": _am, "anomes_tipo": _tp,
+            }).eq("id_empresa", id_empresa).execute()
+        except Exception as e:
+            return jsonify({"ok": False, "msg": (
+                "A folha foi excluída, mas não foi possível ativar outra: "
+                f"{str(e)[:150]}. Ative a folha desejada na lista.")})
+        session["anomes_atual"]    = _am
+        session["anomes_tipo"]     = _tp
+        session["anomes_situacao"] = str(sucessora.get("situacao") or "A")
+        nova = {"ano_mes": _am, "tipo": _tp,
+                "nome": f"{_am[4:6]}/{_am[:4]} — {_folha_tipo_label(_tp)}"}
+
     gravar_log("EXCLUIR-FOLHA",
                (f"Folha {ano_mes} tipo:{tipo} EXCLUIDA — "
                 f"tab_mov={apagados['mov']} tab_total={apagados['total']} "
                 f"tab_esocial={apagados['esocial']} "
-                f"eventos(ferias/afast/faltas)={apagados['eventos']}")[:200],
+                f"eventos(ferias/afast/faltas)={apagados['eventos']}"
+                + (f" | ativa passa a {nova['ano_mes']} tipo:{nova['tipo']}" if nova else ""))[:200],
                ano_mes=am)
-    return jsonify({"ok": True, "apagados": apagados, "nome_folha": nome_folha})
+    return jsonify({"ok": True, "apagados": apagados, "nome_folha": nome_folha,
+                    "nova_ativa": nova})
 
 
 # =========================================================
@@ -45462,13 +45572,21 @@ def _adicionais_total(adics):
     return sum(int(v or 0) for v in (adics or {}).values())
 
 
-def _adicionais_cache(id_empresa, id_cliente, anomes, folha_tipo="N"):
+def _adicionais_cache(id_empresa, id_cliente, anomes, folha_tipo="N",
+                      so_lancado_a_mao=False):
     """Monta de uma vez os mapas que _adicionais_do_mes consome.
 
     OBRIGATORIO em qualquer laco por funcionario: sem cache, cada chamada de
     _adicionais_do_mes refaz a varredura dos eventos da empresa INTEIRA (e mais
     uma consulta a tab_mov), ou seja O(n) varreduras para n funcionarios.
-    Devolve (eventos_cache, mov_cache) pronto para repassar."""
+    Devolve (eventos_cache, mov_cache) pronto para repassar.
+
+    so_lancado_a_mao: ignora as linhas de origem 'C', que sao as que o proprio
+    calculo gravou. Serve a quem grava o adicional na verba dele e depois
+    recalcula: o risco de vida (32) nao tem evento de cadastro, entao sai pela
+    FONTE 2 (tab_mov) — e sem este filtro o segundo calculo leria o valor ja
+    proporcional do primeiro e o proporcionalizaria de novo, encolhendo a cada
+    recalculo. O 13o Final passa True (SMV 17/09/2026)."""
     ev = {}
     try:
         ev[31] = _calc_etapa6_insalubridade(id_empresa, anomes, id_cliente=id_cliente)
@@ -45486,6 +45604,8 @@ def _adicionais_cache(id_empresa, id_cliente, anomes, folha_tipo="N"):
              .eq("folha_tipo", folha_tipo)
              .eq("situacao", "A")
              .in_("cod_verba", [VERBA_INSALUBRIDADE, VERBA_PERICULOSIDADE, VERBA_RISCO_VIDA]))
+        if so_lancado_a_mao:
+            q = q.neq("origem", "C")
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
         for row in (q.execute().data or []):
@@ -50309,6 +50429,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
     return {
         "anomes_fmt":  anomes_fmt,
         "tipo_lbl":    tipo_lbl,
+        # Tipo cru: e' a tela que decide o destaque, e comparar com a string
+        # "Folha Normal" quebraria no dia em que o rotulo mudar.
+        "folha_tipo":  str(anomes_tipo or "N").upper()[:1],
         "n_func":      grand_funcs,
         "grand_prov":  _fmt_brl(grand_prov),
         "grand_desc":  _fmt_brl(grand_desc),
@@ -50635,12 +50758,19 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         canvas.drawRightString(xR, y1, agora.strftime("%d/%m/%Y  %H:%M"))
         # Linha 2: título do relatório + competência (fonte maior)
         y2 = y1 - 0.55*cm
+        # Folha que NAO e a Normal: o tipo vem NA FRENTE e em cor propria. No
+        # fim da linha, depois da competencia, ele passava batido — a folha do
+        # 13o saia com cara de folha comum (SMV 17/09/2026).
         periodo = f"{mes_nm.upper()}/{ano}"
-        if tipo_lbl != "Folha Normal":
-            periodo += f"  ·  {tipo_lbl.upper()}"
         canvas.setFont("Helvetica-Bold", 12)
+        _xt = xL
+        if tipo_lbl != "Folha Normal":
+            _tp = f"{tipo_lbl.upper()}  —  "
+            canvas.setFillColor(colors.HexColor("#b45309"))
+            canvas.drawString(_xt, y2, _tp)
+            _xt += canvas.stringWidth(_tp, "Helvetica-Bold", 12)
         canvas.setFillColor(colors.HexColor("#0b1f3a"))
-        canvas.drawString(xL, y2, f"FOLHA DE PAGAMENTO  —  {periodo}")
+        canvas.drawString(_xt, y2, f"FOLHA DE PAGAMENTO  —  {periodo}")
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(colors.HexColor("#64748b"))
         canvas.drawRightString(xR, y2, f"Página  {doc.page}")
@@ -53443,18 +53573,33 @@ def memoria_calculo():
     except Exception:
         pass
 
-    # descobre quais têm PDF gerado para a folha ativa (local ou Storage).
-    # Só as memórias da folha mensal (prefixo Folha10_Memoria_Empresa), não
-    # as de férias/adiantamento que ficam na mesma pasta.
-    mats_com_pdf = set()
-    for fname in _memoria_listar(anomes, id_empresa):
-        if (fname.startswith("Folha10_Memoria_Empresa") and "_Ferias_" not in fname
-                and "_Rescisao_" not in fname
-                and "_Matricula_" in fname and fname.endswith(".pdf")):
-            try:
-                mats_com_pdf.add(int(fname.split("_Matricula_")[1].split("_")[0]))
-            except Exception:
-                pass
+    # A memoria que interessa e a do TIPO da folha ativa. Todas moram na mesma
+    # pasta do mes; quem separa e o prefixo do arquivo.
+    #
+    # A tela so' conhecia a da folha MENSAL: com o 13o ou o adiantamento aberto
+    # ela listava todo mundo como "sem PDF", nenhuma linha podia ser marcada e o
+    # botao "Abrir Memória" nunca saia do cinza — a lista parecia congelada, sem
+    # dizer por que (SMV 17/09/2026).
+    _tp = str(anomes_tipo or "N").upper()[:1]
+    if _tp == "1":
+        mats_com_pdf = _mats_com_memoria(anomes, id_empresa, _MEM13_PREFIXO_ARQ)
+        pdf_endpoint = "/api/memoria_13final_pdf"
+    elif _tp == "A":
+        mats_com_pdf = _mats_com_memoria(anomes, id_empresa, _MEMADTO13_PREFIXO_ARQ)
+        pdf_endpoint = "/api/memoria_adiant13_pdf"
+    else:
+        # Mensal: o prefixo sozinho nao basta — ferias e rescisao comecam igual
+        # e se distinguem por um pedaco no meio do nome.
+        mats_com_pdf = set()
+        for fname in _memoria_listar(anomes, id_empresa):
+            if (fname.startswith("Folha10_Memoria_Empresa") and "_Ferias_" not in fname
+                    and "_Rescisao_" not in fname
+                    and "_Matricula_" in fname and fname.endswith(".pdf")):
+                try:
+                    mats_com_pdf.add(int(fname.split("_Matricula_")[1].split("_")[0]))
+                except Exception:
+                    pass
+        pdf_endpoint = "/api/memoria_calculo_pdf"
 
     for f in funcionarios:
         f["tem_pdf"] = f["matricula"] in mats_com_pdf
@@ -53469,6 +53614,7 @@ def memoria_calculo():
         folha_sit_label=sit_label,
         folha_sit_class=sit_class,
         funcionarios=funcionarios,
+        pdf_endpoint=pdf_endpoint,
     )
 
 
@@ -54632,12 +54778,19 @@ def resumo_folha_pdf():
         canvas.drawString(xL, y1, f"{cnpj_fmt}  —  {empresa_nm}")
         canvas.drawRightString(xR, y1, agora.strftime("%d/%m/%Y  %H:%M"))
         y2 = y1 - 0.55*cm
+        # Folha que NAO e a Normal: o tipo vem NA FRENTE e em cor propria. No
+        # fim da linha, depois da competencia, ele passava batido — a folha do
+        # 13o saia com cara de folha comum (SMV 17/09/2026).
         periodo = d["anomes_fmt"]
-        if d["tipo_desc"] != "Folha Normal":
-            periodo += f"  ·  {d['tipo_desc'].upper()}"
         canvas.setFont("Helvetica-Bold", 12)
+        _xt = xL
+        if d["tipo_desc"] != "Folha Normal":
+            _tp = f"{d['tipo_desc'].upper()}  —  "
+            canvas.setFillColor(colors.HexColor("#b45309"))
+            canvas.drawString(_xt, y2, _tp)
+            _xt += canvas.stringWidth(_tp, "Helvetica-Bold", 12)
         canvas.setFillColor(azul)
-        canvas.drawString(xL, y2, f"RESUMO DA FOLHA DE PAGAMENTO  —  {periodo}")
+        canvas.drawString(_xt, y2, f"RESUMO DA FOLHA DE PAGAMENTO  —  {periodo}")
         canvas.setFont("Helvetica", 8)
         canvas.setFillColor(cinza)
         canvas.drawRightString(xR, y2, f"Página  {doc.page}")
@@ -68152,13 +68305,19 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
       valor = (média_min/60) × sal_hora; depois × perc%.
     - Verba em valor: soma_valor/meses; depois × perc%.
     Retorna lista de detalhes (só val>0), ordenada por código:
-    [{cod, desc, unid, soma_val, soma_qtd, avg_min, base, val}]."""
+    [{cod, desc, unid, soma_val, soma_qtd, avg_min, base, val, por_mes}].
+
+    `por_mes` é o lançamento MÊS A MÊS que formou a soma — [{folha, qtd, val}],
+    em ordem de competência. Não custa consulta nenhuma (as linhas já vêm todas
+    nesta busca) e é o que a memória de cálculo imprime, para o contador poder
+    refazer a conta sem abrir a ficha financeira (SMV 17/09/2026).
+    """
     desc_map = desc_map or {}
     if not cods_media or meses <= 0:
         return []
     try:
         r = (supabase.table("tab_mov")
-             .select("cod_verba, valor, qtd")
+             .select("cod_verba, valor, qtd, folha")
              .eq("id_cliente", id_cliente)
              .eq("id_empresa", id_empresa)
              .eq("matricula",  mat)
@@ -68171,11 +68330,20 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
         rows = r.data or []
     except Exception:
         return []
-    soma_val, soma_qtd = {}, {}
+    soma_val, soma_qtd, por_mes = {}, {}, {}
     for row in rows:
-        c = int(row.get("cod_verba") or 0)
-        soma_val[c] = soma_val.get(c, 0) + int(row.get("valor") or 0)
-        soma_qtd[c] = soma_qtd.get(c, 0) + int(row.get("qtd") or 0)
+        c  = int(row.get("cod_verba") or 0)
+        _v = int(row.get("valor") or 0)
+        _q = int(row.get("qtd")   or 0)
+        soma_val[c] = soma_val.get(c, 0) + _v
+        soma_qtd[c] = soma_qtd.get(c, 0) + _q
+        # Duas linhas da MESMA verba na mesma folha (dois lancamentos no mes)
+        # entram somadas: a memoria mostra o mes, nao o lancamento.
+        _fl = int(row.get("folha") or 0)
+        _mm = por_mes.setdefault(c, {})
+        _mm[_fl] = {"folha": _fl,
+                    "qtd": _mm.get(_fl, {}).get("qtd", 0) + _q,
+                    "val": _mm.get(_fl, {}).get("val", 0) + _v}
     detalhe = []
     for c in sorted(set(soma_val) | set(soma_qtd)):
         if c in verbas_hora:
@@ -68197,8 +68365,28 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                 "avg_min":  avg_min,
                 "base":     base,
                 "val":      val,
+                "por_mes":  [por_mes[c][f] for f in sorted(por_mes.get(c, {}))],
             })
     return detalhe
+
+
+def _qtd_media_min(md, num=1, den=1):
+    """Quantidade, em MINUTOS, que acompanha a media de uma verba em HORA.
+
+    O recibo e o espelho mostram "10h30" a partir de tab_mov.qtd, que guarda
+    minutos (ver _fqtd). A media ia gravada com qtd 0 e a linha saia so' com o
+    valor, sem as horas que o geraram — quem confere nao tinha como refazer a
+    conta (SMV 17/09/2026).
+
+    num/den repetem no qtd a MESMA proporcao que o valor levou: os avos no 13o
+    final (avos/12), o percentual no adiantamento (perc/100). Sem isso o recibo
+    mostraria 10h30 ao lado do valor de 4h.
+
+    Verba em valor (unid != 'H') devolve 0: nao ha quantidade a mostrar.
+    """
+    if str(md.get("unid") or "") != "H":
+        return 0
+    return int(round(md.get("avg_min") or 0)) * int(num) // int(den)
 
 
 def _inc_fgts_adiant13(id_cliente, cods):
@@ -68854,6 +69042,8 @@ def api_calcular_adiantamento_13():
             medias_det = _medias_adiant13(id_cliente, id_empresa, int(mat or 0), sal_hora_c,
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
             medias = {d["cod"]: d["val"] for d in medias_det}
+            # minutos da media das verbas em hora — o recibo imprime como 10h30
+            medias_q = {d["cod"]: _qtd_media_min(d, perc, 100) for d in medias_det}
             try:
                 supabase.table("tab_mov").insert({
                     "id_cliente": id_cliente,
@@ -68907,7 +69097,7 @@ def api_calcular_adiantamento_13():
                         "folha":      folha_int,
                         "folha_tipo": "A",
                         "cod_verba":  cod_m,
-                        "qtd":        0,
+                        "qtd":        int(medias_q.get(cod_m, 0)),
                         "valor":      val_m,
                         "lote":       0,
                         "origem":     "C",
@@ -68975,8 +69165,7 @@ def api_calcular_adiantamento_13():
                         medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
                         adicionais=adics13, adicionais_mes=_adics_mes_pdf,
                         sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente)
-                    nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
-                                f"Folha_{anomes}_Matricula_{int(mat or 0):06d}.pdf")
+                    nome_arq = _nome_memoria_adiant13(id_empresa, anomes, int(mat or 0))
                     if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                         memorias += 1
                 except Exception:
@@ -69051,10 +69240,10 @@ def calcular_adiantamento_13_stream():
     def _put(obj):
         q.put(json.dumps(obj, ensure_ascii=False))
 
-    def _mov(mat, cod, valor):
+    def _mov(mat, cod, valor, qtd=0):
         return {"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                 "matricula": int(mat), "folha": folha_int, "folha_tipo": "A",
-                "cod_verba": cod, "qtd": 0, "valor": valor, "lote": 0,
+                "cod_verba": cod, "qtd": int(qtd), "valor": valor, "lote": 0,
                 "origem": "C", "controle": 0, "os": 0}
 
     def run():
@@ -69128,6 +69317,8 @@ def calcular_adiantamento_13_stream():
                 medias_det = _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                                               fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
                 medias = {d["cod"]: d["val"] for d in medias_det}
+                # minutos da media das verbas em hora (ver _qtd_media_min)
+                medias_q = {d["cod"]: _qtd_media_min(d, perc, 100) for d in medias_det}
 
                 try:
                     supabase.table("tab_mov").insert(_mov(mat, VERBA_ADIANT_13, valor)).execute()
@@ -69143,7 +69334,8 @@ def calcular_adiantamento_13_stream():
                         return
                 for cod_m, val_m in sorted(medias.items()):
                     try:
-                        supabase.table("tab_mov").insert(_mov(mat, cod_m, val_m)).execute()
+                        supabase.table("tab_mov").insert(
+                            _mov(mat, cod_m, val_m, medias_q.get(cod_m, 0))).execute()
                     except Exception as e_ins:
                         _put({"tipo": "erro", "msg": f"Erro média verba {cod_m} mat {mat}: {str(e_ins)[:300]}"})
                         return
@@ -69188,8 +69380,7 @@ def calcular_adiantamento_13_stream():
                             medias_det, prov_total, usuario, versao, base_fgts, fgts_val, aliq_fgts,
                             adicionais=adics13, adicionais_mes=_adics_mes_pdf,
                             sem_encargos=_sem_encargos(id_cliente), id_cliente=id_cliente)
-                        nome_arq = (f"Folha10_MemoriaAdiant13_Empresa_{int(id_empresa):06d}_"
-                                    f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
+                        nome_arq = _nome_memoria_adiant13(id_empresa, anomes, mat)
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                             memorias += 1
                     except Exception:
@@ -69433,6 +69624,41 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     total_desc = desc_adto + g_inss + g_irrf
     liquido    = bruto_13 - total_desc
 
+    # RATEIO DO BRUTO POR VERBA (SMV 17/09/2026)
+    # -----------------------------------------
+    # Ate aqui o bruto inteiro ia gravado na 0011, media junto com salario. A
+    # 0011 e "13o SALARIO": media de hora extra, quinquenio e adicional nao sao
+    # salario, e no recibo apareciam como se fossem.
+    #
+    # Cada parcela passa a ir na SUA verba, a 0011 ficando so' com o salario —
+    # proporcional aos avos, como tudo aqui. E o mesmo desenho que o
+    # adiantamento do 13o ja usa em producao (uma linha por verba de media).
+    #
+    # A proporcao e aplicada parcela por parcela e o RESTO da divisao fica na
+    # 0011: assim a soma das linhas fecha exatamente com bruto_13, que e a base
+    # de INSS, IRRF e FGTS gravada em tab_total. Somar 5 truncamentos e deixar
+    # a diferenca solta faria o recibo divergir da base por centavos.
+    #
+    # A media de verba em HORA leva tambem a QUANTIDADE, na mesma proporcao do
+    # valor — e ela que o recibo imprime como "10h30" (ver _qtd_media_min).
+    partes, qtds_13 = {}, {}
+    for md in medias_det:
+        _q = _qtd_media_min(md, avos, 12)
+        if _q:
+            qtds_13[int(md["cod"])] = qtds_13.get(int(md["cod"]), 0) + _q
+    for _cod, _val in ([(md["cod"], md["val"]) for md in medias_det]
+                       + list(ultimos.items()) + list(adics.items())):
+        _v = int(_val) * avos // 12
+        if _v:
+            partes[int(_cod)] = partes.get(int(_cod), 0) + _v
+    partes_13 = {}
+    if bruto_13:
+        partes_13 = dict(partes)
+        _sal_parte = bruto_13 - sum(partes.values())
+        if _sal_parte:
+            partes_13[VERBA_13_SALARIO] = (partes_13.get(VERBA_13_SALARIO, 0)
+                                           + _sal_parte)
+
     return {
         "matricula": mat,
         "nome":      (f.get("nome") or f.get("nomer") or "").strip(),
@@ -69441,12 +69667,17 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
         "meses_det": det_avos["meses"],
         "medias_det":  medias_det,
         "medias":      medias_tot,
+        # salario-hora que valorizou a media das verbas em HORA — a memoria
+        # imprime a conta, e sem ele o PDF nao teria como mostrar o "x R$/hora"
+        "sal_hora":    sal_hora_c,
         "ultimos":     ultimos,
         "ultimos_tot": ultimos_tot,
         "adicionais":  adics,
         "adicionais_tot": adics_tot,
         "base_13":   base_13,
         "bruto_13":  bruto_13,
+        "partes_13": partes_13,   # {cod_verba: centavos} — soma = bruto_13
+        "qtds_13":   qtds_13,     # {cod_verba: minutos} — so' as verbas em hora
         "desc_adto": desc_adto,
         "adto_pago": adto_total,
         "adto_residual": adto_residual,
@@ -69569,6 +69800,11 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
     st_formula = ParagraphStyle("mf", fontName="Helvetica", fontSize=8,
                                 spaceAfter=6, leftIndent=28,
                                 textColor=colors.HexColor("#374151"))
+    # Titulo de cada verba dentro da ETAPA 5020 — negrito e um pouco maior, para
+    # a lista de medias ser lida por verba, e nao como um texto corrido.
+    st_verba   = ParagraphStyle("mvb", parent=st_formula, fontName="Helvetica-Bold",
+                                fontSize=8.5, spaceBefore=2, spaceAfter=4,
+                                textColor=colors.HexColor("#1e293b"))
     st_id      = ParagraphStyle("mid", fontName="Helvetica", fontSize=9, leading=11)
     st_cell    = ParagraphStyle("mc", fontName="Helvetica", fontSize=7.5,
                                 textColor=colors.HexColor("#374151"))
@@ -69644,20 +69880,78 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
     e.append(Paragraph("ETAPA 5020 — BASE DO 13º", st_etapa))
     e.append(_mem_passo("sal_base", f"salário do mês = {_fmt_brl(d['sal_mes'])}"))
     if d["medias_det"]:
+        # UMA TABELA POR VERBA, com o lancamento mes a mes, a soma e a conta da
+        # media. Antes era uma linha so' por verba ("acumulado" e "media"), e
+        # todo mes de dezembro isso virava chamado: o cliente via o valor da
+        # media e nao tinha como saber de onde saiu sem abrir a ficha
+        # financeira do ano inteiro (SMV 17/09/2026).
         e.append(Paragraph(
-            f"Médias das verbas variáveis (soma do ano ÷ {d['avos']} avos):", st_formula))
-        rows = [[Paragraph("<b>Verba</b>", st_cellb),
-                 Paragraph("<b>Descrição</b>", st_cellb),
-                 Paragraph("<b>Acumulado no ano</b>", st_cellbr),
-                 Paragraph("<b>Média</b>", st_cellbr)]]
-        for md in d["medias_det"]:
-            rows.append([Paragraph(f"{md['cod']:04d}", st_cell),
-                         Paragraph(md["desc"] or "", st_cell),
-                         Paragraph(_fmt_brl(md["soma_val"]), st_cellr),
-                         Paragraph(_fmt_brl(md["val"]), st_cellr)])
-        t = Table(rows, colWidths=[1.6*cm, 7.4*cm, 3.5*cm, 3.5*cm])
-        t.setStyle(grade)
-        e.append(t)
+            f"<b>Médias das verbas variáveis</b> — soma do ano ÷ {d['avos']} avos "
+            f"(o divisor são os avos, não 12: quem trabalhou parte do ano não "
+            f"tem a média diluída).", st_formula))
+        for _i_md, md in enumerate(d["medias_det"]):
+            # Linha tracejada entre uma verba e a seguinte: sem ela a tabela de
+            # uma e as contas da outra ficavam grudadas e pareciam um bloco so'
+            # (SMV 17/09/2026).
+            if _i_md:
+                e.append(HRFlowable(width="100%", thickness=0.7, dash=(2, 2),
+                                    color=colors.HexColor("#cbd5e1"),
+                                    spaceBefore=8, spaceAfter=6))
+            _eh_h = md["unid"] == "H"
+            e.append(Paragraph(
+                f"Verba {md['cod']:04d} — {md['desc'] or ''}"
+                + ("  (lançada em HORAS)" if _eh_h else ""), st_verba))
+            if _eh_h:
+                rows = [[Paragraph("<b>Competência</b>", st_cellb),
+                         Paragraph("<b>Quantidade</b>", st_cellbr),
+                         Paragraph("<b>Valor pago no mês</b>", st_cellbr)]]
+                for pm in md.get("por_mes", []):
+                    _f = str(pm["folha"])
+                    rows.append([
+                        Paragraph(f"{_f[4:6]}/{_f[:4]}", st_cell),
+                        Paragraph(f"{pm['qtd'] // 60}h{pm['qtd'] % 60:02d}", st_cellr),
+                        Paragraph(_fmt_brl(pm["val"]), st_cellr)])
+                rows.append([
+                    Paragraph("<b>Soma do ano</b>", st_cellb),
+                    Paragraph(f"<b>{md['soma_qtd'] // 60}h{md['soma_qtd'] % 60:02d}</b>", st_cellbr),
+                    Paragraph(f"<b>{_fmt_brl(md['soma_val'])}</b>", st_cellbr)])
+                t = Table(rows, colWidths=[4.0*cm, 6.0*cm, 6.0*cm])
+            else:
+                rows = [[Paragraph("<b>Competência</b>", st_cellb),
+                         Paragraph("<b>Valor pago no mês</b>", st_cellbr)]]
+                for pm in md.get("por_mes", []):
+                    _f = str(pm["folha"])
+                    rows.append([Paragraph(f"{_f[4:6]}/{_f[:4]}", st_cell),
+                                 Paragraph(_fmt_brl(pm["val"]), st_cellr)])
+                rows.append([Paragraph("<b>Soma do ano</b>", st_cellb),
+                             Paragraph(f"<b>{_fmt_brl(md['soma_val'])}</b>", st_cellbr)])
+                t = Table(rows, colWidths=[4.0*cm, 12.0*cm])
+            t.setStyle(grade)
+            e.append(t)
+
+            # Como se chega no valor da media — cada passo com os numeros da
+            # linha acima, para a conta poder ser refeita na mao.
+            if _eh_h:
+                _mm = int(round(md["avg_min"]))
+                e.append(Paragraph(
+                    f"Média das horas = {md['soma_qtd'] // 60}h{md['soma_qtd'] % 60:02d}"
+                    f" ÷ {d['avos']} avos = <b>{_mm // 60}h{_mm % 60:02d}</b>", st_formula))
+                e.append(Paragraph(
+                    f"Valor da média = {_mm // 60}h{_mm % 60:02d} × "
+                    f"{_fmt_brl(d['sal_hora'])}/hora (salário atual) = "
+                    f"<b>{_fmt_brl(md['val'])}</b>", st_formula))
+            else:
+                e.append(Paragraph(
+                    f"Média = {_fmt_brl(md['soma_val'])} ÷ {d['avos']} avos = "
+                    f"<b>{_fmt_brl(md['val'])}</b>", st_formula))
+            if d["avos"] != 12:
+                _prop = int(md["val"]) * d["avos"] // 12
+                e.append(Paragraph(
+                    f"Na folha do 13º entra proporcional: {_fmt_brl(md['val'])} × "
+                    f"{d['avos']}/12 = <b>{_fmt_brl(_prop)}</b>", st_formula))
+        if len(d["medias_det"]) > 1:
+            e.append(Paragraph(
+                f"Total das médias = <b>{_fmt_brl(d['medias'])}</b>", st_formula))
     for _c, _v in sorted((d.get("ultimos") or {}).items()):
         e.append(Paragraph(f"Verba {_c:04d} (último lançamento do ano) = "
                            f"<b>{_fmt_brl(_v)}</b>", st_formula))
@@ -69671,7 +69965,38 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
         + f" = <b>{_fmt_brl(d['base_13'])}</b>", st_formula))
     e.append(Paragraph(
         f"13º bruto = {_fmt_brl(d['base_13'])} × {d['avos']}/12 = "
-        f"<b>{_fmt_brl(d['bruto_13'])}</b>  (verba {VERBA_13_SALARIO})", st_formula))
+        f"<b>{_fmt_brl(d['bruto_13'])}</b>", st_formula))
+
+    # Como o bruto foi repartido na folha. A verba 0011 fica so' com o salario;
+    # media, quinquenio e adicional vao cada um no seu codigo. O resto da
+    # divisao dos avos cai na 0011, por isso a soma fecha com o bruto acima.
+    _partes = d.get("partes_13") or {}
+    if len(_partes) > 1:
+        _desc_parte = {VERBA_13_SALARIO: "13º salário (parte proporcional)"}
+        for md in d["medias_det"]:
+            _desc_parte[int(md["cod"])] = md["desc"] or "Média das variáveis"
+        for _c in (d.get("ultimos") or {}):
+            _desc_parte.setdefault(int(_c), "Último lançamento do ano")
+        for _c in (d.get("adicionais") or {}):
+            _desc_parte.setdefault(int(_c), _DSC_ADICIONAL.get(int(_c), "Adicional"))
+        e.append(Paragraph(
+            "Lançado na folha repartido por verba — a "
+            f"{VERBA_13_SALARIO:04d} fica só com o salário:", st_formula))
+        rows = [[Paragraph("<b>Verba</b>", st_cellb),
+                 Paragraph("<b>Descrição</b>", st_cellb),
+                 Paragraph("<b>Valor</b>", st_cellbr)]]
+        for _c, _v in sorted(_partes.items()):
+            rows.append([Paragraph(f"{_c:04d}", st_cell),
+                         Paragraph(_desc_parte.get(_c, ""), st_cell),
+                         Paragraph(_fmt_brl(_v), st_cellr)])
+        rows.append([Paragraph("", st_cell),
+                     Paragraph("<b>Total</b>", st_cellb),
+                     Paragraph(f"<b>{_fmt_brl(d['bruto_13'])}</b>", st_cellbr)])
+        t = Table(rows, colWidths=[1.6*cm, 10.9*cm, 3.5*cm])
+        t.setStyle(grade)
+        e.append(t)
+    else:
+        e.append(Paragraph(f"Lançado na verba {VERBA_13_SALARIO:04d}.", st_formula))
 
     # ETAPA 5030 — adiantamento ja pago
     if d["adto_pago"]:
@@ -69792,6 +70117,110 @@ def _meses_abertos_do_ano(id_empresa, id_cliente, ano, mes_excluir=12):
     return fora
 
 
+# =========================================================
+# MEMORIA DE CALCULO DO 13o FINAL — nome, listagem e download
+# ---------------------------------------------------------
+# Onde o arquivo fica quem decide e _memoria_destino: disco local no Windows
+# (C:\Folha10-Simples_Memoria\...), Supabase Storage quando roda no Render.
+# O PDF ja era gravado nos dois; o que faltava era a porta de saida — no Render
+# ele ficava inalcancavel, so' pelo painel do Supabase (SMV 17/09/2026).
+# =========================================================
+_MEM13_PREFIXO_ARQ     = "Folha10_Memoria13Final_Empresa"
+_MEMADTO13_PREFIXO_ARQ = "Folha10_MemoriaAdiant13_Empresa"
+
+
+def _nome_memoria_13(prefixo, id_empresa, anomes, matricula):
+    """Nome do PDF da memoria do 13o (final ou adiantamento).
+
+    UM arquivo por matricula e folha: recalcular sobregrava. E' diferente da
+    memoria mensal, que leva o instante no nome ("_em_AAAAMMDD-HHMM") e acumula
+    versoes — por isso la a rota pega a ultima da lista e aqui o nome basta.
+    """
+    return (f"{prefixo}_{int(id_empresa):06d}_"
+            f"Folha_{anomes}_Matricula_{int(matricula):06d}.pdf")
+
+
+def _nome_memoria_13final(id_empresa, anomes, matricula):
+    return _nome_memoria_13(_MEM13_PREFIXO_ARQ, id_empresa, anomes, matricula)
+
+
+def _nome_memoria_adiant13(id_empresa, anomes, matricula):
+    return _nome_memoria_13(_MEMADTO13_PREFIXO_ARQ, id_empresa, anomes, matricula)
+
+
+def _mats_com_memoria(anomes, id_empresa, prefixo):
+    """Matriculas que ja tem memoria gravada nesta folha, para o `prefixo` dado.
+
+    A pasta do mes guarda as memorias de TODOS os tipos de folha — mensal,
+    ferias, rescisao, 13o e adiantamento —, entao quem separa e' o prefixo do
+    nome. Serve para a tela so' oferecer o PDF de quem realmente tem arquivo:
+    antes do calculo nao ha nenhum, e link que abre "nao encontrado" e pior do
+    que link nenhum.
+
+    A matricula sai por REGEX, e nao por split("_"): no 13o e no adiantamento o
+    nome termina em "_Matricula_000019.pdf", e o split devolveria "000019.pdf".
+    """
+    mats = set()
+    for fn in _memoria_listar(anomes, id_empresa):
+        if not (fn.startswith(prefixo) and fn.endswith(".pdf")):
+            continue
+        m = re.search(r"_Matricula_(\d+)", fn)
+        if m:
+            mats.add(int(m.group(1)))
+    return mats
+
+
+@app.route("/api/memoria_13final_pdf/<int:matricula>")
+def api_memoria_13final_pdf(matricula):
+    """Abre a memoria de calculo do 13o FINAL de um funcionario.
+
+    Uma porta so' para os dois ambientes: _memoria_ler busca no C:\\ rodando
+    local e no Storage rodando no Render. Irma de api_memoria_calculo_pdf
+    (mensal) e api_memoria_rescisao_pdf.
+    """
+    if not session.get("logado"):
+        return "Sessão expirada", 401
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return "Folha ativa não definida", 400
+
+    nome = _nome_memoria_13final(id_empresa, anomes, matricula)
+    data = _memoria_ler(anomes, id_empresa, nome)
+    if not data:
+        return ("Memória do 13º não encontrada para esta matrícula nesta folha. "
+                "Calcule o 13º Final para gerá-la."), 404
+
+    from flask import send_file as _send_file
+    return _send_file(io.BytesIO(data), mimetype="application/pdf",
+                      as_attachment=False, download_name=nome)
+
+
+@app.route("/api/memoria_adiant13_pdf/<int:matricula>")
+def api_memoria_adiant13_pdf(matricula):
+    """Abre a memoria de calculo do ADIANTAMENTO do 13o de um funcionario.
+
+    Irma de api_memoria_13final_pdf: mesma pasta, mesma leitura (disco local,
+    Storage no Render), so' muda o prefixo do arquivo.
+    """
+    if not session.get("logado"):
+        return "Sessão expirada", 401
+    id_empresa = _get_id_empresa()
+    anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return "Folha ativa não definida", 400
+
+    nome = _nome_memoria_adiant13(id_empresa, anomes, matricula)
+    data = _memoria_ler(anomes, id_empresa, nome)
+    if not data:
+        return ("Memória do adiantamento do 13º não encontrada para esta matrícula "
+                "nesta folha. Calcule o adiantamento para gerá-la."), 404
+
+    from flask import send_file as _send_file
+    return _send_file(io.BytesIO(data), mimetype="application/pdf",
+                      as_attachment=False, download_name=nome)
+
+
 def _ctx_13final(id_empresa, id_cliente, anomes):
     """Tudo que o calculo do 13o precisa e que NAO muda de funcionario para
     funcionario. Montado uma vez e passado adiante — sao 8 consultas que, sem
@@ -69800,7 +70229,10 @@ def _ctx_13final(id_empresa, id_cliente, anomes):
     tabela = _get_tabela_legais(anomes)
     afast, faltas = _avos13_cache(id_empresa, id_cliente, ano)
     cods_media, verbas_hora, desc_media, cods_ultimo = _verbas_media_13(id_cliente)
-    adic_ev, adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, "1")
+    # so_lancado_a_mao: o adicional agora e gravado na verba dele na folha do
+    # 13o; sem isto o recalculo leria de volta o que ele mesmo escreveu.
+    adic_ev, adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, "1",
+                                          so_lancado_a_mao=True)
     return {
         "ano": ano, "tabela": tabela, "afast": afast, "faltas": faltas,
         "cods_media": cods_media, "verbas_hora": verbas_hora,
@@ -69858,6 +70290,11 @@ def calcular_13_final():
         anomes_atual=anomes,
         folha_tipo=folha_tipo,
         tipo_ok=(folha_tipo == "1"),
+        # 13o Final aberto fora de dezembro. Nao impede o calculo — mas o
+        # S-1200 anual e os encargos vao para ESTA competencia, e quem abriu a
+        # folha no mes errado precisa ver isso antes de calcular.
+        mes_nao_dezembro=(len(anomes) == 6 and anomes[4:6] != "12"),
+        mes_fmt=(f"{anomes[4:6]}/{anomes[:4]}" if len(anomes) == 6 else ""),
         folha_situacao=(_refresh_situacao_folha() if (anomes and folha_tipo == "1") else ""),
         erro_critico=None,
         ano_base=anomes[:4] if len(anomes) == 6 else "",
@@ -69867,7 +70304,7 @@ def calcular_13_final():
         verba_13=VERBA_13_SALARIO,
         verba_desc=VERBA_13_DESC_ADTO,
         funcionarios=[],
-        total_funcs=0, total_com=0,
+        total_funcs=0, total_com=0, qtd_memorias=0,
         total_bruto_fmt="R$ 0,00", total_desc_fmt="R$ 0,00", total_liq_fmt="R$ 0,00",
     )
     if not anomes or folha_tipo != "1":
@@ -69882,6 +70319,14 @@ def calcular_13_final():
     except Exception as ex:
         ctx["erro_critico"] = f"Erro ao calcular: {str(ex)[:180]}"
         return render_template("F10_Calc_13_Final.html", **ctx)
+
+    # Uma listagem so' da pasta do mes (disco local ou Storage, conforme o
+    # ambiente) para saber de quem ja existe memoria gravada.
+    try:
+        mats_com_pdf = _mats_com_memoria(anomes, id_empresa, _MEM13_PREFIXO_ARQ)
+    except Exception as ex:
+        print(f"[13o memorias listar] {ex}")
+        mats_com_pdf = set()
 
     vis = []
     for d in linhas:
@@ -69911,12 +70356,14 @@ def calcular_13_final():
             "liq_fmt":    _fmt_brl(d["liquido"]),
             "residuo":    d.get("adto_residual", 0),
             "motivos":    motivos,
+            "tem_pdf":    d["matricula"] in mats_com_pdf,
         })
     com = [v for v in vis if v["bruto"] > 0]
     ctx.update(
         funcionarios=vis,
         total_funcs=len(vis),
         total_com=len(com),
+        qtd_memorias=sum(1 for v in vis if v["tem_pdf"]),
         qtd_residuo=sum(1 for v in vis if v["residuo"]),
         total_residuo_fmt=_fmt_brl(sum(v["residuo"] for v in vis)),
         total_bruto_fmt=_fmt_brl(sum(d["bruto_13"] for d in linhas)),
@@ -69959,16 +70406,15 @@ def calcular_13_final_stream():
         return Response(f"data: {payload}\n\n", mimetype="text/event-stream")
 
     folha_int = int(anomes)
-    VERBAS_13 = [VERBA_13_SALARIO, VERBA_13_DESC_ADTO, VERBA_13_INSS, VERBA_13_IRRF]
     q = queue.Queue()
 
     def _put(obj):
         q.put(json.dumps(obj, ensure_ascii=False))
 
-    def _mov(mat, cod, valor):
+    def _mov(mat, cod, valor, qtd=0):
         return {"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
                 "matricula": int(mat), "folha": folha_int, "folha_tipo": "1",
-                "cod_verba": cod, "qtd": 0, "valor": int(valor), "lote": 0,
+                "cod_verba": cod, "qtd": int(qtd), "valor": int(valor), "lote": 0,
                 "origem": "C", "controle": 0, "os": 0}
 
     def run():
@@ -69983,10 +70429,18 @@ def calcular_13_final_stream():
 
             # Limpa o calculo anterior: so' o que ESTE calculo gera (origem 'C').
             # Verba lancada a mao na folha do 13o (origem 'M') fica de pe.
+            #
+            # Sem lista de codigos (SMV 17/09/2026): desde que o bruto passou a
+            # ser rateado por verba, o calculo grava tambem as medias, o
+            # quinquenio e os adicionais, que nao cabem numa lista fixa —
+            # mudam de cliente para cliente. E origem='C' com folha_tipo='1' e'
+            # exatamente o que ESTE calculo escreveu: nenhuma outra rotina
+            # grava na folha do 13o. Filtrar por codigo deixaria para tras a
+            # media de uma verba que deixou de ter lancamento no ano.
             try:
                 (supabase.table("tab_mov").delete()
                  .eq("id_empresa", id_empresa).eq("folha", folha_int)
-                 .eq("folha_tipo", "1").in_("cod_verba", VERBAS_13)
+                 .eq("folha_tipo", "1")
                  .eq("origem", "C").execute())
                 q_del = (supabase.table("tab_total").delete()
                          .eq("id_empresa", id_empresa).eq("folha", folha_int)
@@ -70018,7 +70472,10 @@ def calcular_13_final_stream():
                 if d["bruto_13"] <= 0:
                     continue          # sem avos: nao ha 13o a pagar
 
-                recs = [_mov(mat, VERBA_13_SALARIO, d["bruto_13"])]
+                # Uma linha por verba: 0011 so' o salario, e media, quinquenio
+                # e adicional cada um no seu codigo (ver partes_13, no calculo).
+                recs = [_mov(mat, cod, val, d["qtds_13"].get(cod, 0))
+                        for cod, val in sorted(d["partes_13"].items()) if val]
                 if d["desc_adto"]:
                     recs.append(_mov(mat, VERBA_13_DESC_ADTO, d["desc_adto"]))
                 if d["inss"]:
@@ -70065,8 +70522,7 @@ def calcular_13_final_stream():
                     try:
                         pdf_bytes = _pdf_memoria_13final(empresa_nm, anomes, d,
                                                          usuario, versao, id_cliente)
-                        nome_arq = (f"Folha10_Memoria13Final_Empresa_{int(id_empresa):06d}_"
-                                    f"Folha_{anomes}_Matricula_{mat:06d}.pdf")
+                        nome_arq = _nome_memoria_13final(id_empresa, anomes, mat)
                         if _salvar_memoria_pdf(dest, nome_arq, pdf_bytes):
                             memorias += 1
                     except Exception:

@@ -576,6 +576,7 @@ body.menu-numerado .nav-item::before {
 
 <script>
 const FOLHA_SITUACAO      = '{{ folha_situacao }}';
+const FOLHA_TIPO          = '{{ folha_ativa_tipo_cod }}';   // N · A · 1 · F · R
 const FOLHA_PERIODO       = '{{ folha_ativa }}';
 const QTD_EMPRESAS        = {{ qtd_empresas }};
 const FOLHA_SIT_LABEL     = '{{ folha_ativa_situacao }}';
@@ -819,7 +820,17 @@ const modulos = {
         titulo: 'Cálculo', icone: '🖩',
         secoes: [
             { nome: 'Folha Mensal', itens: [
-                { icone: '▶️', nome: 'Calcular Folha',           href: '/calcular_folha',    ok: true },
+                // A previa do 13o e do adiantamento e apurada no servidor ANTES
+                // da tela abrir (uma consulta de medias por funcionario), entao
+                // o clique fica alguns segundos sem resposta visivel. Com 50
+                // funcionarios da para achar que travou (SMV 17/09/2026).
+                //
+                // /calcular_folha e porta unica: encaminha conforme o tipo da
+                // folha ativa. Por isso a mensagem tambem segue o tipo — dizer
+                // "13o Salario Final" a quem esta calculando a folha do mes
+                // seria pior do que nao dizer nada.
+                { icone: '▶️', nome: 'Calcular Folha',           href: '/calcular_folha',    ok: true,
+                  navLoading: true, navLoadingMsg: msgEsperaCalculo() },
                 { icone: '👁️', nome: 'Visualizar Cálculo',       href: '/visualizar_calculo', ok: true },
                 { icone: '📄', nome: 'Memória de Cálculo',        href: '/memoria_calculo',     ok: true },
                 { icone: '🔁', nome: 'Cálculo Individual',         href: '/calcular_folha_individual', ok: true, bloqueioFolha: true },
@@ -1362,7 +1373,9 @@ function renderItens(itens) {
                 e.preventDefault();
                 const overlay = document.getElementById('loadingOverlay');
                 const msg     = document.getElementById('loadingMsg');
-                if (msg) msg.textContent = `Carregando ${item.nome}...`;
+                // navLoadingMsg: quando "Carregando <nome>..." nao diz o que
+                // esta acontecendo. "Carregando Calcular Folha..." e' um deles.
+                if (msg) msg.textContent = item.navLoadingMsg || `Carregando ${item.nome}...`;
                 overlay.classList.add('ativo');
                 window.location.href = item.href;
             });
@@ -1445,11 +1458,29 @@ function folhaNaoAberta() {
 // proximo passo: da folha Calculada e fechar; das outras, calcular antes.
 // /fechar_folha e so a tela de confirmacao (quem fecha e o POST /api/folha/fechar),
 // entao clicar aqui nao fecha nada sem o usuario mandar.
+// Espera visivel ao sair do menu para uma tela que demora a montar. Usada
+// pelo atalho do aviso e por quem mais precisar — o overlay ja existe no topo
+// desta pagina e morre sozinho quando a proxima tela carrega.
+// Texto da espera ao abrir o calculo, conforme a folha ativa.
+function msgEsperaCalculo() {
+    if (FOLHA_TIPO === '1') return 'Preparando uma prévia do 13º Salário Final...';
+    if (FOLHA_TIPO === 'A') return 'Preparando uma prévia do Adiantamento do 13º...';
+    return 'Preparando o cálculo da folha...';
+}
+
+function mostrarEspera(texto) {
+    const overlay = document.getElementById('loadingOverlay');
+    const msg     = document.getElementById('loadingMsg');
+    if (msg) msg.textContent = texto || 'Carregando...';
+    if (overlay) overlay.classList.add('ativo');
+}
+
 function acaoAvisoFolha() {
     if (FOLHA_SITUACAO === 'C')
         return `<a class="nav-aviso-acao" href="/fechar_folha">🔒 Fechar esta Folha Calculada <span class="seta">→</span></a>`;
     if (FOLHA_SITUACAO === 'F') return '';
-    return `<a class="nav-aviso-acao" href="/calcular_folha">▶️ Calcular a Folha <span class="seta">→</span></a>`;
+    return `<a class="nav-aviso-acao" href="/calcular_folha"
+               onclick="mostrarEspera(msgEsperaCalculo())">▶️ Calcular a Folha <span class="seta">→</span></a>`;
 }
 
 function mostrarAvisoFolha(motivo) {

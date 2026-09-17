@@ -71,6 +71,10 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 .alerta strong { font-weight: 700; }
 
 .alerta-atencao { background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; }
+.alerta-calculada {
+    background: #ecfdf5; border: 1px solid #6ee7b7; border-left: 5px solid #059669;
+    color: #065f46;
+}
 .meses-abertos { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 .mes-aberto {
     display: inline-flex; align-items: center; background: #fff;
@@ -110,6 +114,10 @@ tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: #fafbfc; }
 tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 .td-mat  { font-family: var(--mono); font-size: 11px; color: #64748b; width: 54px; }
+/* Matrícula com memória gravada vira link para o PDF. Só aparece depois do
+   cálculo — ver _mats_com_memoria_13final em app.py. */
+.link-memoria { color: #6b21a8; font-weight: 700; text-decoration: none; white-space: nowrap; }
+.link-memoria:hover { text-decoration: underline; }
 .td-nome { font-weight: 500; max-width: 200px; }
 .td-sal  { font-family: var(--mono); font-size: 12px; text-align: right; color: #374151;
            width: 90px; white-space: nowrap; }
@@ -145,7 +153,13 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 .rodape-valor.liq { color: #6b21a8; }
 
 /* ── BOTÃO ── */
-.barra-acao { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+/* Fica ACIMA da prévia (SMV 17/09/2026). Embaixo da tabela ele nascia fora da
+   tela: a prévia é longa, parecia cálculo já feito, e o botão que de fato
+   grava não aparecia sem rolar. */
+.barra-acao {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    margin-top: 4px; margin-bottom: 16px;
+}
 .btn-calcular {
     background: #7e22ce; color: #fff; border: none; border-radius: 9px;
     padding: 11px 28px; font-family: var(--sans); font-size: 14px; font-weight: 700;
@@ -153,6 +167,26 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 }
 .btn-calcular:hover    { background: #6b21a8; }
 .btn-calcular:disabled { background: #94a3b8; cursor: not-allowed; }
+/* Folha ja calculada: o botão deixa de dizer "Calcular" e passa a dizer o que
+   de fato vai acontecer — reabrir e refazer por cima. Cor diferente, para não
+   ser clicado no automático. */
+.btn-calcular.btn-recalcular { background: #b45309; }
+.btn-calcular.btn-recalcular:hover { background: #92400e; }
+
+/* ── FIM DO CÁLCULO ── */
+/* Linha dentro da mensagem de sucesso: a contagem para o Menu e o atalho de
+   quem não quer esperar. */
+.pos-calculo {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    margin-top: 12px; padding-top: 10px; border-top: 1px solid #86efac;
+    font-size: 12.5px; color: #166534;
+}
+.btn-menu-agora {
+    background: #166534; color: #fff; border: none; border-radius: 7px;
+    padding: 6px 14px; font-family: var(--sans); font-size: 12.5px; font-weight: 700;
+    cursor: pointer; transition: 0.15s;
+}
+.btn-menu-agora:hover { background: #14532d; }
 
 /* ── PROGRESSO ── */
 .prog-section { padding: 26px 4px 6px; }
@@ -238,6 +272,20 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 
 {% else %}
 
+{% set aviso_oque = 'o 13º Salário' %}{% include "_folha_calculada_aviso.html" %}
+
+{% if mes_nao_dezembro %}
+<div class="alerta alerta-erro">
+    <span class="alerta-icone">⚠️</span>
+    <div>
+        <strong>Esta folha do 13º está na competência {{ mes_fmt }}, e não em dezembro.</strong>
+        O eSocial (S-1200 anual) e os encargos do 13º serão lançados em {{ mes_fmt }}.
+        Se não era isso, exclua esta folha em <strong>Mês/Ano da Folha</strong> e abra o
+        13º Final em 12/{{ ano_base }} antes de calcular.
+    </div>
+</div>
+{% endif %}
+
 <div class="alerta alerta-aviso">
     <span class="alerta-icone">ℹ️</span>
     <div>
@@ -280,6 +328,28 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 </div>
 {% endif %}
 
+<!-- PROGRESSO (durante o cálculo) -->
+<div id="sec-prog" class="prog-section" style="display:none;">
+    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+    <div class="prog-pct" id="progPct">0%</div>
+    <div class="prog-func" id="progFunc">
+        <div class="prog-spinner"></div>
+        <span>Preparando cálculo...</span>
+    </div>
+</div>
+
+<!-- AÇÕES -->
+<div class="barra-acao">
+    {% if total_com > 0 %}
+    <button class="btn-calcular{% if folha_situacao == 'C' %} btn-recalcular{% endif %}"
+            id="btnCalc" onclick="calcular()">
+        {% if folha_situacao == 'C' %}🔓 Reabrir e Recalcular o 13º{% else %}🎁 Calcular 13º Salário{% endif %}
+    </button>
+    {% endif %}
+</div>
+
+<div id="msgResultado" style="margin-top:14px;display:none;"></div>
+
 <!-- CARD: PRÉVIA -->
 <div class="card">
     <div class="card-titulo">
@@ -308,7 +378,13 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
             <tbody>
                 {% for f in funcionarios %}
                 <tr>
-                    <td class="td-mat">{{ f.mat_fmt }}</td>
+                    <td class="td-mat">
+                        {%- if f.tem_pdf %}
+                        <a class="link-memoria" target="_blank" rel="noopener"
+                           href="/api/memoria_13final_pdf/{{ f.matricula }}"
+                           title="Abrir a memória de cálculo do 13º deste funcionário (PDF)">{{ f.mat_fmt }} 📄</a>
+                        {%- else %}{{ f.mat_fmt }}{% endif %}
+                    </td>
                     <td class="td-nome">
                         {{ f.nome }}
                         {% if f.motivos %}
@@ -334,7 +410,8 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
     </div>
 
     <div class="tabela-rodape">
-        <span class="rodape-info">{{ total_com }} de {{ total_funcs }} funcionário{{ 's' if total_funcs != 1 else '' }} com 13º a receber</span>
+        <span class="rodape-info">{{ total_com }} de {{ total_funcs }} funcionário{{ 's' if total_funcs != 1 else '' }} com 13º a receber{% if qtd_memorias %}
+            · 📄 na matrícula abre a memória de cálculo ({{ qtd_memorias }} gravada{{ 's' if qtd_memorias != 1 else '' }}){% endif %}</span>
         <div class="rodape-total">
             <div class="rodape-par">
                 <span class="rodape-label">Bruto:</span>
@@ -351,28 +428,6 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
         </div>
     </div>
 </div>
-
-<!-- PROGRESSO (durante o cálculo) -->
-<div id="sec-prog" class="prog-section" style="display:none;">
-    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
-    <div class="prog-pct" id="progPct">0%</div>
-    <div class="prog-func" id="progFunc">
-        <div class="prog-spinner"></div>
-        <span>Preparando cálculo...</span>
-    </div>
-</div>
-
-<!-- AÇÕES -->
-<div class="barra-acao">
-    {% if total_com > 0 %}
-    <button class="btn-calcular" id="btnCalc" onclick="calcular()">
-        🎁 Calcular 13º Salário
-    </button>
-    {% endif %}
-</div>
-
-<div id="msgResultado" style="margin-top:14px;display:none;"></div>
-
 {% endif %}
 </div>
 
@@ -382,6 +437,44 @@ const TOTAL_COM   = {{ total_com|default(0) }};
 const TOTAL_LIQ   = '{{ total_liq_fmt|default("R$ 0,00") }}';
 const TOTAL_BRUTO = '{{ total_bruto_fmt|default("R$ 0,00") }}';
 let folhaSituacao = '{{ folha_situacao }}';   // A/X=Aberta, C=Calculada, F=Fechada, P=Calculando
+
+// ── Botão e aviso acompanham a situação da folha ──────────────────
+// O rótulo do botão e o aviso do topo nascem do servidor; quando a folha é
+// reaberta aqui dentro, sem recarregar a página, os dois precisam acompanhar —
+// senão o aviso segue dizendo "já calculada" numa folha que voltou a ser aberta.
+function sincronizarBotaoCalc() {
+    const btn = document.getElementById('btnCalc');
+    if (btn) {
+        const calculada = (folhaSituacao === 'C');
+        btn.classList.toggle('btn-recalcular', calculada);
+        btn.textContent = calculada ? '🔓 Reabrir e Recalcular o 13º' : '🎁 Calcular 13º Salário';
+    }
+    const aviso = document.getElementById('avisoCalculada');
+    if (aviso) aviso.style.display = (folhaSituacao === 'C') ? '' : 'none';
+}
+
+// ── Fim do cálculo → Menu ───────────────────────────────
+// Sete segundos, e não dois: a mensagem traz a pasta das memórias de cálculo e
+// quantas remessas do eSocial entraram na fila — dá para ler antes de sair. Quem
+// não quiser esperar clica em "Ir ao Menu agora".
+let _timerMenu = null;
+
+function irAoMenu() {
+    if (_timerMenu) { clearInterval(_timerMenu); _timerMenu = null; }
+    window.location.href = '/menu';
+}
+
+function contarParaMenu(seg) {
+    const marcador = document.getElementById('contagemMenu');
+    _timerMenu = setInterval(function () {
+        seg -= 1;
+        if (seg <= 0) { irAoMenu(); return; }
+        if (marcador) {
+            marcador.textContent = 'Voltando ao Menu em ' + seg +
+                                   (seg === 1 ? ' segundo...' : ' segundos...');
+        }
+    }, 1000);
+}
 
 async function calcular() {
     const el = document.getElementById('msgResultado');
@@ -421,6 +514,7 @@ async function calcular() {
                 return;
             }
             folhaSituacao = 'A';
+            sincronizarBotaoCalc();
             const bs = document.getElementById('badgeSit');
             if (bs) { bs.textContent = 'Aberta'; bs.className = 'badge-sit badge-sit-a'; }
         } catch (e) {
@@ -515,14 +609,22 @@ async function calcular() {
             el.innerHTML = `<div class="alerta alerta-ok">
                 <span class="alerta-icone">✅</span>
                 <div><strong>${r.gravados} 13º salário${r.gravados !== 1 ? 's' : ''} gravado${r.gravados !== 1 ? 's' : ''}</strong>
-                com sucesso.${memoriaHtml}${esocialHtml}</div>
+                com sucesso.${memoriaHtml}${esocialHtml}
+                <div class="pos-calculo">
+                    <span id="contagemMenu">Voltando ao Menu em 7 segundos...</span>
+                    <button class="btn-menu-agora" onclick="irAoMenu()">Ir ao Menu agora</button>
+                </div></div>
             </div>`;
-            setTimeout(function () { window.location.reload(); }, 2500);
+            // Antes esta tela dava reload: a mensagem sumia e voltava a prévia com
+            // o botão Calcular ativo, como se nada tivesse sido gravado (SMV
+            // 17/09/2026). Agora a mensagem fica, e o caminho é o Menu.
+            contarParaMenu(7);
         } else if (d.tipo === 'bloqueio') {
             finalizado = true;
             src.close();
             const fechada = (d.sit === 'F');
             folhaSituacao = d.sit;
+            sincronizarBotaoCalc();
             if (badgeSit) {
                 badgeSit.textContent = fechada ? 'Fechada' : 'Calculada';
                 badgeSit.className   = 'badge-sit badge-sit-' + (fechada ? 'f' : 'c');

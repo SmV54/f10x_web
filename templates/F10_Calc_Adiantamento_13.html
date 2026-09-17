@@ -67,6 +67,10 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .alerta-aviso  { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; }
 .alerta-erro   { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
+.alerta-calculada {
+    background: #ecfdf5; border: 1px solid #6ee7b7; border-left: 5px solid #059669;
+    color: #065f46;
+}
 .alerta-ok     { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
 .alerta-icone  { font-size: 18px; flex-shrink: 0; line-height: 1.3; }
 .alerta strong { font-weight: 700; }
@@ -119,7 +123,12 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 .rodape-valor { font-family: var(--mono); font-size: 14px; font-weight: 700; color: #1e293b; }
 
 /* ── BOTÃO ── */
-.barra-acao { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 4px; }
+/* Fica ACIMA da prévia, como na tela do 13º Final: embaixo da tabela o botão
+   nascia fora da tela e a prévia parecia cálculo já feito. */
+.barra-acao {
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+    margin-top: 4px; margin-bottom: 16px;
+}
 .btn-calcular {
     background: #f59e0b; color: #fff; border: none; border-radius: 9px;
     padding: 11px 28px; font-family: var(--sans); font-size: 14px; font-weight: 700;
@@ -127,6 +136,10 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 }
 .btn-calcular:hover    { background: #d97706; }
 .btn-calcular:disabled { background: #94a3b8; cursor: not-allowed; }
+/* Folha ja calculada: o botão diz o que de fato vai acontecer — reabrir e
+   refazer por cima — e muda de cor, para não ser clicado no automático. */
+.btn-calcular.btn-recalcular { background: #b45309; }
+.btn-calcular.btn-recalcular:hover { background: #92400e; }
 
 /* ── PROGRESSO ── */
 .prog-section { padding: 26px 4px 6px; }
@@ -213,11 +226,35 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 
 {% else %}
 
+{% set aviso_oque = 'o adiantamento do 13º' %}{% include "_folha_calculada_aviso.html" %}
+
 <div class="alerta alerta-aviso">
     <span class="alerta-icone">ℹ️</span>
     <div><strong>{{ perc_adianta13 }}% do salário</strong> (verba {{ verba_usar }}) + <strong>{{ perc_adianta13 }}% da periculosidade</strong> (verba 31, para quem tem periculosidade ativa).
     Sem INSS e sem IRRF; com FGTS (8% sobre a base incidente). Recalcular substitui os valores anteriores desta folha.</div>
 </div>
+
+<!-- PROGRESSO (durante o cálculo) -->
+<div id="sec-prog" class="prog-section" style="display:none;">
+    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+    <div class="prog-pct" id="progPct">0%</div>
+    <div class="prog-func" id="progFunc">
+        <div class="prog-spinner"></div>
+        <span>Preparando cálculo...</span>
+    </div>
+</div>
+
+<!-- AÇÕES -->
+<div class="barra-acao">
+    {% if total_com > 0 %}
+    <button class="btn-calcular{% if folha_situacao == 'C' %} btn-recalcular{% endif %}"
+            id="btnCalc" onclick="calcular()">
+        {% if folha_situacao == 'C' %}🔓 Reabrir e Recalcular o Adiantamento{% else %}🎁 Calcular Adiantamento 13º{% endif %}
+    </button>
+    {% endif %}
+</div>
+
+<div id="msgResultado" style="margin-top:14px;display:none;"></div>
 
 <!-- CARD: PRÉVIA -->
 <div class="card">
@@ -265,34 +302,27 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
         </div>
     </div>
 </div>
-
-<!-- PROGRESSO (durante o cálculo) -->
-<div id="sec-prog" class="prog-section" style="display:none;">
-    <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
-    <div class="prog-pct" id="progPct">0%</div>
-    <div class="prog-func" id="progFunc">
-        <div class="prog-spinner"></div>
-        <span>Preparando cálculo...</span>
-    </div>
-</div>
-
-<!-- AÇÕES -->
-<div class="barra-acao">
-    {% if total_com > 0 %}
-    <button class="btn-calcular" id="btnCalc" onclick="calcular()">
-        🎁 Calcular Adiantamento 13º
-    </button>
-    {% endif %}
-</div>
-
-<div id="msgResultado" style="margin-top:14px;display:none;"></div>
-
 {% endif %}
 </div>
 
 <script>
 const PERC_ADIANT13 = {{ perc_adianta13 }};
 let folhaSituacao = '{{ folha_situacao }}';   // A/X=Aberta, C=Calculada, F=Fechada, P=Calculando
+
+// ── Botão e aviso acompanham a situação da folha ──────────────────
+// O rótulo do botão e o aviso do topo nascem do servidor; quando a folha é
+// reaberta aqui dentro, sem recarregar a página, os dois precisam acompanhar —
+// senão o aviso segue dizendo "já calculada" numa folha que voltou a ser aberta.
+function sincronizarBotaoCalc() {
+    const btn = document.getElementById('btnCalc');
+    if (btn) {
+        const calculada = (folhaSituacao === 'C');
+        btn.classList.toggle('btn-recalcular', calculada);
+        btn.textContent = calculada ? '🔓 Reabrir e Recalcular o Adiantamento' : '🎁 Calcular Adiantamento 13º';
+    }
+    const aviso = document.getElementById('avisoCalculada');
+    if (aviso) aviso.style.display = (folhaSituacao === 'C') ? '' : 'none';
+}
 
 async function calcular() {
     // Folha Fechada: não recalcula sem reabrir primeiro.
@@ -332,6 +362,7 @@ async function calcular() {
                 return;
             }
             folhaSituacao = 'A';
+            sincronizarBotaoCalc();
             const bs = document.getElementById('badgeSit');
             if (bs) { bs.textContent = 'Aberta'; bs.className = 'badge-sit badge-sit-a'; }
         } catch (e) {
@@ -426,6 +457,7 @@ async function calcular() {
             src.close();
             const fechada = (d.sit === 'F');
             folhaSituacao = d.sit;
+            sincronizarBotaoCalc();
             if (badgeSit) {
                 badgeSit.textContent = fechada ? 'Fechada' : 'Calculada';
                 badgeSit.className   = 'badge-sit badge-sit-' + (fechada ? 'f' : 'c');

@@ -40,9 +40,19 @@ body { font-family: var(--sans); background: var(--bg); color: #374151; min-heig
 }
 .badge-periodo {
   display: inline-flex; align-items: center; gap: 8px;
-  padding: 6px 16px; border-radius: 8px; font-family: var(--mono);
+  padding: 6px 16px 6px 8px; border-radius: 8px; font-family: var(--mono);
   font-size: 15px; font-weight: 700; letter-spacing: 0.06em;
   background: #1e3a5f; border: 2px solid var(--accent); color: #e8edf4;
+}
+/* Folha que NÃO é a Normal: o tipo vem NA FRENTE, em etiqueta própria. No fim
+   da linha, depois da competência e no mesmo corpo, ele passava batido — a
+   folha do 13º tinha a mesma cara da folha comum (SMV 17/09/2026).
+   Na folha Normal nada disso aparece: o "· Folha Normal" do fim continua. */
+.badge-periodo .badge-tipo {
+  background: #fcd34d; color: #422006;
+  border-radius: 6px; padding: 3px 11px;
+  font-family: var(--sans); font-size: 14px; font-weight: 800;
+  letter-spacing: 0.04em; text-transform: uppercase; white-space: nowrap;
 }
 .btn-voltar-topo {
   margin-left: 16px; background: transparent; border: 1px solid var(--navy-ln);
@@ -245,7 +255,7 @@ tr.tr-liq td { border-top: 2px solid #374151; }
           Alfabética
         </label>
       </div>
-      <span class="badge-periodo">&#128197; {{ anomes_fmt }} &nbsp;·&nbsp; {{ tipo_lbl }}</span>
+      <span class="badge-periodo">{% if folha_tipo and folha_tipo != 'N' %}<strong class="badge-tipo">{{ tipo_lbl }}</strong>{% endif %}&#128197; {{ anomes_fmt }}{% if not folha_tipo or folha_tipo == 'N' %} &nbsp;·&nbsp; {{ tipo_lbl }}{% endif %}</span>
       <a class="btn-pdf" id="btnPdf" href="/relatorio_folha_pdf?ordem={{ ordem }}" target="_blank">&#128438; Imprimir em PDF</a>
     </div>
   </div>

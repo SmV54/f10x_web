@@ -481,15 +481,15 @@
             <label class="form-label">Tipo de Folha</label>
             <div class="grupo-radios" id="grupoTipo">
               <label class="radio-item">
-                <input type="radio" name="tipo" value="N" checked onchange="preencherDatasDoMes()">
+                <input type="radio" name="tipo" value="N" checked onchange="tipoMudou()">
                 <span>Normal</span>
               </label>
               <label class="radio-item">
-                <input type="radio" name="tipo" value="1" onchange="preencherDatasDoMes()">
+                <input type="radio" name="tipo" value="1" onchange="tipoMudou()">
                 <span>13º Salário</span>
               </label>
               <label class="radio-item">
-                <input type="radio" name="tipo" value="A" onchange="preencherDatasDoMes()">
+                <input type="radio" name="tipo" value="A" onchange="tipoMudou()">
                 <span>Adiantamento do 13º</span>
               </label>
             </div>
@@ -605,6 +605,35 @@
   function dateParaStr(d) {
     return d ? d.replace(/-/g, '') : '';
   }
+  // ── Tipo de folha mudou ───────────────────────────────────
+  // O 13o Salario Final e de DEZEMBRO. O mes da folha nao e so' etiqueta: e a
+  // competencia em que o eSocial (S-1200 anual) e os encargos vao ser
+  // lancados. A tela sugere o proximo mes a partir da ultima folha Normal —
+  // em novembro isso abria o 13o Final na competencia 11 sem ninguem notar.
+  // Agora o sistema propoe 12 e pergunta: quem precisa de outro mes escolhe,
+  // mas escolhe sabendo.
+  async function tipoMudou() {
+    const tipo = document.querySelector('input[name="tipo"]:checked')?.value || 'N';
+    const sel  = document.getElementById('selMes');
+    const ano  = document.getElementById('inpAno').value.trim();
+
+    if (tipo === '1' && sel.value !== '12' && ano.length === 4) {
+      const atual = sel.value ? sel.value + '/' + ano : 'o mês em branco';
+      const ok = await f10Confirm(
+        'A Folha do 13º Salário Final é a competência de DEZEMBRO.\n\n' +
+        'O mês escolhido aqui define onde o eSocial e os encargos do 13º serão ' +
+        'lançados. Mantendo ' + atual + ', o 13º cai nessa competência — não em 12/' + ano + '.\n\n' +
+        'Abrir o 13º Final em 12/' + ano + '?',
+        { titulo: '13º Salário Final',
+          tipo: 'aviso',
+          okText: 'Abrir em 12/' + ano,
+          cancelText: 'Manter ' + (sel.value || '—') + '/' + ano }
+      );
+      if (ok) sel.value = '12';
+    }
+    preencherDatasDoMes();
+  }
+
   // Preenche datas de falta conforme o tipo de folha:
   //  - Normal (N): primeiro e último dia do mês selecionado
   //  - 13º Salário (1): ano inteiro (01/01 a 31/12)
@@ -866,17 +895,26 @@
         oque += `  • ... e mais ${evs.length - LIMITE} evento(s)\n`;
       }
       oque += `\n`;
-    } else {
+    } else if (!res.eventos_mantidos) {
       oque += `Não há férias, afastamentos ou faltas lançados nesta competência.\n\n`;
     }
 
     // Competência com mais de uma folha: os eventos não guardam a qual delas
-    // pertencem, então apagar uma leva os eventos da outra junto.
-    if (evs.length && (res.outras_folhas || []).length) {
-      oque += `ATENÇÃO: a competência ${mmaaaa} também tem a folha ` +
-              `${res.outras_folhas.join(' e ')}. Os eventos acima não guardam a ` +
-              `qual das folhas pertencem — apagar esta leva os eventos da outra ` +
-              `junto.\n\n`;
+    // pertencem, então eles FICAM com a folha que continua.
+    if ((res.outras_folhas || []).length) {
+      oque += `A competência ${mmaaaa} também tem a folha ` +
+              `${res.outras_folhas.join(' e ')}, que NÃO será afetada.\n`;
+      if (res.eventos_mantidos) {
+        oque += `Os ${res.eventos_mantidos} evento(s) lançados no mês ficam com ` +
+                `ela — só saem junto quando a folha apagada é a única do mês.\n`;
+      }
+      oque += `\n`;
+    }
+
+    // Era a folha ativa (e está vazia): outra assume a vez.
+    if (prev.era_ativa && prev.proxima_ativa) {
+      oque += `Esta é a folha ATIVA. Como não tem nada lançado, ela pode sair — ` +
+              `a folha ativa passa a ser ${prev.proxima_ativa}.\n\n`;
     }
 
     const digitado = await f10Prompt(
@@ -903,10 +941,12 @@
         return;
       }
       const a = res2.apagados || {};
+      const nova = res2.nova_ativa
+        ? `\nA folha ativa agora é ${res2.nova_ativa.nome}.` : '';
       alerta('Folha Excluída',
         `A folha ${res2.nome_folha} foi excluída.\n` +
         `Movimento: ${a.mov || 0}  ·  Totais: ${a.total || 0}  ·  ` +
-        `eSocial: ${a.esocial || 0}  ·  Eventos: ${a.eventos || 0}`,
+        `eSocial: ${a.esocial || 0}  ·  Eventos: ${a.eventos || 0}` + nova,
         window.location.pathname);
     } catch (e) {
       alerta('Erro de Comunicação', 'Não foi possível contactar o servidor.');
@@ -1009,6 +1049,22 @@
 
       if (ano.length !== 4 || isNaN(parseInt(ano))) { alerta('Campo inválido', 'Informe um ano válido com 4 dígitos.'); return; }
       if (!mes) { alerta('Campo inválido', 'Selecione o mês antes de gravar.'); return; }
+
+      // Ultima confirmacao do 13o Final fora de dezembro. So' aparece para
+      // quem recusou a troca em tipoMudou() — e o ponto sem volta: depois de
+      // gravada, a folha ja nasce ativa e o eSocial usa essa competencia.
+      if (tipo === '1' && mes !== '12') {
+        const segue = await f10Confirm(
+          'Você está abrindo o 13º Salário FINAL em ' + mes + '/' + ano + '.\n\n' +
+          'O eSocial (S-1200 anual) e os encargos do 13º serão lançados em ' +
+          mes + '/' + ano + ', e não em 12/' + ano + '. Confirma?',
+          { titulo: '13º Final fora de dezembro',
+            tipo: 'erro',
+            okText: 'Sim, abrir em ' + mes + '/' + ano,
+            cancelText: 'Voltar' }
+        );
+        if (!segue) return;
+      }
 
       // Verifica o piso: a folha não volta atrás, salvo liberação do Admin
       if (MINIMO_ANOMES && (ano + mes) < MINIMO_ANOMES

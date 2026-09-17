@@ -7,15 +7,32 @@
   static/f10_folha_ativa.css; variáveis em inject_folha_ativa (app.py).
 
   A classe topo-folha-ativa continua no span porque o Menu mexe nela
-  pelo JS (atualizarBadge) e o tour aponta para ela.
+  pelo JS (atualizarBadge) e o tour aponta para ela. Por isso também
+  nenhuma classe nova entra no span de fora: o atualizarBadge refaz o
+  className a cada 60s e só preserva f10fa e f10fa-atipica — o que
+  distingue a folha do 13º mora nos spans de DENTRO.
+
+  DUAS FORMAS, conforme o tipo da folha:
+
+    Normal        COMPETÊNCIA          Não-Normal   COMPETÊNCIA 11/2026
+                  09/2026                           13º Salário
+
+  Na folha Normal o mês é a informação; nas outras (13º, adiantamento,
+  férias, rescisão) o que importa primeiro é QUE folha é essa — o mês
+  desce para a linha do rótulo, menor. Ver folha_ativa_tipo_forte em
+  app.py (SMV 17/09/2026).
 #}
 {%- if folha_ativa -%}
 <span class="topo-folha-ativa f10fa {{ folha_ativa_sit_class }}{% if folha_ativa_atipica %} f10fa-atipica{% endif %}"
-      title="{% if folha_ativa_atipica %}{{ folha_ativa_alerta }} — o mês atual é {{ folha_ativa_hoje }}{% else %}Competência da folha em que você está trabalhando{% endif %}">
+      title="{% if folha_ativa_atipica %}{{ folha_ativa_alerta }} — o mês atual é {{ folha_ativa_hoje }}{% else %}Competência da folha em que você está trabalhando{% endif %}{% if folha_ativa_tipo_forte %} · folha de {{ folha_ativa_tipo_forte }}{% endif %}">
   <span class="f10fa-faixa"></span>
   <span class="f10fa-corpo">
-    <span class="f10fa-rot">{% if folha_ativa_atipica %}&#9888; {{ folha_ativa_alerta }}{% else %}Competência{% endif %}</span>
-    <span class="f10fa-mes">{{ folha_ativa }}{% if folha_ativa_tipo %}<em class="f10fa-tipo">{{ folha_ativa_tipo }}</em>{% endif %}</span>
+    <span class="f10fa-rot">{% if folha_ativa_atipica %}&#9888; {{ folha_ativa_alerta }}{% else %}Competência{% endif %}{% if folha_ativa_tipo_forte %} <em class="f10fa-rot-mes">{{ folha_ativa }}</em>{% endif %}</span>
+    {%- if folha_ativa_tipo_forte %}
+    <span class="f10fa-mes f10fa-mes-tipo">{{ folha_ativa_tipo_forte }}</span>
+    {%- else %}
+    <span class="f10fa-mes">{{ folha_ativa }}</span>
+    {%- endif %}
   </span>
   {%- if folha_ativa_situacao %}<span class="f10fa-sit">{{ folha_ativa_situacao }}</span>{% endif -%}
 </span>

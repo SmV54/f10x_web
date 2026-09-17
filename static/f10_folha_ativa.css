@@ -67,8 +67,46 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* 13º Mês / Adiant. 13: ao lado do mês, em corpo menor — o
-   mês continua sendo o que salta aos olhos. */
+/* ── FOLHA QUE NÃO É A NORMAL ─────────────────────────────── */
+/* 13º, adiantamento do 13º, férias e rescisão trocam a ordem de
+   importância: o TIPO vai para a linha grande e o mês sobe para
+   o rótulo, pequeno. Antes era o contrário — o mês grande e um
+   "· 13º Salário" de 11px ao lado —, e foi assim que uma folha
+   do 13º Final aberta em novembro passou despercebida
+   (SMV 17/09/2026).
+
+   As duas regras abaixo pegam spans de DENTRO da etiqueta de
+   propósito: o atualizarBadge do Menu reescreve o className do
+   span de fora a cada 60s e só preserva f10fa e f10fa-atipica.
+
+   Herda .f10fa-mes: assim a cor da competência atípica (âmbar)
+   continua valendo sem precisar repetir a regra. */
+.f10fa .f10fa-mes.f10fa-mes-tipo {
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
+/* O mês na linha do rótulo: menor que o tipo, mas mais escuro e
+   em tabular que o resto do rótulo — continua legível de relance,
+   que é o que se confere antes de lançar. */
+.f10fa .f10fa-rot-mes {
+    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-style: normal;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    margin-left: 2px;
+}
+.f10fa.f10fa-atipica .f10fa-rot-mes { color: #431407; }
+
+/* Herdada das telas antigas: nenhum template gera mais este span
+   (o tipo virou a linha grande), mas a regra fica porque alguma
+   tela com CSS próprio ainda pode escrevê-lo à mão. */
 .f10fa .f10fa-tipo {
     font-family: 'IBM Plex Sans', system-ui, sans-serif;
     font-style: normal;
@@ -169,5 +207,8 @@
 
 @media (max-width: 620px) {
     .f10fa .f10fa-mes { font-size: 16px; }
+    /* "Adiantamento do 13º" é o nome mais longo: em tela estreita ele
+       encolhe junto, para a etiqueta não empurrar o título do topo. */
+    .f10fa .f10fa-mes.f10fa-mes-tipo { font-size: 13px; }
     .f10fa-tarja { font-size: 11px; padding: 4px 12px; }
 }

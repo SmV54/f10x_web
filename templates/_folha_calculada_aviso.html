@@ -1,0 +1,37 @@
+{#
+  Aviso de folha JÁ CALCULADA (ou FECHADA) no alto das telas de cálculo.
+
+  Por que existe: a folha NORMAL avisa sozinha — a tela dela dispara o cálculo
+  ao abrir, e o servidor responde "já calculada, quer reabrir?". As telas do 13º
+  e do adiantamento não fazem isso: elas mostram uma prévia e esperam o clique,
+  então só avisavam DEPOIS de clicar. Quem entrava via a prévia cheia e o botão
+  "Calcular" ativo, com toda a cara de cálculo pendente, quando na verdade já
+  estava tudo gravado (SMV 17/09/2026).
+
+  Espera no contexto:
+    folha_situacao  'A'/'X' aberta · 'C' calculada · 'F' fechada · 'P' calculando
+    aviso_oque      o que se calcula nesta tela, para caber na frase
+                    ("o 13º Salário", "o adiantamento do 13º")
+#}
+{%- set _oq = aviso_oque | default('esta folha') -%}
+{%- if folha_situacao == 'C' %}
+<div class="alerta alerta-calculada" id="avisoCalculada">
+    <span class="alerta-icone">&#9989;</span>
+    <div>
+        <strong>Esta folha já foi calculada.</strong>
+        Os valores da prévia abaixo <strong>já estão gravados na folha</strong> — ela
+        repete o que foi calculado, não é cálculo pendente.
+        Para calcular {{ _oq }} de novo é preciso <strong>reabrir a folha</strong>:
+        o botão pergunta antes e substitui os valores atuais.
+    </div>
+</div>
+{%- elif folha_situacao == 'F' %}
+<div class="alerta alerta-erro">
+    <span class="alerta-icone">&#128274;</span>
+    <div>
+        <strong>Folha Fechada.</strong> Reabra a folha em
+        <strong>Nova Folha &rarr; Reabrir esta Folha Fechada</strong> antes de
+        calcular {{ _oq }}.
+    </div>
+</div>
+{%- endif -%}
