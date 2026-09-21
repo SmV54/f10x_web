@@ -223,29 +223,37 @@ ADMITIDO NO MES DA FOLHA
   da folha.
   Exemplo: salario 3.000, 40%, admitido 05/07 -> 1.200 x 27/31 = 1.045,16
 
-QUEM FICA DE FORA
-  De ferias na 1a quinzena (dias 01 a 15): nao ha quinzena trabalhada a
-  antecipar. O afastado segue o parametro abaixo.
+QUEM PAROU NO MES  (parametros "Adiantamento com Afastamento" e
+                    "Adiantamento com Ferias", em Preferencias)
+  Dois parametros separados, com as MESMAS cinco regras:
 
-AFASTAMENTO NO MES  (parametro "Adiantamento com Afastamento", Preferencias)
   0 ... NAO DEFINIDO. E o default: o Calcular Adiantamento NAO roda, abre
-        avisando que falta escolher a regra. Vale para a tela e para o POST.
-  1 ... qualquer afastamento no mes ZERA o adiantamento
+        avisando QUAL dos dois falta. Vale para a tela e para o POST.
+  1 ... qualquer dia parado no mes ZERA o adiantamento
   2 ... paga PROPORCIONAL aos dias trabalhados
-  3 ... proporcional, mas NAO paga quem esta afastado no dia do calculo
-  4 ... paga NORMAL, mesmo afastado
+  3 ... proporcional, mas NAO paga quem esta parado no dia do calculo
+  4 ... paga NORMAL, mesmo parado
+
+  Sao separados porque a resposta costuma ser diferente: ferias sao
+  programadas e ja foram pagas adiantado, afastamento e imprevisto e quem
+  esta pelo INSS pode nem ter salario no mes para cobrir o desconto.
 
   Dia do calculo (modo 3) = hoje, quando a folha aberta e a do mes corrente;
   fora da competencia vale o dia 15, o fim da quinzena antecipada.
 
   A proporcao divide pelos dias reais do mes, o mesmo divisor da regra do
-  admitido. Admissao e afastamento entram numa conta SO (dias trabalhados =
-  dias do contrato no mes - dias parados), senao o mesmo dia sairia duas vezes
-  de quem foi admitido dia 05 e se afastou dia 07.
-  Dias de afastamentos sobrepostos contam uma vez so.
+  admitido. Admissao, afastamento e ferias entram numa conta SO (dias
+  trabalhados = dias do contrato no mes - dias parados), e os dias parados
+  sao uma UNIAO: o mesmo dia nao sai duas vezes de quem foi admitido dia 05,
+  se afastou dia 07 e emendou ferias que pegam o 07. Dez dias de ferias com
+  cinco de afastamento dao 15/30, nao 20/30 x 25/30.
+  Dias sobrepostos do mesmo motivo tambem contam uma vez so.
   Parado o mes inteiro -> zero, em qualquer modo que nao seja o 4.
-  O parametro e por CLIENTE (tab_tabela_cli 1001, codigo adto_afast), como o
-  adto_insalub.
+  Nas ferias so' o periodo de GOZO conta; o aquisitivo nao tira do trabalho.
+  Quando os dois bloqueiam, a mensagem e a do AFASTAMENTO: quem esta pelo
+  INSS e o motivo mais forte para nao antecipar.
+  Os parametros sao por CLIENTE (tab_tabela_cli 1001, codigos adto_afast e
+  adto_ferias), como o adto_insalub.
 
 AS VERBAS
   161 a 164 ... ate 4 parcelas na mesma folha. Aparecem em bloco proprio nos

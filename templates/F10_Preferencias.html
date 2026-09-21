@@ -247,7 +247,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     <div class="pref-card largo" id="cardAdtoAfast">
         <div class="pref-card-info">
             <span class="pref-card-titulo">Adiantamento com Afastamento</span>
-            <span class="pref-card-help">?<span class="tip">Diz o que fazer com quem teve afastamento no mês na hora de calcular o adiantamento quinzenal. Não definido: o cálculo não roda e avisa. A proporção dos dias usa os dias reais do mês (30/31/28), a mesma régua da folha — quem ficou parado o mês todo fica com zero. Férias na 1ª quinzena continuam com regra própria: não recebem adiantamento.</span></span>
+            <span class="pref-card-help">?<span class="tip">Diz o que fazer com quem teve afastamento no mês na hora de calcular o adiantamento quinzenal. Não definido: o cálculo não roda e avisa. A proporção dos dias usa os dias reais do mês (30/31/28), a mesma régua da folha — quem ficou parado o mês todo fica com zero. Férias têm parâmetro próprio, logo abaixo — quando os dois mandam proporcionalizar, os dias contam uma vez só.</span></span>
         </div>
         <div class="pref-atual" id="adtoAfastAtual" title="Clique para ver as outras opções">
             <span class="pref-atual-txt">—</span>
@@ -270,6 +270,34 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
              style="{% if prefs.adto_afast != '0' %}display:none;{% endif %}">
             ⚠️ Em <strong>0 · Não definido</strong> o Calcular Adiantamento não roda:
             ele abre avisando que falta escolher a regra do afastado.
+        </div>
+    </div>
+
+    <!-- Preferência 5: o que fazer com quem teve férias, no adiantamento -->
+    <div class="pref-card largo" id="cardAdtoFerias">
+        <div class="pref-card-info">
+            <span class="pref-card-titulo">Adiantamento com Férias</span>
+            <span class="pref-card-help">?<span class="tip">Mesmas cinco regras do parâmetro acima, agora para quem teve férias no mês. São separados de propósito: férias são programadas e já foram pagas adiantado, afastamento é imprevisto. Só o período de GOZO conta, não o aquisitivo. Quando os dois mandam proporcionalizar, um dia que é férias e afastamento ao mesmo tempo é descontado uma vez só.</span></span>
+        </div>
+        <div class="pref-atual" id="adtoFeriasAtual" title="Clique para ver as outras opções">
+            <span class="pref-atual-txt">—</span>
+            <span class="pref-atual-seta">▼</span>
+        </div>
+        <span class="feedback" id="fbAdtoFerias"></span>
+        <div class="opcoes-row fechado" id="adtoFeriasOpcoes">
+            {% for val, txt in adto_ferias_opcoes.items() %}
+            <label class="opc-card {% if prefs.adto_ferias == val|string %}sel{% endif %}"
+                   data-val="{{ val }}">
+                <input type="radio" name="adto_ferias" value="{{ val }}"
+                       {% if prefs.adto_ferias == val|string %}checked{% endif %}>
+                <span><b class="opc-num">{{ val }}</b> · {{ txt }}</span>
+            </label>
+            {% endfor %}
+        </div>
+        <div class="pref-aviso" id="adtoFeriasAviso"
+             style="{% if prefs.adto_ferias != '0' %}display:none;{% endif %}">
+            ⚠️ Em <strong>0 · Não definido</strong> o Calcular Adiantamento não roda:
+            ele abre avisando que falta escolher a regra das férias.
         </div>
     </div>
 
@@ -329,42 +357,45 @@ bindOpcoes('#ordemOpcoes',    'ordem_rel',     'fbOrdem');
 bindOpcoes('#numeradoOpcoes', 'menu_num', 'fbNum');
 bindOpcoes('#adtoInsalubOpcoes', 'adto_insalub', 'fbAdtoInsalub');
 bindOpcoes('#adtoAfastOpcoes',   'adto_afast',   'fbAdtoAfast');
+bindOpcoes('#adtoFeriasOpcoes',  'adto_ferias',  'fbAdtoFerias');
 
-// ── Adiantamento com Afastamento: mostra só a opção atual ────────────
-// São cinco opções, e abertas o tempo todo elas roubam a tela dos outros
-// parâmetros. O card exibe a escolhida e abre a lista no clique.
-const cardAfast  = document.getElementById('cardAdtoAfast');
-const listaAfast = document.getElementById('adtoAfastOpcoes');
-const atualAfast = document.querySelector('#adtoAfastAtual .pref-atual-txt');
-const avisoAfast = document.getElementById('adtoAfastAviso');
+// ── Parâmetros de 5 opções: mostra só a atual, abre no clique ────────
+// Abertas o tempo todo as cinco roubam a tela dos outros parâmetros. O card
+// exibe a escolhida e abre a lista no clique. Serve aos dois (afastamento e
+// férias) — a mecânica é a mesma, só mudam os ids.
+function cardRecolhivel(idCard, idAtual, idLista, idAviso) {
+    const card  = document.getElementById(idCard);
+    const lista = document.getElementById(idLista);
+    const botao = document.getElementById(idAtual);
+    const txt   = botao.querySelector('.pref-atual-txt');
+    const aviso = document.getElementById(idAviso);
 
-function mostrarAtualAfast() {
-    const sel = listaAfast.querySelector('.opc-card.sel');
-    // innerHTML, e nao textContent: assim o numero da opcao chega ao resumo
-    // com a mesma formatacao da lista. E markup nosso, nao texto digitado.
-    atualAfast.innerHTML = sel ? sel.querySelector('span').innerHTML : '—';
-    // Numa linha so, entao o texto cortado tem que estar no title — senao a
-    // opcao 3, a mais comprida, vira "Pagar proporcional aos dias tra...".
-    document.getElementById('adtoAfastAtual').title =
-        (sel ? sel.querySelector('span').textContent.trim() + ' — ' : '')
-        + 'clique para ver as outras opções';
-    avisoAfast.style.display = (sel && sel.dataset.val === '0') ? '' : 'none';
+    function mostrarAtual() {
+        const sel = lista.querySelector('.opc-card.sel');
+        // innerHTML, e nao textContent: assim o numero da opcao chega ao
+        // resumo com a mesma formatacao da lista. E markup nosso.
+        txt.innerHTML = sel ? sel.querySelector('span').innerHTML : '—';
+        // Numa linha so, entao o texto cortado tem que estar no title — senao
+        // a opcao 3, a mais comprida, vira "Pagar proporcional aos dias tra...".
+        botao.title = (sel ? sel.querySelector('span').textContent.trim() + ' — ' : '')
+                    + 'clique para ver as outras opções';
+        aviso.style.display = (sel && sel.dataset.val === '0') ? '' : 'none';
+    }
+    function abrir(sim) {
+        lista.classList.toggle('fechado', !sim);
+        card.classList.toggle('aberto', sim);
+    }
+
+    mostrarAtual();
+    botao.addEventListener('click', () => abrir(lista.classList.contains('fechado')));
+    // Escolheu: o resumo passa a ser a nova opção e a lista se fecha. O bind
+    // de gravação já rodou no listener de cima (bindOpcoes marcou o .sel).
+    lista.querySelectorAll('.opc-card').forEach(c =>
+        c.addEventListener('click', () => { mostrarAtual(); abrir(false); }));
 }
 
-function abrirAfast(abrir) {
-    listaAfast.classList.toggle('fechado', !abrir);
-    cardAfast.classList.toggle('aberto', abrir);
-}
-
-mostrarAtualAfast();
-document.getElementById('adtoAfastAtual').addEventListener('click', () =>
-    abrirAfast(listaAfast.classList.contains('fechado')));
-
-// Escolheu: o resumo passa a ser a nova opção e a lista se fecha. O bind de
-// gravação já rodou no listener de cima (bindOpcoes marcou o .sel).
-listaAfast.querySelectorAll('.opc-card').forEach(card => {
-    card.addEventListener('click', () => { mostrarAtualAfast(); abrirAfast(false); });
-});
+cardRecolhivel('cardAdtoAfast',  'adtoAfastAtual',  'adtoAfastOpcoes',  'adtoAfastAviso');
+cardRecolhivel('cardAdtoFerias', 'adtoFeriasAtual', 'adtoFeriasOpcoes', 'adtoFeriasAviso');
 </script>
 
 <script src="/static/f10_dialog.js"></script>
