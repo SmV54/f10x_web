@@ -2632,8 +2632,15 @@ def preferencias():
         "ordem_rel":     _get_pref("ordem_rel",     "mat"),
         "menu_num": _get_pref("menu_num", "S"),
         "adto_insalub":  _get_pref("adto_insalub",  "N"),
+        # Adiantamento com Afastamento (0 a 4) — ver ADTO_AFAST_OPCOES.
+        # Default "0": sem a regra escolhida o cálculo não roda e explica.
+        "adto_afast":    str(_get_pref("adto_afast", "0") or "0")[:1],
     }
-    return render_template("F10_Preferencias.html", prefs=prefs, **_ctx_relatorio())
+    # A lista de opções vem do ADTO_AFAST_OPCOES, e não escrita de novo no
+    # HTML: o texto da tela é o mesmo que o cálculo e o log usam.
+    return render_template("F10_Preferencias.html", prefs=prefs,
+                           adto_afast_opcoes=ADTO_AFAST_OPCOES,
+                           **_ctx_relatorio())
 
 
 @app.route("/api/pref/salvar", methods=["POST"])
@@ -67301,30 +67308,187 @@ def _adto_prop_admissao(dtadm, anomes):
     return True, max(0, dias_mes - (dia - 1)), dias_mes, dia
 
 
-def _mats_afastados_quinzena(id_empresa, anomes, id_cliente=None):
-    """Matrículas AFASTADAS na 1ª QUINZENA (dias 01–15) da competência.
+# =========================================================
+# PARÂMETRO "ADIANTAMENTO COM AFASTAMENTO"  (Preferências, código adto_afast)
+# =========================================================
+# Até aqui o afastamento na 1ª quinzena tirava o adiantamento inteiro, e
+# ponto — não havia escolha. O parâmetro abre as cinco respostas possíveis:
+#
+#   0  NÃO DEFINIDO — não calcula nada e diz por quê. É o default de propósito:
+#      cada escritório trata o afastado de um jeito, e pagar pela regra errada
+#      só aparece no fechamento, quando a verba 160 desconta o que não devia.
+#   1  Qualquer afastamento no MÊS zera o adiantamento.
+#   2  Paga proporcional aos dias trabalhados.
+#   3  Proporcional, mas não paga quem está afastado no dia do cálculo.
+#   4  Paga normal, mesmo afastado.
+#
+# A proporção dos modos 2 e 3 divide pelos dias reais do mês (30/31/28) — a
+# mesma régua da ETAPA 1030 da folha e da regra do admitido no mês. Assim o
+# adiantamento é o percentual do que a pessoa vai de fato receber, e o
+# desconto da verba 160 no fechamento não desencontra do que foi antecipado.
+ADTO_AFAST_INDEFINIDO = 0
+ADTO_AFAST_ZERA       = 1
+ADTO_AFAST_PROP       = 2
+ADTO_AFAST_PROP_DIA   = 3
+ADTO_AFAST_NORMAL     = 4
 
-    Mesma régua das férias (ver _mats_ferias_quinzena): sem quinzena trabalhada
-    não há o que adiantar, e adiantar a quem está pelo INSS cria desconto que a
-    folha do mês pode não ter como cobrir. Afastamento que começa depois do dia
-    15 não tira o adiantamento — a quinzena já foi trabalhada.
+# Os textos são por extenso porque saem inteiros em três lugares: a lista da
+# tela de Preferências, o aviso da tela de cálculo e o log. Um texto só, para
+# a tela não dizer uma coisa e o log outra.
+ADTO_AFAST_OPCOES = {
+    ADTO_AFAST_INDEFINIDO: "NÃO DEFINIDO — não calcular o adiantamento e avisar o motivo",
+    ADTO_AFAST_ZERA:       "Qualquer afastamento no mês ZERA o adiantamento",
+    ADTO_AFAST_PROP:       "Pagar proporcional aos dias trabalhados",
+    ADTO_AFAST_PROP_DIA:   "Pagar proporcional aos dias trabalhados, mas NÃO pagar "
+                           "se estiver afastado no dia do cálculo",
+    ADTO_AFAST_NORMAL:     "Pagar normal, mesmo afastado",
+}
+
+ADTO_AFAST_AVISO_0 = (
+    "O parâmetro “Adiantamento com Afastamento” está como "
+    "0 — NÃO DEFINIDO. Sem ele não dá para saber o que fazer com quem se "
+    "afastou no mês, então o adiantamento não foi calculado. Escolha a regra "
+    "(1 a 4) em Preferências e volte aqui."
+)
+
+
+def _adto_afast_modo():
+    """Valor do parâmetro adto_afast (0 a 4). Qualquer coisa fora da faixa
+    vira 0 — na dúvida não calcula, em vez de escolher uma regra por conta."""
+    try:
+        v = int(str(_get_pref("adto_afast", "0") or "0").strip()[:1])
+    except (TypeError, ValueError):
+        return ADTO_AFAST_INDEFINIDO
+    return v if v in ADTO_AFAST_OPCOES else ADTO_AFAST_INDEFINIDO
+
+
+def _adto_dia_calculo(anomes):
+    """Dia do mês que vale como "dia do cálculo" no modo 3 (1 a 31).
+
+    É HOJE quando a folha aberta é a do mês corrente — o caso normal, o
+    adiantamento sai no meio do próprio mês. Fora da competência (recálculo no
+    mês seguinte, folha aberta adiantada) não existe "hoje" dentro daquele mês:
+    vale o dia 15, o fim da quinzena que está sendo antecipada.
+    """
+    hoje = _agora_brasilia().date()
+    if f"{hoje.year:04d}{hoje.month:02d}" == str(anomes):
+        return hoje.day
+    return 15
+
+
+def _adto_afast_dias(id_empresa, anomes, id_cliente=None, dia_calc=None):
+    """{matricula: {"dias": set(dias do mês afastados), "no_dia": bool}}.
+
+    Os dias vêm em CONJUNTO, não somados por evento: dois afastamentos que se
+    sobrepõem (um acidente registrado por cima de um auxílio-doença, por
+    exemplo) contariam o mesmo dia duas vezes e a proporção descontaria mais
+    dias do que o mês tem. "no_dia" é o afastado no dia do cálculo (modo 3).
 
     Reaproveita _calc_etapa2_afastamentos (op1=6, já sem os registros
-    auxiliares op2>=10) e refina o intervalo. Sem data fim = ainda afastado.
+    auxiliares op2>=10). Sem data fim = ainda afastado, vale até o fim do mês.
     """
     if not anomes or len(anomes) != 6:
-        return set()
-    ini_q, fim_q = f"{anomes}01", f"{anomes}15"
-    out = set()
+        return {}
+    dias_mes = _dias_no_mes_total(anomes)
+    ini_m, fim_m = f"{anomes}01", f"{anomes}{dias_mes:02d}"
+    out = {}
     for mat, evs in (_calc_etapa2_afastamentos(id_empresa, anomes,
                                                id_cliente=id_cliente) or {}).items():
+        dias = set()
         for ev in evs:
             di = _norm_data8(ev.get("data1i") or "")
             df = _norm_data8(ev.get("data1f") or "")
-            if di and di <= fim_q and (not df or df >= ini_q):
-                out.add(int(mat))
-                break
+            if not di or len(di) < 8:
+                continue
+            d_ini = max(di, ini_m)
+            d_fim = min(df, fim_m) if (df and len(df) >= 8) else fim_m
+            if d_ini > d_fim:
+                continue
+            dias.update(range(int(d_ini[6:8]), int(d_fim[6:8]) + 1))
+        if dias:
+            out[int(mat)] = {"dias": dias,
+                             "no_dia": bool(dia_calc and dia_calc in dias)}
     return out
+
+
+def _adto_calcular_um(f, base, per_empresa, anomes, em_ferias, afast, modo_afast):
+    """Adiantamento quinzenal de UM funcionário — a conta que a prévia mostra
+    e a gravação usa. As duas liam as mesmas regras em dois lugares; aqui a
+    conta é uma só, senão a tela mostra um total e o banco recebe outro.
+
+    Devolve um dict:
+        valor      centavos; None quando não há o que lançar; 0 no "não adianta"
+        motivo     "ok" | "ferias" | "afastado" | "sem_adianta" | "sem_config" | "adm"
+        desc       o texto da coluna "Modo" da prévia
+        dias_trab / dias_mes / dias_afast / adm_dia  — o porquê da proporção
+    """
+    dias_mes = _dias_no_mes_total(anomes)
+    dias_af  = set((afast or {}).get("dias") or ())
+    no_dia   = bool((afast or {}).get("no_dia"))
+
+    def _ret(valor, motivo, desc, dias_trab=None, adm_dia=0):
+        return {"valor": valor, "motivo": motivo, "desc": desc,
+                "dias_trab": dias_mes if dias_trab is None else dias_trab,
+                "dias_mes":  dias_mes, "dias_afast": len(dias_af),
+                "adm_dia":   adm_dia}
+
+    # Modos 1 e 3 cortam antes de qualquer conta.
+    if dias_af and modo_afast == ADTO_AFAST_ZERA:
+        _n = len(dias_af)
+        return _ret(None, "afastado",
+                    f"Afastado no mês ({_n} dia{'s' if _n != 1 else ''})", 0)
+    if no_dia and modo_afast == ADTO_AFAST_PROP_DIA:
+        return _ret(None, "afastado", "Afastado no dia do cálculo", 0)
+
+    if em_ferias:
+        return _ret(None, "ferias", "Em férias", 0)
+
+    # Marcado como "não adianta" no Informar Adiantamento: não recebe nada, e
+    # nem cai no % da empresa (é o contrário de "sem configuração").
+    if f.get("sem_adiantamento"):
+        return _ret(0, "sem_adianta", "Não adianta", 0)
+
+    val_fixo = f.get("valor_adianta")
+    per_ind  = f.get("per_adianta")
+    if val_fixo is not None:
+        valor, desc = int(val_fixo), "Valor fixo"      # valor digitado: não tem base
+    elif per_ind is not None:
+        valor, desc = round(base * int(per_ind) / 100), f"{per_ind}% individual"
+    elif per_empresa is not None:
+        valor, desc = round(base * int(per_empresa) / 100), f"{per_empresa}% empresa"
+    else:
+        return _ret(None, "sem_config", "—", 0)
+
+    # Admitido no mês da folha: até o dia 10 recebe proporcional aos dias
+    # trabalhados; do dia 11 em diante não recebe (ver _adto_prop_admissao).
+    adm_ok, adm_dt, _adm_dm, adm_dia = _adto_prop_admissao(f.get("dtadm"), anomes)
+    if not adm_ok:
+        return _ret(None, "adm",
+                    f"Admitido dia {adm_dia:02d} — sem adiantamento "
+                    f"(após o dia {DIA_LIMITE_ADM_ADIANTAMENTO})", 0, adm_dia)
+
+    # UM divisor só (os dias do mês) para as duas proporções. Duas frações
+    # separadas — admissão e afastamento — tirariam o mesmo dia duas vezes de
+    # quem foi admitido no dia 05 e se afastou no dia 07.
+    dia_ini   = adm_dia or 1
+    dias_af_c = (len([d for d in dias_af if d >= dia_ini])
+                 if modo_afast in (ADTO_AFAST_PROP, ADTO_AFAST_PROP_DIA) else 0)
+    dias_trab = max(0, adm_dt - dias_af_c)
+    if dias_trab <= 0:
+        return _ret(None, "afastado", "Afastado o mês todo", 0, adm_dia)
+
+    if dias_trab < dias_mes:
+        valor = int(valor * dias_trab / dias_mes)
+        _pq = []
+        if adm_dia:
+            _pq.append(f"admitido dia {adm_dia:02d}")
+        if dias_af_c:
+            _pq.append(f"{dias_af_c} dia{'s' if dias_af_c != 1 else ''} de afastamento")
+        desc += f"  ·  {' e '.join(_pq)}: {dias_trab}/{dias_mes} dias"
+    elif dias_af and modo_afast == ADTO_AFAST_NORMAL:
+        desc += "  ·  afastado no mês, pago normal"
+
+    return _ret(valor, "ok", desc, dias_trab, adm_dia)
 
 
 @app.route("/calcular_adiantamento")
@@ -67362,11 +67526,29 @@ def calcular_adiantamento():
         total_funcs=0,
         total_fmt="R$ 0,00",
         base_com_insalub=False,
+        modo_afast=ADTO_AFAST_INDEFINIDO,
+        modo_afast_txt="",
+        dia_calc=0,
+        afast_prop_count=0,
+        param_afast_indefinido=False,
     )
     if not anomes:
         return render_template("F10_Calc_Adiantamento.html", **ctx)
 
     folha_int = int(anomes)
+
+    # Parâmetro "Adiantamento com Afastamento" (Preferências). Em 0 — NÃO
+    # DEFINIDO a rotina para aqui: sem a regra do afastado, calcular seria
+    # chutar quem recebe e quanto.
+    modo_afast = _adto_afast_modo()
+    ctx["modo_afast"]     = modo_afast
+    ctx["modo_afast_txt"] = ADTO_AFAST_OPCOES.get(modo_afast, "")
+    if modo_afast == ADTO_AFAST_INDEFINIDO:
+        ctx["erro_critico"]           = ADTO_AFAST_AVISO_0
+        ctx["param_afast_indefinido"] = True
+        return render_template("F10_Calc_Adiantamento.html", **ctx)
+    dia_calc = _adto_dia_calculo(anomes)
+    ctx["dia_calc"] = dia_calc
 
     # Percentual da empresa
     per_empresa = None
@@ -67437,8 +67619,9 @@ def calcular_adiantamento():
         pass
 
     # Funcionários ativos
-    mats_ferias    = _mats_ferias_quinzena(id_empresa, anomes)
-    mats_afastados = _mats_afastados_quinzena(id_empresa, anomes, id_cliente=id_cliente)
+    mats_ferias = _mats_ferias_quinzena(id_empresa, anomes)
+    afast_mes   = _adto_afast_dias(id_empresa, anomes, id_cliente=id_cliente,
+                                   dia_calc=dia_calc)
     funcionarios = []
     try:
         r_cad = (supabase.table("tab_cad")
@@ -67459,56 +67642,28 @@ def calcular_adiantamento():
                 continue
             nome      = (f.get("nome") or f.get("nomer") or "").strip()
             vrsalfx   = f.get("vrsalfx") or 0
-            base      = bases.get(int(f.get("matricula") or 0), vrsalfx)
-            per_ind   = f.get("per_adianta")
-            val_fixo  = f.get("valor_adianta")
+            mat_i     = int(f.get("matricula") or 0)
+            base      = bases.get(mat_i, vrsalfx)
 
-            # Férias ou afastamento na quinzena: aparece na lista, mas sem
-            # valor a adiantar — não há quinzena trabalhada a antecipar.
-            if int(f.get("matricula") or 0) in mats_afastados:
-                valor_calc = None
-                modo_desc  = "Afastado"
-            elif int(f.get("matricula") or 0) in mats_ferias:
-                valor_calc = None
-                modo_desc  = "Em férias"
-            # Marcado como "não adianta" no Informar Adiantamento: fica na lista
-            # para ficar claro que foi decisão, não esquecimento.
-            elif f.get("sem_adiantamento"):
-                valor_calc = 0
-                modo_desc  = "Não adianta"
-            elif val_fixo is not None:
-                valor_calc = int(val_fixo)
-                modo_desc  = "Valor fixo"
-            elif per_ind is not None:
-                valor_calc = round(base * int(per_ind) / 100)
-                modo_desc  = f"{per_ind}% individual"
-            elif per_empresa is not None:
-                valor_calc = round(base * int(per_empresa) / 100)
-                modo_desc  = f"{per_empresa}% empresa"
-            else:
-                valor_calc = None
-                modo_desc  = "—"
-
-            # Admitido no mês da folha: até o dia 10 recebe proporcional aos
-            # dias trabalhados; depois disso, não recebe (ver _adto_prop_admissao).
-            _adm_ok, _adm_dt, _adm_dm, _adm_dia = _adto_prop_admissao(dtadm_raw, anomes)
-            if valor_calc:
-                if not _adm_ok:
-                    valor_calc = None
-                    modo_desc  = (f"Admitido dia {_adm_dia:02d} — sem adiantamento "
-                                  f"(após o dia {DIA_LIMITE_ADM_ADIANTAMENTO})")
-                elif _adm_dt < _adm_dm:
-                    valor_calc = int(valor_calc * _adm_dt / _adm_dm)
-                    modo_desc += f"  ·  admitido dia {_adm_dia:02d}: {_adm_dt}/{_adm_dm} dias"
+            # A conta é a mesma de /api/calcular_adiantamento — ver
+            # _adto_calcular_um. Férias, afastamento (pelo parâmetro),
+            # "não adianta" e admissão no mês saem todos de lá.
+            d = _adto_calcular_um(f, base, per_empresa, anomes,
+                                  mat_i in mats_ferias, afast_mes.get(mat_i),
+                                  modo_afast)
+            valor_calc = d["valor"]
 
             funcionarios.append({
                 "matricula":  f.get("matricula"),
                 "nome":       nome,
                 "vrsalfx":    vrsalfx,
                 "sal_fmt":    _fmt_reais(vrsalfx),
-                "modo_desc":  modo_desc,
-                "em_ferias":  int(f.get("matricula") or 0) in mats_ferias,
-                "afastado":   int(f.get("matricula") or 0) in mats_afastados,
+                "modo_desc":  d["desc"],
+                "em_ferias":  d["motivo"] == "ferias",
+                "afastado":   d["motivo"] == "afastado",
+                "dias_afast": d["dias_afast"],
+                "prop_afast": bool(d["motivo"] == "ok" and d["dias_afast"]
+                                   and d["dias_trab"] < d["dias_mes"]),
                 "valor_calc": valor_calc,
                 "valor_fmt":  _fmt_reais(valor_calc) if valor_calc is not None else "—",
             })
@@ -67522,8 +67677,11 @@ def calcular_adiantamento():
     ferias_count  = sum(1 for f in funcionarios if f["em_ferias"] and not f["afastado"])
     # "sem configuração" não inclui quem está de férias ou afastado — motivos diferentes
     sem_count     = len(funcionarios) - len(com_adianta) - ferias_count - afast_count
+    # Afastados que continuam recebendo, com o valor reduzido pelos dias parados
+    prop_count    = sum(1 for f in funcionarios if f["prop_afast"])
 
     ctx.update(
+        afast_prop_count=prop_count,
         aviso_verba=bool(verbas_ocupadas),
         verbas_ocupadas=sorted(verbas_ocupadas),
         verba_usar=verba_usar,
@@ -67557,6 +67715,15 @@ def api_calcular_adiantamento():
     folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
     if folha_tipo not in ("N", "F", "R"):
         folha_tipo = "N"
+
+    # Parâmetro "Adiantamento com Afastamento". Em 0 — NÃO DEFINIDO nada é
+    # gravado: a trava está aqui também, e não só na tela, porque o POST é
+    # chamável direto e o parâmetro pode ter voltado a 0 entre a prévia e o
+    # clique no botão.
+    modo_afast = _adto_afast_modo()
+    if modo_afast == ADTO_AFAST_INDEFINIDO:
+        return jsonify({"ok": False, "msg": ADTO_AFAST_AVISO_0})
+    dia_calc = _adto_dia_calculo(anomes)
 
     # Percentual da empresa
     per_empresa = None
@@ -67632,8 +67799,10 @@ def api_calcular_adiantamento():
     pulou_afast  = 0
     pulou_adm    = 0    # admitidos depois do dia 10
     prop_adm     = 0    # admitidos até o dia 10, com valor proporcional
-    mats_ferias    = _mats_ferias_quinzena(id_empresa, anomes)
-    mats_afastados = _mats_afastados_quinzena(id_empresa, anomes, id_cliente=id_cliente)
+    prop_afast   = 0    # afastados que receberam proporcional aos dias trabalhados
+    mats_ferias = _mats_ferias_quinzena(id_empresa, anomes)
+    afast_mes   = _adto_afast_dias(id_empresa, anomes, id_cliente=id_cliente,
+                                   dia_calc=dia_calc)
     try:
         r_cad = (supabase.table("tab_cad")
                  .select("matricula, vrsalfx, dtadm, per_adianta, valor_adianta, sem_adiantamento")
@@ -67648,47 +67817,36 @@ def api_calcular_adiantamento():
             dtadm_anomes = _anomes_admissao(dtadm_raw)
             if dtadm_anomes and dtadm_anomes > anomes:
                 continue
-            # Afastado ou de férias na 1ª quinzena → sem adiantamento quinzenal
-            if int(f.get("matricula") or 0) in mats_afastados:
-                pulou_afast += 1
-                continue
-            if int(f.get("matricula") or 0) in mats_ferias:
+            mat     = f.get("matricula")
+            mat_i   = int(mat or 0)
+            vrsalfx = f.get("vrsalfx") or 0
+            base    = bases.get(mat_i, vrsalfx)
+
+            # A mesma conta da prévia (ver _adto_calcular_um): férias,
+            # afastamento pelo parâmetro, "não adianta" e admissão no mês.
+            d = _adto_calcular_um(f, base, per_empresa, anomes,
+                                  mat_i in mats_ferias, afast_mes.get(mat_i),
+                                  modo_afast)
+            if d["motivo"] == "ferias":
                 pulou_ferias += 1
                 continue
-            vrsalfx  = f.get("vrsalfx") or 0
-            per_ind  = f.get("per_adianta")
-            val_fixo = f.get("valor_adianta")
-            mat      = f.get("matricula")
-
-            # Marcado como "não adianta" no Informar Adiantamento: não recebe
-            # nada, e nem cai no % da empresa (é justamente o contrário de
-            # "sem configuração"). Ver tab_cad.sem_adiantamento.
-            if f.get("sem_adiantamento"):
+            if d["motivo"] == "afastado":
+                pulou_afast += 1
                 continue
-
-            # Admitido no mês da folha: do dia 11 em diante não recebe.
-            _adm_ok, _adm_dt, _adm_dm, _adm_dia = _adto_prop_admissao(dtadm_raw, anomes)
-            if not _adm_ok:
+            if d["motivo"] == "adm":
                 pulou_adm += 1
                 continue
+            if d["motivo"] != "ok":
+                continue          # "não adianta" e sem configuração
 
-            base = bases.get(int(mat or 0), vrsalfx)
+            valor = d["valor"]
+            if d["dias_trab"] < d["dias_mes"]:
+                if d["adm_dia"]:
+                    prop_adm += 1
+                if d["dias_afast"]:
+                    prop_afast += 1
 
-            if val_fixo is not None:
-                valor = int(val_fixo)          # valor digitado: não tem base
-            elif per_ind is not None:
-                valor = round(base * int(per_ind) / 100)
-            elif per_empresa is not None:
-                valor = round(base * int(per_empresa) / 100)
-            else:
-                continue  # sem adiantamento configurado
-
-            # Proporcional aos dias trabalhados (dia 1 = integral)
-            if _adm_dt < _adm_dm:
-                valor = int(valor * _adm_dt / _adm_dm)
-                prop_adm += 1
-
-            if valor <= 0:
+            if valor is None or valor <= 0:
                 continue
 
             try:
@@ -67718,22 +67876,32 @@ def api_calcular_adiantamento():
     _msg_fer = (f" {pulou_ferias} funcionário(s) de férias na quinzena ficaram de fora."
                 if pulou_ferias else "")
     if pulou_afast:
-        _msg_fer += (f" {pulou_afast} funcionário(s) afastado(s) na quinzena "
-                     f"ficaram de fora.")
+        _msg_fer += (f" {pulou_afast} afastado(s) ficaram de fora pela regra "
+                     f"{modo_afast} — {ADTO_AFAST_OPCOES[modo_afast]}.")
     if pulou_adm:
         _msg_fer += (f" {pulou_adm} admitido(s) após o dia {DIA_LIMITE_ADM_ADIANTAMENTO} "
                      f"ficaram de fora.")
     if prop_adm:
         _msg_fer += (f" {prop_adm} admitido(s) no mês receberam valor proporcional "
                      f"aos dias trabalhados.")
+    if prop_afast:
+        _msg_fer += (f" {prop_afast} afastado(s) receberam proporcional aos dias "
+                     f"trabalhados.")
     if recalcular:
         gravar_log(_LOG_ADTO,
                    f"Recalculada a parcela V{verba_usar:04d} do adiantamento quinzenal: "
                    f"{substituidos} lancamento(s) substituido(s) por {gravados}",
                    ano_mes=folha_int)
+    if pulou_afast or prop_afast:
+        gravar_log(_LOG_ADTO,
+                   f"Adiantamento com afastamento, regra {modo_afast} "
+                   f"({ADTO_AFAST_OPCOES[modo_afast]}): {pulou_afast} sem adiantamento, "
+                   f"{prop_afast} proporcional(is) aos dias trabalhados",
+                   ano_mes=folha_int)
     _base = {"ok": True, "gravados": gravados, "verba": verba_usar,
              "recalculado": recalcular, "substituidos": substituidos,
-             "ferias": pulou_ferias, "afastados": pulou_afast}
+             "ferias": pulou_ferias, "afastados": pulou_afast,
+             "prop_afast": prop_afast, "modo_afast": modo_afast}
     if erros:
         return jsonify({**_base, "msg": f"{erros} erro(s) parciais.{_msg_fer}"})
     return jsonify({**_base, "msg": _msg_fer.strip() or None})

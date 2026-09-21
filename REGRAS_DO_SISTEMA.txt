@@ -224,7 +224,28 @@ ADMITIDO NO MES DA FOLHA
   Exemplo: salario 3.000, 40%, admitido 05/07 -> 1.200 x 27/31 = 1.045,16
 
 QUEM FICA DE FORA
-  Afastado ou de ferias na 1a quinzena (dias 01 a 15).
+  De ferias na 1a quinzena (dias 01 a 15): nao ha quinzena trabalhada a
+  antecipar. O afastado segue o parametro abaixo.
+
+AFASTAMENTO NO MES  (parametro "Adiantamento com Afastamento", Preferencias)
+  0 ... NAO DEFINIDO. E o default: o Calcular Adiantamento NAO roda, abre
+        avisando que falta escolher a regra. Vale para a tela e para o POST.
+  1 ... qualquer afastamento no mes ZERA o adiantamento
+  2 ... paga PROPORCIONAL aos dias trabalhados
+  3 ... proporcional, mas NAO paga quem esta afastado no dia do calculo
+  4 ... paga NORMAL, mesmo afastado
+
+  Dia do calculo (modo 3) = hoje, quando a folha aberta e a do mes corrente;
+  fora da competencia vale o dia 15, o fim da quinzena antecipada.
+
+  A proporcao divide pelos dias reais do mes, o mesmo divisor da regra do
+  admitido. Admissao e afastamento entram numa conta SO (dias trabalhados =
+  dias do contrato no mes - dias parados), senao o mesmo dia sairia duas vezes
+  de quem foi admitido dia 05 e se afastou dia 07.
+  Dias de afastamentos sobrepostos contam uma vez so.
+  Parado o mes inteiro -> zero, em qualquer modo que nao seja o 4.
+  O parametro e por CLIENTE (tab_tabela_cli 1001, codigo adto_afast), como o
+  adto_insalub.
 
 AS VERBAS
   161 a 164 ... ate 4 parcelas na mesma folha. Aparecem em bloco proprio nos
