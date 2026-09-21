@@ -513,6 +513,13 @@ tab_eventos - CODIGOS op1
   ARMADILHA: op2 = 203 no afastamento e registro auxiliar da migracao que
   duplica o afastamento verdadeiro.
 
+tab_total DE FOLHA 'A' TEM LINHA REPETIDA
+  Na folha de adiantamento do 13o ha mais de uma linha para a MESMA
+  competencia, com valores diferentes (empresa 13, folha 202607: tres linhas).
+  Nao da para saber qual vale, entao quem precisa do liquido dessa folha soma
+  a tab_mov (provento tp_rubr '1' menos desconto '2'), como faz o desconto do
+  adiantamento no 13o final.
+
 tab_esocial
   A PK e id_esocial, nao "id". Evento ENVIADO = recibo nao vazio.
   EXCLUIDO por S-3000 = observacao_erro igual a EXCLUIDO.

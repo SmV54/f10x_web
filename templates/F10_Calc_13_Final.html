@@ -314,6 +314,16 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 </div>
 {% endif %}
 
+{% if qtd_pensao %}
+<div class="alerta alerta-atencao">
+    <span class="alerta-icone">⚖️</span>
+    <div>
+        <strong>Pensão alimentícia em {{ qtd_pensao }} funcionário{{ 's' if qtd_pensao != 1 else '' }} — total de {{ total_pensao_fmt }} a recolher nesta folha.</strong>
+        O 13º desconta a pensão <strong>inteira</strong> sobre o 13º (verbas 281 a 284) e devolve como provento (verba 280) a que já saiu nos adiantamentos do ano — a coluna Pensão mostra a diferença, que é o que muda o líquido.
+    </div>
+</div>
+{% endif %}
+
 {% if qtd_residuo %}
 <div class="alerta alerta-atencao">
     <span class="alerta-icone">↩️</span>
@@ -369,6 +379,7 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
                     <th class="th-r">Base</th>
                     <th class="th-r">13º Bruto</th>
                     <th class="th-r">Adiant. ({{ verba_desc }})</th>
+                    <th class="th-r">Pensão</th>
                     <th class="th-r">INSS</th>
                     <th class="th-r">IRRF</th>
                     <th class="th-r">FGTS</th>
@@ -399,6 +410,7 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
                     <td class="td-sal">{{ f.base_fmt }}</td>
                     <td class="td-sal">{{ f.bruto_fmt }}</td>
                     <td class="td-desc">{{ f.adto_fmt }}</td>
+                    <td class="td-desc" title="A pensão inteira do 13º menos a que já foi descontada nos adiantamentos">{{ f.pensao_fmt }}</td>
                     <td class="td-desc">{{ f.inss_fmt }}</td>
                     <td class="td-desc">{{ f.irrf_fmt }}</td>
                     <td class="td-sal">{{ f.fgts_fmt }}</td>
@@ -414,7 +426,7 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
             · 📄 na matrícula abre a memória de cálculo ({{ qtd_memorias }} gravada{{ 's' if qtd_memorias != 1 else '' }}){% endif %}</span>
         <div class="rodape-total">
             <div class="rodape-par">
-                <span class="rodape-label">Bruto:</span>
+                <span class="rodape-label">Proventos:</span>
                 <span class="rodape-valor">{{ total_bruto_fmt }}</span>
             </div>
             <div class="rodape-par">

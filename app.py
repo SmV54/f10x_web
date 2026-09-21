@@ -69591,7 +69591,8 @@ def calcular_adiantamento_13_stream():
 # 13o SALARIO FINAL  (folha_tipo="1")   SMV 16/09/2026
 #
 #   13o bruto = (salario + medias do ano) x avos / 12
-#   (-) verba 18: a SOMA das 17 (adiantamento) lancadas no ano
+#   (-) verba 18: o LIQUIDO das folhas de adiantamento do 13o (tipo 'A')
+#                  do ano, mais a 17 lancada a mao em folha normal
 #   (-) INSS  (verba 101) — base PROPRIA do 13o, tabela progressiva
 #   (-) IRRF  (verba 122) — tributacao EXCLUSIVA, base propria
 #
@@ -69608,6 +69609,11 @@ VERBA_13_DESC_ADTO = 18    # DESC.ADIANT.13O.SAL.        (desconto)
 VERBA_13_INSS      = 101   # INSS                        (base propria do 13o)
 VERBA_13_IRRF      = 122   # IMPOSTO DE RENDA 13.SAL     (exclusivo)
 VERBA_ADTO_13_PAGO = 17    # ADIANT.13. SALARIO — o que foi pago no ano
+# PENSAO ALIMENTICIA - PROVENTO. Ja existia em tab_rubrica (global, tipo_uso
+# NRF1, natureza eSocial 9213, a mesma da 281): e a contrapartida de provento
+# da pensao, e serve para devolver no 13o final o que ja foi descontado nos
+# adiantamentos. Nada de rubrica nova.
+VERBA_PENSAO_PROVENTO = 280
 
 
 def _verbas_media_13(id_cliente):
@@ -69681,23 +69687,119 @@ def _ultimo_lancamento_13(id_cliente, id_empresa, mat, fi, ff, cods):
 
 
 def _adto13_pago_no_ano(id_cliente, id_empresa, ano, matriculas=None):
-    """Soma das verbas 17 (ADIANT.13.SALARIO) lancadas no ANO, por matricula.
+    """Adiantamento do 13o ja pago no ANO, por matricula.
 
-    Varre as folhas NORMAL e de ADIANTAMENTO: a rotina do adiantamento grava
-    com folha_tipo 'A', mas a 17 tambem pode ter sido lancada a mao numa folha
-    normal (o tipo_uso dela e 'N'). Somar so' um dos dois deixaria parcela sem
-    descontar — e o empregado receberia o adiantamento duas vezes.
+    E o LIQUIDO das folhas de ADIANTAMENTO do 13o (folha_tipo 'A'), e nao a
+    verba 17 sozinha (SMV 21/09/2026). A folha 'A' paga a 17 (perc% do
+    salario) MAIS os adicionais (30 insalubridade / 31 periculosidade / 32
+    risco de vida) e as medias das variaveis, uma linha por verba. Descontando
+    so' a 17 no 13o final, a parte das medias e dos adicionais voltava inteira
+    no bruto do final sem nunca ter sido abatida, e o empregado recebia essa
+    parte DUAS vezes.
 
-    Devolve {matricula: centavos}.
+    Do lado do desconto, a folha 'A' nao tem INSS nem IRRF, mas pode ter
+    PENSAO ALIMENTICIA (281..284) — existe hoje, em producao, em folha de
+    adiantamento fechada.
+
+    A PENSAO E' A EXCECAO, e some do liquido de proposito (SMV 21/09/2026):
+    ela tambem e 13o do empregado, so' que foi para a mao do beneficiario em
+    vez da dele. Deixando a pensao abater o desconto, a empresa antecipava
+    aquele valor e nunca o recuperava do 13o — o final pagava a mais
+    exatamente o que ja tinha ido para a pensao. Entao:
+
+        desconto = liquido da folha 'A'  +  a pensao descontada nela
+
+    Qualquer outro desconto da folha 'A' (contribuicao sindical, por exemplo)
+    continua reduzindo: aquilo nao volta para o empregado.
+
+    A verba 17 lancada a mao numa folha NORMAL ('N') continua somando: e o
+    adiantamento pago por fora, que nao tem folha 'A' com liquido para ler.
+
+    Liquido = tp_rubr '1' (provento) menos tp_rubr '2' (desconto). As
+    informativas ('3' e '4') e a faixa 9900+ ficam de fora: nao foram pagas
+    nem descontadas, entao nao mudam o que entrou na mao do empregado.
+
+    A fonte e a tab_mov, e nao o valor_liquido da tab_total, porque em folha
+    'A' antiga a tab_total tem linha repetida para a mesma competencia (visto
+    na empresa 13, folha 202607: tres linhas) — nao da para saber qual vale.
+
+    Devolve {matricula: {"total":  centavos,
+                         "folhas": [{"folha": AAAAMM, "liq": centavos,
+                                     "pensao": centavos}, ...],
+                         "manual": centavos da 17 lancada em folha normal}}.
+    O "liq" de cada folha ja vem com a pensao somada de volta; o "pensao"
+    fica a parte so' para a memoria de calculo mostrar de onde veio.
     """
     fi, ff = ano * 100 + 1, ano * 100 + 12
     out = {}
+
+    def _slot(mat):
+        return out.setdefault(mat, {"total": 0, "folhas": [], "manual": 0})
+
+    # ── 1) O liquido de cada folha de adiantamento do 13o (tipo 'A') ────────
+    linhas = []
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, folha, cod_verba, valor")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("folha_tipo", "A")
+             .gte("folha", fi).lte("folha", ff))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if matriculas:
+            q = q.in_("matricula", list(matriculas))
+        linhas = q.execute().data or []
+    except Exception as e:
+        print(f"[13o] adiantamento pago (folhas 'A'): {e}")
+
+    tp = {}
+    if linhas:
+        try:
+            r = (supabase.table("tab_rubrica")
+                 .select("cod_rubr, tp_rubr, id_cliente")
+                 .in_("id_cliente", [0, id_cliente or 0]).execute())
+            # rubrica do cliente sobrepoe a global de mesmo codigo
+            for row in sorted(r.data or [],
+                              key=lambda x: 0 if int(x.get("id_cliente") or 0) == 0 else 1):
+                tp[int(row.get("cod_rubr") or 0)] = str(row.get("tp_rubr") or "1")
+        except Exception as e:
+            print(f"[13o] tipos de rubrica: {e}")
+
+    por_folha = {}
+    pensao_folha = {}
+    for row in linhas:
+        mat = int(row.get("matricula") or 0)
+        cod = int(row.get("cod_verba") or 0)
+        _tp = tp.get(cod, "1")
+        if not mat or cod >= 9900 or _tp in ("3", "4"):
+            continue                    # informativa nao entra no liquido
+        val   = int(row.get("valor") or 0)
+        chave = (mat, int(row.get("folha") or 0))
+        if _tp == "2":
+            if cod in VERBAS_PENSAO:
+                # Pensao nao abate o desconto: segue sendo 13o do empregado.
+                pensao_folha[chave] = pensao_folha.get(chave, 0) + val
+                continue
+            val = -val                  # os demais descontos entram negativo
+        por_folha[chave] = por_folha.get(chave, 0) + val
+
+    for chave in sorted(set(por_folha) | set(pensao_folha)):
+        mat, folha = chave
+        pen = pensao_folha.get(chave, 0)
+        liq = max(0, por_folha.get(chave, 0))   # sem liquido nao e adiantamento pago
+        if not liq and not pen:
+            continue
+        s = _slot(mat)
+        s["folhas"].append({"folha": folha, "liq": liq, "pensao": pen})
+        s["total"] += liq
+
+    # ── 2) Verba 17 na folha NORMAL: adiantamento pago por fora, a mao ──────
     try:
         q = (supabase.table("tab_mov")
              .select("matricula, valor")
              .eq("id_empresa", id_empresa).eq("situacao", "A")
              .eq("cod_verba", VERBA_ADTO_13_PAGO)
-             .in_("folha_tipo", ["N", "A"])
+             .eq("folha_tipo", "N")
              .gte("folha", fi).lte("folha", ff))
         if id_cliente:
             q = q.eq("id_cliente", id_cliente)
@@ -69705,17 +69807,22 @@ def _adto13_pago_no_ano(id_cliente, id_empresa, ano, matriculas=None):
             q = q.in_("matricula", list(matriculas))
         for row in (q.execute().data or []):
             mat = int(row.get("matricula") or 0)
-            if mat:
-                out[mat] = out.get(mat, 0) + int(row.get("valor") or 0)
+            v   = int(row.get("valor") or 0)
+            if mat and v:
+                s = _slot(mat)
+                s["manual"] += v
+                s["total"]  += v
     except Exception as e:
-        print(f"[13o] adiantamento pago: {e}")
+        print(f"[13o] adiantamento pago (verba 17 na folha normal): {e}")
+
     return out
 
 
 def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
                         afast_cache, faltas_cache, adto_pago,
                         cods_media, verbas_hora, desc_media, cods_ultimo,
-                        dep_count, dep_irrf_ded, adic_ev=None, adic_mov=None):
+                        dep_count, dep_irrf_ded, adic_ev=None, adic_mov=None,
+                        pensoes_mat=None):
     """13o Salario Final de UM funcionario. So' calcula — nao grava nada.
 
     Devolve o dicionario que serve tanto a previa da tela quanto a gravacao e a
@@ -69753,10 +69860,89 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     base_13  = sal_mes + medias_tot + ultimos_tot + adics_tot
     bruto_13 = base_13 * avos // 12
 
+    # RATEIO DO BRUTO POR VERBA (SMV 17/09/2026)
+    # -----------------------------------------
+    # Ate aqui o bruto inteiro ia gravado na 0011, media junto com salario. A
+    # 0011 e "13o SALARIO": media de hora extra, quinquenio e adicional nao sao
+    # salario, e no recibo apareciam como se fossem.
+    #
+    # Cada parcela passa a ir na SUA verba, a 0011 ficando so' com o salario —
+    # proporcional aos avos, como tudo aqui. E o mesmo desenho que o
+    # adiantamento do 13o ja usa em producao (uma linha por verba de media).
+    #
+    # A proporcao e aplicada parcela por parcela e o RESTO da divisao fica na
+    # 0011: assim a soma das linhas fecha exatamente com bruto_13, que e a base
+    # de INSS, IRRF e FGTS gravada em tab_total. Somar 5 truncamentos e deixar
+    # a diferenca solta faria o recibo divergir da base por centavos.
+    #
+    # A media de verba em HORA leva tambem a QUANTIDADE, na mesma proporcao do
+    # valor — e ela que o recibo imprime como "10h30" (ver _qtd_media_min).
+    #
+    # Fica ANTES dos impostos porque a formula da pensao pode citar verba por
+    # codigo (ver _pensao_avaliar_formula), e ai precisa do rateio pronto.
+    partes, qtds_13 = {}, {}
+    for md in medias_det:
+        _q = _qtd_media_min(md, avos, 12)
+        if _q:
+            qtds_13[int(md["cod"])] = qtds_13.get(int(md["cod"]), 0) + _q
+    for _cod, _val in ([(md["cod"], md["val"]) for md in medias_det]
+                       + list(ultimos.items()) + list(adics.items())):
+        _v = int(_val) * avos // 12
+        if _v:
+            partes[int(_cod)] = partes.get(int(_cod), 0) + _v
+    partes_13 = {}
+    if bruto_13:
+        partes_13 = dict(partes)
+        _sal_parte = bruto_13 - sum(partes.values())
+        if _sal_parte:
+            partes_13[VERBA_13_SALARIO] = (partes_13.get(VERBA_13_SALARIO, 0)
+                                           + _sal_parte)
+
     inss_13, inss_det, _ = (_calc_inss_progressivo(bruto_13, tabela) if bruto_13 else (0, [], 0))
+
+    # ── PENSAO ALIMENTICIA SOBRE O 13o  (SMV 21/09/2026) ───────────────────
+    # O 13o final desconta a pensao INTEIRA sobre o 13o, e devolve como
+    # PROVENTO (verba 280) a pensao que ja foi descontada nos adiantamentos do
+    # ano — assim o que sobra a recolher e so' a diferenca, sem cobrar duas
+    # vezes do empregado. E a forma que o Desktop ja usa em producao: na folha
+    # 202512 do cliente 12 a pensao do 13o deu 303,81, a do adiantamento tinha
+    # sido 194,59, e a diferenca (109,22) foi o que ficou na 0281.
+    #
+    # A BASE vai pela formula cadastrada em cada pensao, a mesma da folha
+    # mensal, so' que com os numeros do 13o: proventos = bruto do 13o,
+    # descontos = INSS do 13o, e as verbas do rateio para a formula que cita
+    # codigo. O desconto do adiantamento fica FORA da base de proposito — ele
+    # nao e desconto, e antecipacao do proprio 13o; entrando ali, a pensao de
+    # quem ja recebeu adiantamento cairia pela metade. O IRRF tambem fica de
+    # fora porque vem depois (a pensao e que abate a base dele).
+    pensoes_do_mat = (pensoes_mat or {}).get(mat) or []
+    mm13 = dict(partes_13)
+    mm13[VERBA_13_INSS] = inss_13
+    pensao_det  = []
+    pensao_tot  = 0
+    for _i, _p in enumerate(pensoes_do_mat[:len(VERBAS_PENSAO)]):
+        _pv, _pb, _pt, _ptm = _pensao_valor(_p, bruto_13, inss_13,
+                                            bruto_13 - inss_13, mm13)
+        if _pv <= 0:
+            continue
+        pensao_det.append({"verba": VERBAS_PENSAO[_i], "valor": int(_pv),
+                           "base": _pb, "tipo": _pt, "termos": _ptm,
+                           "perc": int(_p.get("percentual") or 0)})
+        pensao_tot += int(_pv)
+
+    # Pensao ja descontada nas folhas de adiantamento do 13o deste ano — volta
+    # como provento (verba 280). Vem junto com o adiantamento pago, que ja a
+    # somou de volta ao desconto da verba 18 (ver _adto13_pago_no_ano).
+    _ad_det_pre  = adto_pago.get(mat) or {}
+    pensao_devol = sum(int(_fa.get("pensao") or 0)
+                       for _fa in (_ad_det_pre.get("folhas") or []))
+
     ndep       = dep_count.get(mat, 0)
     dep_total  = ndep * dep_irrf_ded
-    base_irrf  = max(0, bruto_13 - inss_13 - dep_total)
+    # A pensao abate a base do IRRF, como na folha mensal. Abate a INTEIRA: o
+    # adiantamento do 13o nao retem IRRF nenhum, entao o imposto do 13o e
+    # acertado todo aqui.
+    base_irrf  = max(0, bruto_13 - inss_13 - dep_total - pensao_tot)
     irrf_13, _irrf_info = (_calc_irrf(base_irrf, tabela) if bruto_13 else (0, None))
     irrf_13, red_13, isento_13 = _irrf_isencao_redutor(bruto_13, irrf_13, tabela)
 
@@ -69784,48 +69970,21 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     # O que nao coube fica em adto_residual: e adiantamento pago a maior, que a
     # empresa tem a receber. Nao se perde nem se esconde — a tela e a memoria
     # mostram, para quem calcula decidir onde cobrar.
-    adto_total    = int(adto_pago.get(mat, 0))
-    espaco        = max(0, bruto_13 - g_inss - g_irrf)
+    # Cliente sem encargos nao zera pensao: ela nao e encargo, e do empregado.
+    g_pensao = pensao_tot
+    g_pen_dv = pensao_devol
+
+    _adto_det     = adto_pago.get(mat) or {}
+    adto_total    = int(_adto_det.get("total") or 0)
+    # A pensao tambem ocupa espaco: sem ela no limite, o desconto do
+    # adiantamento comeria o que a pensao precisa e o liquido ia a negativo.
+    espaco        = max(0, bruto_13 + g_pen_dv - g_inss - g_irrf - g_pensao)
     desc_adto     = min(adto_total, espaco)
     adto_residual = adto_total - desc_adto
 
-    total_desc = desc_adto + g_inss + g_irrf
-    liquido    = bruto_13 - total_desc
-
-    # RATEIO DO BRUTO POR VERBA (SMV 17/09/2026)
-    # -----------------------------------------
-    # Ate aqui o bruto inteiro ia gravado na 0011, media junto com salario. A
-    # 0011 e "13o SALARIO": media de hora extra, quinquenio e adicional nao sao
-    # salario, e no recibo apareciam como se fossem.
-    #
-    # Cada parcela passa a ir na SUA verba, a 0011 ficando so' com o salario —
-    # proporcional aos avos, como tudo aqui. E o mesmo desenho que o
-    # adiantamento do 13o ja usa em producao (uma linha por verba de media).
-    #
-    # A proporcao e aplicada parcela por parcela e o RESTO da divisao fica na
-    # 0011: assim a soma das linhas fecha exatamente com bruto_13, que e a base
-    # de INSS, IRRF e FGTS gravada em tab_total. Somar 5 truncamentos e deixar
-    # a diferenca solta faria o recibo divergir da base por centavos.
-    #
-    # A media de verba em HORA leva tambem a QUANTIDADE, na mesma proporcao do
-    # valor — e ela que o recibo imprime como "10h30" (ver _qtd_media_min).
-    partes, qtds_13 = {}, {}
-    for md in medias_det:
-        _q = _qtd_media_min(md, avos, 12)
-        if _q:
-            qtds_13[int(md["cod"])] = qtds_13.get(int(md["cod"]), 0) + _q
-    for _cod, _val in ([(md["cod"], md["val"]) for md in medias_det]
-                       + list(ultimos.items()) + list(adics.items())):
-        _v = int(_val) * avos // 12
-        if _v:
-            partes[int(_cod)] = partes.get(int(_cod), 0) + _v
-    partes_13 = {}
-    if bruto_13:
-        partes_13 = dict(partes)
-        _sal_parte = bruto_13 - sum(partes.values())
-        if _sal_parte:
-            partes_13[VERBA_13_SALARIO] = (partes_13.get(VERBA_13_SALARIO, 0)
-                                           + _sal_parte)
+    total_prov = bruto_13 + g_pen_dv      # a devolucao da pensao e provento (280)
+    total_desc = desc_adto + g_inss + g_irrf + g_pensao
+    liquido    = total_prov - total_desc
 
     return {
         "matricula": mat,
@@ -69848,7 +70007,14 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
         "qtds_13":   qtds_13,     # {cod_verba: minutos} — so' as verbas em hora
         "desc_adto": desc_adto,
         "adto_pago": adto_total,
+        "adto_det":  _adto_det,   # de onde veio: folhas 'A' e a 17 lancada a mao
         "adto_residual": adto_residual,
+        # Pensao: o desconto INTEIRO sobre o 13o (281..284) e a devolucao do
+        # que ja saiu nos adiantamentos (provento, verba 280).
+        "pensao":       g_pensao,
+        "pensao_det":   pensao_det,
+        "pensao_devol": g_pen_dv,
+        "total_prov":   total_prov,
         "inss":      g_inss,   "inss_calc": inss_13, "inss_det": inss_det,
         "irrf":      g_irrf,   "irrf_calc": irrf_13,
         "irrf_base": base_irrf, "irrf_red": red_13, "irrf_isento": isento_13,
@@ -70169,9 +70335,34 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
     # ETAPA 5030 — adiantamento ja pago
     if d["adto_pago"]:
         e.append(Paragraph("ETAPA 5030 — ADIANTAMENTO JÁ PAGO", st_etapa))
-        e.append(Paragraph(
-            f"Soma das verbas {VERBA_ADTO_13_PAGO:04d} lançadas em {ano} = "
-            f"{_fmt_brl(d['adto_pago'])}", st_formula))
+        # O que se desconta e o LIQUIDO da folha de adiantamento, nao a verba
+        # 17 sozinha: a folha 'A' paga tambem os adicionais e as medias.
+        _det = d.get("adto_det") or {}
+        for _fa in (_det.get("folhas") or []):
+            _fs = str(_fa.get("folha") or "")
+            _fs = f"{_fs[4:6]}/{_fs[:4]}" if len(_fs) == 6 else _fs
+            _liq, _pen = int(_fa.get("liq") or 0), int(_fa.get("pensao") or 0)
+            if _pen:
+                # A pensao descontada no adiantamento tambem e 13o do
+                # empregado — foi para o beneficiario, e volta para o desconto.
+                e.append(Paragraph(
+                    f"Folha de adiantamento do 13º de {_fs}: líquido "
+                    f"{_fmt_brl(_liq - _pen)} + pensão alimentícia descontada nela "
+                    f"{_fmt_brl(_pen)} = {_fmt_brl(_liq)}", st_formula))
+            else:
+                e.append(Paragraph(
+                    f"Líquido da folha de adiantamento do 13º de {_fs} = "
+                    f"{_fmt_brl(_liq)}", st_formula))
+        if _det.get("manual"):
+            e.append(Paragraph(
+                f"Verba {VERBA_ADTO_13_PAGO:04d} lançada em folha normal (adiantamento "
+                f"pago por fora) = {_fmt_brl(_det['manual'])}", st_formula))
+        # A linha do total so' quando ha mais de uma origem — com uma folha
+        # unica ela repetiria o mesmo numero da linha de cima.
+        if len(_det.get("folhas") or []) + (1 if _det.get("manual") else 0) > 1:
+            e.append(Paragraph(
+                f"Adiantamento pago em {ano} = <b>{_fmt_brl(d['adto_pago'])}</b>",
+                st_formula))
         e.append(Paragraph(f"Desconto = <b>{_fmt_brl(d['desc_adto'])}</b>  "
                            f"(verba {VERBA_13_DESC_ADTO})", st_formula))
         if d.get("adto_residual"):
@@ -70181,7 +70372,7 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                 f"adiantamento pago a maior, a receber do empregado.", st_formula))
     else:
         e.append(Paragraph("ETAPA 5030 — ADIANTAMENTO JÁ PAGO"
-                           "   Não se aplica — nenhuma verba de adiantamento no ano",
+                           "   Não se aplica — nenhum adiantamento do 13º pago no ano",
                            st_etapa_na))
 
     # ETAPA 5040 — INSS
@@ -70192,6 +70383,47 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                        f"<b>{_fmt_brl(d['inss_calc'])}</b>  (verba {VERBA_13_INSS})",
                        st_formula))
 
+    # ETAPA 5045 — pensao alimenticia sobre o 13o
+    if d.get("pensao") or d.get("pensao_devol"):
+        e.append(Paragraph("ETAPA 5045 — PENSÃO ALIMENTÍCIA DO 13º", st_etapa))
+        # Rotulos das verbas que a formula da pensao pode citar por codigo —
+        # sem isto a base sairia como "0101" em vez de "0101-INSS".
+        _rub13 = {VERBA_13_SALARIO:   {"dsc": "13o SALARIO"},
+                  VERBA_13_INSS:      {"dsc": "INSS"},
+                  VERBA_13_IRRF:      {"dsc": "IRRF"},
+                  VERBA_13_DESC_ADTO: {"dsc": "DESC.ADIANT.13o"}}
+        for _md in (d.get("medias_det") or []):
+            _rub13.setdefault(int(_md["cod"]), {"dsc": _md.get("desc") or ""})
+        for _pd in (d.get("pensao_det") or []):
+            if _pd["tipo"] == "fixo":
+                e.append(Paragraph(
+                    f"Verba {_pd['verba']:04d} — valor fixo = "
+                    f"<b>{_fmt_brl(_pd['valor'])}</b>", st_formula))
+            else:
+                _ptxt = f"{_pd['perc'] / 100:.2f}".replace(".", ",")
+                _fx = " ".join(("+ " if _t["sign"] > 0 else "- ")
+                               + _pensao_label_termo(_t["code"], _rub13)
+                               for _t in (_pd["termos"] or []))
+                e.append(Paragraph(
+                    f"Verba {_pd['verba']:04d} — base ({_fx}) = "
+                    f"{_fmt_brl(_pd['base'] or 0)} × {_ptxt}% = "
+                    f"<b>{_fmt_brl(_pd['valor'])}</b>", st_formula))
+        if d.get("pensao_devol"):
+            # A pensao do adiantamento ja saiu do bolso do empregado; sem a
+            # devolucao ele pagaria duas vezes a mesma parcela.
+            e.append(Paragraph(
+                f"(+) Devolução da pensão já descontada nos adiantamentos = "
+                f"<b>{_fmt_brl(d['pensao_devol'])}</b>  "
+                f"(provento, verba {VERBA_PENSAO_PROVENTO:04d})", st_formula))
+            e.append(Paragraph(
+                f"Fica a recolher nesta folha: {_fmt_brl(d['pensao'])} − "
+                f"{_fmt_brl(d['pensao_devol'])} = "
+                f"<b>{_fmt_brl(d['pensao'] - d['pensao_devol'])}</b>", st_formula))
+    else:
+        e.append(Paragraph("ETAPA 5045 — PENSÃO ALIMENTÍCIA DO 13º"
+                           "   Não se aplica — sem pensão vigente nesta competência",
+                           st_etapa_na))
+
     # ETAPA 5050 — IRRF
     e.append(Paragraph("ETAPA 5050 — IRRF DO 13º (tributação exclusiva)", st_etapa))
     e.append(_mem_passo("base_irrf"))
@@ -70199,6 +70431,7 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
         f"Base = 13º {_fmt_brl(d['bruto_13'])} − INSS {_fmt_brl(d['inss_calc'])}"
         + (f" − dependentes ({d['dep_qtd']}×{_fmt_brl(d['dep_ded'] // max(1, d['dep_qtd']))})"
            if d["dep_qtd"] else "")
+        + (f" − pensão {_fmt_brl(d['pensao'])}" if d.get("pensao") else "")
         + f" = {_fmt_brl(d['irrf_base'])}", st_formula))
     if d["irrf_isento"]:
         e.append(Paragraph("13º isento — rendimento até R$ 5.000,00 "
@@ -70408,6 +70641,9 @@ def _ctx_13final(id_empresa, id_cliente, anomes):
         "dep_count": _get_dep_irrf_count(id_empresa),
         "dep_ded":   int((tabela or {}).get("irrf_dep_dedu") or 0),
         "adic_ev": adic_ev, "adic_mov": adic_mov,
+        # Pensoes vigentes na competencia da folha do 13o — a mesma consulta
+        # que a folha mensal usa, uma vez para a empresa inteira.
+        "pensoes": _get_pensoes_por_mat(id_empresa, anomes),
     }
 
 
@@ -70436,7 +70672,7 @@ def _calc_13final_lista(id_empresa, id_cliente, anomes):
                             ctx["afast"], ctx["faltas"], adto,
                             ctx["cods_media"], ctx["verbas_hora"], ctx["desc_media"],
                             ctx["cods_ultimo"], ctx["dep_count"], ctx["dep_ded"],
-                            ctx["adic_ev"], ctx["adic_mov"])
+                            ctx["adic_ev"], ctx["adic_mov"], ctx["pensoes"])
         for f in funcs
     ], funcs, ctx
 
@@ -70517,6 +70753,11 @@ def calcular_13_final():
             "bruto":      d["bruto_13"],
             "bruto_fmt":  _fmt_brl(d["bruto_13"]),
             "adto_fmt":   _fmt_brl(d["desc_adto"]) if d["desc_adto"] else "—",
+            # Pensao: mostra o que fica a recolher NESTA folha (a inteira menos
+            # a devolucao dos adiantamentos), que e o que muda o liquido.
+            "pensao":     d.get("pensao", 0) - d.get("pensao_devol", 0),
+            "pensao_fmt": (_fmt_brl(d.get("pensao", 0) - d.get("pensao_devol", 0))
+                           if d.get("pensao") or d.get("pensao_devol") else "—"),
             "inss_fmt":   _fmt_brl(d["inss"]) if d["inss"] else "—",
             "irrf_fmt":   _fmt_brl(d["irrf"]) if d["irrf"] else "—",
             "fgts_fmt":   _fmt_brl(d["fgts"]) if d["fgts"] else "—",
@@ -70534,7 +70775,12 @@ def calcular_13_final():
         qtd_memorias=sum(1 for v in vis if v["tem_pdf"]),
         qtd_residuo=sum(1 for v in vis if v["residuo"]),
         total_residuo_fmt=_fmt_brl(sum(v["residuo"] for v in vis)),
-        total_bruto_fmt=_fmt_brl(sum(d["bruto_13"] for d in linhas)),
+        qtd_pensao=sum(1 for v in vis if v["pensao"]),
+        total_pensao_fmt=_fmt_brl(sum(v["pensao"] for v in vis)),
+        # Soma os PROVENTOS (bruto + devolucao da pensao), e nao so o bruto:
+        # senao Proventos - Descontos nao fecha com o Liquido no rodape.
+        total_bruto_fmt=_fmt_brl(sum(d.get("total_prov") or d["bruto_13"]
+                                     for d in linhas)),
         total_desc_fmt=_fmt_brl(sum(d["total_desc"] for d in linhas)),
         total_liq_fmt=_fmt_brl(sum(d["liquido"] for d in linhas)),
     )
@@ -70636,7 +70882,8 @@ def calcular_13_final_stream():
                     f, ctx["ano"], ctx["tabela"], id_cliente, id_empresa,
                     ctx["afast"], ctx["faltas"], adto, ctx["cods_media"],
                     ctx["verbas_hora"], ctx["desc_media"], ctx["cods_ultimo"],
-                    ctx["dep_count"], ctx["dep_ded"], ctx["adic_ev"], ctx["adic_mov"])
+                    ctx["dep_count"], ctx["dep_ded"], ctx["adic_ev"], ctx["adic_mov"],
+                    ctx["pensoes"])
                 if d["bruto_13"] <= 0:
                     continue          # sem avos: nao ha 13o a pagar
 
@@ -70644,8 +70891,14 @@ def calcular_13_final_stream():
                 # e adicional cada um no seu codigo (ver partes_13, no calculo).
                 recs = [_mov(mat, cod, val, d["qtds_13"].get(cod, 0))
                         for cod, val in sorted(d["partes_13"].items()) if val]
+                # Devolucao da pensao ja descontada nos adiantamentos: provento,
+                # ANTES do desconto da pensao inteira logo abaixo.
+                if d.get("pensao_devol"):
+                    recs.append(_mov(mat, VERBA_PENSAO_PROVENTO, d["pensao_devol"]))
                 if d["desc_adto"]:
                     recs.append(_mov(mat, VERBA_13_DESC_ADTO, d["desc_adto"]))
+                for _pd in (d.get("pensao_det") or []):
+                    recs.append(_mov(mat, _pd["verba"], _pd["valor"]))
                 if d["inss"]:
                     recs.append(_mov(mat, VERBA_13_INSS, d["inss"]))
                 if d["irrf"]:
@@ -70672,7 +70925,10 @@ def calcular_13_final_stream():
                     "valor_irrf_dependentes":    int(d["dep_ded"]),
                     "qtd_irrf_dependentes":      int(d["dep_qtd"]),
                     "valor_salario":             int(d["sal_mes"]),
-                    "valor_total_proventos":     int(d["bruto_13"]),
+                    # Proventos incluem a devolucao da pensao (verba 280); as
+                    # BASES de INSS/IRRF/FGTS acima seguem sendo o bruto do 13o,
+                    # porque devolucao nao e remuneracao.
+                    "valor_total_proventos":     int(d.get("total_prov") or d["bruto_13"]),
                     "valor_total_descontos":     int(d["total_desc"]),
                     "valor_liquido":             int(d["liquido"]),
                     "os": 0, "controle": 0,
