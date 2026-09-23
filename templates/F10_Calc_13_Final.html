@@ -328,12 +328,13 @@ tbody td { padding: 9px 8px; font-size: 12px; color: #1e293b; }
 <div class="alerta alerta-atencao">
     <span class="alerta-icone">↩️</span>
     <div>
-        <strong>Adiantamento pago a maior em {{ qtd_residuo }} funcionário{{ 's' if qtd_residuo != 1 else '' }}
+        <strong>Insuficiência de saldo em {{ qtd_residuo }} funcionário{{ 's' if qtd_residuo != 1 else '' }}
         — total de {{ total_residuo_fmt }}.</strong>
-        O 13º não comporta todo o adiantamento já pago: o desconto vai até zerar o líquido,
-        e o que sobra fica <strong>a receber do empregado</strong>. Acontece quando o
-        adiantamento saiu sobre o salário cheio e depois o empregado perdeu avos
-        (afastamento, por exemplo). Cada caso está marcado na lista abaixo.
+        O 13º não comporta todo o adiantamento já pago: o desconto do adiantamento (verba 18)
+        vai inteiro, a diferença entra na <strong>verba 551</strong> para o líquido não ficar
+        negativo, e é <strong>descontada na verba 552 da próxima folha normal</strong>.
+        Acontece quando o adiantamento saiu sobre o salário cheio e depois o empregado
+        perdeu avos (afastamento, por exemplo). Cada caso está marcado na lista abaixo.
     </div>
 </div>
 {% endif %}

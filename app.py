@@ -46315,6 +46315,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
     # O líquido nunca sai negativo: o que faltar vira 551 (provento) e no mês
     # seguinte volta como 552 (desconto). Aqui carregamos o 551 do mês passado
     # para descontar agora. Mesma mecânica da 501/509 do arredondamento.
+    # Vale também para a 551 da folha do 13º FINAL (tipo '1'): o 13º de
+    # dezembro que não comportou o adiantamento é descontado na 552 de janeiro.
     _insuf_prev551 = {}
     try:
         _in_y, _in_m = int(anomes) // 100, int(anomes) % 100
@@ -46323,7 +46325,7 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                  .select("matricula, valor")
                  .eq("id_empresa", id_empresa)
                  .eq("folha",      _prev_insuf)
-                 .eq("folha_tipo", "N")
+                 .in_("folha_tipo", ["N", "1"])
                  .eq("cod_verba",  VERBA_INSUF_SALDO)
                  .eq("situacao",   "A"))
         if id_cliente:
@@ -70060,34 +70062,35 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     g_irrf = 0 if _enc0 else irrf_13
     g_fgts = 0 if _enc0 else fgts_val
 
-    # Desconto do adiantamento (verba 18): a soma das 17 do ano, mas LIMITADO ao
-    # que sobra DEPOIS do INSS e do IRRF.
+    # Desconto do adiantamento (verba 18): a soma das 17 do ano, INTEIRA.
     #
-    # O liquido do 13o nunca pode ser negativo — e a mesma regra que a folha
-    # mensal ja segue (ver VERBA_INSUF_SALDO, app.py:44567). Limitar so' ao
-    # bruto nao basta: os impostos vem depois do adiantamento e empurrariam o
-    # liquido para baixo de zero. Acontece de verdade quando o adiantamento foi
-    # pago sobre o salario cheio e o empregado depois perdeu avos (afastamento
-    # por doenca, por exemplo) — o 13o encolhe, o adiantamento nao.
-    #
-    # O que nao coube fica em adto_residual: e adiantamento pago a maior, que a
-    # empresa tem a receber. Nao se perde nem se esconde — a tela e a memoria
-    # mostram, para quem calcula decidir onde cobrar.
+    # INSUFICIENCIA DE SALDO NO 13o  (SMV 23/09/2026)
+    # -----------------------------------------------
+    # O liquido do 13o nunca pode ser negativo. Ate aqui a 18 era cortada ate
+    # zerar o liquido, e o que nao cabia ficava solto na tela como "a receber".
+    # Agora a 18 fica como esta e a diferenca vai na 551 (provento), a mesma
+    # regra da folha mensal (ver VERBA_INSUF_SALDO / ETAPA 1170): o liquido
+    # fecha em zero e a folha NORMAL do mes seguinte desconta o mesmo valor na
+    # 552. Acontece quando o adiantamento foi pago sobre o salario cheio e o
+    # empregado depois perdeu avos (afastamento por doenca, por exemplo) — o
+    # 13o encolhe, o adiantamento nao.
     # Cliente sem encargos nao zera pensao: ela nao e encargo, e do empregado.
     g_pensao = pensao_tot
     g_pen_dv = pensao_devol
 
     _adto_det     = adto_pago.get(mat) or {}
     adto_total    = int(_adto_det.get("total") or 0)
-    # A pensao tambem ocupa espaco: sem ela no limite, o desconto do
-    # adiantamento comeria o que a pensao precisa e o liquido ia a negativo.
-    espaco        = max(0, bruto_13 + g_pen_dv - g_inss - g_irrf - g_pensao)
-    desc_adto     = min(adto_total, espaco)
-    adto_residual = adto_total - desc_adto
+    desc_adto     = adto_total
 
     total_prov = bruto_13 + g_pen_dv      # a devolucao da pensao e provento (280)
     total_desc = desc_adto + g_inss + g_irrf + g_pensao
     liquido    = total_prov - total_desc
+    liq_apurado = liquido                 # antes da 551 — a memoria mostra
+    insuf_saldo = 0
+    if liquido < 0:
+        insuf_saldo = -liquido
+        total_prov += insuf_saldo
+        liquido     = 0
 
     return {
         "matricula": mat,
@@ -70111,7 +70114,9 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
         "desc_adto": desc_adto,
         "adto_pago": adto_total,
         "adto_det":  _adto_det,   # de onde veio: folhas 'A' e a 17 lancada a mao
-        "adto_residual": adto_residual,
+        # Insuficiencia de saldo: 551 aqui, 552 na folha normal seguinte.
+        "insuf_saldo": insuf_saldo,
+        "liq_apurado": liq_apurado,
         # Pensao: o desconto INTEIRO sobre o 13o (281..284) e a devolucao do
         # que ja saiu nos adiantamentos (provento, verba 280).
         "pensao":       g_pensao,
@@ -70468,11 +70473,6 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                 st_formula))
         e.append(Paragraph(f"Desconto = <b>{_fmt_brl(d['desc_adto'])}</b>  "
                            f"(verba {VERBA_13_DESC_ADTO})", st_formula))
-        if d.get("adto_residual"):
-            e.append(Paragraph(
-                f"O adiantamento foi maior do que o 13º comporta. Descontado até "
-                f"zerar o líquido; <b>restam {_fmt_brl(d['adto_residual'])}</b> de "
-                f"adiantamento pago a maior, a receber do empregado.", st_formula))
     else:
         e.append(Paragraph("ETAPA 5030 — ADIANTAMENTO JÁ PAGO"
                            "   Não se aplica — nenhum adiantamento do 13º pago no ano",
@@ -70565,6 +70565,19 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
     e.append(Paragraph(
         f"Líquido = {_fmt_brl(d['bruto_13'])} − adiantamento {_fmt_brl(d['desc_adto'])} "
         f"− INSS {_fmt_brl(d['inss'])} − IRRF {_fmt_brl(d['irrf'])}", st_formula))
+    if d.get("insuf_saldo"):
+        # O adiantamento ficou maior do que o 13o comporta: a 18 vai inteira e
+        # a 551 cobre a diferenca — a mesma ETAPA 1170 da folha mensal.
+        e.append(Paragraph("ETAPA 5075 — INSUFICIÊNCIA DE SALDO", st_etapa))
+        e.append(Paragraph(f"Líquido apurado: {_fmt_brl(d['liq_apurado'])}  (negativo)",
+                           st_formula))
+        e.append(Paragraph(
+            f"Verba {VERBA_INSUF_SALDO:04d} Insuficiência de Saldo: "
+            f"<b>+{_fmt_brl(d['insuf_saldo'])}</b>   →   Líquido final: "
+            f"{_fmt_brl(0)}", st_formula))
+        e.append(Paragraph(
+            f"Este valor será descontado na verba {VERBA_INSUF_DESC:04d} na "
+            f"próxima folha normal.", st_formula))
     e.append(Paragraph(f"LÍQUIDO DO 13º = {_fmt_brl(d['liquido'])}", st_total))
 
     e.append(Spacer(1, 1*cm))
@@ -70842,9 +70855,10 @@ def calcular_13_final():
         motivos = [f"{_MES_ABREV[m['mes']]}: {m['motivo']}"
                    for m in d["meses_det"]
                    if not m["conta"] and m["motivo"] != "fora do contrato"]
-        if d.get("adto_residual"):
+        if d.get("insuf_saldo"):
             motivos.append(
-                f"adiantamento pago a maior: sobram {_fmt_brl(d['adto_residual'])} a receber")
+                f"insuficiência de saldo: {_fmt_brl(d['insuf_saldo'])} na verba "
+                f"{VERBA_INSUF_SALDO}, descontado na {VERBA_INSUF_DESC} da próxima folha")
         vis.append({
             "matricula":  d["matricula"],
             "mat_fmt":    f"{d['matricula']:06d}",
@@ -70866,7 +70880,7 @@ def calcular_13_final():
             "fgts_fmt":   _fmt_brl(d["fgts"]) if d["fgts"] else "—",
             "liquido":    d["liquido"],
             "liq_fmt":    _fmt_brl(d["liquido"]),
-            "residuo":    d.get("adto_residual", 0),
+            "residuo":    d.get("insuf_saldo", 0),
             "motivos":    motivos,
             "tem_pdf":    d["matricula"] in mats_com_pdf,
         })
@@ -71000,6 +71014,10 @@ def calcular_13_final_stream():
                     recs.append(_mov(mat, VERBA_PENSAO_PROVENTO, d["pensao_devol"]))
                 if d["desc_adto"]:
                     recs.append(_mov(mat, VERBA_13_DESC_ADTO, d["desc_adto"]))
+                # Insuficiencia de saldo: a folha normal do mes seguinte le esta
+                # 551 e desconta na 552 (ver a pre-carga _insuf_prev551).
+                if d.get("insuf_saldo"):
+                    recs.append(_mov(mat, VERBA_INSUF_SALDO, d["insuf_saldo"]))
                 for _pd in (d.get("pensao_det") or []):
                     recs.append(_mov(mat, _pd["verba"], _pd["valor"]))
                 if d["inss"]:
@@ -71028,7 +71046,8 @@ def calcular_13_final_stream():
                     "valor_irrf_dependentes":    int(d["dep_ded"]),
                     "qtd_irrf_dependentes":      int(d["dep_qtd"]),
                     "valor_salario":             int(d["sal_mes"]),
-                    # Proventos incluem a devolucao da pensao (verba 280); as
+                    # Proventos incluem a devolucao da pensao (verba 280) e a
+                    # insuficiencia de saldo (551); as
                     # BASES de INSS/IRRF/FGTS acima seguem sendo o bruto do 13o,
                     # porque devolucao nao e remuneracao.
                     "valor_total_proventos":     int(d.get("total_prov") or d["bruto_13"]),
