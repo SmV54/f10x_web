@@ -3404,8 +3404,14 @@ def rel_ferias_func_pdf():
 # Para ver quem está precisando tirar férias. Uma linha por funcionário
 # ativo:
 #   Últimas férias ... o gozo mais recente (tab_eventos op1=3)
-#   Férias 1 ......... o período aquisitivo mais antigo AINDA NÃO GOZADO
+#   Férias 1 ......... o ÚLTIMO período aquisitivo completo ainda não gozado
+#                      (o mais recente que já fechou); sem nenhum fechado, o
+#                      período em curso
 #   Férias 2 ......... o período seguinte
+# Era o MAIS ANTIGO até 24/09/2026: quem veio de outro sistema sem o histórico
+# de férias (emp 9, mat 1, admitida em 2008) aparecia com o aquisitivo de
+# 2008/2009 e "18 períodos". Os anteriores sem férias lançadas continuam
+# avisados na Situação.
 #   Limite ........... mês/ano do fim do período concessivo (12 meses depois
 #                      do fim do aquisitivo) MENOS UM MÊS — é até lá que as
 #                      férias precisam começar para caberem no concessivo
@@ -3467,7 +3473,7 @@ def _ferias_vencidas_dados(id_empresa, ordem):
         ult_fim = _dparse(ult.get("data1f")) if ult else None
 
         ini_curso, vencidos, estimado = _ferias_aquisitivos_resc(dt_adm, dt_ref, evs)
-        f1_ini = vencidos[0][0] if vencidos else ini_curso
+        f1_ini = vencidos[-1][0] if vencidos else ini_curso
         f1_fim = _fim_aquisitivo(f1_ini)
         f2_ini = f1_fim + _td(days=1)
         f2_fim = _fim_aquisitivo(f2_ini)
@@ -3482,8 +3488,9 @@ def _ferias_vencidas_dados(id_empresa, ordem):
             sit, cls = "A conceder", "conceder"
         else:
             sit, cls = "Em aquisição", ""
-        if len(vencidos) >= 2:
-            sit += f" ({len(vencidos)} períodos)"
+        _ant = len(vencidos) - 1          # anteriores ao Férias 1, sem gozo lançado
+        if _ant > 0:
+            sit += f" · +{_ant} anterior{'es' if _ant > 1 else ''} sem férias lançadas"
 
         linhas.append({
             "mat": mat, "mat_fmt": f"{mat:06d}",
@@ -3537,7 +3544,7 @@ def rel_ferias_vencidas_pdf():
     rows = []
     for l in linhas:
         ult = (f"{l['ult_ini_fmt']} a {l['ult_fim_fmt']}" if l["ult_ini_fmt"]
-               else "Nunca tirou")
+               else "Sem férias lançadas")
         sit = l["situacao"]
         if l["sit_cls"] in _cor:
             sit = f"<font color='{_cor[l['sit_cls']]}'><b>{sit}</b></font>"

@@ -156,7 +156,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 .chip-venc   { background: #fee2e2; color: #b91c1c; }
 .chip-lim    { background: #ffedd5; color: #c2410c; }
 .td-lim  { font-family: var(--mono); font-size: 12px; font-weight: 600; text-align: center; white-space: nowrap; }
-.sit     { font-size: 11px; font-weight: 600; white-space: nowrap; }
+.sit     { font-size: 11px; font-weight: 600; }
 tr.venc td     { background: #fef2f2; }
 tr.venc .sit   { color: #b91c1c; }
 tr.limite td   { background: #fff7ed; }
@@ -249,7 +249,7 @@ tr.conceder .sit { color: #1d4ed8; }
                     <td class="td-mat">{{ l.mat_fmt }}</td>
                     <td>{{ l.nome }}</td>
                     <td class="td-mono">{{ l.adm_fmt }}</td>
-                    <td class="td-mono">{% if l.ult_ini_fmt %}{{ l.ult_ini_fmt }} a {{ l.ult_fim_fmt or '—' }}{% else %}<span style="color:#94a3b8">Nunca tirou</span>{% endif %}</td>
+                    <td class="td-mono">{% if l.ult_ini_fmt %}{{ l.ult_ini_fmt }} a {{ l.ult_fim_fmt or '—' }}{% else %}<span style="color:#94a3b8">Sem férias lançadas</span>{% endif %}</td>
                     <td class="td-dias">{{ l.ult_dias or '—' }}</td>
                     <td class="td-mono">{{ l.f1_ini_fmt }} a {{ l.f1_fim_fmt }}{% if l.estimado %} <span title="Aquisitivo deduzido pelo gozo: o lançamento antigo não tem o período aquisitivo">*</span>{% endif %}</td>
                     <td class="td-lim">{{ l.f1_lim_fmt }}</td>
@@ -266,7 +266,7 @@ tr.conceder .sit { color: #1d4ed8; }
     </div>
 
     <div class="nota">
-        <b>Férias 1</b> é o período aquisitivo mais antigo ainda não gozado; <b>Férias 2</b>, o seguinte.
+        <b>Férias 1</b> é o último período aquisitivo completo ainda não gozado (sem nenhum completo, o período em curso); <b>Férias 2</b>, o seguinte.
         <b>Limite</b> é o mês/ano até o qual as férias precisam começar: um mês antes do fim do período
         concessivo (12 meses após o fim do aquisitivo).
         <b>VENCIDA</b>: o concessivo já acabou (férias em dobro, art. 137 da CLT).
