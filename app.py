@@ -3398,6 +3398,169 @@ def rel_ferias_func_pdf():
                        filename="Ferias_Funcionarios.pdf")
 
 
+# =========================================================
+# FÉRIAS VENCIDAS — últimas férias + período aquisitivo (SMV 24/09/2026)
+# =========================================================
+# Para ver quem está precisando tirar férias. Uma linha por funcionário
+# ativo:
+#   Últimas férias ... o gozo mais recente (tab_eventos op1=3)
+#   Férias 1 ......... o período aquisitivo mais antigo AINDA NÃO GOZADO
+#   Férias 2 ......... o período seguinte
+#   Limite ........... mês/ano do fim do período concessivo (12 meses depois
+#                      do fim do aquisitivo) MENOS UM MÊS — é até lá que as
+#                      férias precisam começar para caberem no concessivo
+# O encadeamento dos períodos é o da rescisão (_ferias_aquisitivos_resc):
+# parte do dia seguinte ao último aquisitivo gozado e anda de 12 em 12
+# meses. Assim este relatório e a rescisão nunca discordam de quais
+# períodos estão em aberto.
+_FERVENC_ORDENS = {"M": "Matrícula", "N": "Nome",
+                   "P": "Início do Período Aquisitivo (crescente)"}
+
+
+def _ferias_vencidas_dados(id_empresa, ordem):
+    """(linhas, dt_ref) do relatório de Férias Vencidas. ordem = M, N ou P."""
+    from datetime import timedelta as _td
+    dt_ref = _agora_brasilia().date()
+    ym_ref = dt_ref.year * 100 + dt_ref.month
+
+    def _br(d):
+        return d.strftime("%d/%m/%Y") if d else ""
+
+    def _limite(fim_aq):
+        # fim do concessivo = 1 ano depois do fim do aquisitivo; limite = o
+        # mês anterior ao do fim do concessivo
+        fim_conc = _fim_aquisitivo(fim_aq + _td(days=1))
+        m, a = fim_conc.month - 1, fim_conc.year
+        if m == 0:
+            m, a = 12, a - 1
+        return fim_conc, a * 100 + m
+
+    try:
+        funcs = (supabase.table("tab_cad")
+                 .select("matricula, nome, nomer, dtadm, situacao")
+                 .eq("id_empresa", id_empresa).neq("situacao", "D")
+                 .execute().data) or []
+    except Exception as e:
+        print(f"[ferias_vencidas] tab_cad: {e}")
+        funcs = []
+    evs_por_mat = {}
+    try:
+        for ev in (supabase.table("tab_eventos")
+                   .select("matricula, data1i, data1f, data2i, data2f, ref1")
+                   .eq("id_empresa", id_empresa).eq("op1", 3)
+                   .execute().data) or []:
+            evs_por_mat.setdefault(int(ev.get("matricula") or 0), []).append(ev)
+    except Exception as e:
+        print(f"[ferias_vencidas] tab_eventos: {e}")
+
+    linhas = []
+    for f in funcs:
+        mat = int(f.get("matricula") or 0)
+        dt_adm = _dparse(f.get("dtadm"))
+        if not mat or not dt_adm:
+            continue
+        evs = evs_por_mat.get(mat, [])
+
+        # últimas férias = o gozo que começou por último
+        ult = max(evs, key=lambda e: str(e.get("data1i") or ""), default=None)
+        ult_ini = _dparse(ult.get("data1i")) if ult else None
+        ult_fim = _dparse(ult.get("data1f")) if ult else None
+
+        ini_curso, vencidos, estimado = _ferias_aquisitivos_resc(dt_adm, dt_ref, evs)
+        f1_ini = vencidos[0][0] if vencidos else ini_curso
+        f1_fim = _fim_aquisitivo(f1_ini)
+        f2_ini = f1_fim + _td(days=1)
+        f2_fim = _fim_aquisitivo(f2_ini)
+        f1_conc, f1_lim = _limite(f1_fim)
+        _f2_conc, f2_lim = _limite(f2_fim)
+
+        if dt_ref > f1_conc:
+            sit, cls = "VENCIDA — em dobro", "venc"
+        elif f1_lim <= ym_ref:
+            sit, cls = "No limite — conceder já", "limite"
+        elif f1_fim < dt_ref:
+            sit, cls = "A conceder", "conceder"
+        else:
+            sit, cls = "Em aquisição", ""
+        if len(vencidos) >= 2:
+            sit += f" ({len(vencidos)} períodos)"
+
+        linhas.append({
+            "mat": mat, "mat_fmt": f"{mat:06d}",
+            "nome": (f.get("nome") or f.get("nomer") or "").strip(),
+            "adm_fmt": _br(dt_adm),
+            "ult_ini_fmt": _br(ult_ini), "ult_fim_fmt": _br(ult_fim),
+            "ult_dias": int(ult.get("ref1") or 0) if ult else 0,
+            "f1_ini": f1_ini, "f1_ini_fmt": _br(f1_ini), "f1_fim_fmt": _br(f1_fim),
+            "f1_lim_fmt": f"{f1_lim % 100:02d}/{f1_lim // 100}",
+            "f2_lim_fmt": f"{f2_lim % 100:02d}/{f2_lim // 100}",
+            "estimado": estimado, "situacao": sit, "sit_cls": cls,
+        })
+
+    if ordem == "M":
+        linhas.sort(key=lambda l: l["mat"])
+    elif ordem == "N":
+        linhas.sort(key=lambda l: (l["nome"].upper(), l["mat"]))
+    else:
+        linhas.sort(key=lambda l: (l["f1_ini"], l["nome"].upper()))
+    return linhas, dt_ref
+
+
+def _fervenc_ordem():
+    o = (request.args.get("ordem") or "P").strip().upper()[:1]
+    return o if o in _FERVENC_ORDENS else "P"
+
+
+@app.route("/rel_ferias_vencidas")
+def rel_ferias_vencidas():
+    if not session.get("logado"):
+        return redirect("/")
+    ordem = _fervenc_ordem()
+    linhas, dt_ref = _ferias_vencidas_dados(_get_id_empresa(), ordem)
+    return render_template(
+        "F10_Rel_Ferias_Vencidas.html",
+        **_ctx_relatorio(),
+        linhas=linhas, ordem=ordem, ordens=_FERVENC_ORDENS,
+        dt_ref_fmt=dt_ref.strftime("%d/%m/%Y"),
+        qtd_venc=sum(1 for l in linhas if l["sit_cls"] == "venc"),
+        qtd_lim=sum(1 for l in linhas if l["sit_cls"] == "limite"),
+    )
+
+
+@app.route("/rel_ferias_vencidas_pdf")
+def rel_ferias_vencidas_pdf():
+    if not session.get("logado"):
+        return redirect("/")
+    ordem = _fervenc_ordem()
+    linhas, dt_ref = _ferias_vencidas_dados(_get_id_empresa(), ordem)
+    _cor = {"venc": "#b91c1c", "limite": "#c2410c"}
+    rows = []
+    for l in linhas:
+        ult = (f"{l['ult_ini_fmt']} a {l['ult_fim_fmt']}" if l["ult_ini_fmt"]
+               else "Nunca tirou")
+        sit = l["situacao"]
+        if l["sit_cls"] in _cor:
+            sit = f"<font color='{_cor[l['sit_cls']]}'><b>{sit}</b></font>"
+        rows.append([l["mat_fmt"], l["nome"], l["adm_fmt"], ult,
+                     str(l["ult_dias"] or "—"),
+                     f"{l['f1_ini_fmt']} a {l['f1_fim_fmt']}" + (" *" if l["estimado"] else ""),
+                     l["f1_lim_fmt"], l["f2_lim_fmt"], sit])
+    return _pdf_tabela("Férias Vencidas — Últimas Férias e Período Aquisitivo",
+                       ["Mat.", "Funcionário", "Admissão", "Últimas Férias (gozo)", "Dias",
+                        "Período Aquisitivo (Férias 1)", "Limite Férias 1",
+                        "Limite Férias 2", "Situação"],
+                       [1.5, 5.1, 1.9, 3.7, 0.9, 3.8, 1.9, 1.9, 4.9], rows,
+                       str(session.get("empresa_info") or ""),
+                       _fmt_cnpj(session.get("cnpj_empresa", "")),
+                       subtitulo=(f"Ordem: {_FERVENC_ORDENS[ordem]} · Posição em "
+                                  f"{dt_ref.strftime('%d/%m/%Y')} · {len(linhas)} funcionário(s)"),
+                       landscape=True, filename="Ferias_Vencidas.pdf",
+                       notas=("Limite = mês/ano até o qual as férias precisam começar: "
+                              "um mês antes do fim do período concessivo (12 meses após "
+                              "o fim do aquisitivo). * aquisitivo deduzido pelo gozo — o "
+                              "lançamento antigo não tem o período aquisitivo."))
+
+
 @app.route("/rel_faltas_pdf")
 def rel_faltas_pdf():
     if not session.get("logado"):
@@ -8763,6 +8926,7 @@ def _sem_dsr(id_cliente):
 # =========================================================
 # Códigos de verba (Folha10) usados na rescisão
 VR_SALDO       = 10    # SALDO DE SALARIO
+VR_ATESTADO    = 9     # ATESTADO MEDICO (15 primeiros dias do afastamento no mes)
 VR_13_PROP     = 12    # 13 SALARIO PROPORCIONAL
 VR_13_AVISO    = 13    # 13 SALARIO INDENIZADO (projeção do aviso)
 # No Folha10 o terco constitucional e verba PROPRIA (42), calculada sobre a
@@ -9407,6 +9571,8 @@ def _calc_rescisao_nucleo(body, sim=None):
     from datetime import date as _date
     # Cache dos adicionais: uma leitura para todos os demitidos (ver _adicionais_cache)
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
+    # Afastamentos (op1=6) do mês: uma leitura para todos os demitidos
+    _afast_resc = _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=id_cliente)
     resultados = []
     _extras = {"aviso": "", "movs": {}, "tot": {}, "cad": {}}
     for cad in demitidos:
@@ -9518,6 +9684,33 @@ def _calc_rescisao_nucleo(body, sim=None):
         sal_mes_ad  = sal_mes + adic_total          # remuneracao mensal cheia
 
         dias_saldo = min(dt_resc.day, 30)
+
+        # ── Afastamento no mês da rescisão (SMV 24/09/2026) ──
+        # O saldo paga só os dias REALMENTE trabalhados. Os dias afastados
+        # entre o dia 1 e a data da rescisão saem do saldo: os 15 primeiros
+        # do afastamento (contados desde o início dele, mesmo que tenha
+        # começado no mês anterior) vão para a verba 0009, por conta da
+        # empresa; do 16º em diante é o INSS, e a rescisão não paga. É a
+        # mesma divisão da folha mensal (_split_afast_mes, ETAPA 1045).
+        # Antes o saldo pagava o mês inteiro até a data da rescisão, e o
+        # afastamento era acertado à mão com 0009/0010 digitadas.
+        dias_atest = dias_afast_inss = 0
+        _ini_c = anomes + "01"
+        _fim_c = dt_resc.strftime("%Y%m%d")
+        for _af in _afast_resc.get(mat, []):
+            _da, _di, _ = _split_afast_mes(_norm_data8(_af.get("data1i")),
+                                           _norm_data8(_af.get("data1f")),
+                                           _ini_c, _fim_c, dias_atest)
+            dias_atest      += (_da or 0)
+            dias_afast_inss += (_di or 0)
+        dias_saldo = max(0, dias_saldo - dias_atest - dias_afast_inss)
+        # 0009 digitada na rescisão INIBE a calculada (quem digitou decide),
+        # como na folha mensal. Valor pelo salário, sem os adicionais: sem
+        # trabalho no ambiente insalubre/perigoso não há adicional (idem 1045).
+        _tem_9_man = any(int(_r.get("cod_verba") or 0) == VR_ATESTADO
+                         for _r in manual_mov.get(mat, []))
+        atest_val = 0 if _tem_9_man else round(sal_mes * dias_atest / 30)
+
         saldo = round(sal_mes_ad * dias_saldo / 30)
         # O saldo continua sendo calculado sobre a remuneracao CHEIA (salario +
         # adicionais) — e a base do INSS, do IRRF e do FGTS nao muda em nada.
@@ -9668,17 +9861,18 @@ def _calc_rescisao_nucleo(body, sim=None):
         # As médias são REFLEXO (entram no 13º e nas férias), não são pagas como
         # linha própria. Saldo de salário incide INSS sobre o salário do período.
         # Verbas manuais que incidem somam à base do saldo.
-        base_inss_saldo = saldo + add_inss
+        # A 0009 (atestado) incide como o saldo: INSS, IRRF e FGTS.
+        base_inss_saldo = saldo + atest_val + add_inss
         inss_saldo, inss_saldo_det, _ = _calc_inss_progressivo(base_inss_saldo, tabela)
         # INSS 13º (base separada)
         inss_13, inss_13_det, _ = (_calc_inss_progressivo(d13, tabela) if d13 else (0, [], 0))
         # IRRF: base saldo (saldo + manuais c/ inc. IRRF) - inss_saldo - dep ; 13º separado
         ndep = dep_count.get(mat, 0); dep_total = ndep * dep_irrf_ded
-        base_irrf_saldo = max(0, saldo + add_irrf - inss_saldo - dep_total)
+        base_irrf_saldo = max(0, saldo + atest_val + add_irrf - inss_saldo - dep_total)
         irrf_saldo, irrf_saldo_info = _calc_irrf(base_irrf_saldo, tabela)
         # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
         irrf_saldo, _red_saldo, _isento_saldo = _irrf_isencao_redutor(
-            saldo + add_irrf, irrf_saldo, tabela)
+            saldo + atest_val + add_irrf, irrf_saldo, tabela)
         # Dependentes tambem deduzem da base do 13o (SMV 16/09/2026) — um
         # padrao so com a folha do 13o final. Nao e deducao em dobro: o
         # saldo e tributacao MENSAL e o 13o e EXCLUSIVA NA FONTE, duas
@@ -9688,7 +9882,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         irrf_13, _red_13, _isento_13 = _irrf_isencao_redutor(d13, irrf_13, tabela)
         # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
         # (férias indenizadas não têm FGTS)
-        base_fgts = saldo + d13 + aviso_val + add_fgts
+        base_fgts = saldo + atest_val + d13 + aviso_val + add_fgts
         fgts_val = round(base_fgts * 8 / 100)
 
         # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): tudo acima continua
@@ -9711,7 +9905,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # dois sistemas darem o mesmo valor.
         # Recalcula a cada rodada: mexeu numa verba da rescisão, o desconto do
         # empréstimo se ajusta sozinho no próximo cálculo.
-        total_prov = (saldo + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
+        total_prov = (saldo + atest_val + aviso_val + d13 + fer_prop + fer_venc + terco_fer + man_prov
                       + art479)
 
         if consig_pend:
@@ -9774,6 +9968,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         if saldo_sal: recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dias_saldo, "valor": saldo_sal})
         for _c_ad, _v_ad in sorted(saldo_adics.items()):
             recs.append({**base_mov, "cod_verba": _c_ad, "qtd": 0, "valor": _v_ad})
+        if atest_val: recs.append({**base_mov, "cod_verba": VR_ATESTADO,     "qtd": dias_atest, "valor": atest_val})
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
         if aviso_desc:recs.append({**base_mov, "cod_verba": VR_AVISO_EMP,    "qtd": dias_aviso_desc, "valor": aviso_desc})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
@@ -9820,7 +10015,9 @@ def _calc_rescisao_nucleo(body, sim=None):
             _log_av = (f" avisoDesc={_fmt_brl(aviso_desc)}({dias_aviso_desc}d)" if aviso_desc
                        else (" avisoDispensado" if (aviso_ind and aviso_pedido and aviso_disp) else ""))
             gravar_log("CALC_RES",
-                       f"Rescisão calc: saldo={_fmt_brl(saldo)} 13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
+                       f"Rescisão calc: saldo={_fmt_brl(saldo)}({dias_saldo}d) "
+                       + (f"atest={_fmt_brl(atest_val)}({dias_atest}d) " if atest_val else "")
+                       + f"13={_fmt_brl(d13)} fer={_fmt_brl(fer_prop)} "
                        f"ferVenc={_fmt_brl(fer_venc)}({venc_qtd}) terco={_fmt_brl(terco_fer)} "
                        f"INSS={_fmt_brl(g_inss_saldo+g_inss_13)} IRRF={_fmt_brl(g_irrf_saldo+g_irrf_13)} "
                        f"Liq={_fmt_brl(liquido)}" + _log_av
@@ -9852,6 +10049,8 @@ def _calc_rescisao_nucleo(body, sim=None):
             "aviso_desc": aviso_desc, "dias_aviso_desc": dias_aviso_desc,
             "sal_mes": sal_mes, "saldo": saldo, "dia_resc": dias_saldo,
             "saldo_sal": saldo_sal, "saldo_adics": saldo_adics,
+            "dias_atest": dias_atest, "dias_afast_inss": dias_afast_inss,
+            "atest_val": atest_val, "atest_manual": _tem_9_man,
             "adic_total": adic_total, "sal_mes_ad": sal_mes_ad,
             "adic_total_det": dict(adics_mes_r),
             "dia_resc_real": dt_resc.day,
@@ -10101,7 +10300,24 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             if int(r.get("dia_resc_real") or 0) > 30:
                 _lin_saldo.append(f"Rescisão no dia {r['dia_resc_real']}: pela convenção do mês "
                                   "comercial (divisor 30) o mês inteiro paga 30/30 = salário cheio")
+            _d_at, _d_in = int(r.get("dias_atest") or 0), int(r.get("dias_afast_inss") or 0)
+            if _d_at or _d_in:
+                _lin_saldo.append(
+                    f"Afastamento no mês: {min(int(r.get('dia_resc_real') or 0), 30)} dias até a rescisão"
+                    f" - {_d_at} de atestado - {_d_in} pelo INSS"
+                    f" = <b>{r['dia_resc']} dias trabalhados</b> no saldo")
             e.append(_etapa("ETAPA 3020 - SALDO DE SALARIO", _lin_saldo))
+            # 0009 — Atestado: os 15 primeiros dias do afastamento, pela empresa
+            if r.get("atest_val"):
+                e.append(_etapa("ETAPA 3025 - ATESTADO MEDICO (15 PRIMEIROS DIAS)", [
+                    f"Salário {_B(sal)} × {_d_at} dias / 30 = <b>{_B(r['atest_val'])}</b>"
+                    f"  (verba {VR_ATESTADO:04d}) — incide INSS, IRRF e FGTS, como o saldo",
+                ]))
+            elif _d_at and r.get("atest_manual"):
+                e.append(_etapa("ETAPA 3025 - ATESTADO MEDICO (15 PRIMEIROS DIAS)", [
+                    f"{_d_at} dias de atestado — não calculado: a verba {VR_ATESTADO:04d} "
+                    "foi lançada manualmente nesta rescisão e prevalece",
+                ]))
             # 0003 — Aviso prévio: provento da empresa OU desconto do empregado
             if r["aviso_val"]:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [

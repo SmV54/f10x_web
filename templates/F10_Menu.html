@@ -681,7 +681,8 @@ const modulos = {
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
                 { icone: '📋', nome: 'Funcionários em Férias', href: '/lista_ferias',        ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 { icone: '📆', nome: 'Programação de Férias', href: '#', classe: 'nav-fix' },
-                { icone: '⏰', nome: 'Férias Vencidas',       href: '#', classe: 'nav-fix' },
+                // Consulta: últimas férias + período aquisitivo + limites
+                { icone: '⏰', nome: 'Férias Vencidas',       href: '/rel_ferias_vencidas', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
             ]},
             { nome: 'Salários', itens: [
                 { icone: '💹', nome: 'Alteração de Salário',   href: '/select_funcionario?contexto=aumento',          ok: true },
