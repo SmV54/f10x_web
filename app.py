@@ -20539,6 +20539,226 @@ def _ferias_periodo_aquisitivo(todas_ferias, dtadm_str, periodo_ferias):
     return data2i_out, data2f_out
 
 
+# =========================================================
+# FÉRIAS PROPORCIONAIS — quem ainda não fechou o período aquisitivo
+# =========================================================
+# Caso típico: férias coletivas, e parte do pessoal tem menos de um ano de
+# casa. A CLT (art. 140) manda: essas pessoas gozam férias PROPORCIONAIS e um
+# período aquisitivo NOVO começa no primeiro dia das férias. Até 25/09/2026 o
+# lançamento gravava a coletiva inteira para todos, com um aquisitivo que nem
+# tinha fechado — e o seguinte continuava preso à admissão.
+#
+# O Desktop já fazia (FrmFerias1.vb / SR_Ferias.vb, "Ferias Proporcionais"):
+# avos × 2,5, encurta o gozo, zera o abono e fecha o aquisitivo na véspera do
+# início. Aqui a regra é a mesma, mas quem decide o que fazer com cada caso é o
+# operador, numa listagem prévia (api_ferias_previa) — e fica no tab_log.
+#
+# As opções, por funcionário (FERIAS_PROP_OPCOES):
+#   prop     gozo = dias de direito; o que sobra da coletiva não é férias (a
+#            folha paga como salário normal — licença remunerada)
+#   min10    10 dias de gozo, para quem não tem direito nem a 10
+#   integral a coletiva inteira como férias, aquisitivo normal (é antecipar
+#            férias que o funcionário ainda não adquiriu)
+#   excluir  não registra férias para ele agora
+#
+# `prop` e `min10` fecham o aquisitivo na véspera do início das férias — o
+# resto do sistema (rescisão, férias vencidas, o próximo lançamento) encadeia
+# os períodos pelo data2f gravado, então o período novo nasce certo sozinho.
+FERIAS_PROP_OPCOES = {
+    "prop":     "Proporcional",
+    "min10":    "Mínimo de 10 dias",
+    "integral": "Coletiva inteira",
+    "excluir":  "Não registrar",
+}
+
+
+def _avos_ferias(dt_ini, dt_fim):
+    """Avos de férias de dt_ini a dt_fim, os dois dias inclusive.
+
+    Conta pelo ANIVERSÁRIO do início do aquisitivo, não pelo mês do
+    calendário: cada mês cheio a partir de dt_ini vale 1 avo, e a sobra de 15
+    dias ou mais vale mais 1 (CLT art. 146, parágrafo único). Admitido em
+    17/03 com férias em 25/09 tem 6 avos — o mês do calendário daria 7, porque
+    contaria março (15 dias) e setembro (24 dias) separados.
+    """
+    if not dt_ini or not dt_fim or dt_fim < dt_ini:
+        return 0
+
+    def _mais_meses(d, n):
+        tot = d.month - 1 + n
+        y, m = d.year + tot // 12, tot % 12 + 1
+        return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+    meses = 0
+    while meses < 12 and _mais_meses(dt_ini, meses + 1) <= dt_fim + timedelta(days=1):
+        meses += 1
+    if meses < 12:
+        sobra = (dt_fim - _mais_meses(dt_ini, meses)).days + 1
+        if sobra >= 15:
+            meses += 1
+    return min(12, meses)
+
+
+def _ferias_proporcionais(data1i, qtd, data2i, data2f):
+    """As férias começam antes de o período aquisitivo fechar? Se não, None.
+
+    Se sim, devolve o que a listagem prévia mostra e o lançamento grava:
+      avos          meses do aquisitivo até a véspera do início das férias
+      dias_direito  int(avos × 2,5) — a mesma conta do Desktop
+      dias_prop     o direito, limitado aos dias da coletiva
+      sobra         dias da coletiva além do direito
+      abaixo10      direito menor que 10 (o mínimo de um período de férias)
+      aq_ini/aq_fim o aquisitivo que o lançamento grava: fecha na véspera
+    """
+    d_ini = _ferias_str_to_date(data1i)
+    d2i = _ferias_str_to_date(data2i)
+    d2f = _ferias_str_to_date(data2f)
+    if not d_ini or not d2i or not d2f or d2f < d_ini:
+        return None
+    vespera = d_ini - timedelta(days=1)
+    avos = _avos_ferias(d2i, vespera)
+    direito = int(avos * 30 / 12)
+    return {
+        "avos":         avos,
+        "dias_direito": direito,
+        "dias_prop":    min(direito, qtd),
+        "sobra":        max(0, qtd - direito),
+        "abaixo10":     direito < 10,
+        "aq_ini":       data2i,
+        "aq_fim":       _ferias_date_to_str(vespera),
+    }
+
+
+def _ferias_aplicar_opcao(prop, opcao, qtd, data2i, data2f):
+    """(dias, data2i, data2f, abono_zerado) para a opção escolhida.
+
+    `prop` é o que _ferias_proporcionais devolveu. Com opção "excluir", ou
+    "prop" sem nenhum dia de direito, `dias` volta 0: nada a gravar.
+    """
+    # Abono zerado em TODAS: é 1/3 de férias que ele ainda não adquiriu (o
+    # Desktop também zera sempre que as férias são proporcionais).
+    if opcao == "integral":
+        return qtd, data2i, data2f, True
+    if opcao == "min10":
+        return min(10, qtd), prop["aq_ini"], prop["aq_fim"], True
+    if opcao == "prop":
+        return prop["dias_prop"], prop["aq_ini"], prop["aq_fim"], True
+    return 0, data2i, data2f, True
+
+
+def _ferias_log_prop(prop, opcao, qtd, dias):
+    """Texto do tab_log para uma decisão de férias proporcionais."""
+    txt = (f"FERIAS PROPORCIONAIS: aquisitivo {_fmt_dt(prop['aq_ini'])} ainda aberto "
+           f"no inicio das ferias; {prop['avos']} avos = {prop['dias_direito']} dias "
+           f"de direito; coletiva de {qtd} dias. Opcao do operador: "
+           f"{FERIAS_PROP_OPCOES.get(opcao, opcao)}")
+    if opcao == "excluir" or dias == 0:
+        return txt + " - ferias NAO registradas."
+    if opcao == "integral":
+        return txt + f" - {dias} dias de ferias (antecipadas), aquisitivo normal, sem abono."
+    txt += (f" - {dias} dias de ferias; novo aquisitivo a partir do inicio "
+            f"das ferias (fechado em {_fmt_dt(prop['aq_fim'])}); sem abono")
+    if qtd > dias:
+        txt += f"; {qtd - dias} dias restantes da coletiva fora das ferias"
+    return txt + "."
+
+
+def _ferias_montar_previa(id_cliente, id_empresa, mat_int, data1i, qtd, periodo_ferias):
+    """Tudo que o lançamento precisa saber de um funcionário antes de gravar.
+
+    Usada pela listagem prévia E pelo lançamento — o que a tela mostrou é o
+    que se grava, porque a conta é a mesma e o servidor refaz tudo.
+    Devolve dict com nome, dtadm, todas_ferias, data2i, data2f, prop, erro.
+    """
+    r_cad = (supabase.table("tab_cad")
+             .select("dtadm, nome, nomer")
+             .eq("id_cliente", id_cliente)
+             .eq("id_empresa", id_empresa)
+             .eq("matricula", mat_int)
+             .single()
+             .execute())
+    cad = r_cad.data or {}
+    dtadm_str = _norm_data8(str(cad.get("dtadm") or ""))
+    out = {"nome": (cad.get("nomer") or cad.get("nome") or "").strip(),
+           "dtadm": dtadm_str, "todas_ferias": [], "data2i": None,
+           "data2f": None, "prop": None, "erro": None}
+
+    if dtadm_str and len(dtadm_str) >= 8 and data1i < dtadm_str:
+        out["erro"] = (f"início das férias ({_fmt_dt(data1i)}) é anterior à data "
+                       f"de admissão ({_fmt_dt(dtadm_str)}).")
+        return out
+
+    r_prev = (supabase.table("tab_eventos")
+              .select("data1i, data1f, data2i, data2f")
+              .eq("id_cliente", id_cliente)
+              .eq("id_empresa", id_empresa)
+              .eq("matricula", mat_int)
+              .eq("op1", 3)
+              .order("data1i", desc=True)
+              .execute())
+    out["todas_ferias"] = r_prev.data or []
+    out["data2i"], out["data2f"] = _ferias_periodo_aquisitivo(
+        out["todas_ferias"], dtadm_str, periodo_ferias)
+    # "Não" é continuação de um período que já deu férias: não há o que
+    # proporcionalizar.
+    if periodo_ferias != "nao":
+        out["prop"] = _ferias_proporcionais(data1i, qtd, out["data2i"], out["data2f"])
+    return out
+
+
+def _ferias_conflito(todas_ferias, data1i, data1f):
+    """Primeiro gozo já registrado que se sobrepõe a data1i..data1f, ou None."""
+    for ev in todas_ferias:
+        ev_i = str(ev.get("data1i") or "")
+        ev_f = str(ev.get("data1f") or "")
+        if len(ev_i) == 8 and len(ev_f) == 8 and data1i <= ev_f and data1f >= ev_i:
+            return ev_i, ev_f
+    return None
+
+
+@app.route("/api/ferias_previa", methods=["POST"])
+def api_ferias_previa():
+    """Listagem prévia do lançamento de férias: quem cai em proporcionais.
+
+    Não grava nada. A tela chama antes de registrar; se ninguém cair em
+    proporcionais ela segue direto, como sempre foi.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    data = request.get_json(force=True) or {}
+    data1i = str(data.get("data1i", "")).strip()
+    periodo_ferias = str(data.get("periodo_ferias", "auto")).strip()
+    try:
+        qtd = int(data.get("qtd_dias"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Quantidade de dias inválida."})
+    if len(data1i) != 8 or not data1i.isdigit():
+        return jsonify({"ok": False, "msg": "Data Início inválida."})
+
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    itens = []
+    for mat in data.get("matriculas", []):
+        try:
+            mat_int = int(mat)
+        except (TypeError, ValueError):
+            continue
+        try:
+            p = _ferias_montar_previa(id_cliente, id_empresa, mat_int, data1i, qtd,
+                                      periodo_ferias)
+        except Exception as e:
+            itens.append({"matricula": mat_int, "nome": "", "erro": str(e)[:150]})
+            continue
+        it = {"matricula": mat_int, "nome": p["nome"], "dtadm": p["dtadm"],
+              "data2i": p["data2i"], "data2f": p["data2f"], "erro": p["erro"]}
+        if p["prop"]:
+            it.update(p["prop"])
+            it["proporcional"] = True
+        itens.append(it)
+    return jsonify({"ok": True, "itens": itens,
+                    "tem_proporcional": any(i.get("proporcional") for i in itens)})
+
+
 @app.route("/api/ferias_gravar", methods=["POST"])
 def api_ferias_gravar():
     if not session.get("logado"):
@@ -20556,6 +20776,10 @@ def api_ferias_gravar():
     qtd_dias         = data.get("qtd_dias")
     periodo_ferias   = str(data.get("periodo_ferias", "auto")).strip()   # auto | sim | nao
     abono_pecuniario = str(data.get("abono_pecuniario", "nao")).strip()  # sim | nao | auto
+    # Decisão do operador na listagem prévia, por matrícula (FERIAS_PROP_OPCOES)
+    opcoes           = data.get("opcoes") or {}
+    if not isinstance(opcoes, dict):
+        opcoes = {}
 
     if not matriculas:
         return jsonify({"ok": False, "msg": "Nenhuma matrícula informada."})
@@ -20581,8 +20805,9 @@ def api_ferias_gravar():
     anomes_am  = str(session.get("anomes_atual") or "")
     folha_int  = int(anomes_am) if anomes_am else None
 
-    gravados = 0
-    erros    = []
+    gravados  = 0
+    excluidos = 0
+    erros     = []
     for mat in matriculas:
         try:
             mat_int = int(mat)
@@ -20590,52 +20815,48 @@ def api_ferias_gravar():
             erros.append(f"Matrícula inválida: {mat}")
             continue
         try:
-            # Buscar data de admissão
-            r_cad = (supabase.table("tab_cad")
-                     .select("dtadm")
-                     .eq("id_cliente", id_cliente)
-                     .eq("id_empresa", id_empresa)
-                     .eq("matricula", mat_int)
-                     .single()
-                     .execute())
-            dtadm_str = _norm_data8(str((r_cad.data or {}).get("dtadm") or ""))
-
-            # Valida: férias não podem ser antes da admissão
-            if dtadm_str and len(dtadm_str) >= 8 and data1i < dtadm_str:
-                erros.append(
-                    f"Mat {mat_int}: início das férias ({data1i[6:]}/{data1i[4:6]}/{data1i[:4]}) "
-                    f"é anterior à data de admissão ({dtadm_str[6:]}/{dtadm_str[4:6]}/{dtadm_str[:4]})."
-                )
+            # Admissão, férias já registradas, período aquisitivo e o caso das
+            # proporcionais: a mesma conta que a listagem prévia mostrou.
+            p = _ferias_montar_previa(id_cliente, id_empresa, mat_int, data1i, qtd,
+                                      periodo_ferias)
+            if p["erro"]:
+                erros.append(f"Mat {mat_int}: {p['erro']}")
                 continue
+            todas_ferias = p["todas_ferias"]
+            data2i_out, data2f_out = p["data2i"], p["data2f"]
+            dias_mat, data1f_mat, abono_mat = qtd, data1f, dias_abono
+            log_prop = None
 
-            # Buscar todas as férias registradas (para checar sobreposição e período aquisitivo)
-            r_prev = (supabase.table("tab_eventos")
-                      .select("data1i, data1f, data2i, data2f")
-                      .eq("id_cliente", id_cliente)
-                      .eq("id_empresa", id_empresa)
-                      .eq("matricula", mat_int)
-                      .eq("op1", 3)
-                      .order("data1i", desc=True)
-                      .execute())
-            todas_ferias = r_prev.data or []
+            prop = p["prop"]
+            if prop:
+                # Sem opção vinda da tela (quem chama a rota direto): a regra
+                # da CLT. Abaixo de 10 dias a tela obriga a escolher.
+                opcao = str(opcoes.get(str(mat_int)) or "prop")
+                if opcao not in FERIAS_PROP_OPCOES:
+                    opcao = "prop"
+                dias_mat, data2i_out, data2f_out, sem_abono = _ferias_aplicar_opcao(
+                    prop, opcao, qtd, data2i_out, data2f_out)
+                # O log da decisão vai depois do insert: se a gravação cair
+                # na sobreposição, a decisão não aconteceu.
+                log_prop = _ferias_log_prop(prop, opcao, qtd, dias_mat)
+                if dias_mat <= 0:
+                    gravar_log("FERIAS", log_prop, matricula=mat_int)
+                    excluidos += 1
+                    continue
+                if sem_abono:
+                    abono_mat = 0
+                d_i = _ferias_str_to_date(data1i)
+                data1f_mat = _ferias_date_to_str(d_i + timedelta(days=dias_mat - 1))
 
             # Verificar sobreposição de período de gozo
-            for ev in todas_ferias:
-                ev_i = str(ev.get("data1i") or "")
-                ev_f = str(ev.get("data1f") or "")
-                if len(ev_i) == 8 and len(ev_f) == 8:
-                    if data1i <= ev_f and data1f >= ev_i:
-                        erros.append(
-                            f"Mat {mat_int}: período de gozo {data1i[:4]}/{data1i[4:6]}/{data1i[6:]} "
-                            f"a {data1f[:4]}/{data1f[4:6]}/{data1f[6:]} "
-                            f"conflita com férias já registradas ({ev_i[6:]}/{ev_i[4:6]}/{ev_i[:4]} "
-                            f"a {ev_f[6:]}/{ev_f[4:6]}/{ev_f[:4]})."
-                        )
-                        raise ValueError("sobreposicao")
-
-            # Regra em _ferias_periodo_aquisitivo: a simulação usa a mesma.
-            data2i_out, data2f_out = _ferias_periodo_aquisitivo(
-                todas_ferias, dtadm_str, periodo_ferias)
+            conf = _ferias_conflito(todas_ferias, data1i, data1f_mat)
+            if conf:
+                erros.append(
+                    f"Mat {mat_int}: período de gozo {_fmt_dt(data1i)} a {_fmt_dt(data1f_mat)} "
+                    f"conflita com férias já registradas ({_fmt_dt(conf[0])} "
+                    f"a {_fmt_dt(conf[1])})."
+                )
+                continue
 
             r_ev = supabase.table("tab_eventos").insert({
                 "id_cliente": id_cliente,
@@ -20644,15 +20865,17 @@ def api_ferias_gravar():
                 "folha":      folha_int,
                 "op1":        3,
                 "data1i":     data1i,
-                "data1f":     data1f,
-                "ref1":       qtd,
-                "ref2":       dias_abono if dias_abono else None,
+                "data1f":     data1f_mat,
+                "ref1":       dias_mat,
+                "ref2":       abono_mat if abono_mat else None,
                 "data2i":     data2i_out,
                 "data2f":     data2f_out,
             }).execute()
             id_evento = ((r_ev.data or [{}])[0]).get("id")
             gravados += 1
-            gravar_log("FERIAS", f"INC ferias: {_fmt_dt(data1i)}-{_fmt_dt(data1f)} ({qtd}d)", matricula=mat_int)
+            gravar_log("FERIAS", f"INC ferias: {_fmt_dt(data1i)}-{_fmt_dt(data1f_mat)} ({dias_mat}d)", matricula=mat_int)
+            if log_prop:
+                gravar_log("FERIAS", log_prop, matricula=mat_int)
 
             # Remessa eSocial S-2230 — só grava se ainda não existe para esse mês
             try:
@@ -20660,8 +20883,11 @@ def api_ferias_gravar():
                 anomes_tp     = str(session.get("anomes_tipo") or "")
                 folha_tipo_es = "1" if anomes_tp in ("1", "A") else "N"
                 ano_mes_int   = int(anomes_am) if anomes_am else None
+                # id_esocial: a tabela não tem coluna "id". Com "id" o select
+                # dava erro, o except engolia e, de 22/06 a 25/09/2026,
+                # nenhum lançamento de férias gerou a remessa do S-2230.
                 _ja_existe = (supabase.table("tab_esocial")
-                              .select("id")
+                              .select("id_esocial")
                               .eq("id_cliente", id_cliente)
                               .eq("id_empresa", id_empresa)
                               .eq("matricula",  mat_int)
@@ -20692,10 +20918,12 @@ def api_ferias_gravar():
         except Exception as e:
             erros.append(f"Mat {mat_int}: {str(e)}")
 
-    if gravados == 0:
+    if gravados == 0 and not (excluidos and not erros):
         return jsonify({"ok": False, "msg": "Nenhum registro gravado. " + "; ".join(erros)})
 
     msg = f"Férias registradas: {gravados} funcionário(s)."
+    if excluidos:
+        msg += f" Sem férias por opção na listagem prévia: {excluidos}."
     if erros:
         msg += " Erros: " + "; ".join(erros)
     return jsonify({"ok": True, "gravados": gravados, "msg": msg})
@@ -57004,6 +57232,20 @@ def _sim_ferias_montar(itens):
         except Exception:
             todas_ferias = []
         data2i, data2f = _ferias_periodo_aquisitivo(todas_ferias, dtadm_str, periodo)
+
+        # Aquisitivo ainda aberto: simula o que o lançamento grava por padrão,
+        # as férias proporcionais (ver _ferias_proporcionais).
+        prop = (_ferias_proporcionais(data1i, dias, data2i, data2f)
+                if periodo != "nao" else None)
+        if prop:
+            if prop["dias_prop"] <= 0:
+                return [], {}, (f"Funcionário {mat:06d}: o período aquisitivo começou em "
+                                f"{_fmt_dt(prop['aq_ini'])} e ainda não dá direito a "
+                                f"nenhum dia de férias.")
+            dias, data2i, data2f, _ = _ferias_aplicar_opcao(prop, "prop", dias,
+                                                            data2i, data2f)
+            dias_abono = 0
+            data1f = (d_ini + timedelta(days=dias - 1)).strftime("%Y%m%d")
 
         nomes[mat] = (cad.get("nomer") or cad.get("nome") or "").strip()
         eventos.append({

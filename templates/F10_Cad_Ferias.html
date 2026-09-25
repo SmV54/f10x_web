@@ -190,6 +190,64 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 #toast.ok   { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
 #toast.erro { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
 
+/* ── LISTAGEM PRÉVIA — FÉRIAS PROPORCIONAIS ── */
+#previa-fundo {
+    display: none; position: fixed; inset: 0; z-index: 9000;
+    background: rgba(15,23,42,0.45); overflow-y: auto; padding: 32px 16px;
+}
+.previa-caixa {
+    background: var(--surface); border-radius: 14px; max-width: 1040px; margin: 0 auto;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25); overflow: hidden;
+}
+.previa-titulo {
+    padding: 14px 20px; font-size: 15px; font-weight: 700; color: #1e293b;
+    border-bottom: 1px solid var(--border); background: #f8fafc;
+}
+.previa-aviso {
+    margin: 14px 20px 0; padding: 12px 16px; border-radius: 8px;
+    font-size: 12.5px; line-height: 1.55;
+}
+.previa-aviso.ambar { background: #fffbeb; border: 2px solid #f59e0b; color: #78350f; }
+.previa-aviso.verm  { background: #fef2f2; border: 2px solid #ef4444; color: #7f1d1d; }
+.previa-aviso b { font-weight: 700; }
+.previa-todos {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin: 12px 20px 0; font-size: 12px; color: #374151;
+}
+.previa-tab-wrap { margin: 12px 20px 0; overflow-x: auto; }
+.previa-tab { width: 100%; border-collapse: collapse; font-size: 12px; }
+.previa-tab th {
+    text-align: left; font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.05em; color: #64748b; padding: 6px 8px; border-bottom: 2px solid var(--border);
+    white-space: nowrap;
+}
+.previa-tab td { padding: 7px 8px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.previa-tab td.mono { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.previa-tab tr.linha-prop   td { background: #fffbeb; }
+.previa-tab tr.linha-abaixo td { background: #fef2f2; }
+.previa-tab tr.linha-erro   td { background: #fef2f2; color: #991b1b; }
+.previa-tab select {
+    font-family: var(--sans); font-size: 12px; padding: 4px 6px; border-radius: 6px;
+    border: 1px solid #cbd5e1; background: #fff; max-width: 330px;
+}
+.previa-tab select.pendente { border: 2px solid #ef4444; background: #fff5f5; }
+.previa-nota { display: block; margin-top: 4px; font-size: 11px; line-height: 1.4; }
+.previa-nota.sobra { color: #92400e; font-weight: 600; background: #fef3c7;
+                     border-left: 3px solid #f59e0b; padding: 3px 7px; border-radius: 3px; }
+.previa-nota.info  { color: #64748b; }
+.selo {
+    display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px;
+    border-radius: 10px; white-space: nowrap;
+}
+.selo.ok     { background: #dcfce7; color: #166534; }
+.selo.prop   { background: #fde68a; color: #78350f; }
+.selo.abaixo { background: #fecaca; color: #7f1d1d; }
+.previa-rodape {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 16px 20px; margin-top: 14px; border-top: 1px solid var(--border); background: #f8fafc;
+}
+.previa-rodape .log-info { font-size: 11px; color: #64748b; }
+
 #btnTour {
     position: fixed; bottom: 24px; right: 24px; z-index: 9999;
     width: 44px; height: 44px; border-radius: 50%;
@@ -362,6 +420,37 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 
 </div><!-- /conteudo -->
 <div id="toast"></div>
+
+<!-- Listagem prévia: aparece quando alguém ainda não fechou o período aquisitivo -->
+<div id="previa-fundo">
+    <div class="previa-caixa">
+        <div class="previa-titulo">Listagem Prévia — Férias Proporcionais</div>
+        <div id="previa-avisos"></div>
+        <div class="previa-todos" id="previa-todos">
+            <span>Mesma opção para todos os proporcionais:</span>
+            <select id="previa-sel-todos" onchange="aplicarOpcaoTodos(this.value)">
+                <option value="">—</option>
+                <option value="prop">Proporcional</option>
+                <option value="integral">Coletiva inteira</option>
+                <option value="excluir">Não registrar</option>
+            </select>
+        </div>
+        <div class="previa-tab-wrap">
+            <table class="previa-tab">
+                <thead><tr>
+                    <th>Matr.</th><th>Nome</th><th>Admissão</th><th>Período Aquisitivo</th>
+                    <th>Avos</th><th>Direito</th><th>O que fazer</th>
+                </tr></thead>
+                <tbody id="previa-corpo"></tbody>
+            </table>
+        </div>
+        <div class="previa-rodape">
+            <button class="btn-cancelar" onclick="fecharPrevia()">Voltar e corrigir</button>
+            <span class="log-info">As escolhas ficam registradas no log de cada funcionário.</span>
+            <button class="btn-iniciar" id="btn-previa-ok" onclick="confirmarPrevia()">Confirmar e Registrar</button>
+        </div>
+    </div>
+</div>
 
 <button id="btnTour" title="Tour guiado" onclick="iniciarTour()">?</button>
 
@@ -573,29 +662,199 @@ async function registrarFerias() {
     const data1f = adicionarDias(data1i, dias - 1);
     const periodo_ferias   = document.querySelector('input[name="periodo_ferias"]:checked')?.value   || 'auto';
     const abono_pecuniario = document.querySelector('input[name="abono_pecuniario"]:checked')?.value || 'auto';
+    const payload = { matriculas, data1i, data1f, qtd_dias: dias, periodo_ferias, abono_pecuniario };
 
+    // Antes de gravar: alguém ainda não fechou o período aquisitivo? Se sim,
+    // a listagem prévia abre e o operador decide caso a caso.
+    const btn = document.getElementById('btn-registrar');
+    btn.disabled = true; btn.textContent = 'Conferindo…';
+    let prev;
+    try {
+        const r = await fetch('/api/ferias_previa', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        prev = await r.json();
+    } catch(e) {
+        restaurarBotao();
+        showToast('Erro de comunicação com o servidor.', 'erro'); return;
+    }
+    if (!prev.ok) { restaurarBotao(); showToast(prev.msg || 'Erro na conferência.', 'erro'); return; }
+    if (prev.tem_proporcional) {
+        restaurarBotao();
+        abrirPrevia(payload, prev.itens);
+        return;
+    }
+    await gravarFerias(payload);
+}
+
+function restaurarBotao() {
+    const btn = document.getElementById('btn-registrar');
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Registrar Férias`;
+}
+
+async function gravarFerias(payload) {
     const btn = document.getElementById('btn-registrar');
     btn.disabled = true; btn.textContent = 'Registrando…';
-
     try {
         const resp = await fetch('/api/ferias_gravar', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ matriculas, data1i, data1f, qtd_dias: dias, periodo_ferias, abono_pecuniario })
+            body: JSON.stringify(payload)
         });
         const d = await resp.json();
         if (d.ok) {
-            showToast(`Férias registradas — ${d.gravados} funcionário${d.gravados !== 1 ? 's' : ''}. Voltando à seleção…`, 'ok');
-            setTimeout(() => { window.location.href = '/select_funcionario?contexto=ferias'; }, 2000);
+            showToast(d.msg || `Férias registradas — ${d.gravados} funcionário(s).`, 'ok');
+            setTimeout(() => { window.location.href = '/select_funcionario?contexto=ferias'; }, 3000);
         } else {
             showToast(d.msg || 'Erro ao registrar.', 'erro');
         }
     } catch(e) {
         showToast('Erro de comunicação com o servidor.', 'erro');
     } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Registrar Férias`;
+        restaurarBotao();
     }
+}
+
+/* ── Listagem prévia — férias proporcionais ──
+   Quem ainda não fechou o período aquisitivo no início das férias tem direito
+   só aos avos (× 2,5 dias), e um período aquisitivo novo começa no 1º dia das
+   férias (CLT art. 140). Abaixo de 10 dias a escolha é obrigatória. */
+let PREVIA_PAYLOAD = null;
+let PREVIA_ITENS   = [];
+
+function esc(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function opcoesPrevia(it, qtd) {
+    const ops = [];
+    if (it.abaixo10) ops.push(['', '— escolha —']);
+    if (it.dias_prop > 0) {
+        ops.push(['prop', `Proporcional — ${it.dias_prop} dias de férias` +
+                          (it.abaixo10 ? ' (abaixo do mínimo de 10)' : '')]);
+    } else {
+        ops.push(['prop', 'Proporcional — nenhum dia de direito (não registra)']);
+    }
+    if (it.abaixo10 && qtd >= 10) {
+        ops.push(['min10', `Mínimo de 10 dias — antecipa ${10 - it.dias_direito} dia(s)`]);
+    }
+    ops.push(['integral', `Coletiva inteira — ${qtd} dias (antecipa férias; aquisitivo normal; sem abono)`]);
+    ops.push(['excluir', 'Não registrar férias agora']);
+    return ops;
+}
+
+function notaPrevia(it, qtd, opcao) {
+    if (!opcao) return `<span class="previa-nota sobra">⚠ Não tem direito a 10 dias: escolha o que fazer.</span>`;
+    if (opcao === 'excluir' || (opcao === 'prop' && it.dias_prop <= 0)) {
+        return `<span class="previa-nota sobra">⚠ Sem férias: os ${qtd} dias da coletiva ficam fora das férias — a folha paga como salário normal (licença remunerada).</span>`;
+    }
+    if (opcao === 'integral') {
+        const ant = qtd - it.dias_direito;
+        return ant > 0
+            ? `<span class="previa-nota sobra">⚠ ${ant} dia(s) de férias antecipadas, além do direito. O período aquisitivo continua o normal.</span>`
+            : `<span class="previa-nota sobra">⚠ O período aquisitivo continua o normal — não recomeça no início das férias.</span>`;
+    }
+    const dias = opcao === 'min10' ? Math.min(10, qtd) : it.dias_prop;
+    let t = `Novo período aquisitivo a partir de ${fmtData8(PREVIA_PAYLOAD.data1i)}. Sem abono pecuniário.`;
+    let h = `<span class="previa-nota info">${t}</span>`;
+    if (qtd > dias) {
+        h += `<span class="previa-nota sobra">⚠ ${qtd - dias} dia(s) da coletiva ficam FORA das férias: a folha paga como salário normal (licença remunerada).</span>`;
+    }
+    if (opcao === 'min10' && dias > it.dias_direito) {
+        h += `<span class="previa-nota sobra">⚠ ${dias - it.dias_direito} dia(s) de férias antecipadas, além do direito.</span>`;
+    }
+    return h;
+}
+
+function abrirPrevia(payload, itens) {
+    PREVIA_PAYLOAD = payload;
+    PREVIA_ITENS   = itens;
+    const qtd = payload.qtd_dias;
+    const props  = itens.filter(i => i.proporcional);
+    const abaixo = props.filter(i => i.abaixo10);
+
+    let av = `<div class="previa-aviso ambar">⚠ <b>${props.length} funcionário(s) ainda não completaram o período aquisitivo</b>
+        em ${fmtData8(payload.data1i)}. Pela CLT (art. 140) eles têm direito a férias <b>proporcionais</b> —
+        2,5 dias por mês trabalhado — e um <b>período aquisitivo novo</b> começa no primeiro dia das férias.
+        A opção sugerida é a proporcional; os dias da coletiva que passam do direito ficam fora das férias.</div>`;
+    if (abaixo.length) {
+        av += `<div class="previa-aviso verm">⛔ <b>${abaixo.length} funcionário(s) não têm direito a 10 dias de férias</b>
+            (o mínimo de um período). Para esses a escolha é obrigatória.</div>`;
+    }
+    document.getElementById('previa-avisos').innerHTML = av;
+    document.getElementById('previa-sel-todos').value = '';
+
+    document.getElementById('previa-corpo').innerHTML = itens.map((it, i) => {
+        const mat = String(it.matricula).padStart(6, '0');
+        const aq  = it.data2i ? `${fmtData8(it.data2i)} → ${fmtData8(it.data2f)}` : '—';
+        if (it.erro) {
+            return `<tr class="linha-erro"><td class="mono">${mat}</td><td>${esc(it.nome)}</td>
+                <td class="mono">${fmtData8(it.dtadm)}</td><td class="mono">${aq}</td><td></td><td></td>
+                <td>Não será registrado: ${esc(it.erro)}</td></tr>`;
+        }
+        if (!it.proporcional) {
+            return `<tr><td class="mono">${mat}</td><td>${esc(it.nome)}</td>
+                <td class="mono">${fmtData8(it.dtadm)}</td><td class="mono">${aq}</td><td class="mono">12</td>
+                <td class="mono">30</td><td><span class="selo ok">Período completo</span> ${qtd} dias de férias</td></tr>`;
+        }
+        const ops = opcoesPrevia(it, qtd);
+        const sel = it.abaixo10 ? '' : 'prop';
+        const selo = it.abaixo10 ? '<span class="selo abaixo">Menos de 10 dias</span>'
+                                 : '<span class="selo prop">Proporcional</span>';
+        return `<tr class="${it.abaixo10 ? 'linha-abaixo' : 'linha-prop'}">
+            <td class="mono">${mat}</td><td>${esc(it.nome)}<br>${selo}</td>
+            <td class="mono">${fmtData8(it.dtadm)}</td>
+            <td class="mono">${aq}</td>
+            <td class="mono">${it.avos}</td>
+            <td class="mono">${it.dias_direito} dias</td>
+            <td>
+                <select id="previa-op-${i}" class="${sel ? '' : 'pendente'}" onchange="mudouOpcao(${i})">
+                    ${ops.map(([v, t]) => `<option value="${v}"${v === sel ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+                </select>
+                <div id="previa-nota-${i}">${notaPrevia(it, qtd, sel)}</div>
+            </td></tr>`;
+    }).join('');
+    document.getElementById('previa-fundo').style.display = 'block';
+}
+
+function mudouOpcao(i) {
+    const el = document.getElementById('previa-op-' + i);
+    el.classList.toggle('pendente', !el.value);
+    document.getElementById('previa-nota-' + i).innerHTML =
+        notaPrevia(PREVIA_ITENS[i], PREVIA_PAYLOAD.qtd_dias, el.value);
+}
+
+function aplicarOpcaoTodos(v) {
+    if (!v) return;
+    PREVIA_ITENS.forEach((it, i) => {
+        const el = document.getElementById('previa-op-' + i);
+        if (!el || ![...el.options].some(o => o.value === v)) return;
+        el.value = v;
+        mudouOpcao(i);
+    });
+}
+
+function fecharPrevia() {
+    document.getElementById('previa-fundo').style.display = 'none';
+}
+
+async function confirmarPrevia() {
+    const opcoes = {};
+    let pendentes = 0;
+    PREVIA_ITENS.forEach((it, i) => {
+        const el = document.getElementById('previa-op-' + i);
+        if (!el) return;
+        if (!el.value) { pendentes++; el.classList.add('pendente'); return; }
+        opcoes[String(it.matricula)] = el.value;
+    });
+    if (pendentes) {
+        showToast(`Escolha o que fazer com ${pendentes} funcionário(s) sem direito a 10 dias.`, 'erro');
+        return;
+    }
+    fecharPrevia();
+    await gravarFerias({ ...PREVIA_PAYLOAD, opcoes });
 }
 
 /* ── Init ── */
