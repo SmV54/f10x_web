@@ -57860,20 +57860,26 @@ def admin_clientes():
         from collections import Counter
         emp_count = Counter(e["id_cliente"] for e in empresas_all)
         emp2cli = {e["id_empresa"]: e["id_cliente"] for e in empresas_all}
-        # Funcionarios atuais por cliente (via empresa -> cliente)
+        # Funcionarios atuais por cliente (via empresa -> cliente). Conta duas
+        # vezes: o total (com demitidos) e so os nao demitidos (situacao != 'D'),
+        # que e o numero que a licenca cobra -- ver _estado_licenca().
         cads_all = (supabase.table("tab_cad")
-                    .select("id_empresa")
+                    .select("id_empresa, situacao")
                     .execute().data or [])
         func_count = Counter()
+        func_ativos = Counter()
         for cad in cads_all:
             cli = emp2cli.get(cad["id_empresa"])
             if cli is not None:
                 func_count[cli] += 1
+                if str(cad.get("situacao") or "").upper() != "D":
+                    func_ativos[cli] += 1
         mes_atual = _agora_brasilia().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mês atual
         for c in clientes:
             cid = c["id_cliente"]
             c["qtd_empresas_real"]     = emp_count.get(cid, 0)
             c["qtd_funcionarios_real"] = func_count.get(cid, 0)
+            c["qtd_funcionarios_ativos"] = func_ativos.get(cid, 0)
             c["data_cadastro_fmt"]     = _fmt_data_cadastro(c.get("datahora_cadastro"))
             c["ultimo_login_fmt"]      = _fmt_datahora(c.get("datahora_ultimo_login"))
             c["data_limite_fmt"]       = _fmt_data_limite(c.get("data_limite"))

@@ -172,6 +172,7 @@ html, body { height: 100%; font-family: var(--sans); background: var(--bg); colo
 .meta-chip .ic { font-size: 11px; filter: grayscale(0.1); }
 .meta-chip .par { font-family: var(--mono); font-size: 10.5px; color: #0f172a; font-weight: 500; }
 .meta-chip .par .atual { color: var(--accent); font-weight: 700; }
+.meta-chip .par .total { color: #64748b; font-weight: 500; }
 .meta-chip.excede .par .atual { color: #dc2626; }
 .meta-chip.cadastro { color: #64748b; }
 .meta-chip.limite   { color: #92400e; background: #fffbeb; border-color: #fde68a; }
@@ -440,10 +441,14 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
                     <span class="ic">🏢</span>
                     <span class="par"><span class="atual">{{ c.qtd_empresas_real }}</span>/{{ c.qtd_empresas or 0 }}</span>
                 </span>
-                <span class="meta-chip {% if c.qtd_funcionarios and c.qtd_funcionarios_real > c.qtd_funcionarios %}excede{% endif %}"
-                      title="Funcionários: atuais / contratados">
+                <!-- Tres numeros: total de funcionarios (com demitidos),
+                     quantos nao estao demitidos e quantos a licenca libera.
+                     O "excede" olha os nao demitidos, que e o que a licenca
+                     cobra (ver _estado_licenca no app.py). -->
+                <span class="meta-chip {% if c.qtd_funcionarios and c.qtd_funcionarios_ativos > c.qtd_funcionarios %}excede{% endif %}"
+                      title="Funcionários: total (com demitidos) / não demitidos / liberados">
                     <span class="ic">👥</span>
-                    <span class="par"><span class="atual">{{ c.qtd_funcionarios_real }}</span>/{{ c.qtd_funcionarios or 0 }}</span>
+                    <span class="par"><span class="total">{{ c.qtd_funcionarios_real }}</span>/<span class="atual">{{ c.qtd_funcionarios_ativos }}</span>/{{ c.qtd_funcionarios or 0 }}</span>
                 </span>
                 <span class="meta-chip limite" title="Data limite da licença">
                     <span class="ic">⏳</span> {{ c.data_limite_fmt }}
