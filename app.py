@@ -46160,6 +46160,38 @@ def _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente=None
     return mapa
 
 
+def _bases_13final_por_mat(id_empresa, anomes, id_cliente=None):
+    """{matricula: (base_inss, base_fgts, fgts)} do 13o Final, lidos da tab_total.
+
+    A folha e o contracheque somam as bases pelas incidencias das rubricas
+    (tpn_inc_cp / tpn_inc_fgts). No 13o Final isso nao serve: a 0011 esta sem
+    incidencia cadastrada, entao a Base INSS e a Base FGTS saiam so' com as
+    medias e os adicionais, sem o 13o propriamente dito. E a base do FGTS do
+    13o ainda desconta o adiantamento (verba 18), que ja recolheu FGTS na
+    folha dele — conta que a soma por incidencia nao faz. A tab_total guarda
+    as bases do calculo; e a mesma fonte que a Base IRRF ja usa
+    (SMV 25/09/2026).
+    """
+    mapa = {}
+    try:
+        q = (supabase.table("tab_total")
+             .select("matricula, valor_base_inss_semlimite, valor_base_fgts, valor_fgts")
+             .eq("id_empresa", id_empresa)
+             .eq("folha",      int(anomes))
+             .eq("folha_tipo", "1"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        for r in (q.execute().data or []):
+            m = int(r.get("matricula") or 0)
+            if m:
+                mapa[m] = (int(r.get("valor_base_inss_semlimite") or 0),
+                           int(r.get("valor_base_fgts") or 0),
+                           int(r.get("valor_fgts") or 0))
+    except Exception:
+        pass
+    return mapa
+
+
 def _dias_no_mes_total(anomes):
     """Retorna o número total de dias no mês de anomes (AAAAMM)."""
     try:
@@ -50496,6 +50528,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
 
     # Base IRRF (ja deduzida de INSS + dependentes) lida do tab_total — fonte unica de verdade
     irrf_basetabela = _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente)
+    # 13o Final: as bases de INSS e FGTS vem da tab_total (ver _bases_13final_por_mat).
+    bases_13f = (_bases_13final_por_mat(id_empresa, anomes, id_cliente)
+                 if folha_tipo_mov == "1" else {})
 
     cc_groups = {}
     for mat in sorted(mov_data.keys()):
@@ -50524,7 +50559,9 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         # 102 = INSS do contribuinte individual (pró-labore). Quem é CI desconta
         # na 102, não na 101 — a Análise de Custo soma as duas.
         inss102_val = agg.get(102, {}).get("val", 0)
-        irrf_val    = agg.get(120, {}).get("val", 0)
+        # 122 = IRRF do 13o Final (so' existe na folha '1')
+        irrf_val    = (agg.get(120, {}).get("val", 0)
+                       + agg.get(122, {}).get("val", 0))
         # Desconto do adiantamento dentro desta folha (160/18/48/51). O valor
         # PAGO na quinzena vem das 161-164, em adiant_list.
         adiant_desc_val = sum(agg.get(c, {}).get("val", 0)
@@ -50543,6 +50580,8 @@ def _folha_pagamento_dados(id_empresa, anomes, anomes_tipo, id_cliente, ordem="m
         # sobra do legado. A 139 e DESCONTO REPOUSO REMUNERADO, nunca foi FGTS.
         # Nos lancamentos que existem na base isso dava 58,54 em vez de 121,75.
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
+        if mat in bases_13f:
+            base_inss, base_fgts, fgts_val = bases_13f[mat]
 
         # Adiantamento Quinzenal (161-164) — bloco próprio acima das informativas
         adiant_list = []
@@ -50906,6 +50945,9 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     # Base IRRF (ja deduzida de INSS + dependentes) lida do tab_total — fonte unica de verdade
     irrf_basetabela = _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente)
+    # 13o Final: as bases de INSS e FGTS vem da tab_total (ver _bases_13final_por_mat).
+    bases_13f = (_bases_13final_por_mat(id_empresa, anomes, id_cliente)
+                 if folha_tipo_mov == "1" else {})
 
     # ── MONTA POR CC ──────────────────────────────────────────────
     cc_groups = {}
@@ -50948,6 +50990,8 @@ def _gerar_folha_pagamento_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         # sobra do legado. A 139 e DESCONTO REPOUSO REMUNERADO, nunca foi FGTS.
         # Nos lancamentos que existem na base isso dava 58,54 em vez de 121,75.
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
+        if mat in bases_13f:
+            base_inss, base_fgts, fgts_val = bases_13f[mat]
 
         # Adiantamentos quinzenais (verbas 161-164) — linha acima das informativas
         adiant_list = []
@@ -52540,6 +52584,9 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     # Base IRRF (ja deduzida de INSS + dependentes) lida do tab_total — fonte unica de verdade
     irrf_basetabela = _irrf_basetabela_por_mat(id_empresa, anomes, folha_tipo_mov, id_cliente)
+    # 13o Final: as bases de INSS e FGTS vem da tab_total (ver _bases_13final_por_mat).
+    bases_13f = (_bases_13final_por_mat(id_empresa, anomes, id_cliente)
+                 if folha_tipo_mov == "1" else {})
 
     # ── Monta lista de funcionários com verbas ────────────
     all_funcs = []
@@ -52580,6 +52627,8 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
         # sobra do legado. A 139 e DESCONTO REPOUSO REMUNERADO, nunca foi FGTS.
         # Nos lancamentos que existem na base isso dava 58,54 em vez de 121,75.
         fgts_val  = int(base_fgts * _aliq_fgts) // 100
+        if mat in bases_13f:
+            base_inss, base_fgts, fgts_val = bases_13f[mat]
         # Adiantamentos quinzenais (verbas 161-164) — linha própria antes das bases
         adiant_list = []
         for r_ad in adiant_data.get(mat, []):
@@ -70232,7 +70281,8 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
             partes_13[VERBA_13_SALARIO] = (partes_13.get(VERBA_13_SALARIO, 0)
                                            + _sal_parte)
 
-    inss_13, inss_det, _ = (_calc_inss_progressivo(bruto_13, tabela) if bruto_13 else (0, [], 0))
+    inss_13, inss_det, inss_teto = (_calc_inss_progressivo(bruto_13, tabela)
+                                    if bruto_13 else (0, [], 0))
 
     # ── PENSAO ALIMENTICIA SOBRE O 13o  (SMV 21/09/2026) ───────────────────
     # O 13o final desconta a pensao INTEIRA sobre o 13o, e devolve como
@@ -70280,9 +70330,18 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     irrf_13, _irrf_info = (_calc_irrf(base_irrf, tabela) if bruto_13 else (0, None))
     irrf_13, red_13, isento_13 = _irrf_isencao_redutor(bruto_13, irrf_13, tabela)
 
-    aliq_fgts = _aliq_fgts_adiant13(f)
-    base_fgts = bruto_13
-    fgts_val  = base_fgts * aliq_fgts // 100
+    # BASE DO FGTS = 13o bruto MENOS o adiantamento (verba 18)  (SMV 25/09/2026)
+    # O adiantamento ja recolheu FGTS na folha dele (tab_total da folha 'A',
+    # verba 17 com incidencia '12'). Sobre o 13o inteiro, aquela parte pagaria
+    # FGTS duas vezes. E a forma do Desktop, em producao: no 13o de 11/2025 do
+    # cliente 14 a Base INSS e 1.860,57 e a Base FGTS 930,29 — o bruto menos
+    # a metade ja adiantada. O INSS e o IRRF continuam sobre o bruto inteiro:
+    # o adiantamento nao reteve nenhum dos dois.
+    _adto_det  = adto_pago.get(mat) or {}
+    adto_total = int(_adto_det.get("total") or 0)
+    aliq_fgts  = _aliq_fgts_adiant13(f)
+    base_fgts  = max(0, bruto_13 - adto_total)
+    fgts_val   = base_fgts * aliq_fgts // 100
 
     # Cliente sem encargos: continua tudo calculado (a memoria mostra), mas o
     # que e gravado/descontado vai zerado. As BASES continuam gravadas.
@@ -70307,8 +70366,6 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     g_pensao = pensao_tot
     g_pen_dv = pensao_devol
 
-    _adto_det     = adto_pago.get(mat) or {}
-    adto_total    = int(_adto_det.get("total") or 0)
     desc_adto     = adto_total
 
     total_prov = bruto_13 + g_pen_dv      # a devolucao da pensao e provento (280)
@@ -70355,6 +70412,10 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
         "inss":      g_inss,   "inss_calc": inss_13, "inss_det": inss_det,
         "irrf":      g_irrf,   "irrf_calc": irrf_13,
         "irrf_base": base_irrf, "irrf_red": red_13, "irrf_isento": isento_13,
+        # (aliquota x100, parcela a deduzir) da faixa aplicada — None se a base
+        # ficou abaixo da faixa isenta. A memoria imprime a conta com eles.
+        "irrf_faixa": _irrf_info,
+        "inss_teto": inss_teto,
         "dep_qtd":   ndep,     "dep_ded":  dep_total,
         "base_fgts": base_fgts, "fgts": g_fgts, "aliq_fgts": aliq_fgts,
         "total_desc": total_desc,
@@ -70707,13 +70768,61 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                            "   Não se aplica — nenhum adiantamento do 13º pago no ano",
                            st_etapa_na))
 
+    # Tabela "rotulo | valor" das contas do IRRF e do FGTS. A linha que comeca
+    # com "=" sai em negrito: e o resultado de cada passo.
+    def _tab_conta(linhas):
+        rows = []
+        for _lbl, _val in linhas:
+            _neg = _lbl.startswith("=")
+            rows.append([Paragraph(f"<b>{_lbl}</b>" if _neg else _lbl,
+                                   st_cellb if _neg else st_cell),
+                         Paragraph(f"<b>{_val}</b>" if _neg else _val,
+                                   st_cellbr if _neg else st_cellr)])
+        _t = Table(rows, colWidths=[12.0*cm, 4.0*cm])
+        _t.setStyle(TableStyle([
+            ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#e2e8f0")),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        return _t
+
     # ETAPA 5040 — INSS
-    e.append(Paragraph("ETAPA 5040 — INSS DO 13º", st_etapa))
+    # Faixa a faixa, com a base e o desconto de cada uma, para a conta poder
+    # ser refeita na mao (SMV 25/09/2026). Antes era uma linha so': "Base X →
+    # INSS Y".
+    e.append(Paragraph(f"ETAPA 5040 — INSS DO 13º   Base: {_fmt_brl(d['bruto_13'])}",
+                       st_etapa))
     e.append(_mem_passo("base_inss", "o 13º tem base PRÓPRIA, separada da folha do mês"))
-    e.append(_mem_passo("inss"))
-    e.append(Paragraph(f"Base {_fmt_brl(d['bruto_13'])} → INSS = "
-                       f"<b>{_fmt_brl(d['inss_calc'])}</b>  (verba {VERBA_13_INSS})",
-                       st_formula))
+    e.append(_mem_passo("inss", "tabela progressiva, aplicada faixa a faixa"))
+    _inss_det = d.get("inss_det") or []
+    if _inss_det:
+        rows = [[Paragraph("<b>Faixa</b>", st_cellb),
+                 Paragraph("<b>Até (R$)</b>", st_cellbr),
+                 Paragraph("<b>Alíquota</b>", st_cellbr),
+                 Paragraph("<b>Base na faixa</b>", st_cellbr),
+                 Paragraph("<b>INSS da faixa</b>", st_cellbr)]]
+        for _i, (_lim, _pct, _bf, _vf) in enumerate(_inss_det, 1):
+            rows.append([
+                Paragraph(f"{_i}ª", st_cell),
+                Paragraph(_fmt_brl(_lim), st_cellr),
+                Paragraph(f"{_pct / 100:g}%".replace(".", ","), st_cellr),
+                Paragraph(_fmt_brl(_bf), st_cellr),
+                Paragraph(_fmt_brl(_vf), st_cellr)])
+        rows.append([Paragraph("<b>Total</b>", st_cellb), Paragraph("", st_cell),
+                     Paragraph("", st_cell),
+                     Paragraph(f"<b>{_fmt_brl(sum(x[2] for x in _inss_det))}</b>", st_cellbr),
+                     Paragraph(f"<b>{_fmt_brl(d['inss_calc'])}</b>", st_cellbr)])
+        t = Table(rows, colWidths=[2.0*cm, 3.5*cm, 2.5*cm, 4.0*cm, 4.0*cm])
+        t.setStyle(grade)
+        e.append(t)
+        if d.get("inss_teto") and d["bruto_13"] > d["inss_teto"]:
+            e.append(Paragraph(
+                f"Base acima do teto: o INSS incide só até {_fmt_brl(d['inss_teto'])}; "
+                f"os {_fmt_brl(d['bruto_13'] - d['inss_teto'])} acima não descontam.",
+                st_formula))
+        e.append(Paragraph("Base na faixa × alíquota, truncado no centavo; "
+                           "o INSS é a soma das faixas.", st_formula))
+    e.append(Paragraph(f"INSS do 13º = <b>{_fmt_brl(d['inss_calc'])}</b>  "
+                       f"(verba {VERBA_13_INSS:04d})", st_formula))
 
     # ETAPA 5045 — pensao alimenticia sobre o 13o
     if d.get("pensao") or d.get("pensao_devol"):
@@ -70757,30 +70866,64 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                            st_etapa_na))
 
     # ETAPA 5050 — IRRF
+    # A composicao da base linha a linha, a faixa da tabela e a conta do
+    # imposto, e so' depois a isencao/redutor (SMV 25/09/2026).
     e.append(Paragraph("ETAPA 5050 — IRRF DO 13º (tributação exclusiva)", st_etapa))
-    e.append(_mem_passo("base_irrf"))
-    e.append(Paragraph(
-        f"Base = 13º {_fmt_brl(d['bruto_13'])} − INSS {_fmt_brl(d['inss_calc'])}"
-        + (f" − dependentes ({d['dep_qtd']}×{_fmt_brl(d['dep_ded'] // max(1, d['dep_qtd']))})"
-           if d["dep_qtd"] else "")
-        + (f" − pensão {_fmt_brl(d['pensao'])}" if d.get("pensao") else "")
-        + f" = {_fmt_brl(d['irrf_base'])}", st_formula))
-    if d["irrf_isento"]:
-        e.append(Paragraph("13º isento — rendimento até R$ 5.000,00 "
-                           "(Lei 15.270/2025)", st_formula))
-    elif d["irrf_red"]:
+    e.append(_mem_passo("base_irrf", "o 13º é tributado sozinho, sem somar à folha do mês"))
+    _lin = [("13º bruto (rendimento tributável)", _fmt_brl(d["bruto_13"])),
+            ("(−) INSS do 13º", _fmt_brl(d["inss_calc"]))]
+    if d["dep_qtd"]:
+        _lin.append((f"(−) Dependentes ({d['dep_qtd']} × "
+                     f"{_fmt_brl(d['dep_ded'] // max(1, d['dep_qtd']))})",
+                     _fmt_brl(d["dep_ded"])))
+    else:
+        _lin.append(("(−) Dependentes (nenhum para IRRF)", _fmt_brl(0)))
+    if d.get("pensao"):
+        _lin.append(("(−) Pensão alimentícia do 13º", _fmt_brl(d["pensao"])))
+    _lin.append(("= Base de cálculo do IRRF", _fmt_brl(d["irrf_base"])))
+    _faixa = d.get("irrf_faixa")
+    _irrf_pre = int(d["irrf_calc"]) + int(d.get("irrf_red") or 0)
+    if _faixa:
+        _aliq, _dedu = _faixa
+        _aliq_txt = f"{_aliq / 100:g}%".replace(".", ",")
+        _bruto_ir = (int(d["irrf_base"]) * int(_aliq) + 5000) // 10000
+        _lin.append((f"Faixa da tabela: alíquota {_aliq_txt}  ·  "
+                     f"parcela a deduzir {_fmt_brl(_dedu)}", ""))
+        _lin.append((f"IRRF pela tabela: {_fmt_brl(d['irrf_base'])} × {_aliq_txt}"
+                     f" = {_fmt_brl(_bruto_ir)}  −  {_fmt_brl(_dedu)}",
+                     _fmt_brl(_irrf_pre)))
+        if d["irrf_isento"]:
+            _lin.append(("(−) Isenção da Lei 15.270/2025 (13º até R$ 5.000,00)",
+                         _fmt_brl(d.get("irrf_red") or 0)))
+        elif d.get("irrf_red"):
+            _lin.append(("(−) Redutor da Lei 15.270/2025", _fmt_brl(d["irrf_red"])))
+    elif d["irrf_base"] > 0:
+        _lin.append(("Base dentro da faixa isenta da tabela", ""))
+    else:
+        _lin.append(("Base zerada depois das deduções", ""))
+    _lin.append((f"= IRRF do 13º (verba {VERBA_13_IRRF:04d})", _fmt_brl(d["irrf_calc"])))
+    e.append(_tab_conta(_lin))
+    if d.get("irrf_red") and not d["irrf_isento"]:
         e.append(_mem_passo("redutor"))
-        e.append(Paragraph(f"Redutor da Lei 15.270/2025 aplicado "
-                           f"(−{_fmt_brl(d['irrf_red'])})", st_formula))
-    e.append(Paragraph(f"IRRF = <b>{_fmt_brl(d['irrf_calc'])}</b>  "
-                       f"(verba {VERBA_13_IRRF})", st_formula))
 
     # ETAPA 5060 — FGTS
-    if d["base_fgts"]:
-        e.append(Paragraph("ETAPA 5060 — FGTS", st_etapa))
+    # Base = 13o bruto MENOS o adiantamento (verba 18): o adiantamento ja
+    # recolheu FGTS na folha dele (ver _calc_13_final_func).
+    if d["bruto_13"] and d.get("aliq_fgts"):
+        e.append(Paragraph(f"ETAPA 5060 — FGTS   Base: {_fmt_brl(d['base_fgts'])}",
+                           st_etapa))
         e.append(_mem_passo("fgts"))
-        e.append(Paragraph(f"{_fmt_brl(d['base_fgts'])} × {d['aliq_fgts']}% = "
-                           f"<b>{_fmt_brl(d['fgts'])}</b>", st_formula))
+        _lin = [("13º bruto", _fmt_brl(d["bruto_13"]))]
+        if d.get("adto_pago"):
+            _lin.append((f"(−) Adiantamento do 13º já pago (verba {VERBA_13_DESC_ADTO:04d})"
+                         f" — o FGTS dele já foi recolhido na folha do adiantamento",
+                         _fmt_brl(d["adto_pago"])))
+        _lin.append(("= Base do FGTS", _fmt_brl(d["base_fgts"])))
+        _lin.append((f"{_fmt_brl(d['base_fgts'])} × {d['aliq_fgts']}%",
+                     _fmt_brl(d["base_fgts"] * d["aliq_fgts"] // 100)))
+        _lin.append(("= FGTS do 13º (depósito da empresa, não desconta do empregado)",
+                     _fmt_brl(d["fgts"])))
+        e.append(_tab_conta(_lin))
     else:
         e.append(Paragraph("ETAPA 5060 — FGTS   Não se aplica — sem base",
                            st_etapa_na))
@@ -70792,8 +70935,12 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
     e.append(Paragraph("ETAPA 5070 — TOTAIS", st_etapa))
     e.append(_mem_passo("totais"))
     e.append(Paragraph(
-        f"Líquido = {_fmt_brl(d['bruto_13'])} − adiantamento {_fmt_brl(d['desc_adto'])} "
-        f"− INSS {_fmt_brl(d['inss'])} − IRRF {_fmt_brl(d['irrf'])}", st_formula))
+        f"Líquido = 13º {_fmt_brl(d['bruto_13'])}"
+        + (f" + devolução pensão {_fmt_brl(d['pensao_devol'])}" if d.get("pensao_devol") else "")
+        + f" − adiantamento {_fmt_brl(d['desc_adto'])}"
+        + f" − INSS {_fmt_brl(d['inss'])} − IRRF {_fmt_brl(d['irrf'])}"
+        + (f" − pensão {_fmt_brl(d['pensao'])}" if d.get("pensao") else "")
+        + f" = {_fmt_brl(d['liq_apurado'])}", st_formula))
     if d.get("insuf_saldo"):
         # O adiantamento ficou maior do que o 13o comporta: a 18 vai inteira e
         # a 551 cobre a diferenca — a mesma ETAPA 1170 da folha mensal.
