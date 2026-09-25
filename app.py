@@ -8975,6 +8975,72 @@ _MOTIVO_RESC = {
 }
 
 
+def _verbas_ultimo_lanc(id_cliente, campo):
+    """Verbas marcadas 'UL' (Ultimo Lancamento) no campo de incidencia `campo`
+    da tab_rubrica ('inc_rescisao' ou 'inc_ferias'). Devolve {cod: descricao}.
+
+    'UL' e a verba de valor FIXO que integra a remuneracao — o CARGO DE
+    CONFIANCA (1005) do cliente 30 e o caso que trouxe isto (SMV 25/09/2026).
+    Ela nao entra por media: soma ao salario pelo valor atual, como os
+    adicionais (insalubridade/periculosidade), para o aviso, o 13o e as ferias.
+    So' proventos; os adicionais 30/31/32 tem regra propria ('CN') e as
+    verbas proprias da rescisao ficam de fora.
+    """
+    try:
+        rows = (supabase.table("tab_rubrica")
+                .select(f"cod_rubr, dsc_rubr, tp_rubr, {campo}, id_cliente")
+                .in_("id_cliente", [0, id_cliente or 0]).eq("situacao", "A")
+                .execute().data or [])
+    except Exception as e:
+        print(f"[verbas UL {campo}] {e}")
+        return {}
+    by_cod = {}
+    for row in sorted(rows, key=lambda x: 0 if int(x.get("id_cliente") or 0) == 0 else 1):
+        by_cod[int(row.get("cod_rubr") or 0)] = row      # a do cliente sobrepoe a global
+    fora = _VERBAS_RESC_PROPRIAS | {30, 31, 32}
+    return {c: (r.get("dsc_rubr") or f"Verba {c:04d}").strip()
+            for c, r in by_cod.items()
+            if c and c not in fora
+            and str(r.get(campo) or "").strip().upper() == "UL"
+            and str(r.get("tp_rubr") or "") == "1"}
+
+
+def _ultimo_lanc_valores(id_cliente, id_empresa, anomes, matriculas, cods):
+    """{matricula: {cod: centavos}} — o ULTIMO valor > 0 lancado de cada verba
+    'UL' na folha NORMAL, nos 12 meses ANTES de `anomes`.
+
+    O mes da propria folha fica de fora de proposito: no mes da rescisao ou
+    das ferias a folha normal traz a verba proporcional (ou zerada, quando o
+    movimento fixo nao paga nas ferias), e o que se quer e o valor cheio.
+    """
+    if not cods or not matriculas:
+        return {}
+    a, m = int(anomes[:4]), int(anomes[4:6])
+    fim = a * 100 + m                                  # exclusivo
+    ini = (a - 1) * 100 + m                            # 12 meses antes
+    try:
+        q = (supabase.table("tab_mov")
+             .select("matricula, cod_verba, valor, folha")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .eq("folha_tipo", "N")
+             .in_("cod_verba", sorted(cods))
+             .in_("matricula", sorted({int(x) for x in matriculas}))
+             .gte("folha", ini).lt("folha", fim)
+             .order("folha"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        rows = q.execute().data or []
+    except Exception as e:
+        print(f"[verbas UL valores] {e}")
+        return {}
+    out = {}
+    for r in rows:                                     # ordenado por folha: o ultimo vence
+        v = int(r.get("valor") or 0)
+        if v > 0:
+            out.setdefault(int(r.get("matricula") or 0), {})[int(r.get("cod_verba") or 0)] = v
+    return out
+
+
 def _conta_avos_resc(dt_ini, dt_fim):
     """Conta avos (meses) de dt_ini a dt_fim; cada mês com >=15 dias trabalhados
     conta 1 avo (regra CLT do 13º e das férias)."""
@@ -9580,6 +9646,11 @@ def _calc_rescisao_nucleo(body, sim=None):
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
     # Afastamentos (op1=6) do mês: uma leitura para todos os demitidos
     _afast_resc = _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=id_cliente)
+    # Verbas 'UL' da rescisao (cargo de confianca): o ultimo valor de cada uma
+    # soma a remuneracao — ver _verbas_ultimo_lanc.
+    _ul_dsc_r  = _verbas_ultimo_lanc(id_cliente, "inc_rescisao")
+    _ul_val_r  = _ultimo_lanc_valores(id_cliente, id_empresa, anomes,
+                                      [c.get("matricula") for c in demitidos], _ul_dsc_r)
     resultados = []
     _extras = {"aviso": "", "movs": {}, "tot": {}, "cad": {}}
     for cad in demitidos:
@@ -9688,7 +9759,17 @@ def _calc_rescisao_nucleo(body, sim=None):
         adics_mes_r = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
                                          eventos_cache=_adic_ev, mov_cache=_adic_mov)
         adic_total  = _adicionais_total(adics_mes_r)
-        sal_mes_ad  = sal_mes + adic_total          # remuneracao mensal cheia
+        # Verba 'UL' (cargo de confianca): o ultimo valor lancado soma a
+        # remuneracao do aviso, do 13o e das ferias, pelo valor CHEIO. No saldo
+        # ela sai em linha propria, proporcional aos dias, como os adicionais
+        # — menos quando a mesma verba ja foi digitada nesta rescisao: ai a
+        # digitada paga o saldo, e a automatica nao sai (senao pagaria duas
+        # vezes), mas o valor continua somando no aviso, 13o e ferias.
+        ul_mes_r   = dict(_ul_val_r.get(mat, {}))
+        _cods_man  = {int(_r.get("cod_verba") or 0) for _r in manual_mov.get(mat, [])}
+        ul_auto_r  = {c: v for c, v in ul_mes_r.items() if c not in _cods_man}
+        ul_total   = sum(ul_mes_r.values())
+        sal_mes_ad  = sal_mes + adic_total + ul_total   # remuneracao mensal cheia
 
         dias_saldo = min(dt_resc.day, 30)
 
@@ -9718,7 +9799,7 @@ def _calc_rescisao_nucleo(body, sim=None):
                          for _r in manual_mov.get(mat, []))
         atest_val = 0 if _tem_9_man else round(sal_mes * dias_atest / 30)
 
-        saldo = round(sal_mes_ad * dias_saldo / 30)
+        saldo = round((sal_mes + adic_total + sum(ul_auto_r.values())) * dias_saldo / 30)
         # O saldo continua sendo calculado sobre a remuneracao CHEIA (salario +
         # adicionais) — e a base do INSS, do IRRF e do FGTS nao muda em nada.
         # O que muda e o LANCAMENTO: o adicional sai em verba propria (30/31/32)
@@ -9733,7 +9814,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # assim a soma das linhas fecha com o saldo ao centavo, sem sobra de
         # arredondamento.
         saldo_adics = {}
-        for _c_ad, _v_ad in sorted(adics_mes_r.items()):
+        for _c_ad, _v_ad in sorted({**adics_mes_r, **ul_auto_r}.items()):
             _parte = round(int(_v_ad) * dias_saldo / 30)
             if _parte > 0:
                 saldo_adics[_c_ad] = _parte
@@ -10059,7 +10140,11 @@ def _calc_rescisao_nucleo(body, sim=None):
             "dias_atest": dias_atest, "dias_afast_inss": dias_afast_inss,
             "atest_val": atest_val, "atest_manual": _tem_9_man,
             "adic_total": adic_total, "sal_mes_ad": sal_mes_ad,
-            "adic_total_det": dict(adics_mes_r),
+            "adic_total_det": {**adics_mes_r, **ul_mes_r},
+            # Verbas 'UL' (cargo de confianca): valor mensal cheio e descricao,
+            # e quais nao sairam no saldo porque foram digitadas na rescisao.
+            "ul_mes": ul_mes_r, "ul_dsc": {c: _ul_dsc_r.get(c, "") for c in ul_mes_r},
+            "ul_manual": sorted(set(ul_mes_r) - set(ul_auto_r)),
             "dia_resc_real": dt_resc.day,
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
@@ -10282,12 +10367,22 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             else:
                 lin_sal   = f"Salário cadastrado: {_B(sal)}/mês (mensalista)"
                 lin_shora = (f"Salário-hora = {_B(sal)} ÷ {_qhm} h/mês = <b>{_B(_shora)}/hora</b>")
-            e.append(_etapa("ETAPA 3010 - DADOS DA RESCISAO", [
-                f"Data da rescisão: {r['resc_data_fmt']}   Motivo: {r['motivo']}",
-                lin_proj,
-                lin_sal,
-                lin_shora,
-            ]))
+            # Remuneracao = salario + adicionais + verbas 'UL' (cargo de
+            # confianca). E ela, e nao o salario sozinho, a base do aviso, do
+            # 13o e das ferias — sem esta linha as contas abaixo nao fechavam.
+            _rem = int(r.get("sal_mes_ad") or sal)
+            _rem_lbl = "Remuneração" if _rem != sal else "Salário"
+            _lin_3010 = [f"Data da rescisão: {r['resc_data_fmt']}   Motivo: {r['motivo']}",
+                         lin_proj, lin_sal, lin_shora]
+            if _rem != sal:
+                _det_rem = r.get("adic_total_det") or {}
+                _nomes = {**_DSC_ADICIONAL, **(r.get("ul_dsc") or {})}
+                _lin_3010.append(
+                    f"Remuneração (base do aviso, 13º e férias) = salário {_B(sal)}"
+                    + "".join(f" + {_nomes.get(_c, f'verba {_c:04d}')} {_B(_v)}"
+                              for _c, _v in sorted(_det_rem.items()) if _v)
+                    + f" = <b>{_B(_rem)}</b>")
+            e.append(_etapa("ETAPA 3010 - DADOS DA RESCISAO", _lin_3010))
             # 0002 — Saldo de salário
             _lin_saldo = [f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = "
                           f"<b>{_B(r.get('saldo_sal', r['saldo']))}</b>  (verba {VR_SALDO})"]
@@ -10296,9 +10391,15 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             # insalubridade dentro, que nao fecha na conta de quem confere.
             for _c_ad, _v_ad in sorted((r.get("saldo_adics") or {}).items()):
                 _mes_ad = int((r.get("adic_total_det") or {}).get(_c_ad, 0))
-                _nome_ad = _DSC_ADICIONAL.get(_c_ad, f"Adicional {_c_ad:04d}")
+                _nome_ad = (_DSC_ADICIONAL.get(_c_ad)
+                            or (r.get("ul_dsc") or {}).get(_c_ad)
+                            or f"Adicional {_c_ad:04d}")
                 _de = f"{_B(_mes_ad)} × {r['dia_resc']} dias / 30 = " if _mes_ad else ""
                 _lin_saldo.append(f"{_nome_ad}: {_de}<b>{_B(_v_ad)}</b>  (verba {_c_ad})")
+            for _c_ul in (r.get("ul_manual") or []):
+                _lin_saldo.append(
+                    f"{(r.get('ul_dsc') or {}).get(_c_ul, '')} (verba {_c_ul:04d}): "
+                    "não calculada no saldo — foi lançada manualmente nesta rescisão")
             if r.get("saldo_adics"):
                 _lin_saldo.append(
                     f"Total do saldo (salário + adicionais) = <b>{_B(r['saldo'])}</b> — "
@@ -10328,14 +10429,14 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             # 0003 — Aviso prévio: provento da empresa OU desconto do empregado
             if r["aviso_val"]:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [
-                    f"Salário {_B(sal)} × {r['dias_aviso']} dias / 30 = <b>{_B(r['aviso_val'])}</b>"
+                    f"{_rem_lbl} {_B(_rem)} × {r['dias_aviso']} dias / 30 = <b>{_B(r['aviso_val'])}</b>"
                     + ("  (acordo 484-A: 50%)" if r["multa_pct"] == 20 else ""),
                 ]))
             elif r.get("aviso_desc"):
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO DESCONTADO (VERBA 60)", [
                     "Pedido de demissão sem cumprir o aviso: é o funcionário quem "
                     "indeniza a empresa (art. 487, § 2º, da CLT)",
-                    f"Salário {_B(sal)} × {r['dias_aviso_desc']} dias / 30 = "
+                    f"{_rem_lbl} {_B(_rem)} × {r['dias_aviso_desc']} dias / 30 = "
                     f"<b>{_B(r['aviso_desc'])}</b>  (desconto)",
                     "Descontam-se só os 30 dias do aviso legal: o acréscimo da Lei "
                     "12.506/2011 é direito de quem RECEBE o aviso, não de quem o deve",
@@ -10383,7 +10484,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             # 0005 — 13º proporcional (médias do ano corrente)
             if r["d13"]:
                 e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [
-                    f"(Salário {_B(sal)} + Médias {_B(r.get('med_total_13', 0))})"
+                    f"({_rem_lbl} {_B(_rem)} + Médias {_B(r.get('med_total_13', 0))})"
                     f" × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>",
                 ]))
             else:
@@ -10399,7 +10500,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     _jan = (f" [médias das folhas {_d['fi']} a {_d['ff']}]"
                             if _d.get("media") else "")
                     _lin.append(
-                        f"{_d['ini']} a {_d['fim']}: Salário {_B(sal)} + "
+                        f"{_d['ini']} a {_d['fim']}: {_rem_lbl} {_B(_rem)} + "
                         f"Médias do período {_B(_d['media'])} = <b>{_B(_d['valor'])}</b>{_jan}")
                 _lin.append(f"Total das férias vencidas = <b>{_B(r['fer_venc'])}</b>"
                             f"   (o 1/3 vai na verba 42)")
@@ -10434,7 +10535,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                             f"{_d['d_fim']} = {_d['dias']} dia(s) → <b>{_marca}</b>")
                 _lin_fer.append(f"Total: <b>{r['avos_fer']} avos</b>")
                 _lin_fer.append(
-                    f"(Salário {_B(sal)} + Médias {_B(r['med_total'])})"
+                    f"({_rem_lbl} {_B(_rem)} + Médias {_B(r['med_total'])})"
                     f" × {r['avos_fer']}/12 = <b>{_B(r['fer_prop'])}</b>"
                     f"   (o 1/3 vai na verba 42)")
                 e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", _lin_fer,
@@ -56189,6 +56290,13 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
     except Exception:
         rubrics_fc = []
 
+    # Verbas 'UL' (cargo de confianca): somam a remuneracao das ferias pelo
+    # ultimo valor lancado — ver _verbas_ultimo_lanc. Uma leitura para todos.
+    _ul_dsc_f = _verbas_ultimo_lanc(id_cliente, "inc_ferias")
+    _ul_val_f = _ultimo_lanc_valores(id_cliente, id_empresa, anomes,
+                                     [ev.get("matricula") for ev in (eventos or [])],
+                                     _ul_dsc_f)
+
     # Verbas variáveis que entram na média de férias (MAP/M12/MAN; S=legado)
     _INC_FERIAS_VALIDOS = {"MAP", "M12", "MAN", "S"}
     _verbas_media = [int(r["cod_rubr"]) for r in rubrics_fc
@@ -56281,6 +56389,10 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
         # salário + adicionais, não só sobre o salário.
         adics_mes   = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
                                          eventos_cache=_adic_ev, mov_cache=_adic_mov)
+        # Verba 'UL' nas ferias (cargo de confianca): o ultimo valor lancado
+        # entra como os adicionais — proporcional aos dias, verba propria no
+        # recibo, dentro do 1/3 e do abono (ver _verbas_ultimo_lanc).
+        adics_mes   = {**adics_mes, **_ul_val_f.get(int(mat), {})}
         adics_fer   = {cod: round(val * dias / 30) for cod, val in adics_mes.items()}
         adics_fer   = {c: v for c, v in adics_fer.items() if v}
         adic_total  = _adicionais_total(adics_fer)
@@ -57523,6 +57635,7 @@ def api_recibo_ferias_pdf():
     LW = W - 3.6*cm   # largura útil
 
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
+    _ul_dsc_rec = _verbas_ultimo_lanc(id_cliente, "inc_ferias")   # cargo de confianca
 
     # ── O que mais foi lançado na folha de férias ───────────────────────────
     # O recibo refaz as contas em vez de ler o cálculo, e por isso enxergava
@@ -57597,6 +57710,9 @@ def api_recibo_ferias_pdf():
         # de fora daqui (divergência que já existia antes dos adicionais).
         adics_mes   = _adicionais_do_mes(id_empresa, id_cliente, anomes, mat, sal_mes,
                                          eventos_cache=_adic_ev, mov_cache=_adic_mov)
+        # Verba 'UL' (cargo de confianca), como no calculo (_calc_ferias_nucleo)
+        adics_mes   = {**adics_mes, **_ultimo_lanc_valores(
+            id_cliente, id_empresa, anomes, [mat], _ul_dsc_rec).get(int(mat), {})}
         adics_fer   = {c: v for c, v in
                        ((c, (v * dias) // 30) for c, v in adics_mes.items()) if v}
         adic_total  = _adicionais_total(adics_fer)
@@ -57719,7 +57835,8 @@ def api_recibo_ferias_pdf():
             lin(f"{_verba_prefix(v_ferias_cod, v_ferias_dsc)}Salário Férias  ({dias} dias)", _brl(sal_ferias)),
         ]
         for _ca, _va in sorted(adics_fer.items()):
-            rows.append(lin(f"{str(_ca).zfill(4)}  {_DSC_ADIC.get(_ca, 'Adicional')}  —  "
+            rows.append(lin(f"{str(_ca).zfill(4)}  "
+                            f"{_DSC_ADIC.get(_ca) or _ul_dsc_rec.get(_ca, 'Adicional')}  —  "
                             f"({dias} dias)", _brl(_va)))
         idx_terco = len(rows)
         rows += [
