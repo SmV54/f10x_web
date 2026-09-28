@@ -409,8 +409,54 @@ h2("Contrato temporário e de experiência")
 caminho("Eventuais › Contrato Temporário")
 p("Registre o contrato e as prorrogações, consulte a relação dos contratos em "
   "vigor e imprima o contrato de experiência.")
+tabela(["Card", "Para que serve"],
+       [["Contrato / Prorrogação", "Lança o contrato, a prorrogação ou a exclusão. É daqui que o papel tira o prazo e as datas."],
+        ["Relação dos Contratos", "Lista os contratos em vigor, com os vencimentos."],
+        ["Imprimir Contrato Padrão", "Imprime o modelo do sistema. Está sempre disponível."],
+        ["Imprimir Meu Contrato", "Imprime o seu modelo. Só aparece depois que você grava o Meu Contrato."],
+        ["Criar / Editar Meu Contrato", "Abre a tela onde você monta o seu próprio texto de contrato."]],
+       larguras=[5.2, 10.8])
 dica("Logo depois de cadastrar um funcionário, o sistema já pergunta se você "
-     "quer emitir o contrato de experiência. É o momento mais prático de fazer isso.")
+     "quer emitir o contrato de experiência. É o momento mais prático de fazer isso. "
+     "Se você tem o Meu Contrato, é ele que sai nesse momento.")
+
+h3("Meu Contrato: o seu texto de contrato de experiência")
+p("O sistema traz um contrato de experiência padrão, pronto para usar. Se a sua "
+  "empresa prefere um texto próprio, crie o Meu Contrato: ele começa como uma "
+  "cópia do padrão e você altera o que quiser. O Meu Contrato vale para todas as "
+  "empresas da sua conta, e o padrão continua disponível para imprimir sempre que "
+  "precisar.")
+passo(1, "Abra o card Criar Meu Contrato",
+      "A tela já vem preenchida com o texto do contrato padrão. Nada é gravado "
+      "até você clicar em Gravar Meu Contrato.")
+passo(2, "Ajuste o texto",
+      "Altere o título, a identificação do empregador e do empregado, a "
+      "introdução e as cláusulas. Dá para incluir cláusula nova, excluir e mudar "
+      "a ordem com as setas. A numeração (Cláusula 1ª, 2ª...) é automática.")
+passo(3, "Insira os dados do funcionário pelos botões",
+      "Clique no ponto do texto onde o dado deve entrar e depois no botão "
+      "correspondente, na faixa azul do alto: Nome, CPF, Função, Salário, Salário "
+      "por extenso, Data de admissão e outros. Na impressão, cada um vira o dado "
+      "real do funcionário. Para negrito, escreva o texto entre dois asteriscos: "
+      "**assim**.")
+passo(4, "Escolha a data e as testemunhas",
+      "A data do contrato pode ser a da impressão (o normal) ou a da admissão. "
+      "As linhas de testemunha são opcionais.")
+passo(5, "Confira na prévia e grave",
+      "Escolha um funcionário com contrato lançado e clique em Visualizar PDF. A "
+      "prévia mostra o que está na tela, mesmo sem gravar. Quando estiver certo, "
+      "clique em Gravar Meu Contrato.")
+regra("Cláusula do prazo",
+      "é preenchida pelo sistema com o contrato lançado em Contrato / Prorrogação. "
+      "Você muda o título e a posição dela, mas não o texto: é ela que garante o "
+      "limite de 90 dias da experiência (art. 445 da CLT). A frase da prorrogação "
+      "só aparece quando ainda cabe prorrogar, e depois de lançada a prorrogação "
+      "ela passa a dizer “foi prorrogado”, com as datas reais.")
+regra("Recomeçar do padrão",
+      "troca o texto da tela pelo contrato padrão, sem gravar. Excluir Meu "
+      "Contrato apaga o seu modelo, e os contratos voltam a sair só no padrão.")
+atencao("O texto alterado no Meu Contrato é de responsabilidade da empresa. "
+        "Recomendamos que seja revisado pelo seu contador ou advogado antes do uso.")
 
 h2("Afastamentos")
 caminho("Eventuais › Afastamentos")

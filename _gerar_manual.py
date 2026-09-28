@@ -332,10 +332,22 @@ p("Réplica do formulário oficial (Portaria 1057/2012). Lê o que foi PERSISTID
   "então é obrigatório calcular a rescisão antes de emitir.")
 
 h2("Grupo Contrato Temporário")
-caminho("Contrato / Prorrogação · Relação dos Contratos · Imprimir Contrato de Experiência")
+caminho("Contrato / Prorrogação · Relação dos Contratos · Imprimir Contrato Padrão · "
+        "Imprimir Meu Contrato · Criar/Editar Meu Contrato")
 regra("Contrato de experiência", "o PDF é oferecido logo depois de concluir o cadastro do "
-      "funcionário e também fica no card do menu. O modelo não traz os itens Local de "
-      "Trabalho e Dano.")
+      "funcionário e também fica no card do menu. O modelo padrão não traz os itens Local de "
+      "Trabalho e Dano. Os dados (prazo, prorrogação) saem do evento op1=1/op2=167.")
+regra("Dois modelos", "o Padrão fica no app.py e está sempre disponível "
+      "(/contrato_experiencia_pdf?modelo=padrao). O Meu Contrato é um por CLIENTE, em "
+      "tab_contrato_modelo (JSON), montado por modelos_contrato.py. Sem ?modelo, como no PDF "
+      "da admissão, sai o Meu Contrato de quem tem. O card Imprimir Meu Contrato só "
+      "aparece para quem gravou o seu.")
+regra("Cláusula do prazo", "é do sistema: o cliente muda título e posição, não o texto. "
+      "A prorrogação só entra se couber nos 90 dias (art. 445 CLT); contrato já prorrogado "
+      "sai no passado (“foi prorrogado”), com as datas reais.")
+regra("Validação", "marcador fora da lista (os da prorrogação ficam de fora de propósito) "
+      "é recusado ao gravar. O texto do cliente é escapado antes do ReportLab; negrito "
+      "é **assim**. O cliente 30 foi o primeiro Meu Contrato, migrado do código em 28/09/2026.")
 
 h2("Grupo Afastamentos")
 caminho("Lançar Afastamento · CAT (informar, alterar, ficha) · Funcionários Afastados · "
