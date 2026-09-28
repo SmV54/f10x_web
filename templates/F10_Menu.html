@@ -726,6 +726,9 @@ const modulos = {
                 // Só imprime o que já está lançado — não mexe em nada, por isso
                 // vale também com a folha bloqueada (2ª via, contrato antigo).
                 { icone: '🖶', nome: 'Imprimir Contrato de Experiência', href: '/select_funcionario?contexto=contrato_pdf', ok: true, permiteFolhaBloqueada: true },
+                // Texto do contrato editado pelo cliente (um por cliente). Não mexe
+                // na folha, por isso vale também com ela bloqueada.
+                { icone: '✍️', nome: 'Meu Contrato de Experiência', href: '/meu_contrato', ok: true, permiteFolhaBloqueada: true },
             ]},
             // nav-fix2l em todos: trava a largura em 232px (minimo E maximo), e o
             // nome comprido quebra em duas linhas em vez de esticar o card. So'
@@ -858,11 +861,11 @@ const modulos = {
                 { icone: '👨‍👩‍👧', nome: 'Dependentes',         href: '/relatorios_config?rel=dependentes',   ok: true, classe: 'nav-fix' },
                 { icone: '📄', nome: 'Ficha de Registro',      href: '/select_funcionario?contexto=ficha',   ok: true, classe: 'nav-fix', quebraLinha: true },
             ]};
-            const secEventos = { nome: 'Eventos', itens: [
+            // Uma secao so: a antiga "Eventos" (Ferias e Faltas) veio para
+            // dentro de Eventuais (SMV 28/09/2026).
+            const secEventuais = { nome: 'Eventuais', itens: [
                 { icone: '🏖️', nome: 'Listagem de Férias', href: '/relatorios_config?rel=ferias_func', ok: true },
                 { icone: '📉', nome: 'Listagem de Faltas', href: '/rel_config_faltas',                 ok: true },
-            ]};
-            const secEventuais = { nome: 'Eventuais', itens: [
                 { icone: '💹', nome: 'Salários / Aumento', href: '/relatorios_config?rel=sal_aumento', ok: true },
             ]};
             // nav-fix2l em todos, como nas secoes do eSocial e de Afastamentos:
@@ -892,8 +895,8 @@ const modulos = {
             ]};
             const folhaPrioridade = FOLHA_SITUACAO === 'C' || FOLHA_SITUACAO === 'F';
             return folhaPrioridade
-                ? [secFolha, secGerador, secCadastros, secEventos, secEventuais, secSistema, secTodos]
-                : [secCadastros, secEventos, secEventuais, secFolha, secGerador, secSistema, secTodos];
+                ? [secFolha, secGerador, secCadastros, secEventuais, secSistema, secTodos]
+                : [secCadastros, secEventuais, secFolha, secGerador, secSistema, secTodos];
         })(),
     },
 

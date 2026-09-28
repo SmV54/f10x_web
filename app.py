@@ -33,7 +33,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from supabase import create_client
 from dotenv import load_dotenv
 from services.validacoes import somente_numeros, validar_cpf
-from modelos_contrato import modelo_do_cliente, montar_story
+import modelos_contrato
 
 # =========================================================
 # CARREGA VARIÁVEIS DO .env
@@ -16769,6 +16769,7 @@ def cad_contrato():
         # Prorrogacao unica (art. 451 CLT): com ref2 >= 1 a tela ja abre travada.
         pode_prorrogar=bool(contr) and int(contr.get("prorrogacoes") or 0) < 1,
         anomes_atual=anomes,
+        tem_meu_contrato=bool(contr) and bool(_meu_contrato(session.get("id_cliente"))),
         # Admissao fora da folha ativa nao impede nada, mas precisa aparecer
         # antes de uma exclusao: e' sinal de que ha historico de outros meses.
         adm_fora_da_folha=bool(len(dtadm) == 8 and len(anomes) == 6
@@ -17412,9 +17413,14 @@ def contrato_experiencia_pdf(mat=None):
 
     # Cliente com modelo proprio de contrato (ver modelos_contrato.py) imprime
     # o texto dele; sem modelo, sai o contrato padrao do sistema, abaixo.
-    _modelo = modelo_do_cliente(session.get("id_cliente"))
+    # "?modelo=padrao" força o padrão, que fica sempre disponível; sem o
+    # parâmetro, quem tem "Meu Contrato" imprime o seu.
+    _modelo = None
+    if request.args.get("modelo") != "padrao":
+        _modelo = _meu_contrato(session.get("id_cliente"))
     if _modelo:
-        story = montar_story(_modelo, d)
+        _data_assinatura_meu(_modelo, d)
+        story = modelos_contrato.montar_story(_modelo, d)
     else:
         story = [Paragraph("CONTRATO DE EXPERIÊNCIA", st_tit), Spacer(1, 8)]
         story += cabec_partes()
@@ -17456,20 +17462,146 @@ def contrato_experiencia_pdf(mat=None):
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=2 * cm, rightMargin=2 * cm,
                             topMargin=1.5 * cm, bottomMargin=1.5 * cm,
-                            title=((_modelo or {}).get("titulo")
-                                   or "Contrato de Experiência"))
+                            title="Contrato de Experiência")
     doc.build(story)
     buf.seek(0)
 
     gravar_log("CONTRATO", f"Contrato de experiencia emitido em PDF: "
                            f"{d['nome'][:30]}"
-                           f"{' — modelo ' + _modelo['nome_modelo'] if _modelo else ''}",
+                           f"{' — Meu Contrato' if _modelo else ''}",
                matricula=mat)
 
     resp = make_response(buf.read())
     resp.headers["Content-Type"] = "application/pdf"
     resp.headers["Content-Disposition"] = (
         f'inline; filename="ContratoExperiencia_{int(mat):06d}.pdf"')
+    return resp
+
+
+# =========================================================
+# MEU CONTRATO — contrato de experiencia editado pelo cliente
+# =========================================================
+# Um por cliente, na tab_contrato_modelo; formato e regras em
+# modelos_contrato.py. O padrao do sistema continua na rota acima e sempre
+# pode ser impresso ("?modelo=padrao").
+
+def _meu_contrato(id_cliente):
+    """O "Meu Contrato" do cliente, ou None (so tem o padrao)."""
+    try:
+        r = (supabase.table("tab_contrato_modelo").select("modelo")
+             .eq("id_cliente", int(id_cliente or 0)).limit(1).execute())
+    except Exception as e:
+        print(f"[meu contrato] leitura: {e}")
+        return None
+    return (r.data[0].get("modelo") or None) if r.data else None
+
+
+def _data_assinatura_meu(modelo, d):
+    """Poe em d a data do local/data: hoje (padrao) ou a da admissao."""
+    if modelo.get("data") == "admissao" and d.get("data_extenso"):
+        d["data_assinatura"] = d["data_extenso"]
+    else:
+        h = _agora_brasilia().date()
+        d["data_assinatura"] = f"{h.day} de {_AVISO_MESES[h.month - 1]} de {h.year}"
+
+
+@app.route("/meu_contrato")
+def meu_contrato():
+    if not session.get("logado"):
+        return redirect("/")
+    modelo = _meu_contrato(session.get("id_cliente"))
+    return render_template(
+        "F10_Meu_Contrato.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        existe=bool(modelo),
+        # Sem modelo ainda, a tela abre com a copia do padrao — so vira
+        # "Meu Contrato" quando gravar.
+        modelo=modelo or modelos_contrato.MODELO_INICIAL,
+        inicial=modelos_contrato.MODELO_INICIAL,
+        marcadores=modelos_contrato.MARCADORES,
+        prazo_texto=modelos_contrato.PRAZO_TEXTO,
+        prazo_prorrogacao=modelos_contrato.PRAZO_PRORROGACAO,
+    )
+
+
+@app.route("/api/meu_contrato/gravar", methods=["POST"])
+def api_meu_contrato_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    modelo, erro = modelos_contrato.validar_modelo((request.get_json(silent=True) or {})
+                                                   .get("modelo"))
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    try:
+        supabase.table("tab_contrato_modelo").upsert({
+            "id_cliente":   int(session.get("id_cliente") or 0),
+            "modelo":       modelo,
+            "alterado_em":  _agora_brasilia().isoformat(),
+            "alterado_por": so_numeros(session.get("cpf") or "")[:14],
+        }).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:120]}"})
+    gravar_log("CONTRATO", "Meu Contrato de experiencia gravado "
+                           f"({len(modelo['clausulas'])} clausulas)")
+    return jsonify({"ok": True, "msg": "Meu Contrato gravado."})
+
+
+@app.route("/api/meu_contrato/excluir", methods=["POST"])
+def api_meu_contrato_excluir():
+    """Voltar ao padrao: apaga o modelo do cliente."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    try:
+        (supabase.table("tab_contrato_modelo").delete()
+         .eq("id_cliente", int(session.get("id_cliente") or 0)).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:120]}"})
+    gravar_log("CONTRATO", "Meu Contrato de experiencia excluido (volta ao padrao)")
+    return jsonify({"ok": True, "msg": "Meu Contrato excluído. Vale o contrato padrão."})
+
+
+@app.route("/meu_contrato/previa", methods=["POST"])
+def meu_contrato_previa():
+    """PDF do que esta na tela, gravado ou nao, com um funcionario real."""
+    if not session.get("logado"):
+        return redirect("/")
+    import json as _json
+    from io import BytesIO
+    from flask import make_response
+    from reportlab.platypus import SimpleDocTemplate
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+
+    def _msg(t):
+        return Response(f"<p style='font-family:sans-serif;padding:24px'>{t}</p>",
+                        mimetype="text/html")
+    try:
+        bruto = _json.loads(request.form.get("modelo") or "{}")
+    except ValueError:
+        return _msg("Modelo inválido.")
+    modelo, erro = modelos_contrato.validar_modelo(bruto)
+    if erro:
+        return _msg(erro)
+    mat = re.sub(r"\D", "", request.form.get("mat") or "")
+    if not mat:
+        return _msg("Escolha um funcionário para a prévia.")
+
+    d, erro = _contrato_exp_dados(session.get("id_cliente"), _get_id_empresa(), int(mat))
+    if erro:
+        return _msg(erro)
+    _data_assinatura_meu(modelo, d)
+
+    buf = BytesIO()
+    SimpleDocTemplate(buf, pagesize=A4,
+                      leftMargin=2 * cm, rightMargin=2 * cm,
+                      topMargin=1.5 * cm, bottomMargin=1.5 * cm,
+                      title="Prévia — Meu Contrato").build(
+        modelos_contrato.montar_story(modelo, d))
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = 'inline; filename="Previa_MeuContrato.pdf"'
     return resp
 
 
@@ -18878,6 +19010,9 @@ def select_funcionario():
         categorias=categorias,
         funcoes=funcoes,
         anomes_atual=str(session.get("anomes_atual") or ""),
+        # Imprimir contrato: com "Meu Contrato", a tela oferece Padrão / Meu.
+        tem_meu_contrato=(request.args.get("contexto") == "contrato_pdf"
+                          and bool(_meu_contrato(session.get("id_cliente")))),
     )
 
 

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Meu Contrato de Experiência</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 900px; margin: 28px auto; padding: 0 24px 60px; }
+
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+.selo { display: inline-block; margin-left: 10px; font-size: 11px; font-weight: 600;
+        padding: 2px 10px; border-radius: 999px; vertical-align: middle; }
+.selo-meu    { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+.selo-padrao { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
+
+.aviso {
+    background: #fffbeb; border: 1px solid #fcd34d; color: #78350f;
+    border-radius: 10px; padding: 12px 16px; font-size: 13px; line-height: 1.5;
+    margin-bottom: 18px;
+}
+
+.card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; margin-bottom: 18px;
+}
+.card-titulo {
+    font-size: 10px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #94a3b8;
+    padding: 12px 20px 8px; background: #f8fafc;
+    border-bottom: 1px solid var(--border);
+}
+.card-corpo { padding: 16px 20px; display: flex; flex-direction: column; gap: 12px; }
+
+label.rot { font-size: 12px; font-weight: 600; color: #475569; display: block; margin-bottom: 4px; }
+input[type=text], textarea {
+    width: 100%; border: 1.5px solid #cbd5e1; border-radius: 8px;
+    font-family: var(--sans); font-size: 13px; color: #1e293b;
+    padding: 8px 10px; outline: none; transition: 0.15s; background: #fff;
+}
+textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+input[type=text]:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,.12); }
+
+/* Barra de marcadores: fica presa no alto enquanto rola a tela */
+.marcadores {
+    position: sticky; top: 64px; z-index: 5;
+    background: #eef6ff; border: 1px solid #bfdbfe; border-radius: 10px;
+    padding: 10px 14px; margin-bottom: 18px;
+}
+.marcadores-tit { font-size: 12px; color: #1e3a8a; margin-bottom: 6px; }
+.marcadores-tit b { font-weight: 600; }
+.marcadores button {
+    font-family: var(--sans); font-size: 12px; background: #fff; color: #1d4ed8;
+    border: 1px solid #93c5fd; border-radius: 6px; padding: 3px 9px; margin: 2px 2px;
+    cursor: pointer;
+}
+.marcadores button:hover { background: #1d4ed8; color: #fff; }
+
+.clausula {
+    border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px; background: #fff;
+}
+.clausula.prazo { background: #f8fafc; border-style: dashed; }
+.cl-topo { display: flex; align-items: center; gap: 10px; }
+.cl-num { font-family: var(--mono); font-size: 12px; font-weight: 600; color: #334155; white-space: nowrap; }
+.cl-topo input { flex: 1; }
+.cl-acoes button {
+    background: #fff; border: 1px solid #cbd5e1; color: #475569; border-radius: 6px;
+    width: 30px; height: 30px; cursor: pointer; font-size: 13px;
+}
+.cl-acoes button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.cl-acoes button:disabled { opacity: .35; cursor: default; }
+.cl-acoes button.del:hover:not(:disabled) { border-color: #dc2626; color: #dc2626; }
+.prazo-texto { font-size: 12.5px; color: #475569; line-height: 1.55; }
+.prazo-nota  { font-size: 11px; color: #64748b; font-style: italic; }
+
+.btn-add {
+    align-self: flex-start; background: #fff; border: 1.5px dashed #93c5fd; color: #1d4ed8;
+    border-radius: 8px; padding: 7px 16px; font-family: var(--sans); font-size: 13px; cursor: pointer;
+}
+.btn-add:hover { background: #eff6ff; }
+
+.linha-op { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; font-size: 13px; }
+.linha-op .rot { margin: 0; }
+.linha-op label.op { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.linha-op input { accent-color: var(--accent); }
+
+.rodape {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 20px;
+}
+.previa { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.previa select {
+    height: 36px; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 0 8px;
+    font-family: var(--sans); font-size: 13px; max-width: 280px;
+}
+.btn { font-family: var(--sans); font-size: 13px; font-weight: 600; border-radius: 8px;
+       padding: 9px 20px; cursor: pointer; transition: .15s; }
+.btn-sec { background: #fff; border: 1px solid var(--accent); color: var(--accent); }
+.btn-sec:hover { background: var(--accent); color: #fff; }
+.btn-ok  { background: #1d4ed8; border: none; color: #fff; }
+.btn-ok:hover { background: #1e40af; }
+.btn-del { background: #fff; border: 1px solid #fca5a5; color: #b91c1c; }
+.btn-del:hover { background: #fef2f2; }
+.acoes { display: flex; gap: 10px; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Meu Contrato de Experiência</span>
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="history.back()">&#8592; Voltar</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/menu">&#8592; Menu</a>
+        <div>
+            <div class="rel-titulo">Meu Contrato de Experiência
+                {% if existe %}<span class="selo selo-meu">Gravado</span>
+                {% else %}<span class="selo selo-padrao">Ainda não gravado</span>{% endif %}
+            </div>
+            <div class="rel-subtitulo">
+                {% if existe %}Este é o texto do seu contrato. Vale para todas as empresas do cliente.
+                {% else %}A tela abriu com o contrato padrão como ponto de partida. Ele só vira o seu contrato quando você gravar.{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="aviso">
+        <b>Atenção:</b> o texto alterado aqui é de responsabilidade da empresa. Recomendamos
+        que seja revisado pelo seu contador ou advogado. O contrato <b>padrão</b> do sistema
+        continua disponível na hora de imprimir.
+    </div>
+
+    <div class="marcadores">
+        <div class="marcadores-tit">Clique no campo de texto e depois no dado que deseja inserir.
+            Use <b>**texto**</b> para negrito.</div>
+        {% for m, rot in marcadores %}
+        <button type="button" data-marcador="{{ m }}">{{ rot }}</button>
+        {% endfor %}
+    </div>
+
+    <div class="card">
+        <div class="card-titulo">Título e identificação das partes</div>
+        <div class="card-corpo">
+            <div><label class="rot">Título</label><input type="text" id="titulo" maxlength="300"></div>
+            <div><label class="rot">Identificação do empregador</label><textarea id="cab1" rows="2"></textarea></div>
+            <div><label class="rot">Identificação do empregado</label><textarea id="cab2" rows="2"></textarea></div>
+            <div><label class="rot">Introdução (opcional)</label><textarea id="preambulo" rows="3"></textarea></div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-titulo">Cláusulas</div>
+        <div class="card-corpo">
+            <div id="clausulas" style="display:flex;flex-direction:column;gap:10px;"></div>
+            <button type="button" class="btn-add" onclick="incluirClausula()">+ Incluir cláusula</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-titulo">Encerramento e assinaturas</div>
+        <div class="card-corpo">
+            <div><label class="rot">Texto de encerramento</label><textarea id="fecho" rows="3"></textarea></div>
+            <div class="linha-op">
+                <span class="rot">Data do contrato:</span>
+                <label class="op"><input type="radio" name="data" value="hoje"> Data da impressão</label>
+                <label class="op"><input type="radio" name="data" value="admissao"> Data da admissão</label>
+                <span style="width:18px"></span>
+                <label class="op"><input type="checkbox" id="testemunhas"> Com testemunhas</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="rodape">
+        <form class="previa" id="formPrevia" method="post" action="/meu_contrato/previa" target="_blank">
+            <input type="hidden" name="modelo" id="previaModelo">
+            <span>Prévia com:</span>
+            <select name="mat" id="previaMat"><option value="">Carregando…</option></select>
+            <button type="submit" class="btn btn-sec">Visualizar PDF</button>
+        </form>
+        <div class="acoes">
+            <button type="button" class="btn btn-del" onclick="recomecar()">Recomeçar do padrão</button>
+            {% if existe %}<button type="button" class="btn btn-del" onclick="excluir()">Excluir Meu Contrato</button>{% endif %}
+            <button type="button" class="btn btn-ok" onclick="gravar()">Gravar Meu Contrato</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+const MODELO   = {{ modelo|tojson }};
+const INICIAL  = {{ inicial|tojson }};
+const PRAZO_TX = {{ prazo_texto|tojson }};
+const PRAZO_PR = {{ prazo_prorrogacao|tojson }};
+
+let clausulas = [];
+let ultimoCampo = null;          // onde o botao de marcador escreve
+let alterado = false;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function carregar(m) {
+    $('titulo').value    = m.titulo || '';
+    $('cab1').value      = (m.cabecalho || [])[0] || '';
+    $('cab2').value      = (m.cabecalho || [])[1] || '';
+    $('preambulo').value = m.preambulo || '';
+    $('fecho').value     = m.fecho || '';
+    document.querySelector(`input[name=data][value=${m.data === 'admissao' ? 'admissao' : 'hoje'}]`).checked = true;
+    $('testemunhas').checked = !!m.testemunhas;
+    clausulas = (m.clausulas || []).map(c => ({...c}));
+    desenhar();
+}
+
+function desenhar() {
+    const box = $('clausulas');
+    box.innerHTML = clausulas.map((c, i) => {
+        const prazo = c.tipo === 'prazo';
+        return `
+        <div class="clausula${prazo ? ' prazo' : ''}">
+            <div class="cl-topo">
+                <span class="cl-num">Cláusula ${i + 1}ª –</span>
+                <input type="text" maxlength="300" data-i="${i}" data-campo="titulo"
+                       value="${esc(c.titulo)}" placeholder="Título da cláusula (opcional)">
+                <span class="cl-acoes">
+                    <button type="button" title="Subir"  onclick="mover(${i},-1)" ${i === 0 ? 'disabled' : ''}>&#9650;</button>
+                    <button type="button" title="Descer" onclick="mover(${i},1)"  ${i === clausulas.length - 1 ? 'disabled' : ''}>&#9660;</button>
+                    <button type="button" class="del" title="${prazo ? 'A cláusula do prazo é obrigatória' : 'Excluir cláusula'}"
+                            onclick="remover(${i})" ${prazo ? 'disabled' : ''}>&#10005;</button>
+                </span>
+            </div>
+            ${prazo
+                ? `<div class="prazo-texto">${esc(PRAZO_TX)} <i>${esc(PRAZO_PR)}</i></div>
+                   <div class="prazo-nota">Texto do sistema, preenchido com o contrato lançado. A frase
+                   da prorrogação só aparece quando ainda cabe prorrogar, respeitando o máximo de
+                   90 dias (art. 445 da CLT). Você pode mudar o título e a posição desta cláusula.</div>`
+                : `<textarea rows="3" data-i="${i}" data-campo="texto">${esc(c.texto)}</textarea>`}
+        </div>`;
+    }).join('');
+}
+
+// Digitar nas clausulas atualiza a lista na hora (sem redesenhar, para nao
+// perder o cursor).
+$('clausulas').addEventListener('input', e => {
+    const i = e.target.dataset.i, campo = e.target.dataset.campo;
+    if (i !== undefined && campo) clausulas[+i][campo] = e.target.value;
+});
+document.addEventListener('input', () => { alterado = true; });
+document.addEventListener('focusin', e => {
+    if (e.target.matches('textarea, input[type=text]')) ultimoCampo = e.target;
+});
+
+document.querySelectorAll('[data-marcador]').forEach(b => {
+    // mousedown com preventDefault: o campo nao perde o foco nem o cursor
+    b.addEventListener('mousedown', e => e.preventDefault());
+    b.addEventListener('click', () => {
+        const el = ultimoCampo;
+        if (!el || !document.body.contains(el)) {
+            f10Alert('Clique primeiro no campo de texto onde o dado deve entrar.', {tipo: 'info'});
+            return;
+        }
+        const ins = '{' + b.dataset.marcador + '}';
+        const ini = el.selectionStart ?? el.value.length, fim = el.selectionEnd ?? ini;
+        el.value = el.value.slice(0, ini) + ins + el.value.slice(fim);
+        el.selectionStart = el.selectionEnd = ini + ins.length;
+        el.focus();
+        el.dispatchEvent(new Event('input', {bubbles: true}));
+    });
+});
+
+function mover(i, d) {
+    const j = i + d;
+    if (j < 0 || j >= clausulas.length) return;
+    [clausulas[i], clausulas[j]] = [clausulas[j], clausulas[i]];
+    alterado = true; desenhar();
+}
+async function remover(i) {
+    if (clausulas[i].tipo === 'prazo') return;
+    const nome = clausulas[i].titulo || `Cláusula ${i + 1}ª`;
+    if (!await f10Confirm(`Excluir a cláusula "${nome}"?`, {tipo: 'aviso', okText: 'Excluir'})) return;
+    clausulas.splice(i, 1);
+    alterado = true; desenhar();
+}
+function incluirClausula() {
+    clausulas.push({titulo: '', texto: ''});
+    alterado = true; desenhar();
+    const t = $('clausulas').querySelectorAll('textarea');
+    if (t.length) { t[t.length - 1].focus(); t[t.length - 1].scrollIntoView({block: 'center'}); }
+}
+
+function montar() {
+    return {
+        titulo:      $('titulo').value,
+        cabecalho:   [$('cab1').value, $('cab2').value],
+        preambulo:   $('preambulo').value,
+        clausulas:   clausulas,
+        fecho:       $('fecho').value,
+        data:        document.querySelector('input[name=data]:checked').value,
+        testemunhas: $('testemunhas').checked,
+    };
+}
+
+async function gravar() {
+    try {
+        const r = await fetch('/api/meu_contrato/gravar', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({modelo: montar()})});
+        const j = await r.json();
+        if (!j.ok) { f10Alert(j.msg, {tipo: 'erro'}); return; }
+        alterado = false;
+        await f10Alert(j.msg, {tipo: 'sucesso'});
+        location.reload();
+    } catch (e) { f10Alert('Falha ao gravar: ' + e, {tipo: 'erro'}); }
+}
+
+async function recomecar() {
+    if (!await f10Confirm('Trocar o texto da tela pelo contrato padrão? Nada é gravado até você clicar em Gravar.',
+                          {tipo: 'aviso', okText: 'Recomeçar'})) return;
+    carregar(INICIAL); alterado = true;
+}
+
+async function excluir() {
+    if (!await f10Confirm('Excluir o Meu Contrato? Os contratos passam a sair no modelo padrão do sistema.',
+                          {tipo: 'perigo', okText: 'Excluir'})) return;
+    try {
+        const r = await fetch('/api/meu_contrato/excluir', {method: 'POST'});
+        const j = await r.json();
+        if (!j.ok) { f10Alert(j.msg, {tipo: 'erro'}); return; }
+        alterado = false;
+        await f10Alert(j.msg, {tipo: 'sucesso'});
+        location.reload();
+    } catch (e) { f10Alert('Falha ao excluir: ' + e, {tipo: 'erro'}); }
+}
+
+// Prévia: manda o que esta na tela, gravado ou nao.
+$('formPrevia').addEventListener('submit', e => {
+    if (!$('previaMat').value) {
+        e.preventDefault();
+        f10Alert('Escolha um funcionário com contrato de experiência lançado.', {tipo: 'info'});
+        return;
+    }
+    $('previaModelo').value = JSON.stringify(montar());
+});
+
+// So quem tem contrato lancado serve para a previa (mesma lista da impressao).
+fetch('/api/funcionarios_lista?contexto=contrato_pdf')
+    .then(r => r.json())
+    .then(j => {
+        const lista = (j.funcionarios || []);
+        $('previaMat').innerHTML = lista.length
+            ? lista.map(f => `<option value="${f.matricula}">${String(f.matricula).padStart(6, '0')} – ${esc(f.nome)}</option>`).join('')
+            : '<option value="">Nenhum funcionário com contrato lançado</option>';
+    })
+    .catch(() => { $('previaMat').innerHTML = '<option value="">Erro ao carregar</option>'; });
+
+window.addEventListener('beforeunload', e => { if (alterado) { e.preventDefault(); e.returnValue = ''; } });
+
+carregar(MODELO);
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>
