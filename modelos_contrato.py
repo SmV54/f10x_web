@@ -9,7 +9,8 @@ Decidido com o Sergio em 28/09/2026:
     tab_contrato_modelo e nasce como copia do padrao (MODELO_INICIAL, abaixo).
   - A clausula do PRAZO e' do sistema: o cliente muda o titulo e a posicao, nao o
     texto. E' ela que garante os 90 dias do art. 445, paragrafo unico, da CLT — a
-    frase da prorrogacao so entra quando ainda cabe prorrogar.
+    frase da prorrogacao so entra quando ainda cabe prorrogar, e depois de
+    prorrogado (Contrato / Prorrogacao) ela passa ao passado com as datas reais.
   - Data do contrato: hoje (padrao) ou a da admissao. Testemunhas: opcionais.
   - O texto alterado e' responsabilidade do cliente (aviso na tela de edicao).
 
@@ -65,6 +66,15 @@ PRAZO_PRORROGACAO = (
     "prorrogação, passando o segundo período a vigorar de "
     "**{dtprorrog_ini}** até **{dtprorrog_fim}**, totalizando "
     "{dias_total} ({dias_total_extenso}) dias de experiência."
+)
+# Reimpressao de contrato JA prorrogado (lancado em Contrato / Prorrogacao):
+# mesmas datas, contadas no passado (SMV 28/09/2026).
+PRAZO_PRORROGADO = (
+    "Por mútuo acordo, o contrato foi prorrogado uma única vez por mais "
+    "{dias_prorrog} ({dias_prorrog_extenso}) dias, mediante termo de "
+    "prorrogação, vigorando o segundo período de **{dtprorrog_ini}** até "
+    "**{dtprorrog_fim}**, totalizando {dias_total} ({dias_total_extenso}) dias "
+    "de experiência."
 )
 
 # Ponto de partida do "Meu Contrato": o texto do contrato padrao do app.py, no
@@ -249,7 +259,8 @@ def montar_story(modelo, d):
         if c.get("tipo") == "prazo":
             corpo = _render(PRAZO_TEXTO, d)
             if d.get("tem_prorrogacao"):
-                corpo += " " + _render(PRAZO_PRORROGACAO, d)
+                corpo += " " + _render(PRAZO_PRORROGADO if d.get("prorrogado")
+                                       else PRAZO_PRORROGACAO, d)
         else:
             corpo = _render(c.get("texto"), d)
         titulo = _render(c.get("titulo"), d)

@@ -1734,6 +1734,8 @@ def menu():
         id_empresa_hdr=session.get("id_empresa"),
         folha_situacao=str(session.get("anomes_situacao") or ""),
         cpf_usuario=str(session.get("cpf") or ""),
+        # Cards do contrato: "Imprimir Meu Contrato" so para quem gravou o seu.
+        tem_meu_contrato=bool(_meu_contrato(id_cliente)),
         qtd_empresas=qtd_empresas,
         licenca_fmt=licenca_fmt,
         licenca_classe=licenca_classe,
@@ -17313,6 +17315,8 @@ def _contrato_exp_dados(id_cliente, id_empresa, mat):
         "dias_inicial_extenso": _ext_inteiro(_dias_ini),
         "dtterm_inicial":       _fmt_dt(_dtterm_ini),
         "tem_prorrogacao":      bool(_dias_prorr and _prorr_ini and _prorr_fim),
+        # Ja prorrogado: o Meu Contrato conta no passado ("foi prorrogado").
+        "prorrogado":           bool(_prorrogado and _data8(_ant)),
         "dias_prorrog":         _dias_prorr,
         "dias_prorrog_extenso": _ext_inteiro(_dias_prorr),
         "dtprorrog_ini":        _fmt_dt(_prorr_ini),
@@ -17413,8 +17417,8 @@ def contrato_experiencia_pdf(mat=None):
 
     # Cliente com modelo proprio de contrato (ver modelos_contrato.py) imprime
     # o texto dele; sem modelo, sai o contrato padrao do sistema, abaixo.
-    # "?modelo=padrao" força o padrão, que fica sempre disponível; sem o
-    # parâmetro, quem tem "Meu Contrato" imprime o seu.
+    # "?modelo=padrao" força o padrão, que fica sempre disponível; "?modelo=meu"
+    # ou sem o parametro (o PDF da admissao), quem tem "Meu Contrato" imprime o seu.
     _modelo = None
     if request.args.get("modelo") != "padrao":
         _modelo = _meu_contrato(session.get("id_cliente"))
@@ -17538,7 +17542,8 @@ def api_meu_contrato_gravar():
         supabase.table("tab_contrato_modelo").upsert({
             "id_cliente":   int(session.get("id_cliente") or 0),
             "modelo":       modelo,
-            "alterado_em":  _agora_brasilia().isoformat(),
+            # timestamptz: vai com o fuso, senao o banco le a hora de Brasilia como UTC
+            "alterado_em":  datetime.now(timezone.utc).isoformat(),
             "alterado_por": so_numeros(session.get("cpf") or "")[:14],
         }).execute()
     except Exception as e:
@@ -19010,9 +19015,8 @@ def select_funcionario():
         categorias=categorias,
         funcoes=funcoes,
         anomes_atual=str(session.get("anomes_atual") or ""),
-        # Imprimir contrato: com "Meu Contrato", a tela oferece Padrão / Meu.
-        tem_meu_contrato=(request.args.get("contexto") == "contrato_pdf"
-                          and bool(_meu_contrato(session.get("id_cliente")))),
+        # Imprimir contrato: o card do menu diz qual modelo (padrao / meu).
+        modelo_contrato=("meu" if request.args.get("modelo") == "meu" else "padrao"),
     )
 
 

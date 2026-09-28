@@ -295,7 +295,9 @@ function desenhar() {
                 ? `<div class="prazo-texto">${esc(PRAZO_TX)} <i>${esc(PRAZO_PR)}</i></div>
                    <div class="prazo-nota">Texto do sistema, preenchido com o contrato lançado. A frase
                    da prorrogação só aparece quando ainda cabe prorrogar, respeitando o máximo de
-                   90 dias (art. 445 da CLT). Você pode mudar o título e a posição desta cláusula.</div>`
+                   90 dias (art. 445 da CLT); depois de lançada a prorrogação em Contrato / Prorrogação,
+                   ela passa a dizer "foi prorrogado", com as datas reais. Você pode mudar o título e a
+                   posição desta cláusula.</div>`
                 : `<textarea rows="3" data-i="${i}" data-campo="texto">${esc(c.texto)}</textarea>`}
         </div>`;
     }).join('');

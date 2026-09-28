@@ -576,6 +576,7 @@ body.menu-numerado .nav-item::before {
 
 <script>
 const FOLHA_SITUACAO      = '{{ folha_situacao }}';
+const TEM_MEU_CONTRATO    = {{ 'true' if tem_meu_contrato else 'false' }};
 const FOLHA_TIPO          = '{{ folha_ativa_tipo_cod }}';   // N · A · 1 · F · R
 const FOLHA_PERIODO       = '{{ folha_ativa }}';
 const QTD_EMPRESAS        = {{ qtd_empresas }};
@@ -720,15 +721,19 @@ const modulos = {
                 { icone: '❌', nome: 'Cancelar Rescisão',      href: '/select_funcionario?contexto=cancelar_rescisao',     ok: true, classe: 'nav-fix' },
             ]},
             { nome: 'Contrato Temporário', itens: [
-                { icone: '📃', nome: 'Contrato / Prorrogação', href: '/select_funcionario?contexto=contrato', ok: true, bloqueioFolha: true },
+                // nav-fix2l em todos: mesma largura, nome comprido quebra em 2 linhas.
+                { icone: '📃', nome: 'Contrato / Prorrogação', href: '/select_funcionario?contexto=contrato', ok: true, bloqueioFolha: true, classe: 'nav-fix2l' },
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
-                { icone: '📄', nome: 'Relação dos Contratos',  href: '/lista_contratos', ok: true, permiteFolhaBloqueada: true },
-                // Só imprime o que já está lançado — não mexe em nada, por isso
-                // vale também com a folha bloqueada (2ª via, contrato antigo).
-                { icone: '🖶', nome: 'Imprimir Contrato de Experiência', href: '/select_funcionario?contexto=contrato_pdf', ok: true, permiteFolhaBloqueada: true },
-                // Texto do contrato editado pelo cliente (um por cliente). Não mexe
-                // na folha, por isso vale também com ela bloqueada.
-                { icone: '✍️', nome: 'Meu Contrato de Experiência', href: '/meu_contrato', ok: true, permiteFolhaBloqueada: true },
+                { icone: '📄', nome: 'Relação dos Contratos',  href: '/lista_contratos', ok: true, permiteFolhaBloqueada: true, classe: 'nav-fix2l' },
+                // Um card por modelo, para o menu deixar claro que o padrão continua
+                // valendo (SMV 28/09/2026). Só imprimem o que já está lançado — não
+                // mexem em nada, por isso valem com a folha bloqueada (2ª via).
+                { icone: '🖶', nome: 'Imprimir Contrato Padrão', href: '/select_funcionario?contexto=contrato_pdf&modelo=padrao', ok: true, permiteFolhaBloqueada: true, classe: 'nav-fix2l' },
+                ...(TEM_MEU_CONTRATO ? [
+                { icone: '🖶', nome: 'Imprimir Meu Contrato',    href: '/select_funcionario?contexto=contrato_pdf&modelo=meu',    ok: true, permiteFolhaBloqueada: true, classe: 'nav-fix2l' },
+                ] : []),
+                // Texto do contrato editado pelo cliente (um por cliente).
+                { icone: '✍️', nome: TEM_MEU_CONTRATO ? 'Editar Meu Contrato' : 'Criar Meu Contrato', href: '/meu_contrato', ok: true, permiteFolhaBloqueada: true, classe: 'nav-fix2l' },
             ]},
             // nav-fix2l em todos: trava a largura em 232px (minimo E maximo), e o
             // nome comprido quebra em duas linhas em vez de esticar o card. So'

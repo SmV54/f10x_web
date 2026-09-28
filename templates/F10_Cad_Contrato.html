@@ -44,8 +44,6 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 .btn-imp{background:#fff;color:var(--accent);border:1px solid var(--accent);
       text-decoration:none;display:inline-block;line-height:normal}
 .btn-imp:hover{background:var(--accent);color:#fff}
-.modelo-contrato{display:inline-flex;align-items:center;gap:12px;font-size:13px;color:#374151}
-.modelo-contrato label{display:flex;align-items:center;gap:4px;cursor:pointer}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .acoes{display:flex;gap:10px;margin-top:18px;align-items:center;flex-wrap:wrap}
 .hist{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
@@ -221,14 +219,11 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
       {% if contrato %}
       <!-- Imprimir sai da mesma fonte que a tela mostra (o evento op1=1/op2=167),
            entao o papel sempre bate com o que esta aqui, inclusive prorrogado. -->
-      <a class="btn btn-imp" id="lnkImprimir" href="/contrato_experiencia_pdf/{{ func.matricula|int }}"
-         target="_blank" rel="noopener">&#128438; Imprimir contrato</a>
+      <a class="btn btn-imp" href="/contrato_experiencia_pdf/{{ func.matricula|int }}?modelo=padrao"
+         target="_blank" rel="noopener">&#128438; Imprimir Contrato Padrão</a>
       {% if tem_meu_contrato %}
-      <!-- Com "Meu Contrato", escolhe qual sai; o padrão fica sempre disponível. -->
-      <span class="modelo-contrato">
-        <label><input type="radio" name="modelo_contrato" value="" checked> Meu Contrato</label>
-        <label><input type="radio" name="modelo_contrato" value="padrao"> Padrão</label>
-      </span>
+      <a class="btn btn-imp" href="/contrato_experiencia_pdf/{{ func.matricula|int }}?modelo=meu"
+         target="_blank" rel="noopener">&#128438; Imprimir Meu Contrato</a>
       {% endif %}
       <button class="btn btn-del" id="btnExcluir">
         {% if pode_prorrogar %}Excluir o contrato{% else %}Excluir a prorrogação{% endif %}
@@ -271,12 +266,6 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
 </div>
 
 <script>
-// Padrão / Meu Contrato ao lado do Imprimir: so troca o endereco do link.
-document.querySelectorAll('input[name="modelo_contrato"]').forEach(r =>
-  r.addEventListener('change', () => {
-    const a = document.getElementById('lnkImprimir');
-    a.href = a.href.split('?')[0] + (r.value ? '?modelo=' + r.value : '');
-  }));
 const MAT   = {{ func.matricula|int }};
 // Base do calculo, que muda com a acao:
 //   cadastro  → admissao, e o dia da admissao CONTA (dias-1)

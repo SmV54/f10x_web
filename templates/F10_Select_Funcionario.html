@@ -297,11 +297,6 @@ body.sel-unico .lista-row { cursor: pointer; }
     display: flex; align-items: center; gap: 8px;
 }
 .btn-continuar:hover { background: #1a5fb8; }
-.modelo-contrato { display: flex; align-items: center; gap: 14px; margin-right: 18px;
-                   font-size: 13px; color: #374151; }
-.modelo-contrato span { font-weight: 600; }
-.modelo-contrato label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
-.modelo-contrato input { accent-color: var(--accent); }
 .btn-continuar:disabled { background: #93c5fd; cursor: not-allowed; }
 
 .btn-sel-visiveis {
@@ -574,14 +569,6 @@ body.sel-unico .lista-row { cursor: pointer; }
     </div><!-- /paineis -->
 
     <div class="rodape" style="justify-content:flex-end;">
-        {% if tem_meu_contrato %}
-        <!-- Cliente com "Meu Contrato": escolhe qual sai. O padrão fica sempre disponível. -->
-        <div class="modelo-contrato">
-            <span>Modelo:</span>
-            <label><input type="radio" name="modelo_contrato" value="meu" checked> Meu Contrato</label>
-            <label><input type="radio" name="modelo_contrato" value="padrao"> Padrão</label>
-        </div>
-        {% endif %}
         <button class="btn-continuar" id="btn-continuar" onclick="continuar()">
             Seleção Pronta
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -897,6 +884,17 @@ const ctx = CONTEXTOS[CONTEXTO] || {
     titulo: 'Selecionar Funcionário', subtitulo: 'Selecione um ou mais funcionários',
     tituloCurto: 'Selecionar Funcionário', proximo: '/menu', f_situacao: 'all',
 };
+
+// Imprimir contrato: o card do menu escolheu o modelo; o titulo diz qual sai.
+const MODELO_CONTRATO = '{{ modelo_contrato }}';
+if (CONTEXTO === 'contrato_pdf' && MODELO_CONTRATO === 'meu') {
+    ctx.titulo      = 'Meu Contrato — Selecionar Funcionário';
+    ctx.subtitulo   = 'Selecione o funcionário para imprimir o Meu Contrato';
+    ctx.tituloCurto = 'Selecionar — Meu Contrato';
+} else if (CONTEXTO === 'contrato_pdf') {
+    ctx.titulo      = 'Contrato Padrão — Selecionar Funcionário';
+    ctx.subtitulo   = 'Selecione o funcionário para imprimir o contrato padrão';
+}
 
 /* ── Estado ── */
 let todosFunc = [];
@@ -1471,8 +1469,8 @@ function continuar() {
         return;
     }
     let mats = Array.from(selectedMats).sort((a,b)=>a-b).join(',');
-    const _modeloSel = document.querySelector('input[name="modelo_contrato"]:checked');
-    if (_modeloSel && _modeloSel.value === 'padrao') mats += '&modelo=padrao';
+    // Imprimir contrato: o modelo veio do card do menu (padrao / meu).
+    if (CONTEXTO === 'contrato_pdf') mats += '&modelo=' + MODELO_CONTRATO;
     // Contexto que termina em PDF abre em aba separada: a tela de seleção fica
     // de pé, pronta para o próximo funcionário, e o Voltar do navegador não
     // cai no papel. Sem overlay — esta aba não vai a lugar nenhum.
