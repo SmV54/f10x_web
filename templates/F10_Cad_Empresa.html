@@ -425,6 +425,13 @@ body {
 .pos-grav-lista {
     margin: 8px 0 0 46px; padding: 0; font-size: 12.5px; color: #166534; line-height: 1.7;
 }
+.pos-sel-folha {
+    font-family: inherit; font-size: 12.5px; font-weight: 700; color: #14532d;
+    border: 1px solid #86efac; border-radius: 6px; padding: 2px 6px; background: #fff;
+}
+.pos-folha-obs { font-size: 11.5px; color: #3f6212; line-height: 1.5; margin: 2px 0 4px; }
+.pos-folha-obs.ok  { color: #15803d; font-weight: 600; }
+.pos-folha-obs.err { color: #991b1b; font-weight: 600; }
 .pos-grav-prox {
     margin-top: 14px; padding-top: 12px; border-top: 1px solid #bbf7d0;
     font-size: 12.5px; color: #14532d; line-height: 1.6;
@@ -1604,8 +1611,21 @@ async function gravarEmpresa(painel) {
             }
             // Cliente novo: em vez de parar no "gravada com sucesso", já mostra
             // o que o sistema preparou sozinho e conduz para o próximo passo.
+            // Mês da 1ª folha: o padrão vem marcado; meses anteriores do ano
+            // são oferecidos como cortesia, na mesma linha.
+            const _ops = j.folha_opcoes || [];
+            const _sel = _ops.length > 1
+                ? `<select id="selFolhaInicial" class="pos-sel-folha" data-atual="${j.folha_ano_mes}" onchange="trocarFolhaInicial(this)">`
+                  + _ops.map(a => `<option value="${a}"${a === j.folha_ano_mes ? ' selected' : ''}>`
+                                + `${a.slice(4)}/${a.slice(0, 4)}${a === j.folha_ano_mes ? ' (padrão)' : ''}</option>`).join('')
+                  + `</select>`
+                : `<b>${j.folha_aberta}</b>`;
             const _folha = j.folha_aberta
-                ? `<li>Folha de <b>${j.folha_aberta}</b> aberta e pronta para lançamentos</li>` : '';
+                ? `<li>Folha de ${_sel} aberta e pronta para lançamentos
+                     ${_ops.length > 1 ? `<div class="pos-folha-obs" id="obsFolhaInicial">
+                       Quer começar antes? Como cortesia, você pode escolher um mês anterior deste ano.
+                       A partir dele, os meses seguintes são processados em ordem, um a um
+                       (ex.: começando em 07, o próximo será 08, depois 09…).</div>` : ''}</li>` : '';
             const _cc = j.cc_padrao
                 ? `<li>Centro de custo <b>${j.cc_padrao}</b> criado (dá para trocar depois)</li>` : '';
             painel.innerHTML = `
@@ -1638,6 +1658,35 @@ async function gravarEmpresa(painel) {
     } catch (e) {
         painel.innerHTML = `<div class="resultado-erro"><strong>Erro de comunicação:</strong> ${e.message}</div>`;
     }
+}
+
+// Troca o mês da 1ª folha (cortesia) logo após o cadastro da empresa.
+async function trocarFolhaInicial(sel) {
+    const obs = document.getElementById('obsFolhaInicial');
+    sel.disabled = true;
+    try {
+        const r = await fetch('/api/trocar_folha_inicial', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ano_mes: sel.value })
+        });
+        const j = await r.json();
+        if (j.ok) {
+            sel.dataset.atual = sel.value;
+            obs.className = 'pos-folha-obs ok';
+            obs.textContent = `Folha inicial: ${j.folha}. Os meses seguintes serão processados em ordem, `
+                            + `um a um, a partir dela.`;
+        } else {
+            if (sel.dataset.atual) sel.value = sel.dataset.atual;
+            obs.className = 'pos-folha-obs err';
+            obs.textContent = j.msg;
+        }
+    } catch (e) {
+        if (sel.dataset.atual) sel.value = sel.dataset.atual;
+        obs.className = 'pos-folha-obs err';
+        obs.textContent = 'Não foi possível trocar o mês agora. Tente de novo.';
+    }
+    sel.disabled = false;
 }
 
 function _marcarErro(el) {

@@ -11583,7 +11583,7 @@ def inserir_cliente_novo(cpf, nome, celular, email, senha):
                        "use \"Esqueci minha senha\".")
 
     # A licença do teste tem que liberar A MESMA competência que a empresa vai
-    # receber aberta, e não o mês do calendário. Quem se cadastra até o dia 5
+    # receber aberta, e não o mês do calendário. Quem se cadastra até o dia 10
     # vem processar o mês que passou (ver _anomes_inicial): com o mês corrente
     # aqui, o cliente que entrava em 01/09 ganhava agosto na folha e setembro
     # na licença — dois meses de teste, e o mês liberado não era o que ele veio
@@ -12749,7 +12749,7 @@ def api_gravar_empresa():
 
         # Condução do cliente novo: já deixa a empresa pronta para uso — cria
         # o CC 001, abre a primeira folha (mês corrente, ou o anterior até o
-        # dia 5 — ver _anomes_inicial) e carrega na sessão.
+        # dia 10 — ver _anomes_inicial) e carrega na sessão.
         nome_empresa = (dados.get("razaosocial") or dados.get("nome_fantasia")
                         or "Empresa")
         _criar_cc_padrao(id_cliente_sess, id_empresa)
@@ -12768,7 +12768,9 @@ def api_gravar_empresa():
             "id_empresa":   id_empresa,
             "nome_empresa": nome_empresa,
             "folha_aberta": folha_fmt,
-            "cc_padrao":    f"{CC_PADRAO_CODIGO} - {CC_PADRAO_NOME}",
+            "folha_ano_mes": ano_mes,
+            "folha_opcoes": _anomes_cortesia(ano_mes) if ano_mes else [],
+            "cc_padrao":   f"{CC_PADRAO_CODIGO} - {CC_PADRAO_NOME}",
             "proximo":      "/cad_funcao",
         })
 
@@ -14683,7 +14685,7 @@ def cad_anomes():
         proximo_anomes = f"{_ano:04d}{_mes:02d}"
     else:
         # Empresa ainda sem nenhuma folha: mesma regra do cadastro inicial
-        # (ate o dia 5 sugere o mes anterior).
+        # (ate o dia 10 sugere o mes anterior).
         proximo_anomes = _anomes_inicial()
 
     # Busca data_limite do cliente (formato "YYYY-MM" → "YYYYMM")
@@ -14765,7 +14767,7 @@ def api_tabela_legal():
 # 1) empresa  2) funções  3) centro de custo  4) funcionários
 # Ao cadastrar a empresa o sistema ja cria o CC 001 e abre a primeira
 # folha, para o cliente nunca ficar travado nesses dois. A competencia
-# e a do mes corrente — ou a do mes anterior ate o dia 5, ver
+# e a do mes corrente — ou a do mes anterior ate o dia 10, ver
 # _anomes_inicial. Dali em diante a folha so anda para a frente
 # (ver _anomes_minimo).
 # =========================================================
@@ -14797,7 +14799,7 @@ def _criar_cc_padrao(id_cliente, id_empresa):
 
 
 # Ate esse dia do mes, o cliente novo recebe a folha do mes ANTERIOR.
-DIA_CORTE_MES_ANTERIOR = 5
+DIA_CORTE_MES_ANTERIOR = 10
 
 
 def _anomes_inicial():
@@ -14806,7 +14808,7 @@ def _anomes_inicial():
     Quem se cadastra nos primeiros dias do mes quase sempre tem a folha do mes
     que passou ainda por fechar — o pagamento so vence no 5o dia util. Abrir o
     mes corrente nessa janela deixaria o cliente sem como processar o mes que
-    ele veio processar. Dai o corte no dia 5: ate ele, mes anterior; depois,
+    ele veio processar. Dai o corte no dia 10: ate ele, mes anterior; depois,
     mes corrente. Ex.: cadastro em 03/08/2026 -> abre 202607.
     """
     hoje = _agora_brasilia()
@@ -14875,6 +14877,61 @@ def _anomes_liberados(id_cliente, id_empresa):
     except Exception as e:
         print(f"[ANOMES] _anomes_liberados: {e}")
         return set()
+
+
+def _anomes_cortesia(padrao):
+    """Meses que o cliente novo pode escolher para a 1a folha (yyyymm, do mais
+    recente ao mais antigo): o padrao (_anomes_inicial) e, como cortesia, todos
+    os meses anteriores do mesmo ano. Dali em diante a folha anda mes a mes."""
+    if len(padrao or "") != 6 or not padrao.isdigit():
+        return []
+    ano, mes = int(padrao[:4]), int(padrao[4:6])
+    return [f"{ano:04d}{m:02d}" for m in range(mes, 0, -1)]
+
+
+@app.route("/api/trocar_folha_inicial", methods=["POST"])
+def api_trocar_folha_inicial():
+    """Troca a competencia da 1a folha logo depois do cadastro da empresa.
+
+    So vale enquanto a empresa tem uma folha so (a inicial) e nenhum
+    funcionario: depois disso ja ha calculo/eSocial pendurado nela.
+    """
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_cliente = session.get("id_cliente")
+    id_empresa = session.get("id_empresa")
+    novo = str((request.get_json(silent=True) or {}).get("ano_mes") or "").strip()
+
+    if novo not in _anomes_cortesia(_anomes_inicial()):
+        return jsonify({"ok": False, "msg": "Mês inicial fora das opções oferecidas."})
+    try:
+        folhas = (supabase.table("tab_anomes").select("ano_mes, tipo")
+                  .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                  .execute().data or [])
+        func = (supabase.table("tab_cad").select("id")
+                .eq("id_empresa", id_empresa).limit(1).execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a empresa: {e}"})
+    if func or len(folhas) != 1 or str(folhas[0].get("tipo") or "N") != "N":
+        return jsonify({"ok": False, "msg": (
+            "O mês inicial só pode ser trocado logo após o cadastro da empresa, "
+            "antes de cadastrar funcionários.")})
+
+    atual = str(folhas[0].get("ano_mes") or "")
+    if atual != novo:
+        try:
+            (supabase.table("tab_anomes").update({"ano_mes": novo})
+             .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+             .eq("ano_mes", atual).eq("tipo", "N").execute())
+            (supabase.table("tab_empresa").update({"anomes_atual": novo, "anomes_tipo": "N"})
+             .eq("id_empresa", id_empresa).execute())
+        except Exception as e:
+            return jsonify({"ok": False, "msg": f"Erro ao trocar o mês inicial: {e}"})
+        gravar_log("FOLHA-INICIAL", f"empresa {id_empresa}: 1a folha {atual} -> {novo}")
+    session["anomes_atual"]    = novo
+    session["anomes_tipo"]     = "N"
+    session["anomes_situacao"] = "A"
+    return jsonify({"ok": True, "folha": f"{novo[4:6]}/{novo[:4]}"})
 
 
 def _abrir_folha_inicial(id_cliente, id_empresa):
