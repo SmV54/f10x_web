@@ -10363,7 +10363,10 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
         for ln in linhas:
             rows.append([Paragraph(ln, st_det)])
         t = Table(rows, colWidths=[17*cm]); t.setStyle(_sz)
-        return t
+        # A etapa vai inteira para a página seguinte se não couber: o INSS
+        # por extenso (faixa a faixa) partia no meio de uma faixa.
+        from reportlab.platypus import KeepTogether
+        return KeepTogether([t])
 
     for r in resultados:
         mat = int(r["matricula"]); nome = r["nome"]
@@ -10677,12 +10680,13 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             # 0007 — INSS
             _base_lbl = "saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
             lin_inss = [f"Base saldo ({_base_lbl}): {_B(r['base_inss_saldo'])}"]
-            for fx in (r.get("inss_saldo_det") or []):
-                lim, pct, bf, vf = fx
-                lin_inss.append(f"  faixa até {_B(lim)} × {pct/100:.2f}% sobre {_B(bf)} = {_B(vf)}")
+            # Faixa a faixa, por extenso (mesmo texto do Folha10 Desktop).
+            lin_inss += _inss_memoria_linhas(r["base_inss_saldo"], r.get("inss_saldo_det") or [])
             lin_inss.append(f"INSS saldo = <b>{_B(r['inss_saldo'])}</b>")
             if r["inss_13"]:
-                lin_inss.append(f"INSS 13º (base {_B(r['d13_base'])}) = <b>{_B(r['inss_13'])}</b>")
+                lin_inss.append(f"INSS do 13º — base PRÓPRIA, separada do saldo: {_B(r['d13_base'])}")
+                lin_inss += _inss_memoria_linhas(r["d13_base"], r.get("inss_13_det") or [])
+                lin_inss.append(f"INSS 13º = <b>{_B(r['inss_13'])}</b>")
             if _est:
                 e.append(_etapa("ETAPA 3080 - INSS", [],
                                 na="estagiário não é segurado obrigatório — sem INSS"))
@@ -46493,6 +46497,55 @@ def _calc_inss_progressivo(base_centavos, tabela):
     return total, detalhes, teto
 
 
+def _inss_memoria_linhas(base_centavos, detalhes):
+    """O cálculo do INSS escrito por extenso, faixa a faixa — no estilo da
+    memória do Folha10 Desktop (rotina 102019), para quem confere refazer a
+    conta lendo, sem tabela:
+
+        A 1ª faixa do INSS vai até R$ 1.621,00. Observe que a Base (R$ 2.875,68) é MAIOR.
+        Então vamos ACUMULAR esta faixa: R$ 1.621,00 × 7,50% = R$ 121,57
+        A 2ª faixa do INSS vai até R$ 2.902,84. Observe que a Base (R$ 2.875,68) é MENOR.
+        Então o cálculo vai só até esta faixa: (R$ 2.875,68 − R$ 1.621,00) = R$ 1.254,68 × 9,00% = R$ 112,92
+        Somando as parcelas de cada faixa do INSS: R$ 121,57 + R$ 112,92 = R$ 234,49
+
+    `detalhes` é o que o _calc_inss_progressivo devolve. A base acima do
+    último limite (o teto) aparece numa linha própria. Devolve a lista de
+    linhas (com <b>), e quem chama escolhe o estilo do parágrafo.
+    """
+    if not detalhes or base_centavos <= 0:
+        return []
+    R = _fmt_brl
+    linhas, prev = [], 0
+    for i, (lim, pct, bf, vf) in enumerate(detalhes, 1):
+        aliq = f"{pct / 100:.2f}".replace(".", ",") + "%"
+        if base_centavos > lim:
+            comp = "MAIOR"
+        elif base_centavos == lim:
+            comp = "IGUAL"
+        else:
+            comp = "MENOR"
+        linhas.append(f"A {i}ª faixa do INSS vai até {R(lim)}. "
+                      f"Observe que a Base ({R(base_centavos)}) é <b>{comp}</b>.")
+        # Da 2ª faixa em diante a conta mostra a subtração: (fim − início da faixa).
+        conta = f"({R(prev + bf)} − {R(prev)}) = {R(bf)}" if prev else R(bf)
+        if comp == "MAIOR":
+            linhas.append(f"Então vamos ACUMULAR esta faixa: {conta} × {aliq} = {R(vf)}")
+        else:
+            linhas.append(f"Então o cálculo vai só até esta faixa: {conta} × {aliq} = {R(vf)}")
+        prev = lim
+    teto = detalhes[-1][0]
+    if base_centavos > teto:
+        linhas.append(f"A Base passa do teto do INSS ({R(teto)}): os "
+                      f"{R(base_centavos - teto)} acima do teto não têm desconto.")
+    # Com uma faixa só, o valor já está na conta de cima: não há o que somar.
+    if len(detalhes) > 1:
+        total = sum(d[3] for d in detalhes)
+        linhas.append("Somando as parcelas de cada faixa do INSS: "
+                      + " + ".join(R(d[3]) for d in detalhes) + f" = <b>{R(total)}</b>")
+    linhas.append("(cada parcela é truncada no centavo, sem arredondar)")
+    return linhas
+
+
 def _get_dep_irrf_count(id_empresa):
     """Retorna {matricula: qtd} com dependentes depirrf='S' por funcionário."""
     try:
@@ -48671,8 +48724,6 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 ("TOPPADDING",    (0, 0), (0, 0), 10),
                 ("BOTTOMPADDING", (0, 0), (0, 0), 4),
             ])
-            _st_op10 = ParagraphStyle("op10", fontName="Helvetica", fontSize=7,
-                                      alignment=1, textColor=colors.HexColor("#374151"))
             teto_obs = ""
             if inss_teto and _base_inss_cons > inss_teto:
                 teto_obs = f"   (Salario acima do teto {_fmt_brl(inss_teto)} — INSS sobre o teto)"
@@ -48686,63 +48737,27 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                 hdr10_txt = (f"ETAPA 1120 - RUBRICA {_rb_inss_cod}-INSS (Desconto)"
                              f"   Base: {_fmt_brl(int(base_inss))}{teto_obs}")
             if inss_det:
-                hdr_row10 = [
-                    Paragraph("Faixa", _st_op10),
-                    Paragraph("Ate (R$)", _st_op10),
-                    Paragraph("Aliq.", _st_op10),
-                    Paragraph("Base Faixa", _st_op10),
-                    Paragraph("Desconto", _st_op10),
-                ]
-                det10_rows = [hdr_row10]
-                for idx10, (lim10, pct10, bf10, vf10) in enumerate(inss_det, 1):
-                    det10_rows.append([
-                        Paragraph(str(idx10), _st_op10),
-                        Paragraph(_fmt_brl(lim10), _st_op10),
-                        Paragraph(f"{pct10/100:g}%", _st_op10),
-                        Paragraph(_fmt_brl(bf10), _st_op10),
-                        Paragraph(_fmt_brl(vf10), _st_op10),
-                    ])
-                _lbl_total = "INSS s/ Base Total:" if _fer_inss_base else "Total INSS:"
-                det10_rows.append([
-                    Paragraph("", _st_op10), Paragraph("", _st_op10),
-                    Paragraph("", _st_op10),
-                    Paragraph(_lbl_total, _st_op10),
-                    Paragraph(_fmt_brl(_inss_total), _st_op10),
-                ])
+                # Faixa a faixa, por extenso — o mesmo texto da memória do
+                # Folha10 Desktop (rotina 102019). Antes era uma tabela de
+                # números, que dizia o resultado mas não o porquê de cada faixa.
+                _lin10 = _inss_memoria_linhas(_base_inss_cons, inss_det)
                 if _fer_inss_base:
-                    det10_rows.append([
-                        Paragraph("", _st_op10), Paragraph("", _st_op10),
-                        Paragraph("", _st_op10),
-                        Paragraph("(-) INSS Ferias (adiant.):", _st_op10),
-                        Paragraph(_fmt_brl(_fer_inss_retido), _st_op10),
-                    ])
-                    det10_rows.append([
-                        Paragraph("", _st_op10), Paragraph("", _st_op10),
-                        Paragraph("", _st_op10),
-                        Paragraph("INSS na Folha:", _st_op10),
-                        Paragraph(_fmt_brl(inss_val), _st_op10),
-                    ])
-                det10_tbl = Table(det10_rows, colWidths=[1.5*cm, 3.5*cm, 2*cm, 4*cm, 3*cm])
-                det10_tbl.setStyle(TableStyle([
-                    ("LEFTPADDING",   (0, 0), (-1, -1), 2),
-                    ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
-                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-                    ("LINEBELOW",     (0, 0), (-1, 0), 0.3, colors.HexColor("#94a3b8")),
-                    ("LINEABOVE",     (0, -1), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
-                ]))
-                e10_tbl = Table([
-                    [Paragraph(hdr10_txt, st_etapa)],
-                    [det10_tbl],
-                ], colWidths=[17*cm])
+                    _lin10.append(f"(-) INSS das Férias, já descontado no recibo de férias: "
+                                  f"{_fmt_brl(_fer_inss_retido)}")
+                    _lin10.append(f"INSS na Folha = {_fmt_brl(_inss_total)} − "
+                                  f"{_fmt_brl(_fer_inss_retido)} = <b>{_fmt_brl(inss_val)}</b>")
+                e10_tbl = Table([[Paragraph(hdr10_txt, st_etapa)]]
+                                + [[[Paragraph(_l, st_detalhe) for _l in _lin10]]],  # 1 célula: o bloco não parte no meio
+                                colWidths=[17*cm])
                 e10_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                    ("LEFTPADDING",   (0, 1), (0, 1), 10),
+                    ("LEFTPADDING",   (0, 1), (0, -1), 10),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
                     ("TOPPADDING",    (0, 0), (0, 0), 10),
                     ("BOTTOMPADDING", (0, 0), (0, 0), 2),
-                    ("TOPPADDING",    (0, 1), (0, 1), 2),
-                    ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+                    ("TOPPADDING",    (0, 1), (0, -1), 0),
+                    ("BOTTOMPADDING", (0, 1), (0, -1), 1),
+                    ("BOTTOMPADDING", (0, -1), (0, -1), 4),
                 ]))
             elif is_domestico and inss_val > 0:
                 _dom_det = (f"Aliquota fixa 11% (Cat. 700-799)   "
@@ -48768,7 +48783,10 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     "   Base de calculo = ZERO — sem desconto.",
                     st_etapa)]], colWidths=[17*cm])
                 e10_tbl.setStyle(_st_e10_zero)
-            elems.append(e10_tbl)
+            # Título e conta juntos: sem isto o título ficava no pé de uma página
+            # e as faixas na seguinte.
+            from reportlab.platypus import KeepTogether
+            elems.append(KeepTogether([e10_tbl]))
             elems.append(_mem_passo('base_inss',
                 f"soma das verbas com incidência 11 = {_fmt_brl(int(base_inss))}"))
             elems.append(_mem_passo('inss', 'aplicada faixa a faixa, tabela vigente da competência'))
@@ -56452,53 +56470,23 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             elems.append(e9a_tbl)
 
             # ── etapa 6 — INSS ─────────────────────────────────────────
-            _st_op10f = ParagraphStyle("op10f", fontName="Helvetica", fontSize=7,
-                                       alignment=1, textColor=colors.HexColor("#374151"))
             if inss_det:
                 hdr10f_txt = (f"ETAPA 2050 - INSS (Desconto)"
                               f"   Base: {_fmt_brl(base_calc)}")
-                det10f_rows = [[
-                    Paragraph("Faixa",      _st_op10f),
-                    Paragraph("Ate (R$)",   _st_op10f),
-                    Paragraph("Aliq.",      _st_op10f),
-                    Paragraph("Base Faixa", _st_op10f),
-                    Paragraph("Desconto",   _st_op10f),
-                ]]
-                for idx10f, (lim10f, pct10f, bf10f, vf10f) in enumerate(inss_det, 1):
-                    det10f_rows.append([
-                        Paragraph(str(idx10f),               _st_op10f),
-                        Paragraph(_fmt_brl(lim10f),          _st_op10f),
-                        Paragraph(f"{pct10f/100:g}%",        _st_op10f),
-                        Paragraph(_fmt_brl(bf10f),           _st_op10f),
-                        Paragraph(_fmt_brl(vf10f),           _st_op10f),
-                    ])
-                det10f_rows.append([
-                    Paragraph("", _st_op10f), Paragraph("", _st_op10f),
-                    Paragraph("", _st_op10f),
-                    Paragraph("Total INSS:", _st_op10f),
-                    Paragraph(_fmt_brl(inss_val), _st_op10f),
-                ])
-                det10f_tbl = Table(det10f_rows, colWidths=[1.5*cm, 3.5*cm, 2*cm, 4*cm, 3*cm])
-                det10f_tbl.setStyle(TableStyle([
-                    ("LEFTPADDING",   (0, 0), (-1, -1), 2),
-                    ("RIGHTPADDING",  (0, 0), (-1, -1), 2),
-                    ("TOPPADDING",    (0, 0), (-1, -1), 1),
-                    ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
-                    ("LINEBELOW",     (0, 0), (-1, 0),  0.3, colors.HexColor("#94a3b8")),
-                    ("LINEABOVE",     (0, -1), (-1, -1), 0.3, colors.HexColor("#94a3b8")),
-                ]))
-                e10f_tbl = Table([
-                    [Paragraph(hdr10f_txt, st_etapa)],
-                    [det10f_tbl],
-                ], colWidths=[17*cm])
+                # Faixa a faixa, por extenso (mesmo texto do Folha10 Desktop).
+                _lin10f = _inss_memoria_linhas(base_calc, inss_det)
+                e10f_tbl = Table([[Paragraph(hdr10f_txt, st_etapa)]]
+                                 + [[[Paragraph(_l, st_detalhe) for _l in _lin10f]]],  # 1 célula: o bloco não parte no meio
+                                 colWidths=[17*cm])
                 e10f_tbl.setStyle(TableStyle([
                     ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-                    ("LEFTPADDING",   (0, 1), (0, 1), 10),
+                    ("LEFTPADDING",   (0, 1), (0, -1), 10),
                     ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
                     ("TOPPADDING",    (0, 0), (0, 0), 10),
                     ("BOTTOMPADDING", (0, 0), (0, 0), 2),
-                    ("TOPPADDING",    (0, 1), (0, 1), 2),
-                    ("BOTTOMPADDING", (0, 1), (0, 1), 4),
+                    ("TOPPADDING",    (0, 1), (0, -1), 0),
+                    ("BOTTOMPADDING", (0, 1), (0, -1), 1),
+                    ("BOTTOMPADDING", (0, -1), (0, -1), 4),
                 ]))
             else:
                 e10f_tbl = Table([[Paragraph(
@@ -56510,7 +56498,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                     ("TOPPADDING",    (0, 0), (0, 0), 10),
                     ("BOTTOMPADDING", (0, 0), (0, 0), 4),
                 ]))
-            elems.append(e10f_tbl)
+            from reportlab.platypus import KeepTogether
+            elems.append(KeepTogether([e10f_tbl]))
             elems.append(_mem_passo("base_inss"))
             elems.append(_mem_passo("inss", "aplicada faixa a faixa, tabela vigente"))
 
@@ -71401,34 +71390,13 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                        st_etapa))
     e.append(_mem_passo("base_inss", "o 13º tem base PRÓPRIA, separada da folha do mês"))
     e.append(_mem_passo("inss", "tabela progressiva, aplicada faixa a faixa"))
-    _inss_det = d.get("inss_det") or []
-    if _inss_det:
-        rows = [[Paragraph("<b>Faixa</b>", st_cellb),
-                 Paragraph("<b>Até (R$)</b>", st_cellbr),
-                 Paragraph("<b>Alíquota</b>", st_cellbr),
-                 Paragraph("<b>Base na faixa</b>", st_cellbr),
-                 Paragraph("<b>INSS da faixa</b>", st_cellbr)]]
-        for _i, (_lim, _pct, _bf, _vf) in enumerate(_inss_det, 1):
-            rows.append([
-                Paragraph(f"{_i}ª", st_cell),
-                Paragraph(_fmt_brl(_lim), st_cellr),
-                Paragraph(f"{_pct / 100:g}%".replace(".", ","), st_cellr),
-                Paragraph(_fmt_brl(_bf), st_cellr),
-                Paragraph(_fmt_brl(_vf), st_cellr)])
-        rows.append([Paragraph("<b>Total</b>", st_cellb), Paragraph("", st_cell),
-                     Paragraph("", st_cell),
-                     Paragraph(f"<b>{_fmt_brl(sum(x[2] for x in _inss_det))}</b>", st_cellbr),
-                     Paragraph(f"<b>{_fmt_brl(d['inss_calc'])}</b>", st_cellbr)])
-        t = Table(rows, colWidths=[2.0*cm, 3.5*cm, 2.5*cm, 4.0*cm, 4.0*cm])
-        t.setStyle(grade)
-        e.append(t)
-        if d.get("inss_teto") and d["bruto_13"] > d["inss_teto"]:
-            e.append(Paragraph(
-                f"Base acima do teto: o INSS incide só até {_fmt_brl(d['inss_teto'])}; "
-                f"os {_fmt_brl(d['bruto_13'] - d['inss_teto'])} acima não descontam.",
-                st_formula))
-        e.append(Paragraph("Base na faixa × alíquota, truncado no centavo; "
-                           "o INSS é a soma das faixas.", st_formula))
+    # Faixa a faixa, por extenso (mesmo texto do Folha10 Desktop); a linha do
+    # teto, quando a base passa dele, já vem do _inss_memoria_linhas.
+    # Num bloco só (KeepTogether), para a conta não partir entre duas páginas.
+    _l13 = _inss_memoria_linhas(int(d.get("bruto_13") or 0), d.get("inss_det") or [])
+    if _l13:
+        from reportlab.platypus import KeepTogether
+        e.append(KeepTogether([Paragraph(_l, st_formula) for _l in _l13]))
     e.append(Paragraph(f"INSS do 13º = <b>{_fmt_brl(d['inss_calc'])}</b>  "
                        f"(verba {VERBA_13_INSS:04d})", st_formula))
 
