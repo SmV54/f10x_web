@@ -14932,6 +14932,10 @@ def api_trocar_folha_inicial():
         except Exception as e:
             return jsonify({"ok": False, "msg": f"Erro ao trocar o mês inicial: {e}"})
         gravar_log("FOLHA-INICIAL", f"empresa {id_empresa}: 1a folha {atual} -> {novo}")
+    if not _limite_teste_no_mes(id_cliente, novo):
+        return jsonify({"ok": False, "msg": (
+            "A folha foi trocada, mas não consegui ajustar o limite da licença. "
+            "Escolha o mês de novo.")})
     session["anomes_atual"]    = novo
     session["anomes_tipo"]     = "N"
     session["anomes_situacao"] = "A"
@@ -14964,23 +14968,58 @@ def api_mes_inicial():
     am = str((request.get_json(silent=True) or {}).get("ano_mes") or "").strip()
     if am not in _anomes_cortesia(_anomes_inicial()):
         return jsonify({"ok": False, "msg": "Mês inicial fora das opções oferecidas."})
+    if not _limite_teste_no_mes(session.get("id_cliente"), am):
+        return jsonify({"ok": False, "msg": "Não consegui gravar o mês inicial. Tente de novo."})
     session["anomes_inicial_escolhido"] = am
     return jsonify({"ok": True, "redirect": "/f10_cad_empresa"})
+
+
+def _limite_teste_no_mes(id_cliente, am):
+    """A licenca de teste vale so para o mes inicial escolhido: data_limite
+    passa a ser esse mes (yyyymm -> 'YYYY-MM').
+
+    So mexe em licenca de teste: data_limite dentro das opcoes de cortesia
+    (o padrao ou um mes ja escolhido antes). Licenca paga ou ajustada pelo
+    Admin, que vai alem disso, fica como esta. Devolve False se nao gravou
+    por falha do banco."""
+    try:
+        dl = ((supabase.table("tab_cliente").select("data_limite")
+               .eq("id_cliente", id_cliente).limit(1).execute().data or [{}])[0]
+              .get("data_limite") or "")
+        dl_am = dl[:4] + dl[5:7] if len(dl) == 7 else ""
+        if dl_am == am or dl_am not in _anomes_cortesia(_anomes_inicial()):
+            return True
+        (supabase.table("tab_cliente").update({"data_limite": f"{am[:4]}-{am[4:6]}"})
+         .eq("id_cliente", id_cliente).execute())
+        gravar_log("FOLHA-INICIAL", f"cliente {id_cliente}: licenca de teste {dl} -> "
+                                    f"{am[:4]}-{am[4:6]} (mes inicial escolhido)")
+        return True
+    except Exception as e:
+        print(f"[FOLHA-INICIAL] _limite_teste_no_mes: {e}")
+        return False
 
 
 def _abrir_folha_inicial(id_cliente, id_empresa, escolhido=None):
     """Abre a folha Normal inicial para a empresa recem-cadastrada: o mes que o
     cliente escolheu em /mes_inicial (se ainda for uma opcao valida) ou o padrao
-    de _anomes_inicial. Respeita a data_limite da licenca.
+    de _anomes_inicial. Abre uma folha so.
+
+    A escolha tambem fica gravada na data_limite (ver _limite_teste_no_mes):
+    se a sessao perdeu a escolha, uma licenca de teste antes do padrao diz
+    qual foi o mes escolhido. Respeita a data_limite da licenca.
     Retorna o ano_mes aberto ou ""."""
-    ano_mes = _anomes_inicial()
-    if escolhido and escolhido in _anomes_cortesia(ano_mes):
+    padrao = _anomes_inicial()
+    ano_mes = padrao
+    if escolhido and escolhido in _anomes_cortesia(padrao):
         ano_mes = escolhido
     try:
         dl = ((supabase.table("tab_cliente")
                .select("data_limite")
                .eq("id_cliente", id_cliente)
                .limit(1).execute().data or [{}])[0].get("data_limite") or "")
+        dl_am = dl[:4] + dl[5:7] if len(dl) == 7 else ""
+        if not escolhido and dl_am in _anomes_cortesia(padrao):
+            ano_mes = dl_am                # escolha gravada na licenca de teste
         if dl and len(dl) == 7 and ano_mes > (dl[:4] + dl[5:7]):
             return ""                      # mes corrente ja passou da licenca
     except Exception:
