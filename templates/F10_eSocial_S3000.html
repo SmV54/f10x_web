@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-3000</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -529,7 +530,7 @@ async function enviarSelecionados() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id_esocial: id, layout: layoutAtual, tpAmb: '1' }),
       });
-      const data = await r.json();
+      const data = await lerRespostaJson(r);
       clearInterval(timer);
       bar.style.width      = '100%';
       bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
@@ -551,7 +552,7 @@ async function enviarSelecionados() {
       clearInterval(timer);
       bar.style.width      = '100%';
       bar.style.background = '#ef4444';
-      lbl.textContent = '❌ Falha: ' + e;
+      lbl.textContent = '❌ ' + msgFalha(e);
       erro++;
     }
   }
@@ -583,7 +584,7 @@ async function recuperarRecibos() {
   msg.textContent = 'Lendo os retornos guardados…';
   try {
     const r = await fetch('/api/esocial_recuperar_recibos', { method: 'POST' });
-    const d = await r.json();
+    const d = await lerRespostaJson(r);
     if (!d.ok) {
       msg.textContent = '❌ ' + (d.msg || 'Erro.');
       btn.disabled = false;
@@ -596,7 +597,7 @@ async function recuperarRecibos() {
       btn.disabled = false;
     }
   } catch (e) {
-    msg.textContent = '❌ Falha: ' + e;
+    msg.textContent = '❌ ' + msgFalha(e);
     btn.disabled = false;
   }
 }

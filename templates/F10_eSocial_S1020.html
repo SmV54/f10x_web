@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-1020</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -465,7 +466,7 @@ async function atualizarTercsPorFpas() {
     if (!cod) return;
     try {
         const r = await fetch('/api/fpas/' + encodeURIComponent(cod));
-        const j = await r.json();
+        const j = await lerRespostaJson(r);
         if (j.ok && j.dados && j.dados.cod_terceiros) {
             document.getElementById('f-cod-tercs').value =
                 String(j.dados.cod_terceiros).trim().padStart(4, '0');
@@ -526,7 +527,7 @@ function gravarS1020() {
             codLotacao: codLot, tpLotacao: tpLot, fpas: fpas, codTercs: codTercs
         })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
@@ -536,7 +537,7 @@ function gravarS1020() {
     .catch(e => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
-        showModalMsg('Erro de comunicação: ' + e, false);
+        showModalMsg(msgFalha(e), false);
     });
 }
 
@@ -559,7 +560,7 @@ async function apagarS1020(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         if (d.ok) { const row = document.getElementById('row-' + id); if (row) row.remove(); }
         else {
@@ -583,7 +584,7 @@ async function enviarS1020(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btnEl.disabled = false; btnEl.innerHTML = '▶ Enviar';
         msgEl.className = 'msg-envio ' + (d.ok ? 'msg-ok' : 'msg-erro');
@@ -600,7 +601,7 @@ async function enviarS1020(id, btnEl) {
     .catch(e => {
         btnEl.disabled = false; btnEl.innerHTML = '▶ Enviar';
         msgEl.className = 'msg-envio msg-erro';
-        msgEl.textContent = 'Erro de comunicação: ' + e;
+        msgEl.textContent = msgFalha(e);
         msgEl.style.display = 'block';
     });
 }
@@ -613,7 +614,7 @@ function reconsultarS1020(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id, tpAmb: '1' })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btnEl.disabled = false; btnEl.textContent = '↺ Re-consultar';
         const sitEl = document.getElementById('sit-' + id);
@@ -627,7 +628,7 @@ function reconsultarS1020(id, btnEl) {
     })
     .catch(e => {
         btnEl.disabled = false; btnEl.textContent = '↺ Re-consultar';
-        alert('Erro de comunicação: ' + e);
+        alert(msgFalha(e));
     });
 }
 </script>

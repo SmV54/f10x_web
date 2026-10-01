@@ -160,6 +160,7 @@ tr:hover td.grupo-irrf { background: #bbf7d0; }
 
 </div>
 
+<script src="/static/f10_resposta.js"></script>
 <script>
 function fmtBRL(centavos) {
   const v = (centavos || 0) / 100;
@@ -182,7 +183,7 @@ async function consultarGov() {
   resumo.innerHTML = `<div class="resumo-upload resumo-ok"><span class="spinner"></span> Lendo retornos de S-1200/S-1210 do Storage e extraindo S-5001/5002/5003…</div>`;
   try {
     const r = await fetch('/api/esocial_verificacao/consultar', { method: 'POST' });
-    const d = await r.json();
+    const d = await lerRespostaJson(r);
     if (!d.ok) {
       resumo.innerHTML = `<div class="resumo-upload resumo-err">⚠ ${escHtml(d.msg || 'Erro.')}</div>`;
     } else {
@@ -220,7 +221,7 @@ async function consultarGov() {
       resumo.innerHTML = html;
     }
   } catch (e) {
-    resumo.innerHTML = `<div class="resumo-upload resumo-err">Falha de comunicação: ${escHtml(e)}</div>`;
+    resumo.innerHTML = `<div class="resumo-upload resumo-err">${escHtml(msgFalha(e))}</div>`;
   }
   await comparar();
 }
@@ -230,7 +231,7 @@ async function comparar() {
   cont.innerHTML = `<div class="vazio"><span class="spinner"></span> Lendo XMLs e comparando…</div>`;
   try {
     const r = await fetch('/api/esocial_verificacao/comparar');
-    const d = await r.json();
+    const d = await lerRespostaJson(r);
     if (!d.ok) {
       cont.innerHTML = `<div class="vazio">⚠️ ${d.msg || 'Erro.'}</div>`;
       return;
@@ -241,7 +242,7 @@ async function comparar() {
     }
     cont.innerHTML = renderTabela(d);
   } catch (e) {
-    cont.innerHTML = `<div class="vazio">Falha: ${e}</div>`;
+    cont.innerHTML = `<div class="vazio">${escHtml(msgFalha(e))}</div>`;
   }
 }
 

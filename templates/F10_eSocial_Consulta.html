@@ -109,6 +109,7 @@ tbody tr:last-child td{border-bottom:none;}
 
 </div>
 
+<script src="/static/f10_resposta.js"></script>
 <script>
 function esc(s){return (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 
@@ -123,7 +124,7 @@ async function consultar(){
             method:'POST', headers:{'Content-Type':'application/json'},
             body: JSON.stringify({tp_evt: tp, tpAmb: '1'})
         });
-        const d = await r.json();
+        const d = await lerRespostaJson(r);
         render(tp, d);
     }catch(e){
         render(tp, {ok:false, msg:'Falha na consulta: '+e});

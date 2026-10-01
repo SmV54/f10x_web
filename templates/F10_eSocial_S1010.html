@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-1010</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -674,7 +675,7 @@ function gravarS1010() {
             verbas: verbas
         })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
@@ -684,7 +685,7 @@ function gravarS1010() {
     .catch(e => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
-        showModalMsg('Erro de comunicação: ' + e, false);
+        showModalMsg(msgFalha(e), false);
     });
 }
 
@@ -707,7 +708,7 @@ async function apagarS1010(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         if (d.ok) {
             const row = document.getElementById('row-' + id);
@@ -759,7 +760,7 @@ async function enviarS1010(id, btnEl) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ id_esocial: id })
         });
-        const d = await r.json();
+        const d = await lerRespostaJson(r);
         clearInterval(animTimer);
         bar.style.width = '100%';
         bar.style.background = d.ok ? '#00a651' : (d.aguardando ? '#f97316' : '#ef4444');
@@ -785,7 +786,7 @@ async function enviarS1010(id, btnEl) {
     } catch(e) {
         clearInterval(animTimer);
         bar.style.width = '100%'; bar.style.background = '#ef4444';
-        lbl.textContent = '❌ Falha de comunicação: ' + e;
+        lbl.textContent = '❌ ' + msgFalha(e);
         btnEl.disabled = false; btnEl.textContent = '▶ Enviar';
         abrirRelatorio();
     }
@@ -809,7 +810,7 @@ async function reconsultarS1010(id, btnEl) {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ id_esocial: id, tpAmb: '1' })
         });
-        const d = await r.json();
+        const d = await lerRespostaJson(r);
         bar.style.width = '100%';
         bar.style.background = d.ok ? '#00a651' : (d.aguardando ? '#f97316' : '#ef4444');
 
@@ -831,7 +832,7 @@ async function reconsultarS1010(id, btnEl) {
         abrirRelatorio();
     } catch(e) {
         bar.style.width = '100%'; bar.style.background = '#ef4444';
-        lbl.textContent = '❌ Falha de comunicação: ' + e;
+        lbl.textContent = '❌ ' + msgFalha(e);
         btnEl.disabled = false;
         abrirRelatorio();
     }
@@ -857,7 +858,7 @@ async function carregarRelatorio() {
     tbody.innerHTML = '<tr><td colspan="6" class="rel-vazio">Carregando…</td></tr>';
     try {
         const r    = await fetch('/api/esocial_s1010_relatorio');
-        const data = await r.json();
+        const data = await lerRespostaJson(r);
         if (!data.ok || !data.rows.length) {
             tbody.innerHTML = '<tr><td colspan="6" class="rel-vazio">Nenhuma remessa encontrada.</td></tr>';
             return;
@@ -887,7 +888,7 @@ async function carregarRelatorio() {
                 `</tr>`;
         }).join('');
     } catch(e) {
-        tbody.innerHTML = `<tr><td colspan="6" class="rel-vazio" style="color:#ef4444;">Erro: ${escHtml(String(e))}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" class="rel-vazio" style="color:#ef4444;">Erro: ${escHtml(msgFalha(e))}</td></tr>`;
     }
 }
 

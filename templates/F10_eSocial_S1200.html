@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-1200</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -536,9 +537,9 @@ async function _considerarS1020Enviada(anomes) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ anomes: anomes || _anomesTela(), tpAmb: _getTpAmb() }),
     });
-    d = await r.json();
+    d = await lerRespostaJson(r);
   } catch (e) {
-    d = { ok: false, msg: 'Falha de comunicação: ' + e };
+    d = { ok: false, msg: msgFalha(e) };
   }
   if (d.ok) _s1020JaConsiderado = true;
   await f10Alert(d.msg || 'Nada a fazer.', {
@@ -567,7 +568,7 @@ async function _confirmarPrereqS1200() {
   try {
     const r = await fetch('/api/esocial_s1200_check_pendentes?anomes='
                           + encodeURIComponent(_anomesTela()));
-    cd = await r.json();
+    cd = await lerRespostaJson(r);
   } catch (e) {
     return true;  // em caso de falha de rede, não bloqueia
   }
@@ -641,9 +642,9 @@ async function _criarPendenciasS1200() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ anomes: _anomesTela(), tpAmb: _getTpAmb() }),
     });
-    d = await r.json();
+    d = await lerRespostaJson(r);
   } catch (e) {
-    d = { ok: false, msg: 'Falha de comunicação: ' + e };
+    d = { ok: false, msg: msgFalha(e) };
   }
   const ir = await f10Confirm(d.msg || 'Nada a fazer.', {
     titulo:     'Remessas de tabela',
@@ -704,7 +705,7 @@ async function _enviar(id, btn, suppressBanner, retificar, forcarS1010) {
                              forcar_s1010: !!forcarS1010,
                              retificar: !!retificar }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     clearInterval(animTimer);
     bar.style.width      = '100%';
@@ -790,7 +791,7 @@ async function _enviar(id, btn, suppressBanner, retificar, forcarS1010) {
     clearInterval(animTimer);
     bar.style.width      = '100%';
     bar.style.background = '#ef4444';
-    lbl.textContent      = 'Falha de comunicação: ' + e;
+    lbl.textContent      = msgFalha(e);
     btn.disabled         = false;
   }
 }
@@ -840,7 +841,7 @@ async function _reconsultar(id, btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: tpAmb }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     clearInterval(animTimer);
     bar.style.width      = '100%';
@@ -869,7 +870,7 @@ async function _reconsultar(id, btn) {
     clearInterval(animTimer);
     bar.style.width      = '100%';
     bar.style.background = '#ef4444';
-    lbl.textContent      = 'Falha de comunicação: ' + e;
+    lbl.textContent      = msgFalha(e);
     btn.disabled         = false;
     btn.innerHTML        = '&#8635; Consultar';
   }

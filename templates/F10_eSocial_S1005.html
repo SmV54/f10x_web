@@ -146,6 +146,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
 </div>
 
+<script src="/static/f10_resposta.js"></script>
 <script>
 function _msg(ok,txt){
     const m=document.getElementById('msg');
@@ -159,7 +160,7 @@ async function novaRemessa(){
     const b=document.getElementById('btnNova'); b.disabled=true;
     try{
         const r=await fetch('/api/esocial_s1005_criar',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-        const d=await r.json();
+        const d=await lerRespostaJson(r);
         if(!d.ok){_msg(false,d.msg||'Falha ao gerar.');b.disabled=false;return;}
         location.reload();
     }catch(e){_msg(false,'Falha: '+e);b.disabled=false;}
@@ -169,7 +170,7 @@ async function enviar(id,btn){
     btn.disabled=true;btn.textContent='Enviando…';
     try{
         const r=await fetch('/api/esocial_s1005_enviar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id_esocial:id,tpAmb:'1'})});
-        const d=await r.json();
+        const d=await lerRespostaJson(r);
         _msg(!!d.ok,d.msg||(d.ok?'Enviado.':'Falha.'));
         setTimeout(()=>location.reload(),1500);
     }catch(e){_msg(false,'Falha: '+e);btn.disabled=false;btn.textContent='▶ Enviar';}
@@ -179,7 +180,7 @@ async function excluir(id,btn){
     btn.disabled=true;
     try{
         const r=await fetch('/api/esocial_excluir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id_esocial:id})});
-        const d=await r.json();
+        const d=await lerRespostaJson(r);
         if(d.ok){location.reload();}else{_msg(false,d.msg||'Falha ao apagar.');btn.disabled=false;}
     }catch(e){_msg(false,'Falha: '+e);btn.disabled=false;}
 }

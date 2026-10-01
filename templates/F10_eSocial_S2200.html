@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-2200</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -669,7 +670,7 @@ async function enviar(id, btn, suppressReport = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     clearInterval(animTimer);
     bar.style.width  = '100%';
@@ -703,9 +704,9 @@ async function enviar(id, btn, suppressReport = false) {
     clearInterval(animTimer);
     bar.style.width     = '100%';
     bar.style.background = '#ef4444';
-    lbl.textContent     = '❌ Falha de comunicação: ' + e;
+    lbl.textContent     = '❌ ' + msgFalha(e);
     btn.disabled        = false;
-    if (!suppressReport) abrirRelatorio({ ok: false, msg: 'Falha de comunicação: ' + e });
+    if (!suppressReport) abrirRelatorio({ ok: false, msg: msgFalha(e) });
   }
 }
 
@@ -783,7 +784,7 @@ async function reconsutar(id, btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     if (data.ok) {
       sit.className   = 'sit-badge sit-enviado';
@@ -803,7 +804,7 @@ async function reconsutar(id, btn) {
   } catch(e) {
     btn.disabled    = false;
     btn.textContent = '↻ Re-consultar';
-    abrirRelatorio({ ok: false, msg: 'Falha de comunicação: ' + e });
+    abrirRelatorio({ ok: false, msg: msgFalha(e) });
   }
 }
 
@@ -829,7 +830,7 @@ async function confirmarExcluir(id, btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     if (data.ok) {
       sit.className   = 'sit-badge sit-excluido';
@@ -842,7 +843,7 @@ async function confirmarExcluir(id, btn) {
       btn.textContent = '✕ Excluir via S-3000';
     }
   } catch(e) {
-    alert('❌ Falha de comunicação: ' + e);
+    alert('❌ ' + msgFalha(e));
     btn.disabled    = false;
     btn.textContent = '✕ Excluir via S-3000';
   }
@@ -859,7 +860,7 @@ async function carregarRelatorio() {
   tbody.innerHTML = '<tr><td colspan="5" class="rel-vazio">Carregando…</td></tr>';
   try {
     const r    = await fetch('/api/esocial_s2200_relatorio');
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
     if (!data.ok || !data.rows.length) {
       tbody.innerHTML = '<tr id="relVazio"><td colspan="5" class="rel-vazio">Nenhuma remessa encontrada.</td></tr>';
       return;
@@ -884,7 +885,7 @@ async function carregarRelatorio() {
         `</tr>`;
     }).join('');
   } catch(e) {
-    tbody.innerHTML = `<tr><td colspan="5" class="rel-vazio" style="color:#ef4444;">Erro: ${escHtml(String(e))}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" class="rel-vazio" style="color:#ef4444;">Erro: ${escHtml(msgFalha(e))}</td></tr>`;
   }
 }
 

@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-1000</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -608,7 +609,7 @@ function gravarS1000() {
         body: JSON.stringify({ tp_op: tpOp, ini_valid: ini, fim_valid: fim,
                                contato_nome: nome, contato_cpf: cpf, tpAmb: amb })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
@@ -622,7 +623,7 @@ function gravarS1000() {
     .catch(e => {
         btn.disabled = false;
         btn.innerHTML = '💾 Gravar';
-        showModalMsg('Erro de comunicação: ' + e, false);
+        showModalMsg(msgFalha(e), false);
     });
 }
 
@@ -646,7 +647,7 @@ async function apagarS1000(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         if (d.ok) {
             const row = document.getElementById('row-' + id);
@@ -677,7 +678,7 @@ async function excluirS1000(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btnEl.disabled = false;
         btnEl.innerHTML = '✕ Excluir S-3000';
@@ -694,7 +695,7 @@ async function excluirS1000(id, btnEl) {
         btnEl.disabled = false;
         btnEl.innerHTML = '✕ Excluir S-3000';
         msgEl.className = 'msg-envio msg-erro';
-        msgEl.textContent = 'Erro de comunicação: ' + e;
+        msgEl.textContent = msgFalha(e);
         msgEl.style.display = 'block';
     });
 }
@@ -712,7 +713,7 @@ async function enviarS1000(id, btnEl) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({ id_esocial: id })
     })
-    .then(r => r.json())
+    .then(lerRespostaJson)
     .then(d => {
         btnEl.disabled = false;
         btnEl.innerHTML = '▶ Enviar';
@@ -731,7 +732,7 @@ async function enviarS1000(id, btnEl) {
         btnEl.disabled = false;
         btnEl.innerHTML = '▶ Enviar';
         msgEl.className = 'msg-envio msg-erro';
-        msgEl.textContent = 'Erro de comunicação: ' + e;
+        msgEl.textContent = msgFalha(e);
         msgEl.style.display = 'block';
     });
 }

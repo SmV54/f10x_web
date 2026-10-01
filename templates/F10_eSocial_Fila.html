@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial Fila de Remessas</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -814,7 +815,7 @@ async function _excluir(btn) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ id_esocial: parseInt(id) }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     if (data.ok) {
       const row = document.getElementById('row-' + id);
@@ -916,7 +917,7 @@ async function _enviarFila(btn, forcar) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
     });
-    const data  = await resp.json();
+    const data  = await lerRespostaJson(resp);
     clearInterval(animTimer);
     const newId = data.id_esocial || id;
 
@@ -970,7 +971,7 @@ async function _enviarFila(btn, forcar) {
     clearInterval(animTimer);
     bar.style.width      = '100%';
     bar.style.background = '#ef4444';
-    lbl.textContent      = 'Falha de comunicação: ' + e;
+    lbl.textContent      = msgFalha(e);
     btn.disabled    = false;
     btn.textContent = '▶ Enviar';
   }
@@ -1048,7 +1049,7 @@ async function _reconsultar(id, btn) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
     const sit  = document.getElementById('sit-' + id);
     const rec  = document.getElementById('rec-' + id);
     const acao = document.getElementById('acao-' + id);
@@ -1084,7 +1085,7 @@ async function _reconsultar(id, btn) {
     if (progRow) {
       bar.style.width      = '100%';
       bar.style.background = '#ef4444';
-      lbl.textContent      = 'Falha de comunicação: ' + e;
+      lbl.textContent      = msgFalha(e);
     }
     btn.disabled  = false;
     btn.innerHTML = '&#8635; Consultar';

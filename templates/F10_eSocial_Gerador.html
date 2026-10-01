@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial Gerador de Remessa</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -806,7 +807,7 @@ async function _carregarRefRemessas() {
   lista.innerHTML = '<div style="padding:16px;text-align:center;color:#94a3b8;font-size:12px;">Carregando…</div>';
   try {
     const r    = await fetch(`/api/esocial_remessas_com_recibo?layout=${layoutAtual}`);
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     document.getElementById('refPeriodoLabel').textContent =
       data.periodo ? `— Folha ${data.periodo}` : '';
@@ -833,7 +834,7 @@ async function _carregarRefRemessas() {
     html += '</tbody></table>';
     lista.innerHTML = html;
   } catch(e) {
-    lista.innerHTML = `<div style="padding:16px;color:#991b1b;font-size:12px;">Erro ao carregar: ${e}</div>`;
+    lista.innerHTML = `<div style="padding:16px;color:#991b1b;font-size:12px;">Erro ao carregar: ${msgFalha(e)}</div>`;
   }
 }
 
@@ -929,7 +930,7 @@ async function criarRemessa(btn) {
                                operacao: operacaoAtual,
                                recibo_ref: refSelecionado ? refSelecionado.recibo : null }),
       });
-      const data = await r.json();
+      const data = await lerRespostaJson(r);
       if (data.ok) criados.push({ id: data.id_esocial, nome });
       else erros.push(`${nome}: ${data.msg || 'erro'}`);
     } catch(e) { erros.push(`${nome}: falha de comunicação`); }
@@ -990,7 +991,7 @@ async function criarRemessaTabela(btn) {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(payload),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
     div.style.display = 'block';
     if (data.ok) {
       const rubInfo = layoutAtual === '1010' ? ` · ${rubSel.size} rubrica(s)` : '';
@@ -1005,7 +1006,7 @@ async function criarRemessaTabela(btn) {
     }
   } catch(e) {
     div.style.display = 'block'; div.className = 'resultado erro';
-    div.textContent = 'Falha de comunicação: ' + e;
+    div.textContent = msgFalha(e);
   }
   btn.disabled = false;
 }

@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-1298</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -362,7 +363,7 @@ async function enviarS1298(btn) {
         tpAmb:        tpAmb,
       }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
     clearInterval(animTimer);
 
     bar.style.width      = '100%';
@@ -390,7 +391,7 @@ async function enviarS1298(btn) {
     clearInterval(animTimer);
     bar.style.background = '#ef4444';
     bar.style.width      = '100%';
-    lbl.textContent      = 'Falha de comunicação: ' + e;
+    lbl.textContent      = msgFalha(e);
     btn.disabled = false;
   }
 }
@@ -441,7 +442,7 @@ async function _reconsultar(id, btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
 
     if (data.ok) {
       sit.className    = 'sit-badge sit-enviado';
@@ -462,7 +463,7 @@ async function _reconsultar(id, btn) {
   } catch(e) {
     btn.disabled    = false;
     btn.textContent = 'Re-consultar';
-    alert('Falha de comunicação: ' + e);
+    alert(msgFalha(e));
   }
 }
 </script>

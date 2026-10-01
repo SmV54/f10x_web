@@ -6,6 +6,7 @@
 <title>Folha10·Simples — eSocial S-2206</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
+<script src="/static/f10_resposta.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <style>
 :root {
@@ -412,7 +413,7 @@ async function enviar(id, btn, suppressReport = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
     clearInterval(animTimer);
     bar.style.width = '100%';
     bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
@@ -438,7 +439,7 @@ async function enviar(id, btn, suppressReport = false) {
     clearInterval(animTimer);
     bar.style.width = '100%';
     bar.style.background = '#ef4444';
-    lbl.textContent = '❌ Falha de comunicação: ' + e;
+    lbl.textContent = '❌ ' + msgFalha(e);
     btn.disabled = false;
   }
 }
@@ -493,7 +494,7 @@ async function reconsutar(id, btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
     });
-    const data = await r.json();
+    const data = await lerRespostaJson(r);
     if (data.ok) {
       sit.className    = 'sit-badge sit-enviado';
       sit.textContent  = 'Enviado';
@@ -511,7 +512,7 @@ async function reconsutar(id, btn) {
   } catch(e) {
     btn.disabled    = false;
     btn.textContent = '↻ Re-consultar';
-    alert('Erro: ' + e);
+    alert(msgFalha(e));
   }
 }
 </script>
