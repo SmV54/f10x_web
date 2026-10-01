@@ -8558,6 +8558,18 @@ def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha
                        matricula=mat_int)
             return
 
+    # Pendente do layout ERRADO sai da fila: até 01/10/2026 o cálculo da
+    # rescisão não passava a categoria, e o estagiário ganhava S-2299 (o caso
+    # da mat 170 da empresa 33). Recalculado, ele passa a ter S-2399 — e o
+    # S-2299 não enviado não pode continuar lá esperando para ir ao governo.
+    # O _esocial_delete nunca apaga o que já tem recibo.
+    _outro = "2299" if layout == "2399" else "2399"
+    try:
+        (_esocial_delete().eq("id_empresa", id_empresa).eq("matricula", mat_int)
+         .eq("layout", _outro).execute())
+    except Exception as e:
+        print(f"[S{layout}] nao consegui tirar o S-{_outro} pendente: {e}")
+
     agora_es    = _dt.now()
     ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
     try:
@@ -9354,8 +9366,11 @@ def _calc_rescisao_nucleo(body, sim=None):
     dep_irrf_ded = int(tabela.get("irrf_dep_dedu") or 0)
 
     filtro_mats = set(int(x) for x in (body.get("matriculas") or []) if str(x).isdigit())
+    # codcateg: o estagiario (901) tem rescisao propria, e o S-2299/S-2399 e
+    # decidido por ela. Sem a categoria aqui, o _gravar_ou_atualizar_s2299
+    # recebia None e gerava S-2299 para estagiario.
     _CAMPOS_CAD = ("matricula, nome, nomer, undsalfixo, vrsalfx, qtdhrsmes, "
-                   "dtadm, datarescisao, motrescisao")
+                   "dtadm, datarescisao, motrescisao, codcateg")
 
     if sim:
         # ── SIMULAÇÃO ── o desligamento não está no banco: quem está sendo
@@ -9671,6 +9686,27 @@ def _calc_rescisao_nucleo(body, sim=None):
         motivo = str(cad.get("motrescisao") or "").zfill(2)
         tem_13, tem_fer, multa_pct = _MOTIVO_RESC.get(motivo, (True, True, 0))
 
+        # ── ESTAGIÁRIO (categoria 901, Lei 11.788/2008) ──
+        # Estágio não é emprego (art. 3º e art. 15): não há 13º, terço de
+        # férias, aviso prévio, art. 479/480, multa do FGTS, INSS nem FGTS. O
+        # Termo de Compromisso se rescinde a qualquer momento, por qualquer das
+        # partes (Cartilha do MTE, pergunta 28) — o motivo e o "contrato a
+        # termo" do cadastro não mudam isso.
+        # O que ele tem: o saldo da bolsa (verba 7, a mesma da folha mensal) e
+        # o RECESSO não gozado (art. 13: 30 dias por ano, proporcional se
+        # menor), pago em dinheiro na saída — TST 1ª Turma, 08/11/2016, e a
+        # Portaria Presi 367/2022 do TRT12 (art. 24). Sai pela mesma conta
+        # das férias (vencidas + proporcionais), SEM o 1/3, que é garantia
+        # constitucional do empregado (CF art. 7º, XVII). IRRF continua.
+        # (SMV 01/10/2026, rescisão da mat 170 da empresa 33.)
+        try:
+            _categ_n = int(str(cad.get("codcateg") or "0").strip() or 0)
+        except (TypeError, ValueError):
+            _categ_n = 0
+        is_estag = _categ_n == 901
+        if is_estag:
+            tem_13, multa_pct = False, 0
+
         # aviso prévio (op1=9). campotxt1 = Trabalhado/Indenizado,
         # campotxt2 = quem avisou, campotxt4 = "Dispensado" quando a empresa
         # abriu mão de descontar o aviso que o funcionário não cumpriu.
@@ -9700,6 +9736,9 @@ def _calc_rescisao_nucleo(body, sim=None):
                     aviso_disp = str(ev.get("campotxt4") or "").strip().lower().startswith("dispens")
             except Exception:
                 pass
+        if is_estag:
+            # Estagiário não tem aviso prévio: nem paga, nem projeta, nem desconta.
+            aviso_ind, dias_aviso, dias_aviso_ref1, aviso_disp = False, 0, 0, False
 
         # Quem PEDE demissão não recebe aviso prévio: se não cumpre o período, é
         # ele quem indeniza a empresa (art. 487, § 2º, da CLT). O aviso troca de
@@ -9730,7 +9769,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         art479 = art480 = 0
         dias_faltantes = 0
         clau_assec = False
-        if motivo in ("03", "04"):
+        if motivo in ("03", "04") and not is_estag:
             try:
                 _ct = (supabase.table("tab_eventos").select("data1f, ref3")
                        .eq("id_empresa", id_empresa).eq("matricula", mat)
@@ -9855,7 +9894,13 @@ def _calc_rescisao_nucleo(body, sim=None):
                 dt_adm, dt_proj, ferias_por_mat.get(mat, []))
         else:
             ini_aq, venc_periodos, venc_estimado = _date(dt_proj.year, 1, 1), [], False
-        avos_fer = _conta_avos_resc(ini_aq, dt_proj) if tem_fer else 0
+        # Avos pelo ANIVERSÁRIO do aquisitivo (CLT art. 146, parágrafo único),
+        # não pelo mês do calendário — esse vale só para o 13º. Até 01/10/2026
+        # a rescisão usava o _conta_avos_resc também aqui: admitido em 13/10
+        # e desligado em 22/09 dava 12/12 (outubro com 19 dias e setembro com
+        # 22 contavam separados), quando o certo são 11 meses e 10 dias = 11/12.
+        # E errava para menos também: 20/01 a 10/03 dava 1/12 em vez de 2/12.
+        avos_fer = _avos_ferias(ini_aq, dt_proj) if tem_fer else 0
         fer_prop = round((sal_mes_ad + base_media_fer) * avos_fer / 12) if avos_fer else 0
         # férias VENCIDAS: períodos aquisitivos completos sem gozo. São devidas
         # SEMPRE, inclusive na justa causa — o motivo só derruba as proporcionais.
@@ -9873,7 +9918,8 @@ def _calc_rescisao_nucleo(body, sim=None):
                 "det": _info_p.get("det") or [],
             })
         # terco constitucional: uma linha so, sobre todas as ferias da rescisao
-        terco_fer = round((fer_prop + fer_venc) / 3)
+        # (o recesso do estagiário não tem o 1/3 — ver is_estag)
+        terco_fer = 0 if is_estag else round((fer_prop + fer_venc) / 3)
 
         # ── Verbas MANUAIS (origem='M') lançadas na rescisão ──
         # Proventos entram nos totais e (conforme incidência) nas bases de
@@ -9953,7 +9999,12 @@ def _calc_rescisao_nucleo(body, sim=None):
         # Verbas manuais que incidem somam à base do saldo.
         # A 0009 (atestado) incide como o saldo: INSS, IRRF e FGTS.
         base_inss_saldo = saldo + atest_val + add_inss
-        inss_saldo, inss_saldo_det, _ = _calc_inss_progressivo(base_inss_saldo, tabela)
+        if is_estag:
+            # Estagiário não é segurado obrigatório: sem INSS (a folha mensal
+            # faz o mesmo, ETAPA do Cat. 901). A base fica para o IRRF.
+            inss_saldo, inss_saldo_det = 0, []
+        else:
+            inss_saldo, inss_saldo_det, _ = _calc_inss_progressivo(base_inss_saldo, tabela)
         # INSS 13º (base separada)
         inss_13, inss_13_det, _ = (_calc_inss_progressivo(d13, tabela) if d13 else (0, [], 0))
         # IRRF: base saldo (saldo + manuais c/ inc. IRRF) - inss_saldo - dep ; 13º separado
@@ -9972,7 +10023,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         irrf_13, _red_13, _isento_13 = _irrf_isencao_redutor(d13, irrf_13, tabela)
         # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
         # (férias indenizadas não têm FGTS)
-        base_fgts = saldo + atest_val + d13 + aviso_val + add_fgts
+        # A categoria manda (_tem_fgts): estagiário e 700-799, menos a 721, não têm.
+        base_fgts = (saldo + atest_val + d13 + aviso_val + add_fgts) if _tem_fgts(_categ_n) else 0
         fgts_val = round(base_fgts * 8 / 100)
 
         # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): tudo acima continua
@@ -10055,7 +10107,10 @@ def _calc_rescisao_nucleo(body, sim=None):
                     "matricula": mat, "folha": folha_int, "folha_tipo": "R",
                     "lote": 0, "origem": "C", "controle": 0, "os": 0}
         recs = []
-        if saldo_sal: recs.append({**base_mov, "cod_verba": VR_SALDO,        "qtd": dias_saldo, "valor": saldo_sal})
+        # Estagiário: o saldo é de BOLSA (verba 7, como na folha mensal), que não
+        # tem incidência de INSS nem de FGTS — a 10 declararia salário no eSocial.
+        vr_saldo = _verba_salario(_categ_n) if is_estag else VR_SALDO
+        if saldo_sal: recs.append({**base_mov, "cod_verba": vr_saldo,        "qtd": dias_saldo, "valor": saldo_sal})
         for _c_ad, _v_ad in sorted(saldo_adics.items()):
             recs.append({**base_mov, "cod_verba": _c_ad, "qtd": 0, "valor": _v_ad})
         if atest_val: recs.append({**base_mov, "cod_verba": VR_ATESTADO,     "qtd": dias_atest, "valor": atest_val})
@@ -10080,7 +10135,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         rec_tot = {
             "id_cliente": id_cliente, "id_empresa": id_empresa, "matricula": mat,
             "folha": folha_int, "folha_tipo": "R",
-            "valor_base_inss_semlimite": base_inss_saldo, "valor_base_inss_comlimite": base_inss_saldo,
+            "valor_base_inss_semlimite": 0 if is_estag else base_inss_saldo,
+            "valor_base_inss_comlimite": 0 if is_estag else base_inss_saldo,
             "valor_inss_retido": g_inss_saldo + g_inss_13,
             "valor_base_fgts": base_fgts, "valor_fgts": g_fgts_val,
             "valor_irrf_basetotal": base_inss_saldo, "valor_irrf_basetabela": base_irrf_saldo,
@@ -10152,7 +10208,8 @@ def _calc_rescisao_nucleo(body, sim=None):
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
             "avos_fer": avos_fer, "fer_prop": fer_prop,
             "fer_ini_aq": ini_aq.strftime("%d/%m/%Y") if ini_aq else "",
-            "fer_avos_det": _avos_resc_detalhe(ini_aq, dt_proj) if (tem_fer and ini_aq) else [],
+            "fer_avos_det": _avos_ferias_detalhe(ini_aq, dt_proj) if (tem_fer and ini_aq) else [],
+            "is_estag": is_estag, "vr_saldo": vr_saldo,
             "venc_qtd": venc_qtd, "fer_venc": fer_venc, "terco_fer": terco_fer,
             "venc_det": venc_det,
             "art479": art479, "art480": art480,
@@ -10386,8 +10443,13 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     + f" = <b>{_B(_rem)}</b>")
             e.append(_etapa("ETAPA 3010 - DADOS DA RESCISAO", _lin_3010))
             # 0002 — Saldo de salário
-            _lin_saldo = [f"Salário {_B(sal)} × {r['dia_resc']} dias / 30 = "
-                          f"<b>{_B(r.get('saldo_sal', r['saldo']))}</b>  (verba {VR_SALDO})"]
+            _est = bool(r.get("is_estag"))
+            _lin_saldo = [f"{'Bolsa' if _est else 'Salário'} {_B(sal)} × {r['dia_resc']} dias / 30 = "
+                          f"<b>{_B(r.get('saldo_sal', r['saldo']))}</b>  (verba {r.get('vr_saldo', VR_SALDO)})"]
+            if _est:
+                _lin_saldo.append("Estagiário (categoria 901, Lei 11.788/2008): estágio não é "
+                                  "emprego — sem 13º, 1/3 de férias, aviso prévio, art. 479/480, "
+                                  "INSS e FGTS. Recebe o saldo da bolsa e o recesso não gozado.")
             # Com adicional, a linha de cima sozinha nao explicava o total: a
             # memoria dizia "1.690,00 x 9 / 30" e imprimia o valor COM a
             # insalubridade dentro, que nao fecha na conta de quem confere.
@@ -10448,7 +10510,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                                 na="a empresa dispensou o aviso não cumprido — nada a descontar"))
             else:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [],
-                                na="aviso trabalhado ou não devido neste motivo"))
+                                na=("estagiário não tem aviso prévio (Lei 11.788/2008)" if _est
+                                    else "aviso trabalhado ou não devido neste motivo")))
             # 0004 — Médias (férias = 11 meses + mês da rescisão ÷ 12; 13º = ano corrente ÷ 12)
             det = (r.get("medias_info") or {}).get("det") or []
             mi = r.get("medias_info") or {}
@@ -10491,7 +10554,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 ]))
             else:
                 e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [],
-                                na="o motivo da rescisão não gera 13º proporcional"))
+                                na=("estagiário não tem 13º (Lei 11.788/2008, art. 3º)" if _est
+                                    else "o motivo da rescisão não gera 13º proporcional")))
             # 0005B — Férias vencidas + 1/3 (períodos completos sem gozo)
             if r.get("fer_venc"):
                 _lin = [f"Períodos aquisitivos completos sem gozo: <b>{r['venc_qtd']}</b>"]
@@ -10505,7 +10569,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                         f"{_d['ini']} a {_d['fim']}: {_rem_lbl} {_B(_rem)} + "
                         f"Médias do período {_B(_d['media'])} = <b>{_B(_d['valor'])}</b>{_jan}")
                 _lin.append(f"Total das férias vencidas = <b>{_B(r['fer_venc'])}</b>"
-                            f"   (o 1/3 vai na verba 42)")
+                            + (f"   (recesso não gozado, art. 13 da Lei 11.788/2008 — sem 1/3)" if _est
+                             else f"   (o 1/3 vai na verba 42)"))
                 if r.get("venc_estimado"):
                     _lin.append("Atenção: lançamento de férias sem o período aquisitivo "
                                 "gravado — o período consumido foi deduzido pela data do "
@@ -10528,18 +10593,20 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 # conferia nao tinha como saber qual mes entrou e qual caiu.
                 _det = r.get("fer_avos_det") or []
                 if _det:
-                    _lin_fer.append("Cada mês com <b>15 dias ou mais</b> vale 1/12 "
+                    _lin_fer.append("Cada mês contado do início do período aquisitivo vale "
+                                    "1/12, e a sobra de <b>15 dias ou mais</b> vale mais 1/12 "
                                     "(art. 146, parágrafo único, da CLT):")
                     for _d in _det:
                         _marca = "1/12" if _d["conta"] else "não conta"
                         _lin_fer.append(
-                            f"&nbsp;&nbsp;&nbsp;{_d['mes']}: dias {_d['d_ini']} a "
-                            f"{_d['d_fim']} = {_d['dias']} dia(s) → <b>{_marca}</b>")
+                            f"&nbsp;&nbsp;&nbsp;{_d['ini']} a {_d['fim']} = "
+                            f"{_d['dias']} dia(s) → <b>{_marca}</b>")
                 _lin_fer.append(f"Total: <b>{r['avos_fer']} avos</b>")
                 _lin_fer.append(
                     f"({_rem_lbl} {_B(_rem)} + Médias {_B(r['med_total'])})"
                     f" × {r['avos_fer']}/12 = <b>{_B(r['fer_prop'])}</b>"
-                    f"   (o 1/3 vai na verba 42)")
+                    + (f"   (recesso não gozado, art. 13 da Lei 11.788/2008 — sem 1/3)" if _est
+                             else f"   (o 1/3 vai na verba 42)"))
                 e.append(_etapa("ETAPA 3060 - FERIAS PROPORCIONAIS", _lin_fer,
                                 passos=[("tempo_serv", "avos do período aquisitivo")]))
             else:
@@ -10552,7 +10619,11 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     f" ÷ 3 = <b>{_B(r['terco_fer'])}</b>",
                 ]))
             # 0006C — Contrato a termo rompido antes do fim (art. 479 / 480)
-            if r.get("motivo") in ("03", "04"):
+            if _est and r.get("motivo") in ("03", "04"):
+                e.append(_etapa("ETAPA 3067 - CONTRATO A TERMO ROMPIDO ANTES DO FIM", [],
+                                na="o Termo de Compromisso de estágio se rescinde a qualquer "
+                                   "momento — não há art. 479/480"))
+            elif r.get("motivo") in ("03", "04"):
                 _dias_f = int(r.get("dias_faltantes") or 0)
                 if r.get("clau_assec"):
                     e.append(_etapa("ETAPA 3067 - CONTRATO A TERMO ROMPIDO ANTES DO FIM", [
@@ -10612,8 +10683,12 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             lin_inss.append(f"INSS saldo = <b>{_B(r['inss_saldo'])}</b>")
             if r["inss_13"]:
                 lin_inss.append(f"INSS 13º (base {_B(r['d13_base'])}) = <b>{_B(r['inss_13'])}</b>")
-            e.append(_etapa("ETAPA 3080 - INSS", lin_inss,
-                            passos=["base_inss", "inss"]))
+            if _est:
+                e.append(_etapa("ETAPA 3080 - INSS", [],
+                                na="estagiário não é segurado obrigatório — sem INSS"))
+            else:
+                e.append(_etapa("ETAPA 3080 - INSS", lin_inss,
+                                passos=["base_inss", "inss"]))
             # 0008 — IRRF
             _irrf_base_lbl = "saldo" + (" + manuais c/ inc. IRRF" if r.get("add_irrf") else "")
             lin_irrf = [
@@ -10653,8 +10728,11 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
             if r["multa_pct"]:
                 lin_fgts.append(f"Multa FGTS: {r['multa_pct']}% sobre o saldo de FGTS"
                                 + (f" = {_B(r['multa_fgts'])}" if r["multa_fgts"] else " (informe o saldo)"))
-            e.append(_etapa("ETAPA 3100 - FGTS", lin_fgts,
-                            passos=["base_fgts", "fgts"]))
+            if _est:
+                e.append(_etapa("ETAPA 3100 - FGTS", [], na="estagiário não tem FGTS"))
+            else:
+                e.append(_etapa("ETAPA 3100 - FGTS", lin_fgts,
+                                passos=["base_fgts", "fgts"]))
             # 0010 — Cliente sem encargos: calculou tudo acima e zerou
             if r.get("enc0"):
                 _ei = int(r["inss_saldo"]) + int(r["inss_13"])
@@ -10908,7 +10986,7 @@ def _gerar_trct_pdf(cad, emp, movs, tot, rubr_desc, rubr_tp, anomes, aviso_ev, e
         dsc, tp = _desc_tipo(cod)
         ref = ""
         if qtd:
-            if cod == 10:
+            if cod in (10, 7):          # saldo de salário / de bolsa (estagiário)
                 ref = f"{qtd} dias"
             elif cod in (12, 49, 44):
                 ref = f"{qtd}/12"
@@ -20736,6 +20814,38 @@ def _avos_ferias(dt_ini, dt_fim):
         if sobra >= 15:
             meses += 1
     return min(12, meses)
+
+
+def _avos_ferias_detalhe(dt_ini, dt_fim):
+    """A mesma contagem de _avos_ferias, aberta período a período, para a
+    memória da rescisão mostrar de onde saiu cada avo.
+
+    [{"ini": "13/10/2025", "fim": "12/11/2025", "dias": 31, "conta": True}, ...]
+    O último item é a sobra (conta se tiver 15 dias ou mais).
+    """
+    if not dt_ini or not dt_fim or dt_fim < dt_ini:
+        return []
+
+    def _mais_meses(d, n):
+        tot = d.month - 1 + n
+        y, m = d.year + tot // 12, tot % 12 + 1
+        return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+    saida, n = [], 0
+    while n < 12:
+        ini = _mais_meses(dt_ini, n)
+        if ini > dt_fim:
+            break
+        prox = _mais_meses(dt_ini, n + 1)
+        cheio = prox <= dt_fim + timedelta(days=1)
+        fim = (prox - timedelta(days=1)) if cheio else dt_fim
+        dias = (fim - ini).days + 1
+        saida.append({"ini": ini.strftime("%d/%m/%Y"), "fim": fim.strftime("%d/%m/%Y"),
+                      "dias": dias, "conta": cheio or dias >= 15})
+        if not cheio:
+            break
+        n += 1
+    return saida
 
 
 def _ferias_proporcionais(data1i, qtd, data2i, data2f):
