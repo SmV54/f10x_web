@@ -14689,8 +14689,8 @@ def cad_anomes():
         proximo_anomes = f"{_ano:04d}{_mes:02d}"
     else:
         # Empresa ainda sem nenhuma folha: mesma regra do cadastro inicial
-        # (ate o dia 10 sugere o mes anterior).
-        proximo_anomes = _anomes_inicial()
+        # (o mes inicial do cliente — ver _anomes_inicial_cliente).
+        proximo_anomes = _anomes_inicial_cliente(id_cliente)
 
     # Busca data_limite do cliente (formato "YYYY-MM" → "YYYYMM")
     limite_anomes = ""
@@ -14853,7 +14853,22 @@ def _anomes_minimo(id_cliente, id_empresa):
         return ""
     if r:
         return str(r[0].get("ano_mes") or "")
-    return _anomes_inicial()
+    return _anomes_inicial_cliente(id_cliente)
+
+
+def _anomes_inicial_cliente(id_cliente):
+    """Mes inicial deste cliente (yyyymm): na licenca de teste e a data_limite,
+    que guarda o mes inicial escolhido (ver _limite_teste_no_mes); fora dela,
+    o padrao de _anomes_inicial. Falha de leitura cai no padrao."""
+    padrao = _anomes_inicial()
+    try:
+        dl = ((supabase.table("tab_cliente").select("data_limite")
+               .eq("id_cliente", id_cliente).limit(1).execute().data or [{}])[0]
+              .get("data_limite") or "")
+    except Exception:
+        return padrao
+    dl_am = dl[:4] + dl[5:7] if len(dl) == 7 else ""
+    return dl_am if dl_am in _anomes_cortesia(padrao) else padrao
 
 
 # Liberacoes de folha anterior concedidas pelo Admin da F10 (tela
@@ -15018,8 +15033,10 @@ def _abrir_folha_inicial(id_cliente, id_empresa, escolhido=None):
                .eq("id_cliente", id_cliente)
                .limit(1).execute().data or [{}])[0].get("data_limite") or "")
         dl_am = dl[:4] + dl[5:7] if len(dl) == 7 else ""
-        if not escolhido and dl_am in _anomes_cortesia(padrao):
-            ano_mes = dl_am                # escolha gravada na licenca de teste
+        # Licenca de teste: a 1a folha e SEMPRE o mes da data_limite, que e o
+        # mes inicial escolhido. Assim ela vira o piso e nao ha folha anterior.
+        if dl_am in _anomes_cortesia(padrao):
+            ano_mes = dl_am
         if dl and len(dl) == 7 and ano_mes > (dl[:4] + dl[5:7]):
             return ""                      # mes corrente ja passou da licenca
     except Exception:
