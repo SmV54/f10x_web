@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Mês Inicial</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+    font-family: Arial, sans-serif;
+    background: linear-gradient(135deg, #0f172a, #1e3a8a);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 24px;
+}
+
+.card {
+    width: 100%;
+    max-width: 560px;
+    background: white;
+    border-radius: 18px;
+    padding: 32px 28px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+}
+
+.logo   { text-align: center; font-size: 18px; font-weight: bold; color: #1e3a8a; margin-bottom: 4px; }
+.versao { text-align: center; font-size: 11px; color: #94a3b8; margin-bottom: 20px; }
+.boas-vindas { text-align: center; font-size: 13px; color: #64748b; margin-bottom: 6px; }
+.titulo { text-align: center; font-size: 20px; font-weight: bold; color: #0f172a; margin-bottom: 18px; }
+
+.linha-mes {
+    display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;
+    font-size: 14px; color: #0f172a; margin-bottom: 16px;
+}
+.linha-mes select {
+    font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: #0f172a;
+    border: 1px solid #93c5fd; border-radius: 8px; padding: 8px 10px; background: #f8fafc;
+}
+
+.texto {
+    font-size: 12.5px; color: #475569; line-height: 1.6;
+    background: #f1f5f9; border-radius: 10px; padding: 12px 14px;
+}
+.texto b { color: #0f172a; }
+
+.btn-ok {
+    display: block; width: 100%; margin-top: 20px;
+    background: #1d4ed8; color: #fff; border: none; border-radius: 10px;
+    font-family: Arial, sans-serif; font-size: 14px; font-weight: bold;
+    padding: 12px; cursor: pointer;
+}
+.btn-ok:hover    { background: #1e40af; }
+.btn-ok:disabled { background: #94a3b8; cursor: default; }
+
+.rodape { margin-top: 20px; text-align: center; }
+.btn-sair { font-size: 12px; color: #94a3b8; text-decoration: none; }
+.btn-sair:hover { color: #64748b; text-decoration: underline; }
+
+.msg-erro {
+    display: none; background: #fef2f2; border: 1px solid #fca5a5; color: #dc2626;
+    font-size: 12px; padding: 10px 14px; border-radius: 8px; margin-top: 16px; text-align: center;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+    <div class="logo">Folha10 Simples</div>
+    <div class="versao">Versão {{ versao }}</div>
+
+    <div class="boas-vindas">Bem-vindo(a), {{ nome }}</div>
+    <div class="titulo">Qual o mês inicial da sua folha?</div>
+
+    <div class="linha-mes">
+        <label for="selMes">Começar a folha em</label>
+        <select id="selMes">
+            {% for am in opcoes %}
+            <option value="{{ am }}"{% if am == escolhido %} selected{% endif %}>
+                {{ am[4:6] }}/{{ am[:4] }}{% if am == padrao %} (padrão){% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="texto">
+        O padrão é <b>{{ padrao[4:6] }}/{{ padrao[:4] }}</b>.
+        {% if opcoes|length > 1 %}
+        Se preferir começar antes, como <b>cortesia</b> você pode escolher um mês anterior deste ano.
+        {% endif %}
+        <br>A partir do mês inicial, os meses seguintes são processados <b>em ordem, um a um</b>
+        — por exemplo, quem começa em 07 processa depois 08, 09…
+    </div>
+
+    <button class="btn-ok" id="btnOk" onclick="confirmar()">Continuar → Cadastro da empresa</button>
+
+    <div class="msg-erro" id="msgErro"></div>
+
+    <div class="rodape">
+        <a href="/logout" class="btn-sair">Sair</a>
+    </div>
+</div>
+
+<script>
+async function confirmar() {
+    const btn = document.getElementById('btnOk');
+    const el  = document.getElementById('msgErro');
+    btn.disabled = true;
+    try {
+        const r = await fetch('/api/mes_inicial', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ano_mes: document.getElementById('selMes').value })
+        });
+        let d = null;
+        try { d = await r.json(); } catch (_) { d = null; }
+        if (d && d.ok) { window.location.href = d.redirect || '/f10_cad_empresa'; return; }
+        el.textContent = (d && d.msg) || 'O servidor não respondeu corretamente. Tente de novo.';
+    } catch (e) {
+        el.textContent = 'Sem conexão com o servidor. Verifique a internet e tente de novo.';
+    }
+    el.style.display = 'block';
+    btn.disabled = false;
+}
+</script>
+</body>
+</html>

@@ -1617,7 +1617,7 @@ async function gravarEmpresa(painel) {
             const _sel = _ops.length > 1
                 ? `<select id="selFolhaInicial" class="pos-sel-folha" data-atual="${j.folha_ano_mes}" onchange="trocarFolhaInicial(this)">`
                   + _ops.map(a => `<option value="${a}"${a === j.folha_ano_mes ? ' selected' : ''}>`
-                                + `${a.slice(4)}/${a.slice(0, 4)}${a === j.folha_ano_mes ? ' (padrão)' : ''}</option>`).join('')
+                                + `${a.slice(4)}/${a.slice(0, 4)}${a === j.folha_padrao ? ' (padrão)' : ''}</option>`).join('')
                   + `</select>`
                 : `<b>${j.folha_aberta}</b>`;
             const _folha = j.folha_aberta

@@ -408,8 +408,11 @@ function mostrarModal(titulo, texto) {
     el("modalFundo").style.display = "flex";
 }
 
+let irParaLogin = "";
+
 function fecharModal() {
     el("modalFundo").style.display = "none";
+    if (irParaLogin) window.location.href = irParaLogin;
 }
 
 function formatarTempo(segundos) {
@@ -712,7 +715,13 @@ async function finalizarCadastro() {
     pararContador();
     el("timerBox").style.display = "none";
     msg("Cadastro realizado com sucesso. Senha OK", "ok");
-    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso. Sua senha já foi definida.");
+    // Cadastro feito: o OK do aviso leva ao login, onde a pessoa entra e
+    // escolhe o mês inicial da folha (/mes_inicial).
+    irParaLogin = data.redirect_login || "/login";
+    mostrarModal("Cadastro concluído", "Cadastro realizado com sucesso. Sua senha já foi definida.
+
+"
+               + "Agora entre com o seu CPF e senha para escolher o mês inicial da sua folha.");
 }
 
 function limpar() {

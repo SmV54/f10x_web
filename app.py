@@ -1303,7 +1303,9 @@ def fazer_login():
     # Verifica empresas cadastradas
     empresas = _listar_empresas(id_cliente)
     if not empresas:
-        return jsonify({"ok": True, "redirect": "/f10_cad_empresa",
+        # Cliente sem empresa: antes do cadastro dela, pergunta o mes inicial
+        # da folha (ver /mes_inicial).
+        return jsonify({"ok": True, "redirect": "/mes_inicial",
                         "msg": "Login OK! O próximo passo é cadastrar a empresa."})
 
     if len(empresas) > 1:
@@ -12748,12 +12750,13 @@ def api_gravar_empresa():
         print(f"=== Empresa gravada id={id_empresa} cnpj={dados.get('cnpj')} ===")
 
         # Condução do cliente novo: já deixa a empresa pronta para uso — cria
-        # o CC 001, abre a primeira folha (mês corrente, ou o anterior até o
-        # dia 10 — ver _anomes_inicial) e carrega na sessão.
+        # o CC 001, abre a primeira folha (o mês escolhido em /mes_inicial, ou
+        # o padrão de _anomes_inicial) e carrega na sessão.
         nome_empresa = (dados.get("razaosocial") or dados.get("nome_fantasia")
                         or "Empresa")
         _criar_cc_padrao(id_cliente_sess, id_empresa)
-        ano_mes = _abrir_folha_inicial(id_cliente_sess, id_empresa)
+        ano_mes = _abrir_folha_inicial(id_cliente_sess, id_empresa,
+                                       session.pop("anomes_inicial_escolhido", None))
 
         session["empresa_info"]    = nome_empresa
         session["cnpj_empresa"]    = cnpj_norm
@@ -12769,7 +12772,8 @@ def api_gravar_empresa():
             "nome_empresa": nome_empresa,
             "folha_aberta": folha_fmt,
             "folha_ano_mes": ano_mes,
-            "folha_opcoes": _anomes_cortesia(ano_mes) if ano_mes else [],
+            "folha_padrao":  _anomes_inicial(),
+            "folha_opcoes": _anomes_cortesia(_anomes_inicial()) if ano_mes else [],
             "cc_padrao":   f"{CC_PADRAO_CODIGO} - {CC_PADRAO_NOME}",
             "proximo":      "/cad_funcao",
         })
@@ -14934,11 +14938,44 @@ def api_trocar_folha_inicial():
     return jsonify({"ok": True, "folha": f"{novo[4:6]}/{novo[:4]}"})
 
 
-def _abrir_folha_inicial(id_cliente, id_empresa):
-    """Abre a folha Normal inicial para a empresa recem-cadastrada (mes corrente
-    ou o anterior, conforme _anomes_inicial). Respeita a data_limite da licenca.
+@app.route("/mes_inicial")
+def mes_inicial():
+    """Logo apos o 1o login do cliente novo (ainda sem empresa): pergunta o mes
+    da 1a folha. O padrao (_anomes_inicial) vem marcado; os meses anteriores do
+    mesmo ano sao cortesia. A escolha fica na sessao ate a empresa ser gravada."""
+    if not session.get("logado"):
+        return redirect("/")
+    if _listar_empresas(session.get("id_cliente")):
+        return redirect("/selecionar_empresa")
+    padrao = _anomes_inicial()
+    opcoes = _anomes_cortesia(padrao)
+    escolhido = session.get("anomes_inicial_escolhido")
+    if escolhido not in opcoes:
+        escolhido = padrao
+    return render_template("F10_Mes_Inicial.html", versao=ler_versao(),
+                           nome=session.get("nome", ""), padrao=padrao,
+                           opcoes=opcoes, escolhido=escolhido)
+
+
+@app.route("/api/mes_inicial", methods=["POST"])
+def api_mes_inicial():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    am = str((request.get_json(silent=True) or {}).get("ano_mes") or "").strip()
+    if am not in _anomes_cortesia(_anomes_inicial()):
+        return jsonify({"ok": False, "msg": "Mês inicial fora das opções oferecidas."})
+    session["anomes_inicial_escolhido"] = am
+    return jsonify({"ok": True, "redirect": "/f10_cad_empresa"})
+
+
+def _abrir_folha_inicial(id_cliente, id_empresa, escolhido=None):
+    """Abre a folha Normal inicial para a empresa recem-cadastrada: o mes que o
+    cliente escolheu em /mes_inicial (se ainda for uma opcao valida) ou o padrao
+    de _anomes_inicial. Respeita a data_limite da licenca.
     Retorna o ano_mes aberto ou ""."""
     ano_mes = _anomes_inicial()
+    if escolhido and escolhido in _anomes_cortesia(ano_mes):
+        ano_mes = escolhido
     try:
         dl = ((supabase.table("tab_cliente")
                .select("data_limite")
