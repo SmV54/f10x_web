@@ -9574,7 +9574,7 @@ def _calc_rescisao_nucleo(body, sim=None):
                 total += val
                 det.append({"cod": c, "dsc": _rubr_desc.get(c, f"Verba {c:04d}"),
                             "tipo": "H" if c in _verbas_horas else "V",
-                            "avg_min": avg_min, "val": val, "pct": _pct_h(c),
+                            "avg_min": avg_min, "val": val, "pct": _pct_h(c), "sh": sal_hora_c,
                             "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
                             "por_mes": sorted(por_mes.get(c, {}).items())})
         return total, {"fi": fi, "ff": ff, "det": det}
@@ -9668,7 +9668,7 @@ def _calc_rescisao_nucleo(body, sim=None):
                             "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
                             "total13": tot_val13.get(c, 0), "total_min13": tot_qtd13.get(c, 0),
                             "por_mes": sorted(por_mes.get(c, {}).items()),
-                            "pct": _pct_h(c),
+                            "pct": _pct_h(c), "sh": sal_hora_c,
                             "val": val_fer, "val_fer": val_fer, "val_13": val_13})
         return medias_fer, medias_13, {"fi": fi, "ff": ff, "fi13": fi13, "det": det}
 
@@ -9994,11 +9994,10 @@ def _calc_rescisao_nucleo(body, sim=None):
                     if _som > 0:
                         sh_m = round((sal_mes + _som) / qhm, 4)
                         obs_sb_m = (f"base {_fmt_brl(sal_mes)} + {_fmt_brl(_som)} "
-                                    f"/ {qhm}h = {_fmt_brl(int(round(sh_m)))}/h  |  ")
+                                    f"/ {qhm}h = {_sal_hora_txt(sh_m)}/h  |  ")
                 val_m = int(round(qtd_m / 60 * sh_m * mult_m))
-                _hh, _mm = qtd_m // 60, qtd_m % 60
-                det_m = (f"{obs_sb_m}{_hh:02d}h{_mm:02d} × {_fmt_brl(int(round(sh_m)))}/h"
-                         + (f" × {mult_m:g} ({pct_m:g}%)" if pct_m else "")
+                det_m = (f"{obs_sb_m}{_horas_conv(qtd_m)} × {_sal_hora_txt(sh_m)}/h"
+                         + _mult_txt(pct_m)
                          + f"  =  {_fmt_brl(val_m)}")
             elif unid_m == "D" and qtd_m > 0:
                 val_m = int(round(qtd_m * sal_dia_man))
@@ -10569,7 +10568,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     if not d.get("val_fer"):
                         continue
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min']} min/mês{_mult_txt(d.get('pct', 0))} » {_B(d['val_fer'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — média {d['avg_min']} min/mês: {_horas_conv(d['avg_min'])} × {_sal_hora_txt(d.get('sh', 0))}/h{_mult_txt(d.get('pct', 0))} » {_B(d['val_fer'])}")
                     else:
                         lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total'])} /12 = {_B(d['val_fer'])}")
                 lin_med.append(f"<b>Total das médias (férias): {_B(r['med_total'])}</b>")
@@ -10581,7 +10580,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                         continue
                     _tem13 = True
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min13']} min/mês{_mult_txt(d.get('pct', 0))} » {_B(d['val_13'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — média {d['avg_min13']} min/mês: {_horas_conv(d['avg_min13'])} × {_sal_hora_txt(d.get('sh', 0))}/h{_mult_txt(d.get('pct', 0))} » {_B(d['val_13'])}")
                     else:
                         lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total13'])} /12 = {_B(d['val_13'])}")
                 if not _tem13:
@@ -50412,8 +50411,8 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                             sal_hora_c = int(l["sal_hora"])
                         hh_q = qtd // 60; mm_q = qtd % 60
                         valor_calc = int(round(qtd / 60 * sal_hora_c * mult_h))
-                        obs_calc_h = (f"   {hh_q:02d}h{mm_q:02d} × {_fmt_brl(sal_hora_c)}/h"
-                                      + (f" × {mult_h:g} ({pct_h}%)" if pct_h else "")
+                        obs_calc_h = (f"   {_horas_conv(qtd)} × {_sal_hora_txt(sal_hora_c)}/h"
+                                      + _mult_txt(pct_h or 0)
                                       + f"  =  {_fmt_brl(valor_calc)}")
                         txt_qtd = (f"   {obs_sb_h}   |{obs_calc_h}" if obs_sb_h else obs_calc_h)
                         # Persiste o valor calculado no lançamento — sem isto a
@@ -58334,8 +58333,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                                 sub.setStyle(_sub_m_ts)
                                 e7_rows.append([sub])
                             e7_rows.append([Paragraph(
-                                f'Total: {tmin} min / {maq} meses = {amin} min/mes ({ah:02d}:{am_h:02d}h)'
-                                f'  x  {_fmt_brl(sh)[3:]}/h / 60{_mult_txt(pct7)} = {_fmt_brl(vmes_h)[3:]}/mes'
+                                f'Total: {tmin} min / {maq} meses = {amin} min/mes: {_horas_conv(amin)}'
+                                f'  x  {_sal_hora_txt(sh)}/h{_mult_txt(pct7)} = {_fmt_brl(vmes_h)[3:]}/mes'
                                 f'  x  {dias} dias / 30 = {_fmt_brl(m7["val"])[3:]}',
                                 _st_mline)])
                         else:
@@ -71479,9 +71478,36 @@ def _pct_rubricas(id_cliente):
     return out
 
 
+def _num_br(v, casas):
+    """1234.5678 → '1.234,5678'."""
+    t = f"{float(v):,.{casas}f}"
+    return t.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _horas_conv(minutos):
+    """Conversão das horas que a conta usa, por extenso para a memória:
+    '07h16 = 7 + 16/60 = 7,2667 h'. Os minutos não são decimais da hora —
+    7h16 não é 7,16 h (SMV 02/10/2026)."""
+    minutos = float(minutos or 0)
+    h, m = int(minutos // 60), minutos - int(minutos // 60) * 60
+    m_txt = f"{int(round(m)):02d}" if abs(m - round(m)) < 1e-9 else _num_br(m, 2)
+    if abs(m) < 1e-9:
+        return f"{h:02d}h00 = {h} h"
+    return f"{h:02d}h{m_txt} = {h} + {m_txt}/60 = {_num_br(minutos / 60, 4)} h"
+
+
+def _sal_hora_txt(centavos):
+    """Salário-hora com as casas que a conta usa: R$ 12,0552 quando ele tem
+    fração de centavo, R$ 12,06 quando é inteiro em centavos."""
+    c = float(centavos or 0)
+    if abs(c - round(c)) < 1e-9:
+        return _fmt_brl(int(round(c)))
+    return "R$ " + _num_br(c / 100, 4)
+
+
 def _mult_txt(pct):
     """' × 2 (100%)' para a memória — vazio quando a verba não tem adicional."""
-    return f" × {1 + pct / 100:g} ({pct:g}%)" if pct else ""
+    return f" × {_num_br(1 + pct / 100, 2).rstrip('0').rstrip(',')} ({pct:g}%)" if pct else ""
 
 
 def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
@@ -71810,7 +71836,7 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         for d in medias_detalhe:
             if d["unid"] == "H":
                 acum  = f"{_hhmm(d['soma_qtd'])} · {_fmt_brl(sal_hora_c)}/h"
-                media = (f"{_hhmm(d['avg_min'])} × {_fmt_brl(sal_hora_c)}{_mult_txt(d.get('pct', 0))}"
+                media = (f"{_num_br(d['avg_min'] / 60, 4)} h × {_sal_hora_txt(sal_hora_c)}{_mult_txt(d.get('pct', 0))}"
                          f" = {_fmt_brl(d['base'])}")
             else:
                 acum  = _fmt_brl(d["soma_val"])
@@ -73311,8 +73337,8 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                     f"Média das horas = {md['soma_qtd'] // 60}h{md['soma_qtd'] % 60:02d}"
                     f" ÷ {d['avos']} avos = <b>{_mm // 60}h{_mm % 60:02d}</b>", st_formula))
                 e.append(Paragraph(
-                    f"Valor da média = {_mm // 60}h{_mm % 60:02d} × "
-                    f"{_fmt_brl(d['sal_hora'])}/hora (salário atual)"
+                    f"Valor da média = {_horas_conv(md['avg_min'])} × "
+                    f"{_sal_hora_txt(d['sal_hora'])}/hora (salário atual)"
                     f"{_mult_txt(md.get('pct', 0))} = "
                     f"<b>{_fmt_brl(md['val'])}</b>", st_formula))
             else:
