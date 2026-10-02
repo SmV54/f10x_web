@@ -29465,6 +29465,20 @@ _PROC_PER_VALOR = ("vrbccpmensal", "vrbccp13", "vrbcfgtsproctrab", "vrbcfgtssefi
                    "vrbcfgtsdecant", "mud_vrbcprev")
 
 
+def _proc_trava_13():
+    """Processo trabalhista vale com a folha Normal, Calculada ou Fechada, mas
+    não com a folha de 13º ativa (adiantamento 'A' ou 13º salário '1'): é com
+    ela que o operador está trabalhando o 13º, e o processo não é dessa folha.
+    Devolve a mensagem de recusa, ou "" quando pode."""
+    tp = str(session.get("anomes_tipo") or "N").upper()[:1]
+    if tp not in ("A", "1"):
+        return ""
+    rot = {"A": "adiantamento do 13º", "1": "13º salário"}[tp]
+    return (f"A folha ativa é a do {rot}. O processo trabalhista não é lançado nem "
+            "enviado com a folha de 13º ativa: troque para a folha Normal do mês "
+            "(em Mês/Ano) e volte aqui.")
+
+
 def _proc_num_fmt(nr):
     """20 dígitos no padrão CNJ (NNNNNNN-DD.AAAA.J.TR.OOOO); 15 fica como está."""
     nr = so_numeros(nr or "")
@@ -29715,7 +29729,7 @@ def processo_trabalhista():
                             if len(ci) == 6 and len(cf) == 6 else "—")
         p["reperc_txt"] = PROC_REPERC.get(p.get("indreperc"), "")
         p["status"] = status.get(p["id"], "")
-    return render_template("F10_Processo_Lista.html", versao=ler_versao(),
+    return render_template("F10_Processo_Lista.html", versao=ler_versao(), trava13=_proc_trava_13(),
                            empresa=session.get("empresa_info", ""),
                            nome=session.get("nome", ""), processos=processos)
 
@@ -29768,7 +29782,7 @@ def processo_trabalhista_editar():
         pass
 
     return render_template(
-        "F10_Processo.html", versao=ler_versao(),
+        "F10_Processo.html", versao=ler_versao(), trava13=_proc_trava_13(),
         empresa=session.get("empresa_info", ""), nome=session.get("nome", ""),
         processo=processo, periodos=periodos, enviado=enviado,
         funcionarios=funcionarios, estabs=estabs,
@@ -29781,6 +29795,8 @@ def processo_trabalhista_editar():
 def api_processo_gravar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    if _proc_trava_13():
+        return jsonify({"ok": False, "msg": _proc_trava_13()})
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
     d = request.get_json(silent=True) or {}
@@ -29868,6 +29884,8 @@ def api_processo_gravar():
 def api_processo_excluir():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    if _proc_trava_13():
+        return jsonify({"ok": False, "msg": _proc_trava_13()})
     id_empresa = _get_id_empresa()
     id_proc = (request.get_json(silent=True) or {}).get("id")
     if not id_proc:
@@ -30126,7 +30144,7 @@ def processo_pagamentos():
                               for cr in (c.get("infoCRContrib") or []))
         p["irrf_total"] = (p.get("irrf_vrcr") or 0) + (p.get("irrf_vrcr13") or 0)
         p["status"] = status.get(p["id"], "")
-    return render_template("F10_Processo_Pagto_Lista.html", versao=ler_versao(),
+    return render_template("F10_Processo_Pagto_Lista.html", versao=ler_versao(), trava13=_proc_trava_13(),
                            empresa=session.get("empresa_info", ""),
                            nome=session.get("nome", ""), pagtos=pagtos,
                            tem_processo=bool(procs))
@@ -30160,7 +30178,7 @@ def processo_pagamentos_editar():
         except Exception:
             pass
     return render_template(
-        "F10_Processo_Pagto.html", versao=ler_versao(),
+        "F10_Processo_Pagto.html", versao=ler_versao(), trava13=_proc_trava_13(),
         empresa=session.get("empresa_info", ""), nome=session.get("nome", ""),
         pagto=pagto, enviado=enviado, processos=procs, dependentes=deps,
         tab29=_pagto_tabela29(), irrf_crs=PAGTO_IRRF_CR,
@@ -30172,6 +30190,8 @@ def processo_pagamentos_editar():
 def api_processo_pagto_gravar():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    if _proc_trava_13():
+        return jsonify({"ok": False, "msg": _proc_trava_13()})
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
     d = request.get_json(silent=True) or {}
@@ -30260,6 +30280,8 @@ def api_processo_pagto_gravar():
 def api_processo_pagto_excluir():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    if _proc_trava_13():
+        return jsonify({"ok": False, "msg": _proc_trava_13()})
     id_empresa = _get_id_empresa()
     id_pagto = (request.get_json(silent=True) or {}).get("id")
     if not id_pagto:
@@ -30845,6 +30867,8 @@ def _pxml_preparar(es, id_empresa):
 def _pxml_rota_enviar(layout):
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
+    if _proc_trava_13():
+        return jsonify({"ok": False, "msg": _proc_trava_13()})
     id_reg = (request.get_json(force=True) or {}).get("id_esocial")
     if not id_reg:
         return jsonify({"ok": False, "msg": "id_esocial não informado."})
@@ -30915,6 +30939,8 @@ def api_processo_excluir_esocial():
     """Gera a remessa S-3500 de um S-2500 ('2500') ou S-2501 ('2501') já aceito."""
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    if _proc_trava_13():
+        return jsonify({"ok": False, "msg": _proc_trava_13()})
     id_empresa = _get_id_empresa()
     d = request.get_json(silent=True) or {}
     tipo, id_reg = str(d.get("tipo") or ""), d.get("id")

@@ -315,10 +315,15 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         </div>
     </div>
 
+{% if trava13 %}
+    <div style="background:#fffbeb;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:11px 16px;font-size:13px;margin-bottom:16px;line-height:1.5;">
+        <b>Folha de 13º ativa — só consulta.</b> {{ trava13 }}
+    </div>
+        {% endif %}
     <div id="resultado"></div>
     <div class="rodape">
         <a class="btn-voltar" href="/processo_pagamentos">Voltar à lista</a>
-        <button class="btn-gravar" id="btnGravar" onclick="gravar()">Gravar pagamento</button>
+        <button class="btn-gravar" id="btnGravar" {% if trava13 %}disabled title="Folha de 13º ativa" {% endif %}onclick="gravar()">Gravar pagamento</button>
     </div>
 
 </div>
