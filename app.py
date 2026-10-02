@@ -9691,7 +9691,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         qhm = int(cad.get("qtdhrsmes") or 220) or 220
         und = (cad.get("undsalfixo") or "M").upper()[:1]
         sal_mes = vrsalfx * qhm if und == "H" else vrsalfx
-        sal_hora_c = vrsalfx if und == "H" else (round(vrsalfx / qhm) if qhm else 0)
+        sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
 
         dt_resc = _dparse(cad.get("datarescisao"))
         dt_adm  = _dparse(cad.get("dtadm"))
@@ -9946,7 +9946,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # Proventos entram nos totais e (conforme incidência) nas bases de
         # INSS/IRRF/FGTS do saldo; descontos abatem o líquido.
         # salário-hora / salário-dia p/ recalcular verbas H/D manuais
-        sal_hora_man = float(vrsalfx) if und == "H" else (round(vrsalfx / qhm, 4) if qhm else 0.0)
+        sal_hora_man = _sal_hora_exato(vrsalfx, und, qhm)
         _dias_folha_man = _dias_no_mes_total(anomes) or 30
         sal_dia_man = (sal_mes / _dias_folha_man) if _dias_folha_man else 0.0
 
@@ -9992,7 +9992,7 @@ def _calc_rescisao_nucleo(body, sim=None):
                             continue
                         _som += int({**adics_mes_r, **ul_mes_r}.get(_c, 0))
                     if _som > 0:
-                        sh_m = round((sal_mes + _som) / qhm, 4)
+                        sh_m = _sal_hora_exato(sal_mes + _som, "M", qhm)
                         obs_sb_m = (f"base {_fmt_brl(sal_mes)} + {_fmt_brl(_som)} "
                                     f"/ {qhm}h = {_sal_hora_txt(sh_m)}/h  |  ")
                 val_m = int(round(qtd_m / 60 * sh_m * mult_m))
@@ -26306,7 +26306,7 @@ def api_tab_mov_gravar():
                     sal_hora_map[mat_e] = vrsalfx
                     sal_mes_e = vrsalfx * qtdhrsmes
                 else:
-                    sal_hora_map[mat_e] = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+                    sal_hora_map[mat_e] = _sal_hora_exato(vrsalfx, "M", qtdhrsmes)
                     sal_mes_e = vrsalfx
                 sal_dia_map[mat_e] = (sal_mes_e / dias_mes_api) if dias_mes_api else 0.0
         except Exception:
@@ -26438,7 +26438,7 @@ def api_tab_mov_alterar():
                         if undsalfix == "H":
                             sh = vrsalfx
                         else:
-                            sh = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+                            sh = _sal_hora_exato(vrsalfx, "M", qtdhrsmes)
                         valor_gravar = int(round(qtd / 60 * sh))
             except Exception:
                 pass
@@ -26690,7 +26690,7 @@ def _repl_montar(id_cliente, id_empresa, anomes, folha_orig):
                     sal_hora[m] = vrsalfx
                     sal_mes     = vrsalfx * qtdhrsmes
                 else:
-                    sal_hora[m] = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+                    sal_hora[m] = _sal_hora_exato(vrsalfx, "M", qtdhrsmes)
                     sal_mes     = vrsalfx
                 sal_dia[m] = (sal_mes / dias_mes) if dias_mes else 0.0
         except Exception:
@@ -47780,7 +47780,7 @@ def _calc_etapa1_dados(id_empresa, anomes=None):
                 sal_mes  = float(vrsalfx * qtdhrsmes)
                 tipo     = "Horista"
             else:
-                sal_hora = round(vrsalfx / qtdhrsmes, 4) if qtdhrsmes else 0.0
+                sal_hora = _sal_hora_exato(vrsalfx, "M", qtdhrsmes)
                 sal_mes  = float(vrsalfx)
                 tipo     = "Mensalista"
 
@@ -50235,14 +50235,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                     qhm = l.get("qtdhrsmes") or 0
                     if soma_sb_mf > 0 and qhm > 0:
                         base_aug_mf = int(l["sal_mes"]) + soma_sb_mf
-                        sal_hora_mf = int(base_aug_mf / qhm)
+                        sal_hora_mf = _sal_hora_exato(base_aug_mf, "M", qhm)
                         obs_sb_mf   = (f"Base ampliada: {_fmt_brl(int(l['sal_mes']))} (salario)"
                                        + "".join(f" + {_fmt_brl(v)} ({c:04d} {d})"
                                                  for c, d, v in det_sb_mf)
                                        + f" = {_fmt_brl(base_aug_mf)} / {qhm}h"
-                                       + f" = {_fmt_brl(sal_hora_mf)}/h")
+                                       + f" = {_sal_hora_txt(sal_hora_mf)}/h")
                     else:
-                        sal_hora_mf = int(l["sal_hora"])
+                        sal_hora_mf = float(l["sal_hora"])
                         obs_sb_mf   = ""
                     val_base = int(horas_mf * sal_hora_mf * mult_mf)
                     hh_mf = int(horas_mf); mm_mf = round((horas_mf - hh_mf) * 60)
@@ -50401,14 +50401,14 @@ def _salvar_memorias_etapa1(id_empresa, anomes, cnpj_fmt, empresa_nm, linhas, id
                         qhm_h = l.get("qtdhrsmes") or 0
                         if soma_sb_h > 0 and qhm_h > 0:
                             base_aug_h  = int(l["sal_mes"]) + soma_sb_h
-                            sal_hora_c  = int(base_aug_h / qhm_h)
+                            sal_hora_c  = _sal_hora_exato(base_aug_h, "M", qhm_h)
                             obs_sb_h    = (f"Base ampliada: {_fmt_brl(int(l['sal_mes']))} (salario)"
                                            + "".join(f" + {_fmt_brl(v)} ({c:04d} {d})"
                                                      for c, d, v in det_sb_h)
                                            + f" = {_fmt_brl(base_aug_h)} / {qhm_h}h"
-                                           + f" = {_fmt_brl(sal_hora_c)}/h")
+                                           + f" = {_sal_hora_txt(sal_hora_c)}/h")
                         else:
-                            sal_hora_c = int(l["sal_hora"])
+                            sal_hora_c = float(l["sal_hora"])
                         hh_q = qtd // 60; mm_q = qtd % 60
                         valor_calc = int(round(qtd / 60 * sal_hora_c * mult_h))
                         obs_calc_h = (f"   {_horas_conv(qtd)} × {_sal_hora_txt(sal_hora_c)}/h"
@@ -52596,7 +52596,7 @@ def api_visualizar_calculo_dados():
                 if und == "H":
                     sh = float(vrsalfx); sm = float(vrsalfx * qhm)
                 else:
-                    sh = round(vrsalfx / qhm, 4) if qhm else 0.0; sm = float(vrsalfx)
+                    sh = _sal_hora_exato(vrsalfx, "M", qhm); sm = float(vrsalfx)
                 nomes.setdefault(m, (f.get("nome") or f.get("nomer") or "").strip())
                 dtadms.setdefault(m, str(f.get("dtadm") or ""))
                 sal_hora_map.setdefault(m, sh)
@@ -58212,7 +58212,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
             verbas_med_pesq = r.get("verbas_media_pesquisadas_pdf") or []
             periodo_aq      = r.get("periodo_aq_pdf") or {}
             recs_mov_pdf    = r.get("recs_mov_pdf") or []
-            sal_hora_c_pdf  = int(r.get("sal_hora_c_pdf") or 0)
+            sal_hora_c_pdf  = float(r.get("sal_hora_c_pdf") or 0)
             und_pdf         = str(r.get("und_pdf") or "M").upper()
 
             buf = io.BytesIO()
@@ -58842,7 +58842,7 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
         nome      = (cad.get("nomer") or cad.get("nome") or "").strip()
 
         sal_mes    = vrsalfx * qtdhrsmes if und == "H" else vrsalfx
-        sal_hora_c = vrsalfx if und == "H" else (round(vrsalfx / qtdhrsmes) if qtdhrsmes else 0)
+        sal_hora_c = _sal_hora_exato(vrsalfx, und, qtdhrsmes)
         dias_abono = int(ev.get("ref2") or 0)
 
         dias = int(ev.get("ref1") or 0)
@@ -71478,6 +71478,21 @@ def _pct_rubricas(id_cliente):
     return out
 
 
+def _sal_hora_exato(vrsalfx, und, qhm):
+    """Salário-hora em CENTAVOS, com a fração (2652,15 / 220 h = 1205,5227):
+    a REGRA ÚNICA do sistema (SMV 02/10/2026). Só o valor final de cada verba
+    vira centavos inteiros — arredondar o salário-hora antes (12,06) ou cortar
+    os centavos (12,05) fazia a folha, as médias e a rescisão darem valores
+    diferentes para as mesmas horas. Horista: o próprio salário é o da hora."""
+    if str(und or "M").upper()[:1] == "H":
+        return float(vrsalfx or 0)
+    try:
+        qhm = float(qhm or 0)
+    except (TypeError, ValueError):
+        qhm = 0.0
+    return round(float(vrsalfx or 0) / qhm, 4) if qhm > 0 else 0.0
+
+
 def _num_br(v, casas):
     """1234.5678 → '1.234,5678'."""
     t = f"{float(v):,.{casas}f}"
@@ -72122,7 +72137,7 @@ def calcular_adiantamento_13():
             vrsalfx = int(f.get("vrsalfx") or 0)
             und     = str(f.get("undsalfixo") or "M").upper()[:1]
             qhm     = int(f.get("qtdhrsmes") or 220) or 220
-            sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+            sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
             meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
             medias_det = _medias_adiant13(id_cliente, id_empresa, mat_f, sal_hora_c,
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
@@ -72256,7 +72271,7 @@ def api_calcular_adiantamento_13():
             vrsalfx = int(f.get("vrsalfx") or 0)
             und     = str(f.get("undsalfixo") or "M").upper()[:1]
             qhm     = int(f.get("qtdhrsmes") or 220) or 220
-            sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+            sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
             meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
             medias_det = _medias_adiant13(id_cliente, id_empresa, int(mat or 0), sal_hora_c,
                                           fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
@@ -72531,7 +72546,7 @@ def calcular_adiantamento_13_stream():
                 vrsalfx = int(f.get("vrsalfx") or 0)
                 und     = str(f.get("undsalfixo") or "M").upper()[:1]
                 qhm     = int(f.get("qtdhrsmes") or 220) or 220
-                sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+                sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
                 meses = _meses_media_adiant13(ano_folha, mes_folha, f, _af13, _fal13)
                 medias_det = _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                                               fi, ff, meses, perc, cods_media, verbas_hora, _desc_media)
@@ -72889,7 +72904,7 @@ def _calc_13_final_func(f, ano, tabela, id_cliente, id_empresa,
     vrsalfx = int(f.get("vrsalfx") or 0)
     und     = str(f.get("undsalfixo") or "M").upper()[:1]
     qhm     = int(f.get("qtdhrsmes") or 220) or 220
-    sal_hora_c = vrsalfx if und == "H" else round(vrsalfx / qhm)
+    sal_hora_c = _sal_hora_exato(vrsalfx, und, qhm)
 
     fi, ff = ano * 100 + 1, ano * 100 + 12
     # perc=100: a media do 13o e a media cheia. O divisor sao os AVOS — dividir
