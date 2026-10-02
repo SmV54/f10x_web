@@ -29409,6 +29409,500 @@ def api_fap_gravar():
 
 
 # =========================================================
+# PROCESSO TRABALHISTA — eSocial S-2500
+# tab_processo: uma linha por processo × trabalhador × contrato.
+# tab_processo_periodo: as bases mês a mês (idePeriodo).
+# Ver _criar_tab_processo.sql. Datas AAAAMMDD, competências AAAAMM,
+# valores em centavos — as mesmas convenções do resto do sistema.
+# As regras vêm do leiaute S-1.3 (validações de cada campo e as condições
+# de cada grupo); o caso comum é o funcionário já no eSocial (tpContr 1 a 4),
+# em que o grupo infoCompl nem é enviado.
+# =========================================================
+PROC_ORIGEM = {
+    1: "Processo judicial trabalhista",
+    2: "Acordo em CCP ou NINTER",
+    3: "Processo da Justiça Comum",
+}
+PROC_TPCONTR = {
+    1: "Vínculo no eSocial, sem alteração nas datas de admissão e desligamento",
+    2: "Vínculo no eSocial, com alteração na data de admissão",
+    3: "Vínculo no eSocial, com inclusão ou alteração da data de desligamento",
+    4: "Vínculo no eSocial, com alteração da admissão e do desligamento",
+    5: "Empregado com reconhecimento de vínculo",
+    6: "Trabalhador sem vínculo (TSVE), sem reconhecimento de vínculo",
+    7: "Vínculo de emprego em período anterior ao eSocial",
+    8: "Responsabilidade indireta",
+    9: "Contratos unificados (unicidade contratual)",
+}
+PROC_REPERC = {
+    1: "Com repercussão tributária e/ou FGTS (rendimentos no S-2501)",
+    2: "Sem repercussão tributária ou FGTS",
+    3: "Só para declaração do Imposto de Renda (rendimentos no S-2501)",
+    4: "Só para declaração do Imposto de Renda (depósito judicial)",
+    5: "Com repercussão tributária e/ou FGTS (depósito judicial)",
+}
+
+# Colunas que a tela pode gravar em tab_processo (o resto é do sistema).
+_PROC_COLS_TXT = (
+    "nrproctrab obsproctrab dtsent ufvara codmunic dtccp cnpjccp "
+    "resp_nrinsc resp_dtadmrespdir resp_matrespdir cpftrab nmtrab dtnascto nmsoc "
+    "indcontr dtadmorig indreint indcateg indnatativ indmotdeslig matricula_es "
+    "codcateg dtinicio nmcargo codcbo nmfuncao cbofuncao dtadm dur_dtterm "
+    "dur_clauassec dur_objdet suc_nrinsc suc_matricant suc_dttransf dtdeslig "
+    "mtvdeslig dtprojfimapi dtterm mtvdesligtsv lt_nrinsc lt_desccomp "
+    "estab_nrinsc indensd indenabono"
+).split()
+_PROC_COLS_INT = (
+    "matricula origem idvara tpccp resp_tpinsc ideseqtrab contrato_seq tpcontr "
+    "natatividade tpregtrab tpregprev tmpparc dur_tpcontr suc_tpinsc pensalim "
+    "percaliment lt_tpinsc estab_tpinsc compini compfim indreperc"
+).split()
+_PROC_COLS_VALOR = ("infopatprec", "vralim")
+_PROC_COLS_JSON = ("lt_endereco", "abono_anos", "remuneracao", "observacoes",
+                   "mudcategativ", "unicontr")
+_PROC_PER_INT = ("perref", "grauexp")
+_PROC_PER_VALOR = ("vrbccpmensal", "vrbccp13", "vrbcfgtsproctrab", "vrbcfgtssefip",
+                   "vrbcfgtsdecant", "mud_vrbcprev")
+
+
+def _proc_num_fmt(nr):
+    """20 dígitos no padrão CNJ (NNNNNNN-DD.AAAA.J.TR.OOOO); 15 fica como está."""
+    nr = so_numeros(nr or "")
+    if len(nr) == 20:
+        return f"{nr[:7]}-{nr[7:9]}.{nr[9:13]}.{nr[13]}.{nr[14:16]}.{nr[16:]}"
+    return nr
+
+
+def _proc_data_ok(s):
+    s = str(s or "")
+    if not re.fullmatch(r"\d{8}", s):
+        return False
+    try:
+        datetime.strptime(s, "%Y%m%d")
+        return True
+    except ValueError:
+        return False
+
+
+def _proc_comp_ok(v):
+    try:
+        v = int(v)
+    except (TypeError, ValueError):
+        return False
+    return 190001 <= v <= 299912 and 1 <= v % 100 <= 12
+
+
+def _proc_meses(ini, fim):
+    """Lista AAAAMM de ini a fim, inclusive."""
+    out, a, m = [], ini // 100, ini % 100
+    while a * 100 + m <= fim and len(out) < 999:
+        out.append(a * 100 + m)
+        m += 1
+        if m > 12:
+            a, m = a + 1, 1
+    return out
+
+
+def _proc_remessas(id_empresa, ids):
+    """{id_processo: 'enviado' | 'pendente'} pelas remessas S-2500 da tab_esocial."""
+    if not ids:
+        return {}
+    try:
+        r = (supabase.table("tab_esocial").select("codigo2, recibo")
+             .eq("id_empresa", id_empresa).eq("layout", "2500")
+             .in_("codigo2", list(ids)).execute())
+    except Exception:
+        return {}
+    out = {}
+    for row in (r.data or []):
+        k = row.get("codigo2")
+        if (row.get("recibo") or "").strip():
+            out[k] = "enviado"
+        else:
+            out.setdefault(k, "pendente")
+    return out
+
+
+def _proc_normalizar(d):
+    """Pega da tela só as colunas conhecidas, no tipo da tabela."""
+    reg = {}
+    for c in _PROC_COLS_TXT:
+        v = d.get(c)
+        v = "" if v is None else str(v).strip()
+        reg[c] = v.upper() if c in ("ufvara",) else (v or None)
+    for c in ("nrproctrab", "cpftrab", "cnpjccp", "resp_nrinsc", "suc_nrinsc",
+              "lt_nrinsc", "estab_nrinsc", "codmunic", "codcbo", "cbofuncao"):
+        if reg.get(c):
+            reg[c] = so_numeros(reg[c]) or None
+    for c in _PROC_COLS_INT + list(_PROC_COLS_VALOR):
+        v = d.get(c)
+        try:
+            reg[c] = int(v) if v not in (None, "") else None
+        except (TypeError, ValueError):
+            reg[c] = None
+    for c in _PROC_COLS_JSON:
+        v = d.get(c)
+        reg[c] = v if v not in (None, "", [], {}) else None
+    if not reg.get("contrato_seq"):
+        reg["contrato_seq"] = 1
+    if not reg.get("estab_tpinsc"):
+        reg["estab_tpinsc"] = 1
+    return reg
+
+
+def _proc_validar(p, periodos):
+    """Regras do leiaute S-1.3 que a tela consegue conferir. Lista de erros."""
+    e = []
+    hoje = _agora_brasilia().strftime("%Y%m%d")
+    origem, tp = p.get("origem"), p.get("tpcontr")
+    nr = p.get("nrproctrab") or ""
+
+    if origem not in PROC_ORIGEM:
+        e.append("Escolha a origem do processo.")
+    elif origem in (1, 3) and len(nr) != 20:
+        e.append("O número do processo judicial tem 20 algarismos.")
+    elif origem == 2 and len(nr) != 15:
+        e.append("O número da ata/conciliação (CCP ou NINTER) tem 15 algarismos.")
+
+    if origem in (1, 3):
+        if not _proc_data_ok(p.get("dtsent")) or p["dtsent"] > hoje:
+            e.append("Informe a data da sentença/homologação (não pode ser futura).")
+        if not p.get("ufvara") or len(p["ufvara"]) != 2:
+            e.append("Informe a UF da vara.")
+        if not p.get("codmunic") or len(p["codmunic"]) != 7:
+            e.append("Informe o município da vara.")
+        if not p.get("idvara") or not (0 < p["idvara"] <= 9999):
+            e.append("Informe o código da vara (até 4 algarismos).")
+        if origem == 3 and p.get("infopatprec") is None:
+            e.append("Na Justiça Comum, informe a cota patronal da requisição autônoma.")
+    if origem != 3:
+        p["infopatprec"] = None
+    if origem == 2:
+        if not _proc_data_ok(p.get("dtccp")) or p["dtccp"] > hoje:
+            e.append("Informe a data do acordo (não pode ser futura).")
+        if p.get("tpccp") not in (1, 2, 3):
+            e.append("Informe o âmbito do acordo (CCP empresa, CCP sindicato ou NINTER).")
+        if p.get("tpccp") in (2, 3):
+            if not p.get("cnpjccp") or len(p["cnpjccp"]) != 14:
+                e.append("Informe o CNPJ do sindicato (CCP de sindicato ou NINTER).")
+        else:
+            p["cnpjccp"] = None
+        for c in ("dtsent", "ufvara", "codmunic", "idvara"):
+            p[c] = None
+    else:
+        for c in ("dtccp", "tpccp", "cnpjccp"):
+            p[c] = None
+
+    if not p.get("cpftrab") or not validar_cpf(p["cpftrab"]):
+        e.append("CPF do trabalhador inválido.")
+
+    if tp not in PROC_TPCONTR:
+        e.append("Escolha o tipo de contrato do processo.")
+    elif origem == 3 and tp not in (1, 7, 9):
+        e.append("Na Justiça Comum o tipo de contrato só pode ser 1, 7 ou 9.")
+    if tp in (1, 2, 3, 4):
+        p["indcontr"] = "S"
+    elif tp == 8:
+        p["indcontr"] = "N"
+    if p.get("indcontr") not in ("S", "N"):
+        e.append("Informe se o contrato já está no eSocial (S-2200/S-2300).")
+    ind_s = p.get("indcontr") == "S"
+
+    if not ind_s:
+        if not p.get("nmtrab"):
+            e.append("Informe o nome do trabalhador.")
+        if not _proc_data_ok(p.get("dtnascto")):
+            e.append("Informe a data de nascimento do trabalhador.")
+    if tp in (2, 4):
+        if not _proc_data_ok(p.get("dtadmorig")):
+            e.append("Informe a data de admissão original (antes da alteração).")
+    else:
+        p["dtadmorig"] = None
+    if tp != 6 and ind_s:
+        if p.get("indreint") not in ("S", "N"):
+            e.append("Informe se houve reintegração.")
+    else:
+        p["indreint"] = None
+    for c, rot in (("indcateg", "reconhecimento de outra categoria"),
+                   ("indnatativ", "reconhecimento de outra natureza da atividade"),
+                   ("indmotdeslig", "reconhecimento de outro motivo de desligamento")):
+        if p.get(c) not in ("S", "N"):
+            e.append(f"Informe se houve {rot}.")
+    if (not ind_s or not p.get("matricula_es")) and not p.get("codcateg"):
+        e.append("Informe a categoria do trabalhador.")
+    if ind_s and p.get("matricula_es"):
+        p["codcateg"] = None
+    if not ((tp == 6 and not ind_s) or not p.get("matricula_es")):
+        p["dtinicio"] = None
+    elif not _proc_data_ok(p.get("dtinicio")):
+        e.append("Informe a data de início do trabalhador sem vínculo (TSVE).")
+    if p.get("indcateg") == "S" or p.get("indnatativ") == "S":
+        if not p.get("mudcategativ"):
+            e.append("Informe a nova categoria / natureza reconhecida e a data.")
+    else:
+        p["mudcategativ"] = None
+    if tp == 9:
+        if not p.get("unicontr"):
+            e.append("Informe o contrato incorporado (unicidade contratual).")
+    else:
+        p["unicontr"] = None
+
+    # infoCompl — só vai quando o contrato não está no eSocial
+    if not ind_s and tp != 6:
+        if p.get("tpregtrab") not in (1, 2, 3) or p.get("tpregprev") not in (1, 2, 3):
+            e.append("Informe o regime trabalhista e o previdenciário do contrato reconhecido.")
+        if not _proc_data_ok(p.get("dtadm")):
+            e.append("Informe a data de admissão do contrato reconhecido.")
+        if tp != 8 and not _proc_data_ok(p.get("dtdeslig")):
+            e.append("Informe a data de desligamento do contrato reconhecido.")
+        if tp != 8 and not re.fullmatch(r"\d{2}", p.get("mtvdeslig") or ""):
+            e.append("Informe o motivo do desligamento (2 algarismos, Tabela 19).")
+
+    if p.get("estab_tpinsc") not in (1, 3, 4) or len(p.get("estab_nrinsc") or "") not in (12, 14):
+        e.append("Informe o estabelecimento (CNPJ).")
+    ci, cf = p.get("compini"), p.get("compfim")
+    if not _proc_comp_ok(ci) or not _proc_comp_ok(cf):
+        e.append("Informe a competência inicial e a final do processo.")
+    elif cf < ci:
+        e.append("A competência final não pode ser anterior à inicial.")
+    elif cf > int(hoje[:6]):
+        e.append("A competência final não pode ser posterior ao mês atual.")
+    if p.get("indreperc") not in PROC_REPERC:
+        e.append("Informe a repercussão do processo.")
+    if p.get("indenabono") == "S":
+        if not p.get("abono_anos"):
+            e.append("Informe o(s) ano(s)-base da indenização do abono salarial.")
+    else:
+        p["indenabono"], p["abono_anos"] = None, None
+    if p.get("indensd") != "S":
+        p["indensd"] = None
+
+    if p.get("indreperc") in (1, 5):
+        if not periodos:
+            e.append("Com repercussão tributária/FGTS, informe as bases mês a mês.")
+        vistos = set()
+        for x in periodos:
+            pr = x.get("perref")
+            if not _proc_comp_ok(pr) or (_proc_comp_ok(ci) and _proc_comp_ok(cf)
+                                         and not ci <= pr <= cf):
+                e.append(f"Mês {pr}: fora do período do processo.")
+            elif pr in vistos:
+                e.append(f"Mês {str(pr)[4:]}/{str(pr)[:4]} repetido.")
+            vistos.add(pr)
+    return e
+
+
+@app.route("/processo_trabalhista")
+def processo_trabalhista():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    processos = []
+    try:
+        r = (supabase.table("tab_processo")
+             .select("id, matricula, origem, nrproctrab, cpftrab, nmtrab, tpcontr, "
+                     "compini, compfim, indreperc, criado_em")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .order("criado_em", desc=True).execute())
+        processos = r.data or []
+    except Exception as e:
+        print(f"[PROCESSO] lista: {e}")
+
+    # Nome do funcionário do cadastro quando o processo não guardou nmtrab
+    mats = {p["matricula"] for p in processos if p.get("matricula")}
+    nomes = {}
+    if mats:
+        try:
+            rc = (supabase.table("tab_cad").select("matricula, nome")
+                  .eq("id_empresa", id_empresa).in_("matricula", list(mats)).execute())
+            nomes = {x["matricula"]: x["nome"] for x in (rc.data or [])}
+        except Exception:
+            pass
+    status = _proc_remessas(id_empresa, [p["id"] for p in processos])
+    for p in processos:
+        p["numero_fmt"] = _proc_num_fmt(p.get("nrproctrab"))
+        p["origem_txt"] = PROC_ORIGEM.get(p.get("origem"), "")
+        c = str(p.get("cpftrab") or "")
+        p["cpf_fmt"] = f"{c[:3]}.{c[3:6]}.{c[6:9]}-{c[9:]}" if len(c) == 11 else c
+        p["nome"] = p.get("nmtrab") or nomes.get(p.get("matricula")) or "—"
+        ci, cf = str(p.get("compini") or ""), str(p.get("compfim") or "")
+        p["periodo_fmt"] = (f"{ci[4:]}/{ci[:4]} a {cf[4:]}/{cf[:4]}"
+                            if len(ci) == 6 and len(cf) == 6 else "—")
+        p["reperc_txt"] = PROC_REPERC.get(p.get("indreperc"), "")
+        p["status"] = status.get(p["id"], "")
+    return render_template("F10_Processo_Lista.html", versao=ler_versao(),
+                           empresa=session.get("empresa_info", ""),
+                           nome=session.get("nome", ""), processos=processos)
+
+
+@app.route("/processo_trabalhista/editar")
+def processo_trabalhista_editar():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_proc = request.args.get("id", type=int)
+
+    processo, periodos, enviado = {}, [], False
+    if id_proc:
+        try:
+            r = (supabase.table("tab_processo").select("*")
+                 .eq("id", id_proc).eq("id_empresa", id_empresa).limit(1).execute())
+            processo = (r.data or [{}])[0]
+            if processo:
+                rp = (supabase.table("tab_processo_periodo").select("*")
+                      .eq("id_processo", id_proc).order("perref").execute())
+                periodos = rp.data or []
+        except Exception as e:
+            print(f"[PROCESSO] editar: {e}")
+        if not processo:
+            return redirect("/processo_trabalhista")
+        enviado = _proc_remessas(id_empresa, [id_proc]).get(id_proc) == "enviado"
+
+    funcionarios = []
+    try:
+        rc = (supabase.table("tab_cad")
+              .select("matricula, nome, cpf, dtnascto, dtadm, codcateg, matricula_es, "
+                      "datarescisao, situacao")
+              .eq("id_empresa", id_empresa).order("nome").execute())
+        funcionarios = rc.data or []
+        for f in funcionarios:
+            f["mat_es"] = _mat_es(f)       # a matrícula como o eSocial a conhece
+    except Exception as e:
+        print(f"[PROCESSO] funcionarios: {e}")
+
+    cnpj = so_numeros(session.get("cnpj_empresa", ""))
+    estabs = [{"nrinsc": cnpj, "nome": session.get("empresa_info", "") or "Empresa"}]
+    try:
+        rf = (supabase.table("tab_filial").select("cnpj, filial_nome")
+              .eq("id_empresa", id_empresa).eq("situacao", "A").execute())
+        for f in (rf.data or []):
+            c = so_numeros(f.get("cnpj") or "")
+            if len(c) == 14 and c != cnpj:
+                estabs.append({"nrinsc": c, "nome": f.get("filial_nome") or "Filial"})
+    except Exception:
+        pass
+
+    return render_template(
+        "F10_Processo.html", versao=ler_versao(),
+        empresa=session.get("empresa_info", ""), nome=session.get("nome", ""),
+        processo=processo, periodos=periodos, enviado=enviado,
+        funcionarios=funcionarios, estabs=estabs,
+        origens=PROC_ORIGEM, tipos=PROC_TPCONTR, repercs=PROC_REPERC,
+        mes_atual=_agora_brasilia().strftime("%Y%m"),
+    )
+
+
+@app.route("/api/processo/gravar", methods=["POST"])
+def api_processo_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    d = request.get_json(silent=True) or {}
+    id_proc = d.get("id")
+
+    p = _proc_normalizar(d.get("processo") or {})
+    periodos = []
+    for x in (d.get("periodos") or []):
+        lin = {}
+        for c in _PROC_PER_INT + _PROC_PER_VALOR:
+            v = x.get(c)
+            try:
+                lin[c] = int(v) if v not in (None, "") else None
+            except (TypeError, ValueError):
+                lin[c] = None
+        lin["mud_codcateg"] = (str(x.get("mud_codcateg") or "").strip() or None)
+        lin["infointerm"] = x.get("infointerm") or None
+        if lin.get("perref"):
+            periodos.append(lin)
+
+    erros = _proc_validar(p, periodos)
+    if erros:
+        return jsonify({"ok": False, "erros": erros[:12],
+                        "msg": "Corrija os campos indicados antes de gravar."})
+    if p.get("indreperc") not in (1, 5):
+        periodos = []
+
+    aviso = ""
+    try:
+        if id_proc:
+            atual = (supabase.table("tab_processo").select("id")
+                     .eq("id", id_proc).eq("id_empresa", id_empresa).limit(1).execute()).data
+            if not atual:
+                return jsonify({"ok": False, "msg": "Processo não encontrado nesta empresa."})
+            if _proc_remessas(id_empresa, [id_proc]).get(id_proc) == "enviado":
+                aviso = ("Este processo já foi enviado ao eSocial: a alteração vai "
+                         "precisar de uma retificação do S-2500.")
+            p["alterado_em"] = _agora_brasilia().isoformat()
+            (supabase.table("tab_processo").update(p)
+             .eq("id", id_proc).eq("id_empresa", id_empresa).execute())
+        else:
+            novo = (supabase.table("tab_processo")
+                    .insert({**p, "id_cliente": id_cliente, "id_empresa": id_empresa})
+                    .execute()).data
+            id_proc = (novo or [{}])[0].get("id")
+            if not id_proc:
+                return jsonify({"ok": False, "msg": "O banco não devolveu o processo gravado."})
+    except Exception as e:
+        txt = str(e)
+        if "ux_tab_processo_chave" in txt or "duplicate key" in txt:
+            return jsonify({"ok": False, "msg": (
+                "Este processo já está cadastrado para este trabalhador. "
+                "Abra o que já existe na lista.")})
+        return jsonify({"ok": False, "msg": f"Erro ao gravar o processo: {txt[:120]}"})
+
+    # Bases mês a mês: a tela manda a lista inteira — troca tudo.
+    try:
+        (supabase.table("tab_processo_periodo").delete()
+         .eq("id_processo", id_proc).execute())
+        if periodos:
+            (supabase.table("tab_processo_periodo").insert([
+                {**x, "id_processo": id_proc, "id_cliente": id_cliente,
+                 "id_empresa": id_empresa} for x in periodos]).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "id": id_proc, "msg": (
+            f"O processo foi gravado, mas as bases mês a mês não: {str(e)[:120]}. "
+            "Grave de novo.")})
+
+    gravar_log("PROCESSO", f"{'alterou' if d.get('id') else 'incluiu'} processo "
+                           f"{p.get('nrproctrab')} CPF {p.get('cpftrab')}",
+               matricula=p.get("matricula"), id_empresa=id_empresa)
+    return jsonify({"ok": True, "id": id_proc, "aviso": aviso,
+                    "msg": "Processo gravado."})
+
+
+@app.route("/api/processo/excluir", methods=["POST"])
+def api_processo_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_empresa = _get_id_empresa()
+    id_proc = (request.get_json(silent=True) or {}).get("id")
+    if not id_proc:
+        return jsonify({"ok": False, "msg": "Processo não informado."})
+    try:
+        atual = (supabase.table("tab_processo").select("id, nrproctrab, cpftrab, matricula")
+                 .eq("id", id_proc).eq("id_empresa", id_empresa).limit(1).execute()).data
+        if not atual:
+            return jsonify({"ok": False, "msg": "Processo não encontrado nesta empresa."})
+        if _proc_remessas(id_empresa, [id_proc]).get(id_proc) == "enviado":
+            return jsonify({"ok": False, "msg": (
+                "Este processo já foi aceito no eSocial. Para tirá-lo de lá é preciso "
+                "enviar o S-3500 (exclusão) — não basta apagar aqui.")})
+        pg = (supabase.table("tab_processo_pagto").select("id")
+              .eq("id_processo", id_proc).limit(1).execute()).data
+        if pg:
+            return jsonify({"ok": False, "msg": (
+                "Este processo tem pagamentos (S-2501) lançados. Exclua os pagamentos antes.")})
+        supabase.table("tab_processo").delete().eq("id", id_proc).eq("id_empresa", id_empresa).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:120]}"})
+    gravar_log("PROCESSO", f"excluiu processo {atual[0].get('nrproctrab')} "
+                           f"CPF {atual[0].get('cpftrab')}",
+               matricula=atual[0].get("matricula"), id_empresa=id_empresa)
+    return jsonify({"ok": True, "msg": "Processo excluído."})
+
+
+# =========================================================
 # FAVICON — icone da aba do navegador
 # =========================================================
 @app.route("/favicon.ico")

@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Processo Trabalhista</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT ── */
+.conteudo { max-width: 1180px; margin: 28px auto; padding: 0 24px 80px; }
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.aviso-enviado {
+    background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 10px;
+    padding: 11px 16px; font-size: 13px; margin-bottom: 16px; line-height: 1.5;
+}
+
+/* ── CARD ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 16px; }
+.card-titulo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 20px 10px; background: #f8fafc; border-bottom: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #334155;
+}
+.num {
+    width: 22px; height: 22px; border-radius: 50%; background: #2563eb; color: #fff;
+    font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.card-corpo { padding: 16px 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+.linha { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo > label, .rotulo {
+    font-size: 10.5px; font-weight: 600; color: #64748b; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.campo input[type=text], .campo input[type=date], .campo input[type=month], .campo select, .campo textarea {
+    font-family: var(--sans); font-size: 13.5px; color: #1e293b; background: #fff;
+    border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 7px 10px; outline: none;
+}
+.campo input:focus, .campo select:focus, .campo textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,.13); }
+.campo input[readonly] { background: #f1f5f9; color: #475569; }
+.mono { font-family: var(--mono) !important; }
+.dica { font-size: 11.5px; color: #64748b; line-height: 1.5; }
+.grupo-radio { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; padding: 6px 0 2px; }
+.grupo-radio label { font-size: 13px; color: #1e293b; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.sep { width: 1px; align-self: stretch; background: #e2e8f0; margin: 0 4px; }
+.sub-bloco {
+    border: 1px dashed #cbd5e1; border-radius: 10px; padding: 12px 14px; background: #fbfdff;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.sub-bloco-tit { font-size: 12px; font-weight: 700; color: #1e3a8a; }
+.oculto { display: none !important; }
+.sn { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.sn .txt { font-size: 13px; color: #1e293b; min-width: 330px; }
+.sn label { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+/* município */
+.cid-wrap { position: relative; }
+.cid-lista {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 20; background: #fff;
+    border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 20px rgba(15,23,42,.12);
+    max-height: 220px; overflow-y: auto;
+}
+.cid-lista div { padding: 7px 10px; font-size: 13px; cursor: pointer; }
+.cid-lista div:hover { background: #eff6ff; }
+
+/* ── BASES MÊS A MÊS ── */
+.tab-bases { width: 100%; border-collapse: collapse; }
+.tab-bases th {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b;
+    text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--border); background: #f8fafc; white-space: nowrap;
+}
+.tab-bases th:first-child { text-align: left; }
+.tab-bases td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; text-align: right; }
+.tab-bases td:first-child { text-align: left; font-family: var(--mono); font-size: 13px; color: #1e293b; white-space: nowrap; }
+.tab-bases input, .tab-bases select {
+    width: 120px; font-family: var(--mono); font-size: 13px; text-align: right; color: #1e293b;
+    border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px 7px;
+}
+.tab-bases select { width: 70px; text-align: left; }
+.tab-bases tfoot td { font-family: var(--mono); font-weight: 700; color: #1e293b; background: #f8fafc; }
+.btn-sec {
+    font-size: 12.5px; font-weight: 600; font-family: var(--sans); padding: 7px 14px; border-radius: 7px;
+    border: 1px solid var(--accent); background: #fff; color: var(--accent); cursor: pointer;
+}
+.btn-sec:hover { background: #eff6ff; }
+.btn-x { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 15px; }
+
+/* ── RODAPÉ ── */
+.rodape { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.btn-gravar {
+    background: #18795b; border: none; color: white; font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 32px; border-radius: 8px; cursor: pointer;
+}
+.btn-gravar:hover { background: #126048; }
+.btn-gravar:disabled { opacity: 0.5; cursor: not-allowed; }
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+                 font-size: 13px; font-weight: 600; color: #15803d; margin-bottom: 12px; }
+.resultado-err { padding: 12px 18px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px;
+                 font-size: 13px; color: #991b1b; margin-bottom: 12px; line-height: 1.6; }
+.resultado-err ul { margin: 4px 0 0 18px; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Processo Trabalhista</span>
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/processo_trabalhista'">&#8592; Lista</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/processo_trabalhista">&#8592; Processos</a>
+        <div>
+            <div class="rel-titulo">{% if processo.id %}Processo Trabalhista{% else %}Novo Processo Trabalhista{% endif %} (S-2500)</div>
+            <div class="rel-subtitulo">Preencha na ordem — os campos que dependem de uma escolha aparecem ao lado dela</div>
+        </div>
+    </div>
+
+    {% if enviado %}
+    <div class="aviso-enviado">
+        <b>Este processo já foi enviado ao eSocial.</b> Se você alterar e gravar, a correção vai precisar
+        de uma retificação do S-2500.
+    </div>
+    {% endif %}
+
+    <!-- ═════ 1. TRABALHADOR ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">1</span> Trabalhador</div>
+        <div class="card-corpo">
+            <div class="linha">
+                <div class="campo" style="flex:1 1 420px;">
+                    <label>Funcionário do cadastro</label>
+                    <select id="selFunc" onchange="escolherFunc()">
+                        <option value="">— Selecione —</option>
+                    </select>
+                </div>
+                <label class="dica" style="display:flex;align-items:center;gap:6px;font-size:13px;color:#1e293b;padding-bottom:8px;cursor:pointer;">
+                    <input type="checkbox" id="chkFora" onchange="alternarFora()">
+                    Trabalhador fora do cadastro (reconhecimento de vínculo, sem vínculo…)
+                </label>
+            </div>
+            <div class="linha">
+                <div class="campo"><label>CPF</label>
+                    <input type="text" id="cpftrab" class="mono" maxlength="14" style="width:150px" oninput="mascaraCpf(this)"></div>
+                <div class="campo" style="flex:1 1 300px;"><label>Nome</label>
+                    <input type="text" id="nmtrab" maxlength="70"></div>
+                <div class="campo"><label>Nascimento</label>
+                    <input type="date" id="dtnascto"></div>
+                <div class="campo"><label>Matrícula eSocial</label>
+                    <input type="text" id="matricula_es" class="mono" maxlength="30" style="width:120px"></div>
+                <div class="campo"><label>Categoria</label>
+                    <input type="text" id="codcateg" class="mono" maxlength="3" style="width:70px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+            </div>
+            <div class="dica" id="dicaTrab">Escolha o funcionário: CPF, nome, nascimento e matrícula vêm do cadastro.</div>
+        </div>
+    </div>
+
+    <!-- ═════ 2. PROCESSO ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">2</span> Processo</div>
+        <div class="card-corpo">
+            <div>
+                <div class="rotulo">Origem</div>
+                <div class="grupo-radio" id="grpOrigem">
+                    {% for k, v in origens.items() %}
+                    <label><input type="radio" name="origem" value="{{ k }}" onchange="ajustarOrigem()"> {{ k }} - {{ v }}</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="linha">
+                <div class="campo"><label id="lblNum">Número do processo</label>
+                    <input type="text" id="nrproctrab" class="mono" maxlength="25" style="width:270px" oninput="mascaraProc(this)">
+                    <span class="dica" id="dicaNum">20 algarismos (padrão CNJ)</span></div>
+            </div>
+
+            <!-- judicial: origem 1 e 3 -->
+            <div class="sub-bloco oculto" id="blocoJud">
+                <div class="sub-bloco-tit">Dados do processo judicial</div>
+                <div class="linha">
+                    <div class="campo"><label>Data da sentença / homologação</label>
+                        <input type="date" id="dtsent"></div>
+                    <div class="campo"><label>UF da vara</label>
+                        <select id="ufvara" style="width:80px">
+                            <option value=""></option>
+                            {% for uf in ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'] %}
+                            <option>{{ uf }}</option>
+                            {% endfor %}
+                        </select></div>
+                    <div class="campo cid-wrap" style="flex:1 1 260px;"><label>Município da vara</label>
+                        <input type="text" id="cidNome" autocomplete="off" placeholder="Digite 3 letras do nome" oninput="buscarCidade(this.value)">
+                        <div class="cid-lista oculto" id="cidLista"></div>
+                        <span class="dica mono" id="cidCod"></span></div>
+                    <div class="campo"><label>Código da vara</label>
+                        <input type="text" id="idvara" class="mono" maxlength="4" style="width:90px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+                </div>
+                <div class="linha oculto" id="linhaPatPrec">
+                    <div class="campo"><label>Cota patronal da requisição autônoma (R$)</label>
+                        <input type="text" id="infopatprec" class="mono" data-valor style="width:170px" oninput="mascaraValor(this)"></div>
+                    <span class="dica">Obrigatório na Justiça Comum.</span>
+                </div>
+            </div>
+
+            <!-- CCP / NINTER: origem 2 -->
+            <div class="sub-bloco oculto" id="blocoCCP">
+                <div class="sub-bloco-tit">Dados do acordo</div>
+                <div class="linha">
+                    <div class="campo"><label>Data do acordo</label>
+                        <input type="date" id="dtccp"></div>
+                    <div>
+                        <div class="rotulo">Âmbito</div>
+                        <div class="grupo-radio">
+                            <label><input type="radio" name="tpccp" value="1" onchange="ajustarCCP()"> 1 - CCP da empresa</label>
+                            <label><input type="radio" name="tpccp" value="2" onchange="ajustarCCP()"> 2 - CCP do sindicato</label>
+                            <label><input type="radio" name="tpccp" value="3" onchange="ajustarCCP()"> 3 - NINTER</label>
+                            <span class="sep oculto" id="sepCnpj"></span>
+                            <span class="campo oculto" id="campoCnpjCCP" style="flex-direction:row;align-items:center;gap:8px;">
+                                <span class="rotulo">CNPJ do sindicato</span>
+                                <input type="text" id="cnpjccp" class="mono" maxlength="18" style="width:180px" oninput="mascaraCnpj(this)">
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="campo"><label>Observação (opcional)</label>
+                <textarea id="obsproctrab" rows="2" maxlength="999"></textarea></div>
+        </div>
+    </div>
+
+    <!-- ═════ 3. CONTRATO ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">3</span> Contrato reconhecido no processo</div>
+        <div class="card-corpo">
+            <div class="campo"><label>Tipo de contrato</label>
+                <select id="tpcontr" onchange="ajustarContrato()">
+                    <option value="">— Selecione —</option>
+                    {% for k, v in tipos.items() %}
+                    <option value="{{ k }}">{{ k }} - {{ v }}</option>
+                    {% endfor %}
+                </select></div>
+
+            <div class="sn">
+                <span class="txt">O contrato já está no eSocial (S-2200 / S-2300)?</span>
+                <label><input type="radio" name="indcontr" value="S" onchange="ajustarContrato()"> Sim</label>
+                <label><input type="radio" name="indcontr" value="N" onchange="ajustarContrato()"> Não</label>
+                <span class="dica" id="dicaIndContr"></span>
+            </div>
+
+            <div class="linha oculto" id="linhaAdmOrig">
+                <div class="campo"><label>Admissão original (antes da alteração)</label>
+                    <input type="date" id="dtadmorig"></div>
+            </div>
+
+            <div class="sn" id="snReint">
+                <span class="txt">Houve reintegração do empregado?</span>
+                <label><input type="radio" name="indreint" value="S"> Sim</label>
+                <label><input type="radio" name="indreint" value="N"> Não</label>
+                <span class="dica">Sim exige o S-2298 com este número de processo.</span>
+            </div>
+            <div class="sn">
+                <span class="txt">Foi reconhecida outra categoria do trabalhador?</span>
+                <label><input type="radio" name="indcateg" value="S" onchange="ajustarContrato()"> Sim</label>
+                <label><input type="radio" name="indcateg" value="N" onchange="ajustarContrato()"> Não</label>
+            </div>
+            <div class="sn">
+                <span class="txt">Foi reconhecida outra natureza da atividade?</span>
+                <label><input type="radio" name="indnatativ" value="S" onchange="ajustarContrato()"> Sim</label>
+                <label><input type="radio" name="indnatativ" value="N" onchange="ajustarContrato()"> Não</label>
+            </div>
+            <div class="sn">
+                <span class="txt">Foi reconhecido outro motivo de desligamento?</span>
+                <label><input type="radio" name="indmotdeslig" value="S"> Sim</label>
+                <label><input type="radio" name="indmotdeslig" value="N"> Não</label>
+            </div>
+
+            <div class="sub-bloco oculto" id="blocoMudCateg">
+                <div class="sub-bloco-tit">Nova categoria / natureza reconhecida</div>
+                <div class="linha">
+                    <div class="campo"><label>Categoria</label>
+                        <input type="text" id="mc_codcateg" class="mono" maxlength="3" style="width:70px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+                    <div class="campo"><label>Natureza</label>
+                        <select id="mc_natativ"><option value=""></option><option value="1">1 - Urbano</option><option value="2">2 - Rural</option></select></div>
+                    <div class="campo"><label>A partir de</label>
+                        <input type="date" id="mc_data"></div>
+                </div>
+            </div>
+
+            <div class="sub-bloco oculto" id="blocoUnic">
+                <div class="sub-bloco-tit">Contrato incorporado (unicidade contratual)</div>
+                <div class="linha">
+                    <div class="campo"><label>Matrícula incorporada</label>
+                        <input type="text" id="un_mat" class="mono" maxlength="30" style="width:140px"></div>
+                    <div class="campo"><label>Categoria</label>
+                        <input type="text" id="un_codcateg" class="mono" maxlength="3" style="width:70px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+                    <div class="campo"><label>Início (TSVE)</label>
+                        <input type="date" id="un_dtinicio"></div>
+                </div>
+                <span class="dica">A matrícula do bloco 1 é a que incorpora; aqui vai a que passou a fazer parte dela.</span>
+            </div>
+
+            <div class="linha oculto" id="linhaDtInicio">
+                <div class="campo"><label>Início do trabalhador sem vínculo (TSVE)</label>
+                    <input type="date" id="dtinicio"></div>
+            </div>
+
+            <!-- infoCompl: só quando o contrato NÃO está no eSocial -->
+            <div class="sub-bloco oculto" id="blocoCompl">
+                <div class="sub-bloco-tit">Dados do contrato reconhecido (não está no eSocial)</div>
+                <div class="linha">
+                    <div class="campo" style="flex:1 1 240px;"><label>Cargo</label>
+                        <input type="text" id="nmcargo" maxlength="100"></div>
+                    <div class="campo"><label>CBO</label>
+                        <input type="text" id="codcbo" class="mono" maxlength="6" style="width:90px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+                    <div class="campo"><label>Natureza</label>
+                        <select id="natatividade"><option value=""></option><option value="1">1 - Urbano</option><option value="2">2 - Rural</option></select></div>
+                </div>
+                <div class="linha" id="linhaVinc">
+                    <div class="campo"><label>Regime trabalhista</label>
+                        <select id="tpregtrab"><option value=""></option><option value="1">1 - CLT</option><option value="2">2 - Estatutário</option><option value="3">3 - Não aplicável</option></select></div>
+                    <div class="campo"><label>Regime previdenciário</label>
+                        <select id="tpregprev"><option value=""></option><option value="1">1 - RGPS</option><option value="2">2 - RPPS</option><option value="3">3 - Exterior</option></select></div>
+                    <div class="campo"><label>Admissão</label>
+                        <input type="date" id="dtadm"></div>
+                    <div class="campo"><label>Tempo parcial</label>
+                        <select id="tmpparc"><option value=""></option><option value="0">0 - Não</option><option value="1">1 - Até 25h</option><option value="2">2 - Até 30h</option><option value="3">3 - Até 26h</option></select></div>
+                    <div class="campo"><label>Duração</label>
+                        <select id="dur_tpcontr"><option value=""></option><option value="1">1 - Indeterminado</option><option value="2">2 - Determinado (dias)</option><option value="3">3 - Determinado (fato)</option></select></div>
+                    <div class="campo"><label>Término (se determinado)</label>
+                        <input type="date" id="dur_dtterm"></div>
+                </div>
+                <div class="linha" id="linhaDeslig">
+                    <div class="campo"><label>Desligamento</label>
+                        <input type="date" id="dtdeslig"></div>
+                    <div class="campo"><label>Motivo (Tabela 19)</label>
+                        <input type="text" id="mtvdeslig" class="mono" maxlength="2" style="width:60px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+                    <div class="campo"><label>Fim projetado do aviso indenizado</label>
+                        <input type="date" id="dtprojfimapi"></div>
+                </div>
+                <div class="linha oculto" id="linhaTerm">
+                    <div class="campo"><label>Término (TSVE)</label>
+                        <input type="date" id="dtterm"></div>
+                    <div class="campo"><label>Motivo (diretor não empregado)</label>
+                        <select id="mtvdesligtsv"><option value=""></option>
+                            <option value="01">01 - Exoneração sem justa causa</option><option value="02">02 - Término de mandato</option>
+                            <option value="03">03 - Exoneração a pedido</option><option value="04">04 - Culpa recíproca / força maior</option>
+                            <option value="05">05 - Morte</option><option value="06">06 - Falência / encerramento</option><option value="99">99 - Outros</option>
+                        </select></div>
+                </div>
+                <div class="linha">
+                    <div class="campo"><label>Remuneração a partir de</label>
+                        <input type="date" id="rm_data"></div>
+                    <div class="campo"><label>Salário fixo (R$)</label>
+                        <input type="text" id="rm_valor" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                    <div class="campo"><label>Unidade</label>
+                        <select id="rm_und"><option value=""></option><option value="1">1 - Hora</option><option value="2">2 - Dia</option><option value="3">3 - Semana</option>
+                            <option value="4">4 - Quinzena</option><option value="5">5 - Mês</option><option value="6">6 - Tarefa</option><option value="7">7 - Não aplicável</option></select></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════ 4. PERÍODO E REPERCUSSÃO ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">4</span> Período e repercussão</div>
+        <div class="card-corpo">
+            <div class="linha">
+                <div class="campo" style="flex:1 1 320px;"><label>Estabelecimento</label>
+                    <select id="estab_nrinsc">
+                        {% for e in estabs %}
+                        <option value="{{ e.nrinsc }}">{{ e.nrinsc[:2] }}.{{ e.nrinsc[2:5] }}.{{ e.nrinsc[5:8] }}/{{ e.nrinsc[8:12] }}-{{ e.nrinsc[12:] }} — {{ e.nome }}</option>
+                        {% endfor %}
+                    </select></div>
+                <div class="campo"><label>Competência inicial</label>
+                    <input type="month" id="compini"></div>
+                <div class="campo"><label>Competência final</label>
+                    <input type="month" id="compfim"></div>
+            </div>
+            <div class="campo"><label>Repercussão</label>
+                <select id="indreperc" onchange="ajustarReperc()">
+                    <option value="">— Selecione —</option>
+                    {% for k, v in repercs.items() %}
+                    <option value="{{ k }}">{{ k }} - {{ v }}</option>
+                    {% endfor %}
+                </select></div>
+            <div class="grupo-radio">
+                <label><input type="checkbox" id="indensd"> Indenização substitutiva do seguro-desemprego</label>
+                <span class="sep"></span>
+                <label><input type="checkbox" id="indenabono" onchange="ajustarAbono()"> Indenização substitutiva do abono salarial</label>
+                <span class="campo oculto" id="campoAbono" style="flex-direction:row;align-items:center;gap:8px;">
+                    <span class="rotulo">Ano(s)-base</span>
+                    <input type="text" id="abono_anos" class="mono" style="width:150px" placeholder="2023, 2024">
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════ 5. BASES MÊS A MÊS ═════ -->
+    <div class="card oculto" id="cardBases">
+        <div class="card-titulo"><span class="num">5</span> Bases mês a mês (ainda não declaradas)</div>
+        <div class="card-corpo">
+            <div class="linha" style="align-items:center;">
+                <button class="btn-sec" onclick="montarMeses()">Montar os meses do período</button>
+                <span class="dica">Cria uma linha para cada mês entre a competência inicial e a final, mantendo o que já foi digitado.</span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="tab-bases">
+                    <thead>
+                        <tr>
+                            <th>Mês</th>
+                            <th>Base INSS mensal</th>
+                            <th>Base INSS 13º</th>
+                            <th title="Grau de exposição a agentes nocivos (Tabela 02)">Grau exp.</th>
+                            <th>Base FGTS processo</th>
+                            <th title="Base declarada só em SEFIP e não recolhida">FGTS só SEFIP</th>
+                            <th title="Base declarada antes no eSocial e não recolhida">FGTS decl. anterior</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="corpoBases"></tbody>
+                    <tfoot><tr id="totBases"></tr></tfoot>
+                </table>
+            </div>
+            <div class="dica">Valores em reais. Grau de exposição: 1 = sem aposentadoria especial (o comum); 2, 3 e 4 = aposentadoria especial de 15, 20 e 25 anos.</div>
+        </div>
+    </div>
+
+    <div id="resultado"></div>
+    <div class="rodape">
+        <a class="btn-voltar" href="/processo_trabalhista">Voltar à lista</a>
+        <button class="btn-gravar" id="btnGravar" onclick="gravar()">Gravar processo</button>
+    </div>
+
+</div>
+
+<script>
+const P       = {{ processo|tojson }};
+const PER     = {{ periodos|tojson }};
+const FUNCS   = {{ funcionarios|tojson }};
+const MES_ATUAL = '{{ mes_atual }}';
+
+function el(id) { return document.getElementById(id); }
+function soNum(s) { return String(s || '').replace(/\D/g, ''); }
+
+/* ── máscaras ── */
+function mascaraCpf(c) {
+    let v = soNum(c.value).slice(0, 11);
+    v = v.replace(/^(\d{3})(\d)/, '$1.$2').replace(/^(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d)/, '.$1-$2');
+    c.value = v;
+}
+function mascaraCnpj(c) {
+    let v = soNum(c.value).slice(0, 14);
+    v = v.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+         .replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2');
+    c.value = v;
+}
+function fmtProc(n) {
+    n = soNum(n);
+    if (n.length === 20) return n.slice(0,7) + '-' + n.slice(7,9) + '.' + n.slice(9,13) + '.' + n[13] + '.' + n.slice(14,16) + '.' + n.slice(16);
+    return n;
+}
+function mascaraProc(c) {
+    const lim = origem() === 2 ? 15 : 20;
+    const n = soNum(c.value).slice(0, lim);
+    c.value = n.length === 20 ? fmtProc(n) : n;
+}
+function fmtValor(cent) {
+    if (cent === null || cent === undefined || cent === '') return '';
+    const neg = cent < 0; cent = Math.abs(cent);
+    const s = (cent / 100).toFixed(2).split('.');
+    return (neg ? '-' : '') + s[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + s[1];
+}
+function lerValor(txt) {
+    txt = String(txt || '').trim();
+    if (!txt) return null;
+    const n = parseFloat(txt.replace(/\./g, '').replace(',', '.'));
+    return isNaN(n) ? null : Math.round(n * 100);
+}
+function mascaraValor(c) { c.value = c.value.replace(/[^\d.,]/g, ''); }
+
+/* ── datas: input type=date ⇄ AAAAMMDD ── */
+function dIn(id, v) { v = String(v || ''); el(id).value = v.length === 8 ? v.slice(0,4) + '-' + v.slice(4,6) + '-' + v.slice(6) : ''; }
+function dOut(id) { return soNum(el(id).value) || null; }
+function mIn(id, v) { v = String(v || ''); el(id).value = v.length === 6 ? v.slice(0,4) + '-' + v.slice(4) : ''; }
+function mOut(id) { const v = soNum(el(id).value); return v.length === 6 ? parseInt(v, 10) : null; }
+function radio(nome) { const r = document.querySelector('input[name=' + nome + ']:checked'); return r ? r.value : null; }
+function setRadio(nome, v) { document.querySelectorAll('input[name=' + nome + ']').forEach(r => r.checked = (String(r.value) === String(v))); }
+function mostra(id, sim) { el(id).classList.toggle('oculto', !sim); }
+function origem() { return parseInt(radio('origem') || '0', 10); }
+function tpContr() { return parseInt(el('tpcontr').value || '0', 10); }
+
+/* ── 1. trabalhador ── */
+function montarFuncs() {
+    const sel = el('selFunc');
+    FUNCS.forEach((f, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        const sit = (f.situacao === 'D' || f.datarescisao) ? ' (demitido)' : '';
+        o.textContent = f.nome + ' — matr. ' + String(f.matricula).padStart(6, '0') + sit;
+        sel.appendChild(o);
+    });
+}
+function escolherFunc() {
+    const i = el('selFunc').value;
+    if (i === '') return;
+    const f = FUNCS[i];
+    el('cpftrab').value = f.cpf || ''; mascaraCpf(el('cpftrab'));
+    el('nmtrab').value = f.nome || '';
+    dIn('dtnascto', f.dtnascto);
+    el('matricula_es').value = f.mat_es || '';
+    el('codcateg').value = f.codcateg || '';
+    ajustarContrato();
+}
+function alternarFora() {
+    const fora = el('chkFora').checked;
+    el('selFunc').disabled = fora;
+    if (fora) el('selFunc').value = '';
+    el('dicaTrab').textContent = fora
+        ? 'Trabalhador fora do cadastro: informe CPF, nome, nascimento e a categoria. A matrícula é a que a empresa vai criar para ele.'
+        : 'Escolha o funcionário: CPF, nome, nascimento e matrícula vêm do cadastro.';
+}
+
+/* ── 2. processo ── */
+function ajustarOrigem() {
+    const o = origem();
+    mostra('blocoJud', o === 1 || o === 3);
+    mostra('linhaPatPrec', o === 3);
+    mostra('blocoCCP', o === 2);
+    el('lblNum').textContent = o === 2 ? 'Número da ata / conciliação' : 'Número do processo';
+    el('dicaNum').textContent = o === 2 ? '15 algarismos' : '20 algarismos (padrão CNJ)';
+    mascaraProc(el('nrproctrab'));
+    // Na Justiça Comum o tipo de contrato só pode ser 1, 7 ou 9
+    [...el('tpcontr').options].forEach(op => {
+        if (!op.value) return;
+        op.disabled = (o === 3 && !['1', '7', '9'].includes(op.value));
+    });
+}
+function ajustarCCP() {
+    const t = radio('tpccp');
+    mostra('sepCnpj', t === '2' || t === '3');
+    mostra('campoCnpjCCP', t === '2' || t === '3');
+}
+let _cidTimer = null;
+function buscarCidade(q) {
+    clearTimeout(_cidTimer);
+    const lista = el('cidLista');
+    if (/^\d{7}$/.test(q.trim())) {           // digitou o código direto
+        el('cidCod').textContent = 'Código IBGE ' + q.trim();
+        el('cidNome').dataset.cod = q.trim();
+        lista.classList.add('oculto');
+        return;
+    }
+    if (q.trim().length < 3) { lista.classList.add('oculto'); return; }
+    _cidTimer = setTimeout(async () => {
+        try {
+            const r = await fetch('/api/cidades?q=' + encodeURIComponent(q.trim()) + '&uf=' + encodeURIComponent(el('ufvara').value));
+            const j = await r.json();
+            lista.innerHTML = '';
+            (j.lista || []).forEach(c => {
+                const d = document.createElement('div');
+                d.textContent = c.nome + ' / ' + c.uf + ' — ' + c.cod_ibge;
+                d.onclick = () => {
+                    el('cidNome').value = c.nome;
+                    el('cidNome').dataset.cod = String(c.cod_ibge);
+                    el('cidCod').textContent = 'Código IBGE ' + c.cod_ibge;
+                    if (!el('ufvara').value) el('ufvara').value = c.uf;
+                    lista.classList.add('oculto');
+                };
+                lista.appendChild(d);
+            });
+            lista.classList.toggle('oculto', !(j.lista || []).length);
+        } catch (e) { lista.classList.add('oculto'); }
+    }, 300);
+}
+
+/* ── 3. contrato ── */
+function ajustarContrato() {
+    const tp = tpContr();
+    // indContr: S para 1 a 4, N para 8; nos demais o usuário escolhe
+    const travado = (tp >= 1 && tp <= 4) || tp === 8;
+    if (tp >= 1 && tp <= 4) setRadio('indcontr', 'S');
+    if (tp === 8) setRadio('indcontr', 'N');
+    document.querySelectorAll('input[name=indcontr]').forEach(r => r.disabled = travado);
+    el('dicaIndContr').textContent = travado ? '(definido pelo tipo de contrato)' : '';
+    const indS = radio('indcontr') === 'S';
+
+    mostra('linhaAdmOrig', tp === 2 || tp === 4);
+    mostra('snReint', tp && tp !== 6 && indS);
+    mostra('blocoMudCateg', radio('indcateg') === 'S' || radio('indnatativ') === 'S');
+    mostra('blocoUnic', tp === 9);
+    mostra('linhaDtInicio', (tp === 6 && radio('indcontr') === 'N') || (tp && !el('matricula_es').value.trim()));
+    const compl = radio('indcontr') === 'N';
+    mostra('blocoCompl', compl);
+    mostra('linhaVinc', compl && tp !== 6);
+    mostra('linhaDeslig', compl && tp !== 6);
+    mostra('linhaTerm', compl && tp === 6);
+}
+
+/* ── 4/5. período e bases ── */
+function ajustarReperc() {
+    const r = el('indreperc').value;
+    mostra('cardBases', r === '1' || r === '5');
+}
+function ajustarAbono() { mostra('campoAbono', el('indenabono').checked); }
+
+const COLS_BASE = ['vrbccpmensal', 'vrbccp13', 'grauexp', 'vrbcfgtsproctrab', 'vrbcfgtssefip', 'vrbcfgtsdecant'];
+function linhaBase(per) {
+    const tr = document.createElement('tr');
+    tr.dataset.perref = per.perref;
+    const p = String(per.perref);
+    let h = '<td>' + p.slice(4) + '/' + p.slice(0, 4) + '</td>';
+    COLS_BASE.forEach(c => {
+        if (c === 'grauexp') {
+            const g = per.grauexp || 1;
+            h += '<td><select data-c="grauexp">' + [1, 2, 3, 4].map(n => '<option' + (n === g ? ' selected' : '') + '>' + n + '</option>').join('') + '</select></td>';
+        } else {
+            h += '<td><input type="text" data-c="' + c + '" value="' + fmtValor(per[c]) + '" oninput="mascaraValor(this)" onchange="totalizar()"></td>';
+        }
+    });
+    h += '<td><button class="btn-x" title="Tirar este mês" onclick="this.closest(\'tr\').remove(); totalizar();">✕</button></td>';
+    tr.innerHTML = h;
+    return tr;
+}
+function lerBases() {
+    return [...el('corpoBases').querySelectorAll('tr')].map(tr => {
+        const o = { perref: parseInt(tr.dataset.perref, 10) };
+        tr.querySelectorAll('[data-c]').forEach(i => {
+            o[i.dataset.c] = i.dataset.c === 'grauexp' ? parseInt(i.value, 10) : lerValor(i.value);
+        });
+        return o;
+    });
+}
+function desenharBases(lista) {
+    const corpo = el('corpoBases');
+    corpo.innerHTML = '';
+    lista.sort((a, b) => a.perref - b.perref).forEach(p => corpo.appendChild(linhaBase(p)));
+    totalizar();
+}
+function montarMeses() {
+    const ini = mOut('compini'), fim = mOut('compfim');
+    if (!ini || !fim || fim < ini) {
+        f10Alert('Informe antes a competência inicial e a final (bloco 4).', { tipo: 'info', titulo: 'Bases mês a mês' });
+        return;
+    }
+    const atuais = {};
+    lerBases().forEach(b => atuais[b.perref] = b);
+    const lista = [];
+    let a = Math.floor(ini / 100), m = ini % 100;
+    while (a * 100 + m <= fim && lista.length < 999) {
+        const pr = a * 100 + m;
+        lista.push(atuais[pr] || { perref: pr, grauexp: 1 });
+        m++; if (m > 12) { a++; m = 1; }
+    }
+    desenharBases(lista);
+}
+function totalizar() {
+    const tot = {};
+    lerBases().forEach(b => COLS_BASE.forEach(c => { if (c !== 'grauexp') tot[c] = (tot[c] || 0) + (b[c] || 0); }));
+    el('totBases').innerHTML = '<td>Total</td>' + COLS_BASE.map(c => '<td>' + (c === 'grauexp' ? '' : fmtValor(tot[c] || 0)) + '</td>').join('') + '<td></td>';
+}
+
+/* ── carregar / gravar ── */
+const TXT = ['nmtrab', 'matricula_es', 'codcateg', 'obsproctrab', 'ufvara', 'idvara', 'mtvdeslig',
+             'nmcargo', 'codcbo', 'natatividade', 'tpregtrab', 'tpregprev', 'tmpparc', 'dur_tpcontr',
+             'mtvdesligtsv', 'tpcontr', 'indreperc'];
+const DATAS = ['dtnascto', 'dtsent', 'dtccp', 'dtadmorig', 'dtinicio', 'dtadm', 'dur_dtterm',
+               'dtdeslig', 'dtprojfimapi', 'dtterm'];
+
+function carregar() {
+    montarFuncs();
+    if (!P || !P.id) { ajustarOrigem(); ajustarContrato(); ajustarReperc(); return; }
+    TXT.forEach(c => { if (P[c] !== null && P[c] !== undefined) el(c).value = P[c]; });
+    DATAS.forEach(c => dIn(c, P[c]));
+    el('cpftrab').value = P.cpftrab || ''; mascaraCpf(el('cpftrab'));
+    el('nrproctrab').value = fmtProc(P.nrproctrab || '');
+    el('infopatprec').value = fmtValor(P.infopatprec);
+    if (P.codmunic) { el('cidNome').dataset.cod = P.codmunic; el('cidCod').textContent = 'Código IBGE ' + P.codmunic; }
+    if (P.cnpjccp) { el('cnpjccp').value = P.cnpjccp; mascaraCnpj(el('cnpjccp')); }
+    ['origem', 'tpccp', 'indcontr', 'indreint', 'indcateg', 'indnatativ', 'indmotdeslig'].forEach(c => setRadio(c, P[c]));
+    if (P.estab_nrinsc) el('estab_nrinsc').value = P.estab_nrinsc;
+    mIn('compini', P.compini); mIn('compfim', P.compfim);
+    el('indensd').checked = P.indensd === 'S';
+    el('indenabono').checked = P.indenabono === 'S';
+    el('abono_anos').value = (P.abono_anos || []).join(', ');
+    const mc = (P.mudcategativ || [])[0];
+    if (mc) { el('mc_codcateg').value = mc.codCateg || ''; el('mc_natativ').value = mc.natAtividade || ''; dIn('mc_data', mc.dtMudCategAtiv); }
+    const un = (P.unicontr || [])[0];
+    if (un) { el('un_mat').value = un.matUnic || ''; el('un_codcateg').value = un.codCateg || ''; dIn('un_dtinicio', un.dtInicio); }
+    const rm = (P.remuneracao || [])[0];
+    if (rm) { dIn('rm_data', rm.dtRemun); el('rm_valor').value = fmtValor(rm.vrSalFx); el('rm_und').value = rm.undSalFixo || ''; }
+    if (P.matricula) {
+        const i = FUNCS.findIndex(f => f.matricula === P.matricula);
+        if (i >= 0) {
+            el('selFunc').value = i;
+            // Contrato já no eSocial não precisa guardar nome/nascimento: vêm do cadastro
+            if (!P.nmtrab) el('nmtrab').value = FUNCS[i].nome || '';
+            if (!P.dtnascto) dIn('dtnascto', FUNCS[i].dtnascto);
+        }
+    } else {
+        el('chkFora').checked = true; alternarFora();
+    }
+    ajustarOrigem(); ajustarCCP(); ajustarContrato(); ajustarReperc(); ajustarAbono();
+    desenharBases(PER.map(x => Object.assign({}, x)));
+}
+
+function coletar() {
+    const p = {};
+    TXT.forEach(c => p[c] = el(c).value.trim() || null);
+    DATAS.forEach(c => p[c] = dOut(c));
+    p.cpftrab = soNum(el('cpftrab').value) || null;
+    p.nrproctrab = soNum(el('nrproctrab').value) || null;
+    p.infopatprec = lerValor(el('infopatprec').value);
+    p.codmunic = el('cidNome').dataset.cod || null;
+    p.cnpjccp = soNum(el('cnpjccp').value) || null;
+    ['origem', 'tpccp', 'indcontr', 'indreint', 'indcateg', 'indnatativ', 'indmotdeslig'].forEach(c => p[c] = radio(c));
+    const i = el('selFunc').value;
+    p.matricula = (!el('chkFora').checked && i !== '') ? FUNCS[i].matricula : null;
+    p.estab_tpinsc = 1;
+    p.estab_nrinsc = el('estab_nrinsc').value;
+    p.compini = mOut('compini'); p.compfim = mOut('compfim');
+    p.indensd = el('indensd').checked ? 'S' : null;
+    p.indenabono = el('indenabono').checked ? 'S' : null;
+    p.abono_anos = el('abono_anos').value.split(/[^\d]+/).filter(a => a.length === 4).map(a => parseInt(a, 10));
+    if (el('mc_codcateg').value || el('mc_data').value) {
+        p.mudcategativ = [{ codCateg: el('mc_codcateg').value, natAtividade: el('mc_natativ').value || null, dtMudCategAtiv: dOut('mc_data') }];
+    }
+    if (el('un_mat').value || el('un_codcateg').value) {
+        p.unicontr = [{ matUnic: el('un_mat').value.trim() || null, codCateg: el('un_codcateg').value || null, dtInicio: dOut('un_dtinicio') }];
+    }
+    if (radio('indcontr') === 'N' && (el('rm_data').value || el('rm_valor').value)) {
+        p.remuneracao = [{ dtRemun: dOut('rm_data'), vrSalFx: lerValor(el('rm_valor').value), undSalFixo: el('rm_und').value || null }];
+    }
+    return p;
+}
+
+async function gravar() {
+    const btn = el('btnGravar'), painel = el('resultado');
+    btn.disabled = true;
+    painel.innerHTML = '<div class="resultado-ok">Gravando…</div>';
+    try {
+        const r = await fetch('/api/processo/gravar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: P && P.id ? P.id : null, processo: coletar(), periodos: lerBases() })
+        });
+        const j = await r.json();
+        if (j.ok) {
+            painel.innerHTML = '<div class="resultado-ok">✓ ' + j.msg + (j.aviso ? '<br><span style="font-weight:500;color:#92400e;">' + j.aviso + '</span>' : '') + '</div>';
+            if (!(P && P.id) && j.id) setTimeout(() => window.location.href = '/processo_trabalhista/editar?id=' + j.id, 900);
+        } else {
+            const itens = (j.erros || []).map(e => '<li>' + e + '</li>').join('');
+            painel.innerHTML = '<div class="resultado-err"><b>' + (j.msg || 'Não foi possível gravar.') + '</b>' + (itens ? '<ul>' + itens + '</ul>' : '') + '</div>';
+        }
+    } catch (e) {
+        painel.innerHTML = '<div class="resultado-err">Sem comunicação com o servidor. Tente de novo.</div>';
+    }
+    btn.disabled = false;
+    painel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+document.addEventListener('click', e => { if (!e.target.closest('.cid-wrap')) el('cidLista').classList.add('oculto'); });
+el('matricula_es').addEventListener('input', ajustarContrato);
+carregar();
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

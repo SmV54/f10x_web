@@ -774,6 +774,12 @@ const modulos = {
             { nome: 'FAP', itens: [
                 { icone: '🛡️', nome: 'FAP — Fator Acidentário de Prevenção', href: '/cad_fap', ok: true },
             ]},
+            // eSocial S-2500 / S-2501. O processo não depende da folha do mês:
+            // vale também com a folha Calculada/Fechada.
+            { nome: 'Processo Trabalhista', itens: [
+                { icone: '⚖️', nome: 'Processos Trabalhistas (S-2500)', href: '/processo_trabalhista', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true },
+                { icone: '💰', nome: 'Pagamentos do Processo (S-2501)', href: '#', classe: 'nav-fix2l' },
+            ]},
             // Secao propria, e nao um card dentro de Rescisao: simular nao e
             // parte do assunto Rescisao, e outro tipo de tarefa — ver quanto
             // custaria algo que AINDA NAO foi feito, sem gravar nada. Com a
