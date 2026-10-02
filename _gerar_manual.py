@@ -688,6 +688,9 @@ h2("Sistema")
 caminho("Configurações · Usuários e Permissões · Log de Auditoria")
 regra("Login por pessoa", "tab_cliente é o contrato e tab_usuario é quem loga. A tela de "
       "usuários é só do titular da conta.")
+regra("Limite de usuários", "LIMITE_USUARIOS_CLIENTE = 3 ativos por cliente, o titular "
+      "incluído. Conta só situacao='A': desativar libera a vaga. O titular não pode ser "
+      "desativado.")
 regra("Log", "gravado em tab_log pelo helper gravar_log(), que trunca os campos. "
       "Insert cru com código maior que o limite falha calado.")
 

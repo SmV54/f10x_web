@@ -266,7 +266,7 @@ tabela(["Tabela", "Para que serve"],
         ["Feriados", "Os feriados, que o cálculo usa no repouso remunerado."],
         ["Centros de Custo", "As divisões da empresa."],
         ["Filiais", "Os estabelecimentos."],
-        ["Usuários da Conta", "Quem mais pode entrar no sistema."]],
+        ["Usuários da Conta", "Quem mais pode entrar no sistema — até 3 usuários ativos, contando você."]],
        larguras=[4.6, 11.4])
 
 h3("Sobre as verbas")
@@ -759,6 +759,9 @@ p("O log de auditoria registra quem fez o quê e quando — útil quando mais de
 p("Se você tem uma equipe, cadastre cada pessoa como um usuário próprio, em "
   "Cadastros › Usuários da Conta. Cada um entra com o seu CPF e a sua senha, e "
   "o log passa a mostrar quem fez cada coisa.")
+p("Cada conta pode ter até 3 usuários ativos, contando o responsável — quem "
+  "criou a conta e o único que cadastra, altera e desativa os demais. Desativar "
+  "alguém libera a vaga; para ter mais usuários ao mesmo tempo, fale com a gente.")
 p()
 p("Existe ainda um card de Administrador, que aparece apenas para a equipe "
   "Folha10 — ele não faz parte do seu dia a dia.", italico=True, cor=CINZA)
