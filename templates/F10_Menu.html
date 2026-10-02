@@ -718,6 +718,9 @@ const modulos = {
                 { icone: '📋', nome: 'TRCT - Emissão Rescisão', href: '/calc_rescisao?modo=trct', ok: true, classe: 'nav-fix' },
                 { icone: '🧮', nome: 'Memória Cálculo Rescisão', href: '/calc_rescisao?modo=memoria', ok: true, classe: 'nav-fix' },
                 { icone: '📄', nome: 'Listagem dos Demitidos', href: '/lista_demitidos',                                   ok: true, classe: 'nav-fix' },
+                // Arquivo .SD do Empregador Web (o mesmo do Desktop). Só lê o
+                // cadastro e a folha: vale com a folha Calculada/Fechada.
+                { icone: '🛟', nome: 'Seguro-Desemprego (arquivo)', href: '/seguro_desemprego', ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 // ── Última linha: CANCELAMENTOS (Aviso Prévio + Rescisão) ──
                 { icone: '❌', nome: 'Cancelar Aviso Prévio',  href: '/select_funcionario?contexto=cancelar_aviso_previo', ok: true, classe: 'nav-fix', quebraLinha: true },
                 { icone: '❌', nome: 'Cancelar Rescisão',      href: '/select_funcionario?contexto=cancelar_rescisao',     ok: true, classe: 'nav-fix' },

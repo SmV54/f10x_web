@@ -31017,6 +31017,249 @@ def api_processo_excluir_esocial():
 
 
 # =========================================================
+# SEGURO-DESEMPREGO — arquivo .SD do Empregador Web
+# O mesmo arquivo do Folha10 Desktop (SR_Gravacao.vb, Gravacao_Seguro_
+# Desemprego_WEB; estruturas em Declara.vb): linhas de 300 posições —
+#   00 cabeçalho  (tipo de inscrição, CNPJ do estabelecimento, versão 001)
+#   01 trabalhador (um por demitido)
+#   99 rodapé     (quantidade de registros 01)
+# Um arquivo por estabelecimento, como no Desktop.
+# O web não tem PIS nem CTPS no cadastro: com a CTPS digital, número e série
+# saem do CPF (7 primeiros / 4 últimos dígitos) e o PIS vai zerado.
+# =========================================================
+SD_MOTIVOS_DIREITO = {"02", "03", "17"}   # sem justa causa, antecipada pelo empregador, indireta
+
+
+def _sd_txt(v, n):
+    """Texto: maiúsculo, sem acento, à esquerda, completado com espaços."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", str(v or "")).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"\s+", " ", s.upper()).strip()
+    return s[:n].ljust(n)
+
+
+def _sd_num(v, n):
+    """Número: só dígitos, à direita, completado com zeros."""
+    s = re.sub(r"\D", "", str(v or ""))
+    return s[-n:].rjust(n, "0") if s else "0" * n
+
+
+def _sd_data(v):
+    """AAAAMMDD → DDMMAAAA."""
+    v = re.sub(r"\D", "", str(v or ""))
+    return f"{v[6:8]}{v[4:6]}{v[:4]}" if len(v) == 8 else "0" * 8
+
+
+def _sd_grau(v):
+    """Grau de instrução do eSocial (01-12) → o do seguro-desemprego (01-11):
+    o eSocial tem a pós-graduação (10) que a tabela antiga não tem."""
+    try:
+        g = int(v or 0)
+    except (TypeError, ValueError):
+        return "00"
+    if g >= 11:
+        g -= 1          # 11 mestrado → 10, 12 doutorado → 11
+    elif g == 10:
+        g = 9           # pós-graduação → superior completo
+    return f"{g:02d}"
+
+
+def _sd_meses(dtadm, dtresc):
+    """Meses trabalhados (máx. 36): como o Desktop, conta o mês da admissão."""
+    a = re.sub(r"\D", "", str(dtadm or ""))
+    d = re.sub(r"\D", "", str(dtresc or ""))
+    if len(a) != 8 or len(d) != 8:
+        return 0
+    m = (int(d[:4]) - int(a[:4])) * 12 + (int(d[4:6]) - int(a[4:6]))
+    if int(d[6:8]) < int(a[6:8]):
+        m -= 1
+    return max(0, min(36, m + 1))
+
+
+def _sd_estab(cad, cnpj_emp):
+    """CNPJ do estabelecimento do funcionário: a filial (6 últimos dígitos
+    gravados no cadastro) sobre a raiz da empresa, ou o CNPJ da empresa."""
+    cnpj_emp = so_numeros(cnpj_emp)
+    fil = so_numeros(cad.get("filial") or "")
+    if len(fil) == 6 and len(cnpj_emp) == 14:
+        return cnpj_emp[:8] + fil
+    return cnpj_emp
+
+
+def _sd_ultimos_salarios(id_empresa, mats, rescisoes):
+    """{mat: [antepenúltimo, penúltimo, último]} — a remuneração (base do INSS
+    sem teto) da folha NORMAL dos 3 meses antes do mês da rescisão."""
+    out = {m: [0, 0, 0] for m in mats}
+    if not mats:
+        return out
+    meses = {}
+    for m in mats:
+        d = re.sub(r"\D", "", str(rescisoes.get(m) or ""))
+        if len(d) != 8:
+            continue
+        a, mm = int(d[:4]), int(d[4:6])
+        lst = []
+        for k in (3, 2, 1):
+            t = a * 12 + (mm - 1) - k
+            lst.append((t // 12) * 100 + t % 12 + 1)
+        meses[m] = lst
+    todos = sorted({f for l in meses.values() for f in l})
+    if not todos:
+        return out
+    try:
+        rows = (supabase.table("tab_total").select("matricula, folha, valor_base_inss_semlimite")
+                .eq("id_empresa", id_empresa).eq("folha_tipo", "N").in_("matricula", list(mats))
+                .in_("folha", todos).execute().data or [])
+    except Exception as e:
+        print(f"[SD] salarios: {e}")
+        rows = []
+    for r in rows:
+        m = int(r.get("matricula") or 0)
+        if m in meses and int(r.get("folha") or 0) in meses[m]:
+            i = meses[m].index(int(r["folha"]))
+            out[m][i] += int(r.get("valor_base_inss_semlimite") or 0)
+    return out
+
+
+def _sd_aviso_indenizado(id_empresa, mats):
+    """{mat: True/False/None} pelo aviso prévio registrado (op1=9)."""
+    out = {}
+    if not mats:
+        return out
+    try:
+        for e in (supabase.table("tab_eventos").select("matricula, campotxt1, id")
+                  .eq("id_empresa", id_empresa).eq("op1", 9).in_("matricula", list(mats))
+                  .order("id").execute().data or []):
+            t = str(e.get("campotxt1") or "").strip().lower()
+            out[int(e["matricula"])] = True if t.startswith("inden") else (False if t.startswith("trab") else None)
+    except Exception as e:
+        print(f"[SD] aviso: {e}")
+    return out
+
+
+def _sd_demitidos(id_empresa):
+    """Demitidos dos últimos 150 dias, com o que o arquivo precisa."""
+    lim = (_agora_brasilia() - timedelta(days=150)).strftime("%Y%m%d")
+    try:
+        cads = (supabase.table("tab_cad")
+                .select("matricula, nome, cpf, nomemae, sexo, grauinstr, dtnascto, dtadm, datarescisao, "
+                        "motrescisao, cbofuncao, qtdhrssem, filial, ender_dsclograd, ender_nrlograd, "
+                        "ender_complemento, ender_cep, ender_uf")
+                .eq("id_empresa", id_empresa).gte("datarescisao", lim)
+                .order("datarescisao", desc=True).execute().data or [])
+    except Exception as e:
+        print(f"[SD] demitidos: {e}")
+        return []
+    return [c for c in cads if len(re.sub(r"\D", "", str(c.get("datarescisao") or ""))) == 8]
+
+
+@app.route("/seguro_desemprego")
+def seguro_desemprego():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    cnpj_emp = session.get("cnpj_empresa", "")
+    cads = _sd_demitidos(id_empresa)
+    mats = [int(c["matricula"]) for c in cads]
+    sal = _sd_ultimos_salarios(id_empresa, mats, {int(c["matricula"]): c.get("datarescisao") for c in cads})
+    avi = _sd_aviso_indenizado(id_empresa, mats)
+    linhas = []
+    for c in cads:
+        m = int(c["matricula"])
+        mot = str(c.get("motrescisao") or "").zfill(2)
+        d = str(c.get("datarescisao"))
+        est = _sd_estab(c, cnpj_emp)
+        linhas.append({
+            "matricula": m, "nome": c.get("nome") or "", "cpf": c.get("cpf") or "",
+            "rescisao_fmt": f"{d[6:8]}/{d[4:6]}/{d[:4]}",
+            "motivo": mot, "motivo_txt": _MOTIVO_DESC_RESC.get(mot, f"Motivo {mot}"),
+            "direito": mot in SD_MOTIVOS_DIREITO,
+            "meses": _sd_meses(c.get("dtadm"), d),
+            "aviso_ind": avi.get(m),
+            "salarios": sal.get(m, [0, 0, 0]),
+            "estab": est, "estab_fmt": _fmt_cnpj(est),
+        })
+    return render_template("F10_Seguro_Desemprego.html", versao=ler_versao(),
+                           empresa=session.get("empresa_info", ""), nome=session.get("nome", ""),
+                           linhas=linhas)
+
+
+@app.route("/api/seguro_desemprego/arquivo", methods=["POST"])
+def api_seguro_desemprego_arquivo():
+    """Monta o .SD dos selecionados. Corpo: {itens: [{matricula, meses, recebeu, aviso}]}."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_empresa = _get_id_empresa()
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    itens = (request.get_json(silent=True) or {}).get("itens") or []
+    pedido = {}
+    for it in itens:
+        try:
+            pedido[int(it.get("matricula"))] = it
+        except (TypeError, ValueError):
+            continue
+    if not pedido:
+        return jsonify({"ok": False, "msg": "Marque ao menos um funcionário."})
+    cads = [c for c in _sd_demitidos(id_empresa) if int(c["matricula"]) in pedido]
+    if not cads:
+        return jsonify({"ok": False, "msg": "Os funcionários marcados não estão entre os demitidos da lista."})
+    sem_direito = [f"{int(c['matricula']):06d}" for c in cads
+                   if str(c.get("motrescisao") or "").zfill(2) not in SD_MOTIVOS_DIREITO]
+    if sem_direito:
+        return jsonify({"ok": False, "msg": ("O motivo da rescisão não dá direito ao seguro-desemprego: "
+                                             "matrícula " + ", ".join(sem_direito) + ".")})
+    estabs = {_sd_estab(c, cnpj_emp) for c in cads}
+    if len(estabs) > 1:
+        return jsonify({"ok": False, "msg": ("Marque funcionários de um estabelecimento só: o arquivo "
+                                             "leva um CNPJ no cabeçalho. Gere um arquivo para cada.")})
+    estab = estabs.pop()
+    if len(estab) != 14:
+        return jsonify({"ok": False, "msg": "A empresa está sem CNPJ válido no cadastro."})
+
+    mats = [int(c["matricula"]) for c in cads]
+    sal = _sd_ultimos_salarios(id_empresa, mats, {int(c["matricula"]): c.get("datarescisao") for c in cads})
+    linhas = ["00" + "1" + estab + "001" + " " * 280]
+    avisos = []
+    for c in cads:
+        m = int(c["matricula"])
+        it = pedido[m]
+        cpf = _sd_num(c.get("cpf"), 11)
+        ender = " ".join(x for x in (str(c.get("ender_dsclograd") or "").strip(),
+                                     str(c.get("ender_nrlograd") or "").strip()) if x)
+        comp = str(c.get("ender_complemento") or "").strip() or "0"
+        sx = {"M": "1", "F": "2"}.get(str(c.get("sexo") or "").upper()[:1], "0")
+        try:
+            meses = max(0, min(36, int(it.get("meses"))))
+        except (TypeError, ValueError):
+            meses = _sd_meses(c.get("dtadm"), c.get("datarescisao"))
+        recebeu = "1" if str(it.get("recebeu") or "S").upper()[:1] == "S" else "2"
+        aviso = "1" if str(it.get("aviso") or "N").upper()[:1] == "S" else "2"
+        s3 = sal.get(m, [0, 0, 0])
+        if not all(s3):
+            avisos.append(f"{m:06d}: sem a folha normal de algum dos 3 meses — salário zerado no arquivo.")
+        reg = ("01" + cpf + _sd_txt(c.get("nome"), 40) + _sd_txt(ender, 40) + _sd_txt(comp, 16)
+               + _sd_num(c.get("ender_cep"), 8) + _sd_txt(c.get("ender_uf"), 2) + "00" + "00000000"
+               + _sd_txt(c.get("nomemae"), 40) + "0" * 11
+               + cpf[:7].rjust(8, "0") + cpf[7:].rjust(5, "0") + _sd_txt(c.get("ender_uf"), 2)
+               + _sd_num(c.get("cbofuncao"), 6) + _sd_data(c.get("dtadm")) + _sd_data(c.get("datarescisao"))
+               + sx + _sd_grau(c.get("grauinstr")) + _sd_data(c.get("dtnascto"))
+               + _sd_num(c.get("qtdhrssem"), 2)
+               + _sd_num(s3[0], 10) + _sd_num(s3[1], 10) + _sd_num(s3[2], 10)
+               + f"{meses:02d}" + recebeu + aviso + "000" + "0000" + "0" + " " * 28)
+        if len(reg) != 300:
+            return jsonify({"ok": False, "msg": f"Erro interno: registro da matrícula {m} com {len(reg)} posições."})
+        linhas.append(reg)
+    rodape = "99" + f"{len(cads):05d}" + " " * 293
+    conteudo = "\r\n".join(linhas) + "\r\n" + rodape + "\r"
+    nome_arq = (f"SEGURO_DESEMPREGO_{int(id_empresa):06d}_Data="
+                f"{_agora_brasilia().strftime('%Y%m%d_%Hh%M')}.SD")
+    gravar_log("SEG_DESEMP", f"arquivo .SD com {len(cads)} funcionário(s): "
+                             + ", ".join(f"{m:06d}" for m in mats), id_empresa=id_empresa)
+    return jsonify({"ok": True, "arquivo": nome_arq, "conteudo": conteudo, "avisos": avisos,
+                    "msg": f"Arquivo gerado com {len(cads)} funcionário(s)."})
+
+
+# =========================================================
 # FAVICON — icone da aba do navegador
 # =========================================================
 @app.route("/favicon.ico")

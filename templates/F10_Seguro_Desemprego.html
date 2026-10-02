@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Seguro-Desemprego</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT ── */
+.conteudo { max-width: 1180px; margin: 32px auto; padding: 0 24px 60px; }
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+.btn-novo {
+    margin-left: auto; background: #18795b; border: none; color: #fff;
+    font-size: 13px; font-weight: 600; font-family: var(--sans);
+    padding: 10px 22px; border-radius: 8px; cursor: pointer; text-decoration: none;
+}
+.btn-novo:hover { background: #126048; }
+
+/* ── CARD / TABELA ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; }
+.card-titulo {
+    padding: 10px 20px 9px; background: #f8fafc; border-bottom: 1px solid var(--border);
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #4b5e7a;
+}
+table { width: 100%; border-collapse: collapse; }
+th {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #64748b; text-align: left; padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+    background: #f8fafc;
+}
+td { padding: 11px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: #f8fafc; }
+.mono { font-family: var(--mono); font-size: 12.5px; color: #1e293b; white-space: nowrap; }
+.sub  { font-size: 11px; color: #64748b; margin-top: 2px; }
+.tag { display: inline-block; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.tag-enviado  { background: #dcfce7; color: #166534; }
+.tag-pendente { background: #fef3c7; color: #92400e; }
+.tag-novo     { background: #f1f5f9; color: #64748b; }
+.tag-excluido { background: #fee2e2; color: #991b1b; }
+.acoes { display: flex; gap: 6px; justify-content: flex-end; }
+.btn-mini {
+    font-size: 12px; font-weight: 600; font-family: var(--sans); padding: 5px 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: #fff; color: #334155; cursor: pointer; text-decoration: none;
+}
+.btn-mini:hover { border-color: var(--accent); color: var(--accent); }
+.btn-mini.perigo { color: #b91c1c; border-color: #fecaca; }
+.btn-mini.perigo:hover { background: #fef2f2; }
+.vazio { padding: 28px 20px; font-size: 13px; color: #64748b; line-height: 1.6; }
+.msg { margin-bottom: 14px; }
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac;
+                 border-radius: 8px; font-size: 13px; color: #15803d; }
+.resultado-err { padding: 12px 18px; background: #fef2f2; border: 1px solid #fca5a5;
+                 border-radius: 8px; font-size: 13px; color: #991b1b; }
+.sel-sn { font-family: var(--sans); font-size: 12.5px; border: 1px solid #cbd5e1; border-radius: 5px; padding: 3px 4px; }
+.inp-mes { width: 46px; font-family: var(--mono); font-size: 12.5px; text-align: right; border: 1px solid #cbd5e1; border-radius: 5px; padding: 3px 5px; }
+tr.sem-direito td { color: #94a3b8; background: #fafafa; }
+.tag-sim { background: #dcfce7; color: #166534; }
+.tag-nao { background: #f1f5f9; color: #64748b; }
+.rodape { display: flex; align-items: center; gap: 12px; justify-content: flex-end; margin-top: 16px; }
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; font-size: 13px; color: #15803d; margin-bottom: 12px; }
+.dica { font-size: 12px; color: #64748b; line-height: 1.6; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Seguro-Desemprego — Arquivo do Empregador Web</span>
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/menu">&#8592; Menu</a>
+        <div>
+            <div class="rel-titulo">Seguro-Desemprego — Arquivo do Empregador Web</div>
+            <div class="rel-subtitulo">Gera o arquivo .SD para importar no Empregador Web — demitidos dos últimos 150 dias</div>
+        </div>
+    </div>
+
+    <div class="msg" id="msg"></div>
+
+    <div class="card">
+        <div class="card-titulo">Demitidos</div>
+        {% if linhas %}
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:28px;"><input type="checkbox" id="chkTodos" onchange="marcarTodos(this.checked)"></th>
+                    <th>Funcionário</th>
+                    <th>Rescisão</th>
+                    <th>Direito</th>
+                    <th>Estabelecimento</th>
+                    <th style="text-align:right;">Últimos 3 salários</th>
+                    <th title="Meses trabalhados (máximo 36)">Meses</th>
+                    <th title="Recebeu salário nos últimos 6 meses?">Recebeu 6 meses</th>
+                    <th title="O aviso prévio foi indenizado?">Aviso indenizado</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for l in linhas %}
+                <tr data-mat="{{ l.matricula }}" class="{% if not l.direito %}sem-direito{% endif %}">
+                    <td>{% if l.direito %}<input type="checkbox" class="chk" value="{{ l.matricula }}">{% endif %}</td>
+                    <td>{{ l.nome }}<div class="sub mono">matr. {{ '%06d'|format(l.matricula) }}</div></td>
+                    <td class="mono">{{ l.rescisao_fmt }}<div class="sub" title="{{ l.motivo_txt }}">{{ l.motivo }} — {{ l.motivo_txt[:38] }}{% if l.motivo_txt|length > 38 %}…{% endif %}</div></td>
+                    <td>{% if l.direito %}<span class="tag tag-sim">Sim</span>{% else %}<span class="tag tag-nao">Não</span>{% endif %}</td>
+                    <td class="mono" style="font-size:12px;">{{ l.estab_fmt }}</td>
+                    <td class="mono" style="text-align:right;font-size:12px;">
+                        {% for v in l.salarios %}{{ '{:,.2f}'.format(v / 100).replace(',', 'X').replace('.', ',').replace('X', '.') }}{% if not loop.last %}<br>{% endif %}{% endfor %}
+                    </td>
+                    <td><input type="text" class="inp-mes" data-c="meses" value="{{ l.meses }}" maxlength="2" oninput="this.value=this.value.replace(/\D/g,'')"></td>
+                    <td><select class="sel-sn" data-c="recebeu"><option value="S" selected>Sim</option><option value="N">Não</option></select></td>
+                    <td><select class="sel-sn" data-c="aviso">
+                        <option value=""{% if l.aviso_ind is none %} selected{% endif %}>—</option>
+                        <option value="S"{% if l.aviso_ind %} selected{% endif %}>Sim</option>
+                        <option value="N"{% if l.aviso_ind == false %} selected{% endif %}>Não</option>
+                    </select></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="vazio">Nenhum funcionário demitido nos últimos 150 dias.</div>
+        {% endif %}
+    </div>
+
+    <div class="dica" style="margin-top:12px;">
+        Têm direito: dispensa sem justa causa (02), rescisão antecipada do contrato a termo pelo empregador (03)
+        e rescisão indireta (17). Os salários são a remuneração da folha normal dos 3 meses antes do mês da rescisão
+        (antepenúltimo, penúltimo, último). Um arquivo por estabelecimento.
+    </div>
+
+    <div class="rodape">
+        <button class="btn-novo" style="margin-left:0;" onclick="gerar()">Gerar arquivo .SD</button>
+    </div>
+
+</div>
+
+<script>
+function marcarTodos(v) { document.querySelectorAll('.chk').forEach(c => c.checked = v); }
+
+async function gerar() {
+    const el = document.getElementById('msg');
+    const itens = [];
+    let semAviso = [];
+    document.querySelectorAll('.chk:checked').forEach(c => {
+        const tr = c.closest('tr');
+        const it = { matricula: parseInt(tr.dataset.mat, 10) };
+        tr.querySelectorAll('[data-c]').forEach(i => it[i.dataset.c] = i.value);
+        if (!it.aviso) semAviso.push(String(it.matricula).padStart(6, '0'));
+        itens.push(it);
+    });
+    if (!itens.length) { el.innerHTML = '<div class="resultado-err">Marque ao menos um funcionário.</div>'; return; }
+    if (semAviso.length) {
+        el.innerHTML = '<div class="resultado-err">Informe se o aviso prévio foi indenizado: matrícula ' + semAviso.join(', ') + '.</div>';
+        return;
+    }
+    try {
+        const r = await fetch('/api/seguro_desemprego/arquivo', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ itens: itens })
+        });
+        const j = await r.json();
+        if (!j.ok) { el.innerHTML = '<div class="resultado-err">' + (j.msg || 'Não foi possível gerar.') + '</div>'; return; }
+        const blob = new Blob([j.conteudo], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = j.arquivo;
+        document.body.appendChild(a); a.click(); a.remove();
+        const av = (j.avisos || []).map(x => '<br><span style="color:#92400e;">' + x + '</span>').join('');
+        el.innerHTML = '<div class="resultado-ok">✓ ' + j.msg + ' Arquivo: <b>' + j.arquivo + '</b>' + av + '</div>';
+    } catch (e) {
+        el.innerHTML = '<div class="resultado-err">Sem comunicação com o servidor. Tente de novo.</div>';
+    }
+}
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>
