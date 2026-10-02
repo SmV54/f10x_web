@@ -26337,8 +26337,10 @@ def api_tab_mov_gravar():
             # Para verba H, calcula valor = horas × sal_hora
             # Para verba D, calcula valor = dias × sal_dia
             if verba_unid == "H" and qtd > 0:
+                # com o adicional da rubrica, como a folha (0074 → × 2)
                 sh = sal_hora_map.get(mat_int, 0)
-                valor_gravar = int(round(qtd / 60 * sh))
+                _mult = 1 + _pct_rubricas(id_cliente).get(int(cod_verba), 0) / 100
+                valor_gravar = int(round(qtd / 60 * sh * _mult))
             elif verba_unid == "D" and qtd > 0:
                 sd = sal_dia_map.get(mat_int, 0)
                 valor_gravar = int(round(qtd * sd))
@@ -26439,7 +26441,8 @@ def api_tab_mov_alterar():
                             sh = vrsalfx
                         else:
                             sh = _sal_hora_exato(vrsalfx, "M", qtdhrsmes)
-                        valor_gravar = int(round(qtd / 60 * sh))
+                        _mult = 1 + _pct_rubricas(id_cliente).get(int(cod_verba), 0) / 100
+                        valor_gravar = int(round(qtd / 60 * sh * _mult))
             except Exception:
                 pass
 
@@ -26730,7 +26733,8 @@ def _repl_montar(id_cliente, id_empresa, anomes, folha_orig):
 
         unid = vi["unid_verba"]
         if unid == "H" and qtd > 0:
-            valor_novo = int(round(qtd / 60 * sal_hora.get(mat, 0)))
+            _mult = 1 + _pct_rubricas(id_cliente).get(int(cod), 0) / 100
+            valor_novo = int(round(qtd / 60 * sal_hora.get(mat, 0) * _mult))
         elif unid == "D" and qtd > 0:
             valor_novo = int(round(qtd * sal_dia.get(mat, 0)))
         else:
@@ -52739,10 +52743,13 @@ def api_visualizar_calculo_dados():
             formula = ""
             # Verba H: recalcula valor = horas × sal_hora (ignora o que está no banco)
             if ri.get("unid") == "H" and qtd > 0:
+                # Mesma conta da folha e da rescisão: horas × salário-hora ×
+                # (1 + percentual da rubrica). Sem o percentual a hora extra
+                # 100% aparecia pela metade aqui (SMV 02/10/2026).
                 sh  = sal_hora_map.get(mat, 0)
-                val = round(qtd / 60 * sh, 4)
-                hh_q = qtd // 60; mm_q = qtd % 60
-                formula = (f"{hh_q:02d}h{mm_q:02d} × {_fmt_brl(int(sh))}/h"
+                pct_v = _pct_rubricas(id_cliente).get(cod, 0)
+                val = round(qtd / 60 * sh * (1 + pct_v / 100), 4)
+                formula = (f"{_horas_conv(qtd)} × {_sal_hora_txt(sh)}/h{_mult_txt(pct_v)}"
                            f"  =  {_fmt_brl(int(round(val)))}")
             # Verba D: recalcula valor = qtd_dias × sal_dia
             elif ri.get("unid") == "D" and qtd > 0:
