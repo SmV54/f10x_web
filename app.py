@@ -1039,7 +1039,7 @@ TEMPO_BLOQUEIO_MINUTOS = 10
 # =========================================================
 # Quantos usuarios cada cliente pode ter (inclui o titular). Passou disso, so
 # falando com a gente — a tela manda entrar em contato.
-LIMITE_USUARIOS_CLIENTE = 2
+LIMITE_USUARIOS_CLIENTE = 3
 
 
 def _cliente_por_cpf(cpf):
