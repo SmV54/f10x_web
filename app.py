@@ -9449,7 +9449,8 @@ def _calc_rescisao_nucleo(body, sim=None):
     # ── Verbas variáveis que entram na média (inc_rescisao) ──
     try:
         r_rub = (supabase.table("tab_rubrica")
-                 .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, inc_rescisao, tpr_inc_cp, tpr_inc_irrf, tpr_inc_fgts")
+                 .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, inc_rescisao, tpr_inc_cp, tpr_inc_irrf, tpr_inc_fgts, "
+                         "percentual, verbas_somabase")
                  .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").order("cod_rubr").execute())
         rubrics = r_rub.data or []
     except Exception:
@@ -9476,6 +9477,8 @@ def _calc_rescisao_nucleo(body, sim=None):
                 "icp":  str(r.get("tpr_inc_cp")   or ""),
                 "iir":  str(r.get("tpr_inc_irrf") or ""),
                 "ift":  str(r.get("tpr_inc_fgts") or ""),
+                "pct":  float(r.get("percentual") or 0),
+                "vsb":  str(r.get("verbas_somabase") or "").strip(),
             }
 
     # Verbas manuais (origem='M') da rescisão do mês, por matrícula. Não são
@@ -9815,6 +9818,13 @@ def _calc_rescisao_nucleo(body, sim=None):
         sal_mes_ad  = sal_mes + adic_total + ul_total   # remuneracao mensal cheia
 
         dias_saldo = min(dt_resc.day, 30)
+        # Admitido no PRÓPRIO mês da rescisão (SMV 02/10/2026): os dias antes da
+        # admissão saem do saldo. O dia da admissão conta como trabalhado — a
+        # mesma regra da folha mensal (ETAPA 1020): admitido em 15 e demitido
+        # em 28 são 14 dias. Antes o saldo pagava do dia 1 até a rescisão.
+        adm_no_mes = bool(dt_adm and (dt_adm.year, dt_adm.month) == (dt_resc.year, dt_resc.month))
+        if adm_no_mes:
+            dias_saldo = max(0, dias_saldo - (dt_adm.day - 1))
 
         # ── Afastamento no mês da rescisão (SMV 24/09/2026) ──
         # O saldo paga só os dias REALMENTE trabalhados. Os dias afastados
@@ -9826,7 +9836,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # Antes o saldo pagava o mês inteiro até a data da rescisão, e o
         # afastamento era acertado à mão com 0009/0010 digitadas.
         dias_atest = dias_afast_inss = 0
-        _ini_c = anomes + "01"
+        _ini_c = dt_adm.strftime("%Y%m%d") if adm_no_mes else anomes + "01"
         _fim_c = dt_resc.strftime("%Y%m%d")
         for _af in _afast_resc.get(mat, []):
             _da, _di, _ = _split_afast_mes(_norm_data8(_af.get("data1i")),
@@ -9956,10 +9966,31 @@ def _calc_rescisao_nucleo(body, sim=None):
             # verba H/D: valor = qtd × salário-hora/dia (ignora valor gravado, que
             # pode estar defasado); demais usam o valor lançado.
             if unid_m == "H" and qtd_m > 0:
-                val_m = int(round(qtd_m / 60 * sal_hora_man))
+                # Mesma conta da folha mensal: horas × salário-hora × (1 +
+                # percentual da rubrica). Sem o percentual a hora extra 100%
+                # (0074) saía pelo valor da hora normal (SMV 02/10/2026).
+                # verbas_somabase: as verbas listadas na rubrica (adicionais
+                # do mês) ampliam a base do salário-hora, como na folha mensal.
+                pct_m  = ri_m.get("pct") or 0
+                mult_m = 1 + pct_m / 100
+                sh_m, obs_sb_m = sal_hora_man, ""
+                if ri_m.get("vsb") and qhm:
+                    _som = 0
+                    for _s in ri_m["vsb"].split(","):
+                        try:
+                            _c = int(_s.strip())
+                        except ValueError:
+                            continue
+                        _som += int({**adics_mes_r, **ul_mes_r}.get(_c, 0))
+                    if _som > 0:
+                        sh_m = round((sal_mes + _som) / qhm, 4)
+                        obs_sb_m = (f"base {_fmt_brl(sal_mes)} + {_fmt_brl(_som)} "
+                                    f"/ {qhm}h = {_fmt_brl(int(round(sh_m)))}/h  |  ")
+                val_m = int(round(qtd_m / 60 * sh_m * mult_m))
                 _hh, _mm = qtd_m // 60, qtd_m % 60
-                det_m = (f"{_hh:02d}h{_mm:02d} × {_fmt_brl(int(round(sal_hora_man)))}/h"
-                         f"  =  {_fmt_brl(val_m)}")
+                det_m = (f"{obs_sb_m}{_hh:02d}h{_mm:02d} × {_fmt_brl(int(round(sh_m)))}/h"
+                         + (f" × {mult_m:g} ({pct_m:g}%)" if pct_m else "")
+                         + f"  =  {_fmt_brl(val_m)}")
             elif unid_m == "D" and qtd_m > 0:
                 val_m = int(round(qtd_m * sal_dia_man))
                 det_m = (f"{qtd_m} {'dia' if qtd_m == 1 else 'dias'} × "
