@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Pagamento de Processo Trabalhista</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --label:     #374151;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: var(--label); min-height: 100vh; }
+
+/* ── TOPO ── */
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 15px; font-weight: 600; color: var(--text-head); text-align: center;
+                display: flex; align-items: center; justify-content: center; gap: 12px; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+/* ── LAYOUT ── */
+.conteudo { max-width: 1180px; margin: 28px auto; padding: 0 24px 80px; }
+.rel-header { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+.btn-voltar {
+    display: flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: #64748b; font-size: 12px; font-family: var(--sans);
+    padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    text-decoration: none; transition: 0.15s; white-space: nowrap;
+}
+.btn-voltar:hover { border-color: var(--accent); color: var(--accent); }
+.rel-titulo    { font-size: 18px; font-weight: 600; color: #1e293b; }
+.rel-subtitulo { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.aviso-enviado {
+    background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 10px;
+    padding: 11px 16px; font-size: 13px; margin-bottom: 16px; line-height: 1.5;
+}
+
+/* ── CARD ── */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 16px; }
+.card-titulo {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 20px 10px; background: #f8fafc; border-bottom: 1px solid var(--border);
+    border-radius: 14px 14px 0 0;
+    font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #334155;
+}
+.num {
+    width: 22px; height: 22px; border-radius: 50%; background: #2563eb; color: #fff;
+    font-size: 11.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.card-corpo { padding: 16px 20px 18px; display: flex; flex-direction: column; gap: 14px; }
+.linha { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.campo { display: flex; flex-direction: column; gap: 4px; }
+.campo > label, .rotulo {
+    font-size: 10.5px; font-weight: 600; color: #64748b; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.campo input[type=text], .campo input[type=date], .campo input[type=month], .campo select, .campo textarea {
+    font-family: var(--sans); font-size: 13.5px; color: #1e293b; background: #fff;
+    border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 7px 10px; outline: none;
+}
+.campo input:focus, .campo select:focus, .campo textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,.13); }
+.campo input[readonly] { background: #f1f5f9; color: #475569; }
+.mono { font-family: var(--mono) !important; }
+.dica { font-size: 11.5px; color: #64748b; line-height: 1.5; }
+.grupo-radio { display: flex; gap: 6px 16px; flex-wrap: wrap; align-items: center; padding: 6px 0 2px; }
+.grupo-radio label { font-size: 13px; color: #1e293b; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.sep { width: 1px; align-self: stretch; background: #e2e8f0; margin: 0 4px; }
+.sub-bloco {
+    border: 1px dashed #cbd5e1; border-radius: 10px; padding: 12px 14px; background: #fbfdff;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.sub-bloco-tit { font-size: 12px; font-weight: 700; color: #1e3a8a; }
+.oculto { display: none !important; }
+.sn { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; }
+.sn .txt { font-size: 13px; color: #1e293b; min-width: 330px; }
+.sn label { font-size: 13px; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+
+/* município */
+.cid-wrap { position: relative; }
+.cid-lista {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 20; background: #fff;
+    border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 8px 20px rgba(15,23,42,.12);
+    max-height: 220px; overflow-y: auto;
+}
+.cid-lista div { padding: 7px 10px; font-size: 13px; cursor: pointer; }
+.cid-lista div:hover { background: #eff6ff; }
+
+/* ── BASES MÊS A MÊS ── */
+.tab-bases { width: 100%; border-collapse: collapse; }
+.tab-bases th {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b;
+    text-align: right; padding: 7px 8px; border-bottom: 1px solid var(--border); background: #f8fafc; white-space: nowrap;
+}
+.tab-bases th:first-child { text-align: left; }
+.tab-bases td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; text-align: right; }
+.tab-bases td:first-child { text-align: left; font-family: var(--mono); font-size: 13px; color: #1e293b; white-space: nowrap; }
+.tab-bases input, .tab-bases select {
+    width: 120px; font-family: var(--mono); font-size: 13px; text-align: right; color: #1e293b;
+    border: 1px solid #cbd5e1; border-radius: 5px; padding: 5px 7px;
+}
+.tab-bases select { width: 70px; text-align: left; }
+.tab-bases tfoot td { font-family: var(--mono); font-weight: 700; color: #1e293b; background: #f8fafc; }
+.btn-sec {
+    font-size: 12.5px; font-weight: 600; font-family: var(--sans); padding: 7px 14px; border-radius: 7px;
+    border: 1px solid var(--accent); background: #fff; color: var(--accent); cursor: pointer;
+}
+.btn-sec:hover { background: #eff6ff; }
+.btn-x { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 15px; }
+
+/* ── RODAPÉ ── */
+.rodape { display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-top: 6px; }
+.btn-gravar {
+    background: #18795b; border: none; color: white; font-size: 14px; font-family: var(--sans); font-weight: 600;
+    padding: 11px 32px; border-radius: 8px; cursor: pointer;
+}
+.btn-gravar:hover { background: #126048; }
+.btn-gravar:disabled { opacity: 0.5; cursor: not-allowed; }
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
+                 font-size: 13px; font-weight: 600; color: #15803d; margin-bottom: 12px; }
+.resultado-err { padding: 12px 18px; background: #fef2f2; border: 1px solid #fca5a5; border-radius: 8px;
+                 font-size: 13px; color: #991b1b; margin-bottom: 12px; line-height: 1.6; }
+.resultado-err ul { margin: 4px 0 0 18px; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">
+        <span>Pagamento de Processo Trabalhista</span>
+        {% if folha_ativa %}{% include "_folha_ativa_badge.html" %}{% endif %}
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/processo_pagamentos'">&#8592; Lista</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="rel-header">
+        <a class="btn-voltar" href="/processo_pagamentos">&#8592; Pagamentos</a>
+        <div>
+            <div class="rel-titulo">{% if pagto.id %}Pagamento do Processo{% else %}Novo Pagamento do Processo{% endif %} (S-2501)</div>
+            <div class="rel-subtitulo">INSS e IRRF de uma parcela paga — os meses de referência vêm das bases do processo (S-2500)</div>
+        </div>
+    </div>
+
+    {% if enviado %}
+    <div class="aviso-enviado">
+        <b>Este pagamento já foi enviado ao eSocial.</b> Se você alterar e gravar, a correção vai precisar
+        de uma retificação do S-2501.
+    </div>
+    {% endif %}
+
+    <!-- ═════ 1. PROCESSO ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">1</span> Processo</div>
+        <div class="card-corpo">
+            <div class="campo"><label>Processo e trabalhador</label>
+                <select id="selProc" onchange="escolherProc()">
+                    <option value="">— Selecione —</option>
+                </select></div>
+            <div class="dica" id="infoProc">Só aparecem os processos judiciais trabalhistas ou de CCP/NINTER com repercussão 1 ou 3.</div>
+        </div>
+    </div>
+
+    <!-- ═════ 2. PAGAMENTO ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">2</span> Pagamento</div>
+        <div class="card-corpo">
+            <div class="linha">
+                <div class="campo"><label>Mês do pagamento</label>
+                    <input type="month" id="perapurpgto" onchange="ajustarMesPagto()">
+                    <span class="dica">Mês em que a parcela é devida.</span></div>
+                <div class="campo"><label>Sequência (opcional)</label>
+                    <input type="text" id="ideseqproc" class="mono" maxlength="3" style="width:80px" oninput="this.value=this.value.replace(/\D/g,'')">
+                    <span class="dica">Só se houver mais de um pagamento do processo no mesmo mês.</span></div>
+                <div class="campo" style="flex:1 1 320px;"><label>Observação (opcional)</label>
+                    <input type="text" id="obs" maxlength="999"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═════ 3. INSS ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">3</span> INSS por mês de referência</div>
+        <div class="card-corpo">
+            <div>
+                <div class="rotulo">Códigos de receita (Tabela 29)</div>
+                <div class="grupo-radio" id="chipsCR"></div>
+                <div class="linha" style="margin-top:6px;">
+                    <div class="campo" style="flex:1 1 520px;">
+                        <select id="selCR">
+                            <option value="">— Acrescentar outro código —</option>
+                            {% for k, v in tab29.items() %}
+                            <option value="{{ k }}">{{ k }} - {{ v }}</option>
+                            {% endfor %}
+                        </select></div>
+                    <button class="btn-sec" onclick="acrescentarCR()">Acrescentar</button>
+                </div>
+            </div>
+            <div class="linha" style="align-items:center;">
+                <button class="btn-sec" onclick="trazerMeses()">Trazer os meses do processo</button>
+                <span class="dica">Cria uma linha para cada mês das bases do S-2500 até o mês do pagamento, com as bases já preenchidas.</span>
+            </div>
+            <div style="overflow-x:auto;">
+                <table class="tab-bases">
+                    <thead><tr id="cabINSS"></tr></thead>
+                    <tbody id="corpoINSS"></tbody>
+                    <tfoot><tr id="totINSS"></tr></tfoot>
+                </table>
+            </div>
+            <div class="dica">Valores em reais. Linha sem nenhum valor não é gravada; código com valor zero não vai para o eSocial.</div>
+        </div>
+    </div>
+
+    <!-- ═════ 4. IRRF ═════ -->
+    <div class="card">
+        <div class="card-titulo"><span class="num">4</span> Imposto de Renda retido</div>
+        <div class="card-corpo">
+            <div class="linha">
+                <div class="campo" style="flex:1 1 380px;"><label>Código de receita do IRRF</label>
+                    <select id="irrf_tpcr" onchange="ajustarIRRF()">
+                        <option value="">Sem IRRF neste pagamento</option>
+                        {% for k, v in irrf_crs.items() %}
+                        <option value="{{ k }}">{{ k }} - {{ v }}</option>
+                        {% endfor %}
+                    </select></div>
+                <div class="campo blocoIR"><label>IRRF mensal (R$)</label>
+                    <input type="text" id="irrf_vrcr" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                <div class="campo blocoIR so13"><label>IRRF 13º (R$)</label>
+                    <input type="text" id="irrf_vrcr13" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+            </div>
+
+            <div class="sub-bloco blocoIR">
+                <div class="sub-bloco-tit">Rendimentos</div>
+                <div class="linha">
+                    <div class="campo"><label>Tributável mensal</label>
+                        <input type="text" id="ir_vrRendTrib" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                    <div class="campo so13"><label>Tributável 13º</label>
+                        <input type="text" id="ir_vrRendTrib13" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                    <div class="campo"><label>Previdência oficial</label>
+                        <input type="text" id="ir_vrPrevOficial" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                    <div class="campo so13"><label>Previdência oficial 13º</label>
+                        <input type="text" id="ir_vrPrevOficial13" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                </div>
+                <div class="linha so13">
+                    <div class="campo"><label>Isento / não tributável</label>
+                        <input type="text" id="ir_vrRendIsenNTrib" class="mono" style="width:140px" oninput="mascaraValor(this)"></div>
+                    <div class="campo" style="flex:1 1 300px;"><label>Descrição do isento</label>
+                        <input type="text" id="ir_descIsenNTrib" maxlength="60"></div>
+                </div>
+            </div>
+
+            <div class="sub-bloco blocoIR naoRRA">
+                <div class="sub-bloco-tit">Dedução por dependente</div>
+                <table class="tab-bases" style="width:auto;"><tbody id="corpoDep"></tbody></table>
+                <div><button class="btn-sec" onclick="addLinhaPessoa('corpoDep','dep')">+ Dependente</button></div>
+            </div>
+
+            <div class="sub-bloco blocoIR">
+                <div class="sub-bloco-tit">Pensão alimentícia</div>
+                <table class="tab-bases" style="width:auto;"><tbody id="corpoPen"></tbody></table>
+                <div><button class="btn-sec" onclick="addLinhaPessoa('corpoPen','pen')">+ Beneficiário</button></div>
+            </div>
+
+            <div class="sub-bloco oculto" id="blocoRRA">
+                <div class="sub-bloco-tit">RRA — rendimentos recebidos acumuladamente</div>
+                <div class="linha">
+                    <div class="campo" style="flex:1 1 300px;"><label>Descrição</label>
+                        <input type="text" id="rra_desc" maxlength="50"></div>
+                    <div class="campo"><label>Nº de meses</label>
+                        <input type="text" id="rra_meses" class="mono" maxlength="4" style="width:80px" oninput="this.value=this.value.replace(/\D/g,'')"></div>
+                    <div class="campo"><label>Custas judiciais</label>
+                        <input type="text" id="rra_custas" class="mono" style="width:130px" oninput="mascaraValor(this)"></div>
+                    <div class="campo"><label>Advogados (total)</label>
+                        <input type="text" id="rra_adv" class="mono" style="width:130px" oninput="mascaraValor(this)"></div>
+                </div>
+                <table class="tab-bases" style="width:auto;"><tbody id="corpoAdv"></tbody></table>
+                <div><button class="btn-sec" onclick="addLinhaAdv()">+ Advogado</button></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="resultado"></div>
+    <div class="rodape">
+        <a class="btn-voltar" href="/processo_pagamentos">Voltar à lista</a>
+        <button class="btn-gravar" id="btnGravar" onclick="gravar()">Gravar pagamento</button>
+    </div>
+
+</div>
+
+<script>
+const PG    = {{ pagto|tojson }};
+const PROCS = {{ processos|tojson }};
+const DEPS  = {{ dependentes|tojson }};
+const TAB29 = {{ tab29|tojson }};
+const PROC_INI = {{ (id_processo_ini or 0)|tojson }};
+const CR_PADRAO = ['108251', '113851', '164651'];   // segurado, patronal, GILRAT
+
+function el(id) { return document.getElementById(id); }
+function soNum(s) { return String(s || '').replace(/\D/g, ''); }
+function fmtValor(cent) {
+    if (cent === null || cent === undefined || cent === '') return '';
+    const neg = cent < 0; cent = Math.abs(cent);
+    const s = (cent / 100).toFixed(2).split('.');
+    return (neg ? '-' : '') + s[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + s[1];
+}
+function lerValor(txt) {
+    txt = String(txt || '').trim();
+    if (!txt) return null;
+    const n = parseFloat(txt.replace(/\./g, '').replace(',', '.'));
+    return isNaN(n) ? null : Math.round(n * 100);
+}
+function mascaraValor(c) { c.value = c.value.replace(/[^\d.,]/g, ''); }
+function mIn(id, v) { v = String(v || ''); el(id).value = v.length === 6 ? v.slice(0,4) + '-' + v.slice(4) : ''; }
+function mOut(id) { const v = soNum(el(id).value); return v.length === 6 ? parseInt(v, 10) : null; }
+function fmtMes(v) { v = String(v); return v.slice(4) + '/' + v.slice(0, 4); }
+function fmtCpf(c) { c = soNum(c); return c.length === 11 ? c.slice(0,3) + '.' + c.slice(3,6) + '.' + c.slice(6,9) + '-' + c.slice(9) : c; }
+function mostra(id, sim) { el(id).classList.toggle('oculto', !sim); }
+function proc() { const i = el('selProc').value; return i === '' ? null : PROCS[i]; }
+
+/* ── 1. processo ── */
+function montarProcs() {
+    PROCS.forEach((p, i) => {
+        const o = document.createElement('option');
+        o.value = i;
+        o.textContent = p.numero_fmt + ' — ' + p.nome + ' (' + (p.origem === 1 ? 'judicial' : 'CCP/NINTER') + ')';
+        el('selProc').appendChild(o);
+    });
+}
+function escolherProc() {
+    const p = proc();
+    if (!p) { el('infoProc').textContent = ''; return; }
+    const pers = p.periodos || [];
+    const per = pers.length ? fmtMes(pers[0].perref) + ' a ' + fmtMes(pers[pers.length - 1].perref) : 'sem bases mês a mês';
+    el('infoProc').textContent = 'CPF ' + fmtCpf(p.cpftrab) + ' · bases do S-2500: ' + per
+        + (p.mes_min ? ' · pagamento a partir de ' + fmtMes(p.mes_min) : '');
+    if (p.mes_min) el('perapurpgto').min = String(p.mes_min).slice(0,4) + '-' + String(p.mes_min).slice(4);
+    if (!el('irrf_tpcr').value && !(PG && PG.id)) el('irrf_tpcr').value = p.origem === 2 ? '056152' : '593656';
+    ajustarIRRF();
+    redesenharPessoas();
+}
+function ajustarMesPagto() { /* os meses posteriores são recusados na gravação */ }
+
+/* ── 3. INSS ── */
+let CRS = [];
+function desenharChips() {
+    el('chipsCR').innerHTML = CRS.map(c =>
+        '<span class="sn" style="padding:4px 8px;" title="' + (TAB29[c] || '') + '"><b class="mono">' + c + '</b> '
+        + '<span class="dica">' + (TAB29[c] || '').slice(0, 48) + '</span>'
+        + '<button class="btn-x" onclick="tirarCR(\'' + c + '\')" title="Tirar este código">✕</button></span>').join('');
+}
+function acrescentarCR() {
+    const c = el('selCR').value;
+    if (!c || CRS.includes(c)) return;
+    const atual = lerINSS();
+    CRS.push(c); el('selCR').value = '';
+    desenharChips(); desenharINSS(atual);
+}
+function tirarCR(c) {
+    const atual = lerINSS();
+    CRS = CRS.filter(x => x !== c);
+    desenharChips(); desenharINSS(atual);
+}
+function lerINSS() {
+    return [...el('corpoINSS').querySelectorAll('tr')].map(tr => {
+        const o = { perRef: parseInt(tr.dataset.perref, 10), infoCRContrib: [] };
+        tr.querySelectorAll('[data-c]').forEach(i => {
+            const v = lerValor(i.value);
+            if (i.dataset.c === 'cr') { if (v) o.infoCRContrib.push({ tpCR: i.dataset.cr, vrCR: v }); }
+            else o[i.dataset.c] = v;
+        });
+        return o;
+    });
+}
+function desenharINSS(lista) {
+    el('cabINSS').innerHTML = '<th>Mês ref.</th><th>Base INSS</th><th>Base 13º</th>'
+        + CRS.map(c => '<th title="' + (TAB29[c] || '') + '">' + c + '</th>').join('') + '<th></th>';
+    const corpo = el('corpoINSS');
+    corpo.innerHTML = '';
+    lista.sort((a, b) => a.perRef - b.perRef).forEach(l => {
+        const tr = document.createElement('tr');
+        tr.dataset.perref = l.perRef;
+        const vals = {};
+        (l.infoCRContrib || []).forEach(x => vals[x.tpCR] = x.vrCR);
+        tr.innerHTML = '<td>' + fmtMes(l.perRef) + '</td>'
+            + '<td><input type="text" data-c="vrBcCpMensal" value="' + fmtValor(l.vrBcCpMensal) + '" oninput="mascaraValor(this)" onchange="totalizar()"></td>'
+            + '<td><input type="text" data-c="vrBcCp13" value="' + fmtValor(l.vrBcCp13) + '" oninput="mascaraValor(this)" onchange="totalizar()"></td>'
+            + CRS.map(c => '<td><input type="text" data-c="cr" data-cr="' + c + '" value="' + fmtValor(vals[c]) + '" oninput="mascaraValor(this)" onchange="totalizar()"></td>').join('')
+            + '<td><button class="btn-x" title="Tirar este mês" onclick="this.closest(\'tr\').remove(); totalizar();">✕</button></td>';
+        corpo.appendChild(tr);
+    });
+    totalizar();
+}
+function totalizar() {
+    const t = { b: 0, b13: 0 }, tc = {};
+    lerINSS().forEach(l => {
+        t.b += l.vrBcCpMensal || 0; t.b13 += l.vrBcCp13 || 0;
+        l.infoCRContrib.forEach(x => tc[x.tpCR] = (tc[x.tpCR] || 0) + x.vrCR);
+    });
+    el('totINSS').innerHTML = '<td>Total</td><td>' + fmtValor(t.b) + '</td><td>' + fmtValor(t.b13) + '</td>'
+        + CRS.map(c => '<td>' + fmtValor(tc[c] || 0) + '</td>').join('') + '<td></td>';
+}
+function trazerMeses() {
+    const p = proc();
+    if (!p) { f10Alert('Escolha antes o processo (bloco 1).', { tipo: 'info', titulo: 'INSS por mês' }); return; }
+    const lim = mOut('perapurpgto');
+    if (!lim) { f10Alert('Informe antes o mês do pagamento (bloco 2).', { tipo: 'info', titulo: 'INSS por mês' }); return; }
+    const atuais = {};
+    lerINSS().forEach(l => atuais[l.perRef] = l);
+    const lista = (p.periodos || []).filter(x => x.perref <= lim).map(x =>
+        atuais[x.perref] || { perRef: x.perref, vrBcCpMensal: x.vrbccpmensal, vrBcCp13: x.vrbccp13, infoCRContrib: [] });
+    if (!lista.length) { f10Alert('O processo não tem bases mês a mês até o mês do pagamento.', { tipo: 'info', titulo: 'INSS por mês' }); return; }
+    desenharINSS(lista);
+}
+
+/* ── 4. IRRF ── */
+function ajustarIRRF() {
+    const cr = el('irrf_tpcr').value;
+    document.querySelectorAll('.blocoIR').forEach(b => b.classList.toggle('oculto', !cr));
+    document.querySelectorAll('.so13').forEach(b => b.classList.toggle('oculto', !cr || cr === '188951'));
+    document.querySelectorAll('.naoRRA').forEach(b => b.classList.toggle('oculto', !cr || cr === '188951'));
+    mostra('blocoRRA', cr === '188951');
+    redesenharPessoas();
+}
+function opcoesDeps(cpfSel) {
+    const p = proc();
+    const lista = DEPS.filter(d => p && d.matricula === p.matricula && d.cpfdep);
+    let h = '<option value="">— CPF digitado ao lado —</option>';
+    lista.forEach(d => h += '<option value="' + soNum(d.cpfdep) + '"' + (soNum(d.cpfdep) === cpfSel ? ' selected' : '') + '>' + d.nome + ' — ' + fmtCpf(d.cpfdep) + '</option>');
+    return h;
+}
+function tiposRend(tipo, sel) {
+    const rra = el('irrf_tpcr').value === '188951';
+    const op = tipo === 'dep' ? [['11', 'Mensal'], ['12', '13º']]
+             : (rra ? [['18', 'RRA']] : [['11', 'Mensal'], ['12', '13º'], ['79', 'Isento']]);
+    return op.map(o => '<option value="' + o[0] + '"' + (String(sel) === o[0] ? ' selected' : '') + '>' + o[0] + ' - ' + o[1] + '</option>').join('');
+}
+function addLinhaPessoa(corpo, tipo, d) {
+    d = d || {};
+    const tr = document.createElement('tr');
+    tr.dataset.tipo = tipo;
+    const cpf = soNum(d.cpfDep);
+    tr.innerHTML = '<td style="text-align:left;"><select data-c="sel" style="width:280px;text-align:left;" onchange="this.closest(\'tr\').querySelector(\'[data-c=cpf]\').value=fmtCpf(this.value)">' + opcoesDeps(cpf) + '</select></td>'
+        + '<td><input type="text" data-c="cpf" placeholder="CPF" style="width:140px" value="' + fmtCpf(cpf) + '"></td>'
+        + '<td><select data-c="tp" style="width:110px;text-align:left;">' + tiposRend(tipo, d.tpRend) + '</select></td>'
+        + '<td><input type="text" data-c="vl" placeholder="Valor" value="' + fmtValor(tipo === 'dep' ? d.vlrDeducao : d.vlrPensao) + '" oninput="mascaraValor(this)"></td>'
+        + '<td><button class="btn-x" onclick="this.closest(\'tr\').remove()">✕</button></td>';
+    el(corpo).appendChild(tr);
+}
+function lerPessoas(corpo, tipo) {
+    return [...el(corpo).querySelectorAll('tr')].map(tr => {
+        const o = { cpfDep: soNum(tr.querySelector('[data-c=cpf]').value), tpRend: parseInt(tr.querySelector('[data-c=tp]').value, 10) };
+        o[tipo === 'dep' ? 'vlrDeducao' : 'vlrPensao'] = lerValor(tr.querySelector('[data-c=vl]').value);
+        return o;
+    }).filter(o => o.cpfDep);
+}
+function redesenharPessoas() {
+    const dep = lerPessoas('corpoDep', 'dep'), pen = lerPessoas('corpoPen', 'pen');
+    el('corpoDep').innerHTML = ''; el('corpoPen').innerHTML = '';
+    dep.forEach(d => addLinhaPessoa('corpoDep', 'dep', d));
+    pen.forEach(d => addLinhaPessoa('corpoPen', 'pen', d));
+}
+function addLinhaAdv(a) {
+    a = a || {};
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td style="text-align:left;"><input type="text" data-c="nr" placeholder="CPF ou CNPJ do advogado" style="width:220px;text-align:left;" value="' + (a.nrInsc || '') + '"></td>'
+        + '<td><input type="text" data-c="vl" placeholder="Valor" value="' + fmtValor(a.vlrAdv) + '" oninput="mascaraValor(this)"></td>'
+        + '<td><button class="btn-x" onclick="this.closest(\'tr\').remove()">✕</button></td>';
+    el('corpoAdv').appendChild(tr);
+}
+
+/* ── carregar / gravar ── */
+const IR_CAMPOS = ['vrRendTrib', 'vrRendTrib13', 'vrPrevOficial', 'vrPrevOficial13', 'vrRendIsenNTrib'];
+function carregar() {
+    montarProcs();
+    if (PG && PG.id) {
+        const i = PROCS.findIndex(p => p.id === PG.id_processo);
+        if (i >= 0) el('selProc').value = i;
+        el('selProc').disabled = true;
+        mIn('perapurpgto', PG.perapurpgto);
+        el('ideseqproc').value = PG.ideseqproc || '';
+        el('obs').value = PG.obs || '';
+        const usados = [];
+        (PG.calctrib || []).forEach(c => (c.infoCRContrib || []).forEach(x => { if (!usados.includes(x.tpCR)) usados.push(x.tpCR); }));
+        CRS = usados.length ? usados : CR_PADRAO.slice();
+        el('irrf_tpcr').value = PG.irrf_tpcr || '';
+        el('irrf_vrcr').value = fmtValor(PG.irrf_vrcr);
+        el('irrf_vrcr13').value = fmtValor(PG.irrf_vrcr13);
+        const det = PG.irrf_detalhe || {};
+        const ir = det.infoIR || {};
+        IR_CAMPOS.forEach(c => el('ir_' + c).value = fmtValor(ir[c]));
+        el('ir_descIsenNTrib').value = ir.descIsenNTrib || '';
+        escolherProc();
+        el('irrf_tpcr').value = PG.irrf_tpcr || '';
+        ajustarIRRF();
+        (det.dedDepen || []).forEach(d => addLinhaPessoa('corpoDep', 'dep', d));
+        (det.penAlim || []).forEach(d => addLinhaPessoa('corpoPen', 'pen', d));
+        const rra = det.infoRRA || {};
+        el('rra_desc').value = rra.descRRA || '';
+        el('rra_meses').value = rra.qtdMesesRRA || '';
+        el('rra_custas').value = fmtValor(rra.vlrDespCustas);
+        el('rra_adv').value = fmtValor(rra.vlrDespAdvogados);
+        (rra.ideAdv || []).forEach(a => addLinhaAdv(a));
+        desenharChips();
+        desenharINSS((PG.calctrib || []).map(c => Object.assign({}, c)));
+        return;
+    }
+    CRS = CR_PADRAO.slice();
+    desenharChips();
+    desenharINSS([]);
+    if (PROC_INI) {
+        const i = PROCS.findIndex(p => p.id === PROC_INI);
+        if (i >= 0) { el('selProc').value = i; escolherProc(); }
+    }
+    ajustarIRRF();
+}
+
+function coletar() {
+    const p = proc();
+    const ir = {};
+    IR_CAMPOS.forEach(c => ir[c] = lerValor(el('ir_' + c).value));
+    ir.descIsenNTrib = el('ir_descIsenNTrib').value.trim();
+    return {
+        id: PG && PG.id ? PG.id : null,
+        id_processo: p ? p.id : null,
+        perapurpgto: mOut('perapurpgto'),
+        ideseqproc: el('ideseqproc').value || null,
+        obs: el('obs').value.trim(),
+        calctrib: lerINSS(),
+        irrf_tpcr: el('irrf_tpcr').value || null,
+        irrf_vrcr: lerValor(el('irrf_vrcr').value),
+        irrf_vrcr13: lerValor(el('irrf_vrcr13').value),
+        irrf_detalhe: {
+            infoIR: ir,
+            dedDepen: lerPessoas('corpoDep', 'dep'),
+            penAlim: lerPessoas('corpoPen', 'pen'),
+            infoRRA: el('irrf_tpcr').value === '188951' ? {
+                descRRA: el('rra_desc').value.trim(), qtdMesesRRA: el('rra_meses').value || null,
+                vlrDespCustas: lerValor(el('rra_custas').value), vlrDespAdvogados: lerValor(el('rra_adv').value),
+                ideAdv: [...el('corpoAdv').querySelectorAll('tr')].map(tr => ({
+                    nrInsc: soNum(tr.querySelector('[data-c=nr]').value), vlrAdv: lerValor(tr.querySelector('[data-c=vl]').value) }))
+            } : {}
+        }
+    };
+}
+
+async function gravar() {
+    const btn = el('btnGravar'), painel = el('resultado');
+    btn.disabled = true;
+    painel.innerHTML = '<div class="resultado-ok">Gravando…</div>';
+    try {
+        const r = await fetch('/api/processo_pagto/gravar', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(coletar())
+        });
+        const j = await r.json();
+        if (j.ok) {
+            painel.innerHTML = '<div class="resultado-ok">✓ ' + j.msg + (j.aviso ? '<br><span style="font-weight:500;color:#92400e;">' + j.aviso + '</span>' : '') + '</div>';
+            if (!(PG && PG.id) && j.id) setTimeout(() => window.location.href = '/processo_pagamentos/editar?id=' + j.id, 900);
+        } else {
+            const itens = (j.erros || []).map(e => '<li>' + e + '</li>').join('');
+            painel.innerHTML = '<div class="resultado-err"><b>' + (j.msg || 'Não foi possível gravar.') + '</b>' + (itens ? '<ul>' + itens + '</ul>' : '') + '</div>';
+        }
+    } catch (e) {
+        painel.innerHTML = '<div class="resultado-err">Sem comunicação com o servidor. Tente de novo.</div>';
+    }
+    btn.disabled = false;
+    painel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+carregar();
+</script>
+<script src="/static/f10_dialog.js"></script>
+</body>
+</html>

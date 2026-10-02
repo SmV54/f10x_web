@@ -29903,6 +29903,401 @@ def api_processo_excluir():
 
 
 # =========================================================
+# PAGAMENTOS DO PROCESSO TRABALHISTA — eSocial S-2501
+# tab_processo_pagto: uma linha por processo × mês do pagamento × trabalhador.
+#   calctrib     [{perRef, vrBcCpMensal, vrBcCp13, infoCRContrib:[{tpCR, vrCR}]}]
+#   irrf_detalhe {infoIR:{...}, dedDepen:[...], penAlim:[...], infoRRA:{...}}
+# Valores em centavos, competências AAAAMM — também dentro do jsonb.
+# Só existe para processo com origem 1 ou 2 (a Justiça Comum não tem S-2501)
+# e repercussão 1 ou 3 (as que dizem "rendimentos informados em S-2501").
+# =========================================================
+PAGTO_IRRF_CR = {
+    "593656": "IRRF - Decisão da Justiça do Trabalho",
+    "056152": "IRRF - CCP / NINTER",
+    "188951": "IRRF - RRA (rendimentos recebidos acumuladamente)",
+}
+_PAGTO_INFOIR = ("vrRendTrib", "vrRendTrib13", "vrPrevOficial", "vrPrevOficial13",
+                 "vrRendIsenNTrib")
+
+
+def _pagto_tabela29():
+    """{codigo: texto} dos códigos de receita de contribuição (Tabela 29)."""
+    try:
+        r = (supabase.table("tab_tabela_total").select("codigo, texto")
+             .eq("num_tabela", 29).execute())
+        return {str(x["codigo"]).strip(): (x.get("texto") or "").strip()
+                for x in (r.data or [])}
+    except Exception:
+        return {}
+
+
+def _pagto_remessas(id_empresa, ids):
+    """{id_pagto: 'enviado' | 'pendente'} pelas remessas S-2501 da tab_esocial."""
+    if not ids:
+        return {}
+    try:
+        r = (supabase.table("tab_esocial").select("codigo2, recibo")
+             .eq("id_empresa", id_empresa).eq("layout", "2501")
+             .in_("codigo2", list(ids)).execute())
+    except Exception:
+        return {}
+    out = {}
+    for row in (r.data or []):
+        k = row.get("codigo2")
+        if (row.get("recibo") or "").strip():
+            out[k] = "enviado"
+        else:
+            out.setdefault(k, "pendente")
+    return out
+
+
+def _pagto_int(v):
+    try:
+        return int(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _pagto_processos(id_empresa, so_id=None):
+    """Processos que aceitam S-2501, com as competências das bases do S-2500."""
+    try:
+        q = (supabase.table("tab_processo")
+             .select("id, nrproctrab, cpftrab, nmtrab, matricula, origem, dtsent, dtccp, "
+                     "compini, compfim, indreperc")
+             .eq("id_empresa", id_empresa).eq("situacao", "A")
+             .in_("origem", [1, 2]).in_("indreperc", [1, 3]))
+        if so_id:
+            q = q.eq("id", so_id)
+        procs = q.order("criado_em", desc=True).execute().data or []
+    except Exception as e:
+        print(f"[PAGTO] processos: {e}")
+        return []
+    if not procs:
+        return []
+    ids = [p["id"] for p in procs]
+    pers = {}
+    try:
+        rp = (supabase.table("tab_processo_periodo")
+              .select("id_processo, perref, vrbccpmensal, vrbccp13")
+              .in_("id_processo", ids).order("perref").execute())
+        for x in (rp.data or []):
+            pers.setdefault(x["id_processo"], []).append(x)
+    except Exception:
+        pass
+    mats = {p["matricula"] for p in procs if p.get("matricula")}
+    nomes = {}
+    if mats:
+        try:
+            rc = (supabase.table("tab_cad").select("matricula, nome")
+                  .eq("id_empresa", id_empresa).in_("matricula", list(mats)).execute())
+            nomes = {x["matricula"]: x["nome"] for x in (rc.data or [])}
+        except Exception:
+            pass
+    for p in procs:
+        p["numero_fmt"] = _proc_num_fmt(p.get("nrproctrab"))
+        p["nome"] = p.get("nmtrab") or nomes.get(p.get("matricula")) or "—"
+        d = str(p.get("dtsent") or p.get("dtccp") or "")
+        p["mes_min"] = int(d[:6]) if len(d) == 8 else None   # perApurPgto >= mês da sentença/acordo
+        p["periodos"] = pers.get(p["id"], [])
+    return procs
+
+
+def _pagto_normalizar_irrf(d):
+    """Monta o irrf_detalhe só com o que veio preenchido."""
+    det = {}
+    info = {}
+    for c in _PAGTO_INFOIR:
+        v = _pagto_int((d.get("infoIR") or {}).get(c))
+        if v is not None:
+            info[c] = v
+    desc = str((d.get("infoIR") or {}).get("descIsenNTrib") or "").strip()
+    if desc:
+        info["descIsenNTrib"] = desc[:60]
+    if info:
+        det["infoIR"] = info
+    for grupo in ("dedDepen", "penAlim"):
+        lst = []
+        for x in (d.get(grupo) or []):
+            cpf = so_numeros(x.get("cpfDep") or "")
+            if not cpf:
+                continue
+            lst.append({"tpRend": _pagto_int(x.get("tpRend")), "cpfDep": cpf,
+                        ("vlrDeducao" if grupo == "dedDepen" else "vlrPensao"):
+                            _pagto_int(x.get("vlrDeducao" if grupo == "dedDepen" else "vlrPensao"))})
+        if lst:
+            det[grupo] = lst
+    rra = d.get("infoRRA") or {}
+    if any(rra.get(k) not in (None, "", []) for k in ("descRRA", "qtdMesesRRA", "vlrDespCustas",
+                                                     "vlrDespAdvogados", "ideAdv")):
+        r = {"descRRA": str(rra.get("descRRA") or "").strip()[:50] or None,
+             "qtdMesesRRA": _pagto_int(rra.get("qtdMesesRRA")),
+             "vlrDespCustas": _pagto_int(rra.get("vlrDespCustas")),
+             "vlrDespAdvogados": _pagto_int(rra.get("vlrDespAdvogados"))}
+        advs = []
+        for a in (rra.get("ideAdv") or []):
+            nr = so_numeros(a.get("nrInsc") or "")
+            if nr:
+                advs.append({"tpInsc": 1 if len(nr) == 14 else 2, "nrInsc": nr,
+                             "vlrAdv": _pagto_int(a.get("vlrAdv"))})
+        if advs:
+            r["ideAdv"] = advs
+        det["infoRRA"] = r
+    return det or None
+
+
+def _pagto_validar(reg, proc, tab29):
+    e = []
+    pa = reg.get("perapurpgto")
+    if not _proc_comp_ok(pa):
+        e.append("Informe o mês do pagamento.")
+    elif proc.get("mes_min") and pa < proc["mes_min"]:
+        m = str(proc["mes_min"])
+        e.append(f"O mês do pagamento não pode ser anterior ao da sentença/acordo ({m[4:]}/{m[:4]}).")
+
+    pers_s2500 = {x["perref"] for x in proc.get("periodos", [])}
+    vistos = set()
+    for c in (reg.get("calctrib") or []):
+        pr = c.get("perRef")
+        rot = f"{str(pr)[4:]}/{str(pr)[:4]}" if pr else "?"
+        if not _proc_comp_ok(pr) or pr < 200812:
+            e.append(f"Mês de referência inválido ({rot}).")
+            continue
+        if pr in vistos:
+            e.append(f"Mês de referência {rot} repetido.")
+        vistos.add(pr)
+        if pers_s2500 and pr not in pers_s2500:
+            e.append(f"Mês {rot}: não está nas bases mês a mês do processo (S-2500).")
+        if _proc_comp_ok(pa) and pr > pa:
+            e.append(f"Mês {rot}: posterior ao mês do pagamento.")
+        for cr in c.get("infoCRContrib") or []:
+            if tab29 and cr.get("tpCR") not in tab29:
+                e.append(f"Mês {rot}: código de receita {cr.get('tpCR')} não está na Tabela 29.")
+            if not cr.get("vrCR") or cr["vrCR"] <= 0:
+                e.append(f"Mês {rot}: o valor do código {cr.get('tpCR')} deve ser maior que zero.")
+
+    cr = reg.get("irrf_tpcr")
+    det = reg.get("irrf_detalhe") or {}
+    if cr:
+        if cr not in PAGTO_IRRF_CR:
+            e.append("Código de receita do IRRF inválido.")
+        if reg.get("irrf_vrcr") is None or reg["irrf_vrcr"] < 0:
+            e.append("Informe o IRRF do rendimento mensal (pode ser zero).")
+        if cr == "188951":
+            if reg.get("irrf_vrcr13"):
+                e.append("No RRA não se informa IRRF de 13º.")
+            rra = det.get("infoRRA") or {}
+            if not rra.get("descRRA") or not rra.get("qtdMesesRRA"):
+                e.append("No RRA, informe a descrição e o número de meses.")
+            if det.get("dedDepen"):
+                e.append("No RRA não há dedução de dependentes.")
+            info = det.get("infoIR") or {}
+            for c in ("vrRendTrib13", "vrPrevOficial13", "vrRendIsenNTrib"):
+                if info.get(c):
+                    e.append("No RRA não se informam valores de 13º nem rendimentos isentos.")
+                    break
+        else:
+            det.pop("infoRRA", None)
+            if reg.get("irrf_vrcr13") is not None and reg["irrf_vrcr13"] <= 0:
+                reg["irrf_vrcr13"] = None
+        info = det.get("infoIR") or {}
+        if info.get("vrRendIsenNTrib") and not info.get("descIsenNTrib"):
+            e.append("Descreva o rendimento isento ou não tributável.")
+        for x in det.get("dedDepen") or []:
+            if not validar_cpf(x["cpfDep"]) or x.get("tpRend") not in (11, 12) or not x.get("vlrDeducao"):
+                e.append("Dedução de dependente: confira CPF, tipo de rendimento e valor.")
+                break
+        for x in det.get("penAlim") or []:
+            ok_tp = (x.get("tpRend") == 18) if cr == "188951" else (x.get("tpRend") in (11, 12, 79))
+            if not validar_cpf(x["cpfDep"]) or not ok_tp or not x.get("vlrPensao"):
+                e.append("Pensão alimentícia: confira CPF, tipo de rendimento (18 no RRA) e valor.")
+                break
+    else:
+        reg["irrf_vrcr"] = reg["irrf_vrcr13"] = None
+        reg["irrf_detalhe"] = None
+    reg["irrf_detalhe"] = det or None if cr else None
+
+    if not reg.get("calctrib") and not cr:
+        e.append("Informe ao menos o INSS de um mês de referência ou o IRRF.")
+    return e
+
+
+@app.route("/processo_pagamentos")
+def processo_pagamentos():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    pagtos = []
+    try:
+        pagtos = (supabase.table("tab_processo_pagto")
+                  .select("id, id_processo, nrproctrab, cpftrab, matricula, perapurpgto, "
+                          "ideseqproc, calctrib, irrf_tpcr, irrf_vrcr, irrf_vrcr13")
+                  .eq("id_empresa", id_empresa).eq("situacao", "A")
+                  .order("perapurpgto", desc=True).execute().data or [])
+    except Exception as e:
+        print(f"[PAGTO] lista: {e}")
+    procs = {p["id"]: p for p in _pagto_processos(id_empresa)}
+    status = _pagto_remessas(id_empresa, [p["id"] for p in pagtos])
+    for p in pagtos:
+        pr = procs.get(p.get("id_processo")) or {}
+        p["numero_fmt"] = _proc_num_fmt(p.get("nrproctrab"))
+        p["nome"] = pr.get("nome") or "—"
+        m = str(p.get("perapurpgto") or "")
+        p["mes_fmt"] = f"{m[4:]}/{m[:4]}" if len(m) == 6 else "—"
+        p["inss_total"] = sum((cr.get("vrCR") or 0) for c in (p.get("calctrib") or [])
+                              for cr in (c.get("infoCRContrib") or []))
+        p["irrf_total"] = (p.get("irrf_vrcr") or 0) + (p.get("irrf_vrcr13") or 0)
+        p["status"] = status.get(p["id"], "")
+    return render_template("F10_Processo_Pagto_Lista.html", versao=ler_versao(),
+                           empresa=session.get("empresa_info", ""),
+                           nome=session.get("nome", ""), pagtos=pagtos,
+                           tem_processo=bool(procs))
+
+
+@app.route("/processo_pagamentos/editar")
+def processo_pagamentos_editar():
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    id_pagto = request.args.get("id", type=int)
+    pagto, enviado = {}, False
+    if id_pagto:
+        try:
+            pagto = ((supabase.table("tab_processo_pagto").select("*")
+                      .eq("id", id_pagto).eq("id_empresa", id_empresa).limit(1)
+                      .execute()).data or [{}])[0]
+        except Exception as e:
+            print(f"[PAGTO] editar: {e}")
+        if not pagto:
+            return redirect("/processo_pagamentos")
+        enviado = _pagto_remessas(id_empresa, [id_pagto]).get(id_pagto) == "enviado"
+
+    procs = _pagto_processos(id_empresa)
+    mats = [p["matricula"] for p in procs if p.get("matricula")]
+    deps = []
+    if mats:
+        try:
+            deps = (supabase.table("tab_dependentes").select("matricula, nome, cpfdep, depirrf")
+                    .eq("id_empresa", id_empresa).in_("matricula", mats).execute().data or [])
+        except Exception:
+            pass
+    return render_template(
+        "F10_Processo_Pagto.html", versao=ler_versao(),
+        empresa=session.get("empresa_info", ""), nome=session.get("nome", ""),
+        pagto=pagto, enviado=enviado, processos=procs, dependentes=deps,
+        tab29=_pagto_tabela29(), irrf_crs=PAGTO_IRRF_CR,
+        id_processo_ini=request.args.get("id_processo", type=int),
+    )
+
+
+@app.route("/api/processo_pagto/gravar", methods=["POST"])
+def api_processo_pagto_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_cliente = session.get("id_cliente")
+    id_empresa = _get_id_empresa()
+    d = request.get_json(silent=True) or {}
+    id_pagto = d.get("id")
+
+    id_proc = _pagto_int(d.get("id_processo"))
+    procs = _pagto_processos(id_empresa, so_id=id_proc) if id_proc else []
+    if not procs:
+        return jsonify({"ok": False, "msg": (
+            "Escolha um processo desta empresa que tenha pagamento no S-2501 "
+            "(origem judicial trabalhista ou CCP/NINTER, repercussão 1 ou 3).")})
+    proc = procs[0]
+
+    calctrib = []
+    for c in (d.get("calctrib") or []):
+        crs = [{"tpCR": str(x.get("tpCR") or "").strip(), "vrCR": _pagto_int(x.get("vrCR"))}
+               for x in (c.get("infoCRContrib") or []) if _pagto_int(x.get("vrCR"))]
+        lin = {"perRef": _pagto_int(c.get("perRef")),
+               "vrBcCpMensal": _pagto_int(c.get("vrBcCpMensal")) or 0,
+               "vrBcCp13": _pagto_int(c.get("vrBcCp13")) or 0}
+        if crs:
+            lin["infoCRContrib"] = crs
+        if lin["perRef"] and (crs or lin["vrBcCpMensal"] or lin["vrBcCp13"]):
+            calctrib.append(lin)
+    calctrib.sort(key=lambda x: x["perRef"] or 0)
+
+    reg = {
+        "id_processo": proc["id"], "nrproctrab": proc["nrproctrab"],
+        "cpftrab": proc["cpftrab"], "matricula": proc.get("matricula"),
+        "perapurpgto": _pagto_int(d.get("perapurpgto")),
+        "ideseqproc": _pagto_int(d.get("ideseqproc")),
+        "obs": (str(d.get("obs") or "").strip()[:999] or None),
+        "calctrib": calctrib or None,
+        "irrf_tpcr": (str(d.get("irrf_tpcr") or "").strip() or None),
+        "irrf_vrcr": _pagto_int(d.get("irrf_vrcr")),
+        "irrf_vrcr13": _pagto_int(d.get("irrf_vrcr13")),
+        "irrf_detalhe": _pagto_normalizar_irrf(d.get("irrf_detalhe") or {}),
+    }
+    erros = _pagto_validar(reg, proc, _pagto_tabela29())
+    if erros:
+        return jsonify({"ok": False, "erros": erros[:12],
+                        "msg": "Corrija os campos indicados antes de gravar."})
+
+    aviso = ""
+    try:
+        if id_pagto:
+            atual = (supabase.table("tab_processo_pagto").select("id")
+                     .eq("id", id_pagto).eq("id_empresa", id_empresa).limit(1).execute()).data
+            if not atual:
+                return jsonify({"ok": False, "msg": "Pagamento não encontrado nesta empresa."})
+            if _pagto_remessas(id_empresa, [id_pagto]).get(id_pagto) == "enviado":
+                aviso = ("Este pagamento já foi enviado ao eSocial: a alteração vai "
+                         "precisar de uma retificação do S-2501.")
+            reg["alterado_em"] = _agora_brasilia().isoformat()
+            (supabase.table("tab_processo_pagto").update(reg)
+             .eq("id", id_pagto).eq("id_empresa", id_empresa).execute())
+        else:
+            novo = (supabase.table("tab_processo_pagto")
+                    .insert({**reg, "id_cliente": id_cliente, "id_empresa": id_empresa})
+                    .execute()).data
+            id_pagto = (novo or [{}])[0].get("id")
+    except Exception as e:
+        txt = str(e)
+        if "ux_tab_processo_pagto_chave" in txt or "duplicate key" in txt:
+            return jsonify({"ok": False, "msg": (
+                "Já existe pagamento deste processo e trabalhador neste mês. Abra o que "
+                "já existe — ou, se for mesmo outro pagamento no mesmo mês, informe a "
+                "sequência.")})
+        return jsonify({"ok": False, "msg": f"Erro ao gravar o pagamento: {txt[:120]}"})
+
+    gravar_log("PROCESSO", f"{'alterou' if d.get('id') else 'incluiu'} pagamento "
+                           f"{reg['perapurpgto']} do processo {reg['nrproctrab']}",
+               matricula=reg.get("matricula"), id_empresa=id_empresa)
+    return jsonify({"ok": True, "id": id_pagto, "aviso": aviso, "msg": "Pagamento gravado."})
+
+
+@app.route("/api/processo_pagto/excluir", methods=["POST"])
+def api_processo_pagto_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_empresa = _get_id_empresa()
+    id_pagto = (request.get_json(silent=True) or {}).get("id")
+    if not id_pagto:
+        return jsonify({"ok": False, "msg": "Pagamento não informado."})
+    try:
+        atual = (supabase.table("tab_processo_pagto")
+                 .select("id, nrproctrab, perapurpgto, matricula")
+                 .eq("id", id_pagto).eq("id_empresa", id_empresa).limit(1).execute()).data
+        if not atual:
+            return jsonify({"ok": False, "msg": "Pagamento não encontrado nesta empresa."})
+        if _pagto_remessas(id_empresa, [id_pagto]).get(id_pagto) == "enviado":
+            return jsonify({"ok": False, "msg": (
+                "Este pagamento já foi aceito no eSocial. Para tirá-lo de lá é preciso "
+                "enviar o S-3500 (exclusão) — não basta apagar aqui.")})
+        (supabase.table("tab_processo_pagto").delete()
+         .eq("id", id_pagto).eq("id_empresa", id_empresa).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:120]}"})
+    gravar_log("PROCESSO", f"excluiu pagamento {atual[0].get('perapurpgto')} do processo "
+                           f"{atual[0].get('nrproctrab')}",
+               matricula=atual[0].get("matricula"), id_empresa=id_empresa)
+    return jsonify({"ok": True, "msg": "Pagamento excluído."})
+
+
+# =========================================================
 # FAVICON — icone da aba do navegador
 # =========================================================
 @app.route("/favicon.ico")
