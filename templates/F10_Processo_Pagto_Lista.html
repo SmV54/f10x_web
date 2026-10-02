@@ -82,6 +82,7 @@ tbody tr:hover td { background: #f8fafc; }
 .tag-enviado  { background: #dcfce7; color: #166534; }
 .tag-pendente { background: #fef3c7; color: #92400e; }
 .tag-novo     { background: #f1f5f9; color: #64748b; }
+.tag-excluido { background: #fee2e2; color: #991b1b; }
 .acoes { display: flex; gap: 6px; justify-content: flex-end; }
 .btn-mini {
     font-size: 12px; font-weight: 600; font-family: var(--sans); padding: 5px 12px; border-radius: 6px;
@@ -92,6 +93,8 @@ tbody tr:hover td { background: #f8fafc; }
 .btn-mini.perigo:hover { background: #fef2f2; }
 .vazio { padding: 28px 20px; font-size: 13px; color: #64748b; line-height: 1.6; }
 .msg { margin-bottom: 14px; }
+.resultado-ok  { padding: 12px 18px; background: #f0fdf4; border: 1px solid #86efac;
+                 border-radius: 8px; font-size: 13px; color: #15803d; }
 .resultado-err { padding: 12px 18px; background: #fef2f2; border: 1px solid #fca5a5;
                  border-radius: 8px; font-size: 13px; color: #991b1b; }
 </style>
@@ -157,12 +160,15 @@ tbody tr:hover td { background: #f8fafc; }
                     <td>
                         {% if p.status == 'enviado' %}<span class="tag tag-enviado">Enviado</span>
                         {% elif p.status == 'pendente' %}<span class="tag tag-pendente">Remessa pendente</span>
+                        {% elif p.status == 'excluido' %}<span class="tag tag-excluido">Excluído no eSocial</span>
                         {% else %}<span class="tag tag-novo">Não enviado</span>{% endif %}
                     </td>
                     <td>
                         <div class="acoes">
                             <a class="btn-mini" href="/processo_pagamentos/editar?id={{ p.id }}">Abrir</a>
-                            {% if p.status != 'enviado' %}
+                            {% if p.status == 'enviado' %}
+                            <button class="btn-mini perigo" title="Gera a remessa S-3500 para tirar o evento do eSocial" onclick="excluirEsocial({{ p.id }})">Excluir do eSocial</button>
+                            {% else %}
                             <button class="btn-mini perigo" onclick="excluir({{ p.id }}, {{ p.mes_fmt|tojson }})">Excluir</button>
                             {% endif %}
                         </div>
@@ -189,6 +195,22 @@ tbody tr:hover td { background: #f8fafc; }
 </div>
 
 <script>
+async function excluirEsocial(id) {
+    const ok = await f10Confirm('Gerar a remessa S-3500 para excluir este pagamento do eSocial?\n\nDepois envie a remessa pela Fila do eSocial. Aceita a exclusão, o registro pode ser apagado daqui.',
+                                { titulo: 'Excluir do eSocial (S-3500)', tipo: 'aviso', okText: 'Gerar S-3500', cancelText: 'Cancelar' });
+    if (!ok) return;
+    const el = document.getElementById('msg');
+    try {
+        const r = await fetch('/api/processo/excluir_esocial', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tipo: '2501', id: id })
+        });
+        const j = await r.json();
+        el.innerHTML = '<div class="' + (j.ok ? 'resultado-ok' : 'resultado-err') + '">' + (j.msg || '') + '</div>';
+    } catch (e) {
+        el.innerHTML = '<div class="resultado-err">Sem comunicação com o servidor. Tente de novo.</div>';
+    }
+}
 async function excluir(id, numero) {
     const ok = await f10Confirm('Excluir o pagamento de ' + numero + '?',
                                 { titulo: 'Excluir pagamento', tipo: 'aviso', okText: 'Excluir', cancelText: 'Cancelar' });

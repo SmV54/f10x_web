@@ -29504,23 +29504,8 @@ def _proc_meses(ini, fim):
 
 
 def _proc_remessas(id_empresa, ids):
-    """{id_processo: 'enviado' | 'pendente'} pelas remessas S-2500 da tab_esocial."""
-    if not ids:
-        return {}
-    try:
-        r = (supabase.table("tab_esocial").select("codigo2, recibo")
-             .eq("id_empresa", id_empresa).eq("layout", "2500")
-             .in_("codigo2", list(ids)).execute())
-    except Exception:
-        return {}
-    out = {}
-    for row in (r.data or []):
-        k = row.get("codigo2")
-        if (row.get("recibo") or "").strip():
-            out[k] = "enviado"
-        else:
-            out.setdefault(k, "pendente")
-    return out
+    """{id_processo: 'enviado' | 'pendente' | 'excluido'} pelas remessas S-2500."""
+    return _pxml_status(id_empresa, "2500", ids, "P")
 
 
 def _proc_normalizar(d):
@@ -29864,6 +29849,14 @@ def api_processo_gravar():
             f"O processo foi gravado, mas as bases mês a mês não: {str(e)[:120]}. "
             "Grave de novo.")})
 
+    # Remessa do S-2500: uma pendente por processo × CPF (a do 1º contrato).
+    try:
+        _ctrs = _pxml_contratos(id_empresa, id_proc)
+        _ids = [c["id"] for c in _ctrs] or [id_proc]
+        _pxml_remessa_pendente(id_cliente, id_empresa, "2500", _ids, min(_ids), p.get("matricula"))
+    except Exception as e:
+        print(f"[PROCESSO] remessa S-2500: {e}")
+
     gravar_log("PROCESSO", f"{'alterou' if d.get('id') else 'incluiu'} processo "
                            f"{p.get('nrproctrab')} CPF {p.get('cpftrab')}",
                matricula=p.get("matricula"), id_empresa=id_empresa)
@@ -29894,6 +29887,7 @@ def api_processo_excluir():
             return jsonify({"ok": False, "msg": (
                 "Este processo tem pagamentos (S-2501) lançados. Exclua os pagamentos antes.")})
         supabase.table("tab_processo").delete().eq("id", id_proc).eq("id_empresa", id_empresa).execute()
+        _pxml_apagar_pendentes(id_empresa, "2500", id_proc)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:120]}"})
     gravar_log("PROCESSO", f"excluiu processo {atual[0].get('nrproctrab')} "
@@ -29932,23 +29926,8 @@ def _pagto_tabela29():
 
 
 def _pagto_remessas(id_empresa, ids):
-    """{id_pagto: 'enviado' | 'pendente'} pelas remessas S-2501 da tab_esocial."""
-    if not ids:
-        return {}
-    try:
-        r = (supabase.table("tab_esocial").select("codigo2, recibo")
-             .eq("id_empresa", id_empresa).eq("layout", "2501")
-             .in_("codigo2", list(ids)).execute())
-    except Exception:
-        return {}
-    out = {}
-    for row in (r.data or []):
-        k = row.get("codigo2")
-        if (row.get("recibo") or "").strip():
-            out[k] = "enviado"
-        else:
-            out.setdefault(k, "pendente")
-    return out
+    """{id_pagto: 'enviado' | 'pendente' | 'excluido'} pelas remessas S-2501."""
+    return _pxml_status(id_empresa, "2501", ids, "G")
 
 
 def _pagto_int(v):
@@ -30263,6 +30242,14 @@ def api_processo_pagto_gravar():
                 "sequência.")})
         return jsonify({"ok": False, "msg": f"Erro ao gravar o pagamento: {txt[:120]}"})
 
+    # Remessa do S-2501: uma pendente por processo × mês × sequência.
+    try:
+        _grp = _pxml_grupo_pagto(id_empresa, id_pagto)
+        _ids = [g["id"] for g in _grp] or [id_pagto]
+        _pxml_remessa_pendente(id_cliente, id_empresa, "2501", _ids, min(_ids), reg.get("matricula"))
+    except Exception as e:
+        print(f"[PAGTO] remessa S-2501: {e}")
+
     gravar_log("PROCESSO", f"{'alterou' if d.get('id') else 'incluiu'} pagamento "
                            f"{reg['perapurpgto']} do processo {reg['nrproctrab']}",
                matricula=reg.get("matricula"), id_empresa=id_empresa)
@@ -30289,12 +30276,671 @@ def api_processo_pagto_excluir():
                 "enviar o S-3500 (exclusão) — não basta apagar aqui.")})
         (supabase.table("tab_processo_pagto").delete()
          .eq("id", id_pagto).eq("id_empresa", id_empresa).execute())
+        _pxml_apagar_pendentes(id_empresa, "2501", id_pagto)
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:120]}"})
     gravar_log("PROCESSO", f"excluiu pagamento {atual[0].get('perapurpgto')} do processo "
                            f"{atual[0].get('nrproctrab')}",
                matricula=atual[0].get("matricula"), id_empresa=id_empresa)
     return jsonify({"ok": True, "msg": "Pagamento excluído."})
+
+
+# =========================================================
+# eSocial S-2500 / S-2501 / S-3500 — XML, remessa e envio
+# A remessa nasce ao gravar o processo/pagamento: uma linha na tab_esocial
+# SEM recibo (layout 2500 ou 2501, codigo2 = id do registro), sem ano_mes —
+# aparece na Fila do mês em que nasceu e não trava o S-1200 da competência.
+# No envio, se o registro já tem recibo aceito, o evento vai como
+# RETIFICAÇÃO (indRetif=2) desse recibo — o mesmo jeito do S-1200.
+# S-3500 (exclusão no eSocial): layout 3500, codigo2 = id, flag1 'P' (do
+# S-2500) ou 'G' (do S-2501), recibo_ref = recibo do evento que sai.
+# =========================================================
+def _pxml_v(c):
+    """Centavos → '1234.56' (o separador do XML é ponto)."""
+    c = int(c or 0)
+    s = "-" if c < 0 else ""
+    c = abs(c)
+    return f"{s}{c // 100}.{c % 100:02d}"
+
+
+def _pxml_d(v):
+    v = str(v or "")
+    return f"{v[:4]}-{v[4:6]}-{v[6:8]}" if len(v) == 8 and v.isdigit() else ""
+
+
+def _pxml_m(v):
+    v = str(v or "")
+    return f"{v[:4]}-{v[4:6]}" if len(v) == 6 and v.isdigit() else ""
+
+
+def _pxml_evt_id(empresa, seq=1):
+    raiz = so_numeros(empresa.get("cnpj", ""))[:8]
+    return f"ID1{raiz.ljust(14, '0')}{_agora_brasilia().strftime('%Y%m%d%H%M%S')}{seq:05d}"
+
+
+def _pxml_cab(tag, ns, evt_id, ide_evento):
+    return (f'<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<eSocial xmlns="http://www.esocial.gov.br/schema/evt/{ns}/v_S_01_03_00">\n'
+            f'  <{tag} Id="{evt_id}">\n{ide_evento}')
+
+
+def _pxml_ide_evento(tpAmb, recibo_ant=None, com_retif=True):
+    from xml.sax.saxutils import escape as _esc
+    r = "    <ideEvento>\n"
+    if com_retif:
+        r += f"      <indRetif>{'2' if recibo_ant else '1'}</indRetif>\n"
+        if recibo_ant:
+            r += f"      <nrRecibo>{_esc(recibo_ant)}</nrRecibo>\n"
+    r += (f"      <tpAmb>{_esc(str(tpAmb))}</tpAmb>\n      <procEmi>1</procEmi>\n"
+          f"      <verProc>{_verproc_str()}</verProc>\n    </ideEvento>\n")
+    return r
+
+
+def _pxml_ide_empregador(empresa, extra=""):
+    raiz = so_numeros(empresa.get("cnpj", ""))[:8]
+    return (f"    <ideEmpregador>\n      <tpInsc>1</tpInsc>\n      <nrInsc>{raiz}</nrInsc>{extra}\n"
+            f"    </ideEmpregador>\n")
+
+
+def _pxml_tag(nome, valor, ind=8):
+    """<nome>valor</nome> só quando há valor."""
+    from xml.sax.saxutils import escape as _esc
+    if valor is None or valor == "":
+        return ""
+    return f"{' ' * ind}<{nome}>{_esc(str(valor))}</{nome}>\n"
+
+
+def _gerar_xml_s2500(contratos, periodos_por_id, func, empresa, tpAmb="1", recibo_ant=None):
+    """contratos: as linhas da tab_processo do mesmo processo × CPF × ideSeqTrab
+    (uma por contrato, na ordem de contrato_seq). periodos_por_id: {id: [períodos]}."""
+    if not contratos:
+        raise ValueError("Processo não encontrado.")
+    p0 = contratos[0]
+    T = _pxml_tag
+    xml = _pxml_cab("evtProcTrab", "evtProcTrab", _pxml_evt_id(empresa),
+                    _pxml_ide_evento(tpAmb, recibo_ant))
+
+    resp = ""
+    if p0.get("resp_nrinsc"):
+        resp = ("\n      <ideResp>\n" + T("tpInsc", p0.get("resp_tpinsc"), 8)
+                + T("nrInsc", p0.get("resp_nrinsc"), 8) + T("dtAdmRespDir", _pxml_d(p0.get("resp_dtadmrespdir")), 8)
+                + T("matRespDir", p0.get("resp_matrespdir"), 8) + "      </ideResp>").rstrip("\n")
+    xml += _pxml_ide_empregador(empresa, resp)
+
+    # infoProcesso
+    xml += "    <infoProcesso>\n" + T("origem", p0["origem"], 6) + T("nrProcTrab", p0["nrproctrab"], 6)
+    xml += T("obsProcTrab", p0.get("obsproctrab"), 6) + "      <dadosCompl>\n"
+    if p0["origem"] in (1, 3):
+        xml += ("        <infoProcJud>\n" + T("dtSent", _pxml_d(p0.get("dtsent")), 10)
+                + T("ufVara", p0.get("ufvara"), 10) + T("codMunic", p0.get("codmunic"), 10)
+                + T("idVara", p0.get("idvara"), 10)
+                + (T("infoPatPrec", _pxml_v(p0["infopatprec"]), 10) if p0.get("infopatprec") is not None else "")
+                + "        </infoProcJud>\n")
+    else:
+        xml += ("        <infoCCP>\n" + T("dtCCP", _pxml_d(p0.get("dtccp")), 10) + T("tpCCP", p0.get("tpccp"), 10)
+                + T("cnpjCCP", p0.get("cnpjccp"), 10) + "        </infoCCP>\n")
+    xml += "      </dadosCompl>\n    </infoProcesso>\n"
+
+    # ideTrab — nome e nascimento só quando nenhum contrato está no eSocial
+    algum_s = any(c.get("indcontr") == "S" for c in contratos)
+    nome = p0.get("nmtrab") or (func or {}).get("nome")
+    nasc = p0.get("dtnascto") or (func or {}).get("dtnascto")
+    xml += "    <ideTrab>\n" + T("cpfTrab", p0["cpftrab"], 6)
+    if not algum_s:
+        xml += T("nmTrab", nome, 6) + T("dtNascto", _pxml_d(nasc), 6)
+    xml += T("nmSoc", p0.get("nmsoc"), 6)
+    if not all(c.get("indcontr") == "S" for c in contratos):
+        xml += T("ideSeqTrab", p0.get("ideseqtrab"), 6)
+
+    cat_func = str((func or {}).get("codcateg") or "")
+    for c in contratos:
+        xml += "      <infoContr>\n"
+        xml += T("tpContr", c["tpcontr"]) + T("indContr", c["indcontr"]) + T("dtAdmOrig", _pxml_d(c.get("dtadmorig")))
+        xml += T("indReint", c.get("indreint")) + T("indCateg", c["indcateg"]) + T("indNatAtiv", c["indnatativ"])
+        xml += T("indMotDeslig", c["indmotdeslig"]) + T("matricula", c.get("matricula_es"))
+        xml += T("codCateg", c.get("codcateg")) + T("dtInicio", _pxml_d(c.get("dtinicio")))
+
+        if c["indcontr"] == "N":                       # infoCompl
+            xml += "        <infoCompl>\n"
+            xml += (T("nmCargo", c.get("nmcargo"), 10) + T("codCBO", c.get("codcbo"), 10)
+                    + T("nmFuncao", c.get("nmfuncao"), 10) + T("CBOFuncao", c.get("cbofuncao"), 10)
+                    + T("natAtividade", c.get("natatividade"), 10))
+            for rm in (c.get("remuneracao") or []):
+                xml += ("          <remuneracao>\n" + T("dtRemun", _pxml_d(rm.get("dtRemun")), 12)
+                        + T("vrSalFx", _pxml_v(rm.get("vrSalFx")), 12) + T("undSalFixo", rm.get("undSalFixo"), 12)
+                        + T("dscSalVar", rm.get("dscSalVar"), 12) + "          </remuneracao>\n")
+            if c["tpcontr"] != 6:
+                xml += ("          <infoVinc>\n" + T("tpRegTrab", c.get("tpregtrab"), 12)
+                        + T("tpRegPrev", c.get("tpregprev"), 12) + T("dtAdm", _pxml_d(c.get("dtadm")), 12)
+                        + T("tmpParc", c.get("tmpparc"), 12))
+                if c.get("tpregtrab") == 1:
+                    xml += ("            <duracao>\n" + T("tpContr", c.get("dur_tpcontr") or 1, 14)
+                            + T("dtTerm", _pxml_d(c.get("dur_dtterm")), 14) + T("clauAssec", c.get("dur_clauassec"), 14)
+                            + T("objDet", c.get("dur_objdet"), 14) + "            </duracao>\n")
+                for ob in (c.get("observacoes") or []):
+                    xml += "            <observacoes>\n" + T("observacao", ob, 14) + "            </observacoes>\n"
+                if c.get("suc_nrinsc"):
+                    xml += ("            <sucessaoVinc>\n" + T("tpInsc", c.get("suc_tpinsc") or 1, 14)
+                            + T("nrInsc", c.get("suc_nrinsc"), 14) + T("matricAnt", c.get("suc_matricant"), 14)
+                            + T("dtTransf", _pxml_d(c.get("suc_dttransf")), 14) + "            </sucessaoVinc>\n")
+                if c.get("dtdeslig"):
+                    xml += ("            <infoDeslig>\n" + T("dtDeslig", _pxml_d(c.get("dtdeslig")), 14)
+                            + T("mtvDeslig", c.get("mtvdeslig"), 14) + T("dtProjFimAPI", _pxml_d(c.get("dtprojfimapi")), 14)
+                            + T("pensAlim", c.get("pensalim"), 14)
+                            + (T("percAliment", _pxml_v(c["percaliment"]), 14) if c.get("percaliment") else "")
+                            + (T("vrAlim", _pxml_v(c["vralim"]), 14) if c.get("vralim") else "")
+                            + "            </infoDeslig>\n")
+                xml += "          </infoVinc>\n"
+            elif c.get("dtterm"):
+                xml += ("          <infoTerm>\n" + T("dtTerm", _pxml_d(c.get("dtterm")), 12)
+                        + T("mtvDesligTSV", c.get("mtvdesligtsv"), 12) + "          </infoTerm>\n")
+            if str(c.get("codcateg") or "") != "104":
+                xml += ("          <localTrabalho>\n            <localTrabGeral>\n"
+                        + T("tpInsc", c.get("lt_tpinsc") or c.get("estab_tpinsc") or 1, 14)
+                        + T("nrInsc", c.get("lt_nrinsc") or c.get("estab_nrinsc"), 14)
+                        + T("descComp", c.get("lt_desccomp"), 14)
+                        + "            </localTrabGeral>\n          </localTrabalho>\n")
+            xml += "        </infoCompl>\n"
+
+        for mc in (c.get("mudcategativ") or []):
+            xml += ("        <mudCategAtiv>\n" + T("codCateg", mc.get("codCateg"), 10)
+                    + T("natAtividade", mc.get("natAtividade"), 10)
+                    + T("dtMudCategAtiv", _pxml_d(mc.get("dtMudCategAtiv")), 10) + "        </mudCategAtiv>\n")
+        for un in (c.get("unicontr") or []):
+            xml += ("        <unicContr>\n" + T("matUnic", un.get("matUnic"), 10) + T("codCateg", un.get("codCateg"), 10)
+                    + T("dtInicio", _pxml_d(un.get("dtInicio")), 10) + "        </unicContr>\n")
+
+        # ideEstab / infoVlr / idePeriodo
+        xml += ("        <ideEstab>\n" + T("tpInsc", c.get("estab_tpinsc") or 1, 10) + T("nrInsc", c["estab_nrinsc"], 10)
+                + "          <infoVlr>\n" + T("compIni", _pxml_m(c["compini"]), 12) + T("compFim", _pxml_m(c["compfim"]), 12)
+                + T("indReperc", c["indreperc"], 12) + T("indenSD", c.get("indensd"), 12)
+                + T("indenAbono", c.get("indenabono"), 12))
+        if c.get("indenabono") == "S":
+            for a in (c.get("abono_anos") or []):
+                xml += "            <abono>\n" + T("anoBase", a, 14) + "            </abono>\n"
+        if c["indreperc"] in (1, 5):
+            cat = str(c.get("codcateg") or cat_func)
+            agnoc = (not cat or cat[0] in "123" or cat in ("731", "734", "738"))
+            for pr in sorted(periodos_por_id.get(c["id"], []), key=lambda x: x["perref"]):
+                xml += "            <idePeriodo>\n" + T("perRef", _pxml_m(pr["perref"]), 14)
+                if pr.get("vrbccpmensal") is not None:
+                    xml += ("              <baseCalculo>\n" + T("vrBcCpMensal", _pxml_v(pr["vrbccpmensal"]), 16)
+                            + T("vrBcCp13", _pxml_v(pr.get("vrbccp13") or 0), 16))
+                    if agnoc:
+                        xml += ("                <infoAgNocivo>\n" + T("grauExp", pr.get("grauexp") or 1, 18)
+                                + "                </infoAgNocivo>\n")
+                    xml += "              </baseCalculo>\n"
+                if pr.get("vrbcfgtsproctrab") is not None:
+                    xml += ("              <infoFGTS>\n" + T("vrBcFGTSProcTrab", _pxml_v(pr["vrbcfgtsproctrab"]), 16)
+                            # SEFIP e declarada antes: o XSD só aceita valor > 0
+                            + (T("vrBcFGTSSefip", _pxml_v(pr["vrbcfgtssefip"]), 16) if (pr.get("vrbcfgtssefip") or 0) > 0 else "")
+                            + (T("vrBcFGTSDecAnt", _pxml_v(pr["vrbcfgtsdecant"]), 16) if (pr.get("vrbcfgtsdecant") or 0) > 0 else "")
+                            + "              </infoFGTS>\n")
+                if pr.get("mud_codcateg") and pr.get("mud_vrbcprev") is not None:
+                    xml += ("              <baseMudCateg>\n" + T("codCateg", pr["mud_codcateg"], 16)
+                            + T("vrBcCPrev", _pxml_v(pr["mud_vrbcprev"]), 16) + "              </baseMudCateg>\n")
+                for it in (pr.get("infointerm") or []):
+                    xml += ("              <infoInterm>\n" + T("dia", it.get("dia"), 16)
+                            + T("hrsTrab", it.get("hrsTrab"), 16) + "              </infoInterm>\n")
+                xml += "            </idePeriodo>\n"
+        xml += "          </infoVlr>\n        </ideEstab>\n      </infoContr>\n"
+    xml += "    </ideTrab>\n  </evtProcTrab>\n</eSocial>"
+    return xml
+
+
+def _gerar_xml_s2501(pagtos, empresa, tpAmb="1", recibo_ant=None):
+    """pagtos: as linhas da tab_processo_pagto do mesmo processo × mês × sequência
+    (uma por trabalhador). No S-2501 os campos do trabalhador são ATRIBUTOS."""
+    from xml.sax.saxutils import quoteattr as _qa
+    if not pagtos:
+        raise ValueError("Pagamento não encontrado.")
+    p0 = pagtos[0]
+    T = _pxml_tag
+
+    def at(**kw):
+        return "".join(f" {k}={_qa(str(v))}" for k, v in kw.items() if v not in (None, ""))
+
+    xml = _pxml_cab("evtContProc", "evtContProc", _pxml_evt_id(empresa), _pxml_ide_evento(tpAmb, recibo_ant))
+    xml += _pxml_ide_empregador(empresa)
+    xml += ("    <ideProc>\n" + T("nrProcTrab", p0["nrproctrab"], 6) + T("perApurPgto", _pxml_m(p0["perapurpgto"]), 6)
+            + T("ideSeqProc", p0.get("ideseqproc"), 6) + T("obs", p0.get("obs"), 6) + "    </ideProc>\n")
+    for pg in pagtos:
+        xml += f"    <ideTrab{at(cpfTrab=pg['cpftrab'])}>\n"
+        for c in (pg.get("calctrib") or []):
+            crs = c.get("infoCRContrib") or []
+            abre = (f"      <calcTrib{at(perRef=_pxml_m(c['perRef']), vrBcCpMensal=_pxml_v(c.get('vrBcCpMensal')), vrBcCp13=_pxml_v(c.get('vrBcCp13')))}")
+            if crs:
+                xml += abre + ">\n"
+                for cr in crs:
+                    xml += f"        <infoCRContrib{at(tpCR=cr['tpCR'], vrCR=_pxml_v(cr['vrCR']))}/>\n"
+                xml += "      </calcTrib>\n"
+            else:
+                xml += abre + "/>\n"
+        if pg.get("irrf_tpcr"):
+            det = pg.get("irrf_detalhe") or {}
+            xml += (f"      <infoCRIRRF{at(tpCR=pg['irrf_tpcr'], vrCR=_pxml_v(pg.get('irrf_vrcr')), vrCR13=(_pxml_v(pg['irrf_vrcr13']) if pg.get('irrf_vrcr13') else None))}>\n")
+            ir = det.get("infoIR") or {}
+            if ir:
+                campos = {k: (_pxml_v(v) if k != "descIsenNTrib" else v) for k, v in ir.items() if v not in (None, "")}
+                xml += f"        <infoIR{at(**campos)}/>\n"
+            rra = det.get("infoRRA")
+            if pg["irrf_tpcr"] == "188951" and rra:
+                xml += f"        <infoRRA{at(descRRA=rra.get('descRRA'), qtdMesesRRA=rra.get('qtdMesesRRA'))}>\n"
+                if rra.get("vlrDespCustas") is not None or rra.get("vlrDespAdvogados") is not None:
+                    xml += (f"          <despProcJud{at(vlrDespCustas=_pxml_v(rra.get('vlrDespCustas')), vlrDespAdvogados=_pxml_v(rra.get('vlrDespAdvogados')))}/>\n")
+                for a in (rra.get("ideAdv") or []):
+                    xml += (f"          <ideAdv{at(tpInsc=a.get('tpInsc'), nrInsc=a.get('nrInsc'), vlrAdv=(_pxml_v(a['vlrAdv']) if a.get('vlrAdv') else None))}/>\n")
+                xml += "        </infoRRA>\n"
+            for d in (det.get("dedDepen") or []):
+                xml += f"        <dedDepen{at(tpRend=d.get('tpRend'), cpfDep=d.get('cpfDep'), vlrDeducao=_pxml_v(d.get('vlrDeducao')))}/>\n"
+            for d in (det.get("penAlim") or []):
+                xml += f"        <penAlim{at(tpRend=d.get('tpRend'), cpfDep=d.get('cpfDep'), vlrPensao=_pxml_v(d.get('vlrPensao')))}/>\n"
+            xml += "      </infoCRIRRF>\n"
+        xml += "    </ideTrab>\n"
+    xml += "  </evtContProc>\n</eSocial>"
+    return xml
+
+
+def _gerar_xml_s3500(es, alvo, empresa, tpAmb="1"):
+    """alvo: a linha da tab_processo (flag1 'P') ou da tab_processo_pagto ('G')."""
+    T = _pxml_tag
+    eh_2500 = str(es.get("flag1") or "").upper()[:1] == "P"
+    recibo = (es.get("recibo_ref") or "").strip()
+    if not recibo:
+        raise ValueError("A remessa de exclusão está sem o recibo do evento a excluir.")
+    xml = _pxml_cab("evtExcProcTrab", "evtExcProcTrab", _pxml_evt_id(empresa),
+                    _pxml_ide_evento(tpAmb, com_retif=False))
+    xml += _pxml_ide_empregador(empresa)
+    xml += ("    <infoExclusao>\n" + T("tpEvento", "S-2500" if eh_2500 else "S-2501", 6)
+            + T("nrRecEvt", recibo, 6) + "      <ideProcTrab>\n" + T("nrProcTrab", alvo["nrproctrab"], 8))
+    if eh_2500:
+        xml += T("cpfTrab", alvo["cpftrab"], 8) + T("ideSeqProc", alvo.get("ideseqtrab"), 8)
+    else:
+        xml += T("perApurPgto", _pxml_m(alvo["perapurpgto"]), 8) + T("ideSeqProc", alvo.get("ideseqproc"), 8)
+    xml += "      </ideProcTrab>\n    </infoExclusao>\n  </evtExcProcTrab>\n</eSocial>"
+    return xml
+
+
+# ---------- carga dos dados de cada remessa ----------
+def _pxml_contratos(id_empresa, id_proc):
+    """Todas as linhas do mesmo processo × CPF × ideSeqTrab da linha id_proc."""
+    p = ((supabase.table("tab_processo").select("*").eq("id", id_proc)
+          .eq("id_empresa", id_empresa).limit(1).execute()).data or [None])[0]
+    if not p:
+        return []
+    q = (supabase.table("tab_processo").select("*").eq("id_empresa", id_empresa)
+         .eq("nrproctrab", p["nrproctrab"]).eq("cpftrab", p["cpftrab"]).eq("situacao", "A"))
+    q = q.eq("ideseqtrab", p["ideseqtrab"]) if p.get("ideseqtrab") is not None else q.is_("ideseqtrab", "null")
+    return sorted(q.execute().data or [], key=lambda x: x.get("contrato_seq") or 1)
+
+
+def _pxml_grupo_pagto(id_empresa, id_pagto):
+    """Todas as linhas do mesmo processo × mês × ideSeqProc da linha id_pagto."""
+    p = ((supabase.table("tab_processo_pagto").select("*").eq("id", id_pagto)
+          .eq("id_empresa", id_empresa).limit(1).execute()).data or [None])[0]
+    if not p:
+        return []
+    q = (supabase.table("tab_processo_pagto").select("*").eq("id_empresa", id_empresa)
+         .eq("nrproctrab", p["nrproctrab"]).eq("perapurpgto", p["perapurpgto"]).eq("situacao", "A"))
+    q = q.eq("ideseqproc", p["ideseqproc"]) if p.get("ideseqproc") is not None else q.is_("ideseqproc", "null")
+    return sorted(q.execute().data or [], key=lambda x: x["id"])
+
+
+def _pxml_recibo_vigente(id_empresa, layout, ids, flag_3500, sem_id_esocial=None):
+    """Recibo aceito que ainda vale para estes registros (para a retificação).
+    Um S-3500 aceito depois dele zera: o próximo envio volta a ser original."""
+    try:
+        rows = (supabase.table("tab_esocial").select("id_esocial, recibo")
+                .eq("id_empresa", id_empresa).eq("layout", layout).in_("codigo2", list(ids))
+                .order("id_esocial", desc=True).execute().data or [])
+        exc = (supabase.table("tab_esocial").select("id_esocial, recibo")
+               .eq("id_empresa", id_empresa).eq("layout", "3500").eq("flag1", flag_3500)
+               .in_("codigo2", list(ids)).execute().data or [])
+    except Exception:
+        return ""
+    ult_exc = max([r["id_esocial"] for r in exc if (r.get("recibo") or "").strip()] or [0])
+    for r in rows:
+        if r["id_esocial"] == sem_id_esocial:
+            continue
+        if (r.get("recibo") or "").strip() and r["id_esocial"] > ult_exc:
+            return r["recibo"].strip()
+    return ""
+
+
+def _pxml_remessa_pendente(id_cliente, id_empresa, layout, ids, codigo2, matricula,
+                           flag1=None, recibo_ref=None):
+    """Garante UMA remessa sem recibo para o registro. Devolve o id_esocial."""
+    try:
+        q = (supabase.table("tab_esocial").select("id_esocial, recibo")
+             .eq("id_empresa", id_empresa).eq("layout", layout).in_("codigo2", list(ids)))
+        if flag1:
+            q = q.eq("flag1", flag1)
+        for r in (q.execute().data or []):
+            if not (r.get("recibo") or "").strip():
+                return r["id_esocial"]
+        agora = _agora_brasilia()
+        reg = {"id_cliente": id_cliente, "id_empresa": id_empresa,
+               "data_cad": agora.strftime("%Y%m%d"), "hora_cad": agora.strftime("%H%M"),
+               "id_remessa": agora.strftime("%Y%m%d%H%M%S"), "ano_mes": None,
+               "folha_tipo": "N", "layout": layout, "matricula": matricula, "codigo2": codigo2}
+        if flag1:
+            reg["flag1"] = flag1
+        if recibo_ref:
+            reg["recibo_ref"] = recibo_ref
+        novo = supabase.table("tab_esocial").insert(reg).execute().data or [{}]
+        return novo[0].get("id_esocial")
+    except Exception as e:
+        print(f"[PROC-ES] remessa {layout} {codigo2}: {e}")
+        return None
+
+
+def _pxml_apagar_pendentes(id_empresa, layout, codigo2):
+    """Apaga as remessas deste registro que ainda não têm recibo."""
+    try:
+        rows = (supabase.table("tab_esocial").select("id_esocial, recibo")
+                .eq("id_empresa", id_empresa).eq("layout", layout).eq("codigo2", codigo2)
+                .execute().data or [])
+        ids = [r["id_esocial"] for r in rows if not (r.get("recibo") or "").strip()]
+        if ids:
+            supabase.table("tab_esocial").delete().in_("id_esocial", ids).execute()
+    except Exception as e:
+        print(f"[PROC-ES] apagar pendentes {layout} {codigo2}: {e}")
+
+
+def _pxml_status(id_empresa, layout, ids, flag_3500):
+    """{id: 'enviado' | 'pendente' | 'excluido'} — com o S-3500 levado em conta."""
+    out = {}
+    if not ids:
+        return out
+    try:
+        rows = (supabase.table("tab_esocial").select("id_esocial, codigo2, recibo")
+                .eq("id_empresa", id_empresa).eq("layout", layout).in_("codigo2", list(ids))
+                .execute().data or [])
+        exc = (supabase.table("tab_esocial").select("id_esocial, codigo2, recibo")
+               .eq("id_empresa", id_empresa).eq("layout", "3500").eq("flag1", flag_3500)
+               .in_("codigo2", list(ids)).execute().data or [])
+    except Exception:
+        return out
+    ult_exc = {}
+    for r in exc:
+        if (r.get("recibo") or "").strip():
+            ult_exc[r["codigo2"]] = max(ult_exc.get(r["codigo2"], 0), r["id_esocial"])
+    for r in rows:
+        k = r["codigo2"]
+        if (r.get("recibo") or "").strip():
+            out[k] = "excluido" if ult_exc.get(k, 0) > r["id_esocial"] else "enviado"
+        else:
+            out.setdefault(k, "pendente")
+    for k in ult_exc:
+        out.setdefault(k, "excluido")
+    return out
+
+
+# ---------- envio (os mesmos passos do S-2230, com a retificação do S-1200) ----------
+def _pxml_enviar(es, montar, prefixo, rotulo, recibo_ant=""):
+    import time
+    id_empresa = _get_id_empresa()
+    cnpj_emp = so_numeros(session.get("cnpj_empresa", ""))
+    id_reg = es["id_esocial"]
+    tpAmb = "1"
+    try:
+        empresa = (supabase.table("tab_empresa").select("*").eq("cnpj", cnpj_emp)
+                   .limit(1).execute().data or [{}])[0]
+        if not empresa.get("cnpj"):
+            return {"ok": False, "msg": "Empresa não encontrada."}
+    except Exception as e:
+        return {"ok": False, "msg": f"Erro ao buscar empresa: {e}"}
+
+    _now2 = _agora_brasilia()
+    _pref = f"{_xml_dir_rel(id_empresa, _now2)}/{prefixo}_{_now2.strftime('%Y%m%d_%H%M%S')}"
+    try:
+        xml_str = montar(empresa, tpAmb)
+    except Exception as e:
+        _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
+        return {"ok": False, "msg": f"Erro ao gerar XML: {e}"}
+    _xml_save(f"{_pref}_1_evento.xml", xml_str)
+
+    _aplicar_cert_esocial(empresa)
+    _ok_ass, _msg_ass = _conferir_assinante_esocial(empresa)
+    if not _ok_ass:
+        return {"ok": False, "msg": _msg_ass}
+    pfx_b64, senha_enc = empresa.get("cert_pfx_b64"), empresa.get("cert_senha_enc")
+    if not pfx_b64 or not senha_enc:
+        _xml_erro_save(_pref, 2, _msg_cert_ausente(empresa))
+        return {"ok": False, "msg": _msg_cert_ausente(empresa)}
+    pfx_bytes = base64.b64decode(pfx_b64)
+    senha_str = _cert_decrypt(senha_enc)
+    try:
+        xml_assinado = _assinar_xml(xml_str, pfx_bytes, senha_str)
+    except Exception as e:
+        _xml_erro_save(_pref, 2, f"Erro na assinatura: {e}")
+        return {"ok": False, "msg": f"Erro na assinatura: {e}"}
+    _xml_save(f"{_pref}_2_assinado.xml", xml_assinado)
+
+    try:
+        lote_xml = _montar_lote(xml_assinado, cnpj_emp, tpAmb, pfx_bytes, senha_str,
+                                tra_tpinsc=empresa.get("_tra_tpinsc"),
+                                tra_nrinsc=empresa.get("_tra_nrinsc"))
+    except Exception as e:
+        _xml_erro_save(_pref, 3, f"Erro ao montar lote: {e}")
+        return {"ok": False, "msg": f"Erro ao montar lote: {e}"}
+
+    url_envio, url_consulta = _ES_ENDPOINTS.get(tpAmb, _ES_ENDPOINTS["1"])
+    try:
+        resp_envio = _http_post_cert(url_envio, _soap_enviar(lote_xml), pfx_bytes, senha_str, _SA_ENVIAR)
+    except Exception as e:
+        _xml_erro_save(_pref, 4, "Erro ao transmitir ao eSocial.")
+        return {"ok": False, "msg": "Erro ao transmitir ao eSocial.", "detalhe": str(e)}
+
+    analise = _analisar_resposta_envio(resp_envio)
+    nr_rec = analise["nr_rec"]
+    agora = _agora_brasilia()
+    if not nr_rec:
+        supabase.table("tab_esocial").update({
+            "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
+            "observacao_erro": analise["erro"][:295],
+        }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+        _xml_erro_save(_pref, 4, "eSocial recusou o envio.")
+        return {"ok": False, "msg": "eSocial recusou o envio.", "detalhe": analise["erro"]}
+    supabase.table("tab_esocial").update({
+        "data_grava": agora.strftime("%Y%m%d"), "hora_grava": agora.strftime("%H%M"),
+    }).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+
+    recibo_final, obs_erro, cd_resp = "", "", ""
+    for _ in range(3):
+        time.sleep(10)
+        try:
+            resp_cons = _http_post_cert(url_consulta, _soap_consultar(nr_rec), pfx_bytes, senha_str, _SA_CONSULTAR)
+            resultado = _extrair_resultado_consulta(resp_cons)
+        except Exception as e:
+            obs_erro = f"Erro na consulta: {e}"
+            break
+        cd_resp = resultado.get("cdResposta", "")
+        if cd_resp in ("101", "202"):
+            continue
+        if resultado["eventos"]:
+            ev0 = resultado["eventos"][0]
+            recibo_final = ev0.get("nrRec", "")
+            if ev0.get("cdResp", "") not in ("", "201"):
+                ocorrs = ev0.get("ocorrs", [])
+                obs_erro = " · ".join(ocorrs) if ocorrs else resultado.get("descResposta", "")
+        elif not recibo_final:
+            obs_erro = f"Consulta sem recibo [{cd_resp}]: {resultado.get('descResposta', '')}"
+        break
+
+    aguardando = (not recibo_final and not obs_erro and cd_resp in ("101", "202"))
+    if recibo_final and not obs_erro:
+        upd = {"recibo": recibo_final, "observacao_erro": ""}
+        if recibo_ant and recibo_final != recibo_ant:
+            upd["recibo_ref"] = recibo_ant           # retificação: guarda o original
+    elif aguardando:
+        upd = {"observacao_erro": f"AGUARDANDO:{nr_rec}"}
+    else:
+        upd = {"observacao_erro": (obs_erro or "Sem retorno do eSocial.")[:295]}
+    supabase.table("tab_esocial").update(upd).eq("id_esocial", id_reg).eq("id_empresa", id_empresa).execute()
+    gravar_log("ESOCIAL", f"{rotulo} enviado{' (retificação)' if recibo_ant else ''}: nrRec={recibo_final}",
+               matricula=es.get("matricula"))
+    return {"ok": bool(recibo_final) and not obs_erro, "aguardando": aguardando, "nr_rec": recibo_final,
+            "msg": ('eSocial ainda NÃO processou a remessa. Aguarde um pouco e clique em "Consultar". '
+                    'É indispensável checar o retorno.' if aguardando
+                    else obs_erro or f"Recibo: {recibo_final}")}
+
+
+def _pxml_carregar_es(id_reg, layout):
+    id_empresa = _get_id_empresa()
+    try:
+        es = (supabase.table("tab_esocial").select("*").eq("id_esocial", int(id_reg))
+              .eq("id_empresa", id_empresa).eq("layout", layout).limit(1).execute().data or [None])[0]
+    except Exception:
+        es = None
+    return es, id_empresa
+
+
+def _pxml_preparar(es, id_empresa):
+    """(montar, prefixo, rotulo, recibo_ant, erro) para a remessa es."""
+    lay = str(es.get("layout"))
+    cod = es.get("codigo2")
+    if lay == "2500":
+        contratos = _pxml_contratos(id_empresa, cod)
+        if not contratos:
+            return None, "", "", "", "O processo desta remessa não existe mais."
+        ids = [c["id"] for c in contratos]
+        pers = {}
+        for x in (supabase.table("tab_processo_periodo").select("*").in_("id_processo", ids)
+                  .execute().data or []):
+            pers.setdefault(x["id_processo"], []).append(x)
+        func = {}
+        if contratos[0].get("matricula"):
+            func = ((supabase.table("tab_cad").select("nome, dtnascto, codcateg")
+                     .eq("id_empresa", id_empresa).eq("matricula", contratos[0]["matricula"])
+                     .limit(1).execute()).data or [{}])[0]
+        rec = _pxml_recibo_vigente(id_empresa, "2500", ids, "P", es["id_esocial"])
+        return (lambda emp, amb: _gerar_xml_s2500(contratos, pers, func, emp, amb, rec),
+                f"S2500_{contratos[0]['nrproctrab']}", "S-2500", rec, "")
+    if lay == "2501":
+        grupo = _pxml_grupo_pagto(id_empresa, cod)
+        if not grupo:
+            return None, "", "", "", "O pagamento desta remessa não existe mais."
+        rec = _pxml_recibo_vigente(id_empresa, "2501", [g["id"] for g in grupo], "G", es["id_esocial"])
+        return (lambda emp, amb: _gerar_xml_s2501(grupo, emp, amb, rec),
+                f"S2501_{grupo[0]['nrproctrab']}_{grupo[0]['perapurpgto']}", "S-2501", rec, "")
+    if lay == "3500":
+        tab = "tab_processo" if str(es.get("flag1") or "").upper()[:1] == "P" else "tab_processo_pagto"
+        alvo = ((supabase.table(tab).select("*").eq("id", cod).eq("id_empresa", id_empresa)
+                 .limit(1).execute()).data or [None])[0]
+        if not alvo:
+            return None, "", "", "", "O registro desta exclusão não existe mais."
+        return (lambda emp, amb: _gerar_xml_s3500(es, alvo, emp, amb),
+                f"S3500_{alvo['nrproctrab']}", "S-3500", "", "")
+    return None, "", "", "", "Layout não suportado."
+
+
+def _pxml_rota_enviar(layout):
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_reg = (request.get_json(force=True) or {}).get("id_esocial")
+    if not id_reg:
+        return jsonify({"ok": False, "msg": "id_esocial não informado."})
+    es, id_empresa = _pxml_carregar_es(id_reg, layout)
+    if not es:
+        return jsonify({"ok": False, "msg": f"Remessa S-{layout} não encontrada."})
+    if (es.get("recibo") or "").strip():
+        return jsonify({"ok": False, "msg": "Esta remessa já foi aceita pelo eSocial."})
+    if layout == "2501":
+        # O S-2501 só é aceito depois do S-2500 do processo
+        grupo = _pxml_grupo_pagto(id_empresa, es.get("codigo2"))
+        for g in grupo:
+            if g.get("id_processo") and _pxml_status(id_empresa, "2500", [g["id_processo"]], "P").get(g["id_processo"]) != "enviado":
+                return jsonify({"ok": False, "msg": "Envie primeiro o S-2500 do processo: o S-2501 só é aceito depois dele."})
+    montar, prefixo, rotulo, rec, erro = _pxml_preparar(es, id_empresa)
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    return jsonify(_pxml_enviar(es, montar, prefixo, rotulo, rec))
+
+
+@app.route("/api/esocial_s2500_enviar", methods=["POST"])
+def api_esocial_s2500_enviar():
+    return _pxml_rota_enviar("2500")
+
+
+@app.route("/api/esocial_s2501_enviar", methods=["POST"])
+def api_esocial_s2501_enviar():
+    return _pxml_rota_enviar("2501")
+
+
+@app.route("/api/esocial_s3500_enviar", methods=["POST"])
+def api_esocial_s3500_enviar():
+    return _pxml_rota_enviar("3500")
+
+
+@app.route("/api/esocial_proc_xml")
+def api_esocial_proc_xml():
+    """Baixa o XML (sem assinatura) de uma remessa S-2500, S-2501 ou S-3500."""
+    if not session.get("logado"):
+        return redirect("/")
+    from flask import Response
+    id_reg = request.args.get("id", "").strip()
+    if not id_reg.isdigit():
+        return Response("ID inválido.", status=400, mimetype="text/plain")
+    es = None
+    id_empresa = _get_id_empresa()
+    for lay in ("2500", "2501", "3500"):
+        es, _ = _pxml_carregar_es(id_reg, lay)
+        if es:
+            break
+    if not es:
+        return Response("Remessa não encontrada.", status=404, mimetype="text/plain")
+    montar, prefixo, _r, _rec, erro = _pxml_preparar(es, id_empresa)
+    if erro:
+        return Response(erro, status=400, mimetype="text/plain")
+    try:
+        empresa = (supabase.table("tab_empresa").select("*")
+                   .eq("cnpj", so_numeros(session.get("cnpj_empresa", ""))).limit(1).execute().data or [{}])[0]
+        xml_str = montar(empresa, "1")
+    except Exception as e:
+        return Response(f"Erro: {e}", status=500, mimetype="text/plain")
+    return Response(xml_str, mimetype="application/xml; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{prefixo}.xml"'})
+
+
+@app.route("/api/processo/excluir_esocial", methods=["POST"])
+def api_processo_excluir_esocial():
+    """Gera a remessa S-3500 de um S-2500 ('2500') ou S-2501 ('2501') já aceito."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada. Entre de novo."})
+    id_empresa = _get_id_empresa()
+    d = request.get_json(silent=True) or {}
+    tipo, id_reg = str(d.get("tipo") or ""), d.get("id")
+    if tipo not in ("2500", "2501") or not id_reg:
+        return jsonify({"ok": False, "msg": "Registro não informado."})
+    flag = "P" if tipo == "2500" else "G"
+    if tipo == "2500":
+        ids = [c["id"] for c in _pxml_contratos(id_empresa, id_reg)] or [id_reg]
+    else:
+        ids = [g["id"] for g in _pxml_grupo_pagto(id_empresa, id_reg)] or [id_reg]
+    rec = _pxml_recibo_vigente(id_empresa, tipo, ids, flag)
+    if not rec:
+        return jsonify({"ok": False, "msg": "Não há evento aceito no eSocial para excluir."})
+    if tipo == "2500":
+        pgs = (supabase.table("tab_processo_pagto").select("id").eq("id_empresa", id_empresa)
+               .in_("id_processo", ids).execute().data or [])
+        st = _pxml_status(id_empresa, "2501", [x["id"] for x in pgs], "G")
+        if any(v == "enviado" for v in st.values()):
+            return jsonify({"ok": False, "msg": ("Este processo tem pagamentos (S-2501) aceitos no eSocial. "
+                                                 "Exclua antes os pagamentos.")})
+    mat = None
+    try:
+        tab = "tab_processo" if tipo == "2500" else "tab_processo_pagto"
+        mat = ((supabase.table(tab).select("matricula").eq("id", id_reg).limit(1).execute()).data or [{}])[0].get("matricula")
+    except Exception:
+        pass
+    novo = _pxml_remessa_pendente(session.get("id_cliente"), id_empresa, "3500", [id_reg], id_reg,
+                                  mat, flag1=flag, recibo_ref=rec)
+    if not novo:
+        return jsonify({"ok": False, "msg": "Não consegui criar a remessa de exclusão."})
+    gravar_log("ESOCIAL", f"S-3500 gerado para o S-{tipo} recibo {rec}", matricula=mat, id_empresa=id_empresa)
+    return jsonify({"ok": True, "msg": ("Remessa S-3500 criada. Envie pela Fila do eSocial; depois de aceita, "
+                                        "o registro pode ser apagado daqui.")})
 
 
 # =========================================================
@@ -39767,6 +40413,9 @@ def esocial_fila():
         "2299": ("S-2299", "Desligamento",  "#",                 True),
         "2300": ("S-2300", "Início TSVE",   "/esocial_fila",     True),
         "2399": ("S-2399", "Término TSVE",  "/esocial_fila",     True),
+        "2500": ("S-2500", "Proc.Trabalhista", "/processo_trabalhista", True),
+        "2501": ("S-2501", "Trib.Processo",    "/processo_pagamentos",  True),
+        "3500": ("S-3500", "Exclusão Proc.",   "/processo_trabalhista", True),
     }
     _SIT = {
         "E": ("Enviado",    "sit-enviado"),
