@@ -316,6 +316,8 @@ body.menu-numerado .nav-item::before {
 .card-ajuda-badge:hover { background: #16a34a; border-color: #16a34a; color: #fff; opacity: 1; }
 /* Cards de largura uniforme (usado na seção Rescisão) — alinha em grade */
 .nav-item.nav-fix { min-width: 232px; justify-content: flex-start; }
+/* Card largo, nome numa linha so (Processo Trabalhista). */
+.nav-item.nav-larg { min-width: 300px; justify-content: flex-start; white-space: nowrap; }
 /* Igual ao nav-fix, mas com o nome quebrando em duas linhas DENTRO da mesma
    largura, para o nome comprido nao esticar o card e desalinhar a grade.
    Quebra sozinho (white-space normal) em vez de <br> no nome: o nome tambem
@@ -779,8 +781,8 @@ const modulos = {
             // geral do módulo desta seção). Só não vale com a folha de 13º
             // ativa (bloqueio13) — o servidor também recusa, ver _proc_trava_13.
             { nome: 'Processo Trabalhista', semAvisoFolha: true, itens: [
-                { icone: '⚖️', nome: 'Processos Trabalhistas (S-2500)', href: '/processo_trabalhista', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true, bloqueio13: true },
-                { icone: '💰', nome: 'Pagamentos do Processo (S-2501)', href: '/processo_pagamentos', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true, bloqueio13: true },
+                { icone: '⚖️', nome: 'Processos Trabalhistas (S-2500)', href: '/processo_trabalhista', ok: true, classe: 'nav-larg', permiteFolhaBloqueada: true, bloqueio13: true },
+                { icone: '💰', nome: 'Pagamentos do Processo (S-2501)', href: '/processo_pagamentos', ok: true, classe: 'nav-larg', permiteFolhaBloqueada: true, bloqueio13: true },
             ]},
             // Secao propria, e nao um card dentro de Rescisao: simular nao e
             // parte do assunto Rescisao, e outro tipo de tarefa — ver quanto
