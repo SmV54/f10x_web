@@ -30288,8 +30288,9 @@ def api_processo_pagto_excluir():
 # =========================================================
 # eSocial S-2500 / S-2501 / S-3500 — XML, remessa e envio
 # A remessa nasce ao gravar o processo/pagamento: uma linha na tab_esocial
-# SEM recibo (layout 2500 ou 2501, codigo2 = id do registro), sem ano_mes —
-# aparece na Fila do mês em que nasceu e não trava o S-1200 da competência.
+# SEM recibo (layout 2500 ou 2501, codigo2 = id do registro), com ano_mes =
+# a folha ativa, que é o período em que a Fila abre. Não trava o S-1200:
+# 2500/2501/3500 não estão em _S1200_PREREQ_LAYOUTS.
 # No envio, se o registro já tem recibo aceito, o evento vai como
 # RETIFICAÇÃO (indRetif=2) desse recibo — o mesmo jeito do S-1200.
 # S-3500 (exclusão no eSocial): layout 3500, codigo2 = id, flag1 'P' (do
@@ -30607,6 +30608,12 @@ def _pxml_recibo_vigente(id_empresa, layout, ids, flag_3500, sem_id_esocial=None
     return ""
 
 
+def _pxml_anomes_fila():
+    """Competência da folha ativa (AAAAMM): é nela que a Fila abre."""
+    am = re.sub(r"\D", "", str(session.get("anomes_atual") or ""))[:6]
+    return int(am) if len(am) == 6 else None
+
+
 def _pxml_remessa_pendente(id_cliente, id_empresa, layout, ids, codigo2, matricula,
                            flag1=None, recibo_ref=None):
     """Garante UMA remessa sem recibo para o registro. Devolve o id_esocial."""
@@ -30621,7 +30628,7 @@ def _pxml_remessa_pendente(id_cliente, id_empresa, layout, ids, codigo2, matricu
         agora = _agora_brasilia()
         reg = {"id_cliente": id_cliente, "id_empresa": id_empresa,
                "data_cad": agora.strftime("%Y%m%d"), "hora_cad": agora.strftime("%H%M"),
-               "id_remessa": agora.strftime("%Y%m%d%H%M%S"), "ano_mes": None,
+               "id_remessa": agora.strftime("%Y%m%d%H%M%S"), "ano_mes": _pxml_anomes_fila(),
                "folha_tipo": "N", "layout": layout, "matricula": matricula, "codigo2": codigo2}
         if flag1:
             reg["flag1"] = flag1
