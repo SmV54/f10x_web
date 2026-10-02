@@ -374,9 +374,10 @@ tr:hover td { background: #f8fafc; }
       '2200':'S-2200 Admissão','2205':'S-2205 Alt. Cadastral','2206':'S-2206 Alt. Contrato',
       '2210':'S-2210 CAT','2220':'S-2220 Saúde','2230':'S-2230 Afastamento','2299':'S-2299 Desligamento',
       '2300':'S-2300 Início TSVE','2399':'S-2399 Término TSVE',
+      '2500':'S-2500 Processo Trabalhista','2501':'S-2501 Tributos do Processo','3500':'S-3500 Exclusão de Processo',
       '1200':'S-1200 Remuneração','1210':'S-1210 Pagamentos','1298':'S-1298 Reabertura','1299':'S-1299 Fechamento'
   } %}
-  {% set LAY_ORDER = ['2200','2205','2206','2210','2220','2230','2299','2300','2399','1200','1210','1298','1299','1000','1005','1010','1020'] %}
+  {% set LAY_ORDER = ['2200','2205','2206','2210','2220','2230','2299','2300','2399','2500','2501','3500','1200','1210','1298','1299','1000','1005','1010','1020'] %}
   {% set layouts_presentes = rows | map(attribute='layout') | map('string') | list %}
   <div id="secaoFiltros" class="filtro-bar">
     <span class="filtro-lay-label">Layout:</span>
@@ -465,7 +466,7 @@ tr:hover td { background: #f8fafc; }
 
           <td style="padding-right:0;">
             {# Só as que dá para enviar em lote ganham checkbox. #}
-            {% if r._sit in ('X', 'G', 'P') and r.layout in ('1005', '1010', '1020', '2200', '2220', '2230', '2300', '2399', '1200', '1210', '1298', '1299') %}
+            {% if r._sit in ('X', 'G', 'P') and r.layout in ('1005', '1010', '1020', '2200', '2220', '2230', '2300', '2399', '1200', '1210', '1298', '1299', '2500', '2501', '3500') %}
             <input type="checkbox" class="row-check" data-id="{{ r.id_esocial }}"
                    data-layout="{{ r.layout }}" onchange="_atualizarSelec()">
             {% endif %}
@@ -534,7 +535,7 @@ tr:hover td { background: #f8fafc; }
                       title="Re-consultar o protocolo no eSocial"
                       onclick="_reconsultar({{ r.id_esocial }}, this)">&#8635; Consultar</button>
               {% elif r._sit in ('X', 'G', 'P') and r._lay_href != '#' %}
-              {% if r.layout in ('1005', '1010', '1020', '2200', '2220', '2230', '2300', '2399', '1200', '1210', '1298', '1299') %}
+              {% if r.layout in ('1005', '1010', '1020', '2200', '2220', '2230', '2300', '2399', '1200', '1210', '1298', '1299', '2500', '2501', '3500') %}
               <button class="btn-ir"
                       data-id="{{ r.id_esocial }}"
                       data-layout="{{ r.layout }}"
@@ -1097,11 +1098,4 @@ async function _reconsultar(id, btn) {
 </script>
 <script src="/static/f10_dialog.js"></script>
 </body>
-</html>/* Azul fixo, de proposito: a barra NAO acompanha o --accent da tela.
-   Cada tela do eSocial tem a sua cor de identidade (o S-2299 e vermelho,
-   o S-1020 e indigo, a Fila e verde-azulado) e a barra herdava isso --
-   entao o mesmo processamento aparecia vermelho numa tela e azul noutra,
-   como se estivesse dando erro antes de comecar. Andando e sempre azul;
-   a cor so muda no fim, e ai ela quer dizer alguma coisa: verde com
-   recibo, laranja aguardando o protocolo, vermelho recusado. */
-
+</html>
