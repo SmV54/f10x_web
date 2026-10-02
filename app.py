@@ -71850,9 +71850,12 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
                  Paragraph(f"<b>Valor ({perc}%)</b>", st_cellbr)]]
         for d in medias_detalhe:
             if d["unid"] == "H":
-                acum  = f"{_hhmm(d['soma_qtd'])} · {_fmt_brl(sal_hora_c)}/h"
-                media = (f"{_num_br(d['avg_min'] / 60, 4)} h × {_sal_hora_txt(sal_hora_c)}{_mult_txt(d.get('pct', 0))}"
-                         f" = {_fmt_brl(d['base'])}")
+                acum  = f"{_hhmm(d['soma_qtd'])} · {_sal_hora_txt(sal_hora_c)}/h"
+                # Conversão por extenso, em linhas, para caber na coluna:
+                # 01h54,67 = 1 + 54,67/60 = 1,9111 h / × R$ 8,0521/h × 1,5 (50%) / = R$ 23,08
+                media = (f"{_horas_conv(d['avg_min'])}<br/>"
+                         f"× {_sal_hora_txt(sal_hora_c)}/h{_mult_txt(d.get('pct', 0))}<br/>"
+                         f"= {_fmt_brl(d['base'])}")
             else:
                 acum  = _fmt_brl(d["soma_val"])
                 media = _fmt_brl(d["base"])
@@ -71867,7 +71870,7 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         rows.append([Paragraph("", st_cell), Paragraph("<b>Total das médias</b>", st_cellb),
                      Paragraph("", st_cell), Paragraph("", st_cell),
                      Paragraph(f"<b>{_fmt_brl(med_tot)}</b>", st_cellbr)])
-        tbl = Table(rows, colWidths=[1.4*cm, 5.6*cm, 4.0*cm, 3.4*cm, 2.6*cm])
+        tbl = Table(rows, colWidths=[1.4*cm, 3.8*cm, 3.6*cm, 5.6*cm, 2.6*cm])
         tbl.setStyle(TableStyle([
             ("LINEBELOW",     (0, 0), (-1, 0), 0.6, colors.HexColor("#cbd5e1")),
             ("LINEABOVE",     (0, -1), (-1, -1), 0.6, colors.HexColor("#cbd5e1")),
