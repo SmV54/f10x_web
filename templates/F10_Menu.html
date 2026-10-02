@@ -775,10 +775,12 @@ const modulos = {
                 { icone: '🛡️', nome: 'FAP — Fator Acidentário de Prevenção', href: '/cad_fap', ok: true },
             ]},
             // eSocial S-2500 / S-2501. O processo não depende da folha do mês:
-            // vale também com a folha Calculada/Fechada.
-            { nome: 'Processo Trabalhista', itens: [
-                { icone: '⚖️', nome: 'Processos Trabalhistas (S-2500)', href: '/processo_trabalhista', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true },
-                { icone: '💰', nome: 'Pagamentos do Processo (S-2501)', href: '/processo_pagamentos', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true },
+            // vale com a folha Calculada/Fechada (semAvisoFolha tira o aviso
+            // geral do módulo desta seção). Só não vale com a folha de 13º
+            // ativa (bloqueio13) — o servidor também recusa, ver _proc_trava_13.
+            { nome: 'Processo Trabalhista', semAvisoFolha: true, itens: [
+                { icone: '⚖️', nome: 'Processos Trabalhistas (S-2500)', href: '/processo_trabalhista', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true, bloqueio13: true },
+                { icone: '💰', nome: 'Pagamentos do Processo (S-2501)', href: '/processo_pagamentos', ok: true, classe: 'nav-fix2l', permiteFolhaBloqueada: true, bloqueio13: true },
             ]},
             // Secao propria, e nao um card dentro de Rescisao: simular nao e
             // parte do assunto Rescisao, e outro tipo de tarefa — ver quanto
@@ -1176,6 +1178,7 @@ function selecionarModulo(cardEl, id) {
     navItens.appendChild(navAviso);
 
     avisoPersistente = false;
+    avisoModuloHtml  = '';
     let secoes = m.secoes || [];
 
     if (m.bloqueioFolha && folhaBloqueada) {
@@ -1184,6 +1187,7 @@ function selecionarModulo(cardEl, id) {
         const msg = m.msgBloqueio || `bloqueado. Reabra a folha para continuar.`;
         navAviso.innerHTML = `🔒 <strong>Folha ${sit}</strong> — ${msg}`;
         navAviso.style.display = 'block';
+        avisoModuloHtml = navAviso.innerHTML;
 
         // Exceção: itens marcados com permiteFolhaBloqueada continuam liberados
         // mesmo com a folha Calculada/Fechada (ex.: cadastrar uma Nova Empresa).
@@ -1256,6 +1260,7 @@ function itemBloqueado(item) {
     if (item.bloqueioFolha === 'calculada' && folhaAberta) return true;
     if ((item.bloqueioFolha === 'aberta' || item.bloqueioFolha === true) && !folhaAberta) return true;
     if (item.requerS1299 && !S1299_ENVIADO) return true;
+    if (item.bloqueio13 && folha13()) return true;
     return false;
 }
 
@@ -1280,12 +1285,31 @@ function clicarSecao(idx) {
     selecionarSecao(idx);
 }
 
+// Folha de 13º ativa: adiantamento ('A') ou 13º salário ('1').
+function folha13() { return FOLHA_TIPO === 'A' || FOLHA_TIPO === '1'; }
+var MSG_BLOQ_13 = `🔒 <strong>Folha de 13º Salário</strong> — o Processo Trabalhista não pode ser processado nas folhas de 13º Salário. Troque para a folha Normal em <strong>Mês/Ano</strong>.`;
+var avisoModuloHtml = '';
+
 function selecionarSecao(idx) {
     secaoAtiva = idx;
-    if (!avisoPersistente) navAviso.style.display = 'none';
+    const secao = secoesAtivas[idx];
+    // Seção que não depende da situação da folha: o aviso geral do módulo
+    // ("Folha Calculada — bloqueado") não vale para ela.
+    if (secao && secao.semAvisoFolha) {
+        if (folha13() && (secao.itens || []).some(it => it.bloqueio13)) {
+            navAviso.innerHTML = MSG_BLOQ_13;
+            navAviso.style.display = 'block';
+        } else {
+            navAviso.style.display = 'none';
+        }
+    } else if (avisoPersistente && avisoModuloHtml) {
+        navAviso.innerHTML = avisoModuloHtml;
+        navAviso.style.display = 'block';
+    } else if (!avisoPersistente) {
+        navAviso.style.display = 'none';
+    }
     document.querySelectorAll('.nav-secao-btn').forEach((b, i) => b.classList.toggle('ativo', i === idx));
 
-    const secao = secoesAtivas[idx];
     renderItens(secao ? secao.itens : []);
 }
 
@@ -1336,6 +1360,10 @@ function renderItens(itens) {
         if (!bloqueado && item.requerS1299 && !S1299_ENVIADO) {
             bloqueado = true;
             motivoBloq = 'pos_s1299';
+        }
+        if (!bloqueado && item.bloqueio13 && folha13()) {
+            bloqueado = true;
+            motivoBloq = 'folha13';
         }
         const a = document.createElement('a');
 
@@ -1500,7 +1528,9 @@ function acaoAvisoFolha() {
 
 function mostrarAvisoFolha(motivo) {
     const sitLbl = rotuloSituacaoFolha();
-    if (motivo === 'pos_s1299') {
+    if (motivo === 'folha13') {
+        navAviso.innerHTML = MSG_BLOQ_13;
+    } else if (motivo === 'pos_s1299') {
         navAviso.innerHTML = `🔒 Esta opção fica disponível depois que o <strong>S-1299 do período atual</strong> for enviado e tiver recibo.`;
     } else if (motivo === 'calculada') {
         navAviso.innerHTML = `🔒 <strong>Folha ${sitLbl}</strong> — esta opção só está disponível com a folha <strong>Calculada</strong> ou <strong>Fechada</strong>.`;
