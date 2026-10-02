@@ -9515,6 +9515,14 @@ def _calc_rescisao_nucleo(body, sim=None):
 
     ano_folha = int(anomes[:4]); mes_folha = int(anomes[4:6])
 
+    # Média de verba em horas leva o adicional da rubrica (SMV 02/10/2026):
+    # a hora extra 100% (0074) entra em dobro, a 50% (0073) × 1,5.
+    def _pct_h(c):
+        return (_rubr_full.get(c) or {}).get("pct") or 0
+
+    def _mult_h(c):
+        return 1 + _pct_h(c) / 100
+
     def _media_periodo(mat, sal_hora_c, dt_ini, dt_fim):
         """Média das verbas variáveis dentro de UM período aquisitivo.
 
@@ -9558,7 +9566,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         for c in sorted(set(tot_val) | set(tot_qtd)):
             if c in _verbas_horas:
                 avg_min = round(tot_qtd.get(c, 0) / 12)
-                val = round(avg_min * sal_hora_c / 60)
+                val = round(avg_min * sal_hora_c / 60 * _mult_h(c))
             else:
                 avg_min = 0
                 val = round(tot_val.get(c, 0) / 12)
@@ -9566,7 +9574,7 @@ def _calc_rescisao_nucleo(body, sim=None):
                 total += val
                 det.append({"cod": c, "dsc": _rubr_desc.get(c, f"Verba {c:04d}"),
                             "tipo": "H" if c in _verbas_horas else "V",
-                            "avg_min": avg_min, "val": val,
+                            "avg_min": avg_min, "val": val, "pct": _pct_h(c),
                             "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
                             "por_mes": sorted(por_mes.get(c, {}).items())})
         return total, {"fi": fi, "ff": ff, "det": det}
@@ -9641,9 +9649,9 @@ def _calc_rescisao_nucleo(body, sim=None):
         for c in sorted(set(tot_val) | set(tot_qtd)):
             if c in _verbas_horas:
                 avg_min   = round(tot_qtd.get(c, 0) / 12)
-                val_fer   = round(avg_min * sal_hora_c / 60)
+                val_fer   = round(avg_min * sal_hora_c / 60 * _mult_h(c))
                 avg_min13 = round(tot_qtd13.get(c, 0) / 12)
-                val_13    = round(avg_min13 * sal_hora_c / 60)
+                val_13    = round(avg_min13 * sal_hora_c / 60 * _mult_h(c))
             else:
                 avg_min = avg_min13 = 0
                 val_fer = round(tot_val.get(c, 0) / 12)
@@ -9660,6 +9668,7 @@ def _calc_rescisao_nucleo(body, sim=None):
                             "total": tot_val.get(c, 0), "total_min": tot_qtd.get(c, 0),
                             "total13": tot_val13.get(c, 0), "total_min13": tot_qtd13.get(c, 0),
                             "por_mes": sorted(por_mes.get(c, {}).items()),
+                            "pct": _pct_h(c),
                             "val": val_fer, "val_fer": val_fer, "val_13": val_13})
         return medias_fer, medias_13, {"fi": fi, "ff": ff, "fi13": fi13, "det": det}
 
@@ -10560,7 +10569,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     if not d.get("val_fer"):
                         continue
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min']} min/mês » {_B(d['val_fer'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min']} min/mês{_mult_txt(d.get('pct', 0))} » {_B(d['val_fer'])}")
                     else:
                         lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total'])} /12 = {_B(d['val_fer'])}")
                 lin_med.append(f"<b>Total das médias (férias): {_B(r['med_total'])}</b>")
@@ -10572,7 +10581,7 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                         continue
                     _tem13 = True
                     if d["tipo"] == "H":
-                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min13']} min/mês » {_B(d['val_13'])}")
+                        lin_med.append(f"{d['cod']:04d} {d['dsc']} — {d['avg_min13']} min/mês{_mult_txt(d.get('pct', 0))} » {_B(d['val_13'])}")
                     else:
                         lin_med.append(f"{d['cod']:04d} {d['dsc']} — total {_B(d['total13'])} /12 = {_B(d['val_13'])}")
                 if not _tem13:
@@ -58069,7 +58078,8 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                             tmin = m7.get("total_min", 0)
                             amin = m7.get("avg_min", 0)
                             ah, am_h = amin // 60, amin % 60
-                            vmes_h   = round(amin * sh / 60)
+                            pct7     = m7.get("pct", 0) or 0
+                            vmes_h   = round(amin * sh / 60 * (1 + pct7 / 100))
                             for fol, dados in por_mes7:
                                 q = dados.get("qtd", 0)
                                 qh, qm = q // 60, q % 60
@@ -58082,7 +58092,7 @@ def _gerar_memoria_ferias(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados_b
                                 e7_rows.append([sub])
                             e7_rows.append([Paragraph(
                                 f'Total: {tmin} min / {maq} meses = {amin} min/mes ({ah:02d}:{am_h:02d}h)'
-                                f'  x  {_fmt_brl(sh)[3:]}/h / 60 = {_fmt_brl(vmes_h)[3:]}/mes'
+                                f'  x  {_fmt_brl(sh)[3:]}/h / 60{_mult_txt(pct7)} = {_fmt_brl(vmes_h)[3:]}/mes'
                                 f'  x  {dias} dias / 30 = {_fmt_brl(m7["val"])[3:]}',
                                 _st_mline)])
                         else:
@@ -58499,7 +58509,7 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
     # ── Verbas de férias no tab_rubrica ────────────────────────────
     try:
         r_rub = (supabase.table("tab_rubrica")
-                 .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpf_inc_cp, tpf_inc_irrf, inc_ferias")
+                 .select("cod_rubr, dsc_rubr, tp_rubr, unid_verba, tpn_inc_cp, tpn_inc_irrf, tpf_inc_cp, tpf_inc_irrf, inc_ferias, percentual")
                  .in_("id_cliente", [0, id_cliente])
                  .eq("situacao", "A")
                  .order("cod_rubr")
@@ -58536,6 +58546,9 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
                       if int(r.get("cod_rubr") or 0) in set(_verbas_media)
                       and str(r.get("unid_verba") or "").upper() == "H"}
     _rubr_desc_map = {int(r["cod_rubr"]): (r.get("dsc_rubr") or "").strip() for r in rubrics_fc}
+    # Adicional da verba em horas: a média entra com ele (0074 → × 2), SMV 02/10/2026
+    _pct_fc = {int(r["cod_rubr"]): float(r.get("percentual") or 0) for r in rubrics_fc
+               if int(r.get("cod_rubr") or 0) in _verbas_horas}
 
     # Proventos exclusivos de férias: aparecem em férias (tpf_inc_cp != X/N/vazio)
     # e NÃO aparecem em folha normal (tpn_inc_cp == X/vazio).
@@ -58714,7 +58727,8 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
             for cod, total_min in sorted(totais_qtd_pdf.items()):
                 _meses = _verbas_periodo_pdf.get(cod, {}).get("meses", 1)
                 avg_min = round(total_min / _meses)
-                medias_variaveis[cod] = round(round(avg_min * sal_hora_c / 60) * dias / 30)
+                _mult_fc = 1 + _pct_fc.get(cod, 0) / 100
+                medias_variaveis[cod] = round(round(avg_min * sal_hora_c / 60 * _mult_fc) * dias / 30)
 
         # ── Lançamentos manuais (origem='M') existentes para esse funcionário ──
         man_movs = []
@@ -59008,6 +59022,7 @@ def _calc_ferias_nucleo(anomes, id_empresa, id_cliente, eventos, tabela,
                     "avg_min":   (round(totais_qtd_pdf[cod] / _verbas_periodo_pdf[cod]["meses"])
                                   if _verbas_periodo_pdf.get(cod, {}).get("meses") and totais_qtd_pdf.get(cod) else 0),
                     "sal_hora_c": sal_hora_c,
+                    "pct": _pct_fc.get(cod, 0),
                     "val": val,
                     "por_mes": sorted(_por_mes.get(cod, {}).items()),
                 }
@@ -71197,6 +71212,35 @@ def _meses_media_adiant13(ano, mes_folha, f, afast_cache, faltas_cache):
                     mes_limite=mes_folha)["avos"]
 
 
+_PCT_RUBR_CACHE = {}
+
+
+def _pct_rubricas(id_cliente):
+    """{cod_rubr: percentual} das rubricas do sistema e do cliente — a do
+    cliente vale sobre a do sistema. É o adicional da verba em horas (0073
+    hora extra 50% → 50; 0074 hora extra 100% → 100). Cache de 60 s: o 13º e
+    as férias chamam isto uma vez por funcionário."""
+    agora = _agora_brasilia()
+    hit = _PCT_RUBR_CACHE.get(id_cliente)
+    if hit and (agora - hit[0]).total_seconds() < 60:
+        return hit[1]
+    out = {}
+    try:
+        rows = (supabase.table("tab_rubrica").select("id_cliente, cod_rubr, percentual")
+                .in_("id_cliente", [0, id_cliente]).eq("situacao", "A").execute().data or [])
+        for r in sorted(rows, key=lambda x: int(x.get("id_cliente") or 0)):
+            out[int(r.get("cod_rubr") or 0)] = float(r.get("percentual") or 0)
+    except Exception as e:
+        print(f"[pct_rubricas] {e}")
+    _PCT_RUBR_CACHE[id_cliente] = (agora, out)
+    return out
+
+
+def _mult_txt(pct):
+    """' × 2 (100%)' para a memória — vazio quando a verba não tem adicional."""
+    return f" × {1 + pct / 100:g} ({pct:g}%)" if pct else ""
+
+
 def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                      fi, ff, meses, perc, cods_media, verbas_hora, desc_map=None):
     """Médias das verbas variáveis para o adiantamento do 13º de UM funcionário.
@@ -71245,10 +71289,14 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                     "qtd": _mm.get(_fl, {}).get("qtd", 0) + _q,
                     "val": _mm.get(_fl, {}).get("val", 0) + _v}
     detalhe = []
+    # Verba em horas: a média leva o adicional da rubrica, como a hora extra
+    # do mês (0074 → × 2, 0073 → × 1,5) — SMV 02/10/2026.
+    _pct = _pct_rubricas(id_cliente)
     for c in sorted(set(soma_val) | set(soma_qtd)):
+        pct_c = _pct.get(c, 0) if c in verbas_hora else 0
         if c in verbas_hora:
             avg_min = soma_qtd.get(c, 0) / meses
-            base    = round(avg_min * sal_hora_c / 60)
+            base    = round(avg_min * sal_hora_c / 60 * (1 + pct_c / 100))
             unid    = "H"
         else:
             avg_min = 0
@@ -71263,6 +71311,7 @@ def _medias_adiant13(id_cliente, id_empresa, mat, sal_hora_c,
                 "soma_val": soma_val.get(c, 0),
                 "soma_qtd": soma_qtd.get(c, 0),
                 "avg_min":  avg_min,
+                "pct":      pct_c,
                 "base":     base,
                 "val":      val,
                 "por_mes":  [por_mes[c][f] for f in sorted(por_mes.get(c, {}))],
@@ -71518,7 +71567,8 @@ def _pdf_memoria_adiant13(empresa_nm, anomes, matr, nome, sal_mes, sal_hora_c,
         for d in medias_detalhe:
             if d["unid"] == "H":
                 acum  = f"{_hhmm(d['soma_qtd'])} · {_fmt_brl(sal_hora_c)}/h"
-                media = f"{_hhmm(d['avg_min'])} × {_fmt_brl(sal_hora_c)} = {_fmt_brl(d['base'])}"
+                media = (f"{_hhmm(d['avg_min'])} × {_fmt_brl(sal_hora_c)}{_mult_txt(d.get('pct', 0))}"
+                         f" = {_fmt_brl(d['base'])}")
             else:
                 acum  = _fmt_brl(d["soma_val"])
                 media = _fmt_brl(d["base"])
@@ -73019,7 +73069,8 @@ def _pdf_memoria_13final(empresa_nm, anomes, d, usuario, versao, id_cliente=0):
                     f" ÷ {d['avos']} avos = <b>{_mm // 60}h{_mm % 60:02d}</b>", st_formula))
                 e.append(Paragraph(
                     f"Valor da média = {_mm // 60}h{_mm % 60:02d} × "
-                    f"{_fmt_brl(d['sal_hora'])}/hora (salário atual) = "
+                    f"{_fmt_brl(d['sal_hora'])}/hora (salário atual)"
+                    f"{_mult_txt(md.get('pct', 0))} = "
                     f"<b>{_fmt_brl(md['val'])}</b>", st_formula))
             else:
                 e.append(Paragraph(
