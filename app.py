@@ -38584,26 +38584,11 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
     bairro_xml  = f"<bairro>{x(bairro)}</bairro>" if bairro else ""
 
     if dsc_lograd and cep and cod_munic and uf:
-        ender_xml = (
-            f"      <endereco>\n"
-            f"        <brasil>\n"
-            f"          <tpLograd>{x(tp_lograd)}</tpLograd>\n"
-            f"          <dsLograd>{x(dsc_lograd)}</dsLograd>\n"
-            f"          <nrLograd>{x(nr_lograd)}</nrLograd>\n"
-            f"          {compl_xml}\n" if complemento else ""
-            f"          {bairro_xml}\n" if bairro else ""
-            f"          <cep>{cep[:8]}</cep>\n"
-            f"          <codMunic>{cod_munic}</codMunic>\n"
-            f"          <uf>{x(uf)}</uf>\n"
-            f"        </brasil>\n"
-            f"      </endereco>"
-        )
-        # rebuild cleanly
         _parts = [
             "      <endereco>",
             "        <brasil>",
             f"          <tpLograd>{x(tp_lograd)}</tpLograd>",
-            f"          <dsLograd>{x(dsc_lograd)}</dsLograd>",
+            f"          <dscLograd>{x(dsc_lograd)}</dscLograd>",
             f"          <nrLograd>{x(nr_lograd)}</nrLograd>",
         ]
         if complemento:
@@ -38625,6 +38610,47 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
     email_xml = f"<emailPrinc>{x(email_princ)}</emailPrinc>" if email_princ else ""
     contato_xml = f"      <contato>{fone_xml}{email_xml}</contato>" if (fone_xml or email_xml) else ""
 
+    # O S-2205 substitui o cadastro inteiro do trabalhador no eSocial: o que
+    # nao vai no evento deixa de existir la'. Por isso deficiencia e
+    # dependentes vao sempre, como o Desktop faz (SR_eSocial_2022.vb) — e
+    # nao so' quando ha' deficiencia, como no S-2200.
+    def_xml = (
+        "      <infoDeficiencia>\n"
+        f"        <defFisica>{x(func.get('deffisica') or 'N')}</defFisica>\n"
+        f"        <defVisual>{x(func.get('defvisual') or 'N')}</defVisual>\n"
+        f"        <defAuditiva>{x(func.get('defauditiva') or 'N')}</defAuditiva>\n"
+        f"        <defMental>{x(func.get('defmental') or 'N')}</defMental>\n"
+        f"        <defIntelectual>{x(func.get('defintelectual') or 'N')}</defIntelectual>\n"
+        "        <reabReadap>N</reabReadap>\n"
+        f"        <infoCota>{x(func.get('infocota') or 'N')}</infoCota>\n"
+        "      </infoDeficiencia>"
+    )
+
+    deps = (supabase.table("tab_dependentes").select("*")
+            .eq("id_empresa", func.get("id_empresa"))
+            .eq("matricula", func.get("matricula"))
+            .order("id").execute().data or [])
+    _dep_parts = []
+    for d in deps:
+        _p = ["      <dependente>"]
+        if str(d.get("tpdep") or "").strip():
+            _p.append(f"        <tpDep>{int(d['tpdep']):02d}</tpDep>")
+        _p.append(f"        <nmDep>{x(str(d.get('nome') or '').strip())}</nmDep>")
+        _p.append(f"        <dtNascto>{fmt_d8(d.get('dtnascto'))}</dtNascto>")
+        _cpf_dep = dg(d.get("cpfdep"))
+        if _cpf_dep and int(_cpf_dep) > 0:
+            _p.append(f"        <cpfDep>{_cpf_dep.zfill(11)}</cpfDep>")
+        if str(d.get("sexodep") or "").upper() in ("M", "F"):
+            _p.append(f"        <sexoDep>{str(d['sexodep']).upper()}</sexoDep>")
+        _p.append(f"        <depIRRF>{x((d.get('depirrf') or 'N')[:1].upper())}</depIRRF>")
+        _p.append(f"        <depSF>{x((d.get('depsf') or 'N')[:1].upper())}</depSF>")
+        _p.append(f"        <incTrab>{x((d.get('inctrabf') or 'N')[:1].upper())}</incTrab>")
+        if str(d.get("descdep") or "").strip():
+            _p.append(f"        <descrDep>{x(str(d['descdep']).strip()[:100])}</descrDep>")
+        _p.append("      </dependente>")
+        _dep_parts.append("\n".join(_p))
+    dep_xml = "\n".join(_dep_parts)
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtAltCadastral/v_S_01_03_00"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -38640,11 +38666,10 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
       <tpInsc>1</tpInsc>
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
-    <ideVinculo>
+    <ideTrabalhador>
       <cpfTrab>{cpf}</cpfTrab>
-      <matricula>{mat_es}</matricula>
-    </ideVinculo>
-    <altCadastral>
+    </ideTrabalhador>
+    <alteracao>
       <dtAlteracao>{x(dt_alteracao)}</dtAlteracao>
       <dadosTrabalhador>
         <nmTrab>{nm_trab}</nmTrab>
@@ -38653,15 +38678,13 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
         {est_civ_xml}
         <grauInstr>{grau_instr}</grauInstr>
         {nm_soc_xml}
-        <dadosNascimento>
-          <dtNascto>{dt_nascto}</dtNascto>
-          <paisNascto>{pais_nascto}</paisNascto>
-          <paisNacionalidade>{pais_nac}</paisNacionalidade>
-        </dadosNascimento>
+        <paisNac>{pais_nac}</paisNac>
 {ender_xml}
+{def_xml}
+{dep_xml}
 {contato_xml}
       </dadosTrabalhador>
-    </altCadastral>
+    </alteracao>
   </evtAltCadastral>
 </eSocial>"""
 
