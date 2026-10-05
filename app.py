@@ -23239,6 +23239,22 @@ def _gerar_xml_s2230(es, ev, func, empresa, tpAmb="1"):
                 extra += f"\n        <tpAcidTransito>{x(acid)}</tpAcidTransito>"
         if obs:
             extra += f"\n        <observacao>{x(obs[:255])}</observacao>"
+        # Ferias de empregado (categoria < 500) exigem o periodo aquisitivo —
+        # sem ele o governo devolve o erro [8], e o fimAfastamento do mesmo
+        # evento cai junto no [188]. Mesma forma do Desktop: so' o dtInicio
+        # (o dtFim fica de fora, como la').
+        if flag == "F":
+            try:
+                _categ = int(str(func.get("codcateg") or "0").strip() or 0)
+            except (TypeError, ValueError):
+                _categ = 0
+            if _categ < 500:
+                if not d8(ev.get("data2i")):
+                    raise ValueError("Férias sem início do período aquisitivo — "
+                                     "não é possível gerar o S-2230.")
+                extra += (f"\n        <perAquis>"
+                          f"\n          <dtInicio>{x(d8(ev.get('data2i')))}</dtInicio>"
+                          f"\n        </perAquis>")
         fim = ""
         if flag == "F" and d8(dt_fim):
             fim = f"""
