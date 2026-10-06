@@ -8950,6 +8950,8 @@ def _sem_dsr(id_cliente):
 # Códigos de verba (Folha10) usados na rescisão
 VR_SALDO       = 10    # SALDO DE SALARIO
 VR_ATESTADO    = 9     # ATESTADO MEDICO (15 primeiros dias do afastamento no mes)
+VR_FALTA       = 132   # FALTAS EM DIAS — desconto (falta injustificada do tab_eventos)
+VR_DSR_FALTA   = 139   # DESCONTO REPOUSO REMUNERADO — o DSR perdido pela falta
 VR_13_PROP     = 12    # 13 SALARIO PROPORCIONAL
 VR_13_AVISO    = 13    # 13 SALARIO INDENIZADO (projeção do aviso)
 # No Folha10 o terco constitucional e verba PROPRIA (42), calculada sobre a
@@ -9677,6 +9679,11 @@ def _calc_rescisao_nucleo(body, sim=None):
     _adic_ev, _adic_mov = _adicionais_cache(id_empresa, id_cliente, anomes, 'N')
     # Afastamentos (op1=6) do mês: uma leitura para todos os demitidos
     _afast_resc = _calc_etapa2_afastamentos(id_empresa, anomes, id_cliente=id_cliente)
+    # Faltas (op1=21) do mês: uma leitura para todos os demitidos
+    _faltas_resc = _calc_etapa5_faltas(id_empresa, anomes, id_cliente=id_cliente)
+    # Rescisão com a 0132 digitada e sem falta no tab_eventos: não há datas
+    # para achar as semanas, e o DSR fica por conta de quem lançou.
+    _avisos_dsr = []
     # Verbas 'UL' da rescisao (cargo de confianca): o ultimo valor de cada uma
     # soma a remuneracao — ver _verbas_ultimo_lanc.
     _ul_dsc_r  = _verbas_ultimo_lanc(id_cliente, "inc_rescisao")
@@ -9861,6 +9868,35 @@ def _calc_rescisao_nucleo(body, sim=None):
                          for _r in manual_mov.get(mat, []))
         atest_val = 0 if _tem_9_man else round(sal_mes * dias_atest / 30)
 
+        # ── Faltas no mês da rescisão (SMV 06/10/2026) ──
+        # As faltas do tab_eventos (op1=21) até a data da rescisão descontam
+        # como na folha mensal (ETAPA 1050): o dia na 0132 e o repouso da
+        # semana na 0139 — UM DSR por semana com falta injustificada, por
+        # mais faltas que a semana tenha (_dsr_perdido_faltas, Lei 605/49,
+        # art. 6o). Dia = (salário + adicionais) / dias do mês, o mesmo valor
+        # da mensal. Antes a rescisão ignorava as faltas lançadas.
+        # A verba digitada na rescisão INIBE a calculada, como a 0009.
+        faltas_resc = [ft for ft in _faltas_resc.get(mat, [])
+                       if _norm_data8(ft.get("data1i"))[:8] <= _fim_c]
+        _dias_mes_f = _dias_no_mes_total(anomes) or 30
+        val_dia_f   = 0.0 if is_estag else (sal_mes + adic_total) / _dias_mes_f
+        falta_qtd   = sum(1 for ft in faltas_resc if ft.get("op2") == 1)
+        falta_man   = VR_FALTA in _cods_man
+        dsr_man     = VR_DSR_FALTA in _cods_man
+        falta_val   = 0 if falta_man else int(val_dia_f * falta_qtd)
+        dsr_sem, dsr_val = _dsr_perdido_faltas(faltas_resc, val_dia_f)
+        if dsr_man:
+            dsr_val = 0
+        if falta_man and not dsr_man and not dsr_sem:
+            _avisos_dsr.append(f"{mat:06d} {nome}")
+        # Desconto com incidência sai da base (como na mensal, ETAPA 1100)
+        desc_inss = desc_irrf = desc_fgts = 0
+        for _cd_f, _vl_f in ((VR_FALTA, falta_val), (VR_DSR_FALTA, dsr_val)):
+            _ri_f = _rubr_full.get(_cd_f) or {}
+            if _ri_f.get("icp") == "11":        desc_inss += _vl_f
+            if _ri_f.get("iir") == "11":        desc_irrf += _vl_f
+            if _ri_f.get("ift") in ("11", "S"): desc_fgts += _vl_f
+
         saldo = round((sal_mes + adic_total + sum(ul_auto_r.values())) * dias_saldo / 30)
         # O saldo continua sendo calculado sobre a remuneracao CHEIA (salario +
         # adicionais) — e a base do INSS, do IRRF e do FGTS nao muda em nada.
@@ -10039,7 +10075,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # linha própria. Saldo de salário incide INSS sobre o salário do período.
         # Verbas manuais que incidem somam à base do saldo.
         # A 0009 (atestado) incide como o saldo: INSS, IRRF e FGTS.
-        base_inss_saldo = saldo + atest_val + add_inss
+        base_inss_saldo = max(0, saldo + atest_val + add_inss - desc_inss)
         if is_estag:
             # Estagiário não é segurado obrigatório: sem INSS (a folha mensal
             # faz o mesmo, ETAPA do Cat. 901). A base fica para o IRRF.
@@ -10050,11 +10086,11 @@ def _calc_rescisao_nucleo(body, sim=None):
         inss_13, inss_13_det, _ = (_calc_inss_progressivo(d13, tabela) if d13 else (0, [], 0))
         # IRRF: base saldo (saldo + manuais c/ inc. IRRF) - inss_saldo - dep ; 13º separado
         ndep = dep_count.get(mat, 0); dep_total = ndep * dep_irrf_ded
-        base_irrf_saldo = max(0, saldo + atest_val + add_irrf - inss_saldo - dep_total)
+        base_irrf_saldo = max(0, saldo + atest_val + add_irrf - desc_irrf - inss_saldo - dep_total)
         irrf_saldo, irrf_saldo_info = _calc_irrf(base_irrf_saldo, tabela)
         # Isenção total até R$ 5.000,00 + redutor R$ 5.000,01–7.350 (Lei 15.270/2025)
         irrf_saldo, _red_saldo, _isento_saldo = _irrf_isencao_redutor(
-            saldo + atest_val + add_irrf, irrf_saldo, tabela)
+            max(0, saldo + atest_val + add_irrf - desc_irrf), irrf_saldo, tabela)
         # Dependentes tambem deduzem da base do 13o (SMV 16/09/2026) — um
         # padrao so com a folha do 13o final. Nao e deducao em dobro: o
         # saldo e tributacao MENSAL e o 13o e EXCLUSIVA NA FONTE, duas
@@ -10065,7 +10101,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         # FGTS 8% sobre saldo + 13º + aviso indenizado + manuais c/ inc. FGTS
         # (férias indenizadas não têm FGTS)
         # A categoria manda (_tem_fgts): estagiário e 700-799, menos a 721, não têm.
-        base_fgts = (saldo + atest_val + d13 + aviso_val + add_fgts) if _tem_fgts(_categ_n) else 0
+        base_fgts = (max(0, saldo + atest_val + d13 + aviso_val + add_fgts - desc_fgts)
+                     if _tem_fgts(_categ_n) else 0)
         fgts_val = round(base_fgts * 8 / 100)
 
         # Cliente sem encargos (ver CLIENTES_SEM_ENCARGOS): tudo acima continua
@@ -10127,7 +10164,7 @@ def _calc_rescisao_nucleo(body, sim=None):
         # A verba 60 não tem incidência de INSS/IRRF/FGTS (tab_rubrica: R=N/N/N/N),
         # por isso entra só no total de descontos, depois das bases já fechadas.
         total_desc = (g_inss_saldo + g_inss_13 + g_irrf_saldo + g_irrf_13 + man_desc
-                      + art480 + aviso_desc)
+                      + art480 + aviso_desc + falta_val + dsr_val)
         liquido    = total_prov - total_desc
 
         # ── Grava ── (apaga 'C' antes; preserva manuais 'M')
@@ -10155,6 +10192,8 @@ def _calc_rescisao_nucleo(body, sim=None):
         for _c_ad, _v_ad in sorted(saldo_adics.items()):
             recs.append({**base_mov, "cod_verba": _c_ad, "qtd": 0, "valor": _v_ad})
         if atest_val: recs.append({**base_mov, "cod_verba": VR_ATESTADO,     "qtd": dias_atest, "valor": atest_val})
+        if falta_val: recs.append({**base_mov, "cod_verba": VR_FALTA,        "qtd": falta_qtd, "valor": falta_val})
+        if dsr_val:   recs.append({**base_mov, "cod_verba": VR_DSR_FALTA,    "qtd": dsr_sem,   "valor": dsr_val})
         if aviso_val: recs.append({**base_mov, "cod_verba": VR_AVISO_IND,    "qtd": dias_aviso,  "valor": aviso_val})
         if aviso_desc:recs.append({**base_mov, "cod_verba": VR_AVISO_EMP,    "qtd": dias_aviso_desc, "valor": aviso_desc})
         # médias NÃO viram linha própria — já estão embutidas no 13º e nas férias
@@ -10238,6 +10277,10 @@ def _calc_rescisao_nucleo(body, sim=None):
             "saldo_sal": saldo_sal, "saldo_adics": saldo_adics,
             "dias_atest": dias_atest, "dias_afast_inss": dias_afast_inss,
             "atest_val": atest_val, "atest_manual": _tem_9_man,
+            "faltas_resc": faltas_resc, "falta_qtd": falta_qtd, "falta_val": falta_val,
+            "falta_man": falta_man, "dsr_sem": dsr_sem, "dsr_val": dsr_val,
+            "dsr_man": dsr_man, "val_dia_f": val_dia_f, "dias_mes_f": _dias_mes_f,
+            "desc_inss": desc_inss, "desc_irrf": desc_irrf, "desc_fgts": desc_fgts,
             "adic_total": adic_total, "sal_mes_ad": sal_mes_ad,
             "adic_total_det": {**adics_mes_r, **ul_mes_r},
             # Verbas 'UL' (cargo de confianca): valor mensal cheio e descricao,
@@ -10303,13 +10346,21 @@ def _calc_rescisao_nucleo(body, sim=None):
                             + (" saiu" if len(_mat_transf) == 1 else " saíram")
                             + " por transferência — rescisão zerada, o vínculo "
                               "segue na empresa de destino.")
+    if _avisos_dsr:
+        # 0132 digitada direto na rescisão, sem a falta no tab_eventos: sem a
+        # data não dá para saber a semana, e o DSR não é descontado sozinho.
+        _txt_dsr = (f"Verba {VR_FALTA:04d} (faltas) lançada direto na rescisão de "
+                    + ", ".join(_avisos_dsr)
+                    + f": o DSR perdido (verba {VR_DSR_FALTA:04d}) não foi calculado — "
+                      "calcule e digite manualmente (1 DSR por semana com falta).")
+        _extras["aviso"] = ((_extras["aviso"] + "<br>") if _extras["aviso"] else "") + _txt_dsr
     return ("", resultados, _extras)
 
 
 # Campos que só servem à memória de cálculo (listas longas de detalhamento):
 # não vão no JSON da tela.
 _CAMPOS_SO_PDF = {"medias_info", "inss_saldo_det", "inss_13_det",
-                  "irrf_saldo_info", "irrf_13_info", "manuais_det"}
+                  "irrf_saldo_info", "irrf_13_info", "manuais_det", "faltas_resc"}
 
 
 @app.route("/api/calc_rescisao_calcular", methods=["POST"])
@@ -10534,6 +10585,36 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     f"{_d_at} dias de atestado — não calculado: a verba {VR_ATESTADO:04d} "
                     "foi lançada manualmente nesta rescisão e prevalece",
                 ]))
+            # 0132 / 0139 — Faltas do tab_eventos e o DSR perdido por elas
+            _flt = r.get("faltas_resc") or []
+            if _flt or r.get("falta_man"):
+                _vd = r.get("val_dia_f") or 0
+                _lin_f = [f"Data: {_d_br(ft.get('data1i') or '')} — "
+                          + ("Injustificada" if ft.get("op2") == 1 else "Justificada")
+                          + (f" — {ft.get('campotxt4')}" if ft.get("campotxt4") else "")
+                          for ft in _flt]
+                if _flt:
+                    _lin_f.append(f"Valor do dia: (salário + adicionais) / "
+                                  f"{r.get('dias_mes_f')} dias = {_fmt_brl(_vd, 4)}")
+                if r.get("falta_val"):
+                    _lin_f.append(f"Faltas injustificadas: {_fmt_brl(_vd, 4)} × {r['falta_qtd']} = "
+                                  f"<b>{_B(r['falta_val'])}</b>  (verba {VR_FALTA:04d}, desconto)")
+                elif r.get("falta_man"):
+                    _lin_f.append(f"Verba {VR_FALTA:04d} lançada manualmente nesta rescisão — "
+                                  "prevalece sobre a calculada")
+                if r.get("dsr_val"):
+                    _lin_f.append(f"DSR perdido: {r['dsr_sem']} semana(s) com falta injustificada "
+                                  f"(uma por semana, Lei 605/49, art. 6º) — {_fmt_brl(_vd, 4)} × "
+                                  f"{r['dsr_sem']} = <b>{_B(r['dsr_val'])}</b>  "
+                                  f"(verba {VR_DSR_FALTA:04d}, desconto)")
+                elif r.get("dsr_man"):
+                    _lin_f.append(f"Verba {VR_DSR_FALTA:04d} lançada manualmente nesta rescisão — "
+                                  "prevalece sobre a calculada")
+                elif r.get("falta_man") and not r.get("dsr_sem"):
+                    _lin_f.append(f"<b>ATENÇÃO:</b> a {VR_FALTA:04d} foi digitada sem falta no "
+                                  f"cadastro de eventos — o DSR ({VR_DSR_FALTA:04d}) precisa ser "
+                                  "calculado e digitado manualmente")
+                e.append(_etapa("ETAPA 3027 - FALTAS E DSR PERDIDO", _lin_f))
             # 0003 — Aviso prévio: provento da empresa OU desconto do empregado
             if r["aviso_val"]:
                 e.append(_etapa("ETAPA 3030 - AVISO PREVIO INDENIZADO", [
@@ -10719,7 +10800,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 e.append(_etapa("ETAPA 3070 - VERBAS MANUAIS LANCADAS", [],
                                 na="nenhuma verba digitada no movimento desta rescisão"))
             # 0007 — INSS
-            _base_lbl = "saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
+            _base_lbl = ("saldo" + (" + manuais c/ inc. INSS" if r.get("add_inss") else "")
+                         + (" - faltas/DSR" if r.get("desc_inss") else ""))
             lin_inss = [f"Base saldo ({_base_lbl}): {_B(r['base_inss_saldo'])}"]
             # Faixa a faixa, por extenso (mesmo texto do Folha10 Desktop).
             lin_inss += _inss_memoria_linhas(r["base_inss_saldo"], r.get("inss_saldo_det") or [])
@@ -10735,7 +10817,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 e.append(_etapa("ETAPA 3080 - INSS", lin_inss,
                                 passos=["base_inss", "inss"]))
             # 0008 — IRRF
-            _irrf_base_lbl = "saldo" + (" + manuais c/ inc. IRRF" if r.get("add_irrf") else "")
+            _irrf_base_lbl = ("saldo" + (" + manuais c/ inc. IRRF" if r.get("add_irrf") else "")
+                              + (" - faltas/DSR" if r.get("desc_irrf") else ""))
             lin_irrf = [
                 f"Base ({_irrf_base_lbl}) - INSS - dependentes ({r['ndep']}×{_B(r['dep_irrf_ded'])}) = {_B(r['base_irrf_saldo'])}",
                 f"IRRF saldo = <b>{_B(r['irrf_saldo'])}</b>",
@@ -10768,7 +10851,8 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     f"&#187; Lei 15.270/2025 &#8212; redutor aplicado, "
                     f"<b>-{_B(_red_tot)}</b> de IRRF", st_decisao))
             # 0009 — FGTS + multa
-            _fgts_lbl = "saldo+13º+aviso" + ("+manuais c/ inc. FGTS" if r.get("add_fgts") else "")
+            _fgts_lbl = ("saldo+13º+aviso" + ("+manuais c/ inc. FGTS" if r.get("add_fgts") else "")
+                         + ("-faltas/DSR" if r.get("desc_fgts") else ""))
             lin_fgts = [f"Base FGTS ({_fgts_lbl}) {_B(r['base_fgts'])} × 8% = <b>{_B(r['fgts_val'])}</b>"]
             if r["multa_pct"]:
                 lin_fgts.append(f"Multa FGTS: {r['multa_pct']}% sobre o saldo de FGTS"
