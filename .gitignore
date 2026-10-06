@@ -75,3 +75,6 @@ inserir_verba_0086_igual_0016.sql
 *.err
 *.xlsx
 log_envio_*.csv
+
+# Demo comercial: o original fica no Dropbox (C:\Dropbox\Folha10-Simples\Comercial)
+Comercial/demo_comercial.html
