@@ -27584,6 +27584,51 @@ def api_acidente_excluir():
 # =========================================================
 # FALTA — Página de lançamento
 # =========================================================
+def _periodo_faltas(id_empresa, anomes, id_cliente=None):
+    """(ini, fim) em YYYYMMDD: o periodo de faltas da folha Normal da
+    competencia (tab_anomes.data_falta1/2 — "Falta Inicial/Final").
+
+    E' o que permite a folha de outubro receber as faltas de 21/09 a 20/10.
+    A falta continua gravada com folha = competencia ativa, entao calculo
+    mensal, rescisao e DSR seguem lendo por competencia sem mudar nada.
+
+    Sem periodo, ou com periodo torto (invertido, ou maior que 31 dias — a
+    tela converte o dia digitado em data e precisaria adivinhar o mes), vale
+    o mes do calendario, como sempre foi.
+    """
+    ano, mes = int(anomes[:4]), int(anomes[4:6])
+    ult = ((date(ano + 1, 1, 1) if mes == 12 else date(ano, mes + 1, 1)) - timedelta(days=1)).day
+    padrao = (f"{anomes}01", f"{anomes}{ult:02d}")
+    try:
+        q = (supabase.table("tab_anomes")
+             .select("data_falta1, data_falta2")
+             .eq("id_empresa", id_empresa)
+             .eq("ano_mes", anomes)
+             .eq("tipo", "N"))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        r = q.limit(1).execute().data or []
+    except Exception:
+        return padrao
+    if not r:
+        return padrao
+    ini = re.sub(r"\D", "", str(r[0].get("data_falta1") or ""))
+    fim = re.sub(r"\D", "", str(r[0].get("data_falta2") or ""))
+    try:
+        d_ini = datetime.strptime(ini, "%Y%m%d").date()
+        d_fim = datetime.strptime(fim, "%Y%m%d").date()
+    except ValueError:
+        return padrao
+    if d_ini > d_fim or (d_fim - d_ini).days > 30:
+        return padrao
+    return ini, fim
+
+
+def _msg_fora_periodo(ini, fim):
+    return (f"A falta deve estar no período de faltas da folha ativa: "
+            f"{_fmt_dt(ini)} a {_fmt_dt(fim)}.")
+
+
 @app.route("/cad_falta")
 def cad_falta():
     if not session.get("logado"):
@@ -27596,6 +27641,8 @@ def cad_falta():
     id_empresa = _get_id_empresa()
     mat_int    = int(mat_str)
     anomes     = str(session.get("anomes_atual") or "")
+    _falta_ini, _falta_fim = (_periodo_faltas(id_empresa, anomes, session.get("id_cliente"))
+                              if len(anomes) == 6 else ("", ""))
 
     func_nome    = "—"
     horario_nome = ""
@@ -27630,6 +27677,8 @@ def cad_falta():
         func_nome=func_nome,
         horario_nome=horario_nome,
         anomes_atual=anomes,
+        falta_ini=_falta_ini,
+        falta_fim=_falta_fim,
     )
 
 
@@ -27650,12 +27699,13 @@ def api_falta_checar_data():
         return jsonify({"ok": False, "msg": "Data inválida."})
 
     anomes = str(session.get("anomes_atual") or "")
-    if data_str[:6] != anomes:
-        mes = anomes[4:6]; ano = anomes[:4]
-        return jsonify({"ok": False, "msg": f"A falta deve ser em {mes}/{ano} (folha ativa)."})
-
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Sem folha ativa."})
     id_empresa = _get_id_empresa()
     mat_int    = int(mat_str)
+    _p_ini, _p_fim = _periodo_faltas(id_empresa, anomes, session.get("id_cliente"))
+    if not (_p_ini <= data_str <= _p_fim):
+        return jsonify({"ok": False, "msg": _msg_fora_periodo(_p_ini, _p_fim)})
 
     try:
         dt = datetime.strptime(data_str, "%Y%m%d")
@@ -27730,13 +27780,18 @@ def api_falta_gravar():
         tipo = "I"
 
     anomes = str(session.get("anomes_atual") or "")
-    if data_falta[:6] != anomes:
-        mes = anomes[4:6]; ano = anomes[:4]
-        return jsonify({"ok": False, "msg": f"A falta deve ser em {mes}/{ano} (folha ativa)."})
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Sem folha ativa."})
 
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
     mat_int    = int(mat_str)
+
+    # Periodo de faltas da competencia (ex.: 21/09 a 20/10 na folha de
+    # outubro) — a falta grava com folha = competencia ativa.
+    _p_ini, _p_fim = _periodo_faltas(id_empresa, anomes, id_cliente)
+    if not (_p_ini <= data_falta <= _p_fim):
+        return jsonify({"ok": False, "msg": _msg_fora_periodo(_p_ini, _p_fim)})
 
     # Re-validar dia de trabalho
     try:
@@ -27811,26 +27866,34 @@ def api_falta_checar_intervalo():
     if not session.get("logado"):
         return jsonify({"ok": False, "msg": "Sessão expirada."})
 
-    mat_str = str(request.args.get("mat",    "")).strip()
-    dia_de  = str(request.args.get("dia_de", "")).strip()
-    dia_ate = str(request.args.get("dia_ate","")).strip()
+    # Recebe DATAS (YYYYMMDD), nao dias do mes: o periodo de faltas pode
+    # atravessar o mes (21/09 a 20/10), e "25 ate 5" e' 25/09 a 05/10.
+    mat_str = str(request.args.get("mat",     "")).strip()
+    data_de  = str(request.args.get("data_de", "")).strip()
+    data_ate = str(request.args.get("data_ate","")).strip()
 
     if not mat_str or not mat_str.isdigit():
         return jsonify({"ok": False, "msg": "Matrícula inválida."})
-    if not dia_de.isdigit() or not dia_ate.isdigit():
-        return jsonify({"ok": False, "msg": "Dias inválidos."})
+    if len(data_de) != 8 or not data_de.isdigit() or len(data_ate) != 8 or not data_ate.isdigit():
+        return jsonify({"ok": False, "msg": "Datas inválidas."})
 
     anomes = str(session.get("anomes_atual") or "")
-    if not anomes:
+    if len(anomes) != 6:
         return jsonify({"ok": False, "msg": "Sem folha ativa."})
 
     id_empresa = _get_id_empresa()
     mat_int    = int(mat_str)
-    de_int     = int(dia_de)
-    ate_int    = int(dia_ate)
 
-    if de_int < 1 or ate_int > 31 or de_int > ate_int:
+    _p_ini, _p_fim = _periodo_faltas(id_empresa, anomes, session.get("id_cliente"))
+    if data_de > data_ate:
         return jsonify({"ok": False, "msg": "Intervalo inválido."})
+    if not (_p_ini <= data_de and data_ate <= _p_fim):
+        return jsonify({"ok": False, "msg": _msg_fora_periodo(_p_ini, _p_fim)})
+    try:
+        d_de  = datetime.strptime(data_de,  "%Y%m%d")
+        d_ate = datetime.strptime(data_ate, "%Y%m%d")
+    except ValueError:
+        return jsonify({"ok": False, "msg": "Datas inválidas."})
 
     dias_pt = ["Segunda-feira","Terça-feira","Quarta-feira",
                "Quinta-feira", "Sexta-feira","Sábado","Domingo"]
@@ -27858,29 +27921,26 @@ def api_falta_checar_intervalo():
             return jsonify({"ok": False, "msg": "Horário não encontrado."})
         horario = rh.data[0]
 
-        # Faltas já existentes no mês — uma única query
+        # Faltas ja existentes no intervalo, em QUALQUER folha: na virada
+        # para o periodo 21 a 20, o fim de setembro pode ter entrado na folha
+        # de setembro e nao pode entrar de novo na de outubro.
         r_ev = (supabase.table("tab_eventos")
                 .select("data1i")
                 .eq("id_empresa", id_empresa)
                 .eq("matricula", mat_int)
                 .eq("op1", 21)
-                .eq("folha", int(anomes))
+                .gte("data1i", data_de)
+                .lte("data1i", data_ate)
                 .execute())
         existentes = {str(ev["data1i"]) for ev in (r_ev.data or [])}
 
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)[:200]})
 
-    ano = int(anomes[:4])
-    mes = int(anomes[4:6])
     resultado = []
 
-    for dia in range(de_int, ate_int + 1):
-        try:
-            dt = datetime(ano, mes, dia)
-        except ValueError:
-            continue  # dia inexistente no mês (ex: 31/04)
-
+    for _n in range((d_ate - d_de).days + 1):
+        dt = d_de + timedelta(days=_n)
         data_str = dt.strftime("%Y%m%d")
         idx      = dt.weekday()
         horas = _horas_dia(horario.get(col_map[idx]))
@@ -27925,18 +27985,34 @@ def api_falta_gravar_lote():
         tipo = "I"
 
     anomes     = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Sem folha ativa."})
     id_empresa = _get_id_empresa()
     id_cliente = session.get("id_cliente")
     mat_int    = int(mat_str)
+
+    _p_ini, _p_fim = _periodo_faltas(id_empresa, anomes, id_cliente)
+    datas = sorted({str(x).strip() for x in datas
+                    if len(str(x).strip()) == 8 and str(x).strip().isdigit()
+                    and _p_ini <= str(x).strip() <= _p_fim})
+    if not datas:
+        return jsonify({"ok": False, "msg": _msg_fora_periodo(_p_ini, _p_fim)})
+    # Mesma trava do lancamento unico: data ja lancada (em qualquer folha)
+    # nao entra de novo.
+    try:
+        _ja = {str(e.get("data1i")) for e in (
+            supabase.table("tab_eventos").select("data1i")
+            .eq("id_empresa", id_empresa).eq("matricula", mat_int).eq("op1", 21)
+            .gte("data1i", datas[0]).lte("data1i", datas[-1])
+            .execute().data or [])}
+    except Exception:
+        _ja = set()
 
     gravados = []
     erros    = []
 
     for data_falta in datas:
-        data_falta = str(data_falta).strip()
-        if len(data_falta) != 8 or not data_falta.isdigit():
-            continue
-        if data_falta[:6] != anomes:
+        if data_falta in _ja:
             continue
         try:
             supabase.table("tab_eventos").insert({

@@ -214,7 +214,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
         <button class="btn-voltar" onclick="window.history.back()">&#8592; Voltar</button>
         <div>
             <div class="rel-titulo">Registrar Falta</div>
-            <div class="rel-subtitulo">Folha ativa: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }} — informe o dia e o tipo de falta</div>
+            <div class="rel-subtitulo">Folha ativa: {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }} — período de faltas: {{ falta_ini[6:8] }}/{{ falta_ini[4:6] }}/{{ falta_ini[:4] }} a {{ falta_fim[6:8] }}/{{ falta_fim[4:6] }}/{{ falta_fim[:4] }}</div>
         </div>
     </div>
 
@@ -245,12 +245,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="number" id="diaFalta" class="input-dia"
                         min="1" max="31" placeholder="—" autocomplete="off"
                         oninput="onDiaChange()" onblur="onDiaChange()">
-                    <span class="anomes-label">/ {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}</span>
+                    <span class="anomes-label" id="mesDe">/ {{ falta_ini[4:6] }}/{{ falta_ini[:4] }}</span>
                     <span style="font-size:12px;color:#64748b;padding-left:8px;">até o dia:</span>
                     <input type="number" id="diaAte" class="input-dia"
                         min="1" max="31" placeholder="—" autocomplete="off"
                         oninput="onAteChange()">
-                    <span class="anomes-label" style="font-size:10px;color:#94a3b8;">opcional</span>
+                    <span class="anomes-label" id="mesAte" style="font-size:10px;color:#94a3b8;">opcional</span>
                 </div>
                 <span class="hint" id="hint-dtFalta"></span>
             </div>
@@ -300,25 +300,48 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
 <script>
 const MAT    = '{{ mat }}';
 const ANOMES = '{{ anomes_atual }}';  // YYYYMM
+// Periodo de faltas da competencia (Falta Inicial/Final), YYYYMMDD.
+// Pode atravessar o mes: 21/09 a 20/10 na folha de outubro.
+const FALTA_INI = '{{ falta_ini }}';
+const FALTA_FIM = '{{ falta_fim }}';
 
 // 'single' | 'verificar' | 'gravar-lote'
 let _modo       = 'single';
 let _diasUteis  = [];   // lista de YYYYMMDD após verificação
 
+// O usuario digita so' o dia; a data e' a do periodo de faltas que cai nesse
+// dia (com 21/09 a 20/10: 25 -> 25/09, 5 -> 05/10). O periodo tem no maximo
+// 31 dias (o servidor garante), entao cada dia aponta para uma data so'.
+function _ymd(dt) {
+    return dt.getFullYear() + String(dt.getMonth() + 1).padStart(2, '0')
+         + String(dt.getDate()).padStart(2, '0');
+}
 function parseDia(val) {
     const dia = parseInt(val, 10);
-    if (!dia || dia < 1 || dia > 31) return null;
-    const ano = parseInt(ANOMES.slice(0, 4), 10);
-    const mes = parseInt(ANOMES.slice(4, 6), 10);
-    const dt  = new Date(ano, mes - 1, dia);
-    if (dt.getFullYear() !== ano || dt.getMonth() + 1 !== mes || dt.getDate() !== dia) return null;
-    return ANOMES + String(dia).padStart(2, '0');
+    if (!dia || dia < 1 || dia > 31 || FALTA_INI.length !== 8) return null;
+    const dt = new Date(+FALTA_INI.slice(0, 4), +FALTA_INI.slice(4, 6) - 1, +FALTA_INI.slice(6, 8));
+    for (let i = 0; i < 31; i++) {
+        const ymd = _ymd(dt);
+        if (ymd > FALTA_FIM) break;
+        if (dt.getDate() === dia) return ymd;
+        dt.setDate(dt.getDate() + 1);
+    }
+    return null;
+}
+// Mostra ao lado do dia o mes/ano em que ele cai
+function _rotuloMes(spanId, val, vazio) {
+    const sp = document.getElementById(spanId);
+    if (!sp) return;
+    const d = parseDia(val);
+    sp.textContent = d ? `/ ${d.slice(4, 6)}/${d.slice(0, 4)}` : vazio;
 }
 
 // ── Ao mudar "Dia De" ─────────────────────────────────────────────────
 let _checarTimer = null;
 function onDiaChange() {
     _resetPreview();
+    _rotuloMes('mesDe', document.getElementById('diaFalta').value,
+               `/ ${FALTA_INI.slice(4, 6)}/${FALTA_INI.slice(0, 4)}`);
     clearTimeout(_checarTimer);
     if (!document.getElementById('diaAte').value) {
         _modo = 'single';
@@ -333,6 +356,7 @@ function onDiaChange() {
 // ── Ao mudar "Até" ────────────────────────────────────────────────────
 function onAteChange() {
     _resetPreview();
+    _rotuloMes('mesAte', document.getElementById('diaAte').value, 'opcional');
     const ate = document.getElementById('diaAte').value;
     if (ate) {
         _modo = 'verificar';
@@ -357,7 +381,7 @@ async function _checarDiaNow() {
     }
     if (!data) {
         el.classList.add('erro');
-        hint.textContent = 'Dia inválido para este mês'; hint.className = 'hint erro';
+        hint.textContent = 'Dia fora do período de faltas'; hint.className = 'hint erro';
         box.style.display = 'none'; return;
     }
     el.classList.remove('erro'); hint.textContent = ''; hint.className = 'hint';
@@ -376,10 +400,13 @@ async function _verificarIntervalo() {
     const ate = document.getElementById('diaAte').value;
     if (!de || !ate) { showToast('Informe os dois dias do intervalo.', 'erro'); return; }
 
-    const deDe = parseInt(de, 10);
-    const ateI = parseInt(ate, 10);
-    if (!deDe || !ateI || deDe > ateI) {
-        showToast('O dia inicial deve ser menor ou igual ao dia final.', 'erro'); return;
+    const dDe  = parseDia(de);
+    const dAte = parseDia(ate);
+    if (!dDe || !dAte) {
+        showToast('Dia fora do período de faltas.', 'erro'); return;
+    }
+    if (dDe > dAte) {
+        showToast('O dia inicial deve vir antes do dia final.', 'erro'); return;
     }
 
     const btn = document.getElementById('btn-gravar');
@@ -387,7 +414,7 @@ async function _verificarIntervalo() {
     document.getElementById('btn-label').textContent = 'Verificando…';
 
     try {
-        const r = await fetch(`/api/falta_checar_intervalo?mat=${MAT}&dia_de=${deDe}&dia_ate=${ateI}`);
+        const r = await fetch(`/api/falta_checar_intervalo?mat=${MAT}&data_de=${dDe}&data_ate=${dAte}`);
         let d;
         try { d = await r.json(); }
         catch(_) { throw new Error(`HTTP ${r.status} — resposta inválida do servidor`); }
@@ -468,7 +495,7 @@ async function _gravarUnico() {
 
     if (!data) {
         el.classList.add('erro');
-        hint.textContent = el.value ? 'Dia inválido para este mês' : 'Informe o dia';
+        hint.textContent = el.value ? 'Dia fora do período de faltas' : 'Informe o dia';
         hint.className = 'hint erro';
         showToast('Informe um dia válido para a falta.', 'erro');
         el.focus(); return;
