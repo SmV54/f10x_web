@@ -143,6 +143,16 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
     grid-template-columns: 1fr 90px 70px 130px 70px;
     gap: 8px 14px;
 }
+.grid-pix {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 8px 14px;
+}
+.grid-contato {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 8px 14px;
+}
 .grid-end1 {
     display: grid;
     grid-template-columns: 100px 1fr 90px 200px;
@@ -523,7 +533,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <div class="campo campo-mono">
                     <label>CPF</label>
                     <input type="text" id="cpf" maxlength="14" placeholder="000.000.000-00"
-                           oninput="mascaraCPF(this)"
+                           oninput="mascaraCPF(this); sincPix()"
                            onfocus="showHint(this,'CPF do trabalhador — é a identificação principal no eSocial.\nO sistema valida os dígitos e checa se já existe cadastro ativo na empresa.')"
                            onblur="clearHint(); validarCPF(this); checkCPF(this);">
                 </div>
@@ -1147,6 +1157,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     </select>
                 </div>
             </div>
+            <!-- Contato: vai para o grupo <contato> do S-2205 (fonePrinc/emailPrinc) -->
+            <div class="grid-contato">
+                <div class="campo campo-mono">
+                    <label>Celular (com DDD)</label>
+                    <input type="text" id="celular" maxlength="15" placeholder="(00) 00000-0000"
+                           inputmode="tel" autocomplete="off"
+                           oninput="mascaraCelular(this); sincPix()"
+                           onfocus="showHint(this,'Celular do trabalhador, com DDD.\nVai para o eSocial (S-2205) e pode servir de chave Pix.')"
+                           onblur="clearHint(); validarCelular(this)">
+                </div>
+                <div class="campo">
+                    <label>E-mail</label>
+                    <input type="text" id="email" maxlength="50" placeholder="nome@exemplo.com.br"
+                           inputmode="email" autocomplete="off"
+                           onfocus="showHint(this,'E-mail do trabalhador. Vai para o eSocial (S-2205).')"
+                           onblur="clearHint(); validarEmail(this)">
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1264,6 +1292,24 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <label>DV Conta</label>
                     <input type="text" id="banco_ContaDV" maxlength="1" placeholder="0"
                            onfocus="showHint(this,'Dígito verificador da conta.')" onblur="clearHint()">
+                </div>
+            </div>
+            <!-- Pix: CPF e Celular copiam o campo do cadastro; Outra chave e' digitada -->
+            <div class="grid-pix">
+                <div class="campo">
+                    <label>Chave Pix</label>
+                    <select id="pix_tipo" onchange="ajustarPix(true)"
+                            onfocus="showHint(this,'Qual chave Pix do trabalhador usar.\nCPF e Celular pegam o que está no cadastro; Outra chave aceita e-mail ou chave aleatória.')" onblur="clearHint()">
+                        <option value="">— Sem Pix —</option>
+                        <option value="C">CPF do funcionário</option>
+                        <option value="T">Celular do funcionário</option>
+                        <option value="O">Outra chave</option>
+                    </select>
+                </div>
+                <div class="campo campo-mono">
+                    <label>Chave</label>
+                    <input type="text" id="pix" maxlength="30" autocomplete="off" readonly
+                           onfocus="showHint(this,'Com CPF ou Celular a chave vem do cadastro e acompanha o campo.\nEm Outra chave, digite e-mail, telefone ou chave aleatória.')" onblur="clearHint()">
                 </div>
             </div>
         </div>
@@ -1639,6 +1685,61 @@ function validarCPF(campo) {
     r = (s * 10) % 11; if (r >= 10) r = 0;
     if (r !== parseInt(v[10])) { _marcarErro(campo); return; }
     _marcarOk(campo);
+}
+
+/* ── CONTATO / PIX ──────────────────────────────────────── */
+function mascaraCelular(campo) {
+    let v = campo.value.replace(/\D/g, '').substring(0, 11);
+    if (v.length > 10)     v = v.replace(/^(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3');
+    else if (v.length > 6) v = v.replace(/^(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3');
+    else if (v.length > 2) v = v.replace(/^(\d{2})(\d{0,5})/, '($1) $2');
+    campo.value = v;
+}
+
+function celularValido(v) {
+    return v.length === 10 || v.length === 11;
+}
+
+function validarCelular(campo) {
+    const v = campo.value.replace(/\D/g, '');
+    if (!v) { campo.style.borderColor = ''; campo.style.boxShadow = ''; return; }
+    celularValido(v) ? _marcarOk(campo) : _marcarErro(campo);
+}
+
+function emailValido(v) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function validarEmail(campo) {
+    const v = campo.value.trim();
+    if (!v) { campo.style.borderColor = ''; campo.style.boxShadow = ''; return; }
+    emailValido(v) ? _marcarOk(campo) : _marcarErro(campo);
+}
+
+/* CPF e Celular: a chave e' copia do campo do cadastro (so digitos) e fica
+   somente leitura, acompanhando o que se digita la. Outra chave: livre.
+   limpar=true quando o usuario troca o tipo, para nao herdar a chave anterior. */
+function ajustarPix(limpar) {
+    const tipo  = document.getElementById('pix_tipo')?.value || '';
+    const chave = document.getElementById('pix');
+    if (!chave) return;
+    chave.readOnly = (tipo !== 'O');
+    if (tipo === 'O') {
+        if (limpar) chave.value = '';
+        chave.placeholder = 'e-mail, telefone ou chave aleatória';
+        if (limpar) chave.focus();
+    } else {
+        chave.placeholder = '';
+        sincPix();
+    }
+}
+
+function sincPix() {
+    const tipo  = document.getElementById('pix_tipo')?.value || '';
+    const chave = document.getElementById('pix');
+    if (!chave || tipo === 'O') return;
+    const orig = tipo === 'C' ? 'cpf' : (tipo === 'T' ? 'celular' : '');
+    chave.value = orig ? (document.getElementById(orig)?.value || '').replace(/\D/g, '') : '';
 }
 
 function mascaraData(campo) {
@@ -2063,6 +2164,18 @@ function preencherFormulario(d) {
     sv('banco_AgenciaDV',d.banco_agenciadv);
     sv('banco_Conta',    d.banco_conta);
     sv('banco_ContaDV',  d.banco_contadv);
+    sv('celular',     d.celular);
+    mascaraCelular(document.getElementById('celular'));
+    sv('email',    d.email);
+    sv('pix',      d.pix);
+    // So' a chave fica no banco; o tipo se deduz dela
+    {
+        const _pix = String(d.pix || '');
+        sv('pix_tipo', !_pix ? ''
+                     : _pix === String(d.cpf || '') ? 'C'
+                     : _pix === String(d.celular || '') ? 'T' : 'O');
+    }
+    ajustarPix(false);
     sv('filial',         d.filial);
     sv('centrocusto',    d.centrocusto);
     sv('ind_Imigrante',  d.ind_imigrante);
@@ -2279,6 +2392,26 @@ async function salvarFuncionario() {
         if (!el || !el.value.trim()) { erros.push(`${label} é obrigatório.`); if (el) _marcarErro(el); }
         else _marcarOk(el);
     });
+    // Contato e Pix: opcionais, mas se preenchidos tem de estar certos
+    const _fone = document.getElementById('celular');
+    if (_fone && _fone.value.trim() && !celularValido(_fone.value.replace(/\D/g, ''))) {
+        erros.push('Celular deve ter DDD + número (10 ou 11 dígitos).');
+        _marcarErro(_fone);
+    }
+    const _mail = document.getElementById('email');
+    if (_mail && _mail.value.trim() && !emailValido(_mail.value.trim())) {
+        erros.push('E-mail inválido.');
+        _marcarErro(_mail);
+    }
+    sincPix();
+    const _pixT = document.getElementById('pix_tipo')?.value || '';
+    const _pixC = document.getElementById('pix');
+    if (_pixT && _pixC && !_pixC.value.trim()) {
+        erros.push(_pixT === 'C' ? 'Chave Pix pelo CPF: preencha o CPF.'
+                 : _pixT === 'T' ? 'Chave Pix pelo Celular: preencha o Celular.'
+                 : 'Informe a chave Pix (ou escolha "Sem Pix").');
+        _marcarErro(_pixT === 'T' ? (_fone || _pixC) : _pixC);
+    }
     if (MODO !== 'alteracao') {
         const hasI = document.getElementById('hasInsalubridade');
         const perI = document.getElementById('perInsalubridade');
@@ -2453,6 +2586,9 @@ async function salvarFuncionario() {
         banco_AgenciaDV:  gv('banco_AgenciaDV'),
         banco_Conta:      soNum(gv('banco_Conta')),
         banco_ContaDV:    gv('banco_ContaDV'),
+        celular:          soNum(gv('celular')),
+        email:            gv('email').toLowerCase(),
+        pix:              gv('pix_tipo') === 'O' ? gv('pix') : soNum(gv('pix')),
         ind_Imigrante:    gv('ind_Imigrante'),
         imigrante_tmpResid:gv('imigrante_tmpResid'),
         condIng:          gv('condIng'),
@@ -2569,6 +2705,9 @@ function limparFormulario() {
     document.getElementById('bloco-transf').style.display = 'none';
     zerarInsalubPericu();
     restaurarPadroes();
+    const _pc = document.getElementById('pix');
+    if (_pc) { _pc.value = ''; _pc.style.borderColor = ''; _pc.style.boxShadow = ''; }
+    ajustarPix(false);
 }
 
 /* Insalubridade/periculosidade nao podem "pegar carona" de um cadastro para o
@@ -2833,9 +2972,11 @@ function iniciarTour() {
 document.addEventListener('DOMContentLoaded', async () => {
     ajustarAprendiz();
     ajustarImigrante();
+    ajustarPix(false);
     const params = new URLSearchParams(window.location.search);
     if (params.get('retorno') === '1') {
         _restaurarRascunho(params.get('tipo'), params.get('novo'));
+        ajustarPix(false);
     } else if (MODO === 'inclusao') {
         zerarInsalubPericu();          // nao herda a marca do cadastro anterior
         await carregarProximaMatricula();

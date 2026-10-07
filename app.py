@@ -15997,6 +15997,23 @@ def api_funcionario_buscar():
 # =========================================================
 # FUNCIONÁRIOS — API ALTERAR
 # =========================================================
+def _normalizar_contato_pix(campos):
+    """Celular so' com digitos (DDD + numero, 10 ou 11), e-mail minusculo e
+    chave Pix aparada. O que nao serve vira None em vez de ir torto para o
+    S-2205. O tipo do Pix (CPF/celular/outra) existe so' na tela: no banco
+    fica a chave, e a tela deduz o tipo comparando com o CPF e o celular."""
+    if "celular" in campos:
+        f = re.sub(r"\D", "", campos.get("celular") or "")
+        campos["celular"] = f if len(f) in (10, 11) else None
+    if "email" in campos:
+        e = (campos.get("email") or "").strip().lower()
+        ok = len(e) <= 50 and re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", e)
+        campos["email"] = e if ok else None
+    if "pix" in campos:
+        k = (campos.get("pix") or "").strip()[:30]
+        campos["pix"] = k or None
+
+
 @app.route("/api/funcionario/alterar", methods=["POST"])
 def api_funcionario_alterar():
     if not session.get("logado"):
@@ -16131,6 +16148,14 @@ def api_funcionario_alterar():
         if v is not None:
             campos[db_col] = v
 
+    # Contato e Pix: diferente dos opcionais acima, apagar na tela apaga no
+    # banco (o funcionario troca de e-mail, desiste do Pix...). So' entram se
+    # a tela mandou a chave, para nao zerar nada vindo de outra chamada.
+    _LIMPAVEIS = ("celular", "email", "pix")
+    for _k in _LIMPAVEIS:
+        if _k in d:
+            campos[_k] = sv(_k)
+
     # Centro de custo: faltava por completo no mapa de alteracao — o campo era
     # enviado pela tela e descartado calado. Preenchido, grava; vazio, so
     # preenche se o cadastro tambem estiver sem (ver logo abaixo, onde o
@@ -16163,6 +16188,8 @@ def api_funcionario_alterar():
                 "funcionário já foi enviado. Para trocar a categoria, anule "
                 "antes o S-2200 (envio do S-3000)."})
 
+    _normalizar_contato_pix(campos)
+
     # Monta observação com campos alterados
     _labels = {
         "cpf":"CPF","nome":"Nome","nomer":"NomeR","nomemae":"NomeMãe",
@@ -16188,6 +16215,7 @@ def api_funcionario_alterar():
         "defmental":"DefMen","defintelectual":"DefInt",
         "infocota":"InfoCota","indaprend":"Aprend",
         "tomador_tpinsc":"TomTp","tomador_nrinsc":"TomNr",
+        "celular":"Celular","email":"Email","pix":"Pix",
     }
     # Campos que disparam S-2205 (dados pessoais)
     _S2205 = {
@@ -16195,7 +16223,7 @@ def api_funcionario_alterar():
         "dtnascto", "paisnascto", "paisnac", "nomemae",
         "ender_dsclograd", "ender_nrlograd", "ender_complemento",
         "ender_bairro", "ender_cep", "ender_codmunic", "ender_uf",
-        "fone_princ", "email_princ",
+        "celular", "email",
         "deffisica", "defvisual", "defauditiva", "defmental", "defintelectual", "infocota",
     }
     # Campos que disparam S-2206 (dados contratuais)
@@ -16217,7 +16245,9 @@ def api_funcionario_alterar():
             for col, label in _labels.items():
                 novo = campos.get(col)
                 if novo is None:
-                    continue
+                    if col not in _LIMPAVEIS or col not in campos:
+                        continue
+                    novo = ""
                 velho = str(reg.get(col) or "").strip()
                 novo_s = str(novo).strip()
                 if novo_s != velho:
@@ -16556,6 +16586,10 @@ def api_funcionario_incluir():
         "cnpjEntQual":       "cnpjentqual",
         "Aprend_tpInsc":     "aprend_tpinsc",
         "Aprend_cnpjPrat":   "aprend_cnpjprat",
+        # Contato (vai no <contato> do S-2205) e chave Pix
+        "celular":           "celular",
+        "email":             "email",
+        "pix":               "pix",
     }
     for payload_key, db_col in opcionais.items():
         v = sv(payload_key)
@@ -16576,6 +16610,8 @@ def api_funcionario_incluir():
     exp_dt = re.sub(r"\D", "", str(d.get("exp_dtTerm") or ""))
     if len(exp_dt) == 8 and str(campos.get("tpcontr") or "") in ("", "1"):
         campos["tpcontr"] = "2"
+
+    _normalizar_contato_pix(campos)
 
     try:
         supabase.table("tab_cad").insert(campos).execute()
@@ -38659,8 +38695,8 @@ def _gerar_xml_s2205(func, empresa, dt_alteracao, tpAmb="1"):
     uf          = str(func.get('ender_uf') or '').strip().upper()
     tp_lograd   = str(func.get('ender_tplograd') or 'R').strip()
 
-    fone_princ  = dg(str(func.get('fone_princ') or ''))
-    email_princ = str(func.get('email_princ') or '').strip()
+    fone_princ  = dg(str(func.get('celular') or ''))
+    email_princ = str(func.get('email') or '').strip()
 
     est_civ_xml = f"<estCiv>{x(est_civ)}</estCiv>" if est_civ else ""
     nm_soc_xml  = f"<nmSoc>{x(nm_soc)}</nmSoc>" if nm_soc else ""
