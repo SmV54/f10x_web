@@ -116,6 +116,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .lay-2205 .lay-card-code  { background: #f5f3ff; color: #7c3aed; }
 .lay-2205.selecionado     { border-color: #8b5cf6; }
 .lay-2206 .lay-card-code  { background: #fdf4ff; color: #86198f; }
+.lay-2206.selecionado     { border-color: #c026d3; }
 .lay-2220 .lay-card-code  { background: #ecfdf5; color: #065f46; }
 .lay-2220.selecionado     { border-color: #10b981; }
 .lay-2230 .lay-card-code  { background: #fefce8; color: #854d0e; }
@@ -409,10 +410,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="lay-card-desc">Saúde do Trabalhador</div>
       </div>
 
-      <div class="lay-card lay-2206 lay-card-disabled" data-layout="2206" data-tipo="func">
+      <div class="lay-card lay-2206" data-layout="2206" data-tipo="func" onclick="selecionarLayout(this)">
         <div class="lay-card-code">S-2206</div>
         <div class="lay-card-desc">Alt. Contrato</div>
-        <div class="lay-card-em-breve">Em breve</div>
       </div>
 
       <div class="lay-card lay-2230 lay-card-disabled" data-layout="2230" data-tipo="func">
