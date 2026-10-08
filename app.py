@@ -43863,6 +43863,15 @@ def api_esocial_s1200_enviar():
     #     logo acima nao cobre isto: ela so olha S-1010 que ja existem.
     #     Ha um escape (forcar_s1010) — ver o comentario la em cima.
     _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, _ft_chk)
+    # S-1200 da rescisao do TSVE (flag1 'R'): a conferencia acima e da folha
+    # 'R' da empresa inteira, e cobrava do estagiario as verbas da rescisao
+    # dos empregados (empresa 29, mat 167, 09/2026: 0010, 0012, 0042 e 0104
+    # da mat 1015, que vao no S-2299 dela). Aqui so as verbas do evento.
+    if _falta and str(es.get("flag1") or "").upper()[:1] == "R":
+        _cods_evt = {int(str(i.get("cod_verba") or 0) or 0)
+                     for i in _mov_agregado_folha(id_empresa, session.get("id_cliente"),
+                                                  matricula, ano_mes, "R")}
+        _falta = [v for v in _falta if int(v["cod_rubr"]) in _cods_evt]
     if _falta and not forcar_1010:
         _am   = str(ano_mes)
         _novas = _criar_s1010_pendentes(session.get("id_cliente"), id_empresa,
