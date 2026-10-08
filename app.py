@@ -39375,6 +39375,18 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     lt_tpinsc = str(func.get('lt_tpinsc') or '1')
     lt_nrinsc = dg(func.get('lt_nrinsc') or '') or cnpj_emp
 
+    # <infoRegimeTrab> e obrigatorio no S-2206, e dentro dele o
+    # cnpjSindCategProf tambem: sem o grupo o governo recusa com "Grupo
+    # 'Informacoes do regime trabalhista' deve ser preenchido". Mesma forma do
+    # Desktop (SR_eSocial_2022.vb, S2206) e mesmos campos do cadastro que o
+    # S-2200 daqui usa. Sem o CNPJ do sindicato, para aqui com a instrucao em
+    # vez de mandar um evento que volta recusado.
+    cnpjsind = dg(func.get('cnpjsindcategprof') or '')
+    if len(cnpjsind) != 14:
+        raise ValueError("Funcionário sem o CNPJ do sindicato da categoria no cadastro "
+                         "(obrigatório no S-2206). Preencha no cadastro do funcionário "
+                         "e envie de novo.")
+
     # Mesma correcao do S-2200: a duracao vem do evento op1=1/op2=167, nao de
     # func['datarescisao'] (que e a data do desligamento) nem de
     # func['clausassec'] (coluna que nao existe em tab_cad).
@@ -39419,6 +39431,13 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
       <dtAlteracao>{x(dt_alt_fmt)}</dtAlteracao>
       <vinculo>
         <tpRegPrev>1</tpRegPrev>
+        <infoRegimeTrab>
+          <infoCeletista>
+            <tpRegJor>{x(tpregjor)}</tpRegJor>
+            <natAtividade>{x(natativ)}</natAtividade>
+            <cnpjSindCategProf>{x(cnpjsind)}</cnpjSindCategProf>
+          </infoCeletista>
+        </infoRegimeTrab>
         <infoContrato>
           <nmCargo>{x(nmcargo)}</nmCargo>
           <CBOCargo>{x(cbo)}</CBOCargo>
