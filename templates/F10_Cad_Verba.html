@@ -185,6 +185,11 @@
       background: #dcfce7; border-color: #86efac; font-weight: 700; color: #14532d;
     }
     .chk-item input[type=checkbox] { accent-color: #16a34a; width: 13px; height: 13px; flex-shrink: 0; }
+    .plano-oper { display: inline-flex; gap: 4px; margin-left: 4px; }
+    .plano-oper input { height: 20px; padding: 1px 5px; border: 1px solid #86efac; border-radius: 5px;
+                        font-size: 11px; font-weight: 400; background: white; }
+    #inpPlanoCnpj { width: 118px; }
+    #inpPlanoAns  { width: 58px; }
 
     /* MODO */
     .form-modo { font-size: 11px; font-weight: 700; padding: 5px 10px; border-radius: 8px; text-align: center; }
@@ -673,7 +678,14 @@
               <label class="chk-item"><input type="checkbox" id="chkRel13">         12 - É relativo ao 13° Salário</label>
               <label class="chk-item"><input type="checkbox" id="chkVerbaFerias">   13 - É uma verba de Férias</label>
               <label class="chk-item"><input type="checkbox" id="chkEmpConsig">     14 - É um Empréstimo Consignado</label>
-              <label class="chk-item"><input type="checkbox" id="chkPlanoSaude">    15 - É um Plano de Saúde</label>
+              <label class="chk-item"><input type="checkbox" id="chkPlanoSaude" onchange="atualizarPlanoSaude()">    15 - É um Plano de Saúde
+                <span id="spanPlanoSaude" class="plano-oper" style="display:none;">
+                  <input type="text" id="inpPlanoCnpj" maxlength="18" placeholder="CNPJ da operadora"
+                         title="CNPJ da operadora do plano (vai no S-1210)">
+                  <input type="text" id="inpPlanoAns" maxlength="6" placeholder="Reg. ANS"
+                         title="Registro da operadora na ANS, 6 dígitos (opcional)">
+                </span>
+              </label>
               <label class="chk-item"><input type="checkbox" id="chkEmpInterno">    16 - É um Empréstimo Interno</label>
               <label class="chk-item"><input type="checkbox" id="chkPeriodo">       17 - É um Feriado</label>
               <label class="chk-item"><input type="checkbox" id="chkSobreaviso">    18 - É Hora Sobreaviso</label>
@@ -902,6 +914,16 @@
     CHK_FIELDS.forEach(([id]) => {
       const el = document.getElementById(id); if (el) el.checked = false;
     });
+    document.getElementById('inpPlanoCnpj').value = '';
+    document.getElementById('inpPlanoAns').value  = '';
+    atualizarPlanoSaude();
+  }
+
+  // Plano de saude: a operadora (CNPJ + registro ANS) vai no grupo planSaude
+  // do S-1210, exigido quando a folha tem verba de natureza 9219.
+  function atualizarPlanoSaude() {
+    const on = document.getElementById('chkPlanoSaude').checked;
+    document.getElementById('spanPlanoSaude').style.display = on ? 'inline-flex' : 'none';
   }
 
   // Sugestão de código para verba nova: um a mais que a última cadastrada,
@@ -1036,6 +1058,9 @@
       const el = document.getElementById(elId);
       if (el) el.checked = !!v[campo];
     });
+    document.getElementById('inpPlanoCnpj').value = v.plano_cnpj_oper || '';
+    document.getElementById('inpPlanoAns').value  = v.plano_reg_ans   || '';
+    atualizarPlanoSaude();
 
     document.getElementById('formTitulo').textContent    = '✏️ Editando: ' + v.dsc_rubr;
     document.getElementById('formSubtitulo').textContent = 'Altere os dados e salve';
@@ -1314,6 +1339,15 @@
     CHK_FIELDS.forEach(([elId, campo]) => {
       payload[campo] = document.getElementById(elId)?.checked || false;
     });
+    if (payload.is_plano_saude) {
+      const cnpj = document.getElementById('inpPlanoCnpj').value.replace(/\D/g, '');
+      const ans  = document.getElementById('inpPlanoAns').value.replace(/\D/g, '');
+      if (!cnpj) { mostrarErro('Plano de Saúde: informe o CNPJ da operadora.'); return; }
+      if (cnpj.length !== 14) { mostrarErro('Plano de Saúde: CNPJ da operadora deve ter 14 dígitos.'); return; }
+      if (ans && ans.length !== 6) { mostrarErro('Plano de Saúde: o registro ANS tem 6 dígitos.'); return; }
+      payload.plano_cnpj_oper = cnpj;
+      payload.plano_reg_ans   = ans || null;
+    }
 
     const editando = !!id;
     try {

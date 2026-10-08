@@ -14514,7 +14514,8 @@ def api_rubrica_incluir():
               "is_adic_noturno", "is_relativo_13sal", "is_verba_ferias",
               "is_emprestimo_consig", "is_plano_saude", "is_emprestimo_interno",
               "is_periodo", "is_hora_sobreaviso", "is_hora_extra",
-              "percentual", "verbas_somabase"]:
+              "percentual", "verbas_somabase",
+              "plano_cnpj_oper", "plano_reg_ans"]:
         v = data.get(f)
         if v is not None:
             campos[f] = v
@@ -14590,6 +14591,11 @@ def api_rubrica_editar():
               "is_periodo", "is_hora_sobreaviso", "is_hora_extra",
               "percentual", "verbas_somabase"]:
         campos[f] = data.get(f)
+    # Operadora do plano de saude (grupo planSaude do S-1210): so' vem da tela
+    # quando a opcao 15 esta marcada -- sem ela as colunas nao sao tocadas.
+    for f in ("plano_cnpj_oper", "plano_reg_ans"):
+        if f in data:
+            campos[f] = data.get(f)
 
     # Busca estado atual para detectar o que mudou
     _sel = "cod_rubr,dsc_rubr," + ",".join(c for c, _ in IS_FIELD_NUM)
@@ -34604,11 +34610,73 @@ def _pen_alim_do_trabalhador(id_empresa, id_cliente, matricula, ano_mes, folha_t
         return []
 
 
+def _plano_saude_do_pgto(id_empresa, id_cliente, matricula, ano_mes, tipos_folha):
+    """Grupo <planSaude> do S-1210: [{"cnpj", "ans", "valor"}] por operadora.
+
+    Desde o leiaute S-1.3 o governo exige o grupo quando o S-1200 tem rubrica
+    de natureza 9219 (desconto de assistencia medica/odontologica) ou com
+    incidencia de IRRF 67/9067. Sem ele volta [8] "Grupo 'Plano de saude
+    coletivo' deve ser preenchido" -- empresa 53, mats 6 e 14, 09/2026, verba
+    1010 (coparticipacao). A operadora vem do cadastro da verba (opcao 15),
+    como no Desktop, onde cada plano da TABTAB 22 aponta a sua verba.
+    O valor vai todo como do titular (vlrSaudeTit); a divisao por dependente
+    (infoDepSau) que o Desktop faz nao existe aqui.
+
+    Retorna (lista, erro). erro != "" quando ha verba de plano sem CNPJ.
+    """
+    import re
+    soma = {}
+    for t in tipos_folha:
+        for it in _mov_agregado_folha(id_empresa, id_cliente, matricula, ano_mes, t):
+            c = int(str(it.get("cod_verba") or 0) or 0)
+            if c:
+                soma[c] = soma.get(c, 0) + int(it.get("valor") or 0)
+    if not soma:
+        return [], ""
+    try:
+        rows = (supabase.table("tab_rubrica").select("*")
+                .in_("id_cliente", [0] + ([id_cliente] if id_cliente else []))
+                .in_("cod_rubr", list(soma.keys()))
+                .eq("situacao", "A").execute().data or [])
+    except Exception as e:
+        print(f"[planSaude] mat={matricula} {ano_mes}: erro ao ler rubricas: {e}")
+        return [], ""
+    # Por verba, a versao vigente na competencia; a do cliente vale sobre a do sistema.
+    rub = {}
+    for r in sorted(rows, key=lambda r: (int(r.get("id_cliente") or 0),
+                                         int(r.get("ini_valid") or 0))):
+        if int(r.get("ini_valid") or 0) <= int(ano_mes):
+            rub[int(r["cod_rubr"])] = r
+    oper, sem_cnpj = {}, []
+    for c, v in soma.items():
+        r = rub.get(c) or {}
+        nat = str(r.get("es03_nat_rubr") or "").strip()
+        irrf = str(r.get("tpn_inc_irrf") or "").strip()
+        if nat != "9219" and irrf not in ("67", "9067"):
+            continue
+        cnpj = re.sub(r"\D", "", str(r.get("plano_cnpj_oper") or ""))
+        ans = re.sub(r"\D", "", str(r.get("plano_reg_ans") or ""))
+        if len(cnpj) != 14:
+            sem_cnpj.append(f"{c:04d} {r.get('dsc_rubr') or ''}".strip())
+            continue
+        # desconto soma; provento de natureza 9219 (estorno) abate
+        sinal = -1 if str(r.get("tp_rubr") or "2") == "1" else 1
+        k = (cnpj, ans if len(ans) == 6 else "")
+        oper[k] = oper.get(k, 0) + sinal * v
+    if sem_cnpj:
+        return [], ("Verba de plano de saúde sem a operadora: "
+                    + ", ".join(sem_cnpj)
+                    + ". Em Cadastro de Verbas, marque a opção 15 (Plano de "
+                    "Saúde) e informe o CNPJ da operadora — o S-1210 exige.")
+    return [{"cnpj": k[0], "ans": k[1], "valor": v}
+            for k, v in oper.items() if v > 0], ""
+
+
 def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
                      recibo_s1200, totais, mov_items=None, rubr_map=None,
                      deps_irrf=None, vlr_ded_dep_cent=0, pgtos=None,
                      ind_retif="1", nr_recibo_retif="", pen_alim=None,
-                     tp_pgto=None, ide_dm_dev=None):
+                     tp_pgto=None, ide_dm_dev=None, plan_saude=None):
     """Gera string XML do S-1210 (Pagamentos de Rendimentos do Trabalho).
 
     pgtos: lista de pagamentos do MESMO trabalhador na MESMA competência, cada um
@@ -34748,10 +34816,31 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     # com "[8] Grupo 'Informação dos beneficiários da pensão alimentícia'
     # deve ser preenchido". Ele entra DEPOIS do <dedDepen>: no schema a
     # sequência é dedDepen (51) → penAlim (55) → previdCompl (59).
-    deps_irrf = deps_irrf or []
-    pen_alim  = pen_alim or []
+    #
+    # <planSaude> (plano de saude coletivo) e' irmao do <infoIRCR> dentro do
+    # <infoIRComplem>, depois dele (XSD v_S_01_03_00 e Desktop,
+    # SR_eSocial_2024.vb). Quando ele existe, o <infoIRCR> com o tpCR tambem
+    # e' exigido, mesmo sem dependente nem pensao -- o governo cobrou os dois
+    # juntos no S-1210 da empresa 53 (mats 6 e 14, 09/2026).
+    deps_irrf  = deps_irrf or []
+    pen_alim   = pen_alim or []
+    plan_saude = plan_saude or []
     info_ir_xml = ""
-    if deps_irrf or pen_alim:
+    plan_xml = ""
+    for _ps in plan_saude:
+        _cnpj_op = dg(_ps.get("cnpj"))
+        _vlr_ps  = int(_ps.get("valor") or 0)
+        if len(_cnpj_op) != 14 or _vlr_ps <= 0:
+            continue
+        _ans = dg(_ps.get("ans"))
+        _ans_xml = (f"\n          <regANS>{x(_ans)}</regANS>"
+                    if len(_ans) == 6 else "")
+        plan_xml += f"""
+        <planSaude>
+          <cnpjOper>{x(_cnpj_op)}</cnpjOper>{_ans_xml}
+          <vlrSaudeTit>{fmt_brl(_vlr_ps)}</vlrSaudeTit>
+        </planSaude>"""
+    if deps_irrf or pen_alim or plan_xml:
         info_dep_xml = ""
         ded_depen_xml = ""
         for _d in deps_irrf:
@@ -34787,12 +34876,12 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
             <vlrDedPenAlim>{fmt_brl(_vlrb)}</vlrDedPenAlim>
           </penAlim>"""
 
-        if info_dep_xml or ded_depen_xml or pen_alim_xml:
+        if info_dep_xml or ded_depen_xml or pen_alim_xml or plan_xml:
             info_ir_xml = f"""
       <infoIRComplem>{info_dep_xml}
         <infoIRCR>
           <tpCR>056107</tpCR>{ded_depen_xml}{pen_alim_xml}
-        </infoIRCR>
+        </infoIRCR>{plan_xml}
       </infoIRComplem>"""
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -44713,6 +44802,13 @@ def _s1210_enviar_impl():
     elif is_resc:
         _tp_pgto_env = "3" if _lay_apur == "2399" else "2"
         _ide_dmd_env = _ide_dm_dev_resc(_mat_es(func))
+
+    # Plano de saude (verba de natureza 9219 nas folhas pagas aqui).
+    _plan_saude, _erro_ps = _plano_saude_do_pgto(
+        id_empresa, session.get("id_cliente"), int(matricula), int(ano_mes),
+        _tipos_pgto)
+    if _erro_ps:
+        return jsonify({"ok": False, "msg": _erro_ps})
     try:
         xml_str = _gerar_xml_s1210(func, empresa, ano_mes, _tipos_pgto[0], tpAmb,
                                    dtPgto, recibo_s1200, totais,
@@ -44724,7 +44820,8 @@ def _s1210_enviar_impl():
                                    ind_retif=_ind_retif_lp,
                                    nr_recibo_retif=_recibo_lp_existente,
                                    tp_pgto=_tp_pgto_env,
-                                   ide_dm_dev=_ide_dmd_env)
+                                   ide_dm_dev=_ide_dmd_env,
+                                   plan_saude=_plan_saude)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
