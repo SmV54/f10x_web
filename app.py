@@ -37005,6 +37005,19 @@ def api_esocial_s1010_enviar():
                 if _erros:
                     recibo_final = ""   # não marca como enviada com variante recusada
                     obs_erro = " | ".join(_erros) or resultado.get("descResposta", "")
+                # [1505] em TODAS as variantes = a rubrica JA esta declarada,
+                # vigente e com os mesmos atributos ("a inclusao de novo
+                # periodo ... nao pode ter todos os atributos identicos ao
+                # periodo imediatamente anterior"). Nao vem recibo, e sem
+                # recibo a conferencia do S-1200 a cobraria para sempre
+                # (empresa 29, verba 0049, 08/10/2026). Grava o marcador local
+                # de "ja declarada" -- o mesmo do S-1020 -- e nada vai ao governo.
+                if (_erros and len(_erros) == len(_evs)
+                        and all("[1505]" in _e for _e in _erros)):
+                    recibo_final = RECIBO_S1020_FICTICIO
+                    obs_erro     = ""
+                    print(f"[S-1010] verba {cod_rubr_reg}: [1505] em todas as "
+                          "variantes -- marcada como ja declarada no eSocial")
             # cd_resp 201 sem nrRec individual → protocolo é o recibo
             if cd_resp == "201" and not recibo_final and not obs_erro:
                 recibo_final = protocolo_envio
@@ -37034,6 +37047,14 @@ def api_esocial_s1010_enviar():
     # E, aguardando, "ok" tem que ser False — a Fila testa data.ok ANTES de
     # data.aguardando, então ok=True marcava como Enviado sem recibo nenhum.
     rub_dsc = rubricas[0].get("dsc_rubr", "") if rubricas else ""
+    if recibo_final == RECIBO_S1020_FICTICIO:
+        gravar_log("ESOCIAL", f"S-1010 verba {cod_rubr_reg}: [1505] em todas as "
+                              "variantes - considerada ja declarada no eSocial")
+        return jsonify({"ok": True, "recibo": recibo_final, "nr_rec": recibo_final,
+                        "msg": (f"Verba {cod_rubr_reg} {rub_dsc} já está declarada no "
+                                "eSocial com os mesmos dados (o governo respondeu "
+                                "[1505]). Ficou marcada como já enviada — o S-1200 "
+                                "não vai mais cobrá-la.")})
     if recibo_final and not obs_erro and not aguardando:
         return jsonify({"ok": True, "recibo": recibo_final, "nr_rec": recibo_final,
                         "msg": f"S-1010 enviado — Verba {cod_rubr_reg} {rub_dsc}. Recibo: {recibo_final}"})
