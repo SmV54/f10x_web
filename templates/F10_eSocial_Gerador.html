@@ -120,6 +120,20 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
 .lay-2220 .lay-card-code  { background: #ecfdf5; color: #065f46; }
 .lay-2220.selecionado     { border-color: #10b981; }
 .lay-2230 .lay-card-code  { background: #fefce8; color: #854d0e; }
+.lay-2230.selecionado     { border-color: #ca8a04; }
+
+/* ── S-2230: escolha do afastamento ── */
+.af2230-box { display: none; margin-top: 14px; border: 2px solid #fde68a; border-radius: 10px; overflow: hidden; }
+.af2230-box.visivel { display: block; }
+.af2230-label { padding: 8px 14px; font-size: 12px; font-weight: 700; color: #854d0e; background: #fefce8; border-bottom: 1px solid #fde68a; }
+.af2230-msg { padding: 12px 14px; font-size: 13px; color: #64748b; }
+.af2230-item { display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-top: 1px solid #f1f5f9; font-size: 13px; flex-wrap: wrap; }
+.af2230-item:first-child { border-top: none; }
+.af2230-desc { flex: 1; min-width: 220px; }
+.af2230-fase { padding: 4px 12px; border-radius: 7px; font-size: 12px; font-weight: 600; border: 1px solid #d6d3d1; background: var(--surface); cursor: pointer; }
+.af2230-fase:hover:not(:disabled) { border-color: #ca8a04; }
+.af2230-fase.sel { border-color: #ca8a04; background: #fef3c7; color: #854d0e; }
+.af2230-fase:disabled { opacity: .45; cursor: not-allowed; }
 .lay-2299 .lay-card-code  { background: #fff1f2; color: #9f1239; }
 .lay-1200 .lay-card-code  { background: #dbeafe; color: #1e40af; }
 .lay-1210 .lay-card-code  { background: #ede9fe; color: #5b21b6; }
@@ -415,10 +429,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         <div class="lay-card-desc">Alt. Contrato</div>
       </div>
 
-      <div class="lay-card lay-2230 lay-card-disabled" data-layout="2230" data-tipo="func">
+      <div class="lay-card lay-2230" data-layout="2230" data-tipo="func" onclick="selecionarLayout(this)">
         <div class="lay-card-code">S-2230</div>
         <div class="lay-card-desc">Afastamento</div>
-        <div class="lay-card-em-breve">Em breve</div>
       </div>
 
       <div class="lay-card lay-2299" data-layout="2299" data-tipo="func" onclick="selecionarLayout(this)">
@@ -515,6 +528,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
         </div>
         <div id="funcVazio" style="display:none;padding:14px 16px;font-size:13px;
              color:#9a5b06;background:#fbeeda;border-top:1px solid #f0d9ae;"></div>
+      </div>
+
+      <!-- S-2230: qual férias/afastamento e qual fase. Só com 1 funcionário. -->
+      <div class="af2230-box" id="af2230Box">
+        <div class="af2230-label">Afastamento a informar *</div>
+        <div id="af2230Lista"></div>
       </div>
 
       <div style="display:flex;align-items:center;gap:14px;margin-top:16px;flex-wrap:wrap;">
@@ -899,10 +918,81 @@ function atualizarSelecao() {
   document.getElementById('funcContador').textContent =
     n === 0 ? 'Nenhum selecionado' : `${n} selecionado(s)`;
 
-  btn.disabled  = !(layoutAtual && n > 0 && refOk);
+  _af2230Sincronizar();
+  const afOk = layoutAtual !== '2230' || (n === 1 && af2230Escolha !== null);
+
+  btn.disabled  = !(layoutAtual && n > 0 && refOk && afOk);
   btn.innerHTML = n > 1
     ? `&#10003; Criar ${n} Remessas Pendentes`
     : '&#10003; Criar Remessa Pendente';
+}
+
+/* ── S-2230: o envio tira datas e motivo do afastamento escolhido aqui ──
+   A remessa aponta para o evento (codigo2) e diz a fase: F = férias,
+   S = saída do afastamento, R = retorno. Por isso é um funcionário por vez. */
+let af2230Escolha = null;      // {id_evento, fase}
+let af2230Mat     = null;      // matrícula cuja lista está na tela
+
+function _d8br(v) { v = String(v || ''); return v.length === 8 ? `${v.slice(6)}/${v.slice(4,6)}/${v.slice(0,4)}` : ''; }
+
+function _af2230Sincronizar() {
+  const box = document.getElementById('af2230Box');
+  const sel = [...document.querySelectorAll('.func-chk:checked')];
+  if (layoutAtual !== '2230' || operacaoAtual === 'A') {
+    box.classList.remove('visivel'); af2230Escolha = null; af2230Mat = null;
+    return;
+  }
+  box.classList.add('visivel');
+  const lista = document.getElementById('af2230Lista');
+  if (sel.length !== 1) {
+    af2230Escolha = null; af2230Mat = null;
+    lista.innerHTML = `<div class="af2230-msg">${sel.length === 0
+      ? 'Selecione o funcionário acima para ver as férias e afastamentos dele.'
+      : 'O S-2230 é criado para um funcionário por vez — deixe só um marcado.'}</div>`;
+    return;
+  }
+  const mat = sel[0].value;
+  if (mat === af2230Mat) return;
+  af2230Mat = mat; af2230Escolha = null;
+  _af2230Carregar(mat);
+}
+
+async function _af2230Carregar(mat) {
+  const lista = document.getElementById('af2230Lista');
+  lista.innerHTML = '<div class="af2230-msg">Carregando…</div>';
+  let data;
+  try {
+    const r = await fetch('/api/esocial_gerador_afast?matricula=' + encodeURIComponent(mat));
+    data = await lerRespostaJson(r);
+  } catch(e) { data = { ok: false, msg: msgFalha(e) }; }
+  if (af2230Mat !== mat) return;            // trocou de funcionário no meio
+  if (!data.ok) { lista.innerHTML = `<div class="af2230-msg">${data.msg || 'Erro'}</div>`; return; }
+  if (!data.items.length) {
+    lista.innerHTML = '<div class="af2230-msg">Este funcionário não tem férias nem afastamentos lançados. '
+      + 'Lance primeiro na rotina de Férias ou de Afastamento.</div>';
+    return;
+  }
+  lista.innerHTML = data.items.map(it => {
+    const per = `${_d8br(it.data1i)} a ${it.data1f ? _d8br(it.data1f) : '(em aberto)'}`;
+    const desc = it.tipo === 'F' ? `Férias — ${per}` : `Afastamento motivo ${it.motivo} — ${per}`;
+    const fases = it.tipo === 'F' ? [['F', 'Férias']] : [['S', 'Saída'], ['R', 'Retorno']];
+    const bts = fases.map(([f, lbl]) => {
+      const ja  = it.fases.includes(f);
+      const sem = f === 'R' && !it.data1f;
+      const tit = ja ? 'Já existe remessa desta fase na Fila' : (sem ? 'Sem data de retorno' : '');
+      return `<button type="button" class="af2230-fase" data-ev="${it.id}" data-fase="${f}"
+                ${ja || sem ? 'disabled' : ''} title="${tit}"
+                onclick="af2230Escolher(this)">${lbl}${ja ? ' ✓ na Fila' : ''}</button>`;
+    }).join('');
+    return `<div class="af2230-item"><span class="af2230-desc">${desc}</span>${bts}</div>`;
+  }).join('');
+}
+
+function af2230Escolher(b) {
+  document.querySelectorAll('.af2230-fase').forEach(x => x.classList.remove('sel'));
+  b.classList.add('sel');
+  af2230Escolha = { id_evento: Number(b.dataset.ev), fase: b.dataset.fase };
+  atualizarSelecao();
 }
 
 /* ── Criar remessa (func) ── */
@@ -928,10 +1018,12 @@ async function criarRemessa(btn) {
         method: 'POST', headers: {'Content-Type':'application/json'},
         body: JSON.stringify({ layout: layoutAtual, matricula: mat,
                                operacao: operacaoAtual,
-                               recibo_ref: refSelecionado ? refSelecionado.recibo : null }),
+                               recibo_ref: refSelecionado ? refSelecionado.recibo : null,
+                               ...(layoutAtual === '2230' ? af2230Escolha : {}) }),
       });
       const data = await lerRespostaJson(r);
-      if (data.ok) criados.push({ id: data.id_esocial, nome });
+      if (data.ok) criados.push({ id: data.id_esocial, nome: data.ano_mes
+        ? `${nome} — competência ${String(data.ano_mes).slice(4)}/${String(data.ano_mes).slice(0,4)}` : nome });
       else erros.push(`${nome}: ${data.msg || 'erro'}`);
     } catch(e) { erros.push(`${nome}: falha de comunicação`); }
   }
@@ -940,7 +1032,9 @@ async function criarRemessa(btn) {
   // nao o S-2299: ele nao esta na lista branca do envio em lote (ver o
   // checkbox da F10_eSocial_Fila.html) e sai pela tela propria. Mandar para a
   // Fila deixaria a remessa la, visivel e sem botao nenhum que a envie.
-  const _DESTINO = { '2299': ['/esocial_s2299', 'Ver na tela do S-2299'] };
+  // O S-2206 tambem: ele sai pela tela propria, nao pelo envio da Fila.
+  const _DESTINO = { '2299': ['/esocial_s2299', 'Ver na tela do S-2299'],
+                     '2206': ['/esocial_s2206', 'Ver na tela do S-2206'] };
   const _dest = _DESTINO[layoutAtual] || ['/esocial_fila', 'Ver na Fila de Remessas'];
 
   div.style.display = 'block';
@@ -958,6 +1052,7 @@ async function criarRemessa(btn) {
     div.className = 'resultado erro'; div.textContent = erros.join('; ');
   }
   document.querySelectorAll('.func-chk').forEach(c => c.checked = false);
+  af2230Mat = null; af2230Escolha = null;
   atualizarSelecao();
   btn.disabled = false;
 }

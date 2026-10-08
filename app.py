@@ -42159,6 +42159,13 @@ def api_esocial_gerador_criar():
                 "término dele é o S-2399, não o S-2299. Esse evento é criado "
                 "pelo cálculo da rescisão.")})
 
+    # S-2230 pelo Gerador: a remessa tem que apontar para o afastamento
+    # (codigo2 = id da tab_eventos) e dizer a fase (flag1 F/S/R) -- e' dali
+    # que o envio tira datas e motivo (_s2230_carregar). Uma linha generica,
+    # com codigo2=0, so' quebraria na hora de montar o XML.
+    if layout == "2230":
+        return _gerador_criar_s2230(data, id_empresa, id_cliente, matricula, operacao)
+
     # Evento de trabalhador so na competencia em que o fato aconteceu.
     # Vale para os cinco layouts de _LAYOUTS_NA_COMPETENCIA; a data de cada um
     # esta em _ROTULO_DATA_EVENTO. Aqui, no Gerador, e onde mais escapava: a
@@ -42280,6 +42287,142 @@ def api_esocial_gerador_criar():
         "layout":     layout,
         "matricula":  matricula,
         "msg":        f"Remessa S-{layout} criada com sucesso.",
+    })
+
+
+def _gerador_afast_do_func(id_empresa, matricula):
+    """Ferias (op1=3) e afastamentos (op1=6) do funcionario, do mais novo para
+    o mais antigo. O op2=203 fica de fora: e' o registro auxiliar da base
+    migrada que repete o afastamento verdadeiro (ver api de afastamento)."""
+    rows = (supabase.table("tab_eventos")
+            .select("id,op1,op2,data1i,data1f,data2i")
+            .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+            .in_("op1", [3, 6])
+            .order("data1i", desc=True).limit(40)
+            .execute().data or [])
+    return [r for r in rows
+            if not (int(r.get("op1") or 0) == 6
+                    and str(r.get("op2") or "").strip() == "203")]
+
+
+@app.route("/api/esocial_gerador_afast")
+def api_esocial_gerador_afast():
+    """Lista para o card S-2230 do Gerador: cada ferias/afastamento do
+    funcionario e as fases que ja' tem remessa."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    try:
+        matricula = int(request.args.get("matricula") or 0)
+    except ValueError:
+        matricula = 0
+    if not matricula:
+        return jsonify({"ok": False, "msg": "Funcionário não informado."})
+    try:
+        evs = _gerador_afast_do_func(id_empresa, matricula)
+        ja = {}
+        ids = [e["id"] for e in evs]
+        if ids:
+            for r in (supabase.table("tab_esocial").select("codigo2,flag1")
+                      .eq("id_empresa", id_empresa).eq("layout", "2230")
+                      .in_("codigo2", ids).execute().data or []):
+                ja.setdefault(r.get("codigo2"), []).append(
+                    str(r.get("flag1") or "").upper()[:1])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler os afastamentos: {e}"})
+    items = [{
+        "id":     e["id"],
+        "tipo":   "F" if int(e.get("op1") or 0) == 3 else "A",
+        "motivo": str(e.get("op2") or "").strip(),
+        "data1i": str(e.get("data1i") or ""),
+        "data1f": str(e.get("data1f") or ""),
+        "fases":  ja.get(e["id"], []),
+    } for e in evs]
+    return jsonify({"ok": True, "items": items})
+
+
+def _gerador_criar_s2230(data, id_empresa, id_cliente, matricula, operacao):
+    if operacao == "A":
+        return jsonify({"ok": False, "msg": (
+            "O S-2230 não tem alteração pelo Gerador: o evento sai sempre como "
+            "original. Use Inclusão e escolha o afastamento.")})
+    try:
+        id_ev = int(data.get("id_evento") or 0)
+    except (TypeError, ValueError):
+        id_ev = 0
+    fase = str(data.get("fase") or "").upper()[:1]
+    if not id_ev or fase not in ("F", "S", "R"):
+        return jsonify({"ok": False, "msg": "Escolha o afastamento e a fase (saída ou retorno)."})
+
+    try:
+        ev = (supabase.table("tab_eventos").select("id,op1,op2,data1i,data1f")
+              .eq("id", id_ev).eq("id_empresa", id_empresa)
+              .eq("matricula", int(matricula)).limit(1).execute().data or [{}])[0]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o afastamento: {e}"})
+    if not ev.get("id"):
+        return jsonify({"ok": False, "msg": "Afastamento não encontrado para este funcionário."})
+
+    op1 = int(ev.get("op1") or 0)
+    if (op1 == 3) != (fase == "F"):
+        return jsonify({"ok": False, "msg": "A fase não corresponde ao tipo do evento "
+                                           "(férias x afastamento)."})
+    d_ini = str(ev.get("data1i") or "").strip()
+    d_fim = str(ev.get("data1f") or "").strip()
+    if fase == "R" and len(d_fim) != 8:
+        return jsonify({"ok": False, "msg": "Este afastamento ainda não tem data de retorno — "
+                                           "lance o retorno antes de gerar o S-2230 de retorno."})
+    if len(d_ini) != 8:
+        return jsonify({"ok": False, "msg": "O evento está sem data de início."})
+
+    try:
+        ja = (supabase.table("tab_esocial").select("id_esocial")
+              .eq("id_empresa", id_empresa).eq("layout", "2230")
+              .eq("codigo2", id_ev).eq("flag1", fase)
+              .limit(1).execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao consultar a Fila: {e}"})
+    if ja:
+        return jsonify({"ok": False, "msg": (
+            f"Já existe remessa S-2230 desta fase para este evento "
+            f"(id {ja[0]['id_esocial']}). Veja na Fila de Remessas.")})
+
+    # Mesma regra das rotinas de ferias/afastamento: a remessa vai na
+    # competencia do proprio fato -- saida/ferias no mes do inicio, retorno no
+    # mes da volta -- e nao no da folha ativa.
+    am = int((d_fim if fase == "R" else d_ini)[:6])
+    agora = _agora_brasilia()
+    anomes_tp = str(session.get("anomes_tipo") or "")
+    try:
+        res = supabase.table("tab_esocial").insert({
+            "id_cliente": id_cliente,
+            "id_empresa": id_empresa,
+            "data_cad":   agora.strftime("%Y%m%d"),
+            "hora_cad":   agora.strftime("%H%M"),
+            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
+            "ano_mes":    am,
+            "folha_tipo": "1" if anomes_tp in ("1", "A") else "N",
+            "layout":     "2230",
+            "matricula":  int(matricula),
+            "codigo2":    id_ev,
+            "flag1":      fase,
+            "operacao":   "I",
+        }).execute()
+        id_reg = res.data[0]["id_esocial"]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao criar remessa: {e}"})
+
+    gravar_log("ESOCIAL",
+               f"Remessa S-2230 ({_S2230_FASE_LBL.get(fase, fase)}) criada pelo Gerador: "
+               f"id={id_reg} evento={id_ev} comp={am % 100:02d}/{am // 100}",
+               matricula=int(matricula))
+    return jsonify({
+        "ok":         True,
+        "id_esocial": id_reg,
+        "layout":     "2230",
+        "matricula":  matricula,
+        "ano_mes":    am,
+        "msg":        f"Remessa S-2230 criada na competência {am % 100:02d}/{am // 100}.",
     })
 
 
