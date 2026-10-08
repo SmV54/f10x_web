@@ -39689,10 +39689,15 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
                  estagiário normalmente não se aplica.
       pens_alim  '0' não há | '1' % | '2' valor | '3' ambos.
 
-    A VALIDAR contra o XSD (o retorno do gov aponta o erro exato):
-      (a) nome/uso de <mtvDesligTSV> e <pensaoAlim>;
-      (b) se <verbasResc>/<dmDev> exige <codCateg>;
-      (c) ordem dentro de <infoTSVTermino>.
+    Forma copiada do Desktop (SR_eSocial_2022.vb, evtTSVTermino), que manda
+    esse evento em producao. O governo recusou a versao anterior com "dmDev
+    has invalid child element 'codCateg'" (08/10/2026), e ela tinha mais
+    desvios que o retorno nao chegou a mostrar:
+      - ideTrabSemVinculo: cpfTrab + matricula; codCateg so sem matricula;
+      - mtvDesligTSV e pensAlim (nao "pensaoAlim") so para o diretor 721/722;
+      - verbasResc so para o 721, como no Desktop -- estagiario (901) nao
+        manda verbas; e o dmDev e ideDmDev + ideEstabLot direto: sem codCateg
+        e sem infoPerApur (esse grupo e do S-2299).
     """
     import re
     from xml.sax.saxutils import escape as _esc
@@ -39723,22 +39728,21 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
             f"Trabalhador {func.get('matricula')} sem data de término "
             "(datarescisao) — obrigatória no S-2399.")
 
-    # motivo do término (Tabela 20) — condicional; só emite se houver
-    mtv = str(mtv_deslig if mtv_deslig is not None
-              else (func.get('motrescisao') or '')).strip()
-    mtv_xml = (f"\n      <mtvDesligTSV>{x(mtv.zfill(2))}</mtvDesligTSV>"
-               if mtv and mtv not in ('0', '00') else "")
+    diretor = codcateg in ('721', '722')
 
-    # pensão alimentícia — só emite se houver (0 = não há)
-    pens = str(pens_alim or '0').strip()
-    pens_xml = ""
-    if pens and pens != '0':
-        pens_extra = ""
+    # motivo do término (Tabela 20) e pensão: só para o diretor (721/722)
+    mtv_xml = pens_xml = ""
+    if diretor:
+        mtv = str(mtv_deslig if mtv_deslig is not None
+                  else (func.get('motrescisao') or '')).strip()
+        if mtv and mtv not in ('0', '00'):
+            mtv_xml = f"\n      <mtvDesligTSV>{x(mtv.zfill(2))}</mtvDesligTSV>"
+        pens = str(pens_alim or '0').strip() or '0'
+        pens_xml = f"\n      <pensAlim>{x(pens)}</pensAlim>"
         if pens in ('1', '3') and perc_aliment is not None:
-            pens_extra += f"\n        <percAliment>{x(perc_aliment)}</percAliment>"
+            pens_xml += f"\n      <percAliment>{x(perc_aliment)}</percAliment>"
         if pens in ('2', '3') and vr_alim is not None:
-            pens_extra += f"\n        <vrAlim>{fmt_brl(vr_alim)}</vrAlim>"
-        pens_xml = f"\n      <pensaoAlim>{x(pens)}</pensaoAlim>{pens_extra}"
+            pens_xml += f"\n      <vrAlim>{fmt_brl(vr_alim)}</vrAlim>"
 
     # verbas rescisórias — detVerbas sob ideEstabLot (como no S-2299); opcional
     det_xml = ""
@@ -39757,22 +39761,22 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
                 </detVerbas>"""
 
     verbas_xml = ""
-    if det_xml.strip():
+    if det_xml.strip() and codcateg == '721':
         cod_lotacao = str(func.get('centrocusto') or '').strip()
         verbas_xml = f"""
       <verbasResc>
         <dmDev>
           <ideDmDev>{_ide_dm_dev_resc(mat_es)}</ideDmDev>
-          <codCateg>{x(codcateg)}</codCateg>
-          <infoPerApur>
-            <ideEstabLot>
-              <tpInsc>1</tpInsc>
-              <nrInsc>{x(cnpj_emp)}</nrInsc>
-              <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}
-            </ideEstabLot>
-          </infoPerApur>
+          <ideEstabLot>
+            <tpInsc>1</tpInsc>
+            <nrInsc>{x(cnpj_emp)}</nrInsc>
+            <codLotacao>{x(cod_lotacao)}</codLotacao>{det_xml}
+          </ideEstabLot>
         </dmDev>
       </verbasResc>"""
+
+    ide_trab = (f"\n      <matricula>{x(mat_es)}</matricula>" if mat_es
+                else f"\n      <codCateg>{x(codcateg)}</codCateg>")
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTSVTermino/v_S_01_03_00"
@@ -39790,9 +39794,7 @@ def _gerar_xml_s2399(func, mov_items, empresa, tpAmb="1",
       <nrInsc>{x(cnpj_raiz)}</nrInsc>
     </ideEmpregador>
     <ideTrabSemVinculo>
-      <cpfTrab>{x(cpf)}</cpfTrab>
-      <matricula>{x(mat_es)}</matricula>
-      <codCateg>{x(codcateg)}</codCateg>
+      <cpfTrab>{x(cpf)}</cpfTrab>{ide_trab}
     </ideTrabSemVinculo>
     <infoTSVTermino>
       <dtTerm>{x(dt_ter)}</dtTerm>{mtv_xml}{pens_xml}{verbas_xml}
