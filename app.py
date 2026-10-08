@@ -9549,6 +9549,57 @@ def _calc_rescisao_nucleo(body, sim=None):
                 "vsb":  str(r.get("verbas_somabase") or "").strip(),
             }
 
+    # ── Verbas digitadas na FOLHA NORMAL do mês de quem está sendo desligado ──
+    # No mês do desligamento não há folha normal para ele: o cálculo da folha
+    # pula o demitido, e o que foi lançado lá (atraso, falta, vale...) não
+    # entra em lugar nenhum -- nem na rescisão, nem em tela alguma. Só o S-1200
+    # enxergava, e mandava a verba sozinha ao governo (empresa 29, mats 167 e
+    # 816716, 09/2026: a 0130 ATRASOS de R$ 1,52 derrubou o S-1200 com [267] e
+    # [933]). Agora a rescisão para e pergunta; confirmado, o lançamento passa
+    # para a rescisão (folha_tipo 'R') e entra no cálculo como verba manual.
+    if not sim:
+        _mats_d = [int(c.get("matricula") or 0) for c in demitidos]
+        try:
+            _qn = (supabase.table("tab_mov")
+                   .select("id, matricula, cod_verba, valor, qtd, origem")
+                   .eq("id_empresa", id_empresa)
+                   .eq("folha", folha_int)
+                   .eq("folha_tipo", "N")
+                   .eq("situacao", "A")
+                   .neq("origem", "C")
+                   .in_("matricula", _mats_d))
+            if id_cliente:
+                _qn = _qn.eq("id_cliente", id_cliente)
+            _mov_n = _qn.execute().data or []
+        except Exception as e:
+            return (f"Erro ao conferir o movimento da folha normal: {e}", [], {})
+        if _mov_n and not body.get("transferir_mov_normal"):
+            _nomes = {int(c.get("matricula") or 0):
+                      (c.get("nome") or c.get("nomer") or "").strip() for c in demitidos}
+            _pend = [{"matricula": int(m.get("matricula") or 0),
+                      "nome": _nomes.get(int(m.get("matricula") or 0), ""),
+                      "cod_verba": int(m.get("cod_verba") or 0),
+                      "dsc": _rubr_desc.get(int(m.get("cod_verba") or 0), ""),
+                      "valor": int(m.get("valor") or 0)}
+                     for m in _mov_n]
+            _pend.sort(key=lambda p: (p["matricula"], p["cod_verba"]))
+            return ("Há verbas lançadas na folha normal de quem está sendo "
+                    "desligado. Elas não entram em folha nenhuma: precisam "
+                    "passar para a rescisão.", [], {"confirmar_mov_normal": _pend})
+        if _mov_n:
+            try:
+                (supabase.table("tab_mov")
+                 .update({"folha_tipo": "R", "origem": "M"})
+                 .in_("id", [int(m["id"]) for m in _mov_n]).execute())
+                for m in _mov_n:
+                    gravar_log("CALC_RES",
+                               f"Verba {int(m.get('cod_verba') or 0):04d} "
+                               f"({_fmt_brl(int(m.get('valor') or 0))}) passou da "
+                               "folha normal para a rescisao",
+                               ano_mes=anomes, matricula=int(m.get("matricula") or 0))
+            except Exception as e:
+                return (f"Erro ao transferir as verbas para a rescisão: {e}", [], {})
+
     # Verbas manuais (origem='M') da rescisão do mês, por matrícula. Não são
     # apagadas pelo recálculo; aqui entram nas bases (INSS/IRRF/FGTS) e totais.
     manual_mov = {}
@@ -10441,6 +10492,9 @@ def api_calc_rescisao_calcular():
         return jsonify({"ok": False, "msg": "A folha precisa estar Aberta para calcular."})
 
     erro, resultados, extras = _calc_rescisao_nucleo(request.get_json(silent=True) or {})
+    if extras.get("confirmar_mov_normal"):
+        return jsonify({"ok": False, "msg": erro,
+                        "confirmar_mov_normal": extras["confirmar_mov_normal"]})
     if erro:
         return jsonify({"ok": False, "msg": erro})
     web = [{k: v for k, v in r.items() if k not in _CAMPOS_SO_PDF} for r in resultados]
@@ -53358,6 +53412,33 @@ def api_visualizar_calculo_dados():
     except Exception as e_q:
         erro_query = str(e_q)
 
+    # Desligado do mês com verba lançada na FOLHA NORMAL: o card dele mostra
+    # só a rescisão, e esse lançamento sumia de vista -- mas o S-1200 o lia e
+    # mandava sozinho ao governo (empresa 29, mats 167 e 816716, 09/2026). Sai
+    # no card como erro; o cálculo da rescisão oferece passá-lo para lá.
+    mov_fora_resc = {}
+    if demitidos_mes and folha_tipo_mov == "N":
+        try:
+            q_n = (supabase.table("tab_mov")
+                   .select("matricula, cod_verba, valor")
+                   .eq("id_empresa", id_empresa)
+                   .eq("situacao", "A")
+                   .eq("folha", int(anomes))
+                   .eq("folha_tipo", "N")
+                   .neq("origem", "C")
+                   .in_("matricula", sorted(demitidos_mes)))
+            if id_cliente:
+                q_n = q_n.eq("id_cliente", id_cliente)
+            for reg in (q_n.execute().data or []):
+                mat = int(reg.get("matricula") or 0)
+                cod = int(reg.get("cod_verba") or 0)
+                ri  = rubricas_info.get(cod, {})
+                mov_fora_resc.setdefault(mat, []).append({
+                    "cod": cod, "dsc": ri.get("dsc") or f"Verba {cod:04d}",
+                    "tp": ri.get("tp") or "1", "valor": int(reg.get("valor") or 0)})
+        except Exception:
+            pass
+
     _tipo_ord = {"N": 0, "F": 1, "R": 2}
 
     # monta resultado por funcionário
@@ -53523,6 +53604,7 @@ def api_visualizar_calculo_dados():
             "is_intermitente": is_int,
             "sal_hora_fmt":    _fmt_brl(int(sh_emp)) if is_int and sh_emp else "",
             "info_extra":      " · ".join(info_partes),
+            "mov_fora_resc":   sorted(mov_fora_resc.get(mat, []), key=lambda v: v["cod"]),
             "secoes":          secoes,
             "total_prov":      total_prov,
             "total_desc":      total_desc,

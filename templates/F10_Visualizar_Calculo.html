@@ -673,6 +673,19 @@ function renderResultados(data) {
             : '';
         // Demitido usa a memória da RESCISÃO; ativo usa a memória mensal.
         const memHref = (func.demitido ? '/api/memoria_rescisao_pdf/' : '/api/memoria_calculo_pdf/') + func.matricula;
+        // Verba lançada na folha normal de quem foi desligado no mês: não entra
+        // em folha nenhuma, mas o S-1200 a enviaria. Erro visível sempre, mesmo
+        // com os detalhes recolhidos.
+        const movFora = (func.mov_fora_resc || []);
+        const erroMovFora = movFora.length ? `
+                <div style="margin-top:6px;width:100%;box-sizing:border-box;background:#fef2f2;border:1px solid #fca5a5;
+                            border-radius:7px;padding:7px 10px;font-size:12px;color:#991b1b;">
+                    <b>⚠️ Verba lançada na folha normal, fora da rescisão.</b>
+                    Ela não entra em nenhum cálculo e não pode ir ao eSocial assim.
+                    Recalcule a rescisão: o sistema oferece transferi-la.
+                    <div style="margin-top:4px;">${movFora.map(v =>
+                        `${String(v.cod).padStart(4,'0')} ${v.dsc} — ${v.tp === '1' ? '' : '-'}R$ ${fmtBRL(v.valor)}`).join('<br>')}</div>
+                </div>` : '';
         card.className = 'func-card detalhes-ocultos';
         card.innerHTML = `
             <div class="func-card-header" style="flex-direction:column;align-items:flex-start;gap:3px;">
@@ -698,6 +711,7 @@ function renderResultados(data) {
                     </div>
                 </div>
                 ${detalhe ? `<div class="func-card-detalhe">${detalhe}</div>` : ''}
+                ${erroMovFora}
             </div>`;
 
         if (!func.secoes || !func.secoes.length) {

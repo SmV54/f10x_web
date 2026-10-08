@@ -224,7 +224,31 @@ function mostrarAtalhosCalc(mostrar) {
     if (el) el.style.display = mostrar ? '' : 'none';
 }
 
-async function calcular() {
+// Verbas lancadas na folha normal de quem esta sendo desligado: o servidor
+// para e lista; confirmado, elas passam para a rescisao e o calculo segue.
+function pedirTransferenciaMovNormal(lista, texto) {
+    const fmt = c => (c / 100).toLocaleString('pt-BR', {minimumFractionDigits: 2});
+    const linhas = lista.map(p => `
+        <tr><td>${String(p.matricula).padStart(6, '0')}</td><td>${p.nome}</td>
+            <td>${String(p.cod_verba).padStart(4, '0')} ${p.dsc || ''}</td>
+            <td style="text-align:right">${fmt(p.valor)}</td></tr>`).join('');
+    document.getElementById('msg').innerHTML = `
+        <div class="alerta alerta-erro"><span>⚠️</span><div>
+            <b>${texto}</b>
+            <table style="margin:8px 0;border-collapse:collapse;font-size:12px">
+                <tr><th style="text-align:left;padding-right:12px">Matrícula</th>
+                    <th style="text-align:left;padding-right:12px">Nome</th>
+                    <th style="text-align:left;padding-right:12px">Verba</th>
+                    <th style="text-align:right">Valor</th></tr>${linhas}
+            </table>
+            <div style="display:flex;gap:8px;margin-top:6px">
+                <button type="button" class="btn-trct" style="border:none;cursor:pointer" onclick="calcular(true)">Transferir para a rescisão e calcular</button>
+                <button type="button" class="btn-trct" style="border:none;cursor:pointer;background:#64748b" onclick="document.getElementById('msg').innerHTML=''">Cancelar</button>
+            </div>
+        </div></div>`;
+}
+
+async function calcular(transferir) {
     const btn = document.getElementById('btnCalc');
     const msg = document.getElementById('msg');
     const mats = [...document.querySelectorAll('.chk-func:checked')].map(c => parseInt(c.value));
@@ -239,9 +263,16 @@ async function calcular() {
     document.getElementById('cardResult').style.display = 'none';   // esconde o Resultado enquanto (re)calcula
     try {
         const r = await fetch('/api/calc_rescisao_calcular', {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({matriculas: mats})
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({matriculas: mats, transferir_mov_normal: transferir === true})
         });
         const d = await r.json();
+        if (!d.ok && d.confirmar_mov_normal) {
+            btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
+            mostrarMovResc(true);
+            mostrarAtalhosCalc(true);
+            pedirTransferenciaMovNormal(d.confirmar_mov_normal, d.msg);
+            return;
+        }
         if (!d.ok) {
             msg.innerHTML = `<div class="alerta alerta-erro"><span>❌</span><div>${d.msg || 'Erro no cálculo.'}</div></div>`;
             btn.disabled = false; btn.textContent = '🖩 Calcular Rescisão';
