@@ -8524,6 +8524,67 @@ def _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat_int, anomes_am,
             print(f"[S1210-resc] nao consegui limpar duplicata: {e}")
 
 
+def _gravar_ou_atualizar_s1200_resc(id_empresa, id_cliente, mat_int, anomes_am,
+                                    folha_tipo_es):
+    """S-1200 com as verbas da rescisao do TSVE que nao e 721 (ver
+    _tsve_resc_no_s1200). Mesma forma do S-1210 da rescisao: folha_tipo da
+    competencia e flag1 'R' -- e o flag1 que faz o envio do S-1200 ler o
+    movimento 'R' em vez da folha normal.
+
+    Idempotente como o _gravar_ou_atualizar_s1210_resc: reaproveita o S-1200
+    ainda nao transmitido da competencia (o da propria rescisao, ou o que a
+    folha lancou antes do desligamento -- o mes da rescisao nao tem folha
+    normal junto) e nunca toca no que ja tem recibo."""
+    from datetime import datetime as _dt
+    agora_es    = _dt.now()
+    ano_mes_int = int(anomes_am) if str(anomes_am).isdigit() else None
+    try:
+        existentes = (supabase.table("tab_esocial")
+                      .select("id_esocial, recibo, observacao_erro, flag1, folha_tipo")
+                      .eq("id_empresa", id_empresa).eq("matricula", mat_int)
+                      .eq("layout", "1200").eq("ano_mes", ano_mes_int)
+                      .execute().data or [])
+    except Exception as e:
+        print(f"[S1200-resc] nao consegui ler a tab_esocial: {e}")
+        return
+    _ft_es = str(folha_tipo_es or "N").upper()[:1]
+    _cands = [r for r in existentes
+              if not (r.get("recibo") or "").strip()
+              and (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+              and str(r.get("folha_tipo") or "N").upper()[:1] == _ft_es]
+    pendente = next((r for r in _cands
+                     if str(r.get("flag1") or "").upper()[:1] == "R"), None)
+    if pendente is None and _cands:
+        pendente = _cands[0]
+    campos = {
+        "data_cad":   agora_es.strftime("%Y%m%d"),
+        "hora_cad":   agora_es.strftime("%H%M"),
+        "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+        "ano_mes":    ano_mes_int,
+        "folha_tipo": folha_tipo_es,
+        "flag1":      "R",
+    }
+    try:
+        if pendente:
+            (supabase.table("tab_esocial").update(campos)
+             .eq("id_esocial", pendente["id_esocial"]).execute())
+        else:
+            supabase.table("tab_esocial").insert({
+                **campos,
+                "id_cliente": id_cliente, "id_empresa": id_empresa,
+                "layout": "1200", "matricula": mat_int, "codigo2": 0,
+            }).execute()
+    except Exception as e:
+        print(f"[S1200-resc] nao consegui gravar: {e}")
+    _sobra = [r.get("id_esocial") for r in _cands
+              if pendente and r.get("id_esocial") != pendente.get("id_esocial")]
+    if _sobra:
+        try:
+            _esocial_delete().in_("id_esocial", _sobra).execute()
+        except Exception as e:
+            print(f"[S1200-resc] nao consegui limpar duplicata: {e}")
+
+
 def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha_tipo_es,
                                codcateg=None):
     """Grava (ou atualiza) o evento de término na tab_esocial no momento do
@@ -8749,12 +8810,17 @@ def cancelar_rescisao():
         except Exception as e:
             gravar_log("RESC-CAN-ER", str(e)[:200], matricula=mat_int)
             return redirect(f"/cancelar_rescisao?mats={mat_int}&erro=1")
-        # Remove o S-2299 ainda PENDENTE (não enviado / não excluído)
+        # Remove as remessas da rescisão ainda PENDENTES (não enviadas / não
+        # excluídas): o término (S-2299 ou, no TSVE, S-2399) e o S-1210 e o
+        # S-1200 que o cálculo lançou para ela (flag1 'R'). Antes só saía o
+        # S-2299, e o resto ficava na fila esperando para ir ao governo.
         try:
             r2 = (supabase.table("tab_esocial")
-                  .select("id_esocial, recibo, observacao_erro")
+                  .select("id_esocial, recibo, observacao_erro, layout, flag1")
                   .eq("id_empresa", id_empresa).eq("matricula", mat_int)
-                  .eq("layout", "2299").execute().data or [])
+                  .in_("layout", ["2299", "2399", "1210", "1200"]).execute().data or [])
+            r2 = [r for r in r2 if r.get("layout") in ("2299", "2399")
+                  or str(r.get("flag1") or "").upper()[:1] == "R"]
             for row in r2:
                 rec = (row.get("recibo") or "").strip()
                 obs = (row.get("observacao_erro") or "").strip().upper()
@@ -10261,6 +10327,10 @@ def _calc_rescisao_nucleo(body, sim=None):
             # aparecia na tela do S-1210 (ver _gravar_ou_atualizar_s1210_resc).
             _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat, anomes,
                                             _folha_tipo_es)
+            # TSVE que nao e 721: as verbas vao num S-1200, que o S-1210 paga.
+            if _tsve_resc_no_s1200(cad.get("codcateg")):
+                _gravar_ou_atualizar_s1200_resc(id_empresa, id_cliente, mat, anomes,
+                                                _folha_tipo_es)
 
         _saldo_fgts = int((_sim_f.get("saldo_fgts") if sim else
                            body.get("saldo_fgts_" + str(mat))) or 0)
@@ -34026,6 +34096,22 @@ def _ide_dm_dev_resc(mat_es):
     return f"{mat_es}00"
 
 
+def _tsve_resc_no_s1200(codcateg):
+    """True para o TSVE cujas verbas da rescisao vao no S-1200, e nao no S-2399.
+
+    No S-2399 o grupo <verbasResc> e so do diretor nao empregado (721) -- e o
+    que diz o Manual e o que o Desktop faz. Para as demais categorias de TSVE
+    (estagiario 901, 722, 723...) o valor da rescisao e remuneracao do mes:
+    vai num S-1200 da competencia, e o S-1210 paga esse demonstrativo com
+    tpPgto 1. Mandar tpPgto 3 para eles dava [726] (empresa 33, mat 8,
+    08/10/2026): nao ha dmDev no S-2399 para o pagamento apontar."""
+    try:
+        c = int(str(codcateg or "0").strip() or 0)
+    except (TypeError, ValueError):
+        return False
+    return c >= 700 and c != 721
+
+
 # Folhas que viajam JUNTAS numa remessa só (mesma competência, mesmo trabalhador):
 # a folha normal e o adiantamento do 13º. Elas vão no MESMO <dmDev>/<infoPgto> —
 # um ideDmDev só. A ordem importa: a primeira encontrada define o ideDmDev e o
@@ -43611,7 +43697,10 @@ def api_esocial_s1200_enviar():
     #     no primeiro mes nao existe NENHUM registro 1020 e a checagem de
     #     pendentes la de cima nao ve o que nao existe. Sem S-1020 aceito o
     #     eSocial recusa o S-1200, entao aqui a remessa e criada e o envio para.
-    _falta_lot = _lotacoes_folha_sem_s1020(id_empresa, ano_mes, folha_tipo)
+    # A remessa da rescisao do TSVE (flag1 'R') leva o movimento 'R': e ele
+    # que tem de estar com lotacao (S-1020) e rubricas (S-1010) registradas.
+    _ft_chk = "R" if str(es.get("flag1") or "").upper()[:1] == "R" else folha_tipo
+    _falta_lot = _lotacoes_folha_sem_s1020(id_empresa, ano_mes, _ft_chk)
     if _falta_lot:
         _am    = str(ano_mes)
         _n20, _erro20 = _criar_s1020_pendentes(session.get("id_cliente"), id_empresa,
@@ -43633,7 +43722,7 @@ def api_esocial_s1200_enviar():
     #     remessas prontas na Fila e diz o que enviar. A checagem de pendentes
     #     logo acima nao cobre isto: ela so olha S-1010 que ja existem.
     #     Ha um escape (forcar_s1010) — ver o comentario la em cima.
-    _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, folha_tipo)
+    _falta = _verbas_folha_sem_s1010(id_empresa, ano_mes, _ft_chk)
     if _falta and not forcar_1010:
         _am   = str(ano_mes)
         _novas = _criar_s1010_pendentes(session.get("id_cliente"), id_empresa,
@@ -43686,8 +43775,18 @@ def api_esocial_s1200_enviar():
 
     # 3. Movimento do período — UMA remessa pode levar mais de uma folha
     # (folha normal + adiantamento do 13º), cada uma no seu <dmDev>.
-    _dmdevs = _folhas_da_remessa(id_empresa, session.get("id_cliente"),
-                                 matricula, ano_mes, folha_tipo)
+    # flag1 'R' = S-1200 das verbas da rescisao do TSVE que nao e 721 (ver
+    # _gravar_ou_atualizar_s1200_resc): o demonstrativo e o movimento 'R'
+    # (rubricas -RES, ideDmDev com sufixo 03), embora a remessa esteja na
+    # folha normal da competencia -- a rescisao nao tem folha propria na
+    # tab_anomes, e a validacao acima e a dessa folha.
+    if str(es.get("flag1") or "").upper()[:1] == "R":
+        _dmdevs = [{"folha_tipo": "R",
+                    "mov_items": _mov_agregado_folha(id_empresa, session.get("id_cliente"),
+                                                     matricula, ano_mes, "R")}]
+    else:
+        _dmdevs = _folhas_da_remessa(id_empresa, session.get("id_cliente"),
+                                     matricula, ano_mes, folha_tipo)
     # A 1ª folha da lista manda no indApuracao/perApur do evento.
     folha_tipo_evt = _dmdevs[0]["folha_tipo"]
     mov_items      = _dmdevs[0]["mov_items"]
@@ -43743,8 +43842,11 @@ def api_esocial_s1200_enviar():
     _recibo_existente = (es.get("recibo") or "").strip()
     _recibo_de_outra_linha = ""
     if not _recibo_existente:
+        # A remessa da rescisao (flag1 'R') fica gravada com o folha_tipo da
+        # competencia, e e por ele que se procura o recibo anterior.
         _recibo_existente = _recibo_s1200_anterior(
-            id_empresa, matricula, ano_mes, folha_tipo_evt,
+            id_empresa, matricula, ano_mes,
+            folha_tipo if folha_tipo_evt == "R" else folha_tipo_evt,
             id_esocial_atual=int(id_reg), layout="1200")
         _recibo_de_outra_linha = _recibo_existente
     _ind_retif  = "2" if _recibo_existente else "1"
@@ -44381,7 +44483,12 @@ def _s1210_enviar_impl():
         except Exception:
             _cat_r = 0
         # Mesma regra do _gravar_ou_atualizar_s2299: >= 700 e' TSVE (S-2399).
-        _lay_apur = "2399" if _cat_r >= 700 else "2299"
+        # Mas so o diretor 721 tem as verbas no S-2399; o resto do TSVE as
+        # tem no S-1200 da rescisao (_tsve_resc_no_s1200), e e ele que se paga.
+        if _tsve_resc_no_s1200(_cat_r):
+            _lay_apur = "1200"
+        else:
+            _lay_apur = "2399" if _cat_r >= 700 else "2299"
     try:
         _q_apur = (supabase.table("tab_esocial")
                    .select("recibo")
@@ -44398,12 +44505,19 @@ def _s1210_enviar_impl():
             # desligamento, que e' a mesma deste S-1210, mas o folha_tipo pode
             # ter sido gravado como '1' numa folha de 13o. Filtra so' pelo mes.
             _q_apur = _q_apur.eq("ano_mes", int(ano_mes))
+            if _lay_apur == "1200":
+                _q_apur = _q_apur.eq("flag1", "R")
         r_s1200 = _q_apur.limit(1).execute()
         # A liberação provisória de 14/08/2026 foi revertida no mesmo dia, depois
         # de os 17 recibos perdidos da empresa 39 serem recuperados dos XMLs do
         # Storage e regravados. A regra volta a valer: sem o S-1200 aceito, o
         # S-1210 não vai.
         if not r_s1200.data:
+            if is_resc and _lay_apur == "1200":
+                return jsonify({"ok": False, "msg": (
+                    "S-1200 da rescisão ainda não enviado. No trabalhador sem "
+                    "vínculo (fora o diretor 721) as verbas da rescisão vão no "
+                    "S-1200 do mês — envie o S-1200 primeiro, depois este S-1210.")})
             if is_resc:
                 return jsonify({"ok": False, "msg": (
                     f"S-{_lay_apur} (desligamento) ainda não enviado. As verbas "
@@ -44575,7 +44689,11 @@ def _s1210_enviar_impl():
     # o tpPgto e' 2 (ou 3) e o ideDmDev e' o do dmDev daquele evento — tem de
     # sair identico ao que foi transmitido la (ver _ide_dm_dev_resc).
     _tp_pgto_env = _ide_dmd_env = None
-    if is_resc:
+    if is_resc and _lay_apur == "1200":
+        # TSVE fora o 721: paga o demonstrativo 'R' do S-1200 da rescisao.
+        _tp_pgto_env = "1"
+        _ide_dmd_env = _ide_dm_dev(_mat_es(func), "R")
+    elif is_resc:
         _tp_pgto_env = "3" if _lay_apur == "2399" else "2"
         _ide_dmd_env = _ide_dm_dev_resc(_mat_es(func))
     try:
