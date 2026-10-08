@@ -39386,7 +39386,8 @@ def _gerar_xml_s2206(func, empresa, dt_alteracao, tpAmb="1"):
     # Corta antes de escapar: cortar depois poderia partir uma entidade
     # (&amp; virando &am) e quebrar o XML.
     _objdet     = str(_contr.get('objdet') or func.get('objdet') or '').strip()[:255]
-    duracao_xml = _duracao_xml(tpcontr, _dtterm_fmt, _clauassec, x(_objdet))
+    duracao_xml = _duracao_xml(tpcontr, _dtterm_fmt, _clauassec, x(_objdet),
+                               com_clauassec=False)
 
     # dt_alteracao aceita yyyy-mm-dd ou yyyymmdd
     if len(dt_alteracao.replace('-','')) == 8:
@@ -71602,8 +71603,13 @@ CONTR_OP1, CONTR_OP2 = 1, 167
 _DATA_VAZIA_LEGADO = "11110101"   # o "sem data" que o Desktop grava
 
 
-def _duracao_xml(tpcontr, dtterm_fmt, clauassec, objdet):
+def _duracao_xml(tpcontr, dtterm_fmt, clauassec, objdet, com_clauassec=True):
     """Bloco <duracao> do S-2200/S-2206, com as tres formas que o leiaute aceita.
+
+    clauAssec so existe no S-2200. O <duracao> do S-2206 e tpContr, dtTerm,
+    objDet e mais nada: com a clausula o governo recusa o evento inteiro
+    ([17] "invalid child element 'clauAssec'"). O S-2206 chama com
+    com_clauassec=False.
 
     A ordem dos campos e a exclusividade sao do proprio leiaute e nao sao
     negociaveis:
@@ -71620,16 +71626,15 @@ def _duracao_xml(tpcontr, dtterm_fmt, clauassec, objdet):
     objdet chega JA ESCAPADO e ja cortado pelo chamador — o escape de XML mora
     dentro de cada gerador (a funcao x()), nao aqui.
     """
+    clau = f"\n          <clauAssec>{clauassec}</clauAssec>" if com_clauassec else ""
     if tpcontr == '2' and dtterm_fmt:
         return (f"\n        <duracao>"
                 f"\n          <tpContr>2</tpContr>"
-                f"\n          <dtTerm>{dtterm_fmt}</dtTerm>"
-                f"\n          <clauAssec>{clauassec}</clauAssec>"
+                f"\n          <dtTerm>{dtterm_fmt}</dtTerm>{clau}"
                 f"\n        </duracao>")
     if tpcontr == '3' and objdet:
         return (f"\n        <duracao>"
-                f"\n          <tpContr>3</tpContr>"
-                f"\n          <clauAssec>{clauassec}</clauAssec>"
+                f"\n          <tpContr>3</tpContr>{clau}"
                 f"\n          <objDet>{objdet}</objDet>"
                 f"\n        </duracao>")
     return "\n        <duracao>\n          <tpContr>1</tpContr>\n        </duracao>"
