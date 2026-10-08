@@ -34474,15 +34474,12 @@ def _gerar_xml_s1200(func, mov_items, empresa, ano_mes, folha_tipo, tpAmb="1",
         _ft = str(_dm.get("folha_tipo") or folha_tipo or "N").upper()
         _itens_todos += _itens_xml(_dm.get("mov_items"), _ft)
     if not _itens_todos.strip():
-        # Trabalhador sem movimento: o schema exige ao menos um <itensRemun>.
-        _cod_zero = _fmt_cod_rubr(1, _ft_princ)
-        _itens_todos = f"""
-            <itensRemun>
-              <codRubr>{x(_cod_zero)}</codRubr>
-              <ideTabRubr>{x(_cod_zero)}</ideTabRubr>
-              <vrRubr>0.00</vrRubr>
-              <indApurIR>{ind_apur_ir}</indApurIR>
-            </itensRemun>"""
+        # Trabalhador sem movimento: o schema exige ao menos um <itensRemun> e
+        # o vrRubr tem que ser maior que zero -- nao ha XML valido. Saia aqui
+        # um item 0.00, que o governo recusava com [17] (empresa 53, mat 13).
+        raise ValueError(
+            f"Trabalhador {func.get('matricula')} sem nenhuma verba na folha "
+            f"{ano_mes} -- não há S-1200 a enviar.")
 
     dmdev_xml = f"""
     <dmDev>
@@ -43857,6 +43854,26 @@ def api_esocial_s1200_enviar():
     if _recibo_de_outra_linha:
         print(f"[S-1200] mat={matricula} {ano_mes}: retificando remessa anterior "
               f"(recibo {_recibo_de_outra_linha})")
+
+    # 4c. Folha sem nenhuma verba ativa: nao ha o que mandar. O XML saia com um
+    # itensRemun de 0.00, que o XSD nunca aceita (vrRubr e maior que zero) --
+    # empresa 53, mat 13, 09/2026: a folha normal foi calculada, a rescisao
+    # levou tudo para a folha R e a remessa da folha normal ficou na fila vazia.
+    if not any(_dm.get("mov_items") for _dm in _dmdevs):
+        if _recibo_existente:
+            return jsonify({"ok": False, "msg": (
+                "Esta folha não tem mais nenhuma verba, mas já existe S-1200 "
+                f"aceito para a competência (recibo {_recibo_existente}). "
+                "Para tirá-lo do eSocial, envie a exclusão (S-3000).")})
+        try:
+            if not (es.get("recibo") or "").strip():
+                (supabase.table("tab_esocial").delete()
+                 .eq("id_esocial", int(id_reg)).execute())
+        except Exception as e:
+            print(f"[S-1200] mat={matricula} {ano_mes}: erro ao retirar remessa vazia: {e}")
+        return jsonify({"ok": False, "removida": True, "msg": (
+            "O funcionário não tem nenhuma verba nesta folha, então não há "
+            "S-1200 a enviar. A remessa foi retirada da fila.")})
 
     # 5. Gerar XML cru e salvar ASAP (antes de cert/assinatura)
     _now2 = _agora_brasilia()
