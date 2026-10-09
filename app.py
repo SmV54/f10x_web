@@ -3462,6 +3462,7 @@ def _ferias_vencidas_dados(id_empresa, ordem):
             evs_por_mat.setdefault(int(ev.get("matricula") or 0), []).append(ev)
     except Exception as e:
         print(f"[ferias_vencidas] tab_eventos: {e}")
+    afast_por_mat = _afast_inss_por_mat(id_empresa)
 
     linhas = []
     for f in funcs:
@@ -3476,7 +3477,8 @@ def _ferias_vencidas_dados(id_empresa, ordem):
         ult_ini = _dparse(ult.get("data1i")) if ult else None
         ult_fim = _dparse(ult.get("data1f")) if ult else None
 
-        ini_curso, vencidos, estimado = _ferias_aquisitivos_resc(dt_adm, dt_ref, evs)
+        ini_curso, vencidos, estimado = _ferias_aquisitivos_resc(
+            dt_adm, dt_ref, evs, afast_por_mat.get(mat, []))
         f1_ini = vencidos[-1][0] if vencidos else ini_curso
         f1_fim = _fim_aquisitivo(f1_ini)
         f2_ini = f1_fim + _td(days=1)
@@ -9180,7 +9182,8 @@ def _fim_aquisitivo(dt_ini):
         return dt_ini.replace(year=dt_ini.year + 1, day=28) - _td(days=1)
 
 
-def _ferias_aquisitivos_resc(dt_adm, dt_ref, eventos_fer):
+def _ferias_aquisitivos_resc(dt_adm, dt_ref, eventos_fer, afastamentos=None,
+                             perdidos=None):
     """Onde comeca o periodo aquisitivo EM CURSO e quais ja venceram sem gozo.
 
     As duas respostas saem daqui juntas, de proposito. Ate 16/09/2026 elas
@@ -9202,11 +9205,36 @@ def _ferias_aquisitivos_resc(dt_adm, dt_ref, eventos_fer):
     dt_ref e vencido; o primeiro que nao fechou e o das proporcionais. Sem vao
     possivel — o fim de um e a vespera do inicio do outro.
 
+    Afastamento por doenca ou acidente (CLT art. 133, IV): o periodo em que o
+    funcionario recebeu do INSS por MAIS DE 6 MESES, embora descontinuos, nao
+    da direito a ferias, e o aquisitivo seguinte comeca na VOLTA (par. 2o).
+    Ate 09/10/2026 a rescisao ignorava os afastamentos: a mat 264 da empresa
+    34, afastada de 04/04/2024 a 14/05/2026, saia com tres periodos vencidos
+    quando o certo e um so (2023/24) e as proporcionais contadas da volta.
+    `afastamentos` e [(ini, fim)] so dos motivos 01 e 03 (fim None = em aberto);
+    o beneficio comeca no 16o dia — os 15 primeiros sao pagos pela empresa.
+    Cada periodo perdido vai em `perdidos` como (ini, fim_aquisitivo, volta,
+    dias_inss), para a memoria de calculo mostrar.
+
     Devolve (ini_curso, vencidos, estimado).
     """
     from datetime import timedelta as _td
     if not dt_adm or not dt_ref:
         return (dt_adm, [], False)
+
+    def _dias_inss(j_ini, j_fim):
+        """Dias de beneficio do INSS dentro da janela, e a volta do afastamento
+        que fez passar de 6 meses (None = ainda afastado)."""
+        tot, volta = 0, False
+        for a_ini, a_fim in (afastamentos or []):
+            b_ini = a_ini + _td(days=15)
+            b_fim = a_fim or dt_ref
+            de, ate = max(b_ini, j_ini), min(b_fim, j_fim)
+            if ate >= de:
+                tot += (ate - de).days + 1
+                if tot > 180 and volta is False:
+                    volta = (a_fim + _td(days=1)) if a_fim else None
+        return tot, volta
 
     ult_fim, ult_gozo, estimado = None, None, False
     for ev in (eventos_fer or []):
@@ -9230,13 +9258,46 @@ def _ferias_aquisitivos_resc(dt_adm, dt_ref, eventos_fer):
         p_ini = dt_adm
 
     vencidos = []
-    while len(vencidos) < 20:
+    while len(vencidos) < 20 and p_ini <= dt_ref:
         p_fim = _fim_aquisitivo(p_ini)
+        if afastamentos:
+            dias, volta = _dias_inss(p_ini, min(p_fim, dt_ref))
+            if dias > 180:           # art. 133, IV: perdeu este periodo
+                if perdidos is not None:
+                    perdidos.append((p_ini, p_fim, volta, dias))
+                # Ainda afastado na data de referencia: nao ha aquisitivo novo
+                p_ini = volta if volta else dt_ref + _td(days=1)
+                continue
         if p_fim >= dt_ref:          # ainda nao fechou: e o periodo em curso
             break
         vencidos.append((p_ini, p_fim))
         p_ini = p_fim + _td(days=1)
     return (p_ini, vencidos, estimado)
+
+
+def _afast_inss_por_mat(id_empresa, matriculas=None):
+    """{matricula: [(ini, fim)]} dos afastamentos que viram beneficio do INSS
+    — motivos 01 (acidente/doenca do trabalho) e 03 (nao relacionada ao
+    trabalho) da Tabela 18. E o que o art. 133, IV da CLT conta para tirar as
+    ferias; licenca-maternidade e os demais motivos nao entram (art. 131).
+    fim None = afastamento ainda sem data de volta."""
+    out = {}
+    try:
+        q = (supabase.table("tab_eventos")
+             .select("matricula, op2, data1i, data1f")
+             .eq("id_empresa", id_empresa).eq("op1", 6).in_("op2", [1, 3]))
+        if matriculas is not None:
+            q = q.in_("matricula", sorted({int(m) for m in matriculas}))
+        for ev in (q.execute().data or []):
+            ini = _dparse(ev.get("data1i"))
+            if ini:
+                out.setdefault(int(ev.get("matricula") or 0), []).append(
+                    (ini, _dparse(ev.get("data1f"))))
+    except Exception as e:
+        print("[afast INSS ferias]", str(e))
+    for v in out.values():
+        v.sort(key=lambda t: t[0])
+    return out
 
 
 def _periodos_ferias_vencidas(dt_adm, ini_curso, eventos_fer):
@@ -9513,6 +9574,11 @@ def _calc_rescisao_nucleo(body, sim=None):
             ferias_por_mat.setdefault(int(ev.get("matricula") or 0), []).append(ev)
     except Exception as e:
         print("Erro ao buscar ferias gozadas (rescisao):", str(e))
+
+    # ── Afastamentos por doenca/acidente (op1=6, motivos 01 e 03) — mais de 6
+    #    meses de INSS no aquisitivo tiram as ferias dele (CLT art. 133, IV) ──
+    afast_fer_por_mat = _afast_inss_por_mat(
+        id_empresa, [int(c.get("matricula") or 0) for c in demitidos])
 
     # ── Verbas variáveis que entram na média (inc_rescisao) ──
     try:
@@ -10063,9 +10129,11 @@ def _calc_rescisao_nucleo(body, sim=None):
         # Férias: o período em curso (proporcionais) e os vencidos saem da MESMA
         # conta, encadeados — ver _ferias_aquisitivos_resc. Antes vinham de
         # rotinas separadas que podiam discordar e deixar um vão sem pagar.
+        fer_perdidos = []
         if dt_adm:
             ini_aq, venc_periodos, venc_estimado = _ferias_aquisitivos_resc(
-                dt_adm, dt_proj, ferias_por_mat.get(mat, []))
+                dt_adm, dt_proj, ferias_por_mat.get(mat, []),
+                afast_fer_por_mat.get(mat, []), fer_perdidos)
         else:
             ini_aq, venc_periodos, venc_estimado = _date(dt_proj.year, 1, 1), [], False
         # Avos pelo ANIVERSÁRIO do aquisitivo (CLT art. 146, parágrafo único),
@@ -10420,6 +10488,9 @@ def _calc_rescisao_nucleo(body, sim=None):
             "art479": art479, "art480": art480,
             "dias_faltantes": dias_faltantes, "clau_assec": clau_assec,
             "venc_estimado": venc_estimado,
+            "fer_perdidos": [{"ini": _pi.strftime("%d/%m/%Y"), "fim": _pf.strftime("%d/%m/%Y"),
+                              "volta": _pv.strftime("%d/%m/%Y") if _pv else "",
+                              "dias": _pd} for _pi, _pf, _pv, _pd in fer_perdidos],
             "venc_periodos": [(x.strftime("%d/%m/%Y"), y.strftime("%d/%m/%Y"))
                               for x, y in venc_periodos],
             "med_total": med_total, "med_total_13": med_total_13, "medias_info": medias_info,
@@ -10805,6 +10876,21 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                 e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [],
                                 na=("estagiário não tem 13º (Lei 11.788/2008, art. 3º)" if _est
                                     else "o motivo da rescisão não gera 13º proporcional")))
+            # Periodos perdidos por afastamento (art. 133, IV): sem eles na
+            # memoria, quem confere ve um periodo "sumir" sem explicacao.
+            if r.get("fer_perdidos"):
+                _lin_p = ["Mais de 6 meses recebendo do INSS (auxílio-doença ou acidente) "
+                          "dentro do período aquisitivo tiram o direito às férias dele, e o "
+                          "aquisitivo seguinte começa na volta ao trabalho (CLT art. 133, IV "
+                          "e § 2º). Os 15 primeiros dias de cada afastamento são da empresa "
+                          "e não contam."]
+                for _p in r["fer_perdidos"]:
+                    _lin_p.append(
+                        f"{_p['ini']} a {_p['fim']}: {_p['dias']} dias de INSS → "
+                        f"<b>férias perdidas</b>; "
+                        + (f"novo aquisitivo a partir de <b>{_p['volta']}</b>" if _p["volta"]
+                           else "ainda afastado — sem novo aquisitivo"))
+                e.append(_etapa("ETAPA 3054 - FERIAS PERDIDAS POR AFASTAMENTO", _lin_p))
             # 0005B — Férias vencidas + 1/3 (períodos completos sem gozo)
             if r.get("fer_venc"):
                 _lin = [f"Períodos aquisitivos completos sem gozo: <b>{r['venc_qtd']}</b>"]
