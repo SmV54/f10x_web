@@ -9869,6 +9869,7 @@ def _calc_rescisao_nucleo(body, sim=None):
     # Rescisão com a 0132 digitada e sem falta no tab_eventos: não há datas
     # para achar as semanas, e o DSR fica por conta de quem lançou.
     _avisos_dsr = []
+    _avisos_ap = []     # 2o aviso gravado que o tempo de casa nao confirma
     # Verbas 'UL' da rescisao (cargo de confianca): o ultimo valor de cada uma
     # soma a remuneracao — ver _verbas_ultimo_lanc.
     _ul_dsc_r  = _verbas_ultimo_lanc(id_cliente, "inc_rescisao")
@@ -9940,6 +9941,21 @@ def _calc_rescisao_nucleo(body, sim=None):
                     dias_aviso = dias_aviso_ref1 + int(ev.get("ref2") or 0)
                     aviso_quem = str(ev.get("campotxt2") or "").strip()
                     aviso_disp = str(ev.get("campotxt4") or "").strip().lower().startswith("dispens")
+                    # O 2o aviso e gravado no lancamento e a rescisao so le.
+                    # Afastamento por doenca cadastrado (ou corrigido) DEPOIS
+                    # do aviso deixa o ref2 com o tempo de casa cheio — foi o
+                    # caso da mat 264 da empresa 34 em 09/10/2026. So avisa
+                    # quando ha afastamento descontado: sem ele a conta e a
+                    # mesma da tela e nao ha o que conferir.
+                    _dt_av = _dparse(ev.get("data1i"))
+                    if dt_adm and _dt_av and not is_estag and int(ev.get("ref2") or 0) > 0:
+                        _anos_av, _fora_av = _anos_casa_aviso(id_empresa, mat, dt_adm, _dt_av)
+                        _ref2_ok = min(_anos_av * 3, 60)
+                        if _fora_av and _ref2_ok != int(ev.get("ref2") or 0):
+                            _avisos_ap.append(
+                                f"{mat:06d} {nome}: aviso gravado com {int(ev.get('ref2') or 0)} "
+                                f"dias de 2º aviso; sem os {_fora_av} dias de afastamento por "
+                                f"doença, o tempo de casa dá {_ref2_ok}")
             except Exception:
                 pass
         if is_estag:
@@ -10548,6 +10564,11 @@ def _calc_rescisao_nucleo(body, sim=None):
                     + f": o DSR perdido (verba {VR_DSR_FALTA:04d}) não foi calculado — "
                       "calcule e digite manualmente (1 DSR por semana com falta).")
         _extras["aviso"] = ((_extras["aviso"] + "<br>") if _extras["aviso"] else "") + _txt_dsr
+    if _avisos_ap:
+        _txt_ap = ("2º aviso prévio (Lei 12.506) diferente do tempo de casa — "
+                   + "; ".join(_avisos_ap)
+                   + ". Cancele o aviso prévio, lance de novo e recalcule a rescisão.")
+        _extras["aviso"] = ((_extras["aviso"] + "<br>") if _extras["aviso"] else "") + _txt_ap
     return ("", resultados, _extras)
 
 
