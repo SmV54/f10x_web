@@ -294,6 +294,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     {{ funcionario.anos }} ano{{ 's' if funcionario.anos != 1 else '' }} × 3 dias = {{ funcionario.anos * 3 }} dias{% if funcionario.anos * 3 > 60 %} → limitado a 60{% endif %} → <strong>{{ prazo_lei }} dias</strong>
                 </div>
                 <div class="prazo-lei" style="color:#1d4ed8;font-weight:600;">Lei 12.506/2011 — convertido em dinheiro (verba separada)</div>
+                {% if funcionario.dias_fora %}<div class="prazo-lei" style="color:#1d4ed8;">Tempo de casa sem os {{ funcionario.dias_fora }} dias de afastamento por doença (a partir do 16º dia o contrato fica suspenso e não conta).</div>{% endif %}
             </div>
         </div>
     </div>

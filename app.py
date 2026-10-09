@@ -6099,11 +6099,11 @@ def cad_aviso_previo():
                 dtadm_fmt = f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
                 sal_fmt = ("R$ " + f"{sal/100:,.2f}"
                            .replace(",","X").replace(".",",").replace("X","."))
-                anos = 0
+                anos, dias_fora = 0, 0
                 if len(s) == 8:
                     try:
                         adm_d = _date(int(s[:4]), int(s[4:6]), int(s[6:8]))
-                        anos  = (_date.today() - adm_d).days // 365
+                        anos, dias_fora = _anos_casa_aviso(id_empresa, mat_int, adm_d, _date.today())
                     except Exception:
                         pass
                 prazo = min(30 + anos * 3, 90)
@@ -6114,6 +6114,7 @@ def cad_aviso_previo():
                     "dtadm_fmt": dtadm_fmt,
                     "sal_fmt":   sal_fmt,
                     "anos":      anos,
+                    "dias_fora": dias_fora,
                     "prazo":     prazo,
                 }
         except Exception:
@@ -6238,11 +6239,11 @@ def cad_aviso_previo2():
                 s = str(dtadm or "").zfill(8)
                 dtadm_fmt = f"{s[6:8]}/{s[4:6]}/{s[0:4]}" if len(s) == 8 else "—"
                 sal_fmt = "R$ " + f"{sal/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
-                anos = 0
+                anos, dias_fora = 0, 0
                 if len(s) == 8:
                     try:
                         adm_d = _date(int(s[:4]), int(s[4:6]), int(s[6:8]))
-                        anos  = (_date.today() - adm_d).days // 365
+                        anos, dias_fora = _anos_casa_aviso(id_empresa, mat_int, adm_d, _date.today())
                     except Exception:
                         pass
                 prazo_lei = min(anos * 3, 60)  # 2º AP: 3 dias/ano, máx 60, convertido em $
@@ -6253,6 +6254,7 @@ def cad_aviso_previo2():
                     "dtadm_fmt": dtadm_fmt,
                     "sal_fmt":   sal_fmt,
                     "anos":      anos,
+                    "dias_fora": dias_fora,
                     "dtadm_raw": s,
                 }
         except Exception:
@@ -11578,7 +11580,41 @@ _SIM_RESC_QUEM = {"07": "Funcionário", "04": "Funcionário", "33": "Acordo"}
 _SIM_RESC_MOTIVOS = ("02", "07", "33", "01", "05", "17", "10")
 
 
-def _sim_resc_dias_aviso(dtadm_raw, dt_resc, quem):
+def _anos_casa_aviso(id_empresa, mat, adm, dt_ref):
+    """Anos de casa para o 2o aviso (Lei 12.506/2011): (anos, dias_fora).
+
+    O afastamento por doenca NAO relacionada ao trabalho (motivo 03) suspende
+    o contrato a partir do 16o dia — os 15 primeiros a empresa paga e contam.
+    Suspensao nao e tempo de servico, entao esses dias saem da conta. Ate
+    09/10/2026 contava-se da admissao direto: a mat 264 da empresa 34
+    (16/06/2023, afastada de 04/04/2024 a 14/05/2026) ganhava 9 dias por
+    "3 anos" de casa, quando trabalhou pouco mais de 1.
+
+    Acidente do trabalho (motivo 01) continua contando: a CLT, art. 4o,
+    par. 1o, manda computar esse afastamento como tempo de servico."""
+    from datetime import timedelta as _td
+    if not adm or not dt_ref or dt_ref < adm:
+        return 0, 0
+    fora = 0
+    try:
+        evs = (supabase.table("tab_eventos").select("data1i, data1f")
+               .eq("id_empresa", id_empresa).eq("matricula", int(mat))
+               .eq("op1", 6).eq("op2", 3).execute().data) or []
+    except Exception as e:
+        print("[aviso anos de casa]", str(e))
+        evs = []
+    for ev in evs:
+        a_ini = _dparse(ev.get("data1i"))
+        if not a_ini:
+            continue
+        de  = max(a_ini + _td(days=15), adm)
+        ate = min(_dparse(ev.get("data1f")) or dt_ref, dt_ref)
+        if ate >= de:
+            fora += (ate - de).days + 1
+    return max(0, ((dt_ref - adm).days - fora) // 365), fora
+
+
+def _sim_resc_dias_aviso(dtadm_raw, dt_resc, quem, id_empresa=None, mat=None):
     """Dias do aviso prévio na data simulada — (ref1, ref2), a mesma conta da
     tela do Aviso Prévio: 15 dias no acordo e 30 nos demais, mais 3 dias por ano
     de casa, limitados a 60. A diferença é que ali o tempo de casa é contado até
@@ -11590,7 +11626,10 @@ def _sim_resc_dias_aviso(dtadm_raw, dt_resc, quem):
         try:
             from datetime import date as _date
             adm = _date(int(s[:4]), int(s[4:6]), int(s[6:8]))
-            anos = max(0, (dt_resc - adm).days // 365)
+            if id_empresa and mat:
+                anos = _anos_casa_aviso(id_empresa, mat, adm, dt_resc)[0]
+            else:
+                anos = max(0, (dt_resc - adm).days // 365)
         except Exception:
             anos = 0
     return (15 if quem == "Acordo" else 30), min(anos * 3, 60)
@@ -11640,7 +11679,8 @@ def _sim_resc_montar(itens):
         # tela já esconde a escolha, e aqui ela é ignorada de vez.
         sem_aviso = motivo in ("01", "10")
         aviso_ind = (not sem_aviso) and str(it.get("aviso") or "T").upper().startswith("I")
-        ref1, ref2 = _sim_resc_dias_aviso(cad.get("dtadm"), dt_resc, quem)
+        ref1, ref2 = _sim_resc_dias_aviso(cad.get("dtadm"), dt_resc, quem,
+                                          id_empresa, mat)
         if sem_aviso:
             ref1 = ref2 = 0
         _fg = str(it.get("fgts") or "").strip()

@@ -325,7 +325,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                 <span class="lei-label">Lei 12.506/2011:</span>
                 <span class="lei-valor">{{ dias_lei }} dias</span>
                 <span style="font-size:11px;color:#1d4ed8;">
-                    (3 dias × {{ funcionario.anos }} ano{{ 's' if funcionario.anos != 1 else '' }}{% if funcionario.anos * 3 > 60 %}, limitado a 60{% endif %})
+                    (3 dias × {{ funcionario.anos }} ano{{ 's' if funcionario.anos != 1 else '' }}{% if funcionario.anos * 3 > 60 %}, limitado a 60{% endif %}{% if funcionario.dias_fora %}; sem os {{ funcionario.dias_fora }} dias de afastamento por doença{% endif %})
                 </span>
                 <span class="lei-obs">— convertido em dinheiro</span>
             </div>
