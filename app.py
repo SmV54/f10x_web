@@ -27571,12 +27571,16 @@ def _diss_label(ym, tipo):
 
 
 def _diss_folhas_base(id_empresa, anomes):
-    """Folhas FECHADAS anteriores à ativa que podem ser base (normal e 13º)."""
+    """Folhas FECHADAS dos últimos 12 meses antes da ativa que podem ser base
+    (normal e 13º). Ex.: folha ativa 10/2026 -> de 10/2025 a 09/2026."""
+    a, m = int(str(anomes)[:4]), int(str(anomes)[4:6])
+    desde = f"{a - 1}{m:02d}"
     try:
         rows = (supabase.table("tab_anomes").select("ano_mes,tipo")
                 .eq("id_empresa", id_empresa).eq("situacao", "F")
                 .in_("tipo", ["N", "1"]).lt("ano_mes", str(anomes))
-                .order("ano_mes", desc=True).limit(30).execute().data or [])
+                .gte("ano_mes", desde)
+                .order("ano_mes", desc=True).execute().data or [])
     except Exception:
         rows = []
     return [{"chave": f"{r['ano_mes']}{r['tipo']}", "ym": str(r["ano_mes"]),
