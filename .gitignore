@@ -22,6 +22,9 @@ eSocial_XML/
 # repositório — no servidor não há como produzi-lo. O manual interno, de
 # regras, não é servido por rota nenhuma: só o .docx dele fica versionado.
 !manual/Manual_do_Usuario_Folha10_Simples.pdf
+# Guias de suporte (tela Ajuda e botao "Passo a passo"): copiados do Dropbox
+# pelo publicar_suporte.py; o servidor serve os PDFs desta pasta.
+!suporte/*.pdf
 Nada.txt
 *.txt
 !versaoxxx.txt
