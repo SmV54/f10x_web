@@ -12405,7 +12405,8 @@ def inject_guia_tela():
     ("guia ainda não pronto, o suporte foi avisado") e chama a
     /api/ajuda_sem_guia, que manda o WhatsApp pedindo o guia daquela tela."""
     try:
-        if not session.get("logado") or request.path in _AJUDA_SEM_BOTAO:
+        if (not session.get("logado") or request.path in _AJUDA_SEM_BOTAO
+                or request.path.startswith("/admin_")):      # telas internas da F10
             return {}
         chave = request.path
         if chave == "/select_funcionario":
