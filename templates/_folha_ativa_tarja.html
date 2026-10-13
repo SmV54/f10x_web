@@ -17,7 +17,7 @@
 {#
   Botão "? Ajuda" (vermelho): abre o guia de suporte (PDF) desta tela. A tela →
   guia fica em SUPORTE_TELAS, no app.py (context_processor inject_guia_tela);
-  sem guia para a tela, nada aparece. Fica no ALTO, à direita, logo abaixo do
+  sem guia, abre a tela Ajuda (/ajuda?de=, que avisa por e-mail). Fica no ALTO, à direita, logo abaixo do
   cabeçalho, e não sai de vista ao rolar: o script mede o fim do cabeçalho
   (.topo) e acompanha a rolagem — com o cabeçalho fora da tela, gruda no topo.
 #}
@@ -39,7 +39,7 @@
 @media print { .f10-passo { display: none; } }
 </style>
 <a class="f10-passo" href="{{ guia_tela.url }}" target="_blank" rel="noopener"
-   title="Passo a passo desta tela: {{ guia_tela.titulo }}"><span class="f10-passo-ico">?</span>Ajuda</a>
+   title="{{ ('Passo a passo desta tela: ' ~ guia_tela.titulo) if guia_tela.titulo else 'Ajuda — guias passo a passo e Manual' }}"><span class="f10-passo-ico">?</span>Ajuda</a>
 <script>
 (function () {
     function posicionar() {

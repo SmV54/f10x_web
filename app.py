@@ -12374,6 +12374,8 @@ SUPORTE_TELAS = {
     "/processo_pagamentos":        "Processo Trabalhista - S-2500 e S-2501",
     "/processo_pagamentos/editar": "Processo Trabalhista - S-2500 e S-2501",
 }
+# Telas sem o botão: o menu já tem o card Ajuda, e a própria Ajuda.
+_AJUDA_SEM_BOTAO = {"/menu", "/ajuda"}
 _SUPORTE_NOME = re.compile(r"^(\d+)-(.+)\.pdf$", re.IGNORECASE)
 
 
@@ -12394,20 +12396,24 @@ def _suporte_guias():
 
 @app.context_processor
 def inject_guia_tela():
-    """Guia passo a passo da tela atual (botão "Passo a passo", no
-    _folha_ativa_tarja.html que as telas já incluem)."""
+    """Botão "? Ajuda" da tela atual (no _folha_ativa_tarja.html, que as telas
+    já incluem). Com guia: abre o PDF. Sem guia: abre a tela Ajuda com
+    ?de=<tela> — e a /ajuda manda o e-mail avisando que falta o guia."""
     try:
+        if not session.get("logado") or request.path in _AJUDA_SEM_BOTAO:
+            return {}
         chave = request.path
         if chave == "/select_funcionario":
             chave += "?contexto=" + (request.args.get("contexto") or "")
-        titulo = SUPORTE_TELAS.get(chave)
-        if not titulo:
-            return {}
         from urllib.parse import quote as _quote
-        for g in _suporte_guias():
-            if g["titulo"].lower() == titulo.lower():
-                return {"guia_tela": {"titulo": g["titulo"],
-                                      "url": "/suporte/" + _quote(g["arquivo"])}}
+        titulo = SUPORTE_TELAS.get(chave)
+        if titulo:
+            for g in _suporte_guias():
+                if g["titulo"].lower() == titulo.lower():
+                    return {"guia_tela": {"titulo": g["titulo"],
+                                          "url": "/suporte/" + _quote(g["arquivo"])}}
+        return {"guia_tela": {"titulo": "",
+                              "url": "/ajuda?de=" + _quote(chave, safe="")}}
     except Exception:
         pass
     return {}
@@ -12431,6 +12437,11 @@ def ajuda():
     """Central de ajuda: o Manual e os guias, agrupados pelo card do menu."""
     if not session.get("logado"):
         return redirect("/")
+    de = (request.args.get("de") or "").strip()[:200]
+    if de:
+        # Veio do botão "? Ajuda" de uma tela que ainda não tem guia.
+        _avisar_nao_encontrado(f"tela sem guia de suporte: {de}",
+                               titulo="AJUDA SEM GUIA", tela=de)
     from urllib.parse import quote as _quote
     grupos = []
     for g in _suporte_guias():
@@ -32768,7 +32779,9 @@ _AVISO_404_PARA = "sergiomoraesvieira@outlook.com"
 _AVISO_404_ULTIMO = {}
 
 
-def _avisar_nao_encontrado(motivo):
+def _avisar_nao_encontrado(motivo, titulo="NAO ENCONTRADO", tela=None):
+    """titulo/tela: o botão "? Ajuda" de tela sem guia usa o mesmo aviso, com
+    assunto próprio e a tela de origem no assunto."""
     try:
         if not session.get("logado"):
             return
@@ -32781,9 +32794,11 @@ def _avisar_nao_encontrado(motivo):
             return
         _AVISO_404_ULTIMO[chave] = agora
         id_cli = session.get("id_cliente") or 0
-        assunto = f"NAO ENCONTRADO - Cliente {int(id_cli):06d} - {request.path}"[:150]
+        assunto = f"{titulo} - Cliente {int(id_cli):06d} - {tela or request.path}"[:150]
         corpo = (
-            f"Um cliente caiu numa tela \"não encontrado\" no Folha10-Simples.\n\n"
+            (f"Um cliente clicou em \"? Ajuda\" numa tela que ainda não tem guia (PDF).\n\n"
+             if tela else
+             f"Um cliente caiu numa tela \"não encontrado\" no Folha10-Simples.\n\n") +
             f"Data/hora: {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')} (Brasília)\n"
             f"Cliente:   {int(id_cli):06d}\n"
             f"Usuário:   {session.get('nome', '')} (CPF {session.get('cpf', '')})\n"
