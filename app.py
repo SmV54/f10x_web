@@ -28183,12 +28183,8 @@ def dissidio_pdf():
     if individual:
         for f in res["funcionarios"]:
             st.append(PageBreak())
+            # Sem assinatura: quem assina é o contracheque, onde a verba entra.
             st += _diss_flowables_func(f, est, larg, empresa_nm, cnpj_fmt, anomes, destino_txt)
-            st += [Spacer(1, 30),
-                   Paragraph("Recebi a diferença acima demonstrada.", est["txt"]),
-                   Spacer(1, 28),
-                   Paragraph("_______________________________________________", est["txt"]),
-                   Paragraph(f"{f['nome']}", est["sub"])]
 
     doc.build(st, onFirstPage=_rodape, onLaterPages=_rodape)
     resp = make_response(buf.getvalue())
