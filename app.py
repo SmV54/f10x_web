@@ -12342,6 +12342,112 @@ def manual_pdf():
                      download_name="Manual_do_Usuario_Folha10_Simples.pdf")
 
 
+# =========================================================
+# AJUDA — Manual + guias de suporte passo a passo
+# =========================================================
+# Os guias são PDFs feitos no Word, na pasta do Dropbox; o publicar_suporte.py
+# copia para suporte/ do repositório (o Render não enxerga o Dropbox).
+# O número do início do nome é a sequência do card no Menu Principal — a tela
+# Ajuda agrupa por ele. Guia novo aparece sozinho: não precisa mexer aqui.
+SUPORTE_DIR = os.path.join(os.path.dirname(__file__), "suporte")
+SUPORTE_GRUPOS = {
+    0: ("Primeiros passos", "🚀"), 1: ("Cadastros", "🗄️"), 2: ("Mês/Ano", "📅"),
+    3: ("Eventuais", "🗓️"), 4: ("Movimento Mês", "🔄"), 5: ("Movimento Fixo", "📌"),
+    6: ("Cálculo", "🖩"), 7: ("Relatórios", "🖨️"), 8: ("Conexões", "🏦"),
+    9: ("eSocial", "📃"), 10: ("Diversos", "🧩"),
+}
+# Tela -> título do guia (o nome do arquivo SEM o número: renumerar o PDF não
+# quebra o link). Telas da seleção de funcionário entram com "?contexto=".
+SUPORTE_TELAS = {
+    "/select_funcionario?contexto=aumento": "Como alterar salários",
+    "/cad_aumento":                "Como alterar salários",
+    "/rel_aumento":                "Como alterar salários",
+    "/dissidio":                   "Diferença de Dissidio",
+    "/desativar_empresa":          "Desativar uma Empresa",
+    "/cad_usuario":                "Cadastrar um Novo Usuário",
+    "/cad_funcionario":            "Cadastro de um Novo Funcionario",
+    "/cad_mov":                    "Como Excluir um Movimento Digitado no Mes",
+    "/cad_verba":                  "Verba de Plano de Saude - Operadora no S-1210",
+    "/processo_trabalhista":       "Processo Trabalhista - S-2500 e S-2501",
+    "/processo_trabalhista/editar": "Processo Trabalhista - S-2500 e S-2501",
+    "/processo_pagamentos":        "Processo Trabalhista - S-2500 e S-2501",
+    "/processo_pagamentos/editar": "Processo Trabalhista - S-2500 e S-2501",
+}
+_SUPORTE_NOME = re.compile(r"^(\d+)-(.+)\.pdf$", re.IGNORECASE)
+
+
+def _suporte_guias():
+    """[{num, titulo, arquivo}] dos PDFs publicados, na ordem do menu."""
+    out = []
+    try:
+        nomes = os.listdir(SUPORTE_DIR)
+    except OSError:
+        return out
+    for f in nomes:
+        m = _SUPORTE_NOME.match(f)
+        if m:
+            out.append({"num": int(m.group(1)), "titulo": m.group(2).strip(), "arquivo": f})
+    out.sort(key=lambda g: (g["num"], g["titulo"].lower()))
+    return out
+
+
+@app.context_processor
+def inject_guia_tela():
+    """Guia passo a passo da tela atual (botão "Passo a passo", no
+    _folha_ativa_tarja.html que as telas já incluem)."""
+    try:
+        chave = request.path
+        if chave == "/select_funcionario":
+            chave += "?contexto=" + (request.args.get("contexto") or "")
+        titulo = SUPORTE_TELAS.get(chave)
+        if not titulo:
+            return {}
+        from urllib.parse import quote as _quote
+        for g in _suporte_guias():
+            if g["titulo"].lower() == titulo.lower():
+                return {"guia_tela": {"titulo": g["titulo"],
+                                      "url": "/suporte/" + _quote(g["arquivo"])}}
+    except Exception:
+        pass
+    return {}
+
+
+@app.route("/suporte/<path:arquivo>")
+def suporte_pdf(arquivo):
+    """Abre um guia (inline, no visualizador do navegador)."""
+    if not session.get("logado"):
+        return redirect("/")
+    nome = os.path.basename(arquivo)
+    if nome not in {g["arquivo"] for g in _suporte_guias()}:
+        return ("Guia não encontrado.", 404)
+    return send_file(os.path.join(SUPORTE_DIR, nome), mimetype="application/pdf",
+                     as_attachment=False, download_name=nome)
+
+
+@app.route("/ajuda")
+def ajuda():
+    """Central de ajuda: o Manual e os guias, agrupados pelo card do menu."""
+    if not session.get("logado"):
+        return redirect("/")
+    from urllib.parse import quote as _quote
+    grupos = []
+    for g in _suporte_guias():
+        if not grupos or grupos[-1]["num"] != g["num"]:
+            nome, icone = SUPORTE_GRUPOS.get(g["num"], (f"Card {g['num']}", "📄"))
+            grupos.append({"num": g["num"], "nome": nome, "icone": icone, "guias": []})
+        grupos[-1]["guias"].append({"titulo": g["titulo"],
+                                    "url": "/suporte/" + _quote(g["arquivo"])})
+    return render_template(
+        "F10_Ajuda.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        grupos=grupos,
+        tem_manual=os.path.exists(os.path.join(os.path.dirname(__file__), "manual",
+                                               "Manual_do_Usuario_Folha10_Simples.pdf")),
+    )
+
+
 def _receber_lead(nicho, origem, msg_faltou):
     """Miolo das landings: valida o formulário, grava o lead em tab_lead e
     dispara o WhatsApp de boas-vindas (opt-in já dado no formulário).

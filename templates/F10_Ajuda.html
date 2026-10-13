@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Ajuda</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:      #a0d9be;
+    --navy-line: #70c4a0;
+    --accent:    #2a7de1;
+    --text-head: #1e293b;
+    --text-sub:  #374151;
+    --bg:        #f0f2f6;
+    --surface:   #ffffff;
+    --border:    #dde3ec;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--sans); background: var(--bg); color: #374151; min-height: 100vh; }
+
+.topo {
+    background: var(--navy); border-bottom: 1px solid var(--navy-line);
+    padding: 0 28px; display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 0 32px; min-height: 64px;
+    position: sticky; top: 0; z-index: 10;
+}
+.topo-versao  { font-family: var(--mono); font-size: 10px; font-weight: 700; color: #374151; margin-top: 2px; }
+.topo-titulo  { font-size: 16px; font-weight: 600; color: var(--text-head); text-align: center; }
+.topo-empresa { font-size: 15px; font-weight: 600; color: #111827; }
+.topo-nome    { font-size: 11px; color: var(--text-sub); margin-top: 2px; }
+.btn-voltar-topo {
+    margin-left: 16px; background: transparent; border: 1px solid var(--navy-line);
+    color: var(--text-sub); font-size: 12px; padding: 5px 12px; border-radius: 6px;
+    cursor: pointer; font-family: var(--sans); white-space: nowrap;
+}
+.btn-voltar-topo:hover { border-color: var(--accent); color: var(--text-head); }
+
+.conteudo { max-width: 980px; margin: 28px auto; padding: 0 20px 60px; }
+
+.busca-wrap { position: relative; margin-bottom: 20px; }
+.busca {
+    width: 100%; padding: 13px 16px 13px 44px; border: 1.5px solid var(--border); border-radius: 12px;
+    font-family: var(--sans); font-size: 15px; background: var(--surface); outline: none;
+}
+.busca:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(42,125,225,.12); }
+.busca-ico { position: absolute; left: 16px; top: 50%; transform: translateY(-50%); font-size: 16px; opacity: .55; }
+
+.manual {
+    display: flex; align-items: center; gap: 16px; text-decoration: none;
+    background: var(--surface); border: 1px solid var(--border); border-left: 5px solid var(--accent);
+    border-radius: 14px; padding: 16px 20px; margin-bottom: 24px; color: inherit;
+}
+.manual:hover { background: #f8fbff; border-color: #93c5fd; }
+.manual-ico { font-size: 30px; }
+.manual-tit { font-size: 15px; font-weight: 600; color: #1e293b; }
+.manual-sub { font-size: 12px; color: #64748b; margin-top: 2px; }
+
+.grupo { margin-bottom: 22px; }
+.grupo-tit {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    font-size: 13px; font-weight: 700; color: #334155; text-transform: uppercase; letter-spacing: .05em;
+}
+.grupo-num {
+    display: inline-flex; align-items: center; justify-content: center; min-width: 24px; height: 24px;
+    border-radius: 7px; background: #e0f2ea; color: #166534; font-family: var(--mono); font-size: 12px;
+}
+.guias { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 10px; }
+.guia {
+    display: flex; align-items: center; gap: 12px; text-decoration: none; color: #1e293b;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 13px 16px;
+    font-size: 14px; font-weight: 500; transition: .12s;
+}
+.guia:hover { border-color: var(--accent); box-shadow: 0 3px 12px rgba(42,125,225,.13); color: #1d4ed8; }
+.guia-ico { font-size: 20px; flex-shrink: 0; }
+.guia-abre { margin-left: auto; font-size: 11px; color: #94a3b8; white-space: nowrap; }
+.vazio { text-align: center; color: #94a3b8; padding: 30px; font-size: 14px; display: none; }
+.rodape-obs { font-size: 12px; color: #64748b; text-align: center; margin-top: 26px; line-height: 1.6; }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">📘 Ajuda — como usar o Folha10-Simples</div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10 — Sistema de Folha de Pagamento" class="topo-logo-img" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="busca-wrap">
+        <span class="busca-ico">🔎</span>
+        <input type="text" id="busca" class="busca" placeholder="O que você quer fazer? Ex.: salário, dissídio, empresa, movimento…"
+               oninput="filtrar()" autofocus>
+    </div>
+
+    {% if tem_manual %}
+    <a class="manual" href="/manual_pdf" target="_blank" rel="noopener">
+        <span class="manual-ico">📘</span>
+        <div>
+            <div class="manual-tit">Manual do Usuário</div>
+            <div class="manual-sub">Como operar o sistema, do começo ao fim (PDF)</div>
+        </div>
+    </a>
+    {% endif %}
+
+    {% for gr in grupos %}
+    <div class="grupo">
+        <div class="grupo-tit">
+            {% if gr.num %}<span class="grupo-num">{{ gr.num }}</span>{% endif %}
+            <span>{{ gr.icone }} {{ gr.nome }}</span>
+        </div>
+        <div class="guias">
+            {% for g in gr.guias %}
+            <a class="guia" href="{{ g.url }}" target="_blank" rel="noopener" data-busca="{{ (g.titulo ~ ' ' ~ gr.nome)|lower }}">
+                <span class="guia-ico">📄</span>
+                <span>{{ g.titulo }}</span>
+                <span class="guia-abre">abrir ↗</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+    <div class="vazio" id="vazio">Nenhum guia com esse assunto. Tente outra palavra ou abra o Manual.</div>
+
+    <div class="rodape-obs">
+        Os grupos seguem os cards do Menu Principal. Nas telas que têm guia aparece também
+        o botão <b>📄 Passo a passo</b>, no canto de baixo.
+    </div>
+</div>
+
+<script>
+function sem_acento(s) {
+    return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+function filtrar() {
+    const t = sem_acento(document.getElementById('busca').value.trim());
+    let algum = false;
+    document.querySelectorAll('.grupo').forEach(function (gr) {
+        let visiveis = 0;
+        gr.querySelectorAll('.guia').forEach(function (g) {
+            const casa = !t || sem_acento(g.dataset.busca).includes(t);
+            g.style.display = casa ? '' : 'none';
+            if (casa) visiveis++;
+        });
+        gr.style.display = visiveis ? '' : 'none';
+        if (visiveis) algum = true;
+    });
+    document.getElementById('vazio').style.display = algum ? 'none' : 'block';
+}
+</script>
+</body>
+</html>
