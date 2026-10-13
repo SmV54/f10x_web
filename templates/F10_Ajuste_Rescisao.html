@@ -88,7 +88,8 @@ tr.ajustada td { background:#fffbeb; }
     <div class="nota">
         O valor informado aqui <strong>substitui</strong> o que o cálculo apurou e continua valendo
         nos próximos recálculos. As bases de INSS, IRRF e FGTS e o líquido saem do valor ajustado.
-        <strong>Zero exclui</strong> a verba da rescisão. INSS e IRRF não se ajustam: saem das bases.
+        <strong>Excluir</strong> tira a verba da rescisão; <strong>Desfazer</strong> volta o valor calculado.
+        INSS e IRRF não se ajustam: saem das bases.
         Ao gravar ou desfazer, a rescisão é <strong>recalculada na hora</strong>.
     </div>
 
@@ -196,24 +197,38 @@ function desenhar() {
              '<td class="num">' + brl(v.calculado) + '</td>' +
              '<td class="num"><b>' + (aj && !aj.valor ? 'excluída' : brl(aj ? aj.valor : v.valor)) + '</b></td>' +
              '<td class="num">' +
-             (BLOQ ? '' : '<button class="btn" onclick="abrirForm(' + i + ')">Ajustar</button>' +
-                          (aj ? ' <button class="btn btn-desf" onclick="desfazer(' + i + ')">Desfazer</button>' : '')) +
+             (BLOQ ? '' : '<button class="btn" onclick="abrirForm(' + i + ')">Alterar</button>' +
+                          (aj && !aj.valor ? '' : ' <button class="btn btn-desf" onclick="abrirForm(' + i + ', true)">Excluir</button>') +
+                          (aj ? ' <button class="btn" onclick="desfazer(' + i + ')">Desfazer</button>' : '')) +
              '</td></tr>';
     });
     h += '</tbody></table>';
     box.innerHTML = h;
 }
 
-function abrirForm(i) {
+// excluir=true: o mesmo ajuste com valor zero, sem precisar digitar o zero.
+// O motivo vem preenchido (dá para trocar) porque vai para o Log.
+let modoExcluir = false;
+function abrirForm(i, excluir) {
     verbaSel = verbas[i];
+    modoExcluir = !!excluir;
     const f = document.getElementById('formAj');
-    document.getElementById('ajTit').textContent = 'Ajustar verba ' + verbaSel.cod_fmt + ' - ' + verbaSel.dsc;
-    document.getElementById('ajCalc').textContent = 'Valor calculado: R$ ' + brl(verbaSel.calculado);
-    document.getElementById('ajValor').value = verbaSel.ajuste ? brl(verbaSel.ajuste.valor) : '';
-    document.getElementById('ajMotivo').value = verbaSel.ajuste ? verbaSel.ajuste.motivo : '';
+    const inp = document.getElementById('ajValor');
+    document.getElementById('ajTit').textContent = (modoExcluir ? 'Excluir verba ' : 'Alterar verba ') +
+        verbaSel.cod_fmt + ' - ' + verbaSel.dsc;
+    document.getElementById('ajCalc').textContent = 'Valor calculado: R$ ' + brl(verbaSel.calculado) +
+        (modoExcluir ? '  →  a verba sai da rescisão' : '');
+    inp.value = modoExcluir ? '0,00' : (verbaSel.ajuste ? brl(verbaSel.ajuste.valor) : '');
+    inp.readOnly = modoExcluir;
+    inp.style.background = modoExcluir ? '#f1f5f9' : '#fff';
+    document.getElementById('ajMotivo').value = modoExcluir
+        ? 'Verba excluída da rescisão'
+        : (verbaSel.ajuste ? verbaSel.ajuste.motivo : '');
+    document.getElementById('btnGravar').textContent = modoExcluir
+        ? 'Excluir verba e recalcular' : 'Gravar ajuste e recalcular';
     f.style.display = 'block';
     f.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    document.getElementById('ajValor').focus();
+    (modoExcluir ? document.getElementById('ajMotivo') : inp).focus();
 }
 function fecharForm() {
     document.getElementById('formAj').style.display = 'none';
@@ -230,8 +245,12 @@ async function gravar() {
     if (!verbaSel) return;
     const valor = centavos(document.getElementById('ajValor').value);
     const motivo = document.getElementById('ajMotivo').value.trim();
-    if (valor === null) { await f10Alert('Informe o valor correto (zero exclui a verba).', { tipo: 'aviso' }); return; }
-    if (motivo.length < 5) { await f10Alert('Informe o motivo do ajuste.', { tipo: 'aviso' }); return; }
+    if (valor === null) { await f10Alert('Informe o valor correto (ou use o botão Excluir).', { tipo: 'aviso' }); return; }
+    if (motivo.length < 5) {
+        await f10Alert('Escreva o motivo (pelo menos 5 letras). Ele fica gravado no Log e na memória de cálculo.', { tipo: 'aviso' });
+        document.getElementById('ajMotivo').focus();
+        return;
+    }
     if (valor === 0) {
         const ok = await f10Confirm('A verba ' + verbaSel.cod_fmt + ' - ' + verbaSel.dsc +
                                     ' vai ser excluída da rescisão. Confirma?', { okText: 'Excluir' });
@@ -248,7 +267,8 @@ async function gravar() {
     } catch (e) {
         await f10Alert('Não foi possível gravar o ajuste.', { tipo: 'erro' });
     } finally {
-        b.disabled = false; b.textContent = 'Gravar ajuste e recalcular';
+        b.disabled = false;
+        b.textContent = modoExcluir ? 'Excluir verba e recalcular' : 'Gravar ajuste e recalcular';
     }
 }
 
