@@ -141,6 +141,61 @@ def _conferir_usuario_ativo():
         return redirect("/?erro=usuario_inativo")
 
 
+# Empresa desativada (tab_empresa.situacao='D'): so' consultas e relatorios.
+# Todo POST e' gravacao, salvo os desta lista (login/sessao, escolher a
+# competencia para consultar, preferencias, relatorios, simulacoes, consultas
+# ao eSocial, cadastros que sao do CLIENTE e nao da empresa, e o fluxo de
+# cadastrar empresa NOVA). GET so' grava nos calculos em stream e nos /exec_.
+_DESATIVADA_POST_LIBERADO = {
+    "/fazer_login", "/verificar_cpf_login", "/validar", "/prevalidar",
+    "/confirmar", "/validar_codigo_cadastro", "/lead_petshop", "/lead_site",
+    "/webhook/asaas", "/aviso_lido",
+    "/api/selecionar_empresa", "/api/desativar_empresa", "/api/anomes/ativar",
+    "/api/pref/salvar", "/api/rel_configs", "/api/ocultar_banner_cert",
+    "/api/pix_qr", "/api/impersonar_cliente",
+    "/api/gravar_empresa", "/api/empresa_do_certificado", "/api/mes_inicial",
+    "/api/trocar_folha_inicial",
+    "/api/usuario/incluir", "/api/usuario/alterar", "/api/usuario/situacao",
+    "/incluir_funcao_cliente", "/alterar_funcao_cliente", "/excluir_funcao_cliente",
+    "/api/meu_contrato/gravar", "/api/meu_contrato/excluir", "/meu_contrato/previa",
+    "/api/recibo_ferias_pdf", "/simular_ferias_pdf", "/api/simular_rescisao",
+    "/api/seguro_desemprego/arquivo",
+    "/api/esocial_consulta_tabela", "/api/esocial_verificacao/consultar",
+    "/api/esocial_verificacao/upload", "/api/esocial_reconsultar_generico",
+    "/api/esocial_recuperar_recibos",
+}
+_DESATIVADA_POST_PREFIXO = ("/api/admin_", "/api/descompactar_xml/",
+                            "/api/planilhas_xml/")
+_DESATIVADA_GET_BLOQUEADO = ("/api/calcular_", "/exec_")
+
+
+@app.before_request
+def _trava_empresa_desativada():
+    if request.endpoint == "static" or not session.get("logado"):
+        return
+    path = request.path
+    if request.method == "POST":
+        if (path in _DESATIVADA_POST_LIBERADO
+                or path.startswith(_DESATIVADA_POST_PREFIXO)
+                or "reconsu" in path):        # reconsultar (e o reconsutar do S-2200)
+            return
+    elif not path.startswith(_DESATIVADA_GET_BLOQUEADO):
+        return
+    if not _empresa_desativada(session.get("id_empresa")):
+        return
+    msg = MSG_EMPRESA_DESATIVADA.format(acao="gravar ou calcular nada — "
+                                             "ficam só consultas e relatórios")
+    if path.endswith("_stream"):
+        payload = json.dumps({"tipo": "bloqueio", "msg": msg, "sit": "ESP"},
+                             ensure_ascii=False)
+        return Response(f"data: {payload}\n\n", mimetype="text/event-stream")
+    if path.startswith("/api/") or request.is_json:
+        return jsonify({"ok": False, "msg": msg, "erro": msg, "erros": [msg]})
+    return (f"<div style='font-family:sans-serif;max-width:560px;margin:60px auto;"
+            f"line-height:1.6'><h3 style='color:#b91c1c'>Empresa desativada</h3>"
+            f"<p>{msg}</p><p><a href='/menu'>Voltar ao menu</a></p></div>")
+
+
 @app.before_request
 def _marcar_presenca():
     if request.endpoint == "static":
@@ -1536,6 +1591,41 @@ def trocar_empresa():
 # =========================================================
 # LICENÇA — VERIFICAÇÃO DE LIMITES CONTRATUAIS
 # =========================================================
+def _empresas_desativadas(id_cliente=None):
+    """id_empresa das empresas desativadas (de um cliente, ou de todos).
+    Sem a coluna situacao no banco, devolve vazio — ninguem desativado."""
+    try:
+        q = supabase.table("tab_empresa").select("id_empresa").eq("situacao", "D")
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        return {r["id_empresa"] for r in (q.execute().data or [])}
+    except Exception:
+        return set()
+
+
+def _contagem_licenca(id_cliente):
+    """(empresas, funcionarios) que a licenca cobra: empresas ativas e os
+    funcionarios nao demitidos delas. Empresa desativada fica de fora inteira."""
+    desat = _empresas_desativadas(id_cliente)
+    n_emp = n_fun = 0
+    try:
+        r_emp = (supabase.table("tab_empresa")
+                 .select("id_empresa")
+                 .eq("id_cliente", id_cliente).execute())
+        n_emp = sum(1 for e in (r_emp.data or []) if e["id_empresa"] not in desat)
+    except Exception:
+        pass
+    try:
+        r_fun = (supabase.table("tab_cad")
+                 .select("id_empresa")
+                 .eq("id_cliente", id_cliente)
+                 .neq("situacao", "D").execute())
+        n_fun = sum(1 for f in (r_fun.data or []) if f.get("id_empresa") not in desat)
+    except Exception:
+        pass
+    return n_emp, n_fun
+
+
 def _estado_licenca(id_cliente):
     """Retorna dict com limites contratuais do cliente e uso atual.
 
@@ -1546,7 +1636,8 @@ def _estado_licenca(id_cliente):
       excedeu_empresas, excedeu_funcionarios — atual > limite (limite>0)
 
     Funcionarios contam por id_cliente excluindo demitidos (situacao='D').
-    Empresas contam por id_cliente (sem filtro de status).
+    Empresas contam por id_cliente. Empresa desativada (tab_empresa.situacao
+    ='D') NAO conta — nem ela nem os funcionarios dela.
     """
     out = {"qtd_empresas": 0, "qtd_funcionarios": 0,
            "atual_empresas": 0, "atual_funcionarios": 0,
@@ -1564,21 +1655,7 @@ def _estado_licenca(id_cliente):
         out["qtd_funcionarios"] = int(row.get("qtd_funcionarios") or 0)
     except Exception:
         pass
-    try:
-        r_emp = (supabase.table("tab_empresa")
-                 .select("id_empresa")
-                 .eq("id_cliente", id_cliente).execute())
-        out["atual_empresas"] = len(r_emp.data or [])
-    except Exception:
-        pass
-    try:
-        r_fun = (supabase.table("tab_cad")
-                 .select("matricula")
-                 .eq("id_cliente", id_cliente)
-                 .neq("situacao", "D").execute())
-        out["atual_funcionarios"] = len(r_fun.data or [])
-    except Exception:
-        pass
+    out["atual_empresas"], out["atual_funcionarios"] = _contagem_licenca(id_cliente)
     out["sem_licenca"] = (out["qtd_empresas"] == 0 or out["qtd_funcionarios"] == 0)
     if out["qtd_empresas"] > 0:
         out["excedeu_empresas"] = out["atual_empresas"] > out["qtd_empresas"]
@@ -1800,29 +1877,9 @@ def comprar_licenca():
         pass
 
     # ── QUANTIDADE ATUAL (real, no banco) ──
-    # Empresas: tab_empresa nao tem campo situacao — todas as do cliente
-    atual_qtd_empresas = 0
-    try:
-        r_emp = (supabase.table("tab_empresa")
-                 .select("id_empresa")
-                 .eq("id_cliente", id_cliente)
-                 .execute())
-        atual_qtd_empresas = len(r_emp.data or [])
-    except Exception:
-        pass
-
-    # Funcionarios: todos do cliente exceto demitidos (situacao != 'D')
-    # Inclui ativos e afastados (qualquer status que nao seja 'D').
-    atual_qtd_funcionarios = 0
-    try:
-        r_fun = (supabase.table("tab_cad")
-                 .select("matricula")
-                 .eq("id_cliente", id_cliente)
-                 .neq("situacao", "D")
-                 .execute())
-        atual_qtd_funcionarios = len(r_fun.data or [])
-    except Exception:
-        pass
+    # Empresas ativas do cliente e funcionarios nao demitidos delas (ativos e
+    # afastados). Empresa desativada nao entra na cobranca — _contagem_licenca.
+    atual_qtd_empresas, atual_qtd_funcionarios = _contagem_licenca(id_cliente)
 
     bloqueio = request.args.get("bloqueio", "")
     return render_template(
@@ -13063,6 +13120,10 @@ def api_alterar_empresa():
         dados.pop("id_cliente", None)
         dados.pop("id_empresa", None)
         dados.pop("tp_insc",    None)
+        # Situacao so' muda por /api/desativar_empresa (cliente) e
+        # /api/admin_reativar_empresa (ADMIN) — nunca pelo Atualizar.
+        dados.pop("situacao",       None)
+        dados.pop("dt_desativacao", None)
         resposta = (supabase.table("tab_empresa")
                     .update(dados)
                     .eq("id_empresa", id_empresa)
@@ -13073,6 +13134,67 @@ def api_alterar_empresa():
     except Exception as e:
         print("Erro /api/alterar_empresa:", str(e))
         return jsonify({"ok": False, "msg": str(e)})
+
+
+@app.route("/desativar_empresa")
+def desativar_empresa():
+    """Tela do card "Desativar Empresa" (menu Cadastro > Empresa). Abre
+    mesmo com a folha Calculada/Fechada — empresa que encerra quase sempre
+    esta com a folha fechada."""
+    if not session.get("logado"):
+        return redirect("/")
+    id_empresa = _get_id_empresa()
+    if not id_empresa:
+        return redirect("/selecionar_empresa")
+    emp = {}
+    try:
+        r = (supabase.table("tab_empresa").select("*")
+             .eq("id_empresa", id_empresa)
+             .eq("id_cliente", session.get("id_cliente"))
+             .limit(1).execute())
+        emp = r.data[0] if r.data else {}
+    except Exception:
+        pass
+    _dt = str(emp.get("dt_desativacao") or "")[:10]
+    return render_template(
+        "F10_Desativar_Empresa.html",
+        versao=ler_versao(),
+        empresa=session.get("empresa_info", ""),
+        nome=session.get("nome", ""),
+        emp_nome=(emp.get("razaosocial") or emp.get("nome_fantasia")
+                  or session.get("empresa_info", "")),
+        emp_cnpj=_fmt_cnpj(emp.get("cnpj") or session.get("cnpj_empresa", "")),
+        desativada=str(emp.get("situacao") or "").upper() == "D",
+        dt_desativacao=(f"{_dt[8:10]}/{_dt[5:7]}/{_dt[:4]}" if len(_dt) == 10 else ""),
+    )
+
+
+@app.route("/api/desativar_empresa", methods=["POST"])
+def api_desativar_empresa():
+    """O proprio cliente desativa a empresa ativa: dai em diante ela nao
+    cadastra funcionario nem calcula folha (ver _empresa_desativada). Consultas
+    e relatorios continuam. Reativar e' so' pelo ADMIN (Lista de Clientes)."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão inválida"})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    if not id_empresa:
+        return jsonify({"ok": False, "msg": "Empresa não encontrada na sessão"})
+    try:
+        r = (supabase.table("tab_empresa")
+             .update({"situacao": "D",
+                      "dt_desativacao": _agora_brasilia().strftime("%Y-%m-%d %H:%M:%S")})
+             .eq("id_empresa", id_empresa)
+             .eq("id_cliente", id_cliente)
+             .execute())
+        if not r.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada para este cliente."})
+    except Exception as e:
+        print("Erro /api/desativar_empresa:", str(e))
+        return jsonify({"ok": False, "msg": f"Falha ao desativar: {str(e)[:200]}"})
+    gravar_log("EMP-DESATIVA",
+               f"Empresa desativada pelo cliente: {session.get('empresa_info', '')}"[:200])
+    return jsonify({"ok": True})
 
 
 @app.route("/api/gravar_empresa", methods=["POST"])
@@ -14462,16 +14584,18 @@ IS_FIELD_NUM = [
     ("is_hora_extra",         "19"),
 ]
 
-def gravar_log(menu, observacao, ano_mes=None, matricula=None, id_empresa=None):
+def gravar_log(menu, observacao, ano_mes=None, matricula=None, id_empresa=None,
+               id_cliente=None):
     """Grava no log da empresa ATIVA, ou na que `id_empresa` disser.
 
     O parametro existe para a transferencia entre empresas: o mesmo fato tem
     que aparecer no log das duas, e quem le o log da empresa de destino
-    precisa achar de onde o funcionario veio.
+    precisa achar de onde o funcionario veio. `id_cliente` serve ao ADMIN
+    quando age sobre empresa de outro cliente (ex.: reativar empresa).
     """
     try:
         rec = {
-            "id_cliente":      session.get("id_cliente"),
+            "id_cliente":      id_cliente if id_cliente is not None else session.get("id_cliente"),
             "id_empresa":      id_empresa if id_empresa is not None else _get_id_empresa(),
             "cpf_usuario":     session.get("cpf"),
             "menu":            menu[:12],
@@ -14895,6 +15019,28 @@ def _get_id_empresa():
     except Exception:
         pass
     return 0
+
+
+MSG_EMPRESA_DESATIVADA = ("Esta empresa está DESATIVADA — não é possível "
+                          "{acao}. Para reativá-la, fale com o suporte do "
+                          "Folha10-Simples.")
+
+
+def _empresa_desativada(id_empresa):
+    """True se a empresa foi desativada pelo cliente (tab_empresa.situacao='D').
+
+    Le' do banco, nao da sessao: a reativacao e' feita pelo ADMIN em outra
+    sessao. Sem a coluna (SQL ainda nao rodado) ou com erro de leitura, conta
+    como ativa — a trava nao pode parar quem nao desativou nada.
+    """
+    if not id_empresa:
+        return False
+    try:
+        r = (supabase.table("tab_empresa").select("situacao")
+             .eq("id_empresa", id_empresa).limit(1).execute())
+        return bool(r.data) and str(r.data[0].get("situacao") or "").upper() == "D"
+    except Exception:
+        return False
 
 
 def _refresh_situacao_folha():
@@ -16673,6 +16819,10 @@ def api_funcionario_incluir():
     d          = request.get_json() or {}
     id_cliente = session.get("id_cliente")
     id_empresa = _get_id_empresa()
+
+    if _empresa_desativada(id_empresa):
+        return jsonify({"ok": False,
+            "msg": MSG_EMPRESA_DESATIVADA.format(acao="cadastrar funcionário")})
 
     # Bloqueia se a licenca esta zerada ou se o novo funcionario excederia o
     # limite contratado.
@@ -19314,6 +19464,10 @@ def api_transferir_funcionario_executar():
 
     mat, id_dest, mat_nova = dd["mat"], dd["id_dest"], dd["mat_nova"]
     data8, cad, destino = dd["data8"], dd["cad"], dd["destino"]
+    if _empresa_desativada(id_dest):
+        return jsonify({"ok": False, "erros": [
+            "A empresa de destino está DESATIVADA — não recebe funcionário. "
+            "Para reativá-la, fale com o suporte do Folha10-Simples."]})
     nome_func = (cad.get("nome") or cad.get("nomer") or "").strip()
     cnpj_org  = "".join(ch for ch in str(session.get("cnpj_empresa") or "")
                         if ch.isdigit())
@@ -26281,6 +26435,10 @@ def api_importar_xml_gravar():
     if erro:
         return erro
     id_cliente, id_empresa = d["id_cliente"], d["id_empresa"]
+
+    if _empresa_desativada(id_empresa):
+        return jsonify({"ok": False,
+            "msg": MSG_EMPRESA_DESATIVADA.format(acao="importar funcionários")})
 
     # Trava da Etapa 0: empresa que JÁ TEM funcionário não recebe importação de
     # base. Importar por cima duplicaria gente e misturaria duas origens de
@@ -52591,7 +52749,9 @@ def calcular_folha_stream():
     # ultrapassaram o contratado.
     _lic = _estado_licenca(session.get("id_cliente"))
     _msg_lic = None
-    if _lic["sem_licenca"]:
+    if _empresa_desativada(_get_id_empresa()):
+        _msg_lic = MSG_EMPRESA_DESATIVADA.format(acao="calcular a folha")
+    elif _lic["sem_licenca"]:
         _msg_lic = ("Sua licenca esta zerada — calculo nao permitido. "
                     "Renove na tela de Comprar Licenca.")
     elif _lic["excedeu_funcionarios"]:
@@ -61411,7 +61571,11 @@ def admin_clientes():
                         .select("id_empresa, id_cliente")
                         .execute().data or [])
         from collections import Counter
-        emp_count = Counter(e["id_cliente"] for e in empresas_all)
+        # Empresa desativada nao conta para a licenca (nem os funcionarios dela)
+        _desat = _empresas_desativadas()
+        emp_count = Counter(e["id_cliente"] for e in empresas_all
+                            if e["id_empresa"] not in _desat)
+        emp_total = Counter(e["id_cliente"] for e in empresas_all)
         emp2cli = {e["id_empresa"]: e["id_cliente"] for e in empresas_all}
         # Funcionarios atuais por cliente (via empresa -> cliente). Conta duas
         # vezes: o total (com demitidos) e so os nao demitidos (situacao != 'D'),
@@ -61425,12 +61589,14 @@ def admin_clientes():
             cli = emp2cli.get(cad["id_empresa"])
             if cli is not None:
                 func_count[cli] += 1
-                if str(cad.get("situacao") or "").upper() != "D":
+                if (str(cad.get("situacao") or "").upper() != "D"
+                        and cad["id_empresa"] not in _desat):
                     func_ativos[cli] += 1
         mes_atual = _agora_brasilia().strftime("%Y-%m")   # data_limite ('YYYY-MM') vencida se < mês atual
         for c in clientes:
             cid = c["id_cliente"]
             c["qtd_empresas_real"]     = emp_count.get(cid, 0)
+            c["qtd_empresas_total"]    = emp_total.get(cid, 0)
             c["qtd_funcionarios_real"] = func_count.get(cid, 0)
             c["qtd_funcionarios_ativos"] = func_ativos.get(cid, 0)
             c["data_cadastro_fmt"]     = _fmt_data_cadastro(c.get("datahora_cadastro"))
@@ -61565,6 +61731,39 @@ def api_admin_desbloquear():
                     "restam": _travados_do_sistema()})
 
 
+@app.route("/api/admin_reativar_empresa", methods=["POST"])
+def api_admin_reativar_empresa():
+    """Volta a empresa desativada pelo cliente para ativa. Só ADMIN — o
+    cliente desativa sozinho, mas não reativa."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+    if not _pode_admin():
+        return jsonify({"ok": False, "msg": "Sem permissão."}), 403
+    d = request.get_json(silent=True) or {}
+    try:
+        id_empresa = int(d.get("id_empresa") or 0)
+    except (TypeError, ValueError):
+        id_empresa = 0
+    if not id_empresa:
+        return jsonify({"ok": False, "msg": "Empresa não informada."})
+    try:
+        r = (supabase.table("tab_empresa")
+             .update({"situacao": "A", "dt_desativacao": None})
+             .eq("id_empresa", id_empresa)
+             .execute())
+        if not r.data:
+            return jsonify({"ok": False, "msg": "Empresa não encontrada."})
+    except Exception as ex:
+        return jsonify({"ok": False, "msg": f"Falha ao reativar: {str(ex)[:180]}"})
+    nome = (r.data[0].get("razaosocial") or r.data[0].get("nome_fantasia") or "").strip()
+    # Log vai para a empresa reativada (e o cliente dela), nao para a que o
+    # ADMIN tem aberta na sessao.
+    gravar_log("EMP-REATIVA", f"Empresa reativada pelo suporte: {nome}"[:200],
+               ano_mes=r.data[0].get("anomes_atual"), id_empresa=id_empresa,
+               id_cliente=r.data[0].get("id_cliente"))
+    return jsonify({"ok": True, "msg": f"Empresa {nome or id_empresa} reativada."})
+
+
 @app.route("/api/admin_online")
 def api_admin_online():
     """IDs dos clientes que estao usando o sistema agora. A Lista de
@@ -61595,11 +61794,21 @@ def api_admin_clientes_empresas(id_cliente):
     if not _pode_admin():
         return jsonify({"ok": False}), 403
     try:
-        empresas = (supabase.table("tab_empresa")
-                    .select("id_empresa, razaosocial, nome_fantasia, cnpj, anomes_atual")
-                    .eq("id_cliente", id_cliente)
-                    .order("razaosocial")
-                    .execute().data or [])
+        _cols = "id_empresa, razaosocial, nome_fantasia, cnpj, anomes_atual"
+        try:
+            empresas = (supabase.table("tab_empresa")
+                        .select(_cols + ", situacao, dt_desativacao")
+                        .eq("id_cliente", id_cliente)
+                        .order("razaosocial")
+                        .execute().data or [])
+        except Exception:
+            # Coluna situacao ainda nao criada (_criar_col_empresa_situacao.sql):
+            # a lista continua, so sem a marca de desativada.
+            empresas = (supabase.table("tab_empresa")
+                        .select(_cols)
+                        .eq("id_cliente", id_cliente)
+                        .order("razaosocial")
+                        .execute().data or [])
         if empresas:
             ids = [e["id_empresa"] for e in empresas]
             cads = (supabase.table("tab_cad")
@@ -61615,6 +61824,10 @@ def api_admin_clientes_empresas(id_cliente):
             e["qtd_funcionarios"] = cont.get(e["id_empresa"], 0)
             e["cnpj_fmt"] = _fmt_cnpj(e.get("cnpj", ""))
             e["razao_fmt"] = (e.get("nome_fantasia") or e.get("razaosocial") or "—").strip()
+            e["desativada"] = str(e.get("situacao") or "").upper() == "D"
+            _dt = str(e.get("dt_desativacao") or "")[:10]
+            e["dt_desativacao_fmt"] = (f"{_dt[8:10]}/{_dt[5:7]}/{_dt[:4]}"
+                                       if len(_dt) == 10 else "")
         return jsonify({"ok": True, "empresas": empresas})
     except Exception as ex:
         return jsonify({"ok": False, "msg": str(ex)})
@@ -71577,6 +71790,9 @@ def api_calcular_adiantamento():
     anomes     = str(session.get("anomes_atual") or "")
     if not anomes:
         return jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if _empresa_desativada(id_empresa):
+        return jsonify({"ok": False,
+            "msg": MSG_EMPRESA_DESATIVADA.format(acao="calcular o adiantamento")})
 
     folha_int  = int(anomes)
     folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
@@ -73094,6 +73310,9 @@ def api_calcular_adiantamento_13():
     folha_tipo = str(session.get("anomes_tipo") or "").upper()[:1]
     if folha_tipo != "A":
         return jsonify({"ok": False, "msg": "A folha ativa não é do tipo Adiantamento 13º (tipo A)."})
+    if _empresa_desativada(id_empresa):
+        return jsonify({"ok": False,
+            "msg": MSG_EMPRESA_DESATIVADA.format(acao="calcular o adiantamento do 13º")})
 
     folha_int = int(anomes)
     perc = _get_per_adianta13(id_empresa)   # percentual do adiantamento do 13º (por empresa)
@@ -73349,6 +73568,8 @@ def calcular_adiantamento_13_stream():
         return _sse_erro("Nenhuma folha ativa.")
     if folha_tipo != "A":
         return _sse_erro("A folha ativa não é do tipo Adiantamento 13º (tipo A).")
+    if _empresa_desativada(_get_id_empresa()):
+        return _sse_erro(MSG_EMPRESA_DESATIVADA.format(acao="calcular o adiantamento do 13º"))
 
     # Rede de segurança: só calcula com a folha Aberta (A/X). Se já está
     # Calculada/Fechada/em cálculo, emite "bloqueio" — o front avisa e (para
@@ -74871,6 +75092,8 @@ def calcular_13_final_stream():
         return _sse_erro("Nenhuma folha ativa.")
     if folha_tipo != "1":
         return _sse_erro("A folha ativa não é do tipo 13º Salário (tipo 1).")
+    if _empresa_desativada(_get_id_empresa()):
+        return _sse_erro(MSG_EMPRESA_DESATIVADA.format(acao="calcular o 13º salário"))
 
     sit = _refresh_situacao_folha()
     if sit not in ("A", "X"):

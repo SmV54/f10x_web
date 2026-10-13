@@ -644,6 +644,9 @@ const modulos = {
                 // nova empresa não mexe na folha atual, então fica sempre liberado.
                 { icone: '🏢', nome: 'Nova Empresa',          href: '/f10_cad_empresa', ok: true, permiteFolhaBloqueada: true },
                 { icone: '✏️', nome: 'Alterar Esta Empresa',  href: '/alterar_empresa', ok: true, navLoading: true },
+                // Também liberado com a folha Calculada/Fechada: empresa que
+                // encerra quase sempre está com a folha fechada.
+                { icone: '🚫', nome: 'Desativar Empresa',     href: '/desativar_empresa', ok: true, permiteFolhaBloqueada: true },
             ]}
         ]
     },

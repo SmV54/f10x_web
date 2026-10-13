@@ -658,6 +658,22 @@ body {
     </div>
 {% else %}
 
+    {% if modo|default('novo') == 'alterar' and (empresa_dados.situacao or '')|upper == 'D' %}
+    <!-- Empresa desativada pelo cliente: só o ADMIN reativa -->
+    <div class="secao" id="secao-desativada" style="border-left:4px solid #dc2626;">
+        <div class="secao-corpo" style="padding:16px 20px;line-height:1.55;">
+            <div style="font-weight:600;color:#b91c1c;margin-bottom:4px;">
+                🚫 Empresa DESATIVADA{% if empresa_dados.dt_desativacao %} em {{ empresa_dados.dt_desativacao[8:10] }}/{{ empresa_dados.dt_desativacao[5:7] }}/{{ empresa_dados.dt_desativacao[:4] }}{% endif %}
+            </div>
+            <div style="color:var(--text-sub);">
+                Nada pode ser gravado nem calculado (funcionários, folha, férias, rescisão,
+                afastamentos) e o eSocial está bloqueado: ficam só as consultas e os relatórios.
+                Ela não conta na sua licença. A reativação só pode ser feita pelo suporte do Folha10-Simples.
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- ── IDENTIFICAÇÃO ──────────────────────────── -->
     <div class="secao" id="secao-id">
         <div class="secao-header">

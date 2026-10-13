@@ -315,6 +315,18 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
 }
 .pill-func.tem  { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
 .pill-func.zero { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; }
+.pill-sit {
+    display: inline-block; font-size: 11px; font-weight: 700;
+    padding: 2px 10px; border-radius: 10px; white-space: nowrap;
+}
+.pill-sit.ativa { background: #f0fdf4; color: #166534; border: 1px solid #86efac; }
+.pill-sit.desat { background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5; }
+.btn-reativar {
+    margin-left: 8px; font-size: 11px; font-weight: 700; cursor: pointer;
+    padding: 3px 10px; border-radius: 6px;
+    background: var(--accent); color: #fff; border: 1px solid var(--accent);
+}
+tr.emp-desat td { color: #94a3b8; }
 
 /* ── LOADING ── */
 .loading-empresas {
@@ -418,13 +430,13 @@ tbody td.col-cnpj { font-family: var(--mono); font-size: 11px; color: #64748b; }
 
         <div class="lista-clientes" id="listaClientes">
             {% for c in clientes %}
-            <div class="cliente-card{% if c.qtd_empresas_real == 0 %} sem-empresa{% endif %}{% if c.limite_vencido %} limite-vencido{% endif %}{% if c.online %} online{% endif %}"
+            <div class="cliente-card{% if c.qtd_empresas_total == 0 %} sem-empresa{% endif %}{% if c.limite_vencido %} limite-vencido{% endif %}{% if c.online %} online{% endif %}"
                  id="card-{{ c.id_cliente }}"
                  data-nome="{{ (c.nome or '') | lower }}"
                  data-id="{{ c.id_cliente }}"
                  data-cad="{{ c.datahora_cadastro or '' }}"
                  data-acesso="{{ c.datahora_ultimo_login or '' }}"
-                 onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}', {{ c.qtd_empresas_real }})">
+                 onclick="selecionarCliente({{ c.id_cliente }}, '{{ c.nome | e }}', {{ c.qtd_empresas_total }})">
                 <div class="cliente-info">
                     <span class="cliente-id">{{ '%06d' % c.id_cliente }}&rsaquo;</span>
                     <span class="ponto-online" title="Está usando o sistema agora">Online</span>
@@ -549,11 +561,17 @@ function renderEmpresas(empresas) {
             ? `<span class="pill-func tem">${e.qtd_funcionarios}</span>`
             : `<span class="pill-func zero">0</span>`;
         const idEmp = String(e.id_empresa ?? '').padStart(4, '0');
+        // Desativada pelo cliente: só o ADMIN reativa, aqui.
+        const sit = e.desativada
+            ? `<span class="pill-sit desat" title="${e.dt_desativacao_fmt ? 'Desativada em ' + e.dt_desativacao_fmt : ''}">Desativada</span>` +
+              `<button type="button" class="btn-reativar" onclick="reativarEmpresa(${e.id_empresa})">Reativar</button>`
+            : `<span class="pill-sit ativa">Ativa</span>`;
         return `
-            <tr>
+            <tr${e.desativada ? ' class="emp-desat"' : ''}>
                 <td><span class="emp-id">${idEmp}</span>${escHtml(e.razao_fmt)}</td>
                 <td class="col-cnpj">${escHtml(e.cnpj_fmt || '—')}</td>
                 <td class="col-num">${pill}</td>
+                <td class="col-num">${sit}</td>
             </tr>`;
     }).join('');
 
@@ -565,6 +583,7 @@ function renderEmpresas(empresas) {
                         <th>Empresa</th>
                         <th>CNPJ</th>
                         <th class="col-num">Funcionários</th>
+                        <th class="col-num">Situação</th>
                     </tr>
                 </thead>
                 <tbody>${linhas}</tbody>
@@ -682,6 +701,28 @@ function desbloquear(idCliente, nomeCliente) {
             const chip = document.getElementById('trava-' + idCliente);
             if (chip && d.liberados) chip.remove();
             f10Alert(d.msg, { titulo: 'Desbloquear login', tipo: 'sucesso' });
+        }).catch(e => f10Alert(String(e), { tipo: 'erro' }));
+    });
+}
+
+// Volta a empresa desativada pelo cliente para ativa (só ADMIN).
+function reativarEmpresa(idEmpresa) {
+    f10Confirm('Reativar a empresa ' + String(idEmpresa).padStart(4, '0') + '?\n\n' +
+               'Ela volta a gravar e calcular normalmente e passa a contar na licença do cliente.',
+               { titulo: 'Reativar empresa', tipo: 'aviso',
+                 okText: 'Reativar', cancelText: 'Agora não' })
+    .then(function (sim) {
+        if (!sim) return;
+        fetch('/api/admin_reativar_empresa', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id_empresa: idEmpresa })
+        }).then(r => r.json()).then(function (d) {
+            if (!d.ok) { f10Alert(d.msg || 'Falhou', { tipo: 'erro' }); return; }
+            f10Alert(d.msg, { titulo: 'Reativar empresa', tipo: 'sucesso' });
+            // recarrega a lista de empresas do cliente aberto
+            const id = clienteAtivo; clienteAtivo = null;
+            const card = document.getElementById('card-' + id);
+            if (card) card.click();
         }).catch(e => f10Alert(String(e), { tipo: 'erro' }));
     });
 }
