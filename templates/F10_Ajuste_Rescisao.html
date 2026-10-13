@@ -121,8 +121,8 @@ tr.ajustada td { background:#fffbeb; }
     <div class="card form-aj" id="formAj">
         <h2 id="ajTit">Ajustar verba</h2>
         <div class="calc" id="ajCalc"></div>
-        <div class="linha">
-            <div>
+        <div class="linha" id="ajLinha">
+            <div id="ajValorBox">
                 <label class="lb" for="ajValor">Valor correto (R$)</label>
                 <input type="text" id="ajValor" inputmode="decimal" placeholder="0,00">
             </div>
@@ -218,9 +218,10 @@ function abrirForm(i, excluir) {
         verbaSel.cod_fmt + ' - ' + verbaSel.dsc;
     document.getElementById('ajCalc').textContent = 'Valor calculado: R$ ' + brl(verbaSel.calculado) +
         (modoExcluir ? '  →  a verba sai da rescisão' : '');
-    inp.value = modoExcluir ? '0,00' : (verbaSel.ajuste ? brl(verbaSel.ajuste.valor) : '');
-    inp.readOnly = modoExcluir;
-    inp.style.background = modoExcluir ? '#f1f5f9' : '#fff';
+    // Excluir: sem o campo de valor (o zero vai escondido); só o motivo.
+    inp.value = modoExcluir ? '0' : (verbaSel.ajuste ? brl(verbaSel.ajuste.valor) : '');
+    document.getElementById('ajValorBox').style.display = modoExcluir ? 'none' : '';
+    document.getElementById('ajLinha').style.gridTemplateColumns = modoExcluir ? '1fr' : '';
     document.getElementById('ajMotivo').value = modoExcluir
         ? 'Verba excluída da rescisão'
         : (verbaSel.ajuste ? verbaSel.ajuste.motivo : '');
