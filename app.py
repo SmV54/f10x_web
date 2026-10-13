@@ -12488,6 +12488,7 @@ SUPORTE_TELAS = {
     "/dissidio":                   "Diferença de Dissidio",
     "/desativar_empresa":          "Desativar uma Empresa",
     "/cad_anomes":                 "Cadastro Ano-Mes da Folha",
+    "/ajuste_rescisao":            "Ajustar Verba Calculada da Rescisao",
     "/cad_usuario":                "Cadastrar um Novo Usuário",
     "/cad_funcionario":            "Cadastro de um Novo Funcionario",
     "/cad_mov":                    "Como Excluir um Movimento Digitado no Mes",
