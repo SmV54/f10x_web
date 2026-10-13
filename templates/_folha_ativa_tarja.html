@@ -39,6 +39,12 @@
     background: #dc2626; color: #fff; font-size: 15px; font-weight: 700;
 }
 .f10-passo:hover { background: #fef2f2; color: #b91c1c; border-color: #b91c1c; }
+/* No cabeçalho, logo depois da Competência (SMV 13/10/2026): deixa de flutuar. */
+.f10-passo.f10-passo-cab {
+    position: static; margin-left: 10px; align-self: center; vertical-align: middle;
+    padding: 4px 12px 4px 4px; font-size: 13px; box-shadow: none; white-space: nowrap;
+}
+.f10-passo.f10-passo-cab .f10-passo-ico { width: 22px; height: 22px; font-size: 14px; }
 @media print { .f10-passo, .f10-semguia { display: none; } }
 .f10-semguia {
     position: fixed; inset: 0; z-index: 10000; background: rgba(15,23,42,.45);
@@ -83,9 +89,26 @@
    title="{{ ('Passo a passo desta tela: ' ~ guia_tela.titulo) if guia_tela.titulo else 'Ajuda — guias passo a passo e Manual' }}"><span class="f10-passo-ico">?</span>Ajuda</a>
 <script>
 (function () {
+    // Com a etiqueta da Competência no cabeçalho, o botão vai para logo depois
+    // dela e acompanha o cabeçalho. Tela sem a etiqueta: continua flutuando à
+    // direita, abaixo do cabeçalho (posicionar).
+    function noCabecalho() {
+        var b = document.querySelector('.f10-passo');
+        var c = document.querySelector('.topo .topo-folha-ativa') || document.querySelector('.topo-folha-ativa');
+        if (!b || !c || b.classList.contains('f10-passo-cab')) return;
+        // celular: o cabeçalho já não cabe na largura e o botão sumiria nele
+        if (window.innerWidth < 760) return;
+        c.insertAdjacentElement('afterend', b);
+        b.classList.add('f10-passo-cab');
+    }
     function posicionar() {
         var b = document.querySelector('.f10-passo');
         if (!b) return;
+        if (b.classList.contains('f10-passo-cab')) {
+            var l0 = document.getElementById('f10Lista');
+            if (l0) l0.style.top = (b.getBoundingClientRect().bottom + 6) + 'px';
+            return;
+        }
         var t = document.querySelector('.topo') || document.querySelector('header');
         var fim = t ? t.getBoundingClientRect().bottom : 0;
         b.style.top = Math.max(10, fim + 10) + 'px';
@@ -94,7 +117,7 @@
     }
     window.addEventListener('scroll', posicionar, { passive: true });
     window.addEventListener('resize', posicionar);
-    document.addEventListener('DOMContentLoaded', posicionar);
+    document.addEventListener('DOMContentLoaded', function () { noCabecalho(); posicionar(); });
     posicionar();
 })();
 </script>
@@ -115,7 +138,13 @@ function f10AjudaLista(ev) {
     ev.stopPropagation();
     var l = document.getElementById('f10Lista');
     var b = document.querySelector('.f10-passo');
-    l.style.top = (b.getBoundingClientRect().bottom + 6) + 'px';
+    var r = b.getBoundingClientRect();
+    l.style.top = (r.bottom + 6) + 'px';
+    if (b.classList.contains('f10-passo-cab')) {
+        // botão no meio do cabeçalho: o menu abre embaixo dele, sem passar da tela
+        l.style.right = 'auto';
+        l.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 430)) + 'px';
+    }
     l.classList.toggle('aberto');
     return false;
 }
