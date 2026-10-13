@@ -12397,8 +12397,9 @@ def _suporte_guias():
 @app.context_processor
 def inject_guia_tela():
     """Botão "? Ajuda" da tela atual (no _folha_ativa_tarja.html, que as telas
-    já incluem). Com guia: abre o PDF. Sem guia: abre a tela Ajuda com
-    ?de=<tela> — e a /ajuda manda o e-mail avisando que falta o guia."""
+    já incluem). Com guia: abre o PDF. Sem guia: o botão mostra um aviso
+    ("guia ainda não pronto, o suporte foi avisado") e chama a
+    /api/ajuda_sem_guia, que manda o e-mail pedindo o guia daquela tela."""
     try:
         if not session.get("logado") or request.path in _AJUDA_SEM_BOTAO:
             return {}
@@ -12412,8 +12413,7 @@ def inject_guia_tela():
                 if g["titulo"].lower() == titulo.lower():
                     return {"guia_tela": {"titulo": g["titulo"],
                                           "url": "/suporte/" + _quote(g["arquivo"])}}
-        return {"guia_tela": {"titulo": "",
-                              "url": "/ajuda?de=" + _quote(chave, safe="")}}
+        return {"guia_tela": {"titulo": "", "url": "/ajuda", "sem_guia": chave}}
     except Exception:
         pass
     return {}
@@ -12432,16 +12432,25 @@ def suporte_pdf(arquivo):
                      as_attachment=False, download_name=nome)
 
 
+@app.route("/api/ajuda_sem_guia")
+def api_ajuda_sem_guia():
+    """Botão "? Ajuda" numa tela sem guia: pede o guia ao suporte por e-mail.
+    GET de propósito: a trava de empresa desativada barra POST, e pedir ajuda
+    tem que funcionar sempre."""
+    if not session.get("logado"):
+        return jsonify({"ok": False}), 401
+    de = (request.args.get("de") or "").strip()[:200]
+    if de:
+        _avisar_nao_encontrado(f"tela sem guia de suporte: {de}",
+                               titulo="AJUDA SEM GUIA", tela=de)
+    return jsonify({"ok": True})
+
+
 @app.route("/ajuda")
 def ajuda():
     """Central de ajuda: o Manual e os guias, agrupados pelo card do menu."""
     if not session.get("logado"):
         return redirect("/")
-    de = (request.args.get("de") or "").strip()[:200]
-    if de:
-        # Veio do botão "? Ajuda" de uma tela que ainda não tem guia.
-        _avisar_nao_encontrado(f"tela sem guia de suporte: {de}",
-                               titulo="AJUDA SEM GUIA", tela=de)
     from urllib.parse import quote as _quote
     grupos = []
     for g in _suporte_guias():
@@ -32777,6 +32786,7 @@ def apple_touch_icon():
 # leva segundos e o cliente não espera por ele.
 _AVISO_404_PARA = "sergiomoraesvieira@outlook.com"
 _AVISO_404_ULTIMO = {}
+_BOTAO_AJUDA = 'botão "? Ajuda" (sem guia pronto)'
 
 
 def _avisar_nao_encontrado(motivo, titulo="NAO ENCONTRADO", tela=None):
@@ -32804,7 +32814,7 @@ def _avisar_nao_encontrado(motivo, titulo="NAO ENCONTRADO", tela=None):
             f"Usuário:   {session.get('nome', '')} (CPF {session.get('cpf', '')})\n"
             f"Empresa:   {session.get('empresa_info', '')} (id {session.get('id_empresa', '')})\n"
             f"Competência: {session.get('anomes_atual', '')}\n\n"
-            f"Clicou em:  {caminho}\n"
+            f"Clicou em:  {_BOTAO_AJUDA if tela else caminho}\n"
             f"Na tela:    {request.referrer or '(sem origem: digitado, favorito ou link externo)'}\n"
             f"Motivo:     {motivo}\n"
             f"Navegador:  {request.user_agent.string[:200]}\n"

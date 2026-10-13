@@ -17,7 +17,8 @@
 {#
   Botão "? Ajuda" (vermelho): abre o guia de suporte (PDF) desta tela. A tela →
   guia fica em SUPORTE_TELAS, no app.py (context_processor inject_guia_tela);
-  sem guia, abre a tela Ajuda (/ajuda?de=, que avisa por e-mail). Fica no ALTO, à direita, logo abaixo do
+  sem guia, mostra o aviso abaixo e pede o guia ao suporte (/api/ajuda_sem_guia,
+  que manda o e-mail). Fica no ALTO, à direita, logo abaixo do
   cabeçalho, e não sai de vista ao rolar: o script mede o fim do cabeçalho
   (.topo) e acompanha a rolagem — com o cabeçalho fora da tela, gruda no topo.
 #}
@@ -36,9 +37,29 @@
     background: #dc2626; color: #fff; font-size: 15px; font-weight: 700;
 }
 .f10-passo:hover { background: #fef2f2; color: #b91c1c; border-color: #b91c1c; }
-@media print { .f10-passo { display: none; } }
+@media print { .f10-passo, .f10-semguia { display: none; } }
+.f10-semguia {
+    position: fixed; inset: 0; z-index: 10000; background: rgba(15,23,42,.45);
+    display: none; align-items: center; justify-content: center; padding: 16px;
+}
+.f10-semguia.aberto { display: flex; }
+.f10-semguia-caixa {
+    background: #fff; border-radius: 14px; max-width: 460px; width: 100%;
+    padding: 24px 26px 20px; box-shadow: 0 20px 50px rgba(15,23,42,.3);
+    font-family: 'IBM Plex Sans', Arial, sans-serif; color: #374151; border-top: 5px solid #dc2626;
+}
+.f10-semguia-tit { font-size: 17px; font-weight: 700; color: #b91c1c; margin-bottom: 12px; }
+.f10-semguia-caixa p { font-size: 14px; line-height: 1.55; margin: 0 0 10px; }
+.f10-semguia-acoes { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.f10-semguia-acoes a, .f10-semguia-acoes button {
+    font: 600 13px 'IBM Plex Sans', Arial, sans-serif; border-radius: 8px; padding: 8px 16px;
+    cursor: pointer; text-decoration: none;
+}
+.f10-semguia-acoes a { color: #374151; background: #fff; border: 1px solid #cbd5e1; }
+.f10-semguia-acoes button { color: #fff; background: #dc2626; border: 1px solid #dc2626; }
 </style>
 <a class="f10-passo" href="{{ guia_tela.url }}" target="_blank" rel="noopener"
+   {%- if guia_tela.sem_guia %} onclick="return f10SemGuia();"{% endif %}
    title="{{ ('Passo a passo desta tela: ' ~ guia_tela.titulo) if guia_tela.titulo else 'Ajuda — guias passo a passo e Manual' }}"><span class="f10-passo-ico">?</span>Ajuda</a>
 <script>
 (function () {
@@ -55,4 +76,28 @@
     posicionar();
 })();
 </script>
+{%- if guia_tela.sem_guia %}
+<div class="f10-semguia" id="f10SemGuia" onclick="if (event.target === this) this.classList.remove('aberto');">
+  <div class="f10-semguia-caixa">
+    <div class="f10-semguia-tit">? Passo a passo ainda não disponível</div>
+    <p>O guia (PDF) desta tela <b>ainda não foi encontrado</b>.</p>
+    <p>Já enviamos uma mensagem ao <b>suporte</b> solicitando este arquivo.
+       Aguarde, em breve você terá a resposta.</p>
+    <div class="f10-semguia-acoes">
+      <a href="/ajuda" target="_blank" rel="noopener">Ver os outros guias</a>
+      <button type="button" onclick="document.getElementById('f10SemGuia').classList.remove('aberto');">OK</button>
+    </div>
+  </div>
+</div>
+<script>
+function f10SemGuia() {
+    try {
+        fetch('/api/ajuda_sem_guia?de=' + encodeURIComponent({{ guia_tela.sem_guia|tojson }}),
+              { credentials: 'same-origin' }).catch(function () {});
+    } catch (e) {}
+    document.getElementById('f10SemGuia').classList.add('aberto');
+    return false;
+}
+</script>
+{%- endif %}
 {% endif -%}
