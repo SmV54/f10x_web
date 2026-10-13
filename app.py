@@ -12365,6 +12365,7 @@ SUPORTE_TELAS = {
     "/rel_aumento":                "Como alterar salários",
     "/dissidio":                   "Diferença de Dissidio",
     "/desativar_empresa":          "Desativar uma Empresa",
+    "/cad_anomes":                 "Cadastro Ano-Mes da Folha",
     "/cad_usuario":                "Cadastrar um Novo Usuário",
     "/cad_funcionario":            "Cadastro de um Novo Funcionario",
     "/cad_mov":                    "Como Excluir um Movimento Digitado no Mes",
