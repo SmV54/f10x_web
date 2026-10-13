@@ -12359,6 +12359,8 @@ SUPORTE_GRUPOS = {
 }
 # Tela -> título do guia (o nome do arquivo SEM o número: renumerar o PDF não
 # quebra o link). Telas da seleção de funcionário entram com "?contexto=".
+# Tela com mais de um assunto: uma LISTA de títulos — o botão "? Ajuda" abre
+# um menu para o cliente escolher o guia.
 SUPORTE_TELAS = {
     "/select_funcionario?contexto=aumento": "Como alterar salários",
     "/cad_aumento":                "Como alterar salários",
@@ -12369,7 +12371,8 @@ SUPORTE_TELAS = {
     "/cad_usuario":                "Cadastrar um Novo Usuário",
     "/cad_funcionario":            "Cadastro de um Novo Funcionario",
     "/cad_mov":                    "Como Excluir um Movimento Digitado no Mes",
-    "/cad_verba":                  "Verba de Plano de Saude - Operadora no S-1210",
+    "/cad_verba":                  ["Cadastro de uma Verba",
+                                    "Verba de Plano de Saude - Operadora no S-1210"],
     "/processo_trabalhista":       "Processo Trabalhista - S-2500 e S-2501",
     "/processo_trabalhista/editar": "Processo Trabalhista - S-2500 e S-2501",
     "/processo_pagamentos":        "Processo Trabalhista - S-2500 e S-2501",
@@ -12408,12 +12411,23 @@ def inject_guia_tela():
         if chave == "/select_funcionario":
             chave += "?contexto=" + (request.args.get("contexto") or "")
         from urllib.parse import quote as _quote
-        titulo = SUPORTE_TELAS.get(chave)
-        if titulo:
-            for g in _suporte_guias():
-                if g["titulo"].lower() == titulo.lower():
-                    return {"guia_tela": {"titulo": g["titulo"],
-                                          "url": "/suporte/" + _quote(g["arquivo"])}}
+        titulos = SUPORTE_TELAS.get(chave) or []
+        if isinstance(titulos, str):
+            titulos = [titulos]
+        guias = {g["titulo"].lower(): g for g in _suporte_guias()}
+        itens = []
+        for t in titulos:
+            g = guias.get(t.lower())
+            itens.append({"titulo": g["titulo"] if g else t,
+                          "url": ("/suporte/" + _quote(g["arquivo"])) if g else ""})
+        if len(itens) == 1 and itens[0]["url"]:
+            return {"guia_tela": itens[0]}
+        if len(itens) > 1:
+            # Mais de um assunto na tela: o botão abre uma lista. Guia ainda
+            # não publicado fica na lista como "em preparação" e, clicado,
+            # dá o mesmo aviso (e WhatsApp) da tela sem guia.
+            return {"guia_tela": {"titulo": "", "url": "/ajuda", "lista": itens,
+                                  "sem_guia": chave}}
         return {"guia_tela": {"titulo": "", "url": "/ajuda", "sem_guia": chave}}
     except Exception:
         pass

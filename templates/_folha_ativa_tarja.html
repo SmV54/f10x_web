@@ -21,6 +21,8 @@
   que manda o WhatsApp). Fica no ALTO, à direita, logo abaixo do
   cabeçalho, e não sai de vista ao rolar: o script mede o fim do cabeçalho
   (.topo) e acompanha a rolagem — com o cabeçalho fora da tela, gruda no topo.
+  Tela com mais de um guia (guia_tela.lista): o botão abre um menu; guia ainda
+  não publicado aparece como "em preparação" e dá o aviso de PDF não encontrado.
 #}
 {%- if guia_tela %}
 <style>
@@ -57,9 +59,27 @@
 }
 .f10-semguia-acoes a { color: #374151; background: #fff; border: 1px solid #cbd5e1; }
 .f10-semguia-acoes button { color: #fff; background: #dc2626; border: 1px solid #dc2626; }
+.f10-lista {
+    position: fixed; right: 24px; top: 120px; z-index: 498; display: none;
+    background: #fff; border: 1px solid #fecaca; border-radius: 12px; padding: 6px;
+    box-shadow: 0 12px 32px rgba(15,23,42,.18); min-width: 290px; max-width: 420px;
+    font-family: 'IBM Plex Sans', Arial, sans-serif;
+}
+.f10-lista.aberto { display: block; }
+.f10-lista-tit { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase;
+    letter-spacing: .05em; padding: 6px 10px 4px; }
+.f10-lista a {
+    display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 8px;
+    font-size: 13.5px; font-weight: 600; color: #1e293b; text-decoration: none;
+}
+.f10-lista a:hover { background: #fef2f2; color: #b91c1c; }
+.f10-lista a.prep { color: #94a3b8; font-weight: 500; }
+.f10-lista a.prep small { margin-left: auto; font-size: 11px; white-space: nowrap; }
+@media print { .f10-lista { display: none !important; } }
 </style>
 <a class="f10-passo" href="{{ guia_tela.url }}" target="_blank" rel="noopener"
-   {%- if guia_tela.sem_guia %} onclick="return f10SemGuia();"{% endif %}
+   {%- if guia_tela.lista %} onclick="return f10AjudaLista(event);"
+   {%- elif guia_tela.sem_guia %} onclick="return f10SemGuia();"{% endif %}
    title="{{ ('Passo a passo desta tela: ' ~ guia_tela.titulo) if guia_tela.titulo else 'Ajuda — guias passo a passo e Manual' }}"><span class="f10-passo-ico">?</span>Ajuda</a>
 <script>
 (function () {
@@ -69,6 +89,8 @@
         var t = document.querySelector('.topo') || document.querySelector('header');
         var fim = t ? t.getBoundingClientRect().bottom : 0;
         b.style.top = Math.max(10, fim + 10) + 'px';
+        var l = document.getElementById('f10Lista');
+        if (l) l.style.top = (b.getBoundingClientRect().bottom + 6) + 'px';
     }
     window.addEventListener('scroll', posicionar, { passive: true });
     window.addEventListener('resize', posicionar);
@@ -76,6 +98,33 @@
     posicionar();
 })();
 </script>
+{%- if guia_tela.lista %}
+<div class="f10-lista" id="f10Lista">
+  <div class="f10-lista-tit">Guias desta tela</div>
+  {%- for g in guia_tela.lista %}
+  {%- if g.url %}
+  <a href="{{ g.url }}" target="_blank" rel="noopener"
+     onclick="document.getElementById('f10Lista').classList.remove('aberto');">📄 {{ g.titulo }}</a>
+  {%- else %}
+  <a href="/ajuda" class="prep" onclick="document.getElementById('f10Lista').classList.remove('aberto'); return f10SemGuia({{ g.titulo|tojson|forceescape }});">📄 {{ g.titulo }} <small>em preparação</small></a>
+  {%- endif %}
+  {%- endfor %}
+</div>
+<script>
+function f10AjudaLista(ev) {
+    ev.stopPropagation();
+    var l = document.getElementById('f10Lista');
+    var b = document.querySelector('.f10-passo');
+    l.style.top = (b.getBoundingClientRect().bottom + 6) + 'px';
+    l.classList.toggle('aberto');
+    return false;
+}
+document.addEventListener('click', function (e) {
+    var l = document.getElementById('f10Lista');
+    if (l && !l.contains(e.target)) l.classList.remove('aberto');
+});
+</script>
+{%- endif %}
 {%- if guia_tela.sem_guia %}
 <div class="f10-semguia" id="f10SemGuia" onclick="if (event.target === this) this.classList.remove('aberto');">
   <div class="f10-semguia-caixa">
@@ -90,9 +139,10 @@
   </div>
 </div>
 <script>
-function f10SemGuia() {
+function f10SemGuia(guia) {
     try {
-        fetch('/api/ajuda_sem_guia?de=' + encodeURIComponent({{ guia_tela.sem_guia|tojson }}),
+        var de = {{ guia_tela.sem_guia|tojson }} + (guia ? ' — guia: ' + guia : '');
+        fetch('/api/ajuda_sem_guia?de=' + encodeURIComponent(de),
               { credentials: 'same-origin' }).catch(function () {});
     } catch (e) {}
     document.getElementById('f10SemGuia').classList.add('aberto');
