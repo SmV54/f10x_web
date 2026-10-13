@@ -16014,6 +16014,28 @@ def api_anomes_alterar():
         return jsonify({"ok": False, "msg": "Data Falta 2 inválida"})
     if falta1 and falta2 and falta1 > falta2:
         return jsonify({"ok": False, "msg": "Data Inicial de Faltas maior que a Final"})
+    # Mesmo limite do _periodo_faltas: acima de 31 dias o cálculo ignora o
+    # período e volta ao mês do calendário — sem avisar ninguém.
+    if falta1 and falta2:
+        try:
+            _dias = (datetime.strptime(falta2, "%Y%m%d") - datetime.strptime(falta1, "%Y%m%d")).days + 1
+        except ValueError:
+            return jsonify({"ok": False, "msg": "Data de falta inválida"})
+        if _dias > 31:
+            return jsonify({"ok": False, "msg": (
+                f"O período de faltas pode ter no máximo 31 dias (informado: {_dias}).")})
+
+    try:
+        _ant = (supabase.table("tab_anomes").select("situacao, data_falta1, data_falta2")
+                .eq("id_cliente", id_cliente).eq("id_empresa", id_empresa)
+                .eq("ano_mes", ano_mes).eq("tipo", tipo).limit(1).execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a folha: {str(e)[:150]}"})
+    if not _ant:
+        return jsonify({"ok": False, "msg": "Folha não encontrada."})
+    if str(_ant[0].get("situacao") or "A").upper() not in ("A", "X", "C"):
+        return jsonify({"ok": False, "msg": (
+            "Esta folha está Fechada: o período de faltas não pode mais ser alterado.")})
 
     try:
         supabase.table("tab_anomes").update({
@@ -16024,6 +16046,11 @@ def api_anomes_alterar():
           .eq("ano_mes", ano_mes) \
           .eq("tipo", tipo) \
           .execute()
+        gravar_log("FOLHA-FALTAS",
+                   (f"Folha {ano_mes} tipo:{tipo} periodo de faltas "
+                    f"{_ant[0].get('data_falta1') or '-'}-{_ant[0].get('data_falta2') or '-'} -> "
+                    f"{falta1 or '-'}-{falta2 or '-'}")[:200],
+                   ano_mes=int(ano_mes))
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})

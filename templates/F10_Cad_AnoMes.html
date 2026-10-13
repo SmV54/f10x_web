@@ -229,6 +229,14 @@
     .btn-excluir-folha:hover {
       background: #fff1f2; border-color: #fecdd3; color: #be123c;
     }
+    /* Lápis ao lado da lixeira: altera o período de faltas da folha (só
+       Normal e não Fechada — é a única que usa o período). */
+    .btn-faltas-folha {
+      background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px;
+      color: #1d4ed8; font-size: 12px; font-weight: 600; line-height: 1; cursor: pointer;
+      padding: 4px 8px; transition: 0.15s; white-space: nowrap; margin-right: 4px;
+    }
+    .btn-faltas-folha:hover { background: #dbeafe; border-color: #60a5fa; }
 
     .rodape-acoes {
       display: flex; gap: 8px; margin-top: 4px;
@@ -389,7 +397,7 @@
                   <th>Ano/Mês</th>
                   <th style="padding-left:18px;">Tipo</th>
                   <th>Situação</th>
-                  <th style="width:44px;"></th>
+                  <th style="width:{{ '120px' if modo != 'trocar' else '44px' }};"></th>
                 </tr>
               </thead>
               <tbody id="tbodyLista">
@@ -417,7 +425,11 @@
                       {% else %}Fechada{% endif %}
                     </span>
                   </td>
-                  <td style="text-align:center;">
+                  <td style="text-align:right; white-space:nowrap;">
+                    {% if modo != 'trocar' and r.tipo == 'N' and r.situacao in ('A', 'X', 'C') %}
+                    <button class="btn-faltas-folha" title="Alterar o período de faltas desta folha"
+                            onclick="event.stopPropagation(); editarFaltas(this);">&#9998; Faltas</button>
+                    {% endif %}
                     <button class="btn-excluir-folha" title="Excluir esta folha"
                             onclick="event.stopPropagation(); excluirFolha(this);">&#128465;</button>
                   </td>
@@ -841,6 +853,28 @@
     }
   }
 
+  // ── Alterar o período de faltas (lápis da lista) ─────────
+  // A folha continua ativa como está: só o formulário passa para o modo
+  // Alteração, com Ano/Mês e Tipo travados. Cancelar volta à inclusão.
+  function editarFaltas(btn) {
+    const tr = btn.closest('tr');
+    document.querySelectorAll('#tbodyLista tr').forEach(r => r.classList.remove('selecionado'));
+    tr.classList.add('selecionado');
+    dadosSelecionados = {
+      id_cliente:  tr.dataset.idcliente,
+      id_empresa:  tr.dataset.idempresa,
+      ano_mes:     tr.dataset.anomes,
+      tipo:        tr.dataset.tipo,
+      situacao:    tr.dataset.situacao,
+      data_falta1: tr.dataset.falta1,
+      data_falta2: tr.dataset.falta2,
+    };
+    modoAlterar(dadosSelecionados);
+    const f1 = document.getElementById('inpFalta1');
+    f1.closest('.form-linha-2').scrollIntoView({ block: 'center', behavior: 'smooth' });
+    f1.focus();
+  }
+
   // ── Excluir Folha ─────────────────────────────────────────
   // Duas etapas de proposito: primeiro o servidor conta o que vai junto
   // (movimento, totais, remessas) e barra o que nao pode sair; so' depois a
@@ -994,11 +1028,11 @@
     const mm   = d.ano_mes.substring(4,6);
     const aaaa = d.ano_mes.substring(0,4);
 
-    document.getElementById('formTitulo').textContent    = 'Alterar Datas de Falta';
+    document.getElementById('formTitulo').textContent    = 'Alterar Período de Faltas';
     document.getElementById('formSubtitulo').textContent = mm + '/' + aaaa + ' — ' + labelTipo(d.tipo);
 
     const aviso = document.getElementById('avisoModo');
-    aviso.textContent = 'Modo: Alteração (somente datas de falta)';
+    aviso.textContent = 'Modo: Alteração — só o período de faltas de ' + mm + '/' + aaaa;
     aviso.className   = 'aviso-modo aviso-alterar';
 
     // Preenche campos
@@ -1097,6 +1131,19 @@
       url     = '/api/anomes/incluir';
 
     } else {
+      // O cálculo só aceita período de até 31 dias (acima disso volta ao mês
+      // do calendário sem avisar) — melhor barrar aqui.
+      if (!falta1 || !falta2) {
+        alerta('Datas inválidas', 'Informe a Falta Inicial e a Falta Final.');
+        return;
+      }
+      const dias = (new Date(document.getElementById('inpFalta2').value) -
+                    new Date(document.getElementById('inpFalta1').value)) / 86400000 + 1;
+      if (dias > 31) {
+        alerta('Período muito longo',
+               'O período de faltas pode ter no máximo 31 dias (informado: ' + dias + ' dias).');
+        return;
+      }
       payload = {
         id_cliente:  dadosSelecionados.id_cliente,
         id_empresa:  dadosSelecionados.id_empresa,
