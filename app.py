@@ -4252,6 +4252,7 @@ def rel_aumento_pdf():
     vr_sup       = int(request.args.get("vr_superior", "9999999999") or 9999999999)
     mats_raw     = request.args.get("mats", "").strip()
     mats_lista   = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()] if mats_raw else []
+    novo_sal_direto = int(request.args.get("novo_sal", "0") or 0)
 
     if len(vigencia_raw) != 6 or not vigencia_raw.isdigit():
         vigencia_raw = str(session.get("anomes_atual") or "")
@@ -4320,6 +4321,11 @@ def rel_aumento_pdf():
         mat   = f.get("matricula")
         sal_at = f.get("vrsalfx") or 0
         sal_novo, prop, meses, perc_ap = _calcular(sal_at, f.get("dtadm"))
+        # Novo salário digitado direto: o mesmo critério do /rel_aumento
+        if novo_sal_direto > 0 and (sal_at == 0 or len(mats_lista) == 1):
+            sal_novo = novo_sal_direto
+            perc_ap  = (sal_novo / sal_at - 1) * 100 if sal_at else 0.0
+            prop, meses = 1.0, 12
         registros.append({
             "mat":          mat,
             "nome":         f.get("nome", ""),
@@ -29535,6 +29541,7 @@ def cad_aumento():
     p_vr_inferior = request.args.get("vr_inferior", "").strip()       # centavos
     p_vr_superior = request.args.get("vr_superior", "").strip()       # centavos
     p_nao_ficha   = request.args.get("nao_ficha",   "N").upper().strip()
+    p_novo_sal    = request.args.get("novo_sal",    "").strip()       # centavos
 
     funcionarios = []
     if mats_lista:
@@ -29627,6 +29634,7 @@ def cad_aumento():
         p_vr_inferior=vr_inferior_str,
         p_vr_superior=vr_superior_str,
         p_nao_ficha=p_nao_ficha,
+        p_novo_sal=_cents_to_str(p_novo_sal, "") if p_novo_sal.isdigit() else "",
     )
 
 
@@ -29676,6 +29684,8 @@ def rel_aumento():
 
     vigencia_fmt   = f"{vigencia_raw[4:6]}/{vigencia_raw[:4]}"
     percentual_fmt = f"{percentual:.2f}".replace(".", ",")
+    if novo_sal_direto > 0 and len(mats_lista) == 1:
+        percentual_fmt += " (novo salário informado direto)"
     vr_inf_fmt = "R$ " + f"{vr_inf/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
     vr_sup_fmt = "R$ " + f"{vr_sup/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
     faixa_str  = f"{vr_inf_fmt} — {vr_sup_fmt}"
@@ -29756,11 +29766,14 @@ def rel_aumento():
         sal_at   = f.get("vrsalfx") or 0
 
         sal_novo, prop, meses, perc_ap = _calcular(sal_at, dtadm)
-        # Sem salário anterior (salário 0): usa o novo salário informado direto —
-        # não há como reajustar 0 por percentual.
-        if novo_sal_direto > 0 and sal_at == 0:
+        # Novo salário digitado direto (tela de UM funcionário): grava o valor
+        # digitado, sem passar pelo percentual — o percentual da tela tem 2
+        # casas e, reaplicado, mudava o valor (1.700,00 -> 1.850,00 virava
+        # 1.849,94). O percentual fica só calculado, para mostrar e registrar.
+        # Sem salário anterior (salário 0) também cai aqui.
+        if novo_sal_direto > 0 and (sal_at == 0 or len(mats_lista) == 1):
             sal_novo = novo_sal_direto
-            perc_ap  = 0.0
+            perc_ap  = (sal_novo / sal_at - 1) * 100 if sal_at else 0.0
             prop     = 1.0
             meses    = 12
         diff     = sal_novo - sal_at
@@ -29855,6 +29868,7 @@ def rel_aumento():
         "vr_inferior": vr_inf,
         "vr_superior": vr_sup,
         "nao_ficha":   "S" if nao_ficha else "N",
+        "novo_sal":    novo_sal_direto or "",
     })
     url_voltar = f"/cad_aumento?{_voltar_qs}"
 

@@ -263,7 +263,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                         <div style="display:flex;align-items:center;gap:6px;">
                             <span style="font-size:13px;font-weight:600;color:#475569;">R$</span>
                             <input type="text" id="novo_sal" class="input-std"
-                                placeholder="0,00" style="width:140px;text-align:right;font-family:var(--mono);"
+                                value="{{ p_novo_sal }}" placeholder="0,00" style="width:140px;text-align:right;font-family:var(--mono);"
                                 inputmode="numeric"
                                 oninput="maskNovoSal(this)" onfocus="this.select()">
                         </div>
@@ -422,9 +422,14 @@ const ULTIMA_VIGENCIA = {
     {{ f.matricula }}: {{ f.ultima_vigencia if f.ultima_vigencia else 'null' }},
 {% endfor %}
 };
+// Qual campo o usuário digitou por último. Se foi o NOVO SALÁRIO, é ele que
+// vale: o valor vai ao servidor e é gravado como está — o percentual (2 casas)
+// fica só informativo. Reaplicar o percentual mudava o valor digitado.
+let ultimoEditado = {{ 'true' if p_novo_sal else 'false' }} ? 'novo' : 'pct';
 {% if funcionarios|length == 1 %}
 const SAL_ATUAL_CENTS = {{ funcionarios[0].sal_cents }};
 function syncNovoSal() {
+    ultimoEditado = 'pct';
     const pct = parseFloat(String(document.getElementById('percentual').value).replace(',', '.'));
     const el  = document.getElementById('novo_sal');
     if (!el) return;
@@ -460,6 +465,7 @@ function fmtCur(v) {
     return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function maskNovoSal(el) {
+    ultimoEditado = 'novo';
     var digits = el.value.replace(/\D/g, '');
     if (!digits) { el.value = ''; syncPercentual(el); return; }
     var cents = parseInt(digits, 10);
@@ -505,6 +511,7 @@ async function processar() {
     var novoSalEl = document.getElementById('novo_sal');
     var semSalarioAnterior = (typeof SAL_ATUAL_CENTS !== 'undefined' && SAL_ATUAL_CENTS === 0);
     var novoSalCents = novoSalEl ? Math.round(parseCur(novoSalEl.value) * 100) : 0;
+    var usaValorDireto = semSalarioAnterior || (novoSalEl && ultimoEditado === 'novo' && novoSalCents > 0);
 
     var percRaw = document.getElementById('percentual').value.replace(',', '.');
     var percentual = parseFloat(percRaw);
@@ -543,7 +550,7 @@ async function processar() {
     p.set('mats',        MATS);
     p.set('vigencia',    vigencia.replace(/-/g, '').slice(0, 6));  // YYYYMMDD → YYYYMM
     p.set('percentual',  percentual.toFixed(2));
-    if (semSalarioAnterior && novoSalCents > 0) p.set('novo_sal', novoSalCents);
+    if (usaValorDireto && novoSalCents > 0) p.set('novo_sal', novoSalCents);
     p.set('tipo',        tipo);
     p.set('motivo',      motivo);
     p.set('gravar',      gravar);
