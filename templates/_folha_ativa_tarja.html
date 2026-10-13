@@ -17,12 +17,14 @@
 {#
   Botão "? Ajuda" (vermelho): abre o guia de suporte (PDF) desta tela. A tela →
   guia fica em SUPORTE_TELAS, no app.py (context_processor inject_guia_tela);
-  sem guia para a tela, nada aparece. Fica à esquerda do "?" do tour.
+  sem guia para a tela, nada aparece. Fica no ALTO, à direita, logo abaixo do
+  cabeçalho, e não sai de vista ao rolar: o script mede o fim do cabeçalho
+  (.topo) e acompanha a rolagem — com o cabeçalho fora da tela, gruda no topo.
 #}
 {%- if guia_tela %}
 <style>
 .f10-passo {
-    position: fixed; right: 84px; bottom: 30px; z-index: 499;
+    position: fixed; right: 24px; top: 74px; z-index: 499;
     display: inline-flex; align-items: center; gap: 8px;
     background: #fff; color: #dc2626; border: 2px solid #dc2626; border-radius: 22px;
     padding: 6px 16px 6px 6px; font: 700 14px 'IBM Plex Sans', Arial, sans-serif; text-decoration: none;
@@ -38,4 +40,19 @@
 </style>
 <a class="f10-passo" href="{{ guia_tela.url }}" target="_blank" rel="noopener"
    title="Passo a passo desta tela: {{ guia_tela.titulo }}"><span class="f10-passo-ico">?</span>Ajuda</a>
+<script>
+(function () {
+    function posicionar() {
+        var b = document.querySelector('.f10-passo');
+        if (!b) return;
+        var t = document.querySelector('.topo') || document.querySelector('header');
+        var fim = t ? t.getBoundingClientRect().bottom : 0;
+        b.style.top = Math.max(10, fim + 10) + 'px';
+    }
+    window.addEventListener('scroll', posicionar, { passive: true });
+    window.addEventListener('resize', posicionar);
+    document.addEventListener('DOMContentLoaded', posicionar);
+    posicionar();
+})();
+</script>
 {% endif -%}
