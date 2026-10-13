@@ -27512,6 +27512,689 @@ def api_mov_replicar_excluir():
 
 
 # =========================================================
+# DIFERENÇA DE DISSÍDIO (Eventuais > Salários)
+# =========================================================
+# Mesmo cálculo do Folha10 Desktop (SR_Gravacao.vb,
+# Gravacao_TabMOV_Dissidio_Diferenca), em produção há anos:
+#   índice    = salário atual do cadastro ÷ salário da folha base (tab_total) − 1
+#   diferença = cada PROVENTO da folha base (movimento normal + férias; no 13º,
+#               o movimento do 13º) × índice, arredondado ao centavo,
+#               MENOS 0132 faltas / 0139 desconto DSR / 0141 suspensão × índice.
+#   Verbas da lista "não entram" ficam de fora (padrão do Desktop:
+#   0030 insalubridade, 0091 salário-família, 0501 arredondamento,
+#   0551 insuficiência de saldo).
+#   Quem teve aumento lançado no próprio mês base não recebe a diferença
+#   daquele mês (caixa na tela para calcular mesmo assim).
+# Diferente do Desktop: vários meses base de uma vez, todos numa só verba
+# destino. O tab_mov recebe uma linha por funcionário (o total); o detalhe
+# mês × verba fica no tab_dissidio — dele saem a listagem, o demonstrativo
+# individual e o quadro opcional no contracheque.
+# No eSocial a verba destino vai como provento normal da folha atual, como
+# no Desktop (o infoPerAnt lá é só da rescisão complementar).
+DISSIDIO_LOTE       = 35100
+DISSIDIO_NAO_PADRAO = [30, 91, 501, 551]
+DISSIDIO_DESCONTOS  = (132, 139, 141)
+DISSIDIO_MAX_BASES  = 12
+
+
+def _diss_todos(q):
+    """Lê todas as linhas da consulta, de 1000 em 1000 (limite do PostgREST)."""
+    out, off = [], 0
+    while True:
+        chunk = q.range(off, off + 999).execute().data or []
+        out.extend(chunk)
+        if len(chunk) < 1000:
+            return out
+        off += 1000
+
+
+def _diss_rubricas(id_cliente):
+    """{cod: {"dsc", "tp", "cli"}} — as do sistema (cliente 0) e, por cima, as do
+    cliente. `cli` diz de quem é a verba (0 = do sistema)."""
+    info = {}
+    for cli in ([0] + ([id_cliente] if id_cliente else [])):
+        q = (supabase.table("tab_rubrica").select("cod_rubr,dsc_rubr,tp_rubr")
+             .eq("id_cliente", cli))
+        for r in _diss_todos(q):
+            cod = int(r.get("cod_rubr") or 0)
+            if cod:
+                info[cod] = {"dsc": str(r.get("dsc_rubr") or f"Verba {cod:04d}").strip(),
+                             "tp":  str(r.get("tp_rubr") or ""), "cli": cli}
+    return info
+
+
+def _diss_label(ym, tipo):
+    ym = str(ym)
+    if tipo == "1":
+        return f"13º Salário {ym[:4]}"
+    return f"{ym[4:6]}/{ym[:4]}"
+
+
+def _diss_folhas_base(id_empresa, anomes):
+    """Folhas FECHADAS anteriores à ativa que podem ser base (normal e 13º)."""
+    try:
+        rows = (supabase.table("tab_anomes").select("ano_mes,tipo")
+                .eq("id_empresa", id_empresa).eq("situacao", "F")
+                .in_("tipo", ["N", "1"]).lt("ano_mes", str(anomes))
+                .order("ano_mes", desc=True).limit(30).execute().data or [])
+    except Exception:
+        rows = []
+    return [{"chave": f"{r['ano_mes']}{r['tipo']}", "ym": str(r["ano_mes"]),
+             "tipo": r["tipo"], "label": _diss_label(r["ano_mes"], r["tipo"])}
+            for r in rows]
+
+
+def _diss_pct(indice):
+    """0.0545 -> '5,4500%' (o Desktop mostra o índice com 4 casas)."""
+    return f"{indice * 100:,.4f}".replace(",", "X").replace(".", ",").replace("X", ".") + "%"
+
+
+def _diss_calcular(id_cliente, id_empresa, anomes, bases, nao, mats=None,
+                   com_aumento=False):
+    """Calcula sem gravar. bases = [(ym:int, tipo:'N'|'1')], nao = set de códigos.
+
+    Devolve {"funcionarios": [...], "avisos": [...], "total_geral": int}, com
+    cada funcionário trazendo os meses e, em cada mês, as verbas e o índice.
+    """
+    rub   = _diss_rubricas(id_cliente)
+    nao   = {int(x) for x in (nao or [])}
+    q_cad = (supabase.table("tab_cad").select("matricula,nome,vrsalfx,dtadm,situacao")
+             .eq("id_empresa", id_empresa).neq("situacao", "D").order("matricula"))
+    cads  = _diss_todos(q_cad)
+    if mats:
+        sel  = {int(m) for m in mats}
+        cads = [c for c in cads if int(c["matricula"]) in sel]
+
+    # Aumentos lançados (tab_eventos op1=5) nos meses base
+    yms = sorted({int(b[0]) for b in bases})
+    aumentos = set()
+    try:
+        q_au = (supabase.table("tab_eventos").select("matricula,folha")
+                .eq("id_empresa", id_empresa).eq("op1", 5).in_("folha", yms))
+        aumentos = {(int(r["matricula"]), int(r["folha"])) for r in _diss_todos(q_au)}
+    except Exception:
+        pass
+
+    por_mat = {int(c["matricula"]): {"matricula": int(c["matricula"]),
+                                     "nome": str(c.get("nome") or "").strip(),
+                                     "sal_atual": int(c.get("vrsalfx") or 0),
+                                     "dtadm": str(c.get("dtadm") or ""),
+                                     "meses": [], "total": 0}
+               for c in cads}
+    avisos = []
+
+    for ym, tipo in bases:
+        ym = int(ym)
+        label = _diss_label(ym, tipo)
+        # Salário da folha base: tab_total da própria folha; no 13º, se o
+        # total do 13º não trouxer salário, o da folha normal do mesmo mês.
+        sal_base = {}
+        for tp_tot in ([tipo] if tipo == "N" else [tipo, "N"]):
+            q_t = (supabase.table("tab_total").select("matricula,valor_salario")
+                   .eq("id_empresa", id_empresa).eq("folha", ym).eq("folha_tipo", tp_tot))
+            for r in _diss_todos(q_t):
+                m = int(r["matricula"])
+                if not sal_base.get(m):
+                    sal_base[m] = int(r.get("valor_salario") or 0)
+        tipos_mov = ["N", "F"] if tipo == "N" else ["1"]
+        q_m = (supabase.table("tab_mov").select("matricula,cod_verba,valor")
+               .eq("id_empresa", id_empresa).eq("folha", ym).eq("situacao", "A")
+               .in_("folha_tipo", tipos_mov))
+        movs = {}
+        for r in _diss_todos(q_m):
+            movs.setdefault(int(r["matricula"]), []).append(r)
+
+        for mat, f in por_mat.items():
+            if mat not in sal_base:
+                continue                    # não estava na folha base
+            sb = sal_base[mat]
+            if sb <= 0:
+                avisos.append({"matricula": mat, "nome": f["nome"], "base": label,
+                               "motivo": "Salário não encontrado na folha base — diferença não calculada."})
+                continue
+            if (not com_aumento and (mat, ym) in aumentos and ym != int(anomes)
+                    and f["dtadm"][:6] != str(ym)):
+                avisos.append({"matricula": mat, "nome": f["nome"], "base": label,
+                               "motivo": f"Teve aumento lançado em {label} — diferença não calculada."})
+                continue
+            indice = f["sal_atual"] / sb - 1
+            if indice > 1:
+                avisos.append({"matricula": mat, "nome": f["nome"], "base": label,
+                               "motivo": f"Índice de {_diss_pct(indice)} (acima de 100%) — verifique o salário; diferença não calculada."})
+                continue
+            if indice <= 0:
+                continue
+            linhas, tot_mes = [], 0
+            for mv in sorted(movs.get(mat, []), key=lambda x: int(x["cod_verba"])):
+                cod = int(mv["cod_verba"])
+                val = int(mv.get("valor") or 0)
+                if cod >= 9900 or cod in nao or val <= 0:
+                    continue
+                tp = (rub.get(cod) or {}).get("tp", "")
+                if tp == "1":
+                    dif = int(val * indice + 0.5)
+                elif cod in DISSIDIO_DESCONTOS:
+                    dif = -int(val * indice + 0.5)
+                else:
+                    continue
+                linhas.append({"cod": cod, "dsc": (rub.get(cod) or {}).get("dsc", f"Verba {cod:04d}"),
+                               "valor_base": val, "valor_dif": dif})
+                tot_mes += dif
+            if linhas:
+                f["meses"].append({"ym": ym, "tipo": tipo, "label": label, "sal_base": sb,
+                                   "indice": indice, "total": tot_mes, "linhas": linhas})
+                f["total"] += tot_mes
+
+    funcs = [f for f in por_mat.values() if f["total"] > 0]
+    for f in funcs:
+        f["meses"].sort(key=lambda m: (m["ym"], m["tipo"]))
+    return {"funcionarios": funcs, "avisos": avisos,
+            "total_geral": sum(f["total"] for f in funcs)}
+
+
+def _diss_gravado(id_cliente, id_empresa, anomes, folha_tipo="N"):
+    """Monta, a partir do tab_dissidio, a mesma estrutura de _diss_calcular."""
+    try:
+        q = (supabase.table("tab_dissidio").select("*")
+             .eq("id_empresa", id_empresa).eq("folha", int(anomes))
+             .eq("folha_tipo", folha_tipo).order("matricula"))
+        rows = _diss_todos(q)
+    except Exception:
+        rows = []
+    if not rows:
+        return None
+    rub   = _diss_rubricas(id_cliente)
+    mats  = sorted({int(r["matricula"]) for r in rows})
+    nomes = {}
+    try:
+        for c in _diss_todos(supabase.table("tab_cad").select("matricula,nome")
+                             .eq("id_empresa", id_empresa).in_("matricula", mats)):
+            nomes[int(c["matricula"])] = str(c.get("nome") or "").strip()
+    except Exception:
+        pass
+    por_mat = {}
+    for r in sorted(rows, key=lambda x: (int(x["matricula"]), int(x["folha_base"]),
+                                         str(x["folha_base_tipo"]), int(x["cod_verba"]))):
+        m = int(r["matricula"])
+        f = por_mat.setdefault(m, {"matricula": m, "nome": nomes.get(m, ""),
+                                   "sal_atual": int(r.get("sal_atual") or 0),
+                                   "meses": [], "total": 0})
+        ym, tp = int(r["folha_base"]), str(r["folha_base_tipo"] or "N")
+        if not f["meses"] or (f["meses"][-1]["ym"], f["meses"][-1]["tipo"]) != (ym, tp):
+            f["meses"].append({"ym": ym, "tipo": tp, "label": _diss_label(ym, tp),
+                               "sal_base": int(r.get("sal_base") or 0),
+                               "indice": float(r.get("indice") or 0), "total": 0, "linhas": []})
+        mes = f["meses"][-1]
+        cod = int(r["cod_verba"])
+        dif = int(r.get("valor_dif") or 0)
+        mes["linhas"].append({"cod": cod, "dsc": (rub.get(cod) or {}).get("dsc", f"Verba {cod:04d}"),
+                              "valor_base": int(r.get("valor_base") or 0), "valor_dif": dif})
+        mes["total"] += dif
+        f["total"]   += dif
+    destino = int(rows[0]["cod_verba_destino"])
+    funcs = list(por_mat.values())
+    bases = sorted({(int(r["folha_base"]), str(r["folha_base_tipo"] or "N")) for r in rows})
+    return {"funcionarios": funcs, "avisos": [], "total_geral": sum(f["total"] for f in funcs),
+            "verba_destino": destino,
+            "verba_destino_dsc": (rub.get(destino) or {}).get("dsc", ""),
+            "bases": [_diss_label(b[0], b[1]) for b in bases]}
+
+
+def _diss_ler_params(d):
+    """Parâmetros da tela (JSON ou query string) -> (bases, nao, mats, com_aumento)."""
+    def _lista(v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            v = [x for x in v.replace(";", ",").split(",")]
+        return [str(x).strip() for x in v if str(x).strip()]
+    bases = []
+    for ch in _lista(d.get("bases")):
+        if len(ch) == 7 and ch[:6].isdigit() and ch[6] in ("N", "1"):
+            bases.append((int(ch[:6]), ch[6]))
+    nao  = [int(x) for x in _lista(d.get("nao")) if x.isdigit()]
+    mats = [int(x) for x in _lista(d.get("matriculas")) if x.isdigit()]
+    com_aumento = str(d.get("com_aumento") or "").lower() in ("1", "true", "s", "sim")
+    return sorted(set(bases)), nao, mats, com_aumento
+
+
+def _diss_travas_gravar():
+    """Gravar/excluir só na folha Normal e Aberta (vale no servidor)."""
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return "Sem folha ativa."
+    if str(session.get("anomes_tipo") or "N").upper()[:1] != "N":
+        return "A diferença de dissídio só é lançada na folha Normal."
+    if _refresh_situacao_folha() not in ("A", "X"):
+        return "A folha precisa estar Aberta. Reabra pelo menu Mês/Ano."
+    return None
+
+
+def _diss_apagar(id_empresa, anomes):
+    """Apaga o dissídio gravado na folha: as linhas do tab_mov (lote próprio,
+    só nas verbas destino registradas) e o detalhe do tab_dissidio."""
+    rows = _diss_todos(supabase.table("tab_dissidio").select("cod_verba_destino")
+                       .eq("id_empresa", id_empresa).eq("folha", int(anomes))
+                       .eq("folha_tipo", "N"))
+    destinos = sorted({int(r["cod_verba_destino"]) for r in rows})
+    n_mov = 0
+    if destinos:
+        r = (supabase.table("tab_mov").delete()
+             .eq("id_empresa", id_empresa).eq("folha", int(anomes)).eq("folha_tipo", "N")
+             .eq("lote", DISSIDIO_LOTE).in_("cod_verba", destinos).execute())
+        n_mov = len(r.data or [])
+    (supabase.table("tab_dissidio").delete()
+     .eq("id_empresa", id_empresa).eq("folha", int(anomes)).eq("folha_tipo", "N").execute())
+    return n_mov
+
+
+@app.route("/dissidio")
+def dissidio():
+    if not session.get("logado"):
+        return redirect("/")
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    folha_tipo = str(session.get("anomes_tipo") or "N").upper()[:1]
+    situacao   = _refresh_situacao_folha() if len(anomes) == 6 else ""
+    rub        = _diss_rubricas(id_cliente)
+    # Destino: só provento do PRÓPRIO cliente. As do sistema (0001 salário,
+    # 0030...) o cálculo da folha gera sozinho e misturaria com a diferença —
+    # o Desktop manda "abrir antes uma verba" para o dissídio, e é o que os
+    # clientes fazem (ex.: 1047 DIFERENCA DE DISSIDIO).
+    proventos  = [{"cod": c, "dsc": v["dsc"]} for c, v in sorted(rub.items())
+                  if v["tp"] == "1" and c < 9900 and v["cli"]]
+    verbas_nao = [{"cod": c, "dsc": v["dsc"], "tp": v["tp"]} for c, v in sorted(rub.items())
+                  if c < 9900 and (v["tp"] == "1" or c in DISSIDIO_DESCONTOS)]
+    try:
+        funcs = _diss_todos(supabase.table("tab_cad").select("matricula,nome,vrsalfx")
+                            .eq("id_empresa", id_empresa).neq("situacao", "D")
+                            .order("nome"))
+    except Exception:
+        funcs = []
+    gravado = _diss_gravado(id_cliente, id_empresa, anomes) if len(anomes) == 6 else None
+    return render_template(
+        "F10_Dissidio.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        anomes_atual=anomes,
+        folha_tipo_ativa=folha_tipo,
+        folha_situacao=situacao,
+        folhas_base=_diss_folhas_base(id_empresa, anomes) if len(anomes) == 6 else [],
+        proventos=proventos,
+        verbas_nao=verbas_nao,
+        nao_padrao=DISSIDIO_NAO_PADRAO,
+        descontos=list(DISSIDIO_DESCONTOS),
+        funcionarios=[{"matricula": int(f["matricula"]), "nome": str(f.get("nome") or "").strip()}
+                      for f in funcs],
+        gravado=gravado,
+        max_bases=DISSIDIO_MAX_BASES,
+    )
+
+
+@app.route("/api/dissidio/calcular", methods=["POST"])
+def api_dissidio_calcular():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return jsonify({"ok": False, "msg": "Sem folha ativa."})
+    bases, nao, mats, com_aumento = _diss_ler_params(request.get_json(silent=True) or {})
+    if not bases:
+        return jsonify({"ok": False, "msg": "Escolha ao menos um mês base."})
+    if len(bases) > DISSIDIO_MAX_BASES:
+        return jsonify({"ok": False, "msg": f"No máximo {DISSIDIO_MAX_BASES} meses base de uma vez."})
+    try:
+        res = _diss_calcular(session.get("id_cliente"), _get_id_empresa(), anomes,
+                             bases, nao, mats or None, com_aumento)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro no cálculo: {str(e)[:200]}"})
+    return jsonify({"ok": True, **res})
+
+
+@app.route("/api/dissidio/gravar", methods=["POST"])
+def api_dissidio_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    erro = _diss_travas_gravar()
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    d = request.get_json(silent=True) or {}
+    bases, nao, mats, com_aumento = _diss_ler_params(d)
+    substituir = bool(d.get("substituir"))
+    anomes     = str(session.get("anomes_atual"))
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    if not bases:
+        return jsonify({"ok": False, "msg": "Escolha ao menos um mês base."})
+    if len(bases) > DISSIDIO_MAX_BASES:
+        return jsonify({"ok": False, "msg": f"No máximo {DISSIDIO_MAX_BASES} meses base de uma vez."})
+    try:
+        destino = int(d.get("verba_destino") or 0)
+    except (TypeError, ValueError):
+        destino = 0
+    rub = _diss_rubricas(id_cliente)
+    if not destino or destino not in rub:
+        return jsonify({"ok": False, "msg": "Escolha a verba destino da diferença."})
+    if rub[destino]["tp"] != "1" or destino >= 9900:
+        return jsonify({"ok": False, "msg": f"A verba {destino:04d} não é provento — escolha um provento para receber a diferença."})
+    if not rub[destino]["cli"]:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {destino:04d} é do sistema e o cálculo da folha a gera sozinho. "
+            "Cadastre em Rubricas uma verba de provento só para o dissídio "
+            "(ex.: DIFERENÇA DE DISSÍDIO) e escolha-a aqui.")})
+    if destino in nao or any(destino == b for b in DISSIDIO_DESCONTOS):
+        return jsonify({"ok": False, "msg": "A verba destino não pode estar entre as verbas que não entram."})
+    # As bases têm de ser folhas FECHADAS desta empresa, anteriores à ativa
+    validas = {(int(b["ym"]), b["tipo"]) for b in _diss_folhas_base(id_empresa, anomes)}
+    fora = [b for b in bases if b not in validas]
+    if fora:
+        return jsonify({"ok": False, "msg": "Mês base " + ", ".join(_diss_label(*b) for b in fora)
+                                           + " não é uma folha Fechada desta empresa."})
+
+    ja = _diss_gravado(id_cliente, id_empresa, anomes)
+    if ja and not substituir:
+        return jsonify({"ok": False, "ja_gravado": len(ja["funcionarios"]),
+                        "msg": "Esta folha já tem uma diferença de dissídio gravada."})
+    # Como no Desktop: a verba destino não pode já ter lançamento nesta folha
+    # (fora o do próprio dissídio, que o substituir apaga).
+    try:
+        q_ex = (supabase.table("tab_mov").select("matricula,lote")
+                .eq("id_empresa", id_empresa).eq("folha", int(anomes))
+                .eq("folha_tipo", "N").eq("cod_verba", destino))
+        existentes = [r for r in _diss_todos(q_ex)
+                      if not (substituir and int(r.get("lote") or 0) == DISSIDIO_LOTE)]
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao conferir o movimento: {str(e)[:150]}"})
+    if existentes:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {destino:04d} já tem {len(existentes)} lançamento(s) nesta folha. "
+            "Escolha outra verba destino — o dissídio precisa de uma verba só para ele.")})
+
+    try:
+        res = _diss_calcular(id_cliente, id_empresa, anomes, bases, nao, mats or None, com_aumento)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro no cálculo: {str(e)[:200]}"})
+    funcs = res["funcionarios"]
+    if not funcs:
+        return jsonify({"ok": False, "msg": (
+            "Nenhuma diferença encontrada: o salário atual de quem foi escolhido é igual "
+            "ao dos meses base.")})
+
+    cpf = str(session.get("cpf") or "")[:11]
+    movs, det = [], []
+    for f in funcs:
+        movs.append({"id_cliente": id_cliente, "id_empresa": id_empresa, "situacao": "A",
+                     "matricula": f["matricula"], "folha": int(anomes), "folha_tipo": "N",
+                     "cod_verba": destino, "qtd": 0, "valor": f["total"],
+                     "lote": DISSIDIO_LOTE, "origem": "M", "controle": 0, "os": 0})
+        for m in f["meses"]:
+            for ln in m["linhas"]:
+                det.append({"id_cliente": id_cliente, "id_empresa": id_empresa,
+                            "folha": int(anomes), "folha_tipo": "N",
+                            "matricula": f["matricula"], "folha_base": m["ym"],
+                            "folha_base_tipo": m["tipo"], "sal_atual": f["sal_atual"],
+                            "sal_base": m["sal_base"], "indice": round(m["indice"], 8),
+                            "cod_verba": ln["cod"], "valor_base": ln["valor_base"],
+                            "valor_dif": ln["valor_dif"], "cod_verba_destino": destino,
+                            "cpf_usuario": cpf})
+    try:
+        if ja:
+            _diss_apagar(id_empresa, anomes)
+        for i in range(0, len(det), 500):
+            supabase.table("tab_dissidio").insert(det[i:i + 500]).execute()
+        for i in range(0, len(movs), 500):
+            supabase.table("tab_mov").insert(movs[i:i + 500]).execute()
+    except Exception as e:
+        # Sem transação no Supabase: o que entrou pela metade sai de novo.
+        try:
+            _diss_apagar(id_empresa, anomes)
+        except Exception:
+            pass
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {str(e)[:200]}. Nada foi gravado."})
+
+    meses_txt = ", ".join(_diss_label(*b) for b in bases)
+    gravar_log("DISSIDIO", (f"Dif. dissidio {meses_txt} -> verba {destino:04d}: "
+                            f"{len(funcs)} func., total {_fmt_val(res['total_geral'])}")[:200])
+    return jsonify({"ok": True, "funcionarios": len(funcs), "total": res["total_geral"],
+                    "msg": (f"Diferença de dissídio gravada para {len(funcs)} funcionário(s), "
+                            f"total {_fmt_brl(res['total_geral'])}, na verba {destino:04d}. "
+                            "Calcule a folha para ela entrar no contracheque.")})
+
+
+@app.route("/api/dissidio/excluir", methods=["POST"])
+def api_dissidio_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    erro = _diss_travas_gravar()
+    if erro:
+        return jsonify({"ok": False, "msg": erro})
+    anomes, id_empresa = str(session.get("anomes_atual")), _get_id_empresa()
+    try:
+        n = _diss_apagar(id_empresa, anomes)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {str(e)[:200]}"})
+    gravar_log("DISSIDIO", f"Excluida a diferenca de dissidio da folha {anomes} ({n} lancamento(s))")
+    return jsonify({"ok": True, "msg": f"Diferença de dissídio excluída ({n} lançamento(s) do movimento)."})
+
+
+def _diss_flowables_func(f, estilos, larg, empresa_nm="", cnpj_fmt="", anomes="",
+                         destino_txt="", cabecalho=True):
+    """Demonstrativo individual de um funcionário (lista de flowables)."""
+    from reportlab.platypus import Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib import colors
+    out = []
+    if cabecalho:
+        out.append(Paragraph("DEMONSTRATIVO DA DIFERENÇA DE DISSÍDIO", estilos["tit"]))
+        out.append(Paragraph(f"{empresa_nm} — CNPJ {cnpj_fmt}", estilos["sub"]))
+        out.append(Paragraph(f"Pago na folha de {anomes[4:6]}/{anomes[:4]}"
+                             + (f" — verba {destino_txt}" if destino_txt else ""), estilos["sub"]))
+        out.append(Spacer(1, 8))
+    out.append(Paragraph(f"<b>{f['matricula']:06d} — {f['nome']}</b>   "
+                         f"Salário atual: {_fmt_brl(f['sal_atual'])}", estilos["txt"]))
+    out.append(Spacer(1, 4))
+    dados = [["Mês", "Salário no mês", "Índice", "Verba", "Valor pago no mês", "Diferença"]]
+    estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8),
+              ("FONT", (0, 1), (-1, -1), "Helvetica", 8),
+              ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+              ("ALIGN", (1, 0), (2, -1), "RIGHT"), ("ALIGN", (4, 0), (5, -1), "RIGHT"),
+              ("LINEBELOW", (0, 0), (-1, 0), 0.5, colors.HexColor("#94a3b8")),
+              ("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]
+    for m in f["meses"]:
+        ini = len(dados)
+        for k, ln in enumerate(m["linhas"]):
+            dados.append([m["label"] if k == 0 else "",
+                          _fmt_val(m["sal_base"]) if k == 0 else "",
+                          _diss_pct(m["indice"]) if k == 0 else "",
+                          f"{ln['cod']:04d} {ln['dsc'][:28]}",
+                          _fmt_val(ln["valor_base"]),
+                          _fmt_val(ln["valor_dif"])])
+        dados.append(["", "", "", f"Total de {m['label']}", "", _fmt_val(m["total"])])
+        fim = len(dados) - 1
+        estilo += [("FONT", (3, fim), (-1, fim), "Helvetica-Bold", 8),
+                   ("LINEABOVE", (3, fim), (-1, fim), 0.3, colors.HexColor("#cbd5e1"))]
+        if ini > 1:
+            estilo.append(("LINEABOVE", (0, ini), (-1, ini), 0.5, colors.HexColor("#94a3b8")))
+    dados.append(["", "", "", "TOTAL DA DIFERENÇA", "", _fmt_val(f["total"])])
+    estilo += [("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 9),
+               ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#dcfce7"))]
+    w = larg
+    t = Table(dados, colWidths=[w * .13, w * .14, w * .11, w * .32, w * .15, w * .15], repeatRows=1)
+    t.setStyle(TableStyle(estilo))
+    out.append(t)
+    return out
+
+
+def _diss_estilos():
+    from reportlab.lib.styles import ParagraphStyle
+    return {"tit": ParagraphStyle("dt", fontName="Helvetica-Bold", fontSize=12, leading=15),
+            "sub": ParagraphStyle("ds", fontName="Helvetica", fontSize=8.5, leading=11,
+                                  textColor="#475569"),
+            "txt": ParagraphStyle("dx", fontName="Helvetica", fontSize=9, leading=12),
+            "av":  ParagraphStyle("da", fontName="Helvetica", fontSize=8, leading=10,
+                                  textColor="#92400e")}
+
+
+def _diss_desenhar_demonstrativo(c, f, empresa_nm, cnpj_fmt, anomes, destino_txt):
+    """Página do demonstrativo no canvas do contracheque (uma ou mais páginas)."""
+    from reportlab.platypus import Frame
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    W, H = A4
+    estilos = _diss_estilos()
+    flow = _diss_flowables_func(f, estilos, W - 3 * cm, empresa_nm, cnpj_fmt, anomes, destino_txt)
+    while flow:
+        fr = Frame(1.5 * cm, 1.5 * cm, W - 3 * cm, H - 3 * cm, showBoundary=0)
+        fr.addFromList(flow, c)
+        c.showPage()
+
+
+def _diss_mapa_contracheque(id_cliente, id_empresa, anomes, anomes_tipo):
+    """{matricula: dados} do dissídio gravado na folha, para o contracheque."""
+    if str(anomes_tipo or "N") != "N":
+        return {}, ""
+    g = _diss_gravado(id_cliente, id_empresa, anomes)
+    if not g:
+        return {}, ""
+    destino_txt = f"{g['verba_destino']:04d} {g['verba_destino_dsc']}".strip()
+    return {f["matricula"]: f for f in g["funcionarios"]}, destino_txt
+
+
+@app.route("/dissidio_pdf")
+def dissidio_pdf():
+    """Listagem contínua de todos + demonstrativo individual (uma página cada).
+    ?gravado=1 reimprime o que está gravado; sem ele, calcula com os parâmetros."""
+    if not session.get("logado"):
+        return redirect("/")
+    from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle, Paragraph,
+                                    Spacer, PageBreak)
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import cm
+    from io import BytesIO
+    from flask import make_response
+    anomes     = str(session.get("anomes_atual") or "")
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    if len(anomes) != 6:
+        return "Nenhuma folha ativa.", 400
+    empresa_nm = str(session.get("empresa_info") or "")
+    cnpj_fmt   = _fmt_cnpj(str(session.get("cnpj_empresa") or ""))
+    individual = request.args.get("individual", "1") != "0"
+    rub        = _diss_rubricas(id_cliente)
+
+    if request.args.get("gravado") == "1":
+        res = _diss_gravado(id_cliente, id_empresa, anomes)
+        if not res:
+            return "Não há diferença de dissídio gravada nesta folha.", 404
+        bases_txt   = ", ".join(res["bases"])
+        destino_txt = f"{res['verba_destino']:04d} {res['verba_destino_dsc']}".strip()
+        nao_txt     = ""
+        situacao    = "GRAVADO"
+    else:
+        bases, nao, mats, com_aumento = _diss_ler_params(request.args)
+        if not bases:
+            return "Escolha ao menos um mês base.", 400
+        res = _diss_calcular(id_cliente, id_empresa, anomes, bases, nao, mats or None, com_aumento)
+        bases_txt = ", ".join(_diss_label(*b) for b in bases)
+        try:
+            dest = int(request.args.get("verba_destino") or 0)
+        except ValueError:
+            dest = 0
+        destino_txt = f"{dest:04d} {(rub.get(dest) or {}).get('dsc', '')}".strip() if dest else ""
+        nao_txt     = ", ".join(f"{n:04d}" for n in sorted(nao)) or "nenhuma"
+        situacao    = "SIMULAÇÃO — nada gravado"
+
+    est  = _diss_estilos()
+    buf  = BytesIO()
+    larg = A4[0] - 3 * cm
+    agora = _agora_brasilia().strftime("%d/%m/%Y %H:%M")
+
+    def _rodape(cv, doc):
+        cv.saveState()
+        cv.setFont("Helvetica", 7)
+        cv.setFillColor(colors.HexColor("#64748b"))
+        cv.drawString(1.5 * cm, 0.8 * cm, f"Folha10-Simples — Diferença de Dissídio — emitido em {agora}")
+        cv.drawRightString(A4[0] - 1.5 * cm, 0.8 * cm, f"Página {doc.page}")
+        cv.restoreState()
+
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=1.5 * cm, rightMargin=1.5 * cm,
+                            topMargin=1.3 * cm, bottomMargin=1.4 * cm,
+                            title="Diferença de Dissídio")
+    st = [Paragraph("CÁLCULO DA DIFERENÇA DE DISSÍDIO", est["tit"]),
+          Paragraph(f"{empresa_nm} — CNPJ {cnpj_fmt}", est["sub"]),
+          Paragraph(f"Folha que paga: {anomes[4:6]}/{anomes[:4]} — Meses base: {bases_txt}"
+                    + (f" — Verba destino: {destino_txt}" if destino_txt else ""), est["sub"]),
+          Paragraph((f"Verbas que não entram: {nao_txt} — " if nao_txt else "")
+                    + f"Descontos que reduzem a diferença: "
+                    + ", ".join(f"{c:04d}" for c in DISSIDIO_DESCONTOS) + f" — {situacao}", est["sub"]),
+          Spacer(1, 8)]
+
+    # ── Listagem contínua ──
+    dados = [["Funcionário / Mês", "Sal. atual", "Sal. no mês", "Índice", "Verba",
+              "Valor no mês", "Diferença"]]
+    estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7.5),
+              ("FONT", (0, 1), (-1, -1), "Helvetica", 7.5),
+              ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#eaf1fb")),
+              ("ALIGN", (1, 0), (3, -1), "RIGHT"), ("ALIGN", (5, 0), (6, -1), "RIGHT"),
+              ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]
+    for f in res["funcionarios"]:
+        ini = len(dados)
+        dados.append([f"{f['matricula']:06d} - {f['nome'][:34]}", _fmt_val(f["sal_atual"]),
+                      "", "", "", "", ""])
+        estilo += [("FONT", (0, ini), (-1, ini), "Helvetica-Bold", 7.5),
+                   ("BACKGROUND", (0, ini), (-1, ini), colors.HexColor("#f8fafc"))]
+        if ini > 1:
+            estilo.append(("LINEABOVE", (0, ini), (-1, ini), 0.6, colors.HexColor("#94a3b8")))
+        for m in f["meses"]:
+            for k, ln in enumerate(m["linhas"]):
+                dados.append(["    " + m["label"] if k == 0 else "", "",
+                              _fmt_val(m["sal_base"]) if k == 0 else "",
+                              _diss_pct(m["indice"]) if k == 0 else "",
+                              f"{ln['cod']:04d} {ln['dsc'][:24]}",
+                              _fmt_val(ln["valor_base"]), _fmt_val(ln["valor_dif"])])
+            if len(f["meses"]) > 1:
+                dados.append(["", "", "", "", f"Total {m['label']}", "", _fmt_val(m["total"])])
+                estilo.append(("FONT", (4, len(dados) - 1), (-1, len(dados) - 1), "Helvetica-Oblique", 7.5))
+        dados.append(["", "", "", "", "Total do funcionário", "", _fmt_val(f["total"])])
+        estilo.append(("FONT", (4, len(dados) - 1), (-1, len(dados) - 1), "Helvetica-Bold", 7.5))
+    dados.append(["TOTAL GERAL DA DIFERENÇA", "", "", "", f"{len(res['funcionarios'])} funcionário(s)",
+                  "", _fmt_val(res["total_geral"])])
+    estilo += [("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 8.5),
+               ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#dcfce7")),
+               ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#166534"))]
+    t = Table(dados, colWidths=[larg * .27, larg * .1, larg * .1, larg * .09, larg * .22,
+                                larg * .11, larg * .11], repeatRows=1)
+    t.setStyle(TableStyle(estilo))
+    st.append(t)
+
+    if res.get("avisos"):
+        st += [Spacer(1, 10), Paragraph("<b>Sem diferença calculada</b>", est["txt"]), Spacer(1, 3)]
+        for a in res["avisos"]:
+            st.append(Paragraph(f"{a['matricula']:06d} - {a['nome']} — {a['base']}: {a['motivo']}",
+                                est["av"]))
+
+    # ── Demonstrativos individuais ──
+    if individual:
+        for f in res["funcionarios"]:
+            st.append(PageBreak())
+            st += _diss_flowables_func(f, est, larg, empresa_nm, cnpj_fmt, anomes, destino_txt)
+            st += [Spacer(1, 30),
+                   Paragraph("Recebi a diferença acima demonstrada.", est["txt"]),
+                   Spacer(1, 28),
+                   Paragraph("_______________________________________________", est["txt"]),
+                   Paragraph(f"{f['nome']}", est["sub"])]
+
+    doc.build(st, onFirstPage=_rodape, onLaterPages=_rodape)
+    resp = make_response(buf.getvalue())
+    resp.headers["Content-Type"] = "application/pdf"
+    resp.headers["Content-Disposition"] = (
+        f'inline; filename="Diferenca_Dissidio_{anomes}.pdf"')
+    return resp
+
+
+# =========================================================
 # ACIDENTE — API: data/hora de registro do afastamento vinculado
 # =========================================================
 @app.route("/api/evento_info")
@@ -56065,7 +56748,8 @@ def recibo_pensao_pdf():
 
 def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                               empresa_nm, cnpj_fmt, modo="1",
-                              matriculas_sel=None, com_assinatura=True):
+                              matriculas_sel=None, com_assinatura=True,
+                              com_dissidio=False):
     from reportlab.pdfgen.canvas import Canvas
     from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
@@ -56631,10 +57315,27 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
 
     cs = com_assinatura   # alias curto
 
+    # Demonstrativo da diferença de dissídio (opcional): uma página logo
+    # depois do contracheque de quem recebeu a diferença nesta folha.
+    dis_map, dis_dest = ({}, "")
+    if com_dissidio:
+        try:
+            dis_map, dis_dest = _diss_mapa_contracheque(id_cliente, id_empresa,
+                                                        anomes, anomes_tipo)
+        except Exception:
+            dis_map, dis_dest = ({}, "")
+
+    def dissidio_apos(*funcs):
+        for fu in funcs:
+            dd = dis_map.get(fu["mat"])
+            if dd:
+                _diss_desenhar_demonstrativo(c, dd, empresa_nm, cnpj_fmt, anomes, dis_dest)
+
     if modo == "1":
         for func in all_funcs:
             draw_stub(ML, y_full, W_stub, func, compact=False, com_sig=cs)
             finish_page()
+            dissidio_apos(func)
 
     elif modo == "2S":
         for func in all_funcs:
@@ -56648,6 +57349,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 draw_stub(ML, y_top_bot, W_stub, func, compact=True,
                           label_via="FUNCIONÁRIO", com_sig=cs)
             finish_page()
+            dissidio_apos(func)
 
     elif modo == "2D":
         i = 0
@@ -56657,6 +57359,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
             if h1 > H_half - 4:
                 draw_stub(ML, y_full, W_stub, func1, compact=False, com_sig=cs)
                 finish_page()
+                dissidio_apos(func1)
                 i += 1
             else:
                 j = i + 1
@@ -56669,6 +57372,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                         draw_cut_line(y_cut)
                         draw_stub(ML, y_top_bot, W_stub, func2, compact=True, com_sig=cs)
                         finish_page()
+                        dissidio_apos(func1, func2)
                         all_funcs.pop(j)
                         paired = True
                         break
@@ -56676,6 +57380,7 @@ def _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                 if not paired:
                     draw_stub(ML, y_full, W_stub, func1, compact=False, com_sig=cs)
                     finish_page()
+                    dissidio_apos(func1)
                 i += 1
 
     c.save()
@@ -56746,6 +57451,9 @@ def contracheque():
         tipo_lbl     = tipo_lbl,
         funcionarios = funcionarios,
         pasta_salvar = pasta_salvar,
+        # Caixa "demonstrativo do dissídio" só aparece se a folha tem dissídio
+        tem_dissidio = bool(_diss_mapa_contracheque(id_cliente, id_empresa,
+                                                    anomes, anomes_tipo)[0]),
     )
 
 
@@ -56767,6 +57475,7 @@ def contracheque_pdf():
     mats_str       = request.args.getlist("mat")
     matriculas_sel = [int(m) for m in mats_str if m.isdigit()] if mats_str else []
     com_assinatura = request.args.get("assinatura", "1") != "0"
+    com_dissidio   = request.args.get("dissidio", "0") == "1"
 
     from flask import make_response
     ano, mes  = anomes[:4], anomes[4:6]
@@ -56804,7 +57513,8 @@ def contracheque_pdf():
                 try:
                     buf_i    = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo,
                                                        id_cliente, empresa_nm, cnpj_fmt,
-                                                       modo, [mat], com_assinatura)
+                                                       modo, [mat], com_assinatura,
+                                                       com_dissidio)
                     pdf_i    = buf_i.read()
                     if len(pdf_i) < 3000:
                         continue  # sem conteúdo (zero proventos/descontos)
@@ -56857,7 +57567,7 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
 
     buf = _gerar_contracheque_pdf(id_empresa, anomes, anomes_tipo, id_cliente,
                                    empresa_nm, cnpj_fmt, modo,
-                                   matriculas_sel, com_assinatura)
+                                   matriculas_sel, com_assinatura, com_dissidio)
     pdf_bytes = buf.read()
 
     # Grava automaticamente no disco

@@ -236,6 +236,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1">
                     <label for="chkSalvarInd">Um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
                 </div>
+                {% if tem_dissidio %}
+                <div class="chk-row">
+                    <input type="checkbox" id="chkDissidio" name="dissidio" value="1">
+                    <label for="chkDissidio">Incluir o demonstrativo da diferença de dissídio <span style="font-size:11px;color:#64748b;">(uma página após o contracheque de quem recebeu)</span></label>
+                </div>
+                {% endif %}
             </div>
 
             <div class="aviso">

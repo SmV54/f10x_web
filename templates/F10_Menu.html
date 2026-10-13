@@ -694,6 +694,9 @@ const modulos = {
                 { icone: '💹', nome: 'Alteração de Salário',   href: '/select_funcionario?contexto=aumento',          ok: true },
                 { icone: '↩️', nome: 'Cancelar Alteração',     href: '/cad_cancelar_aumento',                         ok: true },
                 { icone: '📊', nome: 'Relatório de Salários',  href: '/relatorios_config?rel=sal_aumento',            ok: true },
+                // Simular e reimprimir valem com a folha Calculada/Fechada; gravar
+                // e excluir a tela/servidor só deixam com a folha Aberta.
+                { icone: '🧮', nome: 'Diferença de Dissídio',  href: '/dissidio',                                     ok: true, permiteFolhaBloqueada: true },
             ]},
             // semAtalho: com a folha Calculada/Fechada o menu reduz a seção aos
             // itens permiteFolhaBloqueada, e aqui sobra só o "Emitir Aviso Prévio".
