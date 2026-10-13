@@ -131,6 +131,44 @@ body {
 
 .btn-sair:hover { color: #64748b; text-decoration: underline; }
 
+/* Empresa desativada: selo na linha e quadro de aviso ao escolher */
+.empresa-btn.desativada { background: #fff7f7; border-color: #fecaca; }
+.empresa-btn.desativada .empresa-nome { color: #64748b; }
+.selo-desat {
+    flex-shrink: 0; margin-left: 10px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    padding: 3px 9px; border-radius: 10px;
+    background: #fef2f2; color: #b91c1c; border: 1px solid #fca5a5;
+}
+.modal-fundo {
+    display: none; position: fixed; inset: 0; z-index: 50;
+    background: rgba(15, 23, 42, 0.55);
+    align-items: center; justify-content: center; padding: 24px;
+}
+.modal-fundo.aberto { display: flex; }
+.modal {
+    width: 100%; max-width: 980px; background: white; border-radius: 16px;
+    box-shadow: 0 18px 50px rgba(0,0,0,0.35); overflow: hidden;
+}
+.modal-topo { border-left: 5px solid #dc2626; background: #fef2f2; padding: 16px 22px; }
+.modal-topo .t { font-size: 16px; font-weight: bold; color: #b91c1c; }
+.modal-topo .e { font-size: 13px; color: #374151; margin-top: 4px; }
+.modal-corpo { padding: 8px 22px 4px; }
+.avisos { list-style: none; font-size: 13px; color: #374151; line-height: 1.6; }
+.avisos li { padding: 8px 0 8px 22px; position: relative; border-bottom: 1px solid #f1f5f9; }
+.avisos li:last-child { border-bottom: none; }
+.avisos li::before { content: '•'; position: absolute; left: 6px; color: #b91c1c; font-weight: bold; }
+.avisos b { color: #0f172a; }
+.modal-botoes { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 22px 18px; }
+.modal-botoes button {
+    font-family: Arial, sans-serif; font-size: 13px; font-weight: 600;
+    padding: 10px 20px; border-radius: 8px; cursor: pointer;
+}
+.btn-outra  { background: white; color: #374151; border: 1px solid #cbd5e1; }
+.btn-outra:hover { border-color: #1d4ed8; color: #1d4ed8; }
+.btn-entrar { background: #1d4ed8; color: white; border: 1px solid #1d4ed8; }
+.btn-entrar:hover { background: #1e40af; }
+
 .msg-erro {
     display: none;
     background: #fef2f2;
@@ -154,12 +192,23 @@ body {
 
     <div class="lista-empresas">
         {% for emp in empresas %}
+        {% if emp.desativada %}
+        <button class="empresa-btn desativada"
+                onclick="avisoDesativada({{ emp.id_empresa }}, {{ emp.nome|tojson|forceescape }}, {{ emp.cnpj_fmt|tojson|forceescape }}, {{ emp.dt_desativacao|tojson|forceescape }})"
+                title="Empresa desativada{% if emp.dt_desativacao %} em {{ emp.dt_desativacao }}{% endif %} — só consultas e relatórios">
+            <div class="empresa-info">
+                <div class="empresa-nome">{{ emp.cnpj_fmt }} — {{ '%06d' | format(emp.id_empresa) }} — {{ emp.nome }}</div>
+            </div>
+            <span class="selo-desat">DESATIVADA</span>
+        </button>
+        {% else %}
         <button class="empresa-btn" onclick="selecionar({{ emp.id_empresa }})">
             <div class="empresa-info">
                 <div class="empresa-nome">{{ emp.cnpj_fmt }} — {{ '%06d' | format(emp.id_empresa) }} — {{ emp.nome }}</div>
             </div>
             <span class="empresa-icone">&#8594;</span>
         </button>
+        {% endif %}
         {% endfor %}
     </div>
 
@@ -170,7 +219,44 @@ body {
     </div>
 </div>
 
+<!-- Quadro de aviso ao escolher empresa desativada (os mesmos avisos da tela
+     Desativar Empresa) -->
+<div class="modal-fundo" id="modalDesat" onclick="if (event.target === this) fecharAviso()">
+    <div class="modal">
+        <div class="modal-topo">
+            <div class="t" id="mdTitulo">🚫 Esta empresa está DESATIVADA</div>
+            <div class="e" id="mdEmpresa"></div>
+        </div>
+        <div class="modal-corpo">
+            <ul class="avisos">
+                <li><b>Nada pode ser gravado nem calculado</b> nesta empresa: funcionários, folha,
+                    adiantamentos, 13º, férias, rescisão, afastamentos, faltas, movimento.</li>
+                <li><b>O eSocial está BLOQUEADO</b>: nenhum evento pode ser enviado.</li>
+                <li>Ficam só as <b>consultas e os relatórios</b>.</li>
+                <li>A empresa e os funcionários dela <b>não contam na sua licença</b>.</li>
+                <li><b>A reativação só pode ser feita pelo suporte do Folha10-Simples</b>.</li>
+            </ul>
+        </div>
+        <div class="modal-botoes">
+            <button type="button" class="btn-outra" onclick="fecharAviso()">Escolher outra empresa</button>
+            <button type="button" class="btn-entrar" id="mdEntrar">Entrar só para consultar</button>
+        </div>
+    </div>
+</div>
+
 <script>
+function avisoDesativada(id_empresa, nome, cnpj, desde) {
+    document.getElementById('mdTitulo').textContent =
+        '🚫 Esta empresa está DESATIVADA' + (desde ? ' desde ' + desde : '');
+    document.getElementById('mdEmpresa').textContent = cnpj + ' — ' + nome;
+    document.getElementById('mdEntrar').onclick = function () { fecharAviso(); selecionar(id_empresa); };
+    document.getElementById('modalDesat').classList.add('aberto');
+}
+function fecharAviso() {
+    document.getElementById('modalDesat').classList.remove('aberto');
+}
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') fecharAviso(); });
+
 async function selecionar(id_empresa) {
     const el = document.getElementById('msgErro');
     function erro(txt) { el.textContent = txt; el.style.display = 'block'; }

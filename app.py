@@ -1264,17 +1264,35 @@ def _primeira_empresa(id_cliente):
 
 
 def _listar_empresas(id_cliente):
-    """Retorna lista de todas as empresas do cliente, ordenadas pela razão social."""
+    """Retorna lista de todas as empresas do cliente, ordenadas pela razão social.
+    `desativada` marca as que o cliente desativou (ver _empresa_desativada)."""
     r = (supabase.table("tab_empresa")
          .select("id_empresa, cnpj, razaosocial, nome_fantasia")
          .eq("id_cliente", id_cliente)
          .order("razaosocial")
          .execute())
+    desat = _empresas_desativadas(id_cliente)
     return [{
         "id_empresa": row.get("id_empresa"),
         "cnpj":       row.get("cnpj", ""),
         "nome":       row.get("razaosocial") or row.get("nome_fantasia") or "Empresa",
+        "desativada": row.get("id_empresa") in desat,
     } for row in (r.data or [])]
+
+
+def _datas_desativacao(id_cliente):
+    """{id_empresa: 'DD/MM/AAAA'} das empresas desativadas do cliente."""
+    try:
+        rows = (supabase.table("tab_empresa").select("id_empresa, dt_desativacao")
+                .eq("id_cliente", id_cliente).eq("situacao", "D")
+                .execute().data or [])
+    except Exception:
+        return {}
+    out = {}
+    for row in rows:
+        d = str(row.get("dt_desativacao") or "")[:10]
+        out[row["id_empresa"]] = f"{d[8:10]}/{d[5:7]}/{d[:4]}" if len(d) == 10 else ""
+    return out
 
 
 # =========================================================
@@ -1363,7 +1381,9 @@ def fazer_login():
         return jsonify({"ok": True, "redirect": "/mes_inicial",
                         "msg": "Login OK! O próximo passo é cadastrar a empresa."})
 
-    if len(empresas) > 1:
+    # Unica empresa, mas desativada: passa pela tela de escolha, que mostra o
+    # aviso antes de entrar.
+    if len(empresas) > 1 or empresas[0]["desativada"]:
         return jsonify({"ok": True, "redirect": "/selecionar_empresa",
                         "msg": "Selecione a empresa."})
 
@@ -1422,7 +1442,7 @@ def selecionar_empresa():
     empresas   = _listar_empresas(id_cliente)
     if not empresas:
         return redirect("/f10_cad_empresa")
-    if len(empresas) == 1:
+    if len(empresas) == 1 and not empresas[0]["desativada"]:
         empresa = _primeira_empresa(id_cliente)
         session["empresa_info"]    = empresa["nome"]
         session["cnpj_empresa"]    = empresa["cnpj"]
@@ -1431,11 +1451,14 @@ def selecionar_empresa():
         session["anomes_tipo"]     = empresa["anomes_tipo"]
         session["anomes_situacao"] = empresa["anomes_situacao"]
         return redirect("/menu")
+    datas = _datas_desativacao(id_cliente) if any(e["desativada"] for e in empresas) else {}
     return render_template(
         "F10_Selecionar_Empresa.html",
         versao   = ler_versao(),
         nome     = session.get("nome", ""),
-        empresas = [{**e, "cnpj_fmt": _fmt_cnpj(e["cnpj"])} for e in empresas],
+        empresas = [{**e, "cnpj_fmt": _fmt_cnpj(e["cnpj"]),
+                     "dt_desativacao": datas.get(e["id_empresa"], "")}
+                    for e in empresas],
     )
 
 
@@ -1549,8 +1572,8 @@ def trocar_empresa():
     # Exatamente 2: troca para a outra
     id_atual = session.get("id_empresa")
     outra = next((e for e in empresas if e["id_empresa"] != id_atual), None)
-    if not outra:
-        return redirect("/selecionar_empresa")
+    if not outra or outra["desativada"]:
+        return redirect("/selecionar_empresa")   # desativada: a lista mostra o aviso
 
     id_empresa = outra["id_empresa"]
     r = (supabase.table("tab_empresa")
@@ -19187,7 +19210,7 @@ def transferir_funcionario():
     # diferente em cada tela.
     destinos = [{**e, "cnpj_fmt": _fmt_cnpj(e.get("cnpj") or "")}
                 for e in _listar_empresas(id_cliente)
-                if e["id_empresa"] != id_empresa]
+                if e["id_empresa"] != id_empresa and not e["desativada"]]
 
     # Data sugerida: o dia 1 da folha ativa. Sai daqui e não do relógio do
     # navegador — a transferência tem que cair dentro da competência aberta, e
