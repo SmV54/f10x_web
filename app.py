@@ -29684,8 +29684,8 @@ def rel_aumento():
 
     vigencia_fmt   = f"{vigencia_raw[4:6]}/{vigencia_raw[:4]}"
     percentual_fmt = f"{percentual:.2f}".replace(".", ",")
-    if novo_sal_direto > 0 and len(mats_lista) == 1:
-        percentual_fmt += " (novo salário informado direto)"
+    reajuste_obs = ("novo salário informado direto"
+                    if novo_sal_direto > 0 and len(mats_lista) == 1 else "")
     vr_inf_fmt = "R$ " + f"{vr_inf/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
     vr_sup_fmt = "R$ " + f"{vr_sup/100:,.2f}".replace(",","X").replace(".",",").replace("X",".")
     faixa_str  = f"{vr_inf_fmt} — {vr_sup_fmt}"
@@ -29882,6 +29882,7 @@ def rel_aumento():
         registros=registros,
         vigencia_fmt=vigencia_fmt,
         percentual_fmt=percentual_fmt,
+        reajuste_obs=reajuste_obs,
         tipo_label=TIPO_LABEL.get(tipo, str(tipo)),
         motivo_label=MOTIVO_LABEL.get(motivo_raw, motivo_raw),
         faixa_label=faixa_label,

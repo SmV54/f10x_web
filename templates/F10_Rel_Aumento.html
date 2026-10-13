@@ -263,6 +263,7 @@ tbody td.nome { font-weight: 500; color: #1e293b; }
         <div class="param-item">
             <span class="param-label">Reajuste</span>
             <span class="param-valor mono">{{ percentual_fmt }}%</span>
+            {% if reajuste_obs %}<span style="display:block;font-size:11px;color:#2a7de1;font-weight:600;">{{ reajuste_obs }}</span>{% endif %}
         </div>
         <div class="param-item">
             <span class="param-label">Tipo de Aumento (2.5)</span>
