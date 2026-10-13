@@ -12399,7 +12399,7 @@ def inject_guia_tela():
     """Botão "? Ajuda" da tela atual (no _folha_ativa_tarja.html, que as telas
     já incluem). Com guia: abre o PDF. Sem guia: o botão mostra um aviso
     ("guia ainda não pronto, o suporte foi avisado") e chama a
-    /api/ajuda_sem_guia, que manda o e-mail pedindo o guia daquela tela."""
+    /api/ajuda_sem_guia, que manda o WhatsApp pedindo o guia daquela tela."""
     try:
         if not session.get("logado") or request.path in _AJUDA_SEM_BOTAO:
             return {}
@@ -12434,7 +12434,7 @@ def suporte_pdf(arquivo):
 
 @app.route("/api/ajuda_sem_guia")
 def api_ajuda_sem_guia():
-    """Botão "? Ajuda" numa tela sem guia: pede o guia ao suporte por e-mail.
+    """Botão "? Ajuda" numa tela sem guia: pede o guia ao suporte por WhatsApp.
     GET de propósito: a trava de empresa desativada barra POST, e pedir ajuda
     tem que funcionar sempre."""
     if not session.get("logado"):
@@ -32778,13 +32778,14 @@ def apple_touch_icon():
 
 
 # =========================================================
-# AVISO POR E-MAIL — cliente caiu num "não encontrado"
+# AVISO POR WHATSAPP — cliente caiu num "não encontrado"
 # =========================================================
 # Só para cliente logado: robô varrendo URL (wp-admin, .env...) não tem sessão
-# e não gera e-mail. O mesmo endereço do mesmo cliente avisa uma vez por hora,
-# para um clique repetido não lotar a caixa. O envio vai numa thread: o SMTP
-# leva segundos e o cliente não espera por ele.
-_AVISO_404_PARA = "sergiomoraesvieira@outlook.com"
+# e não gera aviso. O mesmo endereço do mesmo cliente avisa uma vez por hora,
+# para um clique repetido não lotar o WhatsApp. O envio vai numa thread: a
+# Z-API leva segundos e o cliente não espera por ela. (Até 13/10/2026 ia por
+# e-mail; o usuário pediu WhatsApp no lugar.)
+_AVISO_404_WA = ("81988182000", "81988582000")
 _AVISO_404_ULTIMO = {}
 _BOTAO_AJUDA = 'botão "? Ajuda" (sem guia pronto)'
 
@@ -32804,23 +32805,28 @@ def _avisar_nao_encontrado(motivo, titulo="NAO ENCONTRADO", tela=None):
             return
         _AVISO_404_ULTIMO[chave] = agora
         id_cli = session.get("id_cliente") or 0
-        assunto = f"{titulo} - Cliente {int(id_cli):06d} - {tela or request.path}"[:150]
-        corpo = (
-            (f"Um cliente clicou em \"? Ajuda\" numa tela que ainda não tem guia (PDF).\n\n"
+        texto = (
+            f"*{titulo} - Folha10-Simples*\n" +
+            ("Cliente clicou em \"? Ajuda\" numa tela que ainda não tem guia (PDF).\n\n"
              if tela else
-             f"Um cliente caiu numa tela \"não encontrado\" no Folha10-Simples.\n\n") +
-            f"Data/hora: {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')} (Brasília)\n"
-            f"Cliente:   {int(id_cli):06d}\n"
-            f"Usuário:   {session.get('nome', '')} (CPF {session.get('cpf', '')})\n"
-            f"Empresa:   {session.get('empresa_info', '')} (id {session.get('id_empresa', '')})\n"
-            f"Competência: {session.get('anomes_atual', '')}\n\n"
-            f"Clicou em:  {_BOTAO_AJUDA if tela else caminho}\n"
-            f"Na tela:    {request.referrer or '(sem origem: digitado, favorito ou link externo)'}\n"
-            f"Motivo:     {motivo}\n"
-            f"Navegador:  {request.user_agent.string[:200]}\n"
+             "Cliente caiu numa tela \"não encontrado\".\n\n") +
+            f"*Data/hora:* {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')}\n"
+            f"*Cliente:* {int(id_cli):06d}\n"
+            f"*Usuário:* {session.get('nome', '')} (CPF {session.get('cpf', '')})\n"
+            f"*Empresa:* {session.get('empresa_info', '')} (id {session.get('id_empresa', '')})\n"
+            f"*Competência:* {session.get('anomes_atual', '')}\n\n"
+            f"*Clicou em:* {_BOTAO_AJUDA if tela else caminho}\n"
+            f"*Na tela:* {request.referrer or '(sem origem: digitado, favorito ou link externo)'}\n"
+            f"*Motivo:* {motivo}"
         )
-        threading.Thread(target=_enviar_email_texto, args=(_AVISO_404_PARA, assunto, corpo),
-                         daemon=True).start()
+
+        def _enviar():
+            for tel in _AVISO_404_WA:
+                ok, err = _enviar_whatsapp_texto(tel, texto)
+                if not ok:
+                    print(f"_avisar_nao_encontrado: WhatsApp {tel} nao enviado: {err}")
+
+        threading.Thread(target=_enviar, daemon=True).start()
     except Exception as e:
         print(f"_avisar_nao_encontrado: {e}")
 
