@@ -15,7 +15,7 @@
 </div>
 {% endif -%}
 {#
-  Botão "Passo a passo": abre o guia de suporte (PDF) desta tela. A tela →
+  Botão "? Ajuda" (vermelho): abre o guia de suporte (PDF) desta tela. A tela →
   guia fica em SUPORTE_TELAS, no app.py (context_processor inject_guia_tela);
   sem guia para a tela, nada aparece. Fica à esquerda do "?" do tour.
 #}
@@ -23,14 +23,19 @@
 <style>
 .f10-passo {
     position: fixed; right: 84px; bottom: 30px; z-index: 499;
-    display: inline-flex; align-items: center; gap: 6px;
-    background: #fff; color: #1d4ed8; border: 1.5px solid #93c5fd; border-radius: 22px;
-    padding: 8px 15px; font: 600 13px 'IBM Plex Sans', Arial, sans-serif; text-decoration: none;
-    box-shadow: 0 4px 16px rgba(42,125,225,.22);
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #fff; color: #dc2626; border: 2px solid #dc2626; border-radius: 22px;
+    padding: 6px 16px 6px 6px; font: 700 14px 'IBM Plex Sans', Arial, sans-serif; text-decoration: none;
+    box-shadow: 0 4px 16px rgba(220,38,38,.25);
 }
-.f10-passo:hover { background: #eff6ff; border-color: #2a7de1; }
+.f10-passo-ico {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: #dc2626; color: #fff; font-size: 15px; font-weight: 700;
+}
+.f10-passo:hover { background: #fef2f2; color: #b91c1c; border-color: #b91c1c; }
 @media print { .f10-passo { display: none; } }
 </style>
 <a class="f10-passo" href="{{ guia_tela.url }}" target="_blank" rel="noopener"
-   title="Abrir o guia: {{ guia_tela.titulo }}">📄 Passo a passo</a>
+   title="Passo a passo desta tela: {{ guia_tela.titulo }}"><span class="f10-passo-ico">?</span>Ajuda</a>
 {% endif -%}
