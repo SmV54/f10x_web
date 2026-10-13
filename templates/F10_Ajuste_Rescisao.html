@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Folha10 Simples — Ajustar Verba Calculada da Rescisão</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --navy:#a0d9be; --navy-line:#70c4a0; --accent:#2a7de1;
+    --text-head:#1e293b; --text-sub:#374151; --bg:#f0f2f6; --surface:#ffffff;
+    --border:#dde3ec; --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+body { font-family:var(--sans); background:var(--bg); color:var(--text-sub); min-height:100vh; }
+.topo {
+    background:var(--navy); border-bottom:1px solid var(--navy-line);
+    padding:0 28px; display:grid; grid-template-columns:auto 1fr auto;
+    align-items:center; gap:0 32px; min-height:64px; position:sticky; top:0; z-index:10;
+}
+.topo-titulo  { font-size:15px; font-weight:600; color:var(--text-head); text-align:center; }
+.topo-empresa { font-size:15px; font-weight:600; color:#111827; }
+.topo-nome    { font-size:11px; color:var(--text-sub); margin-top:2px; }
+.topo-versao  { font-family:var(--mono); font-size:10px; font-weight:700; color:#374151; }
+.btn-voltar-topo {
+    margin-left:16px; background:transparent; border:1px solid var(--navy-line);
+    color:var(--text-sub); font-size:12px; padding:5px 12px; border-radius:6px;
+    cursor:pointer; font-family:var(--sans); transition:.15s; white-space:nowrap;
+}
+.btn-voltar-topo:hover { border-color:var(--accent); color:var(--text-head); }
+
+.conteudo { max-width:900px; margin:28px auto; padding:0 24px 60px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:22px 24px; margin-bottom:18px; }
+.card h2 { font-size:15px; color:var(--text-head); margin-bottom:12px; }
+.nota { background:#eff6ff; border:1px solid #bfdbfe; color:#1e3a8a; border-radius:10px; padding:10px 14px; font-size:12.5px; line-height:1.55; margin-bottom:16px; }
+.nota.warn { background:#fffbeb; border-color:#fcd34d; color:#92400e; }
+.nota.err  { background:#fef2f2; border-color:#fca5a5; color:#991b1b; }
+label.lb { display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:5px; }
+select, input[type=text], textarea {
+    font-family:var(--sans); font-size:14px; padding:8px 10px; border:1px solid var(--border);
+    border-radius:8px; width:100%; background:#fff; color:#111827;
+}
+textarea { resize:vertical; min-height:60px; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:#64748b; padding:8px 8px; border-bottom:2px solid var(--border); }
+td { padding:8px 8px; border-bottom:1px solid #f1f5f9; vertical-align:top; }
+td.num, th.num { text-align:right; font-family:var(--mono); white-space:nowrap; }
+tr.ajustada td { background:#fffbeb; }
+.tag { display:inline-block; font-size:10.5px; font-weight:700; border-radius:10px; padding:1px 8px; }
+.tag.p { background:#dcfce7; color:#166534; }
+.tag.d { background:#fee2e2; color:#991b1b; }
+.tag.aj { background:#fde68a; color:#92400e; margin-left:6px; }
+.motivo { font-size:11.5px; color:#92400e; margin-top:3px; }
+.btn { font-size:13px; font-family:var(--sans); font-weight:600; padding:7px 14px; border-radius:8px; cursor:pointer; border:1px solid var(--border); background:#fff; color:#374151; white-space:nowrap; }
+.btn:hover { border-color:var(--accent); color:var(--accent); }
+.btn-pri { background:var(--accent); color:#fff; border:none; }
+.btn-pri:hover { background:#1a5fb8; color:#fff; }
+.btn-desf { color:#b91c1c; border-color:#fca5a5; }
+.vazio { font-size:13px; color:#64748b; padding:12px 0; }
+.form-aj { display:none; }
+.form-aj .linha { display:grid; grid-template-columns:200px 1fr; gap:14px; margin-bottom:12px; }
+.form-aj .calc { font-family:var(--mono); font-size:13px; color:#475569; margin-bottom:12px; }
+.btns { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+@media (max-width:640px) { .form-aj .linha { grid-template-columns:1fr; } .topo { padding:0 12px; gap:0 12px; } }
+</style>
+<link rel="stylesheet" href="/static/f10_folha_ativa.css?v=260915">
+</head>
+<body>
+
+{% include "_folha_ativa_tarja.html" %}
+<div class="topo">
+    <div style="display:flex;flex-direction:column;align-items:flex-start;">
+        <span class="topo-empresa">{% if empresa_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ empresa_num }} - </span>{% endif %}{{ empresa }}</span>
+        <span class="topo-nome">{% if cliente_num %}<span style="font-size:11px;font-weight:500;color:#9ca3af;font-variant-numeric:tabular-nums;">{{ cliente_num }} - </span>{% endif %}{{ nome }}</span>
+    </div>
+    <div class="topo-titulo">Ajustar Verba Calculada da Rescisão<span class="f10fa-junto">{% include "_folha_ativa_badge.html" %}</span></div>
+    <div style="display:flex;align-items:center;gap:16px;">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;">
+            <img src="/static/logo.png?v={{ versao }}" alt="Folha10" style="height:32px;width:auto;display:block;">
+            <div class="topo-versao">Versão: {{ versao }}</div>
+        </div>
+        <button class="btn-voltar-topo" onclick="window.location.href='/menu'">&#8592; Menu</button>
+    </div>
+</div>
+
+<div class="conteudo">
+
+    <div class="nota">
+        O valor informado aqui <strong>substitui</strong> o que o cálculo apurou e continua valendo
+        nos próximos recálculos. As bases de INSS, IRRF e FGTS e o líquido saem do valor ajustado.
+        <strong>Zero exclui</strong> a verba da rescisão. INSS e IRRF não se ajustam: saem das bases.
+        Ao gravar ou desfazer, a rescisão é <strong>recalculada na hora</strong>.
+    </div>
+
+    {% if not tabela_ok %}
+    <div class="nota err">A tabela de ajustes ainda não existe no banco. Fale com o suporte.</div>
+    {% elif folha_situacao in ('C', 'F') %}
+    <div class="nota warn">A folha não está Aberta. Reabra a folha em Mês/Ano para ajustar a rescisão.</div>
+    {% endif %}
+
+    <div class="card">
+        <h2>Funcionário</h2>
+        {% if funcs %}
+        <select id="selFunc" onchange="carregar()">
+            <option value="">— escolha o funcionário —</option>
+            {% for f in funcs %}
+            <option value="{{ f.matricula }}" data-calc="{{ 1 if f.calculado else 0 }}">{{ f.mat_fmt }} - {{ f.nome }} (rescisão {{ f.resc_data }}){% if not f.calculado %} — NÃO CALCULADA{% endif %}</option>
+            {% endfor %}
+        </select>
+        {% else %}
+        <div class="vazio">Nenhuma rescisão registrada no mês da folha ativa.</div>
+        {% endif %}
+    </div>
+
+    <div class="card" id="cardVerbas" style="display:none;">
+        <h2>Verbas calculadas</h2>
+        <div id="verbas"></div>
+    </div>
+
+    <div class="card form-aj" id="formAj">
+        <h2 id="ajTit">Ajustar verba</h2>
+        <div class="calc" id="ajCalc"></div>
+        <div class="linha">
+            <div>
+                <label class="lb" for="ajValor">Valor correto (R$)</label>
+                <input type="text" id="ajValor" inputmode="decimal" placeholder="0,00">
+            </div>
+            <div>
+                <label class="lb" for="ajMotivo">Motivo do ajuste</label>
+                <textarea id="ajMotivo" maxlength="300" placeholder="Ex.: perda de avos do 13º pelo afastamento"></textarea>
+            </div>
+        </div>
+        <div class="btns">
+            <button class="btn" onclick="fecharForm()">Cancelar</button>
+            <button class="btn btn-pri" id="btnGravar" onclick="gravar()">Gravar ajuste e recalcular</button>
+        </div>
+    </div>
+
+</div>
+
+<script src="/static/f10_dialog.js"></script>
+<script>
+const BLOQ = {{ 'true' if (not tabela_ok or folha_situacao in ('C', 'F')) else 'false' }};
+let verbas = [], verbaSel = null;
+
+function brl(c) {
+    const v = (Number(c) || 0) / 100;
+    return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function centavos(txt) {
+    let s = String(txt || '').trim().replace(/\s/g, '');
+    if (!s) return null;
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+    const n = Number(s);
+    if (!isFinite(n) || n < 0) return null;
+    return Math.round(n * 100);
+}
+function esc(t) {
+    const d = document.createElement('div'); d.textContent = String(t == null ? '' : t); return d.innerHTML;
+}
+function mat() { return (document.getElementById('selFunc') || {}).value || ''; }
+
+async function carregar() {
+    fecharForm();
+    const card = document.getElementById('cardVerbas'), box = document.getElementById('verbas');
+    if (!mat()) { card.style.display = 'none'; return; }
+    card.style.display = '';
+    box.innerHTML = '<div class="vazio">Carregando…</div>';
+    try {
+        const r = await fetch('/api/resc_ajuste/verbas?matricula=' + encodeURIComponent(mat()));
+        const j = await r.json();
+        if (!j.ok) { box.innerHTML = '<div class="nota err">' + esc(j.msg) + '</div>'; return; }
+        verbas = j.verbas || [];
+        desenhar();
+    } catch (e) {
+        box.innerHTML = '<div class="nota err">Não foi possível carregar as verbas.</div>';
+    }
+}
+
+function desenhar() {
+    const box = document.getElementById('verbas');
+    if (!verbas.length) {
+        box.innerHTML = '<div class="nota warn">Esta rescisão ainda não foi calculada. ' +
+            'Calcule em <a href="/calc_rescisao">Calcular Rescisão</a> e volte aqui.</div>';
+        return;
+    }
+    let h = '<table><thead><tr><th>Verba</th><th>Descrição</th><th class="num">Calculado</th>' +
+            '<th class="num">Valor na rescisão</th><th></th></tr></thead><tbody>';
+    verbas.forEach((v, i) => {
+        const aj = v.ajuste;
+        h += '<tr class="' + (aj ? 'ajustada' : '') + '">' +
+             '<td>' + esc(v.cod_fmt) + '</td>' +
+             '<td>' + esc(v.dsc) + ' <span class="tag ' + (v.tipo === 'D' ? 'd">Desconto' : 'p">Provento') + '</span>' +
+             (aj ? '<span class="tag aj">AJUSTADA</span><div class="motivo">' +
+                   (aj.em ? esc(aj.em) + ' — ' : '') + esc(aj.motivo) + '</div>' : '') + '</td>' +
+             '<td class="num">' + brl(v.calculado) + '</td>' +
+             '<td class="num"><b>' + (aj && !aj.valor ? 'excluída' : brl(aj ? aj.valor : v.valor)) + '</b></td>' +
+             '<td class="num">' +
+             (BLOQ ? '' : '<button class="btn" onclick="abrirForm(' + i + ')">Ajustar</button>' +
+                          (aj ? ' <button class="btn btn-desf" onclick="desfazer(' + i + ')">Desfazer</button>' : '')) +
+             '</td></tr>';
+    });
+    h += '</tbody></table>';
+    box.innerHTML = h;
+}
+
+function abrirForm(i) {
+    verbaSel = verbas[i];
+    const f = document.getElementById('formAj');
+    document.getElementById('ajTit').textContent = 'Ajustar verba ' + verbaSel.cod_fmt + ' - ' + verbaSel.dsc;
+    document.getElementById('ajCalc').textContent = 'Valor calculado: R$ ' + brl(verbaSel.calculado);
+    document.getElementById('ajValor').value = verbaSel.ajuste ? brl(verbaSel.ajuste.valor) : '';
+    document.getElementById('ajMotivo').value = verbaSel.ajuste ? verbaSel.ajuste.motivo : '';
+    f.style.display = 'block';
+    f.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    document.getElementById('ajValor').focus();
+}
+function fecharForm() {
+    document.getElementById('formAj').style.display = 'none';
+    verbaSel = null;
+}
+
+async function enviar(url, corpo) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                 body: JSON.stringify(corpo) });
+    return r.json();
+}
+
+async function gravar() {
+    if (!verbaSel) return;
+    const valor = centavos(document.getElementById('ajValor').value);
+    const motivo = document.getElementById('ajMotivo').value.trim();
+    if (valor === null) { await f10Alert('Informe o valor correto (zero exclui a verba).', { tipo: 'aviso' }); return; }
+    if (motivo.length < 5) { await f10Alert('Informe o motivo do ajuste.', { tipo: 'aviso' }); return; }
+    if (valor === 0) {
+        const ok = await f10Confirm('A verba ' + verbaSel.cod_fmt + ' - ' + verbaSel.dsc +
+                                    ' vai ser excluída da rescisão. Confirma?', { okText: 'Excluir' });
+        if (!ok) return;
+    }
+    const b = document.getElementById('btnGravar');
+    b.disabled = true; b.textContent = 'Gravando e recalculando…';
+    try {
+        const j = await enviar('/api/resc_ajuste/gravar',
+                               { matricula: mat(), cod_verba: verbaSel.cod, valor: valor, motivo: motivo });
+        if (!j.ok) { await f10Alert(j.msg, { tipo: 'erro' }); return; }
+        await f10Alert(j.msg + (j.aviso ? '\n\n' + j.aviso : ''), { tipo: j.aviso ? 'aviso' : 'sucesso' });
+        await carregar();
+    } catch (e) {
+        await f10Alert('Não foi possível gravar o ajuste.', { tipo: 'erro' });
+    } finally {
+        b.disabled = false; b.textContent = 'Gravar ajuste e recalcular';
+    }
+}
+
+async function desfazer(i) {
+    const v = verbas[i];
+    const ok = await f10Confirm('Desfazer o ajuste da verba ' + v.cod_fmt + ' - ' + v.dsc +
+                                '? Volta o valor calculado e a rescisão é recalculada.',
+                                { tipo: 'aviso', okText: 'Desfazer' });
+    if (!ok) return;
+    try {
+        const j = await enviar('/api/resc_ajuste/desfazer', { matricula: mat(), cod_verba: v.cod });
+        if (!j.ok) { await f10Alert(j.msg, { tipo: 'erro' }); return; }
+        await f10Alert(j.msg + (j.aviso ? '\n\n' + j.aviso : ''), { tipo: j.aviso ? 'aviso' : 'sucesso' });
+        await carregar();
+    } catch (e) {
+        await f10Alert('Não foi possível desfazer o ajuste.', { tipo: 'erro' });
+    }
+}
+</script>
+</body>
+</html>

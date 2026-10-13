@@ -9961,6 +9961,13 @@ def _calc_rescisao_nucleo(body, sim=None):
     _ul_dsc_r  = _verbas_ultimo_lanc(id_cliente, "inc_rescisao")
     _ul_val_r  = _ultimo_lanc_valores(id_cliente, id_empresa, anomes,
                                       [c.get("matricula") for c in demitidos], _ul_dsc_r)
+    # Afastamentos e faltas do ano para os avos do 13º (_avos13_cache), lidos
+    # uma vez por ano: a projeção do aviso pode cair no ano seguinte.
+    _avos13_por_ano = {}
+    # Ajustes de verba calculada (tab_resc_ajuste): o valor informado na tela
+    # Ajustar Verba Calculada passa por cima do apurado. Simulação não tem.
+    _ajustes_resc = {} if sim else _resc_ajustes_ler(
+        id_empresa, id_cliente, folha_int, [int(c.get("matricula") or 0) for c in demitidos])
     resultados = []
     _extras = {"aviso": "", "movs": {}, "tot": {}, "cad": {}}
     for cad in demitidos:
@@ -10228,7 +10235,22 @@ def _calc_rescisao_nucleo(body, sim=None):
         ini_ano = _date(dt_proj.year, 1, 1)
         if dt_adm and dt_adm > ini_ano:
             ini_ano = dt_adm
-        avos_13 = _conta_avos_resc(ini_ano, dt_proj) if tem_13 else 0
+        # Avos pela MESMA regra do 13º final (_avos_13): afastamento por doença
+        # do 16º dia em diante e falta injustificada saem dos dias do mês, e o
+        # mês com menos de 15 dias não gera avo. Até 13/10/2026 a rescisão só
+        # olhava o calendário: a mat 264 da empresa 34, afastada de 04/2024 a
+        # 14/05/2026, recebeu 10/12 em vez de 6/12. A projeção do aviso
+        # continua contando (dt_proj).
+        avos_13, avos13_det = 0, []
+        if tem_13:
+            if dt_proj.year not in _avos13_por_ano:
+                _avos13_por_ano[dt_proj.year] = _avos13_cache(id_empresa, id_cliente, dt_proj.year)
+            _af13, _fl13 = _avos13_por_ano[dt_proj.year]
+            _r13 = _avos_13(dt_proj.year, ini_ano.strftime("%Y%m%d"), dt_proj.strftime("%Y%m%d"),
+                            _af13.get(mat), _fl13.get(mat))
+            avos_13 = _r13["avos"]
+            # só os meses do contrato que NÃO deram avo, para a memória explicar
+            avos13_det = [_m for _m in _r13["meses"] if _m["dias_contrato"] and not _m["conta"]]
         d13 = round((sal_mes_ad + base_media_13) * avos_13 / 12) if avos_13 else 0
         # Férias: o período em curso (proporcionais) e os vencidos saem da MESMA
         # conta, encadeados — ver _ferias_aquisitivos_resc. Antes vinham de
@@ -10266,6 +10288,68 @@ def _calc_rescisao_nucleo(body, sim=None):
         # terco constitucional: uma linha so, sobre todas as ferias da rescisao
         # (o recesso do estagiário não tem o 1/3 — ver is_estag)
         terco_fer = 0 if is_estag else round((fer_prop + fer_venc) / 3)
+
+        # ── Ajuste de verba CALCULADA (tab_resc_ajuste, SMV 13/10/2026) ──
+        # O valor informado na tela Ajustar Verba Calculada entra no lugar do
+        # apurado, ANTES das bases: INSS, IRRF, FGTS e líquido saem dele. Zero
+        # exclui a verba. Só vale para verba que o cálculo gerou — ajuste de
+        # verba que deixou de sair fica sem efeito e a memória avisa.
+        # Férias mexidas refazem o 1/3 (a não ser que o 1/3 tenha ajuste próprio).
+        ajustes_det = []
+        _aj_mat = _ajustes_resc.get(mat) or {}
+        if _aj_mat:
+            def _aplica_aj(cod, atual):
+                aj = _aj_mat.get(cod)
+                if not aj:
+                    return atual
+                aj["usado"] = True
+                if not atual:
+                    ajustes_det.append({**aj, "calc": 0, "efeito": False})
+                    return atual
+                ajustes_det.append({**aj, "calc": atual, "efeito": True})
+                return aj["valor"]
+            saldo_sal = _aplica_aj(_verba_salario(_categ_n) if is_estag else VR_SALDO, saldo_sal)
+            for _c_ad in list(saldo_adics):
+                saldo_adics[_c_ad] = _aplica_aj(_c_ad, saldo_adics[_c_ad])
+                if not saldo_adics[_c_ad]:
+                    del saldo_adics[_c_ad]
+            saldo = saldo_sal + sum(saldo_adics.values())
+            atest_val  = _aplica_aj(VR_ATESTADO, atest_val)
+            falta_val  = _aplica_aj(VR_FALTA, falta_val)
+            dsr_val    = _aplica_aj(VR_DSR_FALTA, dsr_val)
+            aviso_val  = _aplica_aj(VR_AVISO_IND, aviso_val)
+            aviso_desc = _aplica_aj(VR_AVISO_EMP, aviso_desc)
+            d13        = _aplica_aj(VR_13_PROP, d13)
+            _fer_antes = (fer_prop, fer_venc)
+            fer_venc   = _aplica_aj(VR_FERIAS_VENC, fer_venc)
+            fer_prop   = _aplica_aj(VR_FERIAS_PROP, fer_prop)
+            if (fer_prop, fer_venc) != _fer_antes and not is_estag:
+                terco_fer = round((fer_prop + fer_venc) / 3)
+            terco_fer  = _aplica_aj(VR_TERCO_FERIAS, terco_fer)
+            art479     = _aplica_aj(VR_ART_479, art479)
+            art480     = _aplica_aj(VR_ART_480, art480)
+            # falta/DSR ajustados: a dedução das bases é refeita com o valor novo
+            desc_inss = desc_irrf = desc_fgts = 0
+            for _cd_f, _vl_f in ((VR_FALTA, falta_val), (VR_DSR_FALTA, dsr_val)):
+                _ri_f = _rubr_full.get(_cd_f) or {}
+                if _ri_f.get("icp") == "11":        desc_inss += _vl_f
+                if _ri_f.get("iir") == "11":        desc_irrf += _vl_f
+                if _ri_f.get("ift") in ("11", "S"): desc_fgts += _vl_f
+            # ajuste de verba que este cálculo não conhece (nem gera)
+            for _cod_aj, _aj in _aj_mat.items():
+                if not _aj.get("usado"):
+                    ajustes_det.append({**_aj, "calc": 0, "efeito": False})
+            # O "calculado" da tela é o deste cálculo, não o do dia do ajuste:
+            # mudou o dado (data, afastamento...), a tela mostra a conta nova.
+            if not sim:
+                for _a in ajustes_det:
+                    if _a["efeito"] and _a["calc"] != _a.get("valor_calculado"):
+                        try:
+                            (supabase.table("tab_resc_ajuste")
+                             .update({"valor_calculado": _a["calc"]})
+                             .eq("id", _a["id"]).execute())
+                        except Exception:
+                            pass
 
         # ── Verbas MANUAIS (origem='M') lançadas na rescisão ──
         # Proventos entram nos totais e (conforme incidência) nas bases de
@@ -10583,6 +10667,8 @@ def _calc_rescisao_nucleo(body, sim=None):
             "dia_resc_real": dt_resc.day,
             "und_sal": und, "qtd_hrs_mes": qhm, "sal_hora": sal_hora_man,
             "aviso_val": aviso_val, "avos_13": avos_13, "d13": d13,
+            "avos13_det": avos13_det, "ano_13": dt_proj.year,
+            "ajustes_det": ajustes_det,
             "avos_fer": avos_fer, "fer_prop": fer_prop,
             "fer_ini_aq": ini_aq.strftime("%d/%m/%Y") if ini_aq else "",
             "fer_avos_det": _avos_ferias_detalhe(ini_aq, dt_proj) if (tem_fer and ini_aq) else [],
@@ -10661,7 +10747,8 @@ def _calc_rescisao_nucleo(body, sim=None):
 # Campos que só servem à memória de cálculo (listas longas de detalhamento):
 # não vão no JSON da tela.
 _CAMPOS_SO_PDF = {"medias_info", "inss_saldo_det", "inss_13_det",
-                  "irrf_saldo_info", "irrf_13_info", "manuais_det", "faltas_resc"}
+                  "irrf_saldo_info", "irrf_13_info", "manuais_det", "faltas_resc",
+                  "avos13_det"}
 
 
 @app.route("/api/calc_rescisao_calcular", methods=["POST"])
@@ -10977,10 +11064,25 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                             passos=[("media12", "12 meses para férias · ano corrente para o 13º")]))
             # 0005 — 13º proporcional (médias do ano corrente)
             if r["d13"]:
-                e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [
+                _lin_13 = []
+                _fora13 = r.get("avos13_det") or []
+                if _fora13:
+                    _lin_13.append("Mês com menos de 15 dias trabalhados não gera avo; "
+                                   "afastamento por doença (do 16º dia) e falta "
+                                   "injustificada não contam como dia trabalhado:")
+                    for _m in _fora13:
+                        _lin_13.append(
+                            f"&nbsp;&nbsp;&nbsp;{_m['mes']:02d}/{r.get('ano_13', '')}: "
+                            f"{_m['dias_contam']} de {_m['dias_contrato']} dia(s) → "
+                            f"<b>não conta</b>" + (f" ({_m['motivo']})" if _m.get("motivo") else ""))
+                _aj13 = next((_a for _a in (r.get("ajustes_det") or [])
+                              if _a["cod"] == VR_13_PROP and _a["efeito"]), None)
+                _v13 = _aj13["calc"] if _aj13 else r["d13"]
+                _lin_13.append(
                     f"({_rem_lbl} {_B(_rem)} + Médias {_B(r.get('med_total_13', 0))})"
-                    f" × {r['avos_13']}/12 = <b>{_B(r['d13'])}</b>",
-                ]))
+                    f" × {r['avos_13']}/12 = <b>{_B(_v13)}</b>"
+                    + (f"   → ajustado para <b>{_B(r['d13'])}</b> (ETAPA 3069)" if _aj13 else ""))
+                e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", _lin_13))
             else:
                 e.append(_etapa("ETAPA 3050 - 13o SALARIO PROPORCIONAL", [],
                                 na=("estagiário não tem 13º (Lei 11.788/2008, art. 3º)" if _est
@@ -11098,6 +11200,24 @@ def _gerar_memoria_rescisao(empresa_nm, cnpj_fmt, anomes, id_empresa, resultados
                     e.append(_etapa("ETAPA 3067 - CONTRATO A TERMO ROMPIDO ANTES DO FIM", [],
                                     na="não foi encontrado contrato com data de término "
                                        "posterior à rescisão — nada a indenizar"))
+
+            # Verbas calculadas com valor ajustado (tela Ajustar Verba Calculada)
+            _aj_det = r.get("ajustes_det") or []
+            if _aj_det:
+                _lin_aj = ["O valor informado substitui o calculado; as bases de INSS, "
+                           "IRRF e FGTS e o líquido saem do valor ajustado."]
+                for _a in _aj_det:
+                    if _a["efeito"]:
+                        _lin_aj.append(
+                            f"{_a['cod']:04d} {_a['dsc']} — calculado {_B(_a['calc'])} → "
+                            + ("<b>excluída</b>" if not _a["valor"] else f"<b>{_B(_a['valor'])}</b>"))
+                    else:
+                        _lin_aj.append(
+                            f"{_a['cod']:04d} {_a['dsc']} — <b>ajuste sem efeito</b>: o cálculo "
+                            "não gerou esta verba")
+                    if _a.get("motivo"):
+                        _lin_aj.append(f"      Motivo: {_a['motivo'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')}")
+                e.append(_etapa("ETAPA 3069 - VERBAS CALCULADAS AJUSTADAS", _lin_aj))
 
             # 0006B — Verbas manuais lançadas
             det_man = r.get("manuais_det") or []
@@ -25825,6 +25945,250 @@ def _consig_resc_argumentos():
     return {"anomes": anomes, "mat": int(mat_txt), "arquivo": f,
             "id_cliente": session.get("id_cliente"),
             "id_empresa": _get_id_empresa()}, None
+
+
+# =========================================================
+# AJUSTAR VERBA CALCULADA DA RESCISÃO  (tab_resc_ajuste — SMV 13/10/2026)
+# O cálculo apaga e regrava as verbas 'C' a cada rodada, então corrigir o
+# tab_mov direto não adianta. O ajuste fica na tab_resc_ajuste (ver
+# _criar_tab_resc_ajuste.sql) e o _calc_rescisao_nucleo usa o valor dele no
+# lugar do apurado, antes das bases. INSS e IRRF não se ajustam: saem das
+# bases. Gravar ou desfazer recalcula a rescisão na hora.
+# =========================================================
+_RESC_AJUSTE_IMPOSTOS = {VR_INSS, VR_INSS_13, VR_IRRF, VR_IRRF_13}
+
+
+def _resc_ajustes_ler(id_empresa, id_cliente, folha_int, mats=None):
+    """{matricula: {cod_verba: {id, cod, valor, valor_calculado, motivo, dsc}}}.
+    Sem a tabela no banco (SQL não rodado) devolve {} — o cálculo segue normal."""
+    try:
+        q = (supabase.table("tab_resc_ajuste")
+             .select("id, matricula, cod_verba, valor, valor_calculado, motivo, cpf_usuario, criado_em")
+             .eq("id_empresa", id_empresa).eq("folha", int(folha_int)))
+        if id_cliente:
+            q = q.eq("id_cliente", id_cliente)
+        if mats:
+            q = q.in_("matricula", [int(m) for m in mats])
+        linhas = q.execute().data or []
+    except Exception:
+        return {}
+    dsc = _resc_ajuste_descricoes(id_cliente, {int(l.get("cod_verba") or 0) for l in linhas})
+    saida = {}
+    for l in linhas:
+        cod = int(l.get("cod_verba") or 0)
+        saida.setdefault(int(l.get("matricula") or 0), {})[cod] = {
+            "id": l.get("id"), "cod": cod, "valor": int(l.get("valor") or 0),
+            "valor_calculado": int(l.get("valor_calculado") or 0),
+            "motivo": str(l.get("motivo") or ""), "dsc": dsc.get(cod, f"Verba {cod:04d}"),
+            "criado_em": str(l.get("criado_em") or ""),
+        }
+    return saida
+
+
+def _resc_ajuste_descricoes(id_cliente, cods):
+    """Descrição das verbas; a do cliente vence a do sistema (id_cliente 0)."""
+    if not cods:
+        return {}
+    try:
+        r = (supabase.table("tab_rubrica").select("cod_rubr, dsc_rubr, id_cliente")
+             .in_("id_cliente", [0, id_cliente]).in_("cod_rubr", sorted(cods)).execute())
+    except Exception:
+        return {}
+    dsc = {}
+    for v in sorted(r.data or [], key=lambda x: x.get("id_cliente") or 0):
+        dsc[int(v["cod_rubr"])] = (v.get("dsc_rubr") or "").strip()
+    return dsc
+
+
+def _resc_ajuste_verbas(id_empresa, id_cliente, folha_int, mat):
+    """Verbas da rescisão calculada de UMA matrícula, para a tela: as
+    calculadas (origem 'C', menos INSS/IRRF) e os ajustes gravados. Verba
+    ajustada para zero não está mais no tab_mov — vem só do ajuste."""
+    q = (supabase.table("tab_mov").select("cod_verba, qtd, valor")
+         .eq("id_empresa", id_empresa).eq("folha", folha_int).eq("folha_tipo", "R")
+         .eq("origem", "C").eq("situacao", "A").eq("matricula", mat))
+    if id_cliente:
+        q = q.eq("id_cliente", id_cliente)
+    calc = {int(m["cod_verba"]): m for m in (q.execute().data or [])
+            if int(m.get("cod_verba") or 0) not in _RESC_AJUSTE_IMPOSTOS}
+    ajustes = _resc_ajustes_ler(id_empresa, id_cliente, folha_int, [mat]).get(mat, {})
+    tipos = {}
+    try:
+        r = (supabase.table("tab_rubrica").select("cod_rubr, tp_rubr, id_cliente")
+             .in_("id_cliente", [0, id_cliente])
+             .in_("cod_rubr", sorted(set(calc) | set(ajustes) or {0})).execute())
+        for v in sorted(r.data or [], key=lambda x: x.get("id_cliente") or 0):
+            tipos[int(v["cod_rubr"])] = str(v.get("tp_rubr") or "1")
+    except Exception:
+        pass
+    dsc = _resc_ajuste_descricoes(id_cliente, set(calc) | set(ajustes))
+    linhas = []
+    for cod in sorted(set(calc) | set(ajustes)):
+        m, aj = calc.get(cod) or {}, ajustes.get(cod)
+        linhas.append({
+            "cod": cod, "cod_fmt": f"{cod:04d}", "dsc": dsc.get(cod, f"Verba {cod:04d}"),
+            "tipo": "D" if tipos.get(cod) == "2" else "P",
+            "qtd": int(m.get("qtd") or 0),
+            # o que está no tab_mov (já com o ajuste) e o que o cálculo dava
+            "valor": int(m.get("valor") or 0),
+            "calculado": aj["valor_calculado"] if aj else int(m.get("valor") or 0),
+            "ajuste": ({"valor": aj["valor"], "motivo": aj["motivo"],
+                        "em": _fmt_dt_br_ajuste(aj.get("criado_em"))} if aj else None),
+        })
+    return linhas
+
+
+def _fmt_dt_br_ajuste(v):
+    s = re.sub(r"\D", "", str(v or ""))
+    return f"{s[6:8]}/{s[4:6]}/{s[:4]}" if len(s) >= 8 else ""
+
+
+def _resc_ajuste_prechecar(data):
+    """Validações comuns a gravar/desfazer. Devolve (ctx, erro_json)."""
+    if not session.get("logado"):
+        return None, jsonify({"ok": False, "msg": "Sessão expirada."})
+    anomes = str(session.get("anomes_atual") or "")
+    if len(anomes) != 6:
+        return None, jsonify({"ok": False, "msg": "Nenhuma folha ativa."})
+    if _refresh_situacao_folha() in ("C", "F"):
+        return None, jsonify({"ok": False,
+                              "msg": "A folha precisa estar Aberta para ajustar a rescisão."})
+    try:
+        mat = int(data.get("matricula") or 0)
+        cod = int(data.get("cod_verba") or 0)
+    except (TypeError, ValueError):
+        mat = cod = 0
+    if not mat or not cod:
+        return None, jsonify({"ok": False, "msg": "Funcionário ou verba não informados."})
+    if cod in _RESC_AJUSTE_IMPOSTOS:
+        return None, jsonify({"ok": False, "msg": "INSS e IRRF não se ajustam: saem das "
+                                                  "bases. Ajuste as verbas que formam a base."})
+    id_empresa, id_cliente = _get_id_empresa(), session.get("id_cliente")
+    if mat not in {f["matricula"] for f in _resc_desligados_mes(id_empresa, id_cliente, anomes)}:
+        return None, jsonify({"ok": False,
+                              "msg": "Este funcionário não tem rescisão registrada nesta folha."})
+    return {"anomes": anomes, "folha": int(anomes), "mat": mat, "cod": cod,
+            "id_empresa": id_empresa, "id_cliente": id_cliente}, None
+
+
+def _resc_ajuste_recalcular(ctx):
+    """Recalcula a rescisão da matrícula depois de gravar/desfazer o ajuste.
+    Se o cálculo parar (ex.: pergunta sobre movimento da folha normal), a
+    rescisão fica pendente e a mensagem manda recalcular na tela do cálculo."""
+    try:
+        erro, _res, extras = _calc_rescisao_nucleo({"matriculas": [ctx["mat"]]})
+    except Exception as e:
+        erro, extras = f"Erro no recálculo: {str(e)[:150]}", {}
+    if erro or extras.get("confirmar_mov_normal"):
+        _invalidar_rescisao_calculada(ctx["id_empresa"], ctx["id_cliente"], ctx["folha"], [ctx["mat"]])
+        return ("A rescisão ficou PENDENTE: recalcule na tela Calcular Rescisão"
+                + (f" ({erro})" if erro else "") + ".")
+    return ""
+
+
+@app.route("/ajuste_rescisao")
+def ajuste_rescisao():
+    """Ajustar Verba Calculada da rescisão — card próprio no assunto Rescisão."""
+    if not session.get("logado"):
+        return redirect("/")
+    anomes = str(session.get("anomes_atual") or "")
+    funcs = [f for f in _resc_desligados_mes(_get_id_empresa(), session.get("id_cliente"), anomes)
+             if not f.get("transferencia")]
+    tabela_ok = True
+    try:
+        supabase.table("tab_resc_ajuste").select("id").limit(1).execute()
+    except Exception:
+        tabela_ok = False
+    return render_template("F10_Ajuste_Rescisao.html", **_ctx_relatorio(),
+                           anomes_atual=anomes, funcs=funcs, tabela_ok=tabela_ok,
+                           folha_situacao=(_refresh_situacao_folha()
+                                           if len(anomes) == 6 else ""))
+
+
+@app.route("/api/resc_ajuste/verbas")
+def api_resc_ajuste_verbas():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    anomes = str(session.get("anomes_atual") or "")
+    try:
+        mat = int(request.args.get("matricula") or 0)
+    except ValueError:
+        mat = 0
+    if len(anomes) != 6 or not mat:
+        return jsonify({"ok": False, "msg": "Funcionário não informado."})
+    try:
+        linhas = _resc_ajuste_verbas(_get_id_empresa(), session.get("id_cliente"), int(anomes), mat)
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    return jsonify({"ok": True, "verbas": linhas})
+
+
+@app.route("/api/resc_ajuste/gravar", methods=["POST"])
+def api_resc_ajuste_gravar():
+    data = request.get_json(silent=True) or {}
+    ctx, err = _resc_ajuste_prechecar(data)
+    if err:
+        return err
+    try:
+        valor = int(data.get("valor"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Informe o valor correto (zero exclui a verba)."})
+    if valor < 0:
+        return jsonify({"ok": False, "msg": "O valor não pode ser negativo."})
+    motivo = str(data.get("motivo") or "").strip()[:300]
+    if len(motivo) < 5:
+        return jsonify({"ok": False, "msg": "Informe o motivo do ajuste."})
+    try:
+        linhas = {l["cod"]: l for l in _resc_ajuste_verbas(
+            ctx["id_empresa"], ctx["id_cliente"], ctx["folha"], ctx["mat"])}
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    lin = linhas.get(ctx["cod"])
+    if not lin:
+        return jsonify({"ok": False, "msg": "Esta verba não foi calculada nesta rescisão. "
+                                            "Calcule a rescisão antes de ajustar."})
+    calculado = lin["calculado"]
+    try:
+        (supabase.table("tab_resc_ajuste").delete()
+         .eq("id_empresa", ctx["id_empresa"]).eq("folha", ctx["folha"])
+         .eq("matricula", ctx["mat"]).eq("cod_verba", ctx["cod"]).execute())
+        supabase.table("tab_resc_ajuste").insert({
+            "id_cliente": ctx["id_cliente"], "id_empresa": ctx["id_empresa"],
+            "folha": ctx["folha"], "matricula": ctx["mat"], "cod_verba": ctx["cod"],
+            "valor": valor, "valor_calculado": calculado, "motivo": motivo,
+            "cpf_usuario": session.get("cpf"),
+        }).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": "Não foi possível gravar o ajuste "
+                                            f"(a tabela tab_resc_ajuste existe?): {str(e)[:150]}"})
+    gravar_log("RESC-AJUSTE",
+               f"Verba {ctx['cod']:04d}: calculado {_fmt_brl(calculado)} -> "
+               + ("EXCLUIDA" if not valor else _fmt_brl(valor)) + f". Motivo: {motivo}",
+               ano_mes=ctx["anomes"], matricula=ctx["mat"])
+    aviso = _resc_ajuste_recalcular(ctx)
+    return jsonify({"ok": True, "aviso": aviso,
+                    "msg": "Ajuste gravado" + (" e rescisão recalculada." if not aviso else ".")})
+
+
+@app.route("/api/resc_ajuste/desfazer", methods=["POST"])
+def api_resc_ajuste_desfazer():
+    data = request.get_json(silent=True) or {}
+    ctx, err = _resc_ajuste_prechecar(data)
+    if err:
+        return err
+    try:
+        r = (supabase.table("tab_resc_ajuste").delete()
+             .eq("id_empresa", ctx["id_empresa"]).eq("folha", ctx["folha"])
+             .eq("matricula", ctx["mat"]).eq("cod_verba", ctx["cod"]).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    if not (r.data or []):
+        return jsonify({"ok": False, "msg": "Não há ajuste desta verba para desfazer."})
+    gravar_log("RESC-AJUSTE", f"Verba {ctx['cod']:04d}: ajuste desfeito (volta o valor calculado)",
+               ano_mes=ctx["anomes"], matricula=ctx["mat"])
+    aviso = _resc_ajuste_recalcular(ctx)
+    return jsonify({"ok": True, "aviso": aviso,
+                    "msg": "Ajuste desfeito" + (" e rescisão recalculada." if not aviso else ".")})
 
 
 @app.route("/emprestimo_rescisao")
