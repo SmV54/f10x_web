@@ -12336,6 +12336,7 @@ def manual_pdf():
     caminho = os.path.join(os.path.dirname(__file__), "manual",
                            "Manual_do_Usuario_Folha10_Simples.pdf")
     if not os.path.exists(caminho):
+        _avisar_nao_encontrado("Manual do Usuário não publicado")
         return ("Manual ainda não publicado nesta instalação.", 404)
     return send_file(caminho, mimetype="application/pdf",
                      as_attachment=False,
@@ -12419,6 +12420,7 @@ def suporte_pdf(arquivo):
         return redirect("/")
     nome = os.path.basename(arquivo)
     if nome not in {g["arquivo"] for g in _suporte_guias()}:
+        _avisar_nao_encontrado(f"guia de suporte não encontrado: {nome}")
         return ("Guia não encontrado.", 404)
     return send_file(os.path.join(SUPORTE_DIR, nome), mimetype="application/pdf",
                      as_attachment=False, download_name=nome)
@@ -32756,6 +32758,49 @@ def apple_touch_icon():
 
 
 # =========================================================
+# AVISO POR E-MAIL — cliente caiu num "não encontrado"
+# =========================================================
+# Só para cliente logado: robô varrendo URL (wp-admin, .env...) não tem sessão
+# e não gera e-mail. O mesmo endereço do mesmo cliente avisa uma vez por hora,
+# para um clique repetido não lotar a caixa. O envio vai numa thread: o SMTP
+# leva segundos e o cliente não espera por ele.
+_AVISO_404_PARA = "sergiomoraesvieira@outlook.com"
+_AVISO_404_ULTIMO = {}
+
+
+def _avisar_nao_encontrado(motivo):
+    try:
+        if not session.get("logado"):
+            return
+        caminho = request.full_path.rstrip("?")
+        if request.path.startswith("/static/"):
+            return
+        chave = (session.get("id_cliente"), caminho)
+        agora = datetime.now(timezone.utc).timestamp()
+        if agora - _AVISO_404_ULTIMO.get(chave, 0) < 3600:
+            return
+        _AVISO_404_ULTIMO[chave] = agora
+        id_cli = session.get("id_cliente") or 0
+        assunto = f"NAO ENCONTRADO - Cliente {int(id_cli):06d} - {request.path}"[:150]
+        corpo = (
+            f"Um cliente caiu numa tela \"não encontrado\" no Folha10-Simples.\n\n"
+            f"Data/hora: {_agora_brasilia().strftime('%d/%m/%Y %H:%M:%S')} (Brasília)\n"
+            f"Cliente:   {int(id_cli):06d}\n"
+            f"Usuário:   {session.get('nome', '')} (CPF {session.get('cpf', '')})\n"
+            f"Empresa:   {session.get('empresa_info', '')} (id {session.get('id_empresa', '')})\n"
+            f"Competência: {session.get('anomes_atual', '')}\n\n"
+            f"Clicou em:  {caminho}\n"
+            f"Na tela:    {request.referrer or '(sem origem: digitado, favorito ou link externo)'}\n"
+            f"Motivo:     {motivo}\n"
+            f"Navegador:  {request.user_agent.string[:200]}\n"
+        )
+        threading.Thread(target=_enviar_email_texto, args=(_AVISO_404_PARA, assunto, corpo),
+                         daemon=True).start()
+    except Exception as e:
+        print(f"_avisar_nao_encontrado: {e}")
+
+
+# =========================================================
 # HANDLER DE ERRO GLOBAL — retorna JSON em vez de HTML
 # =========================================================
 @app.errorhandler(500)
@@ -32772,6 +32817,8 @@ def handle_exception(e):
     # acontecia a cada visita, porque o navegador pede /favicon.ico sozinho.
     from werkzeug.exceptions import HTTPException
     if isinstance(e, HTTPException):
+        if e.code == 404:
+            _avisar_nao_encontrado("endereço não existe no sistema (404)")
         return jsonify({"ok": False, "msg": e.description}), e.code
 
     import traceback
