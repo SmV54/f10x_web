@@ -13682,6 +13682,34 @@ def api_gravar_empresa():
                     "msg": ("Esta empresa (CNPJ) ja esta cadastrada para este "
                             "cliente. Use 'Alterar Esta Empresa' para edita-la.")})
 
+            # Mesmo CNPJ base (8 primeiros digitos) = filial de uma empresa que
+            # ja esta no cliente. Para o eSocial matriz e filial sao o MESMO
+            # empregador: cadastradas como empresas separadas, cada uma numera
+            # as matriculas por conta propria (o eSocial ve duplicidade) e a
+            # transferencia entre elas vira S-2299 + S-2200, que o governo
+            # recusa (697/398/404). Foi o que aconteceu no cliente 30 (WMS e
+            # FL Supermercados), out/2026.
+            if len(cnpj_norm) == 14:
+                _mesma_raiz = [
+                    e for e in (supabase.table("tab_empresa")
+                                .select("id_empresa, cnpj, razaosocial")
+                                .eq("id_cliente", id_cliente_sess)
+                                .execute().data or [])
+                    if so_numeros(str(e.get("cnpj") or ""))[:8] == cnpj_norm[:8]]
+                if _mesma_raiz:
+                    _e = _mesma_raiz[0]
+                    _c = so_numeros(str(_e.get("cnpj") or ""))
+                    _c_fmt = (f"{_c[:2]}.{_c[2:5]}.{_c[5:8]}/{_c[8:12]}-{_c[12:]}"
+                              if len(_c) == 14 else _c)
+                    return jsonify({"ok": False,
+                        "msg": (f"O CNPJ base {cnpj_norm[:2]}.{cnpj_norm[2:5]}."
+                                f"{cnpj_norm[5:8]} ja esta cadastrado neste cliente: "
+                                f"empresa {int(_e['id_empresa']):04d} - "
+                                f"{(_e.get('razaosocial') or '').strip()} ({_c_fmt}). "
+                                "Matriz e filial sao o mesmo empregador para o "
+                                "eSocial e nao podem ser cadastradas como empresas "
+                                "separadas. Fale com o suporte do Folha10-Simples.")})
+
             _lic = _estado_licenca(id_cliente_sess)
             if _lic["sem_licenca"]:
                 return jsonify({"ok": False,
