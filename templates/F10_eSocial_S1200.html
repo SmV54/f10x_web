@@ -154,6 +154,14 @@ tr:hover td { background: #f8fafc; }
 }
 .btn-enviar-selec:hover:not(:disabled) { background: #1e63c4; border-color: #1e63c4; }
 .btn-enviar-selec:disabled { opacity: .4; cursor: not-allowed; }
+.btn-gerar-remessa {
+    display: inline-flex; align-items: center; gap: 7px; margin-left: auto;
+    padding: 7px 18px; border-radius: 8px; font-size: 13px; font-weight: 700;
+    border: 2px solid #64748b; background: #fff; color: #334155;
+    cursor: pointer; font-family: var(--sans); transition: .13s; white-space: nowrap;
+}
+.btn-gerar-remessa:hover:not(:disabled) { background: #f1f5f9; }
+.btn-gerar-remessa:disabled { opacity: .5; cursor: default; }
 .row-check { width: 16px; height: 16px; cursor: pointer; accent-color: #2a7de1; }
 
 /* ── BANNER PROGRESSO EM LOTE ── */
@@ -252,16 +260,20 @@ tr:hover td { background: #f8fafc; }
 <div class="conteudo">
 
   {% set total_pendentes = contagens.P + contagens.X %}
-  {% if total_pendentes > 0 %}
   <div style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;" id="secaoEnviarTodos">
+    {% if total_pendentes > 0 %}
     <button class="btn-enviar-todos" id="btnEnviarTodos" onclick="enviarTodos(this)">
       &#9654;&#9654; Enviar todas as remessas ({{ total_pendentes }})
     </button>
     <button class="btn-enviar-selec" id="btnEnviarSelec" onclick="enviarSelecionados(this)" disabled>
       &#9654; Enviar selecionados (<span id="contSelec">0</span>)
     </button>
+    {% endif %}
+    <button class="btn-gerar-remessa" id="btnGerarRemessa" onclick="gerarRemessa(this)"
+            title="Põe na lista o S-1200 de um funcionário sem recalcular a folha — para quando a remessa foi excluída e a folha já está fechada.">
+      &#43; Gerar remessa
+    </button>
   </div>
-  {% endif %}
 
   <!-- Banner de progresso do lote -->
   <div class="lote-banner" id="loteBanner">
@@ -451,8 +463,8 @@ function iniciarTour() {
         ...(!!document.querySelector('#secaoEnviarTodos') ? [{
             element: '#secaoEnviarTodos',
             popover: {
-                title: 'Enviar Todos Pendentes',
-                description: 'Transmite todos os registros pendentes em sequência automática. O sistema respeita o limite de 50 eventos por lote do eSocial. Você pode cancelar o processo durante o envio.',
+                title: 'Enviar e Gerar remessa',
+                description: 'Enviar todas transmite os registros pendentes em sequência automática, respeitando o limite de 50 eventos por lote do eSocial; dá para cancelar durante o envio. Gerar remessa põe na lista o S-1200 de um funcionário sem recalcular a folha — para quando a remessa foi excluída e a folha já está fechada.',
             }
         }] : []),
         ...(!!document.querySelector('#secaoTabela') ? [{
@@ -632,6 +644,45 @@ async function _confirmarPrereqS1200() {
   });
   if (ok) _prereqConfirmado = true;
   return ok;
+}
+
+// "Gerar remessa": S-1200 de um funcionário sem recalcular a folha. A
+// competência é a do filtro da tela (senão a folha ativa) — é ela que vai no
+// pedido, para não gerar no mês errado sem o usuário ver.
+async function gerarRemessa(btn) {
+  const fAm    = '{{ f_anomes }}';
+  const anomes = (fAm && fAm !== 'all') ? fAm : '{{ anomes_atual }}';
+  if (!/^\d{6}$/.test(anomes)) {
+    await f10Alert('Escolha a competência no filtro da tela antes de gerar a remessa.',
+                   { titulo: 'Gerar remessa', tipo: 'aviso' });
+    return;
+  }
+  const amFmt = anomes.slice(4) + '/' + anomes.slice(0, 4);
+  const mat = await f10Prompt(
+    'Matrícula do funcionário para gerar o S-1200 de ' + amFmt + '.\n\n'
+    + 'Use quando a remessa foi excluída e a folha já está fechada. O XML é '
+    + 'montado no envio, com o movimento gravado da folha.',
+    { titulo: 'Gerar remessa — ' + amFmt, okText: 'Gerar', cancelText: 'Cancelar' });
+  if (mat === null || !String(mat).trim()) return;
+
+  btn.disabled = true;
+  let d;
+  try {
+    const r = await fetch('/api/esocial_s1200_gerar_remessa', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ matricula: String(mat).trim(), anomes: anomes }),
+    });
+    d = await lerRespostaJson(r);
+  } catch (e) {
+    d = { ok: false, msg: msgFalha(e) };
+  }
+  btn.disabled = false;
+  await f10Alert(d.msg || 'Nada a fazer.', {
+    titulo: 'Gerar remessa — ' + amFmt,
+    tipo:   d.ok ? 'sucesso' : 'aviso',
+  });
+  if (d.ok) window.location.reload();
 }
 
 async function _criarPendenciasS1200() {

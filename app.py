@@ -45581,6 +45581,126 @@ def api_esocial_s1200_criar_pendencias():
     return jsonify({"ok": not erro, "msg": msg})
 
 
+@app.route("/api/esocial_s1200_gerar_remessa", methods=["POST"])
+def api_esocial_s1200_gerar_remessa():
+    """"Gerar remessa": põe na Fila o S-1200 (e o S-1210, se faltar) de UM
+    funcionário numa competência, sem recalcular a folha.
+
+    Normalmente quem cria essas linhas é o cálculo da folha. Mas com a folha
+    fechada não há como recalcular, e uma remessa excluída por engano ficava
+    sem caminho de volta (VALDEMIRA, empresa 35 mat 10, 09/2026: o S-1200 saiu
+    da Fila junto com os dos desligados do mês, com a folha já fechada).
+
+    A linha é só o marcador: o XML é montado na hora do envio, com o movimento
+    gravado da folha. Por isso aqui se confere apenas se há o que declarar e
+    se não haverá duas remessas da mesma coisa. Não transmite nada."""
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    data       = request.get_json(force=True) or {}
+    anomes     = _s1200_anomes_check(data.get("anomes"))
+    try:
+        mat = int(str(data.get("matricula") or "").strip())
+    except ValueError:
+        mat = 0
+    if not anomes:
+        return jsonify({"ok": False, "msg": "Competência não identificada."})
+    if mat <= 0:
+        return jsonify({"ok": False, "msg": "Informe a matrícula do funcionário."})
+    am_fmt = f"{anomes[4:6]}/{anomes[:4]}"
+
+    try:
+        r_f = (supabase.table("tab_cad")
+               .select("matricula, nome, situacao, datarescisao, codcateg")
+               .eq("id_empresa", id_empresa).eq("matricula", mat)
+               .limit(1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler o cadastro: {e}"})
+    if not r_f.data:
+        return jsonify({"ok": False, "msg": f"Matrícula {mat:06d} não encontrada nesta empresa."})
+    func = r_f.data[0]
+    nome = (func.get("nome") or "").strip()
+
+    # Desligado NO MÊS: a rescisão é o único movimento dele na competência. O
+    # empregado vai no S-2299 + S-1210 (sem S-1200), e o TSVE que tem S-1200
+    # da rescisão ganha a remessa pelo cálculo da rescisão. Um S-1200 da folha
+    # aqui repetiria o ideDmDev do desligamento ([681]) — empresa 35 mat 7.
+    _resc = str(func.get("datarescisao") or "")
+    if str(func.get("situacao") or "") != "A" and _resc[:6] == anomes:
+        return jsonify({"ok": False, "msg": (
+            f"{mat:06d} {nome} foi desligado(a) em {_resc[6:8]}/{_resc[4:6]}/{_resc[:4]}, "
+            f"dentro de {am_fmt}. No mês do desligamento o eSocial recebe só o "
+            "S-2299 e o S-1210 da rescisão — não há S-1200 da folha para gerar.")})
+
+    # Há o que declarar? Mesmo critério do envio: folha normal + adiantamento
+    # do 13º da competência, no mesmo demonstrativo.
+    dmdevs = _folhas_da_remessa(id_empresa, id_cliente, mat, int(anomes), "N")
+    if not any(d.get("mov_items") for d in dmdevs):
+        return jsonify({"ok": False, "msg": (
+            f"{mat:06d} {nome} não tem verbas calculadas na folha de {am_fmt}. "
+            "Calcule a folha antes: o S-1200 é montado com o movimento gravado.")})
+    folha_tipo = dmdevs[0]["folha_tipo"]
+
+    try:
+        existentes = (supabase.table("tab_esocial")
+                      .select("id_esocial, layout, recibo, observacao_erro, flag1")
+                      .eq("id_empresa", id_empresa).eq("matricula", mat)
+                      .eq("ano_mes", int(anomes))
+                      .in_("layout", ["1200", "1210"])
+                      .execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler a Fila: {e}"})
+    existentes = [r for r in existentes
+                  if (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"]
+
+    def _tem_recibo(r):
+        return bool((r.get("recibo") or "").strip())
+
+    s1200 = [r for r in existentes if r.get("layout") == "1200"
+             and str(r.get("flag1") or "").upper()[:1] != "R"]
+    if any(not _tem_recibo(r) for r in s1200):
+        return jsonify({"ok": False, "msg": (
+            f"Já existe um S-1200 de {am_fmt} de {mat:06d} {nome} esperando envio "
+            "nesta tela. Use o Enviar dele — duas remessas do mesmo evento o "
+            "eSocial recusa por duplicidade.")})
+    retif = next((r.get("recibo").strip() for r in s1200 if _tem_recibo(r)), "")
+
+    # S-1210: um só por CPF e competência. Qualquer um que já exista (pendente,
+    # aceito, ou o da rescisão) ocupa o lugar.
+    lays = ["1200"]
+    if not any(r.get("layout") == "1210" for r in existentes):
+        lays.append("1210")
+
+    agora = _agora_brasilia()
+    try:
+        supabase.table("tab_esocial").insert([{
+            "id_cliente": id_cliente, "id_empresa": id_empresa,
+            "data_cad":   agora.strftime("%Y%m%d"),
+            "hora_cad":   agora.strftime("%H%M"),
+            "id_remessa": agora.strftime("%Y%m%d%H%M%S"),
+            "ano_mes":    int(anomes), "folha_tipo": folha_tipo,
+            "layout":     lay, "matricula": mat, "codigo2": 0,
+        } for lay in lays]).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Não consegui gravar a remessa: {e}"})
+
+    gravar_log("ESOCIAL", "Remessa gerada pelo usuario: %s de %s"
+               % (" e ".join("S-" + l for l in lays), am_fmt),
+               ano_mes=int(anomes), matricula=mat)
+
+    msg = (f"Remessa gerada para {mat:06d} {nome}, competência {am_fmt}: "
+           + " e ".join("S-" + l for l in lays) + ".")
+    if "1210" in lays:
+        msg += "\n\nEnvie o S-1200 primeiro; o S-1210 fica na tela do S-1210."
+    if retif:
+        msg += (f"\n\nAtenção: já há um S-1200 aceito nesta competência (recibo "
+                f"{retif}). Esta remessa vai como RETIFICAÇÃO dele, e o eSocial "
+                "só aceita com o período reaberto (S-1298).")
+    return jsonify({"ok": True, "msg": msg})
+
+
 @app.route("/api/esocial_s1020_marcar_declarada", methods=["POST"])
 def api_esocial_s1020_marcar_declarada():
     """"Considerar já enviada": a lotação já está declarada no eSocial, mas o
