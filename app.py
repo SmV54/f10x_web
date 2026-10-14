@@ -12599,6 +12599,8 @@ SUPORTE_TELAS = {
     "/listagem_adiantamentos":     "Adiantamento Quinzenal",
     "/recibo_adiantamento":        "Adiantamento Quinzenal",
     "/calcular_folha":             "Calculo da Folha",
+    "/calcular_adiantamento_13":   "Decimo Terceiro Salario",
+    "/calcular_13_final":          "Decimo Terceiro Salario",
     "/visualizar_calculo":         "Calculo da Folha",
     "/memoria_calculo":            "Calculo da Folha",
     "/calcular_folha_individual":  "Calculo da Folha",
