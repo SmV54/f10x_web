@@ -19941,6 +19941,12 @@ def api_transferir_funcionario_executar():
     cnpj_org  = "".join(ch for ch in str(session.get("cnpj_empresa") or "")
                         if ch.isdigit())
     cnpj_dst  = "".join(ch for ch in str(destino.get("cnpj") or "") if ch.isdigit())
+    # Matriz e filial (mesmo CNPJ base) são o MESMO empregador para o eSocial:
+    # o vínculo continua, com a mesma matrícula, e só muda o estabelecimento —
+    # S-2206, e não S-2299 + S-2200. Mandados, os dois voltam recusados: o
+    # S-2299 com o 697/398 (sucessor = o próprio empregador) e o S-2200 com o
+    # 404 (CNPJ base igual ao do empregador). Empresa 37 -> 36, out/2026.
+    mesma_raiz = (len(cnpj_org) >= 8 and cnpj_org[:8] == cnpj_dst[:8])
 
     # ── 1) o cadastro no destino ──
     novo = {k: v for k, v in cad.items()
@@ -19965,7 +19971,11 @@ def api_transferir_funcionario_executar():
         # A matrícula do empregador anterior não vem junto: ela vive no cadastro
         # de lá, e é de lá que o <matricAnt> a lê — pode ser um código do legado,
         # do tipo "COL...2753", que não se deduz da matrícula nenhuma.
-        "matricula_es":   f"{mat_nova:06d}",
+        #
+        # Entre matriz e filial não há vínculo novo: o destino segue com a
+        # matrícula que o eSocial já conhece, senão o S-1200 daqui aponta para
+        # um contrato que não existe lá.
+        "matricula_es":   (_mat_es(cad) if mesma_raiz else f"{mat_nova:06d}"),
         # Matriz da empresa de destino (posições 9 a 14 do CNPJ), igual ao
         # Desktop. Filial se acerta depois, junto com o centro de custo.
         "filial":         (cnpj_dst[8:14] if len(cnpj_dst) >= 14 else None),
@@ -20044,29 +20054,50 @@ def api_transferir_funcionario_executar():
                             f"movimento desta empresa: ele está em duplicidade.")
 
     # ── 4) eSocial: S-2299 na origem, S-2200 (ou S-2300) no destino ──
+    # Mesmo CNPJ base: só o S-2206 no destino (ver mesma_raiz, acima).
     folha_tipo_es = "1" if str(session.get("anomes_tipo") or "") in ("1", "A") else "N"
     try:
-        if not aviso_origem:
+        _categ = int(str(cad.get("codcateg") or "0").strip() or 0)
+    except (TypeError, ValueError):
+        _categ = 0
+    if mesma_raiz:
+        # TSVE (categoria >= 700) seria S-2306, ainda não implementado: melhor
+        # nenhum evento que um evento errado (mesmo critério do contrato).
+        if _categ < 700:
+            try:
+                agora_es = _agora_brasilia()
+                supabase.table("tab_esocial").insert({
+                    "id_cliente": id_cliente, "id_empresa": id_dest,
+                    # data_cad vira o <dtAlteracao> do S-2206 no envio: a
+                    # mudança de estabelecimento vale na data da transferência.
+                    "data_cad":   data8,
+                    "hora_cad":   agora_es.strftime("%H%M"),
+                    "id_remessa": f"{agora_es.strftime('%Y%m%d%H%M%S')}2206",
+                    "ano_mes":    int(anomes), "folha_tipo": folha_tipo_es,
+                    "layout":     "2206",
+                    "matricula":  mat_nova, "codigo2": 0,
+                }).execute()
+            except Exception as e:
+                print(f"[transferencia] S-2206 nao gerado: {str(e)[:120]}")
+    try:
+        if not aviso_origem and not mesma_raiz:
             _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat, anomes,
                                        folha_tipo_es, cad.get("codcateg"))
     except Exception as e:
         print(f"[transferencia] S-2299 nao gerado: {str(e)[:120]}")
     try:
-        _categ = int(str(cad.get("codcateg") or "0").strip() or 0)
-    except (TypeError, ValueError):
-        _categ = 0
-    try:
-        agora_es = _agora_brasilia()
-        supabase.table("tab_esocial").insert({
-            "id_cliente": id_cliente, "id_empresa": id_dest,
-            "data_cad":   agora_es.strftime("%Y%m%d"),
-            "hora_cad":   agora_es.strftime("%H%M"),
-            "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
-            "ano_mes":    int(anomes), "folha_tipo": folha_tipo_es,
-            # Mesma regra da inclusão: não-empregado (categoria >= 700) é S-2300.
-            "layout":     "2300" if _categ >= 700 else "2200",
-            "matricula":  mat_nova, "codigo2": 0,
-        }).execute()
+        if not mesma_raiz:
+            agora_es = _agora_brasilia()
+            supabase.table("tab_esocial").insert({
+                "id_cliente": id_cliente, "id_empresa": id_dest,
+                "data_cad":   agora_es.strftime("%Y%m%d"),
+                "hora_cad":   agora_es.strftime("%H%M"),
+                "id_remessa": agora_es.strftime("%Y%m%d%H%M%S"),
+                "ano_mes":    int(anomes), "folha_tipo": folha_tipo_es,
+                # Mesma regra da inclusão: não-empregado (categoria >= 700) é S-2300.
+                "layout":     "2300" if _categ >= 700 else "2200",
+                "matricula":  mat_nova, "codigo2": 0,
+            }).execute()
     except Exception as e:
         print(f"[transferencia] S-2200 nao gerado: {str(e)[:120]}")
 
@@ -20093,6 +20124,9 @@ def api_transferir_funcionario_executar():
         "msg": (f"{nome_func} foi transferido para {destino['nome']} com a "
                 f"matrícula {mat_nova:06d}. Na origem ficou desligado em "
                 f"{dd['data_br']}, motivo {TRANSF_MOTIVO_DEMISSAO}."
+                + (" Como é o mesmo CNPJ base (matriz/filial), o eSocial recebe "
+                   "só uma alteração contratual (S-2206) na nova empresa, com a "
+                   "mesma matrícula do eSocial." if mesma_raiz else "")
                 + (" O movimento do mês foi junto e apagado aqui."
                    if levar_mov else " O movimento do mês ficou nesta empresa.")),
     })
@@ -41570,6 +41604,14 @@ def _gerar_xml_s2299(func, mov_items, empresa, tpAmb="1",
                 f"Funcionário {func.get('matricula')} foi desligado por "
                 f"transferência (motivo {mtv}) mas está sem o CNPJ da empresa "
                 "de destino (cnpjtransf) — obrigatório no <sucessaoVinc>.")
+        if _cnpj_suc[:8] == cnpj_raiz:
+            # Matriz <-> filial: o governo recusa com 697/398. Não é desligamento.
+            raise ValueError(
+                f"Funcionário {func.get('matricula')} foi transferido para outro "
+                f"estabelecimento do MESMO empregador (CNPJ {_cnpj_suc}, mesmo CNPJ "
+                "base). Para o eSocial isso não é desligamento: exclua este S-2299 "
+                "da fila e mande um S-2206 (alteração do local de trabalho) na "
+                "empresa de destino, com a mesma matrícula do eSocial.")
         suc_xml = ("\n      <sucessaoVinc>"
                    "\n        <tpInsc>1</tpInsc>"
                    f"\n        <nrInsc>{x(_cnpj_suc)}</nrInsc>"
