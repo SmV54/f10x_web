@@ -132,6 +132,11 @@ tr:hover td { background: #f8fafc; }
 
 .recibo-cell { font-family: var(--mono); font-size: 10px; color: #166534; white-space: nowrap; }
 .erro-cell   { font-size: 11px; color: #991b1b; max-width: 280px; word-break: break-word; }
+.btn-dica {
+    margin-top: 4px; font-size: 10.5px; padding: 1px 8px; border-radius: 5px; cursor: pointer;
+    background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;
+}
+.btn-dica:hover { background: #dbeafe; }
 .vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
 .vazio-icone { font-size: 32px; margin-bottom: 12px; }
 
@@ -364,6 +369,10 @@ tr:hover td { background: #f8fafc; }
                             <div class="recibo-cell">{{ r.recibo }}</div>
                         {% elif r._sit == 'X' %}
                             <div class="erro-cell">{{ ((r.get('observacao_erro') or '').split('|')[-1] if '|' in (r.get('observacao_erro') or '') else (r.get('observacao_erro') or ''))[:120] }}</div>
+                            {% if r._tem_dica %}
+                            <button type="button" class="btn-dica" onclick="_explicarErro({{ r.id_esocial }})"
+                                    title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>
+                            {% endif %}
                         {% elif r._sit == 'W' %}
                             <div class="data-cell" style="color:#9a3412;">Aguardando...</div>
                         {% else %}
@@ -904,5 +913,6 @@ function escHtml(s) {
 }
 </script>
 <script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_esocial_dica.js"></script>
 </body>
 </html>

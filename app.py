@@ -914,6 +914,15 @@ def _aplicar_cert_esocial(empresa):
     # a combinação que já funciona nas empresas com remessa aceita.
     empresa["_tra_tpinsc"] = "1"
     empresa["_tra_nrinsc"] = empresa.get("_cert_herdado") or cnpj_emp_raw
+
+    # Certificado proprio que e' e-CPF (titular/representante legal): o
+    # transmissor tem de ser o CPF do certificado, tpInsc=2. Com o CNPJ da
+    # empresa o lote volta [607] "O numero de inscricao do transmissor devera
+    # ser igual ao CNPJ/CPF do certificado" (empresa 64, 15/10/2026).
+    _cert_doc = re.sub(r"\D", "", empresa.get("cert_cnpj") or "")
+    if not empresa.get("_cert_herdado") and len(_cert_doc) == 11:
+        empresa["_tra_tpinsc"] = "2"
+        empresa["_tra_nrinsc"] = _cert_doc
     return empresa
 
 
@@ -35590,6 +35599,25 @@ def _analisar_resposta_envio(xml_resp):
     # Sem nrRec → erro
     if result["cd_resp"] or result["desc"]:
         result["erro"] = f"[{result['cd_resp']}] {result['desc']}"
+        # O "[401] Lote Incorreto" sozinho nao diz nada: o motivo vem nas
+        # ocorrencias do lote (ex.: [607] transmissor diferente do certificado,
+        # empresa 64 em 15/10/2026). Vai junto, para a tela e o "Entenda o erro".
+        _ocs = []
+        for el in root.iter():
+            if isinstance(el.tag, str) and el.tag.split("}")[-1] == "ocorrencia":
+                cod = desc = ""
+                for c in el.iter():
+                    if not isinstance(c.tag, str):
+                        continue
+                    t = c.tag.split("}")[-1]
+                    if t == "codigo" and not cod:
+                        cod = (c.text or "").strip()
+                    elif t == "descricao" and not desc:
+                        desc = (c.text or "").strip()
+                if cod or desc:
+                    _ocs.append(f"[{cod}] {desc}".strip())
+        if _ocs:
+            result["erro"] += " " + " ".join(_ocs)
     else:
         result["erro"] = f"nrRec não encontrado na resposta: {xml_resp[:400]}"
 
@@ -38275,6 +38303,11 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     inc_cp    = _inc(rubrica.get('tpn_inc_cp'))
     inc_irrf  = _inc_irrf_cod(rubrica.get('tpn_inc_irrf'))
     inc_fgts  = _inc(rubrica.get('tpn_inc_fgts'))
+    # Tabela 23 (codIncFGTS) so' tem 00, 11, 12, 21, 31, 91, 92 e 93. A tabela
+    # padrao tinha '01' no salario-familia (92/93/95) e no desconto 107, e o
+    # S-1010 voltava [17] (empresa 64, 15/10/2026). Fora da tabela = nao incide.
+    if inc_fgts not in ('00', '11', '12', '21', '31', '91', '92', '93'):
+        inc_fgts = '00'
     inc_sind  = _inc(rubrica.get('tpn_inc_pis'))
 
     # fimValid em mes futuro volta com [980]: ver _fim_valid_passado.
@@ -38544,6 +38577,7 @@ def esocial_s1010():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
+        r["_tem_dica"]  = (s == "X" and _esocial_tem_dica(_status_part))
 
     cnpj_fmt = _fmt_cnpj(cnpj_emp) if len(cnpj_emp) == 14 else cnpj_emp
 
@@ -43320,7 +43354,52 @@ _ESOCIAL_DICAS = {
             "com a matrícula do eSocial da origem.",
         ],
     },
+    "607": {
+        "simples": ("O lote foi recusado antes de qualquer evento ser lido: quem aparece como "
+                    "TRANSMISSOR não é o dono do certificado digital usado no envio. Acontece "
+                    "quando o certificado é um e-CPF (do titular ou de um procurador) e o lote "
+                    "sai em nome do CNPJ da empresa, ou o contrário."),
+        "solucao": [
+            "Se o certificado cadastrado é o e-CPF do titular da empresa: reenvie — desde "
+            "15/10/2026 o Folha10 já transmite em nome do CPF do certificado.",
+            "Se quem transmite é o contador/escritório: em eSocial → Certificado Digital, "
+            "marque 'Procuração de terceiros' e escolha o procurador cadastrado.",
+            "Confira se o certificado cadastrado é o mesmo que você pretende usar (titular "
+            "e CNPJ/CPF aparecem na tela do certificado).",
+        ],
+    },
+    "17": {
+        "simples": ("O XML saiu com um campo fora do formato que o eSocial aceita. A mensagem "
+                    "do governo diz QUAL campo (o nome depois de 'schema/evt/...:'), por exemplo "
+                    "codIncFGTS = incidência de FGTS da verba, codIncCP = INSS, codIncIRRF = IR."),
+        "solucao": [
+            "Se o campo é de incidência (codInc...) de uma verba: confira a incidência dessa "
+            "verba no cadastro de verbas; código que não existe na tabela do eSocial é recusado.",
+            "Se não for possível identificar ou corrigir pelo cadastro, chame o suporte do "
+            "Folha10 com o nome da verba e a mensagem — é ajuste no sistema, não no eSocial.",
+        ],
+    },
+    "ASSINANTE": {
+        "simples": ("O eSocial não reconhece o certificado usado como alguém que pode enviar "
+                    "por esta empresa: ele não é o e-CNPJ da matriz, nem o e-CPF do "
+                    "representante legal que consta na Receita, e não há procuração eletrônica "
+                    "do eSocial para ele."),
+        "solucao": [
+            "Se o envio é pelo contador/escritório (procuração): a empresa precisa outorgar a "
+            "procuração eletrônica no portal do eSocial (ou e-CAC) para o CNPJ/CPF do "
+            "escritório, com permissão para os eventos de tabela, não periódicos e periódicos.",
+            "Se o envio é pelo certificado da própria empresa: use o e-CNPJ da matriz "
+            "(0001) ou o e-CPF de quem é o representante legal no cadastro do CNPJ na Receita.",
+            "Depois de ajustar, reenvie a remessa — o evento não chegou a ser registrado.",
+        ],
+    },
 }
+
+# Erros que chegam SEM codigo [NNN] na mensagem: reconhecidos pelo texto.
+_ESOCIAL_DICAS_TEXTO = (
+    ("assinante inválido", "ASSINANTE"),
+    ("assinante invalido", "ASSINANTE"),
+)
 
 
 def _esocial_codigos_erro(obs):
@@ -43330,6 +43409,14 @@ def _esocial_codigos_erro(obs):
         if c not in vistos:
             vistos.append(c)
     return vistos
+
+
+def _esocial_tem_dica(obs):
+    """Ha explicacao no "Entenda o erro" para esta mensagem (codigo ou texto)?"""
+    if any(c in _ESOCIAL_DICAS for c in _esocial_codigos_erro(obs)):
+        return True
+    _low = str(obs or "").lower()
+    return any(t in _low for t, _k in _ESOCIAL_DICAS_TEXTO)
 
 
 def _esocial_dica_contexto(codigo, row):
@@ -43392,7 +43479,10 @@ def _esocial_dica_contexto(codigo, row):
 def _esocial_dica(row):
     """Explicacao do erro da remessa, ou None se nenhum codigo e' conhecido."""
     obs = _es_obs_status(row.get("observacao_erro"))
-    for c in _esocial_codigos_erro(obs):
+    codigos = _esocial_codigos_erro(obs)
+    _low = str(obs or "").lower()
+    codigos += [k for t, k in _ESOCIAL_DICAS_TEXTO if t in _low and k not in codigos]
+    for c in codigos:
         d = _ESOCIAL_DICAS.get(c)
         if d:
             return {"codigo": c, "simples": d["simples"], "solucao": d["solucao"],
@@ -43599,8 +43689,7 @@ def esocial_fila():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
         r["_erro_txt"]  = obs   # só a parte de status: o PARAMS não é erro
-        r["_tem_dica"]  = (s == "X" and any(c in _ESOCIAL_DICAS
-                                            for c in _esocial_codigos_erro(obs)))
+        r["_tem_dica"]  = (s == "X" and _esocial_tem_dica(obs))
         r["_operacao"]  = str(r.get("operacao") or "I").upper()
 
         am = r.get("ano_mes")
@@ -45130,8 +45219,7 @@ def esocial_s1200():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
-        r["_tem_dica"]  = (s == "X" and any(c in _ESOCIAL_DICAS
-                                            for c in _esocial_codigos_erro(obs)))
+        r["_tem_dica"]  = (s == "X" and _esocial_tem_dica(obs))
 
     if f_sit:
         rows = [r for r in rows if r.get("_sit") == f_sit]
@@ -46957,8 +47045,7 @@ def esocial_s1210():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
-        r["_tem_dica"]  = (s == "X" and any(c in _ESOCIAL_DICAS
-                                            for c in _esocial_codigos_erro(obs)))
+        r["_tem_dica"]  = (s == "X" and _esocial_tem_dica(obs))
 
     if f_sit:
         rows = [r for r in rows if r.get("_sit") == f_sit]
@@ -49849,8 +49936,7 @@ def esocial_s3000():
             r["_sit"], r["_sit_label"], r["_sit_class"] = "W", "Aguardando","sit-aguardando"
         else:
             r["_sit"], r["_sit_label"], r["_sit_class"] = "X", "Com Erro",  "sit-erro"
-        r["_tem_dica"] = (r["_sit"] == "X" and any(c in _ESOCIAL_DICAS
-                                                   for c in _esocial_codigos_erro(obs)))
+        r["_tem_dica"] = (r["_sit"] == "X" and _esocial_tem_dica(obs))
 
     # Estado completo, e não só o sim/não: a tela mostra qual evento deixou a
     # folha assim, para o usuário não ter que adivinhar se o S-1298 que ele

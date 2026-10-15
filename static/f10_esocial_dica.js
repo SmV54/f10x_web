@@ -13,7 +13,8 @@
    So' aparece quando a mensagem traz um codigo [NNN]; se o codigo nao estiver
    no dicionario, o clique avisa que ainda nao ha explicacao. */
 function _btnDica(id, msg) {
-  if (!id || !/\[\d{1,5}\]/.test(String(msg || ''))) return '';
+  // Codigo [NNN] ou erro que chega sem codigo (ver _ESOCIAL_DICAS_TEXTO no app.py)
+  if (!id || !/\[\d{1,5}\]|assinante inv[aá]lido/i.test(String(msg || ''))) return '';
   return `<button type="button" class="btn-dica" onclick="_explicarErro(${id})"
           title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>`;
 }
@@ -36,5 +37,6 @@ async function _explicarErro(id) {
                  '\n\nEM PALAVRAS SIMPLES\n' + d.simples +
                  (d.contexto ? '\n\n' + d.contexto : '') +
                  '\n\nCOMO RESOLVER\n' + passos;
-  f10Alert(texto, { tipo: 'info', titulo: `Entenda o erro [${d.codigo}]` });
+  const _cod = /^\d+$/.test(String(d.codigo || '')) ? ` [${d.codigo}]` : '';
+  f10Alert(texto, { tipo: 'info', titulo: `Entenda o erro${_cod}` });
 }
