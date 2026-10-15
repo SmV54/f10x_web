@@ -43046,6 +43046,19 @@ _ESOCIAL_DICAS = {
             "Quando a exclusão do S-1210 voltar aceita, reenvie este S-3000.",
         ],
     },
+    "459": {
+        "simples": ("A remessa foi como RETIFICAÇÃO de um evento que o eSocial não tem mais "
+                    "ativo: o original foi excluído (S-3000) ou já retificado — muitas vezes "
+                    "por fora do Folha10 (portal do eSocial ou Desktop). O Folha10 ainda "
+                    "acha que ele vale e por isso manda retificar."),
+        "solucao": [
+            "Confira no portal do eSocial se o evento original foi mesmo excluído.",
+            "Se foi, peça ao suporte para marcar a remessa antiga como excluída no "
+            "Folha10 (o recibo fica guardado). Assim o reenvio sai como evento original.",
+            "Se o período estiver fechado no eSocial, reabra com o S-1298 antes de "
+            "reenviar e feche de novo com o S-1299 depois.",
+        ],
+    },
     "269": {
         "simples": ("Uma verba usada no evento não está cadastrada no eSocial (S-1010) "
                     "para esta competência."),
@@ -43157,6 +43170,14 @@ def _esocial_dica_contexto(codigo, row):
                 txt += ("." if dr[:6] == am else
                         f" — fora de {am_fmt}: a data foi mudada depois do envio do S-2299.")
             return txt
+        if codigo == "459" and str(row.get("layout")) in ("1200", "1210"):
+            rec = _recibo_s1200_anterior(id_empresa, mat, am, row.get("folha_tipo"),
+                                         id_esocial_atual=row.get("id_esocial"),
+                                         layout=str(row.get("layout")))
+            if rec:
+                return (f"Neste caso: esta remessa tentou retificar o recibo {rec} "
+                        f"(S-{row.get('layout')} de {am_fmt}), que o Folha10 ainda tem "
+                        "como ativo.")
         if codigo == "851":
             # So' os pagamentos que ja estavam aceitos quando este S-3000 foi
             # enviado: um S-1210 aceito depois nao foi o que travou a exclusao.
