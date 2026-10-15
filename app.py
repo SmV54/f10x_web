@@ -37058,6 +37058,13 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
     # quem nao e' cooperativa/construtora. Ate 15/10/2026 so iam quando != 0 e a
     # empresa 74 voltou com "[1] Campo de preenchimento obrigatorio: Indicativo
     # de cooperativa" - nenhum S-1000 tinha sido aceito desde a S-1.3.
+    # fimValid: o Desktop nunca manda ("Final da Validade sempre em Branco").
+    # Mes futuro volta com [980] "A data informada deve ser maior que
+    # 01/01/1900 e anterior a data atual" (empresa 74, 15/10/2026, com
+    # 2050-12 digitado na tela). So' vai quando ja' passou - encerramento real.
+    _mes_atual = _dt.now().strftime('%Y-%m')
+    if fim_valid and str(fim_valid) > _mes_atual:
+        fim_valid = ''
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
     ind_coop_xml   = f"\n          <indCoop>{x(ind_coop or '0')}</indCoop>"
     ind_constr_xml = f"\n          <indConstr>{x(ind_constr or '0')}</indConstr>"
