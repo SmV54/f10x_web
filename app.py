@@ -44913,6 +44913,8 @@ def esocial_s1200():
         r["_sit"]       = s
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
+        r["_tem_dica"]  = (s == "X" and any(c in _ESOCIAL_DICAS
+                                            for c in _esocial_codigos_erro(obs)))
 
     if f_sit:
         rows = [r for r in rows if r.get("_sit") == f_sit]
