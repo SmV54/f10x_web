@@ -1105,32 +1105,8 @@ async function _reconsultar(id, btn) {
   }
 }
 
-/* Erro do eSocial: a mensagem do governo fica como veio; o botao abre, embaixo
-   dela, a explicacao simples e o caminho da solucao (dicionario no servidor). */
-function _btnDica(id, msg) {
-  if (!/\[\d{1,5}\]/.test(String(msg || ''))) return '';
-  return `<button type="button" class="btn-dica" onclick="_explicarErro(${id})"
-          title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>`;
-}
-
-async function _explicarErro(id) {
-  let d;
-  try {
-    const r = await fetch(`/api/esocial_explicar_erro?id=${id}`);
-    d = await r.json();
-  } catch (e) {
-    f10Alert('Não foi possível buscar a explicação agora.', { tipo: 'erro' });
-    return;
-  }
-  if (!d.ok) { f10Alert(d.msg || 'Sem explicação para este erro.', { tipo: 'info', titulo: 'Entenda o erro' }); return; }
-  const passos = (d.solucao || []).map((p, i) => `${i + 1}. ${p}`).join('\n');
-  const texto  = 'MENSAGEM DO eSOCIAL\n' + (d.msg_gov || '') +
-                 '\n\nEM PALAVRAS SIMPLES\n' + d.simples +
-                 (d.contexto ? '\n\n' + d.contexto : '') +
-                 '\n\nCOMO RESOLVER\n' + passos;
-  f10Alert(texto, { tipo: 'info', titulo: `Entenda o erro [${d.codigo}]` });
-}
 </script>
 <script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_esocial_dica.js"></script>
 </body>
 </html>

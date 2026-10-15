@@ -49612,6 +49612,8 @@ def esocial_s3000():
             r["_sit"], r["_sit_label"], r["_sit_class"] = "W", "Aguardando","sit-aguardando"
         else:
             r["_sit"], r["_sit_label"], r["_sit_class"] = "X", "Com Erro",  "sit-erro"
+        r["_tem_dica"] = (r["_sit"] == "X" and any(c in _ESOCIAL_DICAS
+                                                   for c in _esocial_codigos_erro(obs)))
 
     # Estado completo, e não só o sim/não: a tela mostra qual evento deixou a
     # folha assim, para o usuário não ter que adivinhar se o S-1298 que ele
@@ -50170,8 +50172,10 @@ def api_esocial_s3000_enviar():
         novo_es["observacao_erro"] = f"AGUARDANDO:{protocolo_envio}"
     elif obs_erro:
         novo_es["observacao_erro"] = obs_erro[:295]
+    id_s3000 = None
     try:
-        supabase.table("tab_esocial").insert(novo_es).execute()
+        _ins = supabase.table("tab_esocial").insert(novo_es).execute()
+        id_s3000 = ((_ins.data or [{}])[0]).get("id_esocial")
     except Exception:
         pass
 
@@ -50186,6 +50190,7 @@ def api_esocial_s3000_enviar():
         "ok":         ok,
         "aguardando": aguardando,
         "nr_rec":     recibo_final,
+        "id_s3000":   id_s3000,   # a tela usa no "Entenda o erro"
         "msg":        _msg_ag if aguardando else (obs_erro or _msg_ok),
     })
 

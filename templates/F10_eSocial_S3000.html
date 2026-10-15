@@ -127,6 +127,12 @@ tr:hover td { background: #f8fafc; }
 .mat-cell  { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
 .nome-cell { font-weight: 500; }
 .rec-cell  { font-family: var(--mono); font-size: 11px; color: #475569; word-break: break-all; max-width: 200px; }
+.btn-dica {
+    margin-top: 4px; font-size: 10.5px; padding: 1px 8px; border-radius: 5px; cursor: pointer;
+    background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-family: var(--sans);
+    word-break: normal;
+}
+.btn-dica:hover { background: #dbeafe; }
 .data-cell { font-family: var(--mono); font-size: 12px; color: #64748b; white-space: nowrap; }
 
 input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
@@ -330,7 +336,12 @@ input[type=checkbox] { width: 15px; height: 15px; cursor: pointer; accent-color:
         <tr>
           <td class="mat-cell">{{ "%06d"|format(r.matricula or 0) }}</td>
           <td class="nome-cell">{{ r._nome }}</td>
-          <td class="rec-cell">{{ r.recibo or (r.observacao_erro or "—") }}</td>
+          <td class="rec-cell">{{ r.recibo or (r.observacao_erro or "—") }}
+            {% if r._tem_dica %}
+            <br><button type="button" class="btn-dica" onclick="_explicarErro({{ r.id_esocial }})"
+                    title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>
+            {% endif %}
+          </td>
           <td class="data-cell">{{ r._datagrava or "—" }}</td>
           <td><span class="sit-badge {{ r._sit_class }}">{{ r._sit_label }}</span></td>
         </tr>
@@ -546,6 +557,7 @@ async function enviarSelecionados() {
         ok++;
       } else {
         lbl.textContent = '❌ ' + (data.msg || 'Erro');
+        lbl.insertAdjacentHTML('beforeend', ' ' + _btnDica(data.id_s3000, data.msg));
         erro++;
       }
     } catch(e) {
@@ -604,6 +616,7 @@ async function recuperarRecibos() {
 </script>
 
 <script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_esocial_dica.js"></script>
 
 {% if not folha_aberta_esocial %}
 <script>
