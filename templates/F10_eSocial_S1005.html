@@ -51,6 +51,10 @@ tbody tr:last-child td{border-bottom:none;}
 .vazio{padding:36px;text-align:center;color:#94a3b8;font-size:13px;}
 .recibo-cell{font-family:var(--mono);font-size:12px;color:#166534;}
 .erro-cell{font-size:11px;color:#b91c1c;max-width:320px;line-height:1.4;}
+.fap-aviso{margin-top:5px;font-size:11px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:4px 7px;max-width:320px;line-height:1.4;}
+.fap-aviso a{color:#1e40af;font-weight:600;}
+.btn-dica{margin-top:4px;font-size:10.5px;padding:1px 8px;border-radius:5px;cursor:pointer;background:#eff6ff;color:#1e40af;border:1px solid #bfdbfe;}
+.btn-dica:hover{background:#dbeafe;}
 #msg{display:none;margin-top:16px;padding:11px 16px;border-radius:10px;font-size:13px;line-height:1.5;}
 .info-box{margin-top:22px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:12px;padding:14px 20px;}
 .info-box h3{font-size:12px;font-weight:700;color:#0369a1;margin-bottom:8px;text-transform:uppercase;letter-spacing:.03em;}
@@ -112,6 +116,16 @@ tbody tr:last-child td{border-bottom:none;}
                     <td>
                         {% if r.get('recibo') %}<div class="recibo-cell">{{ r.recibo }}</div>
                         {% elif r._sit == 'X' %}<div class="erro-cell">{{ ((r.get('observacao_erro') or '').split('|')[-1])[:160] }}</div>
+                            {% if r._fap_erro %}
+                            <div class="fap-aviso">
+                                FAP {{ fap_ano }}: {% if fap_valor %}lançado <b>{{ fap_valor }}</b>{% else %}<b>não lançado</b> — no reenvio vai 1,0000 (empresa nova){% endif %}.
+                                <a href="/cad_fap">Lançar / alterar o FAP</a> (Eventuais → FAP) e depois clique em Reenviar.
+                            </div>
+                            {% endif %}
+                            {% if r._tem_dica %}
+                            <button type="button" class="btn-dica" onclick="_explicarErro({{ r.id_esocial }})"
+                                    title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>
+                            {% endif %}
                         {% elif r._sit == 'W' %}<span style="color:#92400e;font-size:12px;">Aguardando…</span>
                         {% else %}<span style="color:#94a3b8;">—</span>{% endif %}
                     </td>
@@ -140,7 +154,9 @@ tbody tr:last-child td{border-bottom:none;}
         <h3>Observações</h3>
         <ul>
             <li>Sem filiais, o S-1005 é montado com os dados da própria empresa (matriz): CNPJ + CNAE.</li>
-            <li>Na versão S-1.0, o RAT/FAP é derivado do CNAE pelo governo — só se informa em caso de decisão judicial.</li>
+            <li>O RAT sai do CNAE e o FAP da tabela do governo. Só quando o estabelecimento não está nessa tabela (empresa nova — erro [1801]) o FAP vai no S-1005:
+                FAP {{ fap_ano }} {% if fap_valor %}lançado: <b>{{ fap_valor }}</b>{% else %}<b>não lançado</b> (vai 1,0000){% endif %} —
+                <a href="/cad_fap">lançar / alterar em Eventuais → FAP</a>.</li>
             <li>Requer a folha <b>Aberta</b> e o <b>S-1000</b> (Empregador) já enviado.</li>
         </ul>
     </div>
@@ -186,5 +202,6 @@ async function excluir(id,btn){
 }
 </script>
 <script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_esocial_dica.js"></script>
 </body>
 </html>

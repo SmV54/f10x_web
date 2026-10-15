@@ -37969,6 +37969,23 @@ def esocial_s1005():
         r["_sit_label"]   = _SIT[s][0]
         r["_sit_class"]   = _SIT[s][1]
         r["_datacad_fmt"] = _d8(r.get("data_cad"))
+        r["_tem_dica"]    = (s == "X" and _esocial_tem_dica(obs))
+        r["_fap_erro"]    = (s == "X" and "[1801]" in obs)
+
+    # FAP do ano da folha (Eventuais -> FAP, tab_eventos op1=34): o S-1005 so'
+    # o informa depois de um [1801]; sem lancamento vai 1,0000.
+    ctx["fap_ano"]   = _am[:4] if len(_am) == 6 else ""
+    ctx["fap_valor"] = ""
+    try:
+        if ctx["fap_ano"]:
+            _rf = (supabase.table("tab_eventos").select("campotxt2")
+                   .eq("id_empresa", id_empresa).eq("op1", 34)
+                   .eq("campotxt1", ctx["fap_ano"]).limit(1).execute().data or [])
+            if _rf and str(_rf[0].get("campotxt2") or "").strip():
+                ctx["fap_valor"] = (f"{float(str(_rf[0]['campotxt2']).replace(',', '.')):.4f}"
+                                    .replace(".", ","))
+    except Exception as e:
+        print(f"[S1005 tela] FAP: {e}")
 
     ctx["rows"]  = rows
     ctx["total"] = len(rows)
@@ -43418,8 +43435,9 @@ _ESOCIAL_DICAS = {
                     "pouco. Nesse caso o eSocial exige que o FAP seja informado no S-1005."),
         "solucao": [
             "Reenvie o mesmo S-1005: no reenvio o Folha10 já informa o FAP (o do ano "
-            "cadastrado na empresa ou 1,0000, o valor neutro de empresa nova).",
-            "Se a empresa tiver um FAP próprio publicado, cadastre-o antes de reenviar.",
+            "lançado na empresa ou 1,0000, o valor neutro de empresa nova).",
+            "Se a empresa tiver um FAP próprio publicado, lance-o antes de reenviar em "
+            "Menu → Eventuais → FAP (ano de referência + fator com 4 casas, ex.: 0,8547).",
         ],
     },
     "ASSINANTE": {
