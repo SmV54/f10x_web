@@ -8572,6 +8572,12 @@ def _gravar_ou_atualizar_s1210_resc(id_empresa, id_cliente, mat_int, anomes_am,
             continue
         if (row.get("observacao_erro") or "").strip().upper() == "EXCLUIDO":
             continue
+        # Enviado e esperando a consulta: já está no governo. Convertê-lo no
+        # da rescisão levava junto o protocolo do pagamento da folha, e o
+        # Consultar dava à rescisão o recibo do salário (empresa 29, mats 126
+        # e 1012, S-1210 de 09/2026 enviados em 07/10).
+        if (row.get("observacao_erro") or "").strip().upper().startswith("AGUARDANDO:"):
+            continue
         if str(row.get("folha_tipo") or "N").upper()[:1] != _ft_es:
             continue
         _cands.append(row)
@@ -8736,7 +8742,8 @@ def _gravar_ou_atualizar_s2299(id_empresa, id_cliente, mat_int, anomes_am, folha
     for row in existentes:
         rec = (row.get("recibo") or "").strip()
         obs = (row.get("observacao_erro") or "").strip().upper()
-        if not rec and obs != "EXCLUIDO":
+        # AGUARDANDO = já enviado, esperando a consulta: não é pendente.
+        if not rec and obs != "EXCLUIDO" and not obs.startswith("AGUARDANDO:"):
             pendente = row
             break
     campos = {
@@ -43044,6 +43051,17 @@ _ESOCIAL_DICAS = {
         "solucao": [
             "Na tela S-3000, exclua primeiro o S-1210 do mesmo funcionário e competência.",
             "Quando a exclusão do S-1210 voltar aceita, reenvie este S-3000.",
+        ],
+    },
+    "106": {
+        "simples": ("O eSocial já tem este evento para o mesmo CPF e o mesmo período. "
+                    "Quase sempre um envio anterior foi ACEITO, mas o Folha10 não chegou a "
+                    "registrar o recibo (a consulta do resultado não foi feita ou se perdeu)."),
+        "solucao": [
+            "Não reenvie como evento novo: vai dar [106] de novo.",
+            "Peça ao suporte para recuperar o recibo do envio anterior (consulta do "
+            "protocolo). Com o recibo gravado, a remessa fica como aceita.",
+            "Se o evento aceito precisa mudar, o novo vai como RETIFICAÇÃO desse recibo.",
         ],
     },
     "459": {
