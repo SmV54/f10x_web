@@ -42386,6 +42386,55 @@ def esocial_s2299():
     )
 
 
+def _s2299_aceito_limpa_s1200(id_empresa, matricula):
+    """S-2299 aceito (com recibo): apaga o S-1200 da folha que ainda esteja
+    pendente na competencia do desligamento, e o S-1210 que saiu junto com ele.
+
+    No mes do desligamento o empregado vai so' no S-2299 + S-1210; um S-1200
+    da folha ali repete o ideDmDev da rescisao (matricula + "00") e volta com
+    [681]. Foi o caso da empresa 53 mat 13 (09/2026): S-2299 aceito com
+    30/09, e o S-1200 de 09 gerado depois ficou recusado em toda tentativa.
+
+    So' a competencia do desligamento: o S-1200 do mes anterior (desligado no
+    dia 1o) e' salario legitimo. Remessa com recibo nunca sai (_esocial_delete);
+    o S-1200 'R' (rescisao de TSVE) tambem fica. Devolve quantas apagou."""
+    try:
+        mat = int(matricula)
+        r_f = (supabase.table("tab_cad").select("datarescisao")
+               .eq("id_empresa", id_empresa).eq("matricula", mat)
+               .limit(1).execute())
+        dr = str((r_f.data or [{}])[0].get("datarescisao") or "")
+        if len(dr) != 8 or not dr.isdigit():
+            return 0
+        rows = (supabase.table("tab_esocial")
+                .select("id_esocial, layout, id_remessa, recibo, observacao_erro, flag1")
+                .eq("id_empresa", id_empresa).eq("matricula", mat)
+                .eq("ano_mes", int(dr[:6])).in_("layout", ["1200", "1210"])
+                .execute().data or [])
+        def _pend(r):
+            return (not (r.get("recibo") or "").strip()
+                    and (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"
+                    and str(r.get("flag1") or "").upper()[:1] != "R")
+        s1200 = [r for r in rows if r.get("layout") == "1200" and _pend(r)]
+        if not s1200:
+            return 0
+        remessas = {r.get("id_remessa") for r in s1200}
+        alvo = s1200 + [r for r in rows if r.get("layout") == "1210" and _pend(r)
+                        and r.get("id_remessa") in remessas]
+        for r in alvo:
+            _esocial_delete().eq("id_esocial", r["id_esocial"]).execute()
+        gravar_log("ESOCIAL",
+                   f"S-2299 aceito: {len(alvo)} remessa(s) pendente(s) de "
+                   f"{dr[4:6]}/{dr[:4]} apagada(s) (S-1200 da folha + S-1210 dele) - "
+                   "no mes do desligamento vai so' o S-2299 + S-1210",
+                   matricula=mat)
+        return len(alvo)
+    except Exception as e:
+        gravar_log("ESOCIAL", f"S-2299 aceito: falha ao limpar S-1200 pendente: {str(e)[:150]}",
+                   matricula=int(matricula) if str(matricula).isdigit() else None)
+        return 0
+
+
 @app.route("/api/esocial_s2299_enviar", methods=["POST"])
 def api_esocial_s2299_enviar():
     if not session.get("logado"):
@@ -42624,6 +42673,8 @@ def api_esocial_s2299_enviar():
                matricula=int(matricula))
 
     ok = bool(recibo_final) and not obs_erro and not aguardando
+    if ok:
+        _s2299_aceito_limpa_s1200(id_empresa, matricula)
     return jsonify({
         "ok":         ok,
         "aguardando": aguardando,
@@ -42936,6 +42987,8 @@ def api_esocial_s2299_reconsultar():
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
     ok = bool(recibo_final) and not obs_erro
+    if ok:
+        _s2299_aceito_limpa_s1200(id_empresa, r_es.data[0].get("matricula"))
     return jsonify({
         "ok":         ok,
         "aguardando": aguardando,
@@ -43563,6 +43616,8 @@ def api_esocial_reconsultar_generico():
         .eq("id_esocial", int(id_reg)).eq("id_empresa", id_empresa).execute()
 
     ok = bool(recibo_final) and not obs_erro
+    if ok and str(r_es.data[0].get("layout") or "") == "2299":
+        _s2299_aceito_limpa_s1200(id_empresa, r_es.data[0].get("matricula"))
     return jsonify({
         "ok":         ok,
         "aguardando": aguardando,
