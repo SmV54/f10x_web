@@ -118,8 +118,12 @@ tbody tr:last-child td{border-bottom:none;}
                         {% elif r._sit == 'X' %}<div class="erro-cell">{{ ((r.get('observacao_erro') or '').split('|')[-1])[:160] }}</div>
                             {% if r._fap_erro %}
                             <div class="fap-aviso">
+                                {% if fap_simples %}
+                                Empresa do Simples: no reenvio o FAP vai <b>1,0000</b> — não precisa lançar. Clique em Reenviar.
+                                {% else %}
                                 FAP {{ fap_ano }}: {% if fap_valor %}lançado <b>{{ fap_valor }}</b>{% else %}<b>não lançado</b> — no reenvio vai 1,0000 (empresa nova){% endif %}.
                                 <a href="/cad_fap">Lançar / alterar o FAP</a> (Eventuais → FAP) e depois clique em Reenviar.
+                                {% endif %}
                             </div>
                             {% endif %}
                             {% if r._tem_dica %}
@@ -155,8 +159,9 @@ tbody tr:last-child td{border-bottom:none;}
         <ul>
             <li>Sem filiais, o S-1005 é montado com os dados da própria empresa (matriz): CNPJ + CNAE.</li>
             <li>O RAT sai do CNAE e o FAP da tabela do governo. Só quando o estabelecimento não está nessa tabela (empresa nova — erro [1801]) o FAP vai no S-1005:
-                FAP {{ fap_ano }} {% if fap_valor %}lançado: <b>{{ fap_valor }}</b>{% else %}<b>não lançado</b> (vai 1,0000){% endif %} —
-                <a href="/cad_fap">lançar / alterar em Eventuais → FAP</a>.</li>
+                {% if fap_simples %}empresa do Simples — vai sempre <b>1,0000</b>, sem lançamento.
+                {% else %}FAP {{ fap_ano }} {% if fap_valor %}lançado: <b>{{ fap_valor }}</b>{% else %}<b>não lançado</b> (vai 1,0000){% endif %} —
+                <a href="/cad_fap">lançar / alterar em Eventuais → FAP</a>.{% endif %}</li>
             <li>Requer a folha <b>Aberta</b> e o <b>S-1000</b> (Empregador) já enviado.</li>
         </ul>
     </div>

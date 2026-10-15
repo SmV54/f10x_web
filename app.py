@@ -37925,7 +37925,7 @@ def esocial_s1005():
     # O erro nao aparecia porque o except era mudo.
     empresa = {}
     try:
-        r = supabase.table("tab_empresa").select("cnae")\
+        r = supabase.table("tab_empresa").select("cnae, ind_simples, es08_classtributaria")\
             .eq("id_empresa", _get_id_empresa()).limit(1).execute()
         empresa = r.data[0] if r.data else {}
     except Exception as e:
@@ -37976,6 +37976,7 @@ def esocial_s1005():
     # o informa depois de um [1801]; sem lancamento vai 1,0000.
     ctx["fap_ano"]   = _am[:4] if len(_am) == 6 else ""
     ctx["fap_valor"] = ""
+    ctx["fap_simples"] = _empresa_eh_simples(empresa)
     try:
         if ctx["fap_ano"]:
             _rf = (supabase.table("tab_eventos").select("campotxt2")
@@ -37995,6 +37996,13 @@ def esocial_s1005():
 # =========================================================
 # eSocial S-1005 — GERADOR DE XML (evtTabEstab)
 # =========================================================
+def _empresa_eh_simples(empresa):
+    """Optante pelo Simples (cadastro) ou classTrib do Simples/MEI (01 a 04)."""
+    return (str(empresa.get("ind_simples") or "").strip().upper() == "S"
+            or str(empresa.get("es08_classtributaria") or "").strip().zfill(2)
+               in ("01", "02", "03", "04"))
+
+
 def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao", fap=None):
     """Gera o XML do S-1005 (evtTabEstab) para o estabelecimento.
 
@@ -38157,18 +38165,20 @@ def api_esocial_s1005_enviar():
     # FAP so' vai depois de um [1801] "FAP do estabelecimento nao foi localizado
     # na base" (estabelecimento fora da tabela FAP - empresa nova; empresa 74,
     # 15/10/2026). Fora disso o campo e' "exclusivo" e nao pode ir. Valor: o FAP
-    # do ano cadastrado (tab_eventos op1=34), senao 1,0000 (neutro).
+    # do ano cadastrado (tab_eventos op1=34), senao 1,0000 (neutro). Empresa do
+    # Simples vai SEMPRE 1,0000 (decisao do usuario em 15/10/2026).
     _fap = None
     if "[1801]" in str(es.get("observacao_erro") or ""):
         _fap = 1.0
-        try:
-            _rf = (supabase.table("tab_eventos").select("campotxt2")
-                   .eq("id_empresa", id_empresa).eq("op1", 34)
-                   .eq("campotxt1", ini_valid[:4]).limit(1).execute().data or [])
-            if _rf:
-                _fap = float(str(_rf[0].get("campotxt2") or "1").replace(",", ".")) or 1.0
-        except Exception:
-            _fap = 1.0
+        if not _empresa_eh_simples(empresa):
+            try:
+                _rf = (supabase.table("tab_eventos").select("campotxt2")
+                       .eq("id_empresa", id_empresa).eq("op1", 34)
+                       .eq("campotxt1", ini_valid[:4]).limit(1).execute().data or [])
+                if _rf:
+                    _fap = float(str(_rf[0].get("campotxt2") or "1").replace(",", ".")) or 1.0
+            except Exception:
+                _fap = 1.0
     try:
         xml_str = _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op, fap=_fap)
     except Exception as e:
@@ -43435,7 +43445,8 @@ _ESOCIAL_DICAS = {
                     "pouco. Nesse caso o eSocial exige que o FAP seja informado no S-1005."),
         "solucao": [
             "Reenvie o mesmo S-1005: no reenvio o Folha10 já informa o FAP (o do ano "
-            "lançado na empresa ou 1,0000, o valor neutro de empresa nova).",
+            "lançado na empresa ou 1,0000, o valor neutro de empresa nova). Empresa do "
+            "Simples Nacional vai sempre 1,0000 — não precisa lançar nada.",
             "Se a empresa tiver um FAP próprio publicado, lance-o antes de reenviar em "
             "Menu → Eventuais → FAP (ano de referência + fator com 4 casas, ex.: 0,8547).",
         ],
