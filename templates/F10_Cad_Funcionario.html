@@ -2419,6 +2419,28 @@ async function salvarFuncionario() {
         if (!el || !el.value.trim()) { erros.push(`${label} é obrigatório.`); if (el) _marcarErro(el); }
         else _marcarOk(el);
     });
+    // Endereço completo: sem logradouro, CEP, município (IBGE) e UF o
+    // S-2200/S-2300 volta recusado. Mesma regra de _erro_endereco_func no servidor.
+    const _UF_IBGE = {RO:'11',AC:'12',AM:'13',RR:'14',PA:'15',AP:'16',TO:'17',MA:'21',PI:'22',
+        CE:'23',RN:'24',PB:'25',PE:'26',AL:'27',SE:'28',BA:'29',MG:'31',ES:'32',RJ:'33',SP:'35',
+        PR:'41',SC:'42',RS:'43',MS:'50',MT:'51',GO:'52',DF:'53'};
+    const _eLog = document.getElementById('ender_dscLograd');
+    const _eCep = document.getElementById('ender_cep');
+    const _eMun = document.getElementById('ender_codMunic');
+    const _eUf  = document.getElementById('ender_uf');
+    const _cep  = (_eCep?.value || '').replace(/\D/g, '');
+    const _mun  = (_eMun?.value || '').replace(/\D/g, '');
+    const _uf   = (_eUf?.value || '').trim().toUpperCase();
+    if (_eLog && !_eLog.value.trim()) { erros.push('Logradouro (rua/avenida) é obrigatório.'); _marcarErro(_eLog); }
+    if (_eCep && (_cep.length !== 8 || _cep === '00000000')) { erros.push('CEP é obrigatório (8 dígitos).'); _marcarErro(_eCep); }
+    if (_eUf && !_UF_IBGE[_uf]) { erros.push('UF do endereço é obrigatória.'); _marcarErro(_eUf); }
+    if (_eMun && _mun.length !== 7) {
+        erros.push('Código do Município (IBGE, 7 dígitos) é obrigatório — digite o CEP que ele é preenchido.');
+        _marcarErro(_eMun);
+    } else if (_eMun && _UF_IBGE[_uf] && _mun.slice(0, 2) !== _UF_IBGE[_uf]) {
+        erros.push(`Código do Município ${_mun} não é de ${_uf} (deveria começar com ${_UF_IBGE[_uf]}).`);
+        _marcarErro(_eMun);
+    }
     // Contato e Pix: opcionais, mas se preenchidos tem de estar certos
     const _fone = document.getElementById('celular');
     if (_fone && _fone.value.trim() && !celularValido(_fone.value.replace(/\D/g, ''))) {

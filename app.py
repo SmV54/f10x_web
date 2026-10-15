@@ -17044,6 +17044,42 @@ def _normalizar_contato_pix(campos):
         campos["pix"] = k or None
 
 
+# Codigo IBGE da UF = 2 primeiros digitos do codigo do municipio.
+_UF_IBGE = {"RO": "11", "AC": "12", "AM": "13", "RR": "14", "PA": "15", "AP": "16", "TO": "17",
+            "MA": "21", "PI": "22", "CE": "23", "RN": "24", "PB": "25", "PE": "26", "AL": "27",
+            "SE": "28", "BA": "29", "MG": "31", "ES": "32", "RJ": "33", "SP": "35", "PR": "41",
+            "SC": "42", "RS": "43", "MS": "50", "MT": "51", "GO": "52", "DF": "53"}
+
+
+def _erro_endereco_func(d):
+    """Endereco do funcionario completo para o S-2200/S-2300 (grupo
+    endereco/brasil): logradouro, CEP (8 digitos), codigo IBGE do municipio
+    (7 digitos, da mesma UF) e UF. Sem isso o evento volta recusado - pedido
+    de 15/10/2026: nao gravar o cadastro. Numero e bairro ficam de fora: o
+    gerador ja manda "S/N" e o bairro e' opcional.
+    Devolve a mensagem (todas as faltas juntas) ou ""."""
+    g = lambda k: str(d.get(k) or "").strip()
+    cep  = re.sub(r"\D", "", g("ender_cep"))
+    mun  = re.sub(r"\D", "", g("ender_codMunic"))
+    uf   = g("ender_uf").upper()
+    faltas = []
+    if not g("ender_dscLograd"):
+        faltas.append("Logradouro (rua/avenida)")
+    if len(cep) != 8 or cep == "00000000":
+        faltas.append("CEP (8 dígitos)")
+    if uf not in _UF_IBGE:
+        faltas.append("UF")
+    if len(mun) != 7:
+        faltas.append("Código do Município (IBGE, 7 dígitos)")
+    elif uf in _UF_IBGE and mun[:2] != _UF_IBGE[uf]:
+        faltas.append(f"Código do Município {mun} não é de {uf} (deveria começar com {_UF_IBGE[uf]})")
+    if not faltas:
+        return ""
+    return ("Endereço incompleto — sem ele o S-2200/S-2300 é recusado pelo eSocial. "
+            "Corrija: " + "; ".join(faltas) + ". Dica: digite o CEP que o sistema "
+            "preenche o município e a UF.")
+
+
 @app.route("/api/funcionario/alterar", methods=["POST"])
 def api_funcionario_alterar():
     if not session.get("logado"):
@@ -17078,6 +17114,9 @@ def api_funcionario_alterar():
     ]:
         if not (d.get(campo) or "").strip():
             return jsonify({"ok": False, "msg": f"{label} obrigatório"})
+    _erro_end = _erro_endereco_func(d)
+    if _erro_end:
+        return jsonify({"ok": False, "msg": _erro_end})
 
     def sv(f):
         v = (d.get(f) or "").strip()
@@ -17464,6 +17503,9 @@ def api_funcionario_incluir():
     ]:
         if not (d.get(campo) or "").strip():
             return jsonify({"ok": False, "msg": f"{label} obrigatório"})
+    _erro_end = _erro_endereco_func(d)
+    if _erro_end:
+        return jsonify({"ok": False, "msg": _erro_end})
 
     # ── Data de admissão × folha ativa ────────────────────────────────────
     # FUTURA: recusa. Não existe admitir em competência que ainda não abriu, e
