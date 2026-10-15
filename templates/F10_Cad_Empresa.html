@@ -843,7 +843,7 @@ body {
                 <div class="campo"><label>PIS (%)</label>               <input type="text" id="pis" placeholder="0,65" onfocus="showHint(this,'PIS — Programa de Integração Social.\nAlíquota padrão: 0,65% (regime cumulativo) ou 1,65% (regime não cumulativo).\nEmpresas do Simples Nacional estão dispensadas do recolhimento em separado.')" onblur="clearHint()"></div>
                 <div class="campo">
                     <label>Simples Nacional <span style="color:#ef4444;">*</span></label>
-                    <select id="ind_simples" required autocomplete="off" onchange="atualizarSimplesUI()" onfocus="showHint(this,'Simples Nacional — Regime tributário diferenciado instituído pela LC 123/2006.\nAplica-se a ME e EPP com receita bruta anual de até R$ 4,8 milhões.\nO enquadramento unifica o recolhimento de vários tributos em uma única guia (DAS).\n\nCAMPO OBRIGATÓRIO.')" onblur="clearHint()">
+                    <select id="ind_simples" required autocomplete="off" onchange="atualizarSimplesUI(true)" onfocus="showHint(this,'Simples Nacional — Regime tributário diferenciado instituído pela LC 123/2006.\nAplica-se a ME e EPP com receita bruta anual de até R$ 4,8 milhões.\nO enquadramento unifica o recolhimento de vários tributos em uma única guia (DAS).\n\nCAMPO OBRIGATÓRIO.')" onblur="clearHint()">
                         <option value="" selected>— Selecione —</option>
                         <option value="S">Sim</option>
                         <option value="N">Não</option>
@@ -1372,6 +1372,8 @@ async function carregarFPAS() {
         document.getElementById('sest').value      = fmt(d.sest);
         document.getElementById('senat').value     = fmt(d.senat);
         document.getElementById('sescoop').value   = fmt(d.sescoop);
+        // Trocar o FPAS de empresa do Simples não traz os terceiros de volta.
+        if ((document.getElementById('ind_simples')?.value || '').trim() === 'S') zerarTerceirosSimples();
     } catch (e) { console.error('FPAS detail:', e); limparCamposFPAS(); }
 }
 
@@ -1753,7 +1755,20 @@ function limparFormulario() {
 }
 
 /* ── RISCO AUTOMÁTICO POR CLASSIFICAÇÃO TRIBUTÁRIA ─────── */
-function atualizarSimplesUI() {
+// Simples Nacional não recolhe terceiros em GPS (vai tudo na DAS): os
+// percentuais ficam zerados no cadastro, inclusive a alíquota total do FPAS.
+const _CAMPOS_TERCEIROS = ['aliq_total', 'sal_educ', 'incra', 'senai', 'sesi', 'senac',
+    'sesc', 'sebrae', 'dpc', 'senar', 'sest', 'senat', 'sescoop'];
+function zerarTerceirosSimples() {
+    _CAMPOS_TERCEIROS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '0.00';
+    });
+}
+
+// porUsuario: veio da troca do combo. Só então, ao SAIR do Simples, os
+// percentuais voltam do FPAS — na abertura da tela vale o que está gravado.
+function atualizarSimplesUI(porUsuario) {
     const ind    = (document.getElementById('ind_simples')?.value || '').trim();
     const secao  = document.getElementById('secao-terceiros');
     const campo  = document.getElementById('campoPercSimples');
@@ -1763,6 +1778,11 @@ function atualizarSimplesUI() {
     if (campo) campo.style.display = eSim ? '' : 'none';
     // Se saiu do Simples, limpa a % pra nao ficar residuo escondido
     if (!eSim && perc) perc.value = '';
+    if (eSim) {
+        zerarTerceirosSimples();
+    } else if (porUsuario === true && (document.getElementById('fpas')?.value || '').trim()) {
+        carregarFPAS();
+    }
 }
 
 // Alias antigo para compatibilidade com tour/driver.js

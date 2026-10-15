@@ -13541,6 +13541,20 @@ def alterar_empresa():
     )
 
 
+_GPS_TERCEIROS_COLS = ("gps_fpas_perc", "gps_saleduc", "gps_incra", "gps_senai", "gps_sesi",
+                       "gps_senac", "gps_sesc", "gps_sebrae", "gps_dpc", "gps_senar",
+                       "gps_sest", "gps_senat", "gps_sesco")
+
+
+def _zerar_terceiros_simples(dados):
+    """Optante pelo Simples nao recolhe terceiros em GPS (vai na DAS): grava
+    os percentuais zerados, inclusive a aliquota total do FPAS. Pedido de
+    15/10/2026 - a tela ja zera ao marcar Simples; aqui garante no banco."""
+    if str(dados.get("ind_simples") or "").strip().upper() == "S":
+        for k in _GPS_TERCEIROS_COLS:
+            dados[k] = 0
+
+
 def _conflitos_empresa(dados):
     """Combinacoes do cadastro da empresa que nao fecham entre si.
 
@@ -13604,6 +13618,7 @@ def api_alterar_empresa():
             return jsonify({"ok": False,
                 "msg": "Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao)."})
         dados["ind_simples"] = _is
+        _zerar_terceiros_simples(dados)
         # % adiantamento do 13º: inteiro entre 10 e 90 (default 50)
         _erro_p13 = _validar_per_adianta13(dados)
         if _erro_p13:
@@ -13715,6 +13730,7 @@ def api_gravar_empresa():
             return jsonify({"ok": False,
                 "msg": "Informe se a empresa e optante pelo Simples Nacional (Sim ou Nao)."})
         dados["ind_simples"] = _is
+        _zerar_terceiros_simples(dados)
         # % adiantamento do 13º: inteiro entre 10 e 90 (default 50)
         _erro_p13 = _validar_per_adianta13(dados)
         if _erro_p13:
