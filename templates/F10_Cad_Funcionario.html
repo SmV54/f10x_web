@@ -2087,7 +2087,34 @@ async function buscarFuncionario() {
         if (!j.ok) { msg.style.color='#dc2626'; msg.textContent=j.msg; return; }
         preencherFormulario(j.data);
         msg.style.color='#18795b'; msg.textContent=`Funcionário encontrado: ${j.data.nome}`;
+        avisarDemitido(j.data);
     } catch(e) { msg.style.color='#dc2626'; msg.textContent='Erro de comunicação.'; }
+}
+
+/* Demitido: avisa ao abrir o cadastro e deixa a faixa no topo do formulário.
+   Rescisão desta folha pode ser corrigida (TRCT, GRRF, eSocial); de folha
+   anterior a gravação fica bloqueada — o cadastro já foi declarado. */
+let demitidoFolhaAnterior = false;
+function avisarDemitido(d) {
+    const form = document.getElementById('form_funcionario');
+    let faixa = document.getElementById('faixa_demitido');
+    demitidoFolhaAnterior = false;
+    if (!d || d.situacao !== 'D') { if (faixa) faixa.remove(); return; }
+    const resc = dataBR(d.datarescisao);
+    demitidoFolhaAnterior = !demitidoNestaFolha(d);
+    const texto = demitidoFolhaAnterior
+        ? `Funcionário já demitido em ${resc}, em folha anterior. O cadastro não pode ser alterado.`
+        : `Funcionário já demitido em ${resc}, nesta folha. A alteração só deve corrigir dados que saem no TRCT, na GRRF ou no eSocial.`;
+    if (!faixa) {
+        faixa = document.createElement('div');
+        faixa.id = 'faixa_demitido';
+        faixa.style.cssText = 'margin:0 0 12px;padding:10px 14px;border-radius:8px;font-size:13px;font-weight:600;'
+                            + 'background:#fef2f2;border:1.5px solid #dc2626;color:#991b1b;';
+        form.insertBefore(faixa, form.firstChild);
+    }
+    faixa.textContent = '⚠️ ' + texto;
+    if (typeof f10Alert === 'function')
+        f10Alert(texto, { tipo: demitidoFolhaAnterior ? 'erro' : 'aviso', titulo: 'Funcionário demitido' });
 }
 
 function preencherFormulario(d) {
@@ -2434,6 +2461,11 @@ async function salvarFuncionario() {
     }
     if (MODO === 'alteracao' && !funcionarioId) {
         painel.innerHTML = `<div class="resultado-erro"><strong>Busque o funcionário antes de salvar.</strong></div>`;
+        painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+        return;
+    }
+    if (MODO === 'alteracao' && demitidoFolhaAnterior) {
+        painel.innerHTML = `<div class="resultado-erro"><strong>Funcionário demitido em folha anterior — o cadastro não pode ser alterado.</strong></div>`;
         painel.scrollIntoView({ behavior:'smooth', block:'nearest' });
         return;
     }
