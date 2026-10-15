@@ -37305,7 +37305,7 @@ def api_esocial_s1000_gravar():
 
     tp_op     = data.get("tp_op", "inclusao")
     ini_valid = data.get("ini_valid", "").strip()
-    fim_valid = data.get("fim_valid", "").strip()
+    fim_valid = _fim_valid_passado(data.get("fim_valid", ""))  # futuro -> em branco
     ctt_nome  = data.get("contato_nome", "").strip()
     ctt_cpf   = data.get("contato_cpf", "").strip()
     tpAmb     = str(data.get("tpAmb", "1"))
@@ -38543,7 +38543,7 @@ def api_esocial_s1010_gravar():
     data       = request.get_json(force=True) or {}
 
     tp_op     = data.get("tp_op", "inclusao")
-    fim_valid = data.get("fim_valid", "").strip()
+    fim_valid = _fim_valid_passado(data.get("fim_valid", ""))  # futuro -> em branco
     tpAmb     = str(data.get("tpAmb", "1"))
     verbas    = data.get("verbas", [])   # lista de {cod_rubr, dsc_rubr}
 
@@ -39344,7 +39344,7 @@ def api_esocial_s1020_gravar():
 
     tp_op      = data.get("tp_op", "inclusao")
     ini_valid  = data.get("ini_valid", "").strip()
-    fim_valid  = data.get("fim_valid", "").strip()
+    fim_valid  = _fim_valid_passado(data.get("fim_valid", ""))  # futuro -> em branco
     tpAmb      = str(data.get("tpAmb", "1"))
     # Sem valor-padrao de proposito. Com o "01" que estava aqui, um pedido que
     # nao mandasse codLotacao passava pela validacao logo abaixo e gerava um
