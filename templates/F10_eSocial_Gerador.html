@@ -516,7 +516,7 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); }
           {% for f in funcionarios %}
           {% set _sit = (f.situacao or 'A')|upper %}
           {% set _dtr = (f.datarescisao or '')|string %}
-          <label class="func-item" data-sit="{{ _sit }}">
+          <label class="func-item" data-sit="{{ _sit }}" data-dtr="{{ _dtr }}">
             <input type="checkbox" value="{{ f.matricula }}" class="func-chk" onchange="atualizarSelecao()">
             <span class="func-mat">{{ '%06d' % f.matricula }}</span>
             <span class="func-nome">{{ f.nome }}</span>
@@ -881,12 +881,24 @@ function _atualizarBotaoTabela() {
 // apareceria la no eSocial, devolvido pelo governo.
 function _sitDoLayout() { return layoutAtual === '2299' ? 'D' : 'A'; }
 
+// Competência das remessas do Gerador: a folha ativa. Demitido com rescisão
+// em mês POSTERIOR a ela ainda estava ativo na competência — o S-1200/S-1210
+// de 09 de quem saiu em 10 é legítimo (empresa 29, mat 2, 09/2026).
+const ANOMES_GERADOR = '{{ anomes_atual }}';
+function _ativoNaCompetencia(item) {
+  if (item.dataset.sit === 'A') return true;
+  const dtr = String(item.dataset.dtr || '');
+  return item.dataset.sit === 'D' && /^\d{6}$/.test(ANOMES_GERADOR)
+      && dtr.length === 8 && dtr.slice(0, 6) > ANOMES_GERADOR;
+}
+
 function filtrarFuncs() {
   const q    = document.getElementById('funcBusca').value.toLowerCase();
   const sit  = _sitDoLayout();
   let visiveis = 0;
   document.querySelectorAll('.func-item').forEach(item => {
-    const cabe = item.dataset.sit === sit && item.textContent.toLowerCase().includes(q);
+    const naSit = sit === 'D' ? item.dataset.sit === 'D' : _ativoNaCompetencia(item);
+    const cabe = naSit && item.textContent.toLowerCase().includes(q);
     item.style.display = cabe ? '' : 'none';
     if (cabe) visiveis++;
     if (!cabe) { const c = item.querySelector('.func-chk'); if (c) c.checked = false; }
