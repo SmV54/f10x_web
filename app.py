@@ -45918,6 +45918,22 @@ def api_esocial_s1200_gerar_remessa():
     if retif and falta_1210:
         lays, retif = ["1210"], ""
 
+    # Conferir: a tela mostra de quem é a matrícula e o que vai sair, antes de
+    # gravar — digitar a matrícula sem ver o nome gerava remessa no escuro.
+    if data.get("conferir"):
+        _sit = ("Ativo" if str(func.get("situacao") or "") == "A" else
+                (f"Demitido em {_resc[6:8]}/{_resc[4:6]}/{_resc[:4]}"
+                 if len(_resc) == 8 else "Desligado"))
+        _txt = (f"{mat:06d} — {nome}\nSituação: {_sit}\n\n"
+                f"Vai gerar em {am_fmt}: " + " e ".join("S-" + l for l in lays) + ".")
+        if lays == ["1210"]:
+            _txt += "\n\nO S-1200 desta competência já foi aceito; falta só o pagamento."
+        if retif:
+            _txt += (f"\n\nAtenção: já há um S-1200 aceito nesta competência (recibo "
+                     f"{retif}). Esta remessa vai como RETIFICAÇÃO dele, e o eSocial "
+                     "só aceita com o período reaberto (S-1298).")
+        return jsonify({"ok": True, "conferir": True, "nome": nome, "msg": _txt})
+
     agora = _agora_brasilia()
     try:
         supabase.table("tab_esocial").insert([{

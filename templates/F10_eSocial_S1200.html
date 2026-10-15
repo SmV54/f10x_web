@@ -675,18 +675,30 @@ async function gerarRemessa(btn) {
     { titulo: 'Gerar remessa — ' + amFmt, okText: 'Gerar', cancelText: 'Cancelar' });
   if (mat === null || !String(mat).trim()) return;
 
-  btn.disabled = true;
-  let d;
-  try {
-    const r = await fetch('/api/esocial_s1200_gerar_remessa', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ matricula: String(mat).trim(), anomes: anomes }),
-    });
-    d = await lerRespostaJson(r);
-  } catch (e) {
-    d = { ok: false, msg: msgFalha(e) };
+  // 1º confere: mostra de quem é a matrícula e o que vai sair; só grava no "Gerar".
+  async function pedir(conferir) {
+    try {
+      const r = await fetch('/api/esocial_s1200_gerar_remessa', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ matricula: String(mat).trim(), anomes: anomes, conferir: conferir }),
+      });
+      return await lerRespostaJson(r);
+    } catch (e) {
+      return { ok: false, msg: msgFalha(e) };
+    }
   }
+  btn.disabled = true;
+  const c = await pedir(true);
+  btn.disabled = false;
+  if (!c.ok) {
+    await f10Alert(c.msg || 'Nada a fazer.', { titulo: 'Gerar remessa — ' + amFmt, tipo: 'aviso' });
+    return;
+  }
+  if (!await f10Confirm(c.msg, { titulo: 'Gerar remessa — ' + amFmt, okText: 'Gerar', cancelText: 'Cancelar' })) return;
+
+  btn.disabled = true;
+  const d = await pedir(false);
   btn.disabled = false;
   await f10Alert(d.msg || 'Nada a fazer.', {
     titulo: 'Gerar remessa — ' + amFmt,
