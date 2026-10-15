@@ -198,6 +198,11 @@ tr:hover td { background: #f8fafc; }
 
 .res-ok   { color: #166534; font-size: 12px; font-weight: 600; font-family: var(--mono); word-break: break-all; }
 .res-erro { color: #991b1b; font-size: 12px; font-weight: 600; word-break: break-all; }
+.btn-dica {
+    margin-top: 4px; font-size: 10.5px; padding: 1px 8px; border-radius: 5px; cursor: pointer;
+    background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-family: var(--sans);
+}
+.btn-dica:hover { background: #dbeafe; }
 
 .vazio { text-align: center; padding: 48px 20px; color: #94a3b8; font-size: 14px; }
 .vazio-icone { font-size: 32px; margin-bottom: 12px; }
@@ -386,6 +391,10 @@ tr:hover td { background: #f8fafc; }
               <span class="res-ok" title="{{ r.recibo }}">{{ (r.recibo or '')[:30] }}</span>
             {% elif r.observacao_erro and not (r.observacao_erro or '').startswith('AGUARDANDO:') %}
               <span class="res-erro" title="{{ r.observacao_erro }}">{{ (r.observacao_erro or '')[:60] }}</span>
+              {% if r._tem_dica %}
+              <br><button type="button" class="btn-dica" onclick="_explicarErro({{ r.id_esocial }})"
+                      title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>
+              {% endif %}
             {% else %}
               <span style="color:#94a3b8;font-size:12px;">—</span>
             {% endif %}
@@ -612,7 +621,7 @@ async function _enviar(id, btn, suppressBanner) {
       btn.disabled    = false;
       btn.className   = 'btn-enviar reenviar';
       btn.textContent = 'Reenviar';
-      recTd.innerHTML = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
+      recTd.innerHTML = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>` + _btnDica(id, data.msg);
     }
   } catch(e) {
     clearInterval(animTimer);
@@ -691,7 +700,7 @@ async function _reconsultar(id, btn) {
       sit.className    = 'sit-badge sit-erro';
       sit.textContent  = 'Com Erro';
       acaoTd.innerHTML = `<button class="btn-enviar reenviar" onclick="_enviar(${id}, this)">Reenviar</button>`;
-      recTd.innerHTML  = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>`;
+      recTd.innerHTML  = `<span class="res-erro" title="${data.msg}">${(data.msg||'').slice(0,60)}</span>` + _btnDica(id, data.msg);
     }
   } catch(e) {
     clearInterval(animTimer);
@@ -874,6 +883,7 @@ function aplicarFiltros() {
 }
 </script>
 <script src="/static/f10_dialog.js"></script>
+<script src="/static/f10_esocial_dica.js"></script>
 
 {% if not folha_aberta_esocial %}
 <script>
