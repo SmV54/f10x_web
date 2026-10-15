@@ -660,7 +660,8 @@ async function gerarRemessa(btn) {
   const amFmt = anomes.slice(4) + '/' + anomes.slice(0, 4);
   const mat = await f10Prompt(
     'Matrícula do funcionário para gerar o S-1200 de ' + amFmt + '.\n\n'
-    + 'Use quando a remessa foi excluída e a folha já está fechada. O XML é '
+    + 'Use quando a remessa foi excluída e a folha já está fechada. Se o S-1200 '
+    + 'já foi aceito e falta só o pagamento, gera apenas o S-1210. O XML é '
     + 'montado no envio, com o movimento gravado da folha.',
     { titulo: 'Gerar remessa — ' + amFmt, okText: 'Gerar', cancelText: 'Cancelar' });
   if (mat === null || !String(mat).trim()) return;

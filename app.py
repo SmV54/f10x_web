@@ -45908,9 +45908,13 @@ def api_esocial_s1200_gerar_remessa():
 
     # S-1210: um só por CPF e competência. Qualquer um que já exista (pendente,
     # aceito, ou o da rescisão) ocupa o lugar.
-    lays = ["1200"]
-    if not any(r.get("layout") == "1210" for r in existentes):
-        lays.append("1210")
+    falta_1210 = not any(r.get("layout") == "1210" for r in existentes)
+    lays = ["1200"] + (["1210"] if falta_1210 else [])
+    # S-1200 já aceito e só o S-1210 faltando: gera só o S-1210. Retificar o
+    # S-1200 aí não acrescenta nada e ainda exige o período reaberto (S-1298)
+    # — empresa 29, mats 126 e 1012, 09/2026, demitidas em 03/10.
+    if retif and falta_1210:
+        lays, retif = ["1210"], ""
 
     agora = _agora_brasilia()
     try:
@@ -45931,7 +45935,10 @@ def api_esocial_s1200_gerar_remessa():
 
     msg = (f"Remessa gerada para {mat:06d} {nome}, competência {am_fmt}: "
            + " e ".join("S-" + l for l in lays) + ".")
-    if "1210" in lays:
+    if lays == ["1210"]:
+        msg += ("\n\nO S-1200 desta competência já foi aceito; faltava só o pagamento. "
+                "O S-1210 está na tela do S-1210, pronto para enviar.")
+    elif "1210" in lays:
         msg += "\n\nEnvie o S-1200 primeiro; o S-1210 fica na tela do S-1210."
     if retif:
         msg += (f"\n\nAtenção: já há um S-1200 aceito nesta competência (recibo "
