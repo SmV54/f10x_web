@@ -268,6 +268,11 @@ tr:hover td { background: #f8fafc; }
 }
 .res-ok   { font-family: var(--mono); font-size: 11px; color: #166534; }
 .res-erro { font-size: 11px; color: #991b1b; }
+.btn-dica {
+    margin-top: 3px; font-size: 10.5px; padding: 1px 8px; border-radius: 5px; cursor: pointer;
+    background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; font-family: var(--sans);
+}
+.btn-dica:hover { background: #dbeafe; }
 
 .btn-reconsultar {
     font-size: 11px; padding: 3px 10px; border-radius: 6px; cursor: pointer;
@@ -523,6 +528,10 @@ tr:hover td { background: #f8fafc; }
               <span class="res-ok" title="{{ r.recibo }}">{{ r.recibo }}</span>
             {% elif r._erro_txt and not r._erro_txt.startswith('AGUARDANDO:') %}
               <span class="res-erro" title="{{ r._erro_txt }}">{{ r._erro_txt }}</span>
+              {% if r._tem_dica %}
+              <button type="button" class="btn-dica" onclick="_explicarErro({{ r.id_esocial }})"
+                      title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>
+              {% endif %}
             {% else %}
               <span style="color:#94a3b8;font-size:12px;">—</span>
             {% endif %}
@@ -967,7 +976,7 @@ async function _enviarFila(btn, forcar) {
       lbl.textContent = data.msg || 'Erro ao enviar.';
       sit.className   = 'sit-badge sit-erro';
       sit.textContent = 'Com Erro';
-      rec.innerHTML   = `<span class="res-erro" title="${((data.traceback||data.msg||'')).replace(/"/g,"'").slice(0,400)}">${(data.msg||'Erro').slice(0,60)}</span>`;
+      rec.innerHTML   = `<span class="res-erro" title="${((data.traceback||data.msg||'')).replace(/"/g,"'").slice(0,400)}">${(data.msg||'Erro').slice(0,60)}</span>` + _btnDica(id, data.msg);
       btn.disabled    = false;
       btn.textContent = '▶ Enviar';
     }
@@ -1082,7 +1091,7 @@ async function _reconsultar(id, btn) {
       }
       sit.className   = 'sit-badge sit-erro';
       sit.textContent = 'Com Erro';
-      rec.innerHTML   = `<span class="res-erro" title="${data.msg}">${data.msg.slice(0,60)}</span>`;
+      rec.innerHTML   = `<span class="res-erro" title="${data.msg}">${data.msg.slice(0,60)}</span>` + _btnDica(id, data.msg);
       acao.innerHTML  = `<span style="color:#991b1b;font-size:11px;">Verificar erro</span>`;
     }
   } catch(e) {
@@ -1094,6 +1103,32 @@ async function _reconsultar(id, btn) {
     btn.disabled  = false;
     btn.innerHTML = '&#8635; Consultar';
   }
+}
+
+/* Erro do eSocial: a mensagem do governo fica como veio; o botao abre, embaixo
+   dela, a explicacao simples e o caminho da solucao (dicionario no servidor). */
+function _btnDica(id, msg) {
+  if (!/\[\d{1,5}\]/.test(String(msg || ''))) return '';
+  return `<button type="button" class="btn-dica" onclick="_explicarErro(${id})"
+          title="Explicação simples do erro e como resolver">&#128161; Entenda o erro</button>`;
+}
+
+async function _explicarErro(id) {
+  let d;
+  try {
+    const r = await fetch(`/api/esocial_explicar_erro?id=${id}`);
+    d = await r.json();
+  } catch (e) {
+    f10Alert('Não foi possível buscar a explicação agora.', { tipo: 'erro' });
+    return;
+  }
+  if (!d.ok) { f10Alert(d.msg || 'Sem explicação para este erro.', { tipo: 'info', titulo: 'Entenda o erro' }); return; }
+  const passos = (d.solucao || []).map((p, i) => `${i + 1}. ${p}`).join('\n');
+  const texto  = 'MENSAGEM DO eSOCIAL\n' + (d.msg_gov || '') +
+                 '\n\nEM PALAVRAS SIMPLES\n' + d.simples +
+                 (d.contexto ? '\n\n' + d.contexto : '') +
+                 '\n\nCOMO RESOLVER\n' + passos;
+  f10Alert(texto, { tipo: 'info', titulo: `Entenda o erro [${d.codigo}]` });
 }
 </script>
 <script src="/static/f10_dialog.js"></script>

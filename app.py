@@ -43020,6 +43020,188 @@ def _es_obs_status(obs):
     return obs.split("|", 1)[1].strip() if "|" in obs else ""
 
 
+# Explicacao em linguagem simples dos erros do eSocial, por codigo. A mensagem
+# do governo continua sendo mostrada como veio; isto vai embaixo dela. Montado
+# na hora de mostrar (nao gravado), para que um texto melhorado valha tambem
+# para os erros antigos da Fila. Codigo novo: acrescentar aqui.
+_ESOCIAL_DICAS = {
+    "681": {
+        "simples": ("O eSocial já tem, nesta competência, outro demonstrativo deste "
+                    "funcionário com o mesmo identificador. Quase sempre é o da "
+                    "rescisão: o S-2299 aceito usa o mesmo identificador da folha normal."),
+        "solucao": [
+            "Se o funcionário foi desligado nesta competência, não existe S-1200 da folha: "
+            "exclua esta remessa da Fila. O S-2299 e o S-1210 da rescisão bastam.",
+            "Se a data de demissão foi alterada depois que o S-2299 foi aceito, o eSocial "
+            "ainda tem a data antiga. Na tela S-3000, exclua primeiro o S-1210 da rescisão, "
+            "depois o S-2299, e então reenvie este S-1200.",
+        ],
+    },
+    "851": {
+        "simples": ("O evento que você quer excluir tem um pagamento (S-1210) aceito ligado "
+                    "a ele. O eSocial só exclui a remuneração ou o desligamento depois que "
+                    "o pagamento sai."),
+        "solucao": [
+            "Na tela S-3000, exclua primeiro o S-1210 do mesmo funcionário e competência.",
+            "Quando a exclusão do S-1210 voltar aceita, reenvie este S-3000.",
+        ],
+    },
+    "269": {
+        "simples": ("Uma verba usada no evento não está cadastrada no eSocial (S-1010) "
+                    "para esta competência."),
+        "solucao": [
+            "Envie o S-1010 da verba citada na mensagem (tela eSocial S-1010).",
+            "Depois que o S-1010 voltar aceito, reenvie este evento.",
+        ],
+    },
+    "272": {
+        "simples": ("O estabelecimento (CNPJ, obra ou CAEPF) informado no evento não está "
+                    "cadastrado no eSocial deste empregador."),
+        "solucao": [
+            "Envie o S-1005 do estabelecimento informado (tela eSocial S-1005).",
+            "Se o CNPJ do local de trabalho estiver errado, corrija no cadastro do funcionário.",
+            "Depois reenvie este evento.",
+        ],
+    },
+    "726": {
+        "simples": ("O pagamento (S-1210) aponta para um demonstrativo que o eSocial não "
+                    "conhece: o S-1200, S-2299 ou S-2399 correspondente não foi aceito."),
+        "solucao": [
+            "Envie antes o S-1200 da competência (ou o S-2299/S-2399 da rescisão) e espere "
+            "voltar aceito.",
+            "Depois reenvie este S-1210.",
+            "Estagiário e demais TSVE (fora o diretor 721): a rescisão vai num S-1200 da "
+            "competência, e não no S-2399.",
+        ],
+    },
+    "1867": {
+        "simples": ("No plano de saúde, o valor do titular está zerado, então o eSocial "
+                    "exige os dependentes do plano — e não há dependente informado."),
+        "solucao": [
+            "Confira o desconto do plano no mês: se é de dependente, o dependente precisa "
+            "estar ativo no plano na competência.",
+            "Se o desconto é do titular, corrija a verba e recalcule; depois reenvie.",
+        ],
+    },
+    "697": {
+        "simples": ("Desligamento por transferência para empresa do mesmo grupo recusado. "
+                    "Se origem e destino têm a mesma raiz de CNPJ (8 primeiros dígitos), são "
+                    "matriz e filial: para o eSocial é o mesmo empregador e não há desligamento."),
+        "solucao": [
+            "Exclua este S-2299 da Fila.",
+            "Faça a transferência pela tela Transferir Funcionário: entre matriz e filial ela "
+            "gera só um S-2206 (alteração do local de trabalho) na empresa de destino.",
+        ],
+    },
+    "398": {
+        "simples": ("Transferência recusada: origem e destino com a mesma raiz de CNPJ são "
+                    "o mesmo empregador no eSocial."),
+        "solucao": [
+            "Exclua este evento da Fila.",
+            "Entre matriz e filial a transferência vai num S-2206 na empresa de destino, "
+            "com a matrícula do eSocial da origem.",
+        ],
+    },
+    "404": {
+        "simples": ("Admissão por sucessão recusada: o trabalhador já tem vínculo ativo "
+                    "neste empregador (matriz e filial são o mesmo empregador)."),
+        "solucao": [
+            "Exclua este S-2200 da Fila.",
+            "Entre matriz e filial a transferência vai num S-2206 na empresa de destino, "
+            "com a matrícula do eSocial da origem.",
+        ],
+    },
+}
+
+
+def _esocial_codigos_erro(obs):
+    """Codigos [NNN] da mensagem do governo, na ordem em que aparecem."""
+    vistos = []
+    for c in re.findall(r"\[(\d{1,5})\]", str(obs or "")):
+        if c not in vistos:
+            vistos.append(c)
+    return vistos
+
+
+def _esocial_dica_contexto(codigo, row):
+    """Frase com os dados do caso (recibos, datas), quando da para saber."""
+    id_empresa = row.get("id_empresa")
+    mat        = row.get("matricula")
+    am         = str(row.get("ano_mes") or "")
+    if not (id_empresa and mat and len(am) == 6):
+        return ""
+    am_fmt = f"{am[4:6]}/{am[:4]}"
+
+    def _aceitos(layouts):
+        rs = (supabase.table("tab_esocial")
+              .select("layout, recibo, observacao_erro, flag1, data_grava, hora_grava")
+              .eq("id_empresa", id_empresa).eq("matricula", mat)
+              .eq("ano_mes", int(am)).in_("layout", layouts)
+              .execute().data or [])
+        return [r for r in rs if (r.get("recibo") or "").strip()
+                and (r.get("observacao_erro") or "").strip().upper() != "EXCLUIDO"]
+
+    try:
+        if codigo == "681" and str(row.get("layout")) == "1200":
+            s2299 = _aceitos(["2299"])
+            if not s2299:
+                return ""
+            txt = (f"Neste caso: há um S-2299 aceito em {am_fmt} "
+                   f"(recibo {s2299[0]['recibo'].strip()}).")
+            r_f = (supabase.table("tab_cad").select("datarescisao")
+                   .eq("id_empresa", id_empresa).eq("matricula", mat)
+                   .limit(1).execute())
+            dr = str((r_f.data or [{}])[0].get("datarescisao") or "")
+            if len(dr) == 8:
+                txt += f" No cadastro a demissão está em {dr[6:8]}/{dr[4:6]}/{dr[:4]}"
+                txt += ("." if dr[:6] == am else
+                        f" — fora de {am_fmt}: a data foi mudada depois do envio do S-2299.")
+            return txt
+        if codigo == "851":
+            # So' os pagamentos que ja estavam aceitos quando este S-3000 foi
+            # enviado: um S-1210 aceito depois nao foi o que travou a exclusao.
+            _env = f"{row.get('data_grava') or ''}{str(row.get('hora_grava') or '').zfill(4)}"
+            s1210 = [r for r in _aceitos(["1210"])
+                     if f"{r.get('data_grava') or ''}{str(r.get('hora_grava') or '').zfill(4)}" <= _env]
+            if s1210:
+                recs = ", ".join(r["recibo"].strip() for r in s1210)
+                return (f"Neste caso: S-1210 aceito(s) em {am_fmt} a excluir antes — "
+                        f"recibo {recs}.")
+    except Exception:
+        pass
+    return ""
+
+
+def _esocial_dica(row):
+    """Explicacao do erro da remessa, ou None se nenhum codigo e' conhecido."""
+    obs = _es_obs_status(row.get("observacao_erro"))
+    for c in _esocial_codigos_erro(obs):
+        d = _ESOCIAL_DICAS.get(c)
+        if d:
+            return {"codigo": c, "simples": d["simples"], "solucao": d["solucao"],
+                    "contexto": _esocial_dica_contexto(c, row), "msg_gov": obs}
+    return None
+
+
+@app.route("/api/esocial_explicar_erro")
+def api_esocial_explicar_erro():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    try:
+        id_reg = int(request.args.get("id") or 0)
+        r = (supabase.table("tab_esocial").select("*")
+             .eq("id_esocial", id_reg).eq("id_empresa", _get_id_empresa())
+             .limit(1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": str(e)[:200]})
+    if not r.data:
+        return jsonify({"ok": False, "msg": "Remessa não encontrada."})
+    dica = _esocial_dica(r.data[0])
+    if not dica:
+        return jsonify({"ok": False, "msg": "Ainda não há explicação para este erro."})
+    return jsonify({"ok": True, **dica})
+
+
 @app.route("/esocial_fila")
 def esocial_fila():
     if not session.get("logado"):
@@ -43200,6 +43382,8 @@ def esocial_fila():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
         r["_erro_txt"]  = obs   # só a parte de status: o PARAMS não é erro
+        r["_tem_dica"]  = (s == "X" and any(c in _ESOCIAL_DICAS
+                                            for c in _esocial_codigos_erro(obs)))
         r["_operacao"]  = str(r.get("operacao") or "I").upper()
 
         am = r.get("ano_mes")
