@@ -13541,6 +13541,52 @@ def alterar_empresa():
     )
 
 
+def _conflitos_empresa(dados):
+    """Combinacoes do cadastro da empresa que nao fecham entre si.
+
+    So' AVISA: a tela mostra a lista e o usuario decide se grava assim mesmo
+    (pedido de 15/10/2026, depois da empresa 74). Regras tiradas da Tabela 08
+    (classTrib) e das validacoes do S-1000 no leiaute S-1.3 - as marcadas
+    "eSocial recusa" voltam como erro no envio do S-1000.
+    """
+    g = lambda k: str(dados.get(k) or "").strip()
+    simples = g("ind_simples").upper()
+    ct      = g("es08_classtributaria")[:2]
+    nj      = g("nat_juridica")
+    coop    = g("es_ind_coop")
+    des     = g("es_ind_des_folha")
+    porte   = g("es_ind_porte").upper()
+    CT_SIMPLES = ("01", "02", "03", "04")
+    c = []
+    if simples == "S" and ct and ct not in CT_SIMPLES:
+        c.append(f"Optante pelo Simples Nacional = Sim, mas a Classificação Tributária é {ct}, "
+                 "que não é do Simples (as do Simples são 01, 02, 03 e 04-MEI).")
+    if simples == "N" and ct in CT_SIMPLES:
+        c.append(f"Optante pelo Simples Nacional = Não, mas a Classificação Tributária {ct} "
+                 "é de empresa do Simples Nacional.")
+    if ct == "04" and nj and nj != "213-5":
+        c.append(f"Classificação Tributária 04 (MEI) com Natureza Jurídica {nj}: "
+                 "o MEI é sempre 213-5 (Empresário Individual).")
+    if coop not in ("", "0") and nj != "214-3":
+        c.append(f"Indicativo de Cooperativa = {coop}, mas a Natureza Jurídica é {nj or 'em branco'}: "
+                 "só pode ser diferente de 0 com natureza 214-3 (Cooperativa). O eSocial recusa o S-1000.")
+    if nj == "214-3" and coop in ("", "0"):
+        c.append("Natureza Jurídica 214-3 (Cooperativa), mas o Indicativo de Cooperativa está "
+                 "como 'Não'.")
+    if des == "1" and ct and ct not in ("02", "03", "99"):
+        c.append(f"Desoneração da Folha = 1 (Empresa) só vale para Classificação Tributária "
+                 f"02, 03 ou 99; esta é {ct}. O eSocial recusa o S-1000.")
+    if des == "2" and nj not in ("103-1", "106-6", "124-4", "133-3"):
+        c.append(f"Desoneração da Folha = 2 (Município) só vale para município (naturezas "
+                 f"103-1, 106-6, 124-4 e 133-3); esta é {nj or 'em branco'}. O eSocial recusa o S-1000.")
+    if simples == "S" and porte != "S":
+        c.append("Optante pelo Simples Nacional, mas o Indicativo de Porte (ME/EPP) não está "
+                 "marcado: quem é do Simples é ME ou EPP.")
+    if not ct:
+        c.append("Classificação Tributária em branco: sem ela o S-1000 não pode ser enviado.")
+    return c
+
+
 @app.route("/api/alterar_empresa", methods=["POST"])
 def api_alterar_empresa():
     if not session.get("logado"):
@@ -13573,6 +13619,13 @@ def api_alterar_empresa():
         # /api/admin_reativar_empresa (ADMIN) — nunca pelo Atualizar.
         dados.pop("situacao",       None)
         dados.pop("dt_desativacao", None)
+        # Conflitos do cadastro (ver _conflitos_empresa): so' avisa. A tela mostra
+        # a lista e, se o usuario confirmar, reenvia com aceita_conflitos=true.
+        if not dados.pop("aceita_conflitos", False):
+            _conf = _conflitos_empresa(dados)
+            if _conf:
+                return jsonify({"ok": False, "conflitos": _conf,
+                                "msg": "O cadastro tem informações que não combinam entre si."})
         resposta = (supabase.table("tab_empresa")
                     .update(dados)
                     .eq("id_empresa", id_empresa)
@@ -13728,6 +13781,14 @@ def api_gravar_empresa():
                             f"{_lic['atual_empresas']} empresa(s) e sua licenca permite no "
                             f"maximo {_lic['qtd_empresas']}. Amplie a licenca antes de "
                             "cadastrar mais.")})
+
+        # Conflitos do cadastro (ver _conflitos_empresa): so' avisa. A tela mostra
+        # a lista e, se o usuario confirmar, reenvia com aceita_conflitos=true.
+        if not dados.pop("aceita_conflitos", False):
+            _conf = _conflitos_empresa(dados)
+            if _conf:
+                return jsonify({"ok": False, "conflitos": _conf,
+                                "msg": "O cadastro tem informações que não combinam entre si."})
 
         resposta = (
             supabase
@@ -37139,12 +37200,17 @@ def esocial_s1000():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
 
+    # Tabela 08 do eSocial (a mesma do select do cadastro). O mapa antigo dava
+    # "01 — CNPJ com FGTS", "04 — Simples c/ FGTS", "06 — MEI": tudo errado.
     _CLASS_TRIB = {
-        '01': '01 — CNPJ com FGTS', '02': '02 — CNPJ sem FGTS',
-        '03': '03 — Simples Nacional', '04': '04 — Simples c/ FGTS',
-        '06': '06 — MEI', '07': '07 — Prod. Rural PF',
-        '08': '08 — Órgão Público', '09': '09 — RPPS',
-        '21': '21 — Emp. Doméstico', '22': '22 — Emp. Dom. MEI',
+        '01': '01 — Simples Nacional (CP substituída)',
+        '02': '02 — Simples Nacional (CP não substituída)',
+        '03': '03 — Simples Nacional (CP substituída e não substituída)',
+        '04': '04 — MEI', '06': '06 — Agroindústria',
+        '10': '10 — Entidade sindical (Lei 12.023/2009)',
+        '14': '14 — Sindicatos em geral',
+        '80': '80 — Entidade beneficente isenta',
+        '99': '99 — Pessoas Jurídicas em geral',
     }
     # Os campos do eSocial moram nas colunas es_*; sem o de-para a tela dizia
     # "não preenchido" em cadastro que estava certo.

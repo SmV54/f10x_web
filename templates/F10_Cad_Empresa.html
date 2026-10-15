@@ -1614,12 +1614,30 @@ async function gravarEmpresa(painel) {
     }
     const url = window._modoAlterar ? '/api/alterar_empresa' : '/api/gravar_empresa';
     try {
-        const r = await fetch(url, {
+        let r = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(dados)
         });
-        const j = await r.json();
+        let j = await r.json();
+        // Conflitos entre campos (_conflitos_empresa no servidor): só avisa.
+        // O usuário decide se corrige ou grava assim mesmo.
+        if (!j.ok && Array.isArray(j.conflitos) && j.conflitos.length) {
+            const segue = await f10Confirm(
+                'Atenção: o cadastro tem informações que não combinam entre si.\n\n' +
+                j.conflitos.map(c => '• ' + c).join('\n\n') +
+                '\n\nDeseja gravar assim mesmo?',
+                { tipo: 'aviso', titulo: 'Conferir o cadastro', okText: 'Gravar assim mesmo', cancelText: 'Voltar e corrigir' }
+            );
+            if (!segue) { painel.innerHTML = ''; return; }
+            dados.aceita_conflitos = true;
+            r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(dados)
+            });
+            j = await r.json();
+        }
         if (j.ok) {
             if (window._modoAlterar) {
                 window.location.href = '/menu';
