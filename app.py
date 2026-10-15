@@ -37027,6 +37027,16 @@ def _empresa_es_aliases(empresa):
     return empresa
 
 
+def _fim_valid_passado(fim_valid):
+    """fimValid (AAAA-MM) dos eventos de tabela so' vale ate' o mes atual: mes
+    futuro o eSocial recusa com [980] "A data informada deve ser maior que
+    01/01/1900 e anterior a data atual" (empresa 74, 15/10/2026, S-1000 e
+    S-1020 com 2050-12). O Desktop nunca manda fimValid; aqui o futuro e'
+    descartado - vazio = validade sem prazo."""
+    f = str(fim_valid or "").strip()
+    return f if f and f <= _agora_brasilia().strftime("%Y-%m") else ""
+
+
 def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, contato_cpf):
     """Gera string XML do S-1000 (Informações do Empregador/Contribuinte).
     tp_op: 'inclusao' ou 'alteracao'
@@ -38225,6 +38235,8 @@ def _gerar_xml_s1010_evento(rubrica, empresa, tpAmb, tp_op, ini_valid, fim_valid
     inc_fgts  = _inc(rubrica.get('tpn_inc_fgts'))
     inc_sind  = _inc(rubrica.get('tpn_inc_pis'))
 
+    # fimValid em mes futuro volta com [980]: ver _fim_valid_passado.
+    fim_valid = _fim_valid_passado(fim_valid)
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -38295,6 +38307,8 @@ def _gerar_xml_s1020_evento(lotacao, empresa, tpAmb, tp_op, ini_valid, fim_valid
     if class_trib in ('01', '02', '03', '04'):
         cod_tercs = '0000'
 
+    # fimValid em mes futuro volta com [980]: ver _fim_valid_passado.
+    fim_valid = _fim_valid_passado(fim_valid)
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
 
     # tpInsc/nrInsc em dadosLotacao só se a lotação for de TERCEIRO

@@ -512,6 +512,13 @@ function gravarS1020() {
     const btn      = document.getElementById('btn-gravar');
 
     if (!ini)      { showModalMsg('Informe o período de início de validade.', false); return; }
+    // Fim de validade em mês futuro: o eSocial recusa com [980]. Em branco = sem prazo.
+    const _hoje = new Date();
+    const _mesAtual = _hoje.getFullYear() + '-' + String(_hoje.getMonth() + 1).padStart(2, '0');
+    if (fim && fim > _mesAtual) {
+        showModalMsg('O Fim de Validade não pode ser um mês futuro — o eSocial recusa (erro 980). Deixe em branco: a lotação fica sem prazo de término.', false);
+        return;
+    }
     if (!codLot)   { showModalMsg('Informe o código da lotação.', false); return; }
     if (!fpas)     { showModalMsg('Informe o código FPAS.', false); return; }
     if (!codTercs) { showModalMsg('Informe o código de terceiros.', false); return; }
