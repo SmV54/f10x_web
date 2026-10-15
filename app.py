@@ -36976,13 +36976,21 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
     ind_porte  = str(empresa.get('ind_porte') or '').strip().upper()
     ind_opt    = '0'     # sem campo no cadastro: ninguem optou pelo registro eletronico
 
-    # indCoop e indConstr sao OPCIONAIS na S-1.x e so valem para cooperativa e
-    # para construtora. Mandar "0" para quem nao e nem uma coisa nem outra ja
-    # rendeu recusa por regra ("nao deve ser preenchido"), entao so vao quando
-    # o cadastro disser algo diferente de 0.
+    # indCoop e indConstr: no XSD sao opcionais, mas a regra do eSocial os torna
+    # OBRIGATORIOS para PJ (e aqui o tpInsc e' sempre 1 - CNPJ), com "0" para
+    # quem nao e' cooperativa/construtora. Ate 15/10/2026 so iam quando != 0 e a
+    # empresa 74 voltou com "[1] Campo de preenchimento obrigatorio: Indicativo
+    # de cooperativa" - nenhum S-1000 tinha sido aceito desde a S-1.3.
     fim_valid_xml = f"\n          <fimValid>{x(fim_valid)}</fimValid>" if fim_valid else ''
-    ind_coop_xml   = f"\n          <indCoop>{x(ind_coop)}</indCoop>" if ind_coop not in ('', '0') else ''
-    ind_constr_xml = f"\n          <indConstr>{x(ind_constr)}</indConstr>" if ind_constr not in ('', '0') else ''
+    ind_coop_xml   = f"\n          <indCoop>{x(ind_coop or '0')}</indCoop>"
+    ind_constr_xml = f"\n          <indConstr>{x(ind_constr or '0')}</indConstr>"
+    # indOptRegEletron: a NT 07/2026 diz "Nao preencher se iniValid for igual ou
+    # posterior a [2026-02]", mas o XSD so' o torna opcional no pacote que entra
+    # em PRODUCAO em 23/11/2026; o de 01/07/2026 (vigente ate' la') o exige.
+    # Entao: ate' 22/11/2026 vai sempre; dai' em diante, so' com iniValid < 2026-02.
+    _nt07 = _dt.now().strftime('%Y%m%d') >= '20261123'
+    ind_opt_xml = ('' if _nt07 and str(ini_valid or '') >= '2026-02'
+                   else f"\n          <indOptRegEletron>{x(ind_opt)}</indOptRegEletron>")
     # indPorte so' aceita "S" (ME/EPP). Qualquer outro valor no cadastro fica
     # de fora — o campo e' opcional e mandar lixo derruba o evento inteiro.
     ind_porte_xml  = f"\n          <indPorte>S</indPorte>" if ind_porte == 'S' else ''
@@ -37016,8 +37024,7 @@ def _gerar_xml_s1000(empresa, tpAmb, tp_op, ini_valid, fim_valid, contato_nome, 
         </idePeriodo>
         <infoCadastro>
           <classTrib>{x(class_trib)}</classTrib>{ind_coop_xml}{ind_constr_xml}
-          <indDesFolha>{x(ind_des)}</indDesFolha>{ind_porte_xml}
-          <indOptRegEletron>{x(ind_opt)}</indOptRegEletron>
+          <indDesFolha>{x(ind_des)}</indDesFolha>{ind_porte_xml}{ind_opt_xml}
         </infoCadastro>
       </{tp_op}>
     </infoEmpregador>
