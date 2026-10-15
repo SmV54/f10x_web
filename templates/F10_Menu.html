@@ -687,7 +687,9 @@ const modulos = {
                 { icone: '📝',  nome: 'Lançar Movimento Férias', href: '/cad_mov_ferias',    ok: true, classe: 'nav-fix', bloqueioFolha: true },
                 { icone: '🖩',  nome: 'Calcular Férias',      href: '/calc_ferias',         ok: true, classe: 'nav-fix' },
                 { icone: '📄', nome: 'Memória de Cálculo',    href: '/memoria_ferias',       ok: true, classe: 'nav-fix' },
-                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',        ok: true, classe: 'nav-fix' },
+                // Emissão, não lançamento: só imprime o que já foi calculado, então
+                // vale com a folha Aberta, Calculada ou Fechada.
+                { icone: '🧾',  nome: 'Recibo de Férias',     href: '/recibo_ferias',        ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
                 { icone: '❌',  nome: 'Cancelar Férias',      href: '/cad_cancelar_ferias',  ok: true, classe: 'nav-fix', bloqueioFolha: true },
                 // Consulta, não lançamento: continua acessível com a folha Calculada/Fechada
                 { icone: '📋', nome: 'Funcionários em Férias', href: '/lista_ferias',        ok: true, classe: 'nav-fix', permiteFolhaBloqueada: true },
