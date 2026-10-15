@@ -640,7 +640,7 @@ const ETAPAS = [
   [98, '🔍 Consultando resultado…'],
 ];
 
-async function enviar(id, btn, suppressReport = false) {
+async function enviar(id, btn, suppressReport = false, forcar = false) {
   const progRow = document.getElementById('prog-' + id);
   const bar     = document.getElementById('bar-' + id);
   const lbl     = document.getElementById('lbl-' + id);
@@ -668,11 +668,25 @@ async function enviar(id, btn, suppressReport = false) {
     const r = await fetch('/api/esocial_s2200_enviar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id_esocial: id, tpAmb: '1' }),
+      body: JSON.stringify({ id_esocial: id, tpAmb: '1', forcar: forcar }),
     });
     const data = await lerRespostaJson(r);
 
     clearInterval(animTimer);
+    // Pergunta, nao erro: estabelecimento sem S-1005 conhecido (ver
+    // _s1005_pendente_estab). Segue so' se o operador confirmar.
+    if (!data.ok && data.warn_pendentes && !forcar) {
+      bar.style.width = '100%'; bar.style.background = '#f59e0b';
+      lbl.textContent = 'Aguardando sua decisão…';
+      const seguir = await f10Confirm(data.msg || 'Há pendências antes deste envio.', {
+        titulo: 'Estabelecimento sem S-1005', tipo: 'aviso',
+        okText: 'Enviar mesmo assim', cancelText: 'Cancelar',
+      });
+      if (seguir) return enviar(id, btn, suppressReport, true);
+      progRow.style.display = 'none';
+      btn.disabled = false;
+      return;
+    }
     bar.style.width  = '100%';
     bar.style.background = data.ok ? '#00a651' : (data.aguardando ? '#f97316' : '#ef4444');
 

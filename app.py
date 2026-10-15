@@ -37978,7 +37978,7 @@ def esocial_s1005():
 # =========================================================
 # eSocial S-1005 — GERADOR DE XML (evtTabEstab)
 # =========================================================
-def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao"):
+def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao", fap=None):
     """Gera o XML do S-1005 (evtTabEstab) para o estabelecimento.
 
     Empresa sem filiais → usa os dados da própria empresa (matriz): CNPJ
@@ -38001,6 +38001,12 @@ def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao"):
     cnae      = dg(empresa.get('cnae', ''))
     _now      = _dt.now()
     evt_id    = f"ID1{cnpj_raiz.ljust(14,'0')}{_now.strftime('%Y%m%d%H%M%S')}00001"
+    # aliqGilrat/fap: so' quando pedido (ver o [1801] no envio). Entre 0,5 e 2,0.
+    fap_xml = ""
+    if fap:
+        _f = min(max(float(fap), 0.5), 2.0)
+        fap_xml = (f"\n          <aliqGilrat>\n            <fap>{_f:.4f}</fap>"
+                   f"\n          </aliqGilrat>")
 
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eSocial xmlns="http://www.esocial.gov.br/schema/evt/evtTabEstab/v_S_01_03_00"
@@ -38024,7 +38030,7 @@ def _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op="inclusao"):
           <iniValid>{x(ini_valid)}</iniValid>
         </ideEstab>
         <dadosEstab>
-          <cnaePrep>{x(cnae)}</cnaePrep>
+          <cnaePrep>{x(cnae)}</cnaePrep>{fap_xml}
         </dadosEstab>
       </{tp_op}>
     </infoEstab>
@@ -38131,8 +38137,23 @@ def api_esocial_s1005_enviar():
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
              f"S1005_{am}_{_now2.strftime('%Y%m%d_%H%M%S')}")
+    # FAP so' vai depois de um [1801] "FAP do estabelecimento nao foi localizado
+    # na base" (estabelecimento fora da tabela FAP - empresa nova; empresa 74,
+    # 15/10/2026). Fora disso o campo e' "exclusivo" e nao pode ir. Valor: o FAP
+    # do ano cadastrado (tab_eventos op1=34), senao 1,0000 (neutro).
+    _fap = None
+    if "[1801]" in str(es.get("observacao_erro") or ""):
+        _fap = 1.0
+        try:
+            _rf = (supabase.table("tab_eventos").select("campotxt2")
+                   .eq("id_empresa", id_empresa).eq("op1", 34)
+                   .eq("campotxt1", ini_valid[:4]).limit(1).execute().data or [])
+            if _rf:
+                _fap = float(str(_rf[0].get("campotxt2") or "1").replace(",", ".")) or 1.0
+        except Exception:
+            _fap = 1.0
     try:
-        xml_str = _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op)
+        xml_str = _gerar_xml_s1005(empresa, tpAmb, ini_valid, tp_op, fap=_fap)
     except Exception as e:
         _xml_erro_save(_pref, 1, f"Erro ao gerar XML: {e}")
         return jsonify({"ok": False, "msg": f"Erro ao gerar XML: {e}"})
@@ -40105,6 +40126,12 @@ def api_esocial_s2200_enviar():
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
 
+    # S-1005 do estabelecimento do local de trabalho (ver _s1005_pendente_estab).
+    _msg1005 = _s1005_pendente_estab(session.get("id_cliente"), id_empresa, func, cnpj_emp)
+    if _msg1005 and not data.get("forcar"):
+        return jsonify({"ok": False, "warn_pendentes": True, "prereq_s1005": True,
+                        "msg": _msg1005})
+
     # ── 4. Gerar XML cru e salvar ASAP (antes de cert/assinatura) ──
     _now2 = _agora_brasilia()
     _pref = (f"{_xml_dir_rel(id_empresa, _now2)}/"
@@ -40646,6 +40673,12 @@ def api_esocial_s2300_enviar():
         empresa = r_emp.data[0]
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Erro ao buscar empresa: {e}"})
+
+    # S-1005 do estabelecimento do local de trabalho (ver _s1005_pendente_estab).
+    _msg1005 = _s1005_pendente_estab(session.get("id_cliente"), id_empresa, func, cnpj_emp)
+    if _msg1005 and not data.get("forcar"):
+        return jsonify({"ok": False, "warn_pendentes": True, "prereq_s1005": True,
+                        "msg": _msg1005})
 
     # ── 4. Gerar XML cru e salvar ASAP ────────────────────
     _now2 = _agora_brasilia()
@@ -43379,6 +43412,16 @@ _ESOCIAL_DICAS = {
             "Folha10 com o nome da verba e a mensagem — é ajuste no sistema, não no eSocial.",
         ],
     },
+    "1801": {
+        "simples": ("O estabelecimento ainda não aparece na tabela do FAP (Fator Acidentário "
+                    "de Prevenção) que o governo publica — é o normal em empresa aberta há "
+                    "pouco. Nesse caso o eSocial exige que o FAP seja informado no S-1005."),
+        "solucao": [
+            "Reenvie o mesmo S-1005: no reenvio o Folha10 já informa o FAP (o do ano "
+            "cadastrado na empresa ou 1,0000, o valor neutro de empresa nova).",
+            "Se a empresa tiver um FAP próprio publicado, cadastre-o antes de reenviar.",
+        ],
+    },
     "ASSINANTE": {
         "simples": ("O eSocial não reconhece o certificado usado como alguém que pode enviar "
                     "por esta empresa: ele não é o e-CNPJ da matriz, nem o e-CPF do "
@@ -45947,6 +45990,65 @@ def _marcar_s1020_declaradas(id_cliente, id_empresa, lotacoes, ini_valid, tpAmb=
     if not marcadas:
         return 0, "Nenhuma lotação foi marcada — confira a tela Tabelas → S-1020."
     return marcadas, ""
+
+
+def _s1005_pendente_estab(id_cliente, id_empresa, func, cnpj_emp):
+    """Admissao/inicio de TSVE para um estabelecimento SEM S-1005 conhecido.
+
+    O S-2200/S-2300 informa o local de trabalho (lt_nrinsc, ou o CNPJ da
+    empresa) e o eSocial recusa com [272] se esse estabelecimento nao estiver
+    no S-1005 (empresa 74, 15/10/2026). Aqui, antes de transmitir:
+      - so' olha CNPJ (14) que seja uma empresa do proprio cliente;
+      - considera declarado se houver S-1005 aceito no sistema OU qualquer
+        S-1200/S-2200/S-2300 aceito dessa empresa (o governo nao teria aceito
+        sem o estabelecimento - 16 das 22 empresas com evento aceito tem o
+        S-1005 enviado por fora do Folha10);
+      - senao, deixa uma remessa S-1005 na Fila (validade = mes do inicio) e
+        devolve a mensagem. O envio pode seguir mesmo assim (forcar).
+    Devolve "" quando nao ha o que avisar. Nunca derruba o envio."""
+    try:
+        doc = re.sub(r"\D", "", str(func.get("lt_nrinsc") or "")) or re.sub(r"\D", "", cnpj_emp or "")
+        if len(doc) != 14:
+            return ""
+        est = (supabase.table("tab_empresa").select("id_empresa, razaosocial")
+               .eq("id_cliente", id_cliente).eq("cnpj", doc).limit(1).execute().data or [])
+        if not est:
+            return ""
+        est_id = est[0]["id_empresa"]
+        rows = (supabase.table("tab_esocial").select("layout, recibo, observacao_erro")
+                .eq("id_empresa", est_id).in_("layout", ["1005", "1200", "2200", "2300"])
+                .limit(5000).execute().data or [])
+        pend_1005 = False
+        for r in rows:
+            aceito = (r.get("recibo") or "").strip() and (r.get("observacao_erro") or "") != "EXCLUIDO"
+            if aceito:
+                return ""
+            if r.get("layout") == "1005" and (r.get("observacao_erro") or "") != "EXCLUIDO":
+                pend_1005 = True
+        d8 = re.sub(r"\D", "", str(func.get("dtadm") or ""))
+        am = d8[:6] if len(d8) >= 6 else str(session.get("anomes_atual") or "")
+        if not pend_1005 and len(am) == 6:
+            agora = _agora_brasilia()
+            supabase.table("tab_esocial").insert({
+                "id_cliente": id_cliente, "id_empresa": est_id,
+                "data_cad": agora.strftime("%Y%m%d"), "hora_cad": agora.strftime("%H%M"),
+                "id_remessa": agora.strftime("%Y%m%d%H%M%S"), "ano_mes": int(am),
+                "folha_tipo": "N", "layout": "1005", "codigo2": 0, "operacao": "I",
+            }).execute()
+        doc_fmt = f"{doc[:2]}.{doc[2:5]}.{doc[5:8]}/{doc[8:12]}-{doc[12:]}"
+        outra = "" if est_id == id_empresa else (
+            f" (empresa {int(est_id):04d} — envie o S-1005 com ela selecionada)")
+        return (f"O estabelecimento {doc_fmt}{outra} ainda não tem S-1005 (cadastro do "
+                f"estabelecimento) aceito no eSocial. Sem ele, este evento volta recusado "
+                f"com o erro [272].\n\n"
+                + ("A remessa S-1005 já está na Fila. " if pend_1005 else
+                   f"Deixei a remessa S-1005 na Fila (validade {am[4:6]}/{am[:4]}). ")
+                + "Envie o S-1005 primeiro e depois este evento.\n\n"
+                  "Se o S-1005 já foi enviado por fora do Folha10 (outro sistema ou "
+                  "contador), pode enviar este evento mesmo assim.")
+    except Exception as e:
+        print(f"[S1005 prereq] {e}")
+        return ""
 
 
 def _criar_s1020_pendentes(id_cliente, id_empresa, lotacoes, ini_valid, tpAmb="1"):
