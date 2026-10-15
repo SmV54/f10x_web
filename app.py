@@ -16283,7 +16283,33 @@ def api_passo_cc():
     ok, msg = _set_pref("cc_resp", resp, id_empresa=id_empresa)
     if not ok:
         return jsonify({"ok": False, "msg": msg})
+    if resp == "N":
+        _s1020_cc_padrao(id_cliente, id_empresa)
     return jsonify({"ok": True, "redirect": "/cad_cc" if resp == "S" else "/cad_funcionario"})
+
+
+def _s1020_cc_padrao(id_cliente, id_empresa):
+    """Empresa que NAO usa centro de custo: ja deixa na Fila a remessa S-1020
+    da lotacao do CC padrao (001), com validade na folha ativa. Pedido de
+    15/10/2026 - antes ela so aparecia quando o S-1200 travava por falta dela.
+
+    Nao envia. Pula se o 001 ja estiver aceito na raiz do CNPJ ou ja tiver
+    remessa (_criar_s1020_pendentes confere). Silencioso: sem FPAS no cadastro
+    nao cria, e o S-1200 continua cobrando a lotacao como antes."""
+    try:
+        am = str(session.get("anomes_atual") or "").strip()
+        if not (len(am) == 6 and am.isdigit()):
+            return
+        ini_valid = f"{am[:4]}-{am[4:6]}"
+        declaradas = _s1020_declaradas(id_empresa) or {}
+        ini_dec = declaradas.get(CC_PADRAO_CODIGO)
+        if ini_dec is not None and (not ini_dec or ini_dec <= ini_valid):
+            return
+        n, erro = _criar_s1020_pendentes(id_cliente, id_empresa, [CC_PADRAO_CODIGO], ini_valid)
+        print(f"[PASSOS] S-1020 do CC {CC_PADRAO_CODIGO} empresa {id_empresa}: "
+              f"{n} criada(s){' - ' + erro if erro else ''}")
+    except Exception as e:
+        print(f"[PASSOS] _s1020_cc_padrao: {e}")
 
 
 # =========================================================
