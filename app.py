@@ -55066,9 +55066,9 @@ def calcular_folha_stream():
         return Response("data: {}\n\n", mimetype="text/event-stream")
 
     # Calculo INDIVIDUAL: ?matricula=N — calcula apenas um funcionario e NAO
-    # muda situacao da folha (continua Aberta). Vale tambem se a folha ja
-    # esta Calculada (C): permite recalcular um unico funcionario sem
-    # precisar reabrir a folha inteira.
+    # muda situacao da folha (continua Aberta). So roda com a folha Aberta
+    # (A ou X), igual ao calculo geral: Calculada (C) pede reabrir antes —
+    # ver a trava "if eh_individual" mais abaixo e a da rota da tela.
     try:
         _mat_indiv = int(request.args.get("matricula") or 0)
     except Exception:
