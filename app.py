@@ -59579,7 +59579,8 @@ def contracheque_pdf():
     nome_arq  = f"Contracheque_{empresa_nm[:20].replace(' ','_')}_{ano}{mes}.pdf"
 
     # ── Gravar um arquivo por funcionário ────────────────────────────
-    salvar_ind = request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
+    salvar_ind = (request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
+                  and os.name == "nt")   # no Render (Linux) nao ha C:\ - nao grava
     if salvar_ind:
         try:
             ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
@@ -59667,22 +59668,24 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
                                    matriculas_sel, com_assinatura, com_dissidio)
     pdf_bytes = buf.read()
 
-    # Grava automaticamente no disco
-    try:
-        import logging as _log
-        ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
-        anomes_pasta = f"{ano}-{mes}"
-        pasta_sv     = os.path.join("C:\\Folha10-Simples_Contracheque",
-                                    ano, anomes_pasta, f"{int(id_empresa):06d}")
-        os.makedirs(pasta_sv, exist_ok=True)
-        cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
-        _mat_sfx     = (f"_Matricula_{matriculas_sel[0]:06d}"
-                        if len(matriculas_sel) == 1 else "")
-        nome_f       = f"Folha10_Contracheque_CNPJ_{cnpj_digits}_Folha_{anomes}{_mat_sfx}_em_{ts}.pdf"
-        with open(os.path.join(pasta_sv, nome_f), "wb") as fh:
-            fh.write(pdf_bytes)
-    except Exception as e_sv:
-        _log.warning(f"contracheque_pdf: erro ao salvar no disco: {e_sv}")
+    # Grava automaticamente no disco - so no Windows (local); no Render (Linux)
+    # o "C:\..." vira pasta solta no container e o arquivo se perde
+    if os.name == "nt":
+        try:
+            import logging as _log
+            ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
+            anomes_pasta = f"{ano}-{mes}"
+            pasta_sv     = os.path.join("C:\\Folha10-Simples_Contracheque",
+                                        ano, anomes_pasta, f"{int(id_empresa):06d}")
+            os.makedirs(pasta_sv, exist_ok=True)
+            cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
+            _mat_sfx     = (f"_Matricula_{matriculas_sel[0]:06d}"
+                            if len(matriculas_sel) == 1 else "")
+            nome_f       = f"Folha10_Contracheque_CNPJ_{cnpj_digits}_Folha_{anomes}{_mat_sfx}_em_{ts}.pdf"
+            with open(os.path.join(pasta_sv, nome_f), "wb") as fh:
+                fh.write(pdf_bytes)
+        except Exception as e_sv:
+            _log.warning(f"contracheque_pdf: erro ao salvar no disco: {e_sv}")
 
     resp = make_response(pdf_bytes)
     resp.headers["Content-Type"]        = "application/pdf"
@@ -60207,7 +60210,8 @@ def recibo_adiantamento_pdf():
     nome_arq  = f"ReciboAdiantamento_{empresa_nm[:20].replace(' ','_')}_{ano}{mes}.pdf"
 
     # Salvar um arquivo por funcionário
-    salvar_ind = request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
+    salvar_ind = (request.args.get("salvar_ind", "0") == "1" and modo in ("1", "2S")
+                  and os.name == "nt")   # no Render (Linux) nao ha C:\ - nao grava
     if salvar_ind:
         try:
             ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
@@ -60296,22 +60300,24 @@ h2{{font-size:18px;font-weight:600;color:#0b1f3a;margin-bottom:6px}}
                                           matriculas_sel, com_assinatura, separar_verba)
     pdf_bytes = buf.read()
 
-    # Grava automaticamente no disco
-    try:
-        import logging as _log
-        ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
-        anomes_pasta = f"{ano}-{mes}"
-        pasta_sv     = os.path.join("C:\\Folha10-Simples_ReciboAdiantamento",
-                                    ano, anomes_pasta, f"{int(id_empresa):06d}")
-        os.makedirs(pasta_sv, exist_ok=True)
-        cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
-        _mat_sfx     = (f"_Matricula_{matriculas_sel[0]:06d}"
-                        if len(matriculas_sel) == 1 else "")
-        nome_f       = f"Folha10_ReciboAdiantamento_CNPJ_{cnpj_digits}_Folha_{anomes}{_mat_sfx}_em_{ts}.pdf"
-        with open(os.path.join(pasta_sv, nome_f), "wb") as fh:
-            fh.write(pdf_bytes)
-    except Exception as e_sv:
-        _log.warning(f"recibo_adiantamento_pdf: erro ao salvar: {e_sv}")
+    # Grava automaticamente no disco - so no Windows (local); no Render (Linux)
+    # o "C:\..." vira pasta solta no container e o arquivo se perde
+    if os.name == "nt":
+        try:
+            import logging as _log
+            ts           = _agora_brasilia().strftime("%Y%m%d_as_%H%M%S")
+            anomes_pasta = f"{ano}-{mes}"
+            pasta_sv     = os.path.join("C:\\Folha10-Simples_ReciboAdiantamento",
+                                        ano, anomes_pasta, f"{int(id_empresa):06d}")
+            os.makedirs(pasta_sv, exist_ok=True)
+            cnpj_digits  = "".join(c for c in cnpj_fmt if c.isdigit())
+            _mat_sfx     = (f"_Matricula_{matriculas_sel[0]:06d}"
+                            if len(matriculas_sel) == 1 else "")
+            nome_f       = f"Folha10_ReciboAdiantamento_CNPJ_{cnpj_digits}_Folha_{anomes}{_mat_sfx}_em_{ts}.pdf"
+            with open(os.path.join(pasta_sv, nome_f), "wb") as fh:
+                fh.write(pdf_bytes)
+        except Exception as e_sv:
+            _log.warning(f"recibo_adiantamento_pdf: erro ao salvar: {e_sv}")
 
     resp = make_response(pdf_bytes)
     resp.headers["Content-Type"]        = "application/pdf"
