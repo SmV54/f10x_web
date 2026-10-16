@@ -12523,6 +12523,8 @@ SUPORTE_TELAS = {
     "/alterar_empresa":            "Cadastro da Empresa",
     "/select_funcionario?contexto=dep": "Dependentes",
     "/cad_dep":                    "Dependentes",
+    "/select_funcionario?contexto=plano_dep": "Plano de Saude do Dependente",
+    "/plano_dependente":           "Plano de Saude do Dependente",
     "/select_funcionario?contexto=ficha": "Ficha de Registro",
     "/ficha_registro":             "Ficha de Registro",
     "/limpeza_funcionario":        "Limpar e Transferir Funcionario",
