@@ -48009,6 +48009,10 @@ def esocial_s1299():
         except Exception:
             pass
 
+    # indApuracao segue o tipo da folha ativa: so o 13o FINAL (tipo "1") e'
+    # apuracao anual (2). O adiantamento do 13o (tipo "A") e' mensal.
+    ind_apuracao = "2" if str(session.get("anomes_tipo") or "N") == "1" else "1"
+
     return render_template(
         "F10_eSocial_S1299.html",
         versao=ler_versao(),
@@ -48021,6 +48025,7 @@ def esocial_s1299():
         folha_aberta_esocial=_folha_aberta_no_esocial(),
         tem_s1200_enviado=tem_s1200_enviado,
         tem_s1210_enviado=tem_s1210_enviado,
+        ind_apuracao=ind_apuracao,
     )
 
 
@@ -49641,6 +49646,10 @@ def esocial_s1298():
         r["_sit_label"] = _SIT[s][0]
         r["_sit_class"] = _SIT[s][1]
 
+    # indApuracao segue o tipo da folha ativa: so o 13o FINAL (tipo "1") e'
+    # apuracao anual (2). O adiantamento do 13o (tipo "A") e' mensal.
+    ind_apuracao = "2" if str(session.get("anomes_tipo") or "N") == "1" else "1"
+
     return render_template(
         "F10_eSocial_S1298.html",
         versao=ler_versao(),
@@ -49651,6 +49660,7 @@ def esocial_s1298():
         total=len(rows),
         anomes_atual=anomes_atual,
         folha_aberta_esocial=_folha_aberta_no_esocial(),
+        ind_apuracao=ind_apuracao,
     )
 
 

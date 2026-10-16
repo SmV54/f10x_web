@@ -189,6 +189,9 @@ tr:hover td { background: #f8fafc; }
           {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
         </span>
         {% endif %}
+        {% if ind_apuracao == '2' %}
+        <span style="font-size:11px;font-weight:600;color:#7c3aed;background:#f3e8ff;border-radius:10px;padding:2px 8px;">Anual / 13º</span>
+        {% endif %}
       </div>
       <label class="check-semmov" style="font-weight:500;">
         <input type="checkbox" id="chkSemMov" onchange="atualizarEventos()">
@@ -196,6 +199,7 @@ tr:hover td { background: #f8fafc; }
       </label>
     </div>
 
+    <input type="hidden" id="inputIndApur" value="{{ ind_apuracao }}">
     <input type="hidden" id="inputAnomes"
            value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
 
@@ -386,6 +390,12 @@ function atualizarEventos() {
   });
 }
 
+function _getIndApur() {
+  // 2 = anual (13o final), 1 = mensal - vem do tipo da folha ativa.
+  const inp = document.getElementById('inputIndApur');
+  return (inp && inp.value === '2') ? '2' : '1';
+}
+
 function _getSemMov() {
   return document.getElementById('chkSemMov').checked ? 'N' : 'S';
 }
@@ -426,7 +436,7 @@ async function fecharFolha(btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ano_mes:        anoMes,
-        ind_apuracao:   '1',
+        ind_apuracao:   _getIndApur(),
         ind_exist_info: _getSemMov(),
         evt_remun:      evtRemun,
         evt_pgtos:      evtPgtos,
@@ -487,7 +497,7 @@ function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
   tr.id = 'row-' + idEs;
   tr.innerHTML = `
     <td class="data-cell">${periodo}</td>
-    <td style="font-size:12px;">Mensal</td>
+    <td style="font-size:12px;">${_getIndApur() === '2' ? 'Anual / 13º' : 'Mensal'}</td>
     <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
     <td class="data-cell">${dd}/${mo}/${yy}</td>
     <td class="data-cell">${envioFmt}</td>

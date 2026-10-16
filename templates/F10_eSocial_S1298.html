@@ -172,8 +172,12 @@ tr:hover td { background: #f8fafc; }
         {{ anomes_atual[4:6] }}/{{ anomes_atual[:4] }}
       </span>
       {% endif %}
+        {% if ind_apuracao == '2' %}
+        <span style="font-size:11px;font-weight:600;color:#7c3aed;background:#f3e8ff;border-radius:10px;padding:2px 8px;">Anual / 13º</span>
+        {% endif %}
     </div>
 
+    <input type="hidden" id="inputIndApur" value="{{ ind_apuracao }}">
     <input type="hidden" id="inputAnomes"
            value="{{ anomes_atual[:4] + '-' + anomes_atual[4:6] if anomes_atual|length == 6 else '' }}">
 
@@ -333,6 +337,12 @@ const ETAPAS = [
   [98,  'Consultando resultado…'],
 ];
 
+function _getIndApur() {
+  // 2 = anual (13o final), 1 = mensal - vem do tipo da folha ativa.
+  const inp = document.getElementById('inputIndApur');
+  return (inp && inp.value === '2') ? '2' : '1';
+}
+
 async function enviarS1298(btn) {
   const anoMesRaw = document.getElementById('inputAnomes').value;
   if (!anoMesRaw) { alert('Período não configurado.'); return; }
@@ -366,7 +376,7 @@ async function enviarS1298(btn) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ano_mes:      anoMes,
-        ind_apuracao: '1',
+        ind_apuracao: _getIndApur(),
         tpAmb:        tpAmb,
       }),
     });
@@ -417,7 +427,7 @@ function _adicionarHistorico(idEs, anoMesRaw, sit, recibo) {
   tr.id = 'row-' + idEs;
   tr.innerHTML = `
     <td class="data-cell">${periodo}</td>
-    <td style="font-size:12px;">Mensal</td>
+    <td style="font-size:12px;">${_getIndApur() === '2' ? 'Anual / 13º' : 'Mensal'}</td>
     <td><span class="sit-badge ${cls}" id="sit-${idEs}">${lbl}</span></td>
     <td class="data-cell">${hoje}</td>
     <td class="data-cell">${hoje}</td>
