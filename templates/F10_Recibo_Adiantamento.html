@@ -227,10 +227,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
                     <input type="checkbox" id="chkAssinatura" name="assinatura" value="1" checked>
                     <label for="chkAssinatura">Incluir linha de assinatura do funcionário</label>
                 </div>
-                <div class="chk-row" id="rowSalvarInd">
-                    <input type="checkbox" id="chkSalvarInd" name="salvar_ind" value="1">
-                    <label for="chkSalvarInd">Um arquivo por funcionário <span style="font-size:11px;color:#64748b;">(…_matricula_NNNNNN.pdf)</span></label>
-                </div>
             </div>
 
             <div class="aviso">
@@ -239,15 +235,13 @@ body { font-family: var(--sans); background: var(--bg); color: var(--label); min
             </div>
         </div>
 
+        <!-- A opção "um arquivo por funcionário" e o aviso "Gravado
+             automaticamente em C:\Folha10-Simples_ReciboAdiantamento\..." sairam
+             da tela: no Render essa pasta e' a do servidor, o cliente so
+             recebia os caminhos. O PDF chega pelo navegador. -->
         <button type="submit" class="btn-gerar" onclick="prepareSubmit()">
             &#128190; Gerar PDF
         </button>
-        {% if pasta_salvar %}
-        <div style="margin-top:12px;display:flex;align-items:center;gap:8px;font-size:12px;color:#64748b;">
-            <span>💾</span>
-            <span>Gravado automaticamente em:&nbsp;<code style="font-family:'IBM Plex Mono',monospace;font-size:11px;background:#f8fafc;border:1px solid #dde3ec;border-radius:4px;padding:2px 7px;color:#70c4a0;">{{ pasta_salvar }}</code></span>
-        </div>
-        {% endif %}
 
     </form>
 
@@ -272,9 +266,6 @@ let listaVisivel = false;
 
 function selModo(m) {
     ['1','2S','2D'].forEach(x => document.getElementById('card-'+x).classList.toggle('sel', x === m));
-    const indOk = m === '1' || m === '2S';
-    document.getElementById('rowSalvarInd').style.display = indOk ? '' : 'none';
-    if (!indOk) document.getElementById('chkSalvarInd').checked = false;
 }
 
 function toggleMostrarLista() {
