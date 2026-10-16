@@ -12539,7 +12539,7 @@ SUPORTE_TELAS = {
     "/cad_vt":                     "Tabelas Auxiliares",
     "/cad_feriado":                "Tabelas Auxiliares",
     "/cad_cc":                     "Tabelas Auxiliares",
-    "/cad_filial":                 "Tabelas Auxiliares",
+    "/cad_filial":                 ["Cadastrar uma Filial", "Tabelas Auxiliares"],
     # card 2 — Mês/Ano
     "/reabrir_folha":              "Fechar e Reabrir a Folha",
     "/fechar_folha":               "Fechar e Reabrir a Folha",
