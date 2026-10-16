@@ -21318,11 +21318,298 @@ def api_dependente_excluir():
     try:
         info = supabase.table("tab_dependentes").select("nome, matricula").eq("id", int(dep_id)).execute()
         dep  = (info.data or [{}])[0]
+        # Vinculado a plano de saude: o S-1210 divide a verba por ele — sem o
+        # dependente o envio pararia. Desfaz o vinculo antes.
+        if dep.get("matricula") is not None:
+            _vp = [v for v in _vinculos_plano_dep(_get_id_empresa(), dep.get("matricula"))
+                   if int(v.get("ref1") or 0) == int(dep_id)]
+            if _vp:
+                return jsonify({"ok": False, "msg": (
+                    "Este dependente está vinculado a um plano de saúde. Exclua o "
+                    "vínculo em Cadastros → Plano de Saúde do Dependente antes.")})
         supabase.table("tab_dependentes").delete().eq("id", int(dep_id)).execute()
         gravar_log("DEP", f"EXC dependente: {dep.get('nome','')}", matricula=dep.get("matricula"))
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "msg": str(e)})
+
+
+# =========================================================
+# PLANO DE SAUDE DO DEPENDENTE — vinculo dependente x verba do plano
+# =========================================================
+# Mesmo lugar do Folha10 Desktop: o tabreg op1=33 (aqui tab_eventos), um
+# registro por dependente em cada plano:
+#   op2    = verba do plano (no Desktop era o acesso do plano na TABTAB 22,
+#            que por sua vez apontava a verba; aqui a verba ja carrega a
+#            operadora, opcao 15 do Cadastro de Verbas)
+#   ref1   = id do dependente em tab_dependentes (no Desktop, acesso do TABDEP)
+#   data1i = inicio (AAAAMM01) / data1f = fim (ultimo dia do mes) ou vazio
+# O S-1210 le estes vinculos para dividir a verba entre os dependentes
+# (<infoDepSau>) — ver _plano_saude_do_pgto.
+PLANO_DEP_OP1 = 33
+
+
+def _plano_dep_vazio(v):
+    s = str(v or "").strip()
+    return s in ("", "0", _DATA_VAZIA_LEGADO)
+
+
+def _plano_dep_ativo(vinc, ano_mes):
+    """O vinculo vale na competencia AAAAMM? Inicio ate o mes, fim vazio ou
+    a partir do mes (mesma regra do Desktop: data1f vazia ou >= competencia)."""
+    am = str(ano_mes)[:6]
+    ini = str(vinc.get("data1i") or "").strip()
+    fim = str(vinc.get("data1f") or "").strip()
+    if not _plano_dep_vazio(ini) and ini[:6] > am:
+        return False
+    if not _plano_dep_vazio(fim) and fim[:6] < am:
+        return False
+    return True
+
+
+def _verbas_plano_saude(id_cliente, ano_mes):
+    """Verbas de plano de saude do cliente (e do sistema), versao vigente na
+    competencia: natureza 9219 ou IRRF 67/9067 — o mesmo criterio que o
+    S-1210 usa para montar o <planSaude>. {cod: rubrica}."""
+    try:
+        rows = (supabase.table("tab_rubrica").select("*")
+                .in_("id_cliente", [0] + ([id_cliente] if id_cliente else []))
+                .eq("situacao", "A").execute().data or [])
+    except Exception as e:
+        print(f"[plano_dep] erro ao ler rubricas: {e}")
+        return {}
+    rub = {}
+    for r in sorted(rows, key=lambda r: (int(r.get("id_cliente") or 0),
+                                         int(r.get("ini_valid") or 0))):
+        if int(r.get("ini_valid") or 0) <= int(ano_mes or 999999):
+            rub[int(r["cod_rubr"])] = r
+    return {c: r for c, r in rub.items()
+            if str(r.get("es03_nat_rubr") or "").strip() == "9219"
+            or str(r.get("tpn_inc_irrf") or "").strip() in ("67", "9067")}
+
+
+def _vinculos_plano_dep(id_empresa, matricula):
+    try:
+        return (supabase.table("tab_eventos").select("*")
+                .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                .eq("op1", PLANO_DEP_OP1).order("id").execute().data or [])
+    except Exception as e:
+        print(f"[plano_dep] erro ao ler vinculos mat={matricula}: {e}")
+        return []
+
+
+@app.route("/plano_dependente")
+def plano_dependente():
+    if not session.get("logado"):
+        return redirect("/")
+    mats_raw = request.args.get("mats", "").strip()
+    mats = [int(m) for m in mats_raw.split(",") if m.strip().isdigit()]
+    if len(mats) != 1:
+        return redirect("/select_funcionario?contexto=plano_dep")
+    matricula  = mats[0]
+    id_empresa = _get_id_empresa()
+    func_nome  = ""
+    try:
+        r = (supabase.table("tab_cad").select("nome, nomer")
+             .eq("id_empresa", id_empresa).eq("matricula", matricula)
+             .limit(1).execute())
+        if r.data:
+            func_nome = (r.data[0].get("nomer") or r.data[0].get("nome") or "").strip()
+    except Exception:
+        pass
+    return render_template(
+        "F10_Plano_Dependente.html",
+        versao=ler_versao(),
+        nome=session.get("nome", ""),
+        empresa=session.get("empresa_info", ""),
+        matricula=matricula,
+        func_nome=func_nome,
+        anomes_atual=str(session.get("anomes_atual") or ""),
+    )
+
+
+@app.route("/api/plano_dep_dados")
+def api_plano_dep_dados():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    try:
+        mat = int(request.args.get("mat", ""))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "msg": "Matrícula inválida."})
+    try:
+        deps = (supabase.table("tab_dependentes")
+                .select("id, nome, cpfdep, tpdep, dtnascto")
+                .eq("id_empresa", id_empresa).eq("matricula", mat)
+                .order("nome").execute().data or [])
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler dependentes: {e}"})
+    verbas = _verbas_plano_saude(id_cliente, anomes)
+    vincs  = _vinculos_plano_dep(id_empresa, mat)
+    dep_nome = {int(d["id"]): (d.get("nome") or "").strip() for d in deps}
+    lista_v = []
+    for v in vincs:
+        cod = int(v.get("op2") or 0)
+        rb  = verbas.get(cod) or {}
+        ini = str(v.get("data1i") or "").strip()
+        fim = str(v.get("data1f") or "").strip()
+        lista_v.append({
+            "id":         v.get("id"),
+            "dep_id":     int(v.get("ref1") or 0),
+            "dep_nome":   dep_nome.get(int(v.get("ref1") or 0), "(dependente excluído)"),
+            "cod_verba":  cod,
+            "verba_nome": (rb.get("dsc_rubr") or "").strip(),
+            "inicio":     "" if _plano_dep_vazio(ini) else ini[:6],
+            "fim":        "" if _plano_dep_vazio(fim) else fim[:6],
+            "ativo":      _plano_dep_ativo(v, anomes) if len(anomes) == 6 else True,
+        })
+    lista_verbas = [{
+        "cod":   c,
+        "nome":  (r.get("dsc_rubr") or "").strip(),
+        "cnpj":  re.sub(r"\D", "", str(r.get("plano_cnpj_oper") or "")),
+    } for c, r in sorted(verbas.items())]
+    lista_deps = [{
+        "id":   int(d["id"]),
+        "nome": (d.get("nome") or "").strip(),
+        "cpf":  re.sub(r"\D", "", str(d.get("cpfdep") or "")),
+    } for d in deps]
+    return jsonify({"ok": True, "dependentes": lista_deps, "verbas": lista_verbas,
+                    "vinculos": lista_v, "anomes": anomes})
+
+
+@app.route("/api/plano_dep_gravar", methods=["POST"])
+def api_plano_dep_gravar():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    import calendar as _cal
+    id_empresa = _get_id_empresa()
+    id_cliente = session.get("id_cliente")
+    anomes     = str(session.get("anomes_atual") or "")
+    d = request.get_json(force=True) or {}
+    try:
+        mat    = int(d.get("matricula") or 0)
+        dep_id = int(d.get("dep_id") or 0)
+        cod    = int(d.get("cod_verba") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "msg": "Dados inválidos."})
+    vid    = d.get("id")
+    inicio = re.sub(r"\D", "", str(d.get("inicio") or ""))[:6]
+    fim    = re.sub(r"\D", "", str(d.get("fim") or ""))[:6]
+    if not mat or not id_empresa or not id_cliente:
+        return jsonify({"ok": False, "msg": "Sessão incompleta."})
+    if not dep_id:
+        return jsonify({"ok": False, "msg": "Escolha o dependente."})
+    if not cod:
+        return jsonify({"ok": False, "msg": "Escolha a verba do plano de saúde."})
+
+    def _am_ok(s):
+        return len(s) == 6 and 1900 <= int(s[:4]) <= 2100 and 1 <= int(s[4:]) <= 12
+    if not _am_ok(inicio):
+        return jsonify({"ok": False, "msg": "Informe o mês de início (MM/AAAA)."})
+    if fim and not _am_ok(fim):
+        return jsonify({"ok": False, "msg": "Mês de fim inválido (MM/AAAA)."})
+    if fim and fim < inicio:
+        return jsonify({"ok": False, "msg": "O fim não pode ser antes do início."})
+
+    # O dependente tem que ser deste funcionario e ter CPF: e' pelo CPF que o
+    # S-1210 informa a parte dele (<infoDepSau>).
+    try:
+        r = (supabase.table("tab_dependentes").select("id, nome, cpfdep")
+             .eq("id", dep_id).eq("id_empresa", id_empresa).eq("matricula", mat)
+             .limit(1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao ler dependente: {e}"})
+    if not r.data:
+        return jsonify({"ok": False, "msg": "Dependente não encontrado neste funcionário."})
+    dep = r.data[0]
+    if len(re.sub(r"\D", "", str(dep.get("cpfdep") or ""))) != 11:
+        return jsonify({"ok": False, "msg": (
+            f"O dependente {dep.get('nome') or ''} está sem CPF. Informe o CPF em "
+            "Cadastros → Dependentes antes de vincular ao plano — o eSocial "
+            "identifica o dependente do plano pelo CPF.")})
+
+    verbas = _verbas_plano_saude(id_cliente, anomes)
+    rb = verbas.get(cod)
+    if not rb:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {cod:04d} não é de plano de saúde (natureza 9219). Confira "
+            "em Cadastros → Rubricas (Verbas).")})
+    if len(re.sub(r"\D", "", str(rb.get("plano_cnpj_oper") or ""))) != 14:
+        return jsonify({"ok": False, "msg": (
+            f"A verba {cod:04d} está sem o CNPJ da operadora. Em Cadastros → "
+            "Rubricas (Verbas), marque a opção 15 (Plano de Saúde) e informe o "
+            "CNPJ — o S-1210 exige.")})
+
+    # Mesmo dependente na mesma verba com periodos que se cruzam contaria em
+    # dobro no rateio.
+    for v in _vinculos_plano_dep(id_empresa, mat):
+        if vid and str(v.get("id")) == str(vid):
+            continue
+        if int(v.get("ref1") or 0) != dep_id or int(v.get("op2") or 0) != cod:
+            continue
+        v_ini = str(v.get("data1i") or "")[:6]
+        v_fim = str(v.get("data1f") or "")
+        v_fim = "999999" if _plano_dep_vazio(v_fim) else v_fim[:6]
+        if (v_ini if not _plano_dep_vazio(v_ini) else "000000") <= (fim or "999999") \
+                and inicio <= v_fim:
+            return jsonify({"ok": False, "msg": (
+                "Este dependente já está vinculado a esta verba num período que "
+                "se cruza com o informado. Encerre ou corrija o vínculo existente.")})
+
+    ult = _cal.monthrange(int(fim[:4]), int(fim[4:]))[1] if fim else 0
+    registro = {
+        "op2":    cod,
+        "ref1":   dep_id,
+        "data1i": inicio + "01",
+        "data1f": f"{fim}{ult:02d}" if fim else _DATA_VAZIA_LEGADO,
+    }
+    try:
+        if vid:
+            (supabase.table("tab_eventos").update(registro)
+             .eq("id", int(vid)).eq("id_empresa", id_empresa)
+             .eq("op1", PLANO_DEP_OP1).execute())
+        else:
+            registro.update({
+                "id_cliente": id_cliente, "id_empresa": id_empresa,
+                "matricula":  mat,
+                "folha":      int(anomes) if len(anomes) == 6 else int(inicio),
+                "op1":        PLANO_DEP_OP1,
+            })
+            supabase.table("tab_eventos").insert(registro).execute()
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao gravar: {e}"})
+    gravar_log("PLANO_DEP",
+               f"{'ALT' if vid else 'INC'} plano dependente: {dep.get('nome') or ''} "
+               f"verba {cod:04d} {inicio[4:]}/{inicio[:4]}"
+               + (f" a {fim[4:]}/{fim[:4]}" if fim else ""), matricula=mat)
+    return jsonify({"ok": True, "msg": "Vínculo gravado."})
+
+
+@app.route("/api/plano_dep_excluir", methods=["POST"])
+def api_plano_dep_excluir():
+    if not session.get("logado"):
+        return jsonify({"ok": False, "msg": "Sessão expirada."})
+    id_empresa = _get_id_empresa()
+    vid = (request.get_json(force=True) or {}).get("id")
+    if not vid:
+        return jsonify({"ok": False, "msg": "Vínculo não informado."})
+    try:
+        r = (supabase.table("tab_eventos").select("matricula, op2, ref1")
+             .eq("id", int(vid)).eq("id_empresa", id_empresa)
+             .eq("op1", PLANO_DEP_OP1).limit(1).execute())
+        if not r.data:
+            return jsonify({"ok": False, "msg": "Vínculo não encontrado."})
+        (supabase.table("tab_eventos").delete()
+         .eq("id", int(vid)).eq("id_empresa", id_empresa)
+         .eq("op1", PLANO_DEP_OP1).execute())
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"Erro ao excluir: {e}"})
+    v = r.data[0]
+    gravar_log("PLANO_DEP", f"EXC plano dependente: dep {v.get('ref1')} "
+               f"verba {int(v.get('op2') or 0):04d}", matricula=v.get("matricula"))
+    return jsonify({"ok": True, "msg": "Vínculo excluído."})
 
 
 def _categoria_tem_ferias(codcateg):
@@ -36698,7 +36985,9 @@ def _pen_alim_do_trabalhador(id_empresa, id_cliente, matricula, ano_mes, folha_t
 
 
 def _plano_saude_do_pgto(id_empresa, id_cliente, matricula, ano_mes, tipos_folha):
-    """Grupo <planSaude> do S-1210: [{"cnpj", "ans", "valor"}] por operadora.
+    """Grupo <planSaude> do S-1210, por operadora:
+    [{"cnpj", "ans", "valor" (do titular), "deps": [{"cpf", "nome",
+      "dtnascto", "valor"}]}].
 
     Desde o leiaute S-1.3 o governo exige o grupo quando o S-1200 tem rubrica
     de natureza 9219 (desconto de assistencia medica/odontologica) ou com
@@ -36706,10 +36995,17 @@ def _plano_saude_do_pgto(id_empresa, id_cliente, matricula, ano_mes, tipos_folha
     coletivo' deve ser preenchido" -- empresa 53, mats 6 e 14, 09/2026, verba
     1010 (coparticipacao). A operadora vem do cadastro da verba (opcao 15),
     como no Desktop, onde cada plano da TABTAB 22 aponta a sua verba.
-    O valor vai todo como do titular (vlrSaudeTit); a divisao por dependente
-    (infoDepSau) que o Desktop faz nao existe aqui.
 
-    Retorna (lista, erro). erro != "" quando ha verba de plano sem CNPJ.
+    Dependente: a verba vinculada a dependentes na tela Plano de Saude do
+    Dependente (tab_eventos op1=33) e' toda deles, dividida em partes iguais
+    entre os vinculos ativos na competencia (<infoDepSau>) — como o Desktop
+    (SR_eSocial_2024.vb), que divide a verba "D" do plano pelos dependentes do
+    tabreg 33. Aqui os centavos que sobram da divisao vao para os primeiros,
+    para a soma bater com o desconto. Verba sem vinculo e' do titular.
+
+    Retorna (lista, erro). erro != "" quando ha verba de plano sem CNPJ, ou
+    verba de dependente sem nenhum dependente ativo no mes (o Desktop para
+    nesse caso, ERRO 12819; enviar daria o erro 1867 do governo).
     """
     import re
     soma = {}
@@ -36734,7 +37030,26 @@ def _plano_saude_do_pgto(id_empresa, id_cliente, matricula, ano_mes, tipos_folha
                                          int(r.get("ini_valid") or 0))):
         if int(r.get("ini_valid") or 0) <= int(ano_mes):
             rub[int(r["cod_rubr"])] = r
-    oper, sem_cnpj = {}, []
+
+    # Vinculos dependente x verba (so se houver verba de plano no mes).
+    _vincs = None
+    _deps  = None
+
+    def _carregar_deps():
+        nonlocal _vincs, _deps
+        if _vincs is None:
+            _vincs = _vinculos_plano_dep(id_empresa, matricula)
+            try:
+                _deps = {int(d["id"]): d for d in (
+                    supabase.table("tab_dependentes")
+                    .select("id, nome, cpfdep, dtnascto")
+                    .eq("id_empresa", id_empresa).eq("matricula", int(matricula))
+                    .execute().data or [])}
+            except Exception as e:
+                print(f"[planSaude] mat={matricula}: erro ao ler dependentes: {e}")
+                _deps = {}
+
+    oper, sem_cnpj, sem_dep = {}, [], []
     for c, v in soma.items():
         r = rub.get(c) or {}
         nat = str(r.get("es03_nat_rubr") or "").strip()
@@ -36749,14 +37064,60 @@ def _plano_saude_do_pgto(id_empresa, id_cliente, matricula, ano_mes, tipos_folha
         # desconto soma; provento de natureza 9219 (estorno) abate
         sinal = -1 if str(r.get("tp_rubr") or "2") == "1" else 1
         k = (cnpj, ans if len(ans) == 6 else "")
-        oper[k] = oper.get(k, 0) + sinal * v
+        op = oper.setdefault(k, {"tit": 0, "deps": {}, "info": {}})
+
+        _carregar_deps()
+        vinc_c = [vi for vi in _vincs if int(vi.get("op2") or 0) == c]
+        if not vinc_c:
+            op["tit"] += sinal * v
+            continue
+        # Um dependente conta uma vez por verba, mesmo com dois vinculos.
+        ids, vistos = [], set()
+        for vi in vinc_c:
+            if not _plano_dep_ativo(vi, ano_mes):
+                continue
+            did = int(vi.get("ref1") or 0)
+            dp = _deps.get(did)
+            cpf = re.sub(r"\D", "", str((dp or {}).get("cpfdep") or ""))
+            if did in vistos or not dp or len(cpf) != 11:
+                continue
+            vistos.add(did)
+            ids.append(did)
+        if not ids:
+            sem_dep.append(f"{c:04d} {r.get('dsc_rubr') or ''}".strip())
+            continue
+        base, resto = divmod(v, len(ids))
+        for i, did in enumerate(ids):
+            dp  = _deps[did]
+            cpf = re.sub(r"\D", "", str(dp.get("cpfdep") or ""))
+            parte = base + (1 if i < resto else 0)
+            op["deps"][cpf] = op["deps"].get(cpf, 0) + sinal * parte
+            op["info"][cpf] = dp
+
     if sem_cnpj:
         return [], ("Verba de plano de saúde sem a operadora: "
                     + ", ".join(sem_cnpj)
                     + ". Em Cadastro de Verbas, marque a opção 15 (Plano de "
                     "Saúde) e informe o CNPJ da operadora — o S-1210 exige.")
-    return [{"cnpj": k[0], "ans": k[1], "valor": v}
-            for k, v in oper.items() if v > 0], ""
+    if sem_dep:
+        _am = str(ano_mes)
+        return [], ("Verba de plano de saúde de dependente sem nenhum dependente "
+                    f"ativo no plano em {_am[4:6]}/{_am[:4]}: "
+                    + ", ".join(sem_dep)
+                    + ". Em Cadastros → Plano de Saúde do Dependente, confira o "
+                    "período do vínculo (e o CPF do dependente); se o desconto "
+                    "é do titular, tire o vínculo da verba.")
+    out = []
+    for k, op in oper.items():
+        deps = [{"cpf": cpf,
+                 "nome": (op["info"][cpf].get("nome") or "").strip(),
+                 "dtnascto": str(op["info"][cpf].get("dtnascto") or "").strip(),
+                 "valor": val}
+                for cpf, val in op["deps"].items() if val > 0]
+        tit = max(0, op["tit"])
+        if tit > 0 or deps:
+            out.append({"cnpj": k[0], "ans": k[1], "valor": tit, "deps": deps})
+    return out, ""
 
 
 def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
@@ -36914,18 +37275,33 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
     plan_saude = plan_saude or []
     info_ir_xml = ""
     plan_xml = ""
+    # Dependentes do plano (CPF -> dados), para o <infoDep> mais abaixo.
+    _plan_deps = {}
     for _ps in plan_saude:
         _cnpj_op = dg(_ps.get("cnpj"))
         _vlr_ps  = int(_ps.get("valor") or 0)
-        if len(_cnpj_op) != 14 or _vlr_ps <= 0:
+        # vlrSaudeDep tem que ser > 0 (XSD); vlrSaudeTit pode ser 0 desde que
+        # haja ao menos um <infoDepSau> (senao o governo devolve o 1867).
+        _deps_ps = [dp for dp in (_ps.get("deps") or [])
+                    if len(dg(dp.get("cpf"))) == 11 and int(dp.get("valor") or 0) > 0]
+        if len(_cnpj_op) != 14 or (_vlr_ps <= 0 and not _deps_ps):
             continue
         _ans = dg(_ps.get("ans"))
         _ans_xml = (f"\n          <regANS>{x(_ans)}</regANS>"
                     if len(_ans) == 6 else "")
+        _dep_sau_xml = ""
+        for dp in _deps_ps:
+            _cpf_ds = dg(dp.get("cpf"))
+            _plan_deps.setdefault(_cpf_ds, dp)
+            _dep_sau_xml += f"""
+          <infoDepSau>
+            <cpfDep>{x(_cpf_ds)}</cpfDep>
+            <vlrSaudeDep>{fmt_brl(int(dp.get("valor") or 0))}</vlrSaudeDep>
+          </infoDepSau>"""
         plan_xml += f"""
         <planSaude>
           <cnpjOper>{x(_cnpj_op)}</cnpjOper>{_ans_xml}
-          <vlrSaudeTit>{fmt_brl(_vlr_ps)}</vlrSaudeTit>
+          <vlrSaudeTit>{fmt_brl(max(0, _vlr_ps))}</vlrSaudeTit>{_dep_sau_xml}
         </planSaude>"""
     if deps_irrf or pen_alim or plan_xml:
         info_dep_xml = ""
@@ -36947,6 +37323,24 @@ def _gerar_xml_s1210(func, empresa, ano_mes, folha_tipo, tpAmb, dtPgto,
             <cpfDep>{x(_cpfd)}</cpfDep>
             <vlrDedDep>{fmt_brl(vlr_ded_dep_cent)}</vlrDedDep>
           </dedDepen>"""
+        # O CPF do <infoDepSau> tem que ser de dependente ja informado ao
+        # eSocial (S-2200/S-2205) ou estar no <infoDep> deste evento (XSD). O
+        # cadastro de dependente pela tela nao gera S-2205, entao o dependente
+        # do plano que nao e' de IRRF (esses ja estao acima) entra aqui so com
+        # CPF, nascimento e nome — sem depIRRF, que e' so para o IR.
+        _cpfs_irrf = {dg(_d.get("cpfdep") or "").zfill(11) for _d in deps_irrf}
+        for _cpf_ds, dp in _plan_deps.items():
+            if _cpf_ds in _cpfs_irrf:
+                continue
+            _dn = dg(dp.get("dtnascto"))
+            _dn_xml = (f"\n          <dtNascto>{_dn[:4]}-{_dn[4:6]}-{_dn[6:]}</dtNascto>"
+                       if len(_dn) == 8 else "")
+            _nm = str(dp.get("nome") or "").strip()[:70]
+            _nm_xml = f"\n          <nome>{x(_nm)}</nome>" if _nm else ""
+            info_dep_xml += f"""
+        <infoDep>
+          <cpfDep>{x(_cpf_ds)}</cpfDep>{_dn_xml}{_nm_xml}
+        </infoDep>"""
         # tpRend segue o tipo da folha: 11 mensal, 12 décimo terceiro, 13 férias.
         _TP_REND = {"N": "11", "1": "12", "A": "12", "F": "13", "R": "11"}
         _tp_rend = _TP_REND.get(str(folha_tipo or "N").upper()[:1], "11")
