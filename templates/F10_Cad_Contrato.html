@@ -162,6 +162,16 @@ input:disabled,select:disabled{background:#f1f5f9;color:#94a3b8}
     {% endif %}
 
     <div class="linha">
+      <!-- O tipo decide o limite, contando a prorrogacao (art. 445 CLT):
+           experiencia ate 90 dias, prazo determinado ate 2 anos. Na
+           prorrogacao fica travado: prorrogar nao muda a natureza do contrato. -->
+      <div>
+        <span class="lbl">Tipo do contrato</span>
+        <select id="tipo" {% if contrato %}disabled{% endif %}>
+          <option value="E" {% if not contrato or contrato.tipo != 1 %}selected{% endif %}>Experiência (até 90 dias)</option>
+          <option value="D" {% if contrato and contrato.tipo == 1 %}selected{% endif %}>Prazo determinado (até 2 anos)</option>
+        </select>
+      </div>
       <div>
         <span class="lbl">Prazo</span>
         <div class="prazos">
@@ -276,6 +286,7 @@ const DTADM = '{{ func.dtadm }}';
 const DTFIM = '{{ contrato.dtterm if contrato else "" }}';
 const DTANT = '{{ contrato.dtterm_ant if contrato else "" }}';
 const TEM_CONTRATO   = {{ 'true' if contrato else 'false' }};
+const TIPO_GRAVADO   = '{{ 'D' if contrato and contrato.tipo == 1 else 'E' }}';
 const ADM_FORA_FOLHA = {{ 'true' if adm_fora_da_folha else 'false' }};
 
 function d8ParaDate(s) {
@@ -319,6 +330,8 @@ function ajustarPelaAcao() {
         if (el) el.disabled = !on;
     });
     document.querySelectorAll('.chk-prazo').forEach(x => { x.disabled = !on; });
+    const tp = document.getElementById('tipo');
+    if (tp) tp.disabled = !on || ac === 'prorrogar';
     const b = document.getElementById('btnGravar');
     if (!b) return;
     b.disabled  = !on;
@@ -350,6 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.chk-prazo').forEach(x => x.checked = false);
             if (c.checked && c.dataset.acao === 'prorrogar') {
                 document.getElementById('dtterm').value = '';   // a nova data ainda nao existe
+                document.getElementById('tipo').value = TIPO_GRAVADO;  // prorrogar mantem o tipo
             } else if (c.checked && c.dataset.acao === 'editar' && DTFIM) {
                 document.getElementById('dtterm').value =
                     `${DTFIM.slice(0,4)}-${DTFIM.slice(4,6)}-${DTFIM.slice(6,8)}`;
@@ -391,7 +405,8 @@ document.getElementById('btnGravar').onclick = async function() {
             acao:       acao,
             dtterm:     dt.replace(/-/g, ''),
             clausassec: document.getElementById('clausassec').value,
-            objdet:     document.getElementById('objdet').value
+            objdet:     document.getElementById('objdet').value,
+            tipo:       document.getElementById('tipo').value
         });
         if (d.ok) { msg(d.msg, true); setTimeout(() => location.reload(), 900); }
         else      { msg(d.msg || 'Erro ao gravar.', false); this.disabled = false; }

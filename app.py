@@ -17698,6 +17698,20 @@ def api_funcionario_incluir():
 
     _normalizar_contato_pix(campos)
 
+    # Contrato de experiencia acima de 90 dias: recusa ANTES de gravar o
+    # funcionario, para a data ser corrigida na mesma tela (depois do insert
+    # ele ficaria com tpcontr=2 e sem contrato).
+    if len(exp_dt) == 8:
+        _msg90 = _contrato_excede_limite(re.sub(r"\D", "", str(d.get("dtAdm") or "")), exp_dt)
+        if _msg90:
+            # Aqui o campo e' so de experiencia; o prazo determinado comum (ate
+            # 2 anos) se lanca depois, na tela do contrato.
+            _msg90 = _msg90.split(" Se nao for experiencia")[0]
+            return jsonify({"ok": False, "msg": _msg90 + (
+                " Para contrato por prazo determinado (ate 2 anos), deixe o "
+                "termino em branco aqui e lance o contrato depois na tela do "
+                "Contrato, escolhendo Prazo determinado.")})
+
     try:
         supabase.table("tab_cad").insert(campos).execute()
         mat = int(matricula_raw) if matricula_raw else None
@@ -18289,6 +18303,7 @@ def api_contrato_gravar():
     clau   = "1" if str(d.get("clausassec") or "N").upper() == "S" else "0"
     objdet = str(d.get("objdet") or "").strip()[:100]
     tpc    = "3" if objdet else "2"
+    tipo   = CONTR_TIPO_DETERMINADO if str(d.get("tipo") or "").upper() == "D" else 0
 
     if not mat or not id_empresa or not id_cliente:
         return jsonify({"ok": False, "msg": "Sessao incompleta."})
@@ -18354,6 +18369,15 @@ def api_contrato_gravar():
     else:
         ant, ref2 = "", 0
 
+    # Prorrogar nao muda a natureza do contrato: vale o tipo ja gravado.
+    if acao == "prorrogar":
+        tipo = int(atual.get("tipo") or 0)
+
+    # Vale para as tres acoes: cadastro, correcao e prorrogacao.
+    _msg_lim = _contrato_excede_limite(dtadm, dtterm, tipo)
+    if _msg_lim:
+        return jsonify({"ok": False, "msg": _msg_lim})
+
     # Prazo em dias. O dia da admissao CONTA: contrato de 30 dias admitido em
     # 15/08 termina em 13/09, nao 14/09 — por isso o +1. Conferido nos 3
     # contratos migrados do Desktop, que gravam ref1 exatamente assim.
@@ -18374,6 +18398,7 @@ def api_contrato_gravar():
         "ref1":      max(0, dias),
         "ref2":      ref2,
         "ref3":      int(clau),
+        "ref4":      tipo,
         "campotxt1": objdet or None,
     }
     try:
@@ -74739,6 +74764,49 @@ CONTR_OP1, CONTR_OP2 = 1, 167
 #   campotxt1  = objeto determinante (quando tpcontr = 3)
 _DATA_VAZIA_LEGADO = "11110101"   # o "sem data" que o Desktop grava
 
+# Limite do contrato, CONTANDO a prorrogacao (art. 445 da CLT): experiencia
+# ate 90 dias (paragrafo unico), prazo determinado comum ate 2 anos (caput).
+# Antes so o texto do PDF falava nisso; a gravacao aceitava 60 + 60.
+# O tipo mora no ref4 do evento: 0/vazio = experiencia (todos os contratos
+# gravados antes de 16/10/2026), 1 = prazo determinado.
+CONTR_MAX_DIAS = 90
+CONTR_TIPO_DETERMINADO = 1
+
+
+def _contrato_excede_limite(dtadm, dtterm, tipo=0):
+    """Confere o total do contrato, da admissao ao termino (o dia da admissao
+    conta — mesma conta do ref1). Devolve None se cabe, ou a mensagem com o
+    ultimo termino possivel. Sem admissao valida nao ha o que conferir."""
+    if len(dtadm or "") != 8 or len(dtterm or "") != 8:
+        return None
+    try:
+        _a = date(int(dtadm[:4]), int(dtadm[4:6]), int(dtadm[6:]))
+        _t = date(int(dtterm[:4]), int(dtterm[4:6]), int(dtterm[6:]))
+    except ValueError:
+        return None
+    total = (_t - _a).days + 1
+    if int(tipo or 0) == CONTR_TIPO_DETERMINADO:
+        # 2 anos: vai ate a vespera do mesmo dia dois anos depois (admitido em
+        # 29/02 o "mesmo dia" cai em 01/03).
+        try:
+            _fim = date(_a.year + 2, _a.month, _a.day)
+        except ValueError:
+            _fim = date(_a.year + 2, 3, 1)
+        _lim = _fim - timedelta(days=1)
+        if _t <= _lim:
+            return None
+        return (f"O contrato por prazo determinado nao pode passar de 2 anos "
+                f"contando a prorrogacao (art. 445 da CLT). O ultimo termino "
+                f"possivel e' {_lim.strftime('%d/%m/%Y')}.")
+    if total <= CONTR_MAX_DIAS:
+        return None
+    _lim = _a + timedelta(days=CONTR_MAX_DIAS - 1)
+    return (f"O contrato de experiencia nao pode passar de {CONTR_MAX_DIAS} dias "
+            f"contando a prorrogacao (art. 445, paragrafo unico, da CLT). Com "
+            f"este termino ficaria com {total} dias; o ultimo termino possivel "
+            f"e' {_lim.strftime('%d/%m/%Y')}. Se nao for experiencia, escolha "
+            f"Prazo determinado no tipo do contrato.")
+
 
 def _duracao_xml(tpcontr, dtterm_fmt, clauassec, objdet, com_clauassec=True):
     """Bloco <duracao> do S-2200/S-2206, com as tres formas que o leiaute aceita.
@@ -74805,7 +74873,7 @@ def _contrato_prazo(id_empresa, matricula):
     maior ref2 — o mais recente."""
     try:
         rows = (supabase.table("tab_eventos")
-                .select("id, data1i, data1f, ref1, ref2, ref3, campotxt1")
+                .select("id, data1i, data1f, ref1, ref2, ref3, ref4, campotxt1")
                 .eq("id_empresa", id_empresa).eq("matricula", matricula)
                 .eq("op1", CONTR_OP1).eq("op2", CONTR_OP2)
                 .execute().data or [])
@@ -74830,6 +74898,8 @@ def _contrato_prazo(id_empresa, matricula):
         "clausassec":   "S" if str(ult.get("ref3") or "0") == "1" else "N",
         "objdet":       str(ult.get("campotxt1") or "").strip(),
         "prorrogacoes": int(ult.get("ref2") or 0),
+        # 0 = experiencia, 1 = prazo determinado (CONTR_TIPO_DETERMINADO)
+        "tipo":         int(ult.get("ref4") or 0),
         "dtterm_ant":   "" if _ant in ("", _DATA_VAZIA_LEGADO) else _ant,
     }
 
