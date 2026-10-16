@@ -47305,14 +47305,30 @@ def _s1210_enviar_impl():
     # 'R' do tab_total, e o infoPgto aponta para o dmDev do desligamento.
     is_resc    = str(es.get("flag1") or "").upper()[:1] == "R"
 
-    # dtPgto fixo: último dia ÚTIL (seg-sex) do mês do período (ano_mes)
+    # dtPgto: a data informada na tela do S-1210. Quem nao manda (a Fila) fica
+    # com o ultimo dia UTIL (seg-sex) do mes do periodo (ano_mes). O gov exige
+    # que o dtPgto caia dentro do perApur, que aqui e' o proprio ano_mes.
     try:
         _am_str = str(int(ano_mes)).zfill(6)
         _ano    = int(_am_str[:4])
         _mes    = int(_am_str[4:6])
-        dtPgto  = _ultimo_dia_util(_ano, _mes).strftime("%Y-%m-%d")
     except Exception as e:
         return jsonify({"ok": False, "msg": f"Período inválido para calcular dtPgto: {e}"})
+    _dt_tela = str(data.get("dtPgto") or "").strip()
+    if _dt_tela:
+        try:
+            from datetime import date as _date_cls
+            _d = _date_cls.fromisoformat(_dt_tela[:10])
+        except Exception:
+            return jsonify({"ok": False, "msg": f"Data de Pagamento inválida: {_dt_tela}"})
+        if (_d.year, _d.month) != (_ano, _mes):
+            return jsonify({"ok": False, "msg":
+                f"A Data de Pagamento ({_d.strftime('%d/%m/%Y')}) precisa estar dentro "
+                f"do período do S-1210 ({_mes:02d}/{_ano}). Ajuste a data na tela e "
+                f"envie de novo."})
+        dtPgto = _d.strftime("%Y-%m-%d")
+    else:
+        dtPgto = _ultimo_dia_util(_ano, _mes).strftime("%Y-%m-%d")
 
     ok_val, msg_val = _validar_folha_para_envio_esocial("1210", ano_mes, folha_tipo)
     if not ok_val:
